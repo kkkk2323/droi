@@ -24,6 +24,8 @@ jobs:
 
       - name: Build universal DMG
         run: pnpm build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         with:
