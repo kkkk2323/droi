@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useRef, useState, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useProjects, useActiveProjectDir, useActiveSessionId, useActions, useDeletingSessionIds, useIsCreatingSession } from '@/store'
+import { useProjects, useActiveProjectDir, useActiveSessionId, useActions, useDeletingSessionIds, useIsCreatingSession, useIsInitialLoadDone } from '@/store'
 import {
   Collapsible,
   CollapsibleContent,
@@ -84,6 +84,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const activeSessionId = useActiveSessionId()
   const deletingSessionIds = useDeletingSessionIds()
   const isCreatingSession = useIsCreatingSession()
+  const isInitialLoadDone = useIsInitialLoadDone()
+  const isInitBlocked = !isInitialLoadDone
   const {
     getSessionRunning,
     handleAddProject,
@@ -106,7 +108,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 <SidebarMenuItem className='pt-2'>
                   <SidebarMenuButton
                     tooltip="Add project"
-                    onClick={handleAddProject}
+                    aria-disabled={isInitBlocked}
+                    className={cn(isInitBlocked && 'pointer-events-none opacity-60')}
+                    onClick={() => {
+                      if (isInitBlocked) return
+                      handleAddProject()
+                    }}
                   >
                     <FolderPlusIcon className="size-4" />
                     <span className="text-sm font-medium">New Project</span>
@@ -148,7 +155,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             if (!isActiveProject) {
                               const latest = project.sessions[0]
                               if (latest) handleSelectSession(latest.id)
-                              else if (!isCreatingSession) handleNewSession(project.dir)
+                              else if (!isCreatingSession && !isInitBlocked) handleNewSession(project.dir)
                             }
                           }}
                         />
@@ -164,11 +171,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         className={cn(
                           'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
                           mobile ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
-                          isCreatingSession && 'opacity-60 pointer-events-none'
+                          (isCreatingSession || isInitBlocked) && 'opacity-60 pointer-events-none'
                         )}
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (isCreatingSession) return
+                          if (isCreatingSession || isInitBlocked) return
                           handleNewSession(project.dir)
                         }}
                       >

@@ -5,7 +5,7 @@ import { atomicWriteFile, ensureDir } from './fsUtils.ts'
 
 const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
 
-function getTitleFromMessages(messages: ChatMessage[]): string {
+function getTitleFromMessages(messages: ChatMessage[], fallback?: string): string {
   const firstUser = messages.find((m) => m.role === 'user')
   const cmd = firstUser?.blocks?.find((b: any) => b?.kind === 'command')
   const cmdName = cmd && typeof (cmd as any).name === 'string' ? String((cmd as any).name) : ''
@@ -16,11 +16,14 @@ function getTitleFromMessages(messages: ChatMessage[]): string {
     ? String((firstTextBlock as any).content)
     : ''
 
+  const branchFallback = String(fallback || '').trim()
+  const branchTail = branchFallback ? (branchFallback.split('/').pop() || branchFallback) : ''
+
   const titleSource = cmdName
     ? `/${cmdName}${text.trim() ? ` ${text.trim()}` : ''}`
     : skillName
       ? `/${skillName}${text.trim() ? ` ${text.trim()}` : ''}`
-    : (text || 'Untitled')
+      : (text || branchTail || 'Untitled')
 
   const trimmed = String(titleSource || 'Untitled')
   return trimmed.slice(0, 40) + (trimmed.length > 40 ? '...' : '')
@@ -52,7 +55,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
     if (!filePath) return null
     await ensureDir(sessionsDir)
     const savedAt = Date.now()
-    const title = getTitleFromMessages(req.messages)
+    const title = getTitleFromMessages(req.messages, req.branch || req.baseBranch)
     const messageCount = req.messages.length
     const lastMessageAt = req.messages.length > 0
       ? req.messages[req.messages.length - 1].timestamp

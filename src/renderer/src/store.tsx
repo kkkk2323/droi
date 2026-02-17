@@ -241,15 +241,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   getIsRunning: () => {
     const s = get()
     const buf = s.sessionBuffers.get(s.activeSessionId)
-    return Boolean(buf?.isRunning || buf?.isSetupRunning)
+    return Boolean(buf?.isRunning)
   },
   getIsAnyRunning: () => {
     const s = get()
-    return Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning || b?.isSetupRunning))
+    return Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning))
   },
   getSessionRunning: (sessionId) => {
     const buf = get().sessionBuffers.get(sessionId)
-    return Boolean(buf?.isRunning || buf?.isSetupRunning)
+    return Boolean(buf?.isRunning)
   },
   getSessionDeleting: (sessionId) => {
     return get().deletingSessionIds.has(sessionId)
@@ -340,7 +340,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   _saveSessionToDisk: async (sid, buf) => {
-    if (buf.messages.length === 0 || !buf.projectDir || !sid) return
+    if (!buf.projectDir || !sid) return
     const meta = await droid.saveSession({
       id: sid,
       projectDir: buf.projectDir,
@@ -614,6 +614,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // --- Session workspace ---
   handleCreateSessionWithWorkspace: async (params) => {
     const s = get()
+    if (!s._initialLoadDone) return
     if (s.isCreatingSession) return
     set({ isCreatingSession: true })
     try {
@@ -690,19 +691,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
         reasoningEffort: inheritReasoningEffort || undefined,
         baseBranch: workspaceInfo!.baseBranch,
       }))
-      get()._setSessionBuffers((prev) => {
-        const next = new Map(prev)
-        next.set(newId, makeBuffer(targetDir, {
+      const initialBuffer = {
+        ...makeBuffer(targetDir, {
           repoRoot: workspaceInfo!.repoRoot,
           branch: workspaceInfo!.branch,
           workspaceType: workspaceInfo!.workspaceType,
           baseBranch: workspaceInfo!.baseBranch,
-        }))
+        }),
+        model: inheritModel,
+        autoLevel: inheritAutoLevel,
+        reasoningEffort: inheritReasoningEffort || '',
+      }
+      get()._setSessionBuffers((prev) => {
+        const next = new Map(prev)
+        next.set(newId, initialBuffer)
         return next
       })
 
       set({ activeProjectDir: targetDir, activeSessionId: newId })
       droid.setProjectDir(targetDir)
+      void get()._saveSessionToDisk(newId, initialBuffer)
 
       const repoKey = String(workspaceInfo.repoRoot || '').trim()
       const setupScript = repoKey
@@ -1374,6 +1382,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   handleNewSession: (repoRoot) => {
     void (async () => {
       const s = get()
+      if (!s._initialLoadDone) return
       s.clearWorkspaceError()
       try {
         const sourceDir = s._pickProjectDirForRepo(repoRoot)
@@ -1425,6 +1434,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   handleSetProjectDir: (dir) => {
     if (!dir) return
+    if (!get()._initialLoadDone) return
     void (async () => {
       const s = get()
       const info = await s._resolveWorkspace(dir).catch(() => null)
@@ -1445,6 +1455,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   handleAddProject: async () => {
+    if (!get()._initialLoadDone) return
     const dir = await droid.openDirectory()
     if (!dir) return
     get().handleSetProjectDir(dir)
@@ -1673,10 +1684,10 @@ const selectActiveBuffer = (s: AppStore) => s.sessionBuffers.get(s.activeSession
 export const useMessages = () => useAppStore((s) => selectActiveBuffer(s)?.messages ?? EMPTY_MESSAGES)
 export const useIsRunning = () => useAppStore((s) => {
   const buf = selectActiveBuffer(s)
-  return Boolean(buf?.isRunning || buf?.isSetupRunning)
+  return Boolean(buf?.isRunning)
 })
 export const useIsAnyRunning = () => useAppStore((s) =>
-  Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning || b?.isSetupRunning))
+  Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning))
 )
 export const useDebugTrace = () => useAppStore((s) => (selectActiveBuffer(s)?.debugTrace as string[] | undefined) ?? EMPTY_DEBUG_TRACE)
 export const useSetupScript = () => useAppStore((s) => selectActiveBuffer(s)?.setupScript ?? null)
@@ -1720,6 +1731,7 @@ export const useActiveSessionId = () => useAppStore((s) => s.activeSessionId)
 export const useWorkspaceError = () => useAppStore((s) => s.workspaceError)
 export const useDeletingSessionIds = () => useAppStore((s) => s.deletingSessionIds)
 export const useIsCreatingSession = () => useAppStore((s) => s.isCreatingSession)
+export const useIsInitialLoadDone = () => useAppStore((s) => s._initialLoadDone)
 
 // Actions are stable function references on the store object and never change,
 // so we read them directly via getState() without subscribing.
@@ -1858,6 +1870,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             _initialLoadDone: true,
           })
         } else {
+          const restoredInfo = restoredProjectDir
+            ? await store._resolveWorkspace(restoredProjectDir).catch(() => null)
+            : null
           const newId = restoredProjectDir
             ? (await droid.createSession({
               cwd: restoredProjectDir,
@@ -1865,10 +1880,47 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
               autoLevel: DEFAULT_AUTO_LEVEL,
             })).sessionId
             : uuidv4()
+          const initialBuffer = makeBuffer(restoredProjectDir || '', {
+            repoRoot: restoredInfo?.repoRoot,
+            branch: restoredInfo?.branch,
+            workspaceType: restoredInfo?.workspaceType,
+            baseBranch: restoredInfo?.baseBranch,
+          })
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
-          newBuffers.set(newId, makeBuffer(restoredProjectDir || ''))
+          newBuffers.set(newId, initialBuffer)
+
+          const projectsWithInitialSession = restoredProjectDir
+            ? upsertSessionMeta(nextProjects, {
+              id: newId,
+              projectDir: restoredProjectDir,
+              repoRoot: restoredInfo?.repoRoot || restoredProjectDir,
+              branch: restoredInfo?.branch,
+              workspaceType: restoredInfo?.workspaceType,
+              baseBranch: restoredInfo?.baseBranch,
+              title: defaultSessionTitleFromBranch(restoredInfo?.branch || ''),
+              savedAt: Date.now(),
+              messageCount: 0,
+              model: DEFAULT_MODEL,
+              autoLevel: DEFAULT_AUTO_LEVEL,
+            })
+            : nextProjects
+
+          if (restoredProjectDir) {
+            void droid.saveSession({
+              id: newId,
+              projectDir: restoredProjectDir,
+              repoRoot: restoredInfo?.repoRoot,
+              branch: restoredInfo?.branch,
+              workspaceType: restoredInfo?.workspaceType,
+              baseBranch: restoredInfo?.baseBranch,
+              model: DEFAULT_MODEL,
+              autoLevel: DEFAULT_AUTO_LEVEL,
+              messages: [],
+            })
+          }
+
           useAppStore.setState({
-            projects: nextProjects,
+            projects: projectsWithInitialSession,
             activeProjectDir: restoredProjectDir,
             activeSessionId: newId,
             sessionBuffers: newBuffers,

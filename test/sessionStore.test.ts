@@ -118,3 +118,31 @@ test('sessionStore replaceSessionId migrates and clears context', async () => {
   assert.equal(list2[0].id, 's2')
   assert.equal(list2[0].apiKeyFingerprint, 'fp1')
 })
+
+test('sessionStore save persists empty session with branch-derived title', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
+  const store = createSessionStore({ baseDir: dir })
+
+  const meta = await store.save({
+    id: 'empty_1',
+    projectDir: '/repo',
+    branch: 'droi/calm-whale-0phf',
+    model: 'gpt',
+    autoLevel: 'default',
+    messages: [],
+  })
+
+  assert.ok(meta)
+  assert.equal(meta?.messageCount, 0)
+  assert.equal(meta?.title, 'calm-whale-0phf')
+
+  const listed = await store.list()
+  assert.equal(listed.length, 1)
+  assert.equal(listed[0].id, 'empty_1')
+  assert.equal(listed[0].title, 'calm-whale-0phf')
+
+  const loaded = await store.load('empty_1')
+  assert.ok(loaded)
+  assert.equal(loaded?.messages.length, 0)
+  assert.equal(loaded?.title, 'calm-whale-0phf')
+})
