@@ -1,0 +1,110 @@
+{
+  "name": "droi",
+  "version": "0.1.0",
+  "description": "Desktop GUI for Droi",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:mobile": "DROID_WEB_ENABLED=true DROID_APP_API_HOST=0.0.0.0 DROID_APP_API_PORT=3001 electron-vite dev",
+    "dev:preview": "DROID_WEB_ENABLED=true DROID_APP_API_HOST=0.0.0.0 DROID_APP_API_PORT=3002 VITE_DROID_API_BASE=http://localhost:3002/api electron-vite dev",
+    "dev:api": "node --experimental-strip-types src/server/index.ts",
+    "dev:browser": "DROID_TRACE_CHAIN=1 VITE_DROID_TRACE_CHAIN=1 node --experimental-strip-types src/server/index.ts & DROID_TRACE_CHAIN=1 VITE_DROID_TRACE_CHAIN=1 electron-vite dev --rendererOnly",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.droi.app",
+    "productName": "Droi",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "resources/**/*"
+    ],
+    "icon": "resources/icon.png",
+    "mac": {
+      "icon": "resources/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "resources/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Droi",
+      "icon": "resources/icon.icns"
+    }
+  },
+  "keywords": [],
+  "author": "kkkk2323",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/busboy": "^1.5.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "electron": "^40.4.0",
+    "electron-builder": "^26.7.0",
+    "electron-vite": "^5.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.1",
+    "vite-tsconfig-paths": "^6.1.1"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.1.0",
+    "@hono/node-server": "^1.19.9",
+    "@lobehub/icons": "^4.4.3",
+    "@tanstack/react-query": "^5.90.21",
+    "@tanstack/react-router": "^1.159.5",
+    "busboy": "^1.6.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "hono": "^4.11.9",
+    "lucide-react": "^0.563.0",
+    "streamdown": "^2.2.0",
+    "tailwind-merge": "^3.4.0",
+    "tw-animate-css": "^1.4.0",
+    "zustand": "^5.0.11"
+  }
+}

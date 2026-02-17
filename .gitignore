@@ -1,0 +1,71 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE - VSCode
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# IDE - JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Electron
+app/
+release/
+
+# Cache
+.cache/
+*.cache
+.eslintcache
+.stylelintcache
+
+# Misc
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+.workspace
+.attchments
+package-lock.json

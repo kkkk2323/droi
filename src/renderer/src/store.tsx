@@ -1,0 +1,2087 @@
+import React, { useEffect, useRef } from 'react'
+import { create } from 'zustand'
+import { getDroidClient } from '@/droidClient'
+import type { ChatMessage, Project, SessionMeta, WorkspaceInfo, ProjectSettings } from '@/types'
+import type { DroidPermissionOption, CustomModelDef } from '@/types'
+import { buildHookMismatchMessage, getMissingDroidHooks } from '@/lib/droidHooks'
+import { uuidv4 } from './lib/uuid.ts'
+import { defaultSessionTitleFromBranch, generateWorktreeBranch, sanitizeWorktreePrefix } from '@/lib/sessionWorktree'
+import {
+  formatNotificationTrace,
+  isTraceChainEnabled,
+  setTraceChainEnabledOverride,
+} from '@/lib/notificationFingerprint'
+import { getModelDefaultReasoning } from '@/types'
+import {
+  DEFAULT_AUTO_LEVEL,
+  DEFAULT_MODEL,
+  makeBuffer,
+  applySetupScriptEvent,
+  applyRpcNotification,
+  applyRpcRequest,
+  appendDebugTrace,
+  clearDebugTrace,
+  applyStdout,
+  applyStderr,
+  applyTurnEnd,
+  applyError,
+  markSetupScriptSkipped,
+  type SessionBuffer,
+  type SessionSetupState,
+  type PendingPermissionRequest,
+  type PendingAskUserRequest,
+} from '@/state/appReducer'
+
+const droid = getDroidClient()
+
+export type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
+
+function getTitleFromPrompt(prompt: string): string {
+  const trimmed = String(prompt || '').trim() || 'Untitled'
+  return trimmed.slice(0, 40) + (trimmed.length > 40 ? '...' : '')
+}
+
+function getRepoKey(meta: Pick<SessionMeta, 'repoRoot' | 'projectDir'>): string {
+  return String(meta.repoRoot || meta.projectDir || '').trim()
+}
+
+function upsertSessionMeta(prev: Project[], meta: SessionMeta): Project[] {
+  const repoKey = getRepoKey(meta)
+  if (!repoKey) return prev
+  const cleaned = prev.map((p) => ({ ...p, sessions: p.sessions.filter((s) => s.id !== meta.id) }))
+  const target = cleaned.find((p) => p.dir === repoKey)
+  if (target) {
+    target.sessions.push(meta)
+    target.sessions.sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
+    return cleaned
+  }
+  const name = repoKey.split(/[\\/]/).pop() || repoKey
+  return [...cleaned, { dir: repoKey, name, sessions: [meta] }]
+}
+
+function updateSessionTitle(prev: Project[], sessionId: string, title: string): Project[] {
+  let changed = false
+  const next = prev.map((p) => {
+    let sessionsChanged = false
+    const sessions = p.sessions.map((s) => {
+      if (s.id !== sessionId) return s
+      if (s.title === title) return s
+      changed = true
+      sessionsChanged = true
+      return { ...s, title }
+    })
+    return sessionsChanged ? { ...p, sessions } : p
+  })
+  return changed ? next : prev
+}
+
+function replaceSessionIdInProjects(prev: Project[], oldId: string, nextMeta: SessionMeta): Project[] {
+  if (!oldId || !nextMeta?.id || oldId === nextMeta.id) return upsertSessionMeta(prev, nextMeta)
+
+  // First, de-dupe any existing newId.
+  const cleaned = prev.map((p) => ({ ...p, sessions: p.sessions.filter((s) => s.id !== nextMeta.id) }))
+
+  let replaced = false
+  const next = cleaned.map((p) => {
+    const idx = p.sessions.findIndex((s) => s.id === oldId)
+    if (idx === -1) return p
+    replaced = true
+    const sessions = p.sessions.slice()
+    sessions[idx] = nextMeta
+    return { ...p, sessions }
+  })
+
+  return replaced ? next : upsertSessionMeta(cleaned, nextMeta)
+}
+
+// --- Zustand Store ---
+
+interface AppState {
+  // Session buffers
+  sessionBuffers: Map<string, SessionBuffer>
+  activeSessionId: string
+  activeProjectDir: string
+
+  // App-level state
+  droidVersion: string
+  apiKey: string
+  traceChainEnabled: boolean
+  showDebugTrace: boolean
+  localDiagnosticsEnabled: boolean
+  localDiagnosticsRetentionDays: number
+  localDiagnosticsMaxTotalMb: number
+  diagnosticsDir: string
+  commitMessageModelId: string
+  customModels: CustomModelDef[]
+  projects: Project[]
+  projectSettingsByRepo: Record<string, ProjectSettings>
+  workspaceError: string
+  deletingSessionIds: Set<string>
+  isCreatingSession: boolean
+
+  // Generation tracking
+  _sessionGenerations: Map<string, number>
+  _hookMismatchReported: boolean
+  _initialLoadDone: boolean
+}
+
+interface AppActions {
+  // Internal setters
+  _setSessionBuffers: (updater: (prev: Map<string, SessionBuffer>) => Map<string, SessionBuffer>) => void
+  _setProjects: (updater: (prev: Project[]) => Project[]) => void
+
+  // Derived getters (computed from state)
+  getMessages: () => ChatMessage[]
+  getIsRunning: () => boolean
+  getIsAnyRunning: () => boolean
+  getSessionRunning: (sessionId: string) => boolean
+  getSessionDeleting: (sessionId: string) => boolean
+  getDebugTrace: () => string[]
+  getSetupScript: () => SessionSetupState | null
+  getIsSetupBlocked: () => boolean
+  getModel: () => string
+  getAutoLevel: () => string
+  getReasoningEffort: () => string
+  getPendingPermissionRequest: () => PendingPermissionRequest | null
+  getPendingAskUserRequest: () => PendingAskUserRequest | null
+  getPendingSendMessageIds: () => Record<string, true>
+  getActiveSessionTitle: () => string
+
+  // Settings actions
+  clearWorkspaceError: () => void
+  clearDebugTrace: () => void
+  appendUiDebugTrace: (message: string) => void
+  setModel: (m: string) => void
+  setAutoLevel: (l: string) => void
+  setReasoningEffort: (r: string) => void
+  setApiKey: (k: string) => void
+  setTraceChainEnabled: (enabled: boolean) => void
+  setShowDebugTrace: (enabled: boolean) => void
+  setLocalDiagnosticsEnabled: (enabled: boolean) => void
+  setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
+  setCommitMessageModelId: (modelId: string) => void
+  refreshDiagnosticsDir: () => Promise<void>
+  exportDiagnostics: (params?: { sessionId?: string }) => Promise<{ path: string }>
+  openPath: (path: string) => Promise<void>
+  updateProjectSettings: (repoRoot: string, patch: Partial<ProjectSettings>) => Promise<void>
+
+  // Session actions
+  handleSend: (input: SendInput, attachments?: Array<{ name: string; path: string }>) => void
+  handleClearSessionContext: (sessionId?: string) => Promise<void>
+  handleCancel: () => void
+  handleForceCancel: () => void
+  handleRespondPermission: (params: { selectedOption: DroidPermissionOption; autoLevel?: 'low' | 'medium' | 'high' }) => void
+  handleRespondAskUser: (params: { cancelled?: boolean; answers: Array<{ index: number; question: string; answer: string }> }) => void
+  handleRetrySetupScript: (sessionId?: string) => Promise<void>
+  handleSkipSetupScript: (sessionId?: string) => void
+  handleNewSession: (repoRoot?: string) => void
+  handleCreateSessionWithWorkspace: (params: {
+    repoRoot?: string
+    projectDir?: string
+    mode: 'plain' | 'switch-branch' | 'new-branch' | 'new-worktree'
+    branch?: string
+    baseBranch?: string
+  }) => Promise<void>
+  handleSwitchWorkspaceForSession: (params: { branch: string; sessionId?: string }) => Promise<boolean>
+  handleAddProject: () => void
+  handleSetProjectDir: (dir: string) => void
+  handleSelectSession: (sessionId: string) => void
+  handleDeleteSession: (sessionId: string) => void
+  handleDeleteProject: (repoRoot: string) => void
+
+  // Internal helpers
+  _bumpSessionGeneration: (sid: string) => number
+  _isSessionGenerationCurrent: (sid: string, generation: number) => boolean
+  _clearSessionGeneration: (sid: string) => void
+  _getSessionGeneration: (sid: string) => number
+  _resolveWorkspace: (projectDir: string) => Promise<WorkspaceInfo | null>
+  _pickProjectDirForRepo: (repoRoot?: string) => string
+  _saveSessionToDisk: (sid: string, buf: SessionBuffer) => Promise<void>
+  _runSetupScriptForSession: (params: { sessionId: string; projectDir: string; script: string }) => Promise<void>
+  _ensureWorkspaceForMeta: (meta: SessionMeta) => Promise<WorkspaceInfo>
+  _switchToSessionWithAligned: (selectedMeta: SessionMeta, aligned: WorkspaceInfo) => Promise<void>
+  _reportHookMismatch: (sid: string, projectDir: string, missingHooks: string[]) => void
+}
+
+type AppStore = AppState & AppActions
+
+export const useAppStore = create<AppStore>((set, get) => ({
+  // --- Initial State ---
+  sessionBuffers: new Map(),
+  activeSessionId: '',
+  activeProjectDir: '',
+  droidVersion: 'loading...',
+  apiKey: '',
+  traceChainEnabled: isTraceChainEnabled(),
+  showDebugTrace: false,
+  localDiagnosticsEnabled: true,
+  localDiagnosticsRetentionDays: 7,
+  localDiagnosticsMaxTotalMb: 50,
+  diagnosticsDir: '',
+  commitMessageModelId: 'minimax-m2.5',
+  customModels: [],
+  projects: [],
+  projectSettingsByRepo: {},
+  workspaceError: '',
+  deletingSessionIds: new Set(),
+  isCreatingSession: false,
+  _sessionGenerations: new Map(),
+  _hookMismatchReported: false,
+  _initialLoadDone: false,
+
+  // --- Internal setters ---
+  _setSessionBuffers: (updater) => set((s) => ({ sessionBuffers: updater(s.sessionBuffers) })),
+  _setProjects: (updater) => set((s) => ({ projects: updater(s.projects) })),
+
+  // --- Derived getters ---
+  getMessages: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.messages ?? []
+  },
+  getIsRunning: () => {
+    const s = get()
+    const buf = s.sessionBuffers.get(s.activeSessionId)
+    return Boolean(buf?.isRunning || buf?.isSetupRunning)
+  },
+  getIsAnyRunning: () => {
+    const s = get()
+    return Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning || b?.isSetupRunning))
+  },
+  getSessionRunning: (sessionId) => {
+    const buf = get().sessionBuffers.get(sessionId)
+    return Boolean(buf?.isRunning || buf?.isSetupRunning)
+  },
+  getSessionDeleting: (sessionId) => {
+    return get().deletingSessionIds.has(sessionId)
+  },
+  getDebugTrace: () => {
+    const s = get()
+    return (s.sessionBuffers.get(s.activeSessionId)?.debugTrace ?? []) as string[]
+  },
+  getSetupScript: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.setupScript ?? null
+  },
+  getIsSetupBlocked: () => {
+    const s = get()
+    const buf = s.sessionBuffers.get(s.activeSessionId)
+    return Boolean(buf && (buf.isSetupRunning || buf.setupScript.status === 'failed'))
+  },
+  getModel: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.model ?? DEFAULT_MODEL
+  },
+  getAutoLevel: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.autoLevel ?? DEFAULT_AUTO_LEVEL
+  },
+  getReasoningEffort: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.reasoningEffort ?? ''
+  },
+  getPendingPermissionRequest: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.pendingPermissionRequests?.[0] ?? null
+  },
+  getPendingAskUserRequest: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.pendingAskUserRequests?.[0] ?? null
+  },
+  getPendingSendMessageIds: () => {
+    const s = get()
+    return s.sessionBuffers.get(s.activeSessionId)?.pendingSendMessageIds || {}
+  },
+  getActiveSessionTitle: () => {
+    const s = get()
+    for (const p of s.projects) {
+      const sess = p.sessions.find((x) => x.id === s.activeSessionId)
+      if (sess) return sess.title
+    }
+    return ''
+  },
+
+  // --- Generation tracking ---
+  _bumpSessionGeneration: (sid) => {
+    const gens = get()._sessionGenerations
+    const next = (gens.get(sid) ?? 0) + 1
+    const newGens = new Map(gens)
+    newGens.set(sid, next)
+    set({ _sessionGenerations: newGens })
+    return next
+  },
+  _isSessionGenerationCurrent: (sid, generation) => {
+    return (get()._sessionGenerations.get(sid) ?? 0) === generation
+  },
+  _clearSessionGeneration: (sid) => {
+    const gens = new Map(get()._sessionGenerations)
+    gens.delete(sid)
+    set({ _sessionGenerations: gens })
+  },
+  _getSessionGeneration: (sid) => {
+    return get()._sessionGenerations.get(sid) ?? 0
+  },
+
+  // --- Workspace helpers ---
+  _resolveWorkspace: async (projectDir) => {
+    if (!projectDir) return null
+    return droid.getWorkspaceInfo({ projectDir })
+  },
+
+  _pickProjectDirForRepo: (repoRoot) => {
+    const s = get()
+    if (!repoRoot) return s.activeProjectDir
+    const activeBuf = s.activeSessionId ? s.sessionBuffers.get(s.activeSessionId) : null
+    if (activeBuf && (activeBuf.repoRoot || activeBuf.projectDir) === repoRoot) return activeBuf.projectDir
+
+    const p = s.projects.find((x) => x.dir === repoRoot)
+    if (!p || p.sessions.length === 0) return repoRoot
+    const latest = [...p.sessions].sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))[0]
+    return latest?.projectDir || repoRoot
+  },
+
+  _saveSessionToDisk: async (sid, buf) => {
+    if (buf.messages.length === 0 || !buf.projectDir || !sid) return
+    const meta = await droid.saveSession({
+      id: sid,
+      projectDir: buf.projectDir,
+      repoRoot: buf.repoRoot,
+      branch: buf.branch,
+      workspaceType: buf.workspaceType,
+      baseBranch: buf.baseBranch,
+      model: buf.model || DEFAULT_MODEL,
+      autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
+      reasoningEffort: buf.reasoningEffort || undefined,
+      apiKeyFingerprint: buf.apiKeyFingerprint || undefined,
+      messages: buf.messages,
+    })
+    if (!meta) return
+
+    const normalizedMeta: SessionMeta = {
+      ...meta,
+      projectDir: meta.projectDir || buf.projectDir,
+      repoRoot: meta.repoRoot || buf.repoRoot || meta.projectDir || buf.projectDir,
+      branch: meta.branch || buf.branch,
+      workspaceType: meta.workspaceType || buf.workspaceType,
+      baseBranch: meta.baseBranch || buf.baseBranch,
+    }
+    get()._setProjects((prev) => upsertSessionMeta(prev, normalizedMeta))
+  },
+
+  _reportHookMismatch: (sid, projectDir, missingHooks) => {
+    if (get()._hookMismatchReported) return
+    set({ _hookMismatchReported: true })
+    const message = buildHookMismatchMessage(missingHooks)
+    get()._setSessionBuffers((prev) => {
+      const session = prev.get(sid) || makeBuffer(projectDir)
+      let next = new Map(prev)
+      next.set(sid, session)
+      next = appendDebugTrace(next, sid, `hook-check-failed: missing-hooks=${missingHooks.join(',')}`)
+      next = applyError(next, sid, message)
+      return next
+    })
+  },
+
+  // --- Settings actions ---
+  clearWorkspaceError: () => set({ workspaceError: '' }),
+
+  clearDebugTrace: () => {
+    const sid = get().activeSessionId
+    if (!sid) return
+    get()._setSessionBuffers((prev) => clearDebugTrace(prev, sid))
+  },
+
+  appendUiDebugTrace: (message) => {
+    const sid = get().activeSessionId
+    if (!sid) return
+    get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, String(message || '')))
+    if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+      ;(droid as any).appendDiagnosticsEvent({
+        sessionId: sid,
+        event: 'ui.debug',
+        level: 'debug',
+        data: { message: String(message || '').slice(0, 2000) },
+      })
+    }
+  },
+
+  setModel: (m) => {
+    const sid = get().activeSessionId
+    get()._setSessionBuffers((prev) => {
+      const buf = prev.get(sid)
+      if (!buf) return prev
+      const next = new Map(prev)
+      next.set(sid, { ...buf, model: m, reasoningEffort: getModelDefaultReasoning(m) })
+      return next
+    })
+  },
+
+  setAutoLevel: (l) => {
+    const sid = get().activeSessionId
+    get()._setSessionBuffers((prev) => {
+      const buf = prev.get(sid)
+      if (!buf) return prev
+      const next = new Map(prev)
+      next.set(sid, { ...buf, autoLevel: l })
+      return next
+    })
+  },
+
+  setReasoningEffort: (r) => {
+    const sid = get().activeSessionId
+    get()._setSessionBuffers((prev) => {
+      const buf = prev.get(sid)
+      if (!buf) return prev
+      const next = new Map(prev)
+      next.set(sid, { ...buf, reasoningEffort: r })
+      return next
+    })
+  },
+
+  setApiKey: (k) => {
+    set({ apiKey: k })
+    droid.setApiKey(k)
+  },
+
+  setTraceChainEnabled: (enabled) => {
+    const next = Boolean(enabled)
+    setTraceChainEnabledOverride(next)
+    set({ traceChainEnabled: next })
+    if (typeof (droid as any)?.setTraceChainEnabled === 'function') {
+      ;(droid as any).setTraceChainEnabled(next)
+    }
+  },
+
+  setShowDebugTrace: (enabled) => {
+    const next = Boolean(enabled)
+    set({ showDebugTrace: next })
+    droid.setShowDebugTrace(next)
+  },
+
+  setLocalDiagnosticsEnabled: (enabled) => {
+    const next = Boolean(enabled)
+    set({ localDiagnosticsEnabled: next })
+    if (typeof (droid as any)?.setLocalDiagnosticsEnabled === 'function') {
+      ;(droid as any).setLocalDiagnosticsEnabled(next)
+    }
+    if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+      ;(droid as any).appendDiagnosticsEvent({
+        sessionId: get().activeSessionId || null,
+        event: 'ui.diagnostics.toggle',
+        level: 'info',
+        data: { enabled: next },
+      })
+    }
+  },
+
+  setLocalDiagnosticsRetention: (params) => {
+    const s = get()
+    const days = (typeof params?.retentionDays === 'number' && Number.isFinite(params.retentionDays))
+      ? Math.max(1, Math.floor(params.retentionDays))
+      : s.localDiagnosticsRetentionDays
+    const mb = (typeof params?.maxTotalMb === 'number' && Number.isFinite(params.maxTotalMb))
+      ? Math.max(1, Math.floor(params.maxTotalMb))
+      : s.localDiagnosticsMaxTotalMb
+
+    set({ localDiagnosticsRetentionDays: days, localDiagnosticsMaxTotalMb: mb })
+    if (typeof (droid as any)?.setLocalDiagnosticsRetention === 'function') {
+      ;(droid as any).setLocalDiagnosticsRetention({ retentionDays: days, maxTotalMb: mb })
+    }
+    if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+      ;(droid as any).appendDiagnosticsEvent({
+        sessionId: get().activeSessionId || null,
+        event: 'ui.diagnostics.retention',
+        level: 'info',
+        data: { retentionDays: days, maxTotalMb: mb },
+      })
+    }
+  },
+
+  setCommitMessageModelId: (modelId) => {
+    const next = String(modelId || '').trim() || 'minimax-m2.5'
+    set({ commitMessageModelId: next })
+    if (typeof (droid as any)?.setCommitMessageModelId === 'function') {
+      ;(droid as any).setCommitMessageModelId(next)
+    }
+  },
+
+  refreshDiagnosticsDir: async () => {
+    if (typeof (droid as any)?.getDiagnosticsDir !== 'function') return
+    const dir = await (droid as any).getDiagnosticsDir().catch(() => '')
+    set({ diagnosticsDir: typeof dir === 'string' ? dir : '' })
+  },
+
+  openPath: async (path) => {
+    const p = String(path || '').trim()
+    if (!p) return
+    if (typeof (droid as any)?.openPath === 'function') {
+      await (droid as any).openPath(p)
+    }
+  },
+
+  exportDiagnostics: async (params) => {
+    if (typeof (droid as any)?.exportDiagnostics !== 'function') return { path: '' }
+    const s = get()
+    const sid = String(params?.sessionId || s.activeSessionId || '').trim()
+    const debugTraceText = s.getDebugTrace().join('\n')
+    return await (droid as any).exportDiagnostics({ sessionId: sid || null, debugTraceText })
+  },
+
+  updateProjectSettings: async (repoRoot, patch) => {
+    const key = String(repoRoot || '').trim()
+    if (!key) return
+
+    const prev = get().projectSettingsByRepo[key] || {}
+    const next: ProjectSettings = {}
+    if (typeof patch.baseBranch === 'string') next.baseBranch = patch.baseBranch.trim()
+    if (typeof patch.worktreePrefix === 'string') {
+      const trimmed = patch.worktreePrefix.trim()
+      next.worktreePrefix = trimmed ? sanitizeWorktreePrefix(trimmed) : ''
+    }
+    if (typeof patch.setupScript === 'string') next.setupScript = patch.setupScript.trim()
+
+    const merged: ProjectSettings = { ...prev, ...next }
+    const state = await droid.updateProjectSettings({ repoRoot: key, settings: merged })
+    const map = (state as any)?.projectSettings
+    if (map && typeof map === 'object') set({ projectSettingsByRepo: map as Record<string, ProjectSettings> })
+    else set((s) => ({ projectSettingsByRepo: { ...s.projectSettingsByRepo, [key]: merged } }))
+  },
+
+  // --- Setup script ---
+  _runSetupScriptForSession: async (params) => {
+    const sessionId = String(params.sessionId || '').trim()
+    const projectDir = String(params.projectDir || '').trim()
+    const script = String(params.script || '').trim()
+    if (!sessionId || !projectDir || !script) return
+
+    get()._setSessionBuffers((prev) => {
+      let next = appendDebugTrace(prev, sessionId, `setup-script-start: cwd=${projectDir}`)
+      next = applySetupScriptEvent(next, sessionId, {
+        type: 'started',
+        sessionId,
+        projectDir,
+        script,
+      })
+      return next
+    })
+
+    try {
+      await droid.runSetupScript({ sessionId, projectDir, script })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      get()._setSessionBuffers((prev) => {
+        const session = prev.get(sessionId)
+        if (!session) return prev
+        let next = appendDebugTrace(prev, sessionId, `setup-script-start-failed: ${msg}`)
+        const failed = new Map(next)
+        failed.set(sessionId, {
+          ...session,
+          isSetupRunning: false,
+          setupScript: {
+            ...session.setupScript,
+            script,
+            status: 'failed',
+            error: msg || 'Failed to start setup script',
+            exitCode: null,
+          },
+        })
+        return failed
+      })
+    }
+  },
+
+  handleRetrySetupScript: async (sessionId) => {
+    const s = get()
+    const sid = sessionId || s.activeSessionId
+    if (!sid) return
+
+    const session = s.sessionBuffers.get(sid)
+    if (!session) return
+    const script = String(session.setupScript?.script || '').trim()
+    if (!script) return
+    const projectDir = String(session.projectDir || '').trim()
+    if (!projectDir) return
+
+    await s._runSetupScriptForSession({ sessionId: sid, projectDir, script })
+  },
+
+  handleSkipSetupScript: (sessionId) => {
+    const s = get()
+    const sid = sessionId || s.activeSessionId
+    if (!sid) return
+    s._setSessionBuffers((prev) => markSetupScriptSkipped(appendDebugTrace(prev, sid, 'setup-script-skipped'), sid))
+  },
+
+  // --- Session workspace ---
+  handleCreateSessionWithWorkspace: async (params) => {
+    const s = get()
+    if (s.isCreatingSession) return
+    set({ isCreatingSession: true })
+    try {
+      const sourceDir = params.projectDir || s._pickProjectDirForRepo(params.repoRoot)
+      if (!sourceDir) throw new Error('No project directory available')
+
+      const currentSid = s.activeSessionId
+      const currentBuf = s.sessionBuffers.get(currentSid)
+      if (currentBuf && currentBuf.messages.length > 0 && !currentBuf.isRunning) {
+        void s._saveSessionToDisk(currentSid, currentBuf)
+      }
+
+      const inheritModel = currentBuf?.model ?? DEFAULT_MODEL
+      const inheritAutoLevel = currentBuf?.autoLevel ?? DEFAULT_AUTO_LEVEL
+      const inheritReasoningEffort = currentBuf?.reasoningEffort ?? ''
+
+      let workspaceInfo: WorkspaceInfo | null = null
+      if (params.mode === 'switch-branch') {
+        if (!params.branch?.trim()) throw new Error('Missing branch')
+        workspaceInfo = await droid.switchWorkspace({ projectDir: sourceDir, branch: params.branch.trim() })
+        if (!workspaceInfo) throw new Error('Failed to switch branch')
+      } else if (params.mode === 'new-branch') {
+        if (!params.branch?.trim()) throw new Error('Missing branch')
+        workspaceInfo = await droid.createWorkspace({
+          projectDir: sourceDir,
+          mode: 'branch',
+          branch: params.branch.trim(),
+          baseBranch: params.baseBranch?.trim() || undefined,
+        })
+        if (!workspaceInfo) throw new Error('Failed to create branch')
+      } else if (params.mode === 'new-worktree') {
+        if (!params.branch?.trim()) throw new Error('Missing branch')
+        workspaceInfo = await droid.createWorkspace({
+          projectDir: sourceDir,
+          mode: 'worktree',
+          branch: params.branch.trim(),
+          baseBranch: params.baseBranch?.trim() || undefined,
+        })
+        if (!workspaceInfo) throw new Error('Failed to create worktree')
+      } else {
+        workspaceInfo = await s._resolveWorkspace(sourceDir).catch(() => null)
+      }
+
+      if (!workspaceInfo) {
+        workspaceInfo = {
+          repoRoot: params.repoRoot || sourceDir,
+          projectDir: sourceDir,
+          branch: '',
+          workspaceType: 'branch',
+        }
+      }
+
+      const targetDir = workspaceInfo.projectDir
+      const { sessionId: newId } = await droid.createSession({
+        cwd: targetDir,
+        modelId: inheritModel,
+        autoLevel: inheritAutoLevel,
+        reasoningEffort: inheritReasoningEffort || undefined,
+      })
+
+      const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
+      const now = Date.now()
+      get()._setProjects((prev) => upsertSessionMeta(prev, {
+        id: newId,
+        projectDir: targetDir,
+        repoRoot: workspaceInfo!.repoRoot,
+        branch: workspaceInfo!.branch,
+        workspaceType: workspaceInfo!.workspaceType,
+        title: initialTitle,
+        savedAt: now,
+        messageCount: 0,
+        model: inheritModel,
+        autoLevel: inheritAutoLevel,
+        reasoningEffort: inheritReasoningEffort || undefined,
+        baseBranch: workspaceInfo!.baseBranch,
+      }))
+      get()._setSessionBuffers((prev) => {
+        const next = new Map(prev)
+        next.set(newId, makeBuffer(targetDir, {
+          repoRoot: workspaceInfo!.repoRoot,
+          branch: workspaceInfo!.branch,
+          workspaceType: workspaceInfo!.workspaceType,
+          baseBranch: workspaceInfo!.baseBranch,
+        }))
+        return next
+      })
+
+      set({ activeProjectDir: targetDir, activeSessionId: newId })
+      droid.setProjectDir(targetDir)
+
+      const repoKey = String(workspaceInfo.repoRoot || '').trim()
+      const setupScript = repoKey
+        ? String(get().projectSettingsByRepo[repoKey]?.setupScript || '').trim()
+        : ''
+      if (setupScript) {
+        void get()._runSetupScriptForSession({
+          sessionId: newId,
+          projectDir: targetDir,
+          script: setupScript,
+        })
+      }
+    } finally {
+      set({ isCreatingSession: false })
+    }
+  },
+
+  handleSwitchWorkspaceForSession: async (params) => {
+    const s = get()
+    const sid = params.sessionId || s.activeSessionId
+    const branch = String(params.branch || '').trim()
+    if (!sid || !branch) return false
+
+    const buf = s.sessionBuffers.get(sid)
+    const meta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
+    const projectDir = buf?.projectDir || meta?.projectDir || s.activeProjectDir
+    if (!projectDir) return false
+
+    let info: WorkspaceInfo | null = null
+    try {
+      info = await droid.switchWorkspace({ projectDir, branch })
+    } catch {
+      return false
+    }
+    if (!info) return false
+
+    get()._setSessionBuffers((prev) => {
+      const cur = prev.get(sid)
+      if (!cur) return prev
+      const next = new Map(prev)
+      next.set(sid, {
+        ...cur,
+        projectDir: info!.projectDir,
+        repoRoot: info!.repoRoot,
+        branch: info!.branch,
+        workspaceType: info!.workspaceType,
+      })
+      return next
+    })
+
+    const now = Date.now()
+    const updatedMeta: SessionMeta = {
+      id: sid,
+      projectDir: info.projectDir,
+      repoRoot: info.repoRoot,
+      branch: info.branch,
+      workspaceType: info.workspaceType,
+      baseBranch: meta?.baseBranch || buf?.baseBranch,
+      title: meta?.title || 'Untitled',
+      savedAt: meta?.savedAt || now,
+      messageCount: meta?.messageCount || 0,
+      model: meta?.model || (buf?.model ?? DEFAULT_MODEL),
+      autoLevel: meta?.autoLevel || (buf?.autoLevel ?? DEFAULT_AUTO_LEVEL),
+      reasoningEffort: meta?.reasoningEffort || buf?.reasoningEffort || undefined,
+      lastMessageAt: meta?.lastMessageAt,
+    }
+    get()._setProjects((prev) => upsertSessionMeta(prev, updatedMeta))
+
+    if ((params.sessionId || s.activeSessionId) === s.activeSessionId) {
+      set({ activeProjectDir: info.projectDir })
+      droid.setProjectDir(info.projectDir)
+    }
+    return true
+  },
+
+  // --- Send / Cancel ---
+  handleClearSessionContext: async (sessionId?: string) => {
+    const s = get()
+    const sid = sessionId || s.activeSessionId
+    if (!sid) return
+
+    const buf = s.sessionBuffers.get(sid)
+    if (!buf) return
+    if (buf.isRunning || buf.isSetupRunning) {
+      get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, 'ui-clear: session is running; cancel first'))
+      return
+    }
+
+    const meta = await droid.clearSession({ id: sid })
+    if (!meta) return
+
+    const now = Date.now()
+    const normalizedMeta: SessionMeta = {
+      ...meta,
+      savedAt: meta.savedAt || now,
+      lastMessageAt: undefined,
+      messageCount: 0,
+    }
+
+    if (meta.id && meta.id !== sid) {
+      get()._setProjects((prev) => replaceSessionIdInProjects(prev, sid, normalizedMeta))
+      get()._setSessionBuffers((prev) => {
+        const session = prev.get(sid)
+        if (!session) return prev
+        const next = new Map(prev)
+        next.delete(sid)
+        next.set(meta.id, {
+          ...session,
+          isRunning: false,
+          isCancelling: false,
+          pendingSendMessageIds: {},
+          pendingPermissionRequests: [],
+          pendingAskUserRequests: [],
+          messages: [],
+          debugTrace: [],
+        })
+        return next
+      })
+      set((prev) => ({ activeSessionId: prev.activeSessionId === sid ? meta.id : prev.activeSessionId }))
+      set((prev) => {
+        const gens = prev._sessionGenerations
+        if (!gens.has(sid)) return prev
+        const next = new Map(gens)
+        next.set(meta.id, next.get(sid) || 0)
+        next.delete(sid)
+        return { _sessionGenerations: next }
+      })
+      return
+    }
+
+    get()._setProjects((prev) => upsertSessionMeta(prev, normalizedMeta))
+    get()._setSessionBuffers((prev) => {
+      const session = prev.get(sid)
+      if (!session) return prev
+      const next = new Map(prev)
+      next.set(sid, {
+        ...session,
+        isRunning: false,
+        isCancelling: false,
+        pendingSendMessageIds: {},
+        pendingPermissionRequests: [],
+        pendingAskUserRequests: [],
+        messages: [],
+        debugTrace: [],
+      })
+      return next
+    })
+  },
+  handleSend: (input, attachments) => {
+    const s = get()
+    const sid = s.activeSessionId
+    const projDir = s.activeProjectDir
+    const normalized = typeof input === 'string'
+      ? { text: input }
+      : (input || { text: '' })
+    const text = String(normalized.text || '')
+    const trimmedText = text.trim()
+    const tagType = normalized.tag?.type === 'command' || normalized.tag?.type === 'skill'
+      ? normalized.tag.type
+      : null
+    const tagName = typeof normalized.tag?.name === 'string' && normalized.tag.name.trim()
+      ? normalized.tag.name.trim()
+      : ''
+    const hasTag = Boolean(tagType && tagName)
+
+    const isCommandTag = hasTag && tagType === 'command'
+    const isSkillTag = hasTag && tagType === 'skill'
+
+    const hasUserText = Boolean(text.trim())
+    const queuedAttachments = attachments ?? []
+    const hasAttachments = queuedAttachments.length > 0
+    if ((!hasUserText && !hasTag && !hasAttachments) || !projDir || !sid) return
+
+    if (!hasTag && !hasAttachments && (trimmedText === '/clear' || trimmedText === '/reset' || trimmedText === '/restart')) {
+      if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+        ;(droid as any).appendDiagnosticsEvent({
+          sessionId: sid,
+          event: 'ui.session.clear_requested',
+          level: 'info',
+          data: { command: trimmedText },
+        })
+      }
+      void get().handleClearSessionContext(sid)
+      return
+    }
+
+    const rawPromptForTitle = hasTag
+      ? `/${tagName}${text.trim() ? ` ${text.trim()}` : ''}`
+      : text
+
+    const buf = s.sessionBuffers.get(sid)
+    if (buf?.isSetupRunning || buf?.setupScript.status === 'failed') return
+    const sessionModel = buf?.model ?? DEFAULT_MODEL
+    const sessionAutoLevel = buf?.autoLevel ?? DEFAULT_AUTO_LEVEL
+    const sessionReasoningEffort = buf?.reasoningEffort ?? ''
+
+    const existingMeta = s.projects
+      .flatMap((p) => p.sessions)
+      .find((x) => x.id === sid)
+
+    const now = Date.now()
+    const userMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'user' as const,
+      blocks: [
+        ...(isCommandTag
+          ? [{ kind: 'command' as const, name: tagName }, { kind: 'text' as const, content: text }]
+          : isSkillTag
+            ? [{ kind: 'skill' as const, name: tagName }, { kind: 'text' as const, content: text }]
+          : [{ kind: 'text' as const, content: text }]),
+        ...queuedAttachments.map((a) => ({ kind: 'attachment' as const, name: a.name, path: a.path })),
+      ],
+      timestamp: now,
+    }
+
+    const nextMessages = [...(buf?.messages ?? []), userMessage]
+    const messageCount = nextMessages.length
+    const nextTitle = (!existingMeta || existingMeta.title === 'Untitled' || existingMeta.messageCount === 0)
+      ? getTitleFromPrompt(rawPromptForTitle)
+      : existingMeta.title
+    const draftMeta: SessionMeta = {
+      id: sid,
+      projectDir: projDir,
+      repoRoot: buf?.repoRoot || projDir,
+      branch: buf?.branch,
+      workspaceType: buf?.workspaceType,
+      baseBranch: buf?.baseBranch,
+      title: nextTitle,
+      savedAt: now,
+      messageCount,
+      model: sessionModel,
+      autoLevel: sessionAutoLevel,
+      reasoningEffort: sessionReasoningEffort || undefined,
+      apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
+    }
+
+    get()._setProjects((prev) => upsertSessionMeta(prev, draftMeta))
+
+    void droid.saveSession({
+      id: sid,
+      projectDir: projDir,
+      repoRoot: buf?.repoRoot || projDir,
+      branch: buf?.branch,
+      workspaceType: buf?.workspaceType,
+      baseBranch: buf?.baseBranch,
+      model: sessionModel,
+      autoLevel: sessionAutoLevel,
+      reasoningEffort: sessionReasoningEffort || undefined,
+      apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
+      messages: nextMessages,
+    }).then((meta) => {
+      if (!meta) return
+      const normalized: SessionMeta = {
+        ...meta,
+        projectDir: meta.projectDir || projDir,
+        repoRoot: meta.repoRoot || buf?.repoRoot || projDir,
+        branch: meta.branch || buf?.branch,
+        workspaceType: meta.workspaceType || buf?.workspaceType,
+        baseBranch: meta.baseBranch || buf?.baseBranch,
+      }
+      get()._setProjects((prev) => upsertSessionMeta(prev, normalized))
+    })
+
+    const missingHooks = getMissingDroidHooks(droid)
+    if (missingHooks.length > 0) {
+      set({ _hookMismatchReported: true })
+      const mismatchMessage = buildHookMismatchMessage(missingHooks)
+      get()._setSessionBuffers((prev) => {
+        const session = prev.get(sid) || makeBuffer(projDir)
+        let next = new Map(prev)
+        next.set(sid, {
+          ...session,
+          isRunning: false,
+          messages: [...session.messages, userMessage],
+        })
+        next = appendDebugTrace(next, sid, `ui-send: model=${sessionModel} auto=${sessionAutoLevel} chars=${rawPromptForTitle.length}`)
+        next = appendDebugTrace(next, sid, `ui-send-blocked: missing-hooks=${missingHooks.join(',')}`)
+        next = applyError(next, sid, mismatchMessage)
+        return next
+      })
+      return
+    }
+
+    const generation = s._getSessionGeneration(sid)
+    const injectingAtDispatch = Boolean(buf?.isRunning)
+
+    get()._setSessionBuffers((prev) => {
+      const session = prev.get(sid) || makeBuffer(projDir)
+      const injecting = Boolean(session.isRunning)
+      const pendingSendMessageIds: Record<string, true> = { ...session.pendingSendMessageIds, [userMessage.id]: true }
+      let next = new Map(prev)
+      next.set(sid, {
+        ...session,
+        isRunning: true,
+        messages: [...session.messages, userMessage],
+        pendingSendMessageIds,
+      })
+      next = appendDebugTrace(next, sid, `ui-send: model=${sessionModel} auto=${sessionAutoLevel} chars=${rawPromptForTitle.length}`)
+      if (injecting) next = appendDebugTrace(next, sid, `ui-inject: messageId=${userMessage.id}`)
+      return next
+    })
+
+    if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+      const basePromptKind = isCommandTag ? 'command' : (isSkillTag ? 'skill' : 'plain')
+      ;(droid as any).appendDiagnosticsEvent({
+        sessionId: sid,
+        event: 'ui.send.start',
+        level: 'info',
+        correlation: { uiMessageId: userMessage.id },
+        data: {
+          isRunningAtDispatch: injectingAtDispatch,
+          queuedAttachmentsCount: queuedAttachments.length,
+          basePromptKind,
+          userTextLen: text.length,
+        },
+      })
+      if (injectingAtDispatch) {
+        ;(droid as any).appendDiagnosticsEvent({
+          sessionId: sid,
+          event: 'ui.inject',
+          level: 'info',
+          correlation: { uiMessageId: userMessage.id },
+          data: { reason: 'session_already_running' },
+        })
+      }
+    }
+
+    void (async () => {
+      let basePrompt = text
+
+      if (isSkillTag) {
+        const args = text.trim()
+        basePrompt = `Use skill "${tagName}".${args ? `\n\n${args}` : ''}`
+        get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-skill-send: name=${tagName} argsLen=${args.length}`))
+      }
+
+      if (isCommandTag) {
+        basePrompt = rawPromptForTitle
+        try {
+          const res = await droid.resolveSlashCommand({ text: basePrompt })
+          if (!get()._isSessionGenerationCurrent(sid, generation)) return
+          const nextPrompt = (res.matched || res.expandedText !== basePrompt) ? String(res.expandedText || basePrompt) : basePrompt
+          basePrompt = nextPrompt
+          const cmdInfo = res.command
+            ? ` name=${res.command.name} scope=${res.command.scope} file=${res.command.filePath}`
+            : ''
+          const errInfo = res.error ? ` error=${res.error}` : ''
+          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-slash: matched=${String(res.matched)}${cmdInfo}${errInfo}`))
+          if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+            ;(droid as any).appendDiagnosticsEvent({
+              sessionId: sid,
+              event: 'ui.send.resolved_slash',
+              level: 'debug',
+              correlation: { uiMessageId: userMessage.id },
+              data: { matched: Boolean(res.matched), expandedLen: String(res.expandedText || '').length, hasError: Boolean(res.error) },
+            })
+          }
+        } catch (err) {
+          if (!get()._isSessionGenerationCurrent(sid, generation)) return
+          const msg = err instanceof Error ? err.message : String(err)
+          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-slash: error=${msg}`))
+          if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+            ;(droid as any).appendDiagnosticsEvent({
+              sessionId: sid,
+              event: 'ui.send.slash_error',
+              level: 'warn',
+              correlation: { uiMessageId: userMessage.id },
+              data: { error: msg },
+            })
+          }
+        }
+      }
+
+      if (!get()._isSessionGenerationCurrent(sid, generation)) return
+
+      const attachmentSuffix = queuedAttachments.length > 0
+        ? `\n\nAttached files:\n${queuedAttachments.map((a) => `- ${a.path}`).join('\n')}`
+        : ''
+      const finalPrompt = `${basePrompt}${attachmentSuffix}`
+
+      try {
+        let activeKeyFp = ''
+        try {
+          const info = await droid.getActiveKeyInfo()
+          activeKeyFp = String((info as any)?.apiKeyFingerprint || '')
+        } catch {
+          // ignore
+        }
+
+        if (!get()._isSessionGenerationCurrent(sid, generation)) return
+
+        if (activeKeyFp) {
+          if (injectingAtDispatch) {
+            get()._setSessionBuffers((prev) => {
+              const session = prev.get(sid)
+              if (!session) return prev
+              const next = new Map(prev)
+              next.set(sid, { ...session, pendingApiKeyFingerprint: activeKeyFp })
+              return appendDebugTrace(next, sid, `api-key-rotation-deferred: ${(session.apiKeyFingerprint || '(unknown)')} -> ${activeKeyFp}`)
+            })
+          } else {
+            const before = get().sessionBuffers.get(sid)
+            const prevFp = before?.apiKeyFingerprint
+            if (prevFp !== activeKeyFp) {
+              get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `api-key-rotation: ${prevFp || '(unknown)'} -> ${activeKeyFp}`))
+              try {
+                await droid.restartSessionWithActiveKey({ sessionId: sid })
+                get()._setSessionBuffers((prev) => {
+                  const session = prev.get(sid)
+                  if (!session) return prev
+                  const next = new Map(prev)
+                  next.set(sid, { ...session, apiKeyFingerprint: activeKeyFp, pendingApiKeyFingerprint: undefined })
+                  return appendDebugTrace(next, sid, `api-key-restarted: fp=${activeKeyFp}`)
+                })
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `api-key-restart-failed: ${msg}`))
+              }
+            } else {
+              get()._setSessionBuffers((prev) => {
+                const session = prev.get(sid)
+                if (!session || session.apiKeyFingerprint === activeKeyFp) return prev
+                const next = new Map(prev)
+                next.set(sid, { ...session, apiKeyFingerprint: activeKeyFp })
+                return next
+              })
+            }
+          }
+        }
+
+        if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+          ;(droid as any).appendDiagnosticsEvent({
+            sessionId: sid,
+            event: 'ui.exec.dispatched',
+            level: 'info',
+            correlation: { uiMessageId: userMessage.id },
+            data: { finalPromptLen: finalPrompt.length, queuedAttachmentsCount: queuedAttachments.length },
+          })
+        }
+        await droid.exec({
+          prompt: finalPrompt,
+          sessionId: sid,
+          modelId: sessionModel,
+          autoLevel: sessionAutoLevel,
+          reasoningEffort: sessionReasoningEffort || undefined,
+        })
+
+        get()._setSessionBuffers((prev) => {
+          const session = prev.get(sid)
+          if (!session || !session.pendingSendMessageIds[userMessage.id]) return prev
+          const nextPending = { ...session.pendingSendMessageIds }
+          delete nextPending[userMessage.id]
+          const next = new Map(prev)
+          next.set(sid, { ...session, pendingSendMessageIds: nextPending })
+          return next
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+          ;(droid as any).appendDiagnosticsEvent({
+            sessionId: sid,
+            event: 'ui.exec.failed',
+            level: 'error',
+            correlation: { uiMessageId: userMessage.id },
+            data: { error: msg },
+          })
+        }
+        get()._setSessionBuffers((prev) => {
+          let next = appendDebugTrace(prev, sid, `ui-exec-throw: ${msg}`)
+
+          if (injectingAtDispatch) {
+            const session = next.get(sid)
+            if (!session) return next
+            const errorMessage: ChatMessage = {
+              id: uuidv4(),
+              role: 'error' as const,
+              blocks: [{ kind: 'text' as const, content: `Failed to dispatch exec: ${msg}` }],
+              timestamp: Date.now(),
+            }
+            const final = new Map(next)
+            final.set(sid, { ...session, messages: [...session.messages, errorMessage] })
+            return final
+          }
+
+          next = applyError(next, sid, `Failed to dispatch exec: ${msg}`)
+          next = applyTurnEnd(next, sid)
+          return next
+        })
+      }
+    })()
+  },
+
+  handleCancel: () => {
+    const s = get()
+    const sid = s.activeSessionId || null
+    if (!sid) return
+    const buf = s.sessionBuffers.get(sid)
+    if (!buf?.isRunning && !buf?.isSetupRunning) return
+    s._bumpSessionGeneration(sid)
+    if (buf?.isRunning) {
+      get()._setSessionBuffers((prev) => {
+        const session = prev.get(sid)
+        if (!session) return prev
+        const next = new Map(prev)
+        next.set(sid, { ...session, isCancelling: true })
+        return appendDebugTrace(next, sid, 'ui-cancel')
+      })
+      droid.cancel({ sessionId: sid })
+    }
+    if (buf?.isSetupRunning) {
+      get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, 'ui-setup-cancel'))
+      droid.cancelSetupScript({ sessionId: sid })
+    }
+  },
+
+  handleForceCancel: () => {
+    const s = get()
+    const sid = s.activeSessionId || null
+    if (!sid) return
+    const buf = s.sessionBuffers.get(sid)
+    if (!buf?.isCancelling) return
+    s._bumpSessionGeneration(sid)
+    get()._setSessionBuffers((prev) => applyTurnEnd(appendDebugTrace(prev, sid, 'ui-force-cancel'), sid))
+    droid.cancel({ sessionId: sid })
+  },
+
+  handleRespondPermission: (params) => {
+    const s = get()
+    const sid = s.activeSessionId
+    const buf = s.sessionBuffers.get(sid)
+    const req = buf?.pendingPermissionRequests?.[0]
+    if (!sid || !req) return
+
+    const selectedOption = params.selectedOption
+    const autoLevelMap: Partial<Record<DroidPermissionOption, string>> = {
+      proceed_auto_run_low: 'low',
+      proceed_auto_run_medium: 'medium',
+      proceed_auto_run_high: 'high',
+      proceed_auto_run: 'high',
+    }
+    const newAutoLevel = params.autoLevel || autoLevelMap[selectedOption]
+
+    get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-permission-response: ${selectedOption} requestId=${req.requestId}`))
+    droid.respondPermission({ sessionId: sid, requestId: req.requestId, selectedOption })
+
+    get()._setSessionBuffers((prev) => {
+      const session = prev.get(sid)
+      if (!session) return prev
+      const rest = (session.pendingPermissionRequests || []).filter((r) => r.requestId !== req.requestId)
+      const next = new Map(prev)
+      next.set(sid, {
+        ...session,
+        pendingPermissionRequests: rest,
+        ...(newAutoLevel ? { autoLevel: newAutoLevel } : {}),
+      })
+      return next
+    })
+
+    if (newAutoLevel && (newAutoLevel === 'low' || newAutoLevel === 'medium' || newAutoLevel === 'high')) {
+      void (async () => {
+        try {
+          await droid.updateSessionSettings({ sessionId: sid, autoLevel: newAutoLevel })
+          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-session-settings-update: auto=${newAutoLevel}`))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-session-settings-update-failed: ${msg}`))
+        }
+      })()
+    }
+  },
+
+  handleRespondAskUser: (params) => {
+    const s = get()
+    const sid = s.activeSessionId
+    const buf = s.sessionBuffers.get(sid)
+    const req = buf?.pendingAskUserRequests?.[0]
+    if (!sid || !req) return
+    get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-askuser-response: cancelled=${Boolean(params.cancelled)} requestId=${req.requestId}`))
+    droid.respondAskUser({ sessionId: sid, requestId: req.requestId, cancelled: params.cancelled, answers: params.answers })
+    get()._setSessionBuffers((prev) => {
+      const session = prev.get(sid)
+      if (!session) return prev
+      const rest = (session.pendingAskUserRequests || []).filter((r) => r.requestId !== req.requestId)
+      const next = new Map(prev)
+      next.set(sid, { ...session, pendingAskUserRequests: rest })
+      return next
+    })
+  },
+
+  // --- Workspace for meta ---
+  _ensureWorkspaceForMeta: async (meta) => {
+    const desiredDir = String(meta.projectDir || '').trim()
+    if (!desiredDir) throw new Error('Session is missing project directory')
+
+    let info: WorkspaceInfo | null = null
+    try {
+      info = await get()._resolveWorkspace(desiredDir)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`)
+    }
+    if (!info) throw new Error(`Failed to resolve git workspace (dir: ${desiredDir})`)
+
+    const desiredBranch = typeof meta.branch === 'string' ? meta.branch.trim() : ''
+    if (desiredBranch && desiredBranch !== info.branch) {
+      const switched = await droid.switchWorkspace({ projectDir: info.projectDir || desiredDir, branch: desiredBranch })
+      if (!switched) throw new Error(`Failed to switch to branch ${desiredBranch}`)
+      return switched
+    }
+
+    return info
+  },
+
+  _switchToSessionWithAligned: async (selectedMeta, aligned) => {
+    const sessionId = selectedMeta.id
+    const normalizedMeta: SessionMeta = {
+      ...selectedMeta,
+      projectDir: aligned.projectDir,
+      repoRoot: aligned.repoRoot,
+      branch: aligned.branch,
+      workspaceType: aligned.workspaceType,
+      baseBranch: selectedMeta.baseBranch || aligned.baseBranch,
+    }
+    get()._setProjects((prev) => upsertSessionMeta(prev, normalizedMeta))
+
+    get()._setSessionBuffers((prev) => {
+      const existing = prev.get(sessionId)
+      if (!existing) return prev
+      const next = new Map(prev)
+      next.set(sessionId, {
+        ...existing,
+        projectDir: aligned.projectDir,
+        repoRoot: aligned.repoRoot,
+        branch: aligned.branch,
+        workspaceType: aligned.workspaceType,
+      })
+      return next
+    })
+
+    set({ activeProjectDir: aligned.projectDir, activeSessionId: sessionId })
+    droid.setProjectDir(aligned.projectDir)
+
+    const existingBuffer = get().sessionBuffers.get(sessionId)
+    if (!existingBuffer) {
+      const data = await droid.loadSession(sessionId)
+      const loaded = (data?.messages as ChatMessage[]) ?? []
+      get()._setSessionBuffers((prev) => {
+        const next = new Map(prev)
+        const base = makeBuffer(aligned.projectDir, {
+          repoRoot: aligned.repoRoot,
+          branch: aligned.branch,
+          workspaceType: aligned.workspaceType,
+          baseBranch: (data as any)?.baseBranch || selectedMeta.baseBranch || aligned.baseBranch,
+        })
+        next.set(sessionId, {
+          ...base,
+          messages: loaded,
+          model: data?.model || selectedMeta.model || DEFAULT_MODEL,
+          autoLevel: data?.autoLevel || selectedMeta.autoLevel || DEFAULT_AUTO_LEVEL,
+          reasoningEffort: (data as any)?.reasoningEffort || selectedMeta.reasoningEffort || '',
+          apiKeyFingerprint: (data as any)?.apiKeyFingerprint || selectedMeta.apiKeyFingerprint,
+        })
+        return next
+      })
+    }
+  },
+
+  // --- Navigation ---
+  handleNewSession: (repoRoot) => {
+    void (async () => {
+      const s = get()
+      s.clearWorkspaceError()
+      try {
+        const sourceDir = s._pickProjectDirForRepo(repoRoot)
+        if (!sourceDir) throw new Error('No project directory available')
+
+        const resolved = await s._resolveWorkspace(sourceDir).catch(() => null)
+        if (!resolved) throw new Error('Not a git repository')
+        const commonRepoRoot = resolved.repoRoot || repoRoot || sourceDir
+        if (!commonRepoRoot) throw new Error('Missing repo root')
+
+        const settings = get().projectSettingsByRepo[commonRepoRoot] || {}
+        const prefix = sanitizeWorktreePrefix(settings.worktreePrefix || '') || 'droi'
+
+        const baseBranchFromSettings = typeof settings.baseBranch === 'string' ? settings.baseBranch.trim() : ''
+        let baseBranch: string | undefined = baseBranchFromSettings || undefined
+        if (!baseBranch) {
+          const branches = await droid.listGitBranches({ projectDir: commonRepoRoot }).catch(() => [] as string[])
+          if (branches.includes('main')) baseBranch = 'main'
+          else if (branches.includes('master')) baseBranch = 'master'
+          else baseBranch = resolved.branch || (await droid.getGitBranch({ projectDir: commonRepoRoot }).catch(() => '')) || undefined
+        }
+
+        let lastErr: unknown = null
+        for (let i = 0; i < 5; i++) {
+          const branch = generateWorktreeBranch(prefix)
+          try {
+            await get().handleCreateSessionWithWorkspace({
+              repoRoot: commonRepoRoot,
+              projectDir: commonRepoRoot,
+              mode: 'new-worktree',
+              branch,
+              baseBranch,
+            })
+            return
+          } catch (err) {
+            lastErr = err
+            const msg = err instanceof Error ? err.message : String(err)
+            if (/already exists|path.*exists|exists.*already/i.test(msg)) continue
+            throw err
+          }
+        }
+        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'Failed to create worktree session'))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        set({ workspaceError: msg || 'Failed to create session' })
+      }
+    })()
+  },
+
+  handleSetProjectDir: (dir) => {
+    if (!dir) return
+    void (async () => {
+      const s = get()
+      const info = await s._resolveWorkspace(dir).catch(() => null)
+      if (!info) {
+        set({ workspaceError: 'Not a git repository' })
+        return
+      }
+      const repoRoot = info.repoRoot
+
+      get()._setProjects((prev) => {
+        if (prev.find((p) => p.dir === repoRoot)) return prev
+        const name = repoRoot.split(/[\\/]/).pop() || repoRoot
+        return [...prev, { dir: repoRoot, name, sessions: [] }]
+      })
+
+      get().handleNewSession(repoRoot)
+    })()
+  },
+
+  handleAddProject: async () => {
+    const dir = await droid.openDirectory()
+    if (!dir) return
+    get().handleSetProjectDir(dir)
+  },
+
+  handleSelectSession: async (sessionId) => {
+    const s = get()
+    const selectedMeta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sessionId)
+    if (!selectedMeta) return
+
+    const currentSid = s.activeSessionId
+    const currentBuf = s.sessionBuffers.get(currentSid)
+    if (currentBuf && currentBuf.messages.length > 0 && !currentBuf.isRunning) {
+      void s._saveSessionToDisk(currentSid, currentBuf)
+    }
+
+    s.clearWorkspaceError()
+
+    try {
+      const aligned = await s._ensureWorkspaceForMeta(selectedMeta)
+      await get()._switchToSessionWithAligned(selectedMeta, aligned)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ workspaceError: msg || 'Failed to switch to session workspace' })
+    }
+  },
+
+  handleDeleteSession: async (sessionId) => {
+    if (!sessionId) return
+    const s = get()
+    if (s.deletingSessionIds.has(sessionId)) return
+
+    set((prev) => {
+      if (prev.deletingSessionIds.has(sessionId)) return prev
+      const next = new Set(prev.deletingSessionIds)
+      next.add(sessionId)
+      return { deletingSessionIds: next }
+    })
+
+    try {
+      const sessionMeta = get().projects.flatMap((p) => p.sessions).find((x) => x.id === sessionId)
+      if (!sessionMeta) return
+
+      get()._bumpSessionGeneration(sessionId)
+      const buffer = get().sessionBuffers.get(sessionId)
+      if (buffer?.isRunning) droid.cancel({ sessionId })
+      if (buffer?.isSetupRunning) droid.cancelSetupScript({ sessionId })
+
+      if (sessionMeta.workspaceType === 'worktree') {
+        const repoRoot = String(sessionMeta.repoRoot || '').trim()
+        const worktreeDir = String(sessionMeta.projectDir || '').trim()
+        if (!repoRoot || !worktreeDir) throw new Error('Session is missing repoRoot/worktreeDir')
+        await droid.removeWorktree({ repoRoot, worktreeDir, force: true })
+      }
+
+      await droid.deleteSession(sessionId)
+      get()._clearSessionGeneration(sessionId)
+
+      const wasActive = get().activeSessionId === sessionId
+      const deletedRepoRoot = String(sessionMeta.repoRoot || '').trim()
+
+      const allRemaining = get().projects
+        .flatMap((p) => p.sessions)
+        .filter((x) => x.id !== sessionId)
+        .sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
+      const sameProjectFallback = deletedRepoRoot
+        ? allRemaining.filter((x) => (x.repoRoot || x.projectDir) === deletedRepoRoot)
+        : []
+      const pickFallback = (sameProjectFallback[0] || allRemaining[0]) || null
+
+      get()._setProjects((prev) =>
+        prev.map((p) => ({ ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) }))
+      )
+      get()._setSessionBuffers((prev) => {
+        const next = new Map(prev)
+        next.delete(sessionId)
+        return next
+      })
+
+      if (!wasActive) return
+
+      if (pickFallback) {
+        get().clearWorkspaceError()
+        try {
+          const aligned = await get()._ensureWorkspaceForMeta(pickFallback)
+          const normalizedMeta: SessionMeta = {
+            ...pickFallback,
+            projectDir: aligned.projectDir,
+            repoRoot: aligned.repoRoot,
+            branch: aligned.branch,
+            workspaceType: aligned.workspaceType,
+            baseBranch: pickFallback.baseBranch || aligned.baseBranch,
+          }
+          get()._setProjects((prev) => upsertSessionMeta(prev, normalizedMeta))
+
+          set({ activeProjectDir: aligned.projectDir, activeSessionId: pickFallback.id })
+          droid.setProjectDir(aligned.projectDir)
+
+          const existingBuffer = get().sessionBuffers.get(pickFallback.id)
+          if (!existingBuffer) {
+            const data = await droid.loadSession(pickFallback.id)
+            const loaded = (data?.messages as ChatMessage[]) ?? []
+            get()._setSessionBuffers((prev) => {
+              const next = new Map(prev)
+              const base = makeBuffer(aligned.projectDir, {
+                repoRoot: aligned.repoRoot,
+                branch: aligned.branch,
+                workspaceType: aligned.workspaceType,
+                baseBranch: (data as any)?.baseBranch || pickFallback.baseBranch || aligned.baseBranch,
+              })
+              next.set(pickFallback.id, {
+                ...base,
+                messages: loaded,
+                model: data?.model || pickFallback.model || DEFAULT_MODEL,
+                autoLevel: data?.autoLevel || pickFallback.autoLevel || DEFAULT_AUTO_LEVEL,
+                reasoningEffort: (data as any)?.reasoningEffort || pickFallback.reasoningEffort || '',
+                apiKeyFingerprint: (data as any)?.apiKeyFingerprint || pickFallback.apiKeyFingerprint,
+              })
+              return next
+            })
+          }
+          return
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          set({ workspaceError: msg || 'Failed to switch to fallback session' })
+        }
+      }
+
+      set({ activeProjectDir: '', activeSessionId: '' })
+      droid.setProjectDir(null)
+      const newId = uuidv4()
+      get()._setSessionBuffers((prev) => {
+        const next = new Map(prev)
+        next.set(newId, makeBuffer(''))
+        return next
+      })
+      set({ activeSessionId: newId })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ workspaceError: msg || 'Failed to delete session' })
+    } finally {
+      set((prev) => {
+        if (!prev.deletingSessionIds.has(sessionId)) return prev
+        const next = new Set(prev.deletingSessionIds)
+        next.delete(sessionId)
+        return { deletingSessionIds: next }
+      })
+    }
+  },
+
+  handleDeleteProject: (repoRoot) => {
+    if (!repoRoot) return
+
+    void (async () => {
+      const targetProject = get().projects.find((p) => p.dir === repoRoot)
+      const targetSessions = targetProject?.sessions || []
+      const targetSessionIds = targetSessions.map((x) => x.id)
+
+      for (const sid of targetSessionIds) {
+        get()._bumpSessionGeneration(sid)
+        const buffer = get().sessionBuffers.get(sid)
+        if (buffer?.isRunning) droid.cancel({ sessionId: sid })
+        if (buffer?.isSetupRunning) droid.cancelSetupScript({ sessionId: sid })
+      }
+
+      for (const session of targetSessions) {
+        if (session.workspaceType === 'worktree') {
+          const wtRepoRoot = String(session.repoRoot || '').trim()
+          const wtProjectDir = String(session.projectDir || '').trim()
+          if (wtRepoRoot && wtProjectDir) {
+            try {
+              await droid.removeWorktree({ repoRoot: wtRepoRoot, worktreeDir: wtProjectDir, force: true })
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        try {
+          await droid.deleteSession(session.id)
+        } catch {
+          // ignore
+        } finally {
+          get()._clearSessionGeneration(session.id)
+        }
+      }
+
+      get()._setProjects((prev) => prev.filter((p) => p.dir !== repoRoot))
+      get()._setSessionBuffers((prev) => {
+        const next = new Map(prev)
+        for (const sid of targetSessionIds) next.delete(sid)
+        return next
+      })
+
+      const activeSession = get().sessionBuffers.get(get().activeSessionId)
+      if (activeSession && (activeSession.repoRoot || activeSession.projectDir) === repoRoot) {
+        set({ activeProjectDir: '' })
+        droid.setProjectDir(null)
+        const newId = uuidv4()
+        get()._setSessionBuffers((prev) => {
+          const next = new Map(prev)
+          next.set(newId, makeBuffer(''))
+          return next
+        })
+        set({ activeSessionId: newId })
+      }
+    })()
+  },
+}))
+
+// --- Fine-grained selector hooks ---
+// Each hook subscribes to only the slice of state it needs,
+// so components only re-render when their specific data changes.
+//
+// IMPORTANT: Selectors must return referentially stable values.
+// - Never use `?? []` or `|| {}` inline (creates new ref every call).
+// - Never return functions selected from the store (new ref each snapshot).
+// - Use module-level sentinel values for fallbacks.
+
+const EMPTY_MESSAGES: ChatMessage[] = []
+const EMPTY_DEBUG_TRACE: string[] = []
+const EMPTY_PENDING_SEND: Record<string, true> = {}
+
+const selectActiveBuffer = (s: AppStore) => s.sessionBuffers.get(s.activeSessionId)
+
+export const useMessages = () => useAppStore((s) => selectActiveBuffer(s)?.messages ?? EMPTY_MESSAGES)
+export const useIsRunning = () => useAppStore((s) => {
+  const buf = selectActiveBuffer(s)
+  return Boolean(buf?.isRunning || buf?.isSetupRunning)
+})
+export const useIsAnyRunning = () => useAppStore((s) =>
+  Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning || b?.isSetupRunning))
+)
+export const useDebugTrace = () => useAppStore((s) => (selectActiveBuffer(s)?.debugTrace as string[] | undefined) ?? EMPTY_DEBUG_TRACE)
+export const useSetupScript = () => useAppStore((s) => selectActiveBuffer(s)?.setupScript ?? null)
+export const useIsSetupBlocked = () => useAppStore((s) => {
+  const buf = selectActiveBuffer(s)
+  return Boolean(buf && (buf.isSetupRunning || buf.setupScript.status === 'failed'))
+})
+export const useModel = () => useAppStore((s) => selectActiveBuffer(s)?.model ?? DEFAULT_MODEL)
+export const useAutoLevel = () => useAppStore((s) => selectActiveBuffer(s)?.autoLevel ?? DEFAULT_AUTO_LEVEL)
+export const useReasoningEffort = () => useAppStore((s) => selectActiveBuffer(s)?.reasoningEffort ?? '')
+export const useTokenUsage = () => useAppStore((s) => selectActiveBuffer(s)?.tokenUsage ?? null)
+export const useMcpServers = () => useAppStore((s) => selectActiveBuffer(s)?.mcpServers ?? null)
+export const useMcpAuthRequired = () => useAppStore((s) => selectActiveBuffer(s)?.mcpAuthRequired ?? null)
+export const useSettingsFlashAt = () => useAppStore((s) => selectActiveBuffer(s)?.settingsFlashAt ?? 0)
+export const useIsCancelling = () => useAppStore((s) => Boolean(selectActiveBuffer(s)?.isCancelling))
+export const usePendingPermissionRequest = () => useAppStore((s) => selectActiveBuffer(s)?.pendingPermissionRequests?.[0] ?? null)
+export const usePendingAskUserRequest = () => useAppStore((s) => selectActiveBuffer(s)?.pendingAskUserRequests?.[0] ?? null)
+export const usePendingSendMessageIds = () => useAppStore((s) => selectActiveBuffer(s)?.pendingSendMessageIds ?? EMPTY_PENDING_SEND)
+export const useActiveSessionTitle = () => useAppStore((s) => {
+  for (const p of s.projects) {
+    const sess = p.sessions.find((x) => x.id === s.activeSessionId)
+    if (sess) return sess.title
+  }
+  return ''
+})
+
+export const useDroidVersion = () => useAppStore((s) => s.droidVersion)
+export const useApiKey = () => useAppStore((s) => s.apiKey)
+export const useTraceChainEnabled = () => useAppStore((s) => s.traceChainEnabled)
+export const useShowDebugTrace = () => useAppStore((s) => s.showDebugTrace)
+export const useLocalDiagnosticsEnabled = () => useAppStore((s) => s.localDiagnosticsEnabled)
+export const useLocalDiagnosticsRetentionDays = () => useAppStore((s) => s.localDiagnosticsRetentionDays)
+export const useLocalDiagnosticsMaxTotalMb = () => useAppStore((s) => s.localDiagnosticsMaxTotalMb)
+export const useDiagnosticsDir = () => useAppStore((s) => s.diagnosticsDir)
+export const useCommitMessageModelId = () => useAppStore((s) => s.commitMessageModelId)
+export const useCustomModels = () => useAppStore((s) => s.customModels)
+export const useProjects = () => useAppStore((s) => s.projects)
+export const useProjectSettingsByRepo = () => useAppStore((s) => s.projectSettingsByRepo)
+export const useActiveProjectDir = () => useAppStore((s) => s.activeProjectDir)
+export const useActiveSessionId = () => useAppStore((s) => s.activeSessionId)
+export const useWorkspaceError = () => useAppStore((s) => s.workspaceError)
+export const useDeletingSessionIds = () => useAppStore((s) => s.deletingSessionIds)
+export const useIsCreatingSession = () => useAppStore((s) => s.isCreatingSession)
+
+// Actions are stable function references on the store object and never change,
+// so we read them directly via getState() without subscribing.
+export function useActions() {
+  return useAppStore.getState()
+}
+
+// --- AppInitializer: handles initialization + event listeners (no Context) ---
+
+export function AppInitializer({ children }: { children: React.ReactNode }) {
+  const initializedRef = useRef(false)
+
+  useEffect(() => {
+    if (initializedRef.current) return
+    initializedRef.current = true
+
+    const store = useAppStore.getState()
+
+    // Load persisted state
+    void (async () => {
+      try {
+        const [version, state, sessionMetas, loadedCustomModels, diagDir] = await Promise.all([
+          droid.getVersion(),
+          droid.loadAppState(),
+          droid.listSessions(),
+          droid.getCustomModels().catch(() => [] as CustomModelDef[]),
+          (typeof (droid as any)?.getDiagnosticsDir === 'function') ? (droid as any).getDiagnosticsDir().catch(() => '') : Promise.resolve(''),
+        ])
+
+        const traceEnabled = typeof (state as any).traceChainEnabled === 'boolean'
+          ? Boolean((state as any).traceChainEnabled)
+          : isTraceChainEnabled()
+        setTraceChainEnabledOverride(traceEnabled)
+        if (typeof (droid as any)?.setTraceChainEnabled === 'function') {
+          ;(droid as any).setTraceChainEnabled(traceEnabled)
+        }
+
+        const showDebug = typeof (state as any).showDebugTrace === 'boolean'
+          ? Boolean((state as any).showDebugTrace)
+          : false
+        const diagEnabled = typeof (state as any).localDiagnosticsEnabled === 'boolean'
+          ? Boolean((state as any).localDiagnosticsEnabled)
+          : true
+        const retentionDays = typeof (state as any).localDiagnosticsRetentionDays === 'number' && Number.isFinite((state as any).localDiagnosticsRetentionDays)
+          ? Math.max(1, Math.floor((state as any).localDiagnosticsRetentionDays))
+          : 7
+        const maxTotalMb = typeof (state as any).localDiagnosticsMaxTotalMb === 'number' && Number.isFinite((state as any).localDiagnosticsMaxTotalMb)
+          ? Math.max(1, Math.floor((state as any).localDiagnosticsMaxTotalMb))
+          : 50
+        const commitModel = typeof (state as any).commitMessageModelId === 'string'
+          ? String((state as any).commitMessageModelId || '').trim()
+          : ''
+        const ps = (state as any)?.projectSettings
+
+        useAppStore.setState({
+          droidVersion: version,
+          customModels: loadedCustomModels,
+          apiKey: state.apiKey || '',
+          traceChainEnabled: traceEnabled,
+          showDebugTrace: showDebug,
+          localDiagnosticsEnabled: diagEnabled,
+          localDiagnosticsRetentionDays: retentionDays,
+          localDiagnosticsMaxTotalMb: maxTotalMb,
+          diagnosticsDir: typeof diagDir === 'string' ? diagDir : '',
+          commitMessageModelId: commitModel || 'minimax-m2.5',
+          ...(ps && typeof ps === 'object' ? { projectSettingsByRepo: ps as Record<string, ProjectSettings> } : {}),
+        })
+
+        const persistedProjects = (state.projects || []).map((p) => ({ dir: p.dir, name: p.name, sessions: [] as SessionMeta[] }))
+        const fallbackProjectDir = state.activeProjectDir || persistedProjects[0]?.dir || ''
+        const projectsByDir = new Map<string, Project>()
+        for (const p of persistedProjects) projectsByDir.set(p.dir, p)
+
+        const normalizedMetas = (await Promise.all(sessionMetas.map(async (meta): Promise<SessionMeta | null> => {
+          const guessedDir = meta.projectDir || fallbackProjectDir
+          if (!guessedDir) return null
+          const info = await store._resolveWorkspace(guessedDir).catch(() => null)
+          const repoRoot = info?.repoRoot || meta.repoRoot || guessedDir
+          const projectDir = info?.projectDir || meta.projectDir || guessedDir
+          return {
+            ...meta,
+            repoRoot,
+            projectDir,
+            branch: meta.branch || info?.branch,
+            workspaceType: info?.workspaceType || meta.workspaceType,
+          }
+        }))).filter(Boolean) as SessionMeta[]
+
+        for (const meta of normalizedMetas) {
+          const repoRoot = getRepoKey(meta)
+          if (!repoRoot) continue
+          const existing = projectsByDir.get(repoRoot)
+          if (existing) existing.sessions.push(meta)
+          else {
+            const name = repoRoot.split(/[\\/]/).pop() || repoRoot
+            projectsByDir.set(repoRoot, { dir: repoRoot, name, sessions: [meta] })
+          }
+        }
+        for (const p of projectsByDir.values()) p.sessions.sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
+
+        const nextProjects = Array.from(projectsByDir.values())
+
+        const matchedByActiveDir = normalizedMetas
+          .filter((m) => m.projectDir === state.activeProjectDir)
+          .sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))[0]
+        const fallbackLatest = normalizedMetas
+          .sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))[0]
+        const activeMeta = matchedByActiveDir || fallbackLatest
+
+        const restoredProjectDir = activeMeta?.projectDir || state.activeProjectDir || ''
+        droid.setProjectDir(restoredProjectDir || null)
+
+        if (restoredProjectDir && activeMeta) {
+          const data = await droid.loadSession(activeMeta.id)
+          const loaded = (data?.messages as ChatMessage[]) ?? []
+          const newBuffers = new Map(useAppStore.getState().sessionBuffers)
+          const base = makeBuffer(restoredProjectDir, {
+            repoRoot: activeMeta.repoRoot,
+            branch: (data as any)?.branch || activeMeta.branch,
+            workspaceType: (data as any)?.workspaceType || activeMeta.workspaceType,
+            baseBranch: (data as any)?.baseBranch || activeMeta.baseBranch,
+          })
+          newBuffers.set(activeMeta.id, {
+            ...base,
+            messages: loaded,
+            model: data?.model || activeMeta.model || DEFAULT_MODEL,
+            autoLevel: data?.autoLevel || activeMeta.autoLevel || DEFAULT_AUTO_LEVEL,
+            reasoningEffort: (data as any)?.reasoningEffort || '',
+            apiKeyFingerprint: (data as any)?.apiKeyFingerprint || activeMeta.apiKeyFingerprint,
+          })
+          useAppStore.setState({
+            projects: nextProjects,
+            activeProjectDir: restoredProjectDir,
+            activeSessionId: activeMeta.id,
+            sessionBuffers: newBuffers,
+            _initialLoadDone: true,
+          })
+        } else {
+          const newId = restoredProjectDir
+            ? (await droid.createSession({
+              cwd: restoredProjectDir,
+              modelId: DEFAULT_MODEL,
+              autoLevel: DEFAULT_AUTO_LEVEL,
+            })).sessionId
+            : uuidv4()
+          const newBuffers = new Map(useAppStore.getState().sessionBuffers)
+          newBuffers.set(newId, makeBuffer(restoredProjectDir || ''))
+          useAppStore.setState({
+            projects: nextProjects,
+            activeProjectDir: restoredProjectDir,
+            activeSessionId: newId,
+            sessionBuffers: newBuffers,
+            _initialLoadDone: true,
+          })
+        }
+      } finally {
+        useAppStore.setState({ _initialLoadDone: true })
+        try {
+          const cur = useAppStore.getState().projects
+          if (Array.isArray(cur) && cur.length > 0) {
+            droid.saveProjects(cur.map((p) => ({ dir: p.dir, name: p.name })))
+          }
+        } catch {
+          // ignore
+        }
+      }
+    })()
+  }, [])
+
+  // Persist projects on change
+  useEffect(() => {
+    let prevProjects = useAppStore.getState().projects
+    return useAppStore.subscribe((state) => {
+      if (!state._initialLoadDone) return
+      if (state.projects === prevProjects) return
+      prevProjects = state.projects
+      droid.saveProjects(state.projects.map((p) => ({ dir: p.dir, name: p.name })))
+    })
+  }, [])
+
+  // Sync active session with backend
+  useEffect(() => {
+    let prevSessionId = useAppStore.getState().activeSessionId
+    return useAppStore.subscribe((state) => {
+      if (state.activeSessionId === prevSessionId) return
+      prevSessionId = state.activeSessionId
+      try {
+        droid.setActiveSession({ sessionId: state.activeSessionId || null })
+      } catch {
+        // ignore
+      }
+    })
+  }, [])
+
+  // Hook mismatch check
+  useEffect(() => {
+    const missingHooks = getMissingDroidHooks(droid)
+    if (missingHooks.length > 0) {
+      const s = useAppStore.getState()
+      if (s.activeSessionId && s.activeProjectDir) {
+        s._reportHookMismatch(s.activeSessionId, s.activeProjectDir, missingHooks)
+      }
+      return
+    }
+
+    // Event listeners
+    const onDebug = (droid as any)?.onDebug
+
+    const unsubNotif = droid.onRpcNotification(({ message, sessionId: sid }) => {
+      if (!sid) return
+      const t = (message as any)?.method === 'droid.session_notification'
+        ? String((message as any)?.params?.notification?.type || '')
+        : ''
+      const label = t ? `rpc-notification: ${message.method} type=${t}` : `rpc-notification: ${message.method}`
+      useAppStore.getState()._setSessionBuffers((prev) => {
+        let next = prev
+        if (isTraceChainEnabled()) next = appendDebugTrace(next, sid, formatNotificationTrace('renderer-in', message))
+        next = appendDebugTrace(next, sid, label)
+        return applyRpcNotification(next, sid, message)
+      })
+
+      if (t === 'session_title_updated') {
+        const title = String((message as any)?.params?.notification?.title || '').trim()
+        if (title) {
+          useAppStore.getState()._setProjects((prev) => updateSessionTitle(prev, sid, title))
+        }
+      }
+    })
+
+    const unsubReq = droid.onRpcRequest(({ message, sessionId: sid }) => {
+      if (!sid) return
+      useAppStore.getState()._setSessionBuffers((prev) => applyRpcRequest(appendDebugTrace(prev, sid, `rpc-request: ${message.method} id=${message.id}`), sid, message))
+    })
+
+    const unsubStdout = droid.onStdout(({ data, sessionId: sid }) => {
+      if (!sid) return
+      useAppStore.getState()._setSessionBuffers((prev) => applyStdout(appendDebugTrace(prev, sid, `stdout: ${String(data || '').slice(0, 200)}`), sid, data))
+    })
+
+    const unsubStderr = droid.onStderr(({ data, sessionId: sid }) => {
+      if (!sid) return
+      useAppStore.getState()._setSessionBuffers((prev) => applyStderr(appendDebugTrace(prev, sid, `stderr: ${String(data || '').slice(0, 200)}`), sid, data))
+    })
+
+    const unsubTurnEnd = droid.onTurnEnd(({ sessionId: sid }) => {
+      if (!sid) return
+      useAppStore.getState()._setSessionBuffers((prev) => applyTurnEnd(appendDebugTrace(prev, sid, 'turn-end'), sid))
+
+      const state = useAppStore.getState()
+      const snapshot = state.sessionBuffers.get(sid)
+      if (snapshot) void state._saveSessionToDisk(sid, snapshot)
+
+      if (snapshot?.pendingApiKeyFingerprint && !snapshot.isSetupRunning && sid === state.activeSessionId) {
+        const targetFp = snapshot.pendingApiKeyFingerprint
+        void (async () => {
+          try {
+            await droid.restartSessionWithActiveKey({ sessionId: sid })
+            state._setSessionBuffers((prev) => {
+              const session = prev.get(sid)
+              if (!session) return prev
+              const next = new Map(prev)
+              next.set(sid, { ...session, apiKeyFingerprint: targetFp, pendingApiKeyFingerprint: undefined })
+              return appendDebugTrace(next, sid, `api-key-restarted-after-turn: fp=${targetFp}`)
+            })
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            state._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `api-key-restart-after-turn-failed: ${msg}`))
+          }
+        })()
+      }
+    })
+
+    const unsubError = droid.onError(({ message, sessionId: sid }) => {
+      if (!sid) return
+      useAppStore.getState()._setSessionBuffers((prev) => applyError(appendDebugTrace(prev, sid, `error: ${message}`), sid, message))
+    })
+
+    const unsubSetup = droid.onSetupScriptEvent(({ event, sessionId: sid }) => {
+      if (!sid) return
+      useAppStore.getState()._setSessionBuffers((prev) => {
+        let next = prev
+        if (event.type === 'output') {
+          const content = String(event.data || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+          if (content) next = appendDebugTrace(next, sid, `setup-${event.stream}: ${content}`)
+        } else if (event.type === 'started') {
+          next = appendDebugTrace(next, sid, `setup-started: cwd=${event.projectDir}`)
+        } else {
+          next = appendDebugTrace(next, sid, `setup-finished: success=${event.success} code=${event.exitCode}`)
+        }
+        return applySetupScriptEvent(next, sid, event)
+      })
+    })
+
+    const unsubSessionReplace = (typeof (droid as any)?.onSessionIdReplaced === 'function')
+      ? (droid as any).onSessionIdReplaced(({ oldSessionId, newSessionId, reason }: { oldSessionId: string; newSessionId: string; reason?: string }) => {
+        const oldId = String(oldSessionId || '').trim()
+        const newId = String(newSessionId || '').trim()
+        if (!oldId || !newId || oldId === newId) return
+
+        const state = useAppStore.getState()
+        const meta = state.projects.flatMap((p) => p.sessions).find((x) => x.id === oldId)
+        if (!meta) return
+
+        const now = Date.now()
+        const nextMeta: SessionMeta = {
+          ...meta,
+          id: newId,
+          savedAt: now,
+          lastMessageAt: undefined,
+          messageCount: 0,
+        }
+
+        state._setProjects((prev) => replaceSessionIdInProjects(prev, oldId, nextMeta))
+        state._setSessionBuffers((prev) => {
+          const buf = prev.get(oldId)
+          if (!buf) return prev
+          let next = new Map(prev)
+          next.delete(oldId)
+          next.set(newId, {
+            ...buf,
+            isRunning: false,
+            isCancelling: false,
+            pendingSendMessageIds: {},
+            pendingPermissionRequests: [],
+            pendingAskUserRequests: [],
+            messages: [],
+            debugTrace: [`session-id-replaced: ${oldId} -> ${newId} reason=${String(reason || '')}`],
+          })
+          return next
+        })
+
+        useAppStore.setState((prev) => ({ activeSessionId: prev.activeSessionId === oldId ? newId : prev.activeSessionId }))
+        useAppStore.setState((prev) => {
+          const gens = prev._sessionGenerations
+          if (!gens.has(oldId)) return prev
+          const next = new Map(gens)
+          next.set(newId, next.get(oldId) || 0)
+          next.delete(oldId)
+          return { _sessionGenerations: next }
+        })
+      })
+      : () => {}
+
+    const unsubDebug = typeof onDebug === 'function'
+      ? droid.onDebug(({ message, sessionId: sid }) => {
+        if (!sid) return
+        useAppStore.getState()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `debug: ${String(message || '')}`))
+      })
+      : () => {}
+
+    return () => {
+      unsubNotif()
+      unsubReq()
+      unsubStdout()
+      unsubStderr()
+      unsubTurnEnd()
+      unsubError()
+      unsubSetup()
+      unsubSessionReplace()
+      unsubDebug()
+    }
+  }, [])
+
+  return <>{children}</>
+}

@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="dark_bg" x1="0" y1="0" x2="512" y2="512">
+            <stop offset="0%" stop-color="#1a1a1a"/>
+            <stop offset="100%" stop-color="#000000"/>
+        </linearGradient>
+        <linearGradient id="neon_green" x1="0" y1="0" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#3DDC84"/>
+            <stop offset="100%" stop-color="#2b9e5e"/>
+        </linearGradient>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+             <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+             <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.23921568627450981 0 0 0 0 0.8627450980392157 0 0 0 0 0.5176470588235295 0 0 0 0.6 0" result="coloredBlur"/>
+             <feMerge>
+                 <feMergeNode in="coloredBlur"/>
+                 <feMergeNode in="SourceGraphic"/>
+             </feMerge>
+         </filter>
+    </defs>
+
+    <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#dark_bg)"/>
+
+    <path d="M32 256H480 M256 32V480" stroke="#3DDC84" stroke-opacity="0.1" stroke-width="2"/>
+
+    <g filter="url(#glow)">
+        <path d="M160 100H260C348.366 100 420 171.634 420 260V260C420 348.366 348.366 420 260 420H160V100Z" stroke="url(#neon_green)" stroke-width="20" fill="none"/>
+
+        <path d="M220 220L260 260L220 300" stroke="#3DDC84" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="280" y="285" width="50" height="15" fill="#3DDC84" rx="4"/>
+    </g>
+</svg>
