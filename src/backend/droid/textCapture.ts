@@ -3,6 +3,7 @@ import type { DroidExecManager, DroidExecSendOptions } from './droidExecRunner.t
 type SessionEvent =
   | { type: 'rpc-notification'; sessionId: string; message: any }
   | { type: 'rpc-request'; sessionId: string; message: any }
+  | { type: 'session-id-replaced'; oldSessionId: string; newSessionId: string; reason: string }
   | { type: 'turn-end'; sessionId: string; code: number }
   | { type: 'error'; sessionId: string; message: string }
 
@@ -31,7 +32,7 @@ export async function runDroidAndCaptureAssistantText(params: {
 }): Promise<string> {
   const timeoutMs = typeof params.timeoutMs === 'number' ? params.timeoutMs : 30000
   const { execManager } = params
-  const sid = params.send.sessionId
+  let currentSessionId = params.send.sessionId
 
   let done = false
   let lastError = ''
@@ -43,8 +44,8 @@ export async function runDroidAndCaptureAssistantText(params: {
     const timer = setTimeout(() => {
       if (done) return
       done = true
-      try { execManager.cancel(sid) } catch {}
-      try { execManager.disposeSession(sid) } catch {}
+      try { execManager.cancel(currentSessionId) } catch {}
+      try { execManager.disposeSession(currentSessionId) } catch {}
       unsub()
       reject(new Error('Timed out generating text'))
     }, timeoutMs)
@@ -53,7 +54,7 @@ export async function runDroidAndCaptureAssistantText(params: {
       if (done) return
       done = true
       clearTimeout(timer)
-      try { execManager.disposeSession(sid) } catch {}
+      try { execManager.disposeSession(currentSessionId) } catch {}
       unsub()
       if (err) reject(err)
       else resolve((snapshotText || deltaText).trim())
@@ -61,7 +62,14 @@ export async function runDroidAndCaptureAssistantText(params: {
 
     const unsub = execManager.onEvent((ev: any) => {
       const e = ev as SessionEvent
-      if (!e || e.sessionId !== sid) return
+      if (!e) return
+
+      if (e.type === 'session-id-replaced') {
+        if (e.oldSessionId === currentSessionId) currentSessionId = e.newSessionId
+        return
+      }
+
+      if (e.sessionId !== currentSessionId) return
 
       if (e.type === 'error') {
         lastError = String((e as any).message || '')
@@ -70,7 +78,7 @@ export async function runDroidAndCaptureAssistantText(params: {
 
       if (e.type === 'rpc-request') {
         sawRpcRequest = true
-        try { execManager.cancel(sid) } catch {}
+        try { execManager.cancel(currentSessionId) } catch {}
         return
       }
 

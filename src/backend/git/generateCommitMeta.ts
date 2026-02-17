@@ -69,6 +69,14 @@ function buildPrompt(params: {
   git: Awaited<ReturnType<typeof collectGitContext>>
 }): string {
   const { includeUnstaged, wantPrMeta, prBaseBranch, git } = params
+  const limits = {
+    status: 4000,
+    stagedStat: 2000,
+    stagedDiff: 7000,
+    unstagedStat: 2000,
+    unstagedDiff: 3000,
+    untracked: 2000,
+  } as const
   const pieces = [
     'You are an expert software engineer. Generate a high-quality Git commit message for the changes below.',
     '',
@@ -79,26 +87,26 @@ function buildPrompt(params: {
     '- Keep the subject line concise and specific.',
     '',
     'Git status (porcelain):',
-    truncate(git.status, 8000) || '(empty)',
+    truncate(git.status, limits.status) || '(empty)',
     '',
     'Staged diff --stat:',
-    truncate(git.stagedStat, 4000) || '(empty)',
+    truncate(git.stagedStat, limits.stagedStat) || '(empty)',
     '',
-    'Staged diff:',
-    truncate(git.stagedDiff, 16000) || '(empty)',
+    'Staged diff (truncated excerpt):',
+    truncate(git.stagedDiff, limits.stagedDiff) || '(empty)',
   ]
 
   if (includeUnstaged) {
     pieces.push(
       '',
       'Unstaged diff --stat (will also be included in the commit):',
-      truncate(git.unstagedStat, 4000) || '(empty)',
+      truncate(git.unstagedStat, limits.unstagedStat) || '(empty)',
       '',
-      'Unstaged diff (will also be included in the commit):',
-      truncate(git.unstagedDiff, 16000) || '(empty)',
+      'Unstaged diff (truncated excerpt, will also be included in the commit):',
+      truncate(git.unstagedDiff, limits.unstagedDiff) || '(empty)',
       '',
       'Untracked files (names only; will also be included in the commit):',
-      truncate(git.untracked, 4000) || '(none)',
+      truncate(git.untracked, limits.untracked) || '(none)',
     )
   }
 
