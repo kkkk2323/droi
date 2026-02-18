@@ -1,3 +1,15 @@
+## 0.3.0 - 2026-02-18
+
+### Features
+- Track remote branches in workspace manager and refine sidebar UI
+
+### Fixes
+- Add artifact download step before release
+- Improve changelog extraction and clean up workflow
+
+### CI
+- Split mac builds and automate changelog extraction
+
 ## 0.2.0 - 2026-02-18
 
 ### Features
