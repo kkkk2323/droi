@@ -380,10 +380,11 @@ export interface DroidClientAPI {
   getGitStatus: (params: { projectDir: string }) => Promise<GitStatusFile[]>
   getGitBranch: (params: { projectDir: string }) => Promise<string>
   listGitBranches: (params: { projectDir: string }) => Promise<string[]>
+  listGitWorktreeBranchesInUse: (params: { repoRoot: string }) => Promise<Array<{ branch: string; worktreeDir: string }>>
   getWorkspaceInfo: (params: { projectDir: string }) => Promise<WorkspaceInfo | null>
   switchWorkspace: (params: { projectDir: string; branch: string }) => Promise<WorkspaceInfo | null>
   createWorkspace: (params: WorkspaceCreateParams) => Promise<WorkspaceInfo | null>
-  removeWorktree: (params: { repoRoot: string; worktreeDir: string; force?: boolean }) => Promise<RemoveWorktreeResult>
+  removeWorktree: (params: { repoRoot: string; worktreeDir: string; force?: boolean; deleteBranch?: boolean; branch?: string }) => Promise<RemoveWorktreeResult>
   pushBranch: (params: { projectDir: string; remote?: string; branch?: string }) => Promise<PushBranchResult>
   detectGitTools: (params: { projectDir: string }) => Promise<GitToolsInfo>
   generateCommitMeta: (params: GenerateCommitMetaRequest) => Promise<GenerateCommitMetaResult>

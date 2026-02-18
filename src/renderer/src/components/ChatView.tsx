@@ -3,7 +3,7 @@ import { cn } from '../lib/utils'
 import { ScrollArea } from './ui/scroll-area'
 import {
   ChevronDown, ChevronRight, FileCode, FolderOpen, Terminal,
-  FileEdit, Play, Search, Globe, Loader2, Check, Circle, Paperclip, X, BookOpen, AlertTriangle, Brain,
+  FileEdit, Play, Search, Globe, Loader2, Check, Paperclip, X, BookOpen, Brain,
 } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import type { ChatMessage, TextBlock, ToolCallBlock, AttachmentBlock, CommandBlock, SkillBlock, ThinkingBlock } from '@/types'
@@ -12,6 +12,7 @@ import type { DroidPermissionOption } from '@/types'
 import { isTodoWriteBlock } from './TodoPanel'
 import { isBrowserMode, getApiBase } from '@/droidClient'
 import { SpecReviewCard, isExitSpecPermission } from './SpecReviewCard'
+import { SessionBootstrapCards } from './SessionBootstrapCards'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
 function isImageFile(name: string): boolean {
@@ -35,6 +36,7 @@ interface ChatViewProps {
   pendingPermissionRequest?: PendingPermissionRequest | null
   pendingSendMessageIds?: Record<string, true>
   setupScript?: SessionSetupState | null
+  workspacePrepStatus?: 'running' | 'completed' | null
   onRetrySetupScript?: () => void
   onSkipSetupScript?: () => void
   onRespondPermission?: (params: { selectedOption: DroidPermissionOption }) => void
@@ -49,6 +51,7 @@ function ChatView({
   pendingPermissionRequest,
   pendingSendMessageIds = {},
   setupScript = null,
+  workspacePrepStatus = null,
   onRetrySetupScript,
   onSkipSetupScript,
   onRespondPermission,
@@ -92,7 +95,9 @@ function ChatView({
   }, [pendingPermissionRequest])
 
   if (messages.length === 0) {
-    const showSetupCard = !noProject && Boolean(setupScript && setupScript.status !== 'idle')
+    const showBootstrapCards = !noProject && Boolean(
+      (setupScript && setupScript.status !== 'idle') || workspacePrepStatus,
+    )
 
     return (
       <div className="flex flex-1 items-center justify-center px-6">
@@ -121,11 +126,13 @@ function ChatView({
             </div>
           </div>
 
-          {showSetupCard && setupScript && (
-            <SetupScriptCard
+          {showBootstrapCards && (
+            <SessionBootstrapCards
+              workspacePrepStatus={workspacePrepStatus}
               setupScript={setupScript}
-              onRetry={onRetrySetupScript}
-              onSkip={onSkipSetupScript}
+              suppressSetupScriptRunningSpinner={workspacePrepStatus === 'running'}
+              onRetrySetupScript={onRetrySetupScript}
+              onSkipSetupScript={onSkipSetupScript}
             />
           )}
         </div>
@@ -172,94 +179,6 @@ function ChatView({
         <div ref={bottomRef} />
       </div>
     </ScrollArea>
-  )
-}
-
-function SetupScriptCard({
-  setupScript,
-  onRetry,
-  onSkip,
-}: {
-  setupScript: SessionSetupState
-  onRetry?: () => void
-  onSkip?: () => void
-}) {
-  const output = String(setupScript.output || '')
-  const isDone = setupScript.status === 'completed' || setupScript.status === 'skipped'
-  const [expanded, setExpanded] = useState(!isDone)
-
-  useEffect(() => {
-    if (isDone) setExpanded(false)
-    else setExpanded(true)
-  }, [isDone])
-
-  return (
-    <div className="mx-auto rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 text-left text-sm font-medium"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {setupScript.status === 'running' && <Loader2 className="size-4 animate-spin text-blue-500" />}
-        {setupScript.status === 'failed' && <AlertTriangle className="size-4 text-amber-500" />}
-        {setupScript.status === 'completed' && <Check className="size-4 text-emerald-600" />}
-        {setupScript.status === 'skipped' && <Circle className="size-4 text-muted-foreground" />}
-
-        <span className="flex-1">
-          {setupScript.status === 'running' && 'Running setup script...'}
-          {setupScript.status === 'failed' && 'Setup script failed'}
-          {setupScript.status === 'completed' && 'Setup script completed'}
-          {setupScript.status === 'skipped' && 'Setup script skipped'}
-        </span>
-
-        <ChevronDown className={cn(
-          "size-3.5 shrink-0 text-muted-foreground transition-transform duration-300",
-          expanded ? "rotate-180" : "rotate-0"
-        )} />
-      </button>
-
-      <div className={cn(
-        "grid transition-all duration-300 ease-out",
-        expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-      )}>
-        <div className="overflow-hidden">
-          {setupScript.script && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              <span className="font-mono">{setupScript.script}</span>
-            </p>
-          )}
-
-          {setupScript.status === 'failed' && setupScript.error && (
-            <p className="mt-2 text-xs text-red-600">{setupScript.error}</p>
-          )}
-
-          {output.trim() && (
-            <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-200">
-              {output}
-            </pre>
-          )}
-
-          {setupScript.status === 'failed' && (
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRetry?.() }}
-                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-colors hover:bg-foreground/80"
-              >
-                Retry
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onSkip?.() }}
-                className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent"
-              >
-                Skip
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }
 
