@@ -1,6 +1,6 @@
 {
   "name": "droi",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Desktop GUI for Droi",
   "main": "./out/main/index.js",
   "scripts": {
