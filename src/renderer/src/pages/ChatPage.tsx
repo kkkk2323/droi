@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   useMessages, useIsRunning, useModel, useAutoLevel, useReasoningEffort,
   useActiveProjectDir, useActiveSessionId, useShowDebugTrace,
@@ -6,6 +6,7 @@ import {
   usePendingSendMessageIds, usePendingPermissionRequest, usePendingAskUserRequest,
   useIsCancelling,
   usePendingNewSession,
+  useIsCreatingSession,
   useActions,
 } from '@/store'
 import ChatView from '@/components/ChatView'
@@ -24,6 +25,7 @@ export function ChatPage() {
   const activeProjectDir = useActiveProjectDir()
   const activeSessionId = useActiveSessionId()
   const pendingNewSession = usePendingNewSession()
+  const isCreatingSession = useIsCreatingSession()
   const showDebugTrace = useShowDebugTrace()
   const setupScript = useSetupScript()
   const isSetupBlocked = useIsSetupBlocked()
@@ -40,6 +42,23 @@ export function ChatPage() {
 
   const [specChangesMode, setSpecChangesMode] = useState(false)
 
+  const [workspacePrepSessionId, setWorkspacePrepSessionId] = useState<string | null>(null)
+  const prevIsCreatingRef = useRef(isCreatingSession)
+  useEffect(() => {
+    const prev = prevIsCreatingRef.current
+    prevIsCreatingRef.current = isCreatingSession
+    if (prev && !isCreatingSession) {
+      setWorkspacePrepSessionId(activeSessionId || null)
+    }
+  }, [activeSessionId, isCreatingSession])
+
+  const workspacePrepStatus: 'running' | 'completed' | null =
+    isCreatingSession
+      ? 'running'
+      : (workspacePrepSessionId && activeSessionId === workspacePrepSessionId)
+        ? 'completed'
+        : null
+
   const handleRequestSpecChanges = useCallback(() => {
     setSpecChangesMode(true)
   }, [])
@@ -54,6 +73,8 @@ export function ChatPage() {
   const noSession = !activeSessionId
   const disabledPlaceholder = noProject
     ? 'Select a project to start...'
+    : isCreatingSession
+      ? 'Preparing workspace...'
     : pendingNewSession
       ? 'Type a message to create this session...'
       : noSession
@@ -67,7 +88,7 @@ export function ChatPage() {
   const pendingKey = pendingNewSession?.repoRoot ? `pending:${pendingNewSession.repoRoot}` : ''
   const inputKey = pendingNewSession ? pendingKey : (activeSessionId || 'no-session')
   const draftKey = pendingNewSession ? pendingKey : activeSessionId
-  const inputDisabled = noProject || (!pendingNewSession && noSession) || (!pendingNewSession && isSetupBlocked)
+  const inputDisabled = isCreatingSession || noProject || (!pendingNewSession && noSession) || (!pendingNewSession && isSetupBlocked)
 
   return (
     <>
@@ -82,6 +103,7 @@ export function ChatPage() {
             pendingPermissionRequest={pendingPermissionRequest}
             pendingSendMessageIds={pendingSendMessageIds}
             setupScript={setupScript}
+            workspacePrepStatus={workspacePrepStatus}
             onRetrySetupScript={() => void handleRetrySetupScript(activeSessionId)}
             onSkipSetupScript={() => handleSkipSetupScript(activeSessionId)}
             onRespondPermission={handleRespondPermission}

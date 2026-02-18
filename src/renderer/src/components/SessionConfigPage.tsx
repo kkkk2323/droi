@@ -2,8 +2,10 @@ import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { Popover } from '@base-ui/react/popover'
 import { GitBranch, FolderOpen, ChevronDown, Search, Plus, Check } from 'lucide-react'
 import { useGitBranchesQuery, useGitWorktreeBranchesInUseQuery } from '@/hooks/useGitStatus'
+import { SessionBootstrapCards } from '@/components/SessionBootstrapCards'
 import {
   usePendingNewSession,
+  useIsCreatingSession,
   useWorkspaceError,
   useActions,
 } from '@/store'
@@ -159,6 +161,7 @@ function BranchPicker({
 
 export function SessionConfigPage() {
   const pending = usePendingNewSession()
+  const isCreatingSession = useIsCreatingSession()
   const workspaceError = useWorkspaceError()
   const { updatePendingNewSession } = useActions()
 
@@ -207,6 +210,10 @@ export function SessionConfigPage() {
             />
           </div>
         </div>
+
+        {isCreatingSession && (
+          <SessionBootstrapCards workspacePrepStatus="running" />
+        )}
 
         {workspaceError && (
           <div className="text-sm text-center text-red-500">{workspaceError}</div>
