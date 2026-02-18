@@ -1,3 +1,9 @@
+## 0.4.0 - 2026-02-18
+
+### Features
+- Implement session configuration and worktree branch management
+- Refactor session bootstrap UI and integrate workspace prep status
+
 ## 0.3.2 - 2026-02-18
 
 ### Fixes
