@@ -29,7 +29,7 @@ jobs:
         run: pnpm build
 
       - name: Build ARM64 DMG
-        run: npx electron-builder --mac arm64 --publish never
+        run: npx electron-builder --mac --arch=arm64 --publish never
 
       - uses: actions/upload-artifact@v4
         with:
@@ -37,7 +37,7 @@ jobs:
           path: dist/*arm64*.dmg
 
       - name: Build x64 DMG
-        run: npx electron-builder --mac x64 --publish never
+        run: npx electron-builder --mac --arch=x64 --publish never
 
       - uses: actions/upload-artifact@v4
         with:
