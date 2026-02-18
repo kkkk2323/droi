@@ -25,19 +25,61 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build universal DMG
-        run: pnpm build && npx electron-builder --mac --publish never
+      - name: Build pnpm build
+        run: pnpm build
+
+      - name: Build ARM64 DMG
+        run: npx electron-builder --mac arm64 --publish never
 
       - uses: actions/upload-artifact@v4
         with:
-          name: droi-mac-universal
-          path: dist/*.dmg
+          name: droi-mac-arm64
+          path: dist/*arm64*.dmg
+
+      - name: Build x64 DMG
+        run: npx electron-builder --mac x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droi-mac-x64
+          path: dist/*x64*.dmg
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          # Extract changelog section for the tagged version
+          CHANGELOG_CONTENT=$(awk -v version="$TAG_VERSION" '
+            /^## / {
+              if (version && match($0, version)) {
+                in_section = 1
+                next
+              }
+            }
+            /^## / && !match($0, version) {
+              in_section = 0
+            }
+            in_section && /^- / {
+              print
+            }
+          ' CHANGELOG.md)
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: droi-mac-*
+          merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: dist/*.dmg
           body: |
+            ${{ steps.changelog.outputs.content }}
+
             **Note:** The app is not signed with an Apple Developer certificate. If macOS blocks the app, run:
             ```bash
             xattr -cr /Applications/Droi.app
