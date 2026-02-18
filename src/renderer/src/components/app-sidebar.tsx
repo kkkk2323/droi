@@ -67,7 +67,7 @@ function SessionTitle({ title }: { title: string }) {
 
   return (
     <span className={cn(
-      'block max-w-[140px] truncate transition-colors duration-500',
+      'block truncate transition-colors duration-500',
       flash && 'text-blue-500',
     )}>
       {title}
@@ -150,12 +150,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     <CollapsibleTrigger
                       render={
                         <SidebarMenuButton
+                          className="h-9"
                           tooltip={project.dir}
                           onClick={() => {
                             if (!isActiveProject) {
                               const latest = project.sessions[0]
                               if (latest) handleSelectSession(latest.id)
-                              else if (!isCreatingSession && !isInitBlocked) handleNewSession(project.dir)
                             }
                           }}
                         />
@@ -248,7 +248,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           <SidebarMenuSubItem key={session.id} className="group/session">
                             <SidebarMenuSubButton
                               render={<button type="button" />}
-                              className={cn('max-w-full pr-8', isSessionDeleting && 'opacity-60 pointer-events-none')}
+                              className={cn('max-w-full pr-4 h-9', isSessionDeleting && 'opacity-60 pointer-events-none')}
                               isActive={isActive}
                               aria-disabled={isSessionDeleting}
                               onClick={() => {

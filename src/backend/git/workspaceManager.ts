@@ -62,8 +62,13 @@ export async function checkoutBranch(projectDir: string, branch: string): Promis
 }
 
 export async function createBranch(projectDir: string, branch: string, baseBranch?: string): Promise<void> {
+  let effectiveBase = baseBranch?.trim() || ''
+  if (effectiveBase) {
+    const fetched = await fetchRemoteBranch(projectDir, effectiveBase)
+    if (fetched) effectiveBase = `origin/${effectiveBase}`
+  }
   const args = ['checkout', '-b', branch]
-  if (baseBranch && baseBranch.trim()) args.push(baseBranch.trim())
+  if (effectiveBase) args.push(effectiveBase)
   await runGit(args, projectDir)
 }
 
@@ -110,6 +115,15 @@ async function isRegisteredWorktree(repoRoot: string, worktreeDir: string): Prom
   return false
 }
 
+async function fetchRemoteBranch(cwd: string, branch: string, remote = 'origin'): Promise<boolean> {
+  try {
+    await runGit(['fetch', remote, branch], cwd, { timeoutMs: 30000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function createWorktree(params: {
   repoRoot: string
   branch: string
@@ -118,11 +132,18 @@ export async function createWorktree(params: {
   useExistingBranch?: boolean
 }): Promise<void> {
   await mkdir(dirname(params.worktreePath), { recursive: true })
+
+  let effectiveBase = params.baseBranch?.trim() || ''
+  if (effectiveBase && !params.useExistingBranch) {
+    const fetched = await fetchRemoteBranch(params.repoRoot, effectiveBase)
+    if (fetched) effectiveBase = `origin/${effectiveBase}`
+  }
+
   const args = ['worktree', 'add']
   if (!params.useExistingBranch) args.push('-b', params.branch)
   args.push(params.worktreePath)
   if (params.useExistingBranch) args.push(params.branch)
-  else if (params.baseBranch && params.baseBranch.trim()) args.push(params.baseBranch.trim())
+  else if (effectiveBase) args.push(effectiveBase)
   await runGit(args, params.repoRoot)
 }
 
