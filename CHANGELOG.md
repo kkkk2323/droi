@@ -1,3 +1,8 @@
+## 0.3.1 - 2026-02-18
+
+### Fixes
+- Correct electron-builder command syntax in release workflow
+
 ## 0.3.0 - 2026-02-18
 
 ### Features
