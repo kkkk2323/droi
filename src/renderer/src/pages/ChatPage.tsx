@@ -5,12 +5,14 @@ import {
   useSetupScript, useIsSetupBlocked, useCustomModels,
   usePendingSendMessageIds, usePendingPermissionRequest, usePendingAskUserRequest,
   useIsCancelling,
+  usePendingNewSession,
   useActions,
 } from '@/store'
 import ChatView from '@/components/ChatView'
 import { InputBar } from '@/components/InputBar'
 import { TodoPanel } from '@/components/TodoPanel'
 import { DebugTracePanel } from '@/components/DebugTracePanel'
+import { SessionConfigPage } from '@/components/SessionConfigPage'
 
 
 export function ChatPage() {
@@ -21,6 +23,7 @@ export function ChatPage() {
   const reasoningEffort = useReasoningEffort()
   const activeProjectDir = useActiveProjectDir()
   const activeSessionId = useActiveSessionId()
+  const pendingNewSession = usePendingNewSession()
   const showDebugTrace = useShowDebugTrace()
   const setupScript = useSetupScript()
   const isSetupBlocked = useIsSetupBlocked()
@@ -46,11 +49,14 @@ export function ChatPage() {
     handleSend(...args)
   }, [handleSend])
 
-  const noProject = !activeProjectDir
+  const effectiveProjectDir = pendingNewSession?.repoRoot || activeProjectDir
+  const noProject = !effectiveProjectDir
   const noSession = !activeSessionId
   const disabledPlaceholder = noProject
     ? 'Select a project to start...'
-    : noSession
+    : pendingNewSession
+      ? 'Type a message to create this session...'
+      : noSession
       ? 'Create or select a session to start...'
       : setupScript?.status === 'running'
         ? 'Setup script is running...'
@@ -58,26 +64,35 @@ export function ChatPage() {
           ? 'Setup script failed. Retry or skip to continue.'
           : undefined
 
+  const pendingKey = pendingNewSession?.repoRoot ? `pending:${pendingNewSession.repoRoot}` : ''
+  const inputKey = pendingNewSession ? pendingKey : (activeSessionId || 'no-session')
+  const draftKey = pendingNewSession ? pendingKey : activeSessionId
+  const inputDisabled = noProject || (!pendingNewSession && noSession) || (!pendingNewSession && isSetupBlocked)
+
   return (
     <>
-      <ChatView
-        messages={messages}
-        isRunning={isRunning}
-        noProject={noProject}
-        activeProjectDir={activeProjectDir}
-        pendingPermissionRequest={pendingPermissionRequest}
-        pendingSendMessageIds={pendingSendMessageIds}
-        setupScript={setupScript}
-        onRetrySetupScript={() => void handleRetrySetupScript(activeSessionId)}
-        onSkipSetupScript={() => handleSkipSetupScript(activeSessionId)}
-        onRespondPermission={handleRespondPermission}
-        onRequestSpecChanges={handleRequestSpecChanges}
-      />
+      {pendingNewSession
+        ? <SessionConfigPage />
+        : (
+          <ChatView
+            messages={messages}
+            isRunning={isRunning}
+            noProject={noProject}
+            activeProjectDir={effectiveProjectDir}
+            pendingPermissionRequest={pendingPermissionRequest}
+            pendingSendMessageIds={pendingSendMessageIds}
+            setupScript={setupScript}
+            onRetrySetupScript={() => void handleRetrySetupScript(activeSessionId)}
+            onSkipSetupScript={() => handleSkipSetupScript(activeSessionId)}
+            onRespondPermission={handleRespondPermission}
+            onRequestSpecChanges={handleRequestSpecChanges}
+          />
+        )}
       {showDebugTrace && <DebugTracePanel />}
-      <TodoPanel messages={messages} />
+      {!pendingNewSession && <TodoPanel messages={messages} />}
       <InputBar
-        key={activeSessionId || 'no-session'}
-        draftKey={activeSessionId}
+        key={inputKey}
+        draftKey={draftKey}
         model={model}
         autoLevel={autoLevel}
         reasoningEffort={reasoningEffort}
@@ -90,9 +105,9 @@ export function ChatPage() {
         onForceCancel={handleForceCancel}
         isCancelling={isCancelling}
         isRunning={isRunning}
-        disabled={noProject || noSession || isSetupBlocked}
+        disabled={inputDisabled}
         disabledPlaceholder={disabledPlaceholder}
-        activeProjectDir={activeProjectDir}
+        activeProjectDir={effectiveProjectDir}
         onUiDebug={appendUiDebugTrace}
         pendingPermissionRequest={pendingPermissionRequest}
         onRespondPermission={handleRespondPermission}

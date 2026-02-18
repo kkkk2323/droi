@@ -967,6 +967,20 @@ const browserClient: DroidClientAPI = {
       return []
     }
   },
+  listGitWorktreeBranchesInUse: async (params) => {
+    try {
+      const res = await apiFetch(`${getApiBase()}/git-worktree-branches-in-use`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      })
+      if (!res.ok) return []
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    } catch {
+      return []
+    }
+  },
   getWorkspaceInfo: async (params) => {
     try {
       const res = await apiFetch(`${getApiBase()}/git-workspace-info`, {
@@ -1103,6 +1117,7 @@ export function getDroidClient(): DroidClientAPI {
     if (typeof (merged as any).onSetupScriptEvent !== 'function') merged.onSetupScriptEvent = browserClient.onSetupScriptEvent
     if (typeof (merged as any).updateSessionSettings !== 'function') merged.updateSessionSettings = browserClient.updateSessionSettings
     if (typeof (merged as any).listGitBranches !== 'function') merged.listGitBranches = browserClient.listGitBranches
+    if (typeof (merged as any).listGitWorktreeBranchesInUse !== 'function') merged.listGitWorktreeBranchesInUse = browserClient.listGitWorktreeBranchesInUse
     if (typeof (merged as any).getWorkspaceInfo !== 'function') merged.getWorkspaceInfo = browserClient.getWorkspaceInfo
     if (typeof (merged as any).switchWorkspace !== 'function') merged.switchWorkspace = browserClient.switchWorkspace
     if (typeof (merged as any).setCommitMessageModelId !== 'function') merged.setCommitMessageModelId = browserClient.setCommitMessageModelId

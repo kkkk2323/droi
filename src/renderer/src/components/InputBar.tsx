@@ -690,14 +690,14 @@ export function InputBar({
           </div>
 
           {permissionToolUses.length > 0 && (
-            <div className="px-4 pb-2 space-y-3">
+            <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 space-y-3">
               {permissionToolUses.map((item, i) => (
                 <PermissionToolUseCard key={i} item={item} />
               ))}
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 px-3 pb-2">
+          <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 pb-2">
             {pendingPermissionRequest.options.map((opt) => (
               <button
                 key={opt}

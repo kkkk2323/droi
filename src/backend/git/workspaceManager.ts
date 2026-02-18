@@ -115,6 +115,87 @@ async function isRegisteredWorktree(repoRoot: string, worktreeDir: string): Prom
   return false
 }
 
+async function localBranchExists(repoRoot: string, branch: string): Promise<boolean> {
+  const b = String(branch || '').trim()
+  if (!b) return false
+  try {
+    await runGit(['show-ref', '--verify', `refs/heads/${b}`], repoRoot)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function isBranchCheckedOutInAnyWorktree(repoRoot: string, branch: string): Promise<boolean> {
+  const b = String(branch || '').trim()
+  if (!b) return false
+  const target = `refs/heads/${b}`
+  const out = await runGit(['worktree', 'list', '--porcelain'], repoRoot, { timeoutMs: 60000 })
+  for (const rawLine of out.split('\n')) {
+    const line = rawLine.trim()
+    if (!line.startsWith('branch ')) continue
+    const ref = line.slice('branch '.length).trim()
+    if (ref === target) return true
+  }
+  return false
+}
+
+export async function listWorktreeBranchesInUse(params: { repoRoot: string }): Promise<Array<{ branch: string; worktreeDir: string }>> {
+  const repoRoot = await normalizeFsPath(params.repoRoot)
+  const out = await runGit(['worktree', 'list', '--porcelain'], repoRoot, { timeoutMs: 60000 })
+
+  type Row = { worktreeDir: string; branchRef: string }
+  const rows: Row[] = []
+  let cur: Row | null = null
+
+  for (const rawLine of out.split('\n')) {
+    const line = rawLine.trim()
+    if (line.startsWith('worktree ')) {
+      if (cur) rows.push(cur)
+      cur = { worktreeDir: line.slice('worktree '.length).trim(), branchRef: '' }
+      continue
+    }
+    if (!cur) continue
+    if (line.startsWith('branch ')) {
+      cur.branchRef = line.slice('branch '.length).trim()
+    }
+  }
+  if (cur) rows.push(cur)
+
+  const repoResolved = resolve(repoRoot)
+  const outRows: Array<{ branch: string; worktreeDir: string }> = []
+
+  for (const r of rows) {
+    const worktreeDirRaw = String(r.worktreeDir || '').trim()
+    const branchRef = String(r.branchRef || '').trim()
+    if (!worktreeDirRaw) continue
+    if (!branchRef.startsWith('refs/heads/')) continue
+
+    const branch = branchRef.slice('refs/heads/'.length).trim()
+    if (!branch) continue
+
+    let worktreeDir = worktreeDirRaw
+    try {
+      worktreeDir = await normalizeFsPath(worktreeDirRaw)
+    } catch {
+      // ignore
+    }
+
+    // Only report branches checked out in OTHER worktrees (not the main repoRoot).
+    if (resolve(worktreeDir) === repoResolved) continue
+
+    outRows.push({ branch, worktreeDir })
+  }
+
+  // De-dupe by branch.
+  const seen = new Set<string>()
+  return outRows.filter((x) => {
+    if (seen.has(x.branch)) return false
+    seen.add(x.branch)
+    return true
+  })
+}
+
 async function fetchRemoteBranch(cwd: string, branch: string, remote = 'origin'): Promise<boolean> {
   try {
     await runGit(['fetch', remote, branch], cwd, { timeoutMs: 30000 })
@@ -191,7 +272,7 @@ export async function createWorkspace(params: {
   return { ...(await getWorkspaceInfo(worktreePath)), baseBranch: params.baseBranch }
 }
 
-export async function removeWorktree(params: { repoRoot: string; worktreeDir: string; force?: boolean }): Promise<void> {
+export async function removeWorktree(params: { repoRoot: string; worktreeDir: string; force?: boolean; deleteBranch?: boolean; branch?: string }): Promise<void> {
   const repoRoot = await normalizeFsPath(params.repoRoot)
   const worktreeDir = await normalizeFsPath(params.worktreeDir)
   const containerDir = join(repoRoot, '.worktrees')
@@ -215,6 +296,23 @@ export async function removeWorktree(params: { repoRoot: string; worktreeDir: st
   }
 
   await runGit(['worktree', 'prune'], repoRoot, { timeoutMs: 60000 })
+
+  // Optional: explicitly delete the local branch after worktree removal.
+  // Default is NO deletion to avoid accidentally removing user branches.
+  const deleteBranch = Boolean(params.deleteBranch)
+  const branch = String(params.branch || '').trim()
+  const protectedBranches = new Set(['main', 'master', 'HEAD'])
+  if (deleteBranch && branch && !protectedBranches.has(branch)) {
+    try {
+      const exists = await localBranchExists(repoRoot, branch)
+      const checkedOut = exists ? await isBranchCheckedOutInAnyWorktree(repoRoot, branch) : false
+      if (exists && !checkedOut) {
+        await runGit(['branch', '-D', '--', branch], repoRoot, { timeoutMs: 8000 })
+      }
+    } catch {
+      // Best-effort cleanup; ignore.
+    }
+  }
 }
 
 export async function pushBranch(params: { projectDir: string; remote?: string; branch?: string }): Promise<{ remote: string; branch: string }> {

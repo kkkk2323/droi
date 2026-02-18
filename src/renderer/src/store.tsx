@@ -36,6 +36,18 @@ const droid = getDroidClient()
 
 export type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
 
+export type PendingNewSession = {
+  repoRoot: string
+  branch: string
+  isExistingBranch?: boolean
+}
+
+type PendingInitialSend = {
+  sessionId: string
+  input: SendInput
+  attachments: Array<{ name: string; path: string }>
+}
+
 function getTitleFromPrompt(prompt: string): string {
   const trimmed = String(prompt || '').trim() || 'Untitled'
   return trimmed.slice(0, 40) + (trimmed.length > 40 ? '...' : '')
@@ -102,6 +114,10 @@ interface AppState {
   activeSessionId: string
   activeProjectDir: string
 
+  // New-session flow (deferred creation)
+  pendingNewSession: PendingNewSession | null
+  pendingInitialSend: PendingInitialSend | null
+
   // App-level state
   droidVersion: string
   apiKey: string
@@ -165,6 +181,10 @@ interface AppActions {
   openPath: (path: string) => Promise<void>
   updateProjectSettings: (repoRoot: string, patch: Partial<ProjectSettings>) => Promise<void>
 
+  // New-session flow (deferred creation)
+  updatePendingNewSession: (patch: Partial<PendingNewSession>) => void
+  clearPendingNewSession: () => void
+
   // Session actions
   handleSend: (input: SendInput, attachments?: Array<{ name: string; path: string }>) => void
   handleClearSessionContext: (sessionId?: string) => Promise<void>
@@ -181,7 +201,7 @@ interface AppActions {
     mode: 'plain' | 'switch-branch' | 'new-branch' | 'new-worktree'
     branch?: string
     baseBranch?: string
-  }) => Promise<void>
+  }) => Promise<string | null>
   handleSwitchWorkspaceForSession: (params: { branch: string; sessionId?: string }) => Promise<boolean>
   handleAddProject: () => void
   handleSetProjectDir: (dir: string) => void
@@ -201,6 +221,12 @@ interface AppActions {
   _ensureWorkspaceForMeta: (meta: SessionMeta) => Promise<WorkspaceInfo>
   _switchToSessionWithAligned: (selectedMeta: SessionMeta, aligned: WorkspaceInfo) => Promise<void>
   _reportHookMismatch: (sid: string, projectDir: string, missingHooks: string[]) => void
+
+  _ensureProjectSettingsInitialized: (params: { repoRoot: string; hintBranch?: string }) => Promise<void>
+
+  // New-session helpers
+  _confirmPendingNewSessionAndSend: (params: { input: SendInput; attachments?: Array<{ name: string; path: string }> }) => Promise<void>
+  _maybeFlushPendingInitialSend: () => void
 }
 
 type AppStore = AppState & AppActions
@@ -210,6 +236,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   sessionBuffers: new Map(),
   activeSessionId: '',
   activeProjectDir: '',
+  pendingNewSession: null,
+  pendingInitialSend: null,
   droidVersion: 'loading...',
   apiKey: '',
   traceChainEnabled: isTraceChainEnabled(),
@@ -546,6 +574,51 @@ export const useAppStore = create<AppStore>((set, get) => ({
     else set((s) => ({ projectSettingsByRepo: { ...s.projectSettingsByRepo, [key]: merged } }))
   },
 
+  _ensureProjectSettingsInitialized: async ({ repoRoot, hintBranch }) => {
+    const key = String(repoRoot || '').trim()
+    if (!key) return
+
+    const existing = get().projectSettingsByRepo[key] || {}
+    const nextPatch: Partial<ProjectSettings> = {}
+
+    if (typeof existing.worktreePrefix !== 'string' || !existing.worktreePrefix.trim()) {
+      nextPatch.worktreePrefix = 'droi'
+    }
+
+    if (typeof existing.baseBranch !== 'string' || !existing.baseBranch.trim()) {
+      const branches = await droid.listGitBranches({ projectDir: key }).catch(() => [] as string[])
+      const cleaned = Array.from(new Set((branches || []).filter(Boolean).map((b) => String(b).trim()).filter(Boolean)))
+      const hint = typeof hintBranch === 'string' ? hintBranch.trim() : ''
+      const base = cleaned.includes('main')
+        ? 'main'
+        : cleaned.includes('master')
+          ? 'master'
+          : hint || cleaned[0] || ''
+      if (base) nextPatch.baseBranch = base
+    }
+
+    if (Object.keys(nextPatch).length === 0) return
+    await get().updateProjectSettings(key, nextPatch)
+  },
+
+  // --- New-session flow (deferred creation) ---
+  updatePendingNewSession: (patch) => {
+    const nextPatch = patch || {}
+    set((prev) => {
+      const cur = prev.pendingNewSession
+      if (!cur) return {}
+      return {
+        pendingNewSession: {
+          ...cur,
+          ...(nextPatch as Partial<PendingNewSession>),
+          repoRoot: typeof (nextPatch as any).repoRoot === 'string' ? String((nextPatch as any).repoRoot).trim() : cur.repoRoot,
+          branch: typeof (nextPatch as any).branch === 'string' ? String((nextPatch as any).branch).trim() : cur.branch,
+        },
+      }
+    })
+  },
+  clearPendingNewSession: () => set({ pendingNewSession: null, workspaceError: '' }),
+
   // --- Setup script ---
   _runSetupScriptForSession: async (params) => {
     const sessionId = String(params.sessionId || '').trim()
@@ -609,13 +682,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const sid = sessionId || s.activeSessionId
     if (!sid) return
     s._setSessionBuffers((prev) => markSetupScriptSkipped(appendDebugTrace(prev, sid, 'setup-script-skipped'), sid))
+    s._maybeFlushPendingInitialSend()
   },
 
   // --- Session workspace ---
   handleCreateSessionWithWorkspace: async (params) => {
     const s = get()
-    if (!s._initialLoadDone) return
-    if (s.isCreatingSession) return
+    if (!s._initialLoadDone) return null
+    if (s.isCreatingSession) return null
     set({ isCreatingSession: true })
     try {
       const sourceDir = params.projectDir || s._pickProjectDirForRepo(params.repoRoot)
@@ -723,6 +797,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
           script: setupScript,
         })
       }
+
+      return newId
     } finally {
       set({ isCreatingSession: false })
     }
@@ -784,6 +860,96 @@ export const useAppStore = create<AppStore>((set, get) => ({
       droid.setProjectDir(info.projectDir)
     }
     return true
+  },
+
+  // --- New-session helpers ---
+  _maybeFlushPendingInitialSend: () => {
+    const s = get()
+    const pending = s.pendingInitialSend
+    if (!pending?.sessionId) return
+    if (pending.sessionId !== s.activeSessionId) return
+
+    const buf = s.sessionBuffers.get(pending.sessionId)
+    if (!buf) return
+    if (buf.isSetupRunning || buf.setupScript.status === 'failed') return
+
+    set({ pendingInitialSend: null })
+    // Send via the normal pipeline (now that setup is not blocking).
+    s.handleSend(pending.input, pending.attachments)
+  },
+
+  _confirmPendingNewSessionAndSend: async ({ input, attachments }) => {
+    const s = get()
+    const pending = s.pendingNewSession
+    if (!pending) return
+    if (!s._initialLoadDone) return
+    if (s.isCreatingSession) return
+
+    s.clearWorkspaceError()
+
+    const repoRoot = String(pending.repoRoot || '').trim()
+    if (!repoRoot) {
+      set({ workspaceError: 'Missing repo root' })
+      return
+    }
+
+    const settings = s.projectSettingsByRepo[repoRoot] || {}
+    const prefix = sanitizeWorktreePrefix(settings.worktreePrefix || '') || 'droi'
+
+    const baseBranchFromSettings = typeof settings.baseBranch === 'string' ? settings.baseBranch.trim() : ''
+
+    const queuedAttachments = attachments ?? []
+
+    let branch = String(pending.branch || '').trim()
+    let mode: 'new-worktree' | 'switch-branch'
+
+    if (pending.isExistingBranch && branch) {
+      mode = 'switch-branch'
+    } else {
+      mode = 'new-worktree'
+      if (!branch) {
+        branch = generateWorktreeBranch(prefix)
+      }
+    }
+
+    const baseBranch = String(baseBranchFromSettings || '').trim()
+    if (mode === 'new-worktree' && !baseBranch) {
+      set({ workspaceError: 'Missing base branch. Configure it in Project Settings first.' })
+      return
+    }
+
+    // Create the session/workspace first.
+    try {
+      const newId = await s.handleCreateSessionWithWorkspace({
+        repoRoot,
+        projectDir: repoRoot,
+        mode,
+        branch,
+        ...(mode === 'new-worktree' ? { baseBranch } : {}),
+      })
+      if (!newId) return
+
+      set({ pendingNewSession: null })
+
+      const buf = get().sessionBuffers.get(newId)
+      const repoKey = String(buf?.repoRoot || repoRoot).trim()
+      const setupScript = repoKey
+        ? String(get().projectSettingsByRepo[repoKey]?.setupScript || '').trim()
+        : ''
+
+      if (setupScript) {
+        set({ pendingInitialSend: { sessionId: newId, input, attachments: queuedAttachments } })
+        // In case setup did not start (or is very fast), attempt an immediate flush.
+        s._maybeFlushPendingInitialSend()
+        return
+      }
+
+      // No setup script: send immediately as the first message.
+      s.handleSend(input, queuedAttachments)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ workspaceError: msg || 'Failed to create session' })
+    }
   },
 
   // --- Send / Cancel ---
@@ -861,6 +1027,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
   handleSend: (input, attachments) => {
     const s = get()
+
+    if (s.pendingNewSession) {
+      void s._confirmPendingNewSessionAndSend({ input, attachments })
+      return
+    }
+
     const sid = s.activeSessionId
     const projDir = s.activeProjectDir
     const normalized = typeof input === 'string'
@@ -1393,38 +1565,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const commonRepoRoot = resolved.repoRoot || repoRoot || sourceDir
         if (!commonRepoRoot) throw new Error('Missing repo root')
 
-        const settings = get().projectSettingsByRepo[commonRepoRoot] || {}
-        const prefix = sanitizeWorktreePrefix(settings.worktreePrefix || '') || 'droi'
+        await s._ensureProjectSettingsInitialized({ repoRoot: commonRepoRoot, hintBranch: resolved.branch })
 
-        const baseBranchFromSettings = typeof settings.baseBranch === 'string' ? settings.baseBranch.trim() : ''
-        let baseBranch: string | undefined = baseBranchFromSettings || undefined
-        if (!baseBranch) {
-          const branches = await droid.listGitBranches({ projectDir: commonRepoRoot }).catch(() => [] as string[])
-          if (branches.includes('main')) baseBranch = 'main'
-          else if (branches.includes('master')) baseBranch = 'master'
-          else baseBranch = resolved.branch || (await droid.getGitBranch({ projectDir: commonRepoRoot }).catch(() => '')) || undefined
-        }
-
-        let lastErr: unknown = null
-        for (let i = 0; i < 5; i++) {
-          const branch = generateWorktreeBranch(prefix)
-          try {
-            await get().handleCreateSessionWithWorkspace({
-              repoRoot: commonRepoRoot,
-              projectDir: commonRepoRoot,
-              mode: 'new-worktree',
-              branch,
-              baseBranch,
-            })
-            return
-          } catch (err) {
-            lastErr = err
-            const msg = err instanceof Error ? err.message : String(err)
-            if (/already exists|path.*exists|exists.*already/i.test(msg)) continue
-            throw err
-          }
-        }
-        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'Failed to create worktree session'))
+        set({
+          pendingNewSession: {
+            repoRoot: commonRepoRoot,
+            branch: '',
+            isExistingBranch: false,
+          },
+        })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         set({ workspaceError: msg || 'Failed to create session' })
@@ -1450,6 +1599,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         return [...prev, { dir: repoRoot, name, sessions: [] }]
       })
 
+      await s._ensureProjectSettingsInitialized({ repoRoot, hintBranch: info.branch })
+
       get().handleNewSession(repoRoot)
     })()
   },
@@ -1466,6 +1617,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const selectedMeta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sessionId)
     if (!selectedMeta) return
 
+    set({ pendingNewSession: null })
+
     const currentSid = s.activeSessionId
     const currentBuf = s.sessionBuffers.get(currentSid)
     if (currentBuf && currentBuf.messages.length > 0 && !currentBuf.isRunning) {
@@ -1477,6 +1630,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       const aligned = await s._ensureWorkspaceForMeta(selectedMeta)
       await get()._switchToSessionWithAligned(selectedMeta, aligned)
+      s._maybeFlushPendingInitialSend()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       set({ workspaceError: msg || 'Failed to switch to session workspace' })
@@ -1609,6 +1763,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   handleDeleteProject: (repoRoot) => {
     if (!repoRoot) return
 
+    set((prev) => (prev.pendingNewSession?.repoRoot === repoRoot ? { pendingNewSession: null } : {}))
+
     void (async () => {
       const targetProject = get().projects.find((p) => p.dir === repoRoot)
       const targetSessions = targetProject?.sessions || []
@@ -1728,6 +1884,7 @@ export const useProjects = () => useAppStore((s) => s.projects)
 export const useProjectSettingsByRepo = () => useAppStore((s) => s.projectSettingsByRepo)
 export const useActiveProjectDir = () => useAppStore((s) => s.activeProjectDir)
 export const useActiveSessionId = () => useAppStore((s) => s.activeSessionId)
+export const usePendingNewSession = () => useAppStore((s) => s.pendingNewSession)
 export const useWorkspaceError = () => useAppStore((s) => s.workspaceError)
 export const useDeletingSessionIds = () => useAppStore((s) => s.deletingSessionIds)
 export const useIsCreatingSession = () => useAppStore((s) => s.isCreatingSession)
@@ -2063,6 +2220,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         }
         return applySetupScriptEvent(next, sid, event)
       })
+
+      if (event.type === 'finished') {
+        useAppStore.getState()._maybeFlushPendingInitialSend()
+      }
     })
 
     const unsubSessionReplace = (typeof (droid as any)?.onSessionIdReplaced === 'function')

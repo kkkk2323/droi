@@ -26,3 +26,12 @@ export function useGitBranchesQuery(projectDir: string, enabled = true) {
     enabled: Boolean(projectDir) && enabled,
   })
 }
+
+export function useGitWorktreeBranchesInUseQuery(repoRoot: string, enabled = true) {
+  return useQuery({
+    queryKey: ['gitWorktreeBranchesInUse', repoRoot],
+    queryFn: () => getDroidClient().listGitWorktreeBranchesInUse({ repoRoot }),
+    enabled: Boolean(repoRoot) && enabled,
+    staleTime: 2000,
+  })
+}

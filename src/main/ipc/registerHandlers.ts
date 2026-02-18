@@ -17,6 +17,7 @@ import {
   createWorkspace,
   getWorkspaceInfo,
   listBranches,
+  listWorktreeBranchesInUse,
   pushBranch,
   removeWorktree,
   switchWorkspaceBranch,
@@ -834,6 +835,17 @@ export function registerIpcHandlers(opts: { getMainWindow: () => BrowserWindow |
     }
   })
 
+  ipcMain.handle('git:worktree-branches-in-use', async (_event, params: { repoRoot: string }) => {
+    const repoRoot = typeof params?.repoRoot === 'string' ? params.repoRoot.trim() : ''
+    const dir = repoRoot || activeProjectDir
+    if (!dir) return []
+    try {
+      return await listWorktreeBranchesInUse({ repoRoot: dir })
+    } catch {
+      return []
+    }
+  })
+
   ipcMain.handle('git:workspace-info', async (_event, params: { projectDir: string }) => {
     const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
     if (!dir) return null
@@ -873,7 +885,9 @@ export function registerIpcHandlers(opts: { getMainWindow: () => BrowserWindow |
     const worktreeDir = typeof params?.worktreeDir === 'string' ? params.worktreeDir.trim() : ''
     const force = Boolean(params?.force)
     if (!repoRoot || !worktreeDir) throw new Error('Missing repoRoot/worktreeDir')
-    await removeWorktree({ repoRoot, worktreeDir, force })
+    const deleteBranch = Boolean((params as any)?.deleteBranch)
+    const branch = typeof (params as any)?.branch === 'string' ? String((params as any).branch).trim() : ''
+    await removeWorktree({ repoRoot, worktreeDir, force, deleteBranch, branch })
     return { ok: true } as const
   })
 

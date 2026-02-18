@@ -12,6 +12,7 @@ import {
   createWorkspace,
   getWorkspaceInfo,
   listBranches,
+  listWorktreeBranchesInUse,
   pushBranch,
   removeWorktree,
   switchWorkspaceBranch,
@@ -1118,6 +1119,20 @@ export function createApiRoutes() {
     }
   })
 
+  api.post('/git-worktree-branches-in-use', async (c) => {
+    try {
+      const deps = c.get('deps')
+      const body = await readJsonBody<Record<string, unknown>>(c)
+      const repoRoot = typeof body.repoRoot === 'string'
+        ? body.repoRoot.trim()
+        : (deps.cachedStateRef.value.activeProjectDir || '')
+      if (!repoRoot) return c.json([])
+      return c.json(await listWorktreeBranchesInUse({ repoRoot }))
+    } catch {
+      return c.json([])
+    }
+  })
+
   api.post('/git-remove-worktree', async (c) => {
     try {
       const body = await readJsonBody<Record<string, unknown>>(c)
@@ -1126,7 +1141,9 @@ export function createApiRoutes() {
       const force = Boolean(body.force)
       if (!repoRoot || !worktreeDir) return jsonError(c, 400, 'Missing repoRoot/worktreeDir')
 
-      await removeWorktree({ repoRoot, worktreeDir, force })
+      const deleteBranch = Boolean((body as any).deleteBranch)
+      const branch = typeof (body as any).branch === 'string' ? String((body as any).branch).trim() : ''
+      await removeWorktree({ repoRoot, worktreeDir, force, deleteBranch, branch })
       return c.json({ ok: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

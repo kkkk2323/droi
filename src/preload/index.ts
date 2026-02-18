@@ -105,6 +105,7 @@ const droidAPI: DroidClientAPI = {
   getGitStatus: (params) => ipcRenderer.invoke('git:status', params),
   getGitBranch: (params) => ipcRenderer.invoke('git:branch', params),
   listGitBranches: (params) => ipcRenderer.invoke('git:list-branches', params),
+  listGitWorktreeBranchesInUse: (params) => ipcRenderer.invoke('git:worktree-branches-in-use', params),
   getWorkspaceInfo: (params) => ipcRenderer.invoke('git:workspace-info', params),
   switchWorkspace: (params) => ipcRenderer.invoke('git:switch-workspace', params),
   createWorkspace: (params) => ipcRenderer.invoke('git:create-workspace', params),
