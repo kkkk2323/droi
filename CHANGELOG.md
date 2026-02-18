@@ -1,3 +1,8 @@
+## 0.3.2 - 2026-02-18
+
+### Fixes
+- Correct electron-builder architecture flags in release workflow
+
 ## 0.3.1 - 2026-02-18
 
 ### Fixes
