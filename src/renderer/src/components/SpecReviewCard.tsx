@@ -52,15 +52,16 @@ interface SpecReviewCardProps {
 }
 
 export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecReviewCardProps) {
-  const data = extractExitSpecData(request)
-  if (!data) return null
-
-  const { plan, title } = data
   const [expanded, setExpanded] = useState(true)
 
   useEffect(() => {
     setExpanded(true)
   }, [request.requestId])
+
+  const data = extractExitSpecData(request)
+  if (!data) return null
+
+  const { plan, title } = data
 
   const proceedOptions = request.optionsMeta.filter((o) => o.value !== 'cancel')
   const cancelOption = request.optionsMeta.find((o) => o.value === 'cancel')
