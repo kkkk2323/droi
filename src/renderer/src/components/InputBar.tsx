@@ -338,11 +338,12 @@ export function InputBar({
 }: InputBarProps) {
   const normalizedDraftKey = normalizeDraftKey(draftKey)
   const canPersistDraft = Boolean(normalizedDraftKey && String(activeProjectDir || '').trim())
+
   const initialDraftRef = useRef<InputBarDraft | null>(null)
   if (initialDraftRef.current === null) {
     initialDraftRef.current = canPersistDraft ? readInputBarDraft(normalizedDraftKey) : emptyInputBarDraft()
   }
-  const initialDraft = initialDraftRef.current!
+  const initialDraft = initialDraftRef.current
 
   const [input, setInput] = useState(() => initialDraft.input)
   const [attachments, setAttachments] = useState<Attachment[]>(() => initialDraft.attachments)
