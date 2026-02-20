@@ -688,6 +688,13 @@ const browserClient: DroidClientAPI = {
       body: JSON.stringify({ localDiagnosticsEnabled: Boolean(enabled) }),
     }).catch(() => {})
   },
+  setLanAccessEnabled: (enabled) => {
+    apiFetch(`${getApiBase()}/app-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lanAccessEnabled: Boolean(enabled) }),
+    }).catch(() => {})
+  },
   setLocalDiagnosticsRetention: ({ retentionDays, maxTotalMb }) => {
     const days = (typeof retentionDays === 'number' && Number.isFinite(retentionDays)) ? Math.max(1, Math.floor(retentionDays)) : null
     const mb = (typeof maxTotalMb === 'number' && Number.isFinite(maxTotalMb)) ? Math.max(1, Math.floor(maxTotalMb)) : null
@@ -1133,6 +1140,7 @@ export function getDroidClient(): DroidClientAPI {
     if (typeof (merged as any).openWithEditor !== 'function') merged.openWithEditor = browserClient.openWithEditor
     if (typeof (merged as any).setLocalDiagnosticsEnabled !== 'function') merged.setLocalDiagnosticsEnabled = browserClient.setLocalDiagnosticsEnabled
     if (typeof (merged as any).setLocalDiagnosticsRetention !== 'function') merged.setLocalDiagnosticsRetention = browserClient.setLocalDiagnosticsRetention
+    if (typeof (merged as any).setLanAccessEnabled !== 'function') merged.setLanAccessEnabled = browserClient.setLanAccessEnabled
     if (typeof (merged as any).appendDiagnosticsEvent !== 'function') merged.appendDiagnosticsEvent = browserClient.appendDiagnosticsEvent
     if (typeof (merged as any).getDiagnosticsDir !== 'function') merged.getDiagnosticsDir = browserClient.getDiagnosticsDir
     if (typeof (merged as any).exportDiagnostics !== 'function') merged.exportDiagnostics = browserClient.exportDiagnostics

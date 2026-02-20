@@ -134,6 +134,9 @@ export function createApiRoutes() {
         const v = body.commitMessageModelId
         ;(patch as any).commitMessageModelId = v === null ? undefined : (typeof v === 'string' && v.trim() ? v.trim() : undefined)
       }
+      if (typeof body.lanAccessEnabled === 'boolean' || body.lanAccessEnabled === null) {
+        ;(patch as any).lanAccessEnabled = body.lanAccessEnabled === null ? undefined : body.lanAccessEnabled
+      }
 
       deps.cachedStateRef.value = await deps.appStateStore.update(patch as any)
       setTraceChainEnabledOverride(readTraceChainEnabled(deps.cachedStateRef.value))
