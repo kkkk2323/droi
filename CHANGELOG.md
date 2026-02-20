@@ -1,3 +1,11 @@
+## 0.4.1 - 2026-02-20
+
+### Features
+- Add Claude 4.6 Sonnet, Gemini 3.1 Pro and update Opus 4.6 Fast multiplier
+
+### Fixes
+- Resolve react hook violation and refactor draft handling
+
 ## 0.4.0 - 2026-02-18
 
 ### Features
