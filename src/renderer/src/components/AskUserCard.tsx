@@ -43,7 +43,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
 
   return (
     <footer className="shrink-0 px-4 pb-4">
-      <div className="mx-auto max-w-4xl rounded-2xl border  bg-card  overflow-hidden">
+      <div className="mx-auto max-w-4xl rounded-2xl border bg-card overflow-hidden">
         <div className="flex items-center gap-2 px-6 pt-4 pb-2">
           <MessageSquareWarning className="size-5 shrink-0 " />
           <span className="text-sm font-medium text-foreground">Input required</span>

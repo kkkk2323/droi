@@ -131,7 +131,6 @@ function ChatView({
     return (
       <div className="mx-auto max-w-3xl px-6 overflow-hidden">
         <MessageEntry
-          key={msg.id}
           message={msg}
           isStreaming={isLast && isStreamingLast}
           isSessionRunning={isRunning}
