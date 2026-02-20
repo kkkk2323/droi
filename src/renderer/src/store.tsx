@@ -128,6 +128,7 @@ interface AppState {
   localDiagnosticsMaxTotalMb: number
   diagnosticsDir: string
   commitMessageModelId: string
+  lanAccessEnabled: boolean
   customModels: CustomModelDef[]
   projects: Project[]
   projectSettingsByRepo: Record<string, ProjectSettings>
@@ -176,6 +177,7 @@ interface AppActions {
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
   setCommitMessageModelId: (modelId: string) => void
+  setLanAccessEnabled: (enabled: boolean) => void
   refreshDiagnosticsDir: () => Promise<void>
   exportDiagnostics: (params?: { sessionId?: string }) => Promise<{ path: string }>
   openPath: (path: string) => Promise<void>
@@ -247,6 +249,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   localDiagnosticsMaxTotalMb: 50,
   diagnosticsDir: '',
   commitMessageModelId: 'minimax-m2.5',
+  lanAccessEnabled: false,
   customModels: [],
   projects: [],
   projectSettingsByRepo: {},
@@ -529,6 +532,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ commitMessageModelId: next })
     if (typeof (droid as any)?.setCommitMessageModelId === 'function') {
       ;(droid as any).setCommitMessageModelId(next)
+    }
+  },
+
+  setLanAccessEnabled: (enabled) => {
+    const next = Boolean(enabled)
+    set({ lanAccessEnabled: next })
+    if (typeof (droid as any)?.setLanAccessEnabled === 'function') {
+      ;(droid as any).setLanAccessEnabled(next)
     }
   },
 
@@ -1879,6 +1890,7 @@ export const useLocalDiagnosticsRetentionDays = () => useAppStore((s) => s.local
 export const useLocalDiagnosticsMaxTotalMb = () => useAppStore((s) => s.localDiagnosticsMaxTotalMb)
 export const useDiagnosticsDir = () => useAppStore((s) => s.diagnosticsDir)
 export const useCommitMessageModelId = () => useAppStore((s) => s.commitMessageModelId)
+export const useLanAccessEnabled = () => useAppStore((s) => s.lanAccessEnabled)
 export const useCustomModels = () => useAppStore((s) => s.customModels)
 export const useProjects = () => useAppStore((s) => s.projects)
 export const useProjectSettingsByRepo = () => useAppStore((s) => s.projectSettingsByRepo)
@@ -1941,6 +1953,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         const commitModel = typeof (state as any).commitMessageModelId === 'string'
           ? String((state as any).commitMessageModelId || '').trim()
           : ''
+        const lanAccess = typeof (state as any).lanAccessEnabled === 'boolean'
+          ? Boolean((state as any).lanAccessEnabled)
+          : false
         const ps = (state as any)?.projectSettings
 
         useAppStore.setState({
@@ -1954,6 +1969,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           localDiagnosticsMaxTotalMb: maxTotalMb,
           diagnosticsDir: typeof diagDir === 'string' ? diagDir : '',
           commitMessageModelId: commitModel || 'minimax-m2.5',
+          lanAccessEnabled: lanAccess,
           ...(ps && typeof ps === 'object' ? { projectSettingsByRepo: ps as Record<string, ProjectSettings> } : {}),
         })
 

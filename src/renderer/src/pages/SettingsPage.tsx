@@ -2,15 +2,17 @@ import React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useCustomModels, useCommitMessageModelId, useActions } from '@/store'
+import { useCustomModels, useCommitMessageModelId, useLanAccessEnabled, useActions } from '@/store'
 import { MODEL_GROUPS } from '@/types'
 
 export function SettingsPage() {
   const navigate = useNavigate()
   const customModels = useCustomModels()
   const commitMessageModelId = useCommitMessageModelId()
-  const { setCommitMessageModelId } = useActions()
+  const lanAccessEnabled = useLanAccessEnabled()
+  const { setCommitMessageModelId, setLanAccessEnabled } = useActions()
 
   return (
     <div className="flex flex-1 flex-col overflow-auto">
@@ -72,6 +74,24 @@ export function SettingsPage() {
               ))}
             </SelectContent>
           </Select>
+        </section>
+
+        <Separator />
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">LAN Access</h2>
+            <p className="text-xs text-muted-foreground">
+              Allow devices on the same network to access Droi. Requires restart to take effect.
+            </p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+            <Switch
+              checked={lanAccessEnabled}
+              onCheckedChange={setLanAccessEnabled}
+            />
+            Enable LAN access
+          </label>
         </section>
       </div>
     </div>
