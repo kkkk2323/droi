@@ -14,6 +14,9 @@ import { InputBar } from '@/components/InputBar'
 import { TodoPanel } from '@/components/TodoPanel'
 import { DebugTracePanel } from '@/components/DebugTracePanel'
 import { SessionConfigPage } from '@/components/SessionConfigPage'
+import { PermissionCard } from '@/components/PermissionCard'
+import { AskUserCard } from '@/components/AskUserCard'
+import { isExitSpecPermission } from '@/components/SpecReviewCard'
 
 
 export function ChatPage() {
@@ -90,6 +93,9 @@ export function ChatPage() {
   const draftKey = pendingNewSession ? pendingKey : activeSessionId
   const inputDisabled = isCreatingSession || noProject || (!pendingNewSession && noSession) || (!pendingNewSession && isSetupBlocked)
 
+  const hasPermission = Boolean(pendingPermissionRequest) && !isExitSpecPermission(pendingPermissionRequest)
+  const hasAskUser = Boolean(pendingAskUserRequest)
+
   return (
     <>
       {pendingNewSession
@@ -112,31 +118,39 @@ export function ChatPage() {
         )}
       {showDebugTrace && <DebugTracePanel />}
       {!pendingNewSession && <TodoPanel messages={messages} />}
-      <InputBar
-        key={inputKey}
-        draftKey={draftKey}
-        model={model}
-        autoLevel={autoLevel}
-        reasoningEffort={reasoningEffort}
-        customModels={customModels}
-        onModelChange={setModel}
-        onAutoLevelChange={setAutoLevel}
-        onReasoningEffortChange={setReasoningEffort}
-        onSend={handleSendWrapped}
-        onCancel={handleCancel}
-        onForceCancel={handleForceCancel}
-        isCancelling={isCancelling}
-        isRunning={isRunning}
-        disabled={inputDisabled}
-        disabledPlaceholder={disabledPlaceholder}
-        activeProjectDir={effectiveProjectDir}
-        onUiDebug={appendUiDebugTrace}
-        pendingPermissionRequest={pendingPermissionRequest}
-        onRespondPermission={handleRespondPermission}
-        pendingAskUserRequest={pendingAskUserRequest}
-        onRespondAskUser={handleRespondAskUser}
-        specChangesMode={specChangesMode}
-      />
+      {hasPermission && pendingPermissionRequest ? (
+        <PermissionCard
+          request={pendingPermissionRequest}
+          onRespond={handleRespondPermission}
+        />
+      ) : hasAskUser && pendingAskUserRequest ? (
+        <AskUserCard
+          request={pendingAskUserRequest}
+          onRespond={handleRespondAskUser}
+        />
+      ) : (
+        <InputBar
+          key={inputKey}
+          draftKey={draftKey}
+          model={model}
+          autoLevel={autoLevel}
+          reasoningEffort={reasoningEffort}
+          customModels={customModels}
+          onModelChange={setModel}
+          onAutoLevelChange={setAutoLevel}
+          onReasoningEffortChange={setReasoningEffort}
+          onSend={handleSendWrapped}
+          onCancel={handleCancel}
+          onForceCancel={handleForceCancel}
+          isCancelling={isCancelling}
+          isRunning={isRunning}
+          disabled={inputDisabled}
+          disabledPlaceholder={disabledPlaceholder}
+          activeProjectDir={effectiveProjectDir}
+          onUiDebug={appendUiDebugTrace}
+          specChangesMode={specChangesMode}
+        />
+      )}
     </>
   )
 }

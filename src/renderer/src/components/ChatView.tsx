@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../lib/utils'
-import { ScrollArea } from './ui/scroll-area'
 import {
   ChevronDown, ChevronRight, FileCode, FolderOpen, Terminal,
   FileEdit, Play, Search, Globe, Loader2, Check, Paperclip, X, BookOpen, Brain,
@@ -57,40 +57,13 @@ function ChatView({
   onRespondPermission,
   onRequestSpecChanges,
 }: ChatViewProps): React.JSX.Element {
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const prevMessagesRef = useRef<ChatMessage[]>([])
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
   const isAtBottomRef = useRef(true)
   const projectName = activeProjectDir ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir : ''
 
-  const BOTTOM_THRESHOLD = 40
-
-  const handleScroll = useCallback(() => {
-    const el = viewportRef.current
-    if (!el) return
-    isAtBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD
-  }, [])
-
-  useEffect(() => {
-    const prev = prevMessagesRef.current
-    const isSessionSwitch = prev.length === 0 || Math.abs(messages.length - prev.length) > 5
-    prevMessagesRef.current = messages
-
-    if (isSessionSwitch) {
-      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-      isAtBottomRef.current = true
-      return
-    }
-
-    if (isAtBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages])
-
   useEffect(() => {
     if (isExitSpecPermission(pendingPermissionRequest)) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
     }
   }, [pendingPermissionRequest])
 
@@ -140,45 +113,67 @@ function ChatView({
     )
   }
 
-  // Check if the last assistant message is still being streamed
   const lastMsg = messages[messages.length - 1]
   const isStreamingLast = isRunning && lastMsg?.role === 'assistant'
   const isExitSpec = isExitSpecPermission(pendingPermissionRequest)
 
-  return (
-    <ScrollArea className="flex-1" viewportRef={viewportRef} onScroll={handleScroll}>
-      <div className="mx-auto max-w-3xl px-6 py-4 overflow-hidden">
-        {messages.map((msg, idx) => {
-          const isLast = idx === messages.length - 1
-          return (
-            <MessageEntry
-              key={msg.id}
-              message={msg}
-              isStreaming={isLast && isStreamingLast}
-              isSessionRunning={isRunning}
-              isPendingSend={Boolean(pendingSendMessageIds[msg.id])}
-            />
-          )
-        })}
+  const handleFollowOutput = useCallback((atBottom: boolean) => {
+    if (atBottom) return 'smooth' as const
+    return false as const
+  }, [])
 
-        {pendingPermissionRequest && isExitSpec && onRespondPermission && (
-          <SpecReviewCard
-            request={pendingPermissionRequest}
-            onRespond={onRespondPermission}
-            onRequestChanges={onRequestSpecChanges || (() => {})}
-          />
-        )}
+  const handleAtBottomChange = useCallback((atBottom: boolean) => {
+    isAtBottomRef.current = atBottom
+  }, [])
 
-        {isRunning && lastMsg?.role !== 'assistant' && (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" />
-            <span>Thinking...</span>
-          </div>
-        )}
-
-        <div ref={bottomRef} />
+  const renderItem = useCallback((_index: number, msg: ChatMessage) => {
+    const isLast = msg === messages[messages.length - 1]
+    return (
+      <div className="mx-auto max-w-3xl px-6 overflow-hidden">
+        <MessageEntry
+          key={msg.id}
+          message={msg}
+          isStreaming={isLast && isStreamingLast}
+          isSessionRunning={isRunning}
+          isPendingSend={Boolean(pendingSendMessageIds[msg.id])}
+        />
       </div>
-    </ScrollArea>
+    )
+  }, [messages, isStreamingLast, isRunning, pendingSendMessageIds])
+
+  const footer = useCallback(() => (
+    <div className="mx-auto max-w-3xl px-6 overflow-hidden">
+      {pendingPermissionRequest && isExitSpec && onRespondPermission && (
+        <SpecReviewCard
+          request={pendingPermissionRequest}
+          onRespond={onRespondPermission}
+          onRequestChanges={onRequestSpecChanges || (() => {})}
+        />
+      )}
+      {isRunning && lastMsg?.role !== 'assistant' && (
+        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          <span>Thinking...</span>
+        </div>
+      )}
+    </div>
+  ), [pendingPermissionRequest, isExitSpec, onRespondPermission, onRequestSpecChanges, isRunning, lastMsg])
+
+  return (
+    <Virtuoso
+      ref={virtuosoRef}
+      className="flex-1"
+      data={messages}
+      itemContent={renderItem}
+      computeItemKey={(_index, msg) => msg.id}
+      followOutput={handleFollowOutput}
+      atBottomStateChange={handleAtBottomChange}
+      atBottomThreshold={40}
+      initialTopMostItemIndex={messages.length - 1}
+      increaseViewportBy={200}
+      components={{ Footer: footer }}
+      style={{ flex: 1 }}
+    />
   )
 }
 

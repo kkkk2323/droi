@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Check, Circle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ChatMessage, ToolCallBlock } from '@/types'
@@ -29,8 +29,7 @@ export function parseTodos(todosStr: string): TodoItem[] {
   })
 }
 
-export function extractTodos(messages: ChatMessage[]): TodoItem[] {
-  let lastTodos = ''
+function extractLastTodoString(messages: ChatMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg.role !== 'assistant') continue
@@ -38,41 +37,28 @@ export function extractTodos(messages: ChatMessage[]): TodoItem[] {
       const block = msg.blocks[j]
       if (block.kind === 'tool_call' && /^TodoWrite$/i.test(block.toolName)) {
         const tb = block as ToolCallBlock
-        if (tb.result !== undefined) {
-          const raw = tb.parameters?.todos
-          if (typeof raw === 'string' && raw.trim()) {
-            lastTodos = raw
-            break
-          }
+        const raw = tb.parameters?.todos
+        if (typeof raw === 'string' && raw.trim()) {
+          if (tb.result !== undefined) return raw
+          return raw
         }
       }
     }
-    if (lastTodos) break
   }
-  if (!lastTodos) {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (msg.role !== 'assistant') continue
-      for (let j = msg.blocks.length - 1; j >= 0; j--) {
-        const block = msg.blocks[j]
-        if (block.kind === 'tool_call' && /^TodoWrite$/i.test(block.toolName)) {
-          const raw = block.parameters?.todos
-          if (typeof raw === 'string' && raw.trim()) {
-            lastTodos = raw
-            break
-          }
-        }
-      }
-      if (lastTodos) break
-    }
-  }
-  if (!lastTodos) return []
-  return parseTodos(lastTodos)
+  return ''
+}
+
+export function extractTodos(messages: ChatMessage[]): TodoItem[] {
+  const raw = extractLastTodoString(messages)
+  if (!raw) return []
+  return parseTodos(raw)
 }
 
 export function isTodoWriteBlock(block: { kind: string; toolName?: string }): boolean {
   return block.kind === 'tool_call' && /^TodoWrite$/i.test((block as any).toolName || '')
 }
+
+const EMPTY_TODOS: TodoItem[] = []
 
 interface TodoPanelProps {
   messages: ChatMessage[]
@@ -80,8 +66,13 @@ interface TodoPanelProps {
 
 export function TodoPanel({ messages }: TodoPanelProps) {
   const [todosExpanded, setTodosExpanded] = useState(false)
+  const cacheRef = useRef<{ raw: string; parsed: TodoItem[] }>({ raw: '', parsed: EMPTY_TODOS })
 
-  const todos = useMemo(() => extractTodos(messages), [messages])
+  const rawStr = extractLastTodoString(messages)
+  if (rawStr !== cacheRef.current.raw) {
+    cacheRef.current = { raw: rawStr, parsed: rawStr ? parseTodos(rawStr) : EMPTY_TODOS }
+  }
+  const todos = cacheRef.current.parsed
 
   if (todos.length === 0) return null
 

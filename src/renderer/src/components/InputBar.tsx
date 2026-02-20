@@ -8,21 +8,18 @@ import {
   SelectLabel,
   SelectSeparator,
 } from './ui/select'
-import { ArrowUp, Square, Plus, X, Paperclip, Image as ImageIcon, MessageSquareWarning, ShieldAlert, FileEdit, Play, Terminal, Search, Globe, FileCode, BookOpen, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowUp, Square, Plus, X, Paperclip, Image as ImageIcon, BookOpen, Sparkles, Loader2 } from 'lucide-react'
 import { MODELS, MODEL_GROUPS, AUTO_LEVELS, type ModelProvider, type CustomModelDef, type SlashCommandDef, type SkillDef, getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
 import { Kimi } from '@lobehub/icons'
 import { Zhipu } from '@lobehub/icons'
 import { Claude } from '@lobehub/icons'
 import { OpenAI } from '@lobehub/icons'
 import { Gemini } from '@lobehub/icons'
-import type { PendingAskUserRequest, PendingPermissionRequest } from '@/state/appReducer'
-import type { DroidPermissionOption } from '@/types'
 import { getDroidClient, isBrowserMode } from '@/droidClient'
 import { KeyUsageIndicator } from './KeyUsageIndicator'
 import { TokenUsageIndicator } from './TokenUsageIndicator'
 import { McpStatusIndicator } from './McpStatusIndicator'
 import { SettingsFlashIndicator } from './SettingsFlashIndicator'
-import { isExitSpecPermission } from './SpecReviewCard'
 import { useSlashCommandsQuery, useSkillsQuery } from '@/hooks/useSlashCommands'
 
 const droid = getDroidClient()
@@ -69,11 +66,6 @@ function mergeAttachments(prev: Attachment[], next: Attachment[]): Attachment[] 
 }
 
 type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
-
-type PermissionResponseParams = {
-  selectedOption: DroidPermissionOption
-  autoLevel?: 'low' | 'medium' | 'high'
-}
 
 type SelectedTag =
   | null
@@ -151,156 +143,6 @@ const SLASH_FETCH_DEBOUNCE_MS = 300
 const MAX_SLASH_ITEMS_DISPLAY = 24
 
 
-function permissionLabel(opt: DroidPermissionOption): string {
-  switch (opt) {
-    case 'proceed_once': return 'Proceed once'
-    case 'proceed_always': return 'Proceed always'
-    case 'proceed_auto_run': return 'Auto-run'
-    case 'proceed_auto_run_low': return 'Auto-run (Low)'
-    case 'proceed_auto_run_medium': return 'Auto-run (Medium)'
-    case 'proceed_auto_run_high': return 'Auto-run (High)'
-    case 'proceed_edit': return 'Proceed edit'
-    case 'cancel': return 'Cancel'
-  }
-}
-
-function normalizePermissionToolName(value: unknown): string {
-  const raw = typeof value === 'string' ? value.trim() : ''
-  if (!raw) return ''
-  const parts = raw.split('.')
-  return parts[parts.length - 1] || raw
-}
-
-function extractPermissionToolName(item: unknown): string {
-  const raw = (item as any)?.toolUse || item
-  if (!raw || typeof raw !== 'object') return ''
-
-  const directName = normalizePermissionToolName((raw as any).name)
-  if (directName) return directName
-
-  const toolName = normalizePermissionToolName((raw as any).toolName)
-  if (toolName) return toolName
-
-  const recipientName = normalizePermissionToolName((raw as any).recipient_name)
-  if (recipientName) return recipientName
-
-  return ''
-}
-
-function extractPermissionToolInput(item: unknown): Record<string, unknown> {
-  const raw = (item as any)?.toolUse || item
-  if (!raw || typeof raw !== 'object') return {}
-
-  const input = (raw as any).input
-  if (input && typeof input === 'object' && !Array.isArray(input)) return input as Record<string, unknown>
-
-  const parameters = (raw as any).parameters
-  if (parameters && typeof parameters === 'object' && !Array.isArray(parameters)) return parameters as Record<string, unknown>
-
-  return {}
-}
-
-function parsePermissionToolUse(item: unknown): { name: string; input: Record<string, unknown> } | null {
-  const name = extractPermissionToolName(item)
-  if (!name) return null
-  return { name, input: extractPermissionToolInput(item) }
-}
-
-function getToolUseIcon(name: string): React.ReactNode {
-  if (/exit\s?spec/i.test(name)) return <FileCode className="size-3.5" />
-  if (/edit|create|write|multiedit/i.test(name)) return <FileEdit className="size-3.5" />
-  if (/execute/i.test(name)) return <Play className="size-3.5" />
-  if (/read|glob|ls/i.test(name)) return <Search className="size-3.5" />
-  if (/grep/i.test(name)) return <Search className="size-3.5" />
-  if (/fetch|web/i.test(name)) return <Globe className="size-3.5" />
-  return <Terminal className="size-3.5" />
-}
-
-function formatParamValue(value: unknown): string {
-  if (typeof value === 'string') return value.length > 120 ? value.slice(0, 120) + '...' : value
-  if (typeof value === 'boolean' || typeof value === 'number') return String(value)
-  try { const s = JSON.stringify(value); return s.length > 120 ? s.slice(0, 120) + '...' : s } catch { return String(value) }
-}
-
-function PermissionToolUseCard({ item }: { item: unknown }) {
-  const parsed = parsePermissionToolUse(item)
-  if (!parsed) return null
-
-  const name: string = parsed.name || 'Unknown'
-  const input: Record<string, unknown> = parsed.input || {}
-
-  if (/exit\s?spec/i.test(name)) return null
-
-  // Execute: terminal-style command
-  if (/execute/i.test(name) && typeof input.command === 'string') {
-    return (
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          {getToolUseIcon(name)}
-          <span className="text-xs font-medium text-foreground">Execute</span>
-        </div>
-        <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-300">
-          <span className="text-zinc-500">$ </span>{String(input.command)}
-        </pre>
-      </div>
-    )
-  }
-
-  // Edit/Create/MultiEdit: file path + change summary
-  if (/edit|create|write|multiedit/i.test(name)) {
-    const filePath = typeof input.file_path === 'string' ? input.file_path : ''
-    const fileName = filePath ? filePath.split('/').slice(-2).join('/') : ''
-    return (
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          {getToolUseIcon(name)}
-          <span className="text-xs font-medium text-foreground">{name}</span>
-          {fileName && <span className="text-[11px] font-mono text-muted-foreground truncate">{fileName}</span>}
-        </div>
-        {typeof input.old_str === 'string' && (
-          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5">
-            {fileName && <div className="mb-1 text-zinc-500">{fileName}</div>}
-            {String(input.old_str).split('\n').map((line, i) => (
-              <div key={`o${i}`} className="text-red-400/80"><span className="select-none text-red-600/50">- </span>{line}</div>
-            ))}
-            {typeof input.new_str === 'string' && String(input.new_str).split('\n').map((line, i) => (
-              <div key={`n${i}`} className="text-emerald-400/80"><span className="select-none text-emerald-600/50">+ </span>{line}</div>
-            ))}
-          </pre>
-        )}
-        {typeof input.content === 'string' && !input.old_str && (
-          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] leading-5 text-zinc-700 dark:text-zinc-300">
-            {input.content.length > 300 ? input.content.slice(0, 300) + '...' : input.content}
-          </pre>
-        )}
-      </div>
-    )
-  }
-
-  // Fallback: structured key-value display
-  const entries = Object.entries(input).filter(([, v]) => v !== undefined && v !== null && v !== '')
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        {getToolUseIcon(name)}
-        <span className="text-xs font-medium text-foreground">{name}</span>
-      </div>
-      {entries.length > 0 ? (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 space-y-1">
-          {entries.map(([key, val]) => (
-            <div key={key} className="flex gap-2 text-[11px]">
-              <span className="shrink-0 text-muted-foreground">{key}:</span>
-              <span className="text-zinc-700 dark:text-zinc-300 break-all">{formatParamValue(val)}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] text-muted-foreground">No parameters</div>
-      )}
-    </div>
-  )
-}
-
 interface InputBarProps {
   draftKey?: string
   model: string
@@ -319,10 +161,6 @@ interface InputBarProps {
   disabledPlaceholder?: string
   activeProjectDir?: string
   onUiDebug?: (message: string) => void
-  pendingAskUserRequest?: PendingAskUserRequest | null
-  onRespondAskUser?: (params: { cancelled?: boolean; answers: Array<{ index: number; question: string; answer: string }> }) => void
-  pendingPermissionRequest?: PendingPermissionRequest | null
-  onRespondPermission?: (params: PermissionResponseParams) => void
   specChangesMode?: boolean
 }
 
@@ -332,8 +170,6 @@ export function InputBar({
   onSend, onCancel, onForceCancel, isCancelling, isRunning, disabled, disabledPlaceholder,
   activeProjectDir,
   onUiDebug,
-  pendingAskUserRequest, onRespondAskUser,
-  pendingPermissionRequest, onRespondPermission,
   specChangesMode,
 }: InputBarProps) {
   const normalizedDraftKey = normalizeDraftKey(draftKey)
@@ -351,8 +187,6 @@ export function InputBar({
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashHighlightedIndex, setSlashHighlightedIndex] = useState(0)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [askAnswers, setAskAnswers] = useState<Record<number, string>>({})
-  const [currentStep, setCurrentStep] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dragCounterRef = useRef(0)
   const slashProjectKey = String(activeProjectDir || '').trim()
@@ -374,17 +208,6 @@ export function InputBar({
   const slashError = slashCmdsError || slashSkillsError
     ? [slashCmdsError && `commands: ${(slashCmdsError as Error).message}`, slashSkillsError && `skills: ${(slashSkillsError as Error).message}`].filter(Boolean).join(' | ')
     : null
-
-  const hasPermission = Boolean(pendingPermissionRequest) && !isExitSpecPermission(pendingPermissionRequest)
-  const hasAskUser = Boolean(pendingAskUserRequest)
-
-  useEffect(() => {
-    if (!pendingAskUserRequest) return
-    setCurrentStep(0)
-    const next: Record<number, string> = {}
-    for (const q of pendingAskUserRequest.questions) next[q.index] = ''
-    setAskAnswers(next)
-  }, [pendingAskUserRequest?.requestId])
 
   useEffect(() => {
     if (!disabled) textareaRef.current?.focus()
@@ -658,167 +481,8 @@ export function InputBar({
     setAttachments([])
   }
 
-  const handleAskSubmit = () => {
-    if (!pendingAskUserRequest || !onRespondAskUser) return
-    const out = pendingAskUserRequest.questions.map((q) => ({
-      index: q.index,
-      question: q.question,
-      answer: String(askAnswers[q.index] || ''),
-    }))
-    onRespondAskUser({ cancelled: false, answers: out })
-  }
-
-  const handleAskCancel = () => {
-    if (!onRespondAskUser) return
-    onRespondAskUser({ cancelled: true, answers: [] })
-  }
-
   const currentModel = MODELS.find((m) => m.value === model)
   const currentCustomModel = !currentModel ? customModels?.find((m) => m.id === model) : undefined
-
-  if (hasPermission && pendingPermissionRequest && onRespondPermission) {
-    const permissionToolUses = Array.isArray(pendingPermissionRequest.toolUses) ? pendingPermissionRequest.toolUses : []
-
-    return (
-      <footer className="shrink-0 px-4 pb-4">
-        <div className="mx-auto flex max-w-3xl flex-col rounded-2xl border border-amber-400/50 bg-card shadow-sm overflow-hidden max-h-[70vh]">
-          <div className="flex items-center gap-2 px-4 !py-3">
-            <ShieldAlert className="size-4 shrink-0 text-amber-500" />
-            <span className="text-xs font-medium text-foreground">Permission required</span>
-            <span className="ml-auto text-[11px] text-muted-foreground">
-              Droid is requesting permission to use tools.
-            </span>
-          </div>
-
-          {permissionToolUses.length > 0 && (
-            <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 space-y-3">
-              {permissionToolUses.map((item, i) => (
-                <PermissionToolUseCard key={i} item={item} />
-              ))}
-            </div>
-          )}
-
-          <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 pb-2">
-            {pendingPermissionRequest.options.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                  opt === 'cancel'
-                    ? 'text-red-500 hover:bg-red-500/10'
-                    : 'bg-foreground text-background hover:bg-foreground/80'
-                }`}
-                onClick={() => onRespondPermission({ selectedOption: opt })}
-              >
-                {permissionLabel(opt)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </footer>
-    )
-  }
-
-  if (hasAskUser && pendingAskUserRequest) {
-    const questions = pendingAskUserRequest.questions
-    const totalSteps = questions.length
-    const q = questions[currentStep]
-    const isLastStep = currentStep >= totalSteps - 1
-    const isFirstStep = currentStep === 0
-
-    const handleStepNext = () => {
-      if (isLastStep) {
-        handleAskSubmit()
-      } else {
-        setCurrentStep((s) => s + 1)
-      }
-    }
-
-    const handleStepBack = () => {
-      if (!isFirstStep) setCurrentStep((s) => s - 1)
-    }
-
-    return (
-      <footer className="shrink-0 px-4 pb-4">
-        <div className="mx-auto max-w-4xl rounded-2xl border  bg-card  overflow-hidden">
-          <div className="flex items-center gap-2 px-6 pt-4 pb-2">
-            <MessageSquareWarning className="size-5 shrink-0 " />
-            <span className="text-sm font-medium text-foreground">Input required</span>
-            {totalSteps > 1 && (
-              <span className="ml-auto text-sm text-muted-foreground">
-                Step {currentStep + 1} of {totalSteps}
-              </span>
-            )}
-          </div>
-
-          {q && (
-            <div className="px-6 pb-4 space-y-3">
-              <div className="text-sm text-foreground leading-relaxed">
-                {q.topic ? <span className="font-medium text-muted-foreground">[{q.topic}] </span> : null}
-                {q.question}
-              </div>
-              {q.options.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {q.options.slice(0, 12).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-                        askAnswers[q.index] === opt
-                          ? 'border-blue-400  text-blue-600'
-                          : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
-                      }`}
-                      onClick={() => setAskAnswers((prev) => ({ ...prev, [q.index]: opt }))}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <input
-                value={askAnswers[q.index] || ''}
-                onChange={(e) => setAskAnswers((prev) => ({ ...prev, [q.index]: e.target.value }))}
-                placeholder="Type your answer..."
-                className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-400"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleStepNext()
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-3 px-5 pb-3">
-            <button
-              type="button"
-              onClick={handleAskCancel}
-              className="rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Cancel
-            </button>
-            {!isFirstStep && (
-              <button
-                type="button"
-                onClick={handleStepBack}
-                className="rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                Back
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleStepNext}
-              className="rounded-lg bg-foreground px-4 py-2 text-sm text-background transition-colors hover:bg-foreground/80"
-            >
-              {isLastStep ? 'Submit' : 'Next'}
-            </button>
-          </div>
-        </div>
-      </footer>
-    )
-  }
 
 	  return (
 	    <footer className="shrink-0 px-4 pb-4">
