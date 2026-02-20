@@ -70,9 +70,10 @@ export const MODEL_GROUPS: ModelGroup[] = [
     options: [
       { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', provider: 'claude', multiplier: '0.4×' },
       { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', provider: 'claude', multiplier: '1.2×' },
+      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'claude', multiplier: '1.2×' },
       { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5', provider: 'claude', multiplier: '2×' },
       { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', provider: 'claude', multiplier: '2×' },
-      { value: 'claude-opus-4-6-fast', label: 'Claude Opus 4.6 Fast', provider: 'claude', multiplier: '6×' },
+      { value: 'claude-opus-4-6-fast', label: 'Claude Opus 4.6 Fast', provider: 'claude', multiplier: '12×' },
     ],
   },
   {
@@ -93,6 +94,7 @@ export const MODEL_GROUPS: ModelGroup[] = [
     options: [
       { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', provider: 'gemini', multiplier: '0.2×' },
       { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro', provider: 'gemini', multiplier: '0.8×' },
+      { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', provider: 'gemini', multiplier: '0.8×' },
     ],
   },
   {
@@ -143,6 +145,7 @@ export const MODEL_REASONING_MAP: Record<string, {
   'claude-opus-4-6':        { levels: ['off','low','medium','high','max'], default: 'high' },
   'claude-opus-4-6-fast':   { levels: ['off','low','medium','high','max'], default: 'high' },
   'claude-opus-4-5-20251101': { levels: ['off','low','medium','high'], default: 'off' },
+  'claude-sonnet-4-6':      { levels: ['off','low','medium','high'], default: 'off' },
   'claude-sonnet-4-5-20250929': { levels: ['off','low','medium','high'], default: 'off' },
   'claude-haiku-4-5-20251001': { levels: ['off','low','medium','high'], default: 'off' },
   'gpt-5.1':                { levels: ['none','low','medium','high'], default: 'none' },
@@ -152,6 +155,7 @@ export const MODEL_REASONING_MAP: Record<string, {
   'gpt-5.2-codex':          { levels: ['none','low','medium','high','xhigh'], default: 'medium' },
   'gpt-5.3-codex':          { levels: ['none','low','medium','high','xhigh'], default: 'medium' },
   'gemini-3-pro-preview':   { levels: ['none','low','medium','high'], default: 'high' },
+  'gemini-3.1-pro-preview': { levels: ['none','low','medium','high'], default: 'high' },
   'gemini-3-flash-preview': { levels: ['minimal','low','medium','high'], default: 'high' },
   'minimax-m2.5':           { levels: ['low','medium','high'], default: 'high' },
 }
