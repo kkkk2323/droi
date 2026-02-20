@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc/registerHandlers'
 import { startApiServer } from '../server/apiServer.ts'
 import { LocalDiagnostics } from '../backend/diagnostics/localDiagnostics.ts'
+import { createAppStateStore } from '../backend/storage/appStateStore.ts'
 
 let mainWindow: BrowserWindow | null = null
 let ipcCtl: { cancelActiveRun: () => boolean } | null = null
@@ -103,24 +104,29 @@ app.whenReady().then(() => {
 
   const webEnabled = readBool('DROID_WEB_ENABLED', true)
   if (webEnabled) {
-    const host = (process.env['DROID_APP_API_HOST'] || '0.0.0.0').trim() || '0.0.0.0'
-    const port = Number(process.env['DROID_APP_API_PORT'] || 3001)
-    const webRootDir = join(__dirname, '../renderer')
-    const pairingWebPort = is.dev ? parsePortFromUrl(process.env['ELECTRON_RENDERER_URL']) : undefined
+    const appStateStore = createAppStateStore({ baseDir })
+    void appStateStore.load().then((state) => {
+      const lanEnabled = (state as any)?.lanAccessEnabled === true
+      const envHost = (process.env['DROID_APP_API_HOST'] || '').trim()
+      const host = envHost || (lanEnabled ? '0.0.0.0' : '127.0.0.1')
+      const port = Number(process.env['DROID_APP_API_PORT'] || 3001)
+      const webRootDir = join(__dirname, '../renderer')
+      const pairingWebPort = is.dev ? parsePortFromUrl(process.env['ELECTRON_RENDERER_URL']) : undefined
 
-    void startApiServer({
-      host,
-      port,
-      baseDir,
-      webRootDir,
-      pairingWebPort,
-      diagnostics,
-    }).then((started) => {
-      apiCtl = { close: started.close }
-      // eslint-disable-next-line no-console
-      console.log(`Droid API server running at http://${started.host}:${started.port}`)
-      // eslint-disable-next-line no-console
-      console.log(`Web UI root: ${webRootDir}`)
+      return startApiServer({
+        host,
+        port,
+        baseDir,
+        webRootDir,
+        pairingWebPort,
+        diagnostics,
+      }).then((started) => {
+        apiCtl = { close: started.close }
+        // eslint-disable-next-line no-console
+        console.log(`Droid API server running at http://${started.host}:${started.port}`)
+        // eslint-disable-next-line no-console
+        console.log(`Web UI root: ${webRootDir}`)
+      })
     }).catch((err) => {
       // eslint-disable-next-line no-console
       console.error('Failed to start Droid API server', err)

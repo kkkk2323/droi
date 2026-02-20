@@ -73,6 +73,13 @@ function ChatView({
   }, [])
 
   useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
+  useEffect(() => {
     const prev = prevMessagesRef.current
     const isSessionSwitch = prev.length === 0 || Math.abs(messages.length - prev.length) > 5
     prevMessagesRef.current = messages
@@ -146,7 +153,7 @@ function ChatView({
   const isExitSpec = isExitSpecPermission(pendingPermissionRequest)
 
   return (
-    <ScrollArea className="flex-1" viewportRef={viewportRef} onScroll={handleScroll}>
+    <ScrollArea className="flex-1" viewportRef={viewportRef}>
       <div className="mx-auto max-w-3xl px-6 py-4 overflow-hidden">
         {messages.map((msg, idx) => {
           const isLast = idx === messages.length - 1

@@ -245,6 +245,7 @@ export interface PersistedAppStateV2 {
   localDiagnosticsMaxTotalMb?: number
   // Model used for generating commit messages / PR metadata.
   commitMessageModelId?: string
+  lanAccessEnabled?: boolean
   projectSettings?: Record<string, ProjectSettings>
 }
 
@@ -350,6 +351,7 @@ export interface DroidClientAPI {
   setShowDebugTrace: (enabled: boolean) => void
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
+  setLanAccessEnabled: (enabled: boolean) => void
   appendDiagnosticsEvent: (params: { sessionId?: string | null; event: string; level?: string; data?: unknown; correlation?: Record<string, unknown> }) => void
   getDiagnosticsDir: () => Promise<string>
   exportDiagnostics: (params: { sessionId?: string | null; debugTraceText?: string }) => Promise<{ path: string }>

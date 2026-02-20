@@ -1,6 +1,7 @@
 import { join, resolve } from 'path'
 import { startApiServer } from './apiServer.ts'
 import { resolveServerDataDir } from '../backend/storage/dataDir.ts'
+import { createAppStateStore } from '../backend/storage/appStateStore.ts'
 
 function readBool(name: string, def: boolean): boolean {
   const raw = (process.env[name] || '').trim().toLowerCase()
@@ -17,10 +18,20 @@ function resolveWebRootDir(): string | null {
 
 async function main() {
   const enabled = readBool('DROID_WEB_ENABLED', true)
-  const host = (process.env['DROID_APP_API_HOST'] || (enabled ? '0.0.0.0' : '127.0.0.1')).trim() || '127.0.0.1'
   const port = Number(process.env['DROID_APP_API_PORT'] || 3001)
   const baseDir = (process.env['DROID_APP_DATA_DIR'] || '').trim() || resolveServerDataDir()
   const webRootDir = enabled ? resolveWebRootDir() : null
+
+  const envHost = (process.env['DROID_APP_API_HOST'] || '').trim()
+  let host: string
+  if (envHost) {
+    host = envHost
+  } else {
+    const appStateStore = createAppStateStore({ baseDir })
+    const state = await appStateStore.load()
+    const lanEnabled = (state as any)?.lanAccessEnabled === true
+    host = (enabled && lanEnabled) ? '0.0.0.0' : '127.0.0.1'
+  }
 
   const started = await startApiServer({
     host,

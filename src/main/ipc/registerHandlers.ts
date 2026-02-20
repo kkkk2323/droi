@@ -540,6 +540,12 @@ export function registerIpcHandlers(opts: { getMainWindow: () => BrowserWindow |
     void appStateStore.save(cachedState)
   })
 
+  ipcMain.on('appState:setLanAccessEnabled', (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return
+    cachedState = { ...(cachedState as PersistedAppStateV2), lanAccessEnabled: enabled, version: 2 }
+    void appStateStore.save(cachedState)
+  })
+
   ipcMain.on('appState:setCommitMessageModelId', (_event, modelId: unknown) => {
     const id = typeof modelId === 'string' ? modelId.trim() : ''
     cachedState = { ...(cachedState as PersistedAppStateV2), commitMessageModelId: id || undefined, version: 2 }

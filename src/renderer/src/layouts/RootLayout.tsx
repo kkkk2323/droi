@@ -14,13 +14,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useActiveProjectDir, useIsRunning, useActiveSessionTitle, useWorkspaceError, useActions } from '@/store'
+import { useActiveProjectDir, useIsRunning, useActiveSessionTitle, useWorkspaceError, useActions, usePendingNewSession } from '@/store'
 import { isBrowserMode } from '@/droidClient'
 
 function InnerLayout() {
   const activeProjectDir = useActiveProjectDir()
   const isRunning = useIsRunning()
   const activeSessionTitle = useActiveSessionTitle()
+  const pendingNewSession = usePendingNewSession()
   const workspaceError = useWorkspaceError()
   const { clearWorkspaceError } = useActions()
   const { open } = useSidebar()
@@ -56,19 +57,21 @@ function InnerLayout() {
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             />
           )}
-          {activeSessionTitle && (
+          {!pendingNewSession && activeSessionTitle && (
             <div className="pt-2 flex-1 max-w-[200px] truncate text-sm font-medium text-foreground">
               {activeSessionTitle}
             </div>
           )}
-          <div className="ml-auto pt-2 flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            {activeProjectDir && (
-              <OpenInEditorButton dir={activeProjectDir} />
-            )}
-            <WorktreeIndicator />
-            <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />
-            <FilesChangedBadge projectDir={activeProjectDir} isRunning={isRunning} />
-          </div>
+          {!pendingNewSession && (
+            <div className="ml-auto pt-2 flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+              {activeProjectDir && (
+                <OpenInEditorButton dir={activeProjectDir} />
+              )}
+              <WorktreeIndicator />
+              <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />
+              <FilesChangedBadge projectDir={activeProjectDir} isRunning={isRunning} />
+            </div>
+          )}
         </header>
         <Outlet />
       </SidebarInset>

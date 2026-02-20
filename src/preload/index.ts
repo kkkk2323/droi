@@ -80,6 +80,7 @@ const droidAPI: DroidClientAPI = {
   setShowDebugTrace: (enabled) => ipcRenderer.send('appState:setShowDebugTrace', Boolean(enabled)),
   setLocalDiagnosticsEnabled: (enabled) => ipcRenderer.send('appState:setLocalDiagnosticsEnabled', Boolean(enabled)),
   setLocalDiagnosticsRetention: (params) => ipcRenderer.send('appState:setLocalDiagnosticsRetention', params),
+  setLanAccessEnabled: (enabled) => ipcRenderer.send('appState:setLanAccessEnabled', Boolean(enabled)),
   appendDiagnosticsEvent: (params) => ipcRenderer.send('diagnostics:event', params),
   getDiagnosticsDir: () => ipcRenderer.invoke('diagnostics:getDir'),
   exportDiagnostics: (params) => ipcRenderer.invoke('diagnostics:export', params),

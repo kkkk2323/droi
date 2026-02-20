@@ -72,6 +72,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
       commitMessageModelId: commitMessageModelId || undefined,
+      lanAccessEnabled: typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
     }
   }
@@ -98,6 +99,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
       commitMessageModelId: commitMessageModelId || undefined,
+      lanAccessEnabled: typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
     }
   }
