@@ -1,3 +1,12 @@
+## 0.5.0 - 2026-02-20
+
+### Features
+- Implement chat virtualization and refactor interaction components
+- Implement LAN access setting for web UI
+
+### Fixes
+- Remove redundant key prop in renderItem and fix double space in AskUserCard className
+
 ## 0.4.1 - 2026-02-20
 
 ### Features
