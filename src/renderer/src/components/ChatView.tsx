@@ -141,7 +141,7 @@ function ChatView({
   }, [messages, isStreamingLast, isRunning, pendingSendMessageIds])
 
   const footer = useCallback(() => (
-    <div className="mx-auto max-w-3xl px-6 overflow-hidden">
+    <div className="mx-auto max-w-3xl px-6 pb-6 overflow-hidden">
       {pendingPermissionRequest && isExitSpec && onRespondPermission && (
         <SpecReviewCard
           request={pendingPermissionRequest}
@@ -161,7 +161,7 @@ function ChatView({
   return (
     <Virtuoso
       ref={virtuosoRef}
-      className="flex-1"
+      className="flex-1 chat-scroll-container "
       data={messages}
       itemContent={renderItem}
       computeItemKey={(_index, msg) => msg.id}

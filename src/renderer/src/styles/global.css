@@ -180,3 +180,35 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* Custom scrollbar styles for ChatView (Virtuoso) */
+.chat-scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.chat-scroll-container:hover {
+  scrollbar-color: var(--border) transparent;
+}
+
+.chat-scroll-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll-container::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 150ms ease;
+}
+
+.chat-scroll-container:hover::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+.chat-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--border), var(--foreground) 20%);
+}
