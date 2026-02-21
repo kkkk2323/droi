@@ -12,9 +12,11 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "node --test --experimental-strip-types test/*.test.ts",
+    "test:compat": "node --test --experimental-strip-types test/compat/*.test.ts",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:compat": "tsc --noEmit -p tsconfig.compat.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:compat",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux"

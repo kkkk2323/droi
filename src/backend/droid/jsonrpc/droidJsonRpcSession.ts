@@ -54,6 +54,129 @@ function safeStringify(value: unknown): string {
   }
 }
 
+function clipString(value: unknown, maxLen = 512): string {
+  const s = String(value ?? '')
+  if (s.length <= maxLen) return s
+  return s.slice(0, Math.max(0, maxLen - 1)) + '…'
+}
+
+function summarizeSessionNotification(notification: any): Record<string, unknown> | undefined {
+  const type = typeof notification?.type === 'string' ? notification.type : ''
+  if (!type) return undefined
+
+  if (type === 'settings_updated') {
+    const s = notification?.settings && typeof notification.settings === 'object' ? notification.settings : null
+    if (!s) return { type }
+    return {
+      type,
+      settings: {
+        modelId: typeof s.modelId === 'string' ? s.modelId : undefined,
+        reasoningEffort: typeof s.reasoningEffort === 'string' ? s.reasoningEffort : undefined,
+        autonomyLevel: typeof s.autonomyLevel === 'string' ? s.autonomyLevel : undefined,
+        specModeReasoningEffort: typeof s.specModeReasoningEffort === 'string' ? s.specModeReasoningEffort : undefined,
+      },
+    }
+  }
+
+  if (type === 'tool_use') {
+    const input = notification?.input && typeof notification.input === 'object' ? notification.input : null
+    const cmd = input ? (input as any).command : undefined
+    return {
+      type,
+      id: typeof notification.id === 'string' ? notification.id : undefined,
+      name: typeof notification.name === 'string' ? notification.name : undefined,
+      inputKeys: input ? Object.keys(input as any).slice(0, 50) : undefined,
+      commandPreview: typeof cmd === 'string' && cmd.trim() ? clipString(cmd.trim(), 256) : undefined,
+    }
+  }
+
+  if (type === 'tool_result') {
+    const content = notification?.content
+    const toolUseId = typeof notification?.toolUseId === 'string' ? notification.toolUseId : ''
+    return {
+      type,
+      toolUseId: toolUseId || undefined,
+      isError: typeof notification?.isError === 'boolean' ? notification.isError : undefined,
+      contentType: content === null ? 'null' : Array.isArray(content) ? 'array' : typeof content,
+      contentPreview: (typeof content === 'string' && content.trim()) ? clipString(content.trim(), 256) : undefined,
+    }
+  }
+
+  if (type === 'create_message') {
+    const msg = notification?.message && typeof notification.message === 'object' ? notification.message : null
+    const content = Array.isArray((msg as any)?.content) ? (msg as any).content : []
+    const contentTypes: string[] = []
+    const toolUses: Array<{ id: string; name: string }> = []
+    let textLen = 0
+    for (const item of content) {
+      const t = typeof (item as any)?.type === 'string' ? String((item as any).type) : ''
+      if (t) contentTypes.push(t)
+      if (t === 'text' && typeof (item as any)?.text === 'string') textLen += String((item as any).text).length
+      if (t === 'tool_use') {
+        const id = typeof (item as any)?.id === 'string' ? String((item as any).id) : ''
+        const name = typeof (item as any)?.name === 'string' ? String((item as any).name) : ''
+        if (id || name) toolUses.push({ id, name })
+      }
+    }
+    return {
+      type,
+      message: msg ? {
+        id: typeof (msg as any).id === 'string' ? (msg as any).id : undefined,
+        role: typeof (msg as any).role === 'string' ? (msg as any).role : undefined,
+        contentTypes: contentTypes.length ? contentTypes.slice(0, 50) : undefined,
+        toolUses: toolUses.length ? toolUses.slice(0, 50) : undefined,
+        textLen: textLen || undefined,
+      } : undefined,
+    }
+  }
+
+  if (type === 'error') {
+    return { type, message: clipString(notification?.message, 256) }
+  }
+
+  if (type === 'mcp_auth_required') {
+    return {
+      type,
+      serverName: typeof notification?.serverName === 'string' ? notification.serverName : undefined,
+      authUrl: typeof notification?.authUrl === 'string' ? notification.authUrl : undefined,
+    }
+  }
+
+  return { type }
+}
+
+function summarizeInboundRequest(message: JsonRpcRequest): Record<string, unknown> {
+  const method = typeof (message as any)?.method === 'string' ? String((message as any).method) : ''
+  const id = typeof (message as any)?.id === 'string' ? String((message as any).id) : ''
+  const params = (message as any)?.params
+
+  if (method === 'droid.request_permission') {
+    const toolUsesRaw = (params as any)?.toolUses
+    const toolUses = Array.isArray(toolUsesRaw) ? toolUsesRaw : []
+    const tools: Array<{ id: string; name: string }> = []
+    for (const item of toolUses) {
+      const tu = (item as any)?.toolUse || item
+      if (!tu || typeof tu !== 'object') continue
+      const tid = typeof (tu as any)?.id === 'string' ? String((tu as any).id) : ''
+      const name = typeof (tu as any)?.name === 'string' ? String((tu as any).name) : ''
+      if (tid || name) tools.push({ id: tid, name })
+    }
+    return {
+      method,
+      id: id || undefined,
+      toolCount: tools.length,
+      tools: tools.length ? tools.slice(0, 50) : undefined,
+    }
+  }
+
+  const keys = params && typeof params === 'object' ? Object.keys(params as any).slice(0, 50) : undefined
+  return {
+    method,
+    id: id || undefined,
+    paramsKeys: keys && keys.length ? keys : undefined,
+  }
+}
+
 export class DroidJsonRpcSession {
   private readonly opts: DroidRpcSessionOptions
   private proc: ChildProcessWithoutNullStreams | null = null
@@ -352,6 +475,16 @@ export class DroidJsonRpcSession {
 
     if (message.type === 'request') {
       this.opts.onEvent({ type: 'debug', message: `inbound-request: ${(message as any)?.method || ''} id=${(message as any)?.id || ''}` })
+      if (this.opts.diagnostics?.isEnabled()) {
+        void this.opts.diagnostics.append({
+          ts: new Date().toISOString(),
+          level: 'debug',
+          scope: 'droid-rpc',
+          event: 'rpc.inbound_request',
+          sessionId: this.opts.sessionId,
+          data: summarizeInboundRequest(message as JsonRpcRequest),
+        })
+      }
       this.opts.onEvent({ type: 'rpc-request', message: message as JsonRpcRequest })
       return
     }
@@ -364,13 +497,14 @@ export class DroidJsonRpcSession {
       if (this.opts.diagnostics?.isEnabled()) {
         const notif = (n.method === 'droid.session_notification') ? ((n.params as any)?.notification || null) : null
         const t = notif && typeof notif === 'object' ? String((notif as any)?.type || '') : ''
+        const summary = (notif && typeof notif === 'object') ? summarizeSessionNotification(notif) : undefined
         void this.opts.diagnostics.append({
           ts: new Date().toISOString(),
           level: 'debug',
           scope: 'droid-rpc',
           event: 'rpc.notification',
           sessionId: this.opts.sessionId,
-          data: { method: n.method, notifType: t || undefined },
+          data: { method: n.method, notifType: t || undefined, summary: summary || undefined },
         })
         if (t === 'tool_use') {
           const name = String((notif as any)?.name || '')

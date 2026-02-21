@@ -78,6 +78,7 @@ const droidAPI: DroidClientAPI = {
   getActiveKeyInfo: () => ipcRenderer.invoke('keys:active'),
   setTraceChainEnabled: (enabled) => ipcRenderer.send('appState:setTraceChainEnabled', Boolean(enabled)),
   setShowDebugTrace: (enabled) => ipcRenderer.send('appState:setShowDebugTrace', Boolean(enabled)),
+  setDebugTraceMaxLines: (maxLines) => ipcRenderer.send('appState:setDebugTraceMaxLines', maxLines === null ? null : Number(maxLines)),
   setLocalDiagnosticsEnabled: (enabled) => ipcRenderer.send('appState:setLocalDiagnosticsEnabled', Boolean(enabled)),
   setLocalDiagnosticsRetention: (params) => ipcRenderer.send('appState:setLocalDiagnosticsRetention', params),
   setLanAccessEnabled: (enabled) => ipcRenderer.send('appState:setLanAccessEnabled', Boolean(enabled)),

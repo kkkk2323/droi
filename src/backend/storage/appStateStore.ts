@@ -4,6 +4,8 @@ import { randomUUID } from 'crypto'
 import type { ApiKeyEntry, PersistedAppState, PersistedAppStateV2, ProjectSettings } from '../../shared/protocol'
 import { atomicWriteFile } from './fsUtils.ts'
 
+const MAX_DEBUG_TRACE_MAX_LINES = 10_000
+
 function normalizeProjects(projects: unknown): Array<{ dir: string; name: string }> | undefined {
   if (!Array.isArray(projects)) return undefined
   const out: Array<{ dir: string; name: string }> = []
@@ -58,6 +60,9 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       ? Math.max(1, Math.floor(raw.localDiagnosticsMaxTotalMb))
       : undefined
     const commitMessageModelId = typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
+    const debugTraceMaxLines = (typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines))
+      ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
+      : undefined
     const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey : undefined
     return {
       version: 2,
@@ -68,6 +73,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       activeProjectDir: typeof raw.activeProjectDir === 'string' ? raw.activeProjectDir : undefined,
       traceChainEnabled: typeof raw.traceChainEnabled === 'boolean' ? raw.traceChainEnabled : undefined,
       showDebugTrace: typeof raw.showDebugTrace === 'boolean' ? raw.showDebugTrace : undefined,
+      debugTraceMaxLines,
       localDiagnosticsEnabled: typeof raw.localDiagnosticsEnabled === 'boolean' ? raw.localDiagnosticsEnabled : undefined,
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
@@ -85,6 +91,9 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       ? Math.max(1, Math.floor(raw.localDiagnosticsMaxTotalMb))
       : undefined
     const commitMessageModelId = typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
+    const debugTraceMaxLines = (typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines))
+      ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
+      : undefined
     const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey : undefined
     return {
       version: 2,
@@ -95,6 +104,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       activeProjectDir: typeof raw.activeProjectDir === 'string' ? raw.activeProjectDir : undefined,
       traceChainEnabled: typeof raw.traceChainEnabled === 'boolean' ? raw.traceChainEnabled : undefined,
       showDebugTrace: typeof raw.showDebugTrace === 'boolean' ? raw.showDebugTrace : undefined,
+      debugTraceMaxLines,
       localDiagnosticsEnabled: typeof raw.localDiagnosticsEnabled === 'boolean' ? raw.localDiagnosticsEnabled : undefined,
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,

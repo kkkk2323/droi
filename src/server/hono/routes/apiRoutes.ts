@@ -115,6 +115,12 @@ export function createApiRoutes() {
       if (typeof body.showDebugTrace === 'boolean' || body.showDebugTrace === null) {
         ;(patch as any).showDebugTrace = body.showDebugTrace === null ? undefined : body.showDebugTrace
       }
+      if (typeof body.debugTraceMaxLines === 'number' || body.debugTraceMaxLines === null) {
+        const v = body.debugTraceMaxLines
+        ;(patch as any).debugTraceMaxLines = v === null
+          ? undefined
+          : (typeof v === 'number' && Number.isFinite(v)) ? Math.min(10_000, Math.max(1, Math.floor(v))) : undefined
+      }
       if (typeof body.localDiagnosticsEnabled === 'boolean' || body.localDiagnosticsEnabled === null) {
         ;(patch as any).localDiagnosticsEnabled = body.localDiagnosticsEnabled === null ? undefined : body.localDiagnosticsEnabled
       }

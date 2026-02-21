@@ -21,6 +21,7 @@ import {
   applyRpcRequest,
   appendDebugTrace,
   clearDebugTrace,
+  setDebugTraceMaxLinesOverride,
   applyStdout,
   applyStderr,
   applyTurnEnd,
@@ -123,6 +124,7 @@ interface AppState {
   apiKey: string
   traceChainEnabled: boolean
   showDebugTrace: boolean
+  debugTraceMaxLines: number | null
   localDiagnosticsEnabled: boolean
   localDiagnosticsRetentionDays: number
   localDiagnosticsMaxTotalMb: number
@@ -174,6 +176,7 @@ interface AppActions {
   setApiKey: (k: string) => void
   setTraceChainEnabled: (enabled: boolean) => void
   setShowDebugTrace: (enabled: boolean) => void
+  setDebugTraceMaxLines: (maxLines: number | null) => void
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
   setCommitMessageModelId: (modelId: string) => void
@@ -244,6 +247,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   apiKey: '',
   traceChainEnabled: isTraceChainEnabled(),
   showDebugTrace: false,
+  debugTraceMaxLines: null,
   localDiagnosticsEnabled: true,
   localDiagnosticsRetentionDays: 7,
   localDiagnosticsMaxTotalMb: 50,
@@ -486,6 +490,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const next = Boolean(enabled)
     set({ showDebugTrace: next })
     droid.setShowDebugTrace(next)
+  },
+
+  setDebugTraceMaxLines: (maxLines) => {
+    const next = (typeof maxLines === 'number' && Number.isFinite(maxLines))
+      ? Math.min(10_000, Math.max(1, Math.floor(maxLines)))
+      : null
+    setDebugTraceMaxLinesOverride(next)
+    set({ debugTraceMaxLines: next })
+    ;(droid as any).setDebugTraceMaxLines?.(next)
   },
 
   setLocalDiagnosticsEnabled: (enabled) => {
@@ -1885,6 +1898,7 @@ export const useDroidVersion = () => useAppStore((s) => s.droidVersion)
 export const useApiKey = () => useAppStore((s) => s.apiKey)
 export const useTraceChainEnabled = () => useAppStore((s) => s.traceChainEnabled)
 export const useShowDebugTrace = () => useAppStore((s) => s.showDebugTrace)
+export const useDebugTraceMaxLines = () => useAppStore((s) => s.debugTraceMaxLines)
 export const useLocalDiagnosticsEnabled = () => useAppStore((s) => s.localDiagnosticsEnabled)
 export const useLocalDiagnosticsRetentionDays = () => useAppStore((s) => s.localDiagnosticsRetentionDays)
 export const useLocalDiagnosticsMaxTotalMb = () => useAppStore((s) => s.localDiagnosticsMaxTotalMb)
@@ -1941,6 +1955,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         const showDebug = typeof (state as any).showDebugTrace === 'boolean'
           ? Boolean((state as any).showDebugTrace)
           : false
+        const debugTraceMaxLines = (typeof (state as any).debugTraceMaxLines === 'number' && Number.isFinite((state as any).debugTraceMaxLines))
+          ? Math.min(10_000, Math.max(1, Math.floor((state as any).debugTraceMaxLines)))
+          : null
+        setDebugTraceMaxLinesOverride(debugTraceMaxLines)
         const diagEnabled = typeof (state as any).localDiagnosticsEnabled === 'boolean'
           ? Boolean((state as any).localDiagnosticsEnabled)
           : true
@@ -1964,6 +1982,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           apiKey: state.apiKey || '',
           traceChainEnabled: traceEnabled,
           showDebugTrace: showDebug,
+          debugTraceMaxLines,
           localDiagnosticsEnabled: diagEnabled,
           localDiagnosticsRetentionDays: retentionDays,
           localDiagnosticsMaxTotalMb: maxTotalMb,
@@ -1990,6 +2009,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             projectDir,
             branch: meta.branch || info?.branch,
             workspaceType: info?.workspaceType || meta.workspaceType,
+            autoLevel: meta.autoLevel || DEFAULT_AUTO_LEVEL,
           }
         }))).filter(Boolean) as SessionMeta[]
 
