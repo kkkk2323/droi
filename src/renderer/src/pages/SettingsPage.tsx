@@ -3,9 +3,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ModelSelect } from '@/components/ModelSelect'
 import { useCustomModels, useCommitMessageModelId, useLanAccessEnabled, useActions } from '@/store'
-import { MODEL_GROUPS } from '@/types'
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -48,32 +47,11 @@ export function SettingsPage() {
             </p>
           </div>
 
-          <Select value={commitMessageModelId} onValueChange={(v) => v && setCommitMessageModelId(v)}>
-            <SelectTrigger className="w-full justify-between">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="min-w-[260px]">
-              {customModels && customModels.length > 0 && (
-                <>
-                  <SelectGroup>
-                    <SelectLabel className="px-2">Custom</SelectLabel>
-                    {customModels.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectSeparator />
-                </>
-              )}
-              {MODEL_GROUPS.map((group) => (
-                <SelectGroup key={group.label}>
-                  <SelectLabel className="px-2">{group.label}</SelectLabel>
-                  {group.options.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
+          <ModelSelect
+            value={commitMessageModelId}
+            onChange={setCommitMessageModelId}
+            customModels={customModels}
+          />
         </section>
 
         <Separator />

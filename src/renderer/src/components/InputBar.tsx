@@ -4,22 +4,15 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectGroup,
-  SelectLabel,
-  SelectSeparator,
 } from './ui/select'
-import { ArrowUp, Square, Plus, X, Paperclip, Image as ImageIcon, BookOpen, Sparkles, Loader2 } from 'lucide-react'
-import { MODELS, MODEL_GROUPS, AUTO_LEVELS, type ModelProvider, type CustomModelDef, type SlashCommandDef, type SkillDef, getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
-import { Kimi } from '@lobehub/icons'
-import { Zhipu } from '@lobehub/icons'
-import { Claude } from '@lobehub/icons'
-import { OpenAI } from '@lobehub/icons'
-import { Gemini } from '@lobehub/icons'
+import { ArrowUp, Square, Plus, X, Paperclip, Image as ImageIcon, BookOpen, Loader2 } from 'lucide-react'
+import { AUTO_LEVELS, type CustomModelDef, type SlashCommandDef, type SkillDef, getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
 import { getDroidClient, isBrowserMode } from '@/droidClient'
 import { KeyUsageIndicator } from './KeyUsageIndicator'
 import { TokenUsageIndicator } from './TokenUsageIndicator'
 import { McpStatusIndicator } from './McpStatusIndicator'
 import { SettingsFlashIndicator } from './SettingsFlashIndicator'
+import { ModelSelect } from './ModelSelect'
 import { useSlashCommandsQuery, useSkillsQuery } from '@/hooks/useSlashCommands'
 
 const droid = getDroidClient()
@@ -27,20 +20,6 @@ const droid = getDroidClient()
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
 function isImageFile(name: string): boolean {
   return IMAGE_EXTS.some((ext) => name.toLowerCase().endsWith(ext))
-}
-
-const providerIcon: Record<ModelProvider, React.FC<{ size?: number | string }>> = {
-  kimi: (props) => <Kimi {...props} />,
-  zhipu: (props) => <Zhipu.Color {...props} />,
-  claude: (props) => <Claude.Color {...props} />,
-  openai: (props) => <OpenAI {...props} />,
-  gemini: (props) => <Gemini.Color {...props} />,
-  minimax: (props) => <Sparkles {...props} />,
-}
-
-function ModelIcon({ provider, size = 14 }: { provider: ModelProvider; size?: number }) {
-  const Icon = providerIcon[provider]
-  return <Icon size={size} />
 }
 
 export interface Attachment {
@@ -481,10 +460,7 @@ export function InputBar({
     setAttachments([])
   }
 
-  const currentModel = MODELS.find((m) => m.value === model)
-  const currentCustomModel = !currentModel ? customModels?.find((m) => m.id === model) : undefined
-
-	  return (
+  return (
 	    <footer className="shrink-0 px-4 pb-4">
 	      <div
 	        className={`mx-auto max-w-3xl rounded-2xl border bg-card shadow-sm  transition-colors ${isDragOver ? 'border-blue-400 bg-blue-50/5' : 'border-border'}`}
@@ -652,45 +628,12 @@ export function InputBar({
             <KeyUsageIndicator className="ml-2" />
             <McpStatusIndicator className="ml-1" />
 
-            <Select value={model} onValueChange={(v) => v && onModelChange(v)}>
-              <SelectTrigger size="sm" className="h-7 w-auto shrink-0 gap-1.5 rounded-lg border-none bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground">
-                {currentModel && <ModelIcon provider={currentModel.provider} size={14} />}
-                <span className="hidden md:flex flex-1 text-left">{currentCustomModel?.displayName ?? currentModel?.label ?? model}</span>
-              </SelectTrigger>
-              <SelectContent className="min-w-[260px]" side="top">
-                {customModels && customModels.length > 0 && (
-                  <>
-                    <SelectGroup>
-                      <SelectLabel className="flex items-center gap-1.5 px-2">Custom</SelectLabel>
-                      {customModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          <span className="flex w-full items-center gap-2">
-                            <span className="flex-1">{m.displayName}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectSeparator />
-                  </>
-                )}
-                {MODEL_GROUPS.map((group) => (
-                  <SelectGroup key={group.label}>
-                    <SelectLabel className="flex items-center gap-1.5 px-2">
-                      <ModelIcon provider={group.options[0]?.provider} size={12} />
-                      {group.label}
-                    </SelectLabel>
-                    {group.options.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        <span className="flex w-full items-center gap-2">
-                          <span className="flex-1">{m.label}</span>
-                          <span className="ml-2 text-[10px] text-muted-foreground">{m.multiplier}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
+            <ModelSelect
+              value={model}
+              onChange={onModelChange}
+              customModels={customModels}
+              variant="compact"
+            />
 
             {(() => {
               const levels = getModelReasoningLevels(model)
