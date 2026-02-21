@@ -515,6 +515,15 @@ export function registerIpcHandlers(opts: { getMainWindow: () => BrowserWindow |
     void appStateStore.save(cachedState)
   })
 
+  ipcMain.on('appState:setDebugTraceMaxLines', (_event, maxLines: unknown) => {
+    if (maxLines !== null && typeof maxLines !== 'number') return
+    const v = (typeof maxLines === 'number' && Number.isFinite(maxLines))
+      ? Math.min(10_000, Math.max(1, Math.floor(maxLines)))
+      : undefined
+    cachedState = { ...(cachedState as PersistedAppStateV2), debugTraceMaxLines: v, version: 2 }
+    void appStateStore.save(cachedState)
+  })
+
   ipcMain.on('appState:setLocalDiagnosticsEnabled', (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return
     cachedState = { ...(cachedState as PersistedAppStateV2), localDiagnosticsEnabled: enabled, version: 2 }

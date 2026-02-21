@@ -8,6 +8,7 @@ import type {
   SetupScriptEvent,
   SetupScriptStatus,
 } from '@/types'
+import { isTraceChainEnabled } from '../lib/notificationFingerprint.ts'
 import { uuidv4 } from '../lib/uuid.ts'
 
 export interface SessionBuffer {
@@ -53,20 +54,6 @@ export interface SessionSetupState {
 export const DEFAULT_MODEL = 'kimi-k2.5'
 export const DEFAULT_AUTO_LEVEL = 'default'
 const MAX_SETUP_OUTPUT_CHARS = 120_000
-
-function isTraceChainEnabled(): boolean {
-  const env = (import.meta as any)?.env
-  const normalized = (value: unknown) => String(value || '').trim().toLowerCase()
-  const isEnabledLike = (value: unknown) => {
-    const v = normalized(value)
-    return v === '1' || v === 'true' || v === 'yes' || v === 'on'
-  }
-  if (isEnabledLike(env?.VITE_DROID_TRACE_CHAIN)) return true
-  if (isEnabledLike(env?.DROID_TRACE_CHAIN)) return true
-  if (isEnabledLike((globalThis as any)?.process?.env?.DROID_TRACE_CHAIN)) return true
-  if (isEnabledLike((globalThis as any)?.__DROID_TRACE_CHAIN)) return true
-  return false
-}
 
 export function makeBuffer(projectDir: string, workspace?: { repoRoot?: string; branch?: string; workspaceType?: WorkspaceType; baseBranch?: string }): SessionBuffer {
   return {
@@ -705,7 +692,7 @@ export function appendDebugTrace(prev: Map<string, SessionBuffer>, sid: string, 
   const existing = Array.isArray(session.debugTrace) ? session.debugTrace : []
   const ts = new Date().toISOString()
   const nextTrace = [...existing, `[${ts}] ${line}`]
-  const maxLines = isTraceChainEnabled() ? 2000 : 200
+  const maxLines = debugTraceMaxLinesOverride ?? (isTraceChainEnabled() ? 2000 : 200)
   const clipped = nextTrace.length > maxLines
     ? nextTrace.slice(nextTrace.length - maxLines)
     : nextTrace
@@ -725,6 +712,17 @@ export function clearDebugTrace(prev: Map<string, SessionBuffer>, sid: string): 
 function clipSetupOutput(content: string): string {
   if (content.length <= MAX_SETUP_OUTPUT_CHARS) return content
   return content.slice(content.length - MAX_SETUP_OUTPUT_CHARS)
+}
+
+let debugTraceMaxLinesOverride: number | null = null
+
+export function setDebugTraceMaxLinesOverride(maxLines: number | null | undefined): void {
+  if (maxLines === null || typeof maxLines === 'undefined') {
+    debugTraceMaxLinesOverride = null
+    return
+  }
+  if (typeof maxLines !== 'number' || !Number.isFinite(maxLines)) return
+  debugTraceMaxLinesOverride = Math.min(10_000, Math.max(1, Math.floor(maxLines)))
 }
 
 function buildSetupFailureError(event: Extract<SetupScriptEvent, { type: 'finished' }>): string {

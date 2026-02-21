@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
-  useTraceChainEnabled, useShowDebugTrace, useLocalDiagnosticsEnabled,
+  useTraceChainEnabled, useShowDebugTrace, useDebugTraceMaxLines, useLocalDiagnosticsEnabled,
   useLocalDiagnosticsRetentionDays, useLocalDiagnosticsMaxTotalMb,
   useDiagnosticsDir, useActiveSessionId, useActions,
 } from '@/store'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 export function DebugSettingsPage() {
   const traceChainEnabled = useTraceChainEnabled()
   const showDebugTrace = useShowDebugTrace()
+  const debugTraceMaxLines = useDebugTraceMaxLines()
   const localDiagnosticsEnabled = useLocalDiagnosticsEnabled()
   const localDiagnosticsRetentionDays = useLocalDiagnosticsRetentionDays()
   const localDiagnosticsMaxTotalMb = useLocalDiagnosticsMaxTotalMb()
@@ -19,12 +20,13 @@ export function DebugSettingsPage() {
   const activeSessionId = useActiveSessionId()
   const {
     setTraceChainEnabled, setShowDebugTrace, setLocalDiagnosticsEnabled,
-    setLocalDiagnosticsRetention, refreshDiagnosticsDir, exportDiagnostics, openPath,
+    setDebugTraceMaxLines, setLocalDiagnosticsRetention, refreshDiagnosticsDir, exportDiagnostics, openPath,
   } = useActions()
 
   const [copied, setCopied] = useState(false)
   const [exportedPath, setExportedPath] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [debugTraceMaxLinesDraft, setDebugTraceMaxLinesDraft] = useState(debugTraceMaxLines ? String(debugTraceMaxLines) : '')
   const [retentionDaysDraft, setRetentionDaysDraft] = useState(String(localDiagnosticsRetentionDays))
   const [maxTotalMbDraft, setMaxTotalMbDraft] = useState(String(localDiagnosticsMaxTotalMb))
 
@@ -39,6 +41,10 @@ export function DebugSettingsPage() {
   useEffect(() => {
     setMaxTotalMbDraft(String(localDiagnosticsMaxTotalMb))
   }, [localDiagnosticsMaxTotalMb])
+
+  useEffect(() => {
+    setDebugTraceMaxLinesDraft(debugTraceMaxLines ? String(debugTraceMaxLines) : '')
+  }, [debugTraceMaxLines])
 
   const onCopyDir = async () => {
     try {
@@ -69,6 +75,17 @@ export function DebugSettingsPage() {
     const mb = Number(maxTotalMbDraft)
     if (!Number.isFinite(days) || !Number.isFinite(mb)) return
     setLocalDiagnosticsRetention({ retentionDays: days, maxTotalMb: mb })
+  }
+
+  const commitDebugTraceMaxLines = () => {
+    const raw = debugTraceMaxLinesDraft.trim()
+    if (!raw) {
+      setDebugTraceMaxLines(null)
+      return
+    }
+    const v = Number(raw)
+    if (!Number.isFinite(v)) return
+    setDebugTraceMaxLines(v)
   }
 
   return (
@@ -211,6 +228,27 @@ export function DebugSettingsPage() {
               onCheckedChange={setShowDebugTrace}
             />
             Show debug trace panel in ChatView
+          </label>
+
+          <label className="space-y-1">
+            <div className="text-xs font-medium">Debug trace max lines</div>
+            <Input
+              type="number"
+              min={1}
+              step={50}
+              className="font-mono"
+              placeholder="Auto (200 / 2000 with trace-chain)"
+              value={debugTraceMaxLinesDraft}
+              onChange={(e) => setDebugTraceMaxLinesDraft(e.target.value)}
+              onBlur={commitDebugTraceMaxLines}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitDebugTraceMaxLines()
+              }}
+              disabled={!showDebugTrace}
+            />
+            <div className="text-xs text-muted-foreground">
+              Higher values keep more history for copy/export (capped at 10,000).
+            </div>
           </label>
         </section>
       </div>

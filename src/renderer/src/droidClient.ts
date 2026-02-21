@@ -681,6 +681,16 @@ const browserClient: DroidClientAPI = {
       body: JSON.stringify({ showDebugTrace: Boolean(enabled) }),
     }).catch(() => {})
   },
+  setDebugTraceMaxLines: (maxLines) => {
+    const v = (maxLines === null)
+      ? null
+      : (typeof maxLines === 'number' && Number.isFinite(maxLines)) ? Math.min(10_000, Math.max(1, Math.floor(maxLines))) : null
+    apiFetch(`${getApiBase()}/app-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ debugTraceMaxLines: v }),
+    }).catch(() => {})
+  },
   setLocalDiagnosticsEnabled: (enabled) => {
     apiFetch(`${getApiBase()}/app-state`, {
       method: 'POST',

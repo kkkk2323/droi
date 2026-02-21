@@ -240,6 +240,7 @@ export interface PersistedAppStateV2 {
   activeProjectDir?: string
   traceChainEnabled?: boolean
   showDebugTrace?: boolean
+  debugTraceMaxLines?: number
   localDiagnosticsEnabled?: boolean
   localDiagnosticsRetentionDays?: number
   localDiagnosticsMaxTotalMb?: number
@@ -349,6 +350,7 @@ export interface DroidClientAPI {
   getActiveKeyInfo: () => Promise<{ key: string; apiKeyFingerprint: string }>
   setTraceChainEnabled: (enabled: boolean) => void
   setShowDebugTrace: (enabled: boolean) => void
+  setDebugTraceMaxLines: (maxLines: number | null) => void
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
   setLanAccessEnabled: (enabled: boolean) => void
