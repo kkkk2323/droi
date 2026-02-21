@@ -25,6 +25,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Validate
+        run: pnpm typecheck && pnpm test
+
+      # - name: Droid CLI compatibility gate
+      #   env:
+      #     FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+      #     FACTORY_DROID_CLI_VERSION: 0.57.14
+      #     FACTORY_MODEL_ID: minimax-m2.5
+      #   run: pnpm test:compat
+      #   timeout-minutes: 15
+
       - name: Build
         run: pnpm build
 
