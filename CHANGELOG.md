@@ -1,3 +1,10 @@
+## 0.6.1 - 2026-02-22
+
+### Fixes
+- Ensure new branches do not automatically track upstream
+- Enhance scanRoot to correctly handle symlinks and improve directory entry handling
+- Fix gh-release changelog extraction to use exact string matching and merge duplicate categories
+
 ## 0.6.0 - 2026-02-22
 
 ### Features
