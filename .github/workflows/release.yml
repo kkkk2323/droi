@@ -62,22 +62,37 @@ jobs:
           # Remove 'v' prefix if present for matching with CHANGELOG.md
           VERSION_NO_PREFIX="${TAG_VERSION#v}"
           # Extract changelog section for the tagged version
+          # Uses index() instead of match() to avoid regex issues (dots in
+          # version numbers match any character in regex, which caused dates
+          # like "2026-02-20" to falsely match version "0.6.0").
+          # Also merges duplicate category headings into a single section.
           CHANGELOG_CONTENT=$(awk -v version="$VERSION_NO_PREFIX" '
+            BEGIN { in_section = 0; count = 0; current_cat = "" }
             /^## / {
-              if (version && match($0, version)) {
-                in_section = 1
-                next
+              if (in_section) exit
+              header = "## " version
+              if ($0 == header || index($0, header " ") == 1) in_section = 1
+              next
+            }
+            in_section && /^### / {
+              current_cat = $0
+              if (!(current_cat in seen)) {
+                seen[current_cat] = 1
+                order[++count] = current_cat
               }
-            }
-            /^## / && !match($0, version) {
-              in_section = 0
-            }
-            in_section && /^###/ {
-              print
               next
             }
             in_section && /^- / {
-              print
+              if (current_cat != "") {
+                items[current_cat] = items[current_cat] $0 "\n"
+              }
+            }
+            END {
+              for (i = 1; i <= count; i++) {
+                if (i > 1) print ""
+                print order[i]
+                printf "%s", items[order[i]]
+              }
             }
           ' CHANGELOG.md)
           echo "content<<EOF" >> $GITHUB_OUTPUT
