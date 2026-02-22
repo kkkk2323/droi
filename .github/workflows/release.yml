@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build-mac:
+  validate:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,24 +36,44 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
+  build:
+    needs: validate
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
       - name: Build
         run: pnpm build
 
-      - name: Build ARM64 DMG
-        run: npx electron-builder --mac --arm64 --publish never
+      - name: Build ${{ matrix.arch }} DMG
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
 
       - uses: actions/upload-artifact@v4
         with:
-          name: droi-mac-arm64
-          path: dist/*arm64*.dmg
+          name: droi-mac-${{ matrix.arch }}
+          path: dist/*${{ matrix.arch }}*.dmg
 
-      - name: Build x64 DMG
-        run: npx electron-builder --mac --x64 --publish never
-
-      - uses: actions/upload-artifact@v4
+  release:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: droi-mac-x64
-          path: dist/*x64*.dmg
+          sparse-checkout: CHANGELOG.md
 
       - name: Extract changelog
         id: changelog
