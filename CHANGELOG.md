@@ -1,3 +1,8 @@
+## 0.7.0 - 2026-02-22
+
+### Features
+- Automatically pull branch after switching workspace
+
 ## 0.6.1 - 2026-02-22
 
 ### Fixes
