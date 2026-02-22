@@ -4,13 +4,15 @@ import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ModelSelect } from '@/components/ModelSelect'
-import { useCustomModels, useCommitMessageModelId, useLanAccessEnabled, useActions } from '@/store'
+import { useCustomModels, useCommitMessageModelId, useLanAccessEnabled, useActions, useAppVersion, useDroidVersion } from '@/store'
 
 export function SettingsPage() {
   const navigate = useNavigate()
   const customModels = useCustomModels()
   const commitMessageModelId = useCommitMessageModelId()
   const lanAccessEnabled = useLanAccessEnabled()
+  const appVersion = useAppVersion()
+  const droidVersion = useDroidVersion()
   const { setCommitMessageModelId, setLanAccessEnabled } = useActions()
 
   return (
@@ -70,6 +72,18 @@ export function SettingsPage() {
             />
             Enable LAN access
           </label>
+        </section>
+
+        <Separator />
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">About</h2>
+          </div>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>Droi <span className="font-mono">v{appVersion}</span></p>
+            <p>Droid CLI <span className="font-mono">v{droidVersion}</span></p>
+          </div>
         </section>
       </div>
     </div>

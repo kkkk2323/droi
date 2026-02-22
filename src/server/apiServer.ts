@@ -46,6 +46,7 @@ export interface StartApiServerOpts {
   pairingTokenTtlSeconds?: number
   pairingWebPort?: number
   diagnostics?: LocalDiagnostics
+  appVersion?: string
 }
 
 export async function startApiServer(opts: StartApiServerOpts) {

@@ -10,6 +10,7 @@ export function createHonoApp(deps: HonoAppDeps) {
 
   app.use('*', async (c, next) => {
     c.set('deps', deps)
+    c.set('appVersion', deps.opts.appVersion || 'N/A')
 
     if (c.req.method === 'OPTIONS') {
       applyCorsHeaders(c)

@@ -309,6 +309,7 @@ export interface SkillDef {
 
 export interface DroidClientAPI {
   getVersion: () => Promise<string>
+  getAppVersion: () => Promise<string>
   exec: (params: { prompt: string; sessionId?: string | null; modelId?: string; autoLevel?: string; reasoningEffort?: string }) => void
   cancel: (params: { sessionId: string | null }) => void
   setActiveSession: (params: { sessionId: string | null }) => void

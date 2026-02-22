@@ -120,6 +120,7 @@ app.whenReady().then(() => {
         webRootDir,
         pairingWebPort,
         diagnostics,
+        appVersion: app.getVersion(),
       }).then((started) => {
         apiCtl = { close: started.close }
         // eslint-disable-next-line no-console

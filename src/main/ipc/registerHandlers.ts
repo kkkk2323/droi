@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, type BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, app, type BrowserWindow } from 'electron'
 import { copyFile, mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { basename, extname, join } from 'path'
 import { homedir } from 'os'
@@ -120,6 +120,7 @@ export function registerIpcHandlers(opts: { getMainWindow: () => BrowserWindow |
   })()
 
   ipcMain.handle('droid:version', async () => getDroidVersion())
+  ipcMain.handle('app:version', async () => app.getVersion())
 
   ipcMain.handle('slash:list', async (): Promise<SlashCommandDef[]> => {
     const commands = await getSlashCommands()
