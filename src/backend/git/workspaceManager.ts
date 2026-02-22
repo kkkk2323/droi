@@ -253,8 +253,20 @@ export async function getWorkspaceInfo(projectDir: string): Promise<WorkspaceInf
   }
 }
 
+async function pullBranch(projectDir: string, branch: string): Promise<void> {
+  const b = String(branch || '').trim()
+  if (!b) return
+  try {
+    // Pull from the upstream tracking branch if configured
+    await runGit(['pull'], projectDir, { timeoutMs: 60000 })
+  } catch {
+    // Best-effort: pull may fail due to network, conflicts, or no upstream configured
+  }
+}
+
 export async function switchWorkspaceBranch(params: { projectDir: string; branch: string }): Promise<WorkspaceInfo> {
   await checkoutBranch(params.projectDir, params.branch)
+  await pullBranch(params.projectDir, params.branch)
   return getWorkspaceInfo(params.projectDir)
 }
 
