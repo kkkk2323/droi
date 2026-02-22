@@ -1,3 +1,16 @@
+## 0.6.0 - 2026-02-22
+
+### Features
+- Add compatibility tests and update type checking configuration
+- Add debug logs for session notifications
+- Add app version display in settings
+
+### Refactor
+- Extract ModelSelect component to reduce duplication
+
+### Style
+- Add custom scrollbar and bottom padding to ChatView
+
 ## 0.5.0 - 2026-02-20
 
 ### Features
