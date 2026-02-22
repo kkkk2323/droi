@@ -2,7 +2,7 @@ import { readdir, readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join, resolve, sep } from 'path'
 import type { SkillDef } from '../../shared/protocol.ts'
-import { isDirectory } from '../utils/fs.ts'
+import { isDirectory, isFile } from '../utils/fs.ts'
 
 function hasPathSegment(p: string, seg: string): boolean {
   const parts = resolve(p).split(sep).filter(Boolean)
@@ -58,19 +58,19 @@ async function scanRoot(rootDir: string, scope: 'project' | 'user'): Promise<Ski
   if (!rootDir || !(await isDirectory(rootDir))) return out
   if (hasPathSegment(rootDir, '.system')) return out
 
-  let entries: Array<{ name: string; isDirectory: boolean }> = []
+  let names: string[] = []
   try {
     const raw = await readdir(rootDir, { withFileTypes: true })
-    entries = raw.map((e) => ({ name: e.name, isDirectory: e.isDirectory() }))
+    names = raw.map((e) => e.name)
   } catch {
     return out
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory) continue
-    const name = entry.name
+  for (const name of names) {
     if (!name || name.startsWith('.')) continue
     const skillDir = join(rootDir, name)
+    // Use isDirectory which follows symlinks (fixes symlink skills being skipped)
+    if (!(await isDirectory(skillDir))) continue
     if (hasPathSegment(skillDir, '.system')) continue
     const filePath = join(skillDir, 'SKILL.md')
     try {
