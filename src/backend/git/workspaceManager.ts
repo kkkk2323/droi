@@ -70,6 +70,7 @@ export async function createBranch(projectDir: string, branch: string, baseBranc
   const args = ['checkout', '-b', branch]
   if (effectiveBase) args.push(effectiveBase)
   await runGit(args, projectDir)
+  await clearBranchUpstream(projectDir, branch)
 }
 
 export function resolveSiblingWorktreePath(repoRoot: string, branch: string): string {
@@ -205,6 +206,16 @@ async function fetchRemoteBranch(cwd: string, branch: string, remote = 'origin')
   }
 }
 
+async function clearBranchUpstream(cwd: string, branch: string): Promise<void> {
+  const b = String(branch || '').trim()
+  if (!b) return
+  try {
+    await runGit(['branch', '--unset-upstream', '--', b], cwd)
+  } catch {
+    // Best-effort: branch may not have upstream configured.
+  }
+}
+
 export async function createWorktree(params: {
   repoRoot: string
   branch: string
@@ -226,6 +237,7 @@ export async function createWorktree(params: {
   if (params.useExistingBranch) args.push(params.branch)
   else if (effectiveBase) args.push(effectiveBase)
   await runGit(args, params.repoRoot)
+  if (!params.useExistingBranch) await clearBranchUpstream(params.repoRoot, params.branch)
 }
 
 export async function getWorkspaceInfo(projectDir: string): Promise<WorkspaceInfo> {

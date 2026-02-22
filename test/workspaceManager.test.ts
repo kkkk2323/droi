@@ -101,6 +101,63 @@ test('workspaceManager removeWorktree tolerates already-removed worktrees', asyn
   assert.equal(listOut.includes(wtInfo.projectDir), false)
 })
 
+test('workspaceManager createWorktree does not keep upstream to origin/main', async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-no-upstream-'))
+  await runGit(['init'], repoDir)
+  await runGit(['config', 'user.email', 'test@example.com'], repoDir)
+  await runGit(['config', 'user.name', 'test'], repoDir)
+  await writeFile(join(repoDir, 'a.txt'), 'a\n')
+  await runGit(['add', 'a.txt'], repoDir)
+  await runGit(['commit', '-m', 'init'], repoDir)
+  await runGit(['branch', '-M', 'main'], repoDir)
+
+  const remoteRoot = await mkdtemp(join(tmpdir(), 'droid-remote-no-upstream-'))
+  const remoteBare = join(remoteRoot, 'origin.git')
+  await runGit(['init', '--bare', 'origin.git'], remoteRoot)
+  await runGit(['remote', 'add', 'origin', remoteBare], repoDir)
+  await runGit(['push', '-u', 'origin', 'main'], repoDir)
+
+  const branch = 'droi/no-upstream-worktree'
+  await createWorkspace({
+    projectDir: repoDir,
+    mode: 'worktree',
+    branch,
+    baseBranch: 'main',
+  })
+
+  await assert.rejects(runGit(['config', '--get', `branch.${branch}.merge`], repoDir))
+  await assert.rejects(runGit(['config', '--get', `branch.${branch}.remote`], repoDir))
+})
+
+test('workspaceManager createBranch does not keep upstream to origin/main', async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'droid-branch-no-upstream-'))
+  await runGit(['init'], repoDir)
+  await runGit(['config', 'user.email', 'test@example.com'], repoDir)
+  await runGit(['config', 'user.name', 'test'], repoDir)
+  await writeFile(join(repoDir, 'a.txt'), 'a\n')
+  await runGit(['add', 'a.txt'], repoDir)
+  await runGit(['commit', '-m', 'init'], repoDir)
+  await runGit(['branch', '-M', 'main'], repoDir)
+
+  const remoteRoot = await mkdtemp(join(tmpdir(), 'droid-remote-no-upstream-branch-'))
+  const remoteBare = join(remoteRoot, 'origin.git')
+  await runGit(['init', '--bare', 'origin.git'], remoteRoot)
+  await runGit(['remote', 'add', 'origin', remoteBare], repoDir)
+  await runGit(['push', '-u', 'origin', 'main'], repoDir)
+
+  const branch = 'droi/no-upstream-branch'
+  const branchInfo = await createWorkspace({
+    projectDir: repoDir,
+    mode: 'branch',
+    branch,
+    baseBranch: 'main',
+  })
+  assert.equal(branchInfo.branch, branch)
+
+  await assert.rejects(runGit(['config', '--get', `branch.${branch}.merge`], repoDir))
+  await assert.rejects(runGit(['config', '--get', `branch.${branch}.remote`], repoDir))
+})
+
 test('workspaceManager pushBranch pushes the current branch to origin', async () => {
   const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-push-'))
   await runGit(['init'], repoDir)
