@@ -10,11 +10,7 @@ import {
   SelectValue,
 } from './ui/select'
 import { Sparkles } from 'lucide-react'
-import { Kimi } from '@lobehub/icons'
-import { Zhipu } from '@lobehub/icons'
-import { Claude } from '@lobehub/icons'
-import { OpenAI } from '@lobehub/icons'
-import { Gemini } from '@lobehub/icons'
+import { Kimi, Zhipu, Claude, OpenAI, Gemini } from '@lobehub/icons'
 import { MODEL_GROUPS, type ModelProvider, type CustomModelDef } from '@/types'
 
 export type ModelSelectVariant = 'compact' | 'default'
