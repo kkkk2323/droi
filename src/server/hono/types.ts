@@ -24,5 +24,6 @@ export interface ServerEnv {
   Bindings: HttpBindings
   Variables: {
     deps: HonoAppDeps
+    appVersion: string
   }
 }

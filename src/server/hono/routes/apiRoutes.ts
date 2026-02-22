@@ -96,6 +96,11 @@ export function createApiRoutes() {
     return c.json({ version })
   })
 
+  api.get('/app-version', async (c) => {
+    const version = c.get('appVersion') || 'N/A'
+    return c.json({ version })
+  })
+
   api.get('/app-state', async (c) => {
     const state = await loadCachedState(c)
     return c.json(state)

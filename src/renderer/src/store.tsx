@@ -120,6 +120,7 @@ interface AppState {
   pendingInitialSend: PendingInitialSend | null
 
   // App-level state
+  appVersion: string
   droidVersion: string
   apiKey: string
   traceChainEnabled: boolean
@@ -243,6 +244,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   activeProjectDir: '',
   pendingNewSession: null,
   pendingInitialSend: null,
+  appVersion: 'loading...',
   droidVersion: 'loading...',
   apiKey: '',
   traceChainEnabled: isTraceChainEnabled(),
@@ -1895,6 +1897,7 @@ export const useActiveSessionTitle = () => useAppStore((s) => {
 })
 
 export const useDroidVersion = () => useAppStore((s) => s.droidVersion)
+export const useAppVersion = () => useAppStore((s) => s.appVersion)
 export const useApiKey = () => useAppStore((s) => s.apiKey)
 export const useTraceChainEnabled = () => useAppStore((s) => s.traceChainEnabled)
 export const useShowDebugTrace = () => useAppStore((s) => s.showDebugTrace)
@@ -1936,8 +1939,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
     // Load persisted state
     void (async () => {
       try {
-        const [version, state, sessionMetas, loadedCustomModels, diagDir] = await Promise.all([
+        const [version, appVersion, state, sessionMetas, loadedCustomModels, diagDir] = await Promise.all([
           droid.getVersion(),
+          droid.getAppVersion(),
           droid.loadAppState(),
           droid.listSessions(),
           droid.getCustomModels().catch(() => [] as CustomModelDef[]),
@@ -1977,6 +1981,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         const ps = (state as any)?.projectSettings
 
         useAppStore.setState({
+          appVersion: appVersion,
           droidVersion: version,
           customModels: loadedCustomModels,
           apiKey: state.apiKey || '',

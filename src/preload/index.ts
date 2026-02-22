@@ -4,6 +4,7 @@ import type { DroidClientAPI, SaveSessionRequest } from '../shared/protocol'
 
 const droidAPI: DroidClientAPI = {
   getVersion: () => ipcRenderer.invoke('droid:version'),
+  getAppVersion: () => ipcRenderer.invoke('app:version'),
   exec: (params) => ipcRenderer.send('droid:exec', params),
   cancel: (params) => ipcRenderer.send('droid:cancel', params),
   setActiveSession: () => {},

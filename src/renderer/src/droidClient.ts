@@ -387,6 +387,17 @@ const browserClient: DroidClientAPI = {
     }
   },
 
+  getAppVersion: async () => {
+    try {
+      const res = await apiFetch(`${getApiBase()}/app-version`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      const data = await res.json()
+      return data.version || 'N/A'
+    } catch {
+      return 'N/A (browser mode)'
+    }
+  },
+
   exec: async (params) => {
     const sid = params.sessionId || null
     if (!sid) {

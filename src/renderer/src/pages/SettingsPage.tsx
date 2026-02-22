@@ -3,15 +3,16 @@ import { useNavigate } from '@tanstack/react-router'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useCustomModels, useCommitMessageModelId, useLanAccessEnabled, useActions } from '@/store'
-import { MODEL_GROUPS } from '@/types'
+import { ModelSelect } from '@/components/ModelSelect'
+import { useCustomModels, useCommitMessageModelId, useLanAccessEnabled, useActions, useAppVersion, useDroidVersion } from '@/store'
 
 export function SettingsPage() {
   const navigate = useNavigate()
   const customModels = useCustomModels()
   const commitMessageModelId = useCommitMessageModelId()
   const lanAccessEnabled = useLanAccessEnabled()
+  const appVersion = useAppVersion()
+  const droidVersion = useDroidVersion()
   const { setCommitMessageModelId, setLanAccessEnabled } = useActions()
 
   return (
@@ -48,32 +49,11 @@ export function SettingsPage() {
             </p>
           </div>
 
-          <Select value={commitMessageModelId} onValueChange={(v) => v && setCommitMessageModelId(v)}>
-            <SelectTrigger className="w-full justify-between">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="min-w-[260px]">
-              {customModels && customModels.length > 0 && (
-                <>
-                  <SelectGroup>
-                    <SelectLabel className="px-2">Custom</SelectLabel>
-                    {customModels.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectSeparator />
-                </>
-              )}
-              {MODEL_GROUPS.map((group) => (
-                <SelectGroup key={group.label}>
-                  <SelectLabel className="px-2">{group.label}</SelectLabel>
-                  {group.options.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
+          <ModelSelect
+            value={commitMessageModelId}
+            onChange={setCommitMessageModelId}
+            customModels={customModels}
+          />
         </section>
 
         <Separator />
@@ -92,6 +72,18 @@ export function SettingsPage() {
             />
             Enable LAN access
           </label>
+        </section>
+
+        <Separator />
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">About</h2>
+          </div>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>Droi <span className="font-mono">v{appVersion}</span></p>
+            <p>Droid CLI <span className="font-mono">v{droidVersion}</span></p>
+          </div>
         </section>
       </div>
     </div>
