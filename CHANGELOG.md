@@ -1,3 +1,15 @@
+## 0.8.0 - 2026-02-23
+
+### Features
+- Add framer-motion and geist font support with UI enhancements
+
+### Fixes
+- Add artifactName to electron-builder config so x64 DMG is correctly named (by @copilot-swe-agent)
+
+### Style
+- Use theme-aware color tokens for consistency
+- Refine component colors using theme tokens for consistency
+
 ## 0.7.1 - 2026-02-23
 
 ### Refactor
