@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../lib/utils'
 import {
@@ -73,7 +74,12 @@ function ChatView({
     )
 
     return (
-      <div className="flex flex-1 items-center justify-center px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="flex flex-1 items-center justify-center px-6"
+      >
         <div className="w-full max-w-2xl space-y-5">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
@@ -109,7 +115,7 @@ function ChatView({
             />
           )}
         </div>
-      </div>
+      </motion.div>
     )
   }
 
@@ -209,7 +215,7 @@ function MessageEntry({
                 <span
                   className={cn(
                     'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-                    'bg-blue-500/10 text-blue-700'
+                    'bg-muted text-muted-foreground'
                   )}
                 >
                   {stateLabel}
@@ -277,7 +283,7 @@ function MessageEntry({
   if (message.role === 'error') {
     const text = message.blocks[0]?.kind === 'text' ? message.blocks[0].content : ''
     return (
-      <div className="my-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+      <div className="my-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
         {text}
       </div>
     )

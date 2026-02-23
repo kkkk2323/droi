@@ -182,7 +182,7 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
             <button
               key={opt}
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+              className={`rounded-lg px-3 py-1.5 text-xs transition-all active:scale-[0.98] ${
                 opt === 'cancel'
                   ? 'text-red-500 hover:bg-red-500/10'
                   : 'bg-foreground text-background hover:bg-foreground/80'

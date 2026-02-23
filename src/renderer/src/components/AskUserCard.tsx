@@ -68,7 +68,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
                     type="button"
                     className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
                       askAnswers[q.index] === opt
-                        ? 'border-blue-400  text-blue-600'
+                        ? 'border-foreground/40 text-foreground'
                         : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
                     }`}
                     onClick={() => setAskAnswers((prev) => ({ ...prev, [q.index]: opt }))}
@@ -78,11 +78,12 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
                 ))}
               </div>
             )}
+            <label className="text-xs font-medium text-muted-foreground">Your answer</label>
             <input
               value={askAnswers[q.index] || ''}
               onChange={(e) => setAskAnswers((prev) => ({ ...prev, [q.index]: e.target.value }))}
               placeholder="Type your answer..."
-              className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -113,7 +114,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
           <button
             type="button"
             onClick={handleStepNext}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm text-background transition-colors hover:bg-foreground/80"
+            className="rounded-lg bg-foreground px-4 py-2 text-sm text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
           >
             {isLastStep ? 'Submit' : 'Next'}
           </button>

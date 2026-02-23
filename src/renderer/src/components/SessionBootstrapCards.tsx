@@ -129,7 +129,7 @@ function SetupScriptCard({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onRetry?.() }}
-                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-colors hover:bg-foreground/80"
+                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
               >
                 Retry
               </button>

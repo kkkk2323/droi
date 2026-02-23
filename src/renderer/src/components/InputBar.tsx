@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Select,
   SelectContent,
@@ -463,7 +464,7 @@ export function InputBar({
   return (
 	    <footer className="shrink-0 px-4 pb-4">
 	      <div
-	        className={`mx-auto max-w-3xl rounded-2xl border bg-card shadow-sm  transition-colors ${isDragOver ? 'border-blue-400 bg-blue-50/5' : 'border-border'}`}
+	        className={`mx-auto max-w-3xl rounded-2xl border bg-card shadow-sm  transition-colors ${isDragOver ? 'border-ring bg-accent/50' : 'border-border'}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -516,8 +517,15 @@ export function InputBar({
 	            />
 	          </div>
 
+		          <AnimatePresence>
 		          {slashOpen && (
-		            <div className="absolute left-4 right-4 bottom-full z-20 mb-2 max-h-60 overflow-auto rounded-xl border border-border bg-popover p-1 shadow">
+		            <motion.div
+		              initial={{ opacity: 0, y: 4 }}
+		              animate={{ opacity: 1, y: 0 }}
+		              exit={{ opacity: 0, y: 4 }}
+		              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+		              className="absolute left-4 right-4 bottom-full z-20 mb-2 max-h-60 overflow-auto rounded-xl border border-border bg-popover p-1 shadow"
+		            >
 		              {slashLoading && (
 		                <div className="px-2 py-2 text-xs text-muted-foreground">
 		                  Loading commands…
@@ -572,7 +580,7 @@ export function InputBar({
 		                            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">project</span>
 		                          )}
 		                          {scope === 'user' && (
-		                            <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-600">user</span>
+		                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">user</span>
 		                          )}
 		                        </div>
 		                        {desc && (
@@ -585,8 +593,9 @@ export function InputBar({
 		                  })}
 		                </>
 		              )}
-		            </div>
+		            </motion.div>
 		          )}
+		          </AnimatePresence>
 		        </div>
 
         {attachments.length > 0 && (
@@ -683,7 +692,7 @@ export function InputBar({
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/80"
+                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.95]"
               >
                 <Square className="size-3.5" />
               </button>
@@ -692,9 +701,9 @@ export function InputBar({
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSend}
-                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/80 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <ArrowUp className="size-4" strokeWidth={2.5} />
+                <ArrowUp className="size-4" />
               </button>
             )}
           </div>

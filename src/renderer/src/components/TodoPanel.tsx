@@ -84,7 +84,7 @@ export function TodoPanel({ messages }: TodoPanelProps) {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4">
-      <div className="rounded-t-xl border border-b-0 border-border bg-card/80 backdrop-blur-sm  ">
+      <div className="rounded-t-xl border border-b-0 border-border bg-card shadow-sm dark:bg-card/80 dark:backdrop-blur-sm dark:border-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
         <div className="px-3">
           <button
             className="flex w-full items-center gap-2 py-2 text-left text-xs font-medium text-foreground/80 hover:text-foreground transition-colors"

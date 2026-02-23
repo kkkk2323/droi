@@ -43,7 +43,7 @@ function InnerLayout() {
         >
           {isMacElectron ? (
             <div
-              className="fixed top-[4px] left-0 z-50 flex h-10 items-center pl-20"
+              className="fixed top-[4px] left-0 z-10 flex h-10 items-center pl-20"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
               <SidebarTrigger
