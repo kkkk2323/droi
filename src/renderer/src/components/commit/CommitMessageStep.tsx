@@ -38,7 +38,7 @@ export function CommitMessageStep({
   executingSteps = [],
   locked = false,
 }: CommitMessageStepProps) {
-  const [open, setOpen] = React.useState(true)
+  const [open, setOpen] = React.useState(false)
   const effectiveOpen = locked ? false : open
 
   return (

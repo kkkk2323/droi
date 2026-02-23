@@ -16,15 +16,10 @@ export function WorktreeIndicator() {
 
   if (!meta) return null
 
-  const isWorktree = meta.workspaceType === 'worktree'
-
   return (
     <div className="flex items-center gap-1 rounded-md border-border bg-card/80 px-2 py-0.5 text-xs text-muted-foreground cursor-default">
       <GitBranch className="size-3.5 text-muted-foreground" />
       <span className="max-w-[220px] truncate font-mono">{meta.branch || 'branch'}</span>
-      {isWorktree && (
-        <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">wt</span>
-      )}
     </div>
   )
 }
