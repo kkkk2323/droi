@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import {
-  useTraceChainEnabled, useShowDebugTrace, useDebugTraceMaxLines, useLocalDiagnosticsEnabled,
-  useLocalDiagnosticsRetentionDays, useLocalDiagnosticsMaxTotalMb,
-  useDiagnosticsDir, useActiveSessionId, useActions,
+  useTraceChainEnabled,
+  useShowDebugTrace,
+  useDebugTraceMaxLines,
+  useLocalDiagnosticsEnabled,
+  useLocalDiagnosticsRetentionDays,
+  useLocalDiagnosticsMaxTotalMb,
+  useDiagnosticsDir,
+  useActiveSessionId,
+  useActions,
 } from '@/store'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -19,15 +25,25 @@ export function DebugSettingsPage() {
   const diagnosticsDir = useDiagnosticsDir()
   const activeSessionId = useActiveSessionId()
   const {
-    setTraceChainEnabled, setShowDebugTrace, setLocalDiagnosticsEnabled,
-    setDebugTraceMaxLines, setLocalDiagnosticsRetention, refreshDiagnosticsDir, exportDiagnostics, openPath,
+    setTraceChainEnabled,
+    setShowDebugTrace,
+    setLocalDiagnosticsEnabled,
+    setDebugTraceMaxLines,
+    setLocalDiagnosticsRetention,
+    refreshDiagnosticsDir,
+    exportDiagnostics,
+    openPath,
   } = useActions()
 
   const [copied, setCopied] = useState(false)
   const [exportedPath, setExportedPath] = useState('')
   const [exporting, setExporting] = useState(false)
-  const [debugTraceMaxLinesDraft, setDebugTraceMaxLinesDraft] = useState(debugTraceMaxLines ? String(debugTraceMaxLines) : '')
-  const [retentionDaysDraft, setRetentionDaysDraft] = useState(String(localDiagnosticsRetentionDays))
+  const [debugTraceMaxLinesDraft, setDebugTraceMaxLinesDraft] = useState(
+    debugTraceMaxLines ? String(debugTraceMaxLines) : '',
+  )
+  const [retentionDaysDraft, setRetentionDaysDraft] = useState(
+    String(localDiagnosticsRetentionDays),
+  )
   const [maxTotalMbDraft, setMaxTotalMbDraft] = useState(String(localDiagnosticsMaxTotalMb))
 
   useEffect(() => {
@@ -96,14 +112,12 @@ export function DebugSettingsPage() {
           <div>
             <h2 className="text-sm font-medium">Trace Chain Debug</h2>
             <p className="text-xs text-muted-foreground">
-              Emit fingerprinted notification chain logs (`trace-chain`) across backend and renderer.
+              Emit fingerprinted notification chain logs (`trace-chain`) across backend and
+              renderer.
             </p>
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
-            <Switch
-              checked={traceChainEnabled}
-              onCheckedChange={setTraceChainEnabled}
-            />
+            <Switch checked={traceChainEnabled} onCheckedChange={setTraceChainEnabled} />
             Enable trace-chain diagnostics
           </label>
         </section>
@@ -115,7 +129,8 @@ export function DebugSettingsPage() {
           <div>
             <h2 className="text-sm font-medium">Local Diagnostics</h2>
             <p className="text-xs text-muted-foreground">
-              Persist redacted diagnostics logs locally and export a zip bundle for intermittent issues.
+              Persist redacted diagnostics logs locally and export a zip bundle for intermittent
+              issues.
             </p>
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
@@ -130,22 +145,15 @@ export function DebugSettingsPage() {
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="font-medium">Diagnostics dir</div>
-                <div className="mt-1 truncate font-mono opacity-80">{diagnosticsDir || '(unknown)'}</div>
+                <div className="mt-1 truncate font-mono opacity-80">
+                  {diagnosticsDir || '(unknown)'}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void refreshDiagnosticsDir()}
-                >
+                <Button variant="outline" size="sm" onClick={() => void refreshDiagnosticsDir()}>
                   Refresh
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onCopyDir}
-                  disabled={!diagnosticsDir}
-                >
+                <Button variant="outline" size="sm" onClick={onCopyDir} disabled={!diagnosticsDir}>
                   {copied ? 'Copied' : 'Copy'}
                 </Button>
                 <Button
@@ -223,10 +231,7 @@ export function DebugSettingsPage() {
             </p>
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
-            <Switch
-              checked={showDebugTrace}
-              onCheckedChange={setShowDebugTrace}
-            />
+            <Switch checked={showDebugTrace} onCheckedChange={setShowDebugTrace} />
             Show debug trace panel in ChatView
           </label>
 

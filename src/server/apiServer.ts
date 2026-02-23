@@ -21,15 +21,26 @@ function readLocalDiagnosticsEnabled(state: PersistedAppState): boolean | undefi
   return typeof raw === 'boolean' ? raw : undefined
 }
 
-function readLocalDiagnosticsRetention(state: PersistedAppState): { retentionDays?: number; maxTotalMb?: number } {
+function readLocalDiagnosticsRetention(state: PersistedAppState): {
+  retentionDays?: number
+  maxTotalMb?: number
+} {
   const daysRaw = (state as any)?.localDiagnosticsRetentionDays
   const mbRaw = (state as any)?.localDiagnosticsMaxTotalMb
-  const retentionDays = (typeof daysRaw === 'number' && Number.isFinite(daysRaw)) ? Math.max(1, Math.floor(daysRaw)) : undefined
-  const maxTotalMb = (typeof mbRaw === 'number' && Number.isFinite(mbRaw)) ? Math.max(1, Math.floor(mbRaw)) : undefined
+  const retentionDays =
+    typeof daysRaw === 'number' && Number.isFinite(daysRaw)
+      ? Math.max(1, Math.floor(daysRaw))
+      : undefined
+  const maxTotalMb =
+    typeof mbRaw === 'number' && Number.isFinite(mbRaw) ? Math.max(1, Math.floor(mbRaw)) : undefined
   return { retentionDays, maxTotalMb }
 }
 
-export function shouldRequireAuth(_params: { remoteAddress: string | undefined | null; method: string | undefined; path: string }): boolean {
+export function shouldRequireAuth(_params: {
+  remoteAddress: string | undefined | null
+  method: string | undefined
+  path: string
+}): boolean {
   return false
 }
 
@@ -57,7 +68,8 @@ export async function startApiServer(opts: StartApiServerOpts) {
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
   const unsubscribeSessionReplace = execManager.onEvent((ev) => {
-    if (ev.type === 'session-id-replaced') void sessionStore.replaceSessionId(ev.oldSessionId, ev.newSessionId)
+    if (ev.type === 'session-id-replaced')
+      void sessionStore.replaceSessionId(ev.oldSessionId, ev.newSessionId)
   })
 
   const cachedStateRef: { value: PersistedAppState } = {
@@ -69,7 +81,8 @@ export async function startApiServer(opts: StartApiServerOpts) {
   const diagEnabled = readLocalDiagnosticsEnabled(cachedStateRef.value)
   diagnostics.setEnabled(typeof diagEnabled === 'boolean' ? diagEnabled : true)
   const retention = readLocalDiagnosticsRetention(cachedStateRef.value)
-  const bytes = typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
+  const bytes =
+    typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
   diagnostics.setRetention({ maxAgeDays: retention.retentionDays, maxTotalBytes: bytes })
   await diagnostics.startMaintenance()
 
@@ -103,9 +116,10 @@ export async function startApiServer(opts: StartApiServerOpts) {
   })
 
   const addr = (server as any).address()
-  const actualPort = (addr && typeof addr === 'object' && typeof addr.port === 'number')
-    ? Number(addr.port)
-    : opts.port
+  const actualPort =
+    addr && typeof addr === 'object' && typeof addr.port === 'number'
+      ? Number(addr.port)
+      : opts.port
   runtimePortRef.value = actualPort
 
   return {
@@ -116,7 +130,9 @@ export async function startApiServer(opts: StartApiServerOpts) {
     close: async () => {
       unsubscribeSessionReplace()
       setupScriptRunner.disposeAll()
-      return await new Promise<void>((resolvePromise) => (server as any).close(() => resolvePromise()))
+      return await new Promise<void>((resolvePromise) =>
+        (server as any).close(() => resolvePromise()),
+      )
     },
   }
 }

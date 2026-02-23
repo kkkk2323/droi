@@ -14,7 +14,6 @@ import type {
   SessionMeta,
   JsonRpcNotification,
   JsonRpcRequest,
-  DroidPermissionOption,
   SlashCommandDef,
   SlashResolveResult,
   SkillDef,
@@ -23,15 +22,25 @@ import type {
   WorkspaceCreateParams,
 } from '@/types'
 
-type RpcNotificationCallback = (payload: { message: JsonRpcNotification; sessionId: string | null }) => void
+type RpcNotificationCallback = (payload: {
+  message: JsonRpcNotification
+  sessionId: string | null
+}) => void
 type RpcRequestCallback = (payload: { message: JsonRpcRequest; sessionId: string | null }) => void
 type TurnEndCallback = (payload: { code: number; sessionId: string | null }) => void
 type DebugCallback = (payload: { message: string; sessionId: string | null }) => void
 type StdoutCallback = (payload: { data: string; sessionId: string | null }) => void
 type StderrCallback = (payload: { data: string; sessionId: string | null }) => void
 type ErrorCallback = (payload: { message: string; sessionId: string | null }) => void
-type SetupScriptEventCallback = (payload: { event: SetupScriptEvent; sessionId: string | null }) => void
-type SessionIdReplacedCallback = (payload: { oldSessionId: string; newSessionId: string; reason: string }) => void
+type SetupScriptEventCallback = (payload: {
+  event: SetupScriptEvent
+  sessionId: string | null
+}) => void
+type SessionIdReplacedCallback = (payload: {
+  oldSessionId: string
+  newSessionId: string
+  reason: string
+}) => void
 
 const rpcNotificationListeners: Set<RpcNotificationCallback> = new Set()
 const rpcRequestListeners: Set<RpcRequestCallback> = new Set()
@@ -89,7 +98,11 @@ function emitSetupScriptEvent(event: SetupScriptEvent, sessionId: string | null)
   setupScriptEventListeners.forEach((cb) => cb({ event, sessionId }))
 }
 
-function emitSessionIdReplaced(payload: { oldSessionId: string; newSessionId: string; reason: string }) {
+function emitSessionIdReplaced(payload: {
+  oldSessionId: string
+  newSessionId: string
+  reason: string
+}) {
   sessionIdReplacedListeners.forEach((cb) => cb(payload))
 }
 
@@ -102,12 +115,15 @@ function handleStreamPayload(payload: string, sessionId: string | null) {
     if (sid) {
       if (msg.type === 'rpc-notification') {
         const n = msg.message
-        const notif = (n && typeof n === 'object' && n.method === 'droid.session_notification')
-          ? (n.params as any)?.notification
-          : null
+        const notif =
+          n && typeof n === 'object' && n.method === 'droid.session_notification'
+            ? (n.params as any)?.notification
+            : null
         const t = (notif as any)?.type
         if (t === 'droid_working_state_changed' || t === 'working_state_changed') {
-          const newState = String((notif as any)?.newState || '').trim().toLowerCase()
+          const newState = String((notif as any)?.newState || '')
+            .trim()
+            .toLowerCase()
           if (newState && newState !== 'idle') markStreamRunning(sid)
           else if (newState === 'idle') markStreamIdle(sid)
         }
@@ -138,7 +154,8 @@ function handleStreamPayload(payload: string, sessionId: string | null) {
       const oldSessionId = String(msg.oldSessionId || '').trim()
       const newSessionId = String(msg.newSessionId || '').trim()
       const reason = String(msg.reason || '').trim() || 'unknown'
-      if (oldSessionId && newSessionId) emitSessionIdReplaced({ oldSessionId, newSessionId, reason })
+      if (oldSessionId && newSessionId)
+        emitSessionIdReplaced({ oldSessionId, newSessionId, reason })
     }
   } catch {
     // ignore
@@ -201,7 +218,9 @@ let streamGcInterval: IntervalHandle | null = null
 
 function makeReadyPromise(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void
-  const promise = new Promise<void>((r) => { resolve = r })
+  const promise = new Promise<void>((r) => {
+    resolve = r
+  })
   return { promise, resolve }
 }
 
@@ -211,7 +230,10 @@ function markStreamNotReady(state: StreamState) {
   state.resolveReady = resolve
 }
 
-async function waitForStreamReady(sessionId: string, timeoutMs = STREAM_READY_TIMEOUT_MS): Promise<void> {
+async function waitForStreamReady(
+  sessionId: string,
+  timeoutMs = STREAM_READY_TIMEOUT_MS,
+): Promise<void> {
   const current = streamBySessionId.get(sessionId)
   if (!current) return
 
@@ -262,7 +284,10 @@ async function runStreamLoop(state: StreamState): Promise<void> {
       if (buffer) parseSseLines(buffer, (payload) => handleStreamPayload(payload, sid))
     } catch (err) {
       if (state.abort.signal.aborted || streamBySessionId.get(sid) !== state) break
-      emitDebug(`stream: disconnected sessionId=${sid} err=${String((err as Error)?.message || err || 'unknown')}`, sid)
+      emitDebug(
+        `stream: disconnected sessionId=${sid} err=${String((err as Error)?.message || err || 'unknown')}`,
+        sid,
+      )
     }
 
     if (state.abort.signal.aborted || streamBySessionId.get(sid) !== state) break
@@ -270,7 +295,10 @@ async function runStreamLoop(state: StreamState): Promise<void> {
     emitDebug(`stream: reconnecting sessionId=${sid}`, sid)
     markStreamNotReady(state)
 
-    const delay = STREAM_RECONNECT_DELAYS_MS[Math.min(state.reconnectAttempt, STREAM_RECONNECT_DELAYS_MS.length - 1)]
+    const delay =
+      STREAM_RECONNECT_DELAYS_MS[
+        Math.min(state.reconnectAttempt, STREAM_RECONNECT_DELAYS_MS.length - 1)
+      ]
     state.reconnectAttempt += 1
     await new Promise<void>((resolve) => window.setTimeout(resolve, delay))
   }
@@ -432,7 +460,7 @@ const browserClient: DroidClientAPI = {
         markStreamIdle(sid)
       }
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to dispatch exec')
+      throw new Error(msg || 'Failed to dispatch exec', { cause: err })
     }
   },
 
@@ -517,7 +545,9 @@ const browserClient: DroidClientAPI = {
 
   onSetupScriptEvent: (callback) => {
     setupScriptEventListeners.add(callback)
-    return () => { setupScriptEventListeners.delete(callback) }
+    return () => {
+      setupScriptEventListeners.delete(callback)
+    }
   },
 
   listSlashCommands: async () => {
@@ -527,7 +557,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as SlashCommandDef[]
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to fetch slash commands')
+      throw new Error(msg || 'Failed to fetch slash commands', { cause: err })
     }
   },
 
@@ -538,7 +568,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as SkillDef[]
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to fetch skills')
+      throw new Error(msg || 'Failed to fetch skills', { cause: err })
     }
   },
 
@@ -558,24 +588,34 @@ const browserClient: DroidClientAPI = {
 
   onRpcNotification: (callback) => {
     rpcNotificationListeners.add(callback)
-    return () => { rpcNotificationListeners.delete(callback) }
+    return () => {
+      rpcNotificationListeners.delete(callback)
+    }
   },
   onRpcRequest: (callback) => {
     rpcRequestListeners.add(callback)
-    return () => { rpcRequestListeners.delete(callback) }
+    return () => {
+      rpcRequestListeners.delete(callback)
+    }
   },
   onTurnEnd: (callback) => {
     turnEndListeners.add(callback)
-    return () => { turnEndListeners.delete(callback) }
+    return () => {
+      turnEndListeners.delete(callback)
+    }
   },
   onDebug: (callback) => {
     debugListeners.add(callback)
-    return () => { debugListeners.delete(callback) }
+    return () => {
+      debugListeners.delete(callback)
+    }
   },
 
   onSessionIdReplaced: (callback) => {
     sessionIdReplacedListeners.add(callback)
-    return () => { sessionIdReplacedListeners.delete(callback) }
+    return () => {
+      sessionIdReplacedListeners.delete(callback)
+    }
   },
 
   respondPermission: ({ sessionId, requestId, selectedOption }) => {
@@ -594,22 +634,28 @@ const browserClient: DroidClientAPI = {
   },
   onStdout: (callback) => {
     stdoutListeners.add(callback)
-    return () => { stdoutListeners.delete(callback) }
+    return () => {
+      stdoutListeners.delete(callback)
+    }
   },
   onStderr: (callback) => {
     stderrListeners.add(callback)
-    return () => { stderrListeners.delete(callback) }
+    return () => {
+      stderrListeners.delete(callback)
+    }
   },
   onError: (callback) => {
     errorListeners.add(callback)
-    return () => { errorListeners.delete(callback) }
+    return () => {
+      errorListeners.delete(callback)
+    }
   },
 
   setApiKey: (apiKey) => {
     apiFetch(`${getApiBase()}/apikey`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey })
+      body: JSON.stringify({ apiKey }),
     }).catch(() => {})
   },
   getApiKey: async () => {
@@ -693,9 +739,12 @@ const browserClient: DroidClientAPI = {
     }).catch(() => {})
   },
   setDebugTraceMaxLines: (maxLines) => {
-    const v = (maxLines === null)
-      ? null
-      : (typeof maxLines === 'number' && Number.isFinite(maxLines)) ? Math.min(10_000, Math.max(1, Math.floor(maxLines))) : null
+    const v =
+      maxLines === null
+        ? null
+        : typeof maxLines === 'number' && Number.isFinite(maxLines)
+          ? Math.min(10_000, Math.max(1, Math.floor(maxLines)))
+          : null
     apiFetch(`${getApiBase()}/app-state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -717,8 +766,14 @@ const browserClient: DroidClientAPI = {
     }).catch(() => {})
   },
   setLocalDiagnosticsRetention: ({ retentionDays, maxTotalMb }) => {
-    const days = (typeof retentionDays === 'number' && Number.isFinite(retentionDays)) ? Math.max(1, Math.floor(retentionDays)) : null
-    const mb = (typeof maxTotalMb === 'number' && Number.isFinite(maxTotalMb)) ? Math.max(1, Math.floor(maxTotalMb)) : null
+    const days =
+      typeof retentionDays === 'number' && Number.isFinite(retentionDays)
+        ? Math.max(1, Math.floor(retentionDays))
+        : null
+    const mb =
+      typeof maxTotalMb === 'number' && Number.isFinite(maxTotalMb)
+        ? Math.max(1, Math.floor(maxTotalMb))
+        : null
     apiFetch(`${getApiBase()}/app-state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -751,7 +806,10 @@ const browserClient: DroidClientAPI = {
       const res = await apiFetch(`${getApiBase()}/diagnostics/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: sid || null, debugTraceText: typeof debugTraceText === 'string' ? debugTraceText : '' }),
+        body: JSON.stringify({
+          sessionId: sid || null,
+          debugTraceText: typeof debugTraceText === 'string' ? debugTraceText : '',
+        }),
       })
       if (!res.ok) throw new Error(await readApiError(res))
       const blob = await res.blob()
@@ -766,7 +824,7 @@ const browserClient: DroidClientAPI = {
       return { path: '(downloaded)' }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to export diagnostics')
+      throw new Error(msg || 'Failed to export diagnostics', { cause: err })
     }
   },
   openPath: async () => ({ ok: true as const }),
@@ -784,23 +842,40 @@ const browserClient: DroidClientAPI = {
       input.style.display = 'none'
       input.onchange = async () => {
         const files = input.files
-        if (!files || files.length === 0) { resolve(null); return }
+        if (!files || files.length === 0) {
+          resolve(null)
+          return
+        }
         try {
           const projectDir = await browserClient.getProjectDir()
-          if (!projectDir) { resolve(null); return }
+          if (!projectDir) {
+            resolve(null)
+            return
+          }
           const formData = new FormData()
           for (let i = 0; i < files.length; i++) formData.append('file', files[i])
-          const res = await apiFetch(`${getApiBase()}/upload?projectDir=${encodeURIComponent(projectDir)}`, {
-            method: 'POST',
-            body: formData,
-          })
-          if (!res.ok) { resolve(null); return }
+          const res = await apiFetch(
+            `${getApiBase()}/upload?projectDir=${encodeURIComponent(projectDir)}`,
+            {
+              method: 'POST',
+              body: formData,
+            },
+          )
+          if (!res.ok) {
+            resolve(null)
+            return
+          }
           const results: Array<{ name: string; path: string }> = await res.json()
           resolve(results.map((r) => r.path))
-        } catch { resolve(null) }
+        } catch {
+          resolve(null)
+        }
         input.remove()
       }
-      input.oncancel = () => { resolve(null); input.remove() }
+      input.oncancel = () => {
+        resolve(null)
+        input.remove()
+      }
       document.body.appendChild(input)
       input.click()
     })
@@ -815,13 +890,18 @@ const browserClient: DroidClientAPI = {
         const name = p.split('/').pop() || 'file'
         formData.append('file', blob, name)
       }
-      const res = await apiFetch(`${getApiBase()}/upload?projectDir=${encodeURIComponent(params.projectDir)}`, {
-        method: 'POST',
-        body: formData,
-      })
+      const res = await apiFetch(
+        `${getApiBase()}/upload?projectDir=${encodeURIComponent(params.projectDir)}`,
+        {
+          method: 'POST',
+          body: formData,
+        },
+      )
       if (!res.ok) return []
       return await res.json()
-    } catch { return [] }
+    } catch {
+      return []
+    }
   },
   saveClipboardImage: async (params) => {
     try {
@@ -831,21 +911,26 @@ const browserClient: DroidClientAPI = {
       const fileName = rawName || `clipboard-${Date.now()}.${fallbackExt}`
       const formData = new FormData()
       formData.append('file', blob, fileName)
-      const res = await apiFetch(`${getApiBase()}/upload?projectDir=${encodeURIComponent(params.projectDir)}`, {
-        method: 'POST',
-        body: formData,
-      })
+      const res = await apiFetch(
+        `${getApiBase()}/upload?projectDir=${encodeURIComponent(params.projectDir)}`,
+        {
+          method: 'POST',
+          body: formData,
+        },
+      )
       if (!res.ok) return null
       const results: Array<{ name: string; path: string }> = await res.json()
       return results[0] || null
-    } catch { return null }
+    } catch {
+      return null
+    }
   },
 
   setProjectDir: (dir) => {
     apiFetch(`${getApiBase()}/project-dir`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir })
+      body: JSON.stringify({ dir }),
     }).catch(() => {})
   },
   getProjectDir: async () => {
@@ -907,7 +992,7 @@ const browserClient: DroidClientAPI = {
       const res = await apiFetch(`${getApiBase()}/session/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
+        body: JSON.stringify({ id }),
       })
       const data = await res.json()
       return Boolean(data.ok)
@@ -943,7 +1028,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as PersistedAppState
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to update project settings')
+      throw new Error(msg || 'Failed to update project settings', { cause: err })
     }
   },
 
@@ -1020,7 +1105,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as WorkspaceInfo | null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to fetch workspace info')
+      throw new Error(msg || 'Failed to fetch workspace info', { cause: err })
     }
   },
   switchWorkspace: async (params) => {
@@ -1034,7 +1119,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as WorkspaceInfo | null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to switch workspace')
+      throw new Error(msg || 'Failed to switch workspace', { cause: err })
     }
   },
   createWorkspace: async (params: WorkspaceCreateParams) => {
@@ -1048,7 +1133,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as WorkspaceInfo | null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to create workspace')
+      throw new Error(msg || 'Failed to create workspace', { cause: err })
     }
   },
   removeWorktree: async (params): Promise<RemoveWorktreeResult> => {
@@ -1062,7 +1147,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as RemoveWorktreeResult
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to remove worktree')
+      throw new Error(msg || 'Failed to remove worktree', { cause: err })
     }
   },
   pushBranch: async (params): Promise<PushBranchResult> => {
@@ -1076,7 +1161,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as PushBranchResult
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to push branch')
+      throw new Error(msg || 'Failed to push branch', { cause: err })
     }
   },
 
@@ -1094,7 +1179,9 @@ const browserClient: DroidClientAPI = {
     }
   },
 
-  generateCommitMeta: async (params: GenerateCommitMetaRequest): Promise<GenerateCommitMetaResult> => {
+  generateCommitMeta: async (
+    params: GenerateCommitMetaRequest,
+  ): Promise<GenerateCommitMetaResult> => {
     const res = await apiFetch(`${getApiBase()}/git-generate-commit-meta`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1122,7 +1209,12 @@ const browserClient: DroidClientAPI = {
     try {
       const res = await apiFetch(`${getApiBase()}/custom-models`)
       if (!res.ok) return []
-      return (await res.json()) as Array<{ id: string; displayName: string; model: string; provider: string }>
+      return (await res.json()) as Array<{
+        id: string
+        displayName: string
+        model: string
+        provider: string
+      }>
     } catch {
       return []
     }
@@ -1136,40 +1228,73 @@ export function getDroidClient(): DroidClientAPI {
   if (w) {
     const merged = Object.assign({}, browserClient, w) as Partial<DroidClientAPI>
     // If the preload defines keys but leaves them undefined (or not functions), keep browser fallbacks.
-    if (typeof (merged as any).listSlashCommands !== 'function') merged.listSlashCommands = browserClient.listSlashCommands
-    if (typeof (merged as any).resolveSlashCommand !== 'function') merged.resolveSlashCommand = browserClient.resolveSlashCommand
-    if (typeof (merged as any).listSkills !== 'function') merged.listSkills = browserClient.listSkills
-    if (typeof (merged as any).setActiveSession !== 'function') merged.setActiveSession = browserClient.setActiveSession
-    if (typeof (merged as any).runSetupScript !== 'function') merged.runSetupScript = browserClient.runSetupScript
-    if (typeof (merged as any).cancelSetupScript !== 'function') merged.cancelSetupScript = browserClient.cancelSetupScript
-    if (typeof (merged as any).onSetupScriptEvent !== 'function') merged.onSetupScriptEvent = browserClient.onSetupScriptEvent
-    if (typeof (merged as any).updateSessionSettings !== 'function') merged.updateSessionSettings = browserClient.updateSessionSettings
-    if (typeof (merged as any).listGitBranches !== 'function') merged.listGitBranches = browserClient.listGitBranches
-    if (typeof (merged as any).listGitWorktreeBranchesInUse !== 'function') merged.listGitWorktreeBranchesInUse = browserClient.listGitWorktreeBranchesInUse
-    if (typeof (merged as any).getWorkspaceInfo !== 'function') merged.getWorkspaceInfo = browserClient.getWorkspaceInfo
-    if (typeof (merged as any).switchWorkspace !== 'function') merged.switchWorkspace = browserClient.switchWorkspace
-    if (typeof (merged as any).setCommitMessageModelId !== 'function') merged.setCommitMessageModelId = browserClient.setCommitMessageModelId
-    if (typeof (merged as any).detectGitTools !== 'function') merged.detectGitTools = browserClient.detectGitTools
-    if (typeof (merged as any).generateCommitMeta !== 'function') merged.generateCommitMeta = browserClient.generateCommitMeta
-    if (typeof (merged as any).commitWorkflow !== 'function') merged.commitWorkflow = browserClient.commitWorkflow
-    if (typeof (merged as any).onCommitWorkflowProgress !== 'function') merged.onCommitWorkflowProgress = browserClient.onCommitWorkflowProgress
-    if (typeof (merged as any).createWorkspace !== 'function') merged.createWorkspace = browserClient.createWorkspace
-    if (typeof (merged as any).updateProjectSettings !== 'function') merged.updateProjectSettings = browserClient.updateProjectSettings
-    if (typeof (merged as any).removeWorktree !== 'function') merged.removeWorktree = browserClient.removeWorktree
-    if (typeof (merged as any).pushBranch !== 'function') merged.pushBranch = browserClient.pushBranch
-    if (typeof (merged as any).detectEditors !== 'function') merged.detectEditors = browserClient.detectEditors
-    if (typeof (merged as any).openWithEditor !== 'function') merged.openWithEditor = browserClient.openWithEditor
-    if (typeof (merged as any).setLocalDiagnosticsEnabled !== 'function') merged.setLocalDiagnosticsEnabled = browserClient.setLocalDiagnosticsEnabled
-    if (typeof (merged as any).setLocalDiagnosticsRetention !== 'function') merged.setLocalDiagnosticsRetention = browserClient.setLocalDiagnosticsRetention
-    if (typeof (merged as any).setLanAccessEnabled !== 'function') merged.setLanAccessEnabled = browserClient.setLanAccessEnabled
-    if (typeof (merged as any).appendDiagnosticsEvent !== 'function') merged.appendDiagnosticsEvent = browserClient.appendDiagnosticsEvent
-    if (typeof (merged as any).getDiagnosticsDir !== 'function') merged.getDiagnosticsDir = browserClient.getDiagnosticsDir
-    if (typeof (merged as any).exportDiagnostics !== 'function') merged.exportDiagnostics = browserClient.exportDiagnostics
+    if (typeof (merged as any).listSlashCommands !== 'function')
+      merged.listSlashCommands = browserClient.listSlashCommands
+    if (typeof (merged as any).resolveSlashCommand !== 'function')
+      merged.resolveSlashCommand = browserClient.resolveSlashCommand
+    if (typeof (merged as any).listSkills !== 'function')
+      merged.listSkills = browserClient.listSkills
+    if (typeof (merged as any).setActiveSession !== 'function')
+      merged.setActiveSession = browserClient.setActiveSession
+    if (typeof (merged as any).runSetupScript !== 'function')
+      merged.runSetupScript = browserClient.runSetupScript
+    if (typeof (merged as any).cancelSetupScript !== 'function')
+      merged.cancelSetupScript = browserClient.cancelSetupScript
+    if (typeof (merged as any).onSetupScriptEvent !== 'function')
+      merged.onSetupScriptEvent = browserClient.onSetupScriptEvent
+    if (typeof (merged as any).updateSessionSettings !== 'function')
+      merged.updateSessionSettings = browserClient.updateSessionSettings
+    if (typeof (merged as any).listGitBranches !== 'function')
+      merged.listGitBranches = browserClient.listGitBranches
+    if (typeof (merged as any).listGitWorktreeBranchesInUse !== 'function')
+      merged.listGitWorktreeBranchesInUse = browserClient.listGitWorktreeBranchesInUse
+    if (typeof (merged as any).getWorkspaceInfo !== 'function')
+      merged.getWorkspaceInfo = browserClient.getWorkspaceInfo
+    if (typeof (merged as any).switchWorkspace !== 'function')
+      merged.switchWorkspace = browserClient.switchWorkspace
+    if (typeof (merged as any).setCommitMessageModelId !== 'function')
+      merged.setCommitMessageModelId = browserClient.setCommitMessageModelId
+    if (typeof (merged as any).detectGitTools !== 'function')
+      merged.detectGitTools = browserClient.detectGitTools
+    if (typeof (merged as any).generateCommitMeta !== 'function')
+      merged.generateCommitMeta = browserClient.generateCommitMeta
+    if (typeof (merged as any).commitWorkflow !== 'function')
+      merged.commitWorkflow = browserClient.commitWorkflow
+    if (typeof (merged as any).onCommitWorkflowProgress !== 'function')
+      merged.onCommitWorkflowProgress = browserClient.onCommitWorkflowProgress
+    if (typeof (merged as any).createWorkspace !== 'function')
+      merged.createWorkspace = browserClient.createWorkspace
+    if (typeof (merged as any).updateProjectSettings !== 'function')
+      merged.updateProjectSettings = browserClient.updateProjectSettings
+    if (typeof (merged as any).removeWorktree !== 'function')
+      merged.removeWorktree = browserClient.removeWorktree
+    if (typeof (merged as any).pushBranch !== 'function')
+      merged.pushBranch = browserClient.pushBranch
+    if (typeof (merged as any).detectEditors !== 'function')
+      merged.detectEditors = browserClient.detectEditors
+    if (typeof (merged as any).openWithEditor !== 'function')
+      merged.openWithEditor = browserClient.openWithEditor
+    if (typeof (merged as any).setLocalDiagnosticsEnabled !== 'function')
+      merged.setLocalDiagnosticsEnabled = browserClient.setLocalDiagnosticsEnabled
+    if (typeof (merged as any).setLocalDiagnosticsRetention !== 'function')
+      merged.setLocalDiagnosticsRetention = browserClient.setLocalDiagnosticsRetention
+    if (typeof (merged as any).setLanAccessEnabled !== 'function')
+      merged.setLanAccessEnabled = browserClient.setLanAccessEnabled
+    if (typeof (merged as any).appendDiagnosticsEvent !== 'function')
+      merged.appendDiagnosticsEvent = browserClient.appendDiagnosticsEvent
+    if (typeof (merged as any).getDiagnosticsDir !== 'function')
+      merged.getDiagnosticsDir = browserClient.getDiagnosticsDir
+    if (typeof (merged as any).exportDiagnostics !== 'function')
+      merged.exportDiagnostics = browserClient.exportDiagnostics
     if (typeof (merged as any).openPath !== 'function') merged.openPath = browserClient.openPath
-    if (typeof (merged as any).clearSession !== 'function') merged.clearSession = browserClient.clearSession
-    if (typeof (merged as any).createSession !== 'function') merged.createSession = browserClient.createSession
-    if (typeof (merged as any).restartSessionWithActiveKey !== 'function') merged.restartSessionWithActiveKey = browserClient.restartSessionWithActiveKey
-    if (typeof (merged as any).onSessionIdReplaced !== 'function') merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
+    if (typeof (merged as any).clearSession !== 'function')
+      merged.clearSession = browserClient.clearSession
+    if (typeof (merged as any).createSession !== 'function')
+      merged.createSession = browserClient.createSession
+    if (typeof (merged as any).restartSessionWithActiveKey !== 'function')
+      merged.restartSessionWithActiveKey = browserClient.restartSessionWithActiveKey
+    if (typeof (merged as any).onSessionIdReplaced !== 'function')
+      merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
     return merged as DroidClientAPI
   }
   return browserClient

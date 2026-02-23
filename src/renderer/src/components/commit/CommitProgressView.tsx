@@ -47,13 +47,15 @@ export function CommitProgressView({ steps, error }: CommitProgressViewProps) {
           )}
         >
           <span className="shrink-0">{STATUS_ICON[s.status]}</span>
-          <span className={cn(
-            'flex-1 font-medium',
-            s.status === 'pending' && 'text-muted-foreground/50',
-            s.status === 'running' && 'text-foreground',
-            s.status === 'done' && 'text-foreground/70',
-            s.status === 'error' && 'text-destructive-foreground',
-          )}>
+          <span
+            className={cn(
+              'flex-1 font-medium',
+              s.status === 'pending' && 'text-muted-foreground/50',
+              s.status === 'running' && 'text-foreground',
+              s.status === 'done' && 'text-foreground/70',
+              s.status === 'error' && 'text-destructive-foreground',
+            )}
+          >
             {s.label}
           </span>
           {s.detail && s.status === 'done' && (

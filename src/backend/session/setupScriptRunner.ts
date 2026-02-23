@@ -11,7 +11,9 @@ const EXTENDED_PATH = [
   join(homedir(), '.local/bin'),
   join(homedir(), '.cargo/bin'),
   process.env.PATH || '',
-].filter(Boolean).join(':')
+]
+  .filter(Boolean)
+  .join(':')
 
 export interface RunSetupScriptParams {
   sessionId: string
@@ -36,7 +38,8 @@ export class SetupScriptRunner {
     if (!sessionId) throw new Error('Missing sessionId')
     if (!projectDir) throw new Error('Missing projectDir')
     if (!script) throw new Error('Missing setup script')
-    if (this.processes.has(sessionId)) throw new Error('Setup script is already running for this session')
+    if (this.processes.has(sessionId))
+      throw new Error('Setup script is already running for this session')
 
     const shell = process.env['SHELL'] || '/bin/bash'
     const child = spawn(shell, ['-lc', script], {
@@ -49,7 +52,12 @@ export class SetupScriptRunner {
     this.emit({ type: 'started', sessionId, projectDir, script })
 
     let finished = false
-    const finalize = (args: { success: boolean; exitCode: number | null; signal: string | null; error?: string }) => {
+    const finalize = (args: {
+      success: boolean
+      exitCode: number | null
+      signal: string | null
+      error?: string
+    }) => {
       if (finished) return
       finished = true
       this.processes.delete(sessionId)
@@ -76,7 +84,12 @@ export class SetupScriptRunner {
     })
 
     child.once('error', (err) => {
-      finalize({ success: false, exitCode: null, signal: null, error: err instanceof Error ? err.message : String(err) })
+      finalize({
+        success: false,
+        exitCode: null,
+        signal: null,
+        error: err instanceof Error ? err.message : String(err),
+      })
     })
 
     child.once('close', (code, signal) => {

@@ -1,13 +1,24 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from './ui/select'
-import { ArrowUp, Square, Plus, X, Paperclip, Image as ImageIcon, BookOpen, Loader2 } from 'lucide-react'
-import { AUTO_LEVELS, type CustomModelDef, type SlashCommandDef, type SkillDef, getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
+  ArrowUp,
+  Square,
+  Plus,
+  X,
+  Paperclip,
+  Image as ImageIcon,
+  BookOpen,
+  Loader2,
+} from 'lucide-react'
+import {
+  AUTO_LEVELS,
+  type CustomModelDef,
+  type SlashCommandDef,
+  type SkillDef,
+  getModelReasoningLevels,
+  getModelDefaultReasoning,
+} from '@/types'
 import { getDroidClient, isBrowserMode } from '@/droidClient'
 import { KeyUsageIndicator } from './KeyUsageIndicator'
 import { TokenUsageIndicator } from './TokenUsageIndicator'
@@ -47,10 +58,7 @@ function mergeAttachments(prev: Attachment[], next: Attachment[]): Attachment[] 
 
 type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
 
-type SelectedTag =
-  | null
-  | { type: 'command'; name: string }
-  | { type: 'skill'; name: string }
+type SelectedTag = null | { type: 'command'; name: string } | { type: 'skill'; name: string }
 
 type InputBarDraft = {
   input: string
@@ -111,17 +119,7 @@ const BUILTIN_COMMANDS: BuiltinCommandDef[] = [
   { name: 'restart', description: 'Restart session (alias for /clear)' },
 ]
 
-type SlashCacheState = {
-  at: number
-  projectDir: string
-  commands: SlashCommandDef[]
-  skills: SkillDef[]
-}
-
-const SLASH_CACHE_TTL_MS = 1000
-const SLASH_FETCH_DEBOUNCE_MS = 300
 const MAX_SLASH_ITEMS_DISPLAY = 24
-
 
 interface InputBarProps {
   draftKey?: string
@@ -140,16 +138,26 @@ interface InputBarProps {
   disabled?: boolean
   disabledPlaceholder?: string
   activeProjectDir?: string
-  onUiDebug?: (message: string) => void
   specChangesMode?: boolean
 }
 
 export function InputBar({
   draftKey,
-  model, autoLevel, reasoningEffort, customModels, onModelChange, onAutoLevelChange, onReasoningEffortChange,
-  onSend, onCancel, onForceCancel, isCancelling, isRunning, disabled, disabledPlaceholder,
+  model,
+  autoLevel,
+  reasoningEffort,
+  customModels,
+  onModelChange,
+  onAutoLevelChange,
+  onReasoningEffortChange,
+  onSend,
+  onCancel,
+  onForceCancel,
+  isCancelling,
+  isRunning,
+  disabled,
+  disabledPlaceholder,
   activeProjectDir,
-  onUiDebug,
   specChangesMode,
 }: InputBarProps) {
   const normalizedDraftKey = normalizeDraftKey(draftKey)
@@ -157,7 +165,9 @@ export function InputBar({
 
   const initialDraftRef = useRef<InputBarDraft | null>(null)
   if (initialDraftRef.current === null) {
-    initialDraftRef.current = canPersistDraft ? readInputBarDraft(normalizedDraftKey) : emptyInputBarDraft()
+    initialDraftRef.current = canPersistDraft
+      ? readInputBarDraft(normalizedDraftKey)
+      : emptyInputBarDraft()
   }
   const initialDraft = initialDraftRef.current
 
@@ -182,12 +192,26 @@ export function InputBar({
   }, [normalizedDraftKey, canPersistDraft])
 
   const shouldFetchSlash = Boolean(slashOpen) && !selectedTag && !disabled
-  const { data: slashCommands = [], isLoading: slashCmdsLoading, error: slashCmdsError } = useSlashCommandsQuery(slashProjectKey, shouldFetchSlash)
-  const { data: skills = [], isLoading: slashSkillsLoading, error: slashSkillsError } = useSkillsQuery(slashProjectKey, shouldFetchSlash)
+  const {
+    data: slashCommands = [],
+    isLoading: slashCmdsLoading,
+    error: slashCmdsError,
+  } = useSlashCommandsQuery(slashProjectKey, shouldFetchSlash)
+  const {
+    data: skills = [],
+    isLoading: slashSkillsLoading,
+    error: slashSkillsError,
+  } = useSkillsQuery(slashProjectKey, shouldFetchSlash)
   const slashLoading = slashCmdsLoading || slashSkillsLoading
-  const slashError = slashCmdsError || slashSkillsError
-    ? [slashCmdsError && `commands: ${(slashCmdsError as Error).message}`, slashSkillsError && `skills: ${(slashSkillsError as Error).message}`].filter(Boolean).join(' | ')
-    : null
+  const slashError =
+    slashCmdsError || slashSkillsError
+      ? [
+          slashCmdsError && `commands: ${(slashCmdsError as Error).message}`,
+          slashSkillsError && `skills: ${(slashSkillsError as Error).message}`,
+        ]
+          .filter(Boolean)
+          .join(' | ')
+      : null
 
   useEffect(() => {
     if (!disabled) textareaRef.current?.focus()
@@ -219,22 +243,29 @@ export function InputBar({
   const filteredSlashItems = useMemo<SlashItem[]>(() => {
     if (!slashState) return []
     const q = slashState.name
-    const builtinItems: SlashItem[] = (q ? BUILTIN_COMMANDS.filter((c) => c.name.startsWith(q)) : BUILTIN_COMMANDS).map((def) => ({ type: 'builtin' as const, def }))
-    const cmdItems: SlashItem[] = (q ? slashCommands.filter((c) => c.name.startsWith(q)) : slashCommands).map((def) => ({ type: 'command' as const, def }))
-    const skillItems: SlashItem[] = (q ? skills.filter((s) => s.name.startsWith(q)) : skills).map((def) => ({ type: 'skill' as const, def }))
+    const builtinItems: SlashItem[] = (
+      q ? BUILTIN_COMMANDS.filter((c) => c.name.startsWith(q)) : BUILTIN_COMMANDS
+    ).map((def) => ({ type: 'builtin' as const, def }))
+    const cmdItems: SlashItem[] = (
+      q ? slashCommands.filter((c) => c.name.startsWith(q)) : slashCommands
+    ).map((def) => ({ type: 'command' as const, def }))
+    const skillItems: SlashItem[] = (q ? skills.filter((s) => s.name.startsWith(q)) : skills).map(
+      (def) => ({ type: 'skill' as const, def }),
+    )
     return [...builtinItems, ...cmdItems, ...skillItems]
   }, [slashCommands, skills, slashState])
 
   const visibleSlashItems = useMemo<SlashItem[]>(
     () => filteredSlashItems.slice(0, MAX_SLASH_ITEMS_DISPLAY),
-    [filteredSlashItems]
+    [filteredSlashItems],
   )
 
   const getSlashApiBaseForDebug = useCallback((): string => {
     if (
-      typeof (window as any).droid?.listSlashCommands === 'function'
-      && typeof (window as any).droid?.listSkills === 'function'
-    ) return 'ipc'
+      typeof (window as any).droid?.listSlashCommands === 'function' &&
+      typeof (window as any).droid?.listSkills === 'function'
+    )
+      return 'ipc'
     const envBase = (import.meta as any)?.env?.VITE_DROID_API_BASE as string | undefined
     return (envBase || 'http://localhost:3001/api').replace(/\/+$/, '')
   }, [])
@@ -258,25 +289,28 @@ export function InputBar({
     setSlashHighlightedIndex((i) => Math.min(i, visibleSlashItems.length - 1))
   }, [slashOpen, visibleSlashItems.length])
 
-  const confirmSelectedItem = useCallback((item: SlashItem) => {
-    if (item.type === 'builtin') {
-      onSend(`/${item.def.name}`, [])
-      setInput('')
+  const confirmSelectedItem = useCallback(
+    (item: SlashItem) => {
+      if (item.type === 'builtin') {
+        onSend(`/${item.def.name}`, [])
+        setInput('')
+        setSlashOpen(false)
+        setSlashHighlightedIndex(0)
+        return
+      }
+      const trimmed = input.trimStart()
+      const after = trimmed.startsWith('/') ? trimmed.slice(1) : ''
+      const m = after.match(/\s/)
+      const splitIdx = m ? (m.index ?? -1) : -1
+      const args = splitIdx >= 0 ? after.slice(splitIdx).trim() : ''
+      setSelectedTag({ type: item.type, name: item.def.name })
+      setInput(args)
       setSlashOpen(false)
       setSlashHighlightedIndex(0)
-      return
-    }
-    const trimmed = input.trimStart()
-    const after = trimmed.startsWith('/') ? trimmed.slice(1) : ''
-    const m = after.match(/\s/)
-    const splitIdx = m ? (m.index ?? -1) : -1
-    const args = splitIdx >= 0 ? after.slice(splitIdx).trim() : ''
-    setSelectedTag({ type: item.type, name: item.def.name })
-    setInput(args)
-    setSlashOpen(false)
-    setSlashHighlightedIndex(0)
-    textareaRef.current?.focus()
-  }, [input, onSend])
+      textareaRef.current?.focus()
+    },
+    [input, onSend],
+  )
 
   const clearTag = useCallback(() => {
     setSelectedTag(null)
@@ -346,59 +380,71 @@ export function InputBar({
     e.dataTransfer.dropEffect = 'copy'
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounterRef.current = 0
-    setIsDragOver(false)
-
-    const files = Array.from(e.dataTransfer.files)
-    // In Electron, dropped files have a .path property with the absolute filesystem path
-    const paths = files.map((f) => (f as any).path as string).filter((p) => typeof p === 'string' && p.length > 0)
-    if (paths.length > 0) {
-      addFilesFromPaths(paths)
-      return
-    }
-    // Fallback: if no path (e.g. dragged from browser), save as blob
-    for (const file of files) {
-      saveClipboardBlob(file)
-    }
-  }, [addFilesFromPaths, saveClipboardBlob])
-
-  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
-    // Approach 1: Check for files with filesystem paths (Cmd+C on a file in Finder)
-    const pastedFiles = Array.from(e.clipboardData.files)
-    const filePaths = pastedFiles.map((f) => (f as any).path as string).filter((p) => typeof p === 'string' && p.length > 0)
-    if (filePaths.length > 0) {
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
       e.preventDefault()
-      addFilesFromPaths(filePaths)
-      return
-    }
+      e.stopPropagation()
+      dragCounterRef.current = 0
+      setIsDragOver(false)
 
-    // Approach 2: Check for clipboard image data (screenshots, copied images)
-    const items = Array.from(e.clipboardData.items)
-    const imageItems = items.filter((item) => item.type.startsWith('image/'))
-    if (imageItems.length === 0) return // let default text paste happen
+      const files = Array.from(e.dataTransfer.files)
+      // In Electron, dropped files have a .path property with the absolute filesystem path
+      const paths = files
+        .map((f) => (f as any).path as string)
+        .filter((p) => typeof p === 'string' && p.length > 0)
+      if (paths.length > 0) {
+        addFilesFromPaths(paths)
+        return
+      }
+      // Fallback: if no path (e.g. dragged from browser), save as blob
+      for (const file of files) {
+        saveClipboardBlob(file)
+      }
+    },
+    [addFilesFromPaths, saveClipboardBlob],
+  )
 
-    e.preventDefault()
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent) => {
+      // Approach 1: Check for files with filesystem paths (Cmd+C on a file in Finder)
+      const pastedFiles = Array.from(e.clipboardData.files)
+      const filePaths = pastedFiles
+        .map((f) => (f as any).path as string)
+        .filter((p) => typeof p === 'string' && p.length > 0)
+      if (filePaths.length > 0) {
+        e.preventDefault()
+        addFilesFromPaths(filePaths)
+        return
+      }
 
-    // Read File objects synchronously before any await -- clipboardData becomes stale after event returns
-    const blobs = imageItems.map((item) => item.getAsFile()).filter(Boolean) as File[]
-    if (blobs.length === 0) return
+      // Approach 2: Check for clipboard image data (screenshots, copied images)
+      const items = Array.from(e.clipboardData.items)
+      const imageItems = items.filter((item) => item.type.startsWith('image/'))
+      if (imageItems.length === 0) return // let default text paste happen
 
-    for (const blob of blobs) {
-      await saveClipboardBlob(blob)
-    }
-  }, [addFilesFromPaths, saveClipboardBlob])
+      e.preventDefault()
 
-  const hasDraftToSend = !disabled && (() => {
-    if (attachments.length > 0) return true
-    if (selectedTag) return true
-    const trimmed = input.trim()
-    if (!trimmed) return false
-    if (trimmed === '/' && slashOpen) return false
-    return true
-  })()
+      // Read File objects synchronously before any await -- clipboardData becomes stale after event returns
+      const blobs = imageItems.map((item) => item.getAsFile()).filter(Boolean) as File[]
+      if (blobs.length === 0) return
+
+      for (const blob of blobs) {
+        await saveClipboardBlob(blob)
+      }
+    },
+    [addFilesFromPaths, saveClipboardBlob],
+  )
+
+  const hasDraftToSend =
+    !disabled &&
+    (() => {
+      if (attachments.length > 0) return true
+      if (selectedTag) return true
+      const trimmed = input.trim()
+      if (!trimmed) return false
+      if (trimmed === '/' && slashOpen) return false
+      return true
+    })()
   const canSend = hasDraftToSend
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -408,7 +454,13 @@ export function InputBar({
 
       if (!selectedTag && slashOpen && slashState && !slashState.name) return
 
-      if (!selectedTag && slashOpen && slashState && slashState.name && visibleSlashItems.length > 0) {
+      if (
+        !selectedTag &&
+        slashOpen &&
+        slashState &&
+        slashState.name &&
+        visibleSlashItems.length > 0
+      ) {
         const idx = Math.min(Math.max(slashHighlightedIndex, 0), visibleSlashItems.length - 1)
         confirmSelectedItem(visibleSlashItems[idx])
         return
@@ -442,7 +494,13 @@ export function InputBar({
   const handleSubmit = () => {
     if (!canSend) return
     if (!selectedTag && slashOpen && slashState && !slashState.name) return
-    if (!selectedTag && slashOpen && slashState && slashState.name && visibleSlashItems.length > 0) {
+    if (
+      !selectedTag &&
+      slashOpen &&
+      slashState &&
+      slashState.name &&
+      visibleSlashItems.length > 0
+    ) {
       const idx = Math.min(Math.max(slashHighlightedIndex, 0), visibleSlashItems.length - 1)
       confirmSelectedItem(visibleSlashItems[idx])
       return
@@ -462,141 +520,157 @@ export function InputBar({
   }
 
   return (
-	    <footer className="shrink-0 px-4 pb-4">
-	      <div
-	        className={`mx-auto max-w-3xl rounded-2xl border bg-card shadow-sm  transition-colors ${isDragOver ? 'border-ring bg-accent/50' : 'border-border'}`}
+    <footer className="shrink-0 px-4 pb-4">
+      <div
+        className={`mx-auto max-w-3xl rounded-2xl border bg-card shadow-sm  transition-colors ${isDragOver ? 'border-ring bg-accent/50' : 'border-border'}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-	        <div className="relative px-4 pt-3 pb-2">
-	          {selectedTag && (
-	            <div className="mb-2 flex items-center">
-	              <span
-	                className={selectedTag.type === 'skill'
-	                  ? 'inline-flex max-w-full items-center gap-1 rounded-full bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 whitespace-nowrap'
-	                  : 'inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground whitespace-nowrap'}
-	              >
-	                {selectedTag.type === 'skill' && <BookOpen className="size-3 shrink-0" />}
-	                <span className="max-w-[240px] truncate">{selectedTag.name}</span>
-	                <button
-	                  type="button"
-	                  className="ml-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-	                  onClick={clearTag}
-	                  title="Clear tag"
-	                >
-	                  <X className="size-3" />
-	                </button>
-	              </span>
-	            </div>
-	          )}
-	          <div className="flex items-start gap-2">
-	            <textarea
-	              ref={textareaRef}
-	              value={input}
-	              onChange={(e) => setInput(e.target.value)}
-	              onKeyDown={handleKeyDown}
-	              onPaste={handlePaste}
-	              onDragOver={handleDragOver}
-	              onDragEnter={handleDragEnter}
-	              onDragLeave={handleDragLeave}
-	              onDrop={handleDrop}
-	              placeholder={disabled
-                ? (disabledPlaceholder || 'Select a project to start...')
-	                  : isDragOver
-	                    ? 'Drop files here...'
-	                    : selectedTag
-	                      ? 'Type tag arguments...'
-	                      : specChangesMode
-	                        ? 'Describe what to change in the plan...'
-	                        : 'Ask anything, / for commands'}
-	              disabled={disabled}
-	              rows={1}
-	              className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-	            />
-	          </div>
+        <div className="relative px-4 pt-3 pb-2">
+          {selectedTag && (
+            <div className="mb-2 flex items-center">
+              <span
+                className={
+                  selectedTag.type === 'skill'
+                    ? 'inline-flex max-w-full items-center gap-1 rounded-full bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 whitespace-nowrap'
+                    : 'inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground whitespace-nowrap'
+                }
+              >
+                {selectedTag.type === 'skill' && <BookOpen className="size-3 shrink-0" />}
+                <span className="max-w-[240px] truncate">{selectedTag.name}</span>
+                <button
+                  type="button"
+                  className="ml-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  onClick={clearTag}
+                  title="Clear tag"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            </div>
+          )}
+          <div className="flex items-start gap-2">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              placeholder={
+                disabled
+                  ? disabledPlaceholder || 'Select a project to start...'
+                  : isDragOver
+                    ? 'Drop files here...'
+                    : selectedTag
+                      ? 'Type tag arguments...'
+                      : specChangesMode
+                        ? 'Describe what to change in the plan...'
+                        : 'Ask anything, / for commands'
+              }
+              disabled={disabled}
+              rows={1}
+              className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
 
-		          <AnimatePresence>
-		          {slashOpen && (
-		            <motion.div
-		              initial={{ opacity: 0, y: 4 }}
-		              animate={{ opacity: 1, y: 0 }}
-		              exit={{ opacity: 0, y: 4 }}
-		              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-		              className="absolute left-4 right-4 bottom-full z-20 mb-2 max-h-60 overflow-auto rounded-xl border border-border bg-popover p-1 shadow"
-		            >
-		              {slashLoading && (
-		                <div className="px-2 py-2 text-xs text-muted-foreground">
-		                  Loading commands…
-		                </div>
-		              )}
-		              {!slashLoading && slashError && (
-		                <div className="px-2 py-2 text-xs text-muted-foreground">
-		                  Failed to load from {getSlashApiBaseForDebug()}: {slashError}
-		                </div>
-		              )}
-		              {!slashLoading && visibleSlashItems.length === 0 && (
-		                <div className="px-2 py-2 text-xs text-muted-foreground">
-		                  No commands or skills found (from ~/.factory/commands, ~/.factory/skills, ~/.agents/skills, and &lt;project&gt;/.factory/*)
-		                </div>
-		              )}
-		              {!slashLoading && visibleSlashItems.length > 0 && (
-		                <>
-		                  {visibleSlashItems.map((item, i) => {
-		                    const active = i === slashHighlightedIndex
-		                    const isSkill = item.type === 'skill'
-		                    const isBuiltin = item.type === 'builtin'
-		                    const scope = (item.def as any).scope
-		                    const desc = isBuiltin
-		                      ? (item.def as BuiltinCommandDef).description
-		                      : isSkill
-		                        ? (item.def as SkillDef).description
-		                        : ((item.def as SlashCommandDef).description || (item.def as SlashCommandDef).argumentHint)
-		                    return (
-		                      <button
-		                        key={`${item.type}:${item.def.name}`}
-		                        type="button"
-		                        className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
-		                          active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-		                        }`}
-		                        onMouseDown={(e) => {
-		                          e.preventDefault()
-		                          confirmSelectedItem(item)
-		                        }}
-		                      >
-		                        <div className="flex items-center gap-2">
-		                          <span className="font-mono text-[11px] text-foreground">/{item.def.name}</span>
-		                          {isBuiltin && (
-		                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">built-in</span>
-		                          )}
-		                          {isSkill && (
-		                            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">skill</span>
-		                          )}
-		                          {!isSkill && !isBuiltin && (
-		                            <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[10px] text-zinc-700">command</span>
-		                          )}
-		                          {scope === 'project' && (
-		                            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">project</span>
-		                          )}
-		                          {scope === 'user' && (
-		                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">user</span>
-		                          )}
-		                        </div>
-		                        {desc && (
-		                          <div className="mt-0.5 text-[11px] text-muted-foreground">
-		                            {desc}
-		                          </div>
-		                        )}
-		                      </button>
-		                    )
-		                  })}
-		                </>
-		              )}
-		            </motion.div>
-		          )}
-		          </AnimatePresence>
-		        </div>
+          <AnimatePresence>
+            {slashOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute left-4 right-4 bottom-full z-20 mb-2 max-h-60 overflow-auto rounded-xl border border-border bg-popover p-1 shadow"
+              >
+                {slashLoading && (
+                  <div className="px-2 py-2 text-xs text-muted-foreground">Loading commands…</div>
+                )}
+                {!slashLoading && slashError && (
+                  <div className="px-2 py-2 text-xs text-muted-foreground">
+                    Failed to load from {getSlashApiBaseForDebug()}: {slashError}
+                  </div>
+                )}
+                {!slashLoading && visibleSlashItems.length === 0 && (
+                  <div className="px-2 py-2 text-xs text-muted-foreground">
+                    No commands or skills found (from ~/.factory/commands, ~/.factory/skills,
+                    ~/.agents/skills, and &lt;project&gt;/.factory/*)
+                  </div>
+                )}
+                {!slashLoading && visibleSlashItems.length > 0 && (
+                  <>
+                    {visibleSlashItems.map((item, i) => {
+                      const active = i === slashHighlightedIndex
+                      const isSkill = item.type === 'skill'
+                      const isBuiltin = item.type === 'builtin'
+                      const scope = (item.def as any).scope
+                      const desc = isBuiltin
+                        ? (item.def as BuiltinCommandDef).description
+                        : isSkill
+                          ? (item.def as SkillDef).description
+                          : (item.def as SlashCommandDef).description ||
+                            (item.def as SlashCommandDef).argumentHint
+                      return (
+                        <button
+                          key={`${item.type}:${item.def.name}`}
+                          type="button"
+                          className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
+                            active
+                              ? 'bg-muted text-foreground'
+                              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                          }`}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            confirmSelectedItem(item)
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[11px] text-foreground">
+                              /{item.def.name}
+                            </span>
+                            {isBuiltin && (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                built-in
+                              </span>
+                            )}
+                            {isSkill && (
+                              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
+                                skill
+                              </span>
+                            )}
+                            {!isSkill && !isBuiltin && (
+                              <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[10px] text-zinc-700">
+                                command
+                              </span>
+                            )}
+                            {scope === 'project' && (
+                              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">
+                                project
+                              </span>
+                            )}
+                            {scope === 'user' && (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                user
+                              </span>
+                            )}
+                          </div>
+                          {desc && (
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">{desc}</div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {attachments.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto px-4 pb-2">
@@ -605,10 +679,11 @@ export function InputBar({
                 key={`${att.path}-${i}`}
                 className="flex shrink-0 items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground"
               >
-                {isImageFile(att.name)
-                  ? <ImageIcon className="size-3 text-muted-foreground" />
-                  : <Paperclip className="size-3 text-muted-foreground" />
-                }
+                {isImageFile(att.name) ? (
+                  <ImageIcon className="size-3 text-muted-foreground" />
+                ) : (
+                  <Paperclip className="size-3 text-muted-foreground" />
+                )}
                 <span className="max-w-[120px] truncate">{att.name}</span>
                 <button
                   type="button"
@@ -650,12 +725,18 @@ export function InputBar({
               const displayValue = reasoningEffort || getModelDefaultReasoning(model) || levels[0]
               return (
                 <Select value={displayValue} onValueChange={(v) => v && onReasoningEffortChange(v)}>
-                  <SelectTrigger size="sm" className="h-7 w-auto shrink-0 gap-1 rounded-lg border-none bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground">
-                    <span className="hidden md:inline">Reasoning: </span><span>{displayValue}</span>
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7 w-auto shrink-0 gap-1 rounded-lg border-none bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground"
+                  >
+                    <span className="hidden md:inline">Reasoning: </span>
+                    <span>{displayValue}</span>
                   </SelectTrigger>
                   <SelectContent side="top">
                     {levels.map((l) => (
-                      <SelectItem key={l} value={l}>{l}</SelectItem>
+                      <SelectItem key={l} value={l}>
+                        {l}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -663,12 +744,19 @@ export function InputBar({
             })()}
 
             <Select value={autoLevel} onValueChange={(v) => v && onAutoLevelChange(v)}>
-              <SelectTrigger size="sm" className="h-7 w-auto shrink-0 gap-1 rounded-lg border-none bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground">
-                <span className="flex flex-1 text-left">{AUTO_LEVELS.find((l) => l.value === autoLevel)?.label ?? autoLevel}</span>
+              <SelectTrigger
+                size="sm"
+                className="h-7 w-auto shrink-0 gap-1 rounded-lg border-none bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground"
+              >
+                <span className="flex flex-1 text-left">
+                  {AUTO_LEVELS.find((l) => l.value === autoLevel)?.label ?? autoLevel}
+                </span>
               </SelectTrigger>
               <SelectContent side="top">
                 {AUTO_LEVELS.map((l) => (
-                  <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                  <SelectItem key={l.value} value={l.value}>
+                    {l.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

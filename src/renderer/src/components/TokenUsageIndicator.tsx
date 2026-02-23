@@ -17,7 +17,9 @@ export function TokenUsageIndicator({ className }: { className?: string }) {
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger className={`flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground ${className || ''}`}>
+        <TooltipTrigger
+          className={`flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground ${className || ''}`}
+        >
           <span>{formatTokenCount(total)} tokens</span>
         </TooltipTrigger>
         <TooltipContent side="top">

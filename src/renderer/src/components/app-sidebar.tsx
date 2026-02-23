@@ -2,12 +2,16 @@ import * as React from 'react'
 import { useRef, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
-import { useProjects, useActiveProjectDir, useActiveSessionId, useActions, useDeletingSessionIds, useIsCreatingSession, useIsInitialLoadDone } from '@/store'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+  useProjects,
+  useActiveProjectDir,
+  useActiveSessionId,
+  useActions,
+  useDeletingSessionIds,
+  useIsCreatingSession,
+  useIsInitialLoadDone,
+} from '@/store'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Sidebar,
   SidebarContent,
@@ -67,10 +71,9 @@ function SessionTitle({ title }: { title: string }) {
   }, [title])
 
   return (
-    <span className={cn(
-      'block truncate transition-colors duration-500',
-      flash && 'text-foreground',
-    )}>
+    <span
+      className={cn('block truncate transition-colors duration-500', flash && 'text-foreground')}
+    >
       {title}
     </span>
   )
@@ -113,13 +116,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     <Sidebar variant="sidebar" {...props}>
       <SidebarHeader className="flex-row items-center justify-between py-3 pl-20 pr-2" />
 
-
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
               {!browserMode && (
-                <SidebarMenuItem className='pt-2'>
+                <SidebarMenuItem className="pt-2">
                   <SidebarMenuButton
                     tooltip="Add project"
                     aria-disabled={isInitBlocked}
@@ -139,12 +141,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">
                     {browserMode ? (
                       <>
-                        No projects available.<br />
+                        No projects available.
+                        <br />
                         Add a project on the desktop app first.
                       </>
                     ) : (
                       <>
-                        No projects yet.<br />
+                        No projects yet.
+                        <br />
                         Click <FolderPlusIcon className="inline size-3" /> to add one.
                       </>
                     )}
@@ -153,7 +157,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               )}
 
               {projects.map((project) => {
-                const isActiveProject = project.sessions.some((s) => s.projectDir === activeProjectDir)
+                const isActiveProject = project.sessions.some(
+                  (s) => s.projectDir === activeProjectDir,
+                )
 
                 return (
                   <Collapsible
@@ -185,7 +191,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         className={cn(
                           'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
                           mobile ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
-                          (isCreatingSession || isInitBlocked) && 'opacity-60 pointer-events-none'
+                          (isCreatingSession || isInitBlocked) && 'opacity-60 pointer-events-none',
                         )}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -193,9 +199,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           handleNewSession(project.dir)
                         }}
                       >
-                        {isCreatingSession
-                          ? <Loader2 className="size-3.5 text-muted-foreground animate-spin" />
-                          : <PlusIcon className="size-3.5 text-muted-foreground" />}
+                        {isCreatingSession ? (
+                          <Loader2 className="size-3.5 text-muted-foreground animate-spin" />
+                        ) : (
+                          <PlusIcon className="size-3.5 text-muted-foreground" />
+                        )}
                       </button>
 
                       <DropdownMenu>
@@ -225,7 +233,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Delete project?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will remove &quot;{project.name}&quot; from the sidebar. Your files on disk will not be affected.
+                                    This will remove &quot;{project.name}&quot; from the sidebar.
+                                    Your files on disk will not be affected.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -260,10 +269,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           <SidebarMenuSub>
                             {pinned.length > 0 && (
                               <>
-                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Pinned</div>
+                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                  Pinned
+                                </div>
                                 <SessionList sessions={pinned} />
                                 {recent.length > 0 && (
-                                  <div className="px-2 pt-3 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Recent</div>
+                                  <div className="px-2 pt-3 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                    Recent
+                                  </div>
                                 )}
                               </>
                             )}
@@ -275,13 +288,23 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           return (
                             <AnimatePresence initial={false}>
                               {sessions.map((session, sessionIdx) => (
-                                <SessionItem key={session.id} session={session} sessionIdx={sessionIdx} />
+                                <SessionItem
+                                  key={session.id}
+                                  session={session}
+                                  sessionIdx={sessionIdx}
+                                />
                               ))}
                             </AnimatePresence>
                           )
                         }
 
-                        function SessionItem({ session, sessionIdx }: { session: typeof pinned[0]; sessionIdx: number }) {
+                        function SessionItem({
+                          session,
+                          sessionIdx,
+                        }: {
+                          session: (typeof pinned)[0]
+                          sessionIdx: number
+                        }) {
                           const isActive = session.id === activeSessionId
                           const isSessionRunning = getSessionRunning(session.id)
                           const isSessionDeleting = deletingSessionIds.has(session.id)
@@ -293,24 +316,37 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                               initial={{ opacity: 0, y: -4 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -4 }}
-                              transition={{ duration: 0.2, delay: sessionIdx * 0.03, ease: [0.16, 1, 0.3, 1] }}
+                              transition={{
+                                duration: 0.2,
+                                delay: sessionIdx * 0.03,
+                                ease: [0.16, 1, 0.3, 1],
+                              }}
                             >
                               <SidebarMenuSubItem className="group/session">
                                 <SidebarMenuSubButton
                                   render={<button type="button" />}
-                                  className={cn('w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0', isSessionDeleting && 'opacity-60 pointer-events-none')}
+                                  className={cn(
+                                    'w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0',
+                                    isSessionDeleting && 'opacity-60 pointer-events-none',
+                                  )}
                                   isActive={isActive}
                                   aria-disabled={isSessionDeleting}
-                                  onClick={() => { if (!isSessionDeleting) handleSelectSession(session.id) }}
+                                  onClick={() => {
+                                    if (!isSessionDeleting) handleSelectSession(session.id)
+                                  }}
                                 >
                                   <span className="flex w-full items-center gap-1.5">
-                                    {isSessionRunning && <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />}
+                                    {isSessionRunning && (
+                                      <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />
+                                    )}
                                     <SessionTitle title={session.title} />
                                   </span>
                                   <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
                                     {branchName && <span className="truncate">{branchName}</span>}
                                     {branchName && <span>·</span>}
-                                    <span className="shrink-0">{formatRelativeTime(session.lastMessageAt ?? session.savedAt)}</span>
+                                    <span className="shrink-0">
+                                      {formatRelativeTime(session.lastMessageAt ?? session.savedAt)}
+                                    </span>
                                   </span>
                                 </SidebarMenuSubButton>
                                 <DropdownMenu>
@@ -322,12 +358,21 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                     <MoreHorizontalIcon className="size-3.5 text-muted-foreground" />
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent side="right" align="start">
-                                    <DropdownMenuItem className="py-1 cursor-pointer text-xs" onClick={() => handleTogglePin(session.id)}>
+                                    <DropdownMenuItem
+                                      className="py-1 cursor-pointer text-xs"
+                                      onClick={() => handleTogglePin(session.id)}
+                                    >
                                       {session.pinned ? 'Unpin' : 'Pin'}
                                     </DropdownMenuItem>
                                     <AlertDialog>
                                       <AlertDialogTrigger
-                                        render={<DropdownMenuItem variant="destructive" closeOnClick={false} className="py-1 cursor-pointer text-xs" />}
+                                        render={
+                                          <DropdownMenuItem
+                                            variant="destructive"
+                                            closeOnClick={false}
+                                            className="py-1 cursor-pointer text-xs"
+                                          />
+                                        }
                                         disabled={isSessionDeleting}
                                       >
                                         {isSessionDeleting ? 'Deleting...' : 'Delete'}
@@ -338,9 +383,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                           <AlertDialogDescription>
                                             {session.workspaceType === 'worktree' ? (
                                               <>
-                                                This will permanently delete this session and <span className="font-medium">force delete</span> its worktree.
+                                                This will permanently delete this session and{' '}
+                                                <span className="font-medium">force delete</span>{' '}
+                                                its worktree.
                                                 <br />
-                                                <span className="font-mono text-[11px]">{session.projectDir}</span>
+                                                <span className="font-mono text-[11px]">
+                                                  {session.projectDir}
+                                                </span>
                                                 <br />
                                                 Uncommitted changes in this worktree will be lost.
                                               </>
@@ -350,9 +399,24 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                           </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
-                                          <AlertDialogCancel disabled={isSessionDeleting}>Cancel</AlertDialogCancel>
-                                          <AlertDialogAction variant="destructive" disabled={isSessionDeleting} onClick={() => { void handleDeleteSession(session.id) }}>
-                                            {isSessionDeleting ? <><Loader2 className="size-3 animate-spin" />Deleting...</> : 'Delete'}
+                                          <AlertDialogCancel disabled={isSessionDeleting}>
+                                            Cancel
+                                          </AlertDialogCancel>
+                                          <AlertDialogAction
+                                            variant="destructive"
+                                            disabled={isSessionDeleting}
+                                            onClick={() => {
+                                              void handleDeleteSession(session.id)
+                                            }}
+                                          >
+                                            {isSessionDeleting ? (
+                                              <>
+                                                <Loader2 className="size-3 animate-spin" />
+                                                Deleting...
+                                              </>
+                                            ) : (
+                                              'Delete'
+                                            )}
                                           </AlertDialogAction>
                                         </AlertDialogFooter>
                                       </AlertDialogContent>
@@ -378,9 +442,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={() => navigate({ to: '/settings' })}
-            >
+            <SidebarMenuButton onClick={() => navigate({ to: '/settings' })}>
               <SettingsIcon className="size-4" />
               <span>Settings</span>
             </SidebarMenuButton>

@@ -75,7 +75,9 @@ export function WorkflowOptionsStep({
         disabled={locked}
       >
         <span className="flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">3</span>
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+            3
+          </span>
           Workflow
           {!effectiveOpen && (
             <span className="text-muted-foreground font-normal ml-1">
@@ -85,7 +87,14 @@ export function WorkflowOptionsStep({
         </span>
         <span className="flex items-center gap-1.5">
           {locked && <StepStatusIndicator steps={executingSteps} />}
-          {!locked && <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', effectiveOpen && 'rotate-180')} />}
+          {!locked && (
+            <ChevronDown
+              className={cn(
+                'size-3.5 text-muted-foreground transition-transform',
+                effectiveOpen && 'rotate-180',
+              )}
+            />
+          )}
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -102,8 +111,12 @@ export function WorkflowOptionsStep({
                 <SelectValue placeholder="Select workflow..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="commit" className="text-xs">Commit</SelectItem>
-                <SelectItem value="commit_push" className="text-xs">Commit and Push</SelectItem>
+                <SelectItem value="commit" className="text-xs">
+                  Commit
+                </SelectItem>
+                <SelectItem value="commit_push" className="text-xs">
+                  Commit and Push
+                </SelectItem>
                 <SelectItem value="commit_push_pr" className="text-xs" disabled={!gitTools.prTool}>
                   Commit and Push and Create PR{gitTools.prTool ? ` (${gitTools.prTool})` : ''}
                 </SelectItem>
@@ -111,7 +124,8 @@ export function WorkflowOptionsStep({
             </Select>
             {!gitTools.prTool && (
               <div className="text-[11px] text-muted-foreground">
-                {gitTools.prDisabledReason || 'Install `gh` (GitHub) or `flow` (Yunxiao) to enable PR creation.'}
+                {gitTools.prDisabledReason ||
+                  'Install `gh` (GitHub) or `flow` (Yunxiao) to enable PR creation.'}
               </div>
             )}
           </div>
@@ -120,13 +134,19 @@ export function WorkflowOptionsStep({
           {requiresPrBaseBranch && (
             <div className="space-y-2">
               <span className="text-xs font-medium text-foreground/80">PR target branch</span>
-              <Select value={prBaseBranch} onValueChange={(v) => onPrBaseBranchChange(v || '')} disabled={disabled}>
+              <Select
+                value={prBaseBranch}
+                onValueChange={(v) => onPrBaseBranchChange(v || '')}
+                disabled={disabled}
+              >
                 <SelectTrigger className="w-full text-xs font-mono">
                   <SelectValue placeholder="Select target branch..." />
                 </SelectTrigger>
                 <SelectContent>
                   {localBranches.map((b) => (
-                    <SelectItem key={b} value={b} className="text-xs font-mono">{b}</SelectItem>
+                    <SelectItem key={b} value={b} className="text-xs font-mono">
+                      {b}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -152,13 +172,19 @@ export function WorkflowOptionsStep({
               </span>
             </label>
             {mergeEnabled && (
-              <Select value={mergeBranch} onValueChange={(v) => onMergeBranchChange(v || '')} disabled={disabled}>
+              <Select
+                value={mergeBranch}
+                onValueChange={(v) => onMergeBranchChange(v || '')}
+                disabled={disabled}
+              >
                 <SelectTrigger className="w-full text-xs font-mono">
                   <SelectValue placeholder="Select a branch..." />
                 </SelectTrigger>
                 <SelectContent>
                   {localBranches.map((b) => (
-                    <SelectItem key={b} value={b} className="text-xs font-mono">{b}</SelectItem>
+                    <SelectItem key={b} value={b} className="text-xs font-mono">
+                      {b}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

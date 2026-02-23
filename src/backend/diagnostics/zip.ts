@@ -14,8 +14,14 @@ function u32(n: number): Buffer {
 
 function dosTimeDate(date: Date): { time: number; date: number } {
   const d = new Date(date)
-  const time = ((d.getHours() & 0x1f) << 11) | ((d.getMinutes() & 0x3f) << 5) | ((Math.floor(d.getSeconds() / 2) & 0x1f) << 0)
-  const dosDate = (((d.getFullYear() - 1980) & 0x7f) << 9) | (((d.getMonth() + 1) & 0x0f) << 5) | (d.getDate() & 0x1f)
+  const time =
+    ((d.getHours() & 0x1f) << 11) |
+    ((d.getMinutes() & 0x3f) << 5) |
+    ((Math.floor(d.getSeconds() / 2) & 0x1f) << 0)
+  const dosDate =
+    (((d.getFullYear() - 1980) & 0x7f) << 9) |
+    (((d.getMonth() + 1) & 0x0f) << 5) |
+    (d.getDate() & 0x1f)
   return { time, date: dosDate }
 }
 
@@ -25,7 +31,7 @@ const CRC_TABLE = (() => {
   for (let i = 0; i < 256; i++) {
     let c = i
     for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1)
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
     }
     table[i] = c >>> 0
   }

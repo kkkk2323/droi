@@ -20,4 +20,3 @@ export async function atomicWriteFile(path: string, contents: string): Promise<v
     await rename(tmp, path)
   }
 }
-

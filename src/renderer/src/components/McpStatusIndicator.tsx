@@ -17,23 +17,27 @@ export function McpStatusIndicator({ className }: { className?: string }) {
   const connecting = typed.filter((s) => s.status === 'connecting')
   const errored = typed.filter((s) => s.status === 'error' || s.status === 'failed')
 
-  const color = errored.length > 0
-    ? 'text-red-500'
-    : connecting.length > 0
-      ? 'text-yellow-500'
-      : 'text-emerald-500'
+  const color =
+    errored.length > 0
+      ? 'text-red-500'
+      : connecting.length > 0
+        ? 'text-yellow-500'
+        : 'text-emerald-500'
 
-  const Icon = connecting.length > 0 && connected.length === 0
-    ? Loader2
-    : errored.length > 0 && connected.length === 0
-      ? AlertCircle
-      : Plug
+  const Icon =
+    connecting.length > 0 && connected.length === 0
+      ? Loader2
+      : errored.length > 0 && connected.length === 0
+        ? AlertCircle
+        : Plug
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger className={`flex items-center justify-center ${className || ''}`}>
-          <Icon className={`size-3.5 ${color} ${connecting.length > 0 && connected.length === 0 ? 'animate-spin' : ''}`} />
+          <Icon
+            className={`size-3.5 ${color} ${connecting.length > 0 && connected.length === 0 ? 'animate-spin' : ''}`}
+          />
         </TooltipTrigger>
         <TooltipContent side="top">
           <div className="space-y-1.5 text-xs">
@@ -43,11 +47,15 @@ export function McpStatusIndicator({ className }: { className?: string }) {
               const hasAuth = isFailed && auth && auth.serverName === s.name && auth.authUrl
               return (
                 <div key={s.name} className="flex items-center gap-2">
-                  <span className={`size-1.5 shrink-0 rounded-full ${
-                    s.status === 'connected' ? 'bg-emerald-500'
-                      : s.status === 'connecting' ? 'bg-yellow-500'
-                        : 'bg-red-500'
-                  }`} />
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${
+                      s.status === 'connected'
+                        ? 'bg-emerald-500'
+                        : s.status === 'connecting'
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500'
+                    }`}
+                  />
                   <span>{s.name}</span>
                   <span className="text-muted-foreground">{s.status}</span>
                   {hasAuth && (

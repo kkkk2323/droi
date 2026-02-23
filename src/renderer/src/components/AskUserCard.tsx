@@ -4,7 +4,10 @@ import type { PendingAskUserRequest } from '@/state/appReducer'
 
 interface AskUserCardProps {
   request: PendingAskUserRequest
-  onRespond: (params: { cancelled?: boolean; answers: Array<{ index: number; question: string; answer: string }> }) => void
+  onRespond: (params: {
+    cancelled?: boolean
+    answers: Array<{ index: number; question: string; answer: string }>
+  }) => void
 }
 
 export function AskUserCard({ request, onRespond }: AskUserCardProps) {
@@ -16,7 +19,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
     const next: Record<number, string> = {}
     for (const q of request.questions) next[q.index] = ''
     setAskAnswers(next)
-  }, [request.requestId])
+  }, [request.requestId, request.questions])
 
   const questions = request.questions
   const totalSteps = questions.length
@@ -26,10 +29,10 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
 
   const handleStepNext = () => {
     if (isLastStep) {
-      const out = questions.map((q) => ({
-        index: q.index,
-        question: q.question,
-        answer: String(askAnswers[q.index] || ''),
+      const out = questions.map((item) => ({
+        index: item.index,
+        question: item.question,
+        answer: String(askAnswers[item.index] || ''),
       }))
       onRespond({ cancelled: false, answers: out })
     } else {
@@ -57,7 +60,9 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
         {q && (
           <div className="px-6 pb-4 space-y-3">
             <div className="text-sm text-foreground leading-relaxed">
-              {q.topic ? <span className="font-medium text-muted-foreground">[{q.topic}] </span> : null}
+              {q.topic ? (
+                <span className="font-medium text-muted-foreground">[{q.topic}] </span>
+              ) : null}
               {q.question}
             </div>
             {q.options.length > 0 && (

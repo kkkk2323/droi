@@ -15,7 +15,9 @@ export function SettingsFlashIndicator({ className }: { className?: string }) {
   if (!visible) return null
 
   return (
-    <span className={`text-[10px] text-amber-500 transition-opacity duration-500 ${className || ''}`}>
+    <span
+      className={`text-[10px] text-amber-500 transition-opacity duration-500 ${className || ''}`}
+    >
       Settings synced
     </span>
   )

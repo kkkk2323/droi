@@ -2,7 +2,7 @@ import { readdir, readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join, resolve, sep } from 'path'
 import type { SkillDef } from '../../shared/protocol.ts'
-import { isDirectory, isFile } from '../utils/fs.ts'
+import { isDirectory } from '../utils/fs.ts'
 
 function hasPathSegment(p: string, seg: string): boolean {
   const parts = resolve(p).split(sep).filter(Boolean)
@@ -10,14 +10,19 @@ function hasPathSegment(p: string, seg: string): boolean {
 }
 
 function extractSkillDescription(markdown: string): string {
-  const text = String(markdown || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const text = String(markdown || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
   const lines = text.split('\n')
 
   // Prefer frontmatter description field
   if (lines[0] === '---') {
     let end = -1
     for (let i = 1; i < lines.length; i++) {
-      if (lines[i] === '---') { end = i; break }
+      if (lines[i] === '---') {
+        end = i
+        break
+      }
     }
     if (end > 0) {
       for (const line of lines.slice(1, end)) {
@@ -30,7 +35,10 @@ function extractSkillDescription(markdown: string): string {
   // Fallback: first non-empty line after heading
   let headerIdx = -1
   for (let i = 0; i < lines.length; i++) {
-    if (/^#\s+.+/.test(lines[i])) { headerIdx = i; break }
+    if (/^#\s+.+/.test(lines[i])) {
+      headerIdx = i
+      break
+    }
   }
   if (headerIdx < 0) return ''
   for (let i = headerIdx + 1; i < lines.length; i++) {
@@ -98,9 +106,10 @@ export async function scanSkills(params: {
   const map = new Map<string, SkillDef>()
   const agentsRoot = params.agentsSkillsDir || getDefaultAgentsSkillsDir()
   const userFactoryRoot = params.userFactorySkillsDir || getDefaultUserFactorySkillsDir()
-  const projectRoot = params.projectDir && params.projectDir.trim()
-    ? getProjectSkillsDir(params.projectDir.trim())
-    : ''
+  const projectRoot =
+    params.projectDir && params.projectDir.trim()
+      ? getProjectSkillsDir(params.projectDir.trim())
+      : ''
 
   // Precedence: project overrides ~/.factory overrides ~/.agents
   for (const def of await scanRoot(agentsRoot, 'user')) map.set(def.name, def)
@@ -113,4 +122,3 @@ export async function scanSkills(params: {
   defs.sort((a, b) => a.name.localeCompare(b.name))
   return defs
 }
-

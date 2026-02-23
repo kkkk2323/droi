@@ -35,6 +35,31 @@ src/
 | `pnpm typecheck` | TypeScript validation (node + web) |
 | `pnpm build` | Production build for Electron |
 | `pnpm build:mac` | Build macOS DMG installer |
+| `pnpm lint` | Run oxlint on src/ |
+| `pnpm lint:fix` | Run oxlint with auto-fix |
+| `pnpm format` | Format src/ with oxfmt |
+| `pnpm format:check` | Check formatting without writing |
+| `pnpm check` | Run format check + lint + typecheck |
+
+## Validation Workflow
+
+Before committing code, run the full check pipeline:
+
+```bash
+pnpm check
+```
+
+This runs the following steps in order:
+1. `pnpm format:check` — Verify code formatting with oxfmt
+2. `pnpm lint` — Run oxlint for correctness, suspicious patterns, and perf issues
+3. `pnpm typecheck` — TypeScript type validation across all configs
+
+To auto-fix formatting and lint issues:
+
+```bash
+pnpm format      # auto-format with oxfmt
+pnpm lint:fix    # auto-fix lint issues with oxlint
+```
 
 ## Code Style
 

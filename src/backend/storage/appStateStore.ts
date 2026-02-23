@@ -1,7 +1,12 @@
 import { join } from 'path'
 import { readFile } from 'fs/promises'
 import { randomUUID } from 'crypto'
-import type { ApiKeyEntry, PersistedAppState, PersistedAppStateV2, ProjectSettings } from '../../shared/protocol'
+import type {
+  ApiKeyEntry,
+  PersistedAppState,
+  PersistedAppStateV2,
+  ProjectSettings,
+} from '../../shared/protocol'
 import { atomicWriteFile } from './fsUtils.ts'
 
 const MAX_DEBUG_TRACE_MAX_LINES = 10_000
@@ -22,14 +27,22 @@ function normalizeProjectSettings(raw: unknown): Record<string, ProjectSettings>
   const out: Record<string, ProjectSettings> = {}
   for (const [repoRoot, value] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof repoRoot !== 'string' || !repoRoot.trim()) continue
-    const baseBranch = typeof (value as any)?.baseBranch === 'string' ? String((value as any).baseBranch).trim() : ''
-    const worktreePrefix = typeof (value as any)?.worktreePrefix === 'string' ? String((value as any).worktreePrefix).trim() : ''
-    const setupScript = typeof (value as any)?.setupScript === 'string' ? String((value as any).setupScript).trim() : ''
+    const baseBranch =
+      typeof (value as any)?.baseBranch === 'string' ? String((value as any).baseBranch).trim() : ''
+    const worktreePrefix =
+      typeof (value as any)?.worktreePrefix === 'string'
+        ? String((value as any).worktreePrefix).trim()
+        : ''
+    const setupScript =
+      typeof (value as any)?.setupScript === 'string'
+        ? String((value as any).setupScript).trim()
+        : ''
     const settings: ProjectSettings = {}
     if (baseBranch) settings.baseBranch = baseBranch
     if (worktreePrefix) settings.worktreePrefix = worktreePrefix
     if (setupScript) settings.setupScript = setupScript
-    if (settings.baseBranch || settings.worktreePrefix || settings.setupScript) out[repoRoot] = settings
+    if (settings.baseBranch || settings.worktreePrefix || settings.setupScript)
+      out[repoRoot] = settings
   }
   return Object.keys(out).length ? out : undefined
 }
@@ -41,7 +54,8 @@ function normalizeApiKeys(raw: unknown, legacyApiKey?: string): ApiKeyEntry[] | 
       const key = typeof (entry as any)?.key === 'string' ? (entry as any).key.trim() : ''
       if (!key) continue
       const note = typeof (entry as any)?.note === 'string' ? (entry as any).note : undefined
-      const addedAt = typeof (entry as any)?.addedAt === 'number' ? (entry as any).addedAt : Date.now()
+      const addedAt =
+        typeof (entry as any)?.addedAt === 'number' ? (entry as any).addedAt : Date.now()
       out.push({ key, note, addedAt })
     }
   }
@@ -52,17 +66,29 @@ function normalizeApiKeys(raw: unknown, legacyApiKey?: string): ApiKeyEntry[] | 
 }
 
 function migrateToV2(raw: any): PersistedAppStateV2 {
-  if (raw && typeof raw === 'object' && raw.version === 2 && typeof raw.machineId === 'string' && raw.machineId) {
-    const retentionDays = typeof raw.localDiagnosticsRetentionDays === 'number' && Number.isFinite(raw.localDiagnosticsRetentionDays)
-      ? Math.max(1, Math.floor(raw.localDiagnosticsRetentionDays))
-      : undefined
-    const maxTotalMb = typeof raw.localDiagnosticsMaxTotalMb === 'number' && Number.isFinite(raw.localDiagnosticsMaxTotalMb)
-      ? Math.max(1, Math.floor(raw.localDiagnosticsMaxTotalMb))
-      : undefined
-    const commitMessageModelId = typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
-    const debugTraceMaxLines = (typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines))
-      ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
-      : undefined
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    raw.version === 2 &&
+    typeof raw.machineId === 'string' &&
+    raw.machineId
+  ) {
+    const retentionDays =
+      typeof raw.localDiagnosticsRetentionDays === 'number' &&
+      Number.isFinite(raw.localDiagnosticsRetentionDays)
+        ? Math.max(1, Math.floor(raw.localDiagnosticsRetentionDays))
+        : undefined
+    const maxTotalMb =
+      typeof raw.localDiagnosticsMaxTotalMb === 'number' &&
+      Number.isFinite(raw.localDiagnosticsMaxTotalMb)
+        ? Math.max(1, Math.floor(raw.localDiagnosticsMaxTotalMb))
+        : undefined
+    const commitMessageModelId =
+      typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
+    const debugTraceMaxLines =
+      typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines)
+        ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
+        : undefined
     const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey : undefined
     return {
       version: 2,
@@ -71,29 +97,38 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       apiKeys: normalizeApiKeys(raw.apiKeys, apiKey),
       projects: normalizeProjects(raw.projects),
       activeProjectDir: typeof raw.activeProjectDir === 'string' ? raw.activeProjectDir : undefined,
-      traceChainEnabled: typeof raw.traceChainEnabled === 'boolean' ? raw.traceChainEnabled : undefined,
+      traceChainEnabled:
+        typeof raw.traceChainEnabled === 'boolean' ? raw.traceChainEnabled : undefined,
       showDebugTrace: typeof raw.showDebugTrace === 'boolean' ? raw.showDebugTrace : undefined,
       debugTraceMaxLines,
-      localDiagnosticsEnabled: typeof raw.localDiagnosticsEnabled === 'boolean' ? raw.localDiagnosticsEnabled : undefined,
+      localDiagnosticsEnabled:
+        typeof raw.localDiagnosticsEnabled === 'boolean' ? raw.localDiagnosticsEnabled : undefined,
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
       commitMessageModelId: commitMessageModelId || undefined,
-      lanAccessEnabled: typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
+      lanAccessEnabled:
+        typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
     }
   }
 
   if (raw && typeof raw === 'object') {
-    const retentionDays = typeof raw.localDiagnosticsRetentionDays === 'number' && Number.isFinite(raw.localDiagnosticsRetentionDays)
-      ? Math.max(1, Math.floor(raw.localDiagnosticsRetentionDays))
-      : undefined
-    const maxTotalMb = typeof raw.localDiagnosticsMaxTotalMb === 'number' && Number.isFinite(raw.localDiagnosticsMaxTotalMb)
-      ? Math.max(1, Math.floor(raw.localDiagnosticsMaxTotalMb))
-      : undefined
-    const commitMessageModelId = typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
-    const debugTraceMaxLines = (typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines))
-      ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
-      : undefined
+    const retentionDays =
+      typeof raw.localDiagnosticsRetentionDays === 'number' &&
+      Number.isFinite(raw.localDiagnosticsRetentionDays)
+        ? Math.max(1, Math.floor(raw.localDiagnosticsRetentionDays))
+        : undefined
+    const maxTotalMb =
+      typeof raw.localDiagnosticsMaxTotalMb === 'number' &&
+      Number.isFinite(raw.localDiagnosticsMaxTotalMb)
+        ? Math.max(1, Math.floor(raw.localDiagnosticsMaxTotalMb))
+        : undefined
+    const commitMessageModelId =
+      typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
+    const debugTraceMaxLines =
+      typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines)
+        ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
+        : undefined
     const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey : undefined
     return {
       version: 2,
@@ -102,14 +137,17 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       apiKeys: normalizeApiKeys(raw.apiKeys, apiKey),
       projects: normalizeProjects(raw.projects),
       activeProjectDir: typeof raw.activeProjectDir === 'string' ? raw.activeProjectDir : undefined,
-      traceChainEnabled: typeof raw.traceChainEnabled === 'boolean' ? raw.traceChainEnabled : undefined,
+      traceChainEnabled:
+        typeof raw.traceChainEnabled === 'boolean' ? raw.traceChainEnabled : undefined,
       showDebugTrace: typeof raw.showDebugTrace === 'boolean' ? raw.showDebugTrace : undefined,
       debugTraceMaxLines,
-      localDiagnosticsEnabled: typeof raw.localDiagnosticsEnabled === 'boolean' ? raw.localDiagnosticsEnabled : undefined,
+      localDiagnosticsEnabled:
+        typeof raw.localDiagnosticsEnabled === 'boolean' ? raw.localDiagnosticsEnabled : undefined,
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
       commitMessageModelId: commitMessageModelId || undefined,
-      lanAccessEnabled: typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
+      lanAccessEnabled:
+        typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
     }
   }
@@ -120,7 +158,9 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
 export interface AppStateStore {
   load: () => Promise<PersistedAppState>
   save: (state: PersistedAppState) => Promise<void>
-  update: (patch: Partial<Omit<PersistedAppStateV2, 'version' | 'machineId'>>) => Promise<PersistedAppState>
+  update: (
+    patch: Partial<Omit<PersistedAppStateV2, 'version' | 'machineId'>>,
+  ) => Promise<PersistedAppState>
   filePath: string
 }
 
@@ -143,9 +183,16 @@ export function createAppStateStore(opts: { baseDir: string }): AppStateStore {
     await atomicWriteFile(filePath, JSON.stringify(normalized, null, 2))
   }
 
-  const update = async (patch: Partial<Omit<PersistedAppStateV2, 'version' | 'machineId'>>): Promise<PersistedAppState> => {
+  const update = async (
+    patch: Partial<Omit<PersistedAppStateV2, 'version' | 'machineId'>>,
+  ): Promise<PersistedAppState> => {
     const cur = (await load()) as PersistedAppStateV2
-    const next: PersistedAppStateV2 = migrateToV2({ ...cur, ...patch, version: 2, machineId: cur.machineId })
+    const next: PersistedAppStateV2 = migrateToV2({
+      ...cur,
+      ...patch,
+      version: 2,
+      machineId: cur.machineId,
+    })
     await save(next)
     return next
   }

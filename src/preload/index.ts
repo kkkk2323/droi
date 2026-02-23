@@ -15,7 +15,8 @@ const droidAPI: DroidClientAPI = {
   runSetupScript: (params) => ipcRenderer.invoke('session:setup:run', params),
   cancelSetupScript: (params) => ipcRenderer.send('session:setup:cancel', params),
   onSetupScriptEvent: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { event: any; sessionId: string | null }) => callback(payload as any)
+    const handler = (_event: IpcRendererEvent, payload: { event: any; sessionId: string | null }) =>
+      callback(payload as any)
     ipcRenderer.on('session:setup-event', handler)
     return () => ipcRenderer.removeListener('session:setup-event', handler)
   },
@@ -25,28 +26,43 @@ const droidAPI: DroidClientAPI = {
   listSkills: () => ipcRenderer.invoke('skills:list'),
 
   onRpcNotification: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { message: any; sessionId: string | null }) => callback(payload as any)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { message: any; sessionId: string | null },
+    ) => callback(payload as any)
     ipcRenderer.on('droid:rpc-notification', handler)
     return () => ipcRenderer.removeListener('droid:rpc-notification', handler)
   },
   onRpcRequest: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { message: any; sessionId: string | null }) => callback(payload as any)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { message: any; sessionId: string | null },
+    ) => callback(payload as any)
     ipcRenderer.on('droid:rpc-request', handler)
     return () => ipcRenderer.removeListener('droid:rpc-request', handler)
   },
   onTurnEnd: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { code: number; sessionId: string | null }) => callback(payload)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { code: number; sessionId: string | null },
+    ) => callback(payload)
     ipcRenderer.on('droid:turn-end', handler)
     return () => ipcRenderer.removeListener('droid:turn-end', handler)
   },
   onDebug: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { message: string; sessionId: string | null }) => callback(payload)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { message: string; sessionId: string | null },
+    ) => callback(payload)
     ipcRenderer.on('droid:debug', handler)
     return () => ipcRenderer.removeListener('droid:debug', handler)
   },
 
   onSessionIdReplaced: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { oldSessionId: string; newSessionId: string; reason: string }) => callback(payload)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { oldSessionId: string; newSessionId: string; reason: string },
+    ) => callback(payload)
     ipcRenderer.on('droid:session-id-replaced', handler)
     return () => ipcRenderer.removeListener('droid:session-id-replaced', handler)
   },
@@ -54,17 +70,26 @@ const droidAPI: DroidClientAPI = {
   respondPermission: (params) => ipcRenderer.send('droid:permission-response', params),
   respondAskUser: (params) => ipcRenderer.send('droid:askuser-response', params),
   onStdout: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { data: string; sessionId: string | null }) => callback(payload)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { data: string; sessionId: string | null },
+    ) => callback(payload)
     ipcRenderer.on('droid:stdout', handler)
     return () => ipcRenderer.removeListener('droid:stdout', handler)
   },
   onStderr: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { data: string; sessionId: string | null }) => callback(payload)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { data: string; sessionId: string | null },
+    ) => callback(payload)
     ipcRenderer.on('droid:stderr', handler)
     return () => ipcRenderer.removeListener('droid:stderr', handler)
   },
   onError: (callback) => {
-    const handler = (_event: IpcRendererEvent, payload: { message: string; sessionId: string | null }) => callback(payload)
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { message: string; sessionId: string | null },
+    ) => callback(payload)
     ipcRenderer.on('droid:error', handler)
     return () => ipcRenderer.removeListener('droid:error', handler)
   },
@@ -77,12 +102,17 @@ const droidAPI: DroidClientAPI = {
   updateKeyNote: (index: number, note: string) => ipcRenderer.invoke('keys:note', { index, note }),
   refreshKeys: () => ipcRenderer.invoke('keys:refresh'),
   getActiveKeyInfo: () => ipcRenderer.invoke('keys:active'),
-  setTraceChainEnabled: (enabled) => ipcRenderer.send('appState:setTraceChainEnabled', Boolean(enabled)),
+  setTraceChainEnabled: (enabled) =>
+    ipcRenderer.send('appState:setTraceChainEnabled', Boolean(enabled)),
   setShowDebugTrace: (enabled) => ipcRenderer.send('appState:setShowDebugTrace', Boolean(enabled)),
-  setDebugTraceMaxLines: (maxLines) => ipcRenderer.send('appState:setDebugTraceMaxLines', maxLines === null ? null : Number(maxLines)),
-  setLocalDiagnosticsEnabled: (enabled) => ipcRenderer.send('appState:setLocalDiagnosticsEnabled', Boolean(enabled)),
-  setLocalDiagnosticsRetention: (params) => ipcRenderer.send('appState:setLocalDiagnosticsRetention', params),
-  setLanAccessEnabled: (enabled) => ipcRenderer.send('appState:setLanAccessEnabled', Boolean(enabled)),
+  setDebugTraceMaxLines: (maxLines) =>
+    ipcRenderer.send('appState:setDebugTraceMaxLines', maxLines === null ? null : Number(maxLines)),
+  setLocalDiagnosticsEnabled: (enabled) =>
+    ipcRenderer.send('appState:setLocalDiagnosticsEnabled', Boolean(enabled)),
+  setLocalDiagnosticsRetention: (params) =>
+    ipcRenderer.send('appState:setLocalDiagnosticsRetention', params),
+  setLanAccessEnabled: (enabled) =>
+    ipcRenderer.send('appState:setLanAccessEnabled', Boolean(enabled)),
   appendDiagnosticsEvent: (params) => ipcRenderer.send('diagnostics:event', params),
   getDiagnosticsDir: () => ipcRenderer.invoke('diagnostics:getDir'),
   exportDiagnostics: (params) => ipcRenderer.invoke('diagnostics:export', params),
@@ -104,11 +134,13 @@ const droidAPI: DroidClientAPI = {
   loadAppState: () => ipcRenderer.invoke('appState:load'),
   saveProjects: (projects) => ipcRenderer.send('appState:saveProjects', projects),
   updateProjectSettings: (params) => ipcRenderer.invoke('appState:updateProjectSettings', params),
-  setCommitMessageModelId: (modelId) => ipcRenderer.send('appState:setCommitMessageModelId', modelId),
+  setCommitMessageModelId: (modelId) =>
+    ipcRenderer.send('appState:setCommitMessageModelId', modelId),
   getGitStatus: (params) => ipcRenderer.invoke('git:status', params),
   getGitBranch: (params) => ipcRenderer.invoke('git:branch', params),
   listGitBranches: (params) => ipcRenderer.invoke('git:list-branches', params),
-  listGitWorktreeBranchesInUse: (params) => ipcRenderer.invoke('git:worktree-branches-in-use', params),
+  listGitWorktreeBranchesInUse: (params) =>
+    ipcRenderer.invoke('git:worktree-branches-in-use', params),
   getWorkspaceInfo: (params) => ipcRenderer.invoke('git:workspace-info', params),
   switchWorkspace: (params) => ipcRenderer.invoke('git:switch-workspace', params),
   createWorkspace: (params) => ipcRenderer.invoke('git:create-workspace', params),

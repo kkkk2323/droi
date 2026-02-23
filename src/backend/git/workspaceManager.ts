@@ -54,14 +54,21 @@ export async function getCurrentBranch(projectDir: string): Promise<string> {
 
 export async function listBranches(projectDir: string): Promise<string[]> {
   const out = await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], projectDir)
-  return out.split('\n').map((x) => x.trim()).filter(Boolean)
+  return out
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean)
 }
 
 export async function checkoutBranch(projectDir: string, branch: string): Promise<void> {
   await runGit(['checkout', branch], projectDir)
 }
 
-export async function createBranch(projectDir: string, branch: string, baseBranch?: string): Promise<void> {
+export async function createBranch(
+  projectDir: string,
+  branch: string,
+  baseBranch?: string,
+): Promise<void> {
   let effectiveBase = baseBranch?.trim() || ''
   if (effectiveBase) {
     const fetched = await fetchRemoteBranch(projectDir, effectiveBase)
@@ -141,7 +148,9 @@ async function isBranchCheckedOutInAnyWorktree(repoRoot: string, branch: string)
   return false
 }
 
-export async function listWorktreeBranchesInUse(params: { repoRoot: string }): Promise<Array<{ branch: string; worktreeDir: string }>> {
+export async function listWorktreeBranchesInUse(params: {
+  repoRoot: string
+}): Promise<Array<{ branch: string; worktreeDir: string }>> {
   const repoRoot = await normalizeFsPath(params.repoRoot)
   const out = await runGit(['worktree', 'list', '--porcelain'], repoRoot, { timeoutMs: 60000 })
 
@@ -244,7 +253,8 @@ export async function getWorkspaceInfo(projectDir: string): Promise<WorkspaceInf
   const repoRoot = await getRepoRoot(projectDir)
   const worktreeRoot = await getWorktreeRoot(projectDir)
   const branch = await getCurrentBranch(projectDir)
-  const workspaceType: WorkspaceType = resolve(worktreeRoot) === resolve(repoRoot) ? 'branch' : 'worktree'
+  const workspaceType: WorkspaceType =
+    resolve(worktreeRoot) === resolve(repoRoot) ? 'branch' : 'worktree'
   return {
     repoRoot,
     projectDir: resolve(worktreeRoot),
@@ -264,7 +274,10 @@ async function pullBranch(projectDir: string, branch: string): Promise<void> {
   }
 }
 
-export async function switchWorkspaceBranch(params: { projectDir: string; branch: string }): Promise<WorkspaceInfo> {
+export async function switchWorkspaceBranch(params: {
+  projectDir: string
+  branch: string
+}): Promise<WorkspaceInfo> {
   await checkoutBranch(params.projectDir, params.branch)
   await pullBranch(params.projectDir, params.branch)
   return getWorkspaceInfo(params.projectDir)
@@ -296,7 +309,13 @@ export async function createWorkspace(params: {
   return { ...(await getWorkspaceInfo(worktreePath)), baseBranch: params.baseBranch }
 }
 
-export async function removeWorktree(params: { repoRoot: string; worktreeDir: string; force?: boolean; deleteBranch?: boolean; branch?: string }): Promise<void> {
+export async function removeWorktree(params: {
+  repoRoot: string
+  worktreeDir: string
+  force?: boolean
+  deleteBranch?: boolean
+  branch?: string
+}): Promise<void> {
   const repoRoot = await normalizeFsPath(params.repoRoot)
   const worktreeDir = await normalizeFsPath(params.worktreeDir)
   const containerDir = join(repoRoot, '.worktrees')
@@ -328,9 +347,9 @@ export async function removeWorktree(params: { repoRoot: string; worktreeDir: st
   const protectedBranches = new Set(['main', 'master', 'HEAD'])
   if (deleteBranch && branch && !protectedBranches.has(branch)) {
     try {
-      const exists = await localBranchExists(repoRoot, branch)
-      const checkedOut = exists ? await isBranchCheckedOutInAnyWorktree(repoRoot, branch) : false
-      if (exists && !checkedOut) {
+      const branchExists = await localBranchExists(repoRoot, branch)
+      const checkedOut = branchExists ? await isBranchCheckedOutInAnyWorktree(repoRoot, branch) : false
+      if (branchExists && !checkedOut) {
         await runGit(['branch', '-D', '--', branch], repoRoot, { timeoutMs: 8000 })
       }
     } catch {
@@ -339,12 +358,18 @@ export async function removeWorktree(params: { repoRoot: string; worktreeDir: st
   }
 }
 
-export async function pushBranch(params: { projectDir: string; remote?: string; branch?: string }): Promise<{ remote: string; branch: string }> {
+export async function pushBranch(params: {
+  projectDir: string
+  remote?: string
+  branch?: string
+}): Promise<{ remote: string; branch: string }> {
   const projectDir = resolve(params.projectDir)
-  const remote = typeof params.remote === 'string' && params.remote.trim() ? params.remote.trim() : 'origin'
-  const branch = typeof params.branch === 'string' && params.branch.trim()
-    ? params.branch.trim()
-    : await getCurrentBranch(projectDir)
+  const remote =
+    typeof params.remote === 'string' && params.remote.trim() ? params.remote.trim() : 'origin'
+  const branch =
+    typeof params.branch === 'string' && params.branch.trim()
+      ? params.branch.trim()
+      : await getCurrentBranch(projectDir)
 
   if (!branch || branch === 'HEAD') throw new Error('Cannot push detached HEAD')
 

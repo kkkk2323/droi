@@ -36,7 +36,13 @@ export function getContentType(filePath: string): string {
 }
 
 export function sanitizeFilename(filename: string): string {
-  const base = String(filename || '').split(/[\\/]/).pop() || ''
-  const clean = base.replace(/[^A-Za-z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 200)
+  const base =
+    String(filename || '')
+      .split(/[\\/]/)
+      .pop() || ''
+  const clean = base
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 200)
   return clean || 'upload.bin'
 }

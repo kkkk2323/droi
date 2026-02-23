@@ -77,14 +77,10 @@ export function DebugTracePanel(): React.JSX.Element | null {
         >
           Clear
         </button>
-        <span className="opacity-70">
-          Includes raw protocol + prompts; redact before sharing.
-        </span>
+        <span className="opacity-70">Includes raw protocol + prompts; redact before sharing.</span>
       </div>
       {exportedPath && (
-        <div className="mt-2 truncate font-mono opacity-80">
-          Export: {exportedPath}
-        </div>
+        <div className="mt-2 truncate font-mono opacity-80">Export: {exportedPath}</div>
       )}
       <pre className="mt-2 max-h-48 overflow-auto rounded border bg-background p-2 text-[11px] leading-4 text-foreground/80">
         {text || '(empty)'}

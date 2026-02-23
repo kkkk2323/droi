@@ -1,21 +1,34 @@
 import { execFile } from 'child_process'
 import type { KeyStoreAPI } from '../keys/keyStore.ts'
 import type { DroidExecManager } from '../droid/droidExecRunner.ts'
-import type { GenerateCommitMetaRequest, GenerateCommitMetaResult, PersistedAppState } from '../../shared/protocol.ts'
-import { extractFirstJsonObject, runDroidAndCaptureAssistantText, stripCodeFences } from '../droid/textCapture.ts'
+import type {
+  GenerateCommitMetaRequest,
+  GenerateCommitMetaResult,
+  PersistedAppState,
+} from '../../shared/protocol.ts'
+import {
+  extractFirstJsonObject,
+  runDroidAndCaptureAssistantText,
+  stripCodeFences,
+} from '../droid/textCapture.ts'
 
 const DEFAULT_COMMIT_MODEL_ID = 'minimax-m2.5'
 
 function exec(cmd: string, args: string[], opts: { cwd: string; timeoutMs?: number }) {
   const timeout = typeof opts.timeoutMs === 'number' ? opts.timeoutMs : 20000
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-    execFile(cmd, args, { cwd: opts.cwd, timeout, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) {
-        const msg = String(stderr || stdout || (err as any).message || err)
-        return reject(new Error(msg.trim() || `Failed: ${cmd} ${args.join(' ')}`))
-      }
-      resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') })
-    })
+    execFile(
+      cmd,
+      args,
+      { cwd: opts.cwd, timeout, maxBuffer: 10 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          const msg = String(stderr || stdout || (err as any).message || err)
+          return reject(new Error(msg.trim() || `Failed: ${cmd} ${args.join(' ')}`))
+        }
+        resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') })
+      },
+    )
   })
 }
 
@@ -29,8 +42,14 @@ async function collectGitContext(params: { projectDir: string; includeUnstaged: 
   const { projectDir, includeUnstaged } = params
   const [status, stagedStat, stagedDiff] = await Promise.all([
     exec('git', ['status', '--porcelain', '-uall'], { cwd: projectDir }),
-    exec('git', ['diff', '--cached', '--stat'], { cwd: projectDir }).catch(() => ({ stdout: '', stderr: '' })),
-    exec('git', ['diff', '--cached'], { cwd: projectDir }).catch(() => ({ stdout: '', stderr: '' })),
+    exec('git', ['diff', '--cached', '--stat'], { cwd: projectDir }).catch(() => ({
+      stdout: '',
+      stderr: '',
+    })),
+    exec('git', ['diff', '--cached'], { cwd: projectDir }).catch(() => ({
+      stdout: '',
+      stderr: '',
+    })),
   ])
 
   let unstagedStat = ''
@@ -38,9 +57,14 @@ async function collectGitContext(params: { projectDir: string; includeUnstaged: 
   let untracked = ''
   if (includeUnstaged) {
     const [uStat, uDiff, uTracked] = await Promise.all([
-      exec('git', ['diff', '--stat'], { cwd: projectDir }).catch(() => ({ stdout: '', stderr: '' })),
+      exec('git', ['diff', '--stat'], { cwd: projectDir }).catch(() => ({
+        stdout: '',
+        stderr: '',
+      })),
       exec('git', ['diff'], { cwd: projectDir }).catch(() => ({ stdout: '', stderr: '' })),
-      exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd: projectDir }).catch(() => ({ stdout: '', stderr: '' })),
+      exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd: projectDir }).catch(
+        () => ({ stdout: '', stderr: '' }),
+      ),
     ])
     unstagedStat = uStat.stdout
     unstagedDiff = uDiff.stdout
@@ -125,7 +149,11 @@ function buildPrompt(params: {
   return pieces.join('\n')
 }
 
-function parseModelOutput(params: { text: string; wantPrMeta: boolean }): { commitMessage: string; prTitle?: string; prBody?: string } {
+function parseModelOutput(params: { text: string; wantPrMeta: boolean }): {
+  commitMessage: string
+  prTitle?: string
+  prBody?: string
+} {
   const raw = stripCodeFences(params.text)
   if (!raw) throw new Error('Generated text was empty')
 
@@ -161,10 +189,12 @@ export async function generateCommitMeta(params: {
 
   const includeUnstaged = Boolean(params.req.includeUnstaged)
   const wantPrMeta = Boolean(params.req.wantPrMeta)
-  const prBaseBranch = typeof params.req.prBaseBranch === 'string' ? params.req.prBaseBranch.trim() : ''
+  const prBaseBranch =
+    typeof params.req.prBaseBranch === 'string' ? params.req.prBaseBranch.trim() : ''
   const modelId = getModelIdFromState(params.state)
   const machineId = (params.state as any)?.machineId
-  if (typeof machineId !== 'string' || !machineId.trim()) throw new Error('Missing machineId in app state')
+  if (typeof machineId !== 'string' || !machineId.trim())
+    throw new Error('Missing machineId in app state')
 
   const git = await collectGitContext({ projectDir, includeUnstaged })
   const prompt = buildPrompt({ includeUnstaged, wantPrMeta, prBaseBranch, git })

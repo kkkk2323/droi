@@ -14,7 +14,10 @@ export function sha256Hex(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex')
 }
 
-export function makeTextPreview(text: string, maxLen = MAX_TEXT_PREVIEW): { head: string; tail: string } {
+export function makeTextPreview(
+  text: string,
+  maxLen = MAX_TEXT_PREVIEW,
+): { head: string; tail: string } {
   const s = String(text || '')
   if (s.length <= maxLen) return { head: s, tail: s }
   return { head: s.slice(0, maxLen), tail: s.slice(-maxLen) }
@@ -59,8 +62,11 @@ export function redactText(raw: string): string {
   s = maskQueryParam(s, 'apiKey')
 
   // Env-style secrets.
-  s = s.replace(/FACTORY_API_KEY\\s*[:=]\\s*[^\\s\"']+/gi, 'FACTORY_API_KEY=[REDACTED]')
-  s = s.replace(/DROID_REMOTE_ACCESS_KEY\\s*[:=]\\s*[^\\s\"']+/gi, 'DROID_REMOTE_ACCESS_KEY=[REDACTED]')
+  s = s.replace(/FACTORY_API_KEY\\s*[:=]\\s*[^\\s"']+/gi, 'FACTORY_API_KEY=[REDACTED]')
+  s = s.replace(
+    /DROID_REMOTE_ACCESS_KEY\\s*[:=]\\s*[^\\s"']+/gi,
+    'DROID_REMOTE_ACCESS_KEY=[REDACTED]',
+  )
 
   // Generic token-ish patterns.
   s = s.replace(/\\b(fk-[A-Za-z0-9_-]{8,})\\b/g, '[REDACTED_KEY]')
@@ -81,7 +87,12 @@ export function redactJson(value: unknown, maxStringLen = 16_384): unknown {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       const key = String(k || '')
-      if (/apiKey/i.test(key) || /authKey/i.test(key) || /remoteAccessKey/i.test(key) || /factory_api_key/i.test(key)) {
+      if (
+        /apiKey/i.test(key) ||
+        /authKey/i.test(key) ||
+        /remoteAccessKey/i.test(key) ||
+        /factory_api_key/i.test(key)
+      ) {
         out[key] = '[REDACTED]'
         continue
       }
@@ -91,4 +102,3 @@ export function redactJson(value: unknown, maxStringLen = 16_384): unknown {
   }
   return safeStringify(value)
 }
-

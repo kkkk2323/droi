@@ -6,4 +6,3 @@ export function resolveServerDataDir(): string {
   if (override && override.trim()) return resolve(override.trim())
   return resolve(join(homedir(), '.droid-app'))
 }
-

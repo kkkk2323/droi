@@ -90,9 +90,11 @@ export function TodoPanel({ messages }: TodoPanelProps) {
             className="flex w-full items-center gap-2 py-2 text-left text-xs font-medium text-foreground/80 hover:text-foreground transition-colors"
             onClick={() => setTodosExpanded(!todosExpanded)}
           >
-            {todosExpanded
-              ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-              : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
+            {todosExpanded ? (
+              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
             <span>Tasks</span>
             <span className="text-muted-foreground font-normal">
               {completedCount}/{totalCount}
@@ -127,7 +129,9 @@ export function TodoPanel({ messages }: TodoPanelProps) {
                   {todo.status === 'pending' && (
                     <Circle className="mt-0.5 size-3 shrink-0 text-muted-foreground/50" />
                   )}
-                  <span className={cn(todo.status === 'completed' && 'line-through')}>{todo.text}</span>
+                  <span className={cn(todo.status === 'completed' && 'line-through')}>
+                    {todo.text}
+                  </span>
                 </div>
               ))}
             </div>

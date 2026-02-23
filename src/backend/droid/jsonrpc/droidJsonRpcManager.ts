@@ -50,11 +50,18 @@ export interface UpdateSessionSettingsParams {
 
 export class DroidJsonRpcManager {
   private readonly droidPath: string
-  private readonly sessions = new Map<string, { session: DroidJsonRpcSession; ref: { id: string } }>()
+  private readonly sessions = new Map<
+    string,
+    { session: DroidJsonRpcSession; ref: { id: string } }
+  >()
   private readonly emit: (ev: DroidBackendEvent) => void
   private readonly diagnostics?: LocalDiagnostics
 
-  constructor(opts: { emit: (ev: DroidBackendEvent) => void; droidPath?: string; diagnostics?: LocalDiagnostics }) {
+  constructor(opts: {
+    emit: (ev: DroidBackendEvent) => void
+    droidPath?: string
+    diagnostics?: LocalDiagnostics
+  }) {
     this.emit = opts.emit
     this.droidPath = opts.droidPath || resolveDroidPath()
     this.diagnostics = opts.diagnostics
@@ -66,27 +73,51 @@ export class DroidJsonRpcManager {
     const session = managed.session
     let stage = 'ensureInitialized'
     try {
-      this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: ensureInitialized start' })
+      this.emit({
+        type: 'debug',
+        sessionId: sid,
+        message: 'sendUserMessage: ensureInitialized start',
+      })
       const init = await session.ensureInitialized(
-        { modelId: params.modelId, autonomyLevel: params.autonomyLevel, reasoningEffort: params.reasoningEffort },
-        params.resumeSessionId
+        {
+          modelId: params.modelId,
+          autonomyLevel: params.autonomyLevel,
+          reasoningEffort: params.reasoningEffort,
+        },
+        params.resumeSessionId,
       )
 
       const effectiveEngineSessionId = init.engineSessionId || sid
       if (effectiveEngineSessionId && effectiveEngineSessionId !== sid) {
-        const reason = init.source === 'resume_failed'
-          ? 'resume_failed'
-          : (init.source === 'resume_invalid' ? 'resume_invalid' : 'session_id_mismatch')
+        const reason =
+          init.source === 'resume_failed'
+            ? 'resume_failed'
+            : init.source === 'resume_invalid'
+              ? 'resume_invalid'
+              : 'session_id_mismatch'
         this.rekeySession(sid, effectiveEngineSessionId)
-        this.emit({ type: 'session-id-replaced', oldSessionId: sid, newSessionId: effectiveEngineSessionId, reason })
+        this.emit({
+          type: 'session-id-replaced',
+          oldSessionId: sid,
+          newSessionId: effectiveEngineSessionId,
+          reason,
+        })
         sid = effectiveEngineSessionId
       }
 
-      this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: ensureInitialized done' })
+      this.emit({
+        type: 'debug',
+        sessionId: sid,
+        message: 'sendUserMessage: ensureInitialized done',
+      })
 
       stage = 'updateSettings'
       this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: updateSettings start' })
-      await session.updateSettings({ modelId: params.modelId, autonomyLevel: params.autonomyLevel, reasoningEffort: params.reasoningEffort })
+      await session.updateSettings({
+        modelId: params.modelId,
+        autonomyLevel: params.autonomyLevel,
+        reasoningEffort: params.reasoningEffort,
+      })
       this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: updateSettings done' })
 
       stage = 'addUserMessage'
@@ -95,7 +126,11 @@ export class DroidJsonRpcManager {
       this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: addUserMessage done' })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      this.emit({ type: 'debug', sessionId: sid, message: `sendUserMessage: failed stage=${stage} error=${msg}` })
+      this.emit({
+        type: 'debug',
+        sessionId: sid,
+        message: `sendUserMessage: failed stage=${stage} error=${msg}`,
+      })
       this.emit({ type: 'error', sessionId: sid, message: msg })
       this.emit({ type: 'turn-end', sessionId: sid, code: 1 })
     }
@@ -142,7 +177,11 @@ export class DroidJsonRpcManager {
     })
   }
 
-  respondPermission(params: { sessionId: string; requestId: string; selectedOption: DroidPermissionOption }): void {
+  respondPermission(params: {
+    sessionId: string
+    requestId: string
+    selectedOption: DroidPermissionOption
+  }): void {
     const managed = this.sessions.get(params.sessionId)
     if (!managed) return
     managed.session.sendResponse(params.requestId, { selectedOption: params.selectedOption })
@@ -156,7 +195,10 @@ export class DroidJsonRpcManager {
   }): void {
     const managed = this.sessions.get(params.sessionId)
     if (!managed) return
-    managed.session.sendResponse(params.requestId, { cancelled: params.cancelled, answers: params.answers })
+    managed.session.sendResponse(params.requestId, {
+      cancelled: params.cancelled,
+      answers: params.answers,
+    })
   }
 
   cancel(sessionId: string): void {
@@ -178,7 +220,10 @@ export class DroidJsonRpcManager {
     return ids.length
   }
 
-  private getOrCreateSession(params: SendUserMessageParams): { session: DroidJsonRpcSession; ref: { id: string } } {
+  private getOrCreateSession(params: SendUserMessageParams): {
+    session: DroidJsonRpcSession
+    ref: { id: string }
+  } {
     const existing = this.sessions.get(params.sessionId)
     if (existing) return existing
 
@@ -219,11 +264,15 @@ export class DroidJsonRpcManager {
     else if (ev.type === 'stderr') this.emit({ type: 'stderr', sessionId, data: ev.data })
     else if (ev.type === 'rpc-notification') {
       if (isTraceChainEnabled()) {
-        this.emit({ type: 'debug', sessionId, message: formatNotificationTrace('manager-out', ev.message) })
+        this.emit({
+          type: 'debug',
+          sessionId,
+          message: formatNotificationTrace('manager-out', ev.message),
+        })
       }
       this.emit({ type: 'rpc-notification', sessionId, message: ev.message })
-    }
-    else if (ev.type === 'rpc-request') this.emit({ type: 'rpc-request', sessionId, message: ev.message })
+    } else if (ev.type === 'rpc-request')
+      this.emit({ type: 'rpc-request', sessionId, message: ev.message })
     else if (ev.type === 'turn-end') this.emit({ type: 'turn-end', sessionId, code: ev.code })
     else if (ev.type === 'error') this.emit({ type: 'error', sessionId, message: ev.message })
     else if (ev.type === 'debug') this.emit({ type: 'debug', sessionId, message: ev.message })

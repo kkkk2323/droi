@@ -22,7 +22,7 @@ function parsePortFromUrl(raw: string | undefined): number | undefined {
   if (!s) return undefined
   try {
     const u = new URL(s)
-    const p = u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 80)
+    const p = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80
     return Number.isFinite(p) && p > 0 ? p : undefined
   } catch {
     return undefined
@@ -39,8 +39,8 @@ function createWindow(): void {
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
+      sandbox: false,
+    },
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -65,7 +65,12 @@ function createWindow(): void {
       event.preventDefault()
     }
     // Command/Ctrl + =/+ : Zoom in
-    else if (input.key === '=' || input.key === '+' || input.code === 'Equal' || input.code === 'NumpadAdd') {
+    else if (
+      input.key === '=' ||
+      input.key === '+' ||
+      input.code === 'Equal' ||
+      input.code === 'NumpadAdd'
+    ) {
       const current = mainWindow!.webContents.getZoomLevel()
       mainWindow!.webContents.setZoomLevel(Math.min(current + 0.5, 3))
       event.preventDefault()
@@ -86,7 +91,9 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.droi.app')
-  app.on('browser-window-created', (_, window) => { optimizer.watchWindowShortcuts(window, { zoom: true }) })
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window, { zoom: true })
+  })
 
   protocol.handle('local-file', (request) => {
     const filePath = decodeURIComponent(request.url.replace('local-file://', ''))
@@ -105,40 +112,47 @@ app.whenReady().then(() => {
   const webEnabled = readBool('DROID_WEB_ENABLED', true)
   if (webEnabled) {
     const appStateStore = createAppStateStore({ baseDir })
-    void appStateStore.load().then((state) => {
-      const lanEnabled = (state as any)?.lanAccessEnabled === true
-      const envHost = (process.env['DROID_APP_API_HOST'] || '').trim()
-      const host = envHost || (lanEnabled ? '0.0.0.0' : '127.0.0.1')
-      const port = Number(process.env['DROID_APP_API_PORT'] || 3001)
-      const webRootDir = join(__dirname, '../renderer')
-      const pairingWebPort = is.dev ? parsePortFromUrl(process.env['ELECTRON_RENDERER_URL']) : undefined
+    void appStateStore
+      .load()
+      .then((state) => {
+        const lanEnabled = (state as any)?.lanAccessEnabled === true
+        const envHost = (process.env['DROID_APP_API_HOST'] || '').trim()
+        const host = envHost || (lanEnabled ? '0.0.0.0' : '127.0.0.1')
+        const port = Number(process.env['DROID_APP_API_PORT'] || 3001)
+        const webRootDir = join(__dirname, '../renderer')
+        const pairingWebPort = is.dev
+          ? parsePortFromUrl(process.env['ELECTRON_RENDERER_URL'])
+          : undefined
 
-      return startApiServer({
-        host,
-        port,
-        baseDir,
-        webRootDir,
-        pairingWebPort,
-        diagnostics,
-        appVersion: app.getVersion(),
-      }).then((started) => {
-        apiCtl = { close: started.close }
-        // eslint-disable-next-line no-console
-        console.log(`Droid API server running at http://${started.host}:${started.port}`)
-        // eslint-disable-next-line no-console
-        console.log(`Web UI root: ${webRootDir}`)
+        return startApiServer({
+          host,
+          port,
+          baseDir,
+          webRootDir,
+          pairingWebPort,
+          diagnostics,
+          appVersion: app.getVersion(),
+        }).then((started) => {
+          apiCtl = { close: started.close }
+          // eslint-disable-next-line no-console
+          console.log(`Droid API server running at http://${started.host}:${started.port}`)
+          // eslint-disable-next-line no-console
+          console.log(`Web UI root: ${webRootDir}`)
+        })
       })
-    }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error('Failed to start Droid API server', err)
-    })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('Failed to start Droid API server', err)
+      })
   }
 
   app.on('before-quit', () => {
     ipcCtl?.cancelActiveRun()
     void apiCtl?.close().catch(() => {})
   })
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
 })
 
 app.on('window-all-closed', () => {

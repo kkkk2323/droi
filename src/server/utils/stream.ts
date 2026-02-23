@@ -1,7 +1,9 @@
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 
-export async function pipelineNode(...streams: Array<NodeJS.ReadableStream | NodeJS.WritableStream>): Promise<void> {
+export async function pipelineNode(
+  ...streams: Array<NodeJS.ReadableStream | NodeJS.WritableStream>
+): Promise<void> {
   if (streams.length < 2) throw new Error('pipelineNode requires at least 2 streams')
   await pipeline(streams[0] as any, ...(streams.slice(1) as any))
 }

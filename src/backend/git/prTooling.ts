@@ -37,12 +37,19 @@ export function recommendPrTool(params: {
 
   if (isGithub) {
     if (params.hasGh) return { prTool: 'gh' }
-    return { prTool: null, disabledReason: 'GitHub remote detected — install GitHub CLI (gh) to create PRs.' }
+    return {
+      prTool: null,
+      disabledReason: 'GitHub remote detected — install GitHub CLI (gh) to create PRs.',
+    }
   }
 
   if (params.hasFlow) return { prTool: 'flow' }
 
   if (!host && params.hasGh) return { prTool: 'gh' }
 
-  return { prTool: null, disabledReason: 'PR creation requires `flow` (flow-cli). Install `flow` to enable PR creation for this remote.' }
+  return {
+    prTool: null,
+    disabledReason:
+      'PR creation requires `flow` (flow-cli). Install `flow` to enable PR creation for this remote.',
+  }
 }
