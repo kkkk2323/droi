@@ -55,7 +55,7 @@ export function McpStatusIndicator({ className }: { className?: string }) {
                       href={auth.authUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-0.5 text-blue-500 hover:text-blue-400 hover:underline"
+                      className="flex items-center gap-0.5 text-foreground hover:text-foreground/70 hover:underline"
                       onClick={(e) => e.stopPropagation()}
                     >
                       Authorize

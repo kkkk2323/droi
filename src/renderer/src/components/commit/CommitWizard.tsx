@@ -366,7 +366,7 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
               locked={isLocked}
             />
             {state.error && (
-              <div className="px-3 pt-2 text-xs text-red-500">{state.error}</div>
+              <div className="px-3 pt-2 text-xs text-destructive-foreground">{state.error}</div>
             )}
             {state.commitResult && (
               <div className="px-3 pt-2 text-xs text-emerald-600">

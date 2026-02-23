@@ -122,7 +122,7 @@ export function TodoPanel({ messages }: TodoPanelProps) {
                     <Check className="mt-0.5 size-3 shrink-0 text-emerald-500" />
                   )}
                   {todo.status === 'in_progress' && (
-                    <Loader2 className="mt-0.5 size-3 shrink-0 animate-spin text-blue-500" />
+                    <Loader2 className="mt-0.5 size-3 shrink-0 animate-spin text-foreground" />
                   )}
                   {todo.status === 'pending' && (
                     <Circle className="mt-0.5 size-3 shrink-0 text-muted-foreground/50" />

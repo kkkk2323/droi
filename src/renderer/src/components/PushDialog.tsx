@@ -85,7 +85,7 @@ export function PushDialog({ projectDir, isRunning }: PushDialogProps) {
           <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             Branch: <span className="font-mono text-foreground">{effectiveBranch || 'unknown'}</span>
           </div>
-          {error && <div className="text-xs text-red-500">{error}</div>}
+          {error && <div className="text-xs text-destructive-foreground">{error}</div>}
           {result && <div className="text-xs text-emerald-600">{result}</div>}
         </div>
 

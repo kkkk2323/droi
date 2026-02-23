@@ -568,7 +568,7 @@ export function InputBar({
 		                        <div className="flex items-center gap-2">
 		                          <span className="font-mono text-[11px] text-foreground">/{item.def.name}</span>
 		                          {isBuiltin && (
-		                            <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-600">built-in</span>
+		                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">built-in</span>
 		                          )}
 		                          {isSkill && (
 		                            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">skill</span>
@@ -682,7 +682,7 @@ export function InputBar({
               <button
                 type="button"
                 onClick={onForceCancel}
-                className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-red-700"
+                className="flex items-center gap-1.5 rounded-full bg-destructive px-3 py-1.5 text-xs text-white transition-all hover:bg-destructive/80"
                 title="Force stop"
               >
                 <Loader2 className="size-3 animate-spin" />

@@ -216,7 +216,7 @@ export function SessionConfigPage() {
         )}
 
         {workspaceError && (
-          <div className="text-sm text-center text-red-500">{workspaceError}</div>
+          <div className="text-sm text-center text-destructive-foreground">{workspaceError}</div>
         )}
       </div>
     </div>
