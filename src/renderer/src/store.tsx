@@ -149,6 +149,7 @@ interface AppActions {
   handleAddProject: () => void
   handleSetProjectDir: (dir: string) => void
   handleSelectSession: (sessionId: string) => void
+  handleTogglePin: (sessionId: string) => void
   handleDeleteSession: (sessionId: string) => void
   handleDeleteProject: (repoRoot: string) => void
 
@@ -315,6 +316,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   _saveSessionToDisk: async (sid, buf) => {
     if (!buf.projectDir || !sid) return
+    const existingMeta = get().projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
     const meta = await droid.saveSession({
       id: sid,
       projectDir: buf.projectDir,
@@ -326,6 +328,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
       reasoningEffort: buf.reasoningEffort || undefined,
       apiKeyFingerprint: buf.apiKeyFingerprint || undefined,
+      pinned: existingMeta?.pinned || undefined,
       messages: buf.messages,
     })
     if (!meta) return
@@ -1095,6 +1098,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       autoLevel: sessionAutoLevel,
       reasoningEffort: sessionReasoningEffort || undefined,
       apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
+      pinned: existingMeta?.pinned || undefined,
       messages: nextMessages,
     }).then((meta) => {
       if (!meta) return
@@ -1597,6 +1601,39 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       set({ workspaceError: msg || 'Failed to switch to session workspace' })
+    }
+  },
+
+  handleTogglePin: (sessionId) => {
+    if (!sessionId) return
+    const s = get()
+    const meta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sessionId)
+    if (!meta) return
+    const nextPinned = !meta.pinned
+    get()._setProjects((prev) =>
+      prev.map((p) => ({
+        ...p,
+        sessions: p.sessions.map((sess) =>
+          sess.id === sessionId ? { ...sess, pinned: nextPinned } : sess
+        ),
+      }))
+    )
+    const buf = s.sessionBuffers.get(sessionId)
+    if (buf) {
+      void droid.saveSession({
+        id: sessionId,
+        projectDir: buf.projectDir,
+        repoRoot: buf.repoRoot,
+        branch: buf.branch,
+        workspaceType: buf.workspaceType,
+        baseBranch: buf.baseBranch,
+        model: buf.model || DEFAULT_MODEL,
+        autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
+        reasoningEffort: buf.reasoningEffort || undefined,
+        apiKeyFingerprint: buf.apiKeyFingerprint || undefined,
+        pinned: nextPinned,
+        messages: buf.messages,
+      })
     }
   },
 

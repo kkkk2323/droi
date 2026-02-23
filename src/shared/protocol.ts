@@ -189,6 +189,7 @@ export interface SessionMeta {
   apiKeyFingerprint?: string
   lastMessageAt?: number
   baseBranch?: string
+  pinned?: boolean
 }
 
 export interface Project {
@@ -263,6 +264,7 @@ export interface SaveSessionRequest {
   autoLevel: string
   reasoningEffort?: string
   apiKeyFingerprint?: string
+  pinned?: boolean
   messages: ChatMessage[]
 }
 
@@ -277,6 +279,7 @@ export interface LoadSessionResponse {
   autoLevel: string
   reasoningEffort?: string
   apiKeyFingerprint?: string
+  pinned?: boolean
   title: string
   savedAt: number
   messages: ChatMessage[]

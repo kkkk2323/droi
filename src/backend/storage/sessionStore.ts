@@ -73,6 +73,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       autoLevel: req.autoLevel,
       reasoningEffort: req.reasoningEffort,
       apiKeyFingerprint: req.apiKeyFingerprint,
+      pinned: req.pinned,
       title,
       savedAt,
       lastMessageAt,
@@ -93,6 +94,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       model: req.model,
       autoLevel: req.autoLevel,
       apiKeyFingerprint: req.apiKeyFingerprint,
+      pinned: req.pinned,
       lastMessageAt,
     }
   }
@@ -116,6 +118,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           autoLevel: String(raw.autoLevel || 'default'),
           reasoningEffort: typeof raw.reasoningEffort === 'string' ? raw.reasoningEffort : undefined,
           apiKeyFingerprint: typeof raw.apiKeyFingerprint === 'string' ? raw.apiKeyFingerprint : undefined,
+          pinned: typeof raw.pinned === 'boolean' ? raw.pinned : undefined,
           title: String(raw.title || getTitleFromMessages(messages)),
           savedAt: Number(raw.savedAt || 0),
           lastMessageAt,
@@ -170,6 +173,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           autoLevel: data.autoLevel,
           reasoningEffort: data.reasoningEffort,
           apiKeyFingerprint: data.apiKeyFingerprint,
+          pinned: data.pinned,
           lastMessageAt: data.lastMessageAt,
         })
       }

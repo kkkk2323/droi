@@ -87,6 +87,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const isCreatingSession = useIsCreatingSession()
   const isInitialLoadDone = useIsInitialLoadDone()
   const isInitBlocked = !isInitialLoadDone
+  const prevActiveSessionIdRef = useRef(activeSessionId)
+  const newSessionRef = useRef<HTMLDivElement | null>(null)
   const {
     getSessionRunning,
     handleAddProject,
@@ -94,7 +96,18 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     handleSelectSession,
     handleDeleteSession,
     handleDeleteProject,
+    handleTogglePin,
   } = useActions()
+
+  useEffect(() => {
+    if (activeSessionId !== prevActiveSessionIdRef.current) {
+      const wasNew = prevActiveSessionIdRef.current !== activeSessionId
+      prevActiveSessionIdRef.current = activeSessionId
+      if (wasNew && newSessionRef.current) {
+        newSessionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    }
+  }, [activeSessionId])
 
   return (
     <Sidebar variant="sidebar" {...props}>
@@ -240,87 +253,117 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     </div>
 
                     <CollapsibleContent>
-                      <SidebarMenuSub>
-                        <AnimatePresence initial={false}>
-                        {project.sessions.map((session, sessionIdx) => {
+                      {(() => {
+                        const pinned = project.sessions.filter((s) => s.pinned)
+                        const recent = project.sessions.filter((s) => !s.pinned)
+                        return (
+                          <SidebarMenuSub>
+                            {pinned.length > 0 && (
+                              <>
+                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Pinned</div>
+                                <SessionList sessions={pinned} />
+                                {recent.length > 0 && (
+                                  <div className="px-2 pt-3 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Recent</div>
+                                )}
+                              </>
+                            )}
+                            <SessionList sessions={recent} />
+                          </SidebarMenuSub>
+                        )
+
+                        function SessionList({ sessions }: { sessions: typeof pinned }) {
+                          return (
+                            <AnimatePresence initial={false}>
+                              {sessions.map((session, sessionIdx) => (
+                                <SessionItem key={session.id} session={session} sessionIdx={sessionIdx} />
+                              ))}
+                            </AnimatePresence>
+                          )
+                        }
+
+                        function SessionItem({ session, sessionIdx }: { session: typeof pinned[0]; sessionIdx: number }) {
                           const isActive = session.id === activeSessionId
                           const isSessionRunning = getSessionRunning(session.id)
                           const isSessionDeleting = deletingSessionIds.has(session.id)
+                          const branchName = session.branch?.split('/').pop() || session.branch
                           return (
-                          <motion.div
-                            key={session.id}
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            transition={{ duration: 0.2, delay: sessionIdx * 0.03, ease: [0.16, 1, 0.3, 1] }}
-                          >
-                          <SidebarMenuSubItem className="group/session">
-                            <SidebarMenuSubButton
-                              render={<button type="button" />}
-                              className={cn('max-w-full pr-4 h-9', isSessionDeleting && 'opacity-60 pointer-events-none')}
-                              isActive={isActive}
-                              aria-disabled={isSessionDeleting}
-                              onClick={() => {
-                                if (isSessionDeleting) return
-                                handleSelectSession(session.id)
-                              }}
+                            <motion.div
+                              key={session.id}
+                              ref={isActive ? newSessionRef : undefined}
+                              initial={{ opacity: 0, y: -4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                              transition={{ duration: 0.2, delay: sessionIdx * 0.03, ease: [0.16, 1, 0.3, 1] }}
                             >
-                              {isSessionRunning && <Loader2 className="size-3 animate-spin text-emerald-500" />}
-                              <SessionTitle title={session.title} />
-                              <span className="shrink-0 text-[10px] text-muted-foreground group-hover/session:hidden">
-                                {formatRelativeTime(session.savedAt)}
-                              </span>
-                            </SidebarMenuSubButton>
-                            <AlertDialog>
-                              <AlertDialogTrigger
-                                className="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-0.5 hover:bg-destructive/10 group-hover/session:block"
-                                onClick={(e) => e.stopPropagation()}
-                                disabled={isSessionDeleting}
-                                render={<button type="button" />}
-                              >
-                                {isSessionDeleting
-                                  ? <Loader2 className="size-3 animate-spin text-muted-foreground" />
-                                  : <Trash2Icon className="size-3 text-muted-foreground hover:text-destructive" />}
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete session?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    {session.workspaceType === 'worktree' ? (
-                                      <>
-                                        This will permanently delete this session and <span className="font-medium">force delete</span> its worktree.
-                                        <br />
-                                        <span className="font-mono text-[11px]">{session.projectDir}</span>
-                                        <br />
-                                        Uncommitted changes in this worktree will be lost.
-                                      </>
-                                    ) : (
-                                      'This will permanently delete this session.'
-                                    )}
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel disabled={isSessionDeleting}>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    variant="destructive"
-                                    disabled={isSessionDeleting}
-                                    onClick={() => { void handleDeleteSession(session.id) }}
+                              <SidebarMenuSubItem className="group/session">
+                                <SidebarMenuSubButton
+                                  render={<button type="button" />}
+                                  className={cn('w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0', isSessionDeleting && 'opacity-60 pointer-events-none')}
+                                  isActive={isActive}
+                                  aria-disabled={isSessionDeleting}
+                                  onClick={() => { if (!isSessionDeleting) handleSelectSession(session.id) }}
+                                >
+                                  <span className="flex w-full items-center gap-1.5">
+                                    {isSessionRunning && <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />}
+                                    <SessionTitle title={session.title} />
+                                  </span>
+                                  <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
+                                    {branchName && <span className="truncate">{branchName}</span>}
+                                    {branchName && <span>·</span>}
+                                    <span className="shrink-0">{formatRelativeTime(session.lastMessageAt ?? session.savedAt)}</span>
+                                  </span>
+                                </SidebarMenuSubButton>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger
+                                    className="absolute top-1/2 right-1 opacity-0 -translate-y-1/2 rounded p-0.5 hover:bg-sidebar-accent group-hover/session:opacity-100 data-[popup-open]:opacity-100"
+                                    onClick={(e) => e.stopPropagation()}
+                                    render={<button type="button" />}
                                   >
-                                    {isSessionDeleting ? (
-                                      <>
-                                        <Loader2 className="size-3 animate-spin" />
-                                        Deleting...
-                                      </>
-                                    ) : 'Delete'}
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </SidebarMenuSubItem>
-                          </motion.div>
-                        )})}
-                        </AnimatePresence>
-                      </SidebarMenuSub>
+                                    <MoreHorizontalIcon className="size-3.5 text-muted-foreground" />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent side="right" align="start">
+                                    <DropdownMenuItem className="py-1 cursor-pointer text-xs" onClick={() => handleTogglePin(session.id)}>
+                                      {session.pinned ? 'Unpin' : 'Pin'}
+                                    </DropdownMenuItem>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger
+                                        render={<DropdownMenuItem variant="destructive" closeOnClick={false} className="py-1 cursor-pointer text-xs" />}
+                                        disabled={isSessionDeleting}
+                                      >
+                                        {isSessionDeleting ? 'Deleting...' : 'Delete'}
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete session?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            {session.workspaceType === 'worktree' ? (
+                                              <>
+                                                This will permanently delete this session and <span className="font-medium">force delete</span> its worktree.
+                                                <br />
+                                                <span className="font-mono text-[11px]">{session.projectDir}</span>
+                                                <br />
+                                                Uncommitted changes in this worktree will be lost.
+                                              </>
+                                            ) : (
+                                              'This will permanently delete this session.'
+                                            )}
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel disabled={isSessionDeleting}>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction variant="destructive" disabled={isSessionDeleting} onClick={() => { void handleDeleteSession(session.id) }}>
+                                            {isSessionDeleting ? <><Loader2 className="size-3 animate-spin" />Deleting...</> : 'Delete'}
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </SidebarMenuSubItem>
+                            </motion.div>
+                          )
+                        }
+                      })()}
                     </CollapsibleContent>
                   </Collapsible>
                 )
