@@ -1,3 +1,11 @@
+## 0.8.1 - 2026-02-23
+
+### Fixes
+- Auto-scroll chat to bottom when new messages arrive
+
+### Refactor
+- Simplify GitActionsButton and remove inline push logic
+
 ## 0.8.0 - 2026-02-23
 
 ### Features
