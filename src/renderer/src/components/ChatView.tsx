@@ -62,6 +62,15 @@ function ChatView({
   const isAtBottomRef = useRef(true)
   const projectName = activeProjectDir ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir : ''
 
+  const prevCountRef = useRef(messages.length)
+  useEffect(() => {
+    const prev = prevCountRef.current
+    prevCountRef.current = messages.length
+    if (messages.length > prev) {
+      virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
+    }
+  }, [messages.length])
+
   useEffect(() => {
     if (isExitSpecPermission(pendingPermissionRequest)) {
       virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
