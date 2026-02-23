@@ -68,7 +68,8 @@
     "dmg": {
       "title": "Droi",
       "icon": "resources/icon.icns"
-    }
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "keywords": [],
   "author": "kkkk2323",
