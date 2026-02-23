@@ -261,7 +261,6 @@ export class LocalDiagnostics {
     sessionId?: string | null
     maxBytes: number
   }): Promise<{ app: string; session: string }> {
-    const dir = this.getDiagnosticsDir()
     const day = isoDay(new Date())
     const appPath = this.getAppLogPath(day)
     const sessionPath = params.sessionId ? this.getSessionLogPath(params.sessionId, day) : ''

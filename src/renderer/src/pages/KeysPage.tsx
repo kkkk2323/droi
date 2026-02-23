@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react'
-import type { ApiKeyUsage } from '@/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,15 +23,6 @@ import {
   useRemoveKeyMutation,
   useUpdateKeyNoteMutation,
 } from '@/hooks/useKeys'
-
-interface KeyEntry {
-  key: string
-  note: string
-  addedAt: number
-  index: number
-  isActive: boolean
-  usage: ApiKeyUsage | null
-}
 
 function maskKey(k: string): string {
   if (k.length <= 10) return k.slice(0, 3) + '***'

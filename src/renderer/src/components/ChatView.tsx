@@ -5,7 +5,6 @@ import { cn } from '../lib/utils'
 import {
   ChevronDown,
   ChevronRight,
-  FileCode,
   FolderOpen,
   Terminal,
   FileEdit,
@@ -27,7 +26,6 @@ import type {
   AttachmentBlock,
   CommandBlock,
   SkillBlock,
-  ThinkingBlock,
 } from '@/types'
 import type { SessionSetupState, PendingPermissionRequest } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
@@ -430,7 +428,7 @@ function ThinkingSection({
   )
 }
 
-function AgentText({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+function AgentText({ content }: { content: string; isStreaming: boolean }) {
   if (!content.trim()) return null
 
   return (
@@ -559,7 +557,6 @@ function DiffView({
 function ResultView({
   result,
   isError,
-  isCode,
 }: {
   result: string
   isError?: boolean

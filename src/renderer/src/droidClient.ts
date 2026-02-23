@@ -14,7 +14,6 @@ import type {
   SessionMeta,
   JsonRpcNotification,
   JsonRpcRequest,
-  DroidPermissionOption,
   SlashCommandDef,
   SlashResolveResult,
   SkillDef,

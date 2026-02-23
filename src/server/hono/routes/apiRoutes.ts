@@ -1388,7 +1388,7 @@ export function createApiRoutes() {
       const deps = c.get('deps')
       const projectDir = deps.cachedStateRef.value.activeProjectDir || ''
       const commands = await scanSlashCommands({ projectDir })
-      const defs = Array.from(commands.values()).map(({ body, ...def }) => def)
+      const defs = Array.from(commands.values()).map(({ body: _, ...def }) => def)
       return c.json(defs)
     } catch {
       return c.json([])

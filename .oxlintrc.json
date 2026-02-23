@@ -6,7 +6,12 @@
     "suspicious": "warn",
     "perf": "warn"
   },
-  "rules": {},
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "no-await-in-loop": "off",
+    "react/no-array-index-key": "off",
+    "import/no-unassigned-import": "off"
+  },
   "settings": {
     "react": {
       "formComponents": [],

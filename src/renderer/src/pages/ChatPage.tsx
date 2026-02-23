@@ -55,7 +55,6 @@ export function ChatPage() {
     handleForceCancel,
     handleRetrySetupScript,
     handleSkipSetupScript,
-    appendUiDebugTrace,
     handleRespondPermission,
     handleRespondAskUser,
   } = useActions()
@@ -165,7 +164,6 @@ export function ChatPage() {
           disabled={inputDisabled}
           disabledPlaceholder={disabledPlaceholder}
           activeProjectDir={effectiveProjectDir}
-          onUiDebug={appendUiDebugTrace}
           specChangesMode={specChangesMode}
         />
       )}

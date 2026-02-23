@@ -22,7 +22,6 @@ import type {
   CommitWorkflow,
   GitToolsInfo,
   GenerateCommitMetaResult,
-  WorkflowStepName,
   WorkflowStepProgress,
 } from '@/types'
 

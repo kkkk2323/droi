@@ -347,9 +347,9 @@ export async function removeWorktree(params: {
   const protectedBranches = new Set(['main', 'master', 'HEAD'])
   if (deleteBranch && branch && !protectedBranches.has(branch)) {
     try {
-      const exists = await localBranchExists(repoRoot, branch)
-      const checkedOut = exists ? await isBranchCheckedOutInAnyWorktree(repoRoot, branch) : false
-      if (exists && !checkedOut) {
+      const branchExists = await localBranchExists(repoRoot, branch)
+      const checkedOut = branchExists ? await isBranchCheckedOutInAnyWorktree(repoRoot, branch) : false
+      if (branchExists && !checkedOut) {
         await runGit(['branch', '-D', '--', branch], repoRoot, { timeoutMs: 8000 })
       }
     } catch {

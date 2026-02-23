@@ -2,7 +2,7 @@ import { readdir, readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join, resolve, sep } from 'path'
 import type { SkillDef } from '../../shared/protocol.ts'
-import { isDirectory, isFile } from '../utils/fs.ts'
+import { isDirectory } from '../utils/fs.ts'
 
 function hasPathSegment(p: string, seg: string): boolean {
   const parts = resolve(p).split(sep).filter(Boolean)

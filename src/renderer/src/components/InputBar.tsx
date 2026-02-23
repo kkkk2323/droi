@@ -119,15 +119,6 @@ const BUILTIN_COMMANDS: BuiltinCommandDef[] = [
   { name: 'restart', description: 'Restart session (alias for /clear)' },
 ]
 
-type SlashCacheState = {
-  at: number
-  projectDir: string
-  commands: SlashCommandDef[]
-  skills: SkillDef[]
-}
-
-const SLASH_CACHE_TTL_MS = 1000
-const SLASH_FETCH_DEBOUNCE_MS = 300
 const MAX_SLASH_ITEMS_DISPLAY = 24
 
 interface InputBarProps {
@@ -147,7 +138,6 @@ interface InputBarProps {
   disabled?: boolean
   disabledPlaceholder?: string
   activeProjectDir?: string
-  onUiDebug?: (message: string) => void
   specChangesMode?: boolean
 }
 
@@ -168,7 +158,6 @@ export function InputBar({
   disabled,
   disabledPlaceholder,
   activeProjectDir,
-  onUiDebug,
   specChangesMode,
 }: InputBarProps) {
   const normalizedDraftKey = normalizeDraftKey(draftKey)

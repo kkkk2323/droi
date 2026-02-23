@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, FileEdit, FilePlus, FileX, FileCode } from 'lucide-react'
+import { FileEdit, FilePlus, FileX, FileCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { GitStatusFile } from '@/types'
 import { useGitStatusQuery } from '@/hooks/useGitStatus'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 

@@ -91,7 +91,7 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
+    return isMobile ? setOpenMobile((o) => !o) : setOpen((o) => !o)
   }, [isMobile, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
@@ -274,9 +274,9 @@ function SidebarResizeHandle({
       const startX = e.clientX
       const startWidth = sidebarWidth
 
-      const handleMouseMove = (e: MouseEvent) => {
+      const handleMouseMove = (ev: MouseEvent) => {
         if (!isDragging.current) return
-        const delta = side === 'left' ? e.clientX - startX : startX - e.clientX
+        const delta = side === 'left' ? ev.clientX - startX : startX - ev.clientX
         const newWidth = Math.min(
           SIDEBAR_WIDTH_MAX,
           Math.max(SIDEBAR_WIDTH_MIN, startWidth + delta),

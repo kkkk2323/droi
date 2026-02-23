@@ -29,12 +29,10 @@ import {
 import { commitWorkflow, detectGitTools } from '../../backend/git/commitWorkflow'
 import { generateCommitMeta } from '../../backend/git/generateCommitMeta'
 import { SetupScriptRunner } from '../../backend/session/setupScriptRunner'
-import { createKeyStore, type KeyStoreAPI } from '../../backend/keys/keyStore'
+import { createKeyStore } from '../../backend/keys/keyStore'
 import { createAppStateStore } from '../../backend/storage/appStateStore'
 import { createSessionStore } from '../../backend/storage/sessionStore'
 import type {
-  ApiKeyEntry,
-  ApiKeyUsage,
   PersistedAppState,
   PersistedAppStateV2,
   SaveSessionRequest,

@@ -19,7 +19,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
     const next: Record<number, string> = {}
     for (const q of request.questions) next[q.index] = ''
     setAskAnswers(next)
-  }, [request.requestId])
+  }, [request.requestId, request.questions])
 
   const questions = request.questions
   const totalSteps = questions.length
@@ -29,10 +29,10 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
 
   const handleStepNext = () => {
     if (isLastStep) {
-      const out = questions.map((q) => ({
-        index: q.index,
-        question: q.question,
-        answer: String(askAnswers[q.index] || ''),
+      const out = questions.map((item) => ({
+        index: item.index,
+        question: item.question,
+        answer: String(askAnswers[item.index] || ''),
       }))
       onRespond({ cancelled: false, answers: out })
     } else {

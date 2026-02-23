@@ -28,10 +28,8 @@ import {
   type PendingAskUserRequest,
 } from '@/state/appReducer'
 import {
-  getRepoKey,
   getTitleFromPrompt,
   upsertSessionMeta,
-  updateSessionTitle,
   replaceSessionIdInProjects,
 } from './store/projectHelpers'
 
@@ -1181,7 +1179,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       })
       .then((meta) => {
         if (!meta) return
-        const normalized: SessionMeta = {
+        const savedMeta: SessionMeta = {
           ...meta,
           projectDir: meta.projectDir || projDir,
           repoRoot: meta.repoRoot || buf?.repoRoot || projDir,
@@ -1189,7 +1187,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           workspaceType: meta.workspaceType || buf?.workspaceType,
           baseBranch: meta.baseBranch || buf?.baseBranch,
         }
-        get()._setProjects((prev) => upsertSessionMeta(prev, normalized))
+        get()._setProjects((prev) => upsertSessionMeta(prev, savedMeta))
       })
 
     const missingHooks = getMissingDroidHooks(droid)

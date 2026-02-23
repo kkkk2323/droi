@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { getDroidClient } from '@/droidClient'
 import type { ChatMessage, Project, SessionMeta, ProjectSettings } from '@/types'
 import type { CustomModelDef } from '@/types'
-import { buildHookMismatchMessage, getMissingDroidHooks } from '@/lib/droidHooks'
+import { getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from '@/lib/uuid'
 import { defaultSessionTitleFromBranch } from '@/lib/sessionWorktree'
 import {
