@@ -9,7 +9,7 @@ const STATUS_ICON_MAP: Record<string, { icon: typeof FileEdit; color: string }> 
   'M': { icon: FileEdit, color: 'text-amber-500' },
   'A': { icon: FilePlus, color: 'text-emerald-500' },
   'D': { icon: FileX, color: 'text-red-500' },
-  '??': { icon: FileCode, color: 'text-blue-500' },
+  '??': { icon: FileCode, color: 'text-muted-foreground' },
 }
 
 interface FilesChangedBadgeProps {

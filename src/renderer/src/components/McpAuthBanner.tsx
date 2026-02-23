@@ -33,7 +33,7 @@ export function McpAuthBanner() {
           href={auth.authUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-colors hover:bg-foreground/80"
+          className="flex items-center gap-1 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
         >
           Authorize
           <ExternalLink className="size-3" />

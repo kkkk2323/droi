@@ -101,7 +101,7 @@ export function ProjectSettingsPage() {
         <div className="space-y-5">
           <div className="grid gap-4">
             <div className="space-y-2">
-              <div className="text-sm font-medium">Base Branch</div>
+              <label className="text-sm font-medium">Base Branch</label>
               <div className="text-xs text-muted-foreground">
                 New sessions fork from this branch when creating a worktree.
               </div>
@@ -121,7 +121,7 @@ export function ProjectSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Worktree Prefix</div>
+              <label className="text-sm font-medium">Worktree Prefix</label>
               <div className="text-xs text-muted-foreground">
                 New session branches will be created as <span className="font-mono">prefix/random-name</span>.
               </div>
@@ -137,7 +137,7 @@ export function ProjectSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Setup Script (Optional)</div>
+              <label className="text-sm font-medium">Setup Script (Optional)</label>
               <div className="text-xs text-muted-foreground">
                 Run automatically after creating a new session (macOS/Linux shell).
               </div>
@@ -150,7 +150,7 @@ export function ProjectSettingsPage() {
             </div>
           </div>
 
-          {error && <div className="text-sm text-red-500">{error}</div>}
+          {error && <div className="text-sm text-destructive-foreground">{error}</div>}
           {saved && <div className="text-sm text-emerald-600">Saved</div>}
 
           <div className="flex items-center gap-2">

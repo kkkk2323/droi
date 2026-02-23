@@ -104,6 +104,8 @@
     "busboy": "^1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "framer-motion": "^12.34.3",
+    "geist": "^1.7.0",
     "hono": "^4.11.9",
     "lucide-react": "^0.563.0",
     "react-virtuoso": "^4.18.1",

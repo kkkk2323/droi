@@ -81,7 +81,7 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
         render={<button type="button" />}
         className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-accent/30 transition-colors"
       >
-        <FileCode className="size-4 shrink-0 text-blue-500" />
+        <FileCode className="size-4 shrink-0 text-foreground/70" />
         <span className="text-sm font-medium text-foreground">
           {title || 'Implementation Plan'}
         </span>
@@ -93,7 +93,7 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
 
       <CollapsibleContent>
         <div className="px-4 pb-3">
-          <ScrollArea className="h-[50vh] rounded-lg bg-zinc-50 dark:bg-zinc-900/50">
+          <ScrollArea className="max-h-[50vh] min-h-0 rounded-lg bg-zinc-50 dark:bg-zinc-900/50">
             <div className="px-4 py-3 prose prose-sm max-w-none text-foreground/90 prose-headings:text-foreground prose-p:leading-relaxed prose-pre:bg-zinc-950 prose-pre:text-zinc-200 prose-pre:overflow-x-auto prose-code:text-foreground prose-code:break-all overflow-hidden break-words">
               <Streamdown>{plan}</Streamdown>
             </div>

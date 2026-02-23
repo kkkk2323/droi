@@ -329,7 +329,7 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-1 divide-y divide-border">
+          <div className="space-y-1 divide-y divide-border min-w-0">
             <CommitReviewStep
               branch={branch}
               filesToCommit={filesToCommit}
@@ -366,7 +366,7 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
               locked={isLocked}
             />
             {state.error && (
-              <div className="px-3 pt-2 text-xs text-red-500">{state.error}</div>
+              <div className="px-3 pt-2 text-xs text-destructive-foreground">{state.error}</div>
             )}
             {state.commitResult && (
               <div className="px-3 pt-2 text-xs text-emerald-600">

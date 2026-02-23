@@ -152,7 +152,7 @@ export function GitActionsButton({ projectDir, isRunning }: GitActionsButtonProp
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               Branch: <span className="font-mono text-foreground">{effectiveBranch || 'unknown'}</span>
             </div>
-            {pushError && <div className="text-xs text-red-500">{pushError}</div>}
+            {pushError && <div className="text-xs text-destructive-foreground">{pushError}</div>}
             {pushResult && <div className="text-xs text-emerald-600">{pushResult}</div>}
           </div>
 

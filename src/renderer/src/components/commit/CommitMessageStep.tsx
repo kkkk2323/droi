@@ -11,7 +11,7 @@ function StepStatusIndicator({ steps }: { steps: StepState[] }) {
   const hasError = steps.some((s) => s.status === 'error')
   const hasRunning = steps.some((s) => s.status === 'running')
   const allDone = steps.every((s) => s.status === 'done')
-  if (hasError) return <X className="size-3.5 text-red-500" />
+  if (hasError) return <X className="size-3.5 text-destructive-foreground" />
   if (hasRunning) return <Loader2 className="size-3.5 animate-spin text-primary" />
   if (allDone) return <Check className="size-3.5 text-emerald-500" />
   return null

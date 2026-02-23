@@ -49,7 +49,7 @@ function PreparingWorkspaceCard({
         <span className="flex-1">Preparing workspace...</span>
 
         {status === 'running'
-          ? <Loader2 className="size-4 animate-spin text-blue-500" />
+          ? <Loader2 className="size-4 animate-spin text-muted-foreground" />
           : <Check className="size-4 text-emerald-600" />}
       </div>
     </div>
@@ -91,7 +91,7 @@ function SetupScriptCard({
         </span>
 
         {setupScript.status === 'running' && !suppressRunningSpinner && (
-          <Loader2 className="size-4 animate-spin text-blue-500" />
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
         )}
         {setupScript.status === 'failed' && <AlertTriangle className="size-4 text-amber-500" />}
         {setupScript.status === 'completed' && <Check className="size-4 text-emerald-600" />}
@@ -115,7 +115,7 @@ function SetupScriptCard({
           )}
 
           {setupScript.status === 'failed' && setupScript.error && (
-            <p className="mt-2 text-xs text-red-600">{setupScript.error}</p>
+            <p className="mt-2 text-xs text-destructive-foreground">{setupScript.error}</p>
           )}
 
           {output.trim() && (
@@ -129,7 +129,7 @@ function SetupScriptCard({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onRetry?.() }}
-                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-colors hover:bg-foreground/80"
+                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
               >
                 Retry
               </button>

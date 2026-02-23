@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import type { ApiKeyUsage } from '@/types'
-import { Loader2 } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -160,15 +160,32 @@ export function KeysPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      <div className="flex flex-1 flex-col">
+        <div className="mx-auto w-full max-w-4xl space-y-6 p-8">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-px w-full" />
+          <div className="flex gap-3">
+            <Skeleton className="h-9 w-28 rounded" />
+            <Skeleton className="h-9 w-24 rounded" />
+            <Skeleton className="h-9 w-28 rounded" />
+          </div>
+          <div className="space-y-0 rounded border overflow-hidden">
+            <Skeleton className="h-9 w-full" />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full rounded-none border-t" />
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="mx-auto w-full max-w-4xl space-y-6 p-8">
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 overflow-hidden p-8">
         <div>
           <h1 className="text-xl font-semibold">API Keys</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -215,7 +232,7 @@ export function KeysPage() {
             <p className="mt-1 text-xs">Click &quot;+ Add Keys&quot; to get started.</p>
           </div>
         ) : (
-          <ScrollArea className="h-[70vh] rounded border">
+          <ScrollArea className="min-h-0 flex-1 rounded border">
             <table className="w-full min-w-0 text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">

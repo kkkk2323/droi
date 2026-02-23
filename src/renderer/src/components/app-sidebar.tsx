@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useRef, useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useProjects, useActiveProjectDir, useActiveSessionId, useActions, useDeletingSessionIds, useIsCreatingSession, useIsInitialLoadDone } from '@/store'
 import {
@@ -68,7 +69,7 @@ function SessionTitle({ title }: { title: string }) {
   return (
     <span className={cn(
       'block truncate transition-colors duration-500',
-      flash && 'text-blue-500',
+      flash && 'text-foreground',
     )}>
       {title}
     </span>
@@ -240,12 +241,20 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {project.sessions.map((session) => {
+                        <AnimatePresence initial={false}>
+                        {project.sessions.map((session, sessionIdx) => {
                           const isActive = session.id === activeSessionId
                           const isSessionRunning = getSessionRunning(session.id)
                           const isSessionDeleting = deletingSessionIds.has(session.id)
                           return (
-                          <SidebarMenuSubItem key={session.id} className="group/session">
+                          <motion.div
+                            key={session.id}
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            transition={{ duration: 0.2, delay: sessionIdx * 0.03, ease: [0.16, 1, 0.3, 1] }}
+                          >
+                          <SidebarMenuSubItem className="group/session">
                             <SidebarMenuSubButton
                               render={<button type="button" />}
                               className={cn('max-w-full pr-4 h-9', isSessionDeleting && 'opacity-60 pointer-events-none')}
@@ -256,7 +265,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                 handleSelectSession(session.id)
                               }}
                             >
-                              {isSessionRunning && <Loader2 className="size-3 animate-spin text-blue-500" />}
+                              {isSessionRunning && <Loader2 className="size-3 animate-spin text-emerald-500" />}
                               <SessionTitle title={session.title} />
                               <span className="shrink-0 text-[10px] text-muted-foreground group-hover/session:hidden">
                                 {formatRelativeTime(session.savedAt)}
@@ -308,7 +317,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                               </AlertDialogContent>
                             </AlertDialog>
                           </SidebarMenuSubItem>
+                          </motion.div>
                         )})}
+                        </AnimatePresence>
                       </SidebarMenuSub>
                     </CollapsibleContent>
                   </Collapsible>

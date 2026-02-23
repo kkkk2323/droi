@@ -101,7 +101,7 @@ function BranchPicker({
                 >
                   <Plus className="size-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 text-xs">New worktree</span>
-                  {isNewWorktree && <Check className="size-3.5 text-blue-500 shrink-0" />}
+                  {isNewWorktree && <Check className="size-3.5 text-emerald-600 shrink-0" />}
                 </button>
               )}
               {!search.trim() && branches.length > 0 && (
@@ -125,7 +125,7 @@ function BranchPicker({
                 >
                   <GitBranch className="size-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 truncate font-mono text-xs">{b}</span>
-                  {isExistingBranch && b === selected && <Check className="size-3.5 text-blue-500 shrink-0" />}
+                  {isExistingBranch && b === selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
                 </button>
               ))}
 
@@ -148,7 +148,7 @@ function BranchPicker({
                   <GitBranch className="size-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 truncate font-mono text-xs">{b}</span>
                   <span className="text-[10px] text-muted-foreground shrink-0">In use</span>
-                  {isExistingBranch && b === selected && <Check className="size-3.5 text-blue-500 shrink-0" />}
+                  {isExistingBranch && b === selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
                 </button>
               ))}
             </div>
@@ -216,7 +216,7 @@ export function SessionConfigPage() {
         )}
 
         {workspaceError && (
-          <div className="text-sm text-center text-red-500">{workspaceError}</div>
+          <div className="text-sm text-center text-destructive-foreground">{workspaceError}</div>
         )}
       </div>
     </div>

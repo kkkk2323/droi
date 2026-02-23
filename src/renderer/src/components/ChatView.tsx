@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../lib/utils'
 import {
@@ -73,7 +74,12 @@ function ChatView({
     )
 
     return (
-      <div className="flex flex-1 items-center justify-center px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="flex flex-1 items-center justify-center px-6"
+      >
         <div className="w-full max-w-2xl space-y-5">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
@@ -109,7 +115,7 @@ function ChatView({
             />
           )}
         </div>
-      </div>
+      </motion.div>
     )
   }
 
@@ -209,7 +215,7 @@ function MessageEntry({
                 <span
                   className={cn(
                     'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-                    'bg-blue-500/10 text-blue-700'
+                    'bg-muted text-muted-foreground'
                   )}
                 >
                   {stateLabel}
@@ -277,7 +283,7 @@ function MessageEntry({
   if (message.role === 'error') {
     const text = message.blocks[0]?.kind === 'text' ? message.blocks[0].content : ''
     return (
-      <div className="my-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+      <div className="my-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
         {text}
       </div>
     )
@@ -341,8 +347,8 @@ function ThinkingSection({ content, isStreaming, defaultExpanded }: { content: s
         onClick={() => setExpanded(!expanded)}
       >
         {isStreaming
-          ? <Loader2 className="size-3 shrink-0 animate-spin text-violet-500" />
-          : <Brain className="size-3 shrink-0 text-violet-500" />}
+          ? <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
+          : <Brain className="size-3 shrink-0 text-muted-foreground" />}
         <span className="font-medium">Thinking</span>
         {!expanded && (
           <span className="truncate font-mono opacity-40">
@@ -356,7 +362,7 @@ function ThinkingSection({ content, isStreaming, defaultExpanded }: { content: s
 
       {expanded && (
         <div className="ml-5 mt-1 mb-2">
-          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-900/70 dark:bg-violet-950/30 dark:text-violet-300/70">
+          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground dark:bg-muted/50">
             {content}
           </pre>
         </div>
@@ -398,9 +404,9 @@ function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSes
         onClick={() => setExpanded(!expanded)}
       >
         {isLoading ? (
-          <Loader2 className="size-3 shrink-0 animate-spin text-blue-500" />
+          <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
         ) : block.isError ? (
-          <span className="size-3 shrink-0 text-red-500">{icon}</span>
+          <span className="size-3 shrink-0 text-destructive-foreground">{icon}</span>
         ) : isSkill ? (
           <span className="size-3 shrink-0 text-amber-500">{icon}</span>
         ) : hasResult ? (
@@ -479,7 +485,7 @@ function ResultView({ result, isError, isCode }: { result: string; isError?: boo
       <pre
         className={cn(
           'max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md px-3 py-2 text-[11px] leading-5',
-          isError ? 'bg-red-50 text-red-700' : 'bg-zinc-50 text-zinc-600'
+          isError ? 'bg-destructive/5 text-destructive-foreground' : 'bg-zinc-50 text-zinc-600'
         )}
       >
         {display}
