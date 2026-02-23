@@ -1,3 +1,11 @@
+## 0.9.0 - 2026-02-23
+
+### Features
+- Implement session pinning and smooth sidebar scrolling
+
+### Fixes
+- Display last message time in session sidebar items
+
 ## 0.8.1 - 2026-02-23
 
 ### Fixes
