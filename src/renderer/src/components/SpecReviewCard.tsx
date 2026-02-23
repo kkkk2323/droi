@@ -27,15 +27,18 @@ function extractExitSpecData(request: PendingPermissionRequest): ExitSpecData | 
   for (const item of request.toolUses) {
     const raw = (item as any)?.toolUse || item
     if (!raw || typeof raw !== 'object') continue
-    const name = String((raw as any).name || (raw as any).toolName || (raw as any).recipient_name || '')
+    const name = String(
+      (raw as any).name || (raw as any).toolName || (raw as any).recipient_name || '',
+    )
     const normalized = name.split('.').pop() || name
     if (!/exit\s?spec/i.test(normalized)) continue
 
-    const input = ((raw as any).input && typeof (raw as any).input === 'object')
-      ? (raw as any).input
-      : ((raw as any).parameters && typeof (raw as any).parameters === 'object')
-        ? (raw as any).parameters
-        : null
+    const input =
+      (raw as any).input && typeof (raw as any).input === 'object'
+        ? (raw as any).input
+        : (raw as any).parameters && typeof (raw as any).parameters === 'object'
+          ? (raw as any).parameters
+          : null
     if (!input || typeof input.plan !== 'string') continue
     return {
       plan: input.plan,
@@ -76,7 +79,11 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
   }
 
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded} className="my-4 rounded-xl border border-border overflow-hidden">
+    <Collapsible
+      open={expanded}
+      onOpenChange={setExpanded}
+      className="my-4 rounded-xl border border-border overflow-hidden"
+    >
       <CollapsibleTrigger
         render={<button type="button" />}
         className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-accent/30 transition-colors"
@@ -86,9 +93,11 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
           {title || 'Implementation Plan'}
         </span>
         <span className="ml-auto text-[11px] text-muted-foreground">Review & approve</span>
-        {expanded
-          ? <ChevronDown className="size-3.5 text-muted-foreground" />
-          : <ChevronRight className="size-3.5 text-muted-foreground" />}
+        {expanded ? (
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-3.5 text-muted-foreground" />
+        )}
       </CollapsibleTrigger>
 
       <CollapsibleContent>
@@ -104,7 +113,12 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
           <div className="flex flex-wrap items-center gap-2">
             <ProceedButtonGroup options={proceedOptions} onSelect={handleProceed} />
             <div className="flex-1" />
-            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={handleCancel}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={handleCancel}
+            >
               <MessageSquare className="size-3" />
               {cancelOption?.label || 'Request changes'}
             </Button>
@@ -115,17 +129,21 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
   )
 }
 
-function ProceedButtonGroup({ options, onSelect }: {
+function ProceedButtonGroup({
+  options,
+  onSelect,
+}: {
   options: PermissionOptionMeta[]
   onSelect: (meta: PermissionOptionMeta) => void
 }) {
   if (options.length === 0) return null
 
   const primary = options[0]
-  const autoRunOptions = options.filter((o) =>
-    o.value === 'proceed_auto_run_low'
-    || o.value === 'proceed_auto_run_medium'
-    || o.value === 'proceed_auto_run_high'
+  const autoRunOptions = options.filter(
+    (o) =>
+      o.value === 'proceed_auto_run_low' ||
+      o.value === 'proceed_auto_run_medium' ||
+      o.value === 'proceed_auto_run_high',
   )
   const hasAutoRun = autoRunOptions.length > 0
 
@@ -162,7 +180,9 @@ function ProceedButtonGroup({ options, onSelect }: {
                 <DropdownMenuItem key={opt.value} onClick={() => onSelect(opt)}>
                   <div className="flex flex-col gap-0.5">
                     <span className="font-semibold text-xs">{autoRunLevel(opt.value)}</span>
-                    <span className="text-muted-foreground text-[11px] leading-tight">{opt.label}</span>
+                    <span className="text-muted-foreground text-[11px] leading-tight">
+                      {opt.label}
+                    </span>
                   </div>
                 </DropdownMenuItem>
               ))}
@@ -179,7 +199,9 @@ export function isExitSpecPermission(request?: PendingPermissionRequest | null):
   return request.toolUses.some((item) => {
     const raw = (item as any)?.toolUse || item
     if (!raw || typeof raw !== 'object') return false
-    const name = String((raw as any).name || (raw as any).toolName || (raw as any).recipient_name || '')
+    const name = String(
+      (raw as any).name || (raw as any).toolName || (raw as any).recipient_name || '',
+    )
     const normalized = name.split('.').pop() || name
     return /exit\s?spec/i.test(normalized)
   })

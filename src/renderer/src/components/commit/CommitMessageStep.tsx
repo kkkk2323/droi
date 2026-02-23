@@ -52,7 +52,9 @@ export function CommitMessageStep({
         disabled={locked}
       >
         <span className="flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">2</span>
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+            2
+          </span>
           Commit Message
           {!effectiveOpen && commitMessage.trim() && (
             <span className="text-muted-foreground font-normal ml-1 truncate max-w-[200px]">
@@ -62,7 +64,14 @@ export function CommitMessageStep({
         </span>
         <span className="flex items-center gap-1.5">
           {locked && <StepStatusIndicator steps={executingSteps} />}
-          {!locked && <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', effectiveOpen && 'rotate-180')} />}
+          {!locked && (
+            <ChevronDown
+              className={cn(
+                'size-3.5 text-muted-foreground transition-transform',
+                effectiveOpen && 'rotate-180',
+              )}
+            />
+          )}
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>

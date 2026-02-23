@@ -29,5 +29,5 @@ function Bootstrap() {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Bootstrap />
-  </React.StrictMode>
+  </React.StrictMode>,
 )

@@ -6,9 +6,9 @@ import { useGitStatusQuery } from '@/hooks/useGitStatus'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 
 const STATUS_ICON_MAP: Record<string, { icon: typeof FileEdit; color: string }> = {
-  'M': { icon: FileEdit, color: 'text-amber-500' },
-  'A': { icon: FilePlus, color: 'text-emerald-500' },
-  'D': { icon: FileX, color: 'text-red-500' },
+  M: { icon: FileEdit, color: 'text-amber-500' },
+  A: { icon: FilePlus, color: 'text-emerald-500' },
+  D: { icon: FileX, color: 'text-red-500' },
   '??': { icon: FileCode, color: 'text-muted-foreground' },
 }
 
@@ -47,9 +47,15 @@ export function FilesChangedBadge({ projectDir, isRunning }: FilesChangedBadgePr
         className="flex items-center gap-1.5 rounded-md border border-border bg-card/80 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className="text-emerald-500">+<AnimatedNumber value={totals.additions} /></span>
-        <span className="text-red-500">-<AnimatedNumber value={totals.deletions} /></span>
-        <span className="text-muted-foreground/60">(<AnimatedNumber value={gitFiles.length} />)</span>
+        <span className="text-emerald-500">
+          +<AnimatedNumber value={totals.additions} />
+        </span>
+        <span className="text-red-500">
+          -<AnimatedNumber value={totals.deletions} />
+        </span>
+        <span className="text-muted-foreground/60">
+          (<AnimatedNumber value={gitFiles.length} />)
+        </span>
       </button>
 
       {expanded && (
@@ -72,10 +78,18 @@ export function FilesChangedBadge({ projectDir, isRunning }: FilesChangedBadgePr
                     <Icon className={cn('size-3 shrink-0', info.color)} />
                     <span className="truncate font-mono flex-1">{file.path}</span>
                     <span className="shrink-0 tabular-nums">
-                      {file.additions > 0 && <span className="text-emerald-500">+{file.additions}</span>}
-                      {file.additions > 0 && file.deletions > 0 && <span className="text-muted-foreground/40"> </span>}
-                      {file.deletions > 0 && <span className="text-red-500">-{file.deletions}</span>}
-                      {file.additions === 0 && file.deletions === 0 && <span className="text-muted-foreground/50">--</span>}
+                      {file.additions > 0 && (
+                        <span className="text-emerald-500">+{file.additions}</span>
+                      )}
+                      {file.additions > 0 && file.deletions > 0 && (
+                        <span className="text-muted-foreground/40"> </span>
+                      )}
+                      {file.deletions > 0 && (
+                        <span className="text-red-500">-{file.deletions}</span>
+                      )}
+                      {file.additions === 0 && file.deletions === 0 && (
+                        <span className="text-muted-foreground/50">--</span>
+                      )}
                     </span>
                   </div>
                 )

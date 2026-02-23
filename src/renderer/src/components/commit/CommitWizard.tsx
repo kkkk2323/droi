@@ -18,7 +18,13 @@ import { CommitMessageStep } from './CommitMessageStep'
 import { WorkflowOptionsStep } from './WorkflowOptionsStep'
 import { getStepLabel } from './CommitProgressView'
 import type { StepState } from './CommitProgressView'
-import type { CommitWorkflow, GitToolsInfo, GenerateCommitMetaResult, WorkflowStepName, WorkflowStepProgress } from '@/types'
+import type {
+  CommitWorkflow,
+  GitToolsInfo,
+  GenerateCommitMetaResult,
+  WorkflowStepName,
+  WorkflowStepProgress,
+} from '@/types'
 
 // --- State machine ---
 
@@ -51,7 +57,11 @@ type WizardAction =
   | { type: 'set_generating'; value: boolean }
   | { type: 'set_git_tools'; value: GitToolsInfo }
   | { type: 'set_generated_pr_meta'; value: { title: string; body: string } | null }
-  | { type: 'set_commit_message_and_pr'; message: string; prMeta: { title: string; body: string } | null }
+  | {
+      type: 'set_commit_message_and_pr'
+      message: string
+      prMeta: { title: string; body: string } | null
+    }
   | { type: 'start_executing'; steps: StepState[] }
   | { type: 'step_progress'; progress: WorkflowStepProgress }
   | { type: 'set_done'; result: { commitHash: string; prUrl?: string } }
@@ -82,7 +92,11 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'set_commit_message':
       return { ...state, commitMessage: action.value }
     case 'set_workflow':
-      return { ...state, commitWorkflow: action.value, generatedPrMeta: action.value !== 'commit_push_pr' ? null : state.generatedPrMeta }
+      return {
+        ...state,
+        commitWorkflow: action.value,
+        generatedPrMeta: action.value !== 'commit_push_pr' ? null : state.generatedPrMeta,
+      }
     case 'set_pr_base_branch':
       return { ...state, prBaseBranch: action.value }
     case 'set_merge_enabled':
@@ -96,14 +110,19 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'set_generated_pr_meta':
       return { ...state, generatedPrMeta: action.value }
     case 'set_commit_message_and_pr':
-      return { ...state, commitMessage: action.message, generatedPrMeta: action.prMeta, generating: false }
+      return {
+        ...state,
+        commitMessage: action.message,
+        generatedPrMeta: action.prMeta,
+        generating: false,
+      }
     case 'start_executing':
       return { ...state, phase: 'executing', steps: action.steps, error: '', commitResult: null }
     case 'step_progress': {
       const steps = state.steps.map((s) =>
         s.step === action.progress.step
           ? { ...s, status: action.progress.status, detail: action.progress.detail }
-          : s
+          : s,
       )
       return { ...state, steps }
     }
@@ -130,25 +149,34 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
 
   const { data: gitFiles = [], isLoading: statusLoading } = useGitStatusQuery(projectDir, open)
   const { data: branch = '', isLoading: branchLoading } = useGitBranchQuery(projectDir, open)
-  const { data: allBranches = [], isLoading: branchesLoading } = useGitBranchesQuery(projectDir, open)
+  const { data: allBranches = [], isLoading: branchesLoading } = useGitBranchesQuery(
+    projectDir,
+    open,
+  )
   const loading = statusLoading || branchLoading || branchesLoading
 
-  const localBranches = useMemo(() => allBranches.filter((b) => b !== branch), [allBranches, branch])
+  const localBranches = useMemo(
+    () => allBranches.filter((b) => b !== branch),
+    [allBranches, branch],
+  )
   const stagedFiles = useMemo(() => gitFiles.filter((f) => f.status !== '??'), [gitFiles])
   const unstagedFiles = useMemo(() => gitFiles.filter((f) => f.status === '??'), [gitFiles])
   const filesToCommit = state.includeUnstaged ? gitFiles : stagedFiles
 
   const defaultPrBaseBranch = useMemo(() => {
-    return localBranches.includes('main') ? 'main' : (localBranches[0] || '')
+    return localBranches.includes('main') ? 'main' : localBranches[0] || ''
   }, [localBranches])
 
   // Reset state when dialog opens
   useEffect(() => {
     if (!open) return
     dispatch({ type: 'reset' })
-    void getDroidClient().detectGitTools({ projectDir })
+    void getDroidClient()
+      .detectGitTools({ projectDir })
       .then((tools) => dispatch({ type: 'set_git_tools', value: tools }))
-      .catch(() => dispatch({ type: 'set_git_tools', value: { hasGh: false, hasFlow: false, prTool: null } }))
+      .catch(() =>
+        dispatch({ type: 'set_git_tools', value: { hasGh: false, hasFlow: false, prTool: null } }),
+      )
   }, [open, projectDir])
 
   // Set default PR base branch
@@ -166,18 +194,20 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
 
   const requiresPrBaseBranch = state.commitWorkflow === 'commit_push_pr'
 
-  const commitActionLabel = state.commitWorkflow === 'commit'
-    ? 'Commit'
-    : state.commitWorkflow === 'commit_push'
-      ? 'Commit & Push'
-      : 'Commit, Push & Create PR'
+  const commitActionLabel =
+    state.commitWorkflow === 'commit'
+      ? 'Commit'
+      : state.commitWorkflow === 'commit_push'
+        ? 'Commit & Push'
+        : 'Commit, Push & Create PR'
 
-  const commitActionDisabled = loading
-    || state.phase === 'executing'
-    || state.generating
-    || filesToCommit.length === 0
-    || (requiresPrBaseBranch && !state.prBaseBranch)
-    || (state.mergeEnabled && !state.mergeBranch)
+  const commitActionDisabled =
+    loading ||
+    state.phase === 'executing' ||
+    state.generating ||
+    filesToCommit.length === 0 ||
+    (requiresPrBaseBranch && !state.prBaseBranch) ||
+    (state.mergeEnabled && !state.mergeBranch)
 
   const handleGenerate = async () => {
     if (state.generating || filesToCommit.length === 0) return
@@ -230,7 +260,10 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
     if (filesToCommit.length === 0 || state.phase === 'executing') return
     const wantPrMeta = state.commitWorkflow === 'commit_push_pr'
     if (wantPrMeta && !state.gitTools.prTool) {
-      dispatch({ type: 'set_error', error: state.gitTools.prDisabledReason || 'PR creation is not available on this machine.' })
+      dispatch({
+        type: 'set_error',
+        error: state.gitTools.prDisabledReason || 'PR creation is not available on this machine.',
+      })
       return
     }
 
@@ -283,8 +316,8 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
         commitMessage: message,
         workflow: state.commitWorkflow,
         prBaseBranch: wantPrMeta ? state.prBaseBranch : undefined,
-        prTitle: wantPrMeta ? (prMeta?.title?.trim() || undefined) : undefined,
-        prBody: wantPrMeta ? (prMeta?.body || '') : undefined,
+        prTitle: wantPrMeta ? prMeta?.title?.trim() || undefined : undefined,
+        prBody: wantPrMeta ? prMeta?.body || '' : undefined,
         mergeEnabled: state.mergeEnabled,
         mergeBranch: state.mergeEnabled ? state.mergeBranch : undefined,
       })
@@ -304,7 +337,11 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
   // Step groups for each collapsible section
   const reviewSteps = useMemo(() => state.steps.filter((s) => s.step === 'stage'), [state.steps])
   const messageSteps = useMemo(() => state.steps.filter((s) => s.step === 'commit'), [state.steps])
-  const workflowSteps = useMemo(() => state.steps.filter((s) => s.step === 'merge' || s.step === 'push' || s.step === 'create_pr'), [state.steps])
+  const workflowSteps = useMemo(
+    () =>
+      state.steps.filter((s) => s.step === 'merge' || s.step === 'push' || s.step === 'create_pr'),
+    [state.steps],
+  )
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -313,9 +350,9 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
           <AlertDialogTitle>Git Commit</AlertDialogTitle>
           <AlertDialogDescription>
             {state.phase === 'configure'
-              ? (state.generating
+              ? state.generating
                 ? 'Generating commit message…'
-                : 'Review changes, configure workflow, then commit.')
+                : 'Review changes, configure workflow, then commit.'
               : state.phase === 'executing'
                 ? 'Running workflow…'
                 : state.phase === 'done'
@@ -370,13 +407,24 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
             )}
             {state.commitResult && (
               <div className="px-3 pt-2 text-xs text-emerald-600">
-                Committed <span className="font-mono">{state.commitResult.commitHash.slice(0, 7)}</span>
+                Committed{' '}
+                <span className="font-mono">{state.commitResult.commitHash.slice(0, 7)}</span>
                 {state.commitResult.prUrl && (
                   <>
-                    {' '}&middot; PR:{' '}
-                    {/^https?:\/\//.test(state.commitResult.prUrl)
-                      ? <a className="underline" href={state.commitResult.prUrl} target="_blank" rel="noreferrer">{state.commitResult.prUrl}</a>
-                      : <span className="font-mono">{state.commitResult.prUrl}</span>}
+                    {' '}
+                    &middot; PR:{' '}
+                    {/^https?:\/\//.test(state.commitResult.prUrl) ? (
+                      <a
+                        className="underline"
+                        href={state.commitResult.prUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {state.commitResult.prUrl}
+                      </a>
+                    ) : (
+                      <span className="font-mono">{state.commitResult.prUrl}</span>
+                    )}
                   </>
                 )}
               </div>
@@ -390,7 +438,9 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 disabled={commitActionDisabled}
-                onClick={() => { void handleCommit() }}
+                onClick={() => {
+                  void handleCommit()
+                }}
               >
                 {commitActionLabel}
               </AlertDialogAction>
@@ -399,9 +449,7 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
           {state.phase === 'configure' && state.generating && (
             <AlertDialogCancel disabled>Generating…</AlertDialogCancel>
           )}
-          {state.phase === 'executing' && (
-            <AlertDialogCancel disabled>Running…</AlertDialogCancel>
-          )}
+          {state.phase === 'executing' && <AlertDialogCancel disabled>Running…</AlertDialogCancel>}
           {isFinished && (
             <>
               {state.phase === 'error' && (

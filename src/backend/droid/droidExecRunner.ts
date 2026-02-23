@@ -99,7 +99,11 @@ export class DroidExecManager {
     })
   }
 
-  respondPermission(params: { sessionId: string; requestId: string; selectedOption: DroidPermissionOption }): void {
+  respondPermission(params: {
+    sessionId: string
+    requestId: string
+    selectedOption: DroidPermissionOption
+  }): void {
     this.manager.respondPermission(params)
   }
 

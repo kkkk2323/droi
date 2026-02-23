@@ -65,7 +65,10 @@ function summarizeSessionNotification(notification: any): Record<string, unknown
   if (!type) return undefined
 
   if (type === 'settings_updated') {
-    const s = notification?.settings && typeof notification.settings === 'object' ? notification.settings : null
+    const s =
+      notification?.settings && typeof notification.settings === 'object'
+        ? notification.settings
+        : null
     if (!s) return { type }
     return {
       type,
@@ -73,20 +76,23 @@ function summarizeSessionNotification(notification: any): Record<string, unknown
         modelId: typeof s.modelId === 'string' ? s.modelId : undefined,
         reasoningEffort: typeof s.reasoningEffort === 'string' ? s.reasoningEffort : undefined,
         autonomyLevel: typeof s.autonomyLevel === 'string' ? s.autonomyLevel : undefined,
-        specModeReasoningEffort: typeof s.specModeReasoningEffort === 'string' ? s.specModeReasoningEffort : undefined,
+        specModeReasoningEffort:
+          typeof s.specModeReasoningEffort === 'string' ? s.specModeReasoningEffort : undefined,
       },
     }
   }
 
   if (type === 'tool_use') {
-    const input = notification?.input && typeof notification.input === 'object' ? notification.input : null
+    const input =
+      notification?.input && typeof notification.input === 'object' ? notification.input : null
     const cmd = input ? (input as any).command : undefined
     return {
       type,
       id: typeof notification.id === 'string' ? notification.id : undefined,
       name: typeof notification.name === 'string' ? notification.name : undefined,
       inputKeys: input ? Object.keys(input as any).slice(0, 50) : undefined,
-      commandPreview: typeof cmd === 'string' && cmd.trim() ? clipString(cmd.trim(), 256) : undefined,
+      commandPreview:
+        typeof cmd === 'string' && cmd.trim() ? clipString(cmd.trim(), 256) : undefined,
     }
   }
 
@@ -98,12 +104,16 @@ function summarizeSessionNotification(notification: any): Record<string, unknown
       toolUseId: toolUseId || undefined,
       isError: typeof notification?.isError === 'boolean' ? notification.isError : undefined,
       contentType: content === null ? 'null' : Array.isArray(content) ? 'array' : typeof content,
-      contentPreview: (typeof content === 'string' && content.trim()) ? clipString(content.trim(), 256) : undefined,
+      contentPreview:
+        typeof content === 'string' && content.trim() ? clipString(content.trim(), 256) : undefined,
     }
   }
 
   if (type === 'create_message') {
-    const msg = notification?.message && typeof notification.message === 'object' ? notification.message : null
+    const msg =
+      notification?.message && typeof notification.message === 'object'
+        ? notification.message
+        : null
     const content = Array.isArray((msg as any)?.content) ? (msg as any).content : []
     const contentTypes: string[] = []
     const toolUses: Array<{ id: string; name: string }> = []
@@ -111,7 +121,8 @@ function summarizeSessionNotification(notification: any): Record<string, unknown
     for (const item of content) {
       const t = typeof (item as any)?.type === 'string' ? String((item as any).type) : ''
       if (t) contentTypes.push(t)
-      if (t === 'text' && typeof (item as any)?.text === 'string') textLen += String((item as any).text).length
+      if (t === 'text' && typeof (item as any)?.text === 'string')
+        textLen += String((item as any).text).length
       if (t === 'tool_use') {
         const id = typeof (item as any)?.id === 'string' ? String((item as any).id) : ''
         const name = typeof (item as any)?.name === 'string' ? String((item as any).name) : ''
@@ -120,13 +131,15 @@ function summarizeSessionNotification(notification: any): Record<string, unknown
     }
     return {
       type,
-      message: msg ? {
-        id: typeof (msg as any).id === 'string' ? (msg as any).id : undefined,
-        role: typeof (msg as any).role === 'string' ? (msg as any).role : undefined,
-        contentTypes: contentTypes.length ? contentTypes.slice(0, 50) : undefined,
-        toolUses: toolUses.length ? toolUses.slice(0, 50) : undefined,
-        textLen: textLen || undefined,
-      } : undefined,
+      message: msg
+        ? {
+            id: typeof (msg as any).id === 'string' ? (msg as any).id : undefined,
+            role: typeof (msg as any).role === 'string' ? (msg as any).role : undefined,
+            contentTypes: contentTypes.length ? contentTypes.slice(0, 50) : undefined,
+            toolUses: toolUses.length ? toolUses.slice(0, 50) : undefined,
+            textLen: textLen || undefined,
+          }
+        : undefined,
     }
   }
 
@@ -137,7 +150,8 @@ function summarizeSessionNotification(notification: any): Record<string, unknown
   if (type === 'mcp_auth_required') {
     return {
       type,
-      serverName: typeof notification?.serverName === 'string' ? notification.serverName : undefined,
+      serverName:
+        typeof notification?.serverName === 'string' ? notification.serverName : undefined,
       authUrl: typeof notification?.authUrl === 'string' ? notification.authUrl : undefined,
     }
   }
@@ -169,7 +183,8 @@ function summarizeInboundRequest(message: JsonRpcRequest): Record<string, unknow
     }
   }
 
-  const keys = params && typeof params === 'object' ? Object.keys(params as any).slice(0, 50) : undefined
+  const keys =
+    params && typeof params === 'object' ? Object.keys(params as any).slice(0, 50) : undefined
   return {
     method,
     id: id || undefined,
@@ -204,7 +219,10 @@ export class DroidJsonRpcSession {
       this.opts.cwd,
     ]
 
-    this.opts.onEvent({ type: 'debug', message: `spawn: ${this.opts.droidPath} ${args.map((a) => JSON.stringify(a)).join(' ')}` })
+    this.opts.onEvent({
+      type: 'debug',
+      message: `spawn: ${this.opts.droidPath} ${args.map((a) => JSON.stringify(a)).join(' ')}`,
+    })
 
     const proc = spawn(this.opts.droidPath, args, {
       env: { ...process.env, ...(this.opts.env || {}) },
@@ -261,8 +279,11 @@ export class DroidJsonRpcSession {
 
   async ensureInitialized(
     params: { modelId?: string; autonomyLevel?: DroidAutonomyLevel; reasoningEffort?: string },
-    resumeSessionId?: string
-  ): Promise<{ engineSessionId: string; source: 'init' | 'resume' | 'resume_failed' | 'resume_invalid' }> {
+    resumeSessionId?: string,
+  ): Promise<{
+    engineSessionId: string
+    source: 'init' | 'resume' | 'resume_failed' | 'resume_invalid'
+  }> {
     this.start()
     if (this.initialized) return { engineSessionId: this.engineSessionId || '', source: 'resume' }
 
@@ -287,23 +308,38 @@ export class DroidJsonRpcSession {
 
     if (resume && resume !== initEngineSessionId) {
       if (!isEngineSessionId(resume)) {
-        this.opts.onEvent({ type: 'debug', message: `ensureInitialized: skip load_session (invalid engine session id) resume=${resume}` })
+        this.opts.onEvent({
+          type: 'debug',
+          message: `ensureInitialized: skip load_session (invalid engine session id) resume=${resume}`,
+        })
         source = 'resume_invalid'
       } else {
         try {
-          this.opts.onEvent({ type: 'debug', message: `ensureInitialized: load_session start resume=${resume}` })
+          this.opts.onEvent({
+            type: 'debug',
+            message: `ensureInitialized: load_session start resume=${resume}`,
+          })
           const loadRes = await this.sendRequest('droid.load_session', { sessionId: resume })
           if (loadRes.error) {
-            this.opts.onEvent({ type: 'debug', message: `ensureInitialized: load_session failed error=${loadRes.error.message || 'unknown'}` })
+            this.opts.onEvent({
+              type: 'debug',
+              message: `ensureInitialized: load_session failed error=${loadRes.error.message || 'unknown'}`,
+            })
             source = 'resume_failed'
           } else {
-            this.opts.onEvent({ type: 'debug', message: `ensureInitialized: load_session ok resume=${resume}` })
+            this.opts.onEvent({
+              type: 'debug',
+              message: `ensureInitialized: load_session ok resume=${resume}`,
+            })
             effectiveEngineSessionId = resume
             source = 'resume'
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          this.opts.onEvent({ type: 'debug', message: `ensureInitialized: load_session threw error=${msg}` })
+          this.opts.onEvent({
+            type: 'debug',
+            message: `ensureInitialized: load_session threw error=${msg}`,
+          })
           source = 'resume_failed'
         }
       }
@@ -313,7 +349,11 @@ export class DroidJsonRpcSession {
     return { engineSessionId: effectiveEngineSessionId, source }
   }
 
-  async updateSettings(params: { modelId?: string; autonomyLevel?: DroidAutonomyLevel; reasoningEffort?: string }): Promise<void> {
+  async updateSettings(params: {
+    modelId?: string
+    autonomyLevel?: DroidAutonomyLevel
+    reasoningEffort?: string
+  }): Promise<void> {
     const res = await this.sendRequest('droid.update_session_settings', {
       modelId: params.modelId,
       autonomyLevel: params.autonomyLevel,
@@ -424,7 +464,10 @@ export class DroidJsonRpcSession {
         reject(new Error(`JSON-RPC request timeout: ${method}`))
       }, timeoutMs)
       this.pending.set(id, { method, createdAt: Date.now(), resolve, reject, timer })
-      this.opts.onEvent({ type: 'debug', message: `request: ${method} id=${id} params=${safeStringify(params)}` })
+      this.opts.onEvent({
+        type: 'debug',
+        message: `request: ${method} id=${id} params=${safeStringify(params)}`,
+      })
       proc.stdin.write(`${safeStringify(req)}\n`)
     })
   }
@@ -432,7 +475,11 @@ export class DroidJsonRpcSession {
   private handleMessage(message: JsonRpcMessage): void {
     if (message.type === 'response') {
       const id = message.id
-      const resolvePending = (pendingId: string, pending: PendingRequest, originalIdWasNull: boolean) => {
+      const resolvePending = (
+        pendingId: string,
+        pending: PendingRequest,
+        originalIdWasNull: boolean,
+      ) => {
         clearTimeout(pending.timer)
         this.pending.delete(pendingId)
         const hasError = Boolean((message as any)?.error)
@@ -466,7 +513,10 @@ export class DroidJsonRpcSession {
         const last = Array.from(this.pending.entries()).at(-1) || null
         if (last) {
           const [pendingId, pending] = last
-          this.opts.onEvent({ type: 'debug', message: `response: id=null; associating with pending id=${pendingId} method=${pending.method}` })
+          this.opts.onEvent({
+            type: 'debug',
+            message: `response: id=null; associating with pending id=${pendingId} method=${pending.method}`,
+          })
           resolvePending(pendingId, pending, true)
         }
       }
@@ -474,7 +524,10 @@ export class DroidJsonRpcSession {
     }
 
     if (message.type === 'request') {
-      this.opts.onEvent({ type: 'debug', message: `inbound-request: ${(message as any)?.method || ''} id=${(message as any)?.id || ''}` })
+      this.opts.onEvent({
+        type: 'debug',
+        message: `inbound-request: ${(message as any)?.method || ''} id=${(message as any)?.id || ''}`,
+      })
       if (this.opts.diagnostics?.isEnabled()) {
         void this.opts.diagnostics.append({
           ts: new Date().toISOString(),
@@ -495,9 +548,11 @@ export class DroidJsonRpcSession {
         this.opts.onEvent({ type: 'debug', message: formatNotificationTrace('session-in', n) })
       }
       if (this.opts.diagnostics?.isEnabled()) {
-        const notif = (n.method === 'droid.session_notification') ? ((n.params as any)?.notification || null) : null
+        const notif =
+          n.method === 'droid.session_notification' ? (n.params as any)?.notification || null : null
         const t = notif && typeof notif === 'object' ? String((notif as any)?.type || '') : ''
-        const summary = (notif && typeof notif === 'object') ? summarizeSessionNotification(notif) : undefined
+        const summary =
+          notif && typeof notif === 'object' ? summarizeSessionNotification(notif) : undefined
         void this.opts.diagnostics.append({
           ts: new Date().toISOString(),
           level: 'debug',
@@ -509,7 +564,8 @@ export class DroidJsonRpcSession {
         if (t === 'tool_use') {
           const name = String((notif as any)?.name || '')
           const input = (notif as any)?.input
-          const cmd = input && typeof input === 'object' ? String((input as any)?.command || '') : ''
+          const cmd =
+            input && typeof input === 'object' ? String((input as any)?.command || '') : ''
           if (cmd) {
             this.opts.diagnostics.logPipelineExitcodeRisk({
               sessionId: this.opts.sessionId,
@@ -532,7 +588,10 @@ export class DroidJsonRpcSession {
       }
       if (n.method === 'droid.session_notification') {
         const t = (n.params as any)?.notification?.type
-        this.opts.onEvent({ type: 'debug', message: `notification: ${n.method} type=${typeof t === 'string' ? t : ''}` })
+        this.opts.onEvent({
+          type: 'debug',
+          message: `notification: ${n.method} type=${typeof t === 'string' ? t : ''}`,
+        })
       } else {
         this.opts.onEvent({ type: 'debug', message: `notification: ${n.method}` })
       }
@@ -545,7 +604,9 @@ export class DroidJsonRpcSession {
         const notif = (n.params as any)?.notification
         const t = (notif as any)?.type
         if (t === 'droid_working_state_changed' || t === 'working_state_changed') {
-          const newState = String((notif as any)?.newState || '').trim().toLowerCase()
+          const newState = String((notif as any)?.newState || '')
+            .trim()
+            .toLowerCase()
           if (newState && newState !== 'idle') this.turnActive = true
           if (newState === 'idle' && this.turnActive) {
             this.turnActive = false

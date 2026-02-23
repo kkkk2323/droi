@@ -21,7 +21,10 @@ import { commitWorkflow, detectGitTools } from '../../../backend/git/commitWorkf
 import { generateCommitMeta } from '../../../backend/git/generateCommitMeta.ts'
 import { setTraceChainEnabledOverride } from '../../../backend/droid/jsonrpc/notificationFingerprint.ts'
 import { scanSkills } from '../../../backend/skills/skills.ts'
-import { scanSlashCommands, resolveSlashCommandText } from '../../../backend/slashCommands/slashCommands.ts'
+import {
+  scanSlashCommands,
+  resolveSlashCommandText,
+} from '../../../backend/slashCommands/slashCommands.ts'
 import { isDirectory } from '../../../backend/utils/fs.ts'
 import type {
   DroidAutonomyLevel,
@@ -63,11 +66,18 @@ function readLocalDiagnosticsEnabled(state: PersistedAppState): boolean | undefi
   return typeof raw === 'boolean' ? raw : undefined
 }
 
-function readLocalDiagnosticsRetention(state: PersistedAppState): { retentionDays?: number; maxTotalMb?: number } {
+function readLocalDiagnosticsRetention(state: PersistedAppState): {
+  retentionDays?: number
+  maxTotalMb?: number
+} {
   const daysRaw = (state as any)?.localDiagnosticsRetentionDays
   const mbRaw = (state as any)?.localDiagnosticsMaxTotalMb
-  const retentionDays = (typeof daysRaw === 'number' && Number.isFinite(daysRaw)) ? Math.max(1, Math.floor(daysRaw)) : undefined
-  const maxTotalMb = (typeof mbRaw === 'number' && Number.isFinite(mbRaw)) ? Math.max(1, Math.floor(mbRaw)) : undefined
+  const retentionDays =
+    typeof daysRaw === 'number' && Number.isFinite(daysRaw)
+      ? Math.max(1, Math.floor(daysRaw))
+      : undefined
+  const maxTotalMb =
+    typeof mbRaw === 'number' && Number.isFinite(mbRaw) ? Math.max(1, Math.floor(mbRaw)) : undefined
   return { retentionDays, maxTotalMb }
 }
 
@@ -83,7 +93,8 @@ async function loadCachedState(c: Context<ServerEnv>): Promise<PersistedAppState
   const diagEnabled = readLocalDiagnosticsEnabled(deps.cachedStateRef.value)
   deps.diagnostics.setEnabled(typeof diagEnabled === 'boolean' ? diagEnabled : true)
   const retention = readLocalDiagnosticsRetention(deps.cachedStateRef.value)
-  const bytes = typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
+  const bytes =
+    typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
   deps.diagnostics.setRetention({ maxAgeDays: retention.retentionDays, maxTotalBytes: bytes })
   return deps.cachedStateRef.value
 }
@@ -111,42 +122,67 @@ export function createApiRoutes() {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
       const patch: Partial<Omit<PersistedAppState, 'version'>> = {}
-      if (typeof body.apiKey === 'string' || body.apiKey === null) patch.apiKey = body.apiKey || undefined
-      if (typeof body.activeProjectDir === 'string' || body.activeProjectDir === null) patch.activeProjectDir = body.activeProjectDir || undefined
+      if (typeof body.apiKey === 'string' || body.apiKey === null)
+        patch.apiKey = body.apiKey || undefined
+      if (typeof body.activeProjectDir === 'string' || body.activeProjectDir === null)
+        patch.activeProjectDir = body.activeProjectDir || undefined
       if (Array.isArray(body.projects)) patch.projects = body.projects as any
       if (typeof body.traceChainEnabled === 'boolean' || body.traceChainEnabled === null) {
-        ;(patch as any).traceChainEnabled = body.traceChainEnabled === null ? undefined : body.traceChainEnabled
+        ;(patch as any).traceChainEnabled =
+          body.traceChainEnabled === null ? undefined : body.traceChainEnabled
       }
       if (typeof body.showDebugTrace === 'boolean' || body.showDebugTrace === null) {
-        ;(patch as any).showDebugTrace = body.showDebugTrace === null ? undefined : body.showDebugTrace
+        ;(patch as any).showDebugTrace =
+          body.showDebugTrace === null ? undefined : body.showDebugTrace
       }
       if (typeof body.debugTraceMaxLines === 'number' || body.debugTraceMaxLines === null) {
         const v = body.debugTraceMaxLines
-        ;(patch as any).debugTraceMaxLines = v === null
-          ? undefined
-          : (typeof v === 'number' && Number.isFinite(v)) ? Math.min(10_000, Math.max(1, Math.floor(v))) : undefined
+        ;(patch as any).debugTraceMaxLines =
+          v === null
+            ? undefined
+            : typeof v === 'number' && Number.isFinite(v)
+              ? Math.min(10_000, Math.max(1, Math.floor(v)))
+              : undefined
       }
-      if (typeof body.localDiagnosticsEnabled === 'boolean' || body.localDiagnosticsEnabled === null) {
-        ;(patch as any).localDiagnosticsEnabled = body.localDiagnosticsEnabled === null ? undefined : body.localDiagnosticsEnabled
+      if (
+        typeof body.localDiagnosticsEnabled === 'boolean' ||
+        body.localDiagnosticsEnabled === null
+      ) {
+        ;(patch as any).localDiagnosticsEnabled =
+          body.localDiagnosticsEnabled === null ? undefined : body.localDiagnosticsEnabled
       }
-      if (typeof body.localDiagnosticsRetentionDays === 'number' || body.localDiagnosticsRetentionDays === null) {
+      if (
+        typeof body.localDiagnosticsRetentionDays === 'number' ||
+        body.localDiagnosticsRetentionDays === null
+      ) {
         const v = body.localDiagnosticsRetentionDays
-        ;(patch as any).localDiagnosticsRetentionDays = v === null
-          ? undefined
-          : (typeof v === 'number' && Number.isFinite(v)) ? Math.max(1, Math.floor(v)) : undefined
+        ;(patch as any).localDiagnosticsRetentionDays =
+          v === null
+            ? undefined
+            : typeof v === 'number' && Number.isFinite(v)
+              ? Math.max(1, Math.floor(v))
+              : undefined
       }
-      if (typeof body.localDiagnosticsMaxTotalMb === 'number' || body.localDiagnosticsMaxTotalMb === null) {
+      if (
+        typeof body.localDiagnosticsMaxTotalMb === 'number' ||
+        body.localDiagnosticsMaxTotalMb === null
+      ) {
         const v = body.localDiagnosticsMaxTotalMb
-        ;(patch as any).localDiagnosticsMaxTotalMb = v === null
-          ? undefined
-          : (typeof v === 'number' && Number.isFinite(v)) ? Math.max(1, Math.floor(v)) : undefined
+        ;(patch as any).localDiagnosticsMaxTotalMb =
+          v === null
+            ? undefined
+            : typeof v === 'number' && Number.isFinite(v)
+              ? Math.max(1, Math.floor(v))
+              : undefined
       }
       if (typeof body.commitMessageModelId === 'string' || body.commitMessageModelId === null) {
         const v = body.commitMessageModelId
-        ;(patch as any).commitMessageModelId = v === null ? undefined : (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+        ;(patch as any).commitMessageModelId =
+          v === null ? undefined : typeof v === 'string' && v.trim() ? v.trim() : undefined
       }
       if (typeof body.lanAccessEnabled === 'boolean' || body.lanAccessEnabled === null) {
-        ;(patch as any).lanAccessEnabled = body.lanAccessEnabled === null ? undefined : body.lanAccessEnabled
+        ;(patch as any).lanAccessEnabled =
+          body.lanAccessEnabled === null ? undefined : body.lanAccessEnabled
       }
 
       deps.cachedStateRef.value = await deps.appStateStore.update(patch as any)
@@ -154,7 +190,8 @@ export function createApiRoutes() {
       const diagEnabled = readLocalDiagnosticsEnabled(deps.cachedStateRef.value)
       deps.diagnostics.setEnabled(typeof diagEnabled === 'boolean' ? diagEnabled : true)
       const retention = readLocalDiagnosticsRetention(deps.cachedStateRef.value)
-      const bytes = typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
+      const bytes =
+        typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
       deps.diagnostics.setRetention({ maxAgeDays: retention.retentionDays, maxTotalBytes: bytes })
       return c.json(deps.cachedStateRef.value)
     } catch {
@@ -174,11 +211,14 @@ export function createApiRoutes() {
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined
       const event = typeof body.event === 'string' ? body.event : ''
       const level = typeof body.level === 'string' ? body.level : 'debug'
-      const correlation = (body.correlation && typeof body.correlation === 'object') ? (body.correlation as any) : undefined
+      const correlation =
+        body.correlation && typeof body.correlation === 'object'
+          ? (body.correlation as any)
+          : undefined
       if (!event) return jsonError(c, 400, 'Missing event')
       await deps.diagnostics.append({
         ts: new Date().toISOString(),
-        level: (level === 'info' || level === 'warn' || level === 'error') ? level : 'debug',
+        level: level === 'info' || level === 'warn' || level === 'error' ? level : 'debug',
         scope: 'renderer',
         event,
         sessionId,
@@ -191,14 +231,16 @@ export function createApiRoutes() {
     }
   })
 
-	  api.post('/diagnostics/export', async (c) => {
-	    const deps = c.get('deps')
-	    const body = await readJsonBody<Record<string, unknown>>(c).catch(() => ({} as Record<string, unknown>))
-	    const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
-	    const sid = sessionId || null
-	    const debugTraceText = typeof body.debugTraceText === 'string' ? body.debugTraceText : ''
-	    const state = (await loadCachedState(c)) as PersistedAppStateV2
-	    const buf = await deps.diagnostics.buildExportBundle({
+  api.post('/diagnostics/export', async (c) => {
+    const deps = c.get('deps')
+    const body = await readJsonBody<Record<string, unknown>>(c).catch(
+      () => ({}) as Record<string, unknown>,
+    )
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
+    const sid = sessionId || null
+    const debugTraceText = typeof body.debugTraceText === 'string' ? body.debugTraceText : ''
+    const state = (await loadCachedState(c)) as PersistedAppStateV2
+    const buf = await deps.diagnostics.buildExportBundle({
       sessionId: sid,
       appVersion: '',
       appState: state,
@@ -246,9 +288,14 @@ export function createApiRoutes() {
       const hasBaseBranch = Object.prototype.hasOwnProperty.call(rawSettings, 'baseBranch')
       const hasPrefix = Object.prototype.hasOwnProperty.call(rawSettings, 'worktreePrefix')
       const hasSetupScript = Object.prototype.hasOwnProperty.call(rawSettings, 'setupScript')
-      const baseBranch = typeof rawSettings.baseBranch === 'string' ? String(rawSettings.baseBranch).trim() : ''
-      const worktreePrefix = typeof rawSettings.worktreePrefix === 'string' ? String(rawSettings.worktreePrefix).trim() : ''
-      const setupScript = typeof rawSettings.setupScript === 'string' ? String(rawSettings.setupScript).trim() : ''
+      const baseBranch =
+        typeof rawSettings.baseBranch === 'string' ? String(rawSettings.baseBranch).trim() : ''
+      const worktreePrefix =
+        typeof rawSettings.worktreePrefix === 'string'
+          ? String(rawSettings.worktreePrefix).trim()
+          : ''
+      const setupScript =
+        typeof rawSettings.setupScript === 'string' ? String(rawSettings.setupScript).trim() : ''
       const settingsPatch: ProjectSettings = {
         ...(hasBaseBranch ? { baseBranch: baseBranch || undefined } : {}),
         ...(hasPrefix ? { worktreePrefix: worktreePrefix || undefined } : {}),
@@ -256,15 +303,18 @@ export function createApiRoutes() {
       }
 
       const cur = (await loadCachedState(c)) as PersistedAppStateV2
-      const prevMap = (cur as any).projectSettings && typeof (cur as any).projectSettings === 'object'
-        ? ((cur as any).projectSettings as Record<string, ProjectSettings>)
-        : {}
+      const prevMap =
+        (cur as any).projectSettings && typeof (cur as any).projectSettings === 'object'
+          ? ((cur as any).projectSettings as Record<string, ProjectSettings>)
+          : {}
       const merged: Record<string, ProjectSettings> = {
         ...prevMap,
         [repoRoot]: { ...(prevMap[repoRoot] || {}), ...settingsPatch },
       }
 
-      deps.cachedStateRef.value = await deps.appStateStore.update({ projectSettings: merged } as any)
+      deps.cachedStateRef.value = await deps.appStateStore.update({
+        projectSettings: merged,
+      } as any)
       return c.json(deps.cachedStateRef.value)
     } catch {
       return jsonError(c, 400, 'Invalid JSON')
@@ -292,10 +342,7 @@ export function createApiRoutes() {
 
   api.get('/keys', async (c) => {
     const deps = c.get('deps')
-    const [keys, usages] = await Promise.all([
-      deps.keyStore.getKeys(),
-      deps.keyStore.getUsages(),
-    ])
+    const [keys, usages] = await Promise.all([deps.keyStore.getKeys(), deps.keyStore.getUsages()])
     const state = await loadCachedState(c)
     const activeKey = state.apiKey || ''
     const entries = keys.map((entry, index) => ({
@@ -313,7 +360,9 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const rawKeys = Array.isArray(body.keys) ? body.keys.filter((k): k is string => typeof k === 'string') : []
+      const rawKeys = Array.isArray(body.keys)
+        ? body.keys.filter((k): k is string => typeof k === 'string')
+        : []
       if (rawKeys.length === 0) return jsonError(c, 400, 'No keys provided')
       const result = await deps.keyStore.addKeys(rawKeys)
       deps.cachedStateRef.value = await deps.appStateStore.load()
@@ -389,7 +438,9 @@ export function createApiRoutes() {
       const dir = typeof body.dir === 'string' ? body.dir : ''
       if (dir && !(await isDirectory(dir))) return jsonError(c, 400, 'Directory does not exist')
 
-      deps.cachedStateRef.value = await deps.appStateStore.update({ activeProjectDir: dir || undefined })
+      deps.cachedStateRef.value = await deps.appStateStore.update({
+        activeProjectDir: dir || undefined,
+      })
       return c.json({ ok: true, dir: deps.cachedStateRef.value.activeProjectDir || '' })
     } catch {
       return jsonError(c, 400, 'Invalid JSON')
@@ -459,7 +510,9 @@ export function createApiRoutes() {
             if (!listenIds.has(ev.oldSessionId)) return
             listenIds.add(ev.newSessionId)
             write('event: session-id-replaced\n')
-            write(`data:${JSON.stringify({ type: 'session-id-replaced', oldSessionId: ev.oldSessionId, newSessionId: ev.newSessionId, reason: ev.reason })}\n\n`)
+            write(
+              `data:${JSON.stringify({ type: 'session-id-replaced', oldSessionId: ev.oldSessionId, newSessionId: ev.newSessionId, reason: ev.reason })}\n\n`,
+            )
             return
           }
 
@@ -515,7 +568,7 @@ export function createApiRoutes() {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
       },
     })
   })
@@ -527,7 +580,8 @@ export function createApiRoutes() {
       const prompt = typeof body.prompt === 'string' ? body.prompt : ''
       const modelId = typeof body.modelId === 'string' ? body.modelId : undefined
       const autoLevel = typeof body.autoLevel === 'string' ? body.autoLevel : undefined
-      const reasoningEffort = typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
+      const reasoningEffort =
+        typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
       const sid = typeof body.sessionId === 'string' ? body.sessionId : ''
 
       if (!prompt.trim()) return jsonError(c, 400, 'Missing prompt')
@@ -542,12 +596,16 @@ export function createApiRoutes() {
         event: 'api.message.received',
         sessionId: sid,
         correlation: { modelId, autoLevel, reasoningEffort },
-        data: { promptSig: sig, remoteAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '' },
+        data: {
+          promptSig: sig,
+          remoteAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '',
+        },
       })
 
       const state = await loadCachedState(c)
       const cwd = state.activeProjectDir || ''
-      if (!cwd || !(await isDirectory(cwd))) return jsonError(c, 400, 'No active project directory set')
+      if (!cwd || !(await isDirectory(cwd)))
+        return jsonError(c, 400, 'No active project directory set')
       const machineId = (state as PersistedAppStateV2).machineId
       if (!machineId) return jsonError(c, 500, 'Missing machineId')
 
@@ -593,7 +651,8 @@ export function createApiRoutes() {
       const prompt = typeof body.prompt === 'string' ? body.prompt : ''
       const modelId = typeof body.modelId === 'string' ? body.modelId : undefined
       const autoLevel = typeof body.autoLevel === 'string' ? body.autoLevel : undefined
-      const reasoningEffort = typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
+      const reasoningEffort =
+        typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
       const sid = typeof body.sessionId === 'string' ? body.sessionId : ''
 
       if (!prompt.trim()) return jsonError(c, 400, 'Missing prompt')
@@ -608,12 +667,16 @@ export function createApiRoutes() {
         event: 'api.exec.stream.start',
         sessionId: sid,
         correlation: { modelId, autoLevel, reasoningEffort },
-        data: { promptSig: sig, remoteAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '' },
+        data: {
+          promptSig: sig,
+          remoteAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '',
+        },
       })
 
       const state = await loadCachedState(c)
       const cwd = state.activeProjectDir || ''
-      if (!cwd || !(await isDirectory(cwd))) return jsonError(c, 400, 'No active project directory set')
+      if (!cwd || !(await isDirectory(cwd)))
+        return jsonError(c, 400, 'No active project directory set')
       const machineId = (state as PersistedAppStateV2).machineId
       if (!machineId) return jsonError(c, 500, 'Missing machineId')
 
@@ -687,7 +750,9 @@ export function createApiRoutes() {
               if (!listenIds.has(ev.oldSessionId)) return
               listenIds.add(ev.newSessionId)
               write('event: session-id-replaced\n')
-              write(`data:${JSON.stringify({ type: 'session-id-replaced', oldSessionId: ev.oldSessionId, newSessionId: ev.newSessionId, reason: ev.reason })}\n\n`)
+              write(
+                `data:${JSON.stringify({ type: 'session-id-replaced', oldSessionId: ev.oldSessionId, newSessionId: ev.newSessionId, reason: ev.reason })}\n\n`,
+              )
               return
             }
 
@@ -724,19 +789,21 @@ export function createApiRoutes() {
           }
           c.req.raw.signal.addEventListener('abort', abortHandler, { once: true })
 
-          void deps.execManager.send({
-            sessionId: sid,
-            resumeSessionId,
-            machineId,
-            prompt,
-            cwd,
-            modelId,
-            autonomyLevel: toAutonomyLevel(autoLevel),
-            reasoningEffort,
-            env,
-          }).catch((err) => {
-            writeErrorAndClose((err as Error)?.message || 'Execution failed')
-          })
+          void deps.execManager
+            .send({
+              sessionId: sid,
+              resumeSessionId,
+              machineId,
+              prompt,
+              cwd,
+              modelId,
+              autonomyLevel: toAutonomyLevel(autoLevel),
+              reasoningEffort,
+              env,
+            })
+            .catch((err) => {
+              writeErrorAndClose((err as Error)?.message || 'Execution failed')
+            })
         },
         cancel() {
           if (closed) return
@@ -751,7 +818,7 @@ export function createApiRoutes() {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          Connection: 'keep-alive',
         },
       })
     } catch {
@@ -783,7 +850,8 @@ export function createApiRoutes() {
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
       const modelId = typeof body.modelId === 'string' ? body.modelId : undefined
       const autoLevel = typeof body.autoLevel === 'string' ? body.autoLevel : undefined
-      const reasoningEffort = typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
+      const reasoningEffort =
+        typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
       if (!sessionId) return jsonError(c, 400, 'Invalid payload')
 
       await deps.execManager.updateSessionSettings({
@@ -823,7 +891,8 @@ export function createApiRoutes() {
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
       const projectDir = typeof body.projectDir === 'string' ? body.projectDir.trim() : ''
       const script = typeof body.script === 'string' ? body.script.trim() : ''
-      if (!sessionId || !projectDir || !script) return jsonError(c, 400, 'Missing sessionId/projectDir/script')
+      if (!sessionId || !projectDir || !script)
+        return jsonError(c, 400, 'Missing sessionId/projectDir/script')
       if (!(await isDirectory(projectDir))) return jsonError(c, 400, 'Invalid projectDir')
 
       await deps.setupScriptRunner.run({ sessionId, projectDir, script })
@@ -873,7 +942,8 @@ export function createApiRoutes() {
       const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
       const modelId = typeof body.modelId === 'string' ? body.modelId : undefined
       const autoLevel = typeof body.autoLevel === 'string' ? body.autoLevel : undefined
-      const reasoningEffort = typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
+      const reasoningEffort =
+        typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
       if (!cwd) return jsonError(c, 400, 'Missing cwd')
       if (!(await isDirectory(cwd))) return jsonError(c, 400, 'Invalid cwd')
 
@@ -888,8 +958,7 @@ export function createApiRoutes() {
         if (deps.cachedStateRef.value.apiKey !== activeKey) {
           deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
         }
-      }
-      else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
+      } else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
 
       const res = await deps.execManager.createSession({
         machineId,
@@ -932,7 +1001,8 @@ export function createApiRoutes() {
       const existing = await deps.sessionStore.load(id)
       const state = await loadCachedState(c)
       const cwd = (existing?.projectDir || '').trim() || (state.activeProjectDir || '').trim()
-      if (!cwd || !(await isDirectory(cwd))) return jsonError(c, 400, 'No active project directory set')
+      if (!cwd || !(await isDirectory(cwd)))
+        return jsonError(c, 400, 'No active project directory set')
       const machineId = (state as PersistedAppStateV2).machineId
       if (!machineId) return jsonError(c, 500, 'Missing machineId')
 
@@ -945,8 +1015,7 @@ export function createApiRoutes() {
         if (deps.cachedStateRef.value.apiKey !== activeKey) {
           deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
         }
-      }
-      else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
+      } else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
 
       const created = await deps.execManager.createSession({
         machineId,
@@ -987,61 +1056,86 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!dir) return c.json([])
 
-      const files = await new Promise<Array<{ status: string; path: string; additions: number; deletions: number }>>((resolvePromise) => {
-        execFile('git', ['status', '--porcelain', '-uall'], { cwd: dir, timeout: 5000 }, (err, stdout) => {
-          if (err) {
-            resolvePromise([])
-            return
-          }
-
-          const statusMap = new Map<string, string>()
-          for (const line of stdout.split('\n').filter((line2) => line2.trim())) {
-            const status = line.substring(0, 2).trim()
-            const filePath = line.substring(3)
-            statusMap.set(filePath, status)
-          }
-
-          if (statusMap.size === 0) {
-            resolvePromise([])
-            return
-          }
-
-          execFile('git', ['diff', '--numstat', 'HEAD'], { cwd: dir, timeout: 5000 }, (err2, diffOut) => {
-            const diffMap = new Map<string, { additions: number; deletions: number }>()
-            if (!err2 && diffOut) {
-              for (const line of diffOut.split('\n').filter((line2) => line2.trim())) {
-                const parts = line.split('\t')
-                if (parts.length >= 3) {
-                  const add = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0
-                  const del = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0
-                  diffMap.set(parts[2], { additions: add, deletions: del })
-                }
-              }
+      const files = await new Promise<
+        Array<{ status: string; path: string; additions: number; deletions: number }>
+      >((resolvePromise) => {
+        execFile(
+          'git',
+          ['status', '--porcelain', '-uall'],
+          { cwd: dir, timeout: 5000 },
+          (err, stdout) => {
+            if (err) {
+              resolvePromise([])
+              return
             }
 
-            execFile('git', ['diff', '--numstat'], { cwd: dir, timeout: 5000 }, (_err3, unstagedOut) => {
-              if (unstagedOut) {
-                for (const line of unstagedOut.split('\n').filter((line2) => line2.trim())) {
-                  const parts = line.split('\t')
-                  if (parts.length >= 3 && !diffMap.has(parts[2])) {
-                    const add = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0
-                    const del = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0
-                    diffMap.set(parts[2], { additions: add, deletions: del })
+            const statusMap = new Map<string, string>()
+            for (const line of stdout.split('\n').filter((line2) => line2.trim())) {
+              const status = line.substring(0, 2).trim()
+              const filePath = line.substring(3)
+              statusMap.set(filePath, status)
+            }
+
+            if (statusMap.size === 0) {
+              resolvePromise([])
+              return
+            }
+
+            execFile(
+              'git',
+              ['diff', '--numstat', 'HEAD'],
+              { cwd: dir, timeout: 5000 },
+              (err2, diffOut) => {
+                const diffMap = new Map<string, { additions: number; deletions: number }>()
+                if (!err2 && diffOut) {
+                  for (const line of diffOut.split('\n').filter((line2) => line2.trim())) {
+                    const parts = line.split('\t')
+                    if (parts.length >= 3) {
+                      const add = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0
+                      const del = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0
+                      diffMap.set(parts[2], { additions: add, deletions: del })
+                    }
                   }
                 }
-              }
 
-              const result = Array.from(statusMap.entries()).map(([filePath, status]) => {
-                const diff = diffMap.get(filePath) || { additions: 0, deletions: 0 }
-                return { status, path: filePath, additions: diff.additions, deletions: diff.deletions }
-              })
-              resolvePromise(result)
-            })
-          })
-        })
+                execFile(
+                  'git',
+                  ['diff', '--numstat'],
+                  { cwd: dir, timeout: 5000 },
+                  (_err3, unstagedOut) => {
+                    if (unstagedOut) {
+                      for (const line of unstagedOut.split('\n').filter((line2) => line2.trim())) {
+                        const parts = line.split('\t')
+                        if (parts.length >= 3 && !diffMap.has(parts[2])) {
+                          const add = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0
+                          const del = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0
+                          diffMap.set(parts[2], { additions: add, deletions: del })
+                        }
+                      }
+                    }
+
+                    const result = Array.from(statusMap.entries()).map(([filePath, status]) => {
+                      const diff = diffMap.get(filePath) || { additions: 0, deletions: 0 }
+                      return {
+                        status,
+                        path: filePath,
+                        additions: diff.additions,
+                        deletions: diff.deletions,
+                      }
+                    })
+                    resolvePromise(result)
+                  },
+                )
+              },
+            )
+          },
+        )
       })
 
       return c.json(files)
@@ -1054,17 +1148,25 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!dir) return c.json({ branch: '' })
 
       const branch = await new Promise<string>((resolvePromise) => {
-        execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir, timeout: 5000 }, (err, stdout) => {
-          if (err) {
-            resolvePromise('')
-            return
-          }
-          resolvePromise(stdout.trim())
-        })
+        execFile(
+          'git',
+          ['rev-parse', '--abbrev-ref', 'HEAD'],
+          { cwd: dir, timeout: 5000 },
+          (err, stdout) => {
+            if (err) {
+              resolvePromise('')
+              return
+            }
+            resolvePromise(stdout.trim())
+          },
+        )
       })
       return c.json({ branch })
     } catch {
@@ -1076,7 +1178,10 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!dir) return c.json({ branches: [] })
       const branches = await listBranches(dir)
       return c.json({ branches })
@@ -1089,7 +1194,10 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!dir) return c.json(null)
       const info = await getWorkspaceInfo(dir)
       return c.json(info)
@@ -1104,7 +1212,10 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       const branch = typeof body.branch === 'string' ? body.branch.trim() : ''
       if (!dir || !branch) return c.json(null)
 
@@ -1119,14 +1230,19 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       const mode = body.mode === 'worktree' ? 'worktree' : 'branch'
       const branch = typeof body.branch === 'string' ? body.branch.trim() : ''
       const baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : undefined
       const useExistingBranch = Boolean(body.useExistingBranch)
       if (!dir || !branch) return c.json(null)
 
-      return c.json(await createWorkspace({ projectDir: dir, mode, branch, baseBranch, useExistingBranch }))
+      return c.json(
+        await createWorkspace({ projectDir: dir, mode, branch, baseBranch, useExistingBranch }),
+      )
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return jsonError(c, 500, msg || 'Failed to create workspace')
@@ -1137,9 +1253,10 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const repoRoot = typeof body.repoRoot === 'string'
-        ? body.repoRoot.trim()
-        : (deps.cachedStateRef.value.activeProjectDir || '')
+      const repoRoot =
+        typeof body.repoRoot === 'string'
+          ? body.repoRoot.trim()
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!repoRoot) return c.json([])
       return c.json(await listWorktreeBranchesInUse({ repoRoot }))
     } catch {
@@ -1156,7 +1273,8 @@ export function createApiRoutes() {
       if (!repoRoot || !worktreeDir) return jsonError(c, 400, 'Missing repoRoot/worktreeDir')
 
       const deleteBranch = Boolean((body as any).deleteBranch)
-      const branch = typeof (body as any).branch === 'string' ? String((body as any).branch).trim() : ''
+      const branch =
+        typeof (body as any).branch === 'string' ? String((body as any).branch).trim() : ''
       await removeWorktree({ repoRoot, worktreeDir, force, deleteBranch, branch })
       return c.json({ ok: true })
     } catch (err) {
@@ -1169,7 +1287,10 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const dir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const dir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       const remote = typeof body.remote === 'string' ? body.remote.trim() : undefined
       const branch = typeof body.branch === 'string' ? body.branch.trim() : undefined
       if (!dir) return jsonError(c, 400, 'Missing projectDir')
@@ -1186,7 +1307,10 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const projectDir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const projectDir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!projectDir) return jsonError(c, 400, 'Missing projectDir')
       return c.json(await detectGitTools({ projectDir }))
     } catch {
@@ -1198,15 +1322,29 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const projectDir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const projectDir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       const includeUnstaged = Boolean(body.includeUnstaged)
       const wantPrMeta = Boolean(body.wantPrMeta)
-      const prBaseBranch = typeof body.prBaseBranch === 'string' ? body.prBaseBranch.trim() : undefined
+      const prBaseBranch =
+        typeof body.prBaseBranch === 'string' ? body.prBaseBranch.trim() : undefined
       if (!projectDir) return jsonError(c, 400, 'Missing projectDir')
 
       const state = await loadCachedState(c)
-      const req: GenerateCommitMetaRequest = { projectDir, includeUnstaged, wantPrMeta, prBaseBranch }
-      const result = await generateCommitMeta({ req, state, execManager: deps.execManager, keyStore: deps.keyStore })
+      const req: GenerateCommitMetaRequest = {
+        projectDir,
+        includeUnstaged,
+        wantPrMeta,
+        prBaseBranch,
+      }
+      const result = await generateCommitMeta({
+        req,
+        state,
+        execManager: deps.execManager,
+        keyStore: deps.keyStore,
+      })
       return c.json(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -1218,13 +1356,19 @@ export function createApiRoutes() {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
-      const projectDir = typeof body.projectDir === 'string' ? body.projectDir : (deps.cachedStateRef.value.activeProjectDir || '')
+      const projectDir =
+        typeof body.projectDir === 'string'
+          ? body.projectDir
+          : deps.cachedStateRef.value.activeProjectDir || ''
       if (!projectDir) return jsonError(c, 400, 'Missing projectDir')
       const req: CommitWorkflowRequest = {
         projectDir,
         includeUnstaged: Boolean(body.includeUnstaged),
         commitMessage: typeof body.commitMessage === 'string' ? body.commitMessage : '',
-        workflow: (body.workflow === 'commit_push' || body.workflow === 'commit_push_pr') ? body.workflow : 'commit',
+        workflow:
+          body.workflow === 'commit_push' || body.workflow === 'commit_push_pr'
+            ? body.workflow
+            : 'commit',
         prBaseBranch: typeof body.prBaseBranch === 'string' ? body.prBaseBranch.trim() : undefined,
         prTitle: typeof body.prTitle === 'string' ? body.prTitle : undefined,
         prBody: typeof body.prBody === 'string' ? body.prBody : undefined,
@@ -1324,7 +1468,8 @@ export function createApiRoutes() {
   api.post('/upload', async (c) => {
     try {
       const deps = c.get('deps')
-      const projectDir = c.req.query('projectDir') || deps.cachedStateRef.value.activeProjectDir || ''
+      const projectDir =
+        c.req.query('projectDir') || deps.cachedStateRef.value.activeProjectDir || ''
       if (!projectDir) return jsonError(c, 400, 'No project directory')
 
       const attachDir = join(projectDir, '.attachment')

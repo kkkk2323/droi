@@ -26,7 +26,11 @@ async function walkMarkdownFiles(rootDir: string): Promise<string[]> {
     let items: Array<{ name: string; isDirectory: boolean; isFile: boolean }> = []
     try {
       const entries = await readdir(current, { withFileTypes: true })
-      items = entries.map((e) => ({ name: e.name, isDirectory: e.isDirectory(), isFile: e.isFile() }))
+      items = entries.map((e) => ({
+        name: e.name,
+        isDirectory: e.isDirectory(),
+        isFile: e.isFile(),
+      }))
     } catch {
       continue
     }
@@ -53,7 +57,10 @@ function normalizeCommandName(rootDir: string, filePath: string): string | null 
   if (!rel.toLowerCase().endsWith('.md')) return null
 
   const noExt = rel.slice(0, -3)
-  const normalized = noExt.split(sep).join('/').replace(/^\/+|\/+$/g, '')
+  const normalized = noExt
+    .split(sep)
+    .join('/')
+    .replace(/^\/+|\/+$/g, '')
   if (!normalized) return null
   return normalized
 }
@@ -65,7 +72,10 @@ function splitFrontmatter(raw: string): ParsedMarkdown {
 
   let end = -1
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === '---') { end = i; break }
+    if (lines[i] === '---') {
+      end = i
+      break
+    }
   }
   if (end === -1) return { meta: {}, body: raw }
 
@@ -79,7 +89,12 @@ function splitFrontmatter(raw: string): ParsedMarkdown {
   return { meta, body }
 }
 
-function toDef(params: { scope: 'project' | 'user'; filePath: string; name: string; meta: Record<string, string> }): SlashCommandDef {
+function toDef(params: {
+  scope: 'project' | 'user'
+  filePath: string
+  name: string
+  meta: Record<string, string>
+}): SlashCommandDef {
   const description = params.meta['description']
   const argumentHint = params.meta['argument-hint'] ?? params.meta['argumentHint']
   return {
@@ -99,12 +114,16 @@ export function getProjectCommandsDir(projectDir: string): string {
   return join(projectDir, '.factory', 'commands')
 }
 
-export async function scanSlashCommands(params: { projectDir?: string; userCommandsDir?: string }): Promise<Map<string, SlashCommandEntry>> {
+export async function scanSlashCommands(params: {
+  projectDir?: string
+  userCommandsDir?: string
+}): Promise<Map<string, SlashCommandEntry>> {
   const map = new Map<string, SlashCommandEntry>()
   const userRoot = params.userCommandsDir || getDefaultUserCommandsDir()
-  const projectRoot = params.projectDir && params.projectDir.trim()
-    ? getProjectCommandsDir(params.projectDir.trim())
-    : ''
+  const projectRoot =
+    params.projectDir && params.projectDir.trim()
+      ? getProjectCommandsDir(params.projectDir.trim())
+      : ''
 
   const addFromRoot = async (rootDir: string, scope: 'project' | 'user') => {
     if (!(await isDirectory(rootDir))) return
@@ -157,7 +176,7 @@ export function resolveSlashCommandText(params: {
 
   const afterSlash = rest.slice(1)
   const m = afterSlash.match(/\s/)
-  const splitIdx = m ? m.index ?? -1 : -1
+  const splitIdx = m ? (m.index ?? -1) : -1
   const name = (splitIdx >= 0 ? afterSlash.slice(0, splitIdx) : afterSlash).trim()
   if (!name) return { matched: false, expandedText: input }
 

@@ -14,7 +14,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useActiveProjectDir, useIsRunning, useActiveSessionTitle, useWorkspaceError, useActions, usePendingNewSession } from '@/store'
+import {
+  useActiveProjectDir,
+  useIsRunning,
+  useActiveSessionTitle,
+  useWorkspaceError,
+  useActions,
+  usePendingNewSession,
+} from '@/store'
 import { isBrowserMode } from '@/droidClient'
 
 function InnerLayout() {
@@ -25,9 +32,10 @@ function InnerLayout() {
   const workspaceError = useWorkspaceError()
   const { clearWorkspaceError } = useActions()
   const { open } = useSidebar()
-  const isMacElectron = !isBrowserMode()
-    && typeof navigator !== 'undefined'
-    && (navigator.userAgent.includes('Macintosh') || navigator.userAgent.includes('Mac OS X'))
+  const isMacElectron =
+    !isBrowserMode() &&
+    typeof navigator !== 'undefined' &&
+    (navigator.userAgent.includes('Macintosh') || navigator.userAgent.includes('Mac OS X'))
 
   return (
     <>
@@ -35,11 +43,13 @@ function InnerLayout() {
       <SidebarInset>
         <header
           className="flex h-10 shrink-0 items-center gap-2 pr-4"
-          style={{
-            WebkitAppRegion: 'drag',
-            paddingLeft: isMacElectron ? (open ? '3rem' : '7rem') : (open ? '1rem' : '6.5rem'),
-            transition: 'padding-left 200ms ease-linear',
-          } as React.CSSProperties}
+          style={
+            {
+              WebkitAppRegion: 'drag',
+              paddingLeft: isMacElectron ? (open ? '3rem' : '7rem') : open ? '1rem' : '6.5rem',
+              transition: 'padding-left 200ms ease-linear',
+            } as React.CSSProperties
+          }
         >
           {isMacElectron ? (
             <div
@@ -63,10 +73,11 @@ function InnerLayout() {
             </div>
           )}
           {!pendingNewSession && (
-            <div className="ml-auto pt-2 flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-              {activeProjectDir && (
-                <OpenInEditorButton dir={activeProjectDir} />
-              )}
+            <div
+              className="ml-auto pt-2 flex items-center gap-1.5"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              {activeProjectDir && <OpenInEditorButton dir={activeProjectDir} />}
               <WorktreeIndicator />
               <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />
               <FilesChangedBadge projectDir={activeProjectDir} isRunning={isRunning} />

@@ -168,7 +168,14 @@ export interface ThinkingBlock {
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'error'
-  blocks: (TextBlock | ToolCallBlock | AttachmentBlock | CommandBlock | SkillBlock | ThinkingBlock)[]
+  blocks: (
+    | TextBlock
+    | ToolCallBlock
+    | AttachmentBlock
+    | CommandBlock
+    | SkillBlock
+    | ThinkingBlock
+  )[]
   timestamp: number
 }
 
@@ -313,44 +320,105 @@ export interface SkillDef {
 export interface DroidClientAPI {
   getVersion: () => Promise<string>
   getAppVersion: () => Promise<string>
-  exec: (params: { prompt: string; sessionId?: string | null; modelId?: string; autoLevel?: string; reasoningEffort?: string }) => void
+  exec: (params: {
+    prompt: string
+    sessionId?: string | null
+    modelId?: string
+    autoLevel?: string
+    reasoningEffort?: string
+  }) => void
   cancel: (params: { sessionId: string | null }) => void
   setActiveSession: (params: { sessionId: string | null }) => void
-  updateSessionSettings: (params: { sessionId: string; modelId?: string; autoLevel?: string; reasoningEffort?: string }) => Promise<{ ok: true }>
+  updateSessionSettings: (params: {
+    sessionId: string
+    modelId?: string
+    autoLevel?: string
+    reasoningEffort?: string
+  }) => Promise<{ ok: true }>
 
-  createSession: (params: { cwd: string; modelId?: string; autoLevel?: string; reasoningEffort?: string }) => Promise<{ sessionId: string }>
+  createSession: (params: {
+    cwd: string
+    modelId?: string
+    autoLevel?: string
+    reasoningEffort?: string
+  }) => Promise<{ sessionId: string }>
 
-  restartSessionWithActiveKey: (params: { sessionId: string }) => Promise<{ ok: true; apiKeyFingerprint: string }>
+  restartSessionWithActiveKey: (params: {
+    sessionId: string
+  }) => Promise<{ ok: true; apiKeyFingerprint: string }>
 
-  runSetupScript: (params: { sessionId: string; projectDir: string; script: string }) => Promise<{ ok: true }>
+  runSetupScript: (params: {
+    sessionId: string
+    projectDir: string
+    script: string
+  }) => Promise<{ ok: true }>
   cancelSetupScript: (params: { sessionId: string }) => void
-  onSetupScriptEvent: (callback: (payload: { event: SetupScriptEvent; sessionId: string | null }) => void) => () => void
+  onSetupScriptEvent: (
+    callback: (payload: { event: SetupScriptEvent; sessionId: string | null }) => void,
+  ) => () => void
 
   listSlashCommands: () => Promise<SlashCommandDef[]>
   resolveSlashCommand: (params: { text: string }) => Promise<SlashResolveResult>
   listSkills: () => Promise<SkillDef[]>
 
-  onRpcNotification: (callback: (payload: { message: JsonRpcNotification; sessionId: string | null }) => void) => () => void
-  onRpcRequest: (callback: (payload: { message: JsonRpcRequest; sessionId: string | null }) => void) => () => void
+  onRpcNotification: (
+    callback: (payload: { message: JsonRpcNotification; sessionId: string | null }) => void,
+  ) => () => void
+  onRpcRequest: (
+    callback: (payload: { message: JsonRpcRequest; sessionId: string | null }) => void,
+  ) => () => void
   onTurnEnd: (callback: (payload: { code: number; sessionId: string | null }) => void) => () => void
-  onDebug: (callback: (payload: { message: string; sessionId: string | null }) => void) => () => void
+  onDebug: (
+    callback: (payload: { message: string; sessionId: string | null }) => void,
+  ) => () => void
 
-  onSessionIdReplaced: (callback: (payload: { oldSessionId: string; newSessionId: string; reason: string }) => void) => () => void
+  onSessionIdReplaced: (
+    callback: (payload: { oldSessionId: string; newSessionId: string; reason: string }) => void,
+  ) => () => void
 
-  respondPermission: (params: { sessionId: string; requestId: string; selectedOption: DroidPermissionOption }) => void
-  respondAskUser: (params: { sessionId: string; requestId: string; cancelled?: boolean; answers: Array<{ index: number; question: string; answer: string }> }) => void
+  respondPermission: (params: {
+    sessionId: string
+    requestId: string
+    selectedOption: DroidPermissionOption
+  }) => void
+  respondAskUser: (params: {
+    sessionId: string
+    requestId: string
+    cancelled?: boolean
+    answers: Array<{ index: number; question: string; answer: string }>
+  }) => void
   onStdout: (callback: (payload: { data: string; sessionId: string | null }) => void) => () => void
   onStderr: (callback: (payload: { data: string; sessionId: string | null }) => void) => () => void
-  onError: (callback: (payload: { message: string; sessionId: string | null }) => void) => () => void
+  onError: (
+    callback: (payload: { message: string; sessionId: string | null }) => void,
+  ) => () => void
 
   setApiKey: (apiKey: string) => void
   getApiKey: () => Promise<string>
 
-  listKeys: () => Promise<Array<{ key: string; note: string; addedAt: number; index: number; isActive: boolean; usage: ApiKeyUsage | null }>>
+  listKeys: () => Promise<
+    Array<{
+      key: string
+      note: string
+      addedAt: number
+      index: number
+      isActive: boolean
+      usage: ApiKeyUsage | null
+    }>
+  >
   addKeys: (keys: string[]) => Promise<{ added: number; duplicates: number }>
   removeKeyByIndex: (index: number) => Promise<void>
   updateKeyNote: (index: number, note: string) => Promise<void>
-  refreshKeys: () => Promise<Array<{ key: string; note: string; addedAt: number; index: number; isActive?: boolean; usage: ApiKeyUsage | null }>>
+  refreshKeys: () => Promise<
+    Array<{
+      key: string
+      note: string
+      addedAt: number
+      index: number
+      isActive?: boolean
+      usage: ApiKeyUsage | null
+    }>
+  >
   getActiveKeyInfo: () => Promise<{ key: string; apiKeyFingerprint: string }>
   setTraceChainEnabled: (enabled: boolean) => void
   setShowDebugTrace: (enabled: boolean) => void
@@ -358,9 +426,18 @@ export interface DroidClientAPI {
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
   setLanAccessEnabled: (enabled: boolean) => void
-  appendDiagnosticsEvent: (params: { sessionId?: string | null; event: string; level?: string; data?: unknown; correlation?: Record<string, unknown> }) => void
+  appendDiagnosticsEvent: (params: {
+    sessionId?: string | null
+    event: string
+    level?: string
+    data?: unknown
+    correlation?: Record<string, unknown>
+  }) => void
   getDiagnosticsDir: () => Promise<string>
-  exportDiagnostics: (params: { sessionId?: string | null; debugTraceText?: string }) => Promise<{ path: string }>
+  exportDiagnostics: (params: {
+    sessionId?: string | null
+    debugTraceText?: string
+  }) => Promise<{ path: string }>
   openPath: (path: string) => Promise<{ ok: true }>
 
   openInEditor: (params: { dir: string }) => Promise<void>
@@ -368,8 +445,16 @@ export interface DroidClientAPI {
   detectEditors: () => Promise<EditorInfo[]>
   openDirectory: () => Promise<string | null>
   openFile: () => Promise<string[] | null>
-  saveAttachments: (params: { sourcePaths: string[]; projectDir: string }) => Promise<Array<{ name: string; path: string }>>
-  saveClipboardImage: (params: { data: number[]; mimeType: string; projectDir: string; fileName?: string }) => Promise<{ name: string; path: string } | null>
+  saveAttachments: (params: {
+    sourcePaths: string[]
+    projectDir: string
+  }) => Promise<Array<{ name: string; path: string }>>
+  saveClipboardImage: (params: {
+    data: number[]
+    mimeType: string
+    projectDir: string
+    fileName?: string
+  }) => Promise<{ name: string; path: string } | null>
   setProjectDir: (dir: string | null) => void
   getProjectDir: () => Promise<string>
 
@@ -381,19 +466,34 @@ export interface DroidClientAPI {
 
   loadAppState: () => Promise<PersistedAppState>
   saveProjects: (projects: Array<{ dir: string; name: string }>) => void
-  updateProjectSettings: (params: { repoRoot: string; settings: ProjectSettings }) => Promise<PersistedAppState>
+  updateProjectSettings: (params: {
+    repoRoot: string
+    settings: ProjectSettings
+  }) => Promise<PersistedAppState>
 
   setCommitMessageModelId: (modelId: string) => void
 
   getGitStatus: (params: { projectDir: string }) => Promise<GitStatusFile[]>
   getGitBranch: (params: { projectDir: string }) => Promise<string>
   listGitBranches: (params: { projectDir: string }) => Promise<string[]>
-  listGitWorktreeBranchesInUse: (params: { repoRoot: string }) => Promise<Array<{ branch: string; worktreeDir: string }>>
+  listGitWorktreeBranchesInUse: (params: {
+    repoRoot: string
+  }) => Promise<Array<{ branch: string; worktreeDir: string }>>
   getWorkspaceInfo: (params: { projectDir: string }) => Promise<WorkspaceInfo | null>
   switchWorkspace: (params: { projectDir: string; branch: string }) => Promise<WorkspaceInfo | null>
   createWorkspace: (params: WorkspaceCreateParams) => Promise<WorkspaceInfo | null>
-  removeWorktree: (params: { repoRoot: string; worktreeDir: string; force?: boolean; deleteBranch?: boolean; branch?: string }) => Promise<RemoveWorktreeResult>
-  pushBranch: (params: { projectDir: string; remote?: string; branch?: string }) => Promise<PushBranchResult>
+  removeWorktree: (params: {
+    repoRoot: string
+    worktreeDir: string
+    force?: boolean
+    deleteBranch?: boolean
+    branch?: string
+  }) => Promise<RemoveWorktreeResult>
+  pushBranch: (params: {
+    projectDir: string
+    remote?: string
+    branch?: string
+  }) => Promise<PushBranchResult>
   detectGitTools: (params: { projectDir: string }) => Promise<GitToolsInfo>
   generateCommitMeta: (params: GenerateCommitMetaRequest) => Promise<GenerateCommitMetaResult>
   commitWorkflow: (params: CommitWorkflowRequest) => Promise<CommitWorkflowResult>
@@ -529,4 +629,7 @@ export interface SetupScriptFinishedEvent {
   error?: string
 }
 
-export type SetupScriptEvent = SetupScriptStartedEvent | SetupScriptOutputEvent | SetupScriptFinishedEvent
+export type SetupScriptEvent =
+  | SetupScriptStartedEvent
+  | SetupScriptOutputEvent
+  | SetupScriptFinishedEvent

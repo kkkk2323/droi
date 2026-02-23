@@ -12,12 +12,22 @@ interface EditorDef {
 }
 
 const KNOWN_EDITORS: EditorDef[] = [
-  { id: 'vscode', name: 'VS Code', appNames: ['Visual Studio Code.app', 'Visual Studio Code - Insiders.app'], command: 'code' },
+  {
+    id: 'vscode',
+    name: 'VS Code',
+    appNames: ['Visual Studio Code.app', 'Visual Studio Code - Insiders.app'],
+    command: 'code',
+  },
   { id: 'cursor', name: 'Cursor', appNames: ['Cursor.app'], command: 'cursor' },
   { id: 'antigravity', name: 'Antigravity', appNames: ['Antigravity.app'], command: 'antigravity' },
   { id: 'windsurf', name: 'Windsurf', appNames: ['Windsurf.app'], command: 'windsurf' },
   { id: 'zed', name: 'Zed', appNames: ['Zed.app'], command: 'zed' },
-  { id: 'idea', name: 'IntelliJ IDEA', appNames: ['IntelliJ IDEA.app', 'IntelliJ IDEA CE.app'], command: 'idea' },
+  {
+    id: 'idea',
+    name: 'IntelliJ IDEA',
+    appNames: ['IntelliJ IDEA.app', 'IntelliJ IDEA CE.app'],
+    command: 'idea',
+  },
   { id: 'webstorm', name: 'WebStorm', appNames: ['WebStorm.app'], command: 'webstorm' },
   { id: 'sublime', name: 'Sublime Text', appNames: ['Sublime Text.app'], command: 'subl' },
   { id: 'finder', name: 'Finder' },
@@ -123,7 +133,7 @@ export async function __detectInstalledEditors(deps: EditorsDeps): Promise<Edito
       if (found) {
         results.push({ id: def.id, name: def.name, command: def.command })
       }
-    })
+    }),
   )
 
   // Sort: keep the order from KNOWN_EDITORS
@@ -137,7 +147,11 @@ export async function detectInstalledEditors(): Promise<EditorInfo[]> {
   return __detectInstalledEditors(REAL_DEPS)
 }
 
-export async function __openWithEditor(deps: EditorsDeps, dir: string, editorId: string): Promise<void> {
+export async function __openWithEditor(
+  deps: EditorsDeps,
+  dir: string,
+  editorId: string,
+): Promise<void> {
   if (editorId === 'finder') {
     await deps.openPath(dir)
     return
@@ -150,7 +164,7 @@ export async function __openWithEditor(deps: EditorsDeps, dir: string, editorId:
   }
 
   // Prefer CLI when installed (e.g. `code .`), but fall back to opening the .app on macOS.
-  if (def.command && await deps.commandExists(def.command)) {
+  if (def.command && (await deps.commandExists(def.command))) {
     const ok = await deps.openWithCommand(def.command, [dir])
     if (ok) return
   }

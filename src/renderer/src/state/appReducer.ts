@@ -55,7 +55,15 @@ export const DEFAULT_MODEL = 'kimi-k2.5'
 export const DEFAULT_AUTO_LEVEL = 'default'
 const MAX_SETUP_OUTPUT_CHARS = 120_000
 
-export function makeBuffer(projectDir: string, workspace?: { repoRoot?: string; branch?: string; workspaceType?: WorkspaceType; baseBranch?: string }): SessionBuffer {
+export function makeBuffer(
+  projectDir: string,
+  workspace?: {
+    repoRoot?: string
+    branch?: string
+    workspaceType?: WorkspaceType
+    baseBranch?: string
+  },
+): SessionBuffer {
   return {
     messages: [],
     isRunning: false,
@@ -101,7 +109,7 @@ function mapAutonomyLevelToAutoLevel(autonomyLevel: unknown): string | null {
 function updateSessionMessages(
   prev: Map<string, SessionBuffer>,
   sid: string,
-  updater: (msgs: ChatMessage[]) => ChatMessage[]
+  updater: (msgs: ChatMessage[]) => ChatMessage[],
 ): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
@@ -152,7 +160,11 @@ function formatUnknown(value: unknown): string {
   }
 }
 
-function findOrCreateAssistantMessage(msgs: ChatMessage[], droidMessageId: string, timestamp: number): { msgs: ChatMessage[]; idx: number } {
+function findOrCreateAssistantMessage(
+  msgs: ChatMessage[],
+  droidMessageId: string,
+  timestamp: number,
+): { msgs: ChatMessage[]; idx: number } {
   const id = `droid:${droidMessageId}`
   const existingIdx = msgs.findIndex((m) => m.id === id)
   if (existingIdx !== -1) return { msgs, idx: existingIdx }
@@ -173,7 +185,11 @@ function ensureTextBlock(msg: ChatMessage, blockIndex: number): ChatMessage {
   return { ...msg, blocks }
 }
 
-function appendAssistantTextDelta(msg: ChatMessage, blockIndex: number, textDelta: string): ChatMessage {
+function appendAssistantTextDelta(
+  msg: ChatMessage,
+  blockIndex: number,
+  textDelta: string,
+): ChatMessage {
   const ensured = ensureTextBlock(msg, blockIndex)
   const blocks = [...ensured.blocks]
   const b = blocks[blockIndex] as any
@@ -181,8 +197,17 @@ function appendAssistantTextDelta(msg: ChatMessage, blockIndex: number, textDelt
   return { ...ensured, blocks }
 }
 
-function addToolUse(msgs: ChatMessage[], toolUse: { id: string; name: string; input: Record<string, unknown> }, timestamp: number): ChatMessage[] {
-  const block: ToolCallBlock = { kind: 'tool_call', callId: toolUse.id, toolName: toolUse.name, parameters: toolUse.input }
+function addToolUse(
+  msgs: ChatMessage[],
+  toolUse: { id: string; name: string; input: Record<string, unknown> },
+  timestamp: number,
+): ChatMessage[] {
+  const block: ToolCallBlock = {
+    kind: 'tool_call',
+    callId: toolUse.id,
+    toolName: toolUse.name,
+    parameters: toolUse.input,
+  }
   const last = msgs[msgs.length - 1]
   if (last && last.role === 'assistant') {
     return [...msgs.slice(0, -1), { ...last, blocks: [...last.blocks, block] }]
@@ -193,7 +218,7 @@ function addToolUse(msgs: ChatMessage[], toolUse: { id: string; name: string; in
 function updateToolCall(
   msgs: ChatMessage[],
   callId: string,
-  updater: (block: ToolCallBlock) => ToolCallBlock
+  updater: (block: ToolCallBlock) => ToolCallBlock,
 ): ChatMessage[] {
   const updated = [...msgs]
   for (let i = updated.length - 1; i >= 0; i--) {
@@ -283,7 +308,8 @@ function withCreateMessageText(existing: ChatMessage, text: string): ChatMessage
   }
 
   // No non-empty text blocks yet: default to blocks[0] (keeps snapshot-first flows working).
-  if (existing.blocks.length === 0) return { ...existing, blocks: [{ kind: 'text', content: text }] }
+  if (existing.blocks.length === 0)
+    return { ...existing, blocks: [{ kind: 'text', content: text }] }
   if (existing.blocks[0]?.kind !== 'text') return existing
   const first = existing.blocks[0]
   if (String(first.content || '').trim() !== '') return existing
@@ -295,9 +321,7 @@ function withCreateMessageText(existing: ChatMessage, text: string): ChatMessage
 function withMissingToolUses(existing: ChatMessage, toolUses: ParsedToolUse[]): ChatMessage {
   if (toolUses.length === 0) return existing
   const existingCallIds = new Set(
-    existing.blocks
-      .filter((b): b is ToolCallBlock => b.kind === 'tool_call')
-      .map((b) => b.callId)
+    existing.blocks.filter((b): b is ToolCallBlock => b.kind === 'tool_call').map((b) => b.callId),
   )
   const toAppend: ToolCallBlock[] = toolUses
     .filter((toolUse) => !existingCallIds.has(toolUse.id))
@@ -323,11 +347,16 @@ function appendToolCallFallback(
   return [...msgs, { id: uuidv4(), role: 'assistant', blocks: [block], timestamp: now }]
 }
 
-export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: string, message: JsonRpcNotification): Map<string, SessionBuffer> {
+export function applyRpcNotification(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  message: JsonRpcNotification,
+): Map<string, SessionBuffer> {
   if (message.method !== 'droid.session_notification') return prev
   const params = message.params
   const notification = isObject(params) ? (params as any).notification : null
-  if (!notification || !isObject(notification) || typeof (notification as any).type !== 'string') return prev
+  if (!notification || !isObject(notification) || typeof (notification as any).type !== 'string')
+    return prev
 
   const type = String((notification as any).type)
   const now = Date.now()
@@ -361,7 +390,10 @@ export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: stri
       const thinkingIdx = blocks.findIndex((b) => b.kind === 'thinking')
       if (thinkingIdx !== -1) {
         const existing = blocks[thinkingIdx] as any
-        blocks[thinkingIdx] = { kind: 'thinking', content: String(existing.content || '') + textDelta }
+        blocks[thinkingIdx] = {
+          kind: 'thinking',
+          content: String(existing.content || '') + textDelta,
+        }
       } else {
         blocks.unshift({ kind: 'thinking', content: textDelta })
       }
@@ -416,7 +448,11 @@ export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: stri
     const isError = Boolean((notification as any).isError)
     const rendered = content === undefined ? '' : formatUnknown(content)
     return updateSessionMessages(prev, sid, (msgs) => {
-      const updated = updateToolCall(msgs, toolUseId, (block) => ({ ...block, result: rendered, isError }))
+      const updated = updateToolCall(msgs, toolUseId, (block) => ({
+        ...block,
+        result: rendered,
+        isError,
+      }))
       if (updated !== msgs) return updated
       const toolName = String((notification as any).toolName || 'Tool')
       return appendToolCallFallback(updated, now, {
@@ -469,7 +505,9 @@ export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: stri
         const raw = (item as any)?.toolUse || item
         if (!raw || typeof raw !== 'object') continue
         const id = String((raw as any).id || (raw as any).toolUseId || '')
-        const name = String((raw as any).name || (raw as any).toolName || (raw as any).recipient_name || '')
+        const name = String(
+          (raw as any).name || (raw as any).toolName || (raw as any).recipient_name || '',
+        )
         if (id && name) nameById.set(id, name)
       }
     }
@@ -494,7 +532,11 @@ export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: stri
           // If the tool block doesn't exist yet, append a minimal fallback.
           if (updated === before) {
             // updateToolCall returns the same array if not found; detect by searching quickly.
-            const found = out.some((m) => m.role === 'assistant' && m.blocks.some((b) => b.kind === 'tool_call' && (b as any).callId === id))
+            const found = out.some(
+              (m) =>
+                m.role === 'assistant' &&
+                m.blocks.some((b) => b.kind === 'tool_call' && (b as any).callId === id),
+            )
             if (!found) {
               out = appendToolCallFallback(out, now, {
                 kind: 'tool_call',
@@ -533,7 +575,10 @@ export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: stri
     next.set(sid, {
       ...session,
       isRunning: false,
-      messages: [...session.messages, { id: uuidv4(), role: 'error', blocks: [{ kind: 'text', content: msg }], timestamp: now }],
+      messages: [
+        ...session.messages,
+        { id: uuidv4(), role: 'error', blocks: [{ kind: 'text', content: msg }], timestamp: now },
+      ],
     })
     return next
   }
@@ -541,15 +586,20 @@ export function applyRpcNotification(prev: Map<string, SessionBuffer>, sid: stri
   if (type === 'settings_updated') {
     const settings = (notification as any).settings
     if (!isObject(settings)) return prev
-    const modelId = typeof (settings as any).modelId === 'string' ? String((settings as any).modelId) : ''
-    const reasoningEffort = typeof (settings as any).reasoningEffort === 'string' ? String((settings as any).reasoningEffort) : ''
+    const modelId =
+      typeof (settings as any).modelId === 'string' ? String((settings as any).modelId) : ''
+    const reasoningEffort =
+      typeof (settings as any).reasoningEffort === 'string'
+        ? String((settings as any).reasoningEffort)
+        : ''
     const nextAuto = mapAutonomyLevelToAutoLevel((settings as any).autonomyLevel)
     const session = prev.get(sid)
     if (!session) return prev
     const next = new Map(prev)
-    const hasChange = (modelId && modelId !== session.model)
-      || (reasoningEffort && reasoningEffort !== session.reasoningEffort)
-      || (nextAuto && nextAuto !== session.autoLevel)
+    const hasChange =
+      (modelId && modelId !== session.model) ||
+      (reasoningEffort && reasoningEffort !== session.reasoningEffort) ||
+      (nextAuto && nextAuto !== session.autoLevel)
     next.set(sid, {
       ...session,
       ...(modelId ? { model: modelId } : {}),
@@ -612,27 +662,40 @@ const DEFAULT_PERMISSION_OPTIONS: DroidPermissionOption[] = [
   'cancel',
 ]
 
-export function applyRpcRequest(prev: Map<string, SessionBuffer>, sid: string, message: JsonRpcRequest): Map<string, SessionBuffer> {
+export function applyRpcRequest(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  message: JsonRpcRequest,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
 
   if (message.method === 'droid.request_permission') {
     const params = message.params
-    const toolUses = isObject(params) && Array.isArray((params as any).toolUses) ? (params as any).toolUses : []
-    const options = isObject(params) && Array.isArray((params as any).options)
-      ? ((params as any).options as any[])
-        .map((o) => {
-          if (typeof o === 'string') return o
-          if (!o || typeof o !== 'object') return ''
-          return String((o as any)?.value || (o as any)?.id || '')
-        })
-        .filter(Boolean)
-      : []
-    const normalizedOptions = (options.length ? options : DEFAULT_PERMISSION_OPTIONS) as DroidPermissionOption[]
+    const toolUses =
+      isObject(params) && Array.isArray((params as any).toolUses) ? (params as any).toolUses : []
+    const options =
+      isObject(params) && Array.isArray((params as any).options)
+        ? ((params as any).options as any[])
+            .map((o) => {
+              if (typeof o === 'string') return o
+              if (!o || typeof o !== 'object') return ''
+              return String((o as any)?.value || (o as any)?.id || '')
+            })
+            .filter(Boolean)
+        : []
+    const normalizedOptions = (
+      options.length ? options : DEFAULT_PERMISSION_OPTIONS
+    ) as DroidPermissionOption[]
 
-    const rawOptions = isObject(params) && Array.isArray((params as any).options) ? (params as any).options as any[] : []
+    const rawOptions =
+      isObject(params) && Array.isArray((params as any).options)
+        ? ((params as any).options as any[])
+        : []
     const optionsMeta: PermissionOptionMeta[] = normalizedOptions.map((val) => {
-      const raw = rawOptions.find((o: any) => typeof o === 'object' && o && String(o.value || o.id || '') === val)
+      const raw = rawOptions.find(
+        (o: any) => typeof o === 'object' && o && String(o.value || o.id || '') === val,
+      )
       return {
         value: val,
         label: typeof raw?.label === 'string' ? raw.label : val,
@@ -649,14 +712,20 @@ export function applyRpcRequest(prev: Map<string, SessionBuffer>, sid: string, m
       raw: message,
     }
     const next = new Map(prev)
-    next.set(sid, { ...session, pendingPermissionRequests: [...(session.pendingPermissionRequests || []), req] })
+    next.set(sid, {
+      ...session,
+      pendingPermissionRequests: [...(session.pendingPermissionRequests || []), req],
+    })
     return next
   }
 
   if (message.method === 'droid.ask_user') {
     const params = message.params
     const toolCallId = isObject(params) ? String((params as any).toolCallId || '') : ''
-    const questionsRaw: unknown[] = isObject(params) && Array.isArray((params as any).questions) ? ((params as any).questions as unknown[]) : []
+    const questionsRaw: unknown[] =
+      isObject(params) && Array.isArray((params as any).questions)
+        ? ((params as any).questions as unknown[])
+        : []
     const questions: AskUserQuestion[] = questionsRaw
       .map((item, idx: number): AskUserQuestion => {
         const q = item as any
@@ -669,16 +738,27 @@ export function applyRpcRequest(prev: Map<string, SessionBuffer>, sid: string, m
       })
       .filter((q): q is AskUserQuestion => Boolean(q.question))
 
-    const req: PendingAskUserRequest = { requestId: message.id, toolCallId, questions, raw: message }
+    const req: PendingAskUserRequest = {
+      requestId: message.id,
+      toolCallId,
+      questions,
+      raw: message,
+    }
     const next = new Map(prev)
-    next.set(sid, { ...session, pendingAskUserRequests: [...(session.pendingAskUserRequests || []), req] })
+    next.set(sid, {
+      ...session,
+      pendingAskUserRequests: [...(session.pendingAskUserRequests || []), req],
+    })
     return next
   }
 
   return prev
 }
 
-export function applyTurnEnd(prev: Map<string, SessionBuffer>, sid: string): Map<string, SessionBuffer> {
+export function applyTurnEnd(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
   const next = new Map(prev)
@@ -686,22 +766,28 @@ export function applyTurnEnd(prev: Map<string, SessionBuffer>, sid: string): Map
   return next
 }
 
-export function appendDebugTrace(prev: Map<string, SessionBuffer>, sid: string, line: string): Map<string, SessionBuffer> {
+export function appendDebugTrace(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  line: string,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
   const existing = Array.isArray(session.debugTrace) ? session.debugTrace : []
   const ts = new Date().toISOString()
   const nextTrace = [...existing, `[${ts}] ${line}`]
   const maxLines = debugTraceMaxLinesOverride ?? (isTraceChainEnabled() ? 2000 : 200)
-  const clipped = nextTrace.length > maxLines
-    ? nextTrace.slice(nextTrace.length - maxLines)
-    : nextTrace
+  const clipped =
+    nextTrace.length > maxLines ? nextTrace.slice(nextTrace.length - maxLines) : nextTrace
   const next = new Map(prev)
   next.set(sid, { ...session, debugTrace: clipped })
   return next
 }
 
-export function clearDebugTrace(prev: Map<string, SessionBuffer>, sid: string): Map<string, SessionBuffer> {
+export function clearDebugTrace(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
   const next = new Map(prev)
@@ -732,7 +818,11 @@ function buildSetupFailureError(event: Extract<SetupScriptEvent, { type: 'finish
   return 'Setup script failed'
 }
 
-export function applySetupScriptEvent(prev: Map<string, SessionBuffer>, sid: string, event: SetupScriptEvent): Map<string, SessionBuffer> {
+export function applySetupScriptEvent(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  event: SetupScriptEvent,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
 
@@ -753,7 +843,12 @@ export function applySetupScriptEvent(prev: Map<string, SessionBuffer>, sid: str
 
   if (event.type === 'output') {
     const next = new Map(prev)
-    const existing = session.setupScript || { script: '', status: 'running' as const, output: '', exitCode: null }
+    const existing = session.setupScript || {
+      script: '',
+      status: 'running' as const,
+      output: '',
+      exitCode: null,
+    }
     next.set(sid, {
       ...session,
       isSetupRunning: true,
@@ -768,7 +863,12 @@ export function applySetupScriptEvent(prev: Map<string, SessionBuffer>, sid: str
 
   const status: SetupScriptStatus = event.success ? 'completed' : 'failed'
   const next = new Map(prev)
-  const existing = session.setupScript || { script: '', status: 'running' as const, output: '', exitCode: null }
+  const existing = session.setupScript || {
+    script: '',
+    status: 'running' as const,
+    output: '',
+    exitCode: null,
+  }
   next.set(sid, {
     ...session,
     isSetupRunning: false,
@@ -782,10 +882,18 @@ export function applySetupScriptEvent(prev: Map<string, SessionBuffer>, sid: str
   return next
 }
 
-export function markSetupScriptSkipped(prev: Map<string, SessionBuffer>, sid: string): Map<string, SessionBuffer> {
+export function markSetupScriptSkipped(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
-  const existing = session.setupScript || { script: '', status: 'idle' as const, output: '', exitCode: null }
+  const existing = session.setupScript || {
+    script: '',
+    status: 'idle' as const,
+    output: '',
+    exitCode: null,
+  }
   const next = new Map(prev)
   next.set(sid, {
     ...session,
@@ -799,40 +907,88 @@ export function markSetupScriptSkipped(prev: Map<string, SessionBuffer>, sid: st
   return next
 }
 
-export function applyStdout(prev: Map<string, SessionBuffer>, sid: string, data: string): Map<string, SessionBuffer> {
+export function applyStdout(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  data: string,
+): Map<string, SessionBuffer> {
   return updateSessionMessages(prev, sid, (msgs) => {
     const last = msgs[msgs.length - 1]
     if (last && last.role === 'assistant') {
       const lastBlock = last.blocks[last.blocks.length - 1]
       if (lastBlock && lastBlock.kind === 'text') {
-        return [...msgs.slice(0, -1), { ...last, blocks: [...last.blocks.slice(0, -1), { ...lastBlock, content: lastBlock.content + data }] }]
+        return [
+          ...msgs.slice(0, -1),
+          {
+            ...last,
+            blocks: [
+              ...last.blocks.slice(0, -1),
+              { ...lastBlock, content: lastBlock.content + data },
+            ],
+          },
+        ]
       }
-      return [...msgs.slice(0, -1), { ...last, blocks: [...last.blocks, { kind: 'text' as const, content: data }] }]
+      return [
+        ...msgs.slice(0, -1),
+        { ...last, blocks: [...last.blocks, { kind: 'text' as const, content: data }] },
+      ]
     }
-    return [...msgs, { id: uuidv4(), role: 'assistant' as const, blocks: [{ kind: 'text' as const, content: data }], timestamp: Date.now() }]
+    return [
+      ...msgs,
+      {
+        id: uuidv4(),
+        role: 'assistant' as const,
+        blocks: [{ kind: 'text' as const, content: data }],
+        timestamp: Date.now(),
+      },
+    ]
   })
 }
 
-export function applyStderr(prev: Map<string, SessionBuffer>, sid: string, data: string): Map<string, SessionBuffer> {
+export function applyStderr(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  data: string,
+): Map<string, SessionBuffer> {
   if (!/error|failed|authentication/i.test(data)) return prev
   return updateSessionMessages(prev, sid, (msgs) => [
     ...msgs,
-    { id: uuidv4(), role: 'error' as const, blocks: [{ kind: 'text' as const, content: data.trim() }], timestamp: Date.now() },
+    {
+      id: uuidv4(),
+      role: 'error' as const,
+      blocks: [{ kind: 'text' as const, content: data.trim() }],
+      timestamp: Date.now(),
+    },
   ])
 }
 
-export function applyExit(prev: Map<string, SessionBuffer>, sid: string): Map<string, SessionBuffer> {
+export function applyExit(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+): Map<string, SessionBuffer> {
   return applyTurnEnd(prev, sid)
 }
 
-export function applyError(prev: Map<string, SessionBuffer>, sid: string, message: string): Map<string, SessionBuffer> {
+export function applyError(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  message: string,
+): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
   const next = new Map(prev)
   next.set(sid, {
     ...session,
     isRunning: false,
-    messages: [...session.messages, { id: uuidv4(), role: 'error' as const, blocks: [{ kind: 'text' as const, content: message }], timestamp: Date.now() }],
+    messages: [
+      ...session.messages,
+      {
+        id: uuidv4(),
+        role: 'error' as const,
+        blocks: [{ kind: 'text' as const, content: message }],
+        timestamp: Date.now(),
+      },
+    ],
   })
   return next
 }

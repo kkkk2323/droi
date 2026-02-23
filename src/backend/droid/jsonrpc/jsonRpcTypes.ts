@@ -118,4 +118,3 @@ export type DroidSessionNotification =
   | DroidSessionNotificationError
   | DroidSessionNotificationPermissionResolved
   | ({ type: string } & Record<string, unknown>)
-

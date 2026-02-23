@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { getDroidClient } from '@/droidClient'
 
-export function useGitStatusQuery(projectDir: string, enabled = true, refetchInterval?: number | false) {
+export function useGitStatusQuery(
+  projectDir: string,
+  enabled = true,
+  refetchInterval?: number | false,
+) {
   return useQuery({
     queryKey: ['gitStatus', projectDir],
     queryFn: () => getDroidClient().getGitStatus({ projectDir }),

@@ -41,22 +41,35 @@ export function OpenInEditorButton({ dir }: OpenInEditorButtonProps) {
   const resolvedDefault = saved ? editors.find((e) => e.id === saved) : null
   const effectiveDefault = defaultEditor || resolvedDefault || editors[0] || null
 
-  const handleOpen = useCallback((editor: EditorInfo) => {
-    localStorage.setItem('droi:defaultEditor', editor.id)
-    setDefaultEditor(editor)
-    getDroidClient().openWithEditor({ dir, editorId: editor.id }).catch(() => {
-      getDroidClient().openInEditor({ dir }).catch(() => {})
-    })
-    setOpen(false)
-  }, [dir])
+  const handleOpen = useCallback(
+    (editor: EditorInfo) => {
+      localStorage.setItem('droi:defaultEditor', editor.id)
+      setDefaultEditor(editor)
+      getDroidClient()
+        .openWithEditor({ dir, editorId: editor.id })
+        .catch(() => {
+          getDroidClient()
+            .openInEditor({ dir })
+            .catch(() => {})
+        })
+      setOpen(false)
+    },
+    [dir],
+  )
 
   const handleDefaultClick = useCallback(() => {
     if (effectiveDefault) {
-      getDroidClient().openWithEditor({ dir, editorId: effectiveDefault.id }).catch(() => {
-        getDroidClient().openInEditor({ dir }).catch(() => {})
-      })
+      getDroidClient()
+        .openWithEditor({ dir, editorId: effectiveDefault.id })
+        .catch(() => {
+          getDroidClient()
+            .openInEditor({ dir })
+            .catch(() => {})
+        })
     } else {
-      getDroidClient().openInEditor({ dir }).catch(() => {})
+      getDroidClient()
+        .openInEditor({ dir })
+        .catch(() => {})
     }
   }, [dir, effectiveDefault])
 

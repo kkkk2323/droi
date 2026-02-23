@@ -18,9 +18,12 @@ export function ProjectSettingsPage() {
   const selectedRepoRoot = decodeURIComponent(params.projectDir)
   const selectedProject = projects.find((p) => p.dir === selectedRepoRoot)
 
-  const { data: rawBranches = [], isLoading: loadingBranches } = useGitBranchesQuery(selectedRepoRoot)
+  const { data: rawBranches = [], isLoading: loadingBranches } =
+    useGitBranchesQuery(selectedRepoRoot)
   const branches = useMemo(() => {
-    return Array.from(new Set((rawBranches || []).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+    return Array.from(new Set((rawBranches || []).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b),
+    )
   }, [rawBranches])
 
   const [baseBranch, setBaseBranch] = useState('')
@@ -42,7 +45,12 @@ export function ProjectSettingsPage() {
     setSetupScript(selectedSettings.setupScript || '')
     setError('')
     setSaved(false)
-  }, [selectedRepoRoot, selectedSettings.baseBranch, selectedSettings.worktreePrefix, selectedSettings.setupScript])
+  }, [
+    selectedRepoRoot,
+    selectedSettings.baseBranch,
+    selectedSettings.worktreePrefix,
+    selectedSettings.setupScript,
+  ])
 
   const sampleBranch = useMemo(() => {
     const prefix = sanitizeWorktreePrefix(worktreePrefix) || 'droi'
@@ -78,9 +86,7 @@ export function ProjectSettingsPage() {
               The project &quot;{selectedRepoRoot}&quot; does not exist.
             </p>
           </div>
-          <Button onClick={() => navigate({ to: '/settings' })}>
-            Back to Settings
-          </Button>
+          <Button onClick={() => navigate({ to: '/settings' })}>Back to Settings</Button>
         </div>
       </div>
     )
@@ -111,7 +117,9 @@ export function ProjectSettingsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map((b) => (
-                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
                   ))}
                   {!loadingBranches && branches.length === 0 && (
                     <div className="px-3 py-2 text-xs text-muted-foreground">No branches found</div>
@@ -123,7 +131,8 @@ export function ProjectSettingsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Worktree Prefix</label>
               <div className="text-xs text-muted-foreground">
-                New session branches will be created as <span className="font-mono">prefix/random-name</span>.
+                New session branches will be created as{' '}
+                <span className="font-mono">prefix/random-name</span>.
               </div>
               <Input
                 value={worktreePrefix}
@@ -163,4 +172,3 @@ export function ProjectSettingsPage() {
     </div>
   )
 }
-

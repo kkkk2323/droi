@@ -15,7 +15,8 @@ function extractAssistantTextFromCreateMessage(notification: any): string {
   const parts: string[] = []
   for (const item of content) {
     if (!item || typeof item !== 'object') continue
-    if ((item as any).type === 'text' && typeof (item as any).text === 'string') parts.push((item as any).text)
+    if ((item as any).type === 'text' && typeof (item as any).text === 'string')
+      parts.push((item as any).text)
   }
   return parts.join('')
 }
@@ -44,8 +45,12 @@ export async function runDroidAndCaptureAssistantText(params: {
     const timer = setTimeout(() => {
       if (done) return
       done = true
-      try { execManager.cancel(currentSessionId) } catch {}
-      try { execManager.disposeSession(currentSessionId) } catch {}
+      try {
+        execManager.cancel(currentSessionId)
+      } catch {}
+      try {
+        execManager.disposeSession(currentSessionId)
+      } catch {}
       unsub()
       reject(new Error('Timed out generating text'))
     }, timeoutMs)
@@ -54,7 +59,9 @@ export async function runDroidAndCaptureAssistantText(params: {
       if (done) return
       done = true
       clearTimeout(timer)
-      try { execManager.disposeSession(currentSessionId) } catch {}
+      try {
+        execManager.disposeSession(currentSessionId)
+      } catch {}
       unsub()
       if (err) reject(err)
       else resolve((snapshotText || deltaText).trim())
@@ -78,7 +85,9 @@ export async function runDroidAndCaptureAssistantText(params: {
 
       if (e.type === 'rpc-request') {
         sawRpcRequest = true
-        try { execManager.cancel(currentSessionId) } catch {}
+        try {
+          execManager.cancel(currentSessionId)
+        } catch {}
         return
       }
 
@@ -96,7 +105,10 @@ export async function runDroidAndCaptureAssistantText(params: {
 
       if (e.type === 'turn-end') {
         const code = typeof (e as any).code === 'number' ? (e as any).code : 1
-        if (sawRpcRequest) return finish(new Error('Text generation attempted to use tools; please enter a message manually.'))
+        if (sawRpcRequest)
+          return finish(
+            new Error('Text generation attempted to use tools; please enter a message manually.'),
+          )
         if (code !== 0) return finish(new Error(lastError || 'Failed to generate text'))
         const finalText = (snapshotText || deltaText).trim()
         if (!finalText) return finish(new Error('Generated text was empty'))

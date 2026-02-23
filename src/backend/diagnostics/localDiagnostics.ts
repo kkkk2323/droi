@@ -37,7 +37,12 @@ function safeJsonLine(obj: unknown): string {
   try {
     return JSON.stringify(obj)
   } catch {
-    return JSON.stringify({ ts: new Date().toISOString(), level: 'error', scope: 'backend', event: 'diagnostics.stringify_failed' })
+    return JSON.stringify({
+      ts: new Date().toISOString(),
+      level: 'error',
+      scope: 'backend',
+      event: 'diagnostics.stringify_failed',
+    })
   }
 }
 
@@ -57,7 +62,10 @@ export class LocalDiagnostics {
     this.baseDir = opts.baseDir
     this.retention = {
       maxAgeDays: typeof opts.retention?.maxAgeDays === 'number' ? opts.retention.maxAgeDays : 7,
-      maxTotalBytes: typeof opts.retention?.maxTotalBytes === 'number' ? opts.retention.maxTotalBytes : 50 * 1024 * 1024,
+      maxTotalBytes:
+        typeof opts.retention?.maxTotalBytes === 'number'
+          ? opts.retention.maxTotalBytes
+          : 50 * 1024 * 1024,
     }
     if (typeof opts.enabled === 'boolean') this.enabled = opts.enabled
   }
@@ -112,9 +120,12 @@ export class LocalDiagnostics {
   async startMaintenance() {
     await this.cleanup()
     if (this.maintenanceTimer) clearInterval(this.maintenanceTimer)
-    this.maintenanceTimer = setInterval(() => {
-      void this.cleanup().catch(() => {})
-    }, 24 * 60 * 60 * 1000)
+    this.maintenanceTimer = setInterval(
+      () => {
+        void this.cleanup().catch(() => {})
+      },
+      24 * 60 * 60 * 1000,
+    )
   }
 
   stopMaintenance() {
@@ -214,7 +225,11 @@ export class LocalDiagnostics {
     // Age-based deletion.
     for (const f of files) {
       if (now - f.mtimeMs <= maxAgeMs) continue
-      try { await unlink(f.path) } catch { /* ignore */ }
+      try {
+        await unlink(f.path)
+      } catch {
+        /* ignore */
+      }
     }
 
     // Size-based trimming (oldest first).
@@ -234,11 +249,18 @@ export class LocalDiagnostics {
     while (total > this.retention.maxTotalBytes && remaining.length) {
       const victim = remaining.shift()!
       total -= victim.size
-      try { await unlink(victim.path) } catch { /* ignore */ }
+      try {
+        await unlink(victim.path)
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  async readRecentLogText(params: { sessionId?: string | null; maxBytes: number }): Promise<{ app: string; session: string }> {
+  async readRecentLogText(params: {
+    sessionId?: string | null
+    maxBytes: number
+  }): Promise<{ app: string; session: string }> {
     const dir = this.getDiagnosticsDir()
     const day = isoDay(new Date())
     const appPath = this.getAppLogPath(day)
@@ -270,7 +292,10 @@ export class LocalDiagnostics {
     debugTraceText?: string
   }): Promise<Buffer> {
     const now = new Date()
-    const logs = await this.readRecentLogText({ sessionId: params.sessionId || null, maxBytes: 2 * 1024 * 1024 })
+    const logs = await this.readRecentLogText({
+      sessionId: params.sessionId || null,
+      maxBytes: 2 * 1024 * 1024,
+    })
 
     const state = params.appState ? (redactJson(params.appState) as any) : null
 
@@ -311,7 +336,12 @@ export class LocalDiagnostics {
     return promptSig(text)
   }
 
-  logPipelineExitcodeRisk(params: { sessionId?: string; command: string; toolName?: string; correlation?: Record<string, unknown> }) {
+  logPipelineExitcodeRisk(params: {
+    sessionId?: string
+    command: string
+    toolName?: string
+    correlation?: Record<string, unknown>
+  }) {
     const cmd = String(params.command || '')
     if (!/\\|\\s*tail\\b/.test(cmd)) return
     void this.append({

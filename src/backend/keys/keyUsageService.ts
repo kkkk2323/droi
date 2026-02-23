@@ -12,7 +12,7 @@ export async function fetchKeyUsage(key: string): Promise<ApiKeyUsage> {
     const res = await fetch(USAGE_API_URL, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${key}`,
+        Authorization: `Bearer ${key}`,
         'User-Agent': 'Droi/1.0',
       },
       signal: controller.signal,
@@ -54,7 +54,8 @@ function parseUsageResponse(data: any): ApiKeyUsage {
     if (sec == null) continue
     const total = sec.totalAllowance ?? sec.basicAllowance ?? sec.allowance ?? null
     if (total != null) {
-      const used = (sec.orgTotalTokensUsed ?? sec.used ?? sec.tokensUsed ?? 0) + (sec.orgOverageUsed ?? 0)
+      const used =
+        (sec.orgTotalTokensUsed ?? sec.used ?? sec.tokensUsed ?? 0) + (sec.orgOverageUsed ?? 0)
       section = { total, used }
       break
     }
@@ -137,10 +138,10 @@ export function selectActiveKey(
   })
 
   const earliestDay = candidates[0].expires.slice(0, 10)
-  const earlyGroup = candidates.filter(c => c.expires.slice(0, 10) === earliestDay)
+  const earlyGroup = candidates.filter((c) => c.expires.slice(0, 10) === earliestDay)
 
   if (lastUsedIndex != null) {
-    const nextInGroup = earlyGroup.find(c => c.index > lastUsedIndex)
+    const nextInGroup = earlyGroup.find((c) => c.index > lastUsedIndex)
     if (nextInGroup) return { key: nextInGroup.key, index: nextInGroup.index }
   }
 

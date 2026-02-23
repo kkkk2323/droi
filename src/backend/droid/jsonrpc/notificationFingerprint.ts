@@ -66,16 +66,22 @@ export function buildNotificationTraceInfo(message: JsonRpcNotification): Notifi
   const notification = getSessionNotification(message)
   const method = sanitizeToken(String(message.method || '-'))
   const type = sanitizeToken(typeof notification?.type === 'string' ? notification.type : '-')
-  const messageId = sanitizeToken(typeof notification?.messageId === 'string' ? notification.messageId : '-')
-  const blockIndex = Number.isFinite(notification?.blockIndex as any) ? String(notification?.blockIndex) : '-'
+  const messageId = sanitizeToken(
+    typeof notification?.messageId === 'string' ? notification.messageId : '-',
+  )
+  const blockIndex = Number.isFinite(notification?.blockIndex as any)
+    ? String(notification?.blockIndex)
+    : '-'
   const textDelta = typeof notification?.textDelta === 'string' ? notification.textDelta : ''
   const deltaLen = textDelta ? String(textDelta.length) : '-'
   const createMessageId = sanitizeToken(
     typeof (notification as any)?.message?.id === 'string'
       ? String((notification as any).message.id)
-      : '-'
+      : '-',
   )
-  const newState = sanitizeToken(typeof notification?.newState === 'string' ? notification.newState : '-')
+  const newState = sanitizeToken(
+    typeof notification?.newState === 'string' ? notification.newState : '-',
+  )
   const traceparent = shortTraceparent((message as any)?._meta?.traceparent)
   const fingerprint = computeNotificationFingerprint(message)
 
@@ -110,7 +116,9 @@ export function formatNotificationTrace(stage: string, message: JsonRpcNotificat
 }
 
 function isEnabledLike(value: unknown): boolean {
-  const raw = String(value || '').trim().toLowerCase()
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
 }
 

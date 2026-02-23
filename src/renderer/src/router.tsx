@@ -62,13 +62,16 @@ export const debugSettingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   chatLayoutRoute.addChildren([chatRoute]),
-  settingsLayoutRoute.addChildren([settingsRoute, keysSettingsRoute, projectSettingsRoute, debugSettingsRoute]),
+  settingsLayoutRoute.addChildren([
+    settingsRoute,
+    keysSettingsRoute,
+    projectSettingsRoute,
+    debugSettingsRoute,
+  ]),
 ])
 
 const isElectron = typeof window !== 'undefined' && Boolean((window as any).droid)
-const history = isElectron
-  ? createMemoryHistory({ initialEntries: ['/'] })
-  : createBrowserHistory()
+const history = isElectron ? createMemoryHistory({ initialEntries: ['/'] }) : createBrowserHistory()
 
 export const router = createRouter({
   routeTree,

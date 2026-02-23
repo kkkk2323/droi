@@ -1,14 +1,24 @@
 import React from 'react'
-import { GitBranch, FileEdit, FilePlus, FileX, FileCode, ChevronDown, Check, X, Loader2 } from 'lucide-react'
+import {
+  GitBranch,
+  FileEdit,
+  FilePlus,
+  FileX,
+  FileCode,
+  ChevronDown,
+  Check,
+  X,
+  Loader2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import type { GitStatusFile } from '@/types'
 import type { StepState } from './CommitProgressView'
 
 const STATUS_ICON_MAP: Record<string, { icon: typeof FileEdit; color: string; label: string }> = {
-  'M': { icon: FileEdit, color: 'text-amber-500', label: 'Modified' },
-  'A': { icon: FilePlus, color: 'text-emerald-500', label: 'Added' },
-  'D': { icon: FileX, color: 'text-red-500', label: 'Deleted' },
+  M: { icon: FileEdit, color: 'text-amber-500', label: 'Modified' },
+  A: { icon: FilePlus, color: 'text-emerald-500', label: 'Added' },
+  D: { icon: FileX, color: 'text-red-500', label: 'Deleted' },
   '??': { icon: FileCode, color: 'text-muted-foreground', label: 'Untracked' },
 }
 
@@ -58,17 +68,27 @@ export function CommitReviewStep({
         disabled={locked}
       >
         <span className="flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">1</span>
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+            1
+          </span>
           Changes
           {!effectiveOpen && (
             <span className="text-muted-foreground font-normal ml-1">
-              {filesToCommit.length} file{filesToCommit.length !== 1 ? 's' : ''} on {branch || 'unknown'}
+              {filesToCommit.length} file{filesToCommit.length !== 1 ? 's' : ''} on{' '}
+              {branch || 'unknown'}
             </span>
           )}
         </span>
         <span className="flex items-center gap-1.5">
           {locked && <StepStatusIndicator steps={executingSteps} />}
-          {!locked && <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', effectiveOpen && 'rotate-180')} />}
+          {!locked && (
+            <ChevronDown
+              className={cn(
+                'size-3.5 text-muted-foreground transition-transform',
+                effectiveOpen && 'rotate-180',
+              )}
+            />
+          )}
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -77,7 +97,9 @@ export function CommitReviewStep({
           <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2">
             <GitBranch className="size-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Branch:</span>
-            <span className="text-xs font-medium font-mono text-foreground">{branch || 'unknown'}</span>
+            <span className="text-xs font-medium font-mono text-foreground">
+              {branch || 'unknown'}
+            </span>
           </div>
 
           {/* Changed files */}
@@ -104,9 +126,15 @@ export function CommitReviewStep({
                       <Icon className={cn('size-3 shrink-0', info.color)} />
                       <span className="truncate font-mono flex-1 min-w-0">{file.path}</span>
                       <span className="shrink-0 tabular-nums">
-                        {file.additions > 0 && <span className="text-emerald-500">+{file.additions}</span>}
-                        {file.additions > 0 && file.deletions > 0 && <span className="text-muted-foreground/40"> </span>}
-                        {file.deletions > 0 && <span className="text-red-500">-{file.deletions}</span>}
+                        {file.additions > 0 && (
+                          <span className="text-emerald-500">+{file.additions}</span>
+                        )}
+                        {file.additions > 0 && file.deletions > 0 && (
+                          <span className="text-muted-foreground/40"> </span>
+                        )}
+                        {file.deletions > 0 && (
+                          <span className="text-red-500">-{file.deletions}</span>
+                        )}
                       </span>
                     </div>
                   )

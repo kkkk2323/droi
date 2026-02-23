@@ -1,6 +1,11 @@
 import { join, resolve, sep } from 'path'
 import { readdir, readFile, unlink } from 'fs/promises'
-import type { ChatMessage, LoadSessionResponse, SaveSessionRequest, SessionMeta } from '../../shared/protocol'
+import type {
+  ChatMessage,
+  LoadSessionResponse,
+  SaveSessionRequest,
+  SessionMeta,
+} from '../../shared/protocol'
 import { atomicWriteFile, ensureDir } from './fsUtils.ts'
 
 const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
@@ -10,20 +15,22 @@ function getTitleFromMessages(messages: ChatMessage[], fallback?: string): strin
   const cmd = firstUser?.blocks?.find((b: any) => b?.kind === 'command')
   const cmdName = cmd && typeof (cmd as any).name === 'string' ? String((cmd as any).name) : ''
   const skill = firstUser?.blocks?.find((b: any) => b?.kind === 'skill')
-  const skillName = skill && typeof (skill as any).name === 'string' ? String((skill as any).name) : ''
+  const skillName =
+    skill && typeof (skill as any).name === 'string' ? String((skill as any).name) : ''
   const firstTextBlock = firstUser?.blocks?.find((b: any) => b?.kind === 'text')
-  const text = firstTextBlock && typeof (firstTextBlock as any).content === 'string'
-    ? String((firstTextBlock as any).content)
-    : ''
+  const text =
+    firstTextBlock && typeof (firstTextBlock as any).content === 'string'
+      ? String((firstTextBlock as any).content)
+      : ''
 
   const branchFallback = String(fallback || '').trim()
-  const branchTail = branchFallback ? (branchFallback.split('/').pop() || branchFallback) : ''
+  const branchTail = branchFallback ? branchFallback.split('/').pop() || branchFallback : ''
 
   const titleSource = cmdName
     ? `/${cmdName}${text.trim() ? ` ${text.trim()}` : ''}`
     : skillName
       ? `/${skillName}${text.trim() ? ` ${text.trim()}` : ''}`
-      : (text || branchTail || 'Untitled')
+      : text || branchTail || 'Untitled'
 
   const trimmed = String(titleSource || 'Untitled')
   return trimmed.slice(0, 40) + (trimmed.length > 40 ? '...' : '')
@@ -57,9 +64,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
     const savedAt = Date.now()
     const title = getTitleFromMessages(req.messages, req.branch || req.baseBranch)
     const messageCount = req.messages.length
-    const lastMessageAt = req.messages.length > 0
-      ? req.messages[req.messages.length - 1].timestamp
-      : savedAt
+    const lastMessageAt =
+      req.messages.length > 0 ? req.messages[req.messages.length - 1].timestamp : savedAt
 
     const record = {
       version: 1,
@@ -106,18 +112,27 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       const raw = JSON.parse(await readFile(filePath, 'utf-8'))
       if (raw && typeof raw === 'object' && raw.version === 1) {
         const messages = (raw.messages || []) as ChatMessage[]
-        const lastMessageAt = raw.lastMessageAt ?? (messages.length > 0 ? messages[messages.length - 1].timestamp : Number(raw.savedAt || 0))
+        const lastMessageAt =
+          raw.lastMessageAt ??
+          (messages.length > 0 ? messages[messages.length - 1].timestamp : Number(raw.savedAt || 0))
         return {
           id: String(raw.id || id),
           projectDir: String(raw.projectDir || ''),
           repoRoot: typeof raw.repoRoot === 'string' ? raw.repoRoot : undefined,
           branch: typeof raw.branch === 'string' ? raw.branch : undefined,
-          workspaceType: raw.workspaceType === 'worktree' ? 'worktree' : (raw.workspaceType === 'branch' ? 'branch' : undefined),
+          workspaceType:
+            raw.workspaceType === 'worktree'
+              ? 'worktree'
+              : raw.workspaceType === 'branch'
+                ? 'branch'
+                : undefined,
           baseBranch: typeof raw.baseBranch === 'string' ? raw.baseBranch : undefined,
           model: String(raw.model || ''),
           autoLevel: String(raw.autoLevel || 'default'),
-          reasoningEffort: typeof raw.reasoningEffort === 'string' ? raw.reasoningEffort : undefined,
-          apiKeyFingerprint: typeof raw.apiKeyFingerprint === 'string' ? raw.apiKeyFingerprint : undefined,
+          reasoningEffort:
+            typeof raw.reasoningEffort === 'string' ? raw.reasoningEffort : undefined,
+          apiKeyFingerprint:
+            typeof raw.apiKeyFingerprint === 'string' ? raw.apiKeyFingerprint : undefined,
           pinned: typeof raw.pinned === 'boolean' ? raw.pinned : undefined,
           title: String(raw.title || getTitleFromMessages(messages)),
           savedAt: Number(raw.savedAt || 0),
@@ -128,7 +143,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
 
       // v0 fallback: {id,messages,savedAt}
       const messages = (raw?.messages || []) as ChatMessage[]
-      const lastMessageAt = messages.length > 0 ? messages[messages.length - 1].timestamp : Number(raw?.savedAt || 0)
+      const lastMessageAt =
+        messages.length > 0 ? messages[messages.length - 1].timestamp : Number(raw?.savedAt || 0)
       return {
         id: String(raw?.id || id),
         projectDir: '',
@@ -203,7 +219,9 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       if (!raw || typeof raw !== 'object') return null
 
       const now = Date.now()
-      const prevMessages = Array.isArray((raw as any).messages) ? ((raw as any).messages as ChatMessage[]) : []
+      const prevMessages = Array.isArray((raw as any).messages)
+        ? ((raw as any).messages as ChatMessage[])
+        : []
       const titleRaw = typeof (raw as any).title === 'string' ? (raw as any).title : ''
       const title = titleRaw.trim() || getTitleFromMessages(prevMessages)
 
@@ -224,17 +242,27 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         projectDir: String((raw as any).projectDir || ''),
         repoRoot: typeof (raw as any).repoRoot === 'string' ? (raw as any).repoRoot : undefined,
         branch: typeof (raw as any).branch === 'string' ? (raw as any).branch : undefined,
-        workspaceType: (raw as any).workspaceType === 'worktree'
-          ? 'worktree'
-          : ((raw as any).workspaceType === 'branch' ? 'branch' : undefined),
-        baseBranch: typeof (raw as any).baseBranch === 'string' ? (raw as any).baseBranch : undefined,
+        workspaceType:
+          (raw as any).workspaceType === 'worktree'
+            ? 'worktree'
+            : (raw as any).workspaceType === 'branch'
+              ? 'branch'
+              : undefined,
+        baseBranch:
+          typeof (raw as any).baseBranch === 'string' ? (raw as any).baseBranch : undefined,
         title,
         savedAt: now,
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
-        reasoningEffort: typeof (raw as any).reasoningEffort === 'string' ? (raw as any).reasoningEffort : undefined,
-        apiKeyFingerprint: typeof (raw as any).apiKeyFingerprint === 'string' ? (raw as any).apiKeyFingerprint : undefined,
+        reasoningEffort:
+          typeof (raw as any).reasoningEffort === 'string'
+            ? (raw as any).reasoningEffort
+            : undefined,
+        apiKeyFingerprint:
+          typeof (raw as any).apiKeyFingerprint === 'string'
+            ? (raw as any).apiKeyFingerprint
+            : undefined,
         lastMessageAt: now,
       }
     } catch {
@@ -251,7 +279,9 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       if (!raw || typeof raw !== 'object') return null
 
       const now = Date.now()
-      const prevMessages = Array.isArray((raw as any).messages) ? ((raw as any).messages as ChatMessage[]) : []
+      const prevMessages = Array.isArray((raw as any).messages)
+        ? ((raw as any).messages as ChatMessage[])
+        : []
       const titleRaw = typeof (raw as any).title === 'string' ? (raw as any).title : ''
       const title = titleRaw.trim() || getTitleFromMessages(prevMessages)
 
@@ -268,7 +298,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       await ensureDir(sessionsDir)
       await atomicWriteFile(newPath, JSON.stringify(record, null, 2))
       if (oldId !== newId) {
-        try { await unlink(oldPath) } catch { /* ignore */ }
+        try {
+          await unlink(oldPath)
+        } catch {
+          /* ignore */
+        }
       }
 
       return {
@@ -276,17 +310,27 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         projectDir: String((raw as any).projectDir || ''),
         repoRoot: typeof (raw as any).repoRoot === 'string' ? (raw as any).repoRoot : undefined,
         branch: typeof (raw as any).branch === 'string' ? (raw as any).branch : undefined,
-        workspaceType: (raw as any).workspaceType === 'worktree'
-          ? 'worktree'
-          : ((raw as any).workspaceType === 'branch' ? 'branch' : undefined),
-        baseBranch: typeof (raw as any).baseBranch === 'string' ? (raw as any).baseBranch : undefined,
+        workspaceType:
+          (raw as any).workspaceType === 'worktree'
+            ? 'worktree'
+            : (raw as any).workspaceType === 'branch'
+              ? 'branch'
+              : undefined,
+        baseBranch:
+          typeof (raw as any).baseBranch === 'string' ? (raw as any).baseBranch : undefined,
         title,
         savedAt: now,
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
-        reasoningEffort: typeof (raw as any).reasoningEffort === 'string' ? (raw as any).reasoningEffort : undefined,
-        apiKeyFingerprint: typeof (raw as any).apiKeyFingerprint === 'string' ? (raw as any).apiKeyFingerprint : undefined,
+        reasoningEffort:
+          typeof (raw as any).reasoningEffort === 'string'
+            ? (raw as any).reasoningEffort
+            : undefined,
+        apiKeyFingerprint:
+          typeof (raw as any).apiKeyFingerprint === 'string'
+            ? (raw as any).apiKeyFingerprint
+            : undefined,
         lastMessageAt: now,
       }
     } catch {

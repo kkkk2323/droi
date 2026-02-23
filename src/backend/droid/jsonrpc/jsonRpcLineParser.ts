@@ -1,4 +1,9 @@
-import type { JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse } from './jsonRpcTypes.ts'
+import type {
+  JsonRpcMessage,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse,
+} from './jsonRpcTypes.ts'
 
 export type ParsedJsonRpcLine =
   | { kind: 'message'; message: JsonRpcMessage }
@@ -8,7 +13,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isJsonRpcBase(value: unknown): value is Record<string, unknown> & { jsonrpc: '2.0'; factoryApiVersion: '1.0.0' } {
+function isJsonRpcBase(
+  value: unknown,
+): value is Record<string, unknown> & { jsonrpc: '2.0'; factoryApiVersion: '1.0.0' } {
   if (!isObject(value)) return false
   return value.jsonrpc === '2.0' && value.factoryApiVersion === '1.0.0'
 }

@@ -6,15 +6,25 @@ import { homedir } from 'os'
 export function resolveDroidPath(): string {
   const locator = process.platform === 'win32' ? 'where' : 'which'
   try {
-    const resolved = execFileSync(locator, ['droid'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    const resolved = execFileSync(locator, ['droid'], { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
     if (resolved) return resolved
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   if (process.platform === 'darwin') {
     try {
-      const resolved = execFileSync('/bin/zsh', ['-lc', 'which droid'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+      const resolved = execFileSync('/bin/zsh', ['-lc', 'which droid'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim()
       if (resolved) return resolved
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const home = homedir()
@@ -30,4 +40,3 @@ export function resolveDroidPath(): string {
 
   return 'droid'
 }
-

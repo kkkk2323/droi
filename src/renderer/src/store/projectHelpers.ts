@@ -39,9 +39,16 @@ export function updateSessionTitle(prev: Project[], sessionId: string, title: st
   return changed ? next : prev
 }
 
-export function replaceSessionIdInProjects(prev: Project[], oldId: string, nextMeta: SessionMeta): Project[] {
+export function replaceSessionIdInProjects(
+  prev: Project[],
+  oldId: string,
+  nextMeta: SessionMeta,
+): Project[] {
   if (!oldId || !nextMeta?.id || oldId === nextMeta.id) return upsertSessionMeta(prev, nextMeta)
-  const cleaned = prev.map((p) => ({ ...p, sessions: p.sessions.filter((s) => s.id !== nextMeta.id) }))
+  const cleaned = prev.map((p) => ({
+    ...p,
+    sessions: p.sessions.filter((s) => s.id !== nextMeta.id),
+  }))
   let replaced = false
   const next = cleaned.map((p) => {
     const idx = p.sessions.findIndex((s) => s.id === oldId)

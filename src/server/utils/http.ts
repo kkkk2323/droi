@@ -2,7 +2,10 @@ import type { Context } from 'hono'
 
 export function isAllowedOrigin(origin: string | null): string | null {
   if (!origin) return null
-  const allowEnv = (process.env['DROID_APP_CORS_ORIGINS'] || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const allowEnv = (process.env['DROID_APP_CORS_ORIGINS'] || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
   if (allowEnv.length) return allowEnv.includes(origin) ? origin : null
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return origin
   return null

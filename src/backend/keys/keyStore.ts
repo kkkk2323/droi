@@ -20,14 +20,14 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
   let lastUsedIndex: number | undefined
 
   const getKeys = async (): Promise<ApiKeyEntry[]> => {
-    const state = await appStateStore.load() as PersistedAppStateV2
+    const state = (await appStateStore.load()) as PersistedAppStateV2
     return state.apiKeys || []
   }
 
   const addKeys = async (rawKeys: string[]): Promise<{ added: number; duplicates: number }> => {
-    const state = await appStateStore.load() as PersistedAppStateV2
+    const state = (await appStateStore.load()) as PersistedAppStateV2
     const existing = state.apiKeys || []
-    const existingSet = new Set(existing.map(e => e.key))
+    const existingSet = new Set(existing.map((e) => e.key))
     let added = 0
     let duplicates = 0
     const now = Date.now()
@@ -50,7 +50,7 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
   }
 
   const removeKey = async (index: number): Promise<void> => {
-    const state = await appStateStore.load() as PersistedAppStateV2
+    const state = (await appStateStore.load()) as PersistedAppStateV2
     const existing = state.apiKeys || []
     if (index < 0 || index >= existing.length) return
     const next = existing.filter((_, i) => i !== index)
@@ -60,7 +60,7 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
   }
 
   const updateNote = async (index: number, note: string): Promise<void> => {
-    const state = await appStateStore.load() as PersistedAppStateV2
+    const state = (await appStateStore.load()) as PersistedAppStateV2
     const existing = state.apiKeys || []
     if (index < 0 || index >= existing.length) return
     const next = [...existing]
@@ -69,7 +69,7 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
   }
 
   const getUsages = async (): Promise<Map<string, ApiKeyUsage>> => {
-    if (usageCache && (Date.now() - usageCacheAt) < CACHE_TTL_MS) return usageCache
+    if (usageCache && Date.now() - usageCacheAt < CACHE_TTL_MS) return usageCache
     return refreshUsages()
   }
 
@@ -93,7 +93,7 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
     const result = selectActiveKey(keys, usages, lastUsedIndex)
     if (result) {
       lastUsedIndex = result.index
-      if ((await appStateStore.load() as PersistedAppStateV2).apiKey !== result.key) {
+      if (((await appStateStore.load()) as PersistedAppStateV2).apiKey !== result.key) {
         await appStateStore.update({ apiKey: result.key })
       }
       return result.key

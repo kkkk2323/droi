@@ -15,12 +15,15 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import { ArrowLeftIcon, KeyRoundIcon, FolderIcon, BugIcon, SettingsIcon, ChevronRightIcon } from 'lucide-react'
+  ArrowLeftIcon,
+  KeyRoundIcon,
+  FolderIcon,
+  BugIcon,
+  SettingsIcon,
+  ChevronRightIcon,
+} from 'lucide-react'
 
 const NAV_ITEMS = [
   { id: 'general', label: 'General', icon: SettingsIcon, href: '/settings' },
@@ -35,7 +38,7 @@ export function SettingsLayout() {
   const params = useParams({ strict: false })
   const activeProjectDir = params?.projectDir ? decodeURIComponent(params.projectDir) : ''
 
-  const handleNav = (item: typeof NAV_ITEMS[number]) => {
+  const handleNav = (item: (typeof NAV_ITEMS)[number]) => {
     if (item.href) {
       navigate({ to: item.href })
     }
@@ -44,9 +47,9 @@ export function SettingsLayout() {
   return (
     <SidebarProvider>
       <Sidebar variant="sidebar">
-        <SidebarHeader >
+        <SidebarHeader>
           <SidebarMenu>
-            <SidebarMenuItem className='!pt-8'>
+            <SidebarMenuItem className="!pt-8">
               <SidebarMenuButton onClick={() => navigate({ to: '/' })}>
                 <ArrowLeftIcon className="size-4" />
                 <span>Back</span>
@@ -89,7 +92,12 @@ export function SettingsLayout() {
                               <SidebarMenuSubItem key={project.dir}>
                                 <SidebarMenuSubButton
                                   isActive={activeProjectDir === project.dir}
-                                  onClick={() => navigate({ to: '/settings/projects/$projectDir', params: { projectDir: encodeURIComponent(project.dir) } })}
+                                  onClick={() =>
+                                    navigate({
+                                      to: '/settings/projects/$projectDir',
+                                      params: { projectDir: encodeURIComponent(project.dir) },
+                                    })
+                                  }
                                 >
                                   <span className="truncate">{project.name}</span>
                                 </SidebarMenuSubButton>

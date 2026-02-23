@@ -1,9 +1,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  useMessages, useIsRunning, useModel, useAutoLevel, useReasoningEffort,
-  useActiveProjectDir, useActiveSessionId, useShowDebugTrace,
-  useSetupScript, useIsSetupBlocked, useCustomModels,
-  usePendingSendMessageIds, usePendingPermissionRequest, usePendingAskUserRequest,
+  useMessages,
+  useIsRunning,
+  useModel,
+  useAutoLevel,
+  useReasoningEffort,
+  useActiveProjectDir,
+  useActiveSessionId,
+  useShowDebugTrace,
+  useSetupScript,
+  useIsSetupBlocked,
+  useCustomModels,
+  usePendingSendMessageIds,
+  usePendingPermissionRequest,
+  usePendingAskUserRequest,
   useIsCancelling,
   usePendingNewSession,
   useIsCreatingSession,
@@ -17,7 +27,6 @@ import { SessionConfigPage } from '@/components/SessionConfigPage'
 import { PermissionCard } from '@/components/PermissionCard'
 import { AskUserCard } from '@/components/AskUserCard'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
-
 
 export function ChatPage() {
   const messages = useMessages()
@@ -38,9 +47,17 @@ export function ChatPage() {
   const pendingAskUserRequest = usePendingAskUserRequest()
   const isCancelling = useIsCancelling()
   const {
-    setModel, setAutoLevel, setReasoningEffort, handleSend, handleCancel, handleForceCancel,
-    handleRetrySetupScript, handleSkipSetupScript,
-    appendUiDebugTrace, handleRespondPermission, handleRespondAskUser,
+    setModel,
+    setAutoLevel,
+    setReasoningEffort,
+    handleSend,
+    handleCancel,
+    handleForceCancel,
+    handleRetrySetupScript,
+    handleSkipSetupScript,
+    appendUiDebugTrace,
+    handleRespondPermission,
+    handleRespondAskUser,
   } = useActions()
 
   const [specChangesMode, setSpecChangesMode] = useState(false)
@@ -55,21 +72,23 @@ export function ChatPage() {
     }
   }, [activeSessionId, isCreatingSession])
 
-  const workspacePrepStatus: 'running' | 'completed' | null =
-    isCreatingSession
-      ? 'running'
-      : (workspacePrepSessionId && activeSessionId === workspacePrepSessionId)
-        ? 'completed'
-        : null
+  const workspacePrepStatus: 'running' | 'completed' | null = isCreatingSession
+    ? 'running'
+    : workspacePrepSessionId && activeSessionId === workspacePrepSessionId
+      ? 'completed'
+      : null
 
   const handleRequestSpecChanges = useCallback(() => {
     setSpecChangesMode(true)
   }, [])
 
-  const handleSendWrapped = useCallback((...args: Parameters<typeof handleSend>) => {
-    setSpecChangesMode(false)
-    handleSend(...args)
-  }, [handleSend])
+  const handleSendWrapped = useCallback(
+    (...args: Parameters<typeof handleSend>) => {
+      setSpecChangesMode(false)
+      handleSend(...args)
+    },
+    [handleSend],
+  )
 
   const effectiveProjectDir = pendingNewSession?.repoRoot || activeProjectDir
   const noProject = !effectiveProjectDir
@@ -78,56 +97,55 @@ export function ChatPage() {
     ? 'Select a project to start...'
     : isCreatingSession
       ? 'Preparing workspace...'
-    : pendingNewSession
-      ? 'Type a message to create this session...'
-      : noSession
-      ? 'Create or select a session to start...'
-      : setupScript?.status === 'running'
-        ? 'Setup script is running...'
-        : setupScript?.status === 'failed'
-          ? 'Setup script failed. Retry or skip to continue.'
-          : undefined
+      : pendingNewSession
+        ? 'Type a message to create this session...'
+        : noSession
+          ? 'Create or select a session to start...'
+          : setupScript?.status === 'running'
+            ? 'Setup script is running...'
+            : setupScript?.status === 'failed'
+              ? 'Setup script failed. Retry or skip to continue.'
+              : undefined
 
   const pendingKey = pendingNewSession?.repoRoot ? `pending:${pendingNewSession.repoRoot}` : ''
-  const inputKey = pendingNewSession ? pendingKey : (activeSessionId || 'no-session')
+  const inputKey = pendingNewSession ? pendingKey : activeSessionId || 'no-session'
   const draftKey = pendingNewSession ? pendingKey : activeSessionId
-  const inputDisabled = isCreatingSession || noProject || (!pendingNewSession && noSession) || (!pendingNewSession && isSetupBlocked)
+  const inputDisabled =
+    isCreatingSession ||
+    noProject ||
+    (!pendingNewSession && noSession) ||
+    (!pendingNewSession && isSetupBlocked)
 
-  const hasPermission = Boolean(pendingPermissionRequest) && !isExitSpecPermission(pendingPermissionRequest)
+  const hasPermission =
+    Boolean(pendingPermissionRequest) && !isExitSpecPermission(pendingPermissionRequest)
   const hasAskUser = Boolean(pendingAskUserRequest)
 
   return (
     <>
-      {pendingNewSession
-        ? <SessionConfigPage />
-        : (
-          <ChatView
-            messages={messages}
-            isRunning={isRunning}
-            noProject={noProject}
-            activeProjectDir={effectiveProjectDir}
-            pendingPermissionRequest={pendingPermissionRequest}
-            pendingSendMessageIds={pendingSendMessageIds}
-            setupScript={setupScript}
-            workspacePrepStatus={workspacePrepStatus}
-            onRetrySetupScript={() => void handleRetrySetupScript(activeSessionId)}
-            onSkipSetupScript={() => handleSkipSetupScript(activeSessionId)}
-            onRespondPermission={handleRespondPermission}
-            onRequestSpecChanges={handleRequestSpecChanges}
-          />
-        )}
+      {pendingNewSession ? (
+        <SessionConfigPage />
+      ) : (
+        <ChatView
+          messages={messages}
+          isRunning={isRunning}
+          noProject={noProject}
+          activeProjectDir={effectiveProjectDir}
+          pendingPermissionRequest={pendingPermissionRequest}
+          pendingSendMessageIds={pendingSendMessageIds}
+          setupScript={setupScript}
+          workspacePrepStatus={workspacePrepStatus}
+          onRetrySetupScript={() => void handleRetrySetupScript(activeSessionId)}
+          onSkipSetupScript={() => handleSkipSetupScript(activeSessionId)}
+          onRespondPermission={handleRespondPermission}
+          onRequestSpecChanges={handleRequestSpecChanges}
+        />
+      )}
       {showDebugTrace && <DebugTracePanel />}
       {!pendingNewSession && <TodoPanel messages={messages} />}
       {hasPermission && pendingPermissionRequest ? (
-        <PermissionCard
-          request={pendingPermissionRequest}
-          onRespond={handleRespondPermission}
-        />
+        <PermissionCard request={pendingPermissionRequest} onRespond={handleRespondPermission} />
       ) : hasAskUser && pendingAskUserRequest ? (
-        <AskUserCard
-          request={pendingAskUserRequest}
-          onRespond={handleRespondAskUser}
-        />
+        <AskUserCard request={pendingAskUserRequest} onRespond={handleRespondAskUser} />
       ) : (
         <InputBar
           key={inputKey}

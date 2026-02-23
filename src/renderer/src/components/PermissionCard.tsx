@@ -1,7 +1,5 @@
 import React from 'react'
-import {
-  ShieldAlert, FileCode, FileEdit, Play, Search, Globe, Terminal,
-} from 'lucide-react'
+import { ShieldAlert, FileCode, FileEdit, Play, Search, Globe, Terminal } from 'lucide-react'
 import type { PendingPermissionRequest } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
 
@@ -12,14 +10,22 @@ type PermissionResponseParams = {
 
 function permissionLabel(opt: DroidPermissionOption): string {
   switch (opt) {
-    case 'proceed_once': return 'Proceed once'
-    case 'proceed_always': return 'Proceed always'
-    case 'proceed_auto_run': return 'Auto-run'
-    case 'proceed_auto_run_low': return 'Auto-run (Low)'
-    case 'proceed_auto_run_medium': return 'Auto-run (Medium)'
-    case 'proceed_auto_run_high': return 'Auto-run (High)'
-    case 'proceed_edit': return 'Proceed edit'
-    case 'cancel': return 'Cancel'
+    case 'proceed_once':
+      return 'Proceed once'
+    case 'proceed_always':
+      return 'Proceed always'
+    case 'proceed_auto_run':
+      return 'Auto-run'
+    case 'proceed_auto_run_low':
+      return 'Auto-run (Low)'
+    case 'proceed_auto_run_medium':
+      return 'Auto-run (Medium)'
+    case 'proceed_auto_run_high':
+      return 'Auto-run (High)'
+    case 'proceed_edit':
+      return 'Proceed edit'
+    case 'cancel':
+      return 'Cancel'
   }
 }
 
@@ -46,13 +52,17 @@ function extractPermissionToolInput(item: unknown): Record<string, unknown> {
   const raw = (item as any)?.toolUse || item
   if (!raw || typeof raw !== 'object') return {}
   const input = (raw as any).input
-  if (input && typeof input === 'object' && !Array.isArray(input)) return input as Record<string, unknown>
+  if (input && typeof input === 'object' && !Array.isArray(input))
+    return input as Record<string, unknown>
   const parameters = (raw as any).parameters
-  if (parameters && typeof parameters === 'object' && !Array.isArray(parameters)) return parameters as Record<string, unknown>
+  if (parameters && typeof parameters === 'object' && !Array.isArray(parameters))
+    return parameters as Record<string, unknown>
   return {}
 }
 
-function parsePermissionToolUse(item: unknown): { name: string; input: Record<string, unknown> } | null {
+function parsePermissionToolUse(
+  item: unknown,
+): { name: string; input: Record<string, unknown> } | null {
   const name = extractPermissionToolName(item)
   if (!name) return null
   return { name, input: extractPermissionToolInput(item) }
@@ -71,7 +81,12 @@ function getToolUseIcon(name: string): React.ReactNode {
 function formatParamValue(value: unknown): string {
   if (typeof value === 'string') return value.length > 120 ? value.slice(0, 120) + '...' : value
   if (typeof value === 'boolean' || typeof value === 'number') return String(value)
-  try { const s = JSON.stringify(value); return s.length > 120 ? s.slice(0, 120) + '...' : s } catch { return String(value) }
+  try {
+    const s = JSON.stringify(value)
+    return s.length > 120 ? s.slice(0, 120) + '...' : s
+  } catch {
+    return String(value)
+  }
 }
 
 function PermissionToolUseCard({ item }: { item: unknown }) {
@@ -91,7 +106,8 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
           <span className="text-xs font-medium text-foreground">Execute</span>
         </div>
         <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-300">
-          <span className="text-zinc-500">$ </span>{String(input.command)}
+          <span className="text-zinc-500">$ </span>
+          {String(input.command)}
         </pre>
       </div>
     )
@@ -105,17 +121,30 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
         <div className="flex items-center gap-2">
           {getToolUseIcon(name)}
           <span className="text-xs font-medium text-foreground">{name}</span>
-          {fileName && <span className="text-[11px] font-mono text-muted-foreground truncate">{fileName}</span>}
+          {fileName && (
+            <span className="text-[11px] font-mono text-muted-foreground truncate">{fileName}</span>
+          )}
         </div>
         {typeof input.old_str === 'string' && (
           <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5">
             {fileName && <div className="mb-1 text-zinc-500">{fileName}</div>}
-            {String(input.old_str).split('\n').map((line, i) => (
-              <div key={`o${i}`} className="text-red-400/80"><span className="select-none text-red-600/50">- </span>{line}</div>
-            ))}
-            {typeof input.new_str === 'string' && String(input.new_str).split('\n').map((line, i) => (
-              <div key={`n${i}`} className="text-emerald-400/80"><span className="select-none text-emerald-600/50">+ </span>{line}</div>
-            ))}
+            {String(input.old_str)
+              .split('\n')
+              .map((line, i) => (
+                <div key={`o${i}`} className="text-red-400/80">
+                  <span className="select-none text-red-600/50">- </span>
+                  {line}
+                </div>
+              ))}
+            {typeof input.new_str === 'string' &&
+              String(input.new_str)
+                .split('\n')
+                .map((line, i) => (
+                  <div key={`n${i}`} className="text-emerald-400/80">
+                    <span className="select-none text-emerald-600/50">+ </span>
+                    {line}
+                  </div>
+                ))}
           </pre>
         )}
         {typeof input.content === 'string' && !input.old_str && (
@@ -139,12 +168,16 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
           {entries.map(([key, val]) => (
             <div key={key} className="flex gap-2 text-[11px]">
               <span className="shrink-0 text-muted-foreground">{key}:</span>
-              <span className="text-zinc-700 dark:text-zinc-300 break-all">{formatParamValue(val)}</span>
+              <span className="text-zinc-700 dark:text-zinc-300 break-all">
+                {formatParamValue(val)}
+              </span>
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] text-muted-foreground">No parameters</div>
+        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] text-muted-foreground">
+          No parameters
+        </div>
       )}
     </div>
   )

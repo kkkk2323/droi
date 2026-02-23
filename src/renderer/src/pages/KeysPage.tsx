@@ -76,7 +76,10 @@ export function KeysPage() {
 
   const handleAdd = async () => {
     if (!newKeyText.trim()) return
-    const lines = newKeyText.split('\n').map(l => l.trim()).filter(Boolean)
+    const lines = newKeyText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
     await addMutation.mutateAsync(lines)
     setNewKeyText('')
     setAddOpen(false)
@@ -94,7 +97,7 @@ export function KeysPage() {
 
   const handleExport = () => {
     if (keys.length === 0) return
-    const text = keys.map(k => k.key).join('\n')
+    const text = keys.map((k) => k.key).join('\n')
     const blob = new Blob([text], { type: 'text/plain' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -129,7 +132,11 @@ export function KeysPage() {
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      if (sortDir === 'desc') { setSortField(null); setSortDir('asc'); return }
+      if (sortDir === 'desc') {
+        setSortField(null)
+        setSortDir('asc')
+        return
+      }
       setSortDir('desc')
     } else {
       setSortField(field)
@@ -156,7 +163,7 @@ export function KeysPage() {
 
   const totalUsed = keys.reduce((s, k) => s + (k.usage?.used || 0), 0)
   const totalQuota = keys.reduce((s, k) => s + (k.usage?.total || 0), 0)
-  const activeKey = keys.find(k => k.isActive)
+  const activeKey = keys.find((k) => k.isActive)
 
   if (loading) {
     return (
@@ -198,15 +205,21 @@ export function KeysPage() {
         {/* Stats bar */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="rounded border px-3 py-1.5 text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">Active</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">
+              Active
+            </span>
             <span className="font-mono font-bold">#{activeKey ? activeKey.index + 1 : '?'}</span>
           </div>
           <div className="rounded border px-3 py-1.5 text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">Total</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">
+              Total
+            </span>
             <span className="font-mono font-bold">{keys.length}</span>
           </div>
           <div className="rounded border px-3 py-1.5 text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">Usage</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">
+              Usage
+            </span>
             <span className="font-mono font-bold">
               {formatNumber(totalUsed)}
               <span className="text-muted-foreground mx-0.5">/</span>
@@ -221,7 +234,9 @@ export function KeysPage() {
             <Button variant="outline" size="sm" onClick={handleExport} disabled={keys.length === 0}>
               Export
             </Button>
-            <Button size="sm" onClick={() => setAddOpen(true)}>+ Add Keys</Button>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              + Add Keys
+            </Button>
           </div>
         </div>
 
@@ -236,9 +251,15 @@ export function KeysPage() {
             <table className="w-full min-w-0 text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-10">#</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Key</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Note</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-10">
+                    #
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    Key
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    Note
+                  </th>
                   <th
                     className="px-3 py-2 text-right text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground"
                     onClick={() => handleSort('percent')}
@@ -257,12 +278,16 @@ export function KeysPage() {
                   >
                     Expiry {sortField === 'expiry' && (sortDir === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-24">Actions</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-24">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.map((entry) => {
-                  const percent = entry.usage?.total ? Math.round((entry.usage.used || 0) / entry.usage.total * 100) : 0
+                  const percent = entry.usage?.total
+                    ? Math.round(((entry.usage.used || 0) / entry.usage.total) * 100)
+                    : 0
                   const isHigh = percent >= 80 && percent < 100
                   const isExhausted = percent >= 100
                   const isInvalid = entry.usage?.error?.startsWith('http_')
@@ -284,7 +309,9 @@ export function KeysPage() {
                     >
                       <td className="px-3 py-2 font-mono text-muted-foreground">
                         <span className="flex items-center gap-1.5">
-                          {entry.isActive && <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />}
+                          {entry.isActive && (
+                            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                          )}
                           {entry.index + 1}
                         </span>
                       </td>
@@ -333,13 +360,19 @@ export function KeysPage() {
                             <span className="mx-0.5 text-muted-foreground/50">/</span>
                             {formatNumber(entry.usage.total)}
                           </>
-                        ) : '-'}
+                        ) : (
+                          '-'
+                        )}
                       </td>
                       <td className="px-3 py-2 text-center">
                         {isInvalid ? (
-                          <Badge variant="destructive" className="text-xs">INVALID</Badge>
+                          <Badge variant="destructive" className="text-xs">
+                            INVALID
+                          </Badge>
                         ) : (
-                          <span className="text-sm text-muted-foreground">{entry.usage?.expires || '-'}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {entry.usage?.expires || '-'}
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -407,12 +440,16 @@ export function KeysPage() {
         </AlertDialog>
 
         {/* Delete confirmation */}
-        <AlertDialog open={deleteIndex !== null} onOpenChange={(open) => !open && setDeleteIndex(null)}>
+        <AlertDialog
+          open={deleteIndex !== null}
+          onOpenChange={(open) => !open && setDeleteIndex(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this key?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently remove key #{deleteIndex !== null ? deleteIndex + 1 : ''} from your configuration.
+                This will permanently remove key #{deleteIndex !== null ? deleteIndex + 1 : ''} from
+                your configuration.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

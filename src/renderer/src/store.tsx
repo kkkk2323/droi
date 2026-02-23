@@ -4,11 +4,12 @@ import type { ChatMessage, Project, SessionMeta, WorkspaceInfo, ProjectSettings 
 import type { DroidPermissionOption, CustomModelDef } from '@/types'
 import { buildHookMismatchMessage, getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from './lib/uuid.ts'
-import { defaultSessionTitleFromBranch, generateWorktreeBranch, sanitizeWorktreePrefix } from '@/lib/sessionWorktree'
 import {
-  isTraceChainEnabled,
-  setTraceChainEnabledOverride,
-} from '@/lib/notificationFingerprint'
+  defaultSessionTitleFromBranch,
+  generateWorktreeBranch,
+  sanitizeWorktreePrefix,
+} from '@/lib/sessionWorktree'
+import { isTraceChainEnabled, setTraceChainEnabledOverride } from '@/lib/notificationFingerprint'
 import { getModelDefaultReasoning } from '@/types'
 import {
   DEFAULT_AUTO_LEVEL,
@@ -26,7 +27,13 @@ import {
   type PendingPermissionRequest,
   type PendingAskUserRequest,
 } from '@/state/appReducer'
-import { getRepoKey, getTitleFromPrompt, upsertSessionMeta, updateSessionTitle, replaceSessionIdInProjects } from './store/projectHelpers'
+import {
+  getRepoKey,
+  getTitleFromPrompt,
+  upsertSessionMeta,
+  updateSessionTitle,
+  replaceSessionIdInProjects,
+} from './store/projectHelpers'
 
 const droid = getDroidClient()
 
@@ -84,7 +91,9 @@ interface AppState {
 
 interface AppActions {
   // Internal setters
-  _setSessionBuffers: (updater: (prev: Map<string, SessionBuffer>) => Map<string, SessionBuffer>) => void
+  _setSessionBuffers: (
+    updater: (prev: Map<string, SessionBuffer>) => Map<string, SessionBuffer>,
+  ) => void
   _setProjects: (updater: (prev: Project[]) => Project[]) => void
 
   // Derived getters (computed from state)
@@ -133,8 +142,14 @@ interface AppActions {
   handleClearSessionContext: (sessionId?: string) => Promise<void>
   handleCancel: () => void
   handleForceCancel: () => void
-  handleRespondPermission: (params: { selectedOption: DroidPermissionOption; autoLevel?: 'low' | 'medium' | 'high' }) => void
-  handleRespondAskUser: (params: { cancelled?: boolean; answers: Array<{ index: number; question: string; answer: string }> }) => void
+  handleRespondPermission: (params: {
+    selectedOption: DroidPermissionOption
+    autoLevel?: 'low' | 'medium' | 'high'
+  }) => void
+  handleRespondAskUser: (params: {
+    cancelled?: boolean
+    answers: Array<{ index: number; question: string; answer: string }>
+  }) => void
   handleRetrySetupScript: (sessionId?: string) => Promise<void>
   handleSkipSetupScript: (sessionId?: string) => void
   handleNewSession: (repoRoot?: string) => void
@@ -145,7 +160,10 @@ interface AppActions {
     branch?: string
     baseBranch?: string
   }) => Promise<string | null>
-  handleSwitchWorkspaceForSession: (params: { branch: string; sessionId?: string }) => Promise<boolean>
+  handleSwitchWorkspaceForSession: (params: {
+    branch: string
+    sessionId?: string
+  }) => Promise<boolean>
   handleAddProject: () => void
   handleSetProjectDir: (dir: string) => void
   handleSelectSession: (sessionId: string) => void
@@ -161,15 +179,25 @@ interface AppActions {
   _resolveWorkspace: (projectDir: string) => Promise<WorkspaceInfo | null>
   _pickProjectDirForRepo: (repoRoot?: string) => string
   _saveSessionToDisk: (sid: string, buf: SessionBuffer) => Promise<void>
-  _runSetupScriptForSession: (params: { sessionId: string; projectDir: string; script: string }) => Promise<void>
+  _runSetupScriptForSession: (params: {
+    sessionId: string
+    projectDir: string
+    script: string
+  }) => Promise<void>
   _ensureWorkspaceForMeta: (meta: SessionMeta) => Promise<WorkspaceInfo>
   _switchToSessionWithAligned: (selectedMeta: SessionMeta, aligned: WorkspaceInfo) => Promise<void>
   _reportHookMismatch: (sid: string, projectDir: string, missingHooks: string[]) => void
 
-  _ensureProjectSettingsInitialized: (params: { repoRoot: string; hintBranch?: string }) => Promise<void>
+  _ensureProjectSettingsInitialized: (params: {
+    repoRoot: string
+    hintBranch?: string
+  }) => Promise<void>
 
   // New-session helpers
-  _confirmPendingNewSessionAndSend: (params: { input: SendInput; attachments?: Array<{ name: string; path: string }> }) => Promise<void>
+  _confirmPendingNewSessionAndSend: (params: {
+    input: SendInput
+    attachments?: Array<{ name: string; path: string }>
+  }) => Promise<void>
   _maybeFlushPendingInitialSend: () => void
 }
 
@@ -306,17 +334,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const s = get()
     if (!repoRoot) return s.activeProjectDir
     const activeBuf = s.activeSessionId ? s.sessionBuffers.get(s.activeSessionId) : null
-    if (activeBuf && (activeBuf.repoRoot || activeBuf.projectDir) === repoRoot) return activeBuf.projectDir
+    if (activeBuf && (activeBuf.repoRoot || activeBuf.projectDir) === repoRoot)
+      return activeBuf.projectDir
 
     const p = s.projects.find((x) => x.dir === repoRoot)
     if (!p || p.sessions.length === 0) return repoRoot
-    const latest = [...p.sessions].sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))[0]
+    const latest = [...p.sessions].sort(
+      (a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt),
+    )[0]
     return latest?.projectDir || repoRoot
   },
 
   _saveSessionToDisk: async (sid, buf) => {
     if (!buf.projectDir || !sid) return
-    const existingMeta = get().projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
+    const existingMeta = get()
+      .projects.flatMap((p) => p.sessions)
+      .find((x) => x.id === sid)
     const meta = await droid.saveSession({
       id: sid,
       projectDir: buf.projectDir,
@@ -352,7 +385,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const session = prev.get(sid) || makeBuffer(projectDir)
       let next = new Map(prev)
       next.set(sid, session)
-      next = appendDebugTrace(next, sid, `hook-check-failed: missing-hooks=${missingHooks.join(',')}`)
+      next = appendDebugTrace(
+        next,
+        sid,
+        `hook-check-failed: missing-hooks=${missingHooks.join(',')}`,
+      )
       next = applyError(next, sid, message)
       return next
     })
@@ -435,9 +472,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setDebugTraceMaxLines: (maxLines) => {
-    const next = (typeof maxLines === 'number' && Number.isFinite(maxLines))
-      ? Math.min(10_000, Math.max(1, Math.floor(maxLines)))
-      : null
+    const next =
+      typeof maxLines === 'number' && Number.isFinite(maxLines)
+        ? Math.min(10_000, Math.max(1, Math.floor(maxLines)))
+        : null
     setDebugTraceMaxLinesOverride(next)
     set({ debugTraceMaxLines: next })
     ;(droid as any).setDebugTraceMaxLines?.(next)
@@ -461,12 +499,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setLocalDiagnosticsRetention: (params) => {
     const s = get()
-    const days = (typeof params?.retentionDays === 'number' && Number.isFinite(params.retentionDays))
-      ? Math.max(1, Math.floor(params.retentionDays))
-      : s.localDiagnosticsRetentionDays
-    const mb = (typeof params?.maxTotalMb === 'number' && Number.isFinite(params.maxTotalMb))
-      ? Math.max(1, Math.floor(params.maxTotalMb))
-      : s.localDiagnosticsMaxTotalMb
+    const days =
+      typeof params?.retentionDays === 'number' && Number.isFinite(params.retentionDays)
+        ? Math.max(1, Math.floor(params.retentionDays))
+        : s.localDiagnosticsRetentionDays
+    const mb =
+      typeof params?.maxTotalMb === 'number' && Number.isFinite(params.maxTotalMb)
+        ? Math.max(1, Math.floor(params.maxTotalMb))
+        : s.localDiagnosticsMaxTotalMb
 
     set({ localDiagnosticsRetentionDays: days, localDiagnosticsMaxTotalMb: mb })
     if (typeof (droid as any)?.setLocalDiagnosticsRetention === 'function') {
@@ -536,7 +576,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const merged: ProjectSettings = { ...prev, ...next }
     const state = await droid.updateProjectSettings({ repoRoot: key, settings: merged })
     const map = (state as any)?.projectSettings
-    if (map && typeof map === 'object') set({ projectSettingsByRepo: map as Record<string, ProjectSettings> })
+    if (map && typeof map === 'object')
+      set({ projectSettingsByRepo: map as Record<string, ProjectSettings> })
     else set((s) => ({ projectSettingsByRepo: { ...s.projectSettingsByRepo, [key]: merged } }))
   },
 
@@ -553,7 +594,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     if (typeof existing.baseBranch !== 'string' || !existing.baseBranch.trim()) {
       const branches = await droid.listGitBranches({ projectDir: key }).catch(() => [] as string[])
-      const cleaned = Array.from(new Set((branches || []).filter(Boolean).map((b) => String(b).trim()).filter(Boolean)))
+      const cleaned = Array.from(
+        new Set(
+          (branches || [])
+            .filter(Boolean)
+            .map((b) => String(b).trim())
+            .filter(Boolean),
+        ),
+      )
       const hint = typeof hintBranch === 'string' ? hintBranch.trim() : ''
       const base = cleaned.includes('main')
         ? 'main'
@@ -577,8 +625,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         pendingNewSession: {
           ...cur,
           ...(nextPatch as Partial<PendingNewSession>),
-          repoRoot: typeof (nextPatch as any).repoRoot === 'string' ? String((nextPatch as any).repoRoot).trim() : cur.repoRoot,
-          branch: typeof (nextPatch as any).branch === 'string' ? String((nextPatch as any).branch).trim() : cur.branch,
+          repoRoot:
+            typeof (nextPatch as any).repoRoot === 'string'
+              ? String((nextPatch as any).repoRoot).trim()
+              : cur.repoRoot,
+          branch:
+            typeof (nextPatch as any).branch === 'string'
+              ? String((nextPatch as any).branch).trim()
+              : cur.branch,
         },
       }
     })
@@ -647,7 +701,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const s = get()
     const sid = sessionId || s.activeSessionId
     if (!sid) return
-    s._setSessionBuffers((prev) => markSetupScriptSkipped(appendDebugTrace(prev, sid, 'setup-script-skipped'), sid))
+    s._setSessionBuffers((prev) =>
+      markSetupScriptSkipped(appendDebugTrace(prev, sid, 'setup-script-skipped'), sid),
+    )
     s._maybeFlushPendingInitialSend()
   },
 
@@ -674,7 +730,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       let workspaceInfo: WorkspaceInfo | null = null
       if (params.mode === 'switch-branch') {
         if (!params.branch?.trim()) throw new Error('Missing branch')
-        workspaceInfo = await droid.switchWorkspace({ projectDir: sourceDir, branch: params.branch.trim() })
+        workspaceInfo = await droid.switchWorkspace({
+          projectDir: sourceDir,
+          branch: params.branch.trim(),
+        })
         if (!workspaceInfo) throw new Error('Failed to switch branch')
       } else if (params.mode === 'new-branch') {
         if (!params.branch?.trim()) throw new Error('Missing branch')
@@ -717,20 +776,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
       const now = Date.now()
-      get()._setProjects((prev) => upsertSessionMeta(prev, {
-        id: newId,
-        projectDir: targetDir,
-        repoRoot: workspaceInfo!.repoRoot,
-        branch: workspaceInfo!.branch,
-        workspaceType: workspaceInfo!.workspaceType,
-        title: initialTitle,
-        savedAt: now,
-        messageCount: 0,
-        model: inheritModel,
-        autoLevel: inheritAutoLevel,
-        reasoningEffort: inheritReasoningEffort || undefined,
-        baseBranch: workspaceInfo!.baseBranch,
-      }))
+      get()._setProjects((prev) =>
+        upsertSessionMeta(prev, {
+          id: newId,
+          projectDir: targetDir,
+          repoRoot: workspaceInfo!.repoRoot,
+          branch: workspaceInfo!.branch,
+          workspaceType: workspaceInfo!.workspaceType,
+          title: initialTitle,
+          savedAt: now,
+          messageCount: 0,
+          model: inheritModel,
+          autoLevel: inheritAutoLevel,
+          reasoningEffort: inheritReasoningEffort || undefined,
+          baseBranch: workspaceInfo!.baseBranch,
+        }),
+      )
       const initialBuffer = {
         ...makeBuffer(targetDir, {
           repoRoot: workspaceInfo!.repoRoot,
@@ -862,7 +923,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const settings = s.projectSettingsByRepo[repoRoot] || {}
     const prefix = sanitizeWorktreePrefix(settings.worktreePrefix || '') || 'droi'
 
-    const baseBranchFromSettings = typeof settings.baseBranch === 'string' ? settings.baseBranch.trim() : ''
+    const baseBranchFromSettings =
+      typeof settings.baseBranch === 'string' ? settings.baseBranch.trim() : ''
 
     const queuedAttachments = attachments ?? []
 
@@ -927,7 +989,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     if (!buf) return
     if (buf.isRunning || buf.isSetupRunning) {
-      get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, 'ui-clear: session is running; cancel first'))
+      get()._setSessionBuffers((prev) =>
+        appendDebugTrace(prev, sid, 'ui-clear: session is running; cancel first'),
+      )
       return
     }
 
@@ -961,7 +1025,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         })
         return next
       })
-      set((prev) => ({ activeSessionId: prev.activeSessionId === sid ? meta.id : prev.activeSessionId }))
+      set((prev) => ({
+        activeSessionId: prev.activeSessionId === sid ? meta.id : prev.activeSessionId,
+      }))
       set((prev) => {
         const gens = prev._sessionGenerations
         if (!gens.has(sid)) return prev
@@ -1001,17 +1067,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const sid = s.activeSessionId
     const projDir = s.activeProjectDir
-    const normalized = typeof input === 'string'
-      ? { text: input }
-      : (input || { text: '' })
+    const normalized = typeof input === 'string' ? { text: input } : input || { text: '' }
     const text = String(normalized.text || '')
     const trimmedText = text.trim()
-    const tagType = normalized.tag?.type === 'command' || normalized.tag?.type === 'skill'
-      ? normalized.tag.type
-      : null
-    const tagName = typeof normalized.tag?.name === 'string' && normalized.tag.name.trim()
-      ? normalized.tag.name.trim()
-      : ''
+    const tagType =
+      normalized.tag?.type === 'command' || normalized.tag?.type === 'skill'
+        ? normalized.tag.type
+        : null
+    const tagName =
+      typeof normalized.tag?.name === 'string' && normalized.tag.name.trim()
+        ? normalized.tag.name.trim()
+        : ''
     const hasTag = Boolean(tagType && tagName)
 
     const isCommandTag = hasTag && tagType === 'command'
@@ -1022,7 +1088,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const hasAttachments = queuedAttachments.length > 0
     if ((!hasUserText && !hasTag && !hasAttachments) || !projDir || !sid) return
 
-    if (!hasTag && !hasAttachments && (trimmedText === '/clear' || trimmedText === '/reset' || trimmedText === '/restart')) {
+    if (
+      !hasTag &&
+      !hasAttachments &&
+      (trimmedText === '/clear' || trimmedText === '/reset' || trimmedText === '/restart')
+    ) {
       if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
         ;(droid as any).appendDiagnosticsEvent({
           sessionId: sid,
@@ -1035,9 +1105,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return
     }
 
-    const rawPromptForTitle = hasTag
-      ? `/${tagName}${text.trim() ? ` ${text.trim()}` : ''}`
-      : text
+    const rawPromptForTitle = hasTag ? `/${tagName}${text.trim() ? ` ${text.trim()}` : ''}` : text
 
     const buf = s.sessionBuffers.get(sid)
     if (buf?.isSetupRunning || buf?.setupScript.status === 'failed') return
@@ -1045,9 +1113,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const sessionAutoLevel = buf?.autoLevel ?? DEFAULT_AUTO_LEVEL
     const sessionReasoningEffort = buf?.reasoningEffort ?? ''
 
-    const existingMeta = s.projects
-      .flatMap((p) => p.sessions)
-      .find((x) => x.id === sid)
+    const existingMeta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
 
     const now = Date.now()
     const userMessage: ChatMessage = {
@@ -1055,20 +1121,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
       role: 'user' as const,
       blocks: [
         ...(isCommandTag
-          ? [{ kind: 'command' as const, name: tagName }, { kind: 'text' as const, content: text }]
+          ? [
+              { kind: 'command' as const, name: tagName },
+              { kind: 'text' as const, content: text },
+            ]
           : isSkillTag
-            ? [{ kind: 'skill' as const, name: tagName }, { kind: 'text' as const, content: text }]
-          : [{ kind: 'text' as const, content: text }]),
-        ...queuedAttachments.map((a) => ({ kind: 'attachment' as const, name: a.name, path: a.path })),
+            ? [
+                { kind: 'skill' as const, name: tagName },
+                { kind: 'text' as const, content: text },
+              ]
+            : [{ kind: 'text' as const, content: text }]),
+        ...queuedAttachments.map((a) => ({
+          kind: 'attachment' as const,
+          name: a.name,
+          path: a.path,
+        })),
       ],
       timestamp: now,
     }
 
     const nextMessages = [...(buf?.messages ?? []), userMessage]
     const messageCount = nextMessages.length
-    const nextTitle = (!existingMeta || existingMeta.title === 'Untitled' || existingMeta.messageCount === 0)
-      ? getTitleFromPrompt(rawPromptForTitle)
-      : existingMeta.title
+    const nextTitle =
+      !existingMeta || existingMeta.title === 'Untitled' || existingMeta.messageCount === 0
+        ? getTitleFromPrompt(rawPromptForTitle)
+        : existingMeta.title
     const draftMeta: SessionMeta = {
       id: sid,
       projectDir: projDir,
@@ -1087,31 +1164,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     get()._setProjects((prev) => upsertSessionMeta(prev, draftMeta))
 
-    void droid.saveSession({
-      id: sid,
-      projectDir: projDir,
-      repoRoot: buf?.repoRoot || projDir,
-      branch: buf?.branch,
-      workspaceType: buf?.workspaceType,
-      baseBranch: buf?.baseBranch,
-      model: sessionModel,
-      autoLevel: sessionAutoLevel,
-      reasoningEffort: sessionReasoningEffort || undefined,
-      apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
-      pinned: existingMeta?.pinned || undefined,
-      messages: nextMessages,
-    }).then((meta) => {
-      if (!meta) return
-      const normalized: SessionMeta = {
-        ...meta,
-        projectDir: meta.projectDir || projDir,
-        repoRoot: meta.repoRoot || buf?.repoRoot || projDir,
-        branch: meta.branch || buf?.branch,
-        workspaceType: meta.workspaceType || buf?.workspaceType,
-        baseBranch: meta.baseBranch || buf?.baseBranch,
-      }
-      get()._setProjects((prev) => upsertSessionMeta(prev, normalized))
-    })
+    void droid
+      .saveSession({
+        id: sid,
+        projectDir: projDir,
+        repoRoot: buf?.repoRoot || projDir,
+        branch: buf?.branch,
+        workspaceType: buf?.workspaceType,
+        baseBranch: buf?.baseBranch,
+        model: sessionModel,
+        autoLevel: sessionAutoLevel,
+        reasoningEffort: sessionReasoningEffort || undefined,
+        apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
+        pinned: existingMeta?.pinned || undefined,
+        messages: nextMessages,
+      })
+      .then((meta) => {
+        if (!meta) return
+        const normalized: SessionMeta = {
+          ...meta,
+          projectDir: meta.projectDir || projDir,
+          repoRoot: meta.repoRoot || buf?.repoRoot || projDir,
+          branch: meta.branch || buf?.branch,
+          workspaceType: meta.workspaceType || buf?.workspaceType,
+          baseBranch: meta.baseBranch || buf?.baseBranch,
+        }
+        get()._setProjects((prev) => upsertSessionMeta(prev, normalized))
+      })
 
     const missingHooks = getMissingDroidHooks(droid)
     if (missingHooks.length > 0) {
@@ -1125,8 +1204,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           isRunning: false,
           messages: [...session.messages, userMessage],
         })
-        next = appendDebugTrace(next, sid, `ui-send: model=${sessionModel} auto=${sessionAutoLevel} chars=${rawPromptForTitle.length}`)
-        next = appendDebugTrace(next, sid, `ui-send-blocked: missing-hooks=${missingHooks.join(',')}`)
+        next = appendDebugTrace(
+          next,
+          sid,
+          `ui-send: model=${sessionModel} auto=${sessionAutoLevel} chars=${rawPromptForTitle.length}`,
+        )
+        next = appendDebugTrace(
+          next,
+          sid,
+          `ui-send-blocked: missing-hooks=${missingHooks.join(',')}`,
+        )
         next = applyError(next, sid, mismatchMessage)
         return next
       })
@@ -1139,7 +1226,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     get()._setSessionBuffers((prev) => {
       const session = prev.get(sid) || makeBuffer(projDir)
       const injecting = Boolean(session.isRunning)
-      const pendingSendMessageIds: Record<string, true> = { ...session.pendingSendMessageIds, [userMessage.id]: true }
+      const pendingSendMessageIds: Record<string, true> = {
+        ...session.pendingSendMessageIds,
+        [userMessage.id]: true,
+      }
       let next = new Map(prev)
       next.set(sid, {
         ...session,
@@ -1147,13 +1237,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
         messages: [...session.messages, userMessage],
         pendingSendMessageIds,
       })
-      next = appendDebugTrace(next, sid, `ui-send: model=${sessionModel} auto=${sessionAutoLevel} chars=${rawPromptForTitle.length}`)
+      next = appendDebugTrace(
+        next,
+        sid,
+        `ui-send: model=${sessionModel} auto=${sessionAutoLevel} chars=${rawPromptForTitle.length}`,
+      )
       if (injecting) next = appendDebugTrace(next, sid, `ui-inject: messageId=${userMessage.id}`)
       return next
     })
 
     if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
-      const basePromptKind = isCommandTag ? 'command' : (isSkillTag ? 'skill' : 'plain')
+      const basePromptKind = isCommandTag ? 'command' : isSkillTag ? 'skill' : 'plain'
       ;(droid as any).appendDiagnosticsEvent({
         sessionId: sid,
         event: 'ui.send.start',
@@ -1183,7 +1277,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (isSkillTag) {
         const args = text.trim()
         basePrompt = `Use skill "${tagName}".${args ? `\n\n${args}` : ''}`
-        get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-skill-send: name=${tagName} argsLen=${args.length}`))
+        get()._setSessionBuffers((prev) =>
+          appendDebugTrace(prev, sid, `ui-skill-send: name=${tagName} argsLen=${args.length}`),
+        )
       }
 
       if (isCommandTag) {
@@ -1191,20 +1287,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
         try {
           const res = await droid.resolveSlashCommand({ text: basePrompt })
           if (!get()._isSessionGenerationCurrent(sid, generation)) return
-          const nextPrompt = (res.matched || res.expandedText !== basePrompt) ? String(res.expandedText || basePrompt) : basePrompt
+          const nextPrompt =
+            res.matched || res.expandedText !== basePrompt
+              ? String(res.expandedText || basePrompt)
+              : basePrompt
           basePrompt = nextPrompt
           const cmdInfo = res.command
             ? ` name=${res.command.name} scope=${res.command.scope} file=${res.command.filePath}`
             : ''
           const errInfo = res.error ? ` error=${res.error}` : ''
-          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-slash: matched=${String(res.matched)}${cmdInfo}${errInfo}`))
+          get()._setSessionBuffers((prev) =>
+            appendDebugTrace(
+              prev,
+              sid,
+              `ui-slash: matched=${String(res.matched)}${cmdInfo}${errInfo}`,
+            ),
+          )
           if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
             ;(droid as any).appendDiagnosticsEvent({
               sessionId: sid,
               event: 'ui.send.resolved_slash',
               level: 'debug',
               correlation: { uiMessageId: userMessage.id },
-              data: { matched: Boolean(res.matched), expandedLen: String(res.expandedText || '').length, hasError: Boolean(res.error) },
+              data: {
+                matched: Boolean(res.matched),
+                expandedLen: String(res.expandedText || '').length,
+                hasError: Boolean(res.error),
+              },
             })
           }
         } catch (err) {
@@ -1225,9 +1334,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       if (!get()._isSessionGenerationCurrent(sid, generation)) return
 
-      const attachmentSuffix = queuedAttachments.length > 0
-        ? `\n\nAttached files:\n${queuedAttachments.map((a) => `- ${a.path}`).join('\n')}`
-        : ''
+      const attachmentSuffix =
+        queuedAttachments.length > 0
+          ? `\n\nAttached files:\n${queuedAttachments.map((a) => `- ${a.path}`).join('\n')}`
+          : ''
       const finalPrompt = `${basePrompt}${attachmentSuffix}`
 
       try {
@@ -1248,25 +1358,41 @@ export const useAppStore = create<AppStore>((set, get) => ({
               if (!session) return prev
               const next = new Map(prev)
               next.set(sid, { ...session, pendingApiKeyFingerprint: activeKeyFp })
-              return appendDebugTrace(next, sid, `api-key-rotation-deferred: ${(session.apiKeyFingerprint || '(unknown)')} -> ${activeKeyFp}`)
+              return appendDebugTrace(
+                next,
+                sid,
+                `api-key-rotation-deferred: ${session.apiKeyFingerprint || '(unknown)'} -> ${activeKeyFp}`,
+              )
             })
           } else {
             const before = get().sessionBuffers.get(sid)
             const prevFp = before?.apiKeyFingerprint
             if (prevFp !== activeKeyFp) {
-              get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `api-key-rotation: ${prevFp || '(unknown)'} -> ${activeKeyFp}`))
+              get()._setSessionBuffers((prev) =>
+                appendDebugTrace(
+                  prev,
+                  sid,
+                  `api-key-rotation: ${prevFp || '(unknown)'} -> ${activeKeyFp}`,
+                ),
+              )
               try {
                 await droid.restartSessionWithActiveKey({ sessionId: sid })
                 get()._setSessionBuffers((prev) => {
                   const session = prev.get(sid)
                   if (!session) return prev
                   const next = new Map(prev)
-                  next.set(sid, { ...session, apiKeyFingerprint: activeKeyFp, pendingApiKeyFingerprint: undefined })
+                  next.set(sid, {
+                    ...session,
+                    apiKeyFingerprint: activeKeyFp,
+                    pendingApiKeyFingerprint: undefined,
+                  })
                   return appendDebugTrace(next, sid, `api-key-restarted: fp=${activeKeyFp}`)
                 })
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err)
-                get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `api-key-restart-failed: ${msg}`))
+                get()._setSessionBuffers((prev) =>
+                  appendDebugTrace(prev, sid, `api-key-restart-failed: ${msg}`),
+                )
               }
             } else {
               get()._setSessionBuffers((prev) => {
@@ -1286,7 +1412,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
             event: 'ui.exec.dispatched',
             level: 'info',
             correlation: { uiMessageId: userMessage.id },
-            data: { finalPromptLen: finalPrompt.length, queuedAttachmentsCount: queuedAttachments.length },
+            data: {
+              finalPromptLen: finalPrompt.length,
+              queuedAttachmentsCount: queuedAttachments.length,
+            },
           })
         }
         await droid.exec({
@@ -1372,7 +1501,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     if (!buf?.isCancelling) return
     s._bumpSessionGeneration(sid)
-    get()._setSessionBuffers((prev) => applyTurnEnd(appendDebugTrace(prev, sid, 'ui-force-cancel'), sid))
+    get()._setSessionBuffers((prev) =>
+      applyTurnEnd(appendDebugTrace(prev, sid, 'ui-force-cancel'), sid),
+    )
     droid.cancel({ sessionId: sid })
   },
 
@@ -1392,13 +1523,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
     const newAutoLevel = params.autoLevel || autoLevelMap[selectedOption]
 
-    get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-permission-response: ${selectedOption} requestId=${req.requestId}`))
+    get()._setSessionBuffers((prev) =>
+      appendDebugTrace(
+        prev,
+        sid,
+        `ui-permission-response: ${selectedOption} requestId=${req.requestId}`,
+      ),
+    )
     droid.respondPermission({ sessionId: sid, requestId: req.requestId, selectedOption })
 
     get()._setSessionBuffers((prev) => {
       const session = prev.get(sid)
       if (!session) return prev
-      const rest = (session.pendingPermissionRequests || []).filter((r) => r.requestId !== req.requestId)
+      const rest = (session.pendingPermissionRequests || []).filter(
+        (r) => r.requestId !== req.requestId,
+      )
       const next = new Map(prev)
       next.set(sid, {
         ...session,
@@ -1408,14 +1547,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return next
     })
 
-    if (newAutoLevel && (newAutoLevel === 'low' || newAutoLevel === 'medium' || newAutoLevel === 'high')) {
+    if (
+      newAutoLevel &&
+      (newAutoLevel === 'low' || newAutoLevel === 'medium' || newAutoLevel === 'high')
+    ) {
       void (async () => {
         try {
           await droid.updateSessionSettings({ sessionId: sid, autoLevel: newAutoLevel })
-          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-session-settings-update: auto=${newAutoLevel}`))
+          get()._setSessionBuffers((prev) =>
+            appendDebugTrace(prev, sid, `ui-session-settings-update: auto=${newAutoLevel}`),
+          )
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-session-settings-update-failed: ${msg}`))
+          get()._setSessionBuffers((prev) =>
+            appendDebugTrace(prev, sid, `ui-session-settings-update-failed: ${msg}`),
+          )
         }
       })()
     }
@@ -1427,12 +1573,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     const req = buf?.pendingAskUserRequests?.[0]
     if (!sid || !req) return
-    get()._setSessionBuffers((prev) => appendDebugTrace(prev, sid, `ui-askuser-response: cancelled=${Boolean(params.cancelled)} requestId=${req.requestId}`))
-    droid.respondAskUser({ sessionId: sid, requestId: req.requestId, cancelled: params.cancelled, answers: params.answers })
+    get()._setSessionBuffers((prev) =>
+      appendDebugTrace(
+        prev,
+        sid,
+        `ui-askuser-response: cancelled=${Boolean(params.cancelled)} requestId=${req.requestId}`,
+      ),
+    )
+    droid.respondAskUser({
+      sessionId: sid,
+      requestId: req.requestId,
+      cancelled: params.cancelled,
+      answers: params.answers,
+    })
     get()._setSessionBuffers((prev) => {
       const session = prev.get(sid)
       if (!session) return prev
-      const rest = (session.pendingAskUserRequests || []).filter((r) => r.requestId !== req.requestId)
+      const rest = (session.pendingAskUserRequests || []).filter(
+        (r) => r.requestId !== req.requestId,
+      )
       const next = new Map(prev)
       next.set(sid, { ...session, pendingAskUserRequests: rest })
       return next
@@ -1449,13 +1608,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
       info = await get()._resolveWorkspace(desiredDir)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`, { cause: err })
+      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`, {
+        cause: err,
+      })
     }
     if (!info) throw new Error(`Failed to resolve git workspace (dir: ${desiredDir})`)
 
     const desiredBranch = typeof meta.branch === 'string' ? meta.branch.trim() : ''
     if (desiredBranch && desiredBranch !== info.branch) {
-      const switched = await droid.switchWorkspace({ projectDir: info.projectDir || desiredDir, branch: desiredBranch })
+      const switched = await droid.switchWorkspace({
+        projectDir: info.projectDir || desiredDir,
+        branch: desiredBranch,
+      })
       if (!switched) throw new Error(`Failed to switch to branch ${desiredBranch}`)
       return switched
     }
@@ -1532,7 +1696,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const commonRepoRoot = resolved.repoRoot || repoRoot || sourceDir
         if (!commonRepoRoot) throw new Error('Missing repo root')
 
-        await s._ensureProjectSettingsInitialized({ repoRoot: commonRepoRoot, hintBranch: resolved.branch })
+        await s._ensureProjectSettingsInitialized({
+          repoRoot: commonRepoRoot,
+          hintBranch: resolved.branch,
+        })
 
         set({
           pendingNewSession: {
@@ -1614,9 +1781,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       prev.map((p) => ({
         ...p,
         sessions: p.sessions.map((sess) =>
-          sess.id === sessionId ? { ...sess, pinned: nextPinned } : sess
+          sess.id === sessionId ? { ...sess, pinned: nextPinned } : sess,
         ),
-      }))
+      })),
     )
     const buf = s.sessionBuffers.get(sessionId)
     if (buf) {
@@ -1650,7 +1817,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     })
 
     try {
-      const sessionMeta = get().projects.flatMap((p) => p.sessions).find((x) => x.id === sessionId)
+      const sessionMeta = get()
+        .projects.flatMap((p) => p.sessions)
+        .find((x) => x.id === sessionId)
       if (!sessionMeta) return
 
       get()._bumpSessionGeneration(sessionId)
@@ -1671,17 +1840,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const wasActive = get().activeSessionId === sessionId
       const deletedRepoRoot = String(sessionMeta.repoRoot || '').trim()
 
-      const allRemaining = get().projects
-        .flatMap((p) => p.sessions)
+      const allRemaining = get()
+        .projects.flatMap((p) => p.sessions)
         .filter((x) => x.id !== sessionId)
         .sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
       const sameProjectFallback = deletedRepoRoot
         ? allRemaining.filter((x) => (x.repoRoot || x.projectDir) === deletedRepoRoot)
         : []
-      const pickFallback = (sameProjectFallback[0] || allRemaining[0]) || null
+      const pickFallback = sameProjectFallback[0] || allRemaining[0] || null
 
       get()._setProjects((prev) =>
-        prev.map((p) => ({ ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) }))
+        prev.map((p) => ({ ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) })),
       )
       get()._setSessionBuffers((prev) => {
         const next = new Map(prev)
@@ -1718,15 +1887,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 repoRoot: aligned.repoRoot,
                 branch: aligned.branch,
                 workspaceType: aligned.workspaceType,
-                baseBranch: (data as any)?.baseBranch || pickFallback.baseBranch || aligned.baseBranch,
+                baseBranch:
+                  (data as any)?.baseBranch || pickFallback.baseBranch || aligned.baseBranch,
               })
               next.set(pickFallback.id, {
                 ...base,
                 messages: loaded,
                 model: data?.model || pickFallback.model || DEFAULT_MODEL,
                 autoLevel: data?.autoLevel || pickFallback.autoLevel || DEFAULT_AUTO_LEVEL,
-                reasoningEffort: (data as any)?.reasoningEffort || pickFallback.reasoningEffort || '',
-                apiKeyFingerprint: (data as any)?.apiKeyFingerprint || pickFallback.apiKeyFingerprint,
+                reasoningEffort:
+                  (data as any)?.reasoningEffort || pickFallback.reasoningEffort || '',
+                apiKeyFingerprint:
+                  (data as any)?.apiKeyFingerprint || pickFallback.apiKeyFingerprint,
               })
               return next
             })
@@ -1763,7 +1935,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   handleDeleteProject: (repoRoot) => {
     if (!repoRoot) return
 
-    set((prev) => (prev.pendingNewSession?.repoRoot === repoRoot ? { pendingNewSession: null } : {}))
+    set((prev) =>
+      prev.pendingNewSession?.repoRoot === repoRoot ? { pendingNewSession: null } : {},
+    )
 
     void (async () => {
       const targetProject = get().projects.find((p) => p.dir === repoRoot)
@@ -1783,7 +1957,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const wtProjectDir = String(session.projectDir || '').trim()
           if (wtRepoRoot && wtProjectDir) {
             try {
-              await droid.removeWorktree({ repoRoot: wtRepoRoot, worktreeDir: wtProjectDir, force: true })
+              await droid.removeWorktree({
+                repoRoot: wtRepoRoot,
+                worktreeDir: wtProjectDir,
+                force: true,
+              })
             } catch {
               // ignore
             }
@@ -1837,38 +2015,52 @@ const EMPTY_PENDING_SEND: Record<string, true> = {}
 
 const selectActiveBuffer = (s: AppStore) => s.sessionBuffers.get(s.activeSessionId)
 
-export const useMessages = () => useAppStore((s) => selectActiveBuffer(s)?.messages ?? EMPTY_MESSAGES)
-export const useIsRunning = () => useAppStore((s) => {
-  const buf = selectActiveBuffer(s)
-  return Boolean(buf?.isRunning)
-})
-export const useIsAnyRunning = () => useAppStore((s) =>
-  Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning))
-)
-export const useDebugTrace = () => useAppStore((s) => (selectActiveBuffer(s)?.debugTrace as string[] | undefined) ?? EMPTY_DEBUG_TRACE)
+export const useMessages = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.messages ?? EMPTY_MESSAGES)
+export const useIsRunning = () =>
+  useAppStore((s) => {
+    const buf = selectActiveBuffer(s)
+    return Boolean(buf?.isRunning)
+  })
+export const useIsAnyRunning = () =>
+  useAppStore((s) => Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning)))
+export const useDebugTrace = () =>
+  useAppStore(
+    (s) => (selectActiveBuffer(s)?.debugTrace as string[] | undefined) ?? EMPTY_DEBUG_TRACE,
+  )
 export const useSetupScript = () => useAppStore((s) => selectActiveBuffer(s)?.setupScript ?? null)
-export const useIsSetupBlocked = () => useAppStore((s) => {
-  const buf = selectActiveBuffer(s)
-  return Boolean(buf && (buf.isSetupRunning || buf.setupScript.status === 'failed'))
-})
+export const useIsSetupBlocked = () =>
+  useAppStore((s) => {
+    const buf = selectActiveBuffer(s)
+    return Boolean(buf && (buf.isSetupRunning || buf.setupScript.status === 'failed'))
+  })
 export const useModel = () => useAppStore((s) => selectActiveBuffer(s)?.model ?? DEFAULT_MODEL)
-export const useAutoLevel = () => useAppStore((s) => selectActiveBuffer(s)?.autoLevel ?? DEFAULT_AUTO_LEVEL)
-export const useReasoningEffort = () => useAppStore((s) => selectActiveBuffer(s)?.reasoningEffort ?? '')
+export const useAutoLevel = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.autoLevel ?? DEFAULT_AUTO_LEVEL)
+export const useReasoningEffort = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.reasoningEffort ?? '')
 export const useTokenUsage = () => useAppStore((s) => selectActiveBuffer(s)?.tokenUsage ?? null)
 export const useMcpServers = () => useAppStore((s) => selectActiveBuffer(s)?.mcpServers ?? null)
-export const useMcpAuthRequired = () => useAppStore((s) => selectActiveBuffer(s)?.mcpAuthRequired ?? null)
-export const useSettingsFlashAt = () => useAppStore((s) => selectActiveBuffer(s)?.settingsFlashAt ?? 0)
-export const useIsCancelling = () => useAppStore((s) => Boolean(selectActiveBuffer(s)?.isCancelling))
-export const usePendingPermissionRequest = () => useAppStore((s) => selectActiveBuffer(s)?.pendingPermissionRequests?.[0] ?? null)
-export const usePendingAskUserRequest = () => useAppStore((s) => selectActiveBuffer(s)?.pendingAskUserRequests?.[0] ?? null)
-export const usePendingSendMessageIds = () => useAppStore((s) => selectActiveBuffer(s)?.pendingSendMessageIds ?? EMPTY_PENDING_SEND)
-export const useActiveSessionTitle = () => useAppStore((s) => {
-  for (const p of s.projects) {
-    const sess = p.sessions.find((x) => x.id === s.activeSessionId)
-    if (sess) return sess.title
-  }
-  return ''
-})
+export const useMcpAuthRequired = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.mcpAuthRequired ?? null)
+export const useSettingsFlashAt = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.settingsFlashAt ?? 0)
+export const useIsCancelling = () =>
+  useAppStore((s) => Boolean(selectActiveBuffer(s)?.isCancelling))
+export const usePendingPermissionRequest = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.pendingPermissionRequests?.[0] ?? null)
+export const usePendingAskUserRequest = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.pendingAskUserRequests?.[0] ?? null)
+export const usePendingSendMessageIds = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.pendingSendMessageIds ?? EMPTY_PENDING_SEND)
+export const useActiveSessionTitle = () =>
+  useAppStore((s) => {
+    for (const p of s.projects) {
+      const sess = p.sessions.find((x) => x.id === s.activeSessionId)
+      if (sess) return sess.title
+    }
+    return ''
+  })
 
 export const useDroidVersion = () => useAppStore((s) => s.droidVersion)
 export const useAppVersion = () => useAppStore((s) => s.appVersion)
@@ -1877,7 +2069,8 @@ export const useTraceChainEnabled = () => useAppStore((s) => s.traceChainEnabled
 export const useShowDebugTrace = () => useAppStore((s) => s.showDebugTrace)
 export const useDebugTraceMaxLines = () => useAppStore((s) => s.debugTraceMaxLines)
 export const useLocalDiagnosticsEnabled = () => useAppStore((s) => s.localDiagnosticsEnabled)
-export const useLocalDiagnosticsRetentionDays = () => useAppStore((s) => s.localDiagnosticsRetentionDays)
+export const useLocalDiagnosticsRetentionDays = () =>
+  useAppStore((s) => s.localDiagnosticsRetentionDays)
 export const useLocalDiagnosticsMaxTotalMb = () => useAppStore((s) => s.localDiagnosticsMaxTotalMb)
 export const useDiagnosticsDir = () => useAppStore((s) => s.diagnosticsDir)
 export const useCommitMessageModelId = () => useAppStore((s) => s.commitMessageModelId)

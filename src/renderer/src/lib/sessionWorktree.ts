@@ -55,7 +55,9 @@ function randomBase36(len: number): string {
 }
 
 export function sanitizeWorktreePrefix(prefix: string): string {
-  const raw = String(prefix || '').trim().replace(/^\/+|\/+$/g, '')
+  const raw = String(prefix || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
   const cleaned = raw
     .replace(/\s+/g, '-')
     .replace(/[^A-Za-z0-9._-]+/g, '-')

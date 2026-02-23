@@ -30,7 +30,7 @@ async function main() {
     const appStateStore = createAppStateStore({ baseDir })
     const state = await appStateStore.load()
     const lanEnabled = (state as any)?.lanAccessEnabled === true
-    host = (enabled && lanEnabled) ? '0.0.0.0' : '127.0.0.1'
+    host = enabled && lanEnabled ? '0.0.0.0' : '127.0.0.1'
   }
 
   const started = await startApiServer({
@@ -45,8 +45,7 @@ async function main() {
   // eslint-disable-next-line no-console
   console.log(`Data dir: ${started.baseDir}`)
   // eslint-disable-next-line no-console
-  console.log(`Web UI: ${enabled ? (webRootDir || '(missing)') : 'disabled'}`)
+  console.log(`Web UI: ${enabled ? webRootDir || '(missing)' : 'disabled'}`)
 }
 
 void main()
-

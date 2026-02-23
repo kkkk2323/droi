@@ -3,11 +3,32 @@ import { motion } from 'framer-motion'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../lib/utils'
 import {
-  ChevronDown, ChevronRight, FileCode, FolderOpen, Terminal,
-  FileEdit, Play, Search, Globe, Loader2, Check, Paperclip, X, BookOpen, Brain,
+  ChevronDown,
+  ChevronRight,
+  FileCode,
+  FolderOpen,
+  Terminal,
+  FileEdit,
+  Play,
+  Search,
+  Globe,
+  Loader2,
+  Check,
+  Paperclip,
+  X,
+  BookOpen,
+  Brain,
 } from 'lucide-react'
 import { Streamdown } from 'streamdown'
-import type { ChatMessage, TextBlock, ToolCallBlock, AttachmentBlock, CommandBlock, SkillBlock, ThinkingBlock } from '@/types'
+import type {
+  ChatMessage,
+  TextBlock,
+  ToolCallBlock,
+  AttachmentBlock,
+  CommandBlock,
+  SkillBlock,
+  ThinkingBlock,
+} from '@/types'
 import type { SessionSetupState, PendingPermissionRequest } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
 import { isTodoWriteBlock } from './TodoPanel'
@@ -25,9 +46,6 @@ function attachmentSrc(path: string): string {
   }
   return `local-file://${encodeURIComponent(path)}`
 }
-
-
-
 
 interface ChatViewProps {
   messages: ChatMessage[]
@@ -60,7 +78,9 @@ function ChatView({
 }: ChatViewProps): React.JSX.Element {
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const isAtBottomRef = useRef(true)
-  const projectName = activeProjectDir ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir : ''
+  const projectName = activeProjectDir
+    ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir
+    : ''
 
   const prevCountRef = useRef(messages.length)
   useEffect(() => {
@@ -78,9 +98,8 @@ function ChatView({
   }, [pendingPermissionRequest])
 
   if (messages.length === 0) {
-    const showBootstrapCards = !noProject && Boolean(
-      (setupScript && setupScript.status !== 'idle') || workspacePrepStatus,
-    )
+    const showBootstrapCards =
+      !noProject && Boolean((setupScript && setupScript.status !== 'idle') || workspacePrepStatus)
 
     return (
       <motion.div
@@ -92,9 +111,11 @@ function ChatView({
         <div className="w-full max-w-2xl space-y-5">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-              {noProject
-                ? <FolderOpen className="size-7 text-muted-foreground" />
-                : <Terminal className="size-7 text-muted-foreground" />}
+              {noProject ? (
+                <FolderOpen className="size-7 text-muted-foreground" />
+              ) : (
+                <Terminal className="size-7 text-muted-foreground" />
+              )}
             </div>
             <div>
               <h2 className="text-base font-medium text-foreground">
@@ -141,37 +162,50 @@ function ChatView({
     isAtBottomRef.current = atBottom
   }, [])
 
-  const renderItem = useCallback((_index: number, msg: ChatMessage) => {
-    const isLast = msg === messages[messages.length - 1]
-    return (
-      <div className="mx-auto max-w-3xl px-6 overflow-hidden">
-        <MessageEntry
-          message={msg}
-          isStreaming={isLast && isStreamingLast}
-          isSessionRunning={isRunning}
-          isPendingSend={Boolean(pendingSendMessageIds[msg.id])}
-        />
-      </div>
-    )
-  }, [messages, isStreamingLast, isRunning, pendingSendMessageIds])
-
-  const footer = useCallback(() => (
-    <div className="mx-auto max-w-3xl px-6 pb-6 overflow-hidden">
-      {pendingPermissionRequest && isExitSpec && onRespondPermission && (
-        <SpecReviewCard
-          request={pendingPermissionRequest}
-          onRespond={onRespondPermission}
-          onRequestChanges={onRequestSpecChanges || (() => {})}
-        />
-      )}
-      {isRunning && lastMsg?.role !== 'assistant' && (
-        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" />
-          <span>Thinking...</span>
+  const renderItem = useCallback(
+    (_index: number, msg: ChatMessage) => {
+      const isLast = msg === messages[messages.length - 1]
+      return (
+        <div className="mx-auto max-w-3xl px-6 overflow-hidden">
+          <MessageEntry
+            message={msg}
+            isStreaming={isLast && isStreamingLast}
+            isSessionRunning={isRunning}
+            isPendingSend={Boolean(pendingSendMessageIds[msg.id])}
+          />
         </div>
-      )}
-    </div>
-  ), [pendingPermissionRequest, isExitSpec, onRespondPermission, onRequestSpecChanges, isRunning, lastMsg])
+      )
+    },
+    [messages, isStreamingLast, isRunning, pendingSendMessageIds],
+  )
+
+  const footer = useCallback(
+    () => (
+      <div className="mx-auto max-w-3xl px-6 pb-6 overflow-hidden">
+        {pendingPermissionRequest && isExitSpec && onRespondPermission && (
+          <SpecReviewCard
+            request={pendingPermissionRequest}
+            onRespond={onRespondPermission}
+            onRequestChanges={onRequestSpecChanges || (() => {})}
+          />
+        )}
+        {isRunning && lastMsg?.role !== 'assistant' && (
+          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            <span>Thinking...</span>
+          </div>
+        )}
+      </div>
+    ),
+    [
+      pendingPermissionRequest,
+      isExitSpec,
+      onRespondPermission,
+      onRequestSpecChanges,
+      isRunning,
+      lastMsg,
+    ],
+  )
 
   return (
     <Virtuoso
@@ -207,9 +241,10 @@ function MessageEntry({
   if (message.role === 'user') {
     const cmd = message.blocks.find((b): b is CommandBlock => b.kind === 'command')
     const skill = message.blocks.find((b): b is SkillBlock => b.kind === 'skill')
-    const text = message.blocks.find((b) => b.kind === 'text')?.kind === 'text'
-      ? (message.blocks.find((b) => b.kind === 'text') as TextBlock).content
-      : ''
+    const text =
+      message.blocks.find((b) => b.kind === 'text')?.kind === 'text'
+        ? (message.blocks.find((b) => b.kind === 'text') as TextBlock).content
+        : ''
     const attachments = message.blocks.filter((b): b is AttachmentBlock => b.kind === 'attachment')
     const imageAttachments = attachments.filter((a) => isImageFile(a.name))
     const fileAttachments = attachments.filter((a) => !isImageFile(a.name))
@@ -224,7 +259,7 @@ function MessageEntry({
                 <span
                   className={cn(
                     'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-                    'bg-muted text-muted-foreground'
+                    'bg-muted text-muted-foreground',
                   )}
                 >
                   {stateLabel}
@@ -244,7 +279,9 @@ function MessageEntry({
                       alt={att.name}
                       className="size-full object-cover"
                       onError={() => {
-                        console.warn(`[attachment-image-load-failed] name=${att.name} path=${att.path}`)
+                        console.warn(
+                          `[attachment-image-load-failed] name=${att.name} path=${att.path}`,
+                        )
                       }}
                     />
                   </div>
@@ -266,7 +303,9 @@ function MessageEntry({
                 </span>
               </div>
             )}
-            {text && <p className="whitespace-pre-wrap break-words text-sm text-foreground">{text}</p>}
+            {text && (
+              <p className="whitespace-pre-wrap break-words text-sm text-foreground">{text}</p>
+            )}
             {fileAttachments.length > 0 && (
               <div className={cn('flex flex-wrap gap-1.5', text && 'mt-2')}>
                 {fileAttachments.map((att, i) => (
@@ -299,7 +338,9 @@ function MessageEntry({
   }
 
   const visibleBlocks = message.blocks.filter((b) => !isTodoWriteBlock(b))
-  const hasNonThinkingContent = visibleBlocks.some((b) => (b.kind === 'text' && b.content.trim()) || b.kind === 'tool_call')
+  const hasNonThinkingContent = visibleBlocks.some(
+    (b) => (b.kind === 'text' && b.content.trim()) || b.kind === 'tool_call',
+  )
 
   return (
     <div className="py-1">
@@ -317,11 +358,7 @@ function MessageEntry({
         if (block.kind === 'text') {
           const isLastBlock = i === visibleBlocks.length - 1
           return (
-            <AgentText
-              key={i}
-              content={block.content}
-              isStreaming={isStreaming && isLastBlock}
-            />
+            <AgentText key={i} content={block.content} isStreaming={isStreaming && isLastBlock} />
           )
         }
         if (block.kind === 'tool_call') {
@@ -333,7 +370,15 @@ function MessageEntry({
   )
 }
 
-function ThinkingSection({ content, isStreaming, defaultExpanded }: { content: string; isStreaming: boolean; defaultExpanded: boolean }) {
+function ThinkingSection({
+  content,
+  isStreaming,
+  defaultExpanded,
+}: {
+  content: string
+  isStreaming: boolean
+  defaultExpanded: boolean
+}) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const wasExpandedByDefault = useRef(defaultExpanded)
 
@@ -351,22 +396,27 @@ function ThinkingSection({ content, isStreaming, defaultExpanded }: { content: s
       <button
         className={cn(
           'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors',
-          'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+          'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         )}
         onClick={() => setExpanded(!expanded)}
       >
-        {isStreaming
-          ? <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
-          : <Brain className="size-3 shrink-0 text-muted-foreground" />}
+        {isStreaming ? (
+          <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
+        ) : (
+          <Brain className="size-3 shrink-0 text-muted-foreground" />
+        )}
         <span className="font-medium">Thinking</span>
         {!expanded && (
           <span className="truncate font-mono opacity-40">
-            {content.trim().slice(0, 80)}{content.trim().length > 80 ? '...' : ''}
+            {content.trim().slice(0, 80)}
+            {content.trim().length > 80 ? '...' : ''}
           </span>
         )}
-        {expanded
-          ? <ChevronDown className="ml-auto size-3 shrink-0 opacity-40" />
-          : <ChevronRight className="ml-auto size-3 shrink-0 opacity-40" />}
+        {expanded ? (
+          <ChevronDown className="ml-auto size-3 shrink-0 opacity-40" />
+        ) : (
+          <ChevronRight className="ml-auto size-3 shrink-0 opacity-40" />
+        )}
       </button>
 
       {expanded && (
@@ -390,7 +440,13 @@ function AgentText({ content, isStreaming }: { content: string; isStreaming: boo
   )
 }
 
-function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSessionRunning: boolean }) {
+function ToolActivity({
+  block,
+  isSessionRunning,
+}: {
+  block: ToolCallBlock
+  isSessionRunning: boolean
+}) {
   const [expanded, setExpanded] = useState(false)
   const hasResult = block.result !== undefined
   const hasProgress = typeof block.progress === 'string' && block.progress.trim().length > 0
@@ -408,7 +464,7 @@ function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSes
       <button
         className={cn(
           'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors',
-          'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+          'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         )}
         onClick={() => setExpanded(!expanded)}
       >
@@ -424,11 +480,17 @@ function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSes
           <span className="size-3 shrink-0 text-muted-foreground">{icon}</span>
         )}
         <span className="font-medium">{block.toolName}</span>
-        {skillName && <span className="ml-1 truncate rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-600">{skillName}</span>}
+        {skillName && (
+          <span className="ml-1 truncate rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-600">
+            {skillName}
+          </span>
+        )}
         {summary && <span className="truncate font-mono opacity-60">{summary}</span>}
-        {expanded
-          ? <ChevronDown className="ml-auto size-3 shrink-0 opacity-40" />
-          : <ChevronRight className="ml-auto size-3 shrink-0 opacity-40" />}
+        {expanded ? (
+          <ChevronDown className="ml-auto size-3 shrink-0 opacity-40" />
+        ) : (
+          <ChevronRight className="ml-auto size-3 shrink-0 opacity-40" />
+        )}
       </button>
 
       {expanded && (
@@ -441,7 +503,8 @@ function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSes
             />
           ) : block.parameters.command ? (
             <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-300">
-              <span className="text-zinc-500">$ </span>{String(block.parameters.command)}
+              <span className="text-zinc-500">$ </span>
+              {String(block.parameters.command)}
             </pre>
           ) : (
             <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-600">
@@ -464,26 +527,44 @@ function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSes
   )
 }
 
-function DiffView({ filePath, oldStr, newStr }: { filePath: string; oldStr: string; newStr: string }) {
+function DiffView({
+  filePath,
+  oldStr,
+  newStr,
+}: {
+  filePath: string
+  oldStr: string
+  newStr: string
+}) {
   const fileName = filePath.split('/').slice(-2).join('/')
   return (
     <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5">
       {fileName && <div className="mb-1 text-zinc-500">{fileName}</div>}
       {oldStr.split('\n').map((line, i) => (
         <div key={`o${i}`} className="text-red-400/80">
-          <span className="select-none text-red-600/50">- </span>{line}
+          <span className="select-none text-red-600/50">- </span>
+          {line}
         </div>
       ))}
       {newStr.split('\n').map((line, i) => (
         <div key={`n${i}`} className="text-emerald-400/80">
-          <span className="select-none text-emerald-600/50">+ </span>{line}
+          <span className="select-none text-emerald-600/50">+ </span>
+          {line}
         </div>
       ))}
     </pre>
   )
 }
 
-function ResultView({ result, isError, isCode }: { result: string; isError?: boolean; isCode: boolean }) {
+function ResultView({
+  result,
+  isError,
+  isCode,
+}: {
+  result: string
+  isError?: boolean
+  isCode: boolean
+}) {
   const [showFull, setShowFull] = useState(false)
   const maxLen = 500
   const truncated = result.length > maxLen && !showFull
@@ -494,7 +575,7 @@ function ResultView({ result, isError, isCode }: { result: string; isError?: boo
       <pre
         className={cn(
           'max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md px-3 py-2 text-[11px] leading-5',
-          isError ? 'bg-destructive/5 text-destructive-foreground' : 'bg-zinc-50 text-zinc-600'
+          isError ? 'bg-destructive/5 text-destructive-foreground' : 'bg-zinc-50 text-zinc-600',
         )}
       >
         {display}
@@ -513,7 +594,9 @@ function ResultView({ result, isError, isCode }: { result: string; isError?: boo
 
 function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void }) {
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])

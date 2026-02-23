@@ -3,10 +3,7 @@ import type { Hono } from 'hono'
 import type { ServerEnv } from '../types.ts'
 import { getContentType, safeJoin } from '../../utils/path.ts'
 
-async function serveStaticFile(params: {
-  webRootDir: string
-  reqPath: string
-}): Promise<Response> {
+async function serveStaticFile(params: { webRootDir: string; reqPath: string }): Promise<Response> {
   const { webRootDir, reqPath } = params
   const filePath = safeJoin(webRootDir, reqPath)
   if (!filePath) return new Response('Bad Request', { status: 400 })

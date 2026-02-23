@@ -67,7 +67,10 @@ export function ModelSelect({
   if (variant === 'compact') {
     return (
       <Select value={value} onValueChange={(v) => v && onChange(v)}>
-        <SelectTrigger size="sm" className={`h-7 w-auto shrink-0 gap-1.5 rounded-lg border-none bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground ${className || ''}`}>
+        <SelectTrigger
+          size="sm"
+          className={`h-7 w-auto shrink-0 gap-1.5 rounded-lg border-none bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground ${className || ''}`}
+        >
           {provider && <ModelIcon provider={provider} size={14} />}
           <span className="hidden md:flex flex-1 text-left">{label}</span>
         </SelectTrigger>
@@ -116,7 +119,9 @@ export function ModelSelect({
           <span className="flex items-center gap-2">
             {provider && <ModelIcon provider={provider} size={14} />}
             <span>{label}</span>
-            {multiplier && <span className="ml-2 text-[10px] text-muted-foreground">{multiplier}</span>}
+            {multiplier && (
+              <span className="ml-2 text-[10px] text-muted-foreground">{multiplier}</span>
+            )}
           </span>
         </SelectValue>
       </SelectTrigger>
@@ -126,7 +131,9 @@ export function ModelSelect({
             <SelectGroup>
               <SelectLabel className="px-2">Custom</SelectLabel>
               {customModels.map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                <SelectItem key={m.id} value={m.id}>
+                  {m.displayName}
+                </SelectItem>
               ))}
             </SelectGroup>
             <SelectSeparator />

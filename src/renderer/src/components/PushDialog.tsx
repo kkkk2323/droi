@@ -60,12 +60,21 @@ export function PushDialog({ projectDir, isRunning }: PushDialogProps) {
   if (!projectDir) return null
 
   return (
-    <AlertDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setError(''); setResult('') } }}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v)
+        if (!v) {
+          setError('')
+          setResult('')
+        }
+      }}
+    >
       <AlertDialogTrigger
         render={<button type="button" />}
         className={cn(
           'flex items-center gap-1.5 rounded-md border border-border bg-card/80 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent',
-          disabled && 'pointer-events-none opacity-50'
+          disabled && 'pointer-events-none opacity-50',
         )}
         disabled={disabled}
       >
@@ -83,7 +92,8 @@ export function PushDialog({ projectDir, isRunning }: PushDialogProps) {
 
         <div className="space-y-2">
           <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-            Branch: <span className="font-mono text-foreground">{effectiveBranch || 'unknown'}</span>
+            Branch:{' '}
+            <span className="font-mono text-foreground">{effectiveBranch || 'unknown'}</span>
           </div>
           {error && <div className="text-xs text-destructive-foreground">{error}</div>}
           {result && <div className="text-xs text-emerald-600">{result}</div>}

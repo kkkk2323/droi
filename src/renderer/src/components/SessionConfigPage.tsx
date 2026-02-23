@@ -3,12 +3,7 @@ import { Popover } from '@base-ui/react/popover'
 import { GitBranch, FolderOpen, ChevronDown, Search, Plus, Check } from 'lucide-react'
 import { useGitBranchesQuery, useGitWorktreeBranchesInUseQuery } from '@/hooks/useGitStatus'
 import { SessionBootstrapCards } from '@/components/SessionBootstrapCards'
-import {
-  usePendingNewSession,
-  useIsCreatingSession,
-  useWorkspaceError,
-  useActions,
-} from '@/store'
+import { usePendingNewSession, useIsCreatingSession, useWorkspaceError, useActions } from '@/store'
 
 function normalizeBranches(raw: string[]): string[] {
   return Array.from(new Set((raw || []).filter(Boolean)))
@@ -107,9 +102,7 @@ function BranchPicker({
               {!search.trim() && branches.length > 0 && (
                 <div className="mx-2 my-1 h-px bg-border" />
               )}
-              {loading && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">Loading...</div>
-              )}
+              {loading && <div className="px-3 py-2 text-xs text-muted-foreground">Loading...</div>}
               {!loading && filteredAvailable.length === 0 && filteredInUse.length === 0 && (
                 <div className="px-3 py-2 text-xs text-muted-foreground">No branches found</div>
               )}
@@ -125,7 +118,9 @@ function BranchPicker({
                 >
                   <GitBranch className="size-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 truncate font-mono text-xs">{b}</span>
-                  {isExistingBranch && b === selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
+                  {isExistingBranch && b === selected && (
+                    <Check className="size-3.5 text-emerald-600 shrink-0" />
+                  )}
                 </button>
               ))}
 
@@ -148,7 +143,9 @@ function BranchPicker({
                   <GitBranch className="size-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 truncate font-mono text-xs">{b}</span>
                   <span className="text-[10px] text-muted-foreground shrink-0">In use</span>
-                  {isExistingBranch && b === selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
+                  {isExistingBranch && b === selected && (
+                    <Check className="size-3.5 text-emerald-600 shrink-0" />
+                  )}
                 </button>
               ))}
             </div>
@@ -167,12 +164,25 @@ export function SessionConfigPage() {
 
   const repoRoot = String(pending?.repoRoot || '').trim()
 
-  const { data: rawBranches = [], isLoading: loadingBranches } = useGitBranchesQuery(repoRoot, Boolean(repoRoot))
+  const { data: rawBranches = [], isLoading: loadingBranches } = useGitBranchesQuery(
+    repoRoot,
+    Boolean(repoRoot),
+  )
   const branches = useMemo(() => normalizeBranches(rawBranches || []), [rawBranches])
 
-  const { data: inUse = [], isLoading: loadingInUse } = useGitWorktreeBranchesInUseQuery(repoRoot, Boolean(repoRoot))
-  const inUseSet = useMemo(() => new Set((inUse || []).map((x) => String((x as any)?.branch || '').trim()).filter(Boolean)), [inUse])
-  const availableBranches = useMemo(() => branches.filter((b) => !inUseSet.has(b)), [branches, inUseSet])
+  const { data: inUse = [], isLoading: loadingInUse } = useGitWorktreeBranchesInUseQuery(
+    repoRoot,
+    Boolean(repoRoot),
+  )
+  const inUseSet = useMemo(
+    () =>
+      new Set((inUse || []).map((x) => String((x as any)?.branch || '').trim()).filter(Boolean)),
+    [inUse],
+  )
+  const availableBranches = useMemo(
+    () => branches.filter((b) => !inUseSet.has(b)),
+    [branches, inUseSet],
+  )
   const inUseBranches = useMemo(() => branches.filter((b) => inUseSet.has(b)), [branches, inUseSet])
 
   if (!pending) return null
@@ -189,9 +199,7 @@ export function SessionConfigPage() {
           </div>
           <div>
             <h2 className="text-base font-medium text-foreground">New Session</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Send your first message to start
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Send your first message to start</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
@@ -205,15 +213,17 @@ export function SessionConfigPage() {
               loading={loadingBranches || loadingInUse}
               selected={pending.branch}
               isExistingBranch={Boolean(pending.isExistingBranch)}
-              onSelectExisting={(branch) => updatePendingNewSession({ branch, isExistingBranch: true })}
-              onSelectNewWorktree={() => updatePendingNewSession({ branch: '', isExistingBranch: false })}
+              onSelectExisting={(branch) =>
+                updatePendingNewSession({ branch, isExistingBranch: true })
+              }
+              onSelectNewWorktree={() =>
+                updatePendingNewSession({ branch: '', isExistingBranch: false })
+              }
             />
           </div>
         </div>
 
-        {isCreatingSession && (
-          <SessionBootstrapCards workspacePrepStatus="running" />
-        )}
+        {isCreatingSession && <SessionBootstrapCards workspacePrepStatus="running" />}
 
         {workspaceError && (
           <div className="text-sm text-center text-destructive-foreground">{workspaceError}</div>
