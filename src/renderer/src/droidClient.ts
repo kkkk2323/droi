@@ -432,7 +432,7 @@ const browserClient: DroidClientAPI = {
         markStreamIdle(sid)
       }
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to dispatch exec')
+      throw new Error(msg || 'Failed to dispatch exec', { cause: err })
     }
   },
 
@@ -527,7 +527,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as SlashCommandDef[]
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to fetch slash commands')
+      throw new Error(msg || 'Failed to fetch slash commands', { cause: err })
     }
   },
 
@@ -538,7 +538,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as SkillDef[]
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to fetch skills')
+      throw new Error(msg || 'Failed to fetch skills', { cause: err })
     }
   },
 
@@ -766,7 +766,7 @@ const browserClient: DroidClientAPI = {
       return { path: '(downloaded)' }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to export diagnostics')
+      throw new Error(msg || 'Failed to export diagnostics', { cause: err })
     }
   },
   openPath: async () => ({ ok: true as const }),
@@ -943,7 +943,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as PersistedAppState
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to update project settings')
+      throw new Error(msg || 'Failed to update project settings', { cause: err })
     }
   },
 
@@ -1020,7 +1020,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as WorkspaceInfo | null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to fetch workspace info')
+      throw new Error(msg || 'Failed to fetch workspace info', { cause: err })
     }
   },
   switchWorkspace: async (params) => {
@@ -1034,7 +1034,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as WorkspaceInfo | null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to switch workspace')
+      throw new Error(msg || 'Failed to switch workspace', { cause: err })
     }
   },
   createWorkspace: async (params: WorkspaceCreateParams) => {
@@ -1048,7 +1048,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as WorkspaceInfo | null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to create workspace')
+      throw new Error(msg || 'Failed to create workspace', { cause: err })
     }
   },
   removeWorktree: async (params): Promise<RemoveWorktreeResult> => {
@@ -1062,7 +1062,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as RemoveWorktreeResult
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to remove worktree')
+      throw new Error(msg || 'Failed to remove worktree', { cause: err })
     }
   },
   pushBranch: async (params): Promise<PushBranchResult> => {
@@ -1076,7 +1076,7 @@ const browserClient: DroidClientAPI = {
       return (await res.json()) as PushBranchResult
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(msg || 'Failed to push branch')
+      throw new Error(msg || 'Failed to push branch', { cause: err })
     }
   },
 

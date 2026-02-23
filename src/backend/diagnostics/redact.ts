@@ -59,8 +59,8 @@ export function redactText(raw: string): string {
   s = maskQueryParam(s, 'apiKey')
 
   // Env-style secrets.
-  s = s.replace(/FACTORY_API_KEY\\s*[:=]\\s*[^\\s\"']+/gi, 'FACTORY_API_KEY=[REDACTED]')
-  s = s.replace(/DROID_REMOTE_ACCESS_KEY\\s*[:=]\\s*[^\\s\"']+/gi, 'DROID_REMOTE_ACCESS_KEY=[REDACTED]')
+  s = s.replace(/FACTORY_API_KEY\\s*[:=]\\s*[^\\s"']+/gi, 'FACTORY_API_KEY=[REDACTED]')
+  s = s.replace(/DROID_REMOTE_ACCESS_KEY\\s*[:=]\\s*[^\\s"']+/gi, 'DROID_REMOTE_ACCESS_KEY=[REDACTED]')
 
   // Generic token-ish patterns.
   s = s.replace(/\\b(fk-[A-Za-z0-9_-]{8,})\\b/g, '[REDACTED_KEY]')

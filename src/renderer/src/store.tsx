@@ -1449,7 +1449,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       info = await get()._resolveWorkspace(desiredDir)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`)
+      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`, { cause: err })
     }
     if (!info) throw new Error(`Failed to resolve git workspace (dir: ${desiredDir})`)
 
