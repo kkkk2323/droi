@@ -143,7 +143,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
                 return (
                   <Collapsible
-                    key={`${project.dir}-${isActiveProject}`}
+                    key={project.dir}
                     defaultOpen={isActiveProject}
                     render={<SidebarMenuItem className="group/project" />}
                   >
