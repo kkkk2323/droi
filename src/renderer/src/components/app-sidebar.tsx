@@ -310,7 +310,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                   <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
                                     {branchName && <span className="truncate">{branchName}</span>}
                                     {branchName && <span>·</span>}
-                                    <span className="shrink-0">{formatRelativeTime(session.savedAt)}</span>
+                                    <span className="shrink-0">{formatRelativeTime(session.lastMessageAt ?? session.savedAt)}</span>
                                   </span>
                                 </SidebarMenuSubButton>
                                 <DropdownMenu>
