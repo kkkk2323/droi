@@ -1,3 +1,12 @@
+## 0.10.0 - 2026-02-23
+
+### Features
+- Integrate oxlint and oxfmt for linting and formatting
+- Update linting rules and clean up unused imports across components
+
+### Refactor
+- Improve code readability and maintainability
+
 ## 0.9.0 - 2026-02-23
 
 ### Features
