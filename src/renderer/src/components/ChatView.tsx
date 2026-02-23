@@ -406,7 +406,7 @@ function ToolActivity({ block, isSessionRunning }: { block: ToolCallBlock; isSes
         {isLoading ? (
           <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
         ) : block.isError ? (
-          <span className="size-3 shrink-0 text-red-500">{icon}</span>
+          <span className="size-3 shrink-0 text-destructive-foreground">{icon}</span>
         ) : isSkill ? (
           <span className="size-3 shrink-0 text-amber-500">{icon}</span>
         ) : hasResult ? (

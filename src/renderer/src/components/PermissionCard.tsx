@@ -184,7 +184,7 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
               type="button"
               className={`rounded-lg px-3 py-1.5 text-xs transition-all active:scale-[0.98] ${
                 opt === 'cancel'
-                  ? 'text-red-500 hover:bg-red-500/10'
+                  ? 'text-destructive-foreground hover:bg-destructive/10'
                   : 'bg-foreground text-background hover:bg-foreground/80'
               }`}
               onClick={() => onRespond({ selectedOption: opt })}

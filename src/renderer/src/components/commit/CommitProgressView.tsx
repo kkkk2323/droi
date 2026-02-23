@@ -19,7 +19,7 @@ const STATUS_ICON: Record<WorkflowStepStatus, React.ReactNode> = {
   pending: <Circle className="size-4 text-muted-foreground/40" />,
   running: <Loader2 className="size-4 animate-spin text-primary" />,
   done: <Check className="size-4 text-emerald-500" />,
-  error: <X className="size-4 text-red-500" />,
+  error: <X className="size-4 text-destructive-foreground" />,
 }
 
 const STEP_LABELS: Record<WorkflowStepName, string> = {
@@ -43,7 +43,7 @@ export function CommitProgressView({ steps, error }: CommitProgressViewProps) {
           className={cn(
             'flex items-center gap-3 rounded-md px-3 py-2 text-xs transition-colors',
             s.status === 'running' && 'bg-primary/5',
-            s.status === 'error' && 'bg-red-500/5',
+            s.status === 'error' && 'bg-destructive/5',
           )}
         >
           <span className="shrink-0">{STATUS_ICON[s.status]}</span>
@@ -52,7 +52,7 @@ export function CommitProgressView({ steps, error }: CommitProgressViewProps) {
             s.status === 'pending' && 'text-muted-foreground/50',
             s.status === 'running' && 'text-foreground',
             s.status === 'done' && 'text-foreground/70',
-            s.status === 'error' && 'text-red-500',
+            s.status === 'error' && 'text-destructive-foreground',
           )}>
             {s.label}
           </span>

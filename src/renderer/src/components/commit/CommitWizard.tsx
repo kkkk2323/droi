@@ -329,7 +329,7 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-1 divide-y divide-border">
+          <div className="space-y-1 divide-y divide-border min-w-0">
             <CommitReviewStep
               branch={branch}
               filesToCommit={filesToCommit}
