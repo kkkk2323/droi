@@ -1,3 +1,12 @@
+## 0.7.1 - 2026-02-23
+
+### Refactor
+- Refine UI indicators and optimize sidebar rendering
+- Extract AppInitializer and project helpers from store
+
+### CI
+- Parallelize ARM64 and x64 DMG builds across separate runners
+
 ## 0.7.0 - 2026-02-22
 
 ### Features
