@@ -155,6 +155,16 @@ const droidAPI: DroidClientAPI = {
     return () => ipcRenderer.removeListener('git:commit-workflow-progress', handler)
   },
   getCustomModels: () => ipcRenderer.invoke('factory:getCustomModels'),
+
+  // Updater
+  checkForUpdate: () => ipcRenderer.invoke('updater:check'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  relaunchApp: () => ipcRenderer.invoke('updater:relaunch'),
+  onUpdateProgress: (callback) => {
+    const handler = (_event: IpcRendererEvent, progress: any) => callback(progress)
+    ipcRenderer.on('updater:progress', handler)
+    return () => ipcRenderer.removeListener('updater:progress', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('droid', droidAPI)

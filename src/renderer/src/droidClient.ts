@@ -1219,6 +1219,12 @@ const browserClient: DroidClientAPI = {
       return []
     }
   },
+
+  // Updater (not available in browser mode)
+  checkForUpdate: async () => ({ available: false }),
+  installUpdate: async () => {},
+  relaunchApp: async () => {},
+  onUpdateProgress: () => () => {},
 }
 
 export function getDroidClient(): DroidClientAPI {
@@ -1295,6 +1301,14 @@ export function getDroidClient(): DroidClientAPI {
       merged.restartSessionWithActiveKey = browserClient.restartSessionWithActiveKey
     if (typeof (merged as any).onSessionIdReplaced !== 'function')
       merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
+    if (typeof (merged as any).checkForUpdate !== 'function')
+      merged.checkForUpdate = browserClient.checkForUpdate
+    if (typeof (merged as any).installUpdate !== 'function')
+      merged.installUpdate = browserClient.installUpdate
+    if (typeof (merged as any).relaunchApp !== 'function')
+      merged.relaunchApp = browserClient.relaunchApp
+    if (typeof (merged as any).onUpdateProgress !== 'function')
+      merged.onUpdateProgress = browserClient.onUpdateProgress
     return merged as DroidClientAPI
   }
   return browserClient
