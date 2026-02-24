@@ -2,6 +2,7 @@ import { resolveDroidPath } from '../resolveDroidPath.ts'
 import { randomUUID } from 'crypto'
 import type {
   DroidAutonomyLevel,
+  DroidInteractionMode,
   DroidPermissionOption,
   JsonRpcNotification,
   JsonRpcRequest,
@@ -27,6 +28,7 @@ export interface SendUserMessageParams {
   machineId: string
   prompt: string
   modelId?: string
+  interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
   reasoningEffort?: string
   env?: Record<string, string | undefined>
@@ -36,6 +38,7 @@ export interface CreateSessionParams {
   cwd: string
   machineId: string
   modelId?: string
+  interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
   reasoningEffort?: string
   env?: Record<string, string | undefined>
@@ -81,6 +84,7 @@ export class DroidJsonRpcManager {
       const init = await session.ensureInitialized(
         {
           modelId: params.modelId,
+          interactionMode: params.interactionMode,
           autonomyLevel: params.autonomyLevel,
           reasoningEffort: params.reasoningEffort,
         },
@@ -152,6 +156,7 @@ export class DroidJsonRpcManager {
     try {
       const init = await session.ensureInitialized({
         modelId: params.modelId,
+        interactionMode: params.interactionMode,
         autonomyLevel: params.autonomyLevel,
         reasoningEffort: params.reasoningEffort,
       })

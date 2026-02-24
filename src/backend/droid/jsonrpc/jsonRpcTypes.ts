@@ -40,7 +40,10 @@ export interface JsonRpcNotification extends JsonRpcBase {
 
 export type JsonRpcMessage = JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
 
-export type DroidAutonomyLevel = 'normal' | 'spec' | 'auto-low' | 'auto-medium' | 'auto-high'
+export type DroidInteractionMode = 'spec' | 'auto'
+
+// Tool permission level (equivalent to `droid exec --auto <level>` semantics).
+export type DroidAutonomyLevel = 'off' | 'low' | 'medium' | 'high'
 
 export type DroidPermissionOption =
   | 'proceed_once'

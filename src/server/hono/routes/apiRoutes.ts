@@ -28,6 +28,7 @@ import {
 import { isDirectory } from '../../../backend/utils/fs.ts'
 import type {
   DroidAutonomyLevel,
+  DroidInteractionMode,
   DroidPermissionOption,
   GenerateCommitMetaRequest,
   CommitWorkflowRequest,
@@ -48,12 +49,16 @@ function apiKeyFingerprint(key: string): string {
   return createHash('sha256').update(k, 'utf8').digest('hex').slice(0, 12)
 }
 
+function toInteractionMode(autoLevel: unknown): DroidInteractionMode {
+  const v = typeof autoLevel === 'string' ? autoLevel : 'default'
+  return v === 'default' ? 'spec' : 'auto'
+}
+
 function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
   const v = typeof autoLevel === 'string' ? autoLevel : 'default'
-  if (v === 'low') return 'auto-low'
-  if (v === 'medium') return 'auto-medium'
-  if (v === 'high') return 'auto-high'
-  return 'spec'
+  if (v === 'medium') return 'medium'
+  if (v === 'high') return 'high'
+  return 'low'
 }
 
 function readTraceChainEnabled(state: PersistedAppState): boolean | undefined {
@@ -633,6 +638,7 @@ export function createApiRoutes() {
         prompt,
         cwd,
         modelId,
+        interactionMode: toInteractionMode(autoLevel),
         autonomyLevel: toAutonomyLevel(autoLevel),
         reasoningEffort,
         env,
@@ -797,6 +803,7 @@ export function createApiRoutes() {
               prompt,
               cwd,
               modelId,
+              interactionMode: toInteractionMode(autoLevel),
               autonomyLevel: toAutonomyLevel(autoLevel),
               reasoningEffort,
               env,
@@ -964,6 +971,7 @@ export function createApiRoutes() {
         machineId,
         cwd,
         modelId,
+        interactionMode: toInteractionMode(autoLevel),
         autonomyLevel: toAutonomyLevel(autoLevel),
         reasoningEffort,
         env,
@@ -1021,6 +1029,7 @@ export function createApiRoutes() {
         machineId,
         cwd,
         modelId: existing?.model || undefined,
+        interactionMode: toInteractionMode(existing?.autoLevel),
         autonomyLevel: existing?.autoLevel ? toAutonomyLevel(existing.autoLevel) : undefined,
         reasoningEffort: existing?.reasoningEffort || undefined,
         env,
