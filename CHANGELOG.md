@@ -1,3 +1,11 @@
+## 0.14.0 - 2026-02-24
+
+### Features
+- Implement update notification system
+
+### Fixes
+- Update interactionMode without restarting session
+
 ## 0.13.1 - 2026-02-24
 
 ### Fixes
