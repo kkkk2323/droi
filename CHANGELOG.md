@@ -1,3 +1,9 @@
+## 0.11.0 - 2026-02-24
+
+### Features
+- Add interaction mode support across the Droid session lifecycle
+- Improve droid PATH resolution and Task tool UI summaries
+
 ## 0.10.0 - 2026-02-23
 
 ### Features
