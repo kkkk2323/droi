@@ -203,7 +203,6 @@ export class DroidJsonRpcSession {
   private initialized = false
   private turnActive = false
   private engineSessionId: string | null = null
-  private initInteractionMode: DroidInteractionMode | undefined = undefined
 
   constructor(opts: DroidRpcSessionOptions) {
     this.opts = opts
@@ -290,7 +289,6 @@ export class DroidJsonRpcSession {
       this.proc = null
       this.initialized = false
       this.engineSessionId = null
-      this.initInteractionMode = undefined
       if (this.turnActive) {
         this.turnActive = false
         this.opts.onEvent({ type: 'turn-end', code: typeof code === 'number' ? code : 1 })
@@ -378,36 +376,22 @@ export class DroidJsonRpcSession {
     }
     this.initialized = true
     this.engineSessionId = effectiveEngineSessionId
-    this.initInteractionMode = params.interactionMode
     return { engineSessionId: effectiveEngineSessionId, source }
-  }
-
-  isInitialized(): boolean {
-    return this.initialized
-  }
-
-  isTurnActive(): boolean {
-    return this.turnActive
-  }
-
-  getEngineSessionId(): string | null {
-    return this.engineSessionId
-  }
-
-  getInitInteractionMode(): DroidInteractionMode | undefined {
-    return this.initInteractionMode
   }
 
   async updateSettings(params: {
     modelId?: string
+    interactionMode?: DroidInteractionMode
     autonomyLevel?: DroidAutonomyLevel
     reasoningEffort?: string
   }): Promise<void> {
-    const res = await this.sendRequest('droid.update_session_settings', {
+    const requestParams: Record<string, unknown> = {
       modelId: params.modelId,
       autonomyLevel: params.autonomyLevel,
       reasoningEffort: params.reasoningEffort || undefined,
-    })
+    }
+    if (params.interactionMode) requestParams.interactionMode = params.interactionMode
+    const res = await this.sendRequest('droid.update_session_settings', requestParams)
     if (res.error) throw new Error(res.error.message || 'update_session_settings failed')
   }
 
@@ -453,7 +437,6 @@ export class DroidJsonRpcSession {
     this.initialized = false
     this.turnActive = false
     this.engineSessionId = null
-    this.initInteractionMode = undefined
   }
 
   private nextId(): string {

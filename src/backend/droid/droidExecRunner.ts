@@ -26,6 +26,7 @@ export interface DroidExecSendOptions {
 export interface DroidExecUpdateSettingsOptions {
   sessionId: string
   modelId?: string
+  interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
   reasoningEffort?: string
 }
@@ -102,6 +103,7 @@ export class DroidExecManager {
     return this.manager.updateSessionSettings({
       sessionId: options.sessionId,
       modelId: options.modelId,
+      interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
       reasoningEffort: options.reasoningEffort,
     })

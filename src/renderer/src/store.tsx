@@ -81,6 +81,12 @@ interface AppState {
   deletingSessionIds: Set<string>
   isCreatingSession: boolean
 
+  // Update notification
+  updateAvailable: { version: string } | null
+  updateDownloading: boolean
+  updateDownloadProgress: number
+  updateReady: boolean
+
   // Generation tracking
   _sessionGenerations: Map<string, number>
   _hookMismatchReported: boolean
@@ -197,6 +203,12 @@ interface AppActions {
     attachments?: Array<{ name: string; path: string }>
   }) => Promise<void>
   _maybeFlushPendingInitialSend: () => void
+
+  // Update actions
+  setUpdateAvailable: (update: { version: string } | null) => void
+  setUpdateDownloading: (downloading: boolean) => void
+  setUpdateDownloadProgress: (progress: number) => void
+  setUpdateReady: (ready: boolean) => void
 }
 
 type AppStore = AppState & AppActions
@@ -226,6 +238,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   workspaceError: '',
   deletingSessionIds: new Set(),
   isCreatingSession: false,
+  updateAvailable: null,
+  updateDownloading: false,
+  updateDownloadProgress: 0,
+  updateReady: false,
   _sessionGenerations: new Map(),
   _hookMismatchReported: false,
   _initialLoadDone: false,
@@ -535,6 +551,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ;(droid as any).setLanAccessEnabled(next)
     }
   },
+
+  // --- Update actions ---
+  setUpdateAvailable: (update) => set({ updateAvailable: update }),
+  setUpdateDownloading: (downloading) => set({ updateDownloading: downloading }),
+  setUpdateDownloadProgress: (progress) => set({ updateDownloadProgress: progress }),
+  setUpdateReady: (ready) => set({ updateReady: ready }),
 
   refreshDiagnosticsDir: async () => {
     if (typeof (droid as any)?.getDiagnosticsDir !== 'function') return
@@ -2083,6 +2105,10 @@ export const useWorkspaceError = () => useAppStore((s) => s.workspaceError)
 export const useDeletingSessionIds = () => useAppStore((s) => s.deletingSessionIds)
 export const useIsCreatingSession = () => useAppStore((s) => s.isCreatingSession)
 export const useIsInitialLoadDone = () => useAppStore((s) => s._initialLoadDone)
+export const useUpdateAvailable = () => useAppStore((s) => s.updateAvailable)
+export const useUpdateDownloading = () => useAppStore((s) => s.updateDownloading)
+export const useUpdateDownloadProgress = () => useAppStore((s) => s.updateDownloadProgress)
+export const useUpdateReady = () => useAppStore((s) => s.updateReady)
 
 // Actions are stable function references on the store object and never change,
 // so we read them directly via getState() without subscribing.

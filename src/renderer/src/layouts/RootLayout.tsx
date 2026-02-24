@@ -5,6 +5,7 @@ import { FilesChangedBadge } from '@/components/FilesChangedBadge'
 import { GitActionsButton } from '@/components/GitActionsButton'
 import { WorktreeIndicator } from '@/components/WorktreeIndicator'
 import { OpenInEditorButton } from '@/components/OpenInEditorButton'
+import { UpdateNotification } from '@/components/UpdateNotification'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +104,8 @@ function InnerLayout() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UpdateNotification />
     </>
   )
 }

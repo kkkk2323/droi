@@ -866,6 +866,7 @@ export function createApiRoutes() {
       await deps.execManager.updateSessionSettings({
         sessionId,
         modelId,
+        interactionMode: typeof autoLevel === 'string' ? toInteractionMode(autoLevel) : undefined,
         autonomyLevel: typeof autoLevel === 'string' ? toAutonomyLevel(autoLevel) : undefined,
         reasoningEffort,
       })
