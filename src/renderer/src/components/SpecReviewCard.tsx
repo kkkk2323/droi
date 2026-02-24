@@ -1,18 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, FileCode, MessageSquare } from 'lucide-react'
 import { Streamdown } from 'streamdown'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { PendingPermissionRequest, PermissionOptionMeta } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
@@ -46,6 +36,29 @@ function extractExitSpecData(request: PendingPermissionRequest): ExitSpecData | 
     }
   }
   return null
+}
+
+function optionLabel(meta: PermissionOptionMeta): string {
+  switch (meta.value) {
+    case 'proceed_once':
+      return 'Proceed once'
+    case 'proceed_always':
+      return 'Proceed always'
+    case 'proceed_auto_run':
+      return 'Auto-run'
+    case 'proceed_auto_run_low':
+      return 'Auto-run (Low)'
+    case 'proceed_auto_run_medium':
+      return 'Auto-run (Medium)'
+    case 'proceed_auto_run_high':
+      return 'Auto-run (High)'
+    case 'proceed_edit':
+      return 'Proceed edit'
+    case 'cancel':
+      return meta.label || 'Cancel'
+    default:
+      return meta.label
+  }
 }
 
 interface SpecReviewCardProps {
@@ -111,7 +124,17 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
 
         <div className="border-t border-border px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <ProceedButtonGroup options={proceedOptions} onSelect={handleProceed} />
+            {proceedOptions.map((opt, i) => (
+              <Button
+                key={opt.value}
+                size="sm"
+                variant={i === 0 ? 'default' : 'outline'}
+                className="text-xs"
+                onClick={() => handleProceed(opt)}
+              >
+                {optionLabel(opt)}
+              </Button>
+            ))}
             <div className="flex-1" />
             <Button
               variant="ghost"
@@ -120,77 +143,12 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
               onClick={handleCancel}
             >
               <MessageSquare className="size-3" />
-              {cancelOption?.label || 'Request changes'}
+              {cancelOption ? optionLabel(cancelOption) : 'Request changes'}
             </Button>
           </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
-  )
-}
-
-function ProceedButtonGroup({
-  options,
-  onSelect,
-}: {
-  options: PermissionOptionMeta[]
-  onSelect: (meta: PermissionOptionMeta) => void
-}) {
-  if (options.length === 0) return null
-
-  const primary = options[0]
-  const autoRunOptions = options.filter(
-    (o) =>
-      o.value === 'proceed_auto_run_low' ||
-      o.value === 'proceed_auto_run_medium' ||
-      o.value === 'proceed_auto_run_high',
-  )
-  const hasAutoRun = autoRunOptions.length > 0
-
-  const autoRunLevel = (value: string): string => {
-    if (value === 'proceed_auto_run_low') return 'Low'
-    if (value === 'proceed_auto_run_medium') return 'Medium'
-    if (value === 'proceed_auto_run_high') return 'High'
-    return value
-  }
-
-  return (
-    <div className="flex items-center" data-slot="button-group">
-      <Button
-        size="sm"
-        className={cn('text-xs', hasAutoRun && 'rounded-r-none')}
-        onClick={() => onSelect(primary)}
-      >
-        {primary.label}
-      </Button>
-      {hasAutoRun && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button size="sm" className="rounded-l-none border-l border-background/20 px-2" />
-            }
-          >
-            <ChevronDown className="size-3" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" sideOffset={4} className="w-[260px]">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Auto-run permission level</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {autoRunOptions.map((opt) => (
-                <DropdownMenuItem key={opt.value} onClick={() => onSelect(opt)}>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-xs">{autoRunLevel(opt.value)}</span>
-                    <span className="text-muted-foreground text-[11px] leading-tight">
-                      {opt.label}
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
   )
 }
 

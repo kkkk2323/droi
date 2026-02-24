@@ -12,12 +12,15 @@ function ScrollArea({
 }) {
   return (
     <BaseScrollArea.Root className={cn('relative overflow-hidden', className)} {...props}>
-      <BaseScrollArea.Viewport ref={viewportRef} className="h-full w-full">
+      <BaseScrollArea.Viewport
+        ref={viewportRef}
+        className="h-full w-full max-h-[inherit] overscroll-contain"
+      >
         {children}
       </BaseScrollArea.Viewport>
       <BaseScrollArea.Scrollbar
         orientation="vertical"
-        className="flex w-2 touch-none p-px transition-opacity duration-150 data-[hovering]:opacity-100 opacity-0"
+        className="flex w-2 touch-none p-px transition-opacity duration-150 data-[hovering]:opacity-100 data-[scrolling]:opacity-100 opacity-0"
       >
         <BaseScrollArea.Thumb className="relative flex-1 rounded-full bg-border" />
       </BaseScrollArea.Scrollbar>
