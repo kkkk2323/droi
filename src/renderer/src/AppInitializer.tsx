@@ -269,6 +269,17 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         } catch {
           // ignore
         }
+        // Check for updates on startup
+        void (async () => {
+          try {
+            const result = await droid.checkForUpdate()
+            if (result.available && result.version) {
+              useAppStore.getState().setUpdateAvailable({ version: result.version })
+            }
+          } catch {
+            // ignore update check errors
+          }
+        })()
       }
     })()
   }, [])
