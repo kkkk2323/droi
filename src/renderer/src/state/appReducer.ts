@@ -96,13 +96,41 @@ export function makeBuffer(
   }
 }
 
-function mapAutonomyLevelToAutoLevel(autonomyLevel: unknown): string | null {
-  const v = typeof autonomyLevel === 'string' ? autonomyLevel.trim().toLowerCase() : ''
-  if (!v) return null
-  if (v === 'auto-low') return 'low'
-  if (v === 'auto-medium') return 'medium'
-  if (v === 'auto-high') return 'high'
-  if (v === 'spec' || v === 'normal') return 'default'
+function mapSettingsToAutoLevel(settings: Record<string, unknown>): string | null {
+  const interactionMode =
+    typeof (settings as any).interactionMode === 'string'
+      ? String((settings as any).interactionMode)
+          .trim()
+          .toLowerCase()
+      : ''
+  if (interactionMode === 'spec') return 'default'
+
+  const autonomyLevel =
+    typeof (settings as any).autonomyLevel === 'string'
+      ? String((settings as any).autonomyLevel)
+          .trim()
+          .toLowerCase()
+      : ''
+  if (autonomyLevel === 'low') return 'low'
+  if (autonomyLevel === 'medium') return 'medium'
+  if (autonomyLevel === 'high') return 'high'
+
+  // Best-effort parsing for older payloads.
+  if (autonomyLevel === 'auto-low') return 'low'
+  if (autonomyLevel === 'auto-medium') return 'medium'
+  if (autonomyLevel === 'auto-high') return 'high'
+  if (autonomyLevel === 'spec' || autonomyLevel === 'normal') return 'default'
+
+  const autonomyMode =
+    typeof (settings as any).autonomyMode === 'string'
+      ? String((settings as any).autonomyMode)
+          .trim()
+          .toLowerCase()
+      : ''
+  if (autonomyMode === 'auto-low') return 'low'
+  if (autonomyMode === 'auto-medium') return 'medium'
+  if (autonomyMode === 'auto-high') return 'high'
+
   return null
 }
 
@@ -592,7 +620,7 @@ export function applyRpcNotification(
       typeof (settings as any).reasoningEffort === 'string'
         ? String((settings as any).reasoningEffort)
         : ''
-    const nextAuto = mapAutonomyLevelToAutoLevel((settings as any).autonomyLevel)
+    const nextAuto = mapSettingsToAutoLevel(settings)
     const session = prev.get(sid)
     if (!session) return prev
     const next = new Map(prev)

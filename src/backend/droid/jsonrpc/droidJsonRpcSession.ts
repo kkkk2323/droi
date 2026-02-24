@@ -5,6 +5,7 @@ import {
   FACTORY_API_VERSION,
   JSONRPC_VERSION,
   type DroidAutonomyLevel,
+  type DroidInteractionMode,
   type JsonRpcMessage,
   type JsonRpcNotification,
   type JsonRpcRequest,
@@ -278,7 +279,12 @@ export class DroidJsonRpcSession {
   }
 
   async ensureInitialized(
-    params: { modelId?: string; autonomyLevel?: DroidAutonomyLevel; reasoningEffort?: string },
+    params: {
+      modelId?: string
+      interactionMode?: DroidInteractionMode
+      autonomyLevel?: DroidAutonomyLevel
+      reasoningEffort?: string
+    },
     resumeSessionId?: string,
   ): Promise<{
     engineSessionId: string
@@ -291,6 +297,7 @@ export class DroidJsonRpcSession {
       machineId: this.opts.machineId,
       cwd: this.opts.cwd,
       modelId: params.modelId,
+      interactionMode: params.interactionMode,
       autonomyLevel: params.autonomyLevel,
       reasoningEffort: params.reasoningEffort || undefined,
     })

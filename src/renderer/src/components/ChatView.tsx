@@ -554,14 +554,7 @@ function DiffView({
   )
 }
 
-function ResultView({
-  result,
-  isError,
-}: {
-  result: string
-  isError?: boolean
-  isCode: boolean
-}) {
+function ResultView({ result, isError }: { result: string; isError?: boolean; isCode: boolean }) {
   const [showFull, setShowFull] = useState(false)
   const maxLen = 500
   const truncated = result.length > maxLen && !showFull

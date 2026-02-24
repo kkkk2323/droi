@@ -179,7 +179,8 @@ test('POST /api/message calls execManager.send with cwd/machineId/sessionId/prom
   assert.equal(sendCalls[0].prompt, 'hello')
   assert.equal(sendCalls[0].cwd, projectDir)
   assert.equal(sendCalls[0].machineId, 'm-test')
-  assert.equal(sendCalls[0].autonomyLevel, 'auto-low')
+  assert.equal(sendCalls[0].interactionMode, 'auto')
+  assert.equal(sendCalls[0].autonomyLevel, 'low')
 })
 
 test('GET /api/stream returns event-stream and writes ok prelude', async () => {

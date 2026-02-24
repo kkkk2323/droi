@@ -37,6 +37,7 @@ import type {
   PersistedAppStateV2,
   SaveSessionRequest,
   DroidAutonomyLevel,
+  DroidInteractionMode,
   CustomModelDef,
   SlashCommandDef,
   SlashResolveResult,
@@ -52,12 +53,16 @@ function apiKeyFingerprint(key: string): string {
   return createHash('sha256').update(k, 'utf8').digest('hex').slice(0, 12)
 }
 
+function toInteractionMode(autoLevel: unknown): DroidInteractionMode {
+  const v = typeof autoLevel === 'string' ? autoLevel : 'default'
+  return v === 'default' ? 'spec' : 'auto'
+}
+
 function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
   const v = typeof autoLevel === 'string' ? autoLevel : 'default'
-  if (v === 'low') return 'auto-low'
-  if (v === 'medium') return 'auto-medium'
-  if (v === 'high') return 'auto-high'
-  return 'spec'
+  if (v === 'medium') return 'medium'
+  if (v === 'high') return 'high'
+  return 'low'
 }
 
 function readTraceChainEnabled(state: PersistedAppState): boolean | undefined {
@@ -289,6 +294,7 @@ export function registerIpcHandlers(opts: {
           prompt,
           cwd,
           modelId: typeof modelId === 'string' ? modelId : undefined,
+          interactionMode: toInteractionMode(autoLevel),
           autonomyLevel: toAutonomyLevel(autoLevel),
           reasoningEffort: typeof reasoningEffort === 'string' ? reasoningEffort : undefined,
           env,
@@ -927,6 +933,8 @@ export function registerIpcHandlers(opts: {
         machineId,
         cwd,
         modelId: typeof payload.modelId === 'string' ? payload.modelId : undefined,
+        interactionMode:
+          typeof payload.autoLevel === 'string' ? toInteractionMode(payload.autoLevel) : undefined,
         autonomyLevel:
           typeof payload.autoLevel === 'string' ? toAutonomyLevel(payload.autoLevel) : undefined,
         reasoningEffort:
@@ -973,6 +981,7 @@ export function registerIpcHandlers(opts: {
       machineId,
       cwd,
       modelId: existing?.model || undefined,
+      interactionMode: toInteractionMode(existing?.autoLevel),
       autonomyLevel: existing?.autoLevel ? toAutonomyLevel(existing.autoLevel) : undefined,
       reasoningEffort: existing?.reasoningEffort || undefined,
       env,

@@ -213,7 +213,8 @@ export async function generateCommitMeta(params: {
       prompt,
       cwd: projectDir,
       modelId,
-      autonomyLevel: 'spec',
+      interactionMode: 'spec',
+      autonomyLevel: 'off',
       env,
     },
   })

@@ -1,6 +1,10 @@
 import { execFile } from 'child_process'
 import { DroidJsonRpcManager, type DroidBackendEvent } from './jsonrpc/droidJsonRpcManager.ts'
-import type { DroidAutonomyLevel, DroidPermissionOption } from './jsonrpc/jsonRpcTypes.ts'
+import type {
+  DroidAutonomyLevel,
+  DroidInteractionMode,
+  DroidPermissionOption,
+} from './jsonrpc/jsonRpcTypes.ts'
 import { resolveDroidPath } from './resolveDroidPath.ts'
 import type { LocalDiagnostics } from '../diagnostics/localDiagnostics.ts'
 
@@ -13,6 +17,7 @@ export interface DroidExecSendOptions {
   prompt: string
   cwd: string
   modelId?: string
+  interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
   reasoningEffort?: string
   env?: Record<string, string | undefined>
@@ -29,6 +34,7 @@ export interface DroidExecCreateSessionOptions {
   machineId: string
   cwd: string
   modelId?: string
+  interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
   reasoningEffort?: string
   env?: Record<string, string | undefined>
@@ -72,6 +78,7 @@ export class DroidExecManager {
       prompt: options.prompt,
       cwd: options.cwd,
       modelId: options.modelId,
+      interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
       reasoningEffort: options.reasoningEffort,
       env: options.env,
@@ -83,6 +90,7 @@ export class DroidExecManager {
       machineId: options.machineId,
       cwd: options.cwd,
       modelId: options.modelId,
+      interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
       reasoningEffort: options.reasoningEffort,
       env: options.env,
