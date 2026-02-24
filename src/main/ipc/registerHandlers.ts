@@ -441,6 +441,8 @@ export function registerIpcHandlers(opts: {
       await execManager.updateSessionSettings({
         sessionId: payload.sessionId,
         modelId: typeof payload.modelId === 'string' ? payload.modelId : undefined,
+        interactionMode:
+          typeof payload.autoLevel === 'string' ? toInteractionMode(payload.autoLevel) : undefined,
         autonomyLevel:
           typeof payload.autoLevel === 'string' ? toAutonomyLevel(payload.autoLevel) : undefined,
         reasoningEffort:

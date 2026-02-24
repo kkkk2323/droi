@@ -16,7 +16,7 @@ async function waitFor<T>(fn: () => T | undefined, timeoutMs = 3000): Promise<T>
 }
 
 test(
-  'interactionMode hot-switch re-initializes session with new mode',
+  'interactionMode switch uses update_session_settings (no re-init)',
   { skip: process.platform === 'win32' },
   async () => {
     const baseDir = await mkdtemp(join(tmpdir(), 'droi-hot-switch-'))
@@ -144,6 +144,13 @@ rl.on('line', (line) => {
       const engineSessionId = String(replaced.newSessionId || '')
       assert.ok(engineSessionId)
 
+      const initReqCount = () =>
+        events.filter(
+          (e) => e.type === 'debug' && String(e.message || '').startsWith('request: droid.initialize_session'),
+        ).length
+
+      await waitFor(() => (initReqCount() >= 1 ? true : undefined))
+
       const turnEndCount = () =>
         events.filter((e) => e.type === 'turn-end' && e.sessionId === engineSessionId).length
 
@@ -161,37 +168,25 @@ rl.on('line', (line) => {
         env: {},
       })
 
-      const initLines = await waitFor(
-        () => {
-          const lines = events
-            .filter((e) => e.type === 'stdout')
-            .map((e) => String(e.data || ''))
-            .filter((l) => l.startsWith('init interactionMode='))
-          const hasAuto = lines.some((l) => l.trim() === 'init interactionMode=auto')
-          const hasSpec = lines.some((l) => l.trim() === 'init interactionMode=spec')
-          return hasAuto && hasSpec ? lines : undefined
-        },
+      await waitFor(
+        () =>
+          events.find(
+            (e) =>
+              e.type === 'debug' &&
+              String(e.message || '').startsWith('request: droid.update_session_settings') &&
+              String(e.message || '').includes('"interactionMode":"spec"'),
+          ),
         5000,
       ).catch((err) => {
         const debug = events
           .filter((e) => e.type === 'debug')
-          .slice(-20)
+          .slice(-40)
           .map((e) => String(e.message || ''))
           .join('\n')
-        const stdout = events
-          .filter((e) => e.type === 'stdout')
-          .slice(-20)
-          .map((e) => String(e.data || ''))
-          .join('\n')
-        throw new Error(`${(err as Error).message}\n\nlast debug:\n${debug}\n\nlast stdout:\n${stdout}`)
+        throw new Error(`${(err as Error).message}\n\nlast debug:\n${debug}`)
       })
 
-      assert.ok(initLines.length >= 2)
-      const autoIndex = initLines.findIndex((l) => l.trim() === 'init interactionMode=auto')
-      const specIndex = initLines.findIndex((l) => l.trim() === 'init interactionMode=spec')
-      assert.ok(autoIndex >= 0)
-      assert.ok(specIndex >= 0)
-      assert.ok(specIndex > autoIndex)
+      assert.equal(initReqCount(), 1)
     } finally {
       manager.disposeAllSessions()
     }
