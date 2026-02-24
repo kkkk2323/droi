@@ -1,3 +1,11 @@
+## 0.13.0 - 2026-02-24
+
+### Features
+- Implement in-app ASAR updater and settings UI
+
+### CI
+- Update release workflow to support ASAR hot updates
+
 ## 0.12.1 - 2026-02-24
 
 ### Fixes
