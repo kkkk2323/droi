@@ -507,9 +507,7 @@ export interface DroidClientAPI {
   checkForUpdate: () => Promise<UpdateCheckResult>
   installUpdate: () => Promise<void>
   relaunchApp: () => Promise<void>
-  onUpdateProgress: (
-    callback: (progress: UpdateDownloadProgress) => void,
-  ) => () => void
+  onUpdateProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void
 }
 
 export interface EditorInfo {

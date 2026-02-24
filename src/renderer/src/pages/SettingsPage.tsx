@@ -159,7 +159,9 @@ export function SettingsPage() {
             )}
             {update.step === 'not-available' && (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">You are on the latest version.</span>
+                <span className="text-sm text-muted-foreground">
+                  You are on the latest version.
+                </span>
                 <Button variant="outline" size="sm" onClick={handleCheck}>
                   Check Again
                 </Button>
@@ -167,9 +169,7 @@ export function SettingsPage() {
             )}
             {update.step === 'available' && (
               <div className="flex items-center gap-3">
-                <span className="text-sm">
-                  v{update.version} available
-                </span>
+                <span className="text-sm">v{update.version} available</span>
                 <Button variant="outline" size="sm" onClick={handleInstall}>
                   Download & Install
                 </Button>

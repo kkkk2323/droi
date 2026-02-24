@@ -183,6 +183,41 @@ test('POST /api/message calls execManager.send with cwd/machineId/sessionId/prom
   assert.equal(sendCalls[0].autonomyLevel, 'low')
 })
 
+test('POST /api/message maps autoLevel=default to interactionMode=spec and autonomyLevel=off', async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), 'droid-server-message-spec-'))
+  const projectDir = join(baseDir, 'project')
+  await mkdir(projectDir, { recursive: true })
+
+  const sendCalls: any[] = []
+  const app = createTestApp({
+    state: { version: 2, machineId: 'm-test', activeProjectDir: projectDir },
+    execManager: {
+      send: async (params: any) => {
+        sendCalls.push(params)
+      },
+    },
+  })
+
+  const res = await app.request('http://localhost/api/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: 'hello',
+      sessionId: 's1',
+      modelId: 'gpt-5.2',
+      autoLevel: 'default',
+      reasoningEffort: 'low',
+    }),
+  })
+
+  assert.equal(res.status, 200)
+  const data = (await res.json()) as any
+  assert.equal(data.ok, true)
+  assert.equal(sendCalls.length, 1)
+  assert.equal(sendCalls[0].interactionMode, 'spec')
+  assert.equal(sendCalls[0].autonomyLevel, 'off')
+})
+
 test('GET /api/stream returns event-stream and writes ok prelude', async () => {
   const app = createTestApp()
   const res = await app.request('http://localhost/api/stream?sessionId=s1', { method: 'GET' })
