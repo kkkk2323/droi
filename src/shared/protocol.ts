@@ -502,6 +502,14 @@ export interface DroidClientAPI {
   commitWorkflow: (params: CommitWorkflowRequest) => Promise<CommitWorkflowResult>
   onCommitWorkflowProgress: (callback: (progress: WorkflowStepProgress) => void) => () => void
   getCustomModels: () => Promise<CustomModelDef[]>
+
+  // Updater
+  checkForUpdate: () => Promise<UpdateCheckResult>
+  installUpdate: () => Promise<void>
+  relaunchApp: () => Promise<void>
+  onUpdateProgress: (
+    callback: (progress: UpdateDownloadProgress) => void,
+  ) => () => void
 }
 
 export interface EditorInfo {
@@ -605,6 +613,20 @@ export interface CustomModelDef {
   displayName: string
   model: string
   provider: string
+}
+
+// === Updater ===
+
+export interface UpdateCheckResult {
+  available: boolean
+  version?: string
+  currentVersion?: string
+}
+
+export interface UpdateDownloadProgress {
+  percent: number
+  transferred: number
+  total: number
 }
 
 export type SetupScriptStatus = 'idle' | 'running' | 'failed' | 'completed' | 'skipped'

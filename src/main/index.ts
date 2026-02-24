@@ -3,6 +3,7 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc/registerHandlers'
+import { registerUpdaterIpc } from './updater/updaterIpc'
 import { startApiServer } from '../server/apiServer.ts'
 import { LocalDiagnostics } from '../backend/diagnostics/localDiagnostics.ts'
 import { createAppStateStore } from '../backend/storage/appStateStore.ts'
@@ -108,6 +109,8 @@ app.whenReady().then(() => {
     baseDir,
     diagnostics,
   })
+
+  registerUpdaterIpc({ getMainWindow: () => mainWindow })
 
   const webEnabled = readBool('DROID_WEB_ENABLED', true)
   if (webEnabled) {

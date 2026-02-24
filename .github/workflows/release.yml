@@ -36,12 +36,9 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
-  build:
+  build-arm64:
     needs: validate
     runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [arm64, x64]
     steps:
       - uses: actions/checkout@v4
 
@@ -59,17 +56,80 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Build ${{ matrix.arch }} DMG
-        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+      - name: Build arm64 DMG
+        run: npx electron-builder --mac --arm64 --publish never
+
+      - name: Package ASAR for hot update
+        run: |
+          ASAR_PATH=$(find dist -path '*/Contents/Resources/app.asar' | head -1)
+          if [ -z "$ASAR_PATH" ]; then
+            echo "::error::app.asar not found"
+            exit 1
+          fi
+          gzip -c "$ASAR_PATH" > dist/app.asar.gz
+          SHA=$(shasum -a 256 dist/app.asar.gz | awk '{print $1}')
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "{\"version\":\"${VERSION}\",\"sha256\":\"${SHA}\"}" > dist/latest.json
+          echo "Generated latest.json: version=${VERSION}, sha256=${SHA}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: droi-mac-${{ matrix.arch }}
-          path: dist/*${{ matrix.arch }}*.dmg
+          name: droi-mac-arm64
+          path: dist/*arm64*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droi-asar
+          path: |
+            dist/app.asar.gz
+            dist/latest.json
+
+  build-x64:
+    needs: validate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build x64 DMG
+        run: npx electron-builder --mac --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droi-mac-x64
+          path: dist/*x64*.dmg
+
+  release-asar:
+    needs: build-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: droi-asar
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/app.asar.gz
+            dist/latest.json
 
   release:
-    needs: build
-    runs-on: macos-latest
+    needs: [build-arm64, build-x64, release-asar]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,13 +139,7 @@ jobs:
         id: changelog
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/}"
-          # Remove 'v' prefix if present for matching with CHANGELOG.md
           VERSION_NO_PREFIX="${TAG_VERSION#v}"
-          # Extract changelog section for the tagged version
-          # Uses index() instead of match() to avoid regex issues (dots in
-          # version numbers match any character in regex, which caused dates
-          # like "2026-02-20" to falsely match version "0.6.0").
-          # Also merges duplicate category headings into a single section.
           CHANGELOG_CONTENT=$(awk -v version="$VERSION_NO_PREFIX" '
             BEGIN { in_section = 0; count = 0; current_cat = "" }
             /^## / {
@@ -126,7 +180,6 @@ jobs:
           merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: dist/*.dmg
           body: |

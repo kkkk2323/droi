@@ -1,5 +1,5 @@
 import { resolve } from 'path'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -8,10 +8,17 @@ const apiTarget = `http://127.0.0.1:${Number.isFinite(apiPort) && apiPort > 0 ? 
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    build: {
+      externalizeDeps: true,
+      rollupOptions: {
+        external: ['original-fs']
+      }
+    }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    build: {
+      externalizeDeps: true,
+    }
   },
   renderer: {
     root: resolve('src/renderer'),
