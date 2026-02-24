@@ -203,11 +203,7 @@ export class AsarUpdater extends EventEmitter {
   }
 
   private isNewer(remote: string, local: string): boolean {
-    const parse = (v: string) =>
-      v
-        .replace(/^v/, '')
-        .split('.')
-        .map(Number)
+    const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number)
     const r = parse(remote)
     const l = parse(local)
     for (let i = 0; i < Math.max(r.length, l.length); i++) {

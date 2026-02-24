@@ -36,6 +36,49 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
+  build-asar:
+    needs: validate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Package app (--dir, no DMG)
+        run: npx electron-builder --mac --arm64 --dir --publish never
+
+      - name: Generate ASAR artifact
+        run: |
+          ASAR_PATH=$(find dist -path '*/Contents/Resources/app.asar' | head -1)
+          if [ -z "$ASAR_PATH" ]; then
+            echo "::error::app.asar not found"
+            exit 1
+          fi
+          gzip -c "$ASAR_PATH" > dist/app.asar.gz
+          SHA=$(shasum -a 256 dist/app.asar.gz | awk '{print $1}')
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "{\"version\":\"${VERSION}\",\"sha256\":\"${SHA}\"}" > dist/latest.json
+          echo "Generated latest.json: version=${VERSION}, sha256=${SHA}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droi-asar
+          path: |
+            dist/app.asar.gz
+            dist/latest.json
+
   build-arm64:
     needs: validate
     runs-on: macos-latest
@@ -59,30 +102,10 @@ jobs:
       - name: Build arm64 DMG
         run: npx electron-builder --mac --arm64 --publish never
 
-      - name: Package ASAR for hot update
-        run: |
-          ASAR_PATH=$(find dist -path '*/Contents/Resources/app.asar' | head -1)
-          if [ -z "$ASAR_PATH" ]; then
-            echo "::error::app.asar not found"
-            exit 1
-          fi
-          gzip -c "$ASAR_PATH" > dist/app.asar.gz
-          SHA=$(shasum -a 256 dist/app.asar.gz | awk '{print $1}')
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          echo "{\"version\":\"${VERSION}\",\"sha256\":\"${SHA}\"}" > dist/latest.json
-          echo "Generated latest.json: version=${VERSION}, sha256=${SHA}"
-
       - uses: actions/upload-artifact@v4
         with:
           name: droi-mac-arm64
           path: dist/*arm64*.dmg
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: droi-asar
-          path: |
-            dist/app.asar.gz
-            dist/latest.json
 
   build-x64:
     needs: validate
@@ -113,7 +136,7 @@ jobs:
           path: dist/*x64*.dmg
 
   release-asar:
-    needs: build-arm64
+    needs: build-asar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -128,7 +151,7 @@ jobs:
             dist/latest.json
 
   release:
-    needs: [build-arm64, build-x64, release-asar]
+    needs: [build-arm64, build-x64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

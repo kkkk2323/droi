@@ -56,6 +56,8 @@ function toInteractionMode(autoLevel: unknown): DroidInteractionMode {
 
 function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
   const v = typeof autoLevel === 'string' ? autoLevel : 'default'
+  if (v === 'default') return 'off'
+  if (v === 'low') return 'low'
   if (v === 'medium') return 'medium'
   if (v === 'high') return 'high'
   return 'low'

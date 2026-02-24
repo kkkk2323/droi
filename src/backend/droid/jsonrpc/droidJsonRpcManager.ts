@@ -73,9 +73,80 @@ export class DroidJsonRpcManager {
   async sendUserMessage(params: SendUserMessageParams): Promise<void> {
     let sid = params.sessionId
     const managed = this.getOrCreateSession(params)
-    const session = managed.session
+    let session = managed.session
     let stage = 'ensureInitialized'
     try {
+      const requestedMode = params.interactionMode
+      const initMode = session.getInitInteractionMode()
+      if (requestedMode && initMode && requestedMode !== initMode && session.isInitialized()) {
+        if (session.isTurnActive()) {
+          this.emit({
+            type: 'debug',
+            sessionId: sid,
+            message: `sendUserMessage: hotSwitch skipped (turnActive) from=${initMode} to=${requestedMode}`,
+          })
+        } else {
+          const resumeEngineSessionId =
+            typeof params.resumeSessionId === 'string' && params.resumeSessionId.trim()
+              ? params.resumeSessionId.trim()
+              : session.getEngineSessionId() || params.sessionId
+
+          this.emit({
+            type: 'debug',
+            sessionId: sid,
+            message: `sendUserMessage: hotSwitch start from=${initMode} to=${requestedMode} resume=${resumeEngineSessionId}`,
+          })
+
+          const next = new DroidJsonRpcSession({
+            droidPath: this.droidPath,
+            sessionId: params.sessionId,
+            cwd: params.cwd,
+            machineId: params.machineId,
+            env: params.env || {},
+            diagnostics: this.diagnostics,
+            onEvent: (ev: DroidRpcSessionEvent) => this.handleSessionEvent(managed.ref, ev),
+          })
+
+          try {
+            const init = await next.ensureInitialized(
+              {
+                modelId: params.modelId,
+                interactionMode: requestedMode,
+                autonomyLevel: params.autonomyLevel,
+                reasoningEffort: params.reasoningEffort,
+              },
+              resumeEngineSessionId,
+            )
+
+            if (init.source === 'resume') {
+              this.emit({
+                type: 'debug',
+                sessionId: sid,
+                message: `sendUserMessage: hotSwitch swapped ok from=${initMode} to=${requestedMode}`,
+              })
+              session.dispose()
+              managed.session = next
+              session = next
+            } else {
+              this.emit({
+                type: 'debug',
+                sessionId: sid,
+                message: `sendUserMessage: hotSwitch failed (no resume) from=${initMode} to=${requestedMode} source=${init.source}`,
+              })
+              next.dispose()
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            this.emit({
+              type: 'debug',
+              sessionId: sid,
+              message: `sendUserMessage: hotSwitch threw from=${initMode} to=${requestedMode} error=${msg}`,
+            })
+            next.dispose()
+          }
+        }
+      }
+
       this.emit({
         type: 'debug',
         sessionId: sid,

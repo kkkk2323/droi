@@ -203,6 +203,7 @@ export class DroidJsonRpcSession {
   private initialized = false
   private turnActive = false
   private engineSessionId: string | null = null
+  private initInteractionMode: DroidInteractionMode | undefined = undefined
 
   constructor(opts: DroidRpcSessionOptions) {
     this.opts = opts
@@ -288,6 +289,8 @@ export class DroidJsonRpcSession {
       this.pending.clear()
       this.proc = null
       this.initialized = false
+      this.engineSessionId = null
+      this.initInteractionMode = undefined
       if (this.turnActive) {
         this.turnActive = false
         this.opts.onEvent({ type: 'turn-end', code: typeof code === 'number' ? code : 1 })
@@ -375,7 +378,24 @@ export class DroidJsonRpcSession {
     }
     this.initialized = true
     this.engineSessionId = effectiveEngineSessionId
+    this.initInteractionMode = params.interactionMode
     return { engineSessionId: effectiveEngineSessionId, source }
+  }
+
+  isInitialized(): boolean {
+    return this.initialized
+  }
+
+  isTurnActive(): boolean {
+    return this.turnActive
+  }
+
+  getEngineSessionId(): string | null {
+    return this.engineSessionId
+  }
+
+  getInitInteractionMode(): DroidInteractionMode | undefined {
+    return this.initInteractionMode
   }
 
   async updateSettings(params: {
@@ -432,6 +452,8 @@ export class DroidJsonRpcSession {
     this.proc = null
     this.initialized = false
     this.turnActive = false
+    this.engineSessionId = null
+    this.initInteractionMode = undefined
   }
 
   private nextId(): string {
