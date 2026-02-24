@@ -1,3 +1,11 @@
+## 0.13.1 - 2026-02-24
+
+### Fixes
+- Hot-switch interactionMode when switching to spec
+
+### CI
+- Split ASAR artifact job
+
 ## 0.13.0 - 2026-02-24
 
 ### Features
