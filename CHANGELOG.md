@@ -1,3 +1,8 @@
+## 0.12.1 - 2026-02-24
+
+### Fixes
+- Improve chat scroll stability and session switching
+
 ## 0.12.0 - 2026-02-24
 
 ### Features
