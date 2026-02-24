@@ -624,6 +624,14 @@ function getToolIcon(toolName: string): React.ReactNode {
 
 function getToolSummary(block: ToolCallBlock): string {
   const p = block.parameters
+  if (block.toolName === 'Task') {
+    const subagentType = p.subagent_type ? String(p.subagent_type) : ''
+    const description = p.description ? String(p.description) : ''
+    const left = subagentType || ''
+    const right = description ? description.trim() : ''
+    const summary = right && left ? `${left} • ${right}` : left || right
+    return summary.length > 80 ? summary.slice(0, 80) + '...' : summary
+  }
   if (p.file_path) return String(p.file_path).split('/').slice(-2).join('/')
   if (p.command) {
     const cmd = String(p.command)

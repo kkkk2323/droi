@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { dirname, isAbsolute } from 'path'
 import type { ChildProcessWithoutNullStreams } from 'child_process'
 import { JsonRpcLineParser } from './jsonRpcLineParser.ts'
 import {
@@ -225,8 +226,29 @@ export class DroidJsonRpcSession {
       message: `spawn: ${this.opts.droidPath} ${args.map((a) => JSON.stringify(a)).join(' ')}`,
     })
 
+    const env = { ...process.env, ...(this.opts.env || {}) }
+    // Ensure sub-processes (e.g. Task subagents) can resolve `droid` on PATH even when
+    // the parent was launched via an absolute path (common for GUI apps).
+    try {
+      const droidPath = this.opts.droidPath
+      const looksLikePath =
+        isAbsolute(droidPath) || droidPath.includes('/') || droidPath.includes('\\')
+      if (looksLikePath) {
+        const droidDir = dirname(droidPath)
+        const pathKey =
+          Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ||
+          (process.platform === 'win32' ? 'Path' : 'PATH')
+        const sep = process.platform === 'win32' ? ';' : ':'
+        const existing = String((env as any)[pathKey] || '')
+        const parts = existing.split(sep).filter(Boolean)
+        if (!parts.includes(droidDir)) (env as any)[pathKey] = [droidDir, ...parts].join(sep)
+      }
+    } catch {
+      /* ignore */
+    }
+
     const proc = spawn(this.opts.droidPath, args, {
-      env: { ...process.env, ...(this.opts.env || {}) },
+      env,
       cwd: this.opts.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
