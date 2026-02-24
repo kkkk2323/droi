@@ -125,6 +125,7 @@ export function ChatPage() {
         <SessionConfigPage />
       ) : (
         <ChatView
+          sessionId={activeSessionId}
           messages={messages}
           isRunning={isRunning}
           noProject={noProject}

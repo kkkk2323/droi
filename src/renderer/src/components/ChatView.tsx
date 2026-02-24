@@ -46,6 +46,7 @@ function attachmentSrc(path: string): string {
 }
 
 interface ChatViewProps {
+  sessionId: string
   messages: ChatMessage[]
   isRunning: boolean
   noProject: boolean
@@ -61,6 +62,7 @@ interface ChatViewProps {
 }
 
 function ChatView({
+  sessionId,
   messages,
   isRunning,
   noProject,
@@ -80,8 +82,14 @@ function ChatView({
     ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir
     : ''
 
+  const isInitialRenderRef = useRef(true)
   const prevCountRef = useRef(messages.length)
   useEffect(() => {
+    if (isInitialRenderRef.current) {
+      isInitialRenderRef.current = false
+      prevCountRef.current = messages.length
+      return
+    }
     const prev = prevCountRef.current
     prevCountRef.current = messages.length
     if (messages.length > prev) {
@@ -207,6 +215,7 @@ function ChatView({
 
   return (
     <Virtuoso
+      key={sessionId}
       ref={virtuosoRef}
       className="flex-1 chat-scroll-container "
       data={messages}
@@ -216,7 +225,8 @@ function ChatView({
       atBottomStateChange={handleAtBottomChange}
       atBottomThreshold={40}
       initialTopMostItemIndex={messages.length - 1}
-      increaseViewportBy={200}
+      defaultItemHeight={120}
+      increaseViewportBy={{ top: 400, bottom: 200 }}
       components={{ Footer: footer }}
       style={{ flex: 1 }}
     />
