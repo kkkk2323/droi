@@ -1,3 +1,8 @@
+## 0.12.0 - 2026-02-24
+
+### Features
+- Implement usage-based spillover for API key selection
+
 ## 0.11.0 - 2026-02-24
 
 ### Features
