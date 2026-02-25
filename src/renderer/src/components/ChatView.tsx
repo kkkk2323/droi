@@ -45,6 +45,15 @@ function attachmentSrc(path: string): string {
   return `local-file://${encodeURIComponent(path)}`
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
+}
+
 interface ChatViewProps {
   sessionId: string
   messages: ChatMessage[]
@@ -57,7 +66,11 @@ interface ChatViewProps {
   workspacePrepStatus?: 'running' | 'completed' | null
   onRetrySetupScript?: () => void
   onSkipSetupScript?: () => void
-  onRespondPermission?: (params: { selectedOption: DroidPermissionOption }) => void
+  onRespondPermission?: (params: {
+    selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
+  }) => void
   onRequestSpecChanges?: () => void
 }
 
@@ -374,6 +387,11 @@ function MessageEntry({
         }
         return null
       })}
+      {message.endTimestamp && message.timestamp > 0 && (
+        <div className="mt-1 text-[11px] text-muted-foreground/60">
+          {formatDuration(message.endTimestamp - message.timestamp)}
+        </div>
+      )}
     </div>
   )
 }

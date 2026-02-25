@@ -71,6 +71,10 @@ export class DroidExecManager {
     return this.manager.hasSession(sessionId)
   }
 
+  getFirstSessionId(): string | null {
+    return this.manager.getFirstSessionId()
+  }
+
   send(options: DroidExecSendOptions): Promise<void> {
     return this.manager.sendUserMessage({
       sessionId: options.sessionId,
@@ -109,10 +113,20 @@ export class DroidExecManager {
     })
   }
 
+  async listSkills(sessionId: string): Promise<unknown[]> {
+    return this.manager.listSkills(sessionId)
+  }
+
+  async addUserMessage(sessionId: string, text: string): Promise<void> {
+    return this.manager.addUserMessage(sessionId, text)
+  }
+
   respondPermission(params: {
     sessionId: string
     requestId: string
     selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
   }): void {
     this.manager.respondPermission(params)
   }

@@ -10,6 +10,7 @@ import type { DroidPermissionOption } from '@/types'
 interface ExitSpecData {
   plan: string
   title?: string
+  optionNames?: string[]
 }
 
 function extractExitSpecData(request: PendingPermissionRequest): ExitSpecData | null {
@@ -33,6 +34,7 @@ function extractExitSpecData(request: PendingPermissionRequest): ExitSpecData | 
     return {
       plan: input.plan,
       title: typeof input.title === 'string' ? input.title : undefined,
+      optionNames: Array.isArray(input.optionNames) ? input.optionNames.map(String) : undefined,
     }
   }
   return null
@@ -63,27 +65,39 @@ function optionLabel(meta: PermissionOptionMeta): string {
 
 interface SpecReviewCardProps {
   request: PendingPermissionRequest
-  onRespond: (params: { selectedOption: DroidPermissionOption }) => void
+  onRespond: (params: {
+    selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
+  }) => void
   onRequestChanges: () => void
 }
 
 export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecReviewCardProps) {
   const [expanded, setExpanded] = useState(true)
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | undefined>(undefined)
+  const [comment, setComment] = useState('')
 
   useEffect(() => {
     setExpanded(true)
+    setSelectedOptionIndex(undefined)
+    setComment('')
   }, [request.requestId])
 
   const data = extractExitSpecData(request)
   if (!data) return null
 
-  const { plan, title } = data
+  const { plan, title, optionNames } = data
 
   const proceedOptions = request.optionsMeta.filter((o) => o.value !== 'cancel')
   const cancelOption = request.optionsMeta.find((o) => o.value === 'cancel')
 
   const handleProceed = (meta: PermissionOptionMeta) => {
-    onRespond({ selectedOption: meta.value })
+    onRespond({
+      selectedOption: meta.value,
+      selectedExitSpecModeOptionIndex: optionNames?.length ? selectedOptionIndex : undefined,
+      exitSpecModeComment: comment.trim() || undefined,
+    })
   }
 
   const handleCancel = () => {
@@ -122,7 +136,40 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
           </ScrollArea>
         </div>
 
-        <div className="border-t border-border px-4 py-3">
+        <div className="border-t border-border px-4 py-3 space-y-3">
+          {optionNames && optionNames.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Select an option:</span>
+              <div className="flex flex-wrap gap-2">
+                {optionNames.map((name, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                      selectedOptionIndex === i
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border bg-background text-foreground hover:bg-accent/50'
+                    }`}
+                    onClick={() => setSelectedOptionIndex(i)}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Comment (optional):</span>
+            <textarea
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+              rows={2}
+              placeholder="Leave a comment for the implementation..."
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+            />
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             {proceedOptions.map((opt, i) => (
               <Button

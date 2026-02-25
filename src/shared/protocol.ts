@@ -180,6 +180,7 @@ export interface ChatMessage {
     | ThinkingBlock
   )[]
   timestamp: number
+  endTimestamp?: number
 }
 
 // === Session / Project ===
@@ -318,6 +319,10 @@ export interface SkillDef {
   description?: string
   scope: 'project' | 'user'
   filePath: string
+  enabled?: boolean
+  userInvocable?: boolean
+  version?: string
+  location?: 'personal' | 'project'
 }
 
 export interface DroidClientAPI {
@@ -383,7 +388,10 @@ export interface DroidClientAPI {
     sessionId: string
     requestId: string
     selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
   }) => void
+  addUserMessage: (params: { sessionId: string; text: string }) => Promise<void>
   respondAskUser: (params: {
     sessionId: string
     requestId: string

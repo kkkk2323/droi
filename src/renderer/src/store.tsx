@@ -32,6 +32,7 @@ import {
   upsertSessionMeta,
   replaceSessionIdInProjects,
 } from './store/projectHelpers'
+import { isExitSpecPermission } from '@/components/SpecReviewCard'
 
 const droid = getDroidClient()
 
@@ -149,6 +150,8 @@ interface AppActions {
   handleRespondPermission: (params: {
     selectedOption: DroidPermissionOption
     autoLevel?: 'low' | 'medium' | 'high'
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
   }) => void
   handleRespondAskUser: (params: {
     cancelled?: boolean
@@ -1550,7 +1553,72 @@ export const useAppStore = create<AppStore>((set, get) => ({
         `ui-permission-response: ${selectedOption} requestId=${req.requestId}`,
       ),
     )
-    droid.respondPermission({ sessionId: sid, requestId: req.requestId, selectedOption })
+
+    // Workaround: droid CLI stream-jsonrpc strips extra fields from permission response.
+    // Send option/comment as a user message BEFORE approving so the model sees it in context.
+    if (
+      selectedOption !== 'cancel' &&
+      isExitSpecPermission(req) &&
+      (params.selectedExitSpecModeOptionIndex != null || params.exitSpecModeComment)
+    ) {
+      let optionName: string | undefined
+      if (params.selectedExitSpecModeOptionIndex != null) {
+        for (const item of req.toolUses as any[]) {
+          const raw = (item as any)?.toolUse || item
+          const input = (raw as any)?.input || (raw as any)?.parameters
+          if (input && Array.isArray(input.optionNames)) {
+            optionName = input.optionNames[params.selectedExitSpecModeOptionIndex]
+            break
+          }
+        }
+      }
+      const parts: string[] = []
+      if (optionName) parts.push(`I chose: ${optionName}`)
+      if (params.exitSpecModeComment) parts.push(`Comment: ${params.exitSpecModeComment}`)
+      if (parts.length > 0) {
+        const feedbackText = `[Spec Feedback] ${parts.join('\n')}`
+        const capturedSid = sid
+        const capturedReq = req
+        const capturedParams = params
+        void droid.addUserMessage({ sessionId: capturedSid, text: feedbackText }).then(
+          () => {
+            droid.respondPermission({
+              sessionId: capturedSid,
+              requestId: capturedReq.requestId,
+              selectedOption: capturedParams.selectedOption,
+              selectedExitSpecModeOptionIndex: capturedParams.selectedExitSpecModeOptionIndex,
+              exitSpecModeComment: capturedParams.exitSpecModeComment,
+            })
+          },
+          () => {
+            // Fallback: send permission response even if addUserMessage fails
+            droid.respondPermission({
+              sessionId: capturedSid,
+              requestId: capturedReq.requestId,
+              selectedOption: capturedParams.selectedOption,
+              selectedExitSpecModeOptionIndex: capturedParams.selectedExitSpecModeOptionIndex,
+              exitSpecModeComment: capturedParams.exitSpecModeComment,
+            })
+          },
+        )
+      } else {
+        droid.respondPermission({
+          sessionId: sid,
+          requestId: req.requestId,
+          selectedOption,
+          selectedExitSpecModeOptionIndex: params.selectedExitSpecModeOptionIndex,
+          exitSpecModeComment: params.exitSpecModeComment,
+        })
+      }
+    } else {
+      droid.respondPermission({
+        sessionId: sid,
+        requestId: req.requestId,
+        selectedOption,
+        selectedExitSpecModeOptionIndex: params.selectedExitSpecModeOptionIndex,
+        exitSpecModeComment: params.exitSpecModeComment,
+      })
+    }
 
     get()._setSessionBuffers((prev) => {
       const session = prev.get(sid)

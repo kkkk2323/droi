@@ -455,14 +455,40 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.on(
     'droid:permission-response',
-    (_event, payload: { sessionId: string; requestId: string; selectedOption: any }) => {
+    (
+      _event,
+      payload: {
+        sessionId: string
+        requestId: string
+        selectedOption: any
+        selectedExitSpecModeOptionIndex?: number
+        exitSpecModeComment?: string
+      },
+    ) => {
       if (!payload || typeof payload !== 'object') return
       if (typeof payload.sessionId !== 'string' || typeof payload.requestId !== 'string') return
       execManager.respondPermission({
         sessionId: payload.sessionId,
         requestId: payload.requestId,
         selectedOption: payload.selectedOption,
+        selectedExitSpecModeOptionIndex:
+          typeof payload.selectedExitSpecModeOptionIndex === 'number'
+            ? payload.selectedExitSpecModeOptionIndex
+            : undefined,
+        exitSpecModeComment:
+          typeof payload.exitSpecModeComment === 'string'
+            ? payload.exitSpecModeComment
+            : undefined,
       })
+    },
+  )
+
+  ipcMain.handle(
+    'droid:add-user-message',
+    async (_event, payload: { sessionId: string; text: string }) => {
+      if (!payload || typeof payload.sessionId !== 'string' || typeof payload.text !== 'string')
+        return
+      await execManager.addUserMessage(payload.sessionId, payload.text)
     },
   )
 

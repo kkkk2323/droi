@@ -590,8 +590,17 @@ export function applyRpcNotification(
     if (!normalized) return prev
     const session = prev.get(sid)
     if (!session) return prev
+    const isIdle = normalized === 'idle'
     const next = new Map(prev)
-    next.set(sid, { ...session, isRunning: normalized !== 'idle' })
+    let messages = session.messages
+    if (isIdle && messages.length > 0) {
+      const last = messages[messages.length - 1]
+      if (last.role === 'assistant' && !last.endTimestamp) {
+        messages = [...messages]
+        messages[messages.length - 1] = { ...last, endTimestamp: now }
+      }
+    }
+    next.set(sid, { ...session, isRunning: !isIdle, messages })
     return next
   }
 

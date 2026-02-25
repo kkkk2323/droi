@@ -845,10 +845,38 @@ export function createApiRoutes() {
       if (!sessionId || !requestId || typeof selectedOption !== 'string') {
         return jsonError(c, 400, 'Invalid payload')
       }
-      deps.execManager.respondPermission({ sessionId, requestId, selectedOption })
+      const selectedExitSpecModeOptionIndex =
+        typeof body.selectedExitSpecModeOptionIndex === 'number'
+          ? body.selectedExitSpecModeOptionIndex
+          : undefined
+      const exitSpecModeComment =
+        typeof body.exitSpecModeComment === 'string' ? body.exitSpecModeComment : undefined
+      deps.execManager.respondPermission({
+        sessionId,
+        requestId,
+        selectedOption,
+        selectedExitSpecModeOptionIndex,
+        exitSpecModeComment,
+      })
       return c.json({ ok: true })
     } catch {
       return jsonError(c, 400, 'Invalid JSON')
+    }
+  })
+
+  api.post('/rpc/add-user-message', async (c) => {
+    try {
+      const deps = c.get('deps')
+      const body = await readJsonBody<Record<string, unknown>>(c)
+      const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+      const text = typeof body.text === 'string' ? body.text : ''
+      if (!sessionId || !text) {
+        return jsonError(c, 400, 'Invalid payload')
+      }
+      await deps.execManager.addUserMessage(sessionId, text)
+      return c.json({ ok: true })
+    } catch {
+      return jsonError(c, 400, 'Failed to add user message')
     }
   })
 
@@ -1410,6 +1438,25 @@ export function createApiRoutes() {
   api.get('/skills', async (c) => {
     try {
       const deps = c.get('deps')
+      const sessionId = deps.execManager.getFirstSessionId()
+      if (sessionId) {
+        try {
+          const raw = await deps.execManager.listSkills(sessionId)
+          const mapped = (raw as any[]).map((s) => ({
+            name: String(s.name || ''),
+            description: typeof s.description === 'string' ? s.description : undefined,
+            scope: s.location === 'personal' ? 'user' : s.location === 'project' ? 'project' : 'user',
+            filePath: typeof s.filePath === 'string' ? s.filePath : '',
+            enabled: typeof s.enabled === 'boolean' ? s.enabled : undefined,
+            userInvocable: typeof s.userInvocable === 'boolean' ? s.userInvocable : undefined,
+            version: typeof s.version === 'string' ? s.version : undefined,
+            location: typeof s.location === 'string' ? s.location : undefined,
+          }))
+          return c.json(mapped)
+        } catch {
+          // fallback to filesystem scan
+        }
+      }
       const projectDir = deps.cachedStateRef.value.activeProjectDir || ''
       const skillList = await scanSkills({ projectDir })
       return c.json(skillList)

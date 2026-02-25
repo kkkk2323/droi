@@ -404,6 +404,13 @@ export class DroidJsonRpcSession {
     if (res.error) throw new Error(res.error.message || 'add_user_message failed')
   }
 
+  async listSkills(): Promise<unknown[]> {
+    const res = await this.sendRequest('droid.list_skills', {})
+    if (res.error) throw new Error(res.error.message || 'list_skills failed')
+    const result = res.result as any
+    return Array.isArray(result?.skills) ? result.skills : []
+  }
+
   async interrupt(): Promise<void> {
     try {
       const res = await this.sendRequest('droid.interrupt_session', {})
