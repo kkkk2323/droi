@@ -95,6 +95,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const prevActiveSessionIdRef = useRef(activeSessionId)
   const newSessionRef = useRef<HTMLDivElement | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [renameOpenDir, setRenameOpenDir] = useState<string | null>(null)
   const {
     getSessionRunning,
     handleAddProject,
@@ -220,7 +221,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         </DropdownMenuTrigger>
                         {!browserMode && (
                           <DropdownMenuContent side="right" align="start">
-                            <AlertDialog>
+                            <AlertDialog
+                              open={renameOpenDir === project.dir}
+                              onOpenChange={(open) => {
+                                if (!open) setRenameOpenDir(null)
+                              }}
+                            >
                               <AlertDialogTrigger
                                 render={
                                   <DropdownMenuItem
@@ -228,7 +234,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                     className="py-1 cursor-pointer text-xs"
                                   />
                                 }
-                                onClick={() => setRenameValue(getProjectDisplayName(project))}
+                                onClick={() => {
+                                  setRenameValue(getProjectDisplayName(project))
+                                  setRenameOpenDir(project.dir)
+                                }}
                               >
                                 <PencilIcon className="size-3.5" />
                                 Rename
@@ -245,10 +254,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                   value={renameValue}
                                   onChange={(e) => setRenameValue(e.target.value)}
                                   onKeyDown={(e) => {
+                                    e.stopPropagation()
                                     if (e.key === 'Enter' && renameValue.trim()) {
                                       handleRenameProject(project.dir, renameValue.trim())
-                                      ;(e.target as HTMLElement).closest('dialog')?.close()
+                                      setRenameOpenDir(null)
                                     }
+                                    if (e.key === 'Escape') setRenameOpenDir(null)
                                   }}
                                   autoFocus
                                 />
@@ -256,7 +267,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                                   <AlertDialogAction
                                     disabled={!renameValue.trim()}
-                                    onClick={() => handleRenameProject(project.dir, renameValue.trim())}
+                                    onClick={() => {
+                                      handleRenameProject(project.dir, renameValue.trim())
+                                      setRenameOpenDir(null)
+                                    }}
                                   >
                                     Save
                                   </AlertDialogAction>
