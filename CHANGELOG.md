@@ -1,3 +1,9 @@
+## 0.15.1 - 2026-02-25
+
+### Fixes
+- Refine chat UI and assistant message duration tracking
+- Improve project rename dialog behavior and state management
+
 ## 0.15.0 - 2026-02-25
 
 ### Features
