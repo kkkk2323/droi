@@ -17,6 +17,7 @@ import {
   useIsCancelling,
   usePendingNewSession,
   useIsCreatingSession,
+  useWorkingState,
   useActions,
 } from '@/store'
 import ChatView from '@/components/ChatView'
@@ -31,6 +32,7 @@ import { isExitSpecPermission } from '@/components/SpecReviewCard'
 export function ChatPage() {
   const messages = useMessages()
   const isRunning = useIsRunning()
+  const workingState = useWorkingState()
   const model = useModel()
   const autoLevel = useAutoLevel()
   const reasoningEffort = useReasoningEffort()
@@ -130,6 +132,7 @@ export function ChatPage() {
           isRunning={isRunning}
           noProject={noProject}
           activeProjectDir={effectiveProjectDir}
+          workingState={workingState}
           pendingPermissionRequest={pendingPermissionRequest}
           pendingSendMessageIds={pendingSendMessageIds}
           setupScript={setupScript}

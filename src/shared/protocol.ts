@@ -180,6 +180,9 @@ export interface ChatMessage {
     | ThinkingBlock
   )[]
   timestamp: number
+  endTimestamp?: number
+  errorType?: string
+  errorTimestamp?: string
 }
 
 // === Session / Project ===
@@ -205,6 +208,7 @@ export interface SessionMeta {
 export interface Project {
   dir: string
   name: string
+  displayName?: string
   sessions: SessionMeta[]
 }
 
@@ -237,7 +241,7 @@ export interface ApiKeyUsage {
 export interface PersistedAppStateV1 {
   version: 1
   apiKey?: string
-  projects?: Array<{ dir: string; name: string }>
+  projects?: Array<{ dir: string; name: string; displayName?: string }>
   activeProjectDir?: string
   traceChainEnabled?: boolean
 }
@@ -247,7 +251,7 @@ export interface PersistedAppStateV2 {
   machineId: string
   apiKey?: string
   apiKeys?: ApiKeyEntry[]
-  projects?: Array<{ dir: string; name: string }>
+  projects?: Array<{ dir: string; name: string; displayName?: string }>
   activeProjectDir?: string
   traceChainEnabled?: boolean
   showDebugTrace?: boolean
@@ -318,6 +322,10 @@ export interface SkillDef {
   description?: string
   scope: 'project' | 'user'
   filePath: string
+  enabled?: boolean
+  userInvocable?: boolean
+  version?: string
+  location?: 'personal' | 'project'
 }
 
 export interface DroidClientAPI {
@@ -383,7 +391,10 @@ export interface DroidClientAPI {
     sessionId: string
     requestId: string
     selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
   }) => void
+  addUserMessage: (params: { sessionId: string; text: string }) => Promise<void>
   respondAskUser: (params: {
     sessionId: string
     requestId: string
@@ -468,7 +479,7 @@ export interface DroidClientAPI {
   deleteSession: (id: string) => Promise<boolean>
 
   loadAppState: () => Promise<PersistedAppState>
-  saveProjects: (projects: Array<{ dir: string; name: string }>) => void
+  saveProjects: (projects: Array<{ dir: string; name: string; displayName?: string }>) => void
   updateProjectSettings: (params: {
     repoRoot: string
     settings: ProjectSettings

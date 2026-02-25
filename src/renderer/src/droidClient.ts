@@ -618,12 +618,25 @@ const browserClient: DroidClientAPI = {
     }
   },
 
-  respondPermission: ({ sessionId, requestId, selectedOption }) => {
+  respondPermission: ({ sessionId, requestId, selectedOption, selectedExitSpecModeOptionIndex, exitSpecModeComment }) => {
     apiFetch(`${getApiBase()}/rpc/permission-response`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, requestId, selectedOption }),
+      body: JSON.stringify({
+        sessionId,
+        requestId,
+        selectedOption,
+        ...(selectedExitSpecModeOptionIndex !== undefined && { selectedExitSpecModeOptionIndex }),
+        ...(exitSpecModeComment !== undefined && { exitSpecModeComment }),
+      }),
     }).catch(() => {})
+  },
+  addUserMessage: async ({ sessionId, text }) => {
+    await apiFetch(`${getApiBase()}/rpc/add-user-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, text }),
+    })
   },
   respondAskUser: ({ sessionId, requestId, cancelled, answers }) => {
     apiFetch(`${getApiBase()}/rpc/askuser-response`, {

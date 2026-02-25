@@ -4,6 +4,30 @@ export function getRepoKey(meta: Pick<SessionMeta, 'repoRoot' | 'projectDir'>): 
   return String(meta.repoRoot || meta.projectDir || '').trim()
 }
 
+export function deriveSmartName(folderName: string): string {
+  if (!folderName) return folderName
+  const idx = folderName.indexOf('--')
+  if (idx > 0) return folderName.slice(0, idx)
+  return folderName
+}
+
+export function getProjectDisplayName(project: { name: string; displayName?: string }): string {
+  if (project.displayName) return project.displayName
+  return deriveSmartName(project.name)
+}
+
+export function renameProject(prev: Project[], dir: string, displayName: string): Project[] {
+  let changed = false
+  const next = prev.map((p) => {
+    if (p.dir !== dir) return p
+    const trimmed = displayName.trim()
+    if (p.displayName === trimmed) return p
+    changed = true
+    return { ...p, displayName: trimmed || undefined }
+  })
+  return changed ? next : prev
+}
+
 export function getTitleFromPrompt(prompt: string): string {
   const trimmed = String(prompt || '').trim() || 'Untitled'
   return trimmed.slice(0, 40) + (trimmed.length > 40 ? '...' : '')

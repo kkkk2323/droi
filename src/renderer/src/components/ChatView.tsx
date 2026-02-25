@@ -45,19 +45,43 @@ function attachmentSrc(path: string): string {
   return `local-file://${encodeURIComponent(path)}`
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
+}
+
+function formatWorkingState(state?: string): string {
+  switch (state) {
+    case 'streaming_assistant_message': return 'Generating...'
+    case 'executing_tool': return 'Running tool...'
+    case 'waiting_for_tool_confirmation': return 'Waiting for confirmation...'
+    case 'compacting_conversation': return 'Compacting conversation...'
+    default: return 'Thinking...'
+  }
+}
+
 interface ChatViewProps {
   sessionId: string
   messages: ChatMessage[]
   isRunning: boolean
   noProject: boolean
   activeProjectDir?: string
+  workingState?: string
   pendingPermissionRequest?: PendingPermissionRequest | null
   pendingSendMessageIds?: Record<string, true>
   setupScript?: SessionSetupState | null
   workspacePrepStatus?: 'running' | 'completed' | null
   onRetrySetupScript?: () => void
   onSkipSetupScript?: () => void
-  onRespondPermission?: (params: { selectedOption: DroidPermissionOption }) => void
+  onRespondPermission?: (params: {
+    selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
+  }) => void
   onRequestSpecChanges?: () => void
 }
 
@@ -67,6 +91,7 @@ function ChatView({
   isRunning,
   noProject,
   activeProjectDir,
+  workingState,
   pendingPermissionRequest,
   pendingSendMessageIds = {},
   setupScript = null,
@@ -92,14 +117,21 @@ function ChatView({
     }
     const prev = prevCountRef.current
     prevCountRef.current = messages.length
-    if (messages.length > prev) {
+    if (messages.length > prev && isAtBottomRef.current) {
       virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
     }
   }, [messages.length])
 
   useEffect(() => {
     if (isExitSpecPermission(pendingPermissionRequest)) {
+      // Footer content (SpecReviewCard) is below the last item,
+      // so scrollToIndex LAST won't reach it. Use scrollBy after
+      // a short delay to let the footer render.
       virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
+      const timer = setTimeout(() => {
+        virtuosoRef.current?.scrollBy({ top: 99999, behavior: 'smooth' })
+      }, 150)
+      return () => clearTimeout(timer)
     }
   }, [pendingPermissionRequest])
 
@@ -198,7 +230,7 @@ function ChatView({
         {isRunning && lastMsg?.role !== 'assistant' && (
           <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
-            <span>Thinking...</span>
+            <span>{formatWorkingState(workingState)}</span>
           </div>
         )}
       </div>
@@ -210,6 +242,7 @@ function ChatView({
       onRequestSpecChanges,
       isRunning,
       lastMsg,
+      workingState,
     ],
   )
 
@@ -256,24 +289,13 @@ function MessageEntry({
     const attachments = message.blocks.filter((b): b is AttachmentBlock => b.kind === 'attachment')
     const imageAttachments = attachments.filter((a) => isImageFile(a.name))
     const fileAttachments = attachments.filter((a) => !isImageFile(a.name))
-    const stateLabel = isPendingSend ? 'Pending' : ''
-
     return (
       <>
-        <div className="flex justify-end pb-3 pt-4">
+        <div className="flex items-center justify-end gap-2 pb-3 pt-4">
+          {isPendingSend && (
+            <span className="size-2 animate-pulse rounded-full bg-muted-foreground/50" />
+          )}
           <div className="max-w-[85%] rounded-2xl bg-muted px-4 py-2.5">
-            {stateLabel && (
-              <div className="mb-1 flex justify-end">
-                <span
-                  className={cn(
-                    'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-                    'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {stateLabel}
-                </span>
-              </div>
-            )}
             {imageAttachments.length > 0 && (
               <div className={cn('flex flex-wrap gap-1.5', text && 'mb-2')}>
                 {imageAttachments.map((att, i) => (
@@ -340,7 +362,15 @@ function MessageEntry({
     const text = message.blocks[0]?.kind === 'text' ? message.blocks[0].content : ''
     return (
       <div className="my-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
+        {message.errorType && (
+          <span className="mb-1 block font-medium">{message.errorType}</span>
+        )}
         {text}
+        {message.errorTimestamp && (
+          <span className="mt-1 block text-[10px] opacity-60">
+            {new Date(message.errorTimestamp).toLocaleTimeString()}
+          </span>
+        )}
       </div>
     )
   }
@@ -374,6 +404,11 @@ function MessageEntry({
         }
         return null
       })}
+      {message.endTimestamp && message.timestamp > 0 && (
+        <div className="mt-1 text-[11px] text-muted-foreground/60">
+          {formatDuration(message.endTimestamp - message.timestamp)}
+        </div>
+      )}
     </div>
   )
 }

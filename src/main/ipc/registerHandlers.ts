@@ -455,14 +455,40 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.on(
     'droid:permission-response',
-    (_event, payload: { sessionId: string; requestId: string; selectedOption: any }) => {
+    (
+      _event,
+      payload: {
+        sessionId: string
+        requestId: string
+        selectedOption: any
+        selectedExitSpecModeOptionIndex?: number
+        exitSpecModeComment?: string
+      },
+    ) => {
       if (!payload || typeof payload !== 'object') return
       if (typeof payload.sessionId !== 'string' || typeof payload.requestId !== 'string') return
       execManager.respondPermission({
         sessionId: payload.sessionId,
         requestId: payload.requestId,
         selectedOption: payload.selectedOption,
+        selectedExitSpecModeOptionIndex:
+          typeof payload.selectedExitSpecModeOptionIndex === 'number'
+            ? payload.selectedExitSpecModeOptionIndex
+            : undefined,
+        exitSpecModeComment:
+          typeof payload.exitSpecModeComment === 'string'
+            ? payload.exitSpecModeComment
+            : undefined,
       })
+    },
+  )
+
+  ipcMain.handle(
+    'droid:add-user-message',
+    async (_event, payload: { sessionId: string; text: string }) => {
+      if (!payload || typeof payload.sessionId !== 'string' || typeof payload.text !== 'string')
+        return
+      await execManager.addUserMessage(payload.sessionId, payload.text)
     },
   )
 
@@ -836,7 +862,15 @@ export function registerIpcHandlers(opts: {
   ipcMain.on('appState:saveProjects', (_event, projects: unknown[]) => {
     const normalized = Array.isArray(projects)
       ? projects
-          .map((p) => ({ dir: (p as any)?.dir, name: (p as any)?.name }))
+          .map((p) => {
+            const entry: { dir: string; name: string; displayName?: string } = {
+              dir: (p as any)?.dir,
+              name: (p as any)?.name,
+            }
+            const dn = (p as any)?.displayName
+            if (typeof dn === 'string' && dn.trim()) entry.displayName = dn.trim()
+            return entry
+          })
           .filter((p) => typeof p.dir === 'string' && p.dir && typeof p.name === 'string' && p.name)
       : []
 

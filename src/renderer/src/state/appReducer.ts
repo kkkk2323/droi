@@ -16,6 +16,7 @@ export interface SessionBuffer {
   isRunning: boolean
   isCancelling: boolean
   isSetupRunning: boolean
+  workingState?: string
   apiKeyFingerprint?: string
   pendingApiKeyFingerprint?: string
   projectDir: string
@@ -69,6 +70,7 @@ export function makeBuffer(
     isRunning: false,
     isCancelling: false,
     isSetupRunning: false,
+    workingState: undefined,
     apiKeyFingerprint: undefined,
     pendingApiKeyFingerprint: undefined,
     projectDir,
@@ -590,22 +592,41 @@ export function applyRpcNotification(
     if (!normalized) return prev
     const session = prev.get(sid)
     if (!session) return prev
+    const isIdle = normalized === 'idle'
     const next = new Map(prev)
-    next.set(sid, { ...session, isRunning: normalized !== 'idle' })
+    let messages = session.messages
+    if (isIdle && messages.length > 0) {
+      const last = messages[messages.length - 1]
+      if (last.role === 'assistant' && !last.endTimestamp) {
+        messages = [...messages]
+        messages[messages.length - 1] = { ...last, endTimestamp: now }
+      }
+    }
+    next.set(sid, { ...session, isRunning: !isIdle, workingState: isIdle ? undefined : normalized, messages })
     return next
   }
 
   if (type === 'error') {
     const msg = String((notification as any).message || 'Unknown error')
+    const errorType = (notification as any).errorType ? String((notification as any).errorType) : undefined
+    const errorTimestamp = (notification as any).timestamp ? String((notification as any).timestamp) : undefined
     const session = prev.get(sid)
     if (!session) return prev
     const next = new Map(prev)
     next.set(sid, {
       ...session,
       isRunning: false,
+      workingState: undefined,
       messages: [
         ...session.messages,
-        { id: uuidv4(), role: 'error', blocks: [{ kind: 'text', content: msg }], timestamp: now },
+        {
+          id: uuidv4(),
+          role: 'error',
+          blocks: [{ kind: 'text', content: msg }],
+          timestamp: now,
+          errorType,
+          errorTimestamp,
+        },
       ],
     })
     return next
@@ -790,7 +811,7 @@ export function applyTurnEnd(
   const session = prev.get(sid)
   if (!session) return prev
   const next = new Map(prev)
-  next.set(sid, { ...session, isRunning: false, isCancelling: false })
+  next.set(sid, { ...session, isRunning: false, isCancelling: false, workingState: undefined })
   return next
 }
 
@@ -1008,6 +1029,7 @@ export function applyError(
   next.set(sid, {
     ...session,
     isRunning: false,
+    workingState: undefined,
     messages: [
       ...session.messages,
       {

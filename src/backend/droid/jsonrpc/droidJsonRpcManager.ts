@@ -174,6 +174,11 @@ export class DroidJsonRpcManager {
     return this.sessions.has(sessionId)
   }
 
+  getFirstSessionId(): string | null {
+    const first = this.sessions.keys().next()
+    return first.done ? null : first.value
+  }
+
   async updateSessionSettings(params: UpdateSessionSettingsParams): Promise<void> {
     const managed = this.sessions.get(params.sessionId)
     if (!managed) return
@@ -185,14 +190,35 @@ export class DroidJsonRpcManager {
     })
   }
 
+  async listSkills(sessionId: string): Promise<unknown[]> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return []
+    return managed.session.listSkills()
+  }
+
+  async addUserMessage(sessionId: string, text: string): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) throw new Error(`No session: ${sessionId}`)
+    await managed.session.addUserMessage({ text })
+  }
+
   respondPermission(params: {
     sessionId: string
     requestId: string
     selectedOption: DroidPermissionOption
+    selectedExitSpecModeOptionIndex?: number
+    exitSpecModeComment?: string
   }): void {
     const managed = this.sessions.get(params.sessionId)
     if (!managed) return
-    managed.session.sendResponse(params.requestId, { selectedOption: params.selectedOption })
+    const result: Record<string, unknown> = { selectedOption: params.selectedOption }
+    if (params.selectedExitSpecModeOptionIndex !== undefined) {
+      result.selectedExitSpecModeOptionIndex = params.selectedExitSpecModeOptionIndex
+    }
+    if (params.exitSpecModeComment !== undefined) {
+      result.exitSpecModeComment = params.exitSpecModeComment
+    }
+    managed.session.sendResponse(params.requestId, result)
   }
 
   respondAskUser(params: {

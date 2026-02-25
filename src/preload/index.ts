@@ -68,6 +68,7 @@ const droidAPI: DroidClientAPI = {
   },
 
   respondPermission: (params) => ipcRenderer.send('droid:permission-response', params),
+  addUserMessage: (params) => ipcRenderer.invoke('droid:add-user-message', params),
   respondAskUser: (params) => ipcRenderer.send('droid:askuser-response', params),
   onStdout: (callback) => {
     const handler = (
