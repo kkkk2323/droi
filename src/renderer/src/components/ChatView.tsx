@@ -117,14 +117,21 @@ function ChatView({
     }
     const prev = prevCountRef.current
     prevCountRef.current = messages.length
-    if (messages.length > prev) {
+    if (messages.length > prev && isAtBottomRef.current) {
       virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
     }
   }, [messages.length])
 
   useEffect(() => {
     if (isExitSpecPermission(pendingPermissionRequest)) {
+      // Footer content (SpecReviewCard) is below the last item,
+      // so scrollToIndex LAST won't reach it. Use scrollBy after
+      // a short delay to let the footer render.
       virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
+      const timer = setTimeout(() => {
+        virtuosoRef.current?.scrollBy({ top: 99999, behavior: 'smooth' })
+      }, 150)
+      return () => clearTimeout(timer)
     }
   }, [pendingPermissionRequest])
 

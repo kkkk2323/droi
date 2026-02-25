@@ -208,6 +208,7 @@ export interface SessionMeta {
 export interface Project {
   dir: string
   name: string
+  displayName?: string
   sessions: SessionMeta[]
 }
 
@@ -240,7 +241,7 @@ export interface ApiKeyUsage {
 export interface PersistedAppStateV1 {
   version: 1
   apiKey?: string
-  projects?: Array<{ dir: string; name: string }>
+  projects?: Array<{ dir: string; name: string; displayName?: string }>
   activeProjectDir?: string
   traceChainEnabled?: boolean
 }
@@ -250,7 +251,7 @@ export interface PersistedAppStateV2 {
   machineId: string
   apiKey?: string
   apiKeys?: ApiKeyEntry[]
-  projects?: Array<{ dir: string; name: string }>
+  projects?: Array<{ dir: string; name: string; displayName?: string }>
   activeProjectDir?: string
   traceChainEnabled?: boolean
   showDebugTrace?: boolean
@@ -478,7 +479,7 @@ export interface DroidClientAPI {
   deleteSession: (id: string) => Promise<boolean>
 
   loadAppState: () => Promise<PersistedAppState>
-  saveProjects: (projects: Array<{ dir: string; name: string }>) => void
+  saveProjects: (projects: Array<{ dir: string; name: string; displayName?: string }>) => void
   updateProjectSettings: (params: {
     repoRoot: string
     settings: ProjectSettings

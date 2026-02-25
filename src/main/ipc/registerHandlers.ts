@@ -862,7 +862,15 @@ export function registerIpcHandlers(opts: {
   ipcMain.on('appState:saveProjects', (_event, projects: unknown[]) => {
     const normalized = Array.isArray(projects)
       ? projects
-          .map((p) => ({ dir: (p as any)?.dir, name: (p as any)?.name }))
+          .map((p) => {
+            const entry: { dir: string; name: string; displayName?: string } = {
+              dir: (p as any)?.dir,
+              name: (p as any)?.name,
+            }
+            const dn = (p as any)?.displayName
+            if (typeof dn === 'string' && dn.trim()) entry.displayName = dn.trim()
+            return entry
+          })
           .filter((p) => typeof p.dir === 'string' && p.dir && typeof p.name === 'string' && p.name)
       : []
 

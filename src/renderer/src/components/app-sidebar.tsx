@@ -49,6 +49,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   MoreHorizontalIcon,
+  PencilIcon,
   PlusIcon,
   SettingsIcon,
   Trash2Icon,
@@ -57,6 +58,7 @@ import {
 import { cn } from '@/lib/utils'
 import { isBrowserMode } from '@/droidClient'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { getProjectDisplayName } from '@/store/projectHelpers'
 
 function SessionTitle({ title }: { title: string }) {
   const prevRef = useRef(title)
@@ -92,6 +94,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const isInitBlocked = !isInitialLoadDone
   const prevActiveSessionIdRef = useRef(activeSessionId)
   const newSessionRef = useRef<HTMLDivElement | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const {
     getSessionRunning,
     handleAddProject,
@@ -99,6 +102,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     handleSelectSession,
     handleDeleteSession,
     handleDeleteProject,
+    handleRenameProject,
     handleTogglePin,
   } = useActions()
 
@@ -182,7 +186,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       }
                     >
                       <FolderIcon className="size-4" />
-                      <span className="truncate">{project.name}</span>
+                      <span className="truncate">{getProjectDisplayName(project)}</span>
                     </CollapsibleTrigger>
 
                     <div className="absolute top-1.5 right-1 flex items-center gap-0.5">
@@ -220,6 +224,49 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                               <AlertDialogTrigger
                                 render={
                                   <DropdownMenuItem
+                                    closeOnClick={false}
+                                    className="py-1 cursor-pointer text-xs"
+                                  />
+                                }
+                                onClick={() => setRenameValue(getProjectDisplayName(project))}
+                              >
+                                <PencilIcon className="size-3.5" />
+                                Rename
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Rename project</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Set a custom display name for this project.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <input
+                                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                  value={renameValue}
+                                  onChange={(e) => setRenameValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && renameValue.trim()) {
+                                      handleRenameProject(project.dir, renameValue.trim())
+                                      ;(e.target as HTMLElement).closest('dialog')?.close()
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    disabled={!renameValue.trim()}
+                                    onClick={() => handleRenameProject(project.dir, renameValue.trim())}
+                                  >
+                                    Save
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                            <AlertDialog>
+                              <AlertDialogTrigger
+                                render={
+                                  <DropdownMenuItem
                                     variant="destructive"
                                     closeOnClick={false}
                                     className="py-1 cursor-pointer "
@@ -233,7 +280,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Delete project?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will remove &quot;{project.name}&quot; from the sidebar.
+                                    This will remove &quot;{getProjectDisplayName(project)}&quot; from the sidebar.
                                     Your files on disk will not be affected.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>

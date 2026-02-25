@@ -31,6 +31,7 @@ import {
   getTitleFromPrompt,
   upsertSessionMeta,
   replaceSessionIdInProjects,
+  renameProject,
 } from './store/projectHelpers'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
 
@@ -177,6 +178,7 @@ interface AppActions {
   handleTogglePin: (sessionId: string) => void
   handleDeleteSession: (sessionId: string) => void
   handleDeleteProject: (repoRoot: string) => void
+  handleRenameProject: (repoRoot: string, displayName: string) => void
 
   // Internal helpers
   _bumpSessionGeneration: (sid: string) => number
@@ -2085,6 +2087,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         set({ activeSessionId: newId })
       }
     })()
+  },
+
+  handleRenameProject: (repoRoot, displayName) => {
+    if (!repoRoot) return
+    get()._setProjects((prev) => renameProject(prev, repoRoot, displayName))
   },
 }))
 

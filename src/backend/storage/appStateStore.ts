@@ -11,13 +11,18 @@ import { atomicWriteFile } from './fsUtils.ts'
 
 const MAX_DEBUG_TRACE_MAX_LINES = 10_000
 
-function normalizeProjects(projects: unknown): Array<{ dir: string; name: string }> | undefined {
+function normalizeProjects(projects: unknown): Array<{ dir: string; name: string; displayName?: string }> | undefined {
   if (!Array.isArray(projects)) return undefined
-  const out: Array<{ dir: string; name: string }> = []
+  const out: Array<{ dir: string; name: string; displayName?: string }> = []
   for (const p of projects) {
     const dir = (p as any)?.dir
     const name = (p as any)?.name
-    if (typeof dir === 'string' && dir && typeof name === 'string' && name) out.push({ dir, name })
+    const displayName = (p as any)?.displayName
+    if (typeof dir === 'string' && dir && typeof name === 'string' && name) {
+      const entry: { dir: string; name: string; displayName?: string } = { dir, name }
+      if (typeof displayName === 'string' && displayName.trim()) entry.displayName = displayName.trim()
+      out.push(entry)
+    }
   }
   return out.length ? out : undefined
 }
