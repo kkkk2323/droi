@@ -1,3 +1,18 @@
+## 0.15.0 - 2026-02-25
+
+### Features
+- Implement project display names and renaming functionality
+- Implement granular session working states and duration indicator
+- Implement spec review interaction and session management
+- Migrate editor icons from emojis to React components
+
+### Fixes
+- Improve session sidebar and navigation reliability
+
+### Chore
+- Cleanup outdated documentation
+- Exclude local configuration files in .gitignore
+
 ## 0.14.0 - 2026-02-24
 
 ### Features
