@@ -17,7 +17,7 @@ export function WorktreeIndicator() {
   if (!meta) return null
 
   return (
-    <div className="flex items-center gap-1 rounded-md border-border bg-card/80 px-2 py-0.5 text-xs text-muted-foreground cursor-default">
+    <div className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground cursor-default">
       <GitBranch className="size-3.5 text-muted-foreground" />
       <span className="max-w-[220px] truncate font-mono">{meta.branch || 'branch'}</span>
     </div>
