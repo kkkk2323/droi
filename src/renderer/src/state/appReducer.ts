@@ -198,11 +198,14 @@ function findOrCreateAssistantMessage(
   const id = `droid:${droidMessageId}`
   const existingIdx = msgs.findIndex((m) => m.id === id)
   if (existingIdx !== -1) return { msgs, idx: existingIdx }
+  // Use the last user message timestamp as round start so duration covers the full round-trip
+  const lastUserMsg = [...msgs].reverse().find((m) => m.role === 'user')
+  const roundStart = lastUserMsg?.timestamp ?? timestamp
   const next: ChatMessage = {
     id,
     role: 'assistant',
     blocks: [{ kind: 'text', content: '' }],
-    timestamp,
+    timestamp: roundStart,
   }
   return { msgs: [...msgs, next], idx: msgs.length }
 }

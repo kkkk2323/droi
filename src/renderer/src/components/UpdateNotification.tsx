@@ -93,7 +93,7 @@ export function UpdateNotification() {
                 {showReady
                   ? 'Update ready'
                   : showDownloading
-                    ? `Downloading... ${updateDownloadProgress}%`
+                    ? <>Downloading... <span className="tabular-nums">{updateDownloadProgress}%</span></>
                     : `v${updateAvailable?.version} available`}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">

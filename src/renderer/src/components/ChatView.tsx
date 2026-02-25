@@ -561,7 +561,7 @@ function ToolActivity({
             </pre>
           )}
 
-          {hasResult && (
+          {hasResult && (!isEdit || block.isError) && (
             <ResultView result={block.result || ''} isError={block.isError} isCode={isEdit} />
           )}
         </div>
