@@ -68,4 +68,5 @@ release/
 *.temp
 .workspace
 .attachment
+.local
 package-lock.json
