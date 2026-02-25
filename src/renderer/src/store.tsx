@@ -2112,6 +2112,8 @@ export const useIsRunning = () =>
   })
 export const useIsAnyRunning = () =>
   useAppStore((s) => Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning)))
+export const useWorkingState = () =>
+  useAppStore((s) => selectActiveBuffer(s)?.workingState)
 export const useDebugTrace = () =>
   useAppStore(
     (s) => (selectActiveBuffer(s)?.debugTrace as string[] | undefined) ?? EMPTY_DEBUG_TRACE,

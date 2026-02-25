@@ -22,6 +22,7 @@ import {
 import { getDroidClient, isBrowserMode } from '@/droidClient'
 import { KeyUsageIndicator } from './KeyUsageIndicator'
 import { TokenUsageIndicator } from './TokenUsageIndicator'
+import { SessionDurationIndicator } from './SessionDurationIndicator'
 import { McpStatusIndicator } from './McpStatusIndicator'
 import { SettingsFlashIndicator } from './SettingsFlashIndicator'
 import { ModelSelect } from './ModelSelect'
@@ -764,8 +765,11 @@ export function InputBar({
             <SettingsFlashIndicator className="ml-1" />
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <TokenUsageIndicator />
+          <div className=" flex shrink-0 items-center gap-2">
+            <div className="-mb-2 flex items-center gap-2">
+              <SessionDurationIndicator />
+              <TokenUsageIndicator />
+            </div>
             {isCancelling ? (
               <button
                 type="button"

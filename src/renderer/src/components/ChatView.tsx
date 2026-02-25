@@ -54,12 +54,23 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`
 }
 
+function formatWorkingState(state?: string): string {
+  switch (state) {
+    case 'streaming_assistant_message': return 'Generating...'
+    case 'executing_tool': return 'Running tool...'
+    case 'waiting_for_tool_confirmation': return 'Waiting for confirmation...'
+    case 'compacting_conversation': return 'Compacting conversation...'
+    default: return 'Thinking...'
+  }
+}
+
 interface ChatViewProps {
   sessionId: string
   messages: ChatMessage[]
   isRunning: boolean
   noProject: boolean
   activeProjectDir?: string
+  workingState?: string
   pendingPermissionRequest?: PendingPermissionRequest | null
   pendingSendMessageIds?: Record<string, true>
   setupScript?: SessionSetupState | null
@@ -80,6 +91,7 @@ function ChatView({
   isRunning,
   noProject,
   activeProjectDir,
+  workingState,
   pendingPermissionRequest,
   pendingSendMessageIds = {},
   setupScript = null,
@@ -211,7 +223,7 @@ function ChatView({
         {isRunning && lastMsg?.role !== 'assistant' && (
           <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
-            <span>Thinking...</span>
+            <span>{formatWorkingState(workingState)}</span>
           </div>
         )}
       </div>
@@ -223,6 +235,7 @@ function ChatView({
       onRequestSpecChanges,
       isRunning,
       lastMsg,
+      workingState,
     ],
   )
 
@@ -269,24 +282,13 @@ function MessageEntry({
     const attachments = message.blocks.filter((b): b is AttachmentBlock => b.kind === 'attachment')
     const imageAttachments = attachments.filter((a) => isImageFile(a.name))
     const fileAttachments = attachments.filter((a) => !isImageFile(a.name))
-    const stateLabel = isPendingSend ? 'Pending' : ''
-
     return (
       <>
-        <div className="flex justify-end pb-3 pt-4">
+        <div className="flex items-center justify-end gap-2 pb-3 pt-4">
+          {isPendingSend && (
+            <span className="size-2 animate-pulse rounded-full bg-muted-foreground/50" />
+          )}
           <div className="max-w-[85%] rounded-2xl bg-muted px-4 py-2.5">
-            {stateLabel && (
-              <div className="mb-1 flex justify-end">
-                <span
-                  className={cn(
-                    'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-                    'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {stateLabel}
-                </span>
-              </div>
-            )}
             {imageAttachments.length > 0 && (
               <div className={cn('flex flex-wrap gap-1.5', text && 'mb-2')}>
                 {imageAttachments.map((att, i) => (
@@ -353,7 +355,15 @@ function MessageEntry({
     const text = message.blocks[0]?.kind === 'text' ? message.blocks[0].content : ''
     return (
       <div className="my-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
+        {message.errorType && (
+          <span className="mb-1 block font-medium">{message.errorType}</span>
+        )}
         {text}
+        {message.errorTimestamp && (
+          <span className="mt-1 block text-[10px] opacity-60">
+            {new Date(message.errorTimestamp).toLocaleTimeString()}
+          </span>
+        )}
       </div>
     )
   }

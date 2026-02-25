@@ -181,6 +181,8 @@ export interface ChatMessage {
   )[]
   timestamp: number
   endTimestamp?: number
+  errorType?: string
+  errorTimestamp?: string
 }
 
 // === Session / Project ===
