@@ -1,3 +1,11 @@
+## 0.15.2 - 2026-02-26
+
+### Fixes
+- Conditionally render session indicators based on pending new session state
+
+### Style
+- Format code for improved readability and consistency across multiple files
+
 ## 0.15.1 - 2026-02-25
 
 ### Fixes
