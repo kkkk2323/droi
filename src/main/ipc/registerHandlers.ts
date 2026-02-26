@@ -476,9 +476,7 @@ export function registerIpcHandlers(opts: {
             ? payload.selectedExitSpecModeOptionIndex
             : undefined,
         exitSpecModeComment:
-          typeof payload.exitSpecModeComment === 'string'
-            ? payload.exitSpecModeComment
-            : undefined,
+          typeof payload.exitSpecModeComment === 'string' ? payload.exitSpecModeComment : undefined,
       })
     },
   )

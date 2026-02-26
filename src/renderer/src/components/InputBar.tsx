@@ -27,6 +27,7 @@ import { McpStatusIndicator } from './McpStatusIndicator'
 import { SettingsFlashIndicator } from './SettingsFlashIndicator'
 import { ModelSelect } from './ModelSelect'
 import { useSlashCommandsQuery, useSkillsQuery } from '@/hooks/useSlashCommands'
+import { usePendingNewSession } from '@/store'
 
 const droid = getDroidClient()
 
@@ -161,6 +162,7 @@ export function InputBar({
   activeProjectDir,
   specChangesMode,
 }: InputBarProps) {
+  const pendingNewSession = usePendingNewSession()
   const normalizedDraftKey = normalizeDraftKey(draftKey)
   const canPersistDraft = Boolean(normalizedDraftKey && String(activeProjectDir || '').trim())
 
@@ -766,10 +768,12 @@ export function InputBar({
           </div>
 
           <div className=" flex shrink-0 items-center gap-2">
-            <div className="-mb-2 flex items-center gap-2">
-              <SessionDurationIndicator />
-              <TokenUsageIndicator />
-            </div>
+            {!pendingNewSession && (
+              <div className="-mb-2 flex items-center gap-2">
+                <SessionDurationIndicator />
+                <TokenUsageIndicator />
+              </div>
+            )}
             {isCancelling ? (
               <button
                 type="button"

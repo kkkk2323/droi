@@ -618,7 +618,13 @@ const browserClient: DroidClientAPI = {
     }
   },
 
-  respondPermission: ({ sessionId, requestId, selectedOption, selectedExitSpecModeOptionIndex, exitSpecModeComment }) => {
+  respondPermission: ({
+    sessionId,
+    requestId,
+    selectedOption,
+    selectedExitSpecModeOptionIndex,
+    exitSpecModeComment,
+  }) => {
     apiFetch(`${getApiBase()}/rpc/permission-response`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

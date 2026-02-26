@@ -294,8 +294,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Delete project?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will remove &quot;{getProjectDisplayName(project)}&quot; from the sidebar.
-                                    Your files on disk will not be affected.
+                                    This will remove &quot;{getProjectDisplayName(project)}&quot;
+                                    from the sidebar. Your files on disk will not be affected.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
