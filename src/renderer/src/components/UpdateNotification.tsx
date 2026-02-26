@@ -90,11 +90,15 @@ export function UpdateNotification() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">
-                {showReady
-                  ? 'Update ready'
-                  : showDownloading
-                    ? <>Downloading... <span className="tabular-nums">{updateDownloadProgress}%</span></>
-                    : `v${updateAvailable?.version} available`}
+                {showReady ? (
+                  'Update ready'
+                ) : showDownloading ? (
+                  <>
+                    Downloading... <span className="tabular-nums">{updateDownloadProgress}%</span>
+                  </>
+                ) : (
+                  `v${updateAvailable?.version} available`
+                )}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {showReady
@@ -128,10 +132,7 @@ export function UpdateNotification() {
                 </button>
               )}
             </div>
-            <button
-              onClick={handleDismiss}
-              className="shrink-0 rounded-md p-1 hover:bg-muted"
-            >
+            <button onClick={handleDismiss} className="shrink-0 rounded-md p-1 hover:bg-muted">
               <X className="size-3.5 text-muted-foreground" />
             </button>
           </div>

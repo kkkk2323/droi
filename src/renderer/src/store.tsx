@@ -926,8 +926,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (buf.isSetupRunning || buf.setupScript.status === 'failed') return
 
     set({ pendingInitialSend: null })
-    // Send via the normal pipeline (now that setup is not blocking).
-    s.handleSend(pending.input, pending.attachments)
+
+    // If a new-session flow is active, temporarily clear it so handleSend routes
+    // to the current (existing) session instead of being hijacked by pendingNewSession.
+    const savedPending = s.pendingNewSession
+    try {
+      if (savedPending) {
+        set({ pendingNewSession: null })
+      }
+      s.handleSend(pending.input, pending.attachments)
+    } finally {
+      if (savedPending) {
+        set({ pendingNewSession: savedPending })
+      }
+    }
   },
 
   _confirmPendingNewSessionAndSend: async ({ input, attachments }) => {
@@ -2119,8 +2131,7 @@ export const useIsRunning = () =>
   })
 export const useIsAnyRunning = () =>
   useAppStore((s) => Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning)))
-export const useWorkingState = () =>
-  useAppStore((s) => selectActiveBuffer(s)?.workingState)
+export const useWorkingState = () => useAppStore((s) => selectActiveBuffer(s)?.workingState)
 export const useDebugTrace = () =>
   useAppStore(
     (s) => (selectActiveBuffer(s)?.debugTrace as string[] | undefined) ?? EMPTY_DEBUG_TRACE,

@@ -265,7 +265,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         try {
           const cur = useAppStore.getState().projects
           if (Array.isArray(cur) && cur.length > 0) {
-            droid.saveProjects(cur.map((p) => ({ dir: p.dir, name: p.name, displayName: p.displayName })))
+            droid.saveProjects(
+              cur.map((p) => ({ dir: p.dir, name: p.name, displayName: p.displayName })),
+            )
           }
         } catch {
           // ignore
@@ -291,7 +293,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       if (!state._initialLoadDone) return
       if (state.projects === prevProjects) return
       prevProjects = state.projects
-      droid.saveProjects(state.projects.map((p) => ({ dir: p.dir, name: p.name, displayName: p.displayName })))
+      droid.saveProjects(
+        state.projects.map((p) => ({ dir: p.dir, name: p.name, displayName: p.displayName })),
+      )
     })
   }, [])
 

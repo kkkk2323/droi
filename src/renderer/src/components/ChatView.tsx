@@ -56,11 +56,16 @@ function formatDuration(ms: number): string {
 
 function formatWorkingState(state?: string): string {
   switch (state) {
-    case 'streaming_assistant_message': return 'Generating...'
-    case 'executing_tool': return 'Running tool...'
-    case 'waiting_for_tool_confirmation': return 'Waiting for confirmation...'
-    case 'compacting_conversation': return 'Compacting conversation...'
-    default: return 'Thinking...'
+    case 'streaming_assistant_message':
+      return 'Generating...'
+    case 'executing_tool':
+      return 'Running tool...'
+    case 'waiting_for_tool_confirmation':
+      return 'Waiting for confirmation...'
+    case 'compacting_conversation':
+      return 'Compacting conversation...'
+    default:
+      return 'Thinking...'
   }
 }
 
@@ -362,9 +367,7 @@ function MessageEntry({
     const text = message.blocks[0]?.kind === 'text' ? message.blocks[0].content : ''
     return (
       <div className="my-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
-        {message.errorType && (
-          <span className="mb-1 block font-medium">{message.errorType}</span>
-        )}
+        {message.errorType && <span className="mb-1 block font-medium">{message.errorType}</span>}
         {text}
         {message.errorTimestamp && (
           <span className="mt-1 block text-[10px] opacity-60">

@@ -605,14 +605,23 @@ export function applyRpcNotification(
         messages[messages.length - 1] = { ...last, endTimestamp: now }
       }
     }
-    next.set(sid, { ...session, isRunning: !isIdle, workingState: isIdle ? undefined : normalized, messages })
+    next.set(sid, {
+      ...session,
+      isRunning: !isIdle,
+      workingState: isIdle ? undefined : normalized,
+      messages,
+    })
     return next
   }
 
   if (type === 'error') {
     const msg = String((notification as any).message || 'Unknown error')
-    const errorType = (notification as any).errorType ? String((notification as any).errorType) : undefined
-    const errorTimestamp = (notification as any).timestamp ? String((notification as any).timestamp) : undefined
+    const errorType = (notification as any).errorType
+      ? String((notification as any).errorType)
+      : undefined
+    const errorTimestamp = (notification as any).timestamp
+      ? String((notification as any).timestamp)
+      : undefined
     const session = prev.get(sid)
     if (!session) return prev
     const next = new Map(prev)

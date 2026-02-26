@@ -79,10 +79,11 @@ export function OpenInEditorButton({ dir }: OpenInEditorButtonProps) {
         title={`Open in ${effectiveDefault?.name || 'editor'}`}
         onClick={handleDefaultClick}
       >
-        {effectiveDefault && (() => {
-          const Icon = EDITOR_ICON_MAP[effectiveDefault.id]
-          return Icon ? <Icon className="size-3.5" /> : <FolderOpen className="size-3.5" />
-        })()}
+        {effectiveDefault &&
+          (() => {
+            const Icon = EDITOR_ICON_MAP[effectiveDefault.id]
+            return Icon ? <Icon className="size-3.5" /> : <FolderOpen className="size-3.5" />
+          })()}
         <span className="text-xs font-medium">Open</span>
       </button>
       <DropdownMenu open={open} onOpenChange={setOpen}>

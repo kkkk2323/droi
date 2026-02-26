@@ -1445,7 +1445,8 @@ export function createApiRoutes() {
           const mapped = (raw as any[]).map((s) => ({
             name: String(s.name || ''),
             description: typeof s.description === 'string' ? s.description : undefined,
-            scope: s.location === 'personal' ? 'user' : s.location === 'project' ? 'project' : 'user',
+            scope:
+              s.location === 'personal' ? 'user' : s.location === 'project' ? 'project' : 'user',
             filePath: typeof s.filePath === 'string' ? s.filePath : '',
             enabled: typeof s.enabled === 'boolean' ? s.enabled : undefined,
             userInvocable: typeof s.userInvocable === 'boolean' ? s.userInvocable : undefined,
