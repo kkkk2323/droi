@@ -1,3 +1,13 @@
+## 0.16.0 - 2026-02-27
+
+### Features
+- Show AlertCircle icon and play beep for sessions needing user attention
+
+### Fixes
+- Ensure chat footer content is fully visible after appearing
+- Pin New Project button above scrollable sidebar project list
+- Adjust padding for new project sidebar slot
+
 ## 0.15.2 - 2026-02-26
 
 ### Fixes
