@@ -1,0 +1,10 @@
+commands:
+  install: pnpm install
+  typecheck: pnpm typecheck
+  build: pnpm build
+  test: pnpm test
+  lint: pnpm lint
+  format: pnpm format
+  check: pnpm check
+
+services: {}
