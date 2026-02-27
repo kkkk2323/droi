@@ -197,7 +197,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader className="flex-row items-center justify-between py-3 pl-20 pr-2" />
 
       {!browserMode && (
-        <div data-slot="sidebar-new-project" className="px-2 pb-1">
+        <div data-slot="sidebar-new-project" className="px-2 pt-4">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
