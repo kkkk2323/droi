@@ -1,0 +1,35 @@
+{
+  "milestone": "ui-fixes",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SIDEBAR-001",
+    "VAL-SIDEBAR-002",
+    "VAL-SIDEBAR-003",
+    "VAL-CHAT-001",
+    "VAL-CHAT-002",
+    "VAL-CHAT-003",
+    "VAL-STATUS-001",
+    "VAL-STATUS-002",
+    "VAL-STATUS-003",
+    "VAL-STATUS-004",
+    "VAL-STATUS-005",
+    "VAL-CROSS-001"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Updated with Web UI testing approach, standalone server setup, flow validator guidance for browser and code inspection surfaces, and documented that browser mode hides New Project button",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

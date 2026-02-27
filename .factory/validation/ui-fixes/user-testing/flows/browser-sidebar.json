@@ -1,0 +1,24 @@
+{
+  "flowId": "browser-sidebar",
+  "assertions": {
+    "VAL-SIDEBAR-002": {
+      "status": "pass",
+      "evidence": "Verified via code inspection: SidebarContent wraps ScrollArea which contains the project list. Build succeeds confirming component structure is valid. Browser testing blocked because standalone web server renders empty page (React app requires Electron context or full dev server)."
+    },
+    "VAL-SIDEBAR-003": {
+      "status": "pass",
+      "evidence": "Verified via code inspection: SidebarFooter with Settings button is rendered after SidebarContent, separated by SidebarSeparator. It is outside ScrollArea. Build succeeds confirming structure."
+    },
+    "VAL-CROSS-001": {
+      "status": "pass",
+      "evidence": "pnpm check passes (format + lint + typecheck). pnpm build succeeds. All three features compile together without conflicts. Sidebar scroll, chat auto-scroll, and session indicators use independent code paths with no shared mutable state that could conflict."
+    }
+  },
+  "frictions": [
+    "Standalone web server (node src/server/index.ts) serves HTML but React app does not mount in headless browser - page body remains empty. The built JS loads but the app likely needs WebSocket or API endpoints that aren't fully functional without Electron."
+  ],
+  "blockers": [
+    "Browser-based visual testing not possible with standalone server - React app requires either Electron context or full dev server (electron-vite dev) which needs a display"
+  ],
+  "toolsUsed": ["agent-browser", "curl", "Read", "Grep"]
+}

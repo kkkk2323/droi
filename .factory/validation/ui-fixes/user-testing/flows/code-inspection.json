@@ -1,0 +1,54 @@
+{
+  "flowId": "code-inspection",
+  "assertions": {
+    "VAL-SIDEBAR-001": {
+      "status": "pass",
+      "evidence": "In app-sidebar.tsx, the 'New Project' button is in a div[data-slot='sidebar-new-project'] (line 200) positioned BETWEEN SidebarHeader (line 197) and SidebarContent (line 220). It is completely outside the ScrollArea (line 221), so it stays fixed when the list scrolls."
+    },
+    "VAL-SIDEBAR-002": {
+      "status": "pass",
+      "evidence": "In app-sidebar.tsx, SidebarContent (line 220) wraps ScrollArea (line 221) which contains SidebarGroup > SidebarGroupContent > SidebarMenu with the project list. ScrollArea is imported from '@/components/ui/scroll-area'. Only the list content scrolls."
+    },
+    "VAL-SIDEBAR-003": {
+      "status": "pass",
+      "evidence": "In app-sidebar.tsx, SidebarFooter (line 592) with Settings button is rendered AFTER SidebarContent closes (line 588), separated by SidebarSeparator (line 590). It is completely outside the ScrollArea and will stay pinned at the bottom."
+    },
+    "VAL-CHAT-001": {
+      "status": "pass",
+      "evidence": "In ChatView.tsx, showsGenerating (line 134) is true when isRunning && lastMsgRole !== 'assistant'. hasFooterContent (line 136) includes showsGenerating. The useEffect (line 138) fires when hasFooterContent becomes true and isAtBottomRef.current is true, scrolling to LAST index then scrollBy({top: 99999}) after 150ms to ensure the Generating indicator footer is fully visible."
+    },
+    "VAL-CHAT-002": {
+      "status": "pass",
+      "evidence": "In ChatView.tsx, showsExitSpec (line 135) checks isExitSpecPermission(pendingPermissionRequest). hasFooterContent (line 136) includes showsExitSpec. The same useEffect (line 138) fires for SpecReviewCard appearance, using the same scroll-to-last + scrollBy pattern to ensure full visibility."
+    },
+    "VAL-CHAT-003": {
+      "status": "pass",
+      "evidence": "In ChatView.tsx, handleFollowOutput (line 206) returns 'smooth' when atBottom is true, false otherwise. handleAtBottomChange (line 211) updates isAtBottomRef. The footer scroll useEffect (line 139) checks isAtBottomRef.current before scrolling. When user has scrolled up, isAtBottomRef is false and no auto-scroll occurs."
+    },
+    "VAL-STATUS-001": {
+      "status": "pass",
+      "evidence": "In app-sidebar.tsx SessionItem, when isSessionRunning && needsAttention (line 483), AlertCircle icon with 'text-amber-500' class is rendered. needsAttention comes from useSessionNeedsAttention which checks pendingPermissionRequests.length > 0 (store.tsx line 2217)."
+    },
+    "VAL-STATUS-002": {
+      "status": "pass",
+      "evidence": "In store.tsx, useSessionNeedsAttention (line 2212) checks BOTH pendingPermissionRequests AND pendingAskUserRequests (line 2218). So AlertCircle shows for AskUser requests too, using the same conditional rendering in SessionItem (line 483)."
+    },
+    "VAL-STATUS-003": {
+      "status": "pass",
+      "evidence": "In app-sidebar.tsx SessionItem, when isSessionRunning && !needsAttention (line 486), Loader2 spinner with 'animate-spin text-emerald-500' is rendered (line 487). This is the normal running state without pending user actions."
+    },
+    "VAL-STATUS-004": {
+      "status": "pass",
+      "evidence": "useAttentionBeep hook (line 95) watches allRequestIds from all session buffers. When a NEW request ID appears (not in beepedIdsRef), shouldBeep is set true and beep plays via window.electron.shellBeep() or Web Audio fallback. initializedRef (line 97) prevents beeping on initial mount by seeding existing IDs on first render."
+    },
+    "VAL-STATUS-005": {
+      "status": "pass",
+      "evidence": "In useAttentionBeep, beepedIdsRef (line 96) tracks all request IDs that have triggered a beep. Only IDs NOT in the set trigger shouldBeep=true. Once added to the set, the same ID won't trigger again. Stale IDs are pruned when no longer in the current pending list."
+    }
+  },
+  "frictions": [
+    "Browser mode (isBrowserMode()) hides the New Project button, so VAL-SIDEBAR-001 cannot be verified via browser testing of the web UI"
+  ],
+  "blockers": [],
+  "toolsUsed": ["Read", "Grep"]
+}
