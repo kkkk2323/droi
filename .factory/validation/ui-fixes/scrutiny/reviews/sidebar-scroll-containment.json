@@ -1,0 +1,24 @@
+{
+  "featureId": "sidebar-scroll-containment",
+  "milestone": "ui-fixes",
+  "reviewer": "scrutiny-validator",
+  "status": "pass",
+  "summary": "The sidebar scroll containment fix correctly moves the 'New Project' button out of SidebarContent into a dedicated fixed div above it, and wraps the project list inside ScrollArea. The implementation follows project conventions.",
+  "codeQuality": {
+    "score": "good",
+    "notes": [
+      "Clean separation of pinned header (New Project) from scrollable content",
+      "Uses existing ScrollArea component from ui/scroll-area.tsx as required",
+      "SidebarContent gets overflow-hidden class to prevent double scrollbars",
+      "Preserves all existing functionality (collapsible projects, context menus, session selection)",
+      "Settings footer remains in SidebarFooter, unaffected by changes"
+    ]
+  },
+  "issues": [],
+  "sharedStateObservations": [],
+  "fulfillsAssessment": {
+    "VAL-SIDEBAR-001": "addressed - New Project button is rendered in a fixed div above SidebarContent, will stay visible when scrolling",
+    "VAL-SIDEBAR-002": "addressed - Project list is wrapped in ScrollArea component inside SidebarContent with overflow-hidden",
+    "VAL-SIDEBAR-003": "addressed - SidebarFooter with Settings was not modified and remains pinned at bottom"
+  }
+}

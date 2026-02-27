@@ -1,0 +1,34 @@
+{
+  "featureId": "session-status-indicators",
+  "milestone": "ui-fixes",
+  "reviewer": "scrutiny-validator",
+  "status": "pass",
+  "summary": "The session status indicators feature correctly adds AlertCircle icon for sessions needing attention and implements a beep mechanism that fires once per new request ID, skipping initial mount.",
+  "codeQuality": {
+    "score": "good",
+    "notes": [
+      "useSessionNeedsAttention hook properly subscribes to store changes for reactive updates",
+      "getSessionNeedsAttention static getter also provided for non-reactive contexts",
+      "useAttentionBeep hook tracks request IDs via ref to avoid re-beeping same requests",
+      "Initial mount seeding prevents beep on page load with existing pending requests",
+      "Stale ID pruning prevents unbounded memory growth in beepedIdsRef",
+      "Web Audio API fallback is well-implemented with proper cleanup (ctx.close on ended)",
+      "String serialization of IDs (join/split) for Zustand selector is a pragmatic approach to avoid reference equality issues"
+    ]
+  },
+  "issues": [
+    {
+      "severity": "non_blocking",
+      "description": "useSessionNeedsAttention is called inside a nested component (SessionItem) rendered within a map. This is fine for hooks rules since SessionItem is a proper component, but worth noting the pattern.",
+      "suggestion": "No change needed - SessionItem is a named function component so hooks rules are satisfied."
+    }
+  ],
+  "sharedStateObservations": [],
+  "fulfillsAssessment": {
+    "VAL-STATUS-001": "addressed - AlertCircle with text-amber-500 shown when isSessionRunning && needsAttention",
+    "VAL-STATUS-002": "addressed - useSessionNeedsAttention checks both pendingPermissionRequests and pendingAskUserRequests",
+    "VAL-STATUS-003": "addressed - Loader2 spinner shown when isSessionRunning && !needsAttention",
+    "VAL-STATUS-004": "addressed - useAttentionBeep plays beep once per new request ID via beepedIdsRef tracking",
+    "VAL-STATUS-005": "addressed - beepedIdsRef prevents repeated beeps; initial mount seeds existing IDs"
+  }
+}

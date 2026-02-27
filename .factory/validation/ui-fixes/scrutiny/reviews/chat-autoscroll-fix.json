@@ -1,0 +1,24 @@
+{
+  "featureId": "chat-autoscroll-fix",
+  "milestone": "ui-fixes",
+  "reviewer": "scrutiny-validator",
+  "status": "pass",
+  "summary": "The chat auto-scroll fix correctly generalizes the previous exitSpec-only scroll logic to also handle the Generating indicator. It respects the isAtBottomRef to avoid scrolling when user has scrolled up manually.",
+  "codeQuality": {
+    "score": "good",
+    "notes": [
+      "Unified scroll logic for both Generating indicator and SpecReviewCard footer content",
+      "Properly checks isAtBottomRef.current before scrolling - preserves manual scroll position",
+      "Uses computed booleans (showsGenerating, showsExitSpec, hasFooterContent) for clarity",
+      "Two-phase scroll approach (scrollToIndex then scrollBy after 150ms delay) handles footer render timing",
+      "Cleanup function properly clears timeout to prevent memory leaks"
+    ]
+  },
+  "issues": [],
+  "sharedStateObservations": [],
+  "fulfillsAssessment": {
+    "VAL-CHAT-001": "addressed - showsGenerating triggers scroll when isRunning and lastMsgRole !== assistant",
+    "VAL-CHAT-002": "addressed - showsExitSpec triggers scroll for SpecReviewCard (existing behavior preserved and improved)",
+    "VAL-CHAT-003": "addressed - isAtBottomRef.current check prevents auto-scroll when user has scrolled up"
+  }
+}
