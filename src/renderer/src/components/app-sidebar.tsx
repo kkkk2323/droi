@@ -10,6 +10,8 @@ import {
   useDeletingSessionIds,
   useIsCreatingSession,
   useIsInitialLoadDone,
+  useSessionNeedsAttention,
+  useAppStore,
 } from '@/store'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
@@ -45,6 +47,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import {
+  AlertCircle,
   ChevronRightIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -82,7 +85,78 @@ function SessionTitle({ title }: { title: string }) {
   )
 }
 
+/**
+ * Watches all session buffers for new pending permission/ask-user requests
+ * and plays a system beep exactly once per new request ID.
+ * Skips beeping on initial mount to avoid noise when loading with existing pending requests.
+ */
+function useAttentionBeep() {
+  const beepedIdsRef = useRef<Set<string>>(new Set())
+  const initializedRef = useRef(false)
+
+  const allRequestIds = useAppStore((s) => {
+    const ids: string[] = []
+    for (const buf of s.sessionBuffers.values()) {
+      if (buf.pendingPermissionRequests) {
+        for (const r of buf.pendingPermissionRequests) ids.push(r.requestId)
+      }
+      if (buf.pendingAskUserRequests) {
+        for (const r of buf.pendingAskUserRequests) ids.push(r.requestId)
+      }
+    }
+    return ids.join(',')
+  })
+
+  useEffect(() => {
+    const ids = allRequestIds ? allRequestIds.split(',') : []
+
+    // On first render, seed the set with existing IDs so we don't beep for them.
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      for (const id of ids) beepedIdsRef.current.add(id)
+      return
+    }
+
+    let shouldBeep = false
+    for (const id of ids) {
+      if (!beepedIdsRef.current.has(id)) {
+        beepedIdsRef.current.add(id)
+        shouldBeep = true
+      }
+    }
+
+    // Prune stale IDs that are no longer pending
+    const currentSet = new Set(ids)
+    for (const id of beepedIdsRef.current) {
+      if (!currentSet.has(id)) beepedIdsRef.current.delete(id)
+    }
+
+    if (shouldBeep) {
+      try {
+        // Use Electron shell.beep() via the window API if available, otherwise fallback to Web Audio
+        if (typeof window !== 'undefined' && (window as any).electron?.shellBeep) {
+          ;(window as any).electron.shellBeep()
+        } else {
+          const ctx = new AudioContext()
+          const oscillator = ctx.createOscillator()
+          const gain = ctx.createGain()
+          oscillator.connect(gain)
+          gain.connect(ctx.destination)
+          oscillator.frequency.value = 880
+          gain.gain.value = 0.3
+          oscillator.start()
+          oscillator.stop(ctx.currentTime + 0.15)
+          oscillator.onended = () => ctx.close()
+        }
+      } catch {
+        // Silently ignore audio errors
+      }
+    }
+  }, [allRequestIds])
+}
+
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+  useAttentionBeep()
   const navigate = useNavigate()
   const browserMode = isBrowserMode()
   const mobile = useIsMobile()
@@ -376,6 +450,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           }) {
                             const isActive = session.id === activeSessionId
                             const isSessionRunning = getSessionRunning(session.id)
+                            const needsAttention = useSessionNeedsAttention(session.id)
                             const isSessionDeleting = deletingSessionIds.has(session.id)
                             const branchName = session.branch?.split('/').pop() || session.branch
                             return (
@@ -405,7 +480,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                     }}
                                   >
                                     <span className="flex w-full items-center gap-1.5">
-                                      {isSessionRunning && (
+                                      {isSessionRunning && needsAttention && (
+                                        <AlertCircle className="size-3 text-amber-500 shrink-0" />
+                                      )}
+                                      {isSessionRunning && !needsAttention && (
                                         <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />
                                       )}
                                       <SessionTitle title={session.title} />

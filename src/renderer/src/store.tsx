@@ -2198,6 +2198,27 @@ export const useUpdateDownloading = () => useAppStore((s) => s.updateDownloading
 export const useUpdateDownloadProgress = () => useAppStore((s) => s.updateDownloadProgress)
 export const useUpdateReady = () => useAppStore((s) => s.updateReady)
 
+// --- Session attention selector ---
+// Returns true when a session has pending permission or ask-user requests.
+export function getSessionNeedsAttention(sessionId: string): boolean {
+  const buf = useAppStore.getState().sessionBuffers.get(sessionId)
+  if (!buf) return false
+  return (
+    (buf.pendingPermissionRequests != null && buf.pendingPermissionRequests.length > 0) ||
+    (buf.pendingAskUserRequests != null && buf.pendingAskUserRequests.length > 0)
+  )
+}
+
+export const useSessionNeedsAttention = (sessionId: string) =>
+  useAppStore((s) => {
+    const buf = s.sessionBuffers.get(sessionId)
+    if (!buf) return false
+    return (
+      (buf.pendingPermissionRequests != null && buf.pendingPermissionRequests.length > 0) ||
+      (buf.pendingAskUserRequests != null && buf.pendingAskUserRequests.length > 0)
+    )
+  })
+
 // Actions are stable function references on the store object and never change,
 // so we read them directly via getState() without subscribing.
 export function useActions() {
