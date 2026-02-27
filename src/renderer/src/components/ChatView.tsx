@@ -127,18 +127,25 @@ function ChatView({
     }
   }, [messages.length])
 
+  // Scroll to reveal footer content (Generating indicator or SpecReviewCard)
+  // whenever it appears. Virtuoso's followOutput only scrolls to the last
+  // message item, but the Footer renders below that and can be half-hidden.
+  const lastMsgRole = messages.length > 0 ? messages[messages.length - 1].role : undefined
+  const showsGenerating = isRunning && lastMsgRole !== 'assistant'
+  const showsExitSpec = isExitSpecPermission(pendingPermissionRequest)
+  const hasFooterContent = showsGenerating || showsExitSpec
+
   useEffect(() => {
-    if (isExitSpecPermission(pendingPermissionRequest)) {
-      // Footer content (SpecReviewCard) is below the last item,
-      // so scrollToIndex LAST won't reach it. Use scrollBy after
-      // a short delay to let the footer render.
-      virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
-      const timer = setTimeout(() => {
-        virtuosoRef.current?.scrollBy({ top: 99999, behavior: 'smooth' })
-      }, 150)
-      return () => clearTimeout(timer)
-    }
-  }, [pendingPermissionRequest])
+    if (!hasFooterContent || !isAtBottomRef.current) return
+
+    // First scroll to last item, then after footer renders, scroll
+    // the remaining distance so the footer is fully visible.
+    virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
+    const timer = setTimeout(() => {
+      virtuosoRef.current?.scrollBy({ top: 99999, behavior: 'smooth' })
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [hasFooterContent, showsGenerating, showsExitSpec])
 
   if (messages.length === 0) {
     const showBootstrapCards =
