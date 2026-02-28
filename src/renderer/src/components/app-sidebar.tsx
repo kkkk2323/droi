@@ -60,6 +60,7 @@ import {
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import fxAck from '@/assets/fx-ack01.wav'
 import { isBrowserMode } from '@/droidClient'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getProjectDisplayName } from '@/store/projectHelpers'
@@ -133,21 +134,7 @@ function useAttentionBeep() {
 
     if (shouldBeep) {
       try {
-        // Use Electron shell.beep() via the window API if available, otherwise fallback to Web Audio
-        if (typeof window !== 'undefined' && (window as any).electron?.shellBeep) {
-          ;(window as any).electron.shellBeep()
-        } else {
-          const ctx = new AudioContext()
-          const oscillator = ctx.createOscillator()
-          const gain = ctx.createGain()
-          oscillator.connect(gain)
-          gain.connect(ctx.destination)
-          oscillator.frequency.value = 880
-          gain.gain.value = 0.3
-          oscillator.start()
-          oscillator.stop(ctx.currentTime + 0.15)
-          oscillator.onended = () => ctx.close()
-        }
+        new Audio(fxAck).play()
       } catch {
         // Silently ignore audio errors
       }
