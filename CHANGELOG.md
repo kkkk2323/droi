@@ -1,3 +1,11 @@
+## 0.17.0 - 2026-02-28
+
+### Features
+- Use custom audio asset for attention beep
+
+### Fixes
+- Make SelectTrigger full width
+
 ## 0.16.0 - 2026-02-27
 
 ### Features
