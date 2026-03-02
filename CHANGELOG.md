@@ -1,3 +1,8 @@
+## 0.18.0 - 2026-03-02
+
+### Features
+- Update model reasoning levels for Claude Sonnet and Gemini 3.1
+
 ## 0.17.0 - 2026-02-28
 
 ### Features
