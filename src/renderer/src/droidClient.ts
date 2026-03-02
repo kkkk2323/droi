@@ -1058,6 +1058,13 @@ const browserClient: DroidClientAPI = {
       body: JSON.stringify({ commitMessageModelId: modelId }),
     }).catch(() => {})
   },
+  setCommitMessageReasoningEffort: (r: string) => {
+    apiFetch(`${getApiBase()}/app-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commitMessageReasoningEffort: r }),
+    }).catch(() => {})
+  },
   getGitStatus: async (params) => {
     try {
       const res = await apiFetch(`${getApiBase()}/git-status`, {
@@ -1279,6 +1286,8 @@ export function getDroidClient(): DroidClientAPI {
       merged.switchWorkspace = browserClient.switchWorkspace
     if (typeof (merged as any).setCommitMessageModelId !== 'function')
       merged.setCommitMessageModelId = browserClient.setCommitMessageModelId
+    if (typeof (merged as any).setCommitMessageReasoningEffort !== 'function')
+      merged.setCommitMessageReasoningEffort = browserClient.setCommitMessageReasoningEffort
     if (typeof (merged as any).detectGitTools !== 'function')
       merged.detectGitTools = browserClient.detectGitTools
     if (typeof (merged as any).generateCommitMeta !== 'function')

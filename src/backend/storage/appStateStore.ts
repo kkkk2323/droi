@@ -93,6 +93,10 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
         : undefined
     const commitMessageModelId =
       typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
+    const commitMessageReasoningEffort =
+      typeof raw.commitMessageReasoningEffort === 'string'
+        ? raw.commitMessageReasoningEffort.trim()
+        : ''
     const debugTraceMaxLines =
       typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines)
         ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
@@ -114,6 +118,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
       commitMessageModelId: commitMessageModelId || undefined,
+      commitMessageReasoningEffort: commitMessageReasoningEffort || undefined,
       lanAccessEnabled:
         typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
@@ -133,6 +138,10 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
         : undefined
     const commitMessageModelId =
       typeof raw.commitMessageModelId === 'string' ? raw.commitMessageModelId.trim() : ''
+    const commitMessageReasoningEffort =
+      typeof raw.commitMessageReasoningEffort === 'string'
+        ? raw.commitMessageReasoningEffort.trim()
+        : ''
     const debugTraceMaxLines =
       typeof raw.debugTraceMaxLines === 'number' && Number.isFinite(raw.debugTraceMaxLines)
         ? Math.min(MAX_DEBUG_TRACE_MAX_LINES, Math.max(1, Math.floor(raw.debugTraceMaxLines)))
@@ -154,6 +163,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       localDiagnosticsRetentionDays: retentionDays,
       localDiagnosticsMaxTotalMb: maxTotalMb,
       commitMessageModelId: commitMessageModelId || undefined,
+      commitMessageReasoningEffort: commitMessageReasoningEffort || undefined,
       lanAccessEnabled:
         typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),

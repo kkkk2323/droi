@@ -137,6 +137,8 @@ const droidAPI: DroidClientAPI = {
   updateProjectSettings: (params) => ipcRenderer.invoke('appState:updateProjectSettings', params),
   setCommitMessageModelId: (modelId) =>
     ipcRenderer.send('appState:setCommitMessageModelId', modelId),
+  setCommitMessageReasoningEffort: (r) =>
+    ipcRenderer.send('appState:setCommitMessageReasoningEffort', r),
   getGitStatus: (params) => ipcRenderer.invoke('git:status', params),
   getGitBranch: (params) => ipcRenderer.invoke('git:branch', params),
   listGitBranches: (params) => ipcRenderer.invoke('git:list-branches', params),

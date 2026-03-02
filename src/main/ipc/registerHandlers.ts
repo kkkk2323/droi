@@ -780,6 +780,16 @@ export function registerIpcHandlers(opts: {
     void appStateStore.save(cachedState)
   })
 
+  ipcMain.on('appState:setCommitMessageReasoningEffort', (_event, r: unknown) => {
+    const effort = typeof r === 'string' ? r.trim() : ''
+    cachedState = {
+      ...(cachedState as PersistedAppStateV2),
+      commitMessageReasoningEffort: effort || undefined,
+      version: 2,
+    }
+    void appStateStore.save(cachedState)
+  })
+
   ipcMain.handle('appState:load', async () => {
     cachedState = await appStateStore.load()
     activeProjectDir = cachedState.activeProjectDir || ''

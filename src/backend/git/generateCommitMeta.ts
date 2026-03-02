@@ -86,6 +86,11 @@ function getModelIdFromState(state: PersistedAppState | null | undefined): strin
   return typeof raw === 'string' && raw.trim() ? raw.trim() : DEFAULT_COMMIT_MODEL_ID
 }
 
+function getReasoningEffortFromState(state: PersistedAppState | null | undefined): string {
+  const raw = (state as any)?.commitMessageReasoningEffort
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
 function buildPrompt(params: {
   includeUnstaged: boolean
   wantPrMeta: boolean
@@ -192,6 +197,7 @@ export async function generateCommitMeta(params: {
   const prBaseBranch =
     typeof params.req.prBaseBranch === 'string' ? params.req.prBaseBranch.trim() : ''
   const modelId = getModelIdFromState(params.state)
+  const reasoningEffort = getReasoningEffortFromState(params.state)
   const machineId = (params.state as any)?.machineId
   if (typeof machineId !== 'string' || !machineId.trim())
     throw new Error('Missing machineId in app state')
@@ -215,6 +221,7 @@ export async function generateCommitMeta(params: {
       modelId,
       interactionMode: 'spec',
       autonomyLevel: 'off',
+      reasoningEffort: reasoningEffort || undefined,
       env,
     },
   })

@@ -187,6 +187,14 @@ export function createApiRoutes() {
         ;(patch as any).commitMessageModelId =
           v === null ? undefined : typeof v === 'string' && v.trim() ? v.trim() : undefined
       }
+      if (
+        typeof body.commitMessageReasoningEffort === 'string' ||
+        body.commitMessageReasoningEffort === null
+      ) {
+        const v = body.commitMessageReasoningEffort
+        ;(patch as any).commitMessageReasoningEffort =
+          v === null ? undefined : typeof v === 'string' && v.trim() ? v.trim() : undefined
+      }
       if (typeof body.lanAccessEnabled === 'boolean' || body.lanAccessEnabled === null) {
         ;(patch as any).lanAccessEnabled =
           body.lanAccessEnabled === null ? undefined : body.lanAccessEnabled

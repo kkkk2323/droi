@@ -261,6 +261,7 @@ export interface PersistedAppStateV2 {
   localDiagnosticsMaxTotalMb?: number
   // Model used for generating commit messages / PR metadata.
   commitMessageModelId?: string
+  commitMessageReasoningEffort?: string
   lanAccessEnabled?: boolean
   projectSettings?: Record<string, ProjectSettings>
 }
@@ -486,6 +487,7 @@ export interface DroidClientAPI {
   }) => Promise<PersistedAppState>
 
   setCommitMessageModelId: (modelId: string) => void
+  setCommitMessageReasoningEffort: (r: string) => void
 
   getGitStatus: (params: { projectDir: string }) => Promise<GitStatusFile[]>
   getGitBranch: (params: { projectDir: string }) => Promise<string>

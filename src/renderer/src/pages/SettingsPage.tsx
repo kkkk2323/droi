@@ -4,10 +4,13 @@ import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ModelSelect } from '@/components/ModelSelect'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getDroidClient } from '@/droidClient'
+import { getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
 import {
   useCustomModels,
   useCommitMessageModelId,
+  useCommitMessageReasoningEffort,
   useLanAccessEnabled,
   useActions,
   useAppVersion,
@@ -27,10 +30,11 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const customModels = useCustomModels()
   const commitMessageModelId = useCommitMessageModelId()
+  const commitMessageReasoningEffort = useCommitMessageReasoningEffort()
   const lanAccessEnabled = useLanAccessEnabled()
   const appVersion = useAppVersion()
   const droidVersion = useDroidVersion()
-  const { setCommitMessageModelId, setLanAccessEnabled } = useActions()
+  const { setCommitMessageModelId, setCommitMessageReasoningEffort, setLanAccessEnabled } = useActions()
 
   const [update, setUpdate] = useState<UpdateState>({ step: 'idle' })
   const unsubRef = useRef<(() => void) | null>(null)
@@ -117,11 +121,42 @@ export function SettingsPage() {
             </p>
           </div>
 
-          <ModelSelect
-            value={commitMessageModelId}
-            onChange={setCommitMessageModelId}
-            customModels={customModels}
-          />
+          <div className="flex items-center gap-2">
+            <ModelSelect
+              value={commitMessageModelId}
+              onChange={setCommitMessageModelId}
+              customModels={customModels}
+              className="flex-1"
+            />
+            {(() => {
+              const levels = getModelReasoningLevels(commitMessageModelId)
+              if (!levels) return null
+              const displayValue =
+                commitMessageReasoningEffort ||
+                getModelDefaultReasoning(commitMessageModelId) ||
+                levels[0]
+              return (
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Reasoning</span>
+                  <Select
+                    value={displayValue}
+                    onValueChange={(v) => v && setCommitMessageReasoningEffort(v)}
+                  >
+                    <SelectTrigger className="w-auto">
+                      <SelectValue>{displayValue}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {levels.map((l) => (
+                        <SelectItem key={l} value={l}>
+                          {l}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })()}
+          </div>
         </section>
 
         <Separator />

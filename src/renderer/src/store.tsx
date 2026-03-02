@@ -75,6 +75,7 @@ interface AppState {
   localDiagnosticsMaxTotalMb: number
   diagnosticsDir: string
   commitMessageModelId: string
+  commitMessageReasoningEffort: string
   lanAccessEnabled: boolean
   customModels: CustomModelDef[]
   projects: Project[]
@@ -133,6 +134,7 @@ interface AppActions {
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
   setCommitMessageModelId: (modelId: string) => void
+  setCommitMessageReasoningEffort: (r: string) => void
   setLanAccessEnabled: (enabled: boolean) => void
   refreshDiagnosticsDir: () => Promise<void>
   exportDiagnostics: (params?: { sessionId?: string }) => Promise<{ path: string }>
@@ -236,6 +238,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   localDiagnosticsMaxTotalMb: 50,
   diagnosticsDir: '',
   commitMessageModelId: 'minimax-m2.5',
+  commitMessageReasoningEffort: '',
   lanAccessEnabled: false,
   customModels: [],
   projects: [],
@@ -543,9 +546,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setCommitMessageModelId: (modelId) => {
     const next = String(modelId || '').trim() || 'minimax-m2.5'
-    set({ commitMessageModelId: next })
+    const defaultReasoning = getModelDefaultReasoning(next)
+    set({ commitMessageModelId: next, commitMessageReasoningEffort: defaultReasoning })
     if (typeof (droid as any)?.setCommitMessageModelId === 'function') {
       ;(droid as any).setCommitMessageModelId(next)
+    }
+    if (typeof (droid as any)?.setCommitMessageReasoningEffort === 'function') {
+      ;(droid as any).setCommitMessageReasoningEffort(defaultReasoning)
+    }
+  },
+
+  setCommitMessageReasoningEffort: (r) => {
+    const next = String(r || '').trim()
+    set({ commitMessageReasoningEffort: next })
+    if (typeof (droid as any)?.setCommitMessageReasoningEffort === 'function') {
+      ;(droid as any).setCommitMessageReasoningEffort(next)
     }
   },
 
@@ -2182,6 +2197,8 @@ export const useLocalDiagnosticsRetentionDays = () =>
 export const useLocalDiagnosticsMaxTotalMb = () => useAppStore((s) => s.localDiagnosticsMaxTotalMb)
 export const useDiagnosticsDir = () => useAppStore((s) => s.diagnosticsDir)
 export const useCommitMessageModelId = () => useAppStore((s) => s.commitMessageModelId)
+export const useCommitMessageReasoningEffort = () =>
+  useAppStore((s) => s.commitMessageReasoningEffort)
 export const useLanAccessEnabled = () => useAppStore((s) => s.lanAccessEnabled)
 export const useCustomModels = () => useAppStore((s) => s.customModels)
 export const useProjects = () => useAppStore((s) => s.projects)
