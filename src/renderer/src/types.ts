@@ -191,7 +191,7 @@ export const MODEL_REASONING_MAP: Record<
   'claude-opus-4-6': { levels: ['off', 'low', 'medium', 'high', 'max'], default: 'high' },
   'claude-opus-4-6-fast': { levels: ['off', 'low', 'medium', 'high', 'max'], default: 'high' },
   'claude-opus-4-5-20251101': { levels: ['off', 'low', 'medium', 'high'], default: 'off' },
-  'claude-sonnet-4-6': { levels: ['off', 'low', 'medium', 'high'], default: 'off' },
+  'claude-sonnet-4-6': { levels: ['off', 'low', 'medium', 'high', 'max'], default: 'high' },
   'claude-sonnet-4-5-20250929': { levels: ['off', 'low', 'medium', 'high'], default: 'off' },
   'claude-haiku-4-5-20251001': { levels: ['off', 'low', 'medium', 'high'], default: 'off' },
   'gpt-5.1': { levels: ['none', 'low', 'medium', 'high'], default: 'none' },
@@ -201,7 +201,7 @@ export const MODEL_REASONING_MAP: Record<
   'gpt-5.2-codex': { levels: ['none', 'low', 'medium', 'high', 'xhigh'], default: 'medium' },
   'gpt-5.3-codex': { levels: ['none', 'low', 'medium', 'high', 'xhigh'], default: 'medium' },
   'gemini-3-pro-preview': { levels: ['none', 'low', 'medium', 'high'], default: 'high' },
-  'gemini-3.1-pro-preview': { levels: ['none', 'low', 'medium', 'high'], default: 'high' },
+  'gemini-3.1-pro-preview': { levels: ['low', 'medium', 'high'], default: 'high' },
   'gemini-3-flash-preview': { levels: ['minimal', 'low', 'medium', 'high'], default: 'high' },
   'minimax-m2.5': { levels: ['low', 'medium', 'high'], default: 'high' },
 }
