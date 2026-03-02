@@ -2,6 +2,10 @@ import { createAdaptorServer } from '@hono/node-server'
 import { DroidExecManager } from '../backend/droid/droidExecRunner.ts'
 import { setTraceChainEnabledOverride } from '../backend/droid/jsonrpc/notificationFingerprint.ts'
 import { createKeyStore } from '../backend/keys/keyStore.ts'
+import {
+  startKeyRotationProxy,
+  type KeyRotationProxy,
+} from '../backend/proxy/keyRotationProxy.ts'
 import { SetupScriptRunner } from '../backend/session/setupScriptRunner.ts'
 import { LocalDiagnostics } from '../backend/diagnostics/localDiagnostics.ts'
 import { createAppStateStore } from '../backend/storage/appStateStore.ts'
@@ -87,6 +91,13 @@ export async function startApiServer(opts: StartApiServerOpts) {
   await diagnostics.startMaintenance()
 
   const keyStore = createKeyStore(appStateStore)
+  let keyRotationProxy: KeyRotationProxy | null = null
+  try {
+    keyRotationProxy = await startKeyRotationProxy({ keyStore })
+  } catch {
+    // Proxy failed to start; fall back to direct key injection
+  }
+
   const runtimePortRef = { value: opts.port }
   const deps: HonoAppDeps = {
     opts,
@@ -98,6 +109,7 @@ export async function startApiServer(opts: StartApiServerOpts) {
     cachedStateRef,
     diagnostics,
     keyStore,
+    keyRotationProxy,
   }
 
   const app = createHonoApp(deps)
@@ -130,6 +142,7 @@ export async function startApiServer(opts: StartApiServerOpts) {
     close: async () => {
       unsubscribeSessionReplace()
       setupScriptRunner.disposeAll()
+      await keyRotationProxy?.close().catch(() => {})
       return await new Promise<void>((resolvePromise) =>
         (server as any).close(() => resolvePromise()),
       )

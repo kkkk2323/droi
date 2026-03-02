@@ -106,6 +106,21 @@ async function loadCachedState(c: Context<ServerEnv>): Promise<PersistedAppState
   return deps.cachedStateRef.value
 }
 
+async function injectKeyEnv(
+  deps: import('../types.ts').HonoAppDeps,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  if (deps.keyRotationProxy) {
+    env['FACTORY_API_BASE_URL'] = `http://127.0.0.1:${deps.keyRotationProxy.port}`
+  }
+  const keys = await deps.keyStore.getKeys()
+  if (keys.length > 0) {
+    env['FACTORY_API_KEY'] = keys[0].key
+  } else if (deps.cachedStateRef.value.apiKey) {
+    env['FACTORY_API_KEY'] = deps.cachedStateRef.value.apiKey
+  }
+}
+
 export function createApiRoutes() {
   const api = new Hono<ServerEnv>()
 
@@ -628,17 +643,7 @@ export function createApiRoutes() {
 
       const env: Record<string, string | undefined> = { ...process.env }
       if (!deps.execManager.hasSession(sid)) {
-        if (state.apiKey) {
-          env['FACTORY_API_KEY'] = state.apiKey
-        } else {
-          const activeKey = await deps.keyStore.getActiveKey()
-          if (activeKey) {
-            env['FACTORY_API_KEY'] = activeKey
-            if (deps.cachedStateRef.value.apiKey !== activeKey) {
-              deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
-            }
-          }
-        }
+        await injectKeyEnv(deps, env)
       }
 
       await deps.execManager.send({
@@ -700,17 +705,7 @@ export function createApiRoutes() {
 
       const env: Record<string, string | undefined> = { ...process.env }
       if (!deps.execManager.hasSession(sid)) {
-        if (state.apiKey) {
-          env['FACTORY_API_KEY'] = state.apiKey
-        } else {
-          const activeKey2 = await deps.keyStore.getActiveKey()
-          if (activeKey2) {
-            env['FACTORY_API_KEY'] = activeKey2
-            if (deps.cachedStateRef.value.apiKey !== activeKey2) {
-              deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey2 }
-            }
-          }
-        }
+        await injectKeyEnv(deps, env)
       }
 
       const encoder = new TextEncoder()
@@ -998,13 +993,7 @@ export function createApiRoutes() {
       if (!machineId) return jsonError(c, 500, 'Missing machineId')
 
       const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await deps.keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (deps.cachedStateRef.value.apiKey !== activeKey) {
-          deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
-        }
-      } else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
+      await injectKeyEnv(deps, env)
 
       const res = await deps.execManager.createSession({
         machineId,
@@ -1056,13 +1045,7 @@ export function createApiRoutes() {
       deps.execManager.disposeSession(id)
 
       const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await deps.keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (deps.cachedStateRef.value.apiKey !== activeKey) {
-          deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
-        }
-      } else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
+      await injectKeyEnv(deps, env)
 
       const created = await deps.execManager.createSession({
         machineId,
@@ -1387,11 +1370,15 @@ export function createApiRoutes() {
         wantPrMeta,
         prBaseBranch,
       }
+      const proxyBaseUrl = deps.keyRotationProxy
+        ? `http://127.0.0.1:${deps.keyRotationProxy.port}`
+        : undefined
       const result = await generateCommitMeta({
         req,
         state,
         execManager: deps.execManager,
         keyStore: deps.keyStore,
+        proxyBaseUrl,
       })
       return c.json(result)
     } catch (err) {

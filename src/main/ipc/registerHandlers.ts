@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { getDroidVersion, DroidExecManager } from '../../backend/droid/droidExecRunner'
+import { startKeyRotationProxy, type KeyRotationProxy } from '../../backend/proxy/keyRotationProxy'
 import { LocalDiagnostics } from '../../backend/diagnostics/localDiagnostics'
 import {
   formatNotificationTrace,
@@ -118,6 +119,20 @@ export function registerIpcHandlers(opts: {
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
 
+  let keyRotationProxy: KeyRotationProxy | null = null
+
+  async function injectKeyEnv(env: Record<string, string | undefined>): Promise<void> {
+    if (keyRotationProxy) {
+      env['FACTORY_API_BASE_URL'] = `http://127.0.0.1:${keyRotationProxy.port}`
+    }
+    const keys = await keyStore.getKeys()
+    if (keys.length > 0) {
+      env['FACTORY_API_KEY'] = keys[0].key
+    } else if (cachedState.apiKey) {
+      env['FACTORY_API_KEY'] = cachedState.apiKey
+    }
+  }
+
   let cachedState: PersistedAppState = { version: 2, machineId: '' }
   let activeProjectDir = ''
   let slashCache: {
@@ -158,7 +173,17 @@ export function registerIpcHandlers(opts: {
       typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
     diagnostics.setRetention({ maxAgeDays: retention.retentionDays, maxTotalBytes: bytes })
     await diagnostics.startMaintenance()
+
+    try {
+      keyRotationProxy = await startKeyRotationProxy({ keyStore })
+    } catch {
+      // Proxy failed to start; fall back to direct key injection
+    }
   })()
+
+  app.on('before-quit', () => {
+    keyRotationProxy?.close().catch(() => {})
+  })
 
   ipcMain.handle('droid:version', async () => getDroidVersion())
   ipcMain.handle('app:version', async () => app.getVersion())
@@ -263,21 +288,7 @@ export function registerIpcHandlers(opts: {
       const resumeSessionId = sid
 
       if (!execManager.hasSession(sid)) {
-        if (cachedState.apiKey) {
-          env['FACTORY_API_KEY'] = cachedState.apiKey
-        } else {
-          const activeKey = await keyStore.getActiveKey()
-          if (activeKey) {
-            env['FACTORY_API_KEY'] = activeKey
-            if (activeKey !== cachedState.apiKey) {
-              cachedState = {
-                ...(cachedState as PersistedAppStateV2),
-                apiKey: activeKey,
-                version: 2,
-              }
-            }
-          }
-        }
+        await injectKeyEnv(env)
       }
 
       emitDebug(`ipc-exec-send-start: sessionId=${sid}`)
@@ -967,13 +978,7 @@ export function registerIpcHandlers(opts: {
       if (!machineId) throw new Error('Missing machineId')
 
       const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (activeKey !== cachedState.apiKey) {
-          cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-        }
-      } else if (cachedState.apiKey) env['FACTORY_API_KEY'] = cachedState.apiKey
+      await injectKeyEnv(env)
 
       const res = await execManager.createSession({
         machineId,
@@ -1015,13 +1020,7 @@ export function registerIpcHandlers(opts: {
     execManager.disposeSession(id)
 
     const env: Record<string, string | undefined> = { ...process.env }
-    const activeKey = await keyStore.getActiveKey()
-    if (activeKey) {
-      env['FACTORY_API_KEY'] = activeKey
-      if (activeKey !== cachedState.apiKey) {
-        cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-      }
-    } else if (cachedState.apiKey) env['FACTORY_API_KEY'] = cachedState.apiKey
+    await injectKeyEnv(env)
 
     const created = await execManager.createSession({
       machineId,
@@ -1250,7 +1249,10 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.handle('git:generate-commit-meta', async (_event, req: GenerateCommitMetaRequest) => {
     const state = cachedState
-    return generateCommitMeta({ req, state, execManager, keyStore })
+    const proxyBaseUrl = keyRotationProxy
+      ? `http://127.0.0.1:${keyRotationProxy.port}`
+      : undefined
+    return generateCommitMeta({ req, state, execManager, keyStore, proxyBaseUrl })
   })
 
   ipcMain.handle('git:commit-workflow', async (_event, req: CommitWorkflowRequest) => {

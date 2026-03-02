@@ -1393,70 +1393,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const finalPrompt = `${basePrompt}${attachmentSuffix}`
 
       try {
-        let activeKeyFp = ''
-        try {
-          const info = await droid.getActiveKeyInfo()
-          activeKeyFp = String((info as any)?.apiKeyFingerprint || '')
-        } catch {
-          // ignore
-        }
-
         if (!get()._isSessionGenerationCurrent(sid, generation)) return
-
-        if (activeKeyFp) {
-          if (injectingAtDispatch) {
-            get()._setSessionBuffers((prev) => {
-              const session = prev.get(sid)
-              if (!session) return prev
-              const next = new Map(prev)
-              next.set(sid, { ...session, pendingApiKeyFingerprint: activeKeyFp })
-              return appendDebugTrace(
-                next,
-                sid,
-                `api-key-rotation-deferred: ${session.apiKeyFingerprint || '(unknown)'} -> ${activeKeyFp}`,
-              )
-            })
-          } else {
-            const before = get().sessionBuffers.get(sid)
-            const prevFp = before?.apiKeyFingerprint
-            if (prevFp !== activeKeyFp) {
-              get()._setSessionBuffers((prev) =>
-                appendDebugTrace(
-                  prev,
-                  sid,
-                  `api-key-rotation: ${prevFp || '(unknown)'} -> ${activeKeyFp}`,
-                ),
-              )
-              try {
-                await droid.restartSessionWithActiveKey({ sessionId: sid })
-                get()._setSessionBuffers((prev) => {
-                  const session = prev.get(sid)
-                  if (!session) return prev
-                  const next = new Map(prev)
-                  next.set(sid, {
-                    ...session,
-                    apiKeyFingerprint: activeKeyFp,
-                    pendingApiKeyFingerprint: undefined,
-                  })
-                  return appendDebugTrace(next, sid, `api-key-restarted: fp=${activeKeyFp}`)
-                })
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                get()._setSessionBuffers((prev) =>
-                  appendDebugTrace(prev, sid, `api-key-restart-failed: ${msg}`),
-                )
-              }
-            } else {
-              get()._setSessionBuffers((prev) => {
-                const session = prev.get(sid)
-                if (!session || session.apiKeyFingerprint === activeKeyFp) return prev
-                const next = new Map(prev)
-                next.set(sid, { ...session, apiKeyFingerprint: activeKeyFp })
-                return next
-              })
-            }
-          }
-        }
 
         if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
           ;(droid as any).appendDiagnosticsEvent({
