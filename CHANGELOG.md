@@ -1,3 +1,8 @@
+## 0.18.1 - 2026-03-02
+
+### Features
+- Add reasoning effort support for commit message generation
+
 ## 0.18.0 - 2026-03-02
 
 ### Features
