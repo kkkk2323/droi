@@ -94,6 +94,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           typeof (state as any).commitMessageModelId === 'string'
             ? String((state as any).commitMessageModelId || '').trim()
             : ''
+        const commitReasoningEffort =
+          typeof (state as any).commitMessageReasoningEffort === 'string'
+            ? String((state as any).commitMessageReasoningEffort || '').trim()
+            : ''
         const lanAccess =
           typeof (state as any).lanAccessEnabled === 'boolean'
             ? Boolean((state as any).lanAccessEnabled)
@@ -113,6 +117,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           localDiagnosticsMaxTotalMb: maxTotalMb,
           diagnosticsDir: typeof diagDir === 'string' ? diagDir : '',
           commitMessageModelId: commitModel || 'minimax-m2.5',
+          commitMessageReasoningEffort: commitReasoningEffort,
           lanAccessEnabled: lanAccess,
           ...(ps && typeof ps === 'object'
             ? { projectSettingsByRepo: ps as Record<string, ProjectSettings> }
