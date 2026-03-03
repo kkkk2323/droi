@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useReducer } from 'react'
+import { useAppStore } from '@/store'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -154,6 +155,14 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
   )
   const loading = statusLoading || branchLoading || branchesLoading
 
+  const settingsBaseBranch = useAppStore((s) => {
+    const buf = s.sessionBuffers.get(s.activeSessionId)
+    const repoRoot = buf?.repoRoot || ''
+    return (
+      buf?.baseBranch || (repoRoot ? s.projectSettingsByRepo[repoRoot]?.baseBranch : '') || ''
+    )
+  })
+
   const localBranches = useMemo(
     () => allBranches.filter((b) => b !== branch),
     [allBranches, branch],
@@ -163,8 +172,9 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
   const filesToCommit = state.includeUnstaged ? gitFiles : stagedFiles
 
   const defaultPrBaseBranch = useMemo(() => {
+    if (settingsBaseBranch && localBranches.includes(settingsBaseBranch)) return settingsBaseBranch
     return localBranches.includes('main') ? 'main' : localBranches[0] || ''
-  }, [localBranches])
+  }, [localBranches, settingsBaseBranch])
 
   // Reset state when dialog opens
   useEffect(() => {
