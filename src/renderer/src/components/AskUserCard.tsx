@@ -119,7 +119,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
           <button
             type="button"
             onClick={handleStepNext}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
+            className="rounded-lg bg-foreground px-4 py-2 text-sm text-background transition-all hover:bg-foreground/80 active:scale-[0.995]"
           >
             {isLastStep ? 'Submit' : 'Next'}
           </button>
