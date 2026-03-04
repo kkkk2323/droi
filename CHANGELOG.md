@@ -1,3 +1,11 @@
+## 0.19.0 - 2026-03-04
+
+### Features
+- Use configured base branch as default for PR in CommitWizard
+
+### Refactor
+- Refine UI interactions and simplify SessionConfigPage
+
 ## 0.18.1 - 2026-03-02
 
 ### Features
