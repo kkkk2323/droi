@@ -39,10 +39,13 @@ const droid = getDroidClient()
 
 export type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
 
+export type PendingNewSessionMode = 'local' | 'new-worktree'
+
 export type PendingNewSession = {
   repoRoot: string
   branch: string
   isExistingBranch?: boolean
+  mode?: PendingNewSessionMode
 }
 
 type PendingInitialSend = {
@@ -981,19 +984,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const queuedAttachments = attachments ?? []
 
     let branch = String(pending.branch || '').trim()
-    let mode: 'new-worktree' | 'switch-branch'
+    let createMode: 'plain' | 'new-worktree' | 'switch-branch'
 
-    if (pending.isExistingBranch && branch) {
-      mode = 'switch-branch'
+    if (pending.mode === 'local') {
+      createMode = 'plain'
+    } else if (pending.isExistingBranch && branch) {
+      createMode = 'switch-branch'
     } else {
-      mode = 'new-worktree'
+      createMode = 'new-worktree'
       if (!branch) {
         branch = generateWorktreeBranch(prefix)
       }
     }
 
     const baseBranch = String(baseBranchFromSettings || '').trim()
-    if (mode === 'new-worktree' && !baseBranch) {
+    if (createMode === 'new-worktree' && !baseBranch) {
       set({ workspaceError: 'Missing base branch. Configure it in Project Settings first.' })
       return
     }
@@ -1003,9 +1008,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const newId = await s.handleCreateSessionWithWorkspace({
         repoRoot,
         projectDir: repoRoot,
-        mode,
+        mode: createMode,
         branch,
-        ...(mode === 'new-worktree' ? { baseBranch } : {}),
+        ...(createMode === 'new-worktree' ? { baseBranch } : {}),
       })
       if (!newId) return
 
@@ -1823,6 +1828,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             repoRoot: commonRepoRoot,
             branch: '',
             isExistingBranch: false,
+            mode: 'local',
           },
         })
       } catch (err) {

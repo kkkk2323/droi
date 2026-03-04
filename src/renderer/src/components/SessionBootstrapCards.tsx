@@ -134,7 +134,7 @@ function SetupScriptCard({
                   e.stopPropagation()
                   onRetry?.()
                 }}
-                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
+                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-all hover:bg-foreground/80 active:scale-[0.995]"
               >
                 Retry
               </button>

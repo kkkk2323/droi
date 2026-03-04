@@ -788,7 +788,7 @@ export function InputBar({
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.95]"
+                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
               >
                 <Square className="size-3.5" />
               </button>
@@ -797,7 +797,7 @@ export function InputBar({
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSend}
-                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <ArrowUp className="size-4" />
               </button>
