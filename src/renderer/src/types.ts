@@ -116,6 +116,7 @@ export const MODEL_GROUPS: ModelGroup[] = [
       { value: 'gpt-5.2', label: 'GPT-5.2', provider: 'openai', multiplier: '0.7×' },
       { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex', provider: 'openai', multiplier: '0.7×' },
       { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', provider: 'openai', multiplier: '0.7×' },
+      { value: 'gpt-5.4', label: 'GPT-5.4', provider: 'openai', multiplier: '1×' },
     ],
   },
   {
@@ -200,6 +201,7 @@ export const MODEL_REASONING_MAP: Record<
   'gpt-5.2': { levels: ['off', 'low', 'medium', 'high', 'xhigh'], default: 'low' },
   'gpt-5.2-codex': { levels: ['none', 'low', 'medium', 'high', 'xhigh'], default: 'medium' },
   'gpt-5.3-codex': { levels: ['none', 'low', 'medium', 'high', 'xhigh'], default: 'medium' },
+  'gpt-5.4': { levels: ['none', 'low', 'medium', 'high', 'xhigh'], default: 'high' },
   'gemini-3-pro-preview': { levels: ['none', 'low', 'medium', 'high'], default: 'high' },
   'gemini-3.1-pro-preview': { levels: ['low', 'medium', 'high'], default: 'high' },
   'gemini-3-flash-preview': { levels: ['minimal', 'low', 'medium', 'high'], default: 'high' },
