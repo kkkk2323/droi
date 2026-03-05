@@ -1,3 +1,8 @@
+## 0.19.1 - 2026-03-06
+
+### Features
+- Add support for GPT-5.4 model
+
 ## 0.19.0 - 2026-03-04
 
 ### Features
