@@ -1,7 +1,25 @@
 import type { Project, SessionMeta } from '@/types'
 
-export function getRepoKey(meta: Pick<SessionMeta, 'repoRoot' | 'projectDir'>): string {
-  return String(meta.repoRoot || meta.projectDir || '').trim()
+export function getRepoKey(
+  meta: Pick<SessionMeta, 'repoRoot' | 'workspaceDir' | 'projectDir'>,
+): string {
+  return String(meta.repoRoot || meta.workspaceDir || meta.projectDir || '').trim()
+}
+
+export function getPendingSessionDraftKey(
+  meta?: {
+    repoRoot?: string
+    workspaceDir?: string
+    projectDir?: string
+    cwdSubpath?: string
+  } | null,
+): string {
+  const repoRoot = String(meta?.repoRoot || '').trim()
+  if (!repoRoot) return ''
+
+  const scope = String(meta?.cwdSubpath || meta?.projectDir || meta?.workspaceDir || '').trim()
+  if (!scope || scope === repoRoot) return `pending:${repoRoot}`
+  return `pending:${repoRoot}:${scope}`
 }
 
 export function deriveSmartName(folderName: string): string {

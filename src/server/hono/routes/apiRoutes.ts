@@ -1246,8 +1246,9 @@ export function createApiRoutes() {
         typeof body.projectDir === 'string'
           ? body.projectDir
           : deps.cachedStateRef.value.activeProjectDir || ''
+      const cwdSubpath = typeof body.cwdSubpath === 'string' ? body.cwdSubpath.trim() : undefined
       if (!dir) return c.json(null)
-      const info = await getWorkspaceInfo(dir)
+      const info = await getWorkspaceInfo(dir, { cwdSubpath })
       return c.json(info)
     } catch (err) {
       if (isNotGitRepoError(err)) return c.json(null)
@@ -1265,9 +1266,10 @@ export function createApiRoutes() {
           ? body.projectDir
           : deps.cachedStateRef.value.activeProjectDir || ''
       const branch = typeof body.branch === 'string' ? body.branch.trim() : ''
+      const cwdSubpath = typeof body.cwdSubpath === 'string' ? body.cwdSubpath.trim() : undefined
       if (!dir || !branch) return c.json(null)
 
-      return c.json(await switchWorkspaceBranch({ projectDir: dir, branch }))
+      return c.json(await switchWorkspaceBranch({ projectDir: dir, branch, cwdSubpath }))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return jsonError(c, 500, msg || 'Failed to switch workspace')
@@ -1286,10 +1288,18 @@ export function createApiRoutes() {
       const branch = typeof body.branch === 'string' ? body.branch.trim() : ''
       const baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : undefined
       const useExistingBranch = Boolean(body.useExistingBranch)
+      const cwdSubpath = typeof body.cwdSubpath === 'string' ? body.cwdSubpath.trim() : undefined
       if (!dir || !branch) return c.json(null)
 
       return c.json(
-        await createWorkspace({ projectDir: dir, mode, branch, baseBranch, useExistingBranch }),
+        await createWorkspace({
+          projectDir: dir,
+          mode,
+          branch,
+          baseBranch,
+          useExistingBranch,
+          cwdSubpath,
+        }),
       )
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

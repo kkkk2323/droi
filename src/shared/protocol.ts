@@ -190,6 +190,8 @@ export interface ChatMessage {
 export interface SessionMeta {
   id: string
   projectDir: string
+  workspaceDir?: string
+  cwdSubpath?: string
   repoRoot?: string
   branch?: string
   workspaceType?: WorkspaceType
@@ -271,6 +273,8 @@ export type PersistedAppState = PersistedAppStateV1 | PersistedAppStateV2
 export interface SaveSessionRequest {
   id: string
   projectDir: string
+  workspaceDir?: string
+  cwdSubpath?: string
   repoRoot?: string
   branch?: string
   workspaceType?: WorkspaceType
@@ -286,6 +290,8 @@ export interface SaveSessionRequest {
 export interface LoadSessionResponse {
   id: string
   projectDir: string
+  workspaceDir?: string
+  cwdSubpath?: string
   repoRoot?: string
   branch?: string
   workspaceType?: WorkspaceType
@@ -495,8 +501,15 @@ export interface DroidClientAPI {
   listGitWorktreeBranchesInUse: (params: {
     repoRoot: string
   }) => Promise<Array<{ branch: string; worktreeDir: string }>>
-  getWorkspaceInfo: (params: { projectDir: string }) => Promise<WorkspaceInfo | null>
-  switchWorkspace: (params: { projectDir: string; branch: string }) => Promise<WorkspaceInfo | null>
+  getWorkspaceInfo: (params: {
+    projectDir: string
+    cwdSubpath?: string
+  }) => Promise<WorkspaceInfo | null>
+  switchWorkspace: (params: {
+    projectDir: string
+    branch: string
+    cwdSubpath?: string
+  }) => Promise<WorkspaceInfo | null>
   createWorkspace: (params: WorkspaceCreateParams) => Promise<WorkspaceInfo | null>
   removeWorktree: (params: {
     repoRoot: string
@@ -541,8 +554,10 @@ export type WorkspaceType = 'branch' | 'worktree'
 export interface WorkspaceInfo {
   repoRoot: string
   projectDir: string
+  workspaceDir: string
   branch: string
   workspaceType: WorkspaceType
+  cwdSubpath?: string
   baseBranch?: string
 }
 
@@ -552,6 +567,7 @@ export interface WorkspaceCreateParams {
   branch: string
   baseBranch?: string
   useExistingBranch?: boolean
+  cwdSubpath?: string
 }
 
 export interface RemoveWorktreeResult {

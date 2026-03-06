@@ -4,7 +4,13 @@ import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ModelSelect } from '@/components/ModelSelect'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { getDroidClient } from '@/droidClient'
 import { getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
 import {
@@ -34,7 +40,8 @@ export function SettingsPage() {
   const lanAccessEnabled = useLanAccessEnabled()
   const appVersion = useAppVersion()
   const droidVersion = useDroidVersion()
-  const { setCommitMessageModelId, setCommitMessageReasoningEffort, setLanAccessEnabled } = useActions()
+  const { setCommitMessageModelId, setCommitMessageReasoningEffort, setLanAccessEnabled } =
+    useActions()
 
   const [update, setUpdate] = useState<UpdateState>({ step: 'idle' })
   const unsubRef = useRef<(() => void) | null>(null)

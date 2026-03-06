@@ -11,7 +11,9 @@ test('sessionStore save/load/list roundtrip', async () => {
 
   const meta = await store.save({
     id: 'abc_123',
-    projectDir: '/repo',
+    projectDir: '/repo/packages/foo',
+    workspaceDir: '/repo',
+    cwdSubpath: 'packages/foo',
     baseBranch: 'main',
     model: 'gpt',
     autoLevel: 'default',
@@ -24,7 +26,9 @@ test('sessionStore save/load/list roundtrip', async () => {
 
   assert.ok(meta)
   assert.equal(meta?.id, 'abc_123')
-  assert.equal(meta?.projectDir, '/repo')
+  assert.equal(meta?.projectDir, '/repo/packages/foo')
+  assert.equal(meta?.workspaceDir, '/repo')
+  assert.equal(meta?.cwdSubpath, 'packages/foo')
   assert.equal(meta?.messageCount, 2)
   assert.equal(meta?.autoLevel, 'default')
   assert.equal(meta?.baseBranch, 'main')
@@ -33,13 +37,17 @@ test('sessionStore save/load/list roundtrip', async () => {
   const list = await store.list()
   assert.equal(list.length, 1)
   assert.equal(list[0].id, 'abc_123')
+  assert.equal(list[0].workspaceDir, '/repo')
+  assert.equal(list[0].cwdSubpath, 'packages/foo')
   assert.equal(list[0].baseBranch, 'main')
   assert.equal(list[0].apiKeyFingerprint, 'fp123')
 
   const loaded = await store.load('abc_123')
   assert.ok(loaded)
   assert.equal(loaded?.id, 'abc_123')
-  assert.equal(loaded?.projectDir, '/repo')
+  assert.equal(loaded?.projectDir, '/repo/packages/foo')
+  assert.equal(loaded?.workspaceDir, '/repo')
+  assert.equal(loaded?.cwdSubpath, 'packages/foo')
   assert.equal(loaded?.messages.length, 2)
   assert.equal(loaded?.baseBranch, 'main')
   assert.equal(loaded?.apiKeyFingerprint, 'fp123')
@@ -51,7 +59,9 @@ test('sessionStore clearContext clears messages but preserves title', async () =
 
   const meta1 = await store.save({
     id: 's1',
-    projectDir: '/repo',
+    projectDir: '/repo/packages/foo',
+    workspaceDir: '/repo',
+    cwdSubpath: 'packages/foo',
     model: 'gpt',
     autoLevel: 'default',
     apiKeyFingerprint: 'fp1',
@@ -67,7 +77,9 @@ test('sessionStore clearContext clears messages but preserves title', async () =
   const cleared = await store.clearContext('s1')
   assert.ok(cleared)
   assert.equal(cleared?.id, 's1')
-  assert.equal(cleared?.projectDir, '/repo')
+  assert.equal(cleared?.projectDir, '/repo/packages/foo')
+  assert.equal(cleared?.workspaceDir, '/repo')
+  assert.equal(cleared?.cwdSubpath, 'packages/foo')
   assert.equal(cleared?.messageCount, 0)
   assert.equal(cleared?.title, title1)
   assert.equal(cleared?.apiKeyFingerprint, 'fp1')
@@ -85,7 +97,9 @@ test('sessionStore replaceSessionId migrates and clears context', async () => {
 
   const meta1 = await store.save({
     id: 's1',
-    projectDir: '/repo',
+    projectDir: '/repo/packages/foo',
+    workspaceDir: '/repo',
+    cwdSubpath: 'packages/foo',
     model: 'gpt',
     autoLevel: 'default',
     apiKeyFingerprint: 'fp1',
@@ -100,7 +114,9 @@ test('sessionStore replaceSessionId migrates and clears context', async () => {
   const replaced = await store.replaceSessionId('s1', 's2')
   assert.ok(replaced)
   assert.equal(replaced?.id, 's2')
-  assert.equal(replaced?.projectDir, '/repo')
+  assert.equal(replaced?.projectDir, '/repo/packages/foo')
+  assert.equal(replaced?.workspaceDir, '/repo')
+  assert.equal(replaced?.cwdSubpath, 'packages/foo')
   assert.equal(replaced?.messageCount, 0)
   assert.equal(replaced?.title, title1)
   assert.equal(replaced?.apiKeyFingerprint, 'fp1')

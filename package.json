@@ -12,7 +12,6 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "node --test --experimental-strip-types test/*.test.ts",
-    "test:compat": "node --test --experimental-strip-types test/compat/*.test.ts",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck:compat": "tsc --noEmit -p tsconfig.compat.json",

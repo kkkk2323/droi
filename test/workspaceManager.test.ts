@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createWorkspace, getWorkspaceInfo, pushBranch, removeWorktree } from '../src/backend/git/workspaceManager.ts'
@@ -34,6 +34,7 @@ test('workspaceManager detects worktrees and uses common repoRoot', async () => 
   const mainInfo = await getWorkspaceInfo(repoDir)
   assert.equal(mainInfo.repoRoot, repoReal)
   assert.equal(mainInfo.projectDir, repoReal)
+  assert.equal(mainInfo.workspaceDir, repoReal)
   assert.equal(mainInfo.workspaceType, 'branch')
 
   const wtInfo = await createWorkspace({
@@ -50,8 +51,87 @@ test('workspaceManager detects worktrees and uses common repoRoot', async () => 
 
   assert.equal(wtInfo.repoRoot, repoReal)
   assert.equal(wtInfo.projectDir, expectedWorktreeReal)
+  assert.equal(wtInfo.workspaceDir, expectedWorktreeReal)
   assert.equal(wtInfo.workspaceType, 'worktree')
   assert.equal(wtInfo.branch, 'feature/x')
+})
+
+test('workspaceManager preserves package cwd metadata for subdirectories', async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-subdir-'))
+
+  await runGit(['init'], repoDir)
+  await runGit(['config', 'user.email', 'test@example.com'], repoDir)
+  await runGit(['config', 'user.name', 'test'], repoDir)
+  await mkdir(join(repoDir, 'packages', 'foo'), { recursive: true })
+  await writeFile(join(repoDir, 'packages', 'foo', 'index.ts'), 'export const foo = 1\n')
+  await runGit(['add', '.'], repoDir)
+  await runGit(['commit', '-m', 'init'], repoDir)
+  await runGit(['branch', '-M', 'main'], repoDir)
+
+  const subdir = join(repoDir, 'packages', 'foo')
+  const info = await getWorkspaceInfo(subdir)
+
+  assert.equal(info.repoRoot, await realpath(repoDir))
+  assert.equal(info.workspaceDir, await realpath(repoDir))
+  assert.equal(info.projectDir, await realpath(subdir))
+  assert.equal(info.cwdSubpath, join('packages', 'foo'))
+})
+
+test('workspaceManager rebases subdirectory cwd into new worktrees', async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-rebase-subdir-'))
+
+  await runGit(['init'], repoDir)
+  await runGit(['config', 'user.email', 'test@example.com'], repoDir)
+  await runGit(['config', 'user.name', 'test'], repoDir)
+  await mkdir(join(repoDir, 'packages', 'foo'), { recursive: true })
+  await writeFile(join(repoDir, 'packages', 'foo', 'index.ts'), 'export const foo = 1\n')
+  await runGit(['add', '.'], repoDir)
+  await runGit(['commit', '-m', 'init'], repoDir)
+  await runGit(['branch', '-M', 'main'], repoDir)
+
+  const wtInfo = await createWorkspace({
+    projectDir: join(repoDir, 'packages', 'foo'),
+    mode: 'worktree',
+    branch: 'feature/pkg-foo',
+    baseBranch: 'main',
+    cwdSubpath: join('packages', 'foo'),
+  })
+
+  const expectedWorkspaceDir = await realpath(resolve(repoDir, '.worktrees', 'feature--pkg-foo'))
+  const expectedProjectDir = await realpath(join(expectedWorkspaceDir, 'packages', 'foo'))
+
+  assert.equal(wtInfo.workspaceDir, expectedWorkspaceDir)
+  assert.equal(wtInfo.projectDir, expectedProjectDir)
+  assert.equal(wtInfo.cwdSubpath, join('packages', 'foo'))
+})
+
+test('workspaceManager derives subdirectory cwd when creating worktrees without explicit cwdSubpath', async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-derive-subdir-'))
+
+  await runGit(['init'], repoDir)
+  await runGit(['config', 'user.email', 'test@example.com'], repoDir)
+  await runGit(['config', 'user.name', 'test'], repoDir)
+  await mkdir(join(repoDir, 'packages', 'foo'), { recursive: true })
+  await writeFile(join(repoDir, 'packages', 'foo', 'index.ts'), 'export const foo = 1\n')
+  await runGit(['add', '.'], repoDir)
+  await runGit(['commit', '-m', 'init'], repoDir)
+  await runGit(['branch', '-M', 'main'], repoDir)
+
+  const wtInfo = await createWorkspace({
+    projectDir: join(repoDir, 'packages', 'foo'),
+    mode: 'worktree',
+    branch: 'feature/pkg-foo-derived',
+    baseBranch: 'main',
+  })
+
+  const expectedWorkspaceDir = await realpath(
+    resolve(repoDir, '.worktrees', 'feature--pkg-foo-derived'),
+  )
+  const expectedProjectDir = await realpath(join(expectedWorkspaceDir, 'packages', 'foo'))
+
+  assert.equal(wtInfo.workspaceDir, expectedWorkspaceDir)
+  assert.equal(wtInfo.projectDir, expectedProjectDir)
+  assert.equal(wtInfo.cwdSubpath, join('packages', 'foo'))
 })
 
 test('workspaceManager removeWorktree removes the worktree directory', async () => {

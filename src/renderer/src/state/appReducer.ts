@@ -20,6 +20,8 @@ export interface SessionBuffer {
   apiKeyFingerprint?: string
   pendingApiKeyFingerprint?: string
   projectDir: string
+  workspaceDir?: string
+  cwdSubpath?: string
   repoRoot?: string
   branch?: string
   workspaceType?: WorkspaceType
@@ -60,6 +62,8 @@ export function makeBuffer(
   projectDir: string,
   workspace?: {
     repoRoot?: string
+    workspaceDir?: string
+    cwdSubpath?: string
     branch?: string
     workspaceType?: WorkspaceType
     baseBranch?: string
@@ -75,6 +79,8 @@ export function makeBuffer(
     pendingApiKeyFingerprint: undefined,
     projectDir,
     repoRoot: workspace?.repoRoot,
+    workspaceDir: workspace?.workspaceDir,
+    cwdSubpath: workspace?.cwdSubpath,
     branch: workspace?.branch,
     workspaceType: workspace?.workspaceType,
     baseBranch: workspace?.baseBranch,
