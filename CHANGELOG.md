@@ -1,3 +1,8 @@
+## 0.20.0 - 2026-03-06
+
+### Features
+- Enhance workspace management and persistence
+
 ## 0.19.1 - 2026-03-06
 
 ### Features
