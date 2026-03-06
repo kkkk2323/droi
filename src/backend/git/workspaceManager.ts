@@ -1,14 +1,16 @@
 import { execFile } from 'child_process'
 import { mkdir, realpath, stat } from 'fs/promises'
-import { basename, dirname, join, resolve, sep } from 'path'
+import { basename, dirname, join, relative, resolve, sep } from 'path'
 
 export type WorkspaceType = 'branch' | 'worktree'
 
 export interface WorkspaceInfo {
   repoRoot: string
   projectDir: string
+  workspaceDir: string
   branch: string
   workspaceType: WorkspaceType
+  cwdSubpath?: string
   baseBranch?: string
 }
 
@@ -31,6 +33,28 @@ function sanitizeBranchForPath(branch: string): string {
     .replace(/[\\/]+/g, '--')
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+function normalizeCwdSubpath(subpath?: string): string {
+  const raw = String(subpath || '').trim()
+  if (!raw) return ''
+
+  const normalized = raw.replace(/[\\/]+/g, sep)
+  if (!normalized || normalized === '.') return ''
+
+  const rooted = resolve(sep, normalized)
+  const rel = relative(sep, rooted)
+  if (!rel || rel === '.') return ''
+  if (rel === '..' || rel.startsWith(`..${sep}`) || rel.includes(`${sep}..${sep}`)) return ''
+  return rel
+}
+
+function deriveCwdSubpath(workspaceDir: string, projectDir: string): string {
+  const relPath = relative(resolve(workspaceDir), resolve(projectDir))
+  if (!relPath || relPath === '.') return ''
+  if (relPath === '..' || relPath.startsWith(`..${sep}`) || relPath.includes(`${sep}..${sep}`))
+    return ''
+  return normalizeCwdSubpath(relPath)
 }
 
 export async function getRepoRoot(projectDir: string): Promise<string> {
@@ -107,6 +131,55 @@ async function pathExists(p: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+async function isDirectoryPath(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+async function resolveEffectiveProjectDir(
+  workspaceDir: string,
+  cwdSubpath?: string,
+): Promise<string> {
+  const normalizedWorkspaceDir = await normalizeFsPath(workspaceDir)
+  const subpath = normalizeCwdSubpath(cwdSubpath)
+  if (!subpath) return normalizedWorkspaceDir
+
+  const candidate = join(normalizedWorkspaceDir, subpath)
+  if (!(await isDirectoryPath(candidate))) return normalizedWorkspaceDir
+  return normalizeFsPath(candidate)
+}
+
+async function buildWorkspaceInfo(params: {
+  workspaceDir: string
+  projectDir?: string
+  cwdSubpath?: string
+  baseBranch?: string
+}): Promise<WorkspaceInfo> {
+  const workspaceDir = await normalizeFsPath(params.workspaceDir)
+  const projectDir = params.projectDir ? await normalizeFsPath(params.projectDir) : undefined
+  const repoRoot = await getRepoRoot(workspaceDir)
+  const branch = await getCurrentBranch(workspaceDir)
+  const workspaceType: WorkspaceType =
+    resolve(workspaceDir) === resolve(repoRoot) ? 'branch' : 'worktree'
+  const cwdSubpath = normalizeCwdSubpath(
+    params.cwdSubpath || (projectDir ? deriveCwdSubpath(workspaceDir, projectDir) : ''),
+  )
+  const effectiveProjectDir = await resolveEffectiveProjectDir(workspaceDir, cwdSubpath)
+
+  return {
+    repoRoot,
+    projectDir: effectiveProjectDir,
+    workspaceDir,
+    branch,
+    workspaceType,
+    ...(cwdSubpath ? { cwdSubpath } : {}),
+    ...(params.baseBranch ? { baseBranch: params.baseBranch } : {}),
   }
 }
 
@@ -249,18 +322,12 @@ export async function createWorktree(params: {
   if (!params.useExistingBranch) await clearBranchUpstream(params.repoRoot, params.branch)
 }
 
-export async function getWorkspaceInfo(projectDir: string): Promise<WorkspaceInfo> {
-  const repoRoot = await getRepoRoot(projectDir)
-  const worktreeRoot = await getWorktreeRoot(projectDir)
-  const branch = await getCurrentBranch(projectDir)
-  const workspaceType: WorkspaceType =
-    resolve(worktreeRoot) === resolve(repoRoot) ? 'branch' : 'worktree'
-  return {
-    repoRoot,
-    projectDir: resolve(worktreeRoot),
-    branch,
-    workspaceType,
-  }
+export async function getWorkspaceInfo(
+  projectDir: string,
+  opts?: { cwdSubpath?: string },
+): Promise<WorkspaceInfo> {
+  const workspaceDir = await getWorktreeRoot(projectDir)
+  return buildWorkspaceInfo({ workspaceDir, projectDir, cwdSubpath: opts?.cwdSubpath })
 }
 
 async function pullBranch(projectDir: string, branch: string): Promise<void> {
@@ -277,10 +344,16 @@ async function pullBranch(projectDir: string, branch: string): Promise<void> {
 export async function switchWorkspaceBranch(params: {
   projectDir: string
   branch: string
+  cwdSubpath?: string
 }): Promise<WorkspaceInfo> {
+  const workspaceDir = await getWorktreeRoot(params.projectDir)
   await checkoutBranch(params.projectDir, params.branch)
   await pullBranch(params.projectDir, params.branch)
-  return getWorkspaceInfo(params.projectDir)
+  return buildWorkspaceInfo({
+    workspaceDir,
+    projectDir: params.projectDir,
+    cwdSubpath: params.cwdSubpath,
+  })
 }
 
 export async function createWorkspace(params: {
@@ -289,13 +362,24 @@ export async function createWorkspace(params: {
   branch: string
   baseBranch?: string
   useExistingBranch?: boolean
+  cwdSubpath?: string
 }): Promise<WorkspaceInfo> {
   const repoRoot = await getRepoRoot(params.projectDir)
+  const workspaceDir = await getWorktreeRoot(params.projectDir)
+  const normalizedProjectDir = await normalizeFsPath(params.projectDir)
+  const cwdSubpath = normalizeCwdSubpath(
+    params.cwdSubpath || deriveCwdSubpath(workspaceDir, normalizedProjectDir),
+  )
 
   if (params.mode === 'branch') {
     if (params.useExistingBranch) await checkoutBranch(params.projectDir, params.branch)
     else await createBranch(params.projectDir, params.branch, params.baseBranch)
-    return { ...(await getWorkspaceInfo(params.projectDir)), baseBranch: params.baseBranch }
+    return buildWorkspaceInfo({
+      workspaceDir,
+      projectDir: normalizedProjectDir,
+      cwdSubpath,
+      baseBranch: params.baseBranch,
+    })
   }
 
   const worktreePath = resolveSiblingWorktreePath(repoRoot, params.branch)
@@ -306,7 +390,12 @@ export async function createWorkspace(params: {
     baseBranch: params.baseBranch,
     useExistingBranch: params.useExistingBranch,
   })
-  return { ...(await getWorkspaceInfo(worktreePath)), baseBranch: params.baseBranch }
+  return buildWorkspaceInfo({
+    workspaceDir: worktreePath,
+    projectDir: normalizedProjectDir,
+    cwdSubpath,
+    baseBranch: params.baseBranch,
+  })
 }
 
 export async function removeWorktree(params: {
@@ -317,7 +406,14 @@ export async function removeWorktree(params: {
   branch?: string
 }): Promise<void> {
   const repoRoot = await normalizeFsPath(params.repoRoot)
-  const worktreeDir = await normalizeFsPath(params.worktreeDir)
+  let worktreeDir = await normalizeFsPath(params.worktreeDir)
+  if (await pathExists(worktreeDir)) {
+    try {
+      worktreeDir = await getWorktreeRoot(worktreeDir)
+    } catch {
+      // Best-effort: fall back to the provided path for already-removed or invalid worktrees.
+    }
+  }
   const containerDir = join(repoRoot, '.worktrees')
 
   if (resolve(repoRoot) === resolve(worktreeDir)) {

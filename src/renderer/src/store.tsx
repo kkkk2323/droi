@@ -43,6 +43,9 @@ export type PendingNewSessionMode = 'local' | 'new-worktree'
 
 export type PendingNewSession = {
   repoRoot: string
+  projectDir?: string
+  workspaceDir?: string
+  cwdSubpath?: string
   branch: string
   isExistingBranch?: boolean
   mode?: PendingNewSessionMode
@@ -169,6 +172,7 @@ interface AppActions {
   handleCreateSessionWithWorkspace: (params: {
     repoRoot?: string
     projectDir?: string
+    cwdSubpath?: string
     mode: 'plain' | 'switch-branch' | 'new-branch' | 'new-worktree'
     branch?: string
     baseBranch?: string
@@ -190,7 +194,7 @@ interface AppActions {
   _isSessionGenerationCurrent: (sid: string, generation: number) => boolean
   _clearSessionGeneration: (sid: string) => void
   _getSessionGeneration: (sid: string) => number
-  _resolveWorkspace: (projectDir: string) => Promise<WorkspaceInfo | null>
+  _resolveWorkspace: (projectDir: string, cwdSubpath?: string) => Promise<WorkspaceInfo | null>
   _pickProjectDirForRepo: (repoRoot?: string) => string
   _saveSessionToDisk: (sid: string, buf: SessionBuffer) => Promise<void>
   _runSetupScriptForSession: (params: {
@@ -350,16 +354,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // --- Workspace helpers ---
-  _resolveWorkspace: async (projectDir) => {
+  _resolveWorkspace: async (projectDir, cwdSubpath) => {
     if (!projectDir) return null
-    return droid.getWorkspaceInfo({ projectDir })
+    return droid.getWorkspaceInfo({ projectDir, cwdSubpath })
   },
 
   _pickProjectDirForRepo: (repoRoot) => {
     const s = get()
     if (!repoRoot) return s.activeProjectDir
     const activeBuf = s.activeSessionId ? s.sessionBuffers.get(s.activeSessionId) : null
-    if (activeBuf && (activeBuf.repoRoot || activeBuf.projectDir) === repoRoot)
+    if (
+      activeBuf &&
+      (activeBuf.repoRoot || activeBuf.workspaceDir || activeBuf.projectDir) === repoRoot
+    )
       return activeBuf.projectDir
 
     const p = s.projects.find((x) => x.dir === repoRoot)
@@ -378,6 +385,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const meta = await droid.saveSession({
       id: sid,
       projectDir: buf.projectDir,
+      workspaceDir: buf.workspaceDir,
+      cwdSubpath: buf.cwdSubpath,
       repoRoot: buf.repoRoot,
       branch: buf.branch,
       workspaceType: buf.workspaceType,
@@ -394,7 +403,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const normalizedMeta: SessionMeta = {
       ...meta,
       projectDir: meta.projectDir || buf.projectDir,
-      repoRoot: meta.repoRoot || buf.repoRoot || meta.projectDir || buf.projectDir,
+      workspaceDir: meta.workspaceDir || buf.workspaceDir || meta.projectDir || buf.projectDir,
+      cwdSubpath: meta.cwdSubpath || buf.cwdSubpath,
+      repoRoot:
+        meta.repoRoot ||
+        buf.repoRoot ||
+        meta.workspaceDir ||
+        meta.projectDir ||
+        buf.workspaceDir ||
+        buf.projectDir,
       branch: meta.branch || buf.branch,
       workspaceType: meta.workspaceType || buf.workspaceType,
       baseBranch: meta.baseBranch || buf.baseBranch,
@@ -672,6 +689,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
             typeof (nextPatch as any).repoRoot === 'string'
               ? String((nextPatch as any).repoRoot).trim()
               : cur.repoRoot,
+          projectDir:
+            typeof (nextPatch as any).projectDir === 'string'
+              ? String((nextPatch as any).projectDir).trim()
+              : cur.projectDir,
+          workspaceDir:
+            typeof (nextPatch as any).workspaceDir === 'string'
+              ? String((nextPatch as any).workspaceDir).trim()
+              : cur.workspaceDir,
+          cwdSubpath:
+            typeof (nextPatch as any).cwdSubpath === 'string'
+              ? String((nextPatch as any).cwdSubpath).trim()
+              : cur.cwdSubpath,
           branch:
             typeof (nextPatch as any).branch === 'string'
               ? String((nextPatch as any).branch).trim()
@@ -769,6 +798,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const inheritModel = currentBuf?.model ?? DEFAULT_MODEL
       const inheritAutoLevel = currentBuf?.autoLevel ?? DEFAULT_AUTO_LEVEL
       const inheritReasoningEffort = currentBuf?.reasoningEffort ?? ''
+      const sourceCwdSubpath =
+        typeof params.cwdSubpath === 'string' && params.cwdSubpath.trim()
+          ? params.cwdSubpath.trim()
+          : undefined
 
       let workspaceInfo: WorkspaceInfo | null = null
       if (params.mode === 'switch-branch') {
@@ -776,6 +809,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         workspaceInfo = await droid.switchWorkspace({
           projectDir: sourceDir,
           branch: params.branch.trim(),
+          cwdSubpath: sourceCwdSubpath,
         })
         if (!workspaceInfo) throw new Error('Failed to switch branch')
       } else if (params.mode === 'new-branch') {
@@ -785,6 +819,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           mode: 'branch',
           branch: params.branch.trim(),
           baseBranch: params.baseBranch?.trim() || undefined,
+          cwdSubpath: sourceCwdSubpath,
         })
         if (!workspaceInfo) throw new Error('Failed to create branch')
       } else if (params.mode === 'new-worktree') {
@@ -794,18 +829,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
           mode: 'worktree',
           branch: params.branch.trim(),
           baseBranch: params.baseBranch?.trim() || undefined,
+          cwdSubpath: sourceCwdSubpath,
         })
         if (!workspaceInfo) throw new Error('Failed to create worktree')
       } else {
-        workspaceInfo = await s._resolveWorkspace(sourceDir).catch(() => null)
+        workspaceInfo = await s._resolveWorkspace(sourceDir, sourceCwdSubpath).catch(() => null)
       }
 
       if (!workspaceInfo) {
+        const normalizedSourceDir = String(sourceDir || '').trim()
         workspaceInfo = {
-          repoRoot: params.repoRoot || sourceDir,
-          projectDir: sourceDir,
+          repoRoot: params.repoRoot || normalizedSourceDir,
+          projectDir: normalizedSourceDir,
+          workspaceDir: normalizedSourceDir,
           branch: '',
           workspaceType: 'branch',
+          ...(sourceCwdSubpath ? { cwdSubpath: sourceCwdSubpath } : {}),
         }
       }
 
@@ -823,6 +862,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         upsertSessionMeta(prev, {
           id: newId,
           projectDir: targetDir,
+          workspaceDir: workspaceInfo!.workspaceDir,
+          cwdSubpath: workspaceInfo!.cwdSubpath,
           repoRoot: workspaceInfo!.repoRoot,
           branch: workspaceInfo!.branch,
           workspaceType: workspaceInfo!.workspaceType,
@@ -838,6 +879,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const initialBuffer = {
         ...makeBuffer(targetDir, {
           repoRoot: workspaceInfo!.repoRoot,
+          workspaceDir: workspaceInfo!.workspaceDir,
+          cwdSubpath: workspaceInfo!.cwdSubpath,
           branch: workspaceInfo!.branch,
           workspaceType: workspaceInfo!.workspaceType,
           baseBranch: workspaceInfo!.baseBranch,
@@ -883,11 +926,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     const meta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
     const projectDir = buf?.projectDir || meta?.projectDir || s.activeProjectDir
+    const cwdSubpath = buf?.cwdSubpath || meta?.cwdSubpath
     if (!projectDir) return false
 
     let info: WorkspaceInfo | null = null
     try {
-      info = await droid.switchWorkspace({ projectDir, branch })
+      info = await droid.switchWorkspace({ projectDir, branch, cwdSubpath })
     } catch {
       return false
     }
@@ -900,6 +944,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       next.set(sid, {
         ...cur,
         projectDir: info!.projectDir,
+        workspaceDir: info!.workspaceDir,
+        cwdSubpath: info!.cwdSubpath,
         repoRoot: info!.repoRoot,
         branch: info!.branch,
         workspaceType: info!.workspaceType,
@@ -911,6 +957,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const updatedMeta: SessionMeta = {
       id: sid,
       projectDir: info.projectDir,
+      workspaceDir: info.workspaceDir,
+      cwdSubpath: info.cwdSubpath,
       repoRoot: info.repoRoot,
       branch: info.branch,
       workspaceType: info.workspaceType,
@@ -970,6 +1018,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     s.clearWorkspaceError()
 
     const repoRoot = String(pending.repoRoot || '').trim()
+    const projectDir = String(pending.projectDir || repoRoot).trim()
+    const cwdSubpath = String(pending.cwdSubpath || '').trim() || undefined
     if (!repoRoot) {
       set({ workspaceError: 'Missing repo root' })
       return
@@ -1007,7 +1057,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       const newId = await s.handleCreateSessionWithWorkspace({
         repoRoot,
-        projectDir: repoRoot,
+        projectDir,
+        cwdSubpath,
         mode: createMode,
         branch,
         ...(createMode === 'new-worktree' ? { baseBranch } : {}),
@@ -1206,7 +1257,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const draftMeta: SessionMeta = {
       id: sid,
       projectDir: projDir,
-      repoRoot: buf?.repoRoot || projDir,
+      workspaceDir: buf?.workspaceDir || projDir,
+      cwdSubpath: buf?.cwdSubpath,
+      repoRoot: buf?.repoRoot || buf?.workspaceDir || projDir,
       branch: buf?.branch,
       workspaceType: buf?.workspaceType,
       baseBranch: buf?.baseBranch,
@@ -1225,7 +1278,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       .saveSession({
         id: sid,
         projectDir: projDir,
-        repoRoot: buf?.repoRoot || projDir,
+        workspaceDir: buf?.workspaceDir || projDir,
+        cwdSubpath: buf?.cwdSubpath,
+        repoRoot: buf?.repoRoot || buf?.workspaceDir || projDir,
         branch: buf?.branch,
         workspaceType: buf?.workspaceType,
         baseBranch: buf?.baseBranch,
@@ -1241,7 +1296,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const savedMeta: SessionMeta = {
           ...meta,
           projectDir: meta.projectDir || projDir,
-          repoRoot: meta.repoRoot || buf?.repoRoot || projDir,
+          workspaceDir: meta.workspaceDir || buf?.workspaceDir || meta.projectDir || projDir,
+          cwdSubpath: meta.cwdSubpath || buf?.cwdSubpath,
+          repoRoot:
+            meta.repoRoot ||
+            buf?.repoRoot ||
+            meta.workspaceDir ||
+            meta.projectDir ||
+            buf?.workspaceDir ||
+            projDir,
           branch: meta.branch || buf?.branch,
           workspaceType: meta.workspaceType || buf?.workspaceType,
           baseBranch: meta.baseBranch || buf?.baseBranch,
@@ -1722,12 +1785,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // --- Workspace for meta ---
   _ensureWorkspaceForMeta: async (meta) => {
-    const desiredDir = String(meta.projectDir || '').trim()
+    const desiredDir = String(meta.projectDir || meta.workspaceDir || '').trim()
+    const desiredCwdSubpath = String(meta.cwdSubpath || '').trim() || undefined
     if (!desiredDir) throw new Error('Session is missing project directory')
 
     let info: WorkspaceInfo | null = null
     try {
-      info = await get()._resolveWorkspace(desiredDir)
+      info = await get()._resolveWorkspace(desiredDir, desiredCwdSubpath)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`, {
@@ -1741,6 +1805,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const switched = await droid.switchWorkspace({
         projectDir: info.projectDir || desiredDir,
         branch: desiredBranch,
+        cwdSubpath: desiredCwdSubpath || info.cwdSubpath,
       })
       if (!switched) throw new Error(`Failed to switch to branch ${desiredBranch}`)
       return switched
@@ -1754,6 +1819,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const normalizedMeta: SessionMeta = {
       ...selectedMeta,
       projectDir: aligned.projectDir,
+      workspaceDir: aligned.workspaceDir,
+      cwdSubpath: aligned.cwdSubpath,
       repoRoot: aligned.repoRoot,
       branch: aligned.branch,
       workspaceType: aligned.workspaceType,
@@ -1768,6 +1835,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       next.set(sessionId, {
         ...existing,
         projectDir: aligned.projectDir,
+        workspaceDir: aligned.workspaceDir,
+        cwdSubpath: aligned.cwdSubpath,
         repoRoot: aligned.repoRoot,
         branch: aligned.branch,
         workspaceType: aligned.workspaceType,
@@ -1786,6 +1855,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const next = new Map(prev)
         const base = makeBuffer(aligned.projectDir, {
           repoRoot: aligned.repoRoot,
+          workspaceDir: aligned.workspaceDir,
+          cwdSubpath: aligned.cwdSubpath,
           branch: aligned.branch,
           workspaceType: aligned.workspaceType,
           baseBranch: (data as any)?.baseBranch || selectedMeta.baseBranch || aligned.baseBranch,
@@ -1826,6 +1897,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         set({
           pendingNewSession: {
             repoRoot: commonRepoRoot,
+            projectDir: resolved.projectDir,
+            workspaceDir: resolved.workspaceDir,
+            cwdSubpath: resolved.cwdSubpath,
             branch: '',
             isExistingBranch: false,
             mode: 'local',
@@ -1858,7 +1932,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       await s._ensureProjectSettingsInitialized({ repoRoot, hintBranch: info.branch })
 
-      get().handleNewSession(repoRoot)
+      set({
+        pendingNewSession: {
+          repoRoot,
+          projectDir: info.projectDir,
+          workspaceDir: info.workspaceDir,
+          cwdSubpath: info.cwdSubpath,
+          branch: '',
+          isExistingBranch: false,
+          mode: 'local',
+        },
+      })
     })()
   },
 
@@ -1913,6 +1997,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       void droid.saveSession({
         id: sessionId,
         projectDir: buf.projectDir,
+        workspaceDir: buf.workspaceDir,
+        cwdSubpath: buf.cwdSubpath,
         repoRoot: buf.repoRoot,
         branch: buf.branch,
         workspaceType: buf.workspaceType,
@@ -1952,7 +2038,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       if (sessionMeta.workspaceType === 'worktree') {
         const repoRoot = String(sessionMeta.repoRoot || '').trim()
-        const worktreeDir = String(sessionMeta.projectDir || '').trim()
+        const worktreeDir = String(sessionMeta.workspaceDir || sessionMeta.projectDir || '').trim()
         if (!repoRoot || !worktreeDir) throw new Error('Session is missing repoRoot/worktreeDir')
         await droid.removeWorktree({ repoRoot, worktreeDir, force: true })
       }
@@ -1968,7 +2054,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         .filter((x) => x.id !== sessionId)
         .sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
       const sameProjectFallback = deletedRepoRoot
-        ? allRemaining.filter((x) => (x.repoRoot || x.projectDir) === deletedRepoRoot)
+        ? allRemaining.filter(
+            (x) => (x.repoRoot || x.workspaceDir || x.projectDir) === deletedRepoRoot,
+          )
         : []
       const pickFallback = sameProjectFallback[0] || allRemaining[0] || null
 
@@ -1990,6 +2078,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const normalizedMeta: SessionMeta = {
             ...pickFallback,
             projectDir: aligned.projectDir,
+            workspaceDir: aligned.workspaceDir,
+            cwdSubpath: aligned.cwdSubpath,
             repoRoot: aligned.repoRoot,
             branch: aligned.branch,
             workspaceType: aligned.workspaceType,
@@ -2008,6 +2098,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
               const next = new Map(prev)
               const base = makeBuffer(aligned.projectDir, {
                 repoRoot: aligned.repoRoot,
+                workspaceDir: aligned.workspaceDir,
+                cwdSubpath: aligned.cwdSubpath,
                 branch: aligned.branch,
                 workspaceType: aligned.workspaceType,
                 baseBranch:
@@ -2077,7 +2169,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       for (const session of targetSessions) {
         if (session.workspaceType === 'worktree') {
           const wtRepoRoot = String(session.repoRoot || '').trim()
-          const wtProjectDir = String(session.projectDir || '').trim()
+          const wtProjectDir = String(session.workspaceDir || session.projectDir || '').trim()
           if (wtRepoRoot && wtProjectDir) {
             try {
               await droid.removeWorktree({
@@ -2108,7 +2200,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       })
 
       const activeSession = get().sessionBuffers.get(get().activeSessionId)
-      if (activeSession && (activeSession.repoRoot || activeSession.projectDir) === repoRoot) {
+      if (
+        activeSession &&
+        (activeSession.repoRoot || activeSession.workspaceDir || activeSession.projectDir) ===
+          repoRoot
+      ) {
         set({ activeProjectDir: '' })
         droid.setProjectDir(null)
         const newId = uuidv4()

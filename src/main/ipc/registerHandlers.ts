@@ -1173,24 +1173,31 @@ export function registerIpcHandlers(opts: {
     }
   })
 
-  ipcMain.handle('git:workspace-info', async (_event, params: { projectDir: string }) => {
-    const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
-    if (!dir) return null
-    try {
-      return await getWorkspaceInfo(dir)
-    } catch (err) {
-      if (isNotGitRepoError(err)) return null
-      throw err
-    }
-  })
+  ipcMain.handle(
+    'git:workspace-info',
+    async (_event, params: { projectDir: string; cwdSubpath?: string }) => {
+      const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
+      const cwdSubpath =
+        typeof params?.cwdSubpath === 'string' ? params.cwdSubpath.trim() : undefined
+      if (!dir) return null
+      try {
+        return await getWorkspaceInfo(dir, { cwdSubpath })
+      } catch (err) {
+        if (isNotGitRepoError(err)) return null
+        throw err
+      }
+    },
+  )
 
   ipcMain.handle(
     'git:switch-workspace',
-    async (_event, params: { projectDir: string; branch: string }) => {
+    async (_event, params: { projectDir: string; branch: string; cwdSubpath?: string }) => {
       const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
       const branch = typeof params?.branch === 'string' ? params.branch.trim() : ''
+      const cwdSubpath =
+        typeof params?.cwdSubpath === 'string' ? params.cwdSubpath.trim() : undefined
       if (!dir || !branch) return null
-      return await switchWorkspaceBranch({ projectDir: dir, branch })
+      return await switchWorkspaceBranch({ projectDir: dir, branch, cwdSubpath })
     },
   )
 
@@ -1204,6 +1211,7 @@ export function registerIpcHandlers(opts: {
         branch: string
         baseBranch?: string
         useExistingBranch?: boolean
+        cwdSubpath?: string
       },
     ) => {
       const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
@@ -1212,8 +1220,17 @@ export function registerIpcHandlers(opts: {
       const baseBranch =
         typeof params?.baseBranch === 'string' ? params.baseBranch.trim() : undefined
       const useExistingBranch = Boolean(params?.useExistingBranch)
+      const cwdSubpath =
+        typeof params?.cwdSubpath === 'string' ? params.cwdSubpath.trim() : undefined
       if (!dir || !branch) return null
-      return await createWorkspace({ projectDir: dir, mode, branch, baseBranch, useExistingBranch })
+      return await createWorkspace({
+        projectDir: dir,
+        mode,
+        branch,
+        baseBranch,
+        useExistingBranch,
+        cwdSubpath,
+      })
     },
   )
 

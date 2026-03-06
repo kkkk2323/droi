@@ -71,6 +71,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       version: 1,
       id: req.id,
       projectDir: req.projectDir,
+      workspaceDir: req.workspaceDir,
+      cwdSubpath: req.cwdSubpath,
       repoRoot: req.repoRoot,
       branch: req.branch,
       workspaceType: req.workspaceType,
@@ -90,6 +92,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
     return {
       id: req.id,
       projectDir: req.projectDir,
+      workspaceDir: req.workspaceDir,
+      cwdSubpath: req.cwdSubpath,
       repoRoot: req.repoRoot,
       branch: req.branch,
       workspaceType: req.workspaceType,
@@ -118,6 +122,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         return {
           id: String(raw.id || id),
           projectDir: String(raw.projectDir || ''),
+          workspaceDir: typeof raw.workspaceDir === 'string' ? raw.workspaceDir : undefined,
+          cwdSubpath: typeof raw.cwdSubpath === 'string' ? raw.cwdSubpath : undefined,
           repoRoot: typeof raw.repoRoot === 'string' ? raw.repoRoot : undefined,
           branch: typeof raw.branch === 'string' ? raw.branch : undefined,
           workspaceType:
@@ -148,6 +154,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       return {
         id: String(raw?.id || id),
         projectDir: '',
+        workspaceDir: undefined,
+        cwdSubpath: undefined,
         repoRoot: undefined,
         branch: undefined,
         workspaceType: undefined,
@@ -178,6 +186,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         metas.push({
           id: data.id,
           projectDir: data.projectDir,
+          workspaceDir: data.workspaceDir,
+          cwdSubpath: data.cwdSubpath,
           repoRoot: data.repoRoot,
           branch: data.branch,
           workspaceType: data.workspaceType,
@@ -240,6 +250,10 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       return {
         id: String((raw as any).id || id),
         projectDir: String((raw as any).projectDir || ''),
+        workspaceDir:
+          typeof (raw as any).workspaceDir === 'string' ? (raw as any).workspaceDir : undefined,
+        cwdSubpath:
+          typeof (raw as any).cwdSubpath === 'string' ? (raw as any).cwdSubpath : undefined,
         repoRoot: typeof (raw as any).repoRoot === 'string' ? (raw as any).repoRoot : undefined,
         branch: typeof (raw as any).branch === 'string' ? (raw as any).branch : undefined,
         workspaceType:
@@ -308,6 +322,10 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       return {
         id: newId,
         projectDir: String((raw as any).projectDir || ''),
+        workspaceDir:
+          typeof (raw as any).workspaceDir === 'string' ? (raw as any).workspaceDir : undefined,
+        cwdSubpath:
+          typeof (raw as any).cwdSubpath === 'string' ? (raw as any).cwdSubpath : undefined,
         repoRoot: typeof (raw as any).repoRoot === 'string' ? (raw as any).repoRoot : undefined,
         branch: typeof (raw as any).branch === 'string' ? (raw as any).branch : undefined,
         workspaceType:

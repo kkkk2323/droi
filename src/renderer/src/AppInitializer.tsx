@@ -137,15 +137,20 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         const normalizedMetas = (
           await Promise.all(
             sessionMetas.map(async (meta): Promise<SessionMeta | null> => {
-              const guessedDir = meta.projectDir || fallbackProjectDir
+              const guessedDir = meta.workspaceDir || meta.projectDir || fallbackProjectDir
               if (!guessedDir) return null
-              const info = await store._resolveWorkspace(guessedDir).catch(() => null)
+              const info = await store
+                ._resolveWorkspace(guessedDir, meta.cwdSubpath)
+                .catch(() => null)
               const repoRoot = info?.repoRoot || meta.repoRoot || guessedDir
               const projectDir = info?.projectDir || meta.projectDir || guessedDir
+              const workspaceDir = info?.workspaceDir || meta.workspaceDir || guessedDir
               return {
                 ...meta,
                 repoRoot,
                 projectDir,
+                workspaceDir,
+                cwdSubpath: info?.cwdSubpath || meta.cwdSubpath,
                 branch: meta.branch || info?.branch,
                 workspaceType: info?.workspaceType || meta.workspaceType,
                 autoLevel: meta.autoLevel || DEFAULT_AUTO_LEVEL,
@@ -186,6 +191,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
           const base = makeBuffer(restoredProjectDir, {
             repoRoot: activeMeta.repoRoot,
+            workspaceDir: (data as any)?.workspaceDir || activeMeta.workspaceDir,
+            cwdSubpath: (data as any)?.cwdSubpath || activeMeta.cwdSubpath,
             branch: (data as any)?.branch || activeMeta.branch,
             workspaceType: (data as any)?.workspaceType || activeMeta.workspaceType,
             baseBranch: (data as any)?.baseBranch || activeMeta.baseBranch,
@@ -220,6 +227,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             : uuidv4()
           const initialBuffer = makeBuffer(restoredProjectDir || '', {
             repoRoot: restoredInfo?.repoRoot,
+            workspaceDir: restoredInfo?.workspaceDir,
+            cwdSubpath: restoredInfo?.cwdSubpath,
             branch: restoredInfo?.branch,
             workspaceType: restoredInfo?.workspaceType,
             baseBranch: restoredInfo?.baseBranch,
@@ -231,6 +240,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             ? upsertSessionMeta(nextProjects, {
                 id: newId,
                 projectDir: restoredProjectDir,
+                workspaceDir: restoredInfo?.workspaceDir,
+                cwdSubpath: restoredInfo?.cwdSubpath,
                 repoRoot: restoredInfo?.repoRoot || restoredProjectDir,
                 branch: restoredInfo?.branch,
                 workspaceType: restoredInfo?.workspaceType,
@@ -247,6 +258,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             void droid.saveSession({
               id: newId,
               projectDir: restoredProjectDir,
+              workspaceDir: restoredInfo?.workspaceDir,
+              cwdSubpath: restoredInfo?.cwdSubpath,
               repoRoot: restoredInfo?.repoRoot,
               branch: restoredInfo?.branch,
               workspaceType: restoredInfo?.workspaceType,

@@ -158,9 +158,7 @@ export function CommitWizard({ open, onOpenChange, projectDir }: CommitWizardPro
   const settingsBaseBranch = useAppStore((s) => {
     const buf = s.sessionBuffers.get(s.activeSessionId)
     const repoRoot = buf?.repoRoot || ''
-    return (
-      buf?.baseBranch || (repoRoot ? s.projectSettingsByRepo[repoRoot]?.baseBranch : '') || ''
-    )
+    return buf?.baseBranch || (repoRoot ? s.projectSettingsByRepo[repoRoot]?.baseBranch : '') || ''
   })
 
   const localBranches = useMemo(

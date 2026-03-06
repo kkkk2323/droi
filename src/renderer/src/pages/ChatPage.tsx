@@ -28,6 +28,7 @@ import { SessionConfigPage } from '@/components/SessionConfigPage'
 import { PermissionCard } from '@/components/PermissionCard'
 import { AskUserCard } from '@/components/AskUserCard'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
+import { getPendingSessionDraftKey } from '@/store/projectHelpers'
 
 export function ChatPage() {
   const messages = useMessages()
@@ -91,7 +92,8 @@ export function ChatPage() {
     [handleSend],
   )
 
-  const effectiveProjectDir = pendingNewSession?.repoRoot || activeProjectDir
+  const effectiveProjectDir =
+    pendingNewSession?.projectDir || pendingNewSession?.repoRoot || activeProjectDir
   const noProject = !effectiveProjectDir
   const noSession = !activeSessionId
   const disabledPlaceholder = noProject
@@ -108,7 +110,7 @@ export function ChatPage() {
               ? 'Setup script failed. Retry or skip to continue.'
               : undefined
 
-  const pendingKey = pendingNewSession?.repoRoot ? `pending:${pendingNewSession.repoRoot}` : ''
+  const pendingKey = getPendingSessionDraftKey(pendingNewSession)
   const inputKey = pendingNewSession ? pendingKey : activeSessionId || 'no-session'
   const draftKey = pendingNewSession ? pendingKey : activeSessionId
   const inputDisabled =
