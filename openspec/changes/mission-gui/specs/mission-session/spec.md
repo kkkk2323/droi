@@ -1,40 +1,57 @@
 ## ADDED Requirements
 
-### Requirement: Mission mode toggle in SessionConfigPage
-The system SHALL display a mode selector (Normal / Mission) in the SessionConfigPage when creating a new session. The toggle MUST be visually distinct and have `data-testid="session-mode-mission"`.
+### Requirement: Session kind is separate from workspace mode
+The system SHALL model Mission selection independently from workspace preparation mode. `SessionConfigPage` MUST keep the existing workspace mode choices (`local` / `new-worktree`) and add a separate session-kind selector (`normal` / `mission`). The Mission selector MUST have `data-testid="session-mode-mission"`.
 
-#### Scenario: User selects Mission mode
-- **WHEN** user clicks the Mission mode toggle in SessionConfigPage
-- **THEN** the mode selector shows Mission as active
-- **AND** the underlying session creation parameters are set to `decompSessionType: "orchestrator"` and `interactionMode: "agi"`
+#### Scenario: User selects Mission session kind
+- **WHEN** user selects Mission in SessionConfigPage
+- **THEN** the UI marks Mission as the active session kind
+- **AND** the selected workspace mode remains independently configurable
 
-#### Scenario: User selects Normal mode (default)
-- **WHEN** user opens SessionConfigPage without changing mode
-- **THEN** Normal mode is selected by default
-- **AND** session creation uses standard parameters (no `decompSessionType`)
+#### Scenario: User selects workspace mode after Mission
+- **WHEN** user switches between `local` and `new-worktree` after choosing Mission
+- **THEN** the Mission selection remains active
+- **AND** the system does not treat workspace mode changes as a Mission/Normal toggle
 
-### Requirement: Orchestrator session initialization via stream-jsonrpc
-The system SHALL create Mission sessions by passing `decompSessionType: "orchestrator"` and `interactionMode: "agi"` to the `droid.initialize_session` RPC method. The system MUST NOT rely on `/enter-mission` slash command in stream-jsonrpc mode.
+### Requirement: Mission sessions use explicit orchestrator settings
+The system SHALL create Mission sessions by passing explicit session protocol settings to `droid.initialize_session`: `decompSessionType: "orchestrator"` and `interactionMode: "agi"`. The system MUST NOT rely on `/enter-mission` slash command in stream-jsonrpc mode.
 
 #### Scenario: Mission session is created
 - **WHEN** user sends the first message in Mission mode
 - **THEN** the backend calls `droid.initialize_session` with `decompSessionType: "orchestrator"` and `interactionMode: "agi"`
-- **AND** the returned sessionId is stored in the session buffer with `isMission: true`
+- **AND** the returned session is stored with `isMission: true` and `sessionKind: "mission"`
 
 #### Scenario: Session parameters are passed through DroidExecManager
 - **WHEN** a Mission session is created
-- **THEN** `DroidExecSendOptions` includes `decompSessionType` and the value is forwarded to `DroidJsonRpcSession.ensureInitialized`
+- **THEN** the send/create options include `interactionMode`, `autonomyLevel`, and `decompSessionType`
+- **AND** those values are forwarded to `DroidJsonRpcSession.ensureInitialized` without being re-derived only from `autoLevel`
+
+### Requirement: Mission sessions cannot be downgraded
+The system SHALL preserve Mission session protocol settings across later sends, loads, and settings updates. A Mission session MUST NOT be converted back to a normal `spec/auto` session by generic update logic.
+
+#### Scenario: User sends another message in an existing Mission session
+- **WHEN** a Mission session already exists and the user sends another message
+- **THEN** the system reuses the stored Mission protocol settings for that session
+- **AND** the send path does not rewrite the session to `interactionMode: "spec"` or `interactionMode: "auto"`
+
+#### Scenario: Generic session settings update targets a Mission session
+- **WHEN** renderer or backend performs a generic session settings update for a Mission session
+- **THEN** the Mission-specific `interactionMode` and `decompSessionType` remain unchanged
+- **AND** unsupported downgrade attempts are ignored or rejected
 
 ### Requirement: Mission session metadata persistence
-The system SHALL persist `isMission: true` in the session metadata (SessionMeta) so that Mission sessions can be identified after app restart.
+The system SHALL persist enough metadata to restore a Mission session after app restart, including `isMission: true` and the explicit Mission protocol settings.
 
 #### Scenario: Mission session is saved
 - **WHEN** a Mission session is saved to disk
-- **THEN** the SessionMeta includes `isMission: true`
+- **THEN** the saved record includes `isMission: true`
+- **AND** it preserves the Mission session's `interactionMode` and `decompSessionType`
 
 #### Scenario: Mission session is loaded
 - **WHEN** a previously saved Mission session is loaded
-- **THEN** the system recognizes it as a Mission session and navigates to `/mission` route
+- **THEN** the system recognizes it as a Mission session
+- **AND** it restores the Mission protocol settings without re-inferring them from `autoLevel`
+- **AND** it navigates to `/mission`
 
 ### Requirement: Sidebar Mission session indicator
 The system SHALL display a visual indicator (icon or badge) on Mission sessions in the sidebar to distinguish them from normal sessions. The sidebar item MUST have `data-testid="session-mission-{sessionId}"`.

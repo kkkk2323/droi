@@ -11,6 +11,10 @@ The system SHALL register a `/mission` route that renders MissionPage. The route
 - **WHEN** the active session is not a Mission session and the route is `/mission`
 - **THEN** the system redirects to `/` (ChatPage)
 
+#### Scenario: Mission session on default route
+- **WHEN** the active session is a Mission session and the user is routed via session selection
+- **THEN** the app navigates to `/mission` instead of leaving the user on `/`
+
 ### Requirement: Chat/MissionControl view toggle
 MissionPage SHALL provide a toggle to switch between Chat view and Mission Control view. The toggle MUST have `data-testid="mission-view-toggle"`. Both views share the same orchestrator session.
 
@@ -52,10 +56,22 @@ The system SHALL navigate to `/mission` when a Mission session is clicked in the
 - **WHEN** user clicks a session without `isMission` flag in the sidebar
 - **THEN** the router navigates to `/`
 
+#### Scenario: Click project with latest Mission session
+- **WHEN** a project-level navigation path auto-selects a latest session and that session is a Mission session
+- **THEN** the router navigates to `/mission`
+
 ### Requirement: Mission session creation navigates to MissionPage
 The system SHALL navigate to `/mission` after a Mission session is successfully created from SessionConfigPage.
 
 #### Scenario: Mission session created
-- **WHEN** user selects Mission mode in SessionConfigPage and sends the first message
+- **WHEN** user selects Mission session kind in SessionConfigPage and sends the first message
 - **AND** the session is successfully created
 - **THEN** the router navigates to `/mission`
+
+### Requirement: Mission route preserves existing conversation shell behavior
+MissionPage SHALL preserve the existing conversation-shell behavior while switching between Chat and Mission Control views.
+
+#### Scenario: Mission page shows chat-specific UI when Chat view is active
+- **WHEN** MissionPage is in Chat view
+- **THEN** the user sees the same conversation shell behavior used by ChatPage for that session
+- **AND** switching to Mission Control does not create a separate session

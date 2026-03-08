@@ -90,6 +90,17 @@ The system SHALL render specialized permission cards for `propose_mission` and `
 - **WHEN** a `droid.request_permission` arrives with `confirmationType: "start_mission_run"`
 - **THEN** the PermissionCard shows "Start Mission Run" / "Cancel" options
 
+### Requirement: Mission page reuses existing conversation shell
+The system SHALL keep Mission chat interactions consistent with the existing chat experience by preserving permission prompts, ask-user prompts, todo visibility, and debug trace behavior on MissionPage.
+
+#### Scenario: Mission session requires permission
+- **WHEN** a Mission session has a pending permission request
+- **THEN** MissionPage renders the PermissionCard flow instead of bypassing it
+
+#### Scenario: Mission session asks the user a question
+- **WHEN** a Mission session has a pending ask-user request
+- **THEN** MissionPage renders the ask-user UI using the same interaction pattern as normal chat sessions
+
 ### Requirement: InputBar mission-aware behavior
 The system SHALL disable the InputBar when mission state is `running` and display a contextual message.
 
@@ -101,6 +112,14 @@ The system SHALL disable the InputBar when mission state is `running` and displa
 #### Scenario: InputBar enabled when paused
 - **WHEN** mission state is `paused` or `orchestrator_turn`
 - **THEN** InputBar is enabled and user can type and send messages
+
+### Requirement: Continue semantics use normal chat input
+The system SHALL let the user continue a paused Mission by sending a normal chat message once the Mission returns to `paused` or `orchestrator_turn`. The system SHALL NOT require a dedicated Resume RPC control in this change.
+
+#### Scenario: User continues a paused Mission
+- **WHEN** mission state is `paused` and user sends a chat message such as `continue`
+- **THEN** the message is sent through the existing orchestrator session
+- **AND** the system allows the orchestrator to decide whether to call `start_mission_run` again
 
 ### Requirement: Mission status bar (always visible)
 The system SHALL display a compact status bar at the bottom of MissionPage showing mission state, current feature, and worker info. The bar MUST be visible in both Chat and MissionControl views. It MUST have `data-testid="mission-statusbar"`.
