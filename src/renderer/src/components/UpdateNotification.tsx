@@ -80,14 +80,12 @@ export function UpdateNotification() {
         className="fixed bottom-4 left-4 z-50 max-w-xs"
       >
         <div className="rounded-lg border bg-popover p-3 shadow-lg">
-          <div className="flex items-start gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              {showReady ? (
-                <RefreshCw className="size-4 text-primary" />
-              ) : (
-                <Download className="size-4 text-primary" />
-              )}
-            </div>
+          <div className="flex items-start gap-2.5">
+            {showReady ? (
+              <RefreshCw className="size-4 shrink-0 mt-0.5 text-primary" />
+            ) : (
+              <Download className="size-4 shrink-0 mt-0.5 text-primary" />
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">
                 {showReady ? (
@@ -99,13 +97,6 @@ export function UpdateNotification() {
                 ) : (
                   `v${updateAvailable?.version} available`
                 )}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {showReady
-                  ? 'Restart to complete update'
-                  : showDownloading
-                    ? 'Please wait...'
-                    : 'Click to download and install'}
               </p>
               {showDownloading && (
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">

@@ -612,7 +612,6 @@ export function InputBar({
                       const active = i === slashHighlightedIndex
                       const isSkill = item.type === 'skill'
                       const isBuiltin = item.type === 'builtin'
-                      const scope = (item.def as any).scope
                       const desc = isBuiltin
                         ? (item.def as BuiltinCommandDef).description
                         : isSkill
@@ -648,18 +647,8 @@ export function InputBar({
                               </span>
                             )}
                             {!isSkill && !isBuiltin && (
-                              <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[10px] text-zinc-700">
-                                command
-                              </span>
-                            )}
-                            {scope === 'project' && (
-                              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">
-                                project
-                              </span>
-                            )}
-                            {scope === 'user' && (
                               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                user
+                                command
                               </span>
                             )}
                           </div>
@@ -791,7 +780,7 @@ export function InputBar({
                 type="button"
                 data-testid="chat-cancel"
                 onClick={onCancel}
-                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
+                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.995]"
               >
                 <Square className="size-3.5" />
               </button>
@@ -801,7 +790,7 @@ export function InputBar({
                 data-testid="chat-send"
                 onClick={handleSubmit}
                 disabled={!canSend}
-                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.995] disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <ArrowUp className="size-4" />
               </button>

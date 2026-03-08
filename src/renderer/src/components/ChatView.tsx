@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../lib/utils'
 import {
@@ -159,30 +159,16 @@ function ChatView({
         className="flex flex-1 items-center justify-center px-6"
       >
         <div className="w-full max-w-2xl space-y-5">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-              {noProject ? (
-                <FolderOpen className="size-7 text-muted-foreground" />
-              ) : (
-                <Terminal className="size-7 text-muted-foreground" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-base font-medium text-foreground">
-                {noProject ? 'Select a Project' : 'What would you like to build?'}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {noProject
-                  ? 'Add a project from the sidebar to get started'
-                  : 'Describe a task and Droi will execute it'}
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h2 className="text-base font-medium text-foreground">
+              {noProject ? 'Select a Project' : 'What would you like to build?'}
+            </h2>
+            {!noProject && projectName && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+                <FolderOpen className="size-3" />
+                <span className="font-mono">{projectName}</span>
               </p>
-              {!noProject && projectName && (
-                <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
-                  <FolderOpen className="size-3" />
-                  <span className="font-mono">{projectName}</span>
-                </p>
-              )}
-            </div>
+            )}
           </div>
 
           {showBootstrapCards && (
@@ -363,9 +349,11 @@ function MessageEntry({
             )}
           </div>
         </div>
-        {previewImage && (
-          <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
-        )}
+        <AnimatePresence>
+          {previewImage && (
+            <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
+          )}
+        </AnimatePresence>
       </>
     )
   }
@@ -415,7 +403,7 @@ function MessageEntry({
         return null
       })}
       {message.endTimestamp && message.timestamp > 0 && (
-        <div className="mt-1 text-[11px] text-muted-foreground/60">
+        <div className="mt-1 text-[11px] text-muted-foreground/80">
           {formatDuration(message.endTimestamp - message.timestamp)}
         </div>
       )}
@@ -525,16 +513,18 @@ function ToolActivity({
           <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
         ) : block.isError ? (
           <span className="size-3 shrink-0 text-destructive-foreground">{icon}</span>
-        ) : isSkill ? (
-          <span className="size-3 shrink-0 text-amber-500">{icon}</span>
         ) : hasResult ? (
-          <Check className="size-3 shrink-0 text-emerald-600" />
+          isSkill ? (
+            <span className="size-3 shrink-0 text-amber-500">{icon}</span>
+          ) : (
+            <Check className="size-3 shrink-0 text-emerald-600" />
+          )
         ) : (
           <span className="size-3 shrink-0 text-muted-foreground">{icon}</span>
         )}
         <span className="font-medium">{block.toolName}</span>
         {skillName && (
-          <span className="ml-1 truncate rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-600">
+          <span className="ml-1 truncate rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-700">
             {skillName}
           </span>
         )}
@@ -560,13 +550,13 @@ function ToolActivity({
               {String(block.parameters.command)}
             </pre>
           ) : (
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-600">
+            <pre className="whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
               {JSON.stringify(block.parameters, null, 2)}
             </pre>
           )}
 
           {hasProgress && (
-            <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-600">
+            <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
               {block.progress}
             </pre>
           )}
@@ -620,7 +610,7 @@ function ResultView({ result, isError }: { result: string; isError?: boolean; is
       <pre
         className={cn(
           'max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md px-3 py-2 text-[11px] leading-5',
-          isError ? 'bg-destructive/5 text-destructive-foreground' : 'bg-zinc-50 text-zinc-600',
+          isError ? 'bg-destructive/5 text-destructive-foreground' : 'bg-muted text-muted-foreground',
         )}
       >
         {display}
@@ -647,7 +637,11 @@ function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void 
   }, [onClose])
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={onClose}
     >
@@ -657,13 +651,17 @@ function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void 
       >
         <X className="size-5" />
       </button>
-      <img
+      <motion.img
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
         src={src}
         alt="Preview"
         className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
         onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </motion.div>
   )
 }
 

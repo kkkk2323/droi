@@ -1,5 +1,5 @@
-import React from 'react'
-import { ShieldAlert, FileCode, FileEdit, Play, Search, Globe, Terminal } from 'lucide-react'
+import React, { useState } from 'react'
+import { ShieldAlert, FileCode, FileEdit, Play, Search, Globe, Terminal, ChevronDown } from 'lucide-react'
 import type { PendingPermissionRequest } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
 
@@ -148,7 +148,7 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
           </pre>
         )}
         {typeof input.content === 'string' && !input.old_str && (
-          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] leading-5 text-zinc-700 dark:text-zinc-300">
+          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
             {input.content.length > 300 ? input.content.slice(0, 300) + '...' : input.content}
           </pre>
         )}
@@ -164,18 +164,18 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
         <span className="text-xs font-medium text-foreground">{name}</span>
       </div>
       {entries.length > 0 ? (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 space-y-1">
+        <div className="rounded-md bg-muted px-3 py-2 space-y-1">
           {entries.map(([key, val]) => (
             <div key={key} className="flex gap-2 text-[11px]">
               <span className="shrink-0 text-muted-foreground">{key}:</span>
-              <span className="text-zinc-700 dark:text-zinc-300 break-all">
+              <span className="text-foreground break-all">
                 {formatParamValue(val)}
               </span>
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
           No parameters
         </div>
       )}
@@ -188,8 +188,22 @@ interface PermissionCardProps {
   onRespond: (params: PermissionResponseParams) => void
 }
 
+const PRIMARY_OPTIONS: DroidPermissionOption[] = [
+  'proceed_once',
+  'proceed_auto_run',
+  'cancel',
+]
+
+function isPrimaryOption(opt: DroidPermissionOption): boolean {
+  return PRIMARY_OPTIONS.includes(opt)
+}
+
 export function PermissionCard({ request, onRespond }: PermissionCardProps) {
+  const [showMore, setShowMore] = useState(false)
   const permissionToolUses = Array.isArray(request.toolUses) ? request.toolUses : []
+
+  const primaryOptions = request.options.filter(isPrimaryOption)
+  const advancedOptions = request.options.filter((o) => !isPrimaryOption(o))
 
   return (
     <footer className="shrink-0 px-4 pb-4">
@@ -197,9 +211,6 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
         <div className="flex items-center gap-2 px-4 !py-3">
           <ShieldAlert className="size-4 shrink-0 text-amber-500" />
           <span className="text-xs font-medium text-foreground">Permission required</span>
-          <span className="ml-auto text-[11px] text-muted-foreground">
-            Droid is requesting permission to use tools.
-          </span>
         </div>
 
         {permissionToolUses.length > 0 && (
@@ -211,7 +222,7 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
         )}
 
         <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 pb-2">
-          {request.options.map((opt) => (
+          {primaryOptions.map((opt) => (
             <button
               key={opt}
               type="button"
@@ -225,6 +236,28 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
               {permissionLabel(opt)}
             </button>
           ))}
+          {advancedOptions.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setShowMore(!showMore)}
+              >
+                More
+                <ChevronDown className={`size-3 transition-transform ${showMore ? 'rotate-180' : ''}`} />
+              </button>
+              {showMore && advancedOptions.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-[0.995]"
+                  onClick={() => onRespond({ selectedOption: opt })}
+                >
+                  {permissionLabel(opt)}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
     </footer>

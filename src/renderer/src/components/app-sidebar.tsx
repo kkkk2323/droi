@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useRef, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
+import type { SessionMeta } from '@/types'
 import {
   useProjects,
   useActiveProjectDir,
@@ -48,9 +49,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   AlertCircle,
-  ChevronRightIcon,
   FolderIcon,
-  FolderPlusIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -85,6 +84,191 @@ function SessionTitle({ title }: { title: string }) {
     >
       {title}
     </span>
+  )
+}
+
+function SessionList({ sessions }: { sessions: SessionMeta[] }) {
+  return (
+    <AnimatePresence initial={false}>
+      {sessions.map((session, sessionIdx) => (
+        <SessionItem key={session.id} session={session} sessionIdx={sessionIdx} />
+      ))}
+    </AnimatePresence>
+  )
+}
+
+function SessionItem({
+  session,
+  sessionIdx,
+}: {
+  session: SessionMeta
+  sessionIdx: number
+}) {
+  const activeSessionId = useActiveSessionId()
+  const deletingSessionIds = useDeletingSessionIds()
+  const { getSessionRunning, handleSelectSession, handleTogglePin, handleDeleteSession } =
+    useActions()
+  const isActive = session.id === activeSessionId
+  const isSessionRunning = getSessionRunning(session.id)
+  const needsAttention = useSessionNeedsAttention(session.id)
+  const isSessionDeleting = deletingSessionIds.has(session.id)
+  const branchName = session.branch?.split('/').pop() || session.branch
+  const motionRef = useRef<HTMLDivElement | null>(null)
+
+  return (
+    <motion.div
+      key={session.id}
+      ref={(el) => {
+        motionRef.current = el
+      }}
+      data-active-session={isActive || undefined}
+      data-animation-state="animating"
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{
+        duration: 0.2,
+        delay: sessionIdx * 0.03,
+        ease: [0.16, 1, 0.3, 1],
+      }}
+      onAnimationComplete={() => {
+        motionRef.current?.setAttribute('data-animation-state', 'idle')
+      }}
+    >
+      <SidebarMenuSubItem className="group/session">
+        <SidebarMenuSubButton
+          data-testid={`session-${session.id}`}
+          render={<button type="button" />}
+          className={cn(
+            'w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0',
+            isSessionDeleting && 'opacity-60 pointer-events-none',
+          )}
+          isActive={isActive}
+          aria-disabled={isSessionDeleting}
+          onClick={() => {
+            if (!isSessionDeleting) handleSelectSession(session.id)
+          }}
+        >
+          <span className="flex w-full items-center gap-1.5">
+            {isSessionRunning && needsAttention && (
+              <AlertCircle className="size-3 text-amber-500 shrink-0" />
+            )}
+            {isSessionRunning && !needsAttention && (
+              <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />
+            )}
+            <SessionTitle title={session.title} />
+          </span>
+          <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
+            {branchName && <span className="truncate">{branchName}</span>}
+            {branchName && <span>·</span>}
+            <span className="shrink-0">
+              {formatRelativeTime(session.lastMessageAt ?? session.savedAt)}
+            </span>
+          </span>
+        </SidebarMenuSubButton>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            data-testid={`session-menu-${session.id}`}
+            className="absolute top-1/2 right-1 opacity-0 -translate-y-1/2 rounded p-0.5 hover:bg-sidebar-accent group-hover/session:opacity-100 data-[popup-open]:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+            render={<button type="button" />}
+          >
+            <MoreHorizontalIcon className="size-3.5 text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start">
+            <DropdownMenuItem
+              data-testid={`session-pin-${session.id}`}
+              className="py-1 cursor-pointer text-xs"
+              onClick={() => handleTogglePin(session.id)}
+            >
+              {session.pinned ? 'Unpin' : 'Pin'}
+            </DropdownMenuItem>
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <DropdownMenuItem
+                    data-testid={`session-delete-${session.id}`}
+                    variant="destructive"
+                    closeOnClick={false}
+                    className="py-1 cursor-pointer text-xs"
+                  />
+                }
+                disabled={isSessionDeleting}
+              >
+                {isSessionDeleting ? 'Deleting...' : 'Delete'}
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete session?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {session.workspaceType === 'worktree' ? (
+                      <>
+                        This will permanently delete this session and{' '}
+                        <span className="font-medium">force delete</span> its worktree.
+                        <br />
+                        <span className="font-mono text-[11px]">{session.projectDir}</span>
+                        <br />
+                        Uncommitted changes in this worktree will be lost.
+                      </>
+                    ) : (
+                      'This will permanently delete this session.'
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel
+                    data-testid={`cancel-delete-session-${session.id}`}
+                    disabled={isSessionDeleting}
+                  >
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    data-testid={`confirm-delete-session-${session.id}`}
+                    variant="destructive"
+                    disabled={isSessionDeleting}
+                    onClick={() => {
+                      void handleDeleteSession(session.id)
+                    }}
+                  >
+                    {isSessionDeleting ? (
+                      <>
+                        <Loader2 className="size-3 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      'Delete'
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuSubItem>
+    </motion.div>
+  )
+}
+
+function ProjectSessions({ sessions }: { sessions: SessionMeta[] }) {
+  const pinned = sessions.filter((s) => s.pinned)
+  const recent = sessions.filter((s) => !s.pinned)
+  return (
+    <SidebarMenuSub>
+      {pinned.length > 0 && (
+        <>
+          <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            Pinned
+          </div>
+          <SessionList sessions={pinned} />
+          {recent.length > 0 && (
+            <div className="px-2 pt-3 pb-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              Recent
+            </div>
+          )}
+        </>
+      )}
+      <SessionList sessions={recent} />
+    </SidebarMenuSub>
   )
 }
 
@@ -152,32 +336,25 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const projects = useProjects()
   const activeProjectDir = useActiveProjectDir()
   const activeSessionId = useActiveSessionId()
-  const deletingSessionIds = useDeletingSessionIds()
   const isCreatingSession = useIsCreatingSession()
   const isInitialLoadDone = useIsInitialLoadDone()
   const isInitBlocked = !isInitialLoadDone
   const prevActiveSessionIdRef = useRef(activeSessionId)
-  const newSessionRef = useRef<HTMLDivElement | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameOpenDir, setRenameOpenDir] = useState<string | null>(null)
   const {
-    getSessionRunning,
     handleAddProject,
     handleNewSession,
     handleSelectSession,
-    handleDeleteSession,
     handleDeleteProject,
     handleRenameProject,
-    handleTogglePin,
   } = useActions()
 
   useEffect(() => {
     if (activeSessionId !== prevActiveSessionIdRef.current) {
-      const wasNew = prevActiveSessionIdRef.current !== activeSessionId
       prevActiveSessionIdRef.current = activeSessionId
-      if (wasNew && newSessionRef.current) {
-        newSessionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-      }
+      const el = document.querySelector('[data-active-session]')
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
   }, [activeSessionId])
 
@@ -185,29 +362,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     <Sidebar variant="sidebar" {...props}>
       <SidebarHeader className="flex-row items-center justify-between py-3 pl-20 pr-2" />
 
-      {!browserMode && (
-        <div data-slot="sidebar-new-project" className="px-2 pt-4">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                data-testid="sidebar-add-project"
-                tooltip="Add project"
-                aria-disabled={isInitBlocked}
-                className={cn(isInitBlocked && 'pointer-events-none opacity-60')}
-                onClick={() => {
-                  if (isInitBlocked) return
-                  handleAddProject()
-                }}
-              >
-                <FolderPlusIcon className="size-4" />
-                <span className="text-sm font-medium">New Project</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
-      )}
-
-      <SidebarContent className="overflow-hidden">
+      <SidebarContent className="overflow-hidden pt-3">
         <ScrollArea className="flex-1">
           <SidebarGroup>
             <SidebarGroupContent>
@@ -215,19 +370,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 {projects.length === 0 && (
                   <SidebarMenuItem>
                     <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                      {browserMode ? (
-                        <>
-                          No projects available.
-                          <br />
-                          Add a project on the desktop app first.
-                        </>
-                      ) : (
-                        <>
-                          No projects yet.
-                          <br />
-                          Click <FolderPlusIcon className="inline size-3" /> to add one.
-                        </>
-                      )}
+                      {browserMode
+                        ? 'No projects available. Add a project on the desktop app first.'
+                        : 'No projects yet.'}
                     </div>
                   </SidebarMenuItem>
                 )}
@@ -268,7 +413,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           data-testid={`new-session-${getProjectDisplayName(project)}`}
                           className={cn(
                             'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
-                            mobile || isDevMode ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
+                            mobile || isDevMode || isActiveProject ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
                             (isCreatingSession || isInitBlocked) &&
                               'opacity-60 pointer-events-none',
                           )}
@@ -287,7 +432,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
                         <DropdownMenu>
                           <DropdownMenuTrigger
-                            className={`flex size-5 items-center justify-center rounded-md transition-opacity hover:bg-sidebar-accent ${mobile ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100'}`}
+                            className={cn(
+                              'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
+                              mobile ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
+                            )}
                             onClick={(e) => e.stopPropagation()}
                             render={<button />}
                           >
@@ -357,7 +505,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                     <DropdownMenuItem
                                       variant="destructive"
                                       closeOnClick={false}
-                                      className="py-1 cursor-pointer "
+                                      className="py-1 cursor-pointer"
                                     />
                                   }
                                 >
@@ -387,205 +535,34 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           )}
                         </DropdownMenu>
 
-                        <CollapsibleTrigger
-                          render={
-                            <button className="flex size-5 items-center justify-center rounded-md text-sidebar-foreground transition-transform hover:bg-sidebar-accent aria-expanded:rotate-90" />
-                          }
-                        >
-                          <ChevronRightIcon className="size-4" />
-                        </CollapsibleTrigger>
                       </div>
 
                       <CollapsibleContent>
-                        {(() => {
-                          const pinned = project.sessions.filter((s) => s.pinned)
-                          const recent = project.sessions.filter((s) => !s.pinned)
-                          return (
-                            <SidebarMenuSub>
-                              {pinned.length > 0 && (
-                                <>
-                                  <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                                    Pinned
-                                  </div>
-                                  <SessionList sessions={pinned} />
-                                  {recent.length > 0 && (
-                                    <div className="px-2 pt-3 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                                      Recent
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                              <SessionList sessions={recent} />
-                            </SidebarMenuSub>
-                          )
-
-                          function SessionList({ sessions }: { sessions: typeof pinned }) {
-                            return (
-                              <AnimatePresence initial={false}>
-                                {sessions.map((session, sessionIdx) => (
-                                  <SessionItem
-                                    key={session.id}
-                                    session={session}
-                                    sessionIdx={sessionIdx}
-                                  />
-                                ))}
-                              </AnimatePresence>
-                            )
-                          }
-
-                          function SessionItem({
-                            session,
-                            sessionIdx,
-                          }: {
-                            session: (typeof pinned)[0]
-                            sessionIdx: number
-                          }) {
-                            const isActive = session.id === activeSessionId
-                            const isSessionRunning = getSessionRunning(session.id)
-                            const needsAttention = useSessionNeedsAttention(session.id)
-                            const isSessionDeleting = deletingSessionIds.has(session.id)
-                            const branchName = session.branch?.split('/').pop() || session.branch
-                            const motionRef = useRef<HTMLDivElement | null>(null)
-                            return (
-                              <motion.div
-                                key={session.id}
-                                ref={(el) => {
-                                  motionRef.current = el
-                                  if (isActive) (newSessionRef as React.MutableRefObject<HTMLDivElement | null>).current = el
-                                }}
-                                data-animation-state="animating"
-                                initial={{ opacity: 0, y: -4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -4 }}
-                                transition={{
-                                  duration: 0.2,
-                                  delay: sessionIdx * 0.03,
-                                  ease: [0.16, 1, 0.3, 1],
-                                }}
-                                onAnimationComplete={() => {
-                                  motionRef.current?.setAttribute('data-animation-state', 'idle')
-                                }}
-                              >
-                                <SidebarMenuSubItem className="group/session">
-                                  <SidebarMenuSubButton
-                                    data-testid={`session-${session.id}`}
-                                    render={<button type="button" />}
-                                    className={cn(
-                                      'w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0',
-                                      isSessionDeleting && 'opacity-60 pointer-events-none',
-                                    )}
-                                    isActive={isActive}
-                                    aria-disabled={isSessionDeleting}
-                                    onClick={() => {
-                                      if (!isSessionDeleting) handleSelectSession(session.id)
-                                    }}
-                                  >
-                                    <span className="flex w-full items-center gap-1.5">
-                                      {isSessionRunning && needsAttention && (
-                                        <AlertCircle className="size-3 text-amber-500 shrink-0" />
-                                      )}
-                                      {isSessionRunning && !needsAttention && (
-                                        <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />
-                                      )}
-                                      <SessionTitle title={session.title} />
-                                    </span>
-                                    <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
-                                      {branchName && <span className="truncate">{branchName}</span>}
-                                      {branchName && <span>·</span>}
-                                      <span className="shrink-0">
-                                        {formatRelativeTime(
-                                          session.lastMessageAt ?? session.savedAt,
-                                        )}
-                                      </span>
-                                    </span>
-                                  </SidebarMenuSubButton>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger
-                                      data-testid={`session-menu-${session.id}`}
-                                      className="absolute top-1/2 right-1 opacity-0 -translate-y-1/2 rounded p-0.5 hover:bg-sidebar-accent group-hover/session:opacity-100 data-[popup-open]:opacity-100"
-                                      onClick={(e) => e.stopPropagation()}
-                                      render={<button type="button" />}
-                                    >
-                                      <MoreHorizontalIcon className="size-3.5 text-muted-foreground" />
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent side="right" align="start">
-                                      <DropdownMenuItem
-                                        data-testid={`session-pin-${session.id}`}
-                                        className="py-1 cursor-pointer text-xs"
-                                        onClick={() => handleTogglePin(session.id)}
-                                      >
-                                        {session.pinned ? 'Unpin' : 'Pin'}
-                                      </DropdownMenuItem>
-                                      <AlertDialog>
-                                        <AlertDialogTrigger
-                                          render={
-                                            <DropdownMenuItem
-                                              data-testid={`session-delete-${session.id}`}
-                                              variant="destructive"
-                                              closeOnClick={false}
-                                              className="py-1 cursor-pointer text-xs"
-                                            />
-                                          }
-                                          disabled={isSessionDeleting}
-                                        >
-                                          {isSessionDeleting ? 'Deleting...' : 'Delete'}
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                            <AlertDialogTitle>Delete session?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                              {session.workspaceType === 'worktree' ? (
-                                                <>
-                                                  This will permanently delete this session and{' '}
-                                                  <span className="font-medium">force delete</span>{' '}
-                                                  its worktree.
-                                                  <br />
-                                                  <span className="font-mono text-[11px]">
-                                                    {session.projectDir}
-                                                  </span>
-                                                  <br />
-                                                  Uncommitted changes in this worktree will be lost.
-                                                </>
-                                              ) : (
-                                                'This will permanently delete this session.'
-                                              )}
-                                            </AlertDialogDescription>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                            <AlertDialogCancel data-testid={`cancel-delete-session-${session.id}`} disabled={isSessionDeleting}>
-                                              Cancel
-                                            </AlertDialogCancel>
-                                            <AlertDialogAction
-                                              data-testid={`confirm-delete-session-${session.id}`}
-                                              variant="destructive"
-                                              disabled={isSessionDeleting}
-                                              onClick={() => {
-                                                void handleDeleteSession(session.id)
-                                              }}
-                                            >
-                                              {isSessionDeleting ? (
-                                                <>
-                                                  <Loader2 className="size-3 animate-spin" />
-                                                  Deleting...
-                                                </>
-                                              ) : (
-                                                'Delete'
-                                              )}
-                                            </AlertDialogAction>
-                                          </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </SidebarMenuSubItem>
-                              </motion.div>
-                            )
-                          }
-                        })()}
+                        <ProjectSessions sessions={project.sessions} />
                       </CollapsibleContent>
                     </Collapsible>
                   )
                 })}
+                {!browserMode && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      data-testid="sidebar-add-project"
+                      tooltip="Add project"
+                      aria-disabled={isInitBlocked}
+                      className={cn(
+                        'text-muted-foreground',
+                        isInitBlocked && 'pointer-events-none opacity-60',
+                      )}
+                      onClick={() => {
+                        if (isInitBlocked) return
+                        handleAddProject()
+                      }}
+                    >
+                      <PlusIcon className="size-4" />
+                      <span className="text-sm">Add Project</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

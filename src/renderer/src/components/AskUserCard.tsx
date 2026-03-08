@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { MessageSquareWarning } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { PendingAskUserRequest } from '@/state/appReducer'
 
 interface AskUserCardProps {
@@ -46,14 +47,30 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
 
   return (
     <footer className="shrink-0 px-4 pb-4">
-      <div className="mx-auto max-w-4xl rounded-2xl border bg-card overflow-hidden">
+      <div className="mx-auto max-w-3xl rounded-2xl border bg-card overflow-hidden">
         <div className="flex items-center gap-2 px-6 pt-4 pb-2">
           <MessageSquareWarning className="size-5 shrink-0 " />
           <span className="text-sm font-medium text-foreground">Input required</span>
           {totalSteps > 1 && (
-            <span className="ml-auto text-sm text-muted-foreground">
-              Step {currentStep + 1} of {totalSteps}
-            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                {questions.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`size-1.5 rounded-full transition-colors duration-200 ${
+                      i < currentStep
+                        ? 'bg-emerald-500'
+                        : i === currentStep
+                          ? 'bg-foreground'
+                          : 'bg-muted-foreground/30'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {currentStep + 1}/{totalSteps}
+              </span>
+            </div>
           )}
         </div>
 
@@ -99,30 +116,28 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-3 px-5 pb-3">
-          <button
-            type="button"
+        <div className="flex items-center justify-end gap-2 px-5 pb-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
             onClick={() => onRespond({ cancelled: true, answers: [] })}
-            className="rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             Cancel
-          </button>
+          </Button>
           {!isFirstStep && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
               onClick={handleStepBack}
-              className="rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               Back
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            onClick={handleStepNext}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm text-background transition-all hover:bg-foreground/80 active:scale-[0.995]"
-          >
+          <Button size="sm" className="text-xs" onClick={handleStepNext}>
             {isLastStep ? 'Submit' : 'Next'}
-          </button>
+          </Button>
         </div>
       </div>
     </footer>

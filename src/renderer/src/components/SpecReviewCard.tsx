@@ -129,7 +129,7 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
 
       <CollapsibleContent>
         <div className="px-4 pb-3">
-          <ScrollArea className="max-h-[50vh] min-h-0 rounded-lg bg-zinc-50 dark:bg-zinc-900/50">
+          <ScrollArea className="max-h-[50vh] min-h-0 rounded-lg bg-muted">
             <div className="px-4 py-3 prose prose-sm max-w-none text-foreground/90 prose-headings:text-foreground prose-p:leading-relaxed prose-pre:bg-zinc-950 prose-pre:text-zinc-200 prose-pre:overflow-x-auto prose-code:text-foreground prose-code:break-all overflow-hidden break-words">
               <Streamdown>{plan}</Streamdown>
             </div>
