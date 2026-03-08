@@ -61,10 +61,22 @@ The system SHALL support Mission recovery using the `droid.load_session` respons
 - **THEN** the system reads the returned `decompSessionType`, current settings, and `mission` snapshot if present
 - **AND** it uses that snapshot to bootstrap the restored session before missionDir reconciliation completes
 
+#### Scenario: load_session remains Mission-typed across runtime stages
+- **WHEN** renderer or backend calls `droid.load_session` while a Mission is `running`, `paused`, in validator-injected `running`, or `completed`
+- **THEN** the response continues to identify the session as `decompSessionType: "orchestrator"`
+- **AND** the returned settings keep the Mission protocol shape (`interactionMode: "agi"`, Mission autonomy settings)
+- **AND** the response includes a `mission` snapshot suitable for UI bootstrap in every stage
+
 #### Scenario: Transient settings updates arrive during Mission init
 - **WHEN** initialization emits early `settings_updated` notifications before the final Mission settings settle
 - **THEN** the system does not classify the session as non-Mission based on those transient values alone
 - **AND** it preserves the explicit Mission session metadata as the source of truth
+
+#### Scenario: settings_updated conflicts with load_session during Mission bootstrap
+- **WHEN** early `settings_updated` notifications temporarily report non-Mission values such as `interactionMode: "spec"` or `autonomyLevel: "off"`
+- **AND** `droid.load_session` still reports Mission settings and `decompSessionType: "orchestrator"`
+- **THEN** the system treats `load_session` + persisted Mission metadata as authoritative
+- **AND** it does not downgrade the session classification because of the transient settings notification
 
 ### Requirement: Sidebar Mission session indicator
 The system SHALL display a visual indicator (icon or badge) on Mission sessions in the sidebar to distinguish them from normal sessions. The sidebar item MUST have `data-testid="session-mission-{sessionId}"`.

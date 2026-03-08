@@ -23,6 +23,18 @@ The system SHALL process `mission_*` type notifications from `droid.session_noti
 - **WHEN** a notification with `type: "mission_worker_completed"` arrives
 - **THEN** the store clears currentWorkerSessionId and increments completedFeatures
 
+### Requirement: Mission state uses a minimal reliable notification set
+The system SHALL treat Mission-specific notifications as the primary incremental notification source, and SHALL NOT treat generic session notifications as authoritative Mission state by themselves.
+
+#### Scenario: stable Mission notifications arrive
+- **WHEN** the session emits `mission_progress_entry`, `mission_features_changed`, `mission_state_changed`, `mission_worker_started`, or `mission_worker_completed`
+- **THEN** the renderer may use them to incrementally update Mission UI state
+
+#### Scenario: generic session notifications disagree
+- **WHEN** generic notifications such as `settings_updated` or `droid_working_state_changed` disagree with the current Mission snapshot
+- **THEN** the system treats them as non-authoritative for Mission identity and completion state
+- **AND** it waits for `load_session`, missionDir, or Mission-specific notifications to resolve the truth
+
 ### Requirement: StartMissionRun progress updates may supplement Mission notifications
 The system SHALL support `tool_progress_update` payloads emitted for `StartMissionRun` as an auxiliary state source, without replacing the authoritative Mission notifications and missionDir state.
 
@@ -58,6 +70,11 @@ The system SHALL monitor the missionDir on disk via the Electron main process us
 - **WHEN** a Mission session is active but missionDir does not exist on disk
 - **THEN** the watcher waits without error and begins monitoring once the directory is created
 
+#### Scenario: handoffs directory does not exist yet
+- **WHEN** a Mission is active before the first worker finishes and `handoffs/` is absent
+- **THEN** the watcher treats the absence as normal
+- **AND** it begins reading handoff files only after the directory appears
+
 ### Requirement: Dual-channel data reconciliation
 The system SHALL reconcile data from notification channel and disk channel using file-specific merge rules. Notifications update the store immediately; disk data acts as the recovery and correction source.
 
@@ -83,6 +100,11 @@ The system SHALL reconcile data from notification channel and disk channel using
 - **THEN** the store appends only unseen progress events
 - **AND** previously known events are not duplicated
 
+#### Scenario: paused Mission only changes state and progress log
+- **WHEN** the user pauses a running Mission and disk updates only `state.json` and `progress_log.jsonl`
+- **THEN** the reconciliation logic still updates the paused Mission correctly
+- **AND** it does not require `features.json` or `handoffs/` to change in the same poll cycle
+
 #### Scenario: handoff files appear
 - **WHEN** new files are added under `handoffs/`
 - **THEN** the store merges the newly discovered handoff records without clearing already loaded handoffs
@@ -100,6 +122,11 @@ The system SHALL recover mission state purely from missionDir files when the app
 - **THEN** the system reads state.json, features.json, progress_log.jsonl, and handoffs/
 - **AND** the Mission Control view renders the recovered state correctly
 
+#### Scenario: validation-state updates after validator phases
+- **WHEN** validator or user-testing phases complete and `validation-state.json` is updated later than the initial implementation worker completion
+- **THEN** the system preserves the newer validation-state result for Mission completion context
+- **AND** it does not assume validation data had to be finalized when the first handoff was written
+
 #### Scenario: Worker orphan indication
 - **WHEN** state.json shows `currentWorkerSessionId` but the worker is no longer running (orphan)
 - **THEN** the UI shows the mission state as recovered from disk without assuming the worker is still active
@@ -116,6 +143,11 @@ The system SHALL consume Mission snapshot data returned by `droid.load_session` 
 - **WHEN** `droid.load_session` returns Mission data that differs from the current missionDir files
 - **THEN** the system prefers the more complete or newer view during bootstrap
 - **AND** the missionDir watcher becomes the long-lived correction source afterward
+
+#### Scenario: load_session is more trustworthy than transient settings notifications
+- **WHEN** `droid.load_session` reports Mission settings and snapshot data but recent generic `settings_updated` notifications contained transient non-Mission values
+- **THEN** the system uses `load_session` to bootstrap the Mission state
+- **AND** it does not reclassify the session until Mission-specific data or missionDir explicitly says otherwise
 
 ### Requirement: Daemon failure is modeled as a supported Mission state transition
 The system SHALL handle Mission runs that fail before any worker successfully starts, including daemon / factoryd failures that return control to the orchestrator and ultimately pause the Mission.

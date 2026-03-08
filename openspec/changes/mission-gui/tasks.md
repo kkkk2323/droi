@@ -33,9 +33,10 @@
 - [ ] 5.3 Implement `applyMissionNotification` in `appReducer.ts` for `mission_*` notifications and Mission-specific permission metadata
 - [ ] 5.4 Consume `droid.load_session` mission snapshot during restore before watcher-based reconciliation begins
 - [ ] 5.5 Implement `applyMissionDiskData` with per-file reconciliation rules: `state.json` by `updatedAt`, `features.json` by snapshot replacement, `progress_log.jsonl` by append/dedupe, `handoffs/` by file merge
-- [ ] 5.6 Parse `tool_progress_update` for `StartMissionRun` as an auxiliary real-time state source
+- [ ] 5.6 Parse `tool_progress_update` for `StartMissionRun` as an auxiliary real-time state source, but do not make it authoritative over `load_session` or missionDir
 - [ ] 5.7 Keep Mission state authoritative when `milestone_validation_triggered` appends validator features after an implementation worker handoff
 - [ ] 5.8 Persist and restore Mission session metadata, including Mission protocol settings and missionDir recovery on app start
+- [ ] 5.9 Ignore transient generic `settings_updated` values when they conflict with persisted Mission metadata or `droid.load_session`
 
 ## 6. Routing, Navigation, and Session Creation UX
 
@@ -78,7 +79,10 @@
 - [ ] 10.3 Extend `test/rpcNotificationMapping.test.ts` for Mission notification mapping, `tool_progress_update`, and reconciliation behavior
 - [ ] 10.4 Add focused tests for `missionDirReader` / `missionDirWatcher`
 - [ ] 10.5 Add restore coverage for `droid.load_session` returning a paused Mission snapshot
-- [ ] 10.6 Add Electron-surface integration coverage for create → propose → accept → run → worker_completed → validator injection → validation completion
-- [ ] 10.7 Add Electron-surface integration coverage for create → propose → accept → run → pause/daemon-failure → continue → complete
-- [ ] 10.8 Add coverage for `kill_worker_session` producing `worker_failed(reason = "Killed by user") -> mission_paused`
-- [ ] 10.9 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test`
+- [ ] 10.6 Add restore coverage for `droid.load_session` returning stable Mission settings across `running`, validator-injected `running`, `paused`, and `completed`
+- [ ] 10.7 Add coverage that transient generic `settings_updated` values do not downgrade Mission session classification during bootstrap
+- [ ] 10.8 Add focused watcher tests for late `missionDir` creation, late `handoffs/` creation, and pause-only updates touching `state.json` + `progress_log.jsonl`
+- [ ] 10.9 Add Electron-surface integration coverage for create → propose → accept → run → worker_completed → validator injection → validation completion
+- [ ] 10.10 Add Electron-surface integration coverage for create → propose → accept → run → pause/daemon-failure → continue → complete
+- [ ] 10.11 Add coverage for `kill_worker_session` producing `worker_failed(reason = "Killed by user") -> mission_paused`
+- [ ] 10.12 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test`

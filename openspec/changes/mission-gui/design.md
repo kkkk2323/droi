@@ -13,6 +13,7 @@ Droid CLI 0.65.0 的 Missions 模式通过 stream-jsonrpc 协议暴露给 GUI，
 - 当前 Droi 发送链路仍然依赖 `autoLevel -> interactionMode(spec/auto)` 的推导，这不足以表达 Mission 需要的 `interactionMode: "agi"`
 - 基于本地 `droid exec` 0.70.0 的事实核查，已确认 `initialize_session(agi + orchestrator)`、`propose_mission`、`load_session`、普通消息 continue 均可工作；同时也确认 `start_mission_run` 权限是条件性的，且 daemon 故障会把 mission 自动带到 `paused`
 - 在重启旧 daemon 并让其继承新的 `FACTORY_API_KEY` 后，官方模型 `minimax-m2.5` 也已实测跑通 live worker happy path：`worker_started`、`worker_completed`、真实 handoff 文件、`Pause`、`Kill Worker`、以及 `milestone_validation_triggered` 后继续运行都成立
+- 进一步 probe 显示：`droid.load_session` 在 `running / paused / validatorInjected / completed` 阶段都稳定返回 `decompSessionType: "orchestrator"`、`settings.interactionMode: "agi"`、`settings.autonomyLevel: "high"` 和 `mission` snapshot；相反，早期 `settings_updated` 仍可能瞬时发出 `spec/off`，因此它不能作为 Mission 身份或最终设置的判定依据
 
 ## Goals / Non-Goals
 
@@ -99,6 +100,7 @@ Mission session 固定使用：
 - 现有的 notification 处理管道（`handleRpcNotification`）已经按 sessionId 路由，扩展最小侵入
 - 磁盘数据也按 sessionId 关联
 - `droid.load_session` 已实际返回 `mission.state`、`mission.features`、`mission.progressLog` 等 snapshot，可直接作为恢复首屏数据
+- probe 还显示 `load_session` 的 orchestrator settings 比流式 `settings_updated` 更稳定，因此 SessionBuffer 的 Mission 身份必须优先由显式 metadata + `load_session` 决定，而不是由任意一次 settings 通知反推
 
 **替代方案**：独立的 Zustand slice -- 会引入 session 与 mission 状态同步的复杂度。
 
@@ -119,6 +121,20 @@ Mission session 固定使用：
 
 **文件监听方式**：使用 Node.js 原生 `fs.watch` + setInterval poll 兜底。不引入 chokidar（项目未安装且 mission 文件数量少，原生 watch 足够）。
 
+### D6.2: Mission watcher 必须接受目录和文件的“晚出现”生命周期
+
+**决定**：MissionDirWatcher 不能假设 `missionDir`、`handoffs/`、甚至 `validation-state.json` 在 `initialize_session` 后立即存在。它必须支持：
+
+- `missionDir` 初始化后暂时不存在
+- Mission 进入 `running` 后目录才出现
+- `handoffs/` 在首个 worker 完成后才出现
+- `validation-state.json` 在 validator / user-testing 阶段后才体现最终结果
+- `paused` 阶段可能主要只更新 `state.json` 与 `progress_log.jsonl`
+
+**理由**：本地 probe 已按阶段观测到上述真实文件生命周期。如果 watcher 假设所有文件一开始就齐全，或假设每次状态变化都会刷新所有文件，会导致恢复和实时同步逻辑偏差。
+
+**替代方案**：把 missionDir 当作一次性完整快照目录 -- 无法覆盖真实增量落盘行为。
+
 ### D6.5: `tool_progress_update(StartMissionRun)` 作为辅助实时数据源
 
 **决定**：GUI 继续以 `mission_*` 通知和 missionDir 为主，但可以额外消费 `tool_progress_update` 中 `toolName = "StartMissionRun"` 的 status payload，作为 UI 的辅助状态来源。
@@ -126,6 +142,22 @@ Mission session 固定使用：
 **理由**：事实核查显示该 payload 会携带 `missionState`、`currentFeatureId`、`currentWorkerSessionId`、`completedFeatures`、`totalFeatures` 和 feature 摘要，可在 watcher 还没追上时提升实时性。
 
 **替代方案**：完全忽略 `tool_progress_update` -- 可以工作，但会放弃一个现成的低延迟状态源。
+
+### D6.55: Mission 的最小可靠通知集合应收敛到 Mission 专用事件
+
+**决定**：Renderer 的 Mission 状态增量更新，优先消费以下最小可靠集合：
+
+- `mission_progress_entry`
+- `mission_features_changed`
+- `mission_state_changed`
+- `mission_worker_started`
+- `mission_worker_completed`（成功路径）
+
+`tool_progress_update(StartMissionRun)` 只作为辅助；`settings_updated`、`droid_working_state_changed`、`session_token_usage_changed` 等通用通知不得作为 Mission 状态真相源。
+
+**理由**：probe 中这些 Mission 专用通知在真实运行里稳定出现，而 `settings_updated` 确实会出现与最终 Mission 设置不一致的瞬态值。
+
+**替代方案**：让所有通知都平等驱动 Mission 状态 -- 会把通用会话通知的噪音误当成 Mission 协议事实。
 
 ### D6.6: `worker_completed` 之后 Mission 仍可能继续运行，等待 validator features
 
@@ -193,6 +225,24 @@ Mission session 固定使用：
 **理由**：live 验证显示 `kill_worker_session` 的真实闭环是 `worker_failed(reason = "Killed by user") -> mission_paused`。如果和 daemon failure 共用一套错误文案，会误导用户认为系统异常。
 
 **替代方案**：所有 `worker_failed` 都统一当作异常错误 -- 会丢失用户主动操作与基础设施异常之间的重要差异。
+
+### D12: Mission 完成判定必须基于状态 + feature 集合，而非单个 worker 事件
+
+**决定**：GUI 不得用以下任一条件单独判定 Mission 完成：
+
+- 首个 `worker_completed`
+- 已存在 handoff 文件
+- 当前没有 active worker
+
+正式完成判定必须结合：
+
+- `mission.state === "completed"`（来自 `load_session` 或 `state.json`）
+- `features.json` / `mission.features` 的最终 completed 状态
+- `validation-state.json` 在 validator 阶段后的最终断言结果（若该 Mission 使用了 validation flow）
+
+**理由**：probe 已确认 validator feature 会在实现 worker 完成后继续注入与执行；直到 user-testing validator 完成前，Mission 都可能继续运行。
+
+**替代方案**：用“没有当前 worker + handoff 已存在”推断完成 -- 会提前把 validator 阶段中的 Mission 标成已完成。
 
 ## Risks / Trade-offs
 
