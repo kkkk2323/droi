@@ -1,3 +1,25 @@
+## 0.21.0 - 2026-03-08
+
+### Features
+- Add remote debugging support and enhance UI testability with data-testid attributes
+- Integrate dropdown menu for file changes display in FilesChangedBadge
+- Standardise UI components with design system buttons and refined styling
+- Enhance permission options display with primary and advanced options
+- Streamline project addition UI and improve messaging for no projects in AppSidebar
+- Add design system skills (critique, distill, normalize, teach-impeccable)
+- Add .factory mission infrastructure and validation skills
+
+### Refactor
+- Extract session components and improve sidebar modularity
+- Remove disabled state and related styles for commit button in GitActionsButton
+- Extract EditorIcon component for cleaner code in OpenInEditorButton
+
+### Style
+- Refine active scale transitions for buttons in InputBar and PermissionCard
+- Update text-muted-foreground styles and hover effects for various components
+- Adjust max-width for branch display in WorktreeIndicator
+- Enhance sidebar padding transitions and layout responsiveness
+
 ## 0.20.0 - 2026-03-06
 
 ### Features
