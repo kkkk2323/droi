@@ -74,6 +74,7 @@
 
 ## 10. Testing & Validation
 
+- [ ] 10.0 Run Mission GUI manual/E2E validation only inside the pre-created Droi project named `Mission-GUI-TEST`, avoiding OS-level project-picker dialogs during Mission test flows
 - [ ] 10.1 Extend `test/interactionModeHotSwitch.test.ts` to verify Mission sessions retain `agi/orchestrator` settings across subsequent sends and updates
 - [ ] 10.2 Extend `test/sessionStore.test.ts` to verify Mission session persistence and restore
 - [ ] 10.3 Extend `test/rpcNotificationMapping.test.ts` for Mission notification mapping, `tool_progress_update`, and reconciliation behavior

@@ -244,6 +244,14 @@ Mission session 固定使用：
 
 **替代方案**：用“没有当前 worker + handoff 已存在”推断完成 -- 会提前把 validator 阶段中的 Mission 标成已完成。
 
+### D13: GUI 测试统一使用预创建项目 `Mission-GUI-TEST`
+
+**决定**：后续 Mission GUI 的手工验证、Agent-Browser E2E、以及任何需要从 Droi 主界面进入 Mission 模式的测试，都统一在预创建项目 `Mission-GUI-TEST` 中进行。
+
+**理由**：如果测试从“打开项目”开始，Electron 端可能需要触发系统级目录选择对话框；这类系统对话框不属于 Mission GUI 本身，且会让自动化测试变得脆弱。使用固定的预创建项目可以把测试稳定地约束在 GUI 内部流程：选中项目 → 创建/恢复 Mission session → 验证页面与状态流转。
+
+**替代方案**：每次测试动态通过系统对话框打开新目录 -- 会把 OS 级交互不稳定性引入 Mission GUI 验证，增加误报与自动化失败率。
+
 ## Risks / Trade-offs
 
 - **[Risk] fs.watch 跨平台可靠性** → Mitigation: setInterval poll 兜底（每 2s），fs.watch 仅用作"加速检测"。即使 watch 不触发，poll 也能保证 2s 内同步。
