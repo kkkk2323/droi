@@ -36,6 +36,16 @@ const droid = getDroidClient()
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   const initializedRef = useRef(false)
+  const isReady = useAppStore((s) => s._initialLoadDone)
+
+  useEffect(() => {
+    if (isReady) {
+      document.body.setAttribute('data-app-ready', 'true')
+    }
+    return () => {
+      document.body.removeAttribute('data-app-ready')
+    }
+  }, [isReady])
 
   useEffect(() => {
     if (initializedRef.current) return

@@ -12,16 +12,19 @@ function ModeOption({
   icon,
   label,
   description,
+  'data-testid': testId,
 }: {
   selected: boolean
   onSelect: () => void
   icon: React.ReactNode
   label: string
   description: React.ReactNode
+  'data-testid'?: string
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       className={cn(
         'flex items-start gap-3 rounded-lg border px-3.5 py-3 text-left transition-all active:scale-[0.995] w-full',
         selected
@@ -100,6 +103,7 @@ export function SessionConfigPage() {
 
         <div className="space-y-2">
           <ModeOption
+            data-testid="session-mode-local"
             selected={mode === 'local'}
             onSelect={() => setMode('local')}
             icon={<FolderOpen className="size-3.5" />}
@@ -112,6 +116,7 @@ export function SessionConfigPage() {
             }
           />
           <ModeOption
+            data-testid="session-mode-new-worktree"
             selected={mode === 'new-worktree'}
             onSelect={() => setMode('new-worktree')}
             icon={<GitFork className="size-3.5" />}

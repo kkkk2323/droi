@@ -68,6 +68,7 @@ export function ModelSelect({
     return (
       <Select value={value} onValueChange={(v) => v && onChange(v)}>
         <SelectTrigger
+          data-testid="model-select-trigger"
           size="sm"
           className={`h-7 w-auto shrink-0 gap-1.5 rounded-lg border-none bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground ${className || ''}`}
         >

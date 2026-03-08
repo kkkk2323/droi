@@ -556,6 +556,7 @@ export function InputBar({
           )}
           <div className="flex items-start gap-2">
             <textarea
+              data-testid="chat-input"
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -777,6 +778,7 @@ export function InputBar({
             {isCancelling ? (
               <button
                 type="button"
+                data-testid="chat-force-cancel"
                 onClick={onForceCancel}
                 className="flex items-center gap-1.5 rounded-full bg-destructive px-3 py-1.5 text-xs text-white transition-all hover:bg-destructive/80"
                 title="Force stop"
@@ -787,6 +789,7 @@ export function InputBar({
             ) : (isRunning || isCancelling) && !hasDraftToSend ? (
               <button
                 type="button"
+                data-testid="chat-cancel"
                 onClick={onCancel}
                 className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.98]"
               >
@@ -795,6 +798,7 @@ export function InputBar({
             ) : (
               <button
                 type="button"
+                data-testid="chat-send"
                 onClick={handleSubmit}
                 disabled={!canSend}
                 className="flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:bg-foreground/80 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed"

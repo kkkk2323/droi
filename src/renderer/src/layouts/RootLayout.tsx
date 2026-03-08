@@ -58,12 +58,14 @@ function InnerLayout() {
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
               <SidebarTrigger
+                data-testid="sidebar-trigger"
                 className="shrink-0 size-6 p-0"
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               />
             </div>
           ) : (
             <SidebarTrigger
+              data-testid="sidebar-trigger"
               className="shrink-0 size-6 p-0"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             />
