@@ -8,6 +8,11 @@ import { startApiServer } from '../server/apiServer.ts'
 import { LocalDiagnostics } from '../backend/diagnostics/localDiagnostics.ts'
 import { createAppStateStore } from '../backend/storage/appStateStore.ts'
 
+const debugPort = process.env.ELECTRON_REMOTE_DEBUGGING_PORT
+if (debugPort) {
+  app.commandLine.appendSwitch('remote-debugging-port', debugPort)
+}
+
 let mainWindow: BrowserWindow | null = null
 let ipcCtl: { cancelActiveRun: () => boolean } | null = null
 let apiCtl: { close: () => Promise<void> } | null = null

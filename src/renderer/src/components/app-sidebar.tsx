@@ -65,6 +65,8 @@ import { isBrowserMode } from '@/droidClient'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getProjectDisplayName } from '@/store/projectHelpers'
 
+const isDevMode = import.meta.env.DEV
+
 function SessionTitle({ title }: { title: string }) {
   const prevRef = useRef(title)
   const [flash, setFlash] = useState(false)
@@ -188,6 +190,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
+                data-testid="sidebar-add-project"
                 tooltip="Add project"
                 aria-disabled={isInitBlocked}
                 className={cn(isInitBlocked && 'pointer-events-none opacity-60')}
@@ -243,6 +246,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       <CollapsibleTrigger
                         render={
                           <SidebarMenuButton
+                            data-testid={`project-${getProjectDisplayName(project)}`}
                             className="h-9"
                             tooltip={project.dir}
                             onClick={() => {
@@ -261,9 +265,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       <div className="absolute top-1.5 right-1 flex items-center gap-0.5">
                         <button
                           type="button"
+                          data-testid={`new-session-${getProjectDisplayName(project)}`}
                           className={cn(
                             'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
-                            mobile ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
+                            mobile || isDevMode ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
                             (isCreatingSession || isInitBlocked) &&
                               'opacity-60 pointer-events-none',
                           )}
@@ -440,10 +445,15 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             const needsAttention = useSessionNeedsAttention(session.id)
                             const isSessionDeleting = deletingSessionIds.has(session.id)
                             const branchName = session.branch?.split('/').pop() || session.branch
+                            const motionRef = useRef<HTMLDivElement | null>(null)
                             return (
                               <motion.div
                                 key={session.id}
-                                ref={isActive ? newSessionRef : undefined}
+                                ref={(el) => {
+                                  motionRef.current = el
+                                  if (isActive) (newSessionRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+                                }}
+                                data-animation-state="animating"
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
@@ -452,9 +462,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                   delay: sessionIdx * 0.03,
                                   ease: [0.16, 1, 0.3, 1],
                                 }}
+                                onAnimationComplete={() => {
+                                  motionRef.current?.setAttribute('data-animation-state', 'idle')
+                                }}
                               >
                                 <SidebarMenuSubItem className="group/session">
                                   <SidebarMenuSubButton
+                                    data-testid={`session-${session.id}`}
                                     render={<button type="button" />}
                                     className={cn(
                                       'w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0',
@@ -487,6 +501,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                   </SidebarMenuSubButton>
                                   <DropdownMenu>
                                     <DropdownMenuTrigger
+                                      data-testid={`session-menu-${session.id}`}
                                       className="absolute top-1/2 right-1 opacity-0 -translate-y-1/2 rounded p-0.5 hover:bg-sidebar-accent group-hover/session:opacity-100 data-[popup-open]:opacity-100"
                                       onClick={(e) => e.stopPropagation()}
                                       render={<button type="button" />}
@@ -495,6 +510,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent side="right" align="start">
                                       <DropdownMenuItem
+                                        data-testid={`session-pin-${session.id}`}
                                         className="py-1 cursor-pointer text-xs"
                                         onClick={() => handleTogglePin(session.id)}
                                       >
@@ -504,6 +520,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                         <AlertDialogTrigger
                                           render={
                                             <DropdownMenuItem
+                                              data-testid={`session-delete-${session.id}`}
                                               variant="destructive"
                                               closeOnClick={false}
                                               className="py-1 cursor-pointer text-xs"
@@ -535,10 +552,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                             </AlertDialogDescription>
                                           </AlertDialogHeader>
                                           <AlertDialogFooter>
-                                            <AlertDialogCancel disabled={isSessionDeleting}>
+                                            <AlertDialogCancel data-testid={`cancel-delete-session-${session.id}`} disabled={isSessionDeleting}>
                                               Cancel
                                             </AlertDialogCancel>
                                             <AlertDialogAction
+                                              data-testid={`confirm-delete-session-${session.id}`}
                                               variant="destructive"
                                               disabled={isSessionDeleting}
                                               onClick={() => {
@@ -579,7 +597,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => navigate({ to: '/settings' })}>
+            <SidebarMenuButton data-testid="sidebar-settings" onClick={() => navigate({ to: '/settings' })}>
               <SettingsIcon className="size-4" />
               <span>Settings</span>
             </SidebarMenuButton>
