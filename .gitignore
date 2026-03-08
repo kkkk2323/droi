@@ -5,6 +5,7 @@ node_modules
 # Build outputs
 out/
 dist/
+docs/droid-cli-repro-0.63.0/
 build/
 *.tsbuildinfo
 
