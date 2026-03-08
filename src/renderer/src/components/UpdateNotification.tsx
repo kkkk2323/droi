@@ -98,13 +98,6 @@ export function UpdateNotification() {
                   `v${updateAvailable?.version} available`
                 )}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {showReady
-                  ? 'Restart to complete update'
-                  : showDownloading
-                    ? 'Please wait...'
-                    : 'Click to download and install'}
-              </p>
               {showDownloading && (
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
