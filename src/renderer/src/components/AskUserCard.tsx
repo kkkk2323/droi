@@ -51,9 +51,25 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
           <MessageSquareWarning className="size-5 shrink-0 " />
           <span className="text-sm font-medium text-foreground">Input required</span>
           {totalSteps > 1 && (
-            <span className="ml-auto text-sm text-muted-foreground">
-              Step {currentStep + 1} of {totalSteps}
-            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                {questions.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`size-1.5 rounded-full transition-colors duration-200 ${
+                      i < currentStep
+                        ? 'bg-emerald-500'
+                        : i === currentStep
+                          ? 'bg-foreground'
+                          : 'bg-muted-foreground/30'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {currentStep + 1}/{totalSteps}
+              </span>
+            </div>
           )}
         </div>
 

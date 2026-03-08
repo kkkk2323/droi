@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../lib/utils'
 import {
@@ -363,9 +363,11 @@ function MessageEntry({
             )}
           </div>
         </div>
-        {previewImage && (
-          <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
-        )}
+        <AnimatePresence>
+          {previewImage && (
+            <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
+          )}
+        </AnimatePresence>
       </>
     )
   }
@@ -415,7 +417,7 @@ function MessageEntry({
         return null
       })}
       {message.endTimestamp && message.timestamp > 0 && (
-        <div className="mt-1 text-[11px] text-muted-foreground/60">
+        <div className="mt-1 text-[11px] text-muted-foreground/80">
           {formatDuration(message.endTimestamp - message.timestamp)}
         </div>
       )}
@@ -525,10 +527,12 @@ function ToolActivity({
           <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
         ) : block.isError ? (
           <span className="size-3 shrink-0 text-destructive-foreground">{icon}</span>
-        ) : isSkill ? (
-          <span className="size-3 shrink-0 text-amber-500">{icon}</span>
         ) : hasResult ? (
-          <Check className="size-3 shrink-0 text-emerald-600" />
+          isSkill ? (
+            <span className="size-3 shrink-0 text-amber-500">{icon}</span>
+          ) : (
+            <Check className="size-3 shrink-0 text-emerald-600" />
+          )
         ) : (
           <span className="size-3 shrink-0 text-muted-foreground">{icon}</span>
         )}
@@ -647,7 +651,11 @@ function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void 
   }, [onClose])
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={onClose}
     >
@@ -657,13 +665,17 @@ function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void 
       >
         <X className="size-5" />
       </button>
-      <img
+      <motion.img
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
         src={src}
         alt="Preview"
         className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
         onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </motion.div>
   )
 }
 

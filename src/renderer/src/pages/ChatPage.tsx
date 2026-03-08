@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   useMessages,
   useIsRunning,
@@ -147,32 +148,58 @@ export function ChatPage() {
       )}
       {showDebugTrace && <DebugTracePanel />}
       {!pendingNewSession && <TodoPanel messages={messages} />}
-      {hasPermission && pendingPermissionRequest ? (
-        <PermissionCard request={pendingPermissionRequest} onRespond={handleRespondPermission} />
-      ) : hasAskUser && pendingAskUserRequest ? (
-        <AskUserCard request={pendingAskUserRequest} onRespond={handleRespondAskUser} />
-      ) : (
-        <InputBar
-          key={inputKey}
-          draftKey={draftKey}
-          model={model}
-          autoLevel={autoLevel}
-          reasoningEffort={reasoningEffort}
-          customModels={customModels}
-          onModelChange={setModel}
-          onAutoLevelChange={setAutoLevel}
-          onReasoningEffortChange={setReasoningEffort}
-          onSend={handleSendWrapped}
-          onCancel={handleCancel}
-          onForceCancel={handleForceCancel}
-          isCancelling={isCancelling}
-          isRunning={isRunning}
-          disabled={inputDisabled}
-          disabledPlaceholder={disabledPlaceholder}
-          activeProjectDir={effectiveProjectDir}
-          specChangesMode={specChangesMode}
-        />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {hasPermission && pendingPermissionRequest ? (
+          <motion.div
+            key="permission"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <PermissionCard request={pendingPermissionRequest} onRespond={handleRespondPermission} />
+          </motion.div>
+        ) : hasAskUser && pendingAskUserRequest ? (
+          <motion.div
+            key="askuser"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <AskUserCard request={pendingAskUserRequest} onRespond={handleRespondAskUser} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key={`input-${inputKey}`}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <InputBar
+              key={inputKey}
+              draftKey={draftKey}
+              model={model}
+              autoLevel={autoLevel}
+              reasoningEffort={reasoningEffort}
+              customModels={customModels}
+              onModelChange={setModel}
+              onAutoLevelChange={setAutoLevel}
+              onReasoningEffortChange={setReasoningEffort}
+              onSend={handleSendWrapped}
+              onCancel={handleCancel}
+              onForceCancel={handleForceCancel}
+              isCancelling={isCancelling}
+              isRunning={isRunning}
+              disabled={inputDisabled}
+              disabledPlaceholder={disabledPlaceholder}
+              activeProjectDir={effectiveProjectDir}
+              specChangesMode={specChangesMode}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
