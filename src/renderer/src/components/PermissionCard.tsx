@@ -148,7 +148,7 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
           </pre>
         )}
         {typeof input.content === 'string' && !input.old_str && (
-          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] leading-5 text-zinc-700 dark:text-zinc-300">
+          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
             {input.content.length > 300 ? input.content.slice(0, 300) + '...' : input.content}
           </pre>
         )}
@@ -164,18 +164,18 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
         <span className="text-xs font-medium text-foreground">{name}</span>
       </div>
       {entries.length > 0 ? (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 space-y-1">
+        <div className="rounded-md bg-muted px-3 py-2 space-y-1">
           {entries.map(([key, val]) => (
             <div key={key} className="flex gap-2 text-[11px]">
               <span className="shrink-0 text-muted-foreground">{key}:</span>
-              <span className="text-zinc-700 dark:text-zinc-300 break-all">
+              <span className="text-foreground break-all">
                 {formatParamValue(val)}
               </span>
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-md bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
           No parameters
         </div>
       )}

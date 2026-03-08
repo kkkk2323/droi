@@ -647,7 +647,7 @@ export function InputBar({
                               </span>
                             )}
                             {!isSkill && !isBuiltin && (
-                              <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[10px] text-zinc-700">
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                 command
                               </span>
                             )}

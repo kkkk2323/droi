@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, Circle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import type { SessionSetupState } from '@/state/appReducer'
 
 export function SessionBootstrapCards({
@@ -128,26 +129,25 @@ function SetupScriptCard({
 
           {setupScript.status === 'failed' && (
             <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
+              <Button
+                size="xs"
                 onClick={(e) => {
                   e.stopPropagation()
                   onRetry?.()
                 }}
-                className="rounded-md bg-foreground px-2.5 py-1 text-xs text-background transition-all hover:bg-foreground/80 active:scale-[0.995]"
               >
                 Retry
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
                 onClick={(e) => {
                   e.stopPropagation()
                   onSkip?.()
                 }}
-                className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent"
               >
                 Skip
-              </button>
+              </Button>
             </div>
           )}
         </div>
