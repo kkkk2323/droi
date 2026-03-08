@@ -433,7 +433,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             className={cn(
-                              'flex size-5 items-center justify-center rounded-md transition-opacity hover:bg-sidebar-accent',
+                              'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
                               mobile ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
                             )}
                             onClick={(e) => e.stopPropagation()}
@@ -505,7 +505,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                     <DropdownMenuItem
                                       variant="destructive"
                                       closeOnClick={false}
-                                      className="py-1 cursor-pointer "
+                                      className="py-1 cursor-pointer"
                                     />
                                   }
                                 >
