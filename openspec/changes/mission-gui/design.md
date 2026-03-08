@@ -12,6 +12,7 @@ Droid CLI 0.65.0 的 Missions 模式通过 stream-jsonrpc 协议暴露给 GUI，
 - Mission 状态通过两个通道获取：notification（实时）和 missionDir 磁盘文件（权威）
 - 当前 Droi 发送链路仍然依赖 `autoLevel -> interactionMode(spec/auto)` 的推导，这不足以表达 Mission 需要的 `interactionMode: "agi"`
 - 基于本地 `droid exec` 0.70.0 的事实核查，已确认 `initialize_session(agi + orchestrator)`、`propose_mission`、`load_session`、普通消息 continue 均可工作；同时也确认 `start_mission_run` 权限是条件性的，且 daemon 故障会把 mission 自动带到 `paused`
+- 在重启旧 daemon 并让其继承新的 `FACTORY_API_KEY` 后，官方模型 `minimax-m2.5` 也已实测跑通 live worker happy path：`worker_started`、`worker_completed`、真实 handoff 文件、`Pause`、`Kill Worker`、以及 `milestone_validation_triggered` 后继续运行都成立
 
 ## Goals / Non-Goals
 
@@ -126,6 +127,14 @@ Mission session 固定使用：
 
 **替代方案**：完全忽略 `tool_progress_update` -- 可以工作，但会放弃一个现成的低延迟状态源。
 
+### D6.6: `worker_completed` 之后 Mission 仍可能继续运行，等待 validator features
+
+**决定**：GUI 不能把首个实现 worker 的 `worker_completed` 视为整个 Mission 完成信号。`milestone_validation_triggered` 发生后，`features.json` 可能会自动追加 `scrutiny-validator` / `user-testing-validator` 等验证 feature，Mission 也会继续保持 `running`。
+
+**理由**：本地 live 验证显示：实现 worker handoff 文件已经落盘后，Mission 仍会触发 validator 注入并继续运行。如果 UI 只根据首个 handoff 或一次 `worker_completed` 就展示“Mission 已完成”，会和真实 runner 状态产生偏差。
+
+**替代方案**：把“已有 handoff + 当前 worker 结束”当作完成条件 -- 会错误忽略后续 validator 阶段。
+
 ### D7: Pause 后的“继续执行”通过普通对话驱动，不定义单独 Resume RPC
 
 **决定**：本次只提供明确的 `Pause` 与 `Kill Worker` 操作；Mission 在 `paused` 或 `orchestrator_turn` 状态下，由用户在 Chat 视图继续发送消息推进后续流程。
@@ -177,6 +186,14 @@ Mission session 固定使用：
 
 **替代方案**：仅依赖 `worker_started/worker_completed` 的 happy path -- 无法覆盖已经在本地实测出现的 daemon 故障闭环。
 
+### D11.5: 用户主动 Kill Worker 需要独立于 daemon 故障呈现
+
+**决定**：当用户点击 Kill Worker 后，如果 progress log 记录 `worker_failed` 且 reason 为 `Killed by user`，GUI 应把它展示为用户主动终止 worker，而不是 daemon/infrastructure 故障。
+
+**理由**：live 验证显示 `kill_worker_session` 的真实闭环是 `worker_failed(reason = "Killed by user") -> mission_paused`。如果和 daemon failure 共用一套错误文案，会误导用户认为系统异常。
+
+**替代方案**：所有 `worker_failed` 都统一当作异常错误 -- 会丢失用户主动操作与基础设施异常之间的重要差异。
+
 ## Risks / Trade-offs
 
 - **[Risk] fs.watch 跨平台可靠性** → Mitigation: setInterval poll 兜底（每 2s），fs.watch 仅用作"加速检测"。即使 watch 不触发，poll 也能保证 2s 内同步。
@@ -188,6 +205,10 @@ Mission session 固定使用：
 - **[Risk] `start_mission_run` permission 不是稳定前置条件** → Mitigation: UI 支持该 permission，但状态机不依赖它必然出现。
 
 - **[Risk] daemon/factoryd 故障会在没有 workerSessionId 的情况下让 run 失败** → Mitigation: 把 `worker_failed + systemMessage + mission_paused` 视为正式支持的失败路径，并在 UI 中提供清晰恢复提示。
+
+- **[Risk] validator features 会在实现 worker 完成后动态注入，Mission 仍保持 running** → Mitigation: 以 Mission state、`features.json` 和 `milestone_validation_triggered` 为准，禁止仅凭首个 `worker_completed` 或 handoff 就推断整个 Mission 已结束。
+
+- **[Risk] `worker_failed` 既可能表示 daemon 故障，也可能表示用户主动 Kill Worker** → Mitigation: 解析 failure reason，分别展示 daemon recovery 提示与 user-kill 提示。
 
 - **[Risk] missionDir 在 GUI 首次启动时不存在** → Mitigation: MissionDirWatcher 在检测到 missionDir 后才开始监听，之前不报错。
 

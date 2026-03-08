@@ -17,6 +17,11 @@ The system SHALL display a Feature Queue panel showing all features from `featur
 - **WHEN** features with skillName `scrutiny-validator` or `user-testing-validator` appear in the queue
 - **THEN** they are rendered with a distinct visual style (different icon/badge) indicating they are validation features
 
+#### Scenario: Validator features are injected after implementation handoff
+- **WHEN** a completed implementation worker is followed by `milestone_validation_triggered`
+- **THEN** the Feature Queue updates to include the injected validator features from `features.json`
+- **AND** the UI does not treat the Mission as complete solely because the first implementation handoff already exists
+
 ### Requirement: Mission status indicator
 The system SHALL display the current Mission state (initializing/running/paused/orchestrator_turn/completed/awaiting_input) with a status badge. The indicator MUST have `data-testid="mission-status"`.
 
@@ -27,6 +32,11 @@ The system SHALL display the current Mission state (initializing/running/paused/
 #### Scenario: Progress counter
 - **WHEN** Mission is in any active state
 - **THEN** the status indicator shows completed/total feature count (e.g., "2/6 completed")
+
+#### Scenario: Mission remains running after implementation worker completion
+- **WHEN** an implementation worker completes and validator features are appended for the milestone
+- **THEN** the status indicator continues to show `running` until the Mission actually transitions away from `running`
+- **AND** the completed/total counters update to reflect the injected validator features
 
 ### Requirement: Progress Timeline
 The system SHALL display a timeline of progress_log events (mission_run_started, worker_started, worker_completed, milestone_validation_triggered, etc.). The timeline MUST have `data-testid="mission-progress-timeline"`.
@@ -46,6 +56,11 @@ The system SHALL display a summary card for each completed worker's handoff. The
 - **WHEN** a worker completes (worker_completed event)
 - **THEN** a Handoff card appears showing the handoff summary
 - **AND** the card has `data-testid="mission-handoff-{featureId}"`
+
+#### Scenario: Handoff stays visible while validation continues
+- **WHEN** an implementation worker handoff exists and the Mission continues into validator features
+- **THEN** the Handoff card remains visible in Mission Control
+- **AND** the Mission UI does not hide or replace that card just because the Mission is still `running`
 
 #### Scenario: Handoff data sourced from disk
 - **WHEN** GUI restarts and missionDir contains handoff files
@@ -72,6 +87,11 @@ The system SHALL provide a Kill Worker button that sends `droid.kill_worker_sess
 - **WHEN** a worker is actively running and user clicks Kill Worker
 - **THEN** the system sends the kill command using the current `workerSessionId`
 - **AND** the UI shows a brief confirmation
+
+#### Scenario: Kill Worker leads to paused Mission
+- **WHEN** `kill_worker_session` causes progress log entries `worker_failed` with reason `Killed by user` followed by `mission_paused`
+- **THEN** the UI presents the pause as user-triggered worker termination
+- **AND** it does not reuse daemon-failure recovery messaging for that case
 
 #### Scenario: Kill Worker button visibility
 - **WHEN** mission state is `running` and a worker session is active

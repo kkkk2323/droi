@@ -34,7 +34,8 @@
 - [ ] 5.4 Consume `droid.load_session` mission snapshot during restore before watcher-based reconciliation begins
 - [ ] 5.5 Implement `applyMissionDiskData` with per-file reconciliation rules: `state.json` by `updatedAt`, `features.json` by snapshot replacement, `progress_log.jsonl` by append/dedupe, `handoffs/` by file merge
 - [ ] 5.6 Parse `tool_progress_update` for `StartMissionRun` as an auxiliary real-time state source
-- [ ] 5.7 Persist and restore Mission session metadata, including Mission protocol settings and missionDir recovery on app start
+- [ ] 5.7 Keep Mission state authoritative when `milestone_validation_triggered` appends validator features after an implementation worker handoff
+- [ ] 5.8 Persist and restore Mission session metadata, including Mission protocol settings and missionDir recovery on app start
 
 ## 6. Routing, Navigation, and Session Creation UX
 
@@ -52,6 +53,7 @@
 - [ ] 7.4 Add auto-switch logic: `running -> mission-control`, `paused/orchestrator_turn -> chat`, with a 30s manual override cooldown
 - [ ] 7.5 Add a bottom Mission status bar (`data-testid="mission-statusbar"`) that remains visible in both views
 - [ ] 7.6 Surface daemon/factoryd failure `systemMessage` and explain whether the Mission paused automatically or needs a manual retry / app restart
+- [ ] 7.7 Keep completed worker handoffs visible while validator features are injected and Mission remains `running`
 
 ## 8. Mission Control UI
 
@@ -67,6 +69,7 @@
 - [ ] 9.3 Treat `start_mission_run` permission as optional / conditional instead of a guaranteed pre-run step
 - [ ] 9.4 Treat Mission “resume” as normal chat continuation when state is `paused` or `orchestrator_turn`; do not add a separate Resume RPC button in this change
 - [ ] 9.5 Distinguish user-initiated Pause from daemon-failure-driven `paused` state in UI copy and control availability
+- [ ] 9.6 Distinguish `kill_worker_session` (`worker_failed` with reason like `Killed by user`) from daemon failures in timeline and status copy
 
 ## 10. Testing & Validation
 
@@ -75,6 +78,7 @@
 - [ ] 10.3 Extend `test/rpcNotificationMapping.test.ts` for Mission notification mapping, `tool_progress_update`, and reconciliation behavior
 - [ ] 10.4 Add focused tests for `missionDirReader` / `missionDirWatcher`
 - [ ] 10.5 Add restore coverage for `droid.load_session` returning a paused Mission snapshot
-- [ ] 10.6 Add Electron-surface integration coverage for create → propose → accept → run → pause/daemon-failure → continue → complete
-- [ ] 10.7 Add a live or manual verification checklist for `kill_worker_session` once the daemon blocker is resolved
-- [ ] 10.8 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test`
+- [ ] 10.6 Add Electron-surface integration coverage for create → propose → accept → run → worker_completed → validator injection → validation completion
+- [ ] 10.7 Add Electron-surface integration coverage for create → propose → accept → run → pause/daemon-failure → continue → complete
+- [ ] 10.8 Add coverage for `kill_worker_session` producing `worker_failed(reason = "Killed by user") -> mission_paused`
+- [ ] 10.9 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test`

@@ -73,6 +73,11 @@ The system SHALL reconcile data from notification channel and disk channel using
 - **WHEN** disk poll reads an updated `features.json`
 - **THEN** the feature list in the store is replaced with the latest disk snapshot
 
+#### Scenario: validator features are injected after worker completion
+- **WHEN** `progress_log.jsonl` appends `milestone_validation_triggered` and `features.json` gains validator features for the same milestone
+- **THEN** the store updates total features and feature ordering from disk
+- **AND** it does not infer Mission completion solely from the earlier implementation `worker_completed`
+
 #### Scenario: progress_log.jsonl appends entries
 - **WHEN** disk poll reads new lines from `progress_log.jsonl`
 - **THEN** the store appends only unseen progress events
@@ -81,6 +86,11 @@ The system SHALL reconcile data from notification channel and disk channel using
 #### Scenario: handoff files appear
 - **WHEN** new files are added under `handoffs/`
 - **THEN** the store merges the newly discovered handoff records without clearing already loaded handoffs
+
+#### Scenario: implementation handoff exists while mission keeps running
+- **WHEN** a handoff file for a completed implementation feature is present but Mission state remains `running`
+- **THEN** the handoff stays in store
+- **AND** later validator-driven feature updates do not clear it
 
 ### Requirement: Crash recovery from disk
 The system SHALL recover mission state purely from missionDir files when the app restarts.
@@ -118,6 +128,11 @@ The system SHALL handle Mission runs that fail before any worker successfully st
 #### Scenario: Mission becomes paused after daemon failure
 - **WHEN** the Mission receives `mission_state_changed: orchestrator_turn` followed by `mission_state_changed: paused` after a daemon-related failure
 - **THEN** the renderer keeps both the failure context and the final paused state visible to the user
+
+#### Scenario: Mission becomes paused after user kills a worker
+- **WHEN** progress log records `worker_failed` with reason `Killed by user` followed by `mission_paused`
+- **THEN** the renderer preserves that user-kill reason in Mission state
+- **AND** it does not classify the event as daemon failure or generic infrastructure loss
 
 ### Requirement: Mission IPC handlers
 The system SHALL expose IPC handlers for mission-related operations: `mission:watch-start`, `mission:watch-stop`, `mission:read-dir`, `mission:kill-worker`.
