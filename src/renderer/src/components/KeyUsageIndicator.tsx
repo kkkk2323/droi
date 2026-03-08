@@ -19,14 +19,14 @@ export function KeyUsageIndicator({ className }: { className?: string }) {
   const usage = activeKey?.usage
   const percent = usage?.total ? Math.round(((usage.used || 0) / usage.total) * 100) : null
 
+  if (percent !== null && percent < 60) return null
+
   const color =
     percent === null
       ? 'text-muted-foreground'
       : percent >= 80
         ? 'text-red-500'
-        : percent >= 60
-          ? 'text-yellow-500'
-          : 'text-emerald-500'
+        : 'text-yellow-500'
 
   return (
     <TooltipProvider>

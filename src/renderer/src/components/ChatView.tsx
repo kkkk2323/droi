@@ -159,30 +159,16 @@ function ChatView({
         className="flex flex-1 items-center justify-center px-6"
       >
         <div className="w-full max-w-2xl space-y-5">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-              {noProject ? (
-                <FolderOpen className="size-7 text-muted-foreground" />
-              ) : (
-                <Terminal className="size-7 text-muted-foreground" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-base font-medium text-foreground">
-                {noProject ? 'Select a Project' : 'What would you like to build?'}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {noProject
-                  ? 'Add a project from the sidebar to get started'
-                  : 'Describe a task and Droi will execute it'}
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h2 className="text-base font-medium text-foreground">
+              {noProject ? 'Select a Project' : 'What would you like to build?'}
+            </h2>
+            {!noProject && projectName && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+                <FolderOpen className="size-3" />
+                <span className="font-mono">{projectName}</span>
               </p>
-              {!noProject && projectName && (
-                <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
-                  <FolderOpen className="size-3" />
-                  <span className="font-mono">{projectName}</span>
-                </p>
-              )}
-            </div>
+            )}
           </div>
 
           {showBootstrapCards && (

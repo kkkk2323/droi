@@ -612,7 +612,6 @@ export function InputBar({
                       const active = i === slashHighlightedIndex
                       const isSkill = item.type === 'skill'
                       const isBuiltin = item.type === 'builtin'
-                      const scope = (item.def as any).scope
                       const desc = isBuiltin
                         ? (item.def as BuiltinCommandDef).description
                         : isSkill
@@ -650,16 +649,6 @@ export function InputBar({
                             {!isSkill && !isBuiltin && (
                               <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[10px] text-zinc-700">
                                 command
-                              </span>
-                            )}
-                            {scope === 'project' && (
-                              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">
-                                project
-                              </span>
-                            )}
-                            {scope === 'user' && (
-                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                user
                               </span>
                             )}
                           </div>

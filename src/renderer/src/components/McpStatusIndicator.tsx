@@ -17,12 +17,12 @@ export function McpStatusIndicator({ className }: { className?: string }) {
   const connecting = typed.filter((s) => s.status === 'connecting')
   const errored = typed.filter((s) => s.status === 'error' || s.status === 'failed')
 
+  if (errored.length === 0 && connecting.length === 0) return null
+
   const color =
     errored.length > 0
       ? 'text-red-500'
-      : connecting.length > 0
-        ? 'text-yellow-500'
-        : 'text-emerald-500'
+      : 'text-yellow-500'
 
   const Icon =
     connecting.length > 0 && connected.length === 0
