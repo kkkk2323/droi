@@ -250,7 +250,7 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
                 <button
                   key={opt}
                   type="button"
-                  className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-[0.98]"
+                  className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-[0.995]"
                   onClick={() => onRespond({ selectedOption: opt })}
                 >
                   {permissionLabel(opt)}
