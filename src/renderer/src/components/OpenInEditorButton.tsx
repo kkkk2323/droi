@@ -13,6 +13,11 @@ import type { EditorInfo } from '@/types'
 import { useEditorsQuery } from '@/hooks/useEditors'
 import { EDITOR_ICON_MAP } from '@/components/EditorIcons'
 
+function EditorIcon({ editorId, className }: { editorId?: string; className?: string }) {
+  const Icon = editorId ? EDITOR_ICON_MAP[editorId] : null
+  return Icon ? <Icon className={className} /> : <FolderOpen className={className} />
+}
+
 interface OpenInEditorButtonProps {
   dir: string
 }
@@ -79,11 +84,7 @@ export function OpenInEditorButton({ dir }: OpenInEditorButtonProps) {
         title={`Open in ${effectiveDefault?.name || 'editor'}`}
         onClick={handleDefaultClick}
       >
-        {effectiveDefault &&
-          (() => {
-            const Icon = EDITOR_ICON_MAP[effectiveDefault.id]
-            return Icon ? <Icon className="size-3.5" /> : <FolderOpen className="size-3.5" />
-          })()}
+        <EditorIcon editorId={effectiveDefault?.id} className="size-3.5" />
         <span className="text-xs font-medium">Open</span>
       </button>
       <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -96,19 +97,16 @@ export function OpenInEditorButton({ dir }: OpenInEditorButtonProps) {
         <DropdownMenuContent align="end" sideOffset={6}>
           <DropdownMenuGroup>
             <DropdownMenuLabel>Open in</DropdownMenuLabel>
-            {editors.map((editor) => {
-              const Icon = EDITOR_ICON_MAP[editor.id]
-              return (
-                <DropdownMenuItem
-                  key={editor.id}
-                  className="gap-2"
-                  onClick={() => handleOpen(editor)}
-                >
-                  {Icon ? <Icon className="size-4" /> : <FolderOpen className="size-4" />}
-                  <span>{editor.name}</span>
-                </DropdownMenuItem>
-              )
-            })}
+            {editors.map((editor) => (
+              <DropdownMenuItem
+                key={editor.id}
+                className="gap-2"
+                onClick={() => handleOpen(editor)}
+              >
+                <EditorIcon editorId={editor.id} className="size-4" />
+                <span>{editor.name}</span>
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
