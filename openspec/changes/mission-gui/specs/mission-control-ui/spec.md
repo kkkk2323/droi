@@ -70,7 +70,7 @@ The system SHALL provide a Kill Worker button that sends `droid.kill_worker_sess
 
 #### Scenario: User kills current worker
 - **WHEN** a worker is actively running and user clicks Kill Worker
-- **THEN** the system sends the kill command for the current worker session
+- **THEN** the system sends the kill command using the current `workerSessionId`
 - **AND** the UI shows a brief confirmation
 
 #### Scenario: Kill Worker button visibility
@@ -89,6 +89,11 @@ The system SHALL render specialized permission cards for `propose_mission` and `
 #### Scenario: StartMissionRun permission
 - **WHEN** a `droid.request_permission` arrives with `confirmationType: "start_mission_run"`
 - **THEN** the PermissionCard shows "Start Mission Run" / "Cancel" options
+
+#### Scenario: StartMissionRun permission is absent
+- **WHEN** a Mission run starts without a preceding `start_mission_run` permission request
+- **THEN** the Mission UI still handles the run correctly
+- **AND** it does not assume a missing permission request is an error
 
 ### Requirement: Mission page reuses existing conversation shell
 The system SHALL keep Mission chat interactions consistent with the existing chat experience by preserving permission prompts, ask-user prompts, todo visibility, and debug trace behavior on MissionPage.
@@ -120,6 +125,19 @@ The system SHALL let the user continue a paused Mission by sending a normal chat
 - **WHEN** mission state is `paused` and user sends a chat message such as `continue`
 - **THEN** the message is sent through the existing orchestrator session
 - **AND** the system allows the orchestrator to decide whether to call `start_mission_run` again
+
+### Requirement: Daemon failure messaging
+The system SHALL surface daemon / factoryd failures returned by Mission execution so the user can understand why the Mission paused without any worker progress.
+
+#### Scenario: StartMissionRun returns daemon recovery instructions
+- **WHEN** a `StartMissionRun` tool_result includes a `systemMessage` describing a daemon or `factoryd` failure
+- **THEN** the UI displays that message or an equivalent user-facing explanation
+- **AND** the user can see that the Mission paused due to infrastructure failure rather than normal feature completion
+
+#### Scenario: Mission pauses after daemon failure
+- **WHEN** progress log shows `worker_failed` followed by `mission_paused`
+- **THEN** the UI distinguishes this state from a user-initiated Pause action
+- **AND** it avoids presenting the paused Mission as if a worker had successfully started
 
 ### Requirement: Mission status bar (always visible)
 The system SHALL display a compact status bar at the bottom of MissionPage showing mission state, current feature, and worker info. The bar MUST be visible in both Chat and MissionControl views. It MUST have `data-testid="mission-statusbar"`.

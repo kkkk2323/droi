@@ -23,6 +23,14 @@ The system SHALL process `mission_*` type notifications from `droid.session_noti
 - **WHEN** a notification with `type: "mission_worker_completed"` arrives
 - **THEN** the store clears currentWorkerSessionId and increments completedFeatures
 
+### Requirement: StartMissionRun progress updates may supplement Mission notifications
+The system SHALL support `tool_progress_update` payloads emitted for `StartMissionRun` as an auxiliary state source, without replacing the authoritative Mission notifications and missionDir state.
+
+#### Scenario: StartMissionRun emits status details
+- **WHEN** a `tool_progress_update` arrives with `toolName: "StartMissionRun"`
+- **THEN** the system may parse its status details for `missionState`, progress counters, current feature, and current worker metadata
+- **AND** it treats that data as supplemental UI state rather than the sole source of truth
+
 ### Requirement: MissionDir path extraction
 The system SHALL extract the missionDir path from the `ProposeMission` tool_result notification and store it in the SessionBuffer. The path follows the pattern `~/.factory/missions/<baseSessionId>`.
 
@@ -85,6 +93,31 @@ The system SHALL recover mission state purely from missionDir files when the app
 #### Scenario: Worker orphan indication
 - **WHEN** state.json shows `currentWorkerSessionId` but the worker is no longer running (orphan)
 - **THEN** the UI shows the mission state as recovered from disk without assuming the worker is still active
+
+### Requirement: `droid.load_session` snapshot participates in recovery
+The system SHALL consume Mission snapshot data returned by `droid.load_session` when available, then reconcile it with missionDir state.
+
+#### Scenario: load_session returns paused Mission snapshot
+- **WHEN** `droid.load_session` returns a Mission snapshot containing `mission.state`, `mission.features`, and `mission.progressLog`
+- **THEN** the renderer uses that snapshot to render the restored Mission immediately
+- **AND** missionDir polling/watch continues to reconcile any newer disk state
+
+#### Scenario: load_session and missionDir disagree
+- **WHEN** `droid.load_session` returns Mission data that differs from the current missionDir files
+- **THEN** the system prefers the more complete or newer view during bootstrap
+- **AND** the missionDir watcher becomes the long-lived correction source afterward
+
+### Requirement: Daemon failure is modeled as a supported Mission state transition
+The system SHALL handle Mission runs that fail before any worker successfully starts, including daemon / factoryd failures that return control to the orchestrator and ultimately pause the Mission.
+
+#### Scenario: worker fails before a workerSessionId exists
+- **WHEN** progress log records `worker_failed` due to daemon or spawn failure and there is no active `workerSessionId`
+- **THEN** the system preserves that failure event in Mission state
+- **AND** it does not assume `mission_worker_started` must have occurred first
+
+#### Scenario: Mission becomes paused after daemon failure
+- **WHEN** the Mission receives `mission_state_changed: orchestrator_turn` followed by `mission_state_changed: paused` after a daemon-related failure
+- **THEN** the renderer keeps both the failure context and the final paused state visible to the user
 
 ### Requirement: Mission IPC handlers
 The system SHALL expose IPC handlers for mission-related operations: `mission:watch-start`, `mission:watch-stop`, `mission:read-dir`, `mission:kill-worker`.

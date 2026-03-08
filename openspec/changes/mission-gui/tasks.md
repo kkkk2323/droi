@@ -10,7 +10,7 @@
 - [ ] 2.1 Extend `DroidJsonRpcSession.ensureInitialized` to accept and pass explicit `interactionMode` and `decompSessionType`
 - [ ] 2.2 Extend `DroidExecManager` / `DroidJsonRpcManager` create-send-update paths to carry explicit Mission session settings instead of deriving them only from `autoLevel`
 - [ ] 2.3 Add a Mission guard to `updateSessionSettings` so Mission sessions cannot be downgraded back to normal `spec/auto` settings after creation
-- [ ] 2.4 Add `killWorkerSession` support in `DroidJsonRpcSession`, `DroidJsonRpcManager`, and `DroidExecManager`
+- [ ] 2.4 Add `killWorkerSession` support in `DroidJsonRpcSession`, `DroidJsonRpcManager`, and `DroidExecManager`, passing the live `workerSessionId`
 
 ## 3. Backend: Electron-only Mission Disk Sync
 
@@ -31,8 +31,10 @@
 - [ ] 5.1 Add `sessionKind` to the new-session state model without overloading existing `PendingNewSessionMode`
 - [ ] 5.2 Extend `SessionBuffer` with explicit session protocol settings plus `mission` state data
 - [ ] 5.3 Implement `applyMissionNotification` in `appReducer.ts` for `mission_*` notifications and Mission-specific permission metadata
-- [ ] 5.4 Implement `applyMissionDiskData` with per-file reconciliation rules: `state.json` by `updatedAt`, `features.json` by snapshot replacement, `progress_log.jsonl` by append/dedupe, `handoffs/` by file merge
-- [ ] 5.5 Persist and restore Mission session metadata, including Mission protocol settings and missionDir recovery on app start
+- [ ] 5.4 Consume `droid.load_session` mission snapshot during restore before watcher-based reconciliation begins
+- [ ] 5.5 Implement `applyMissionDiskData` with per-file reconciliation rules: `state.json` by `updatedAt`, `features.json` by snapshot replacement, `progress_log.jsonl` by append/dedupe, `handoffs/` by file merge
+- [ ] 5.6 Parse `tool_progress_update` for `StartMissionRun` as an auxiliary real-time state source
+- [ ] 5.7 Persist and restore Mission session metadata, including Mission protocol settings and missionDir recovery on app start
 
 ## 6. Routing, Navigation, and Session Creation UX
 
@@ -49,6 +51,7 @@
 - [ ] 7.3 Disable InputBar while Mission state is `running`, show the Mission-specific placeholder, and surface Pause inline or adjacent
 - [ ] 7.4 Add auto-switch logic: `running -> mission-control`, `paused/orchestrator_turn -> chat`, with a 30s manual override cooldown
 - [ ] 7.5 Add a bottom Mission status bar (`data-testid="mission-statusbar"`) that remains visible in both views
+- [ ] 7.6 Surface daemon/factoryd failure `systemMessage` and explain whether the Mission paused automatically or needs a manual retry / app restart
 
 ## 8. Mission Control UI
 
@@ -61,13 +64,17 @@
 
 - [ ] 9.1 Update `PermissionCard` to render Mission-specific labels for `propose_mission` and `start_mission_run`
 - [ ] 9.2 Preserve enough permission metadata in renderer state so Mission-specific UI does not have to parse raw request payloads repeatedly
-- [ ] 9.3 Treat Mission “resume” as normal chat continuation when state is `paused` or `orchestrator_turn`; do not add a separate Resume RPC button in this change
+- [ ] 9.3 Treat `start_mission_run` permission as optional / conditional instead of a guaranteed pre-run step
+- [ ] 9.4 Treat Mission “resume” as normal chat continuation when state is `paused` or `orchestrator_turn`; do not add a separate Resume RPC button in this change
+- [ ] 9.5 Distinguish user-initiated Pause from daemon-failure-driven `paused` state in UI copy and control availability
 
 ## 10. Testing & Validation
 
 - [ ] 10.1 Extend `test/interactionModeHotSwitch.test.ts` to verify Mission sessions retain `agi/orchestrator` settings across subsequent sends and updates
 - [ ] 10.2 Extend `test/sessionStore.test.ts` to verify Mission session persistence and restore
-- [ ] 10.3 Extend `test/rpcNotificationMapping.test.ts` for Mission notification mapping and reconciliation behavior
+- [ ] 10.3 Extend `test/rpcNotificationMapping.test.ts` for Mission notification mapping, `tool_progress_update`, and reconciliation behavior
 - [ ] 10.4 Add focused tests for `missionDirReader` / `missionDirWatcher`
-- [ ] 10.5 Add Electron-surface integration coverage for create → propose → accept → run → pause → continue → complete
-- [ ] 10.6 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test`
+- [ ] 10.5 Add restore coverage for `droid.load_session` returning a paused Mission snapshot
+- [ ] 10.6 Add Electron-surface integration coverage for create → propose → accept → run → pause/daemon-failure → continue → complete
+- [ ] 10.7 Add a live or manual verification checklist for `kill_worker_session` once the daemon blocker is resolved
+- [ ] 10.8 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test`

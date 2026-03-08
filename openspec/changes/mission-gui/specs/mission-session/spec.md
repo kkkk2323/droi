@@ -53,6 +53,19 @@ The system SHALL persist enough metadata to restore a Mission session after app 
 - **AND** it restores the Mission protocol settings without re-inferring them from `autoLevel`
 - **AND** it navigates to `/mission`
 
+### Requirement: Mission restore can consume `droid.load_session` snapshot
+The system SHALL support Mission recovery using the `droid.load_session` response in addition to local metadata and missionDir state.
+
+#### Scenario: load_session returns Mission snapshot
+- **WHEN** renderer or backend loads an existing Mission session via `droid.load_session`
+- **THEN** the system reads the returned `decompSessionType`, current settings, and `mission` snapshot if present
+- **AND** it uses that snapshot to bootstrap the restored session before missionDir reconciliation completes
+
+#### Scenario: Transient settings updates arrive during Mission init
+- **WHEN** initialization emits early `settings_updated` notifications before the final Mission settings settle
+- **THEN** the system does not classify the session as non-Mission based on those transient values alone
+- **AND** it preserves the explicit Mission session metadata as the source of truth
+
 ### Requirement: Sidebar Mission session indicator
 The system SHALL display a visual indicator (icon or badge) on Mission sessions in the sidebar to distinguish them from normal sessions. The sidebar item MUST have `data-testid="session-mission-{sessionId}"`.
 

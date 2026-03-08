@@ -11,6 +11,7 @@ Droid CLI 0.65.0 的 Missions 模式通过 stream-jsonrpc 协议暴露给 GUI，
 - Mission worker 是 factoryd 内部的 session（不是 GUI 管理的子进程）
 - Mission 状态通过两个通道获取：notification（实时）和 missionDir 磁盘文件（权威）
 - 当前 Droi 发送链路仍然依赖 `autoLevel -> interactionMode(spec/auto)` 的推导，这不足以表达 Mission 需要的 `interactionMode: "agi"`
+- 基于本地 `droid exec` 0.70.0 的事实核查，已确认 `initialize_session(agi + orchestrator)`、`propose_mission`、`load_session`、普通消息 continue 均可工作；同时也确认 `start_mission_run` 权限是条件性的，且 daemon 故障会把 mission 自动带到 `paused`
 
 ## Goals / Non-Goals
 
@@ -96,24 +97,34 @@ Mission session 固定使用：
 - Mission 状态与 session 强绑定（1:1 关系），放在 SessionBuffer 里语义更清晰
 - 现有的 notification 处理管道（`handleRpcNotification`）已经按 sessionId 路由，扩展最小侵入
 - 磁盘数据也按 sessionId 关联
+- `droid.load_session` 已实际返回 `mission.state`、`mission.features`、`mission.progressLog` 等 snapshot，可直接作为恢复首屏数据
 
 **替代方案**：独立的 Zustand slice -- 会引入 session 与 mission 状态同步的复杂度。
 
 ### D6: 双通道数据合并按文件类型分别定义规则
 
-**决定**：notification channel 继续用于低延迟 UI，磁盘 channel 作为权威恢复源；但合并规则不能只靠一个通用 `updatedAt`。具体规则：
+**决定**：恢复时优先消费 `droid.load_session` 返回的 mission snapshot，再由 notification channel 和磁盘 channel 做增量同步；磁盘仍然是最终权威恢复源。具体规则：
 
-1. **notification 到达**：立即更新 store（低延迟）
-2. **磁盘 poll**（间隔 2s，通过 main process 的 MissionDirWatcher）：
+1. **load_session**：如果返回 `mission` snapshot，先把它写入 store，避免页面首次恢复时完全空白
+2. **notification 到达**：立即更新 store（低延迟）
+3. **磁盘 poll**（间隔 2s，通过 main process 的 MissionDirWatcher）：
    - `state.json`：按 `updatedAt` 覆盖 mission state
    - `features.json`：按文件快照整体替换 feature 列表
    - `progress_log.jsonl`：按事件 identity 追加去重，不能整表覆盖
    - `handoffs/`：按文件名或 handoff id 合并，保留已读取条目
-3. **首次加载/恢复**：纯从磁盘读取，不依赖 notification history
+4. **首次加载/恢复**：允许 `load_session` 与磁盘读并行；若两者冲突，以更新更完整的一方覆盖，再由 watcher 持续校正
 
 **理由**：Mission 文件并不是统一的单对象 schema；如果简单用一个 `updatedAt` 决定全量覆盖，会丢失 append-only 日志和多文件 handoff 数据。
 
 **文件监听方式**：使用 Node.js 原生 `fs.watch` + setInterval poll 兜底。不引入 chokidar（项目未安装且 mission 文件数量少，原生 watch 足够）。
+
+### D6.5: `tool_progress_update(StartMissionRun)` 作为辅助实时数据源
+
+**决定**：GUI 继续以 `mission_*` 通知和 missionDir 为主，但可以额外消费 `tool_progress_update` 中 `toolName = "StartMissionRun"` 的 status payload，作为 UI 的辅助状态来源。
+
+**理由**：事实核查显示该 payload 会携带 `missionState`、`currentFeatureId`、`currentWorkerSessionId`、`completedFeatures`、`totalFeatures` 和 feature 摘要，可在 watcher 还没追上时提升实时性。
+
+**替代方案**：完全忽略 `tool_progress_update` -- 可以工作，但会放弃一个现成的低延迟状态源。
 
 ### D7: Pause 后的“继续执行”通过普通对话驱动，不定义单独 Resume RPC
 
@@ -122,6 +133,14 @@ Mission session 固定使用：
 **理由**：根据现有 mission 文档与实测行为，恢复通常表现为 orchestrator 在收到后续消息后再次调用 `start_mission_run`，而不是一个独立、稳定的 Resume RPC。
 
 **替代方案**：设计一个单独的 Resume 按钮和 RPC -- 产品语义看似简单，但容易与实际协议行为脱节。
+
+### D7.5: `start_mission_run` permission 是条件性的
+
+**决定**：GUI 需要支持 `confirmationType = "start_mission_run"`，但不能假设每次 run 都会先触发该 permission。
+
+**理由**：事实核查中该 permission 在真实 HOME 环境出现，但在隔离 HOME 的运行中没有出现；说明它受运行环境或并发 Mission 状态影响。
+
+**替代方案**：把 `start_mission_run` 写成必经权限步骤 -- 会让 UI 逻辑对实际运行时产生错误假设。
 
 ### D8: Chat/MissionControl 视图自动切换
 
@@ -146,6 +165,18 @@ Mission session 固定使用：
 
 **理由**：对齐 CLI 行为（running 时消息不会被接收）。禁用而非隐藏，让用户知道可以暂停后操作。
 
+### D11: daemon / factoryd 故障必须作为一等 UI 状态处理
+
+**决定**：当 `start_mission_run` 返回带 `systemMessage` 的 tool_result，或 progress log 出现 `worker_failed` 且原因是 daemon/factoryd 连接问题时，GUI 必须：
+
+- 展示错误原因与 runner 的 systemMessage
+- 接受 runner 推荐的一次自动重试结果
+- 在第二次失败后把 Mission 视为已回到 `paused` / `orchestrator_turn`，允许用户恢复或退出
+
+**理由**：真实运行中 Mission 可能在尚未产生任何 worker session 前就因为 `factoryd authentication failed` 进入 `paused`。如果 UI 只把 `paused` 当作用户手动点击 Pause 的结果，会误导用户并丢失关键恢复信息。
+
+**替代方案**：仅依赖 `worker_started/worker_completed` 的 happy path -- 无法覆盖已经在本地实测出现的 daemon 故障闭环。
+
 ## Risks / Trade-offs
 
 - **[Risk] fs.watch 跨平台可靠性** → Mitigation: setInterval poll 兜底（每 2s），fs.watch 仅用作"加速检测"。即使 watch 不触发，poll 也能保证 2s 内同步。
@@ -153,6 +184,10 @@ Mission session 固定使用：
 - **[Risk] Mission session 与普通 session 的设置流混用** → Mitigation: 在 store、shared protocol、backend manager 三层保存显式 Mission 协议字段，并在 `updateSessionSettings` 上增加 Mission guard。
 
 - **[Risk] Mission notification 类型不在 protocol.ts 中** → Mitigation: 为常用 `mission_*` 通知补充显式类型，同时保留兼容性兜底。
+
+- **[Risk] `start_mission_run` permission 不是稳定前置条件** → Mitigation: UI 支持该 permission，但状态机不依赖它必然出现。
+
+- **[Risk] daemon/factoryd 故障会在没有 workerSessionId 的情况下让 run 失败** → Mitigation: 把 `worker_failed + systemMessage + mission_paused` 视为正式支持的失败路径，并在 UI 中提供清晰恢复提示。
 
 - **[Risk] missionDir 在 GUI 首次启动时不存在** → Mitigation: MissionDirWatcher 在检测到 missionDir 后才开始监听，之前不报错。
 

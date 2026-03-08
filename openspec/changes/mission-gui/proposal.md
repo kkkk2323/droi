@@ -10,7 +10,9 @@ Droi 当前只把 session 当作普通 chat session 处理，主链路依赖 `au
 - 为 session 引入显式协议字段：`interactionMode`、`autonomyLevel`、`decompSessionType`、`isMission`，Mission session 创建后这些字段必须被锁定并在后续 send/load/save 流程中保留
 - 新增 Electron-only 的 `/mission` 页面，在同一 orchestrator session 上切换 Chat / Mission Control 两个视图
 - Mission Control 展示 Feature Queue、Mission 状态、Progress Timeline、Handoff 摘要，以及 Pause / Kill Worker 操作
+- `load_session` 恢复时优先消费 CLI 返回的 mission snapshot，再由 `missionDir` 继续校正与补全
 - 通过 Electron main/preload IPC 建立 Mission 磁盘同步：`mission_*` notifications 用于低延迟更新，`~/.factory/missions/<baseSessionId>/` 磁盘文件作为恢复与校正来源
+- 支持 Mission 运行中的异常闭环：`start_mission_run` 权限按实际需要渲染、展示 `systemMessage` / daemon 错误、允许单次自动重试，并在失败后正确呈现 `paused`
 - Mission 运行中禁用 InputBar；当 state 进入 `paused` 或 `orchestrator_turn` 时，用户通过普通 chat 输入继续推进 mission，而不是依赖单独的 Resume RPC
 - PermissionCard、Sidebar、Session 恢复流程增加 Mission 感知，并为新增 UI 提供 `data-testid`
 
@@ -28,7 +30,7 @@ Droi 当前只把 session 当作普通 chat session 处理，主链路依赖 `au
 ## Impact
 
 - **Renderer 层**：调整 new-session 状态模型，引入 `sessionKind` 与 Mission 专用状态；新增 MissionPage 与 Mission 控件；让 Mission 页面复用现有对话外壳能力
-- **Backend 层**：扩展 `DroidJsonRpcSession` / manager 的显式协议参数传递与 Mission guard；新增 `missionDir` reader/watcher 与 Mission IPC handlers
+- **Backend 层**：扩展 `DroidJsonRpcSession` / manager 的显式协议参数传递与 Mission guard；新增 `missionDir` reader/watcher 与 Mission IPC handlers；处理 `load_session` mission snapshot 与 daemon 故障反馈
 - **Shared / Preload 层**：为显式 session 协议字段、Mission 数据类型和 Electron IPC bridge 增加类型定义
 - **Scope**：本变更只覆盖 Electron 桌面端；现有 Web/LAN 路径不纳入本次实现
 - **依赖**：不新增文件监听依赖，沿用 Node.js 原生 `fs.watch` + poll fallback
