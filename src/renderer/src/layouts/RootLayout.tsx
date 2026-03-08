@@ -24,6 +24,14 @@ import {
   usePendingNewSession,
 } from '@/store'
 import { isBrowserMode } from '@/droidClient'
+import { cn } from '@/lib/utils'
+
+const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
+
+const isMacElectron =
+  !isBrowserMode() &&
+  typeof navigator !== 'undefined' &&
+  (navigator.userAgent.includes('Macintosh') || navigator.userAgent.includes('Mac OS X'))
 
 function InnerLayout() {
   const activeProjectDir = useActiveProjectDir()
@@ -33,53 +41,44 @@ function InnerLayout() {
   const workspaceError = useWorkspaceError()
   const { clearWorkspaceError } = useActions()
   const { open } = useSidebar()
-  const isMacElectron =
-    !isBrowserMode() &&
-    typeof navigator !== 'undefined' &&
-    (navigator.userAgent.includes('Macintosh') || navigator.userAgent.includes('Mac OS X'))
 
   return (
     <>
       <AppSidebar />
       <SidebarInset>
         <header
-          className="flex h-10 shrink-0 items-center gap-2 pr-4"
-          style={
-            {
-              WebkitAppRegion: 'drag',
-              paddingLeft: isMacElectron ? (open ? '3rem' : '7rem') : open ? '1rem' : '6.5rem',
-              transition: 'padding-left 200ms ease-linear',
-            } as React.CSSProperties
-          }
+          className={cn(
+            'flex h-10 shrink-0 items-center gap-2 pt-2 pr-4 transition-[padding-left] duration-200 ease-linear',
+            isMacElectron
+              ? open ? 'pl-12' : 'pl-28'
+              : open ? 'pl-4' : 'pl-26',
+          )}
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           {isMacElectron ? (
             <div
-              className="fixed top-[4px] left-0 z-10 flex h-10 items-center pl-20"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              className="fixed top-1 left-0 z-10 flex h-10 items-center pl-20"
+              style={noDrag}
             >
               <SidebarTrigger
                 data-testid="sidebar-trigger"
                 className="shrink-0 size-6 p-0"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               />
             </div>
           ) : (
             <SidebarTrigger
               data-testid="sidebar-trigger"
               className="shrink-0 size-6 p-0"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              style={noDrag}
             />
           )}
           {!pendingNewSession && activeSessionTitle && (
-            <div className="pt-2 flex-1 max-w-[200px] truncate text-sm font-medium text-foreground">
+            <div className="flex-1 max-w-48 truncate text-sm font-medium text-foreground">
               {activeSessionTitle}
             </div>
           )}
           {!pendingNewSession && (
-            <div
-              className="ml-auto pt-2 flex items-center gap-1.5"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            >
+            <div className="ml-auto flex items-center gap-1.5" style={noDrag}>
               {activeProjectDir && <OpenInEditorButton dir={activeProjectDir} />}
               <WorktreeIndicator />
               <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />

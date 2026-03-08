@@ -62,7 +62,7 @@ export function OpenInEditorButton({ dir }: OpenInEditorButtonProps) {
     return (
       <button
         type="button"
-        className="flex size-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         title="Open in Finder"
         onClick={() => getDroidClient().openInEditor({ dir })}
       >
@@ -72,7 +72,7 @@ export function OpenInEditorButton({ dir }: OpenInEditorButtonProps) {
   }
 
   return (
-    <div className="flex items-center rounded-lg border border-border overflow-hidden">
+    <div className="flex items-center rounded-md border border-border overflow-hidden">
       <button
         type="button"
         className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
