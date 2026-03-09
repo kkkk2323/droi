@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { PanelsLeftRight, MessagesSquare } from 'lucide-react'
 
 import { ChatPage } from './ChatPage'
+import { MissionControlPanel } from '@/components/mission-control-panel'
 import { Button } from '@/components/ui/button'
 import { useAppStore, useActiveSessionId } from '@/store'
 import {
@@ -10,29 +11,6 @@ import {
   shouldApplyMissionAutoSwitch,
   type MissionViewMode,
 } from '@/lib/missionPage'
-
-function MissionControlPlaceholder() {
-  return (
-    <div
-      data-testid="mission-control-view"
-      className="flex flex-1 items-center justify-center px-6 py-8"
-    >
-      <div className="w-full max-w-3xl rounded-2xl border border-border bg-card px-6 py-8 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-muted">
-            <PanelsLeftRight className="size-5 text-muted-foreground" />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Mission Control</h2>
-            <p className="text-sm text-muted-foreground">
-              Mission-specific control panels stay on the same orchestrator session.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function MissionStatusBar() {
   const activeSessionId = useActiveSessionId()
@@ -136,7 +114,7 @@ export function MissionPage() {
             }
           />
         ) : (
-          <MissionControlPlaceholder />
+          <MissionControlPanel mission={mission} />
         )}
       </div>
 
