@@ -55,6 +55,20 @@ export interface CreateSessionParams {
   env?: Record<string, string | undefined>
 }
 
+export interface LoadSessionSnapshotParams {
+  sessionId: string
+  cwd: string
+  machineId: string
+  modelId?: string
+  interactionMode?: DroidInteractionMode
+  autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
+  reasoningEffort?: string
+  env?: Record<string, string | undefined>
+}
+
 export interface UpdateSessionSettingsParams {
   sessionId: string
   modelId?: string
@@ -187,6 +201,35 @@ export class DroidJsonRpcManager {
       const id = String(init.engineSessionId || '').trim()
       if (!id) throw new Error('initialize_session did not return sessionId')
       return id
+    } finally {
+      session.dispose()
+    }
+  }
+
+  async loadSessionSnapshot(
+    params: LoadSessionSnapshotParams,
+  ): Promise<Record<string, unknown> | null> {
+    const tempSessionId = `load-${randomUUID()}`
+    const session = new DroidJsonRpcSession({
+      droidPath: this.droidPath,
+      sessionId: tempSessionId,
+      cwd: params.cwd,
+      machineId: params.machineId,
+      env: params.env || {},
+      diagnostics: this.diagnostics,
+      onEvent: () => {},
+    })
+
+    try {
+      const protocol = this.resolveProtocol(params)
+      await session.ensureInitialized({
+        modelId: params.modelId,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        reasoningEffort: params.reasoningEffort,
+      })
+      return await session.loadSessionSnapshot(params.sessionId)
     } finally {
       session.dispose()
     }

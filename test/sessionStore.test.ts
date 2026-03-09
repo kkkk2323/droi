@@ -4,6 +4,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSessionStore } from '../src/backend/storage/sessionStore.ts'
+import { buildRestoredSessionBuffer } from '../src/renderer/src/state/sessionRestore.ts'
 
 test('sessionStore save/load/list roundtrip', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
@@ -241,4 +242,147 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(loadedReplaced?.autonomyLevel, 'high')
   assert.equal(loadedReplaced?.decompSessionType, 'orchestrator')
   assert.equal(loadedReplaced?.missionDir, '/Users/clive/.factory/missions/mission_1')
+})
+
+test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across lifecycle stages', () => {
+  const baseMeta = {
+    autoLevel: 'high',
+    isMission: true,
+    sessionKind: 'mission' as const,
+    interactionMode: 'agi' as const,
+    autonomyLevel: 'high' as const,
+    decompSessionType: 'orchestrator' as const,
+    missionDir: '/Users/clive/.factory/missions/base-session-123',
+    model: 'gpt-5.4',
+  }
+
+  const stages = [
+    {
+      label: 'running',
+      mission: {
+        state: {
+          state: 'running',
+          currentFeatureId: 'feature-1',
+          currentWorkerSessionId: 'worker-live',
+          completedFeatures: 0,
+          totalFeatures: 2,
+          updatedAt: '2026-03-09T00:00:00.000Z',
+        },
+        features: [
+          { id: 'feature-1', status: 'in_progress' },
+          { id: 'feature-2', status: 'pending' },
+        ],
+        progressLog: [{ timestamp: '2026-03-09T00:00:01.000Z', type: 'worker_started' }],
+      },
+      expectedState: 'running',
+      expectedCompleted: false,
+    },
+    {
+      label: 'paused',
+      mission: {
+        state: {
+          state: 'paused',
+          currentFeatureId: 'feature-1',
+          completedFeatures: 0,
+          totalFeatures: 2,
+          updatedAt: '2026-03-09T00:02:00.000Z',
+        },
+        features: [
+          { id: 'feature-1', status: 'in_progress' },
+          { id: 'feature-2', status: 'pending' },
+        ],
+      },
+      expectedState: 'paused',
+      expectedCompleted: false,
+    },
+    {
+      label: 'validator-injected running',
+      mission: {
+        state: {
+          state: 'running',
+          currentFeatureId: 'scrutiny-validator',
+          currentWorkerSessionId: 'validator-worker',
+          completedFeatures: 1,
+          totalFeatures: 3,
+          updatedAt: '2026-03-09T00:04:00.000Z',
+        },
+        features: [
+          { id: 'feature-1', status: 'completed' },
+          { id: 'scrutiny-validator', status: 'in_progress', skillName: 'scrutiny-validator' },
+          {
+            id: 'user-testing-validator',
+            status: 'pending',
+            skillName: 'user-testing-validator',
+          },
+        ],
+        handoffs: {
+          'feature-1.json': { featureId: 'feature-1', successState: 'success' },
+        },
+        validationState: {
+          assertions: {
+            'VAL-001': { status: 'pending' },
+          },
+        },
+      },
+      expectedState: 'running',
+      expectedCompleted: false,
+    },
+    {
+      label: 'completed',
+      mission: {
+        state: {
+          state: 'completed',
+          completedFeatures: 2,
+          totalFeatures: 2,
+          updatedAt: '2026-03-09T00:06:00.000Z',
+        },
+        features: [
+          { id: 'feature-1', status: 'completed' },
+          { id: 'feature-2', status: 'completed' },
+        ],
+        validationState: {
+          assertions: {
+            'VAL-001': { status: 'passed' },
+            'VAL-002': { status: 'passed' },
+          },
+        },
+      },
+      expectedState: 'completed',
+      expectedCompleted: true,
+    },
+  ]
+
+  for (const stage of stages) {
+    const restored = buildRestoredSessionBuffer({
+      projectDir: '/repo',
+      workspace: { repoRoot: '/repo', workspaceDir: '/repo', branch: 'main', workspaceType: 'branch' },
+      meta: baseMeta,
+      data: {
+        id: `session-${stage.label}`,
+        projectDir: '/repo',
+        title: stage.label,
+        savedAt: 1,
+        messages: [],
+        model: 'gpt-5.4',
+        autoLevel: 'high',
+        missionDir: baseMeta.missionDir,
+        isMission: true,
+        sessionKind: 'mission',
+        interactionMode: 'agi',
+        autonomyLevel: 'high',
+        decompSessionType: 'orchestrator',
+        mission: stage.mission as any,
+      },
+    })
+
+    assert.equal(restored.isMission, true, stage.label)
+    assert.equal(restored.sessionKind, 'mission', stage.label)
+    assert.equal(restored.interactionMode, 'agi', stage.label)
+    assert.equal(restored.autonomyLevel, 'high', stage.label)
+    assert.equal(restored.decompSessionType, 'orchestrator', stage.label)
+    assert.equal(restored.missionDir, baseMeta.missionDir, stage.label)
+    assert.equal(restored.mission?.currentState, stage.expectedState, stage.label)
+    assert.equal(restored.mission?.isCompleted, stage.expectedCompleted, stage.label)
+    assert.equal(restored.mission?.liveWorkerSessionId, undefined, stage.label)
+  }
 })

@@ -11,6 +11,15 @@ export interface MissionDiskHandoff {
   payload: MissionDiskObject
 }
 
+export interface MissionLoadSnapshot {
+  state?: MissionDiskObject | null
+  features?: MissionDiskObject[] | null
+  progressLog?: MissionDiskObject[] | null
+  progressEntries?: MissionDiskObject[] | null
+  handoffs?: MissionDiskHandoff[] | Record<string, MissionDiskObject> | null
+  validationState?: MissionDiskObject | null
+}
+
 export interface MissionDirSnapshot {
   missionDir: string
   exists: boolean

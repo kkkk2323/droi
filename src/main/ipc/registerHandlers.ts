@@ -191,6 +191,76 @@ export function registerIpcHandlers(opts: {
     return { sessionId, missionDir }
   }
 
+  const buildExecEnv = async (): Promise<Record<string, string | undefined>> => {
+    const env: Record<string, string | undefined> = { ...process.env }
+    const activeKey = await keyStore.getActiveKey()
+    if (activeKey) {
+      env['FACTORY_API_KEY'] = activeKey
+      if (activeKey !== cachedState.apiKey) {
+        cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
+      }
+    } else if (cachedState.apiKey) {
+      env['FACTORY_API_KEY'] = cachedState.apiKey
+    }
+    return env
+  }
+
+  const mergeLoadSessionResponse = (
+    stored: Awaited<ReturnType<typeof sessionStore.load>>,
+    live: Record<string, unknown> | null,
+  ) => {
+    if (!stored || !live) return stored
+
+    const settings =
+      live.settings && typeof live.settings === 'object' ? (live.settings as any) : {}
+    const protocol = resolveSessionProtocolFields({
+      autoLevel: stored.autoLevel,
+      explicit: {
+        isMission: (live as any).isMission ?? stored.isMission,
+        sessionKind: coerceSessionKind((live as any).sessionKind) || stored.sessionKind,
+        interactionMode:
+          coerceInteractionMode((live as any).interactionMode) ||
+          coerceInteractionMode(settings.interactionMode) ||
+          stored.interactionMode,
+        autonomyLevel:
+          coerceAutonomyLevel((live as any).autonomyLevel) ||
+          coerceAutonomyLevel(settings.autonomyLevel) ||
+          stored.autonomyLevel,
+        decompSessionType:
+          coerceDecompSessionType((live as any).decompSessionType) || stored.decompSessionType,
+      },
+    })
+
+    return {
+      ...stored,
+      model:
+        (typeof (live as any).modelId === 'string' ? (live as any).modelId : undefined) ||
+        (typeof settings.modelId === 'string' ? settings.modelId : undefined) ||
+        stored.model,
+      missionDir:
+        (typeof (live as any).missionDir === 'string' ? (live as any).missionDir : undefined) ||
+        stored.missionDir,
+      isMission: protocol.isMission,
+      sessionKind: protocol.sessionKind,
+      interactionMode: protocol.interactionMode,
+      autonomyLevel: protocol.autonomyLevel,
+      decompSessionType: protocol.decompSessionType,
+      reasoningEffort:
+        (typeof (live as any).reasoningEffort === 'string'
+          ? (live as any).reasoningEffort
+          : undefined) ||
+        (typeof settings.reasoningEffort === 'string' ? settings.reasoningEffort : undefined) ||
+        stored.reasoningEffort,
+      messages: Array.isArray((live as any).messages)
+        ? ((live as any).messages as any)
+        : stored.messages,
+      mission:
+        live.mission && typeof live.mission === 'object'
+          ? ({ ...(live.mission as Record<string, unknown>) } as any)
+          : stored.mission,
+    }
+  }
+
   const getSlashCommands = async (): Promise<Map<string, SlashCommandEntry>> => {
     const projectDir = activeProjectDir || cachedState.activeProjectDir || ''
     const now = Date.now()
@@ -1062,7 +1132,40 @@ export function registerIpcHandlers(opts: {
     setupScriptRunner.cancel(sessionId)
   })
 
-  ipcMain.handle('session:load', async (_event, id: string) => sessionStore.load(id))
+  ipcMain.handle('session:load', async (_event, id: string) => {
+    const sessionId = typeof id === 'string' ? id.trim() : ''
+    if (!sessionId) return null
+
+    const stored = await sessionStore.load(sessionId)
+    if (!stored) return null
+    if (stored.isMission !== true && stored.sessionKind !== 'mission') return stored
+
+    const machineId = (cachedState as PersistedAppStateV2).machineId
+    const cwd = String(stored.projectDir || '').trim() || activeProjectDir
+    if (!machineId || !cwd || !(await isExistingDir(cwd))) return stored
+
+    try {
+      const env = await buildExecEnv()
+      const live = await execManager.loadSessionSnapshot({
+        sessionId,
+        machineId,
+        cwd,
+        modelId: stored.model || undefined,
+        interactionMode: stored.interactionMode || toInteractionMode(stored.autoLevel),
+        autonomyLevel:
+          stored.autonomyLevel ||
+          (stored.autoLevel ? toAutonomyLevel(stored.autoLevel) : undefined),
+        decompSessionType: stored.decompSessionType,
+        isMission: stored.isMission,
+        sessionKind: stored.sessionKind,
+        reasoningEffort: stored.reasoningEffort || undefined,
+        env,
+      })
+      return mergeLoadSessionResponse(stored, live)
+    } catch {
+      return stored
+    }
+  })
 
   ipcMain.handle(
     'session:create',
@@ -1087,14 +1190,7 @@ export function registerIpcHandlers(opts: {
       const machineId = (cachedState as PersistedAppStateV2).machineId
       if (!machineId) throw new Error('Missing machineId')
 
-      const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (activeKey !== cachedState.apiKey) {
-          cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-        }
-      } else if (cachedState.apiKey) env['FACTORY_API_KEY'] = cachedState.apiKey
+      const env = await buildExecEnv()
 
       const protocol = resolveProtocolPayload(payload)
 
@@ -1140,14 +1236,7 @@ export function registerIpcHandlers(opts: {
 
     execManager.disposeSession(id)
 
-    const env: Record<string, string | undefined> = { ...process.env }
-    const activeKey = await keyStore.getActiveKey()
-    if (activeKey) {
-      env['FACTORY_API_KEY'] = activeKey
-      if (activeKey !== cachedState.apiKey) {
-        cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-      }
-    } else if (cachedState.apiKey) env['FACTORY_API_KEY'] = cachedState.apiKey
+    const env = await buildExecEnv()
 
     const created = await execManager.createSession({
       machineId,

@@ -2,6 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { makeBuffer, applyRpcNotification, applyRpcRequest } from '../src/renderer/src/state/appReducer.ts'
 import { buildNotificationTraceInfo, formatNotificationTrace } from '../src/renderer/src/lib/notificationFingerprint.ts'
+import {
+  applyMissionDirSnapshot,
+  applyMissionLoadSnapshot,
+} from '../src/renderer/src/state/missionState.ts'
 
 const baseNotif = {
   jsonrpc: '2.0',
@@ -402,6 +406,233 @@ test('applyRpcNotification does not downgrade explicit mission settings on gener
   assert.equal((buf as any).interactionMode, 'agi')
   assert.equal((buf as any).autonomyLevel, 'high')
   assert.equal((buf as any).decompSessionType, 'orchestrator')
+})
+
+test('applyRpcNotification keeps StartMissionRun progress supplemental while Mission notifications stay authoritative', () => {
+  const sid = 'mission-progress'
+  const prev = new Map([
+    [
+      sid,
+      {
+        ...makeBuffer('/repo'),
+        isMission: true,
+        sessionKind: 'mission',
+        interactionMode: 'agi',
+        autonomyLevel: 'high',
+        decompSessionType: 'orchestrator',
+        mission: applyMissionLoadSnapshot(undefined, {
+          state: {
+            state: 'running',
+            currentFeatureId: 'feature-live',
+            currentWorkerSessionId: 'worker-load',
+            completedFeatures: 0,
+            totalFeatures: 2,
+            updatedAt: '2026-03-09T00:00:00.000Z',
+          },
+          features: [
+            { id: 'feature-live', status: 'in_progress' },
+            { id: 'feature-next', status: 'pending' },
+          ],
+        }),
+      },
+    ],
+  ])
+
+  const withProgress = applyRpcNotification(prev, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'tool_progress_update',
+        toolUseId: 'run-1',
+        toolName: 'StartMissionRun',
+        update: {
+          missionState: 'completed',
+          currentFeatureId: 'wrong-feature',
+          currentWorkerSessionId: 'worker-hint',
+          completedFeatures: 2,
+          totalFeatures: 2,
+        },
+      },
+    },
+  } as any)
+
+  const hintedMission = withProgress.get(sid)!.mission!
+  assert.equal(hintedMission.currentState, 'running')
+  assert.equal(hintedMission.currentFeatureId, 'feature-live')
+  assert.equal(hintedMission.currentWorkerSessionId, 'worker-load')
+  assert.equal(hintedMission.isCompleted, false)
+  assert.equal(hintedMission.supplemental?.missionState, 'completed')
+  assert.equal(hintedMission.supplemental?.currentWorkerSessionId, 'worker-hint')
+
+  const withWorkerStarted = applyRpcNotification(withProgress, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'mission_worker_started',
+        workerSessionId: 'worker-live',
+        featureId: 'feature-live',
+      },
+    },
+  } as any)
+
+  const liveMission = withWorkerStarted.get(sid)!.mission!
+  assert.equal(liveMission.currentWorkerSessionId, 'worker-live')
+  assert.equal(liveMission.liveWorkerSessionId, 'worker-live')
+
+  const withWorkerCompleted = applyRpcNotification(withWorkerStarted, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'mission_worker_completed',
+        workerSessionId: 'worker-live',
+        featureId: 'feature-live',
+      },
+    },
+  } as any)
+
+  const completedMission = withWorkerCompleted.get(sid)!.mission!
+  assert.equal(completedMission.liveWorkerSessionId, undefined)
+  assert.equal(completedMission.currentWorkerSessionId, undefined)
+  assert.equal(completedMission.isCompleted, false)
+})
+
+test('applyMissionDirSnapshot follows per-file merge rules and keeps validator-injected Missions running', () => {
+  const loadMission = applyMissionLoadSnapshot(undefined, {
+    state: {
+      state: 'running',
+      currentFeatureId: 'mission-protocol-metadata-and-kill-worker-plumbing',
+      completedFeatures: 1,
+      totalFeatures: 2,
+      updatedAt: '2026-03-09T01:30:00.000Z',
+    },
+    features: [
+      { id: 'mission-protocol-metadata-and-kill-worker-plumbing', status: 'completed' },
+      { id: 'mission-store-restore-and-reconciliation', status: 'in_progress' },
+    ],
+    progressLog: [
+      { timestamp: '2026-03-09T01:29:00.000Z', type: 'worker_completed', featureId: 'mission-protocol-metadata-and-kill-worker-plumbing' },
+    ],
+    handoffs: {
+      'handoff-1.json': {
+        featureId: 'mission-protocol-metadata-and-kill-worker-plumbing',
+        successState: 'success',
+      },
+    },
+  })!
+
+  const reconciled = applyMissionDirSnapshot(loadMission, {
+    missionDir: '/Users/clive/.factory/missions/base-session-123',
+    exists: true,
+    state: {
+      state: 'running',
+      currentFeatureId: 'scrutiny-validator-mission-foundation',
+      currentWorkerSessionId: 'validator-worker',
+      completedFeatures: 1,
+      totalFeatures: 4,
+      updatedAt: '2026-03-09T02:07:12.000Z',
+      milestonesWithValidationPlanned: ['mission-foundation'],
+    },
+    features: [
+      { id: 'mission-protocol-metadata-and-kill-worker-plumbing', status: 'completed' },
+      { id: 'mission-session-entry-routing-and-sidebar', status: 'completed' },
+      {
+        id: 'scrutiny-validator-mission-foundation',
+        status: 'in_progress',
+        skillName: 'scrutiny-validator',
+      },
+      {
+        id: 'user-testing-validator-mission-foundation',
+        status: 'pending',
+        skillName: 'user-testing-validator',
+      },
+    ],
+    progressEntries: [
+      { timestamp: '2026-03-09T01:29:00.000Z', type: 'worker_completed', featureId: 'mission-protocol-metadata-and-kill-worker-plumbing' },
+      { timestamp: '2026-03-09T02:07:12.035Z', type: 'milestone_validation_triggered', milestone: 'mission-foundation' },
+    ],
+    handoffs: [
+      {
+        fileName: 'handoff-2.json',
+        payload: { featureId: 'mission-session-entry-routing-and-sidebar', successState: 'success' },
+      },
+    ],
+    validationState: {
+      assertions: {
+        'VAL-SESSION-001': { status: 'passed' },
+        'VAL-RECOVERY-001': { status: 'pending' },
+      },
+    },
+  })
+
+  assert.equal(reconciled.currentFeatureId, 'scrutiny-validator-mission-foundation')
+  assert.equal(reconciled.totalFeatures, 4)
+  assert.equal(reconciled.completedFeatures, 2)
+  assert.equal(reconciled.isCompleted, false)
+  assert.equal(reconciled.progressEntries.length, 2)
+  assert.equal(reconciled.handoffs.length, 2)
+  assert.equal(reconciled.liveWorkerSessionId, undefined)
+})
+
+test('applyMissionDirSnapshot supports disk-only recovery, completion gating, and orphan worker recovery', () => {
+  const recovered = applyMissionDirSnapshot(undefined, {
+    missionDir: '/Users/clive/.factory/missions/base-session-456',
+    exists: true,
+    state: {
+      state: 'completed',
+      currentWorkerSessionId: 'orphan-worker',
+      completedFeatures: 2,
+      totalFeatures: 2,
+      updatedAt: '2026-03-09T03:00:00.000Z',
+      milestonesWithValidationPlanned: ['mission-sync-recovery'],
+    },
+    features: [
+      { id: 'feature-a', status: 'completed' },
+      { id: 'feature-b', status: 'completed' },
+    ],
+    progressEntries: [{ timestamp: '2026-03-09T02:59:00.000Z', type: 'worker_completed' }],
+    handoffs: [
+      { fileName: 'feature-a.json', payload: { featureId: 'feature-a', successState: 'success' } },
+    ],
+    validationState: {
+      assertions: {
+        'VAL-RECOVERY-001': { status: 'pending' },
+        'VAL-RECOVERY-002': { status: 'pending' },
+      },
+    },
+  })
+
+  assert.equal(recovered.currentState, 'completed')
+  assert.equal(recovered.currentWorkerSessionId, undefined)
+  assert.equal(recovered.liveWorkerSessionId, undefined)
+  assert.equal(recovered.isCompleted, false)
+
+  const finalized = applyMissionDirSnapshot(recovered, {
+    missionDir: '/Users/clive/.factory/missions/base-session-456',
+    exists: true,
+    state: {
+      state: 'completed',
+      completedFeatures: 2,
+      totalFeatures: 2,
+      updatedAt: '2026-03-09T03:05:00.000Z',
+      milestonesWithValidationPlanned: ['mission-sync-recovery'],
+    },
+    features: [
+      { id: 'feature-a', status: 'completed' },
+      { id: 'feature-b', status: 'completed' },
+    ],
+    progressEntries: [{ timestamp: '2026-03-09T03:05:01.000Z', type: 'mission_completed' }],
+    handoffs: [],
+    validationState: {
+      assertions: {
+        'VAL-RECOVERY-001': { status: 'passed' },
+        'VAL-RECOVERY-002': { status: 'passed' },
+      },
+    },
+  })
+
+  assert.equal(finalized.isCompleted, true)
+  assert.equal(finalized.progressEntries.length, 2)
+  assert.equal(finalized.handoffs.length, 1)
 })
 
 test('applyRpcNotification stores session_token_usage_changed and mcp notifications', () => {

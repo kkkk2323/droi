@@ -1349,6 +1349,14 @@ export function getDroidClient(): DroidClientAPI {
       merged.clearSession = browserClient.clearSession
     if (typeof (merged as any).createSession !== 'function')
       merged.createSession = browserClient.createSession
+    if (typeof (merged as any).readMissionDir !== 'function')
+      merged.readMissionDir = browserClient.readMissionDir
+    if (typeof (merged as any).watchMissionDir !== 'function')
+      merged.watchMissionDir = browserClient.watchMissionDir
+    if (typeof (merged as any).unwatchMissionDir !== 'function')
+      merged.unwatchMissionDir = browserClient.unwatchMissionDir
+    if (typeof (merged as any).onMissionDirChanged !== 'function')
+      merged.onMissionDirChanged = browserClient.onMissionDirChanged
     if (typeof (merged as any).restartSessionWithActiveKey !== 'function')
       merged.restartSessionWithActiveKey = browserClient.restartSessionWithActiveKey
     if (typeof (merged as any).onSessionIdReplaced !== 'function')

@@ -27,6 +27,7 @@ import {
   type PendingPermissionRequest,
   type PendingAskUserRequest,
 } from '@/state/appReducer'
+import { buildRestoredSessionBuffer } from '@/state/sessionRestore'
 import {
   getTitleFromPrompt,
   upsertSessionMeta,
@@ -1932,32 +1933,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const existingBuffer = get().sessionBuffers.get(sessionId)
     if (!existingBuffer) {
       const data = await droid.loadSession(sessionId)
-      const loaded = (data?.messages as ChatMessage[]) ?? []
-      const protocol = getSessionProtocol(data || selectedMeta)
       get()._setSessionBuffers((prev) => {
         const next = new Map(prev)
-        const base = makeBuffer(aligned.projectDir, {
-          repoRoot: aligned.repoRoot,
-          workspaceDir: aligned.workspaceDir,
-          cwdSubpath: aligned.cwdSubpath,
-          branch: aligned.branch,
-          workspaceType: aligned.workspaceType,
-          baseBranch: (data as any)?.baseBranch || selectedMeta.baseBranch || aligned.baseBranch,
-        })
-        next.set(sessionId, {
-          ...base,
-          messages: loaded,
-          model: data?.model || selectedMeta.model || DEFAULT_MODEL,
-          autoLevel: data?.autoLevel || selectedMeta.autoLevel || DEFAULT_AUTO_LEVEL,
-          missionDir: (data as any)?.missionDir || selectedMeta.missionDir,
-          isMission: protocol.isMission,
-          sessionKind: protocol.sessionKind,
-          interactionMode: protocol.interactionMode,
-          autonomyLevel: protocol.autonomyLevel,
-          decompSessionType: protocol.decompSessionType,
-          reasoningEffort: (data as any)?.reasoningEffort || selectedMeta.reasoningEffort || '',
-          apiKeyFingerprint: (data as any)?.apiKeyFingerprint || selectedMeta.apiKeyFingerprint,
-        })
+        next.set(
+          sessionId,
+          buildRestoredSessionBuffer({
+            projectDir: aligned.projectDir,
+            workspace: {
+              repoRoot: aligned.repoRoot,
+              workspaceDir: aligned.workspaceDir,
+              cwdSubpath: aligned.cwdSubpath,
+              branch: aligned.branch,
+              workspaceType: aligned.workspaceType,
+              baseBranch:
+                (data as any)?.baseBranch || selectedMeta.baseBranch || aligned.baseBranch,
+            },
+            meta: selectedMeta,
+            data,
+          }),
+        )
         return next
       })
     }

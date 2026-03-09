@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { getDroidClient } from '@/droidClient'
-import type { ChatMessage, Project, SessionMeta, ProjectSettings } from '@/types'
+import type { Project, SessionMeta, ProjectSettings } from '@/types'
 import type { CustomModelDef } from '@/types'
 import { getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from '@/lib/uuid'
@@ -24,6 +24,8 @@ import {
   applyTurnEnd,
   applyError,
 } from '@/state/appReducer'
+import { applyMissionDirSnapshot } from '@/state/missionState'
+import { buildRestoredSessionBuffer } from '@/state/sessionRestore'
 import { useAppStore } from './store'
 import {
   getRepoKey,
@@ -31,7 +33,6 @@ import {
   updateSessionTitle,
   replaceSessionIdInProjects,
 } from './store/projectHelpers'
-import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
 
 const droid = getDroidClient()
 
@@ -198,40 +199,23 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
         if (restoredProjectDir && activeMeta) {
           const data = await droid.loadSession(activeMeta.id)
-          const loaded = (data?.messages as ChatMessage[]) ?? []
-          const protocol = resolveSessionProtocolFields({
-            autoLevel: (data as any)?.autoLevel || activeMeta.autoLevel,
-            explicit: {
-              isMission: (data as any)?.isMission ?? activeMeta.isMission,
-              sessionKind: (data as any)?.sessionKind || activeMeta.sessionKind,
-              interactionMode: (data as any)?.interactionMode || activeMeta.interactionMode,
-              autonomyLevel: (data as any)?.autonomyLevel || activeMeta.autonomyLevel,
-              decompSessionType: (data as any)?.decompSessionType || activeMeta.decompSessionType,
-            },
-          })
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
-          const base = makeBuffer(restoredProjectDir, {
-            repoRoot: activeMeta.repoRoot,
-            workspaceDir: (data as any)?.workspaceDir || activeMeta.workspaceDir,
-            cwdSubpath: (data as any)?.cwdSubpath || activeMeta.cwdSubpath,
-            branch: (data as any)?.branch || activeMeta.branch,
-            workspaceType: (data as any)?.workspaceType || activeMeta.workspaceType,
-            baseBranch: (data as any)?.baseBranch || activeMeta.baseBranch,
-          })
-          newBuffers.set(activeMeta.id, {
-            ...base,
-            messages: loaded,
-            model: data?.model || activeMeta.model || DEFAULT_MODEL,
-            autoLevel: data?.autoLevel || activeMeta.autoLevel || DEFAULT_AUTO_LEVEL,
-            missionDir: (data as any)?.missionDir || activeMeta.missionDir,
-            isMission: protocol.isMission,
-            sessionKind: protocol.sessionKind,
-            interactionMode: protocol.interactionMode,
-            autonomyLevel: protocol.autonomyLevel,
-            decompSessionType: protocol.decompSessionType,
-            reasoningEffort: (data as any)?.reasoningEffort || '',
-            apiKeyFingerprint: (data as any)?.apiKeyFingerprint || activeMeta.apiKeyFingerprint,
-          })
+          newBuffers.set(
+            activeMeta.id,
+            buildRestoredSessionBuffer({
+              projectDir: restoredProjectDir,
+              workspace: {
+                repoRoot: activeMeta.repoRoot,
+                workspaceDir: (data as any)?.workspaceDir || activeMeta.workspaceDir,
+                cwdSubpath: (data as any)?.cwdSubpath || activeMeta.cwdSubpath,
+                branch: (data as any)?.branch || activeMeta.branch,
+                workspaceType: (data as any)?.workspaceType || activeMeta.workspaceType,
+                baseBranch: (data as any)?.baseBranch || activeMeta.baseBranch,
+              },
+              meta: activeMeta,
+              data,
+            }),
+          )
           useAppStore.setState({
             projects: nextProjects,
             activeProjectDir: restoredProjectDir,
@@ -355,6 +339,117 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         // ignore
       }
     })
+  }, [])
+
+  useEffect(() => {
+    let watchedSessionId = ''
+    let watchKey = ''
+    let syncToken = 0
+
+    const applySnapshot = (sessionId: string, missionDir: string | undefined, snapshot: any) => {
+      if (!snapshot) return
+      useAppStore.getState()._setSessionBuffers((prev) => {
+        const session = prev.get(sessionId)
+        if (!session) return prev
+        const next = new Map(prev)
+        next.set(sessionId, {
+          ...session,
+          missionDir: missionDir || session.missionDir,
+          mission: applyMissionDirSnapshot(session.mission, snapshot),
+        })
+        return next
+      })
+    }
+
+    const stopWatching = async () => {
+      const sessionId = watchedSessionId
+      watchedSessionId = ''
+      watchKey = ''
+      if (!sessionId) return
+      try {
+        await droid.unwatchMissionDir({ sessionId })
+      } catch {
+        // ignore Electron/browser differences while tearing down watcher state
+      }
+    }
+
+    const syncMissionWatch = async () => {
+      const state = useAppStore.getState()
+      const sessionId = String(state.activeSessionId || '').trim()
+      const session = sessionId ? state.sessionBuffers.get(sessionId) : null
+      const meta = sessionId
+        ? state.projects
+            .flatMap((project) => project.sessions)
+            .find((candidate) => candidate.id === sessionId)
+        : null
+      const isMission =
+        session?.isMission === true ||
+        session?.sessionKind === 'mission' ||
+        meta?.isMission === true ||
+        meta?.sessionKind === 'mission'
+      const missionDir = String(session?.missionDir || meta?.missionDir || '').trim() || undefined
+      const nextKey = sessionId && isMission ? `${sessionId}:${missionDir || '(fallback)'}` : ''
+      if (nextKey === watchKey) return
+
+      const token = ++syncToken
+      await stopWatching()
+      if (!nextKey) return
+
+      watchKey = nextKey
+      watchedSessionId = sessionId
+
+      try {
+        const readResult = await droid.readMissionDir({ sessionId, missionDir })
+        if (token !== syncToken) return
+        applySnapshot(
+          sessionId,
+          readResult?.snapshot?.missionDir || missionDir,
+          readResult?.snapshot,
+        )
+      } catch {
+        // Ignore read failures; watcher startup below may still recover later.
+      }
+
+      try {
+        const result = await droid.watchMissionDir({ sessionId, missionDir })
+        if (token !== syncToken) return
+        const resolvedMissionDir =
+          String(result?.missionDir || missionDir || '').trim() || undefined
+        if (resolvedMissionDir) {
+          useAppStore.getState()._setSessionBuffers((prev) => {
+            const active = prev.get(sessionId)
+            if (!active || active.missionDir === resolvedMissionDir) return prev
+            const next = new Map(prev)
+            next.set(sessionId, { ...active, missionDir: resolvedMissionDir })
+            return next
+          })
+        }
+      } catch {
+        // Ignore watcher startup failures in browser mode or when Mission dirs are unavailable.
+      }
+    }
+
+    const unsubscribeStore = useAppStore.subscribe(() => {
+      void syncMissionWatch()
+    })
+
+    const unsubscribeMissionDir = droid.onMissionDirChanged((payload) => {
+      const sessionId = String(payload?.sessionId || '').trim()
+      if (!sessionId) return
+      applySnapshot(
+        sessionId,
+        String(payload?.missionDir || '').trim() || undefined,
+        payload?.snapshot,
+      )
+    })
+
+    void syncMissionWatch()
+
+    return () => {
+      unsubscribeStore()
+      unsubscribeMissionDir()
+      void stopWatching()
+    }
   }, [])
 
   useEffect(() => {

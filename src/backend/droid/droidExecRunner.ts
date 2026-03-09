@@ -51,6 +51,20 @@ export interface DroidExecCreateSessionOptions {
   env?: Record<string, string | undefined>
 }
 
+export interface DroidExecLoadSessionSnapshotOptions {
+  sessionId: string
+  machineId: string
+  cwd: string
+  modelId?: string
+  interactionMode?: DroidInteractionMode
+  autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
+  reasoningEffort?: string
+  env?: Record<string, string | undefined>
+}
+
 export function getDroidVersion(droidPath = resolveDroidPath()): Promise<string> {
   return new Promise((resolve) => {
     execFile(droidPath, ['--version'], { env: { ...process.env } }, (err, stdout, stderr) => {
@@ -134,6 +148,24 @@ export class DroidExecManager {
 
   async killWorkerSession(options: { sessionId: string; workerSessionId: string }): Promise<void> {
     return this.manager.killWorkerSession(options)
+  }
+
+  loadSessionSnapshot(
+    options: DroidExecLoadSessionSnapshotOptions,
+  ): Promise<Record<string, unknown> | null> {
+    return this.manager.loadSessionSnapshot({
+      sessionId: options.sessionId,
+      machineId: options.machineId,
+      cwd: options.cwd,
+      modelId: options.modelId,
+      interactionMode: options.interactionMode,
+      autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
+      reasoningEffort: options.reasoningEffort,
+      env: options.env,
+    })
   }
 
   async listSkills(sessionId: string): Promise<unknown[]> {

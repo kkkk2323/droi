@@ -10,6 +10,11 @@ import type {
 } from '@/types'
 import { isTraceChainEnabled } from '../lib/notificationFingerprint.ts'
 import { uuidv4 } from '../lib/uuid.ts'
+import {
+  applyMissionNotificationUpdate,
+  applyStartMissionProgressUpdate,
+  type MissionState,
+} from './missionState.ts'
 
 export interface SessionBuffer {
   messages: ChatMessage[]
@@ -29,6 +34,7 @@ export interface SessionBuffer {
   model: string
   autoLevel: string
   missionDir?: string
+  mission?: MissionState
   isMission?: boolean
   sessionKind?: 'normal' | 'mission'
   interactionMode?: 'spec' | 'auto' | 'agi'
@@ -93,6 +99,7 @@ export function makeBuffer(
     model: DEFAULT_MODEL,
     autoLevel: DEFAULT_AUTO_LEVEL,
     missionDir: undefined,
+    mission: undefined,
     isMission: false,
     sessionKind: 'normal',
     interactionMode: 'spec',
@@ -163,6 +170,20 @@ function updateSessionMessages(
   if (!session) return prev
   const next = new Map(prev)
   next.set(sid, { ...session, messages: updater(session.messages) })
+  return next
+}
+
+function updateSessionBuffer(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  updater: (session: SessionBuffer) => SessionBuffer,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+  const updated = updater(session)
+  if (updated === session) return prev
+  const next = new Map(prev)
+  next.set(sid, updated)
   return next
 }
 
@@ -618,7 +639,7 @@ export function applyRpcNotification(
     if (!toolUseId) return prev
     const update = (notification as any).update
     const rendered = formatUnknown(update)
-    return updateSessionMessages(prev, sid, (msgs) => {
+    let next = updateSessionMessages(prev, sid, (msgs) => {
       const updated = updateToolCall(msgs, toolUseId, (block) => ({ ...block, progress: rendered }))
       if (updated !== msgs) return updated
       const toolName = String((notification as any).toolName || 'Tool')
@@ -630,6 +651,25 @@ export function applyRpcNotification(
         progress: rendered,
       })
     })
+
+    const toolName = String((notification as any).toolName || '')
+      .trim()
+      .toLowerCase()
+    if (toolName === 'startmissionrun') {
+      next = updateSessionBuffer(next, sid, (session) => ({
+        ...session,
+        mission: applyStartMissionProgressUpdate(session.mission, update),
+      }))
+    }
+
+    return next
+  }
+
+  if (type.startsWith('mission_')) {
+    return updateSessionBuffer(prev, sid, (session) => ({
+      ...session,
+      mission: applyMissionNotificationUpdate(session.mission, notification),
+    }))
   }
 
   if (type === 'permission_resolved') {

@@ -6,7 +6,12 @@ import type {
   SessionInteractionMode,
   SessionKind,
 } from './sessionProtocol'
-import type { MissionDirChangeEvent, MissionDirReadResult, MissionDirRequest } from './mission.ts'
+import type {
+  MissionDirChangeEvent,
+  MissionDirReadResult,
+  MissionDirRequest,
+  MissionLoadSnapshot,
+} from './mission.ts'
 
 // === stream-jsonrpc protocol (JSON-RPC over JSONL) ===
 
@@ -330,6 +335,7 @@ export interface LoadSessionResponse {
   title: string
   savedAt: number
   messages: ChatMessage[]
+  mission?: MissionLoadSnapshot
   lastMessageAt?: number
 }
 
