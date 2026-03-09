@@ -122,6 +122,13 @@ function hasPendingValidatorWork(mission?: MissionState | null): boolean {
   })
 }
 
+function hasPendingCompletionGate(mission?: MissionState | null): boolean {
+  return (
+    (asTrimmedString(mission?.currentState) ?? '').toLowerCase() === 'completed' &&
+    !mission?.isCompleted
+  )
+}
+
 function formatMissionTimestamp(value: unknown): string {
   const raw = asTrimmedString(value)
   if (!raw) return 'Pending timestamp'
@@ -217,19 +224,24 @@ export function getMissionControlStatus(
 ): MissionControlStatusSummary {
   const feature = findCurrentFeature(mission)
   const progressLabel = `${mission?.completedFeatures ?? 0}/${mission?.totalFeatures ?? 0} completed`
-  const validationPending = hasPendingValidatorWork(mission)
+  const completionGatePending = hasPendingCompletionGate(mission)
+  const validationInProgress = hasPendingValidatorWork(mission)
 
   return {
-    stateLabel: mission?.isCompleted
-      ? 'Completed'
-      : toTitleCase(asTrimmedString(mission?.currentState) ?? 'unknown'),
+    stateLabel: completionGatePending
+      ? 'Validation pending'
+      : mission?.isCompleted
+        ? 'Completed'
+        : toTitleCase(asTrimmedString(mission?.currentState) ?? 'unknown'),
     progressLabel,
     currentFeatureLabel: getFeatureLabel(feature, asTrimmedString(mission?.currentFeatureId)),
-    phaseLabel: validationPending
+    phaseLabel: validationInProgress
       ? 'Validation in progress'
-      : mission?.isCompleted
-        ? 'Mission completed'
-        : 'Implementation in progress',
+      : completionGatePending
+        ? 'Waiting for validation settlement'
+        : mission?.isCompleted
+          ? 'Mission completed'
+          : 'Implementation in progress',
   }
 }
 

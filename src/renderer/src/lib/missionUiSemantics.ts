@@ -28,6 +28,7 @@ export interface MissionInputSemantics {
 export type MissionRuntimeKind =
   | 'idle'
   | 'running'
+  | 'validation-pending'
   | 'pause-pending'
   | 'kill-pending'
   | 'paused-by-user'
@@ -294,6 +295,10 @@ function getFailureContext(params: { mission?: MissionState | null; messages?: C
   }
 }
 
+function hasPendingCompletionGate(mission?: MissionState | null): boolean {
+  return normalizeLower(mission?.currentState) === 'completed' && !mission?.isCompleted
+}
+
 export function getMissionRuntimeStatus(params: {
   mission?: MissionState | null
   messages?: ChatMessage[]
@@ -329,6 +334,16 @@ export function getMissionRuntimeStatus(params: {
       title: 'Pause request sent',
       description:
         'Waiting for the Mission to acknowledge the pause before normal chat input is re-enabled.',
+      tone: 'warning',
+    }
+  }
+
+  if (hasPendingCompletionGate(mission)) {
+    return {
+      kind: 'validation-pending',
+      title: 'Validation pending',
+      description:
+        'Mission work has finished, but this run is not complete until validation settles.',
       tone: 'warning',
     }
   }

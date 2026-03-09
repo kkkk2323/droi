@@ -218,3 +218,21 @@ test('retry messaging surfaces daemon retry guidance and bounded failure recover
   assert.match(failedAfterRetry.title, /retry/i)
   assert.match(failedAfterRetry.description, /normal chat/i)
 })
+
+test('runtime status keeps Mission pending while validation completion has not settled', () => {
+  const validationPending = getMissionRuntimeStatus({
+    mission: createMissionState({
+      currentState: 'completed',
+      isCompleted: false,
+      validationState: {
+        assertions: {
+          'VAL-CONTROL-004': { status: 'pending' },
+        },
+      },
+    }),
+  })
+
+  assert.equal(validationPending.kind, 'validation-pending')
+  assert.match(validationPending.title, /validation pending/i)
+  assert.match(validationPending.description, /not complete until validation settles/i)
+})

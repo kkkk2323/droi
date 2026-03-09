@@ -26,6 +26,7 @@ function getStateBadgeVariant(
   const normalized = stateLabel.toLowerCase()
   if (normalized === 'completed') return 'default'
   if (normalized === 'running') return 'secondary'
+  if (normalized === 'validation pending') return 'secondary'
   if (normalized === 'paused') return 'destructive'
   return 'outline'
 }

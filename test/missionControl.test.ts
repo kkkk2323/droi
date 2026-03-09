@@ -84,6 +84,52 @@ test('Mission Control status and feature queue preserve feature order while mark
   assert.equal(queue[2]?.testId, 'mission-feature-scrutiny-validator-mission-sync-recovery')
 })
 
+test('Mission Control keeps completion gated behind validation settlement', () => {
+  const mission = createMissionState({
+    currentState: 'completed',
+    isCompleted: false,
+    completedFeatures: 4,
+    totalFeatures: 4,
+    currentFeatureId: 'user-testing-validator-mission-control-ui',
+    validationState: {
+      assertions: {
+        'VAL-CONTROL-004': { status: 'pending' },
+      },
+    },
+    features: [
+      {
+        id: 'mission-page-chat-shell-and-view-toggle',
+        description: 'Build MissionPage toggle shell',
+        status: 'completed',
+      },
+      {
+        id: 'mission-control-queue-timeline-and-handoffs',
+        description: 'Implement Mission Control panels',
+        status: 'completed',
+      },
+      {
+        id: 'scrutiny-validator-mission-control-ui',
+        description: 'Scrutiny validation for mission-control-ui',
+        status: 'completed',
+        skillName: 'scrutiny-validator',
+      },
+      {
+        id: 'user-testing-validator-mission-control-ui',
+        description: 'User testing validation for mission-control-ui',
+        status: 'completed',
+        skillName: 'user-testing-validator',
+      },
+    ],
+  })
+
+  assert.deepEqual(getMissionControlStatus(mission), {
+    stateLabel: 'Validation pending',
+    progressLabel: '4/4 completed',
+    currentFeatureLabel: 'User testing validation for mission-control-ui',
+    phaseLabel: 'Waiting for validation settlement',
+  })
+})
+
 test('Mission Control timeline sorts chronologically, labels events, and deduplicates repeats', () => {
   const mission = createMissionState({
     progressEntries: [
