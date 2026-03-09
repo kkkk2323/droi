@@ -1,0 +1,34 @@
+{
+  "featureId": "mission-integration-tests-and-e2e-readiness",
+  "reviewedAt": "2026-03-10T00:00:00Z",
+  "commitId": "9730db9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The reviewed commit fixes the duplicate React-key warning for recovered Mission handoff cards, but it does not deliver the broader mission-verification feature scope. The diff only touches Mission Control handoff rendering plus one focused test, leaving the promised automated coverage expansion, focused Mission test hardening, and encoded E2E relaunch/readiness behavior unimplemented.",
+    "issues": [
+      {
+        "file": "test/missionControl.test.ts",
+        "line": 250,
+        "severity": "blocking",
+        "description": "This feature was supposed to expand Mission automated coverage across interaction-mode hot switching, session persistence, notification mapping, watcher/recovery scenarios, and end-to-end Mission flows for VAL-CROSS-001 through VAL-CROSS-007, but the only new test added here covers duplicate recovered handoff keys. No new integration suite or updates to the claimed focused files (`interactionModeHotSwitch`, `sessionStore`, `rpcNotificationMapping`, `missionDirWatcher`) landed in commit 9730db9, so the feature does not actually implement the contract-facing coverage it claims."
+      },
+      {
+        "file": "package.json",
+        "line": 8,
+        "severity": "blocking",
+        "description": "The feature expected Mission E2E startup to clean stale isolated Electron listeners before relaunch, but `dev:test` still only runs `ELECTRON_REMOTE_DEBUGGING_PORT=9222 electron-vite dev` with no built-in preflight cleanup. The worker performed the cleanup manually from the shell during verification, which means the repository change did not encode the readiness behavior and repeated validation still depends on operator memory rather than the product/test harness."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `mission-verification-worker` skill is slightly too rigid for UI-only warning fixes. It assumes Mission-invoking E2E should create or run a fresh Mission flow, but this worker needed only a read-only validation of an existing isolated Mission session and explicitly suggested the skill allow that exception.",
+      "evidence": ".factory/skills/mission-verification-worker/SKILL.md requires Mission-invoking E2E evidence under steps 6-7, while the handoff at /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-09T16-11-00-326Z__mission-integration-tests-and-e2e-readiness__91a6ccab-da70-4075-966f-c257f40b6542.json records `skillFeedback.followedProcedure = false` and a justified deviation to reuse the existing isolated `Mission-GUI-TEST` session."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Scrutiny failed. Commit 9730db9 correctly fixes recovered handoff-card key collisions, but it does not implement the broader automated-coverage and E2E-readiness scope described for `mission-integration-tests-and-e2e-readiness`; the only repository changes are a handoff-key fix and one focused test."
+}

@@ -1,0 +1,53 @@
+{
+  "milestone": "mission-verification",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 test -- --test-concurrency=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "mission-integration-tests-and-e2e-readiness"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "mission-integration-tests-and-e2e-readiness",
+      "severity": "blocking",
+      "description": "Commit 9730db9 only adds a duplicate recovered handoff-key test and renderer key fix, but it does not add the broader Mission verification coverage promised for interaction-mode hot switching, session persistence, notification mapping, watcher/recovery scenarios, or the VAL-CROSS-001 through VAL-CROSS-007 end-to-end flows."
+    },
+    {
+      "featureId": "mission-integration-tests-and-e2e-readiness",
+      "severity": "blocking",
+      "description": "Mission E2E preflight cleanup was performed manually during verification, but the repository still leaves `dev:test` as `ELECTRON_REMOTE_DEBUGGING_PORT=9222 electron-vite dev`, so stale isolated Electron listeners on 9222, 5173, and 3002 are not automatically cleared by the product or test harness."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Clarify in `mission-verification-worker` that for narrowly scoped UI-warning or read-only validation fixes, workers may reuse an existing isolated `Mission-GUI-TEST` Mission session instead of creating a fresh Mission-invoking flow, as long as they stay on the Electron surface and explicitly record the reuse in verification evidence.",
+      "evidence": "The review for `mission-integration-tests-and-e2e-readiness` found the worker's only procedural deviation was reusing an existing isolated Mission session to verify duplicate React-key warning removal. The handoff explicitly marked `followedProcedure: false` and explained that creating a fresh Mission run would have been unnecessarily destructive for this read-only UI validation.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
