@@ -1,0 +1,28 @@
+{
+  "featureId": "mission-page-chat-shell-and-view-toggle",
+  "reviewedAt": "2026-03-09T10:31:13Z",
+  "commitId": "891720a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature covers the Mission route shell, toggle, helper logic, and persistent status bar, but it has a blocking state-management flaw: MissionPage keeps the manual toggle cooldown and current view in component-local state across Mission-session switches, so one Mission session can inherit another session's override and render the wrong view.",
+    "issues": [
+      {
+        "file": "src/renderer/src/pages/MissionPage.tsx",
+        "line": 65,
+        "severity": "blocking",
+        "description": "MissionPage stores `viewMode` and `manualOverrideAt` as page-local state and never resets them when `activeSessionId` changes. If the user manually toggles one Mission session and then quickly selects another Mission session, the new session inherits the prior session's cooldown and may stay on Chat or Mission Control instead of auto-switching for its own `mission.currentState`. That breaks the expected per-session Chat/Mission Control behavior and can violate VAL-ROUTING-003 and VAL-ROUTING-004. Evidence: `src/renderer/src/pages/MissionPage.tsx:65-81` initializes `viewMode`/`manualOverrideAt` once and only reacts to `preferredView`, `manualOverrideAt`, and `viewMode`; there is no `activeSessionId`-scoped reset or per-session storage."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `mission-ui-worker` skill still requires a manual Electron sanity check for every visible Mission UI feature, but this worker explicitly skipped that step and relied on automated helper tests plus repo validators. The skill procedure likely needs clarification if route/state-only subfeatures are allowed to defer Electron sanity checks to a later validation milestone.",
+      "evidence": "Worker handoff for session `87be0ef2-783b-447a-a116-3c2170806ad1` records `skillFeedback.followedProcedure: false` with a deviation for step 6 ('Perform manual Electron sanity checks...'), and `.factory/skills/mission-ui-worker/SKILL.md` step 6 still states that every visible Mission behavior change must perform a manual Electron sanity check."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed mission-page-chat-shell-and-view-toggle against the mission contract, worker handoff, transcript skeleton, and current source/test files. Result: fail due to a blocking cross-session MissionPage cooldown/view-state leak; also noted a skill-procedure mismatch around mandatory manual Electron checks."
+}

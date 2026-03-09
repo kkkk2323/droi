@@ -1,0 +1,22 @@
+{
+  "featureId": "mission-control-queue-timeline-and-handoffs",
+  "reviewedAt": "2026-03-09T10:32:06Z",
+  "commitId": "06ad215082cf3c6ca8cfb3d5256ca4fbf7893460",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Mission Control largely implements the queue, timeline, and handoff surfaces, but its status summary can still declare the mission completed before validation is actually settled.",
+    "issues": [
+      {
+        "file": "src/renderer/src/lib/missionControl.ts",
+        "line": 223,
+        "severity": "blocking",
+        "description": "getMissionControlStatus can surface a completed mission too early. The mission state model intentionally allows currentState === \"completed\" while mission.isCompleted remains false until validationState settles (see state/missionState.ts completion gating and rpcNotificationMapping.test.ts disk-recovery coverage), but this helper falls back to rendering the raw completed state whenever mission.isCompleted is false. It also derives phaseLabel only from pending validator features, so once validator features are absent it can show \"Implementation in progress\" instead of a validation-pending state even though validation is still incomplete. This violates VAL-CONTROL-004's requirement not to mark the mission complete before validator work is finished."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the worker transcript skeleton, handoff evidence, Mission Control implementation, and related recovery/tests. The feature should fail scrutiny because Mission Control can still present a completed state before validation has actually settled."
+}
