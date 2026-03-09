@@ -1,0 +1,21 @@
+{
+  "featureId": "mission-page-session-switch-cooldown-fix",
+  "reviewedAt": "2026-03-09T13:02:54Z",
+  "commitId": "319a8f6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix fully addresses the prior blocking MissionPage state leak by scoping manual view overrides and cooldown state to the active Mission session id, so switching between Mission sessions no longer inherits another session's Chat/Mission Control override.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The isolated Electron Mission validation flow may require preflight port cleanup before startup, but the user-testing guidance does not mention it even though the service manifest provides a stop command.",
+      "evidence": "Fix handoff `2026-03-09T12-20-07-089Z__mission-page-session-switch-cooldown-fix__8bd6e1f8-4cca-4fe3-be77-36960d238e10.json` records stale listeners on 9222/3002 before the first sanity-check launch; compare `.factory/services.yaml:10-13`, which defines `electron-dev.start` and `electron-dev.stop`, with `.factory/library/user-testing.md`, whose setup steps start the app but do not mention preflight cleanup."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/scrutiny/reviews/mission-page-chat-shell-and-view-toggle.json",
+  "summary": "Reviewed the cooldown fix against the prior failing review, worker transcript skeleton, handoff, commit diff, and current MissionPage/test sources. Result: pass — the cross-session Chat/Mission Control cooldown leak is fixed, regression coverage was added, and no remaining code issues were identified in this scope."
+}

@@ -27,12 +27,14 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 1. Ensure `/tmp/droi-mission-e2e/app-state.json` exists.
    - `init.sh` seeds this automatically when possible from the user’s current Droi app-state.
    - If a fresh copy is needed, copy `~/Library/Application Support/droi/app-state.json` to `/tmp/droi-mission-e2e/app-state.json`.
-2. Start the isolated Electron dev app:
+2. If this is a re-run, clear stale isolated Electron listeners before restarting:
+   - Use the `.factory/services.yaml` `electron-dev.stop` command to clean up ports `9222`, `5173`, and `3002` before the next launch.
+3. Start the isolated Electron dev app:
    - `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e DROID_APP_API_PORT=3002 ELECTRON_REMOTE_DEBUGGING_PORT=9222 pnpm dev:test`
-3. Connect automation with `agent-browser connect 9222`.
-4. Wait for `document.body.hasAttribute("data-app-ready") === true`.
-5. Select the `Mission-GUI-TEST` project.
-6. For any new Mission flow exercised with `agent-browser`, explicitly choose `Custom -> CCH-GPT-5.4` before the first Mission message.
+4. Connect automation with `agent-browser connect 9222`.
+5. Wait for `document.body.hasAttribute("data-app-ready") === true`.
+6. Select the `Mission-GUI-TEST` project.
+7. For any new Mission flow exercised with `agent-browser`, explicitly choose `Custom -> CCH-GPT-5.4` before the first Mission message.
 
 ## Recommended automation flow
 
@@ -68,4 +70,5 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 - `droid.load_session` is more trustworthy than transient generic `settings_updated` for Mission identity.
 - Some recovery checks are best validated with targeted automated tests plus Electron sanity checks rather than pure browser-only assertions.
 - This Electron build uses TanStack memory-history, so `/mission` versus `/` proof should come from router state plus Mission DOM markers rather than the browser address bar.
+- Repeated isolated Electron validation runs can fail if stale listeners are still bound to `9222`, `5173`, or `3002`; run the manifest stop command before restarting the app.
 - In the Electron surface, direct automation clicks on the visible send button can be flaky; targeting the real `[data-testid="chat-send"]` element is more reliable when the UI is visibly ready.

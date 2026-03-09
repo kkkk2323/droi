@@ -1,0 +1,21 @@
+{
+  "featureId": "mission-permission-option-semantics-fix",
+  "reviewedAt": "2026-03-09T13:08:58Z",
+  "commitId": "83db03235208fd9031ce2e6cafb921fc10933282",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix resolves the prior Mission permission-label regression by preserving Mission-specific framing while restoring distinct backend approval semantics for multi-option prompts.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission permission UIs should preserve backend-provided option semantics and labels from optionsMeta even when Mission-specific framing is added, but that convention is still not documented in AGENTS.md or the mission library notes.",
+      "evidence": "src/renderer/src/state/appReducer.ts:913-933 stores request.optionsMeta from backend permission options; src/renderer/src/components/SpecReviewCard.tsx:92-99 renders per-option labels; src/renderer/src/lib/missionUiSemantics.ts:151-164 now preserves labels for multi-option Mission permissions. Mission AGENTS.md and .factory/library/{architecture,mission-runtime,environment}.md do not document this convention."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/scrutiny/reviews/mission-permissions-actions-and-inputbar-semantics.json",
+  "summary": "Reviewed the fix feature handoff, transcript skeleton, prior failed scrutiny report, worker skill, and commit 83db032. The original blocking issue is resolved: Mission permission prompts keep specialized framing while distinct approval choices remain visibly distinguishable, so this re-review passes."
+}

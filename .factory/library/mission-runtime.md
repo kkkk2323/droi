@@ -38,3 +38,9 @@ Mission-specific runtime notes that workers should keep in mind while implementi
 - IPC rejects missing `sessionId` or `workerSessionId`; only show the Kill Worker action when a concrete current worker session id is known.
 - The backend uses `sessionId` only to route to the correct managed session. The JSON-RPC request sent to Droid is `droid.kill_worker_session` with payload `{ workerSessionId }`.
 - The JSON-RPC session trims `workerSessionId` and no-ops on an empty string, so validation and UI state should prevent empty-worker kill attempts from being presented as actionable.
+
+## Mission permission option semantics
+
+- Mission-specific permission framing may customize headings and descriptive copy for prompts such as `propose_mission` and `start_mission_run`.
+- When backend permission payloads include multiple approval choices, the renderer should preserve the distinct per-option labels and semantics from `optionsMeta` rather than flattening all non-cancel actions into the same CTA text.
+- `optionsMeta` is already retained in reducer state, so Mission permission UI should treat those backend-provided labels as authoritative whenever more than one non-cancel option is available.
