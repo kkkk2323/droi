@@ -1,0 +1,80 @@
+{
+  "groupId": "missiondir-watch",
+  "testedAt": "2026-03-09T06:12:20Z",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "syncrecovery-b"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "node --test",
+    "Read",
+    "Grep",
+    "LS"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-RECOVERY-004",
+      "status": "pass",
+      "reason": "Mission session state captures missionDir from ProposeMission results when available, persists missionBaseSessionId alongside missionDir, and targeted restart-fallback coverage proves fallback resolution uses the documented base/original session id path when the original notification-provided path is unavailable.",
+      "evidence": [
+        "Targeted tests passed: test/rpcNotificationMapping.test.ts :: applyRpcNotification captures missionDir from ProposeMission tool_result notifications",
+        "Targeted tests passed: test/missionDirWatcher.test.ts :: readMissionDirSnapshot reads MissionDir payloads and resolves fallback missionDir paths",
+        "Targeted tests passed: test/sessionStore.test.ts :: sessionStore preserves explicit mission metadata, missionDir, and missionBaseSessionId across save, load, clear, and replace",
+        "Persisted Mission metadata evidence: /tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json contains missionDir=/Users/clive/.factory/missions/a901a190-5925-431e-8657-8db9bb502391 and missionBaseSessionId=a901a190-5925-431e-8657-8db9bb502391",
+        "Scrutiny fix evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl records worker_completed for mission-base-session-dir-fallback-fix at 2026-03-09T05:36:07.109Z"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-005",
+      "status": "pass",
+      "reason": "Disk reconciliation merge behavior is explicitly covered by focused passing tests and matches the live missionDir structure: state snapshots, feature snapshots, append-only deduped progress logs, and additive handoff preservation all remain available for the active validator-injected mission.",
+      "evidence": [
+        "Targeted tests passed: test/rpcNotificationMapping.test.ts :: applyMissionDirSnapshot follows per-file merge rules and keeps validator-injected Missions running",
+        "Live missionDir structure present: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda contains state.json, features.json, progress_log.jsonl, handoffs/, and validation-state.json",
+        "Live running-state evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/state.json shows state=running and currentFeatureId=user-testing-validator-mission-sync-recovery",
+        "Progress and additive merge evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl contains worker_completed entries followed by milestone_validation_triggered and later validator activity without replacing earlier entries",
+        "Handoff preservation evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs contains preserved implementation handoff JSON files",
+        "Electron sanity screenshot: /tmp/droi-mission-e2e/missiondir-watch-session.png",
+        "Console check: agent-browser errors reported none during the Electron sanity flow"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-006",
+      "status": "pass",
+      "reason": "Late missionDir creation and late-arriving handoff or validation files are directly covered by focused watcher tests, and the running Electron app remained coherent while missionDir-backed mission data existed on disk for the active mission.",
+      "evidence": [
+        "Targeted tests passed: test/missionDirWatcher.test.ts :: MissionDirWatcher tolerates late missionDir creation and late handoffs or validation files",
+        "Targeted tests passed: test/missionDirWatcher.test.ts :: MissionDirWatcher emits paused MissionDir updates when only state.json and progress_log.jsonl change",
+        "Live missionDir evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda currently includes validator-related files and handoffs alongside updated state/progress files",
+        "Electron sanity screenshot: /tmp/droi-mission-e2e/missiondir-watch-ui.png",
+        "DOM sanity evidence during UI check: [data-testid=\"mission-page\"] was present",
+        "Console check: agent-browser errors reported none during the Electron sanity flow"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The restorable Mission session available in the isolated Electron UI was a previously saved foundation-validation Mission session rather than the active validator-injected mission tied to the live missionDir under /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda.",
+      "resolved": true,
+      "resolution": "Used the real Electron UI for a Mission-surface coherence sanity check, then validated the assigned recovery assertions with the active live missionDir plus focused passing tests that directly cover capture, fallback, merge, and late-file behavior.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-004",
+        "VAL-RECOVERY-005",
+        "VAL-RECOVERY-006"
+      ]
+    },
+    {
+      "description": "The saved Mission session used for UI sanity proof persisted missionDir metadata for /Users/clive/.factory/missions/a901a190-5925-431e-8657-8db9bb502391, but that specific historical missionDir no longer exists on disk.",
+      "resolved": true,
+      "resolution": "Used that session only for real-surface coherence proof and relied on the active live missionDir plus focused tests for current disk-backed recovery behavior.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-004",
+        "VAL-RECOVERY-005",
+        "VAL-RECOVERY-006"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 3 assigned missionDir/watch/reconciliation assertions: 3 passed, 0 failed, 0 blocked. Strongest evidence was the passing targeted recovery suite in test/missionDirWatcher.test.ts, test/sessionStore.test.ts, and test/rpcNotificationMapping.test.ts, reinforced by persisted Mission metadata in /tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json, the live active mission directory at /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda, and Electron sanity screenshots /tmp/droi-mission-e2e/missiondir-watch-ui.png and /tmp/droi-mission-e2e/missiondir-watch-session.png with no console errors observed."
+}

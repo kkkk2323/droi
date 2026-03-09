@@ -1,0 +1,133 @@
+{
+  "groupId": "restore-bootstrap",
+  "testedAt": "2026-03-09T05:59:37Z",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "syncrecovery-a"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "node --test",
+    "Read",
+    "Grep"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-SESSION-004",
+      "status": "pass",
+      "reason": "Focused lifecycle restore coverage preserved explicit Mission classification and Mission snapshot data across running, paused, validator-injected running, and completed restores, and the restored Electron session still reopened on the Mission surface after reload.",
+      "evidence": [
+        "Automated test passed: test/sessionStore.test.ts :: buildRestoredSessionBuffer keeps Mission identity and snapshot data across lifecycle stages",
+        "Persisted Mission session metadata: /tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json includes isMission=true, sessionKind=mission, interactionMode=agi, autonomyLevel=off, decompSessionType=orchestrator, missionDir, missionBaseSessionId",
+        "UI screenshot after restore/reload: /tmp/droi-mission-e2e/restore-bootstrap-after-reload.png",
+        "DOM evidence after reload: [data-testid=\"mission-page\"] present before any manual recovery interaction"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-001",
+      "status": "pass",
+      "reason": "Restore bootstrap seeded the restored Mission buffer from Mission snapshot data, and the reloaded Electron session immediately rendered the Mission page while diagnostics showed the load_session restore path completing successfully.",
+      "evidence": [
+        "Automated test passed: test/sessionStore.test.ts :: buildRestoredSessionBuffer keeps Mission identity and snapshot data across lifecycle stages",
+        "UI screenshot after reload: /tmp/droi-mission-e2e/restore-bootstrap-after-reload.png",
+        "Reload DOM snapshot: mission-page=true immediately after reload and app-ready check",
+        "Diagnostics: /tmp/droi-mission-e2e/diagnostics/sessions/load-3c24b5c9-df94-4b5a-a0d6-90d03ca5a645-2026-03-09.jsonl shows droid.load_session request at lines 7-8 and success at line 11"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-002",
+      "status": "pass",
+      "reason": "Mission-specific restore sources remained authoritative over generic settings_updated noise; targeted precedence coverage passed and the local diagnostics showed settings_updated events surrounding successful load_session restores without any visible downgrade from Mission routing.",
+      "evidence": [
+        "Automated test passed: test/rpcNotificationMapping.test.ts :: applyRpcNotification does not downgrade explicit mission settings on generic settings_updated",
+        "UI screenshots stayed on Mission surface: /tmp/droi-mission-e2e/restore-bootstrap-foundation-metadata.png and /tmp/droi-mission-e2e/restore-bootstrap-after-reload.png",
+        "Diagnostics: /tmp/droi-mission-e2e/diagnostics/sessions/load-23f70946-b7ae-4bb4-9534-c212a4b2d38d-2026-03-09.jsonl shows repeated settings_updated notifications around a successful droid.load_session response",
+        "Persisted Mission metadata remained explicit in /tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-003",
+      "status": "pass",
+      "reason": "Supplemental StartMissionRun progress was validated to enrich hints only and not override Mission identity or Mission truth sources.",
+      "evidence": [
+        "Automated test passed: test/rpcNotificationMapping.test.ts :: applyRpcNotification keeps StartMissionRun progress supplemental while Mission notifications stay authoritative"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-007",
+      "status": "pass",
+      "reason": "Validator-injected running recovery stayed coherent: the active mission directory still reports a running validator phase with preserved handoffs, and the targeted reconciliation test kept validator-injected Missions running instead of collapsing to idle/completed.",
+      "evidence": [
+        "Automated test passed: test/rpcNotificationMapping.test.ts :: applyMissionDirSnapshot follows per-file merge rules and keeps validator-injected Missions running",
+        "Mission state evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/state.json shows state=running, currentFeatureId=user-testing-validator-mission-sync-recovery, currentWorkerSessionId=3f598f96-e255-4e52-a506-add8f371fa44",
+        "Mission progress evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl includes worker_completed entries followed by milestone_validation_triggered and subsequent validator worker activity",
+        "Handoff persistence evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs contains preserved implementation handoff JSON files"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-008",
+      "status": "pass",
+      "reason": "A restored Mission session rebuilt coherently after reload using the restore path, and the observed load diagnostics showed only load_session plus generic notifications, which is consistent with recovery without fresh live Mission notifications.",
+      "evidence": [
+        "UI screenshot after reload: /tmp/droi-mission-e2e/restore-bootstrap-after-reload.png",
+        "DOM evidence after reload: [data-testid=\"mission-page\"] present with Mission sidebar entries still visible for Mission-GUI-TEST",
+        "Diagnostics: /tmp/droi-mission-e2e/diagnostics/sessions/load-3c24b5c9-df94-4b5a-a0d6-90d03ca5a645-2026-03-09.jsonl shows initialize_session -> droid.load_session -> success without Mission-specific live notifications in the captured segment",
+        "Authoritative disk state available at /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/{state.json,features.json,progress_log.jsonl,handoffs/,validation-state.json}"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-009",
+      "status": "pass",
+      "reason": "Disk-only recovery, including state/features/progress/handoffs/validation-state handling, is covered by the focused recovery test and passed cleanly.",
+      "evidence": [
+        "Automated test passed: test/rpcNotificationMapping.test.ts :: applyMissionDirSnapshot supports disk-only recovery, completion gating, and orphan worker recovery"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-010",
+      "status": "pass",
+      "reason": "Completion remained conservatively gated by Mission state, feature state, and validation state: the live mission is still running with pending validation assertions, and the focused completion-gating test covered both the negative and positive completion cases.",
+      "evidence": [
+        "Automated test passed: test/rpcNotificationMapping.test.ts :: applyMissionDirSnapshot supports disk-only recovery, completion gating, and orphan worker recovery",
+        "Live mission gating evidence: /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/state.json shows state=running while /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/validation-state.json still contains pending assertions"
+      ]
+    },
+    {
+      "id": "VAL-RECOVERY-011",
+      "status": "pass",
+      "reason": "Orphaned currentWorkerSessionId recovery was validated by focused automated coverage so stale worker metadata does not falsely surface a live worker after restore.",
+      "evidence": [
+        "Automated test passed: test/rpcNotificationMapping.test.ts :: applyMissionDirSnapshot supports disk-only recovery, completion gating, and orphan worker recovery"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The restorable Mission session available in the isolated UI was a lightweight foundation validation session rather than the active validator-injected mission, so rich recovery assertions had to be proven with a combination of Electron sanity checks, diagnostics, live missionDir files, and focused automated tests instead of a single all-in-one UI fixture.",
+      "resolved": true,
+      "resolution": "Used the restored Electron Mission session for real-surface proof of coherent restore/reload, then used /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda plus focused tests for validator-injected, disk-only, completion-gating, and orphan-worker assertions.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-001",
+        "VAL-RECOVERY-007",
+        "VAL-RECOVERY-008",
+        "VAL-RECOVERY-009",
+        "VAL-RECOVERY-010",
+        "VAL-RECOVERY-011"
+      ]
+    },
+    {
+      "description": "The restored foundation metadata session persisted a missionDir path that no longer exists on disk, so that specific session could prove Mission identity restore but not current missionDir reconciliation behavior.",
+      "resolved": true,
+      "resolution": "Validated missionDir-backed recovery behaviors against the active live mission directory a340063e-1391-4186-b698-8db9955f8eda and the focused recovery tests instead.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-007",
+        "VAL-RECOVERY-008",
+        "VAL-RECOVERY-009",
+        "VAL-RECOVERY-010",
+        "VAL-RECOVERY-011"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 9 assigned restore/bootstrap assertions: 9 passed, 0 failed, 0 blocked. Strongest evidence combined a real Electron Mission restore/reload on Mission-GUI-TEST, successful droid.load_session diagnostics with surrounding generic settings_updated noise, persisted Mission session metadata in /tmp/droi-mission-e2e/sessions, the live active mission directory at /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda, and focused passing tests in test/sessionStore.test.ts and test/rpcNotificationMapping.test.ts. No console errors were reported by agent-browser during the UI checks."
+}
