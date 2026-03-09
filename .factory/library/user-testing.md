@@ -41,6 +41,17 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 - Re-snapshot after route changes, toggles, dialogs, or progress-state transitions.
 - Reuse a single browser session for each validation run.
 
+## Flow Validator Guidance: Electron Mission GUI
+
+- Treat the Electron Mission GUI as a **single-user surface** for this repo snapshot. Do **not** run multiple Mission browser flows against the same live app instance in parallel.
+- For this milestone, validator groups must run **sequentially** unless each group launches its own isolated Electron app with a unique `DROID_APP_DATA_DIR`, CDP port, and API port.
+- Stay inside the pre-created `Mission-GUI-TEST` project and avoid touching other projects or sessions that do not belong to your assigned namespace.
+- Use your assigned namespace in any new Mission prompt text or session naming so resulting sessions can be identified and cleaned up if needed.
+- Do not delete or modify sessions created by another validator group.
+- When verifying routing, use the real sidebar/session entry points instead of manually editing the URL bar.
+- When verifying persisted Mission identity, prefer evidence from the live UI plus the isolated temp data written under your assigned `DROID_APP_DATA_DIR`; do not inspect or modify the user's real application data.
+- Do not rely on Web/LAN mode, OS-native project pickers, or the existing Droi instance on port `3001`.
+
 ## Key Mission checks
 
 - Session creation and route split: Mission -> `/mission`, normal -> `/`
@@ -56,3 +67,5 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 - Mission directories and handoff/validation files may appear later than the initial Mission startup.
 - `droid.load_session` is more trustworthy than transient generic `settings_updated` for Mission identity.
 - Some recovery checks are best validated with targeted automated tests plus Electron sanity checks rather than pure browser-only assertions.
+- This Electron build uses TanStack memory-history, so `/mission` versus `/` proof should come from router state plus Mission DOM markers rather than the browser address bar.
+- In the Electron surface, direct automation clicks on the visible send button can be flaky; targeting the real `[data-testid="chat-send"]` element is more reliable when the UI is visibly ready.

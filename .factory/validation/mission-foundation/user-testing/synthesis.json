@@ -1,0 +1,35 @@
+{
+  "milestone": "mission-foundation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SESSION-001",
+    "VAL-SESSION-002",
+    "VAL-SESSION-003",
+    "VAL-SESSION-005",
+    "VAL-ROUTING-001",
+    "VAL-ROUTING-002",
+    "VAL-ROUTING-005"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance for the Electron Mission GUI surface, including sequential-run isolation requirements for the shared app instance.",
+      "source": "setup"
+    },
+    {
+      "target": "user-testing.md",
+      "description": "Documented observed Electron validation quirks: route proof must use router state because the app uses memory-history, and reliable automation should target the `chat-send` test id when the visible send button is flaky.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
