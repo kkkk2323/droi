@@ -64,6 +64,7 @@ function parseJsonLines(raw: string): MissionDiskObject[] {
 export function resolveMissionDirPath(params: {
   sessionId: string
   missionDir?: string | null
+  missionBaseSessionId?: string | null
 }): string {
   const explicit = String(params.missionDir || '').trim()
   if (explicit) {
@@ -72,7 +73,8 @@ export function resolveMissionDirPath(params: {
     return resolve(explicit)
   }
 
-  const sessionId = String(params.sessionId || '').trim()
+  const missionBaseSessionId = String(params.missionBaseSessionId || '').trim()
+  const sessionId = missionBaseSessionId || String(params.sessionId || '').trim()
   return join(homedir(), '.factory', 'missions', sessionId)
 }
 

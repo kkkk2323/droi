@@ -388,6 +388,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         meta?.isMission === true ||
         meta?.sessionKind === 'mission'
       const missionDir = String(session?.missionDir || meta?.missionDir || '').trim() || undefined
+      const missionBaseSessionId =
+        String(session?.missionBaseSessionId || meta?.missionBaseSessionId || '').trim() ||
+        undefined
       const nextKey = sessionId && isMission ? `${sessionId}:${missionDir || '(fallback)'}` : ''
       if (nextKey === watchKey) return
 
@@ -399,7 +402,11 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       watchedSessionId = sessionId
 
       try {
-        const readResult = await droid.readMissionDir({ sessionId, missionDir })
+        const readResult = await droid.readMissionDir({
+          sessionId,
+          missionDir,
+          missionBaseSessionId,
+        })
         if (token !== syncToken) return
         applySnapshot(
           sessionId,
@@ -411,7 +418,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const result = await droid.watchMissionDir({ sessionId, missionDir })
+        const result = await droid.watchMissionDir({ sessionId, missionDir, missionBaseSessionId })
         if (token !== syncToken) return
         const resolvedMissionDir =
           String(result?.missionDir || missionDir || '').trim() || undefined
@@ -625,9 +632,11 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
               if (!meta) return
 
               const now = Date.now()
+              const isMission = meta.isMission === true || meta.sessionKind === 'mission'
               const nextMeta: SessionMeta = {
                 ...meta,
                 id: newId,
+                missionBaseSessionId: meta.missionBaseSessionId || (isMission ? oldId : undefined),
                 savedAt: now,
                 lastMessageAt: undefined,
                 messageCount: 0,
@@ -639,8 +648,15 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                 if (!buf) return prev
                 let next = new Map(prev)
                 next.delete(oldId)
+                const missionBaseSessionId =
+                  buf.missionBaseSessionId ||
+                  meta.missionBaseSessionId ||
+                  (buf.isMission === true || buf.sessionKind === 'mission' || isMission
+                    ? oldId
+                    : undefined)
                 next.set(newId, {
                   ...buf,
+                  missionBaseSessionId,
                   isRunning: false,
                   isCancelling: false,
                   pendingSendMessageIds: {},

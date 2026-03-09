@@ -95,6 +95,23 @@ function getSessionProtocol(
   })
 }
 
+function getMissionBaseSessionId(
+  source?:
+    | Partial<Pick<SessionMeta, 'missionBaseSessionId' | 'autoLevel' | 'isMission' | 'sessionKind'>>
+    | Partial<
+        Pick<SessionBuffer, 'missionBaseSessionId' | 'autoLevel' | 'isMission' | 'sessionKind'>
+      >
+    | null,
+  fallbackSessionId?: string,
+): string | undefined {
+  const explicit =
+    typeof source?.missionBaseSessionId === 'string' ? source.missionBaseSessionId.trim() : ''
+  if (explicit) return explicit
+  const protocol = getSessionProtocol(source)
+  const fallback = String(fallbackSessionId || '').trim()
+  return protocol.isMission && fallback ? fallback : undefined
+}
+
 // --- Zustand Store ---
 
 interface AppState {
@@ -422,6 +439,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       .projects.flatMap((p) => p.sessions)
       .find((x) => x.id === sid)
     const protocol = getSessionProtocol(buf || existingMeta)
+    const missionBaseSessionId = getMissionBaseSessionId(buf || existingMeta, sid)
     const meta = await droid.saveSession({
       id: sid,
       projectDir: buf.projectDir,
@@ -434,6 +452,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       model: buf.model || DEFAULT_MODEL,
       autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
       missionDir: buf.missionDir,
+      missionBaseSessionId,
       isMission: protocol.isMission,
       sessionKind: protocol.sessionKind,
       interactionMode: protocol.interactionMode,
@@ -462,6 +481,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       workspaceType: meta.workspaceType || buf.workspaceType,
       baseBranch: meta.baseBranch || buf.baseBranch,
       missionDir: meta.missionDir || buf.missionDir,
+      missionBaseSessionId: meta.missionBaseSessionId || missionBaseSessionId,
       isMission: meta.isMission ?? protocol.isMission,
       sessionKind: meta.sessionKind || protocol.sessionKind,
       interactionMode: meta.interactionMode || protocol.interactionMode,
@@ -895,6 +915,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
       const now = Date.now()
+      const missionBaseSessionId = sessionProtocol.isMission ? newId : undefined
       get()._setProjects((prev) =>
         upsertSessionMeta(prev, {
           id: newId,
@@ -909,6 +930,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           messageCount: 0,
           model: inheritModel,
           autoLevel: inheritAutoLevel,
+          missionBaseSessionId,
           isMission: sessionProtocol.isMission,
           sessionKind: sessionProtocol.sessionKind,
           interactionMode: sessionProtocol.interactionMode,
@@ -929,6 +951,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }),
         model: inheritModel,
         autoLevel: inheritAutoLevel,
+        missionBaseSessionId,
         isMission: sessionProtocol.isMission,
         sessionKind: sessionProtocol.sessionKind,
         interactionMode: sessionProtocol.interactionMode,
@@ -1016,6 +1039,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       model: meta?.model || (buf?.model ?? DEFAULT_MODEL),
       autoLevel: meta?.autoLevel || (buf?.autoLevel ?? DEFAULT_AUTO_LEVEL),
       missionDir: meta?.missionDir || buf?.missionDir,
+      missionBaseSessionId: meta?.missionBaseSessionId || buf?.missionBaseSessionId,
       reasoningEffort: meta?.reasoningEffort || buf?.reasoningEffort || undefined,
       lastMessageAt: meta?.lastMessageAt,
     }
@@ -1172,6 +1196,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         next.delete(sid)
         next.set(meta.id, {
           ...session,
+          missionBaseSessionId: normalizedMeta.missionBaseSessionId || session.missionBaseSessionId,
           isRunning: false,
           isCancelling: false,
           pendingSendMessageIds: {},
@@ -1304,6 +1329,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ? getTitleFromPrompt(rawPromptForTitle)
         : existingMeta.title
     const protocol = getSessionProtocol(buf || existingMeta)
+    const missionBaseSessionId = getMissionBaseSessionId(buf || existingMeta, sid)
     const draftMeta: SessionMeta = {
       id: sid,
       projectDir: projDir,
@@ -1319,6 +1345,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       model: sessionModel,
       autoLevel: sessionAutoLevel,
       missionDir: buf?.missionDir,
+      missionBaseSessionId,
       isMission: protocol.isMission,
       sessionKind: protocol.sessionKind,
       interactionMode: protocol.interactionMode,
@@ -1343,6 +1370,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         model: sessionModel,
         autoLevel: sessionAutoLevel,
         missionDir: buf?.missionDir,
+        missionBaseSessionId,
         isMission: protocol.isMission,
         sessionKind: protocol.sessionKind,
         interactionMode: protocol.interactionMode,
@@ -1371,6 +1399,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           workspaceType: meta.workspaceType || buf?.workspaceType,
           baseBranch: meta.baseBranch || buf?.baseBranch,
           missionDir: meta.missionDir || buf?.missionDir,
+          missionBaseSessionId: meta.missionBaseSessionId || missionBaseSessionId,
           isMission: meta.isMission ?? protocol.isMission,
           sessionKind: meta.sessionKind || protocol.sessionKind,
           interactionMode: meta.interactionMode || protocol.interactionMode,
@@ -2080,6 +2109,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sessionId)
     if (buf) {
       const protocol = getSessionProtocol(buf || meta)
+      const missionBaseSessionId = getMissionBaseSessionId(buf || meta, sessionId)
       void droid.saveSession({
         id: sessionId,
         projectDir: buf.projectDir,
@@ -2092,6 +2122,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         model: buf.model || DEFAULT_MODEL,
         autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
         missionDir: buf.missionDir,
+        missionBaseSessionId,
         isMission: protocol.isMission,
         sessionKind: protocol.sessionKind,
         interactionMode: protocol.interactionMode,
@@ -2204,6 +2235,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 model: data?.model || pickFallback.model || DEFAULT_MODEL,
                 autoLevel: data?.autoLevel || pickFallback.autoLevel || DEFAULT_AUTO_LEVEL,
                 missionDir: (data as any)?.missionDir || pickFallback.missionDir,
+                missionBaseSessionId:
+                  (data as any)?.missionBaseSessionId || pickFallback.missionBaseSessionId,
                 isMission: protocol.isMission,
                 sessionKind: protocol.sessionKind,
                 interactionMode: protocol.interactionMode,

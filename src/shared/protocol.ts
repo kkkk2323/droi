@@ -214,6 +214,7 @@ export interface SessionMeta {
   model: string
   autoLevel: string
   missionDir?: string
+  missionBaseSessionId?: string
   isMission?: boolean
   sessionKind?: SessionKind
   interactionMode?: SessionInteractionMode
@@ -301,6 +302,7 @@ export interface SaveSessionRequest {
   model: string
   autoLevel: string
   missionDir?: string
+  missionBaseSessionId?: string
   isMission?: boolean
   sessionKind?: SessionKind
   interactionMode?: SessionInteractionMode
@@ -324,6 +326,7 @@ export interface LoadSessionResponse {
   model: string
   autoLevel: string
   missionDir?: string
+  missionBaseSessionId?: string
   isMission?: boolean
   sessionKind?: SessionKind
   interactionMode?: SessionInteractionMode

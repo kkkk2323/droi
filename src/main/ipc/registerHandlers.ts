@@ -187,7 +187,11 @@ export function registerIpcHandlers(opts: {
   const resolveMissionDirRequest = (params: MissionDirRequest) => {
     const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
     if (!sessionId) throw new Error('Missing sessionId')
-    const missionDir = resolveMissionDirPath({ sessionId, missionDir: params?.missionDir })
+    const missionDir = resolveMissionDirPath({
+      sessionId,
+      missionDir: params?.missionDir,
+      missionBaseSessionId: params?.missionBaseSessionId,
+    })
     return { sessionId, missionDir }
   }
 

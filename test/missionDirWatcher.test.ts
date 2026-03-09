@@ -60,6 +60,13 @@ test('readMissionDirSnapshot reads MissionDir payloads and resolves fallback mis
     resolveMissionDirPath({ sessionId: 'base-session-123', missionDir: '~/.factory/missions/custom' }),
     join(homedir(), '.factory', 'missions', 'custom'),
   )
+  assert.equal(
+    resolveMissionDirPath({
+      sessionId: 'replaced-session-456',
+      missionBaseSessionId: 'base-session-123',
+    }),
+    join(homedir(), '.factory', 'missions', 'base-session-123'),
+  )
 })
 
 test('MissionDirWatcher tolerates late missionDir creation and late handoffs or validation files', async () => {

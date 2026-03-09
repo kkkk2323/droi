@@ -9,6 +9,7 @@ type RestorableSessionMeta = Partial<
     | 'autoLevel'
     | 'model'
     | 'missionDir'
+    | 'missionBaseSessionId'
     | 'isMission'
     | 'sessionKind'
     | 'interactionMode'
@@ -50,6 +51,7 @@ export function buildRestoredSessionBuffer(params: {
     model: data?.model || meta?.model || DEFAULT_MODEL,
     autoLevel: data?.autoLevel || meta?.autoLevel || DEFAULT_AUTO_LEVEL,
     missionDir: data?.missionDir || meta?.missionDir,
+    missionBaseSessionId: data?.missionBaseSessionId || meta?.missionBaseSessionId,
     isMission: protocol.isMission,
     sessionKind: protocol.sessionKind,
     interactionMode: protocol.interactionMode,

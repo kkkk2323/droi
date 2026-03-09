@@ -34,6 +34,7 @@ export interface SessionBuffer {
   model: string
   autoLevel: string
   missionDir?: string
+  missionBaseSessionId?: string
   mission?: MissionState
   isMission?: boolean
   sessionKind?: 'normal' | 'mission'

@@ -164,7 +164,7 @@ test('sessionStore save persists empty session with branch-derived title', async
   assert.equal(loaded?.title, 'calm-whale-0phf')
 })
 
-test('sessionStore preserves explicit mission metadata and missionDir across save, load, clear, and replace', async () => {
+test('sessionStore preserves explicit mission metadata, missionDir, and missionBaseSessionId across save, load, clear, and replace', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
   const store = createSessionStore({ baseDir: dir })
 
@@ -174,6 +174,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
     model: 'gpt',
     autoLevel: 'high',
     missionDir: '/Users/clive/.factory/missions/mission_1',
+    missionBaseSessionId: 'mission_1',
     isMission: true,
     sessionKind: 'mission',
     interactionMode: 'agi',
@@ -196,6 +197,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(saved?.autonomyLevel, 'high')
   assert.equal(saved?.decompSessionType, 'orchestrator')
   assert.equal(saved?.missionDir, '/Users/clive/.factory/missions/mission_1')
+  assert.equal(saved?.missionBaseSessionId, 'mission_1')
 
   const loaded = await store.load('mission_1')
   assert.ok(loaded)
@@ -205,6 +207,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(loaded?.autonomyLevel, 'high')
   assert.equal(loaded?.decompSessionType, 'orchestrator')
   assert.equal(loaded?.missionDir, '/Users/clive/.factory/missions/mission_1')
+  assert.equal(loaded?.missionBaseSessionId, 'mission_1')
 
   const listed = await store.list()
   assert.equal(listed.length, 1)
@@ -214,6 +217,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(listed[0].autonomyLevel, 'high')
   assert.equal(listed[0].decompSessionType, 'orchestrator')
   assert.equal(listed[0].missionDir, '/Users/clive/.factory/missions/mission_1')
+  assert.equal(listed[0].missionBaseSessionId, 'mission_1')
 
   const cleared = await store.clearContext('mission_1')
   assert.ok(cleared)
@@ -223,6 +227,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(cleared?.autonomyLevel, 'high')
   assert.equal(cleared?.decompSessionType, 'orchestrator')
   assert.equal(cleared?.missionDir, '/Users/clive/.factory/missions/mission_1')
+  assert.equal(cleared?.missionBaseSessionId, 'mission_1')
 
   const replaced = await store.replaceSessionId('mission_1', 'mission_2')
   assert.ok(replaced)
@@ -233,6 +238,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(replaced?.autonomyLevel, 'high')
   assert.equal(replaced?.decompSessionType, 'orchestrator')
   assert.equal(replaced?.missionDir, '/Users/clive/.factory/missions/mission_1')
+  assert.equal(replaced?.missionBaseSessionId, 'mission_1')
 
   const loadedReplaced = await store.load('mission_2')
   assert.ok(loadedReplaced)
@@ -242,6 +248,7 @@ test('sessionStore preserves explicit mission metadata and missionDir across sav
   assert.equal(loadedReplaced?.autonomyLevel, 'high')
   assert.equal(loadedReplaced?.decompSessionType, 'orchestrator')
   assert.equal(loadedReplaced?.missionDir, '/Users/clive/.factory/missions/mission_1')
+  assert.equal(loadedReplaced?.missionBaseSessionId, 'mission_1')
 })
 
 test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across lifecycle stages', () => {
@@ -253,6 +260,7 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
     autonomyLevel: 'high' as const,
     decompSessionType: 'orchestrator' as const,
     missionDir: '/Users/clive/.factory/missions/base-session-123',
+    missionBaseSessionId: 'base-session-123',
     model: 'gpt-5.4',
   }
 
@@ -366,6 +374,7 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
         model: 'gpt-5.4',
         autoLevel: 'high',
         missionDir: baseMeta.missionDir,
+        missionBaseSessionId: baseMeta.missionBaseSessionId,
         isMission: true,
         sessionKind: 'mission',
         interactionMode: 'agi',
@@ -381,6 +390,7 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
     assert.equal(restored.autonomyLevel, 'high', stage.label)
     assert.equal(restored.decompSessionType, 'orchestrator', stage.label)
     assert.equal(restored.missionDir, baseMeta.missionDir, stage.label)
+    assert.equal(restored.missionBaseSessionId, baseMeta.missionBaseSessionId, stage.label)
     assert.equal(restored.mission?.currentState, stage.expectedState, stage.label)
     assert.equal(restored.mission?.isCompleted, stage.expectedCompleted, stage.label)
     assert.equal(restored.mission?.liveWorkerSessionId, undefined, stage.label)

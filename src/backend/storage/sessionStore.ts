@@ -44,6 +44,10 @@ function safeSessionFilePath(sessionsDir: string, id: string): string | null {
   return filePath
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
 export interface SessionStore {
   save: (req: SaveSessionRequest) => Promise<SessionMeta | null>
   load: (id: string) => Promise<LoadSessionResponse | null>
@@ -80,6 +84,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       model: req.model,
       autoLevel: req.autoLevel,
       missionDir: req.missionDir,
+      missionBaseSessionId: normalizeOptionalString(req.missionBaseSessionId),
       isMission: req.isMission,
       sessionKind: req.sessionKind,
       interactionMode: req.interactionMode,
@@ -110,6 +115,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       model: req.model,
       autoLevel: req.autoLevel,
       missionDir: req.missionDir,
+      missionBaseSessionId: normalizeOptionalString(req.missionBaseSessionId),
       isMission: req.isMission,
       sessionKind: req.sessionKind,
       interactionMode: req.interactionMode,
@@ -148,6 +154,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           model: String(raw.model || ''),
           autoLevel: String(raw.autoLevel || 'default'),
           missionDir: typeof raw.missionDir === 'string' ? raw.missionDir : undefined,
+          missionBaseSessionId: normalizeOptionalString(raw.missionBaseSessionId),
           isMission: raw.isMission === true ? true : undefined,
           sessionKind:
             raw.sessionKind === 'mission'
@@ -233,6 +240,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           model: data.model,
           autoLevel: data.autoLevel,
           missionDir: data.missionDir,
+          missionBaseSessionId: data.missionBaseSessionId,
           isMission: data.isMission,
           sessionKind: data.sessionKind,
           interactionMode: data.interactionMode,
@@ -312,6 +320,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         autoLevel: String((raw as any).autoLevel || 'default'),
         missionDir:
           typeof (raw as any).missionDir === 'string' ? (raw as any).missionDir : undefined,
+        missionBaseSessionId: normalizeOptionalString((raw as any).missionBaseSessionId),
         isMission: (raw as any).isMission === true ? true : undefined,
         sessionKind:
           (raw as any).sessionKind === 'mission'
@@ -365,11 +374,15 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         : []
       const titleRaw = typeof (raw as any).title === 'string' ? (raw as any).title : ''
       const title = titleRaw.trim() || getTitleFromMessages(prevMessages)
+      const missionBaseSessionId = normalizeOptionalString((raw as any).missionBaseSessionId)
+      const isMission = (raw as any).isMission === true || (raw as any).sessionKind === 'mission'
 
       const record = {
         ...(raw as any),
         version: 1,
         id: newId,
+        missionBaseSessionId:
+          missionBaseSessionId || (isMission ? String((raw as any).id || oldId) : undefined),
         title,
         savedAt: now,
         lastMessageAt: now,
@@ -410,6 +423,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         autoLevel: String((raw as any).autoLevel || 'default'),
         missionDir:
           typeof (raw as any).missionDir === 'string' ? (raw as any).missionDir : undefined,
+        missionBaseSessionId:
+          missionBaseSessionId || (isMission ? String((raw as any).id || oldId) : undefined),
         isMission: (raw as any).isMission === true ? true : undefined,
         sessionKind:
           (raw as any).sessionKind === 'mission'

@@ -33,6 +33,7 @@ export interface MissionDirSnapshot {
 export interface MissionDirRequest {
   sessionId: string
   missionDir?: string | null
+  missionBaseSessionId?: string | null
 }
 
 export interface MissionDirReadResult {
