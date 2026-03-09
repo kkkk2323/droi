@@ -58,11 +58,13 @@ import {
   Loader2,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import fxAck from '@/assets/fx-ack01.wav'
 import { isBrowserMode } from '@/droidClient'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getProjectDisplayName } from '@/store/projectHelpers'
+import { getSessionRouteTarget, getSessionSidebarTestId } from '@/lib/sessionRouting'
 
 const isDevMode = import.meta.env.DEV
 
@@ -137,7 +139,7 @@ function SessionItem({
     >
       <SidebarMenuSubItem className="group/session">
         <SidebarMenuSubButton
-          data-testid={`session-${session.id}`}
+          data-testid={getSessionSidebarTestId(session)}
           render={<button type="button" />}
           className={cn(
             'w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0',
@@ -155,6 +157,14 @@ function SessionItem({
             )}
             {isSessionRunning && !needsAttention && (
               <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />
+            )}
+            {getSessionRouteTarget(session) === '/mission' && (
+              <Badge
+                variant="outline"
+                className="h-4 shrink-0 px-1.5 py-0 text-[9px] font-medium uppercase tracking-[0.16em]"
+              >
+                Mission
+              </Badge>
             )}
             <SessionTitle title={session.title} />
           </span>
@@ -420,6 +430,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           onClick={(e) => {
                             e.stopPropagation()
                             if (isCreatingSession || isInitBlocked) return
+                            navigate({ to: '/' })
                             handleNewSession(project.dir)
                           }}
                         >

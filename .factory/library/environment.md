@@ -28,7 +28,7 @@ Environment variables, external dependencies, and setup notes for the Mission GU
 ## User-provided validation constraints
 
 - Any manual or automated E2E flow that invokes Mission must run in the `Mission-GUI-TEST` project.
-- Any Mission-invoking E2E flow must use Gemini 3 Flash (`gemini-3-flash-preview`).
+- Any Mission-invoking **agent-browser** E2E flow must use the Custom model `CCH-GPT-5.4`.
 
 - `FACTORY_API_KEY` — Required for Droid CLI authentication
 - Node.js + pnpm required

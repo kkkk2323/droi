@@ -36,7 +36,7 @@ Use this skill for features that modify:
 
 6. **Perform manual Electron sanity checks for every feature that changes visible Mission behavior.** When the feature invokes a Mission flow, you must:
    - use the `Mission-GUI-TEST` project
-   - use Gemini 3 Flash (`gemini-3-flash-preview`)
+   - for any `agent-browser` testing flow, use Custom -> `CCH-GPT-5.4`
    - stay on Electron with isolated `DROID_APP_DATA_DIR`
 
 7. **Capture route and state evidence, not just screenshots.** For routing/toggle/cooldown features, record the user action, resulting route/view, and the Mission state that triggered the transition.
@@ -70,7 +70,7 @@ Use this skill for features that modify:
     ],
     "interactiveChecks": [
       {
-        "action": "Launched Electron dev app with isolated data dir, selected `Mission-GUI-TEST`, chose `gemini-3-flash-preview`, and created a Mission session",
+        "action": "Launched Electron dev app with isolated data dir, selected `Mission-GUI-TEST`, chose Custom -> `CCH-GPT-5.4`, and created a Mission session",
         "observed": "The session opened on `/mission` and exposed the Mission toggle plus Mission status bar."
       },
       {

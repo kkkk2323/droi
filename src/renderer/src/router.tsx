@@ -9,6 +9,7 @@ import {
 import { RootLayout } from './layouts/RootLayout'
 import { SettingsLayout } from './layouts/SettingsLayout'
 import { ChatPage } from './pages/ChatPage'
+import { MissionPage } from './pages/MissionPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { KeysPage } from './pages/KeysPage'
 import { ProjectSettingsPage } from './pages/ProjectSettingsPage'
@@ -28,6 +29,12 @@ export const chatRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
   path: '/',
   component: ChatPage,
+})
+
+export const missionRoute = createRoute({
+  getParentRoute: () => chatLayoutRoute,
+  path: '/mission',
+  component: MissionPage,
 })
 
 const settingsLayoutRoute = createRoute({
@@ -61,7 +68,7 @@ export const debugSettingsRoute = createRoute({
 })
 
 const routeTree = rootRoute.addChildren([
-  chatLayoutRoute.addChildren([chatRoute]),
+  chatLayoutRoute.addChildren([chatRoute, missionRoute]),
   settingsLayoutRoute.addChildren([
     settingsRoute,
     keysSettingsRoute,

@@ -16,7 +16,7 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 ## Required isolation rules
 
 - Any Mission-invoking manual or automated E2E must use the pre-created project **`Mission-GUI-TEST`**.
-- Any Mission-invoking manual or automated E2E must use **Gemini 3 Flash** (`gemini-3-flash-preview`).
+- Any Mission-invoking **agent-browser** manual or automated E2E must use **Custom -> `CCH-GPT-5.4`**.
 - Use a copied temporary `DROID_APP_DATA_DIR` rooted at `/tmp/droi-mission-e2e`.
 - Do **not** validate Mission flows through Web/LAN mode.
 - Do **not** use the existing Droi instance on `127.0.0.1:3001`.
@@ -32,7 +32,7 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 3. Connect automation with `agent-browser connect 9222`.
 4. Wait for `document.body.hasAttribute("data-app-ready") === true`.
 5. Select the `Mission-GUI-TEST` project.
-6. For any new Mission flow, explicitly choose `gemini-3-flash-preview` before the first Mission message.
+6. For any new Mission flow exercised with `agent-browser`, explicitly choose `Custom -> CCH-GPT-5.4` before the first Mission message.
 
 ## Recommended automation flow
 

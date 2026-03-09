@@ -34,23 +34,21 @@ import {
   renameProject,
 } from './store/projectHelpers'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
+import {
+  getPendingSessionProtocol,
+  mergePendingSessionDraft,
+  type PendingSessionDraft,
+  type PendingSessionDraftMode,
+} from '@/lib/pendingSessionDraft'
 import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
 
 const droid = getDroidClient()
 
 export type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
 
-export type PendingNewSessionMode = 'local' | 'new-worktree'
+export type PendingNewSessionMode = PendingSessionDraftMode
 
-export type PendingNewSession = {
-  repoRoot: string
-  projectDir?: string
-  workspaceDir?: string
-  cwdSubpath?: string
-  branch: string
-  isExistingBranch?: boolean
-  mode?: PendingNewSessionMode
-}
+export type PendingNewSession = PendingSessionDraft
 
 type PendingInitialSend = {
   sessionId: string
@@ -215,6 +213,7 @@ interface AppActions {
     mode: 'plain' | 'switch-branch' | 'new-branch' | 'new-worktree'
     branch?: string
     baseBranch?: string
+    sessionKind?: PendingNewSession['sessionKind']
   }) => Promise<string | null>
   handleSwitchWorkspaceForSession: (params: {
     branch: string
@@ -727,35 +726,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // --- New-session flow (deferred creation) ---
   updatePendingNewSession: (patch) => {
-    const nextPatch = patch || {}
     set((prev) => {
       const cur = prev.pendingNewSession
       if (!cur) return {}
       return {
-        pendingNewSession: {
-          ...cur,
-          ...(nextPatch as Partial<PendingNewSession>),
-          repoRoot:
-            typeof (nextPatch as any).repoRoot === 'string'
-              ? String((nextPatch as any).repoRoot).trim()
-              : cur.repoRoot,
-          projectDir:
-            typeof (nextPatch as any).projectDir === 'string'
-              ? String((nextPatch as any).projectDir).trim()
-              : cur.projectDir,
-          workspaceDir:
-            typeof (nextPatch as any).workspaceDir === 'string'
-              ? String((nextPatch as any).workspaceDir).trim()
-              : cur.workspaceDir,
-          cwdSubpath:
-            typeof (nextPatch as any).cwdSubpath === 'string'
-              ? String((nextPatch as any).cwdSubpath).trim()
-              : cur.cwdSubpath,
-          branch:
-            typeof (nextPatch as any).branch === 'string'
-              ? String((nextPatch as any).branch).trim()
-              : cur.branch,
-        },
+        pendingNewSession: mergePendingSessionDraft(cur, patch as Partial<PendingNewSession>),
       }
     })
   },
@@ -848,6 +823,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const inheritModel = currentBuf?.model ?? DEFAULT_MODEL
       const inheritAutoLevel = currentBuf?.autoLevel ?? DEFAULT_AUTO_LEVEL
       const inheritReasoningEffort = currentBuf?.reasoningEffort ?? ''
+      const sessionProtocol = getPendingSessionProtocol(
+        { sessionKind: params.sessionKind },
+        inheritAutoLevel,
+      )
       const sourceCwdSubpath =
         typeof params.cwdSubpath === 'string' && params.cwdSubpath.trim()
           ? params.cwdSubpath.trim()
@@ -903,6 +882,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         cwd: targetDir,
         modelId: inheritModel,
         autoLevel: inheritAutoLevel,
+        isMission: sessionProtocol.isMission,
+        sessionKind: sessionProtocol.sessionKind,
+        interactionMode: sessionProtocol.interactionMode,
+        autonomyLevel: sessionProtocol.autonomyLevel,
+        decompSessionType: sessionProtocol.decompSessionType,
         reasoningEffort: inheritReasoningEffort || undefined,
       })
 
@@ -922,6 +906,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
           messageCount: 0,
           model: inheritModel,
           autoLevel: inheritAutoLevel,
+          isMission: sessionProtocol.isMission,
+          sessionKind: sessionProtocol.sessionKind,
+          interactionMode: sessionProtocol.interactionMode,
+          autonomyLevel: sessionProtocol.autonomyLevel,
+          decompSessionType: sessionProtocol.decompSessionType,
           reasoningEffort: inheritReasoningEffort || undefined,
           baseBranch: workspaceInfo!.baseBranch,
         }),
@@ -937,6 +926,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }),
         model: inheritModel,
         autoLevel: inheritAutoLevel,
+        isMission: sessionProtocol.isMission,
+        sessionKind: sessionProtocol.sessionKind,
+        interactionMode: sessionProtocol.interactionMode,
+        autonomyLevel: sessionProtocol.autonomyLevel,
+        decompSessionType: sessionProtocol.decompSessionType,
         reasoningEffort: inheritReasoningEffort || '',
       }
       get()._setSessionBuffers((prev) => {
@@ -1111,6 +1105,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         cwdSubpath,
         mode: createMode,
         branch,
+        sessionKind: pending.sessionKind,
         ...(createMode === 'new-worktree' ? { baseBranch } : {}),
       })
       if (!newId) return
@@ -1990,6 +1985,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             branch: '',
             isExistingBranch: false,
             mode: 'local',
+            sessionKind: 'normal',
           },
         })
       } catch (err) {
@@ -2028,6 +2024,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           branch: '',
           isExistingBranch: false,
           mode: 'local',
+          sessionKind: 'normal',
         },
       })
     })()

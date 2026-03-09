@@ -30,7 +30,7 @@ Use this skill for features that primarily add or stabilize:
 
 6. **For any Mission-invoking manual/E2E verification, obey the hard constraints:**
    - project: `Mission-GUI-TEST`
-   - model: `gemini-3-flash-preview`
+   - model for any `agent-browser` flow: Custom -> `CCH-GPT-5.4`
    - Electron surface only
    - isolated copied `DROID_APP_DATA_DIR`
 
@@ -51,7 +51,7 @@ Use this skill for features that primarily add or stabilize:
 
 ```json
 {
-  "salientSummary": "Expanded Mission integration coverage for create/run/validator injection, pause/continue, daemon-failure recovery, and kill-worker flows. Added stable Mission test ids and confirmed Mission-invoking Electron checks use `Mission-GUI-TEST` plus `gemini-3-flash-preview` with an isolated copied data directory.",
+  "salientSummary": "Expanded Mission integration coverage for create/run/validator injection, pause/continue, daemon-failure recovery, and kill-worker flows. Added stable Mission test ids and confirmed Mission-invoking Electron checks use `Mission-GUI-TEST` plus Custom -> `CCH-GPT-5.4` with an isolated copied data directory.",
   "whatWasImplemented": "Extended Mission-focused automated tests across interaction mode hot switching, session persistence, notification mapping, watcher/recovery paths, and Electron integration scenarios. Added stable Mission selectors needed by E2E and documented the constrained Electron validation path for Mission flows.",
   "whatWasLeftUndone": "I did not modify unrelated UI polish outside the assertions covered by the new integration/E2E tests.",
   "verification": {
@@ -74,7 +74,7 @@ Use this skill for features that primarily add or stabilize:
     ],
     "interactiveChecks": [
       {
-        "action": "Launched the Electron dev app with `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e`, selected `Mission-GUI-TEST`, and chose `gemini-3-flash-preview` for a new Mission flow",
+        "action": "Launched the Electron dev app with `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e`, selected `Mission-GUI-TEST`, and chose Custom -> `CCH-GPT-5.4` for a new Mission flow",
         "observed": "Mission E2E started on the Electron surface without using Web/LAN mode or the OS project picker."
       },
       {
