@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  useAppStore,
   useMessages,
   useIsRunning,
   useModel,
@@ -30,8 +31,17 @@ import { PermissionCard } from '@/components/PermissionCard'
 import { AskUserCard } from '@/components/AskUserCard'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
 import { getPendingSessionDraftKey } from '@/store/projectHelpers'
+import { getPreferredMissionView } from '@/lib/missionPage'
 
-export function ChatPage() {
+interface ChatPageProps {
+  forceInputDisabled?: boolean
+  forceDisabledPlaceholder?: string
+}
+
+export function ChatPage({
+  forceInputDisabled = false,
+  forceDisabledPlaceholder,
+}: ChatPageProps = {}) {
   const messages = useMessages()
   const isRunning = useIsRunning()
   const workingState = useWorkingState()
@@ -50,6 +60,9 @@ export function ChatPage() {
   const pendingPermissionRequest = usePendingPermissionRequest()
   const pendingAskUserRequest = usePendingAskUserRequest()
   const isCancelling = useIsCancelling()
+  const mission = useAppStore((state) =>
+    activeSessionId ? state.sessionBuffers.get(activeSessionId)?.mission : undefined,
+  )
   const {
     setModel,
     setAutoLevel,
@@ -97,24 +110,31 @@ export function ChatPage() {
     pendingNewSession?.projectDir || pendingNewSession?.repoRoot || activeProjectDir
   const noProject = !effectiveProjectDir
   const noSession = !activeSessionId
-  const disabledPlaceholder = noProject
-    ? 'Select a project to start...'
-    : isCreatingSession
-      ? 'Preparing workspace...'
-      : pendingNewSession
-        ? 'Type a message to create this session...'
-        : noSession
-          ? 'Create or select a session to start...'
-          : setupScript?.status === 'running'
-            ? 'Setup script is running...'
-            : setupScript?.status === 'failed'
-              ? 'Setup script failed. Retry or skip to continue.'
-              : undefined
+  const missionPreferredView = getPreferredMissionView(mission)
+  const missionInputLocked = missionPreferredView === 'mission-control'
+
+  const disabledPlaceholder =
+    forceDisabledPlaceholder ||
+    (noProject
+      ? 'Select a project to start...'
+      : isCreatingSession
+        ? 'Preparing workspace...'
+        : pendingNewSession
+          ? 'Type a message to create this session...'
+          : noSession
+            ? 'Create or select a session to start...'
+            : setupScript?.status === 'running'
+              ? 'Setup script is running...'
+              : setupScript?.status === 'failed'
+                ? 'Setup script failed. Retry or skip to continue.'
+                : undefined)
 
   const pendingKey = getPendingSessionDraftKey(pendingNewSession)
   const inputKey = pendingNewSession ? pendingKey : activeSessionId || 'no-session'
   const draftKey = pendingNewSession ? pendingKey : activeSessionId
   const inputDisabled =
+    forceInputDisabled ||
+    missionInputLocked ||
     isCreatingSession ||
     noProject ||
     (!pendingNewSession && noSession) ||
