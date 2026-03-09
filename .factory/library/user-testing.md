@@ -69,6 +69,7 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 - Mission directories and handoff/validation files may appear later than the initial Mission startup.
 - `droid.load_session` is more trustworthy than transient generic `settings_updated` for Mission identity.
 - Some recovery checks are best validated with targeted automated tests plus Electron sanity checks rather than pure browser-only assertions.
+- The shared live `Mission-GUI-TEST` validator-phase Mission session should be treated as read-only during user testing; destructive Pause/Kill Worker flows and optional Mission-permission permutations are safer to validate with the copied Mission snapshot or isolated in-memory renderer-state injection.
 - This Electron build uses TanStack memory-history, so `/mission` versus `/` proof should come from router state plus Mission DOM markers rather than the browser address bar.
 - Repeated isolated Electron validation runs can fail if stale listeners are still bound to `9222`, `5173`, or `3002`; run the manifest stop command before restarting the app.
 - In the Electron surface, direct automation clicks on the visible send button can be flaky; targeting the real `[data-testid="chat-send"]` element is more reliable when the UI is visibly ready.

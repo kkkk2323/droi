@@ -1,0 +1,203 @@
+{
+  "groupId": "control-panels",
+  "testedAt": "2026-03-09T15:58:22.401476+00:00",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "mcui-control-panels"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "mission artifacts",
+    "focused automated tests"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CONTROL-003",
+      "title": "Feature Queue mirrors `features.json` order, highlights current work, and marks validator features distinctly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open the existing Mission-GUI-TEST Mission session and switch to Mission Control.",
+          "expected": "Mission Control shows a feature queue for the active Mission session.",
+          "observed": "Mission Control rendered `mission-feature-queue` with the current validator-phase mission data."
+        },
+        {
+          "action": "Compare the rendered queue order with `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/features.json`.",
+          "expected": "Rendered rows stay in the same order as `features.json`.",
+          "observed": "The live queue started with `user-testing-validator-mission-control-ui`, `mission-integration-tests-and-e2e-readiness`, then `mission-protocol-metadata-and-kill-worker-plumbing`, matching the live `features.json` ordering."
+        },
+        {
+          "action": "Inspect the current row and validator rows in the live queue DOM.",
+          "expected": "Current work is highlighted and validator features are visually distinct from normal rows.",
+          "observed": "`mission-feature-user-testing-validator-mission-control-ui` rendered with the current highlighted styling, while validator rows such as `scrutiny-validator-mission-control-ui` remained visually distinct from standard completed/pending rows."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "control-panels-live-validator-phase.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No relevant API/XHR requests were captured for the queue itself; reloads only fetched renderer assets from `http://localhost:5173/*`.",
+        "files": [
+          "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/features.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-004",
+      "title": "Validator injection does not prematurely mark the Mission complete",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review the current Mission artifacts after implementation worker completion and validator injection.",
+          "expected": "The mission remains active while validator work is still pending.",
+          "observed": "Live artifacts showed `completedFeatures: 16`, `totalFeatures: 18`, `scrutiny-validator-mission-control-ui` completed, and `user-testing-validator-mission-control-ui` still in progress."
+        },
+        {
+          "action": "Inspect the live Mission Control status and queue during the validator phase.",
+          "expected": "The UI does not show the Mission as finished after the first handoff or validator injection.",
+          "observed": "Mission Control still showed `Running` / `Mission is running`, with the user-testing validator highlighted as current and no completed-mission presentation."
+        },
+        {
+          "action": "Cross-check the progress timeline against the mission progress log.",
+          "expected": "`worker_completed` and validation-trigger events are present without collapsing the Mission into a completed state.",
+          "observed": "The timeline and progress log both included `worker_completed` followed by validator-related events while the Mission surface stayed active."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "control-panels-live-validator-phase.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No relevant API/XHR requests were captured; the validator-phase UI reflected renderer state restored from mission artifacts.",
+        "files": [
+          "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/state.json",
+          "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/features.json",
+          "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-005",
+      "title": "Mission status shows live Mission state and progress counts quickly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the live Mission Control status card during the current validator phase.",
+          "expected": "Mission state and progress counts are visible in Mission Control.",
+          "observed": "The live view showed `Running`, `16/18 completed`, and the current feature as `user-testing-validator-mission-control-ui`."
+        },
+        {
+          "action": "Point the isolated session to the copied mission snapshot and update `/tmp/droi-mission-control-sanity/state.json` with a new completed count/current feature while timing UI propagation.",
+          "expected": "Mission Control updates within 500ms when mission state/progress data changes.",
+          "observed": "The copied snapshot change from `10/13 completed` to `11/13 completed` appeared in the UI after 162ms."
+        },
+        {
+          "action": "Cross-check helper coverage for Mission Control status derivation.",
+          "expected": "Focused automated tests cover live state/progress derivation for Mission Control.",
+          "observed": "`test/missionControl.test.ts` covers validator-aware status/progress summaries and completion gating logic."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "control-panels-live-validator-phase.png",
+          "control-panels-sanity-after-append.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No relevant API/XHR requests were captured; status/count updates were driven by Electron mission snapshot watchers.",
+        "timing": "Copied snapshot progress-count update surfaced in 162ms.",
+        "files": [
+          "/tmp/droi-mission-control-sanity/state.json",
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/test/missionControl.test.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-006",
+      "title": "Progress Timeline appends chronological Mission events in near real time",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the Mission Control timeline against the copied mission snapshot and progress log.",
+          "expected": "Timeline entries are timestamped and shown in chronological order.",
+          "observed": "Timeline rows rendered timestamp labels with ordered event labels matching the mission progress log sequence."
+        },
+        {
+          "action": "Append a synthetic `worker_failed` entry to `/tmp/droi-mission-control-sanity/progress_log.jsonl` while timing the UI update.",
+          "expected": "A new timeline row appears within 500ms when the log grows.",
+          "observed": "The new `Synthetic append timing probe` event appeared in Mission Control after 200ms."
+        },
+        {
+          "action": "Reload the copied snapshot and verify timeline persistence and dedupe support.",
+          "expected": "Appended entries persist across reload, and duplicate-entry dedupe is covered.",
+          "observed": "The synthetic timeline event remained visible after reload, and `test/missionControl.test.ts` explicitly verifies duplicate progress entries collapse to a single rendered item."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "control-panels-sanity-after-append.png",
+          "control-panels-sanity-reloaded.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No relevant API/XHR requests were captured; timeline updates were triggered by mission snapshot file changes in the isolated copy.",
+        "timing": "Copied snapshot progress-log append surfaced in 200ms.",
+        "files": [
+          "/tmp/droi-mission-control-sanity/progress_log.jsonl",
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/test/missionControl.test.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-007",
+      "title": "Worker handoff cards appear, survive validator work, and recover after restart",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the live validator-phase Mission Control handoff area.",
+          "expected": "Worker handoff cards are visible while validator work continues.",
+          "observed": "The live validator-phase session still showed `Worker handoffs` while `user-testing-validator-mission-control-ui` was in progress."
+        },
+        {
+          "action": "Open recovered handoff cards and verify required fields.",
+          "expected": "Each handoff card includes summary, implementation details, and verification results.",
+          "observed": "Recovered handoff cards exposed `mission-handoff-*` test ids plus Summary, What was implemented, Verification commands, and Interactive checks content."
+        },
+        {
+          "action": "Reload the copied mission snapshot after appending timeline data and verify handoff recovery.",
+          "expected": "Existing handoffs reappear after reload/restart recovery from disk.",
+          "observed": "After reload, the copied snapshot still showed handoff cards such as `mission-protocol-metadata-and-kill-worker-plumbing` and `mission-page-chat-shell-and-view-toggle`, confirming persistence/recovery from disk."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "control-panels-live-validator-phase.png",
+          "control-panels-sanity-reloaded.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No relevant API/XHR requests were captured; handoff recovery was driven by mission artifact reload/reconciliation.",
+        "files": [
+          "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs",
+          "/tmp/droi-mission-control-sanity/handoffs"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "After full-session reloads, the Electron UI briefly showed an empty/no-project state before the Mission session rehydrated from disk; this required waiting about 10 seconds before capture-ready Mission Control evidence returned.",
+      "resolved": true,
+      "resolution": "Waited for restore to settle, then re-snapshotted the same assigned session before collecting persistence evidence.",
+      "affectedAssertions": [
+        "VAL-CONTROL-006",
+        "VAL-CONTROL-007"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 5 passed, 0 failed, 0 blocked. Live Mission Control matched validator-phase queue/status behavior, copied-snapshot timing probes updated within 162ms/200ms, and handoff/timeline recovery persisted across reload."
+}
