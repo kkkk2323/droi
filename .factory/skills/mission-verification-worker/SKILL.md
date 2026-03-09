@@ -45,7 +45,11 @@ Use this skill for features that primarily add or stabilize:
    - `pnpm test`
    - `pnpm typecheck`
 
-9. **Return a handoff that makes gaps obvious.** If any assertion variant remains unproven (for example, user pause covered but daemon failure not covered), state that explicitly rather than implying the full contract area is complete.
+9. **Be explicit about proof ownership.** If the feature claims `fulfills` assertions, the handoff must map each claimed assertion to new or newly-owned checked-in tests or Mission-GUI-TEST artifacts produced by that feature. Older milestone artifacts may be supporting context, but they cannot be the sole proof for a claimed assertion.
+
+10. **Treat proof-audit sessions as non-closing unless they add owned proof.** A pure audit/review session may summarize existing evidence, but it must not close a feature's `fulfills` coverage unless it also produces feature-owned checked-in proof. If no new proof was added, say so explicitly and return the remaining assertion variants as still unproven.
+
+11. **Return a handoff that makes gaps obvious.** If any assertion variant remains unproven (for example, user pause covered but daemon failure not covered), state that explicitly rather than implying the full contract area is complete.
 
 ## Example Handoff
 

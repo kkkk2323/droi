@@ -1,6 +1,6 @@
 {
   "milestone": "mission-verification",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,45 +20,34 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
-    "passed": 1,
+    "total": 1,
+    "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "mission-cross-flow-verification-coverage"
+      "mission-cross-flow-lifecycle-proof"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "mission-cross-flow-verification-coverage",
+      "featureId": "mission-cross-flow-lifecycle-proof",
       "severity": "blocking",
-      "description": "The fix feature still lacks its own added or updated automated coverage for the promised Mission cross-flow lifecycle assertions. Its handoff records `tests.added: []`, `tests.updated: []`, and `interactiveChecks: []`, while the reviewed fix commit only adds the stale-port cleanup harness files rather than broader lifecycle proof for VAL-CROSS-002 through VAL-CROSS-006."
+      "description": "The fix handoff maps VAL-CROSS-002 through VAL-CROSS-006 entirely to already-committed artifacts from `mission-control-ui`, `mission-sync-recovery`, and `mission-foundation`, then explicitly states no new tests were added because the proof was already present on the checked-in head. Commit `bce5ae0` records scrutiny and library artifacts only, so older milestone evidence remains the sole basis for the claimed cross-flow coverage instead of feature-owned checked-in proof."
     },
     {
-      "featureId": "mission-cross-flow-verification-coverage",
+      "featureId": "mission-cross-flow-lifecycle-proof",
       "severity": "blocking",
-      "description": "Checked-in Mission-GUI-TEST end-to-end proof remains incomplete for the pause/continue, daemon-failure/continue, kill-worker, and restart or reselection lifecycle variants. Existing validation evidence still depends on prior milestone artifacts and isolated state-injection checks instead of a new same-session cross-flow verification deliverable."
+      "description": "The cited Mission-GUI-TEST runtime evidence still says the unsafe pause, kill-worker, and related variants were validated with isolated in-memory renderer-state injection plus focused tests to avoid mutating the shared Mission run. That leaves the same-session Mission-GUI-TEST end-to-end proof incomplete for pause -> continue, daemon/factoryd failure -> continue, and kill-worker -> paused or resumable Mission flows."
     }
   ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated `.factory/library/user-testing.md` to reflect that the checked-in `pnpm dev:test` launcher now auto-cleans stale isolated listeners on ports 9222, 5173, and 3002 before relaunch, leaving `electron-dev.stop` as a manual teardown command.",
-      "sourceFeature": "mission-e2e-harness-preflight-cleanup"
-    }
-  ],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
-      "suggestion": "Tighten `mission-verification-worker` so workers who claim VAL-CROSS lifecycle coverage must cite the exact checked-in automated tests or Mission-GUI-TEST artifacts that discharge each assertion, or explicitly mark the remaining variants as unproven.",
-      "evidence": "The `mission-cross-flow-verification-coverage` handoff reported success with no added tests, no updated tests, and no interactive checks, yet the claimed VAL-CROSS-002 through VAL-CROSS-006 proof had to be inferred from older milestone artifacts rather than the feature's own deliverables.",
+      "suggestion": "Clarify `mission-verification-worker` to state whether proof-only re-reviews are allowed and how workers must document reuse of pre-existing evidence instead of producing new automated tests or Mission-GUI-TEST artifacts.",
+      "evidence": "The `mission-cross-flow-lifecycle-proof` handoff marked the procedure as followed while adding no tests and relying entirely on earlier milestone artifacts, even though the skill currently reads like a test-authoring workflow that requires fresh proof or explicit gap reporting.",
       "isSystemic": true
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "The knowledge observation that `.factory/library/user-testing.md` still required manual stale-port cleanup appeared in both fix reviews.",
-      "reason": "duplicate"
-    }
-  ],
-  "previousRound": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/synthesis.round-1.json"
+  "rejectedObservations": [],
+  "previousRound": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/synthesis.round-2.json"
 }
