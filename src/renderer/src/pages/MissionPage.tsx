@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { PanelsLeftRight, MessagesSquare } from 'lucide-react'
 
 import { ChatPage } from './ChatPage'
+import { MissionActionBar } from '@/components/mission-action-bar'
 import { MissionControlPanel } from '@/components/mission-control-panel'
 import { Button } from '@/components/ui/button'
+import { getMissionInputSemantics, getMissionRuntimeStatus } from '@/lib/missionUiSemantics'
 import { useAppStore, useActiveSessionId } from '@/store'
 import {
   getMissionStatusSummary,
@@ -12,12 +14,20 @@ import {
   type MissionViewMode,
 } from '@/lib/missionPage'
 
+const EMPTY_MESSAGES: never[] = []
+
 function MissionStatusBar() {
   const activeSessionId = useActiveSessionId()
-  const mission = useAppStore((state) =>
-    activeSessionId ? state.sessionBuffers.get(activeSessionId)?.mission : undefined,
+  const sessionBuffer = useAppStore((state) =>
+    activeSessionId ? state.sessionBuffers.get(activeSessionId) : undefined,
   )
+  const mission = sessionBuffer?.mission
+  const messages = sessionBuffer?.messages ?? EMPTY_MESSAGES
   const summary = useMemo(() => getMissionStatusSummary(mission), [mission])
+  const runtimeStatus = useMemo(
+    () => getMissionRuntimeStatus({ mission, messages }),
+    [messages, mission],
+  )
 
   return (
     <div
@@ -38,6 +48,10 @@ function MissionStatusBar() {
         <div className="min-w-0">
           <span className="font-medium text-foreground">Worker:</span> {summary.workerLabel}
         </div>
+        <div className="min-w-0 flex-1 truncate">
+          <span className="font-medium text-foreground">Update:</span>{' '}
+          <span title={runtimeStatus.description}>{runtimeStatus.title}</span>
+        </div>
       </div>
     </div>
   )
@@ -54,6 +68,7 @@ export function MissionPage() {
   const [manualOverrideAt, setManualOverrideAt] = useState<number | undefined>(undefined)
 
   const preferredView = getPreferredMissionView(mission)
+  const inputSemantics = getMissionInputSemantics(mission)
 
   useEffect(() => {
     if (shouldApplyMissionAutoSwitch({ currentView: viewMode, preferredView, manualOverrideAt })) {
@@ -106,18 +121,15 @@ export function MissionPage() {
       <div className="flex min-h-0 flex-1 flex-col">
         {viewMode === 'chat' ? (
           <ChatPage
-            forceInputDisabled={preferredView === 'mission-control'}
-            forceDisabledPlaceholder={
-              preferredView === 'mission-control'
-                ? 'Mission is running. Pause to send a message.'
-                : undefined
-            }
+            forceInputDisabled={inputSemantics.disabled}
+            forceDisabledPlaceholder={inputSemantics.placeholder}
           />
         ) : (
           <MissionControlPanel mission={mission} />
         )}
       </div>
 
+      <MissionActionBar />
       <MissionStatusBar />
     </div>
   )

@@ -198,6 +198,7 @@ export interface PermissionOptionMeta {
 export interface PendingPermissionRequest {
   requestId: string
   toolUses: unknown[]
+  confirmationType?: string
   options: DroidPermissionOption[]
   optionsMeta: PermissionOptionMeta[]
   raw: JsonRpcRequest
@@ -924,6 +925,10 @@ export function applyRpcRequest(
     const req: PendingPermissionRequest = {
       requestId: message.id,
       toolUses,
+      confirmationType:
+        isObject(params) && typeof (params as any).confirmationType === 'string'
+          ? String((params as any).confirmationType).trim() || undefined
+          : undefined,
       options: normalizedOptions,
       optionsMeta,
       raw: message,

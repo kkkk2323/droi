@@ -125,6 +125,35 @@ test('Mission Control timeline sorts chronologically, labels events, and dedupli
   assert.ok(timeline.every((item) => item.timestampLabel.length > 0))
 })
 
+test('Mission Control timeline distinguishes user kill and daemon failure events', () => {
+  const mission = createMissionState({
+    progressEntries: [
+      {
+        timestamp: '2026-03-09T01:28:53.000Z',
+        type: 'worker_failed',
+        reason: 'factoryd authentication failed after retry',
+      },
+      {
+        timestamp: '2026-03-09T01:29:00.000Z',
+        type: 'worker_failed',
+        reason: 'Killed by user',
+      },
+      {
+        timestamp: '2026-03-09T01:29:05.000Z',
+        type: 'mission_paused',
+      },
+    ],
+  })
+
+  const timeline = getMissionProgressTimelineItems(mission)
+  assert.deepEqual(
+    timeline.map((item) => item.eventLabel),
+    ['Daemon failure', 'Worker killed by user', 'Mission paused'],
+  )
+  assert.match(timeline[0]?.detailLabel || '', /factoryd authentication failed after retry/i)
+  assert.match(timeline[1]?.detailLabel || '', /Killed by user/i)
+})
+
 test('Mission Control handoff cards extract required summary and verification fields', () => {
   const mission = createMissionState({
     handoffs: [

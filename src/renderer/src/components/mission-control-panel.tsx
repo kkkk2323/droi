@@ -16,7 +16,9 @@ import {
   getMissionHandoffCards,
   getMissionProgressTimelineItems,
 } from '@/lib/missionControl'
+import { getMissionRuntimeStatus } from '@/lib/missionUiSemantics'
 import type { MissionState } from '@/state/missionState'
+import { useActiveSessionId, useAppStore } from '@/store'
 
 function getStateBadgeVariant(
   stateLabel: string,
@@ -52,10 +54,15 @@ function getSuccessBadgeVariant(
 }
 
 export function MissionControlPanel({ mission }: { mission?: MissionState | null }) {
+  const activeSessionId = useActiveSessionId()
+  const messages = useAppStore((state) =>
+    activeSessionId ? state.sessionBuffers.get(activeSessionId)?.messages || [] : [],
+  )
   const status = getMissionControlStatus(mission)
   const featureQueue = getMissionFeatureQueueItems(mission)
   const timeline = getMissionProgressTimelineItems(mission)
   const handoffs = getMissionHandoffCards(mission)
+  const runtimeStatus = getMissionRuntimeStatus({ mission, messages })
 
   return (
     <div
@@ -102,6 +109,14 @@ export function MissionControlPanel({ mission }: { mission?: MissionState | null
               </div>
               <div className="mt-1 text-xs text-muted-foreground">{status.phaseLabel}</div>
             </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Recovery / control state
+            </div>
+            <div className="mt-1 text-sm font-medium text-foreground">{runtimeStatus.title}</div>
+            <div className="mt-1 text-sm text-muted-foreground">{runtimeStatus.description}</div>
           </div>
         </section>
 

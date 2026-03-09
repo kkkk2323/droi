@@ -303,6 +303,45 @@ test('applyRpcRequest enqueues permission and ask_user requests', () => {
   assert.equal(buf2.pendingAskUserRequests?.[0].questions[0].question, 'Q?')
 })
 
+test('applyRpcRequest preserves mission permission metadata for propose_mission and start_mission_run', () => {
+  const sid = 'mission-permissions'
+  const prev = new Map([[sid, makeBuffer('/repo')]])
+
+  const withProposalPermission = applyRpcRequest(prev, sid, {
+    jsonrpc: '2.0',
+    factoryApiVersion: '1.0.0',
+    type: 'request',
+    id: 'r-mission-proposal',
+    method: 'droid.request_permission',
+    params: {
+      confirmationType: 'propose_mission',
+      toolUses: [{ toolUse: { id: 't-propose', name: 'ProposeMission' } }],
+      options: ['proceed_once', 'cancel'],
+    },
+  } as any)
+
+  const proposalRequest = withProposalPermission.get(sid)?.pendingPermissionRequests?.[0]
+  assert.ok(proposalRequest)
+  assert.equal(proposalRequest.confirmationType, 'propose_mission')
+
+  const withRunPermission = applyRpcRequest(withProposalPermission, sid, {
+    jsonrpc: '2.0',
+    factoryApiVersion: '1.0.0',
+    type: 'request',
+    id: 'r-start-mission-run',
+    method: 'droid.request_permission',
+    params: {
+      confirmationType: 'start_mission_run',
+      toolUses: [{ toolUse: { id: 't-run', name: 'StartMissionRun' } }],
+      options: ['proceed_once', 'cancel'],
+    },
+  } as any)
+
+  const runRequest = withRunPermission.get(sid)?.pendingPermissionRequests?.[1]
+  assert.ok(runRequest)
+  assert.equal(runRequest.confirmationType, 'start_mission_run')
+})
+
 test('applyRpcRequest parses permission options when backend sends string array', () => {
   const sid = 's1'
   const prev = new Map([[sid, makeBuffer('/repo')]])

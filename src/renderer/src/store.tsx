@@ -211,6 +211,7 @@ interface AppActions {
   handleClearSessionContext: (sessionId?: string) => Promise<void>
   handleCancel: () => void
   handleForceCancel: () => void
+  handleKillWorker: (workerSessionId?: string) => Promise<void>
   handleRespondPermission: (params: {
     selectedOption: DroidPermissionOption
     autoLevel?: 'low' | 'medium' | 'high'
@@ -1727,6 +1728,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
       applyTurnEnd(appendDebugTrace(prev, sid, 'ui-force-cancel'), sid),
     )
     droid.cancel({ sessionId: sid })
+  },
+
+  handleKillWorker: async (workerSessionId) => {
+    const s = get()
+    const sid = s.activeSessionId || null
+    if (!sid) return
+    const buf = s.sessionBuffers.get(sid)
+    const liveWorkerSessionId =
+      (typeof workerSessionId === 'string' ? workerSessionId.trim() : '') ||
+      String(buf?.mission?.liveWorkerSessionId || '').trim()
+    if (!liveWorkerSessionId) return
+
+    get()._setSessionBuffers((prev) =>
+      appendDebugTrace(prev, sid, `ui-kill-worker: ${liveWorkerSessionId}`),
+    )
+
+    await droid.killWorkerSession({
+      sessionId: sid,
+      workerSessionId: liveWorkerSessionId,
+    })
   },
 
   handleRespondPermission: (params) => {

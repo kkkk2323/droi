@@ -64,6 +64,16 @@ function toSentenceCaseLabel(value: string): string {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1)
 }
 
+function isDaemonLikeText(value: string | undefined): boolean {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (!normalized) return false
+  return /(factoryd|daemon|authentication|spawn|socket|transport|connection|connect)/.test(
+    normalized,
+  )
+}
+
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
   if (isObject(value)) {
@@ -152,6 +162,23 @@ function getProgressEntryDetail(entry: MissionDiskObject): string {
   }
 
   return detailParts.join(' · ')
+}
+
+function getProgressEventLabel(entry: MissionDiskObject): string {
+  const type = asTrimmedString(entry.type) ?? 'mission_event'
+  const normalized = type.toLowerCase()
+  const reason = asTrimmedString(entry.reason) ?? asTrimmedString(entry.message)
+
+  if (normalized === 'worker_failed') {
+    if (/killed by user/i.test(reason || '')) return 'Worker killed by user'
+    if (isDaemonLikeText(reason)) return 'Daemon failure'
+    return 'Worker failed'
+  }
+
+  if (normalized === 'worker_paused') return 'Worker paused'
+  if (normalized === 'mission_paused') return 'Mission paused'
+
+  return toSentenceCaseLabel(type)
 }
 
 function resolveHandoffBody(payload: MissionDiskObject): MissionDiskObject {
@@ -254,7 +281,7 @@ export function getMissionProgressTimelineItems(
       return left.index - right.index
     })
     .map(({ entry }) => ({
-      eventLabel: toSentenceCaseLabel(asTrimmedString(entry.type) ?? 'mission_event'),
+      eventLabel: getProgressEventLabel(entry),
       detailLabel: getProgressEntryDetail(entry),
       timestampLabel: formatMissionTimestamp(entry.timestamp),
     }))
