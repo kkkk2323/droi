@@ -1,7 +1,7 @@
 {
   "milestone": "mission-sync-recovery",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,12 +20,20 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "failed": 1,
+    "failedFeatures": [
+      "mission-dir-watcher-ipc-and-path-capture"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "mission-dir-watcher-ipc-and-path-capture",
+      "severity": "blocking",
+      "description": "`src/backend/mission/missionDirReader.ts` falls back to `~/.factory/missions/<sessionId>` instead of the spec-required `~/.factory/missions/<baseSessionId>`, so restart recovery can resolve the wrong mission directory after session-id replacement and does not fully satisfy VAL-RECOVERY-004."
+    }
+  ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
@@ -36,5 +44,5 @@
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/mission-sync-recovery/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }
