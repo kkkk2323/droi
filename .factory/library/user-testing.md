@@ -1,68 +1,58 @@
 # User Testing
 
-Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
+Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 
 ---
 
-## Testing Surface
-- **Application type:** Electron desktop app with Web UI mode
-- **Start command (Electron):** `pnpm dev` (launches Electron in dev mode)
-- **Start command (Web UI):** `DROID_WEB_ENABLED=true DROID_APP_API_HOST=127.0.0.1 DROID_APP_API_PORT=3099 node --experimental-strip-types src/server/index.ts`
-- **Web UI URL:** http://127.0.0.1:3099
-- **Validation command:** `pnpm check` (format + lint + typecheck)
-- **Build command:** `pnpm build` (must run before starting web server)
+## Primary testing surface
 
-## Testing Approach
-The app can be tested via browser automation using the Web UI mode (standalone server serving the built renderer).
-The Web UI renders the same React components as the Electron app, so structural/layout assertions can be verified.
+- **Application type:** Electron desktop app
+- **Mission validation surface:** Electron only
+- **Dev command:** `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e DROID_APP_API_PORT=3002 ELECTRON_REMOTE_DEBUGGING_PORT=9222 pnpm dev:test`
+- **Renderer URL (health only):** `http://127.0.0.1:5173`
+- **CDP port for automation:** `9222`
+- **Local API fallback used by the Electron run:** `3002`
 
-**Limitations:**
-- No real Droid CLI sessions available without `FACTORY_API_KEY` — the app loads but shows empty state
-- Session-specific assertions (running indicators, pending requests, beep sounds) require mock data or code-level verification
-- Chat auto-scroll assertions require an active chat session with messages
+## Required isolation rules
 
-**What CAN be verified via browser:**
-- Sidebar layout structure (New Project button position, ScrollArea presence, Settings footer position)
-- Component rendering and CSS classes
-- DOM structure confirming correct component hierarchy
+- Any Mission-invoking manual or automated E2E must use the pre-created project **`Mission-GUI-TEST`**.
+- Any Mission-invoking manual or automated E2E must use **Gemini 3 Flash** (`gemini-3-flash-preview`).
+- Use a copied temporary `DROID_APP_DATA_DIR` rooted at `/tmp/droi-mission-e2e`.
+- Do **not** validate Mission flows through Web/LAN mode.
+- Do **not** use the existing Droi instance on `127.0.0.1:3001`.
+- Do **not** depend on OS-level directory picker dialogs as part of the Mission validation flow.
 
-**What requires code-level verification:**
-- Chat auto-scroll logic (useEffect watching hasFooterContent, scrollBy behavior)
-- Session status indicator logic (needsAttention → AlertCircle vs Loader2)
-- Beep behavior (useAttentionBeep hook, initializedRef preventing initial beep)
+## Setup steps for Mission E2E
 
-## Known Quirks
-- App requires `FACTORY_API_KEY` to connect to Droid CLI
-- Web server must serve built output from `out/renderer/` — run `pnpm build` first
-- The standalone server runs on port 3099 (chosen to avoid conflicts)
-- Web UI mode uses `isBrowserMode()` which changes some behavior (e.g., hides "New Project" button)
+1. Ensure `/tmp/droi-mission-e2e/app-state.json` exists.
+   - `init.sh` seeds this automatically when possible from the user’s current Droi app-state.
+   - If a fresh copy is needed, copy `~/Library/Application Support/droi/app-state.json` to `/tmp/droi-mission-e2e/app-state.json`.
+2. Start the isolated Electron dev app:
+   - `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e DROID_APP_API_PORT=3002 ELECTRON_REMOTE_DEBUGGING_PORT=9222 pnpm dev:test`
+3. Connect automation with `agent-browser connect 9222`.
+4. Wait for `document.body.hasAttribute("data-app-ready") === true`.
+5. Select the `Mission-GUI-TEST` project.
+6. For any new Mission flow, explicitly choose `gemini-3-flash-preview` before the first Mission message.
 
-## Flow Validator Guidance: Browser (Web UI)
+## Recommended automation flow
 
-**Surface:** Web UI at http://127.0.0.1:3099
-**Tool:** agent-browser skill
-**Isolation:** Single browser session sufficient — read-only verification, no data mutation
+- Use `agent-browser` for Electron UI interaction and screenshots.
+- Prefer annotated screenshots for UI proof.
+- Re-snapshot after route changes, toggles, dialogs, or progress-state transitions.
+- Reuse a single browser session for each validation run.
 
-Assertions testable via browser:
-- VAL-SIDEBAR-002: Verify ScrollArea component wraps the project list (check DOM structure)
-- VAL-SIDEBAR-003: Verify Settings footer is in SidebarFooter (check DOM structure)
-- VAL-CROSS-001: Verify app renders without errors, sidebar and main content coexist
+## Key Mission checks
 
-Note: VAL-SIDEBAR-001 (New Project button) is hidden in browser mode (`isBrowserMode()` returns true), so it must be verified via code inspection.
+- Session creation and route split: Mission -> `/mission`, normal -> `/`
+- Mission Chat / Mission Control toggle and 30-second manual override cooldown
+- Feature queue ordering and validator feature injection
+- Timeline append/dedupe behavior and handoff persistence
+- Pause, daemon failure, daemon retry, and kill-worker distinctions
+- Restore/reselection into existing Mission sessions after restart
 
-**Boundaries:**
-- Do NOT create sessions or modify any data
-- Do NOT attempt to interact with Droid CLI features
-- Focus on DOM structure and layout verification only
+## Known quirks
 
-## Flow Validator Guidance: Code Inspection
-
-**Surface:** Source code files
-**Tool:** Read, Grep tools (no browser needed)
-
-Assertions testable via code inspection:
-- VAL-SIDEBAR-001: Verify New Project button is rendered outside SidebarContent, above ScrollArea
-- VAL-CHAT-001, VAL-CHAT-002, VAL-CHAT-003: Verify auto-scroll useEffect logic in ChatView.tsx
-- VAL-STATUS-001, VAL-STATUS-002, VAL-STATUS-003: Verify conditional icon rendering in SessionItem
-- VAL-STATUS-004, VAL-STATUS-005: Verify useAttentionBeep hook logic
-- VAL-CROSS-001: Verify pnpm check passes (already confirmed)
+- `start_mission_run` permission may appear in some environments and be absent in others; both are valid and must be handled.
+- Mission directories and handoff/validation files may appear later than the initial Mission startup.
+- `droid.load_session` is more trustworthy than transient generic `settings_updated` for Mission identity.
+- Some recovery checks are best validated with targeted automated tests plus Electron sanity checks rather than pure browser-only assertions.
