@@ -27,8 +27,8 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 1. Ensure `/tmp/droi-mission-e2e/app-state.json` exists.
    - `init.sh` seeds this automatically when possible from the user’s current Droi app-state.
    - If a fresh copy is needed, copy `~/Library/Application Support/droi/app-state.json` to `/tmp/droi-mission-e2e/app-state.json`.
-2. If this is a re-run, clear stale isolated Electron listeners before restarting:
-   - Use the `.factory/services.yaml` `electron-dev.stop` command to clean up ports `9222`, `5173`, and `3002` before the next launch.
+2. If this is a re-run, the checked-in `pnpm dev:test` harness now auto-cleans stale isolated listeners on ports `9222`, `5173`, and `3002` before relaunch.
+   - Use the `.factory/services.yaml` `electron-dev.stop` command only when you need to stop an already running isolated app manually outside the harness.
 3. Start the isolated Electron dev app:
    - `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e DROID_APP_API_PORT=3002 ELECTRON_REMOTE_DEBUGGING_PORT=9222 pnpm dev:test`
 4. Connect automation with `agent-browser connect 9222`.
@@ -71,5 +71,5 @@ Testing surface, setup steps, and isolation rules for the Mission GUI mission.
 - Some recovery checks are best validated with targeted automated tests plus Electron sanity checks rather than pure browser-only assertions.
 - The shared live `Mission-GUI-TEST` validator-phase Mission session should be treated as read-only during user testing; destructive Pause/Kill Worker flows and optional Mission-permission permutations are safer to validate with the copied Mission snapshot or isolated in-memory renderer-state injection.
 - This Electron build uses TanStack memory-history, so `/mission` versus `/` proof should come from router state plus Mission DOM markers rather than the browser address bar.
-- Repeated isolated Electron validation runs can fail if stale listeners are still bound to `9222`, `5173`, or `3002`; run the manifest stop command before restarting the app.
+- Repeated isolated Electron validation runs now rely on the checked-in `pnpm dev:test` launcher to clear stale listeners on `9222`, `5173`, and `3002` before relaunch; use the manifest stop command only for manual teardown outside that launcher.
 - In the Electron surface, direct automation clicks on the visible send button can be flaky; targeting the real `[data-testid="chat-send"]` element is more reliable when the UI is visibly ready.

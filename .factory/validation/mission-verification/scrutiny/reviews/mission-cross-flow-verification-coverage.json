@@ -1,0 +1,39 @@
+{
+  "featureId": "mission-cross-flow-verification-coverage",
+  "reviewedAt": "2026-03-09T17:06:08Z",
+  "commitId": "202c1cb8ec00dd2bf50076fd6483e7bd4261e7d0",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The re-review does not clear the original blocking gap. Commit `202c1cb8ec00dd2bf50076fd6483e7bd4261e7d0` correctly adds the checked-in `dev:test` preflight cleanup harness, but the paired fix feature still does not add broader automated Mission lifecycle coverage or checked-in Mission-GUI-TEST validation artifacts for the promised cross-area flows. The worker handoff for `mission-cross-flow-verification-coverage` explicitly records no added/updated tests and no interactive checks, so the feature still relies on earlier milestone-local evidence and focused helper tests rather than proving the claimed end-to-end Mission verification scope in this feature itself.",
+    "issues": [
+      {
+        "file": "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-09T16-45-30-859Z__mission-cross-flow-verification-coverage__d5d51f6c-80ff-46a2-93bf-b91ff3351825.json",
+        "line": 43,
+        "severity": "blocking",
+        "description": "This fix feature was supposed to deliver the missing automated verification coverage for VAL-CROSS-002 through VAL-CROSS-006, but its own handoff records `tests.added: []`, `tests.updated: []`, and `interactiveChecks: []`. The reviewed diff for commit `202c1cb8ec00dd2bf50076fd6483e7bd4261e7d0` only adds the stale-port cleanup harness (`package.json`, `scripts/dev-test-launcher.mjs`, `src/backend/utils/portCleanup.ts`, `test/portCleanup.test.ts`), so the broader create/run/validator-injection, pause/continue, daemon-failure/continue, kill-worker, and restart/reselection lifecycle coverage still is not implemented by this feature's change set."
+      },
+      {
+        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+        "line": 267,
+        "severity": "blocking",
+        "description": "The promised checked-in Mission-GUI-TEST end-to-end proof is still incomplete for the cross-flow lifecycle variants. Existing checked-in evidence explicitly says the pause/kill/optional-permission permutations were validated via isolated in-memory renderer-state injection plus focused tests instead of a real Mission-GUI-TEST end-to-end run, so this feature still does not prove the required same-session flows for pause -> continue, daemon/factoryd failure -> continue, and kill-worker -> resumable Mission execution that its `expectedBehavior` claims."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`mission-verification-worker` asks workers to collect full-flow Mission evidence and to make any unproven variants explicit, but this fix handoff reports success with `interactiveChecks: []` and no test changes even though the claimed cross-flow lifecycle evidence had to be inferred from older milestone validation files. The skill or its usage guidance should require workers who rely on pre-existing evidence to cite the exact checked-in validation artifacts that discharge each claimed VAL-CROSS assertion, or to mark the remaining variants as unproven.",
+      "evidence": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/skills/mission-verification-worker/SKILL.md:31-48 requires full-flow Mission evidence and explicit gap reporting, while /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-09T16-45-30-859Z__mission-cross-flow-verification-coverage__d5d51f6c-80ff-46a2-93bf-b91ff3351825.json:41-46 records no interactive checks and no test additions or updates."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The shared Mission testing guide still tells workers to manually stop stale isolated listeners before reruns even though the checked-in `dev:test` harness now performs that cleanup automatically. That stale guidance can send future verification workers down unnecessary manual cleanup steps.",
+      "evidence": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/library/user-testing.md:30 and :74 still instruct manual stale-port cleanup, but /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/package.json:8 now routes `dev:test` through `scripts/dev-test-launcher.mjs`, and /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/scripts/dev-test-launcher.mjs:13 calls `cleanupListeningPorts(MISSION_E2E_PORTS)` before launching Electron."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-integration-tests-and-e2e-readiness.json",
+  "summary": "Scrutiny failed again. The re-review confirms that `202c1cb` fixes the stale-port preflight cleanup, but `mission-cross-flow-verification-coverage` still does not add the broader automated coverage or checked-in Mission-GUI-TEST cross-flow evidence promised for VAL-CROSS-002 through VAL-CROSS-006; key lifecycle variants remain supported only by earlier milestone artifacts and isolated state-injection checks rather than a new end-to-end verification deliverable."
+}

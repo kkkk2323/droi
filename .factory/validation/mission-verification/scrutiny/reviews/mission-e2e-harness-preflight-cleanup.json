@@ -1,0 +1,21 @@
+{
+  "featureId": "mission-e2e-harness-preflight-cleanup",
+  "reviewedAt": "2026-03-09T17:01:36Z",
+  "commitId": "202c1cb8ec00dd2bf50076fd6483e7bd4261e7d0",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adequately addresses the prior blocking issue. `package.json` now routes the checked-in `dev:test` entry through a dedicated launcher, and that launcher performs automatic preflight cleanup for stale isolated listeners on ports 9222, 5173, and 3002 before spawning `electron-vite dev`. The cleanup utility is covered by focused tests for PID discovery, deduplication, and idempotent kill handling, while the launcher preserves the isolated `DROID_APP_DATA_DIR`, `DROID_APP_API_PORT=3002`, `ELECTRON_REMOTE_DEBUGGING_PORT=9222`, and Electron-only Mission validation surface required by the mission contract.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared Mission testing guide still documents manual stale-port cleanup as a required rerun step, even though the checked-in `dev:test` harness now performs that cleanup automatically before launch.",
+      "evidence": ".factory/library/user-testing.md:30-31 instructs validators to run `.factory/services.yaml` `electron-dev.stop` before reruns, and line 74 still says repeated isolated Electron runs can fail unless the manifest stop command is run first; however `package.json:8` now routes `dev:test` through `scripts/dev-test-launcher.mjs`, which calls `cleanupListeningPorts(MISSION_E2E_PORTS)` before spawning Electron."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-integration-tests-and-e2e-readiness.json",
+  "summary": "Scrutiny passed. Commit 202c1cb encodes the previously missing preflight cleanup directly into the checked-in Mission Electron validation harness, automatically clearing stale isolated listeners on 9222/5173/3002 before relaunch while preserving the isolated Electron-only Mission E2E constraints."
+}

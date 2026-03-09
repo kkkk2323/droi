@@ -1,6 +1,6 @@
 {
   "milestone": "mission-verification",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,34 +20,45 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
-    "passed": 0,
+    "total": 2,
+    "passed": 1,
     "failed": 1,
     "failedFeatures": [
-      "mission-integration-tests-and-e2e-readiness"
+      "mission-cross-flow-verification-coverage"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "mission-integration-tests-and-e2e-readiness",
+      "featureId": "mission-cross-flow-verification-coverage",
       "severity": "blocking",
-      "description": "Commit 9730db9 only adds a duplicate recovered handoff-key test and renderer key fix, but it does not add the broader Mission verification coverage promised for interaction-mode hot switching, session persistence, notification mapping, watcher/recovery scenarios, or the VAL-CROSS-001 through VAL-CROSS-007 end-to-end flows."
+      "description": "The fix feature still lacks its own added or updated automated coverage for the promised Mission cross-flow lifecycle assertions. Its handoff records `tests.added: []`, `tests.updated: []`, and `interactiveChecks: []`, while the reviewed fix commit only adds the stale-port cleanup harness files rather than broader lifecycle proof for VAL-CROSS-002 through VAL-CROSS-006."
     },
     {
-      "featureId": "mission-integration-tests-and-e2e-readiness",
+      "featureId": "mission-cross-flow-verification-coverage",
       "severity": "blocking",
-      "description": "Mission E2E preflight cleanup was performed manually during verification, but the repository still leaves `dev:test` as `ELECTRON_REMOTE_DEBUGGING_PORT=9222 electron-vite dev`, so stale isolated Electron listeners on 9222, 5173, and 3002 are not automatically cleared by the product or test harness."
+      "description": "Checked-in Mission-GUI-TEST end-to-end proof remains incomplete for the pause/continue, daemon-failure/continue, kill-worker, and restart or reselection lifecycle variants. Existing validation evidence still depends on prior milestone artifacts and isolated state-injection checks instead of a new same-session cross-flow verification deliverable."
     }
   ],
-  "appliedUpdates": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated `.factory/library/user-testing.md` to reflect that the checked-in `pnpm dev:test` launcher now auto-cleans stale isolated listeners on ports 9222, 5173, and 3002 before relaunch, leaving `electron-dev.stop` as a manual teardown command.",
+      "sourceFeature": "mission-e2e-harness-preflight-cleanup"
+    }
+  ],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
-      "suggestion": "Clarify in `mission-verification-worker` that for narrowly scoped UI-warning or read-only validation fixes, workers may reuse an existing isolated `Mission-GUI-TEST` Mission session instead of creating a fresh Mission-invoking flow, as long as they stay on the Electron surface and explicitly record the reuse in verification evidence.",
-      "evidence": "The review for `mission-integration-tests-and-e2e-readiness` found the worker's only procedural deviation was reusing an existing isolated Mission session to verify duplicate React-key warning removal. The handoff explicitly marked `followedProcedure: false` and explained that creating a fresh Mission run would have been unnecessarily destructive for this read-only UI validation.",
-      "isSystemic": false
+      "suggestion": "Tighten `mission-verification-worker` so workers who claim VAL-CROSS lifecycle coverage must cite the exact checked-in automated tests or Mission-GUI-TEST artifacts that discharge each assertion, or explicitly mark the remaining variants as unproven.",
+      "evidence": "The `mission-cross-flow-verification-coverage` handoff reported success with no added tests, no updated tests, and no interactive checks, yet the claimed VAL-CROSS-002 through VAL-CROSS-006 proof had to be inferred from older milestone artifacts rather than the feature's own deliverables.",
+      "isSystemic": true
     }
   ],
-  "rejectedObservations": [],
-  "previousRound": null
+  "rejectedObservations": [
+    {
+      "observation": "The knowledge observation that `.factory/library/user-testing.md` still required manual stale-port cleanup appeared in both fix reviews.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/synthesis.round-1.json"
 }
