@@ -306,6 +306,7 @@ export class DroidJsonRpcSession {
       modelId?: string
       interactionMode?: DroidInteractionMode
       autonomyLevel?: DroidAutonomyLevel
+      decompSessionType?: string
       reasoningEffort?: string
     },
     resumeSessionId?: string,
@@ -322,6 +323,7 @@ export class DroidJsonRpcSession {
       modelId: params.modelId,
       interactionMode: params.interactionMode,
       autonomyLevel: params.autonomyLevel,
+      decompSessionType: params.decompSessionType,
       reasoningEffort: params.reasoningEffort || undefined,
     })
     if (initRes.error) {
@@ -418,6 +420,13 @@ export class DroidJsonRpcSession {
     } catch {
       // ignore
     }
+  }
+
+  async killWorkerSession(workerSessionId: string): Promise<void> {
+    const trimmed = String(workerSessionId || '').trim()
+    if (!trimmed) return
+    const res = await this.sendRequest('droid.kill_worker_session', { workerSessionId: trimmed })
+    if (res.error) throw new Error(res.error.message || 'kill_worker_session failed')
   }
 
   sendResponse(requestId: string, result: unknown): void {

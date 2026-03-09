@@ -324,6 +324,49 @@ test('applyRpcNotification syncs settings_updated into session buffer fields', (
   assert.equal(buf.autoLevel, 'high')
 })
 
+test('applyRpcNotification does not downgrade explicit mission settings on generic settings_updated', () => {
+  const sid = 'mission-1'
+  const prev = new Map([
+    [
+      sid,
+      {
+        ...makeBuffer('/repo'),
+        autoLevel: 'high',
+        isMission: true,
+        sessionKind: 'mission',
+        interactionMode: 'agi',
+        autonomyLevel: 'high',
+        decompSessionType: 'orchestrator',
+      },
+    ],
+  ])
+
+  const next = applyRpcNotification(prev, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'settings_updated',
+        settings: {
+          modelId: 'gpt-5.1',
+          reasoningEffort: 'none',
+          interactionMode: 'spec',
+          autonomyLevel: 'off',
+        },
+      },
+    },
+  } as any)
+
+  const buf = next.get(sid)!
+  assert.equal(buf.model, 'gpt-5.1')
+  assert.equal(buf.reasoningEffort, 'none')
+  assert.equal(buf.autoLevel, 'high')
+  assert.equal((buf as any).isMission, true)
+  assert.equal((buf as any).sessionKind, 'mission')
+  assert.equal((buf as any).interactionMode, 'agi')
+  assert.equal((buf as any).autonomyLevel, 'high')
+  assert.equal((buf as any).decompSessionType, 'orchestrator')
+})
+
 test('applyRpcNotification stores session_token_usage_changed and mcp notifications', () => {
   const sid = 's1'
   const prev = new Map([[sid, makeBuffer('/repo')]])

@@ -79,6 +79,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       baseBranch: req.baseBranch,
       model: req.model,
       autoLevel: req.autoLevel,
+      isMission: req.isMission,
+      sessionKind: req.sessionKind,
+      interactionMode: req.interactionMode,
+      autonomyLevel: req.autonomyLevel,
+      decompSessionType: req.decompSessionType,
       reasoningEffort: req.reasoningEffort,
       apiKeyFingerprint: req.apiKeyFingerprint,
       pinned: req.pinned,
@@ -103,6 +108,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       messageCount,
       model: req.model,
       autoLevel: req.autoLevel,
+      isMission: req.isMission,
+      sessionKind: req.sessionKind,
+      interactionMode: req.interactionMode,
+      autonomyLevel: req.autonomyLevel,
+      decompSessionType: req.decompSessionType,
       apiKeyFingerprint: req.apiKeyFingerprint,
       pinned: req.pinned,
       lastMessageAt,
@@ -135,6 +145,28 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           baseBranch: typeof raw.baseBranch === 'string' ? raw.baseBranch : undefined,
           model: String(raw.model || ''),
           autoLevel: String(raw.autoLevel || 'default'),
+          isMission: raw.isMission === true ? true : undefined,
+          sessionKind:
+            raw.sessionKind === 'mission'
+              ? 'mission'
+              : raw.sessionKind === 'normal'
+                ? 'normal'
+                : undefined,
+          interactionMode:
+            raw.interactionMode === 'spec' ||
+            raw.interactionMode === 'auto' ||
+            raw.interactionMode === 'agi'
+              ? raw.interactionMode
+              : undefined,
+          autonomyLevel:
+            raw.autonomyLevel === 'off' ||
+            raw.autonomyLevel === 'low' ||
+            raw.autonomyLevel === 'medium' ||
+            raw.autonomyLevel === 'high'
+              ? raw.autonomyLevel
+              : undefined,
+          decompSessionType:
+            raw.decompSessionType === 'orchestrator' ? raw.decompSessionType : undefined,
           reasoningEffort:
             typeof raw.reasoningEffort === 'string' ? raw.reasoningEffort : undefined,
           apiKeyFingerprint:
@@ -197,6 +229,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           messageCount: data.messages.length,
           model: data.model,
           autoLevel: data.autoLevel,
+          isMission: data.isMission,
+          sessionKind: data.sessionKind,
+          interactionMode: data.interactionMode,
+          autonomyLevel: data.autonomyLevel,
+          decompSessionType: data.decompSessionType,
           reasoningEffort: data.reasoningEffort,
           apiKeyFingerprint: data.apiKeyFingerprint,
           pinned: data.pinned,
@@ -269,6 +306,30 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
+        isMission: (raw as any).isMission === true ? true : undefined,
+        sessionKind:
+          (raw as any).sessionKind === 'mission'
+            ? 'mission'
+            : (raw as any).sessionKind === 'normal'
+              ? 'normal'
+              : undefined,
+        interactionMode:
+          (raw as any).interactionMode === 'spec' ||
+          (raw as any).interactionMode === 'auto' ||
+          (raw as any).interactionMode === 'agi'
+            ? (raw as any).interactionMode
+            : undefined,
+        autonomyLevel:
+          (raw as any).autonomyLevel === 'off' ||
+          (raw as any).autonomyLevel === 'low' ||
+          (raw as any).autonomyLevel === 'medium' ||
+          (raw as any).autonomyLevel === 'high'
+            ? (raw as any).autonomyLevel
+            : undefined,
+        decompSessionType:
+          (raw as any).decompSessionType === 'orchestrator'
+            ? (raw as any).decompSessionType
+            : undefined,
         reasoningEffort:
           typeof (raw as any).reasoningEffort === 'string'
             ? (raw as any).reasoningEffort
@@ -341,6 +402,30 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
+        isMission: (raw as any).isMission === true ? true : undefined,
+        sessionKind:
+          (raw as any).sessionKind === 'mission'
+            ? 'mission'
+            : (raw as any).sessionKind === 'normal'
+              ? 'normal'
+              : undefined,
+        interactionMode:
+          (raw as any).interactionMode === 'spec' ||
+          (raw as any).interactionMode === 'auto' ||
+          (raw as any).interactionMode === 'agi'
+            ? (raw as any).interactionMode
+            : undefined,
+        autonomyLevel:
+          (raw as any).autonomyLevel === 'off' ||
+          (raw as any).autonomyLevel === 'low' ||
+          (raw as any).autonomyLevel === 'medium' ||
+          (raw as any).autonomyLevel === 'high'
+            ? (raw as any).autonomyLevel
+            : undefined,
+        decompSessionType:
+          (raw as any).decompSessionType === 'orchestrator'
+            ? (raw as any).decompSessionType
+            : undefined,
         reasoningEffort:
           typeof (raw as any).reasoningEffort === 'string'
             ? (raw as any).reasoningEffort

@@ -162,3 +162,76 @@ test('sessionStore save persists empty session with branch-derived title', async
   assert.equal(loaded?.messages.length, 0)
   assert.equal(loaded?.title, 'calm-whale-0phf')
 })
+
+test('sessionStore preserves explicit mission metadata across save, load, clear, and replace', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
+  const store = createSessionStore({ baseDir: dir })
+
+  const saved = await store.save({
+    id: 'mission_1',
+    projectDir: '/repo/mission',
+    model: 'gpt',
+    autoLevel: 'high',
+    isMission: true,
+    sessionKind: 'mission',
+    interactionMode: 'agi',
+    autonomyLevel: 'high',
+    decompSessionType: 'orchestrator',
+    messages: [
+      {
+        id: 'm1',
+        role: 'user',
+        blocks: [{ kind: 'text', content: 'Run the mission' }],
+        timestamp: 1,
+      },
+    ],
+  })
+
+  assert.ok(saved)
+  assert.equal(saved?.isMission, true)
+  assert.equal(saved?.sessionKind, 'mission')
+  assert.equal(saved?.interactionMode, 'agi')
+  assert.equal(saved?.autonomyLevel, 'high')
+  assert.equal(saved?.decompSessionType, 'orchestrator')
+
+  const loaded = await store.load('mission_1')
+  assert.ok(loaded)
+  assert.equal(loaded?.isMission, true)
+  assert.equal(loaded?.sessionKind, 'mission')
+  assert.equal(loaded?.interactionMode, 'agi')
+  assert.equal(loaded?.autonomyLevel, 'high')
+  assert.equal(loaded?.decompSessionType, 'orchestrator')
+
+  const listed = await store.list()
+  assert.equal(listed.length, 1)
+  assert.equal(listed[0].isMission, true)
+  assert.equal(listed[0].sessionKind, 'mission')
+  assert.equal(listed[0].interactionMode, 'agi')
+  assert.equal(listed[0].autonomyLevel, 'high')
+  assert.equal(listed[0].decompSessionType, 'orchestrator')
+
+  const cleared = await store.clearContext('mission_1')
+  assert.ok(cleared)
+  assert.equal(cleared?.isMission, true)
+  assert.equal(cleared?.sessionKind, 'mission')
+  assert.equal(cleared?.interactionMode, 'agi')
+  assert.equal(cleared?.autonomyLevel, 'high')
+  assert.equal(cleared?.decompSessionType, 'orchestrator')
+
+  const replaced = await store.replaceSessionId('mission_1', 'mission_2')
+  assert.ok(replaced)
+  assert.equal(replaced?.id, 'mission_2')
+  assert.equal(replaced?.isMission, true)
+  assert.equal(replaced?.sessionKind, 'mission')
+  assert.equal(replaced?.interactionMode, 'agi')
+  assert.equal(replaced?.autonomyLevel, 'high')
+  assert.equal(replaced?.decompSessionType, 'orchestrator')
+
+  const loadedReplaced = await store.load('mission_2')
+  assert.ok(loadedReplaced)
+  assert.equal(loadedReplaced?.isMission, true)
+  assert.equal(loadedReplaced?.sessionKind, 'mission')
+  assert.equal(loadedReplaced?.interactionMode, 'agi')
+  assert.equal(loadedReplaced?.autonomyLevel, 'high')
+  assert.equal(loadedReplaced?.decompSessionType, 'orchestrator')
+})

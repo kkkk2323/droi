@@ -1,5 +1,12 @@
 // Shared, isomorphic types for Droid App (Electron + Browser modes)
 
+import type {
+  DecompSessionType,
+  SessionAutonomyLevel,
+  SessionInteractionMode,
+  SessionKind,
+} from './sessionProtocol'
+
 // === stream-jsonrpc protocol (JSON-RPC over JSONL) ===
 
 export const JSONRPC_VERSION = '2.0' as const
@@ -44,10 +51,10 @@ export interface JsonRpcNotification extends JsonRpcBase {
 
 export type JsonRpcMessage = JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
 
-export type DroidInteractionMode = 'spec' | 'auto'
+export type DroidInteractionMode = SessionInteractionMode
 
 // Tool permission level (equivalent to `droid exec --auto <level>` semantics).
-export type DroidAutonomyLevel = 'off' | 'low' | 'medium' | 'high'
+export type DroidAutonomyLevel = SessionAutonomyLevel
 
 export type DroidPermissionOption =
   | 'proceed_once'
@@ -200,6 +207,11 @@ export interface SessionMeta {
   messageCount: number
   model: string
   autoLevel: string
+  isMission?: boolean
+  sessionKind?: SessionKind
+  interactionMode?: SessionInteractionMode
+  autonomyLevel?: SessionAutonomyLevel
+  decompSessionType?: DecompSessionType
   reasoningEffort?: string
   apiKeyFingerprint?: string
   lastMessageAt?: number
@@ -281,6 +293,11 @@ export interface SaveSessionRequest {
   baseBranch?: string
   model: string
   autoLevel: string
+  isMission?: boolean
+  sessionKind?: SessionKind
+  interactionMode?: SessionInteractionMode
+  autonomyLevel?: SessionAutonomyLevel
+  decompSessionType?: DecompSessionType
   reasoningEffort?: string
   apiKeyFingerprint?: string
   pinned?: boolean
@@ -298,6 +315,11 @@ export interface LoadSessionResponse {
   baseBranch?: string
   model: string
   autoLevel: string
+  isMission?: boolean
+  sessionKind?: SessionKind
+  interactionMode?: SessionInteractionMode
+  autonomyLevel?: SessionAutonomyLevel
+  decompSessionType?: DecompSessionType
   reasoningEffort?: string
   apiKeyFingerprint?: string
   pinned?: boolean
@@ -343,6 +365,11 @@ export interface DroidClientAPI {
     sessionId?: string | null
     modelId?: string
     autoLevel?: string
+    isMission?: boolean
+    sessionKind?: SessionKind
+    interactionMode?: SessionInteractionMode
+    autonomyLevel?: SessionAutonomyLevel
+    decompSessionType?: DecompSessionType
     reasoningEffort?: string
   }) => void
   cancel: (params: { sessionId: string | null }) => void
@@ -351,6 +378,11 @@ export interface DroidClientAPI {
     sessionId: string
     modelId?: string
     autoLevel?: string
+    isMission?: boolean
+    sessionKind?: SessionKind
+    interactionMode?: SessionInteractionMode
+    autonomyLevel?: SessionAutonomyLevel
+    decompSessionType?: DecompSessionType
     reasoningEffort?: string
   }) => Promise<{ ok: true }>
 
@@ -358,8 +390,18 @@ export interface DroidClientAPI {
     cwd: string
     modelId?: string
     autoLevel?: string
+    isMission?: boolean
+    sessionKind?: SessionKind
+    interactionMode?: SessionInteractionMode
+    autonomyLevel?: SessionAutonomyLevel
+    decompSessionType?: DecompSessionType
     reasoningEffort?: string
   }) => Promise<{ sessionId: string }>
+
+  killWorkerSession: (params: {
+    sessionId: string
+    workerSessionId: string
+  }) => Promise<{ ok: true }>
 
   restartSessionWithActiveKey: (params: {
     sessionId: string

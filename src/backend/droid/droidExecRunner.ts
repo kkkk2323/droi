@@ -7,6 +7,7 @@ import type {
 } from './jsonrpc/jsonRpcTypes.ts'
 import { resolveDroidPath } from './resolveDroidPath.ts'
 import type { LocalDiagnostics } from '../diagnostics/localDiagnostics.ts'
+import type { DecompSessionType, SessionKind } from '../../shared/sessionProtocol.ts'
 
 export type { DroidBackendEvent }
 
@@ -19,6 +20,9 @@ export interface DroidExecSendOptions {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
   env?: Record<string, string | undefined>
 }
@@ -28,6 +32,9 @@ export interface DroidExecUpdateSettingsOptions {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
 }
 
@@ -37,6 +44,9 @@ export interface DroidExecCreateSessionOptions {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
   env?: Record<string, string | undefined>
 }
@@ -85,6 +95,9 @@ export class DroidExecManager {
       modelId: options.modelId,
       interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
       reasoningEffort: options.reasoningEffort,
       env: options.env,
     })
@@ -97,6 +110,9 @@ export class DroidExecManager {
       modelId: options.modelId,
       interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
       reasoningEffort: options.reasoningEffort,
       env: options.env,
     })
@@ -109,8 +125,15 @@ export class DroidExecManager {
       modelId: options.modelId,
       interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
       reasoningEffort: options.reasoningEffort,
     })
+  }
+
+  async killWorkerSession(options: { sessionId: string; workerSessionId: string }): Promise<void> {
+    return this.manager.killWorkerSession(options)
   }
 
   async listSkills(sessionId: string): Promise<unknown[]> {

@@ -31,6 +31,7 @@ import {
   updateSessionTitle,
   replaceSessionIdInProjects,
 } from './store/projectHelpers'
+import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
 
 const droid = getDroidClient()
 
@@ -198,6 +199,16 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         if (restoredProjectDir && activeMeta) {
           const data = await droid.loadSession(activeMeta.id)
           const loaded = (data?.messages as ChatMessage[]) ?? []
+          const protocol = resolveSessionProtocolFields({
+            autoLevel: (data as any)?.autoLevel || activeMeta.autoLevel,
+            explicit: {
+              isMission: (data as any)?.isMission ?? activeMeta.isMission,
+              sessionKind: (data as any)?.sessionKind || activeMeta.sessionKind,
+              interactionMode: (data as any)?.interactionMode || activeMeta.interactionMode,
+              autonomyLevel: (data as any)?.autonomyLevel || activeMeta.autonomyLevel,
+              decompSessionType: (data as any)?.decompSessionType || activeMeta.decompSessionType,
+            },
+          })
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
           const base = makeBuffer(restoredProjectDir, {
             repoRoot: activeMeta.repoRoot,
@@ -212,6 +223,11 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             messages: loaded,
             model: data?.model || activeMeta.model || DEFAULT_MODEL,
             autoLevel: data?.autoLevel || activeMeta.autoLevel || DEFAULT_AUTO_LEVEL,
+            isMission: protocol.isMission,
+            sessionKind: protocol.sessionKind,
+            interactionMode: protocol.interactionMode,
+            autonomyLevel: protocol.autonomyLevel,
+            decompSessionType: protocol.decompSessionType,
             reasoningEffort: (data as any)?.reasoningEffort || '',
             apiKeyFingerprint: (data as any)?.apiKeyFingerprint || activeMeta.apiKeyFingerprint,
           })

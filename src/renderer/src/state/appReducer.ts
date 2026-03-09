@@ -28,6 +28,11 @@ export interface SessionBuffer {
   baseBranch?: string
   model: string
   autoLevel: string
+  isMission?: boolean
+  sessionKind?: 'normal' | 'mission'
+  interactionMode?: 'spec' | 'auto' | 'agi'
+  autonomyLevel?: 'off' | 'low' | 'medium' | 'high'
+  decompSessionType?: 'orchestrator'
   reasoningEffort: string
   tokenUsage?: {
     inputTokens: number
@@ -86,6 +91,11 @@ export function makeBuffer(
     baseBranch: workspace?.baseBranch,
     model: DEFAULT_MODEL,
     autoLevel: DEFAULT_AUTO_LEVEL,
+    isMission: false,
+    sessionKind: 'normal',
+    interactionMode: 'spec',
+    autonomyLevel: 'off',
+    decompSessionType: undefined,
     reasoningEffort: '',
     tokenUsage: undefined,
     mcpServers: undefined,
@@ -662,16 +672,17 @@ export function applyRpcNotification(
     const nextAuto = mapSettingsToAutoLevel(settings)
     const session = prev.get(sid)
     if (!session) return prev
+    const isMission = session.isMission === true || session.sessionKind === 'mission'
     const next = new Map(prev)
     const hasChange =
       (modelId && modelId !== session.model) ||
       (reasoningEffort && reasoningEffort !== session.reasoningEffort) ||
-      (nextAuto && nextAuto !== session.autoLevel)
+      (!isMission && nextAuto && nextAuto !== session.autoLevel)
     next.set(sid, {
       ...session,
       ...(modelId ? { model: modelId } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
-      ...(nextAuto ? { autoLevel: nextAuto } : {}),
+      ...(!isMission && nextAuto ? { autoLevel: nextAuto } : {}),
       ...(hasChange ? { settingsFlashAt: Date.now() } : {}),
     })
     return next

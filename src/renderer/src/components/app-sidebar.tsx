@@ -574,7 +574,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton data-testid="sidebar-settings" onClick={() => navigate({ to: '/settings' })}>
+            <SidebarMenuButton
+              data-testid="sidebar-settings"
+              onClick={() => navigate({ to: '/settings' })}
+            >
               <SettingsIcon className="size-4" />
               <span>Settings</span>
             </SidebarMenuButton>

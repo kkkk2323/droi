@@ -9,6 +9,7 @@ const droidAPI: DroidClientAPI = {
   cancel: (params) => ipcRenderer.send('droid:cancel', params),
   setActiveSession: () => {},
   updateSessionSettings: (params) => ipcRenderer.invoke('droid:updateSessionSettings', params),
+  killWorkerSession: (params) => ipcRenderer.invoke('droid:killWorkerSession', params),
 
   createSession: (params) => ipcRenderer.invoke('session:create', params),
   restartSessionWithActiveKey: (params) => ipcRenderer.invoke('session:restart', params),

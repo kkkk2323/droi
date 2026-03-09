@@ -34,6 +34,7 @@ import {
   renameProject,
 } from './store/projectHelpers'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
+import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
 
 const droid = getDroidClient()
 
@@ -55,6 +56,44 @@ type PendingInitialSend = {
   sessionId: string
   input: SendInput
   attachments: Array<{ name: string; path: string }>
+}
+
+function getSessionProtocol(
+  source?:
+    | Partial<
+        Pick<
+          SessionMeta,
+          | 'autoLevel'
+          | 'isMission'
+          | 'sessionKind'
+          | 'interactionMode'
+          | 'autonomyLevel'
+          | 'decompSessionType'
+        >
+      >
+    | Partial<
+        Pick<
+          SessionBuffer,
+          | 'autoLevel'
+          | 'isMission'
+          | 'sessionKind'
+          | 'interactionMode'
+          | 'autonomyLevel'
+          | 'decompSessionType'
+        >
+      >
+    | null,
+) {
+  return resolveSessionProtocolFields({
+    autoLevel: source?.autoLevel,
+    explicit: {
+      isMission: source?.isMission,
+      sessionKind: source?.sessionKind,
+      interactionMode: source?.interactionMode,
+      autonomyLevel: source?.autonomyLevel,
+      decompSessionType: source?.decompSessionType,
+    },
+  })
 }
 
 // --- Zustand Store ---
@@ -382,6 +421,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const existingMeta = get()
       .projects.flatMap((p) => p.sessions)
       .find((x) => x.id === sid)
+    const protocol = getSessionProtocol(buf || existingMeta)
     const meta = await droid.saveSession({
       id: sid,
       projectDir: buf.projectDir,
@@ -393,6 +433,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       baseBranch: buf.baseBranch,
       model: buf.model || DEFAULT_MODEL,
       autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
+      isMission: protocol.isMission,
+      sessionKind: protocol.sessionKind,
+      interactionMode: protocol.interactionMode,
+      autonomyLevel: protocol.autonomyLevel,
+      decompSessionType: protocol.decompSessionType,
       reasoningEffort: buf.reasoningEffort || undefined,
       apiKeyFingerprint: buf.apiKeyFingerprint || undefined,
       pinned: existingMeta?.pinned || undefined,
@@ -415,6 +460,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       branch: meta.branch || buf.branch,
       workspaceType: meta.workspaceType || buf.workspaceType,
       baseBranch: meta.baseBranch || buf.baseBranch,
+      isMission: meta.isMission ?? protocol.isMission,
+      sessionKind: meta.sessionKind || protocol.sessionKind,
+      interactionMode: meta.interactionMode || protocol.interactionMode,
+      autonomyLevel: meta.autonomyLevel || protocol.autonomyLevel,
+      decompSessionType: meta.decompSessionType || protocol.decompSessionType,
     }
     get()._setProjects((prev) => upsertSessionMeta(prev, normalizedMeta))
   },
@@ -1254,6 +1304,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       !existingMeta || existingMeta.title === 'Untitled' || existingMeta.messageCount === 0
         ? getTitleFromPrompt(rawPromptForTitle)
         : existingMeta.title
+    const protocol = getSessionProtocol(buf || existingMeta)
     const draftMeta: SessionMeta = {
       id: sid,
       projectDir: projDir,
@@ -1268,6 +1319,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       messageCount,
       model: sessionModel,
       autoLevel: sessionAutoLevel,
+      isMission: protocol.isMission,
+      sessionKind: protocol.sessionKind,
+      interactionMode: protocol.interactionMode,
+      autonomyLevel: protocol.autonomyLevel,
+      decompSessionType: protocol.decompSessionType,
       reasoningEffort: sessionReasoningEffort || undefined,
       apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
     }
@@ -1286,6 +1342,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         baseBranch: buf?.baseBranch,
         model: sessionModel,
         autoLevel: sessionAutoLevel,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
         reasoningEffort: sessionReasoningEffort || undefined,
         apiKeyFingerprint: buf?.apiKeyFingerprint || undefined,
         pinned: existingMeta?.pinned || undefined,
@@ -1308,6 +1369,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
           branch: meta.branch || buf?.branch,
           workspaceType: meta.workspaceType || buf?.workspaceType,
           baseBranch: meta.baseBranch || buf?.baseBranch,
+          isMission: meta.isMission ?? protocol.isMission,
+          sessionKind: meta.sessionKind || protocol.sessionKind,
+          interactionMode: meta.interactionMode || protocol.interactionMode,
+          autonomyLevel: meta.autonomyLevel || protocol.autonomyLevel,
+          decompSessionType: meta.decompSessionType || protocol.decompSessionType,
         }
         get()._setProjects((prev) => upsertSessionMeta(prev, savedMeta))
       })
@@ -1543,6 +1609,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
           sessionId: sid,
           modelId: sessionModel,
           autoLevel: sessionAutoLevel,
+          isMission: protocol.isMission,
+          sessionKind: protocol.sessionKind,
+          interactionMode: protocol.interactionMode,
+          autonomyLevel: protocol.autonomyLevel,
+          decompSessionType: protocol.decompSessionType,
           reasoningEffort: sessionReasoningEffort || undefined,
         })
 
@@ -1738,7 +1809,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     ) {
       void (async () => {
         try {
-          await droid.updateSessionSettings({ sessionId: sid, autoLevel: newAutoLevel })
+          const session = get().sessionBuffers.get(sid)
+          const protocol = getSessionProtocol(session)
+          await droid.updateSessionSettings({
+            sessionId: sid,
+            autoLevel: newAutoLevel,
+            isMission: protocol.isMission,
+            sessionKind: protocol.sessionKind,
+            interactionMode: protocol.interactionMode,
+            autonomyLevel: protocol.autonomyLevel,
+            decompSessionType: protocol.decompSessionType,
+          })
           get()._setSessionBuffers((prev) =>
             appendDebugTrace(prev, sid, `ui-session-settings-update: auto=${newAutoLevel}`),
           )
@@ -1851,6 +1932,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (!existingBuffer) {
       const data = await droid.loadSession(sessionId)
       const loaded = (data?.messages as ChatMessage[]) ?? []
+      const protocol = getSessionProtocol(data || selectedMeta)
       get()._setSessionBuffers((prev) => {
         const next = new Map(prev)
         const base = makeBuffer(aligned.projectDir, {
@@ -1866,6 +1948,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
           messages: loaded,
           model: data?.model || selectedMeta.model || DEFAULT_MODEL,
           autoLevel: data?.autoLevel || selectedMeta.autoLevel || DEFAULT_AUTO_LEVEL,
+          isMission: protocol.isMission,
+          sessionKind: protocol.sessionKind,
+          interactionMode: protocol.interactionMode,
+          autonomyLevel: protocol.autonomyLevel,
+          decompSessionType: protocol.decompSessionType,
           reasoningEffort: (data as any)?.reasoningEffort || selectedMeta.reasoningEffort || '',
           apiKeyFingerprint: (data as any)?.apiKeyFingerprint || selectedMeta.apiKeyFingerprint,
         })
@@ -1994,6 +2081,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     )
     const buf = s.sessionBuffers.get(sessionId)
     if (buf) {
+      const protocol = getSessionProtocol(buf || meta)
       void droid.saveSession({
         id: sessionId,
         projectDir: buf.projectDir,
@@ -2005,6 +2093,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         baseBranch: buf.baseBranch,
         model: buf.model || DEFAULT_MODEL,
         autoLevel: buf.autoLevel || DEFAULT_AUTO_LEVEL,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
         reasoningEffort: buf.reasoningEffort || undefined,
         apiKeyFingerprint: buf.apiKeyFingerprint || undefined,
         pinned: nextPinned,
@@ -2094,6 +2187,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           if (!existingBuffer) {
             const data = await droid.loadSession(pickFallback.id)
             const loaded = (data?.messages as ChatMessage[]) ?? []
+            const protocol = getSessionProtocol(data || pickFallback)
             get()._setSessionBuffers((prev) => {
               const next = new Map(prev)
               const base = makeBuffer(aligned.projectDir, {
@@ -2110,6 +2204,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 messages: loaded,
                 model: data?.model || pickFallback.model || DEFAULT_MODEL,
                 autoLevel: data?.autoLevel || pickFallback.autoLevel || DEFAULT_AUTO_LEVEL,
+                isMission: protocol.isMission,
+                sessionKind: protocol.sessionKind,
+                interactionMode: protocol.interactionMode,
+                autonomyLevel: protocol.autonomyLevel,
+                decompSessionType: protocol.decompSessionType,
                 reasoningEffort:
                   (data as any)?.reasoningEffort || pickFallback.reasoningEffort || '',
                 apiKeyFingerprint:

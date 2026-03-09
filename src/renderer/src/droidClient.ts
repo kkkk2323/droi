@@ -447,6 +447,11 @@ const browserClient: DroidClientAPI = {
           sessionId: sid,
           modelId: params.modelId,
           autoLevel: params.autoLevel,
+          isMission: params.isMission,
+          sessionKind: params.sessionKind,
+          interactionMode: params.interactionMode,
+          autonomyLevel: params.autonomyLevel,
+          decompSessionType: params.decompSessionType,
           reasoningEffort: params.reasoningEffort,
         }),
       })
@@ -484,6 +489,10 @@ const browserClient: DroidClientAPI = {
     return (await res.json()) as { ok: true }
   },
 
+  killWorkerSession: async () => {
+    throw new Error('Mission worker control is only available in Electron mode')
+  },
+
   createSession: async (params) => {
     const cwd = String(params?.cwd || '').trim()
     if (!cwd) throw new Error('Missing cwd')
@@ -494,6 +503,11 @@ const browserClient: DroidClientAPI = {
         cwd,
         modelId: params.modelId,
         autoLevel: params.autoLevel,
+        isMission: params.isMission,
+        sessionKind: params.sessionKind,
+        interactionMode: params.interactionMode,
+        autonomyLevel: params.autonomyLevel,
+        decompSessionType: params.decompSessionType,
         reasoningEffort: params.reasoningEffort,
       }),
     })
