@@ -3,6 +3,11 @@ import type { MissionState } from '@/state/missionState'
 
 export type MissionViewMode = 'chat' | 'mission-control'
 
+export interface MissionSessionViewState {
+  viewMode: MissionViewMode
+  manualOverrideAt?: number
+}
+
 export const MISSION_AUTO_SWITCH_COOLDOWN_MS = 30_000
 
 export function getPreferredMissionView(mission?: MissionState | null): MissionViewMode | null {
@@ -25,6 +30,28 @@ export function shouldApplyMissionAutoSwitch(params: {
   if (!preferredView || preferredView === currentView) return false
   if (typeof manualOverrideAt !== 'number') return true
   return now - manualOverrideAt >= MISSION_AUTO_SWITCH_COOLDOWN_MS
+}
+
+export function getMissionSessionViewState(params: {
+  sessionId?: string | null
+  mission?: MissionState | null
+  sessionViewStates?: Record<string, MissionSessionViewState>
+}): MissionSessionViewState {
+  const preferredView = getPreferredMissionView(params.mission) ?? 'chat'
+  const sessionId = String(params.sessionId || '').trim()
+  if (!sessionId) {
+    return {
+      viewMode: preferredView,
+      manualOverrideAt: undefined,
+    }
+  }
+
+  return (
+    params.sessionViewStates?.[sessionId] ?? {
+      viewMode: preferredView,
+      manualOverrideAt: undefined,
+    }
+  )
 }
 
 function toTitleCase(value: string): string {

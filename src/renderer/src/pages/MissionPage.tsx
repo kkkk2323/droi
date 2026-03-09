@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button'
 import { getMissionInputSemantics, getMissionRuntimeStatus } from '@/lib/missionUiSemantics'
 import { useAppStore, useActiveSessionId } from '@/store'
 import {
+  getMissionSessionViewState,
   getMissionStatusSummary,
   getPreferredMissionView,
   shouldApplyMissionAutoSwitch,
+  type MissionSessionViewState,
   type MissionViewMode,
 } from '@/lib/missionPage'
 
@@ -62,23 +64,51 @@ export function MissionPage() {
   const mission = useAppStore((state) =>
     activeSessionId ? state.sessionBuffers.get(activeSessionId)?.mission : undefined,
   )
-  const [viewMode, setViewMode] = useState<MissionViewMode>(
-    () => getPreferredMissionView(mission) ?? 'chat',
+  const [sessionViewStates, setSessionViewStates] = useState<
+    Record<string, MissionSessionViewState>
+  >({})
+
+  const sessionViewState = useMemo(
+    () =>
+      getMissionSessionViewState({
+        sessionId: activeSessionId,
+        mission,
+        sessionViewStates,
+      }),
+    [activeSessionId, mission, sessionViewStates],
   )
-  const [manualOverrideAt, setManualOverrideAt] = useState<number | undefined>(undefined)
 
   const preferredView = getPreferredMissionView(mission)
   const inputSemantics = getMissionInputSemantics(mission)
+  const viewMode = sessionViewState.viewMode
+  const manualOverrideAt = sessionViewState.manualOverrideAt
 
   useEffect(() => {
+    if (!activeSessionId) return
     if (shouldApplyMissionAutoSwitch({ currentView: viewMode, preferredView, manualOverrideAt })) {
-      setViewMode(preferredView as MissionViewMode)
+      setSessionViewStates((current) => {
+        const previous = current[activeSessionId]
+        if (previous?.viewMode === preferredView) return current
+        return {
+          ...current,
+          [activeSessionId]: {
+            ...previous,
+            viewMode: preferredView as MissionViewMode,
+          },
+        }
+      })
     }
-  }, [manualOverrideAt, preferredView, viewMode])
+  }, [activeSessionId, manualOverrideAt, preferredView, viewMode])
 
   const setManualView = (nextView: MissionViewMode) => {
-    setViewMode(nextView)
-    setManualOverrideAt(Date.now())
+    if (!activeSessionId) return
+    setSessionViewStates((current) => ({
+      ...current,
+      [activeSessionId]: {
+        viewMode: nextView,
+        manualOverrideAt: Date.now(),
+      },
+    }))
   }
 
   return (

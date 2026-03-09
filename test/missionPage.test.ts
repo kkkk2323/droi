@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   MISSION_AUTO_SWITCH_COOLDOWN_MS,
+  getMissionSessionViewState,
   getMissionStatusSummary,
   getPreferredMissionView,
   shouldApplyMissionAutoSwitch,
@@ -81,6 +82,41 @@ test('manual mission view cooldown suppresses auto-switches for 30 seconds', () 
       now,
     }),
     false,
+  )
+})
+
+test('Mission session view state stays scoped to the active session id', () => {
+  const runningMission = createMissionState({ currentState: 'running' })
+  const pausedMission = createMissionState({ currentState: 'paused' })
+  const sessionViewStates = {
+    'mission-a': {
+      viewMode: 'chat' as MissionViewMode,
+      manualOverrideAt: 42_000,
+    },
+  }
+
+  assert.deepEqual(
+    getMissionSessionViewState({
+      sessionId: 'mission-a',
+      mission: pausedMission,
+      sessionViewStates,
+    }),
+    {
+      viewMode: 'chat',
+      manualOverrideAt: 42_000,
+    },
+  )
+
+  assert.deepEqual(
+    getMissionSessionViewState({
+      sessionId: 'mission-b',
+      mission: runningMission,
+      sessionViewStates,
+    }),
+    {
+      viewMode: 'mission-control',
+      manualOverrideAt: undefined,
+    },
   )
 })
 
