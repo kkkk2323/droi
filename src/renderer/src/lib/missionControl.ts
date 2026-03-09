@@ -27,6 +27,7 @@ export interface MissionProgressTimelineItem {
 export interface MissionHandoffCardData {
   featureId: string
   title: string
+  key: string
   testId: string
   successState: string
   salientSummary: string
@@ -312,6 +313,7 @@ export function getMissionHandoffCards(mission?: MissionState | null): MissionHa
     return {
       featureId,
       title: featureId,
+      key: handoff.fileName,
       testId: `mission-handoff-${featureId}`,
       successState:
         asTrimmedString(payload.successState) ?? asTrimmedString(body.successState) ?? 'unknown',

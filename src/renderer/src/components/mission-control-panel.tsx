@@ -253,7 +253,7 @@ export function MissionControlPanel({ mission }: { mission?: MissionState | null
             ) : (
               handoffs.map((handoff) => (
                 <article
-                  key={handoff.testId}
+                  key={handoff.key}
                   data-testid={handoff.testId}
                   className="rounded-xl border border-border/70 bg-background/60 p-4"
                 >

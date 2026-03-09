@@ -237,6 +237,7 @@ test('Mission Control handoff cards extract required summary and verification fi
   assert.deepEqual(cards[0], {
     featureId: 'mission-page-chat-shell-and-view-toggle',
     title: 'mission-page-chat-shell-and-view-toggle',
+    key: 'mission-page-chat-shell-and-view-toggle.json',
     testId: 'mission-handoff-mission-page-chat-shell-and-view-toggle',
     successState: 'success',
     salientSummary: 'Implemented MissionPage shell and toggle.',
@@ -244,4 +245,51 @@ test('Mission Control handoff cards extract required summary and verification fi
     commandResults: ['pnpm check — All validators passed.'],
     interactiveResults: ['Opened Mission page — Mission status bar remained visible.'],
   })
+})
+
+test('Mission Control handoff cards keep stable unique React keys when recovered handoffs share a feature id', () => {
+  const mission = createMissionState({
+    handoffs: [
+      {
+        fileName: '2026-03-09T09-43-57__mission-session-entry-routing-and-sidebar__partial.json',
+        payload: {
+          featureId: 'mission-session-entry-routing-and-sidebar',
+          successState: 'partial',
+          handoff: {
+            salientSummary: 'First recovery handoff',
+            whatWasImplemented: 'Partial Mission routing validation.',
+          },
+        },
+      },
+      {
+        fileName: '2026-03-09T10-07-11__mission-session-entry-routing-and-sidebar__success.json',
+        payload: {
+          featureId: 'mission-session-entry-routing-and-sidebar',
+          successState: 'success',
+          handoff: {
+            salientSummary: 'Second recovery handoff',
+            whatWasImplemented: 'Completed Mission routing validation.',
+          },
+        },
+      },
+    ],
+  })
+
+  const cards = getMissionHandoffCards(mission)
+  assert.equal(cards.length, 2)
+  assert.deepEqual(
+    cards.map((card) => card.testId),
+    [
+      'mission-handoff-mission-session-entry-routing-and-sidebar',
+      'mission-handoff-mission-session-entry-routing-and-sidebar',
+    ],
+  )
+  assert.deepEqual(
+    cards.map((card) => card.key),
+    [
+      '2026-03-09T09-43-57__mission-session-entry-routing-and-sidebar__partial.json',
+      '2026-03-09T10-07-11__mission-session-entry-routing-and-sidebar__success.json',
+    ],
+  )
+  assert.equal(new Set(cards.map((card) => card.key)).size, 2)
 })
