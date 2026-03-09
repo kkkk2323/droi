@@ -1,6 +1,7 @@
 const REQUIRED_DROID_HOOKS = [
   'onRpcNotification',
   'onRpcRequest',
+  'onMissionDirChanged',
   'onTurnEnd',
   'onStdout',
   'onStderr',

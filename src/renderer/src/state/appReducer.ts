@@ -28,6 +28,7 @@ export interface SessionBuffer {
   baseBranch?: string
   model: string
   autoLevel: string
+  missionDir?: string
   isMission?: boolean
   sessionKind?: 'normal' | 'mission'
   interactionMode?: 'spec' | 'auto' | 'agi'
@@ -91,6 +92,7 @@ export function makeBuffer(
     baseBranch: workspace?.baseBranch,
     model: DEFAULT_MODEL,
     autoLevel: DEFAULT_AUTO_LEVEL,
+    missionDir: undefined,
     isMission: false,
     sessionKind: 'normal',
     interactionMode: 'spec',
@@ -282,6 +284,95 @@ function updateToolCall(
     return updated
   }
   return msgs
+}
+
+function findToolCallBlock(msgs: ChatMessage[], callId: string): ToolCallBlock | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const msg = msgs[i]
+    if (msg.role !== 'assistant') continue
+    const block = msg.blocks.find(
+      (candidate): candidate is ToolCallBlock =>
+        candidate.kind === 'tool_call' && candidate.callId === callId,
+    )
+    if (block) return block
+  }
+  return null
+}
+
+function normalizeToolName(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function parseEmbeddedJson(value: string): unknown {
+  const trimmed = value.trim()
+  if (!trimmed) return value
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+function findMissionDirInValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    if (
+      trimmed.includes('.factory/missions/') &&
+      !trimmed.startsWith('{') &&
+      !trimmed.startsWith('[')
+    ) {
+      return trimmed
+    }
+    const parsed = parseEmbeddedJson(trimmed)
+    if (parsed !== trimmed) return findMissionDirInValue(parsed)
+    return undefined
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = findMissionDirInValue(item)
+      if (candidate) return candidate
+    }
+    return undefined
+  }
+
+  if (!isObject(value)) return undefined
+
+  const direct =
+    typeof (value as any).missionDir === 'string'
+      ? String((value as any).missionDir).trim()
+      : typeof (value as any).mission_dir === 'string'
+        ? String((value as any).mission_dir).trim()
+        : ''
+  if (direct) return direct
+
+  for (const nested of Object.values(value)) {
+    const candidate = findMissionDirInValue(nested)
+    if (candidate) return candidate
+  }
+  return undefined
+}
+
+function extractMissionDirFromToolResult(
+  msgs: ChatMessage[],
+  notification: Record<string, unknown>,
+): string | undefined {
+  const toolUseId = String((notification as any).toolUseId || '').trim()
+  if (!toolUseId) return undefined
+
+  const existingBlock = findToolCallBlock(msgs, toolUseId)
+  const normalizedExistingName = normalizeToolName(existingBlock?.toolName)
+  const normalizedNotificationName = normalizeToolName((notification as any).toolName)
+  const isProposeMissionTool =
+    normalizedExistingName === 'proposemission' || normalizedNotificationName === 'proposemission'
+  if (!isProposeMissionTool) return undefined
+
+  return findMissionDirInValue((notification as any).content)
 }
 
 type ParsedToolUse = {
@@ -496,7 +587,8 @@ export function applyRpcNotification(
     const content = (notification as any).content
     const isError = Boolean((notification as any).isError)
     const rendered = content === undefined ? '' : formatUnknown(content)
-    return updateSessionMessages(prev, sid, (msgs) => {
+    const missionDir = extractMissionDirFromToolResult(prev.get(sid)?.messages || [], notification)
+    let next = updateSessionMessages(prev, sid, (msgs) => {
       const updated = updateToolCall(msgs, toolUseId, (block) => ({
         ...block,
         result: rendered,
@@ -513,6 +605,12 @@ export function applyRpcNotification(
         isError,
       })
     })
+    if (!missionDir) return next
+    const session = next.get(sid)
+    if (!session || session.missionDir === missionDir) return next
+    next = new Map(next)
+    next.set(sid, { ...session, missionDir })
+    return next
   }
 
   if (type === 'tool_progress_update') {

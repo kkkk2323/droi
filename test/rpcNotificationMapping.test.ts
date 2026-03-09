@@ -232,6 +232,43 @@ test('applyRpcNotification creates fallback tool block on tool_result without pr
   assert.equal(toolBlock.isError, false)
 })
 
+test('applyRpcNotification captures missionDir from ProposeMission tool_result notifications', () => {
+  const sid = 's1'
+  const prev = new Map([[sid, makeBuffer('/repo')]])
+
+  const withTool = applyRpcNotification(prev, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'tool_use',
+        id: 't-mission',
+        name: 'ProposeMission',
+        input: { objective: 'Ship the feature' },
+      },
+    },
+  } as any)
+
+  const next = applyRpcNotification(withTool, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'tool_result',
+        toolUseId: 't-mission',
+        content: {
+          summary: 'Mission proposed',
+          missionDir: '/Users/clive/.factory/missions/base-session-123',
+        },
+        isError: false,
+      },
+    },
+  } as any)
+
+  const buf = next.get(sid)!
+  assert.equal(buf.missionDir, '/Users/clive/.factory/missions/base-session-123')
+  const toolBlock = buf.messages[0].blocks[0] as any
+  assert.equal(toolBlock.result.includes('Mission proposed'), true)
+})
+
 test('applyRpcRequest enqueues permission and ask_user requests', () => {
   const sid = 's1'
   const prev = new Map([[sid, makeBuffer('/repo')]])

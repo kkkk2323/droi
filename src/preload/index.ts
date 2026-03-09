@@ -133,6 +133,14 @@ const droidAPI: DroidClientAPI = {
   clearSession: (params) => ipcRenderer.invoke('session:clear', params),
   listSessions: () => ipcRenderer.invoke('session:list'),
   deleteSession: (id) => ipcRenderer.invoke('session:delete', id),
+  readMissionDir: (params) => ipcRenderer.invoke('mission:read-dir', params),
+  watchMissionDir: (params) => ipcRenderer.invoke('mission:watch-start', params),
+  unwatchMissionDir: (params) => ipcRenderer.invoke('mission:watch-stop', params),
+  onMissionDirChanged: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('mission:dir-changed', handler)
+    return () => ipcRenderer.removeListener('mission:dir-changed', handler)
+  },
   loadAppState: () => ipcRenderer.invoke('appState:load'),
   saveProjects: (projects) => ipcRenderer.send('appState:saveProjects', projects),
   updateProjectSettings: (params) => ipcRenderer.invoke('appState:updateProjectSettings', params),

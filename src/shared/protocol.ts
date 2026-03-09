@@ -6,6 +6,7 @@ import type {
   SessionInteractionMode,
   SessionKind,
 } from './sessionProtocol'
+import type { MissionDirChangeEvent, MissionDirReadResult, MissionDirRequest } from './mission.ts'
 
 // === stream-jsonrpc protocol (JSON-RPC over JSONL) ===
 
@@ -207,6 +208,7 @@ export interface SessionMeta {
   messageCount: number
   model: string
   autoLevel: string
+  missionDir?: string
   isMission?: boolean
   sessionKind?: SessionKind
   interactionMode?: SessionInteractionMode
@@ -293,6 +295,7 @@ export interface SaveSessionRequest {
   baseBranch?: string
   model: string
   autoLevel: string
+  missionDir?: string
   isMission?: boolean
   sessionKind?: SessionKind
   interactionMode?: SessionInteractionMode
@@ -315,6 +318,7 @@ export interface LoadSessionResponse {
   baseBranch?: string
   model: string
   autoLevel: string
+  missionDir?: string
   isMission?: boolean
   sessionKind?: SessionKind
   interactionMode?: SessionInteractionMode
@@ -526,6 +530,10 @@ export interface DroidClientAPI {
   clearSession: (params: { id: string }) => Promise<SessionMeta | null>
   listSessions: () => Promise<SessionMeta[]>
   deleteSession: (id: string) => Promise<boolean>
+  readMissionDir: (params: MissionDirRequest) => Promise<MissionDirReadResult>
+  watchMissionDir: (params: MissionDirRequest) => Promise<{ ok: true; missionDir: string }>
+  unwatchMissionDir: (params: { sessionId: string }) => Promise<{ ok: true }>
+  onMissionDirChanged: (callback: (payload: MissionDirChangeEvent) => void) => () => void
 
   loadAppState: () => Promise<PersistedAppState>
   saveProjects: (projects: Array<{ dir: string; name: string; displayName?: string }>) => void

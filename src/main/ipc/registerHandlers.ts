@@ -32,6 +32,11 @@ import { SetupScriptRunner } from '../../backend/session/setupScriptRunner'
 import { createKeyStore } from '../../backend/keys/keyStore'
 import { createAppStateStore } from '../../backend/storage/appStateStore'
 import { createSessionStore } from '../../backend/storage/sessionStore'
+import {
+  readMissionDirSnapshot,
+  resolveMissionDirPath,
+} from '../../backend/mission/missionDirReader.ts'
+import { MissionDirWatcher } from '../../backend/mission/missionDirWatcher.ts'
 import type {
   PersistedAppState,
   PersistedAppStateV2,
@@ -46,6 +51,7 @@ import type {
   GenerateCommitMetaRequest,
   CommitWorkflowRequest,
 } from '../../shared/protocol'
+import type { MissionDirRequest } from '../../backend/mission/missionTypes.ts'
 import {
   resolveSessionProtocolFields,
   type DecompSessionType,
@@ -160,6 +166,7 @@ export function registerIpcHandlers(opts: {
   const diagnostics = opts.diagnostics || new LocalDiagnostics({ baseDir: opts.baseDir })
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
+  const missionDirWatchers = new Map<string, MissionDirWatcher>()
 
   let cachedState: PersistedAppState = { version: 2, machineId: '' }
   let activeProjectDir = ''
@@ -169,6 +176,20 @@ export function registerIpcHandlers(opts: {
     commands: Map<string, SlashCommandEntry>
   } | null = null
   let skillCache: { projectDir: string; at: number; skills: SkillDef[] } | null = null
+
+  const stopMissionDirWatcher = (sessionId: string) => {
+    const watcher = missionDirWatchers.get(sessionId)
+    if (!watcher) return
+    watcher.stop()
+    missionDirWatchers.delete(sessionId)
+  }
+
+  const resolveMissionDirRequest = (params: MissionDirRequest) => {
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    const missionDir = resolveMissionDirPath({ sessionId, missionDir: params?.missionDir })
+    return { sessionId, missionDir }
+  }
 
   const getSlashCommands = async (): Promise<Map<string, SlashCommandEntry>> => {
     const projectDir = activeProjectDir || cachedState.activeProjectDir || ''
@@ -1097,6 +1118,7 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('session:restart', async (_event, payload: { sessionId: string }) => {
     const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
     if (!sessionId) throw new Error('Missing sessionId')
+    stopMissionDirWatcher(sessionId)
     execManager.disposeSession(sessionId)
 
     cachedState = await appStateStore.load()
@@ -1107,6 +1129,7 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('session:clear', async (_event, payload: { id: string }) => {
     const id = typeof payload?.id === 'string' ? payload.id.trim() : ''
     if (!id) return null
+    stopMissionDirWatcher(id)
 
     const existing = await sessionStore.load(id)
     const cwd = (existing?.projectDir || '').trim() || activeProjectDir
@@ -1145,7 +1168,43 @@ export function registerIpcHandlers(opts: {
     return meta
   })
   ipcMain.handle('session:list', async () => sessionStore.list())
-  ipcMain.handle('session:delete', async (_event, id: string) => sessionStore.delete(id))
+  ipcMain.handle('session:delete', async (_event, id: string) => {
+    const sessionId = typeof id === 'string' ? id.trim() : ''
+    if (sessionId) stopMissionDirWatcher(sessionId)
+    return sessionStore.delete(id)
+  })
+
+  ipcMain.handle('mission:read-dir', async (_event, params: MissionDirRequest) => {
+    const { sessionId, missionDir } = resolveMissionDirRequest(params)
+    const snapshot = await readMissionDirSnapshot(missionDir)
+    return { sessionId, snapshot }
+  })
+
+  ipcMain.handle('mission:watch-start', async (_event, params: MissionDirRequest) => {
+    const { sessionId, missionDir } = resolveMissionDirRequest(params)
+    stopMissionDirWatcher(sessionId)
+
+    const watcher = new MissionDirWatcher({
+      sessionId,
+      missionDir,
+      onChange: (payload) => {
+        const mainWindow = opts.getMainWindow()
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.webContents.send('mission:dir-changed', payload)
+      },
+    })
+
+    missionDirWatchers.set(sessionId, watcher)
+    await watcher.start()
+    return { ok: true, missionDir } as const
+  })
+
+  ipcMain.handle('mission:watch-stop', async (_event, payload: { sessionId: string }) => {
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    stopMissionDirWatcher(sessionId)
+    return { ok: true } as const
+  })
 
   ipcMain.handle('git:status', async (_event, params: { projectDir: string }) => {
     const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir

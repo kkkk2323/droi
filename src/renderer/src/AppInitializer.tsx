@@ -223,6 +223,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             messages: loaded,
             model: data?.model || activeMeta.model || DEFAULT_MODEL,
             autoLevel: data?.autoLevel || activeMeta.autoLevel || DEFAULT_AUTO_LEVEL,
+            missionDir: (data as any)?.missionDir || activeMeta.missionDir,
             isMission: protocol.isMission,
             sessionKind: protocol.sessionKind,
             interactionMode: protocol.interactionMode,

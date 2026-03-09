@@ -79,6 +79,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       baseBranch: req.baseBranch,
       model: req.model,
       autoLevel: req.autoLevel,
+      missionDir: req.missionDir,
       isMission: req.isMission,
       sessionKind: req.sessionKind,
       interactionMode: req.interactionMode,
@@ -108,6 +109,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       messageCount,
       model: req.model,
       autoLevel: req.autoLevel,
+      missionDir: req.missionDir,
       isMission: req.isMission,
       sessionKind: req.sessionKind,
       interactionMode: req.interactionMode,
@@ -145,6 +147,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           baseBranch: typeof raw.baseBranch === 'string' ? raw.baseBranch : undefined,
           model: String(raw.model || ''),
           autoLevel: String(raw.autoLevel || 'default'),
+          missionDir: typeof raw.missionDir === 'string' ? raw.missionDir : undefined,
           isMission: raw.isMission === true ? true : undefined,
           sessionKind:
             raw.sessionKind === 'mission'
@@ -229,6 +232,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           messageCount: data.messages.length,
           model: data.model,
           autoLevel: data.autoLevel,
+          missionDir: data.missionDir,
           isMission: data.isMission,
           sessionKind: data.sessionKind,
           interactionMode: data.interactionMode,
@@ -306,6 +310,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
+        missionDir:
+          typeof (raw as any).missionDir === 'string' ? (raw as any).missionDir : undefined,
         isMission: (raw as any).isMission === true ? true : undefined,
         sessionKind:
           (raw as any).sessionKind === 'mission'
@@ -402,6 +408,8 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
+        missionDir:
+          typeof (raw as any).missionDir === 'string' ? (raw as any).missionDir : undefined,
         isMission: (raw as any).isMission === true ? true : undefined,
         sessionKind:
           (raw as any).sessionKind === 'mission'

@@ -1033,6 +1033,16 @@ const browserClient: DroidClientAPI = {
       return false
     }
   },
+  readMissionDir: async () => {
+    throw new Error('Mission directory reading is only available in Electron mode')
+  },
+  watchMissionDir: async () => {
+    throw new Error('Mission directory watching is only available in Electron mode')
+  },
+  unwatchMissionDir: async () => {
+    return { ok: true } as const
+  },
+  onMissionDirChanged: () => () => {},
 
   loadAppState: async () => {
     try {

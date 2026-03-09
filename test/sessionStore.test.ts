@@ -163,7 +163,7 @@ test('sessionStore save persists empty session with branch-derived title', async
   assert.equal(loaded?.title, 'calm-whale-0phf')
 })
 
-test('sessionStore preserves explicit mission metadata across save, load, clear, and replace', async () => {
+test('sessionStore preserves explicit mission metadata and missionDir across save, load, clear, and replace', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
   const store = createSessionStore({ baseDir: dir })
 
@@ -172,6 +172,7 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
     projectDir: '/repo/mission',
     model: 'gpt',
     autoLevel: 'high',
+    missionDir: '/Users/clive/.factory/missions/mission_1',
     isMission: true,
     sessionKind: 'mission',
     interactionMode: 'agi',
@@ -193,6 +194,7 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
   assert.equal(saved?.interactionMode, 'agi')
   assert.equal(saved?.autonomyLevel, 'high')
   assert.equal(saved?.decompSessionType, 'orchestrator')
+  assert.equal(saved?.missionDir, '/Users/clive/.factory/missions/mission_1')
 
   const loaded = await store.load('mission_1')
   assert.ok(loaded)
@@ -201,6 +203,7 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
   assert.equal(loaded?.interactionMode, 'agi')
   assert.equal(loaded?.autonomyLevel, 'high')
   assert.equal(loaded?.decompSessionType, 'orchestrator')
+  assert.equal(loaded?.missionDir, '/Users/clive/.factory/missions/mission_1')
 
   const listed = await store.list()
   assert.equal(listed.length, 1)
@@ -209,6 +212,7 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
   assert.equal(listed[0].interactionMode, 'agi')
   assert.equal(listed[0].autonomyLevel, 'high')
   assert.equal(listed[0].decompSessionType, 'orchestrator')
+  assert.equal(listed[0].missionDir, '/Users/clive/.factory/missions/mission_1')
 
   const cleared = await store.clearContext('mission_1')
   assert.ok(cleared)
@@ -217,6 +221,7 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
   assert.equal(cleared?.interactionMode, 'agi')
   assert.equal(cleared?.autonomyLevel, 'high')
   assert.equal(cleared?.decompSessionType, 'orchestrator')
+  assert.equal(cleared?.missionDir, '/Users/clive/.factory/missions/mission_1')
 
   const replaced = await store.replaceSessionId('mission_1', 'mission_2')
   assert.ok(replaced)
@@ -226,6 +231,7 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
   assert.equal(replaced?.interactionMode, 'agi')
   assert.equal(replaced?.autonomyLevel, 'high')
   assert.equal(replaced?.decompSessionType, 'orchestrator')
+  assert.equal(replaced?.missionDir, '/Users/clive/.factory/missions/mission_1')
 
   const loadedReplaced = await store.load('mission_2')
   assert.ok(loadedReplaced)
@@ -234,4 +240,5 @@ test('sessionStore preserves explicit mission metadata across save, load, clear,
   assert.equal(loadedReplaced?.interactionMode, 'agi')
   assert.equal(loadedReplaced?.autonomyLevel, 'high')
   assert.equal(loadedReplaced?.decompSessionType, 'orchestrator')
+  assert.equal(loadedReplaced?.missionDir, '/Users/clive/.factory/missions/mission_1')
 })
