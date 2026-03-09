@@ -1,0 +1,21 @@
+{
+  "featureId": "mission-session-entry-routing-and-sidebar",
+  "reviewedAt": "2026-03-09T02:15:33Z",
+  "commitId": "fd9e84f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature satisfies the scoped Mission entry-routing/sidebar requirements: SessionConfigPage separates Mission from workspace mode, the app registers and guards `/mission`, Mission sessions are routed independently from normal sessions, and sidebar rows expose explicit Mission targeting with a visible Mission badge. The focused routing tests and the worker handoff's live Electron verification together cover the required assertions without revealing a scoped correctness or regression defect.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The mission-ui-worker skill should clarify how to handle interrupted drafts that already contain the focused test file for the feature, because this worker justifiably resumed existing draft coverage instead of performing a fresh red-phase test authoring step.",
+      "evidence": "`.factory/skills/mission-ui-worker/SKILL.md` step 3 requires 'Write failing tests first (red)', while the handoff for worker session `c06f395e-9bfb-4238-adcf-40d34236ce1d` marks `skillFeedback.followedProcedure` false and explains that the interrupted draft already contained the relevant focused test file."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. Evidence from the committed diff, current renderer code, transcript skeleton, and handoff shows the feature delivers independent Mission session selection, Mission-aware `/mission` routing and redirection, and explicit Mission sidebar targeting required by VAL-SESSION-001, VAL-SESSION-005, VAL-ROUTING-001, VAL-ROUTING-002, and VAL-ROUTING-005. No scoped blocking or non-blocking code defects were identified in the reviewed implementation."
+}

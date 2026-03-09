@@ -31,3 +31,10 @@ Mission-specific runtime notes that workers should keep in mind while implementi
 - Stale `currentWorkerSessionId` values must not create false live-worker UI after restart.
 - Disk-only recovery should still rebuild a coherent Mission if `droid.load_session` is unavailable or stale.
 - Mission restore must not flicker back to a normal session because of transient generic settings updates.
+
+## Worker kill contract
+
+- The renderer/preload/shared contract for killing a Mission worker is `killWorkerSession({ sessionId, workerSessionId })`.
+- IPC rejects missing `sessionId` or `workerSessionId`; only show the Kill Worker action when a concrete current worker session id is known.
+- The backend uses `sessionId` only to route to the correct managed session. The JSON-RPC request sent to Droid is `droid.kill_worker_session` with payload `{ workerSessionId }`.
+- The JSON-RPC session trims `workerSessionId` and no-ops on an empty string, so validation and UI state should prevent empty-worker kill attempts from being presented as actionable.
