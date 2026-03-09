@@ -5,7 +5,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "dev:test": "ELECTRON_REMOTE_DEBUGGING_PORT=9222 electron-vite dev",
+    "dev:test": "node scripts/dev-test-launcher.mjs",
     "dev:mobile": "DROID_WEB_ENABLED=true DROID_APP_API_HOST=0.0.0.0 DROID_APP_API_PORT=3001 electron-vite dev",
     "dev:preview": "DROID_WEB_ENABLED=true DROID_APP_API_HOST=0.0.0.0 DROID_APP_API_PORT=3002 VITE_DROID_API_BASE=http://localhost:3002/api electron-vite dev",
     "dev:api": "node --experimental-strip-types src/server/index.ts",
