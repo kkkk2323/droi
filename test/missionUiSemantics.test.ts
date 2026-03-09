@@ -86,6 +86,38 @@ test('permission copy uses Mission-specific labels for propose_mission and start
   assert.equal(getMissionPermissionOptionLabel(run, 'cancel'), 'Cancel')
 })
 
+test('mission permission options preserve distinct backend approval semantics when multiple choices are offered', () => {
+  const proposal = createPermissionRequest({
+    confirmationType: 'propose_mission',
+    options: ['proceed_once', 'proceed_always', 'proceed_auto_run_high', 'cancel'],
+    optionsMeta: [
+      { value: 'proceed_once', label: 'Approve once' },
+      { value: 'proceed_always', label: 'Always allow for this Mission' },
+      { value: 'proceed_auto_run_high', label: 'Auto-run Mission workers (High)' },
+      { value: 'cancel', label: 'Decline' },
+    ],
+  })
+
+  assert.equal(getMissionPermissionOptionLabel(proposal, 'proceed_once'), 'Approve once')
+  assert.equal(
+    getMissionPermissionOptionLabel(proposal, 'proceed_always'),
+    'Always allow for this Mission',
+  )
+  assert.equal(
+    getMissionPermissionOptionLabel(proposal, 'proceed_auto_run_high'),
+    'Auto-run Mission workers (High)',
+  )
+  assert.equal(getMissionPermissionOptionLabel(proposal, 'cancel'), 'Cancel')
+
+  const run = createPermissionRequest({
+    confirmationType: 'start_mission_run',
+    options: ['proceed_once', 'proceed_auto_run_medium', 'cancel'],
+  })
+
+  assert.equal(getMissionPermissionOptionLabel(run, 'proceed_once'), 'Proceed once')
+  assert.equal(getMissionPermissionOptionLabel(run, 'proceed_auto_run_medium'), 'Auto-run (Medium)')
+})
+
 test('pause and kill controls only appear in valid Mission states', () => {
   assert.deepEqual(
     getMissionActionState(

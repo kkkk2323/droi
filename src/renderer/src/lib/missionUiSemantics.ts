@@ -142,16 +142,27 @@ export function getMissionPermissionCardPresentation(
 }
 
 export function getMissionPermissionOptionLabel(
-  request: Pick<PendingPermissionRequest, 'confirmationType' | 'toolUses'> | null | undefined,
+  request:
+    | Pick<PendingPermissionRequest, 'confirmationType' | 'toolUses' | 'options' | 'optionsMeta'>
+    | null
+    | undefined,
   option: DroidPermissionOption,
 ): string {
+  const missionPresentation = getMissionPermissionCardPresentation(request)
   if (option === 'cancel') {
-    return getMissionPermissionCardPresentation(request)?.secondaryActionLabel || 'Cancel'
+    return missionPresentation?.secondaryActionLabel || 'Cancel'
   }
-  return (
-    getMissionPermissionCardPresentation(request)?.primaryActionLabel ||
-    getDefaultPermissionLabel(option)
-  )
+
+  const missionProceedOptions = (request?.options || []).filter((entry) => entry !== 'cancel')
+  if (missionPresentation && missionProceedOptions.length <= 1) {
+    return missionPresentation.primaryActionLabel
+  }
+
+  const optionMeta = request?.optionsMeta?.find((entry) => entry.value === option)
+  const metaLabel = asTrimmedString(optionMeta?.label)
+  if (metaLabel && metaLabel !== option) return metaLabel
+
+  return getDefaultPermissionLabel(option)
 }
 
 export function getMissionActionState(mission?: MissionState | null): MissionActionState {
