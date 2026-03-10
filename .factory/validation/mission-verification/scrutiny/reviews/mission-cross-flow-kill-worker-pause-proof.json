@@ -1,34 +1,28 @@
 {
   "featureId": "mission-cross-flow-kill-worker-pause-proof",
-  "reviewedAt": "2026-03-10T00:56:28Z",
-  "commitId": "a039b57bd46ef3e03b646ce7f2f953a2df7b250d",
+  "reviewedAt": "2026-03-10T13:31:13Z",
+  "commitId": "e65ee13271592019a5cfd732a086c27a7dce3ba4",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "This fix narrows ownership to VAL-CROSS-005 and adds a checked-in proof file, but it still does not clear the prior blocker. Commit `a039b57` only adds `.factory/validation/mission-verification/mission-cross-flow-kill-worker-pause-proof.json`; it does not add any new Mission-GUI-TEST runtime artifact or test. The new bundle re-labels pre-existing foundation/routing/runtime-control artifacts as feature-owned proof, yet the cited runtime-controls evidence still says destructive kill validation used isolated renderer-state injection, and the paused-chat evidence it reuses is a generic paused-session continuation check rather than a same-session user-kill completion path. As a result, the feature still lacks direct same-session Mission-GUI-TEST proof that a real kill-worker action produced `worker_failed(reason = \"Killed by user\") -> mission_paused` while leaving the same Mission inspectable and resumable.",
+    "summary": "The post-round-4 fix materially improves ownership and adds new screenshots plus a dedicated flow file in commit `e65ee13`, but it still does not satisfy the feature's required proof shape. The new artifacts prove that Mission session `69792bf9-59b0-4933-a873-43c546853bc1` exists, was previously killed by user, is now paused, and remains inspectable/resumable. They do not prove one live same-session Electron Mission run traversed the Kill Worker action end to end. The flow still reselects an already-killed session and uses session/missionDir files as the substantive transition evidence, and one of the new setup screenshots is misdescribed: `kill-proof-after-askuser-submit.png` shows `Standard Chat` selected rather than `Mission`. The previous blockers are therefore not cleared.",
     "issues": [
       {
-        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/mission-cross-flow-kill-worker-pause-proof.json",
-        "line": 44,
+        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json",
+        "line": 23,
         "severity": "blocking",
-        "description": "The new proof bundle overstates what the underlying runtime-controls artifact proves. It claims the same flow shows a paused chat screenshot after the user-kill path, but the cited source separates those facts: `runtime-controls-kill-pending.png` is a synthetic pre-async pending-kill check with no completing network call, while the paused-chat screenshot is used for a generic paused-session continuation assertion. See `runtime-controls.json:23`, `:28`, `:233`, and `:267`. This still does not provide a same-session Mission-GUI-TEST end-to-end kill-worker -> paused/resumable proof."
+        "description": "The flow claims `kill-proof-after-askuser-submit.png` shows Mission mode selected with model `CCH-GPT-5.4` visible, but the checked-in screenshot shows `Standard Chat` selected and `Mission` unselected. That means the fresh feature-owned setup capture does not actually prove a Mission-surface start for this supposed same-session kill-worker flow. The owner bundle repeats the same incorrect claim at `.factory/validation/mission-verification/mission-cross-flow-kill-worker-pause-proof.json:40`."
       },
       {
-        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/mission-cross-flow-kill-worker-pause-proof.json",
-        "line": 48,
+        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json",
+        "line": 60,
         "severity": "blocking",
-        "description": "The fix remains a proof-ownership remap, not new runtime proof. Commit `a039b57` only adds this JSON bundle, and the bundle itself acknowledges that destructive kill execution in Mission-GUI-TEST was exercised via isolated in-memory renderer-state injection. The rest of the cited interactive evidence (`foundation-metadata.json` and `routing-toggle.json`) proves session identity and inspectability for session `a901a190-5925-431e-8657-8db9bb502391`, but not a real kill-worker transition on that session. Older artifacts therefore remain the sole substantive evidence for VAL-CROSS-005, so the prior scrutiny failure is not actually resolved."
+        "description": "The new proof still does not show a live Kill Worker action on one Electron Mission session traversing `droid.kill_worker_session` / `worker_failed(reason = \"Killed by user\") -> mission_paused` end to end. Its own resolution/summary say the feature reuses fresh namespace screenshots and then selects the already-killed Mission session `69792bf9-59b0-4933-a873-43c546853bc1`, tying post-kill UI to `/tmp/droi-mission-e2e/sessions/...`, `progress_log.jsonl`, and `state.json`. Per `.factory/library/user-testing.md:73`, restored-session reselection and disk logs are supporting context only for VAL-CROSS-005; the proof must still show one live Electron Mission session traversing the destructive transition end to end. The current screenshot chain only shows post-kill states (`kill-proof-after-reload.png`, `kill-proof-mission-control.png`, `kill-proof-chat-resumable.png`), so the critical live kill transition remains unproven."
       }
     ]
   },
-  "sharedStateObservations": [
-    {
-      "area": "skills",
-      "observation": "`mission-verification-worker` now says proof-audit sessions must not close a feature unless they add owned proof, but this run still marked `followedProcedure: true` after only adding an ownership bundle that remaps older artifacts and no fresh Mission-GUI-TEST kill-worker evidence. The skill should explicitly distinguish 'new owner file that cites existing evidence' from 'new feature-owned proof that satisfies a same-session E2E requirement', so workers do not treat relabeling prior artifacts as sufficient closure.",
-      "evidence": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/skills/mission-verification-worker/SKILL.md:37-47 and :49-53 require full-flow evidence and say older artifacts cannot be the sole proof, while /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-10T00-47-41-191Z__mission-cross-flow-kill-worker-pause-proof__da09f276-e0c4-42c4-a477-2563d04c6f53.json:10 and :76 claim the feature now owns same-session proof and followed procedure even though commit `a039b57` only adds a remapping file."
-    }
-  ],
-  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-lifecycle-proof.json",
-  "summary": "Scrutiny failed. The new feature-owned VAL-CROSS-005 bundle is checked in, but it still reuses pre-existing artifacts and focused tests rather than adding direct same-session Mission-GUI-TEST evidence that a real kill-worker action on the cited Mission session produced the paused/resumable lifecycle. The original blocker therefore remains." 
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-kill-worker-pause-proof.json",
+  "summary": "Scrutiny still fails. Commit `e65ee13` adds a dedicated VAL-CROSS-005 flow file and screenshot bundle, and those artifacts do show a real paused/resumable killed Mission session. But the proof is still not fresh live same-session Mission-GUI-TEST Kill Worker evidence: it misstates the setup screenshot and relies on reselecting an already-killed session plus disk corroboration for the actual destructive transition."
 }

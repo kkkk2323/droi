@@ -1,34 +1,15 @@
 {
   "featureId": "mission-cross-flow-daemon-failure-continuation-proof",
-  "reviewedAt": "2026-03-10T00:57:31Z",
-  "commitId": "1ce5893bef40419f89eb926c94aa5f34de6c4abd",
+  "reviewedAt": "2026-03-10T13:42:00Z",
+  "commitId": "f93edbb02e5c467c2a7d38ae81900e371a6dfa24",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "This fix does not clear the prior VAL-CROSS-004 blocker. The reviewed worker session is a proof-audit only: commit `1ce5893` adds a single shared proof bundle owned by the superseded feature `mission-cross-flow-feature-owned-proof-followup`, and the daemon-proof handoff explicitly says no new code changes were required for this feature. The cited runtime-controls artifact proves real daemon failure -> retry -> pause chronology, but the continue-via-chat portion is still inferred from focused tests plus an isolated paused-state renderer setup rather than new same-session Mission-GUI-TEST proof owned by `mission-cross-flow-daemon-failure-continuation-proof`.",
-    "issues": [
-      {
-        "file": "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-10T00-38-30-674Z__mission-cross-flow-daemon-failure-continuation-proof__b533916e-d30b-4a13-ae0c-c6f82c61c604.json",
-        "line": 11,
-        "severity": "blocking",
-        "description": "The handoff closes this feature by pointing at `.factory/validation/mission-verification/feature-owned-proof-followup.json` and stating that no new code changes were required because HEAD already contained the deliverable. But the feature contract requires `mission-cross-flow-daemon-failure-continuation-proof` to own new checked-in proof for VAL-CROSS-004, and this session added no daemon-specific artifact or newly-owned evidence for that feature."
-      },
-      {
-        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/feature-owned-proof-followup.json",
-        "line": 2,
-        "severity": "blocking",
-        "description": "The only checked-in proof bundle cited for VAL-CROSS-004 declares `\"featureId\": \"mission-cross-flow-feature-owned-proof-followup\"`, while mission metadata says that follow-up feature is superseded and retained only as supporting context. Even though the bundle maps `VAL-CROSS-004` at line 75, it is not owned by `mission-cross-flow-daemon-failure-continuation-proof`, so it does not satisfy the requirement for feature-owned proof for this narrower daemon-recovery feature."
-      },
-      {
-        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
-        "line": 267,
-        "severity": "blocking",
-        "description": "The artifact reused as interactive proof still records that unsafe runtime-control permutations were validated with isolated in-memory renderer-state injection plus focused tests because the live Mission-GUI-TEST run was treated as read-only. For VAL-CROSS-004, that means the real Electron evidence covers daemon failure -> retry -> `mission_paused`, but the claimed continue-via-normal-chat behavior is still derived from supporting focused tests and injected paused-state evidence rather than a new same-session Mission-GUI-TEST daemon-failure continuation proof."
-      }
-    ]
+    "summary": "The prior VAL-CROSS-004 blockers are cleared on current HEAD. Commits `b869e0f`, `ba4a01f`, and `f93edbb` add a dedicated feature-owned proof bundle (`.factory/validation/mission-verification/mission-cross-flow-daemon-failure-continuation-proof.json`), a feature-owned Electron flow artifact (`.factory/validation/mission-verification/user-testing/flows/daemon-failure-continuation-proof.json`), and deterministic same-session automation in `test/missionDaemonFailureHarness.test.ts`. The proof no longer closes via the superseded shared follow-up bundle or injected paused-state evidence alone: the screenshot chain keeps one Mission-GUI-TEST session selected from retry exhaustion through normal-chat continuation, and the harness proves the same Mission session accepts the follow-up chat message with no extra permission request and zero continuation `droid.load_session` calls.",
+    "issues": []
   },
   "sharedStateObservations": [],
-  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-lifecycle-proof.json",
-  "summary": "Scrutiny failed. The daemon-recovery fix session only revalidated commit `1ce5893`'s shared follow-up bundle and did not add feature-owned proof for `mission-cross-flow-daemon-failure-continuation-proof`; blocking evidence for same-session daemon/factoryd failure -> continue via normal chat still depends on a superseded owner mapping plus injected-state-assisted runtime-controls validation."
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-daemon-failure-continuation-proof.json",
+  "summary": "Scrutiny passed. Current HEAD now contains a feature-owned VAL-CROSS-004 deliverable backed by a clean same-session Mission-GUI-TEST Electron screenshot chain and deterministic harness coverage for daemon/factoryd failure -> bounded retry -> orchestrator-turn recovery -> continue via normal chat on the same Mission session."
 }
