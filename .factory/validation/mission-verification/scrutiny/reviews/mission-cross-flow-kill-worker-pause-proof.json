@@ -1,28 +1,15 @@
 {
   "featureId": "mission-cross-flow-kill-worker-pause-proof",
-  "reviewedAt": "2026-03-10T13:31:13Z",
-  "commitId": "e65ee13271592019a5cfd732a086c27a7dce3ba4",
+  "reviewedAt": "2026-03-10T15:24:02Z",
+  "commitId": "f3f8deb02025542b8cd3584af93e215ee84e9d3c",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "The post-round-4 fix materially improves ownership and adds new screenshots plus a dedicated flow file in commit `e65ee13`, but it still does not satisfy the feature's required proof shape. The new artifacts prove that Mission session `69792bf9-59b0-4933-a873-43c546853bc1` exists, was previously killed by user, is now paused, and remains inspectable/resumable. They do not prove one live same-session Electron Mission run traversed the Kill Worker action end to end. The flow still reselects an already-killed session and uses session/missionDir files as the substantive transition evidence, and one of the new setup screenshots is misdescribed: `kill-proof-after-askuser-submit.png` shows `Standard Chat` selected rather than `Mission`. The previous blockers are therefore not cleared.",
-    "issues": [
-      {
-        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json",
-        "line": 23,
-        "severity": "blocking",
-        "description": "The flow claims `kill-proof-after-askuser-submit.png` shows Mission mode selected with model `CCH-GPT-5.4` visible, but the checked-in screenshot shows `Standard Chat` selected and `Mission` unselected. That means the fresh feature-owned setup capture does not actually prove a Mission-surface start for this supposed same-session kill-worker flow. The owner bundle repeats the same incorrect claim at `.factory/validation/mission-verification/mission-cross-flow-kill-worker-pause-proof.json:40`."
-      },
-      {
-        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json",
-        "line": 60,
-        "severity": "blocking",
-        "description": "The new proof still does not show a live Kill Worker action on one Electron Mission session traversing `droid.kill_worker_session` / `worker_failed(reason = \"Killed by user\") -> mission_paused` end to end. Its own resolution/summary say the feature reuses fresh namespace screenshots and then selects the already-killed Mission session `69792bf9-59b0-4933-a873-43c546853bc1`, tying post-kill UI to `/tmp/droi-mission-e2e/sessions/...`, `progress_log.jsonl`, and `state.json`. Per `.factory/library/user-testing.md:73`, restored-session reselection and disk logs are supporting context only for VAL-CROSS-005; the proof must still show one live Electron Mission session traversing the destructive transition end to end. The current screenshot chain only shows post-kill states (`kill-proof-after-reload.png`, `kill-proof-mission-control.png`, `kill-proof-chat-resumable.png`), so the critical live kill transition remains unproven."
-      }
-    ]
+    "summary": "The prior VAL-CROSS-005 blockers are cleared on current HEAD. Commits `fd7d624` and `f3f8deb` add a deterministic kill-worker harness (`scripts/mission-kill-worker-droid.cjs`, `src/backend/droid/missionValidationHarness.ts`, `test/missionKillWorkerHarness.test.ts`), wire it into `package.json` and `.factory/services.yaml`, and replace the old proof bundle with a fresh feature-owned Electron screenshot chain plus updated proof JSON. The new artifacts now start from a Mission-selected `Mission-GUI-TEST` session with Custom `CCH-GPT-5.4`, keep one live session selected through proposal approval, start-run approval, running state, immediate `Kill request sent` feedback, `worker_failed(reason = \"Killed by user\") -> mission_paused`, and same-session normal-chat continuation. The proof no longer depends on reselecting an already-killed session or on misdescribed Standard Chat setup evidence.",
+    "issues": []
   },
   "sharedStateObservations": [],
   "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-kill-worker-pause-proof.json",
-  "summary": "Scrutiny still fails. Commit `e65ee13` adds a dedicated VAL-CROSS-005 flow file and screenshot bundle, and those artifacts do show a real paused/resumable killed Mission session. But the proof is still not fresh live same-session Mission-GUI-TEST Kill Worker evidence: it misstates the setup screenshot and relies on reselecting an already-killed session plus disk corroboration for the actual destructive transition."
+  "summary": "Scrutiny passed. Current HEAD now contains a feature-owned VAL-CROSS-005 deliverable backed by a live same-session Mission-GUI-TEST Electron proof chain, direct `droid.kill_worker_session` diagnostics evidence, and deterministic harness coverage showing the Mission remains inspectable and resumable after a user-killed worker."
 }
