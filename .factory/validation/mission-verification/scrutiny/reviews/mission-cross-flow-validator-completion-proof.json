@@ -1,0 +1,21 @@
+{
+  "featureId": "mission-cross-flow-validator-completion-proof",
+  "reviewedAt": "2026-03-10T00:55:19Z",
+  "commitId": "1ce5893bef40419f89eb926c94aa5f34de6c4abd",
+  "transcriptSkeletonReviewed": false,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "No worker transcript or handoff exists for this feature, so the review was completed from artifact and diff evidence. The prior failure for VAL-CROSS-002 is now addressed by commit `1ce5893`, which adds the new checked-in mission-verification proof bundle `.factory/validation/mission-verification/feature-owned-proof-followup.json`. That bundle explicitly includes a VAL-CROSS-002 mapping to concrete automated coverage (`test/missionControl.test.ts`, `test/rpcNotificationMapping.test.ts`) and constrained Mission-GUI-TEST artifacts, so older milestone artifacts are no longer the sole evidence. I did not find a remaining blocking gap specific to VAL-CROSS-002 in the current proof mapping.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The mission now allows a feature to be marked completed by pointing at an already-checked-in proof artifact, but there is no documented convention for recording a matching handoff/transcript when that happens. That left this scrutiny review without a transcript skeleton or handoff for a completed feature.",
+      "evidence": "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/features.json:682-710 marks `mission-cross-flow-validator-completion-proof` completed while `completedWorkerSessionId` remains null; searches of `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/worker-transcripts.jsonl` and `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/` found no transcript or handoff for worker session `5dc40799-0ee0-4b70-8217-fc3eef1150b2`; meanwhile `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/feature-owned-proof-followup.json:1-4,176-179` identifies the proof bundle as the deliverable for the earlier follow-up artifact rather than this feature directly."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-lifecycle-proof.json",
+  "summary": "Scrutiny passed. Although this feature has no worker transcript/handoff, the current HEAD now contains a new checked-in mission-verification proof bundle from commit `1ce5893` that explicitly maps VAL-CROSS-002 to concrete automated and Mission-GUI-TEST evidence. That resolves the prior blocker that older milestone artifacts were being used as the sole proof for validator-injection/completion coverage."
+}

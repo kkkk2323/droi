@@ -1,0 +1,21 @@
+{
+  "featureId": "mission-cross-flow-restart-reselection-proof",
+  "reviewedAt": "2026-03-10T00:54:00Z",
+  "commitId": "1ce5893bef40419f89eb926c94aa5f34de6c4abd",
+  "transcriptSkeletonReviewed": false,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This fix adequately addresses the prior scrutiny failure for VAL-CROSS-006. Commit `1ce5893` adds a new checked-in mission-verification artifact, `.factory/validation/mission-verification/feature-owned-proof-followup.json`, and that bundle explicitly provides newly-owned assertion mapping for restart, latest-session restore, project auto-selection, and sidebar reselection on `/mission` instead of relying on older milestone artifacts alone. The VAL-CROSS-006 entry now cites concrete automated coverage in `test/missionPage.test.ts`, `test/sessionStore.test.ts`, and `test/rpcNotificationMapping.test.ts`, plus Mission-GUI-TEST interactive artifacts from `foundation-routing.json` and `restore-bootstrap.json`, which resolves the blocking gap called out in the prior review.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "This completed proof feature has no recorded worker session, transcript entry, or matching handoff, and the checked-in proof artifact uses a different internal `featureId` than the mission feature being reviewed. The proof is still reviewable from the checked-in artifact and commit diff, but traceability falls back to `features.json` plus the commit instead of the usual handoff/transcript chain.",
+      "evidence": "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/features.json:713-737 shows `workerSessionIds: []` and `completedWorkerSessionId: null` for `mission-cross-flow-restart-reselection-proof`; no matching handoff file exists under `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs`; /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/feature-owned-proof-followup.json:2 records `featureId: \"mission-cross-flow-feature-owned-proof-followup\"`."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-lifecycle-proof.json",
+  "summary": "Scrutiny passed. Although no worker transcript or handoff exists for this proof-only follow-up, the checked-in artifact added in commit `1ce5893` now gives VAL-CROSS-006 feature-owned proof: it explicitly maps restart, latest-session restore, project auto-selection, and sidebar reselection recovery on `/mission` to concrete tests and Mission-GUI-TEST artifacts. I found no remaining blocking issue for VAL-CROSS-006."
+}

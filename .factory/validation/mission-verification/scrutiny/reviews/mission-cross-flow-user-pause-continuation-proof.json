@@ -1,0 +1,28 @@
+{
+  "featureId": "mission-cross-flow-user-pause-continuation-proof",
+  "reviewedAt": "2026-03-10T00:53:27Z",
+  "commitId": "1ce5893bef40419f89eb926c94aa5f34de6c4abd",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "This fix does not clear the prior blocker for VAL-CROSS-003. The reviewed worker session is a proof-audit only: it made no new checked-in proof for `mission-cross-flow-user-pause-continuation-proof` and instead closes the feature by pointing at commit `1ce5893`'s `feature-owned-proof-followup.json`, which still belongs to the superseded combined follow-up feature. The cited `runtime-controls.json` pause evidence also still depends on isolated renderer-state injection for the paused-chat step, so the feature still lacks new same-session Mission-GUI-TEST proof owned by this feature rather than supporting-context reuse.",
+    "issues": [
+      {
+        "file": "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-10T00-36-32-533Z__mission-cross-flow-user-pause-continuation-proof__d27954c9-dc27-4420-bd1d-31a1e639d172.json",
+        "line": 11,
+        "severity": "blocking",
+        "description": "The handoff says this feature's deliverable is already embodied by `.factory/validation/mission-verification/feature-owned-proof-followup.json` and that no code changes were required. But that file declares `\"featureId\": \"mission-cross-flow-feature-owned-proof-followup\"`, and mission metadata marks that follow-up feature as superseded/cancelled with no fulfills claims. This feature therefore did not add a feature-owned checked-in proof artifact for VAL-CROSS-003; it closed the assertion by reusing a bundle owned by another feature."
+      },
+      {
+        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+        "line": 21,
+        "severity": "blocking",
+        "description": "The claimed same-session pause proof still relies on injected-state-only validation for the critical paused-chat step. This assertion explicitly switches the live Mission into an isolated paused renderer state, and the same artifact later records that unsafe pause/kill permutations were validated with isolated in-memory renderer-state injection plus focused tests because the shared Mission-GUI-TEST run was treated as read-only. That does not satisfy the feature contract's requirement for new same-session Mission-GUI-TEST pause -> continue proof that is not solely injected-state validation."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-lifecycle-proof.json",
+  "summary": "Scrutiny failed. VAL-CROSS-003 is still not backed by new proof owned by `mission-cross-flow-user-pause-continuation-proof`: the worker session only revalidated commit `1ce5893`'s shared follow-up bundle, and the cited runtime-controls artifact still uses isolated paused-state injection for the unsafe pause/continue step instead of a new same-session Mission-GUI-TEST proof."
+}
