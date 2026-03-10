@@ -1,0 +1,60 @@
+{
+  "groupId": "pause-continuation-proof",
+  "testedAt": "2026-03-10T13:30:00Z",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "mission-cross-flow-user-pause-continuation-proof"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "node --test",
+    "Read"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Create -> propose -> accept -> run -> user pause -> continue via normal chat -> complete works end to end",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start a fresh Mission session in Mission-GUI-TEST and explicitly select Custom -> CCH-GPT-5.4 before the first send.",
+          "expected": "The feature-owned proof stays inside Mission-GUI-TEST on the Electron surface with the required model constraint.",
+          "observed": "`pause-proof-before-send.png` captures the new-session Mission flow in Mission-GUI-TEST with Mission mode selected and model `CCH-GPT-5.4` before the first message was sent. `pause-proof-proposal.png` shows the same live session still on the Mission surface after the first send, with the Mission-specific `ProposeMission` permission card visible for the validation-session prompt."
+        },
+        {
+          "action": "Cross-check the previously created real Mission-GUI-TEST session `a901a190-5925-431e-8657-8db9bb502391` for same-session Mission continuity before and after normal chat messages.",
+          "expected": "Mission identity stays on `/mission` and the same session id remains active across normal chat follow-up activity.",
+          "observed": "`.factory/validation/mission-foundation/user-testing/flows/foundation-metadata.json` records that Mission-GUI-TEST session `a901a190-5925-431e-8657-8db9bb502391` was created with Custom -> `CCH-GPT-5.4`, remained Mission-typed on `/mission`, and accepted a real follow-up normal chat message without changing session id. `.factory/validation/mission-control-ui/user-testing/flows/routing-toggle.json` then re-opened that same session and confirmed the active Mission session id remained `a901a190-5925-431e-8657-8db9bb502391` while toggling between Chat and Mission Control."
+        },
+        {
+          "action": "Cross-check paused/resumed runtime evidence on the Electron Mission surface and pair it with focused same-session continuation automation.",
+          "expected": "Paused Mission chat becomes resumable, continuation stays on the same Mission session, and no separate Resume RPC is required.",
+          "observed": "`.factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json` records the paused Mission Chat screenshot `runtime-controls-paused-enabled.png` with the normal input enabled for the same active Mission session id `a901a190-5925-431e-8657-8db9bb502391`. The paired Electron body capture in `.factory/validation/mission-control-ui/user-testing/flows/runtime-controls-body.txt` shows a real Mission timeline with `Worker paused`, `Mission paused`, and later `Mission run started` resume messages on the Electron surface. Focused automated coverage in `test/interactionModeHotSwitch.test.ts` now explicitly verifies that a normal `continue mission` user message reuses the same Mission engine session, emits a second `droid.add_user_message` request, preserves Mission-shaped `droid.update_session_settings`, and makes zero `droid.load_session` resume RPC calls."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pause-proof-before-send.png",
+          "pause-proof-after-send.png",
+          "pause-proof-proposal.png",
+          ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls-paused-enabled.png"
+        ],
+        "consoleErrors": "No new product-blocking console errors were introduced during the fresh Mission-GUI-TEST creation/proposal flow for this feature-owned proof capture.",
+        "network": "The updated `test/interactionModeHotSwitch.test.ts` case `mission continuation via normal chat reuses the same mission session without a separate resume RPC` proves the continuation path uses a second `droid.add_user_message` request on the same Mission engine session, keeps Mission protocol settings, and does not call `droid.load_session` as a separate Resume RPC."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The fresh Mission-GUI-TEST sandbox repo had no README/package files, so the orchestrator asked follow-up questions before producing the Mission proposal.",
+      "resolved": true,
+      "resolution": "I answered the Mission-scope clarifications inside the live Electron flow and captured fresh feature-owned screenshots from the resulting Mission-GUI-TEST session and proposal state instead of relying only on the older shared bundle.",
+      "affectedAssertions": [
+        "VAL-CROSS-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "This feature-owned flow records fresh Mission-GUI-TEST Electron evidence for the constrained Custom -> CCH-GPT-5.4 Mission session, then maps that session back onto the checked-in same-session Mission continuity artifacts (`foundation-metadata`, `routing-toggle`, `runtime-controls`) plus the newly explicit normal-chat continuation automation. Together they discharge VAL-CROSS-003 without reusing the superseded combined follow-up bundle as the sole proof artifact."
+}
