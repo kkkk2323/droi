@@ -1,6 +1,6 @@
 {
   "groupId": "daemon-failure-continuation-proof",
-  "testedAt": "2026-03-10T05:46:00Z",
+  "testedAt": "2026-03-10T20:32:00Z",
   "credentials": {
     "account": "Mission-GUI-TEST",
     "namespace": "mission-cross-flow-daemon-failure-continuation-proof"
@@ -18,44 +18,36 @@
       "status": "pass",
       "steps": [
         {
-          "action": "Start a fresh Mission session in Mission-GUI-TEST and explicitly select Mission mode plus Custom -> CCH-GPT-5.4 before the first send.",
-          "expected": "The feature-owned proof stays on the Electron surface inside Mission-GUI-TEST with the required model constraint and produces a fresh same-session Mission artifact owned by this feature.",
-          "observed": "`daemon-proof-before-send.png` captures the new-session Mission flow in Mission-GUI-TEST with Mission mode selected and model `CCH-GPT-5.4` visible before the first message. After sending the validation prompt, `daemon-proof-after-send.png` and `daemon-proof-proposal.png` show the new Mission session row `session-mission-875024aa-2470-40f8-9f99-61f18b861830`, the same session title in the shell, and Mission-planning / define-mission-skills activity on the Electron surface. The persisted session file `/tmp/droi-mission-e2e/sessions/875024aa-2470-40f8-9f99-61f18b861830.json` recorded `isMission=true`, `sessionKind=mission`, `interactionMode=agi`, `decompSessionType=orchestrator`, and model `custom:CCH-Code-GPT-5.4-4`."
+          "action": "Open the constrained Mission-GUI-TEST Mission session on the Electron surface and verify the daemon/factoryd failure lands in a resumable same-session chat state.",
+          "expected": "The proof should show one Mission-GUI-TEST session already on Mission Chat with Custom -> CCH-GPT-5.4 preserved, daemon retry exhausted copy visible, and the same session left in `mission_paused`/`orchestrator_turn` for normal-chat recovery.",
+          "observed": "`daemon-proof-live-start.png` and `daemon-proof-failure-paused.png` show the same selected Mission sidebar row titled `Run the determ...` under `Mission-GUI-TEST` while the page remains on Mission Chat. The `CCH-GPT-5.4` model chip stays visible, the status bar reads `State: Orchestrator Turn`, and the page shows both the inline system message `factoryd authentication failed ... Retry exhausted; Mission paused and waiting for normal chat continuation.` and the `Daemon retry exhausted` recovery card, proving the daemon/factoryd failure stayed inside one resumable Electron Mission session."
         },
         {
-          "action": "Cross-check the real daemon/factoryd failure chronology and bounded retry evidence already captured from the Electron Mission surface.",
-          "expected": "The proof shows daemon or factoryd failure, a single runner-recommended retry, and a resumable paused Mission state on Electron.",
-          "observed": "`.factory/validation/mission-control-ui/user-testing/flows/runtime-controls-body.txt` records the live Mission timeline `Daemon failure -> Mission run started (Retrying mission run once after factoryd authentication failure per runner guidance.) -> Daemon failure -> Mission paused -> Mission run started (User requested a retry after daemon recovery...)` on the Electron surface. The corresponding mission progress log `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl` shows the same `factoryd authentication failed` -> single retry -> `mission_paused` sequence at lines 3-6, followed by later same-session user retry messages at lines 7-10."
+          "action": "Type and send a normal continuation message without leaving that Mission session.",
+          "expected": "The same Electron Mission session should accept a plain chat continuation message after the daemon failure, with no session switch or route reset.",
+          "observed": "`daemon-proof-continuation-filled.png` shows the re-enabled input for the same selected Mission session containing `continue mission after daemon recovery`. `daemon-proof-continuation-sent.png` keeps that same `Run the determ...` session selected immediately after send, and `daemon-proof-continuation-complete.png` shows the resulting user bubble plus the next `Mission proposal ready` card in the same Mission Chat view, proving normal-chat continuation advanced on that same Electron Mission session rather than switching to a different session or a separate resume surface."
         },
         {
-          "action": "Cross-check same-session normal-chat continuation semantics and the resumable paused-chat surface.",
-          "expected": "After daemon-failure recovery reaches the paused/orchestrator-turn state, a normal chat message continues the same Mission session without a separate Resume RPC.",
-          "observed": "`test/interactionModeHotSwitch.test.ts` now explicitly verifies `mission continuation via normal chat reuses the same mission session without a separate resume RPC`: a second normal-chat `continue mission` send stays on the same Mission engine session, emits another `droid.add_user_message`, preserves Mission-shaped `droid.update_session_settings`, and performs zero `droid.load_session` resume calls. `test/missionUiSemantics.test.ts` also verifies `retry messaging surfaces daemon retry guidance and bounded failure recovery`, including final recovery copy that instructs the user to continue through normal chat after retry exhaustion. Together with the Electron paused-input proof in `.factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json`, these checks show the daemon-failure path returns to the normal-chat continuation surface on the same Mission session instead of recreating the session."
+          "action": "Verify the same-session continuation semantics with focused automation instead of older stitched artifacts.",
+          "expected": "Focused automation should prove that the daemon-failure recovery path stays on one Mission engine session, performs the bounded retry, and continues through a normal chat send without a separate resume RPC.",
+          "observed": "`test/missionDaemonFailureHarness.test.ts` now exercises the deterministic daemon-failure harness end to end: one session proposes the Mission, performs the single retry, lands in `orchestrator_turn`, then accepts a follow-up normal chat message on the same session. The test asserts the follow-up turn raises no new permission request, emits the assistant confirmation `preserved the same session after the daemon failure path`, and performs zero continuation `droid.load_session` calls, so the Electron screenshot chain is backed by feature-owned same-session automation instead of cross-session stitching or injected paused-state proof."
         }
       ],
       "evidence": {
         "screenshots": [
-          "daemon-proof-before-send.png",
-          "daemon-proof-after-send.png",
-          "daemon-proof-proposal.png",
-          ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls-paused-enabled.png"
+          "daemon-proof-live-start.png",
+          "daemon-proof-failure-paused.png",
+          "daemon-proof-continuation-filled.png",
+          "daemon-proof-continuation-sent.png",
+          "daemon-proof-continuation-complete.png"
         ],
-        "consoleErrors": "No new product-blocking console errors were introduced during the fresh Mission-GUI-TEST creation/send flow for this feature-owned proof capture.",
-        "network": "Diagnostics file `/tmp/droi-mission-e2e/diagnostics/sessions/875024aa-2470-40f8-9f99-61f18b861830-2026-03-10.jsonl` shows the fresh Mission session initialized with `interactionMode: agi`, `autonomyLevel: high`, and `decompSessionType: orchestrator`, then sent the daemon-proof validation prompt via `droid.add_user_message`. Focused automated coverage in `test/interactionModeHotSwitch.test.ts` proves the later normal-chat continuation path reuses the same Mission engine session without a separate resume RPC."
+        "consoleErrors": "No new product-blocking console errors were introduced during the same-session Electron continuation capture; the visible failure state is the intentional daemon/factoryd retry-exhausted Mission proof surface.",
+        "network": "Focused automated coverage in `test/missionDaemonFailureHarness.test.ts` proves the same-session continuation path performs the bounded retry, returns to `orchestrator_turn`, and continues via a normal `droid.add_user_message` without any continuation `droid.load_session` call."
       },
       "issues": null
     }
   ],
-  "frictions": [
-    {
-      "description": "The fresh Mission-GUI-TEST sandbox prompt entered Mission-planning tool activity rather than deterministically reproducing a live daemon failure during this short capture window.",
-      "resolved": true,
-      "resolution": "Kept the fresh feature-owned Electron proof focused on the constrained Mission-GUI-TEST + Custom -> CCH-GPT-5.4 same-session artifact, and paired it with the already checked-in real daemon-failure / retry / paused / user-retry Electron timeline plus the now-explicit same-session continuation automation. This avoids relying on the superseded shared proof bundle or injected paused-state evidence as the sole proof source.",
-      "affectedAssertions": [
-        "VAL-CROSS-004"
-      ]
-    }
-  ],
+  "frictions": [],
   "blockers": [],
-  "summary": "This feature-owned flow records fresh Mission-GUI-TEST Electron evidence for a new constrained Custom -> CCH-GPT-5.4 Mission session under the daemon-proof feature namespace, then maps that session onto the checked-in real daemon/factoryd failure timeline and the explicit same-session normal-chat continuation automation. Together they discharge VAL-CROSS-004 without depending on the superseded shared follow-up bundle or injected paused-state validation as the sole proof source."
+  "summary": "This feature-owned flow records one same-session Mission-GUI-TEST Electron chain for daemon/factoryd failure -> retry exhausted -> resumable chat continuation, then backs it with deterministic harness automation that proves the follow-up normal chat stays on the same Mission session without a separate resume RPC. Together they discharge VAL-CROSS-004 without relying on older shared bundles, restored-session stitching, or injected paused-state proof."
 }

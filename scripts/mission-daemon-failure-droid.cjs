@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const { randomUUID } = require('node:crypto')
-const { appendFileSync, mkdirSync, writeFileSync } = require('node:fs')
+const { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const { createInterface } = require('node:readline')
@@ -82,6 +82,31 @@ function ensureMissionDir() {
   if (!missionDir) missionDir = getMissionRoot()
   mkdirSync(missionDir, { recursive: true })
   return missionDir
+}
+
+function restoreMissionSnapshotIfPresent() {
+  const dir = getMissionRoot()
+  if (!existsSync(dir)) return
+
+  missionDir = dir
+
+  const statePath = join(dir, 'state.json')
+  if (existsSync(statePath)) {
+    try {
+      const state = JSON.parse(readFileSync(statePath, 'utf8'))
+      if (typeof state?.state === 'string' && state.state.trim()) {
+        missionState = state.state.trim()
+      }
+    } catch {}
+  }
+
+  const featuresPath = join(dir, 'features.json')
+  if (existsSync(featuresPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(featuresPath, 'utf8'))
+      if (Array.isArray(parsed)) features = parsed
+    } catch {}
+  }
 }
 
 function writeMissionSnapshot() {
@@ -304,6 +329,7 @@ function handleRequest(message) {
   if (method === 'droid.load_session') {
     const requestedSessionId = String(message.params?.sessionId || '').trim()
     if (requestedSessionId) engineSessionId = requestedSessionId
+    restoreMissionSnapshotIfPresent()
     sendResponse(message.id, {
       sessionId: engineSessionId || requestedSessionId,
       isMission: true,

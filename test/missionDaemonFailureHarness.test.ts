@@ -185,6 +185,55 @@ test(
       const progressLog = readFileSync(resolve(missionDir, 'progress_log.jsonl'), 'utf-8')
       assert.match(progressLog, /Retrying mission run once after factoryd authentication failure/i)
       assert.match(progressLog, /Mission paused after daemon failure/i)
+
+      const firstTurnEventCount = events.length
+
+      await manager.sendUserMessage({
+        sessionId,
+        resumeSessionId: sessionId,
+        machineId: 'm-test',
+        cwd: repoRoot,
+        prompt: 'continue mission after daemon recovery',
+        interactionMode: 'agi' as any,
+        autonomyLevel: 'high',
+        decompSessionType: 'orchestrator',
+        isMission: true,
+        sessionKind: 'mission',
+        env: {},
+      })
+
+      await waitFor(() =>
+        events
+          .slice(firstTurnEventCount)
+          .find((event) => event?.type === 'turn-end' && event.sessionId === sessionId),
+      )
+
+      const continuationEvents = events.slice(firstTurnEventCount)
+
+      assert.equal(
+        continuationEvents.some((event) => {
+          const request = getRequest(event)
+          return request?.method === 'droid.request_permission'
+        }),
+        false,
+      )
+
+      const followUpAssistant = continuationEvents.find((event) => {
+        const notification = getNotification(event)
+        return (
+          notification?.type === 'create_message' &&
+          /preserved the same session after the daemon failure path/i.test(
+            JSON.stringify((notification as any).message || {}),
+          )
+        )
+      })
+      assert.ok(followUpAssistant)
+
+      const continuationLoadRequests = continuationEvents.filter((event) => {
+        const request = getRequest(event)
+        return request?.method === 'droid.load_session'
+      })
+      assert.equal(continuationLoadRequests.length, 0)
     } finally {
       manager.disposeAllSessions()
       if (previousOverride === undefined) delete process.env[VALIDATION_DROID_PATH_ENV]
