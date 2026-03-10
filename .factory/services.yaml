@@ -5,6 +5,7 @@ commands:
   test: pnpm test -- --test-concurrency=7
   check: pnpm check
   build: pnpm build
+  mission-daemon-failure-harness: DROI_MISSION_VALIDATION_HARNESS=daemon-failure pnpm dev:test
 
 services:
   electron-dev:

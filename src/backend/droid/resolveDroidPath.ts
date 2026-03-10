@@ -2,8 +2,12 @@ import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { getValidationDroidPathOverride } from './missionValidationHarness.ts'
 
 export function resolveDroidPath(): string {
+  const validationOverride = getValidationDroidPathOverride()
+  if (validationOverride) return validationOverride
+
   const locator = process.platform === 'win32' ? 'where' : 'which'
   try {
     const resolved = execFileSync(locator, ['droid'], { stdio: ['ignore', 'pipe', 'ignore'] })

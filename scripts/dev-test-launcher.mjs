@@ -1,13 +1,21 @@
 import { spawn } from 'node:child_process'
+import { dirname, resolve } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { cleanupListeningPorts, MISSION_E2E_PORTS } from '../src/backend/utils/portCleanup.ts'
+import { buildMissionValidationHarnessEnv } from '../src/backend/droid/missionValidationHarness.ts'
 
-const env = {
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+const env = buildMissionValidationHarnessEnv({
+  env: {
   ...process.env,
   DROID_APP_DATA_DIR: process.env.DROID_APP_DATA_DIR || '/tmp/droi-mission-e2e',
   DROID_APP_API_PORT: process.env.DROID_APP_API_PORT || '3002',
   ELECTRON_REMOTE_DEBUGGING_PORT: process.env.ELECTRON_REMOTE_DEBUGGING_PORT || '9222',
-}
+  },
+  repoRoot,
+})
 
 async function main() {
   await cleanupListeningPorts(MISSION_E2E_PORTS)
