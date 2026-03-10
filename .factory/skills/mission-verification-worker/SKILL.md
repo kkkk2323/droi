@@ -39,6 +39,7 @@ Use this skill for features that primarily add or stabilize:
    - route transitions
    - key Mission states
    - whether the flow involved validator injection, pause, daemon failure, or kill worker
+   - when the contract says **same-session**, every claimed interactive artifact must trace to one Mission session id from start to finish; cross-session stitching, restored-session reselection, or disk-only corroboration may support the proof but cannot replace live same-session evidence
 
 8. **Run the feature’s final validation set before handoff.** For verification-heavy features, this typically includes:
    - targeted Mission test files
@@ -49,7 +50,9 @@ Use this skill for features that primarily add or stabilize:
 
 10. **Treat proof-audit sessions as non-closing unless they add owned proof.** A pure audit/review session may summarize existing evidence, but it must not close a feature's `fulfills` coverage unless it also produces feature-owned checked-in proof. If no new proof was added, say so explicitly and return the remaining assertion variants as still unproven.
 
-11. **Return a handoff that makes gaps obvious.** If any assertion variant remains unproven (for example, user pause covered but daemon failure not covered), state that explicitly rather than implying the full contract area is complete.
+11. **Handle artifact-only closures explicitly.** If a feature is satisfied by already-checked-in proof, the handoff must name the exact commit, files, and session ids being relied on, and must still leave a traceable worker handoff for scrutiny. If the contract requires a fresh live same-session Electron proof, do not close the feature with older artifacts, injected state, copied snapshots, or restored-session screenshots alone.
+
+12. **Return a handoff that makes gaps obvious.** If any assertion variant remains unproven (for example, user pause covered but daemon failure not covered), state that explicitly rather than implying the full contract area is complete.
 
 ## Example Handoff
 
