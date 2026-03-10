@@ -177,11 +177,11 @@ export function registerIpcHandlers(opts: {
   } | null = null
   let skillCache: { projectDir: string; at: number; skills: SkillDef[] } | null = null
 
-  const stopMissionDirWatcher = (sessionId: string) => {
+  const stopMissionDirWatcher = async (sessionId: string) => {
     const watcher = missionDirWatchers.get(sessionId)
     if (!watcher) return
-    watcher.stop()
     missionDirWatchers.delete(sessionId)
+    await watcher.stop()
   }
 
   const resolveMissionDirRequest = (params: MissionDirRequest) => {
@@ -1218,7 +1218,7 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('session:restart', async (_event, payload: { sessionId: string }) => {
     const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
     if (!sessionId) throw new Error('Missing sessionId')
-    stopMissionDirWatcher(sessionId)
+    await stopMissionDirWatcher(sessionId)
     execManager.disposeSession(sessionId)
 
     cachedState = await appStateStore.load()
@@ -1229,7 +1229,7 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('session:clear', async (_event, payload: { id: string }) => {
     const id = typeof payload?.id === 'string' ? payload.id.trim() : ''
     if (!id) return null
-    stopMissionDirWatcher(id)
+    await stopMissionDirWatcher(id)
 
     const existing = await sessionStore.load(id)
     const cwd = (existing?.projectDir || '').trim() || activeProjectDir
@@ -1263,7 +1263,7 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('session:list', async () => sessionStore.list())
   ipcMain.handle('session:delete', async (_event, id: string) => {
     const sessionId = typeof id === 'string' ? id.trim() : ''
-    if (sessionId) stopMissionDirWatcher(sessionId)
+    if (sessionId) await stopMissionDirWatcher(sessionId)
     return sessionStore.delete(id)
   })
 
@@ -1275,7 +1275,7 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.handle('mission:watch-start', async (_event, params: MissionDirRequest) => {
     const { sessionId, missionDir } = resolveMissionDirRequest(params)
-    stopMissionDirWatcher(sessionId)
+    await stopMissionDirWatcher(sessionId)
 
     const watcher = new MissionDirWatcher({
       sessionId,
@@ -1295,7 +1295,7 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('mission:watch-stop', async (_event, payload: { sessionId: string }) => {
     const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
     if (!sessionId) throw new Error('Missing sessionId')
-    stopMissionDirWatcher(sessionId)
+    await stopMissionDirWatcher(sessionId)
     return { ok: true } as const
   })
 

@@ -68,6 +68,9 @@ export class MissionDirWatcher {
   private readonly missionDir: string
   private readonly pollIntervalMs: number
   private readonly onChange: (event: MissionDirChangeEvent) => void
+  private readonly isDirectory: (path: string) => Promise<boolean>
+  private readonly readSnapshot: (missionDir: string) => Promise<MissionDirSnapshot>
+  private readonly watchPath: (path: string, listener: () => void) => FSWatcher
   private parentWatcher: FSWatcher | null = null
   private missionDirWatcher: FSWatcher | null = null
   private handoffsWatcher: FSWatcher | null = null
@@ -82,11 +85,17 @@ export class MissionDirWatcher {
     missionDir: string
     pollIntervalMs?: number
     onChange: (event: MissionDirChangeEvent) => void
+    isDirectory?: (path: string) => Promise<boolean>
+    readSnapshot?: (missionDir: string) => Promise<MissionDirSnapshot>
+    watchPath?: (path: string, listener: () => void) => FSWatcher
   }) {
     this.sessionId = String(opts.sessionId || '').trim()
     this.missionDir = String(opts.missionDir || '').trim()
     this.pollIntervalMs = Math.max(25, Math.floor(opts.pollIntervalMs || 2000))
     this.onChange = opts.onChange
+    this.isDirectory = opts.isDirectory || isDirectory
+    this.readSnapshot = opts.readSnapshot || readMissionDirSnapshot
+    this.watchPath = opts.watchPath || ((path, listener) => watch(path, listener))
   }
 
   async start(): Promise<void> {
@@ -101,7 +110,7 @@ export class MissionDirWatcher {
     this.pollTimer.unref?.()
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true
     if (this.pollTimer) {
       clearInterval(this.pollTimer)
@@ -113,12 +122,18 @@ export class MissionDirWatcher {
     this.missionDirWatcher = null
     this.handoffsWatcher?.close()
     this.handoffsWatcher = null
+    try {
+      await this.syncPromise
+    } catch {
+      // Ignore snapshot/read errors during teardown; the next start will re-read from disk.
+    }
   }
 
   private async refreshWatchers(): Promise<void> {
     if (this.stopped) return
 
-    const missionDirExists = await isDirectory(this.missionDir)
+    const missionDirExists = await this.isDirectory(this.missionDir)
+    if (this.stopped) return
     if (!missionDirExists) {
       this.missionDirWatcher?.close()
       this.missionDirWatcher = null
@@ -126,8 +141,9 @@ export class MissionDirWatcher {
       this.handoffsWatcher = null
 
       const parentDir = dirname(this.missionDir)
-      if (!this.parentWatcher && (await isDirectory(parentDir))) {
-        this.parentWatcher = watch(parentDir, () => {
+      if (!this.parentWatcher && (await this.isDirectory(parentDir))) {
+        if (this.stopped) return
+        this.parentWatcher = this.watchPath(parentDir, () => {
           void this.sync('fs-watch')
         })
       }
@@ -138,15 +154,16 @@ export class MissionDirWatcher {
     this.parentWatcher = null
 
     if (!this.missionDirWatcher) {
-      this.missionDirWatcher = watch(this.missionDir, () => {
+      this.missionDirWatcher = this.watchPath(this.missionDir, () => {
         void this.sync('fs-watch')
       })
     }
 
     const handoffsDir = join(this.missionDir, MISSION_HANDOFFS_DIR)
-    const handoffsExists = await isDirectory(handoffsDir)
+    const handoffsExists = await this.isDirectory(handoffsDir)
+    if (this.stopped) return
     if (handoffsExists && !this.handoffsWatcher) {
-      this.handoffsWatcher = watch(handoffsDir, () => {
+      this.handoffsWatcher = this.watchPath(handoffsDir, () => {
         void this.sync('fs-watch')
       })
     }
@@ -167,8 +184,11 @@ export class MissionDirWatcher {
       do {
         this.syncQueued = false
         await this.refreshWatchers()
-        const snapshot = await readMissionDirSnapshot(this.missionDir)
+        if (this.stopped) return
+        const snapshot = await this.readSnapshot(this.missionDir)
+        if (this.stopped) return
         const changedPaths = diffSnapshots(this.lastSnapshot, snapshot)
+        if (this.stopped) return
         this.lastSnapshot = snapshot
         if (changedPaths.length > 0) {
           this.onChange({
