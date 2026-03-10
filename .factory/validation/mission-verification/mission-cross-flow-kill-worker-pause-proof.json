@@ -1,16 +1,16 @@
 {
   "featureId": "mission-cross-flow-kill-worker-pause-proof",
-  "generatedAt": "2026-03-10T12:00:00Z",
+  "generatedAt": "2026-03-10T15:08:00Z",
   "assertion": {
     "id": "VAL-CROSS-005",
     "status": "pass",
-    "summary": "Feature-owned proof mapping for the real kill-worker lifecycle. It ties the new checked-in Mission-GUI-TEST Electron flow artifact for Mission session `69792bf9-59b0-4933-a873-43c546853bc1` to the persisted `worker_failed(reason = \"Killed by user\") -> mission_paused` timeline, same-session paused/resumable UI screenshots, and focused automated coverage for `droid.kill_worker_session` plus Mission kill-worker semantics.",
+    "summary": "Feature-owned proof mapping for one fresh live same-session kill-worker run on Mission session `f1061069-8673-41ad-a30e-26eafb2e80dc`. It ties this feature's checked-in Mission-GUI-TEST Electron screenshot chain to the live `droid.kill_worker_session` request, the same session's `worker_failed(reason = \"Killed by user\") -> mission_paused` missionDir timeline, and same-session resumable continuation evidence afterward.",
     "scope": {
       "project": "Mission-GUI-TEST",
       "agentBrowserModel": "CCH-GPT-5.4",
       "surface": "Electron only",
       "isolatedAppDataDir": "/tmp/droi-mission-e2e",
-      "sessionId": "69792bf9-59b0-4933-a873-43c546853bc1"
+      "sessionId": "f1061069-8673-41ad-a30e-26eafb2e80dc"
     },
     "ownedEvidence": {
       "automated": [
@@ -33,20 +33,20 @@
       "interactive": [
         {
           "artifact": ".factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json",
-          "evidence": "This feature's new flow artifact ties fresh Mission-GUI-TEST Electron screenshots (`kill-proof-after-reload.png`, `kill-proof-mission-control.png`, and `kill-proof-chat-resumable.png`) to the exact same selected Mission session `69792bf9-59b0-4933-a873-43c546853bc1`, its isolated session file, and the persisted missionDir progress/state files that record the real user-kill transition."
+          "evidence": "This feature's new flow artifact centers on one fresh Mission-GUI-TEST Electron run for session `f1061069-8673-41ad-a30e-26eafb2e80dc`: `kill-proof-session-config.png`, `kill-proof-live-before-send.png`, `kill-proof-live-proposal.png`, `kill-proof-live-start-permission.png`, `kill-proof-live-running.png`, `kill-proof-live-kill-pending.png`, `kill-proof-live-paused.png`, `kill-proof-live-mission-control.png`, `kill-proof-live-chat-resumable.png`, and `kill-proof-live-continuation-complete.png` all stay on that same selected Mission session from creation through post-kill continuation."
         },
         {
-          "artifact": ".factory/validation/mission-verification/user-testing/flows/kill-proof-after-askuser-submit.png",
-          "evidence": "Fresh feature-owned setup capture shows Mission-GUI-TEST with Mission mode selected and model `CCH-GPT-5.4` visible before send, proving this kill-worker proof stayed on the required Electron surface and model constraint instead of reusing only older milestone screenshots."
+          "artifact": "/tmp/droi-mission-e2e/diagnostics/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc-2026-03-10.jsonl",
+          "evidence": "The live diagnostics log for session `f1061069-8673-41ad-a30e-26eafb2e80dc` records the actual `droid.kill_worker_session` request with `workerSessionId=worker-f10eb4b7-05c2-49c2-acd2-b5e194d4eb40`, followed by same-session Mission notifications. This gives direct transport evidence for the live Kill Worker click instead of relying on restored-session reselection or screenshot-only inference."
         },
         {
-          "artifact": ".factory/validation/mission-verification/user-testing/flows/kill-proof-mission-control.png",
-          "evidence": "The Mission Control screenshot for session `69792bf9-59b0-4933-a873-43c546853bc1` shows `Paused`, `Worker killed by user`, and `Worker: No active worker` while the same sidebar session remains selected. The paired `kill-proof-chat-resumable.png` screenshot in the new flow artifact shows the same session's composer enabled, proving the real killed Mission remains inspectable and resumable on that same session."
+          "artifact": ".factory/validation/mission-verification/user-testing/flows/kill-proof-live-mission-control.png",
+          "evidence": "The fresh Mission Control screenshot for session `f1061069-8673-41ad-a30e-26eafb2e80dc` shows `Paused`, `Worker killed by user`, `Worker: No active worker`, and the deterministic kill-worker feature queue while the same sidebar session remains selected. The paired `kill-proof-live-chat-resumable.png` and `kill-proof-live-continuation-complete.png` screenshots show the same session's composer enabled and the follow-up continuation response in that same session, proving the killed Mission remains inspectable and resumable afterward."
         }
       ],
       "supportingContext": [
-        "The new flow artifact grounds the real kill transition in `/Users/clive/.factory/missions/69792bf9-59b0-4933-a873-43c546853bc1/progress_log.jsonl` and `state.json`, which record `worker_failed(reason = \"Killed by user\")` followed by `mission_paused` on the same selected Mission session rather than relying on screenshot-only paused-state evidence.",
-        "The selected Electron session is not a wrapper around a different mission id: `/tmp/droi-mission-e2e/sessions/69792bf9-59b0-4933-a873-43c546853bc1.json` uses the same session id as `missionBaseSessionId` and points directly at the persisted missionDir for the real killed Mission.",
+        "The same live harness missionDir `/tmp/droi-mission-e2e/mission-kill-worker-harness/f1061069-8673-41ad-a30e-26eafb2e80dc/progress_log.jsonl` records `worker_selected_feature`, `worker_started`, `worker_failed(reason = \"Killed by user\")`, and `mission_paused`, and its `state.json` later shows `orchestrator_turn` after the same-session normal-chat continuation. Those files support the live screenshot chain rather than replacing it.",
+        "The isolated session record `/tmp/droi-mission-e2e/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc.json` keeps the same session id as `missionBaseSessionId`, preserves Mission metadata (`isMission`, `sessionKind`, `interactionMode=agi`, `decompSessionType=orchestrator`, `autonomyLevel=high`), and stores both the initial proof prompt and the same-session continuation prompt under the required Custom `CCH-GPT-5.4` model.",
         "The broader `.factory/validation/mission-verification/feature-owned-proof-followup.json` bundle remains supporting context only and is no longer the owner for VAL-CROSS-005."
       ]
     }
