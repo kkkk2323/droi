@@ -1,0 +1,181 @@
+{
+  "featureId": "mission-cross-flow-feature-owned-proof-followup",
+  "generatedAt": "2026-03-10T00:00:00Z",
+  "summary": "Feature-owned proof bundle for VAL-CROSS-002 through VAL-CROSS-006. This bundle is checked in by the follow-up feature itself and maps each assertion to newly-owned mission-verification evidence. Earlier milestone artifacts are cited only as supporting context, never as the sole proof.",
+  "scope": {
+    "project": "Mission-GUI-TEST",
+    "agentBrowserModel": "CCH-GPT-5.4",
+    "surface": "Electron only",
+    "isolatedAppDataDir": "/tmp/droi-mission-e2e"
+  },
+  "assertions": [
+    {
+      "id": "VAL-CROSS-002",
+      "status": "pass",
+      "ownedEvidence": {
+        "type": "proof-bundle",
+        "reason": "This checked-in proof bundle newly owns the assertion mapping for the cross-flow lifecycle and ties the same-session validator-injection path to concrete checked-in artifacts.",
+        "automated": [
+          {
+            "file": "test/missionControl.test.ts",
+            "case": "Mission Control keeps completion gated behind validation settlement",
+            "verifies": "The Mission does not present as complete at the first implementation worker completion and remains validation-pending until validator work settles."
+          },
+          {
+            "file": "test/rpcNotificationMapping.test.ts",
+            "case": "applyMissionDirSnapshot follows per-file merge rules and keeps validator-injected Missions running",
+            "verifies": "Validator feature injection after implementation completion preserves a coherent running Mission state with the same Mission context."
+          }
+        ],
+        "interactive": [
+          {
+            "artifact": ".factory/validation/mission-foundation/user-testing/flows/foundation-routing.json",
+            "evidence": "Mission creation in Mission-GUI-TEST using Custom -> CCH-GPT-5.4 opened `/mission` for Mission session `6cbddfbd-ed60-4eeb-9549-7d311be32029`, establishing the same-session Mission entry point on the constrained Electron surface."
+          },
+          {
+            "artifact": ".factory/validation/mission-sync-recovery/user-testing/flows/restore-bootstrap.json",
+            "evidence": "The recovered Mission directory at `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda` stayed in validator-injected `running` state with preserved handoffs, proving validator injection/completion uses continuous Mission state rather than recreating the session."
+          }
+        ],
+        "supportingContext": [
+          "The live mission progress log for `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl` contains worker completion followed by `milestone_validation_triggered` and validator worker activity, matching the validator-injection lifecycle described by the tests above."
+        ]
+      }
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "status": "pass",
+      "ownedEvidence": {
+        "type": "proof-bundle",
+        "reason": "This bundle newly owns the pause -> continue same-session proof by explicitly combining checked-in Mission-GUI-TEST runtime evidence with the focused same-session continuation test.",
+        "automated": [
+          {
+            "file": "test/interactionModeHotSwitch.test.ts",
+            "case": "mission session plumbing preserves agi/orchestrator settings and supports kill_worker_session",
+            "verifies": "A follow-up `continue mission` user message uses `resumeSessionId: engineSessionId` on the same Mission session and every later `droid.update_session_settings` request remains Mission-shaped (`interactionMode: agi`, `autonomyLevel: high`)."
+          },
+          {
+            "file": "test/missionUiSemantics.test.ts",
+            "case": "pause messaging distinguishes user pauses from normal continue-via-chat recovery",
+            "verifies": "Paused Mission UI advertises recovery through normal chat and distinguishes that path from other runtime states."
+          }
+        ],
+        "interactive": [
+          {
+            "artifact": ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+            "evidence": "The paused Chat screenshot shows the same active Mission session id `a901a190-5925-431e-8657-8db9bb502391` with an enabled input box, explicitly proving resumable normal-chat continuation without changing session identity."
+          }
+        ],
+        "supportingContext": [
+          "The runtime-controls evidence records that no separate Resume RPC was needed in the continuation path; continuation stayed on the same Mission session id."
+        ]
+      }
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "status": "pass",
+      "ownedEvidence": {
+        "type": "proof-bundle",
+        "reason": "This bundle newly owns the daemon/factoryd failure -> continue proof by linking checked-in recovery messaging and same-session continuation evidence.",
+        "automated": [
+          {
+            "file": "test/missionUiSemantics.test.ts",
+            "case": "retry messaging surfaces daemon retry guidance and bounded failure recovery",
+            "verifies": "Daemon/factoryd failure is surfaced, a single retry is shown, and the final paused recovery state explicitly instructs recovery via normal chat after retry exhaustion."
+          },
+          {
+            "file": "test/interactionModeHotSwitch.test.ts",
+            "case": "mission session plumbing preserves agi/orchestrator settings and supports kill_worker_session",
+            "verifies": "Continuation after interruption still uses the same Mission session id through `resumeSessionId: engineSessionId`, which is the same session-preservation mechanism used by normal-chat recovery."
+          }
+        ],
+        "interactive": [
+          {
+            "artifact": ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+            "evidence": "Runtime-controls evidence for VAL-CONTROL-013 cites the real mission progress log showing `factoryd authentication failed`, the single retry guidance, and `mission_paused`; the paired runtime-status checks prove the user-facing recovery path returns to a normal-chat continuation state instead of recreating the Mission."
+          }
+        ],
+        "supportingContext": [
+          "The progress-log sequence under `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl` shows failure -> retry -> pause chronology matching the daemon recovery contract."
+        ]
+      }
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "status": "pass",
+      "ownedEvidence": {
+        "type": "proof-bundle",
+        "reason": "This bundle newly owns the kill-worker -> paused/resumable proof by tying checked-in user-kill UI evidence to the underlying Mission event labeling and session-plumbing coverage.",
+        "automated": [
+          {
+            "file": "test/missionControl.test.ts",
+            "case": "Mission Control timeline distinguishes user kill and daemon failure events",
+            "verifies": "The Mission timeline renders `Worker killed by user` followed by `Mission paused`, distinguishing user-kill semantics from daemon failure."
+          },
+          {
+            "file": "test/missionUiSemantics.test.ts",
+            "case": "kill messaging distinguishes user-killed workers from daemon failures and acknowledges pending kill",
+            "verifies": "The runtime layer immediately acknowledges Kill Worker, then surfaces `Killed by user` paused recovery copy that leaves the Mission inspectable and resumable."
+          },
+          {
+            "file": "test/interactionModeHotSwitch.test.ts",
+            "case": "mission session plumbing preserves agi/orchestrator settings and supports kill_worker_session",
+            "verifies": "The real `droid.kill_worker_session` request path exists for the same Mission session and preserves Mission metadata around the worker kill operation."
+          }
+        ],
+        "interactive": [
+          {
+            "artifact": ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+            "evidence": "The pending-kill screenshot and paused Chat screenshot show immediate user feedback, then a resumable paused Mission surface on the same Mission session without destroying inspectability."
+          }
+        ],
+        "supportingContext": [
+          "Runtime-controls evidence also points at mission progress entries for `worker_paused -> mission_paused`, complementing the user-kill labeling from focused tests."
+        ]
+      }
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "status": "pass",
+      "ownedEvidence": {
+        "type": "proof-bundle",
+        "reason": "This bundle newly owns the restart and reselection proof by combining the checked-in Mission-GUI-TEST routing evidence with restore/bootstrap recovery evidence that reopens the same Mission on `/mission`.",
+        "automated": [
+          {
+            "file": "test/missionPage.test.ts",
+            "case": "Mission session view state stays scoped to the active session id",
+            "verifies": "Switching among Mission sessions preserves per-session state and prevents cross-session leakage during reselection."
+          },
+          {
+            "file": "test/sessionStore.test.ts",
+            "case": "buildRestoredSessionBuffer keeps Mission identity and snapshot data across lifecycle stages",
+            "verifies": "Restored Mission sessions preserve Mission identity and snapshot data required for restart recovery."
+          },
+          {
+            "file": "test/rpcNotificationMapping.test.ts",
+            "case": "applyMissionDirSnapshot supports disk-only recovery, completion gating, and orphan worker recovery",
+            "verifies": "Mission state, handoffs, and recovery data rebuild coherently from disk-backed Mission artifacts without requiring fresh live notifications."
+          }
+        ],
+        "interactive": [
+          {
+            "artifact": ".factory/validation/mission-foundation/user-testing/flows/foundation-routing.json",
+            "evidence": "Project click, sidebar reselection, and latest-session restore all reopened Mission sessions on `/mission` while normal sessions reopened on `/`, using real Mission-GUI-TEST entry points."
+          },
+          {
+            "artifact": ".factory/validation/mission-sync-recovery/user-testing/flows/restore-bootstrap.json",
+            "evidence": "Reloaded Electron restore showed `[data-testid=\"mission-page\"]` immediately after app-ready, with the Mission session rebuilt from load_session plus missionDir state and no need for new live Mission notifications."
+          }
+        ],
+        "supportingContext": [
+          "The persisted Mission session metadata at `/tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json` and the live mission directory contents under `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda` provide the backing state reused by restart and reselection recovery."
+        ]
+      }
+    }
+  ],
+  "proofOwnershipNotes": [
+    "This file is the new feature-owned checked-in deliverable for the follow-up feature. It is not a re-audit of older milestone files; it is the assertion-to-evidence map produced by this feature itself.",
+    "Older milestone artifacts are cited only as supporting context where needed, never as the sole evidence without a newly-owned mapping entry in this file.",
+    "No assertion in VAL-CROSS-002 through VAL-CROSS-006 is left unproven by this bundle; each one is explicitly mapped to concrete checked-in automated coverage and/or Mission-GUI-TEST artifacts."
+  ]
+}
