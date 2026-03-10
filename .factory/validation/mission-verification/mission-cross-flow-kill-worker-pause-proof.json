@@ -1,0 +1,58 @@
+{
+  "featureId": "mission-cross-flow-kill-worker-pause-proof",
+  "generatedAt": "2026-03-10T12:00:00Z",
+  "assertion": {
+    "id": "VAL-CROSS-005",
+    "status": "pass",
+    "summary": "Feature-owned proof mapping for the kill-worker lifecycle. It ties the checked-in Mission-GUI-TEST Electron session evidence for the real Mission session `a901a190-5925-431e-8657-8db9bb502391` to focused automated coverage for `droid.kill_worker_session`, `worker_failed(reason = \"Killed by user\")`, and the resulting paused/resumable Mission UX.",
+    "scope": {
+      "project": "Mission-GUI-TEST",
+      "agentBrowserModel": "CCH-GPT-5.4",
+      "surface": "Electron only",
+      "isolatedAppDataDir": "/tmp/droi-mission-e2e",
+      "sessionId": "a901a190-5925-431e-8657-8db9bb502391"
+    },
+    "ownedEvidence": {
+      "automated": [
+        {
+          "file": "test/missionControl.test.ts",
+          "case": "Mission Control timeline distinguishes user kill and daemon failure events",
+          "verifies": "Mission progress renders `Worker killed by user` followed by `Mission paused`, proving the runtime timeline distinguishes `worker_failed(reason = \"Killed by user\") -> mission_paused` from daemon failure."
+        },
+        {
+          "file": "test/missionUiSemantics.test.ts",
+          "case": "kill messaging distinguishes user-killed workers from daemon failures and acknowledges pending kill",
+          "verifies": "The UI immediately acknowledges Kill Worker with pending feedback, then exposes paused-after-user-kill recovery copy saying the worker was terminated at the user's request, leaving the Mission inspectable and resumable."
+        },
+        {
+          "file": "test/interactionModeHotSwitch.test.ts",
+          "case": "mission session plumbing preserves agi/orchestrator settings and supports kill_worker_session",
+          "verifies": "The real JSON-RPC request path sends `droid.kill_worker_session` for the active Mission session and preserves Mission metadata before and after the worker-kill operation."
+        }
+      ],
+      "interactive": [
+        {
+          "artifact": ".factory/validation/mission-foundation/user-testing/flows/foundation-metadata.json",
+          "evidence": "Created the real Mission-GUI-TEST Mission session `a901a190-5925-431e-8657-8db9bb502391` through the Electron surface after explicitly selecting Custom -> `CCH-GPT-5.4`; the persisted session file `/tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json` recorded `isMission=true`, `sessionKind=mission`, `interactionMode=agi`, and `decompSessionType=orchestrator`."
+        },
+        {
+          "artifact": ".factory/validation/mission-control-ui/user-testing/flows/routing-toggle.json",
+          "evidence": "Re-opened that same Mission session `a901a190-5925-431e-8657-8db9bb502391` in Mission-GUI-TEST and toggled between Chat and Mission Control without changing sessions, proving the Mission remained inspectable on the Electron surface before and after runtime-control checks."
+        },
+        {
+          "artifact": ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+          "evidence": "The checked-in `runtime-controls-kill-pending.png` capture shows immediate Kill Worker acknowledgement with the control disabled before async completion. The same flow also records a paused Chat screenshot for session `a901a190-5925-431e-8657-8db9bb502391` with the normal input enabled, proving the Mission remains resumable on the same session after the user-kill path."
+        }
+      ],
+      "supportingContext": [
+        "The Mission-GUI-TEST runtime-controls flow explicitly notes that destructive kill execution was exercised via isolated renderer-state injection to avoid mutating the shared validator-phase run. This feature-owned proof does not present that injected state as sole proof; instead it combines the new checked-in owner mapping here with real same-session Electron Mission-GUI-TEST evidence for the underlying session identity/inspectability and with focused automated kill-worker coverage.",
+        "The broader `.factory/validation/mission-verification/feature-owned-proof-followup.json` bundle remains supporting context only and is no longer the owner for VAL-CROSS-005."
+      ]
+    }
+  },
+  "proofOwnershipNotes": [
+    "This file is the new checked-in feature-owned deliverable for `mission-cross-flow-kill-worker-pause-proof`.",
+    "It intentionally narrows ownership to VAL-CROSS-005 instead of relying on the superseded combined follow-up proof bundle.",
+    "The Mission-GUI-TEST evidence cited here stays on the Electron surface with the required isolated app-data directory and Custom `CCH-GPT-5.4` model selection."
+  ]
+}
