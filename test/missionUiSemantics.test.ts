@@ -186,7 +186,21 @@ test('pause messaging distinguishes user pauses from normal continue-via-chat re
   })
   assert.equal(pausedByUser.kind, 'paused-by-user')
   assert.match(pausedByUser.title, /paused by user/i)
-  assert.match(pausedByUser.description, /normal chat/i)
+  assert.match(pausedByUser.description, /paused worker|Mission chat/i)
+
+  const pausedAfterStaleDaemonFailure = getMissionRuntimeStatus({
+    mission: createMissionState({
+      currentState: 'paused',
+      progressEntries: [{ type: 'worker_paused', timestamp: '2026-03-09T12:05:00.000Z' }],
+    }),
+    messages: [
+      createStartMissionRunMessage({
+        systemMessage:
+          'factoryd authentication failed. Retrying once after refreshing the daemon session.',
+      }),
+    ],
+  })
+  assert.equal(pausedAfterStaleDaemonFailure.kind, 'paused-by-user')
 
   const orchestratorTurn = getMissionRuntimeStatus({
     mission: createMissionState({ currentState: 'orchestrator_turn' }),

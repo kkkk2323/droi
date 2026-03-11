@@ -515,13 +515,13 @@ export function MissionControlPanel({
             </div>
             <div className="text-xs text-muted-foreground">
               {workerFollowupState === 'sending'
-                ? 'Sending to the paused worker...'
+                ? 'Sending to the paused worker and requesting Mission resume...'
                 : workerFollowupState === 'sent'
-                  ? 'Follow-up delivered to the paused worker.'
+                  ? 'Follow-up delivered and Mission resume requested.'
                   : workerFollowupState === 'failed'
                     ? workerFollowupError || 'Failed to send follow-up to the paused worker.'
                     : followupUnavailableReason ||
-                      'This message goes directly to the paused worker session. Use Mission chat if you want the orchestrator to decide the next step.'}
+                      'This sends guidance to the paused worker, then automatically asks the Mission orchestrator to resume the run.'}
             </div>
           </div>
         </div>

@@ -45,6 +45,8 @@ import {
 import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
 
 const droid = getDroidClient()
+const MISSION_RESUME_AFTER_WORKER_FOLLOWUP_PROMPT =
+  'Resume the mission run now. The paused worker has already received additional user guidance from me.'
 
 export type SendInput = string | { text: string; tag?: { type: 'command' | 'skill'; name: string } }
 
@@ -1772,6 +1774,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return next
     })
 
+    let followupDelivered = false
     try {
       await droid.sendWorkerFollowup({
         sessionId: sid,
@@ -1780,28 +1783,71 @@ export const useAppStore = create<AppStore>((set, get) => ({
         cwd,
         prompt: text,
       })
-      get()._setSessionBuffers((prev) =>
-        appendRuntimeLog(prev, sid, {
-          ts: Date.now(),
-          stream: 'system',
-          kind: 'status',
-          workerSessionId: targetWorkerSessionId,
-          text: `Follow-up delivered to paused worker ${targetWorkerSessionId}`,
-        }),
-      )
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      followupDelivered = true
       get()._setSessionBuffers((prev) => {
-        let next = appendDebugTrace(prev, sid, `ui-worker-followup-failed: ${message}`)
+        let next = appendDebugTrace(
+          prev,
+          sid,
+          `ui-worker-followup-delivered: worker=${targetWorkerSessionId}`,
+        )
         next = appendRuntimeLog(next, sid, {
           ts: Date.now(),
           stream: 'system',
           kind: 'status',
           workerSessionId: targetWorkerSessionId,
-          text: `Failed to send follow-up to paused worker ${targetWorkerSessionId}: ${message}`,
+          text: `Follow-up delivered to paused worker ${targetWorkerSessionId}. Requesting Mission resume...`,
         })
         return next
       })
+
+      await droid.addUserMessage({
+        sessionId: sid,
+        text: MISSION_RESUME_AFTER_WORKER_FOLLOWUP_PROMPT,
+      })
+
+      get()._setSessionBuffers((prev) =>
+        appendRuntimeLog(
+          appendDebugTrace(
+            prev,
+            sid,
+            `ui-worker-followup-resume-requested: worker=${targetWorkerSessionId}`,
+          ),
+          sid,
+          {
+            ts: Date.now(),
+            stream: 'system',
+            kind: 'status',
+            workerSessionId: targetWorkerSessionId,
+            text: `Mission resume requested after follow-up to paused worker ${targetWorkerSessionId}`,
+          },
+        ),
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      get()._setSessionBuffers((prev) => {
+        let next = appendDebugTrace(
+          prev,
+          sid,
+          followupDelivered
+            ? `ui-worker-followup-resume-failed: ${message}`
+            : `ui-worker-followup-failed: ${message}`,
+        )
+        next = appendRuntimeLog(next, sid, {
+          ts: Date.now(),
+          stream: 'system',
+          kind: 'status',
+          workerSessionId: targetWorkerSessionId,
+          text: followupDelivered
+            ? `Follow-up reached paused worker ${targetWorkerSessionId}, but Mission resume failed: ${message}`
+            : `Failed to send follow-up to paused worker ${targetWorkerSessionId}: ${message}`,
+        })
+        return next
+      })
+      if (followupDelivered) {
+        throw new Error(`Follow-up delivered, but failed to resume Mission: ${message}`, {
+          cause: error,
+        })
+      }
       throw error
     }
   },

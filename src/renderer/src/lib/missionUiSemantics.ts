@@ -263,6 +263,10 @@ function isDaemonLikeText(value: string | undefined): boolean {
   )
 }
 
+function isUserCancelledText(value: string | undefined): boolean {
+  return /tool execution cancelled by user|cancelled by user/i.test(String(value || ''))
+}
+
 function mentionsRetry(value: string | undefined): boolean {
   return /\bretry/i.test(String(value || ''))
 }
@@ -292,15 +296,17 @@ function getFailureContext(params: { mission?: MissionState | null; messages?: C
   ]
   const latestSignalText =
     signalTexts.find((entry) => isDaemonLikeText(entry) || mentionsRetry(entry)) || signalTexts[0]
-  const failureLikeText = latestFailureReason || latestSignalText
+  const currentState = normalizeLower(params.mission?.currentState)
+  const ignoreSignalTextForPause = currentState === 'paused' && Boolean(latestPause)
+  const failureLikeText =
+    latestFailureReason || (ignoreSignalTextForPause ? undefined : latestSignalText)
+  const userPaused =
+    Boolean(latestPause) &&
+    currentState === 'paused' &&
+    (!latestFailureReason || isUserCancelledText(latestFailureReason))
   const userKilled = /killed by user/i.test(failureLikeText || '')
   const daemonLike = !userKilled && isDaemonLikeText(failureLikeText)
   const retryMentioned = mentionsRetry(failureLikeText)
-  const userPaused =
-    !daemonLike &&
-    !userKilled &&
-    Boolean(latestPause) &&
-    normalizeLower(params.mission?.currentState) === 'paused'
 
   return {
     latestFailureReason,
@@ -430,7 +436,7 @@ export function getMissionRuntimeStatus(params: {
       kind: 'paused-by-user',
       title: 'Mission paused by user',
       description:
-        'You paused the Mission. Continue via normal chat when ready; the orchestrator will decide whether to call Start Mission Run again.',
+        'You paused the Mission. Send a follow-up to the paused worker or continue from Mission chat when ready.',
       tone: 'warning',
     }
   }
