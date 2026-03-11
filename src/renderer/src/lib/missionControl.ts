@@ -36,6 +36,18 @@ export interface MissionHandoffCardData {
   interactiveResults: string[]
 }
 
+export interface MissionFeatureDetailData {
+  featureId: string
+  title: string
+  description?: string
+  skillName?: string
+  milestone?: string
+  preconditions: string[]
+  expectedBehavior: string[]
+  verificationSteps: string[]
+  handoff?: MissionHandoffCardData
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -44,6 +56,11 @@ function asTrimmedString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed || undefined
+}
+
+function asTrimmedStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((entry) => asTrimmedString(entry)).filter(Boolean) as string[]
 }
 
 function toTitleCase(value: string): string {
@@ -324,4 +341,33 @@ export function getMissionHandoffCards(mission?: MissionState | null): MissionHa
       interactiveResults: mapInteractiveResults(verification?.interactiveChecks),
     }
   })
+}
+
+export function getMissionFeatureDetail(
+  mission?: MissionState | null,
+  featureId?: string | null,
+): MissionFeatureDetailData | null {
+  const resolvedFeatureId = featureId || mission?.currentFeatureId || null
+  if (!resolvedFeatureId) return null
+
+  const feature = (mission?.features || []).find(
+    (entry) => asTrimmedString(entry?.id) === resolvedFeatureId,
+  )
+  const handoff = getMissionHandoffCards(mission).find(
+    (entry) => entry.featureId === resolvedFeatureId,
+  )
+
+  if (!feature && !handoff) return null
+
+  return {
+    featureId: resolvedFeatureId,
+    title: getFeatureLabel(feature, resolvedFeatureId),
+    description: asTrimmedString(feature?.description),
+    skillName: asTrimmedString(feature?.skillName),
+    milestone: asTrimmedString(feature?.milestone),
+    preconditions: asTrimmedStringArray(feature?.preconditions),
+    expectedBehavior: asTrimmedStringArray(feature?.expectedBehavior),
+    verificationSteps: asTrimmedStringArray(feature?.verificationSteps),
+    handoff,
+  }
 }

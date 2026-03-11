@@ -49,7 +49,11 @@ import {
   type PendingSessionDraft,
   type PendingSessionDraftMode,
 } from '@/lib/pendingSessionDraft'
-import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
+import {
+  autonomyLevelFromAutoLevel,
+  interactionModeFromAutoLevel,
+  resolveSessionProtocolFields,
+} from '../../shared/sessionProtocol.ts'
 import { resolveSessionRuntimeSelection } from '@/lib/missionModelState'
 
 const droid = getDroidClient()
@@ -572,7 +576,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const buf = prev.get(sid)
       if (!buf) return prev
       const next = new Map(prev)
-      next.set(sid, { ...buf, autoLevel: l })
+      const isMission = buf.isMission === true || buf.sessionKind === 'mission'
+      next.set(sid, {
+        ...buf,
+        autoLevel: l,
+        ...(!isMission
+          ? {
+              interactionMode: interactionModeFromAutoLevel(l),
+              autonomyLevel: autonomyLevelFromAutoLevel(l),
+            }
+          : {}),
+      })
       return next
     })
   },
