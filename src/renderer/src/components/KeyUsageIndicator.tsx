@@ -22,11 +22,7 @@ export function KeyUsageIndicator({ className }: { className?: string }) {
   if (percent !== null && percent < 60) return null
 
   const color =
-    percent === null
-      ? 'text-muted-foreground'
-      : percent >= 80
-        ? 'text-red-500'
-        : 'text-yellow-500'
+    percent === null ? 'text-muted-foreground' : percent >= 80 ? 'text-red-500' : 'text-yellow-500'
 
   return (
     <TooltipProvider>

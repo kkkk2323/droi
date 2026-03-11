@@ -187,7 +187,10 @@ export function ChatPage({
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
           >
-            <PermissionCard request={pendingPermissionRequest} onRespond={handleRespondPermission} />
+            <PermissionCard
+              request={pendingPermissionRequest}
+              onRespond={handleRespondPermission}
+            />
           </motion.div>
         ) : hasAskUser && pendingAskUserRequest ? (
           <motion.div

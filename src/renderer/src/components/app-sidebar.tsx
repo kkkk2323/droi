@@ -100,13 +100,7 @@ function SessionList({ sessions }: { sessions: SessionMeta[] }) {
   )
 }
 
-function SessionItem({
-  session,
-  sessionIdx,
-}: {
-  session: SessionMeta
-  sessionIdx: number
-}) {
+function SessionItem({ session, sessionIdx }: { session: SessionMeta; sessionIdx: number }) {
   const activeSessionId = useActiveSessionId()
   const deletingSessionIds = useDeletingSessionIds()
   const { getSessionRunning, handleSelectSession, handleTogglePin, handleDeleteSession } =
@@ -449,7 +443,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           data-testid={`new-session-${getProjectDisplayName(project)}`}
                           className={cn(
                             'flex size-5 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',
-                            mobile || isDevMode || isActiveProject ? 'opacity-100' : 'opacity-0 group-hover/project:opacity-100',
+                            mobile || isDevMode || isActiveProject
+                              ? 'opacity-100'
+                              : 'opacity-0 group-hover/project:opacity-100',
                             (isCreatingSession || isInitBlocked) &&
                               'opacity-60 pointer-events-none',
                           )}
@@ -571,7 +567,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             </DropdownMenuContent>
                           )}
                         </DropdownMenu>
-
                       </div>
 
                       <CollapsibleContent>

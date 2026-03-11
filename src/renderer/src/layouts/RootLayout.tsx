@@ -73,21 +73,13 @@ function InnerLayout() {
         <header
           className={cn(
             'flex h-10 shrink-0 items-center gap-2 pt-2 pr-4 transition-[padding-left] duration-200 ease-linear',
-            isMacElectron
-              ? open ? 'pl-12' : 'pl-28'
-              : open ? 'pl-4' : 'pl-26',
+            isMacElectron ? (open ? 'pl-12' : 'pl-28') : open ? 'pl-4' : 'pl-26',
           )}
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           {isMacElectron ? (
-            <div
-              className="fixed top-1 left-0 z-10 flex h-10 items-center pl-20"
-              style={noDrag}
-            >
-              <SidebarTrigger
-                data-testid="sidebar-trigger"
-                className="shrink-0 size-6 p-0"
-              />
+            <div className="fixed top-1 left-0 z-10 flex h-10 items-center pl-20" style={noDrag}>
+              <SidebarTrigger data-testid="sidebar-trigger" className="shrink-0 size-6 p-0" />
             </div>
           ) : (
             <SidebarTrigger

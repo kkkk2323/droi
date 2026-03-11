@@ -19,10 +19,7 @@ export function McpStatusIndicator({ className }: { className?: string }) {
 
   if (errored.length === 0 && connecting.length === 0) return null
 
-  const color =
-    errored.length > 0
-      ? 'text-red-500'
-      : 'text-yellow-500'
+  const color = errored.length > 0 ? 'text-red-500' : 'text-yellow-500'
 
   const Icon =
     connecting.length > 0 && connected.length === 0

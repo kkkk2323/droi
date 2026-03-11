@@ -610,7 +610,9 @@ function ResultView({ result, isError }: { result: string; isError?: boolean; is
       <pre
         className={cn(
           'max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md px-3 py-2 text-[11px] leading-5',
-          isError ? 'bg-destructive/5 text-destructive-foreground' : 'bg-muted text-muted-foreground',
+          isError
+            ? 'bg-destructive/5 text-destructive-foreground'
+            : 'bg-muted text-muted-foreground',
         )}
       >
         {display}
