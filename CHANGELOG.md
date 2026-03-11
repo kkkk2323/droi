@@ -1,3 +1,8 @@
+## 0.22.1 - 2026-03-11
+
+### Refactor
+- Improve code readability by formatting and simplifying conditional expressions
+
 ## 0.22.0 - 2026-03-11
 
 ### Features
