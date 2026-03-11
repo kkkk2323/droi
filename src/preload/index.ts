@@ -12,7 +12,6 @@ const droidAPI: DroidClientAPI = {
   killWorkerSession: (params) => ipcRenderer.invoke('droid:killWorkerSession', params),
 
   createSession: (params) => ipcRenderer.invoke('session:create', params),
-  restartSessionWithActiveKey: (params) => ipcRenderer.invoke('session:restart', params),
   runSetupScript: (params) => ipcRenderer.invoke('session:setup:run', params),
   cancelSetupScript: (params) => ipcRenderer.send('session:setup:cancel', params),
   onSetupScriptEvent: (callback) => {

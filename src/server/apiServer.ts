@@ -1,6 +1,7 @@
 import { createAdaptorServer } from '@hono/node-server'
 import { DroidExecManager } from '../backend/droid/droidExecRunner.ts'
 import { setTraceChainEnabledOverride } from '../backend/droid/jsonrpc/notificationFingerprint.ts'
+import { createFactoryApiProxy } from '../backend/keys/factoryApiProxy.ts'
 import { createKeyStore } from '../backend/keys/keyStore.ts'
 import { SetupScriptRunner } from '../backend/session/setupScriptRunner.ts'
 import { LocalDiagnostics } from '../backend/diagnostics/localDiagnostics.ts'
@@ -87,11 +88,24 @@ export async function startApiServer(opts: StartApiServerOpts) {
   await diagnostics.startMaintenance()
 
   const keyStore = createKeyStore(appStateStore)
+  const factoryApiProxy = createFactoryApiProxy({ keyStore })
+  const buildExecEnv = async (): Promise<Record<string, string | undefined>> => {
+    const env: Record<string, string | undefined> = { ...process.env }
+    const activeKey = await keyStore.getActiveKey()
+    const bootstrapKey = activeKey || cachedStateRef.value.apiKey || process.env['FACTORY_API_KEY']
+    if (bootstrapKey) env['FACTORY_API_KEY'] = bootstrapKey
+    env['FACTORY_API_BASE_URL'] = await factoryApiProxy.getBaseUrl()
+    if (activeKey && cachedStateRef.value.apiKey !== activeKey) {
+      cachedStateRef.value = { ...cachedStateRef.value, apiKey: activeKey }
+    }
+    return env
+  }
   const runtimePortRef = { value: opts.port }
   const deps: HonoAppDeps = {
     opts,
     runtimePortRef,
     appStateStore,
+    buildExecEnv,
     sessionStore,
     execManager,
     setupScriptRunner,
@@ -130,6 +144,7 @@ export async function startApiServer(opts: StartApiServerOpts) {
     close: async () => {
       unsubscribeSessionReplace()
       setupScriptRunner.disposeAll()
+      await factoryApiProxy.close().catch(() => {})
       return await new Promise<void>((resolvePromise) =>
         (server as any).close(() => resolvePromise()),
       )

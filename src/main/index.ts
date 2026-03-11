@@ -14,7 +14,7 @@ if (debugPort) {
 }
 
 let mainWindow: BrowserWindow | null = null
-let ipcCtl: { cancelActiveRun: () => boolean } | null = null
+let ipcCtl: { cancelActiveRun: () => boolean; close?: () => Promise<void> } | null = null
 let apiCtl: { close: () => Promise<void> } | null = null
 
 function readBool(name: string, def: boolean): boolean {
@@ -156,6 +156,7 @@ app.whenReady().then(() => {
 
   app.on('before-quit', () => {
     ipcCtl?.cancelActiveRun()
+    void ipcCtl?.close?.().catch(() => {})
     void apiCtl?.close().catch(() => {})
   })
   app.on('activate', () => {
@@ -165,5 +166,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   ipcCtl?.cancelActiveRun()
+  void ipcCtl?.close?.().catch(() => {})
   if (process.platform !== 'darwin') app.quit()
 })

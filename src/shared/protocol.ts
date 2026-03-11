@@ -416,10 +416,6 @@ export interface DroidClientAPI {
     workerSessionId: string
   }) => Promise<{ ok: true }>
 
-  restartSessionWithActiveKey: (params: {
-    sessionId: string
-  }) => Promise<{ ok: true; apiKeyFingerprint: string }>
-
   runSetupScript: (params: {
     sessionId: string
     projectDir: string

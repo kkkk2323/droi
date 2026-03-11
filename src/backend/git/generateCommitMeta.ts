@@ -188,6 +188,7 @@ export async function generateCommitMeta(params: {
   state: PersistedAppState
   execManager: DroidExecManager
   keyStore: KeyStoreAPI
+  buildExecEnv?: () => Promise<Record<string, string | undefined>>
 }): Promise<GenerateCommitMetaResult> {
   const projectDir = String(params.req.projectDir || '').trim()
   if (!projectDir) throw new Error('Missing projectDir')
@@ -206,10 +207,12 @@ export async function generateCommitMeta(params: {
   const prompt = buildPrompt({ includeUnstaged, wantPrMeta, prBaseBranch, git })
 
   const sid = `commit-meta:${Date.now()}:${Math.random().toString(16).slice(2)}`
-  const env: Record<string, string | undefined> = { ...process.env }
-  const activeKey = await params.keyStore.getActiveKey()
-  if (activeKey) env['FACTORY_API_KEY'] = activeKey
-  else if ((params.state as any)?.apiKey) env['FACTORY_API_KEY'] = (params.state as any).apiKey
+  const env = params.buildExecEnv ? await params.buildExecEnv() : { ...process.env }
+  if (!params.buildExecEnv) {
+    const activeKey = await params.keyStore.getActiveKey()
+    if (activeKey) env['FACTORY_API_KEY'] = activeKey
+    else if ((params.state as any)?.apiKey) env['FACTORY_API_KEY'] = (params.state as any).apiKey
+  }
 
   const text = await runDroidAndCaptureAssistantText({
     execManager: params.execManager,

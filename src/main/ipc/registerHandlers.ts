@@ -29,6 +29,7 @@ import {
 import { commitWorkflow, detectGitTools } from '../../backend/git/commitWorkflow'
 import { generateCommitMeta } from '../../backend/git/generateCommitMeta'
 import { SetupScriptRunner } from '../../backend/session/setupScriptRunner'
+import { createFactoryApiProxy } from '../../backend/keys/factoryApiProxy'
 import { createKeyStore } from '../../backend/keys/keyStore'
 import { createAppStateStore } from '../../backend/storage/appStateStore'
 import { createSessionStore } from '../../backend/storage/sessionStore'
@@ -163,6 +164,7 @@ export function registerIpcHandlers(opts: {
   const appStateStore = createAppStateStore({ baseDir: opts.baseDir })
   const sessionStore = createSessionStore({ baseDir: opts.baseDir })
   const keyStore = createKeyStore(appStateStore)
+  const factoryApiProxy = createFactoryApiProxy({ keyStore })
   const diagnostics = opts.diagnostics || new LocalDiagnostics({ baseDir: opts.baseDir })
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
@@ -198,13 +200,11 @@ export function registerIpcHandlers(opts: {
   const buildExecEnv = async (): Promise<Record<string, string | undefined>> => {
     const env: Record<string, string | undefined> = { ...process.env }
     const activeKey = await keyStore.getActiveKey()
-    if (activeKey) {
-      env['FACTORY_API_KEY'] = activeKey
-      if (activeKey !== cachedState.apiKey) {
-        cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-      }
-    } else if (cachedState.apiKey) {
-      env['FACTORY_API_KEY'] = cachedState.apiKey
+    const bootstrapKey = activeKey || cachedState.apiKey || process.env['FACTORY_API_KEY']
+    if (bootstrapKey) env['FACTORY_API_KEY'] = bootstrapKey
+    env['FACTORY_API_BASE_URL'] = await factoryApiProxy.getBaseUrl()
+    if (activeKey && activeKey !== cachedState.apiKey) {
+      cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
     }
     return env
   }
@@ -395,8 +395,6 @@ export function registerIpcHandlers(opts: {
       }
 
       const cwd = activeProjectDir
-      const env: Record<string, string | undefined> = { ...process.env }
-
       if (!win) return
       void (async () => {
         if (!cwd || !(await isExistingDir(cwd))) {
@@ -424,23 +422,7 @@ export function registerIpcHandlers(opts: {
 
         const resumeSessionId = sid
 
-        if (!execManager.hasSession(sid)) {
-          if (cachedState.apiKey) {
-            env['FACTORY_API_KEY'] = cachedState.apiKey
-          } else {
-            const activeKey = await keyStore.getActiveKey()
-            if (activeKey) {
-              env['FACTORY_API_KEY'] = activeKey
-              if (activeKey !== cachedState.apiKey) {
-                cachedState = {
-                  ...(cachedState as PersistedAppStateV2),
-                  apiKey: activeKey,
-                  version: 2,
-                }
-              }
-            }
-          }
-        }
+        const env = !execManager.hasSession(sid) ? await buildExecEnv() : { ...process.env }
 
         emitDebug(`ipc-exec-send-start: sessionId=${sid}`)
         void diagnostics.append({
@@ -1215,17 +1197,6 @@ export function registerIpcHandlers(opts: {
     },
   )
 
-  ipcMain.handle('session:restart', async (_event, payload: { sessionId: string }) => {
-    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
-    if (!sessionId) throw new Error('Missing sessionId')
-    await stopMissionDirWatcher(sessionId)
-    execManager.disposeSession(sessionId)
-
-    cachedState = await appStateStore.load()
-    const key = cachedState.apiKey || ''
-    return { ok: true, apiKeyFingerprint: key ? apiKeyFingerprint(key) : '' } as const
-  })
-
   ipcMain.handle('session:clear', async (_event, payload: { id: string }) => {
     const id = typeof payload?.id === 'string' ? payload.id.trim() : ''
     if (!id) return null
@@ -1527,7 +1498,7 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.handle('git:generate-commit-meta', async (_event, req: GenerateCommitMetaRequest) => {
     const state = cachedState
-    return generateCommitMeta({ req, state, execManager, keyStore })
+    return generateCommitMeta({ req, state, execManager, keyStore, buildExecEnv })
   })
 
   ipcMain.handle('git:commit-workflow', async (_event, req: CommitWorkflowRequest) => {
@@ -1546,6 +1517,9 @@ export function registerIpcHandlers(opts: {
       const cancelledExec = execManager.disposeAllSessions()
       const cancelledSetup = setupScriptRunner.disposeAll() > 0
       return cancelledExec || cancelledSetup
+    },
+    close: async () => {
+      await factoryApiProxy.close()
     },
   }
 }

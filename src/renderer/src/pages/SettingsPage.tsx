@@ -109,7 +109,8 @@ export function SettingsPage() {
           <div>
             <h2 className="text-sm font-medium">API Keys</h2>
             <p className="text-xs text-muted-foreground">
-              Manage your Factory API keys. Keys are automatically rotated based on expiry date.
+              Manage your Factory API keys. Droi prioritizes the earliest expiry, then the lowest
+              usage, and rotates at 98%.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => navigate({ to: '/settings/keys' })}>

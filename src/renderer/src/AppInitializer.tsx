@@ -544,35 +544,6 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       const state = useAppStore.getState()
       const snapshot = state.sessionBuffers.get(sid)
       if (snapshot) void state._saveSessionToDisk(sid, snapshot)
-
-      if (
-        snapshot?.pendingApiKeyFingerprint &&
-        !snapshot.isSetupRunning &&
-        sid === state.activeSessionId
-      ) {
-        const targetFp = snapshot.pendingApiKeyFingerprint
-        void (async () => {
-          try {
-            await droid.restartSessionWithActiveKey({ sessionId: sid })
-            state._setSessionBuffers((prev) => {
-              const session = prev.get(sid)
-              if (!session) return prev
-              const next = new Map(prev)
-              next.set(sid, {
-                ...session,
-                apiKeyFingerprint: targetFp,
-                pendingApiKeyFingerprint: undefined,
-              })
-              return appendDebugTrace(next, sid, `api-key-restarted-after-turn: fp=${targetFp}`)
-            })
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err)
-            state._setSessionBuffers((prev) =>
-              appendDebugTrace(prev, sid, `api-key-restart-after-turn-failed: ${msg}`),
-            )
-          }
-        })()
-      }
     })
 
     const unsubError = droid.onError(({ message, sessionId: sid }) => {

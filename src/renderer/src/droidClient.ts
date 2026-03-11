@@ -518,22 +518,6 @@ const browserClient: DroidClientAPI = {
     return { sessionId }
   },
 
-  restartSessionWithActiveKey: async ({ sessionId }) => {
-    const sid = String(sessionId || '').trim()
-    if (!sid) throw new Error('Missing sessionId')
-    const res = await apiFetch(`${getApiBase()}/session/restart`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sid }),
-    })
-    if (!res.ok) throw new Error(await readApiError(res))
-    const data = await res.json()
-    return {
-      ok: true as const,
-      apiKeyFingerprint: String(data?.apiKeyFingerprint || ''),
-    }
-  },
-
   runSetupScript: async (params) => {
     const sid = typeof params?.sessionId === 'string' ? params.sessionId : ''
     if (sid) {
@@ -1357,8 +1341,6 @@ export function getDroidClient(): DroidClientAPI {
       merged.unwatchMissionDir = browserClient.unwatchMissionDir
     if (typeof (merged as any).onMissionDirChanged !== 'function')
       merged.onMissionDirChanged = browserClient.onMissionDirChanged
-    if (typeof (merged as any).restartSessionWithActiveKey !== 'function')
-      merged.restartSessionWithActiveKey = browserClient.restartSessionWithActiveKey
     if (typeof (merged as any).onSessionIdReplaced !== 'function')
       merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
     if (typeof (merged as any).checkForUpdate !== 'function')
