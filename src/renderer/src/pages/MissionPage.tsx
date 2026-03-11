@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { List, PanelsLeftRight } from 'lucide-react'
+import { PanelsLeftRight } from 'lucide-react'
 
 import { ChatPage } from './ChatPage'
 import { MissionControlPanel } from '@/components/mission-control-panel'
@@ -121,18 +121,7 @@ export function MissionPage() {
             forceInputDisabled={inputSemantics.disabled}
             forceDisabledPlaceholder={inputSemantics.placeholder}
           />
-          <div className="absolute right-4 top-1 z-20 flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              data-testid="mission-worker-list-toggle"
-              onClick={() => setManualView('worker-list')}
-              className="h-7 gap-1 bg-background/90 px-2 text-xs shadow-sm backdrop-blur"
-            >
-              <List className="size-3.5" />
-              WorkerList
-            </Button>
+          <div className="absolute right-4 top-1 z-20">
             <Button
               type="button"
               size="sm"

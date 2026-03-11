@@ -505,18 +505,17 @@ export function MissionWorkerListPanel({
                     size="sm"
                     variant={isActive ? 'default' : 'outline'}
                     onClick={() => setFilter(option.key)}
-                    className="h-8 gap-2 px-3 text-xs"
+                    className="h-8 gap-1.5 px-3 text-xs"
                   >
                     {option.label}
-                    <Badge
-                      variant="outline"
+                    <span
                       className={cn(
-                        'h-5 px-1.5 text-[10px]',
-                        isActive && 'border-primary-foreground/30 text-primary-foreground',
+                        'text-[10px] tabular-nums',
+                        isActive ? 'text-primary-foreground/70' : 'text-muted-foreground',
                       )}
                     >
                       {option.count}
-                    </Badge>
+                    </span>
                   </Button>
                 )
               })}
@@ -552,28 +551,21 @@ export function MissionWorkerListPanel({
                             </Badge>
                           )}
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground/70">
-                          <span
-                            className="font-mono"
-                            title={worker.workerSessionId}
-                          >
-                            {formatShortSessionId(worker.workerSessionId)}
-                          </span>
-                          {worker.hasHandoff && (
-                            <>
-                              <span className="text-muted-foreground/30">·</span>
-                              <span>Handoff</span>
-                            </>
-                          )}
-                          {worker.failureReason && (
-                            <>
-                              <span className="text-muted-foreground/30">·</span>
-                              <span className="truncate text-destructive/80">
-                                {worker.failureReason}
-                              </span>
-                            </>
-                          )}
-                        </div>
+                        {(worker.hasHandoff || worker.failureReason) && (
+                          <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                            {worker.hasHandoff && <span>Handoff</span>}
+                            {worker.failureReason && (
+                              <>
+                                {worker.hasHandoff && (
+                                  <span className="text-muted-foreground/30">·</span>
+                                )}
+                                <span className="truncate text-destructive/80">
+                                  {worker.failureReason}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <Badge

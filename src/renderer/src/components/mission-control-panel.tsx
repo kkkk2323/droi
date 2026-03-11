@@ -8,7 +8,9 @@ import {
   Circle,
   List,
   LoaderCircle,
+  Maximize2,
   MessagesSquare,
+  Minimize2,
   PauseCircle,
   ShieldCheck,
   SquareX,
@@ -36,12 +38,12 @@ const EMPTY_RUNTIME_LOGS: RuntimeLogEntry[] = []
 
 function getStateBadgeVariant(
   stateLabel: string,
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+): 'default' | 'secondary' | 'destructive' | 'warning' | 'outline' {
   const normalized = stateLabel.toLowerCase()
   if (normalized === 'completed') return 'default'
   if (normalized === 'running') return 'secondary'
   if (normalized === 'validation pending') return 'secondary'
-  if (normalized === 'paused') return 'destructive'
+  if (normalized === 'paused') return 'warning'
   return 'outline'
 }
 
@@ -62,15 +64,6 @@ function getSuccessBadgeVariant(
   if (normalized === 'partial') return 'secondary'
   if (normalized === 'failure') return 'destructive'
   return 'outline'
-}
-
-function getToneClasses(tone: 'default' | 'warning' | 'danger' | 'success'): string {
-  if (tone === 'danger') return 'border-destructive/40 bg-destructive/5 text-destructive'
-  if (tone === 'warning')
-    return 'border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400'
-  if (tone === 'success')
-    return 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
-  return 'border-border/70 bg-muted/20 text-muted-foreground'
 }
 
 function formatTimeOnly(timestampLabel: string): string {
@@ -119,18 +112,23 @@ function HandoffRow({
       <button
         type="button"
         className={cn(
-          'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors',
+          'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
           'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         )}
         onClick={() => onSelect(handoff)}
       >
         {getHandoffIcon(handoff.successState)}
-        <span className="font-medium text-foreground">{handoff.title}</span>
-        <span className="truncate font-mono opacity-40">
-          {handoff.salientSummary.slice(0, 60)}
-          {handoff.salientSummary.length > 60 ? '...' : ''}
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+          {handoff.title}
         </span>
-        <Badge className="ml-auto shrink-0" variant={getSuccessBadgeVariant(handoff.successState)}>
+        <Badge
+          className={cn('shrink-0', {
+            'text-emerald-600 dark:text-emerald-400':
+              handoff.successState.toLowerCase() === 'success',
+            'text-destructive': handoff.successState.toLowerCase() === 'failure',
+          })}
+          variant="outline"
+        >
           {handoff.successState}
         </Badge>
         <ChevronRight className="size-3 shrink-0 opacity-40" />
@@ -236,6 +234,7 @@ export function MissionControlPanel({
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeHandoff, setActiveHandoff] = useState<HandoffData | null>(null)
   const [workerFollowupInput, setWorkerFollowupInput] = useState('')
+  const [logsExpanded, setLogsExpanded] = useState(false)
   const [workerFollowupState, setWorkerFollowupState] = useState<
     'idle' | 'sending' | 'sent' | 'failed'
   >('idle')
@@ -253,9 +252,11 @@ export function MissionControlPanel({
     [messages, mission, pendingAction],
   )
   const hasRuntimeLogs = runtimeLogs.length > 0
+  const hasTimeline = timeline.length > 0
+  const hasHandoffs = handoffs.length > 0
   const followupUnavailableReason = useMemo(() => {
     if (!actionState.canMessagePausedWorker || !actionState.pausedWorkerSessionId) return undefined
-    if (!runtimeLogState) return 'Waiting for paused worker session logs…'
+    if (!runtimeLogState) return 'Waiting for paused worker session logs...'
     if (runtimeLogState.workerSessionId !== actionState.pausedWorkerSessionId) {
       return 'Paused worker session logs are not ready yet.'
     }
@@ -271,7 +272,7 @@ export function MissionControlPanel({
   const runtimeLogsEmptyState =
     runtimeLogState?.message ||
     (mission?.currentState === 'running'
-      ? 'Waiting for worker session transcript…'
+      ? 'Waiting for worker session transcript...'
       : 'No runtime logs captured for this worker yet.')
 
   useEffect(() => {
@@ -368,9 +369,6 @@ export function MissionControlPanel({
       })
   }
 
-  const hasTimeline = timeline.length > 0
-  const hasHandoffs = handoffs.length > 0
-
   if (activeHandoff) {
     return (
       <div
@@ -387,13 +385,22 @@ export function MissionControlPanel({
       data-testid="mission-control-view"
       className="flex min-w-0 flex-1 flex-col overflow-hidden"
     >
-      {/* Header bar: status + actions + view toggle */}
+      {/* Header: status + actions + view toggles */}
       <div className="shrink-0 border-b border-border bg-background/95 px-4 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
+        <div className="flex items-center gap-3">
           <Badge data-testid="mission-status" variant={getStateBadgeVariant(status.stateLabel)}>
             {status.stateLabel}
           </Badge>
           <span className="text-sm text-muted-foreground">{status.progressLabel}</span>
+
+          {runtimeStatus.tone !== 'default' && (
+            <span
+              data-testid="mission-runtime-status"
+              className="text-xs text-muted-foreground/70"
+            >
+              {runtimeStatus.title}
+            </span>
+          )}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <div data-testid="mission-action-bar" className="flex items-center gap-1.5">
@@ -465,231 +472,254 @@ export function MissionControlPanel({
         </div>
       </div>
 
-      {/* Alert banner */}
-      {runtimeStatus.tone !== 'default' && (
-        <div
-          data-testid="mission-runtime-status"
-          className={cn('shrink-0 border-b px-4 py-2', getToneClasses(runtimeStatus.tone))}
-        >
-          <div className="mx-auto max-w-5xl text-sm">
-            <span className="font-medium">{runtimeStatus.title}</span>
-            <span className="ml-2 text-xs opacity-70">{runtimeStatus.description}</span>
-          </div>
-        </div>
-      )}
-
+      {/* Action error */}
       {actionError && (
-        <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-4 py-2">
-          <div className="mx-auto flex max-w-5xl items-center gap-2 text-sm text-destructive">
-            <AlertTriangle className="size-3.5 shrink-0" />
+        <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-4 py-1.5">
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <AlertTriangle className="size-3 shrink-0" />
             <span>{actionError}</span>
           </div>
         </div>
       )}
 
+      {/* Paused worker follow-up: compact inline input */}
       {actionState.canMessagePausedWorker && actionState.pausedWorkerSessionId && (
-        <div className="shrink-0 border-b border-border bg-muted/10 px-4 py-3">
-          <div className="mx-auto max-w-5xl space-y-2">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-              <span>Paused worker follow-up</span>
-              <Badge variant="outline" className="font-mono text-[10px] normal-case">
-                {actionState.pausedWorkerSessionId}
-              </Badge>
-            </div>
-            <div className="flex items-start gap-2">
-              <textarea
-                value={workerFollowupInput}
-                onChange={(event) => {
-                  setWorkerFollowupInput(event.target.value)
-                  if (workerFollowupState !== 'idle') setWorkerFollowupState('idle')
-                  if (workerFollowupError) setWorkerFollowupError(null)
-                }}
-                onKeyDown={(event) => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                    event.preventDefault()
-                    handleWorkerFollowupSubmit()
-                  }
-                }}
-                rows={2}
-                placeholder="Send a focused note to the paused worker before resuming Mission execution..."
-                className="min-h-[64px] flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
-              />
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleWorkerFollowupSubmit}
-                disabled={!canSubmitWorkerFollowup}
-                className="h-9 px-3"
-              >
-                {workerFollowupState === 'sending' ? (
-                  <LoaderCircle className="size-3.5 animate-spin" />
-                ) : null}
-                Send
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {workerFollowupState === 'sending'
-                ? 'Sending to the paused worker and requesting Mission resume...'
-                : workerFollowupState === 'sent'
-                  ? 'Follow-up delivered and Mission resume requested.'
-                  : workerFollowupState === 'failed'
-                    ? workerFollowupError || 'Failed to send follow-up to the paused worker.'
-                    : followupUnavailableReason ||
-                      'This sends guidance to the paused worker, then automatically asks the Mission orchestrator to resume the run.'}
-            </div>
+        <div className="shrink-0 border-b border-border bg-muted/5 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-xs text-muted-foreground">Follow-up</span>
+            <input
+              type="text"
+              value={workerFollowupInput}
+              onChange={(event) => {
+                setWorkerFollowupInput(event.target.value)
+                if (workerFollowupState !== 'idle') setWorkerFollowupState('idle')
+                if (workerFollowupError) setWorkerFollowupError(null)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handleWorkerFollowupSubmit()
+                }
+              }}
+              placeholder="Send guidance to the paused worker..."
+              className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring/20"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleWorkerFollowupSubmit}
+              disabled={!canSubmitWorkerFollowup}
+              className="h-7 px-3 text-xs"
+            >
+              {workerFollowupState === 'sending' ? (
+                <LoaderCircle className="size-3 animate-spin" />
+              ) : null}
+              Send
+            </Button>
+            {workerFollowupState === 'sent' && (
+              <span className="shrink-0 text-[10px] text-emerald-600">Sent</span>
+            )}
+            {workerFollowupState === 'failed' && (
+              <span className="shrink-0 text-[10px] text-destructive">
+                {workerFollowupError || 'Failed'}
+              </span>
+            )}
+            {followupUnavailableReason && workerFollowupState === 'idle' && (
+              <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                {followupUnavailableReason}
+              </span>
+            )}
           </div>
         </div>
       )}
 
-      {/* Content: fills 100% remaining height */}
-      <div className="flex min-h-0 flex-1 flex-col px-4">
-        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-          {/* Feature Queue -- always visible */}
-          <section className="shrink-0 pt-4 pb-3">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Features
-            </h3>
-            <div data-testid="mission-feature-queue" className="space-y-0.5">
-              {featureQueue.length === 0 ? (
-                <p className="py-3 text-sm text-muted-foreground/60">No features queued yet.</p>
-              ) : (
-                featureQueue.map((feature) => (
-                  <div
-                    key={feature.id}
-                    data-testid={feature.testId}
-                    className={cn(
-                      'flex min-w-0 items-center gap-2.5 rounded-md px-2.5 py-1.5',
-                      feature.isCurrent
-                        ? 'bg-primary/5 ring-1 ring-primary/20'
-                        : 'hover:bg-muted/30',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'size-1.5 shrink-0 rounded-full',
-                        getFeatureStatusDot(feature.status, feature.isCurrent),
-                      )}
-                    />
-                    <span
-                      className="min-w-0 flex-1 truncate text-sm text-foreground"
-                      title={feature.description}
-                    >
-                      {feature.description}
-                    </span>
-                    {feature.isValidator && (
-                      <ShieldCheck className="size-3 shrink-0 text-violet-500" />
-                    )}
-                    <span
-                      className={cn(
-                        'shrink-0 text-xs',
-                        feature.isCurrent ? 'font-medium text-primary' : 'text-muted-foreground',
-                      )}
-                    >
-                      {feature.statusLabel}
-                    </span>
-                  </div>
-                ))
-              )}
+      {/* Main content: three columns + bottom logs */}
+      <div className={cn('flex min-h-0 flex-1 flex-col', logsExpanded && 'hidden')}>
+        <div className="flex min-h-0 flex-1">
+          {/* Left: Features */}
+          <section className="flex w-[280px] shrink-0 flex-col border-r border-border">
+            <div className="shrink-0 px-3 pt-3 pb-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Features
+              </h3>
             </div>
+            <ScrollArea data-testid="mission-feature-queue" className="min-h-0 flex-1 px-3">
+              <div className="space-y-0.5 pb-3">
+                {featureQueue.length === 0 ? (
+                  <p className="py-4 text-xs text-muted-foreground/60">
+                    No features queued yet.
+                  </p>
+                ) : (
+                  featureQueue.map((feature) => (
+                    <div
+                      key={feature.id}
+                      data-testid={feature.testId}
+                      className={cn(
+                        'flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5',
+                        feature.isCurrent
+                          ? 'border-primary/20 bg-primary/5'
+                          : 'border-transparent hover:bg-muted/30',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'size-1.5 shrink-0 rounded-full',
+                          getFeatureStatusDot(feature.status, feature.isCurrent),
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate text-xs',
+                          feature.isCurrent ? 'text-foreground' : feature.status === 'completed' || feature.status === 'cancelled' ? 'text-muted-foreground' : 'text-foreground',
+                        )}
+                        title={feature.description}
+                      >
+                        {feature.description}
+                      </span>
+                      {feature.isValidator && (
+                        <ShieldCheck className="size-3 shrink-0 text-violet-500" />
+                      )}
+                      <span
+                        className={cn(
+                          'shrink-0 text-[10px]',
+                          feature.isCurrent
+                            ? 'font-medium text-primary'
+                            : 'text-muted-foreground',
+                        )}
+                      >
+                        {feature.statusLabel}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
           </section>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4 pb-4">
-            {/* Timeline -- fills remaining space with ScrollArea */}
-            {hasTimeline && (
-              <section className="flex min-h-0 flex-1 flex-col">
-                <h3 className="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Timeline
-                </h3>
-                <ScrollArea data-testid="mission-progress-timeline" className="min-h-0 flex-1">
-                  <div className="relative ml-3">
-                    <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
-                    {timeline.map((entry, index) => (
-                      <div
-                        key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
-                        className="relative flex min-w-0 items-baseline gap-3 py-1.5 pl-5"
-                      >
-                        <span className="absolute top-[11px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
-                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
-                          {formatTimeOnly(entry.timestampLabel)}
+          {/* Center: Timeline */}
+          <section className="flex min-w-0 flex-1 flex-col border-r border-border">
+            <div className="shrink-0 px-3 pt-3 pb-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Timeline
+              </h3>
+            </div>
+            <ScrollArea data-testid="mission-progress-timeline" className="min-h-0 flex-1 px-3">
+              {hasTimeline ? (
+                <div className="relative ml-2 pb-3">
+                  <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
+                  {timeline.map((entry, index) => (
+                    <div
+                      key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
+                      className="relative flex min-w-0 items-baseline gap-2 py-1 pl-4"
+                    >
+                      <span className="absolute top-[9px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
+                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
+                        {formatTimeOnly(entry.timestampLabel)}
+                      </span>
+                      <span className="shrink-0 text-xs text-foreground">{entry.eventLabel}</span>
+                      {entry.detailLabel && (
+                        <span className="min-w-0 truncate text-[10px] text-muted-foreground/50">
+                          {entry.detailLabel}
                         </span>
-                        <span className="shrink-0 text-sm text-foreground">{entry.eventLabel}</span>
-                        {entry.detailLabel && (
-                          <span className="min-w-0 truncate text-xs text-muted-foreground/60">
-                            {entry.detailLabel}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </section>
-            )}
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-2 py-4 text-xs text-muted-foreground/60">
+                  No timeline events yet.
+                </p>
+              )}
+            </ScrollArea>
+          </section>
 
-            <section className={cn('flex min-h-0 flex-col', hasTimeline ? 'max-h-56' : 'flex-1')}>
-              <div className="mb-2  flex items-center gap-2">
-                <h3 className="text-xs py-1 font-medium uppercase tracking-wide text-muted-foreground">
-                  Runtime Logs
-                </h3>
-                {followLogs && hasRuntimeLogs ? (
-                  <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                    Live
-                  </Badge>
-                ) : null}
-              </div>
-              <ScrollArea
-                data-testid="mission-runtime-logs"
-                className={cn(
-                  'min-h-0 rounded-md border border-border/70 bg-muted/10',
-                  hasTimeline ? 'flex-1' : 'min-h-[220px] flex-1',
-                )}
-                viewportRef={logsViewportRef}
-              >
-                {hasRuntimeLogs ? (
-                  <div className="space-y-1 p-3 font-mono text-xs">
-                    {runtimeLogs.map((entry, index) => (
-                      <div
-                        key={`${entry.ts}-${entry.stream}-${index}`}
-                        className="flex min-w-0 items-start gap-2"
-                      >
-                        <span className="shrink-0 text-[10px] text-muted-foreground/60">
-                          {formatRuntimeLogTime(entry.ts)}
-                        </span>
-                        <span className="shrink-0 text-[10px] uppercase text-muted-foreground/60">
-                          {entry.stream}
-                        </span>
-                        <span
-                          className={cn(
-                            'min-w-0 whitespace-pre-wrap break-words',
-                            getRuntimeLogTone(entry.stream),
-                          )}
-                        >
-                          {entry.text}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex h-full min-h-[140px] items-center justify-center px-4 py-6 text-sm text-muted-foreground/70">
-                    {runtimeLogsEmptyState}
-                  </div>
-                )}
-              </ScrollArea>
-            </section>
-          </div>
-
-          {/* Handoffs -- preview rows, click to open detail sub-page */}
-          {hasHandoffs && (
-            <section className="shrink-0 pb-4">
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {/* Right: Handoffs */}
+          <section className="flex min-w-0 flex-1 flex-col">
+            <div className="shrink-0 px-3 pt-3 pb-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Handoffs
               </h3>
-              {handoffs.map((handoff) => (
-                <HandoffRow key={handoff.key} handoff={handoff} onSelect={setActiveHandoff} />
-              ))}
-            </section>
-          )}
+            </div>
+            <ScrollArea className="min-h-0 flex-1 px-1">
+              {hasHandoffs ? (
+                <div className="pb-3">
+                  {handoffs.map((handoff) => (
+                    <HandoffRow
+                      key={handoff.key}
+                      handoff={handoff}
+                      onSelect={setActiveHandoff}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="px-3 py-4 text-xs text-muted-foreground/60">No handoffs yet.</p>
+              )}
+            </ScrollArea>
+          </section>
         </div>
       </div>
+
+      {/* Bottom: Runtime Logs (collapsible / expandable) */}
+      <section
+        className={cn(
+          'flex flex-col border-t border-border',
+          logsExpanded ? 'min-h-0 flex-1' : 'h-[200px] shrink-0',
+        )}
+      >
+        <div className="flex shrink-0 items-center gap-2 px-3 py-1.5">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Runtime Logs
+          </h3>
+          {followLogs && hasRuntimeLogs && (
+            <Badge variant="outline" className="h-4 px-1 text-[9px]">
+              Live
+            </Badge>
+          )}
+          <button
+            type="button"
+            onClick={() => setLogsExpanded((v) => !v)}
+            className="ml-auto rounded p-1 text-muted-foreground/50 transition-colors hover:bg-muted/40 hover:text-muted-foreground"
+            title={logsExpanded ? 'Collapse logs' : 'Expand logs'}
+          >
+            {logsExpanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+          </button>
+        </div>
+        <ScrollArea
+          data-testid="mission-runtime-logs"
+          className="min-h-0 flex-1 border-t border-border/50 bg-muted/5"
+          viewportRef={logsViewportRef}
+        >
+          {hasRuntimeLogs ? (
+            <div className="space-y-0.5 p-3 font-mono text-xs">
+              {runtimeLogs.map((entry, index) => (
+                <div
+                  key={`${entry.ts}-${entry.stream}-${index}`}
+                  className="flex min-w-0 items-start gap-2"
+                >
+                  <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                    {formatRuntimeLogTime(entry.ts)}
+                  </span>
+                  <span className="shrink-0 text-[10px] uppercase text-muted-foreground/60">
+                    {entry.stream}
+                  </span>
+                  <span
+                    className={cn(
+                      'min-w-0 whitespace-pre-wrap break-words',
+                      getRuntimeLogTone(entry.stream),
+                    )}
+                  >
+                    {entry.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full min-h-[100px] items-center justify-center px-4 py-4 text-xs text-muted-foreground/60">
+              {runtimeLogsEmptyState}
+            </div>
+          )}
+        </ScrollArea>
+      </section>
     </div>
   )
 }
