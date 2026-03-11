@@ -1,7 +1,6 @@
 import { ipcMain, dialog, shell, app, type BrowserWindow } from 'electron'
-import { copyFile, mkdir, readFile, stat, writeFile } from 'fs/promises'
+import { copyFile, mkdir, stat, writeFile } from 'fs/promises'
 import { basename, extname, join } from 'path'
-import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { getDroidVersion, DroidExecManager } from '../../backend/droid/droidExecRunner'
@@ -29,9 +28,22 @@ import {
 import { commitWorkflow, detectGitTools } from '../../backend/git/commitWorkflow'
 import { generateCommitMeta } from '../../backend/git/generateCommitMeta'
 import { SetupScriptRunner } from '../../backend/session/setupScriptRunner'
+import { createFactoryApiProxy } from '../../backend/keys/factoryApiProxy'
 import { createKeyStore } from '../../backend/keys/keyStore'
 import { createAppStateStore } from '../../backend/storage/appStateStore'
+import {
+  readFactoryCustomModels,
+  readFactoryMissionModelSettings,
+  writeFactoryMissionModelSettings,
+} from '../../backend/storage/factorySettings.ts'
 import { createSessionStore } from '../../backend/storage/sessionStore'
+import {
+  readMissionDirSnapshot,
+  resolveMissionDirPath,
+} from '../../backend/mission/missionDirReader.ts'
+import { MissionDirWatcher } from '../../backend/mission/missionDirWatcher.ts'
+import { readMissionRuntimeSnapshot } from '../../backend/mission/workerRuntimeReader.ts'
+import { WorkerRuntimeWatcher } from '../../backend/mission/workerRuntimeWatcher.ts'
 import type {
   PersistedAppState,
   PersistedAppStateV2,
@@ -46,6 +58,15 @@ import type {
   GenerateCommitMetaRequest,
   CommitWorkflowRequest,
 } from '../../shared/protocol'
+import type {
+  MissionDirRequest,
+  MissionRuntimeRequest,
+} from '../../backend/mission/missionTypes.ts'
+import {
+  resolveSessionProtocolFields,
+  type DecompSessionType,
+  type SessionKind,
+} from '../../shared/sessionProtocol.ts'
 
 function apiKeyFingerprint(key: string): string {
   const k = String(key || '')
@@ -65,6 +86,44 @@ function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
   if (v === 'medium') return 'medium'
   if (v === 'high') return 'high'
   return 'low'
+}
+
+function coerceInteractionMode(value: unknown): DroidInteractionMode | undefined {
+  return value === 'spec' || value === 'auto' || value === 'agi' ? value : undefined
+}
+
+function coerceAutonomyLevel(value: unknown): DroidAutonomyLevel | undefined {
+  return value === 'off' || value === 'low' || value === 'medium' || value === 'high'
+    ? value
+    : undefined
+}
+
+function coerceSessionKind(value: unknown): SessionKind | undefined {
+  return value === 'mission' || value === 'normal' ? value : undefined
+}
+
+function coerceDecompSessionType(value: unknown): DecompSessionType | undefined {
+  return value === 'orchestrator' ? value : undefined
+}
+
+function resolveProtocolPayload(payload: {
+  autoLevel?: unknown
+  isMission?: unknown
+  sessionKind?: unknown
+  interactionMode?: unknown
+  autonomyLevel?: unknown
+  decompSessionType?: unknown
+}) {
+  return resolveSessionProtocolFields({
+    autoLevel: payload.autoLevel,
+    explicit: {
+      isMission: payload.isMission === true ? true : undefined,
+      sessionKind: coerceSessionKind(payload.sessionKind),
+      interactionMode: coerceInteractionMode(payload.interactionMode),
+      autonomyLevel: coerceAutonomyLevel(payload.autonomyLevel),
+      decompSessionType: coerceDecompSessionType(payload.decompSessionType),
+    },
+  })
 }
 
 function readTraceChainEnabled(state: PersistedAppState): boolean | undefined {
@@ -114,9 +173,12 @@ export function registerIpcHandlers(opts: {
   const appStateStore = createAppStateStore({ baseDir: opts.baseDir })
   const sessionStore = createSessionStore({ baseDir: opts.baseDir })
   const keyStore = createKeyStore(appStateStore)
+  const factoryApiProxy = createFactoryApiProxy({ keyStore })
   const diagnostics = opts.diagnostics || new LocalDiagnostics({ baseDir: opts.baseDir })
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
+  const missionDirWatchers = new Map<string, MissionDirWatcher>()
+  const missionRuntimeWatchers = new Map<string, WorkerRuntimeWatcher>()
 
   let cachedState: PersistedAppState = { version: 2, machineId: '' }
   let activeProjectDir = ''
@@ -126,6 +188,99 @@ export function registerIpcHandlers(opts: {
     commands: Map<string, SlashCommandEntry>
   } | null = null
   let skillCache: { projectDir: string; at: number; skills: SkillDef[] } | null = null
+
+  const stopMissionDirWatcher = async (sessionId: string) => {
+    const watcher = missionDirWatchers.get(sessionId)
+    if (!watcher) return
+    missionDirWatchers.delete(sessionId)
+    await watcher.stop()
+  }
+
+  const stopMissionRuntimeWatcher = async (sessionId: string) => {
+    const watcher = missionRuntimeWatchers.get(sessionId)
+    if (!watcher) return
+    missionRuntimeWatchers.delete(sessionId)
+    await watcher.stop()
+  }
+
+  const resolveMissionDirRequest = (params: MissionDirRequest) => {
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    const missionDir = resolveMissionDirPath({
+      sessionId,
+      missionDir: params?.missionDir,
+      missionBaseSessionId: params?.missionBaseSessionId,
+    })
+    return { sessionId, missionDir }
+  }
+
+  const buildExecEnv = async (): Promise<Record<string, string | undefined>> => {
+    const env: Record<string, string | undefined> = { ...process.env }
+    const activeKey = await keyStore.getActiveKey()
+    const bootstrapKey = activeKey || cachedState.apiKey || process.env['FACTORY_API_KEY']
+    if (bootstrapKey) env['FACTORY_API_KEY'] = bootstrapKey
+    env['FACTORY_API_BASE_URL'] = await factoryApiProxy.getBaseUrl()
+    if (activeKey && activeKey !== cachedState.apiKey) {
+      cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
+    }
+    return env
+  }
+
+  const mergeLoadSessionResponse = (
+    stored: Awaited<ReturnType<typeof sessionStore.load>>,
+    live: Record<string, unknown> | null,
+  ) => {
+    if (!stored || !live) return stored
+
+    const settings =
+      live.settings && typeof live.settings === 'object' ? (live.settings as any) : {}
+    const protocol = resolveSessionProtocolFields({
+      autoLevel: stored.autoLevel,
+      explicit: {
+        isMission: (live as any).isMission ?? stored.isMission,
+        sessionKind: coerceSessionKind((live as any).sessionKind) || stored.sessionKind,
+        interactionMode:
+          coerceInteractionMode((live as any).interactionMode) ||
+          coerceInteractionMode(settings.interactionMode) ||
+          stored.interactionMode,
+        autonomyLevel:
+          coerceAutonomyLevel((live as any).autonomyLevel) ||
+          coerceAutonomyLevel(settings.autonomyLevel) ||
+          stored.autonomyLevel,
+        decompSessionType:
+          coerceDecompSessionType((live as any).decompSessionType) || stored.decompSessionType,
+      },
+    })
+
+    return {
+      ...stored,
+      model:
+        (typeof (live as any).modelId === 'string' ? (live as any).modelId : undefined) ||
+        (typeof settings.modelId === 'string' ? settings.modelId : undefined) ||
+        stored.model,
+      missionDir:
+        (typeof (live as any).missionDir === 'string' ? (live as any).missionDir : undefined) ||
+        stored.missionDir,
+      isMission: protocol.isMission,
+      sessionKind: protocol.sessionKind,
+      interactionMode: protocol.interactionMode,
+      autonomyLevel: protocol.autonomyLevel,
+      decompSessionType: protocol.decompSessionType,
+      reasoningEffort:
+        (typeof (live as any).reasoningEffort === 'string'
+          ? (live as any).reasoningEffort
+          : undefined) ||
+        (typeof settings.reasoningEffort === 'string' ? settings.reasoningEffort : undefined) ||
+        stored.reasoningEffort,
+      messages: Array.isArray((live as any).messages)
+        ? ((live as any).messages as any)
+        : stored.messages,
+      mission:
+        live.mission && typeof live.mission === 'object'
+          ? ({ ...(live.mission as Record<string, unknown>) } as any)
+          : stored.mission,
+    }
+  }
 
   const getSlashCommands = async (): Promise<Map<string, SlashCommandEntry>> => {
     const projectDir = activeProjectDir || cachedState.activeProjectDir || ''
@@ -191,140 +346,150 @@ export function registerIpcHandlers(opts: {
     return skills
   })
 
-  ipcMain.on('droid:exec', (_event, { prompt, sessionId, modelId, autoLevel, reasoningEffort }) => {
-    const sid = typeof sessionId === 'string' ? sessionId : null
-    const win = opts.getMainWindow()
-    const emitDebug = (message: string) => {
-      if (!win) return
-      win.webContents.send('droid:debug', { message, sessionId: sid })
-    }
-    emitDebug(
-      `ipc-exec-received: sessionId=${sid ?? 'null'} model=${typeof modelId === 'string' ? modelId : 'default'} auto=${typeof autoLevel === 'string' ? autoLevel : 'default'}`,
-    )
-    if (typeof prompt === 'string' && sid) {
-      const sig = diagnostics.computePromptSig(prompt)
-      diagnostics.noteInputPromptSig(sid, sig)
-      void diagnostics.append({
-        ts: new Date().toISOString(),
-        level: 'info',
-        scope: 'main',
-        event: 'ipc.exec.received',
-        sessionId: sid,
-        correlation: {
-          modelId: typeof modelId === 'string' ? modelId : undefined,
-          autoLevel: typeof autoLevel === 'string' ? autoLevel : undefined,
-        },
-        data: { promptSig: sig },
+  ipcMain.on(
+    'droid:exec',
+    (
+      _event,
+      {
+        prompt,
+        sessionId,
+        modelId,
+        autoLevel,
+        reasoningEffort,
+        isMission,
+        sessionKind,
+        interactionMode,
+        autonomyLevel,
+        decompSessionType,
+      },
+    ) => {
+      const sid = typeof sessionId === 'string' ? sessionId : null
+      const protocol = resolveProtocolPayload({
+        autoLevel,
+        isMission,
+        sessionKind,
+        interactionMode,
+        autonomyLevel,
+        decompSessionType,
       })
-    }
-    if (typeof prompt !== 'string' || !prompt.trim() || !sid) {
+      const win = opts.getMainWindow()
+      const emitDebug = (message: string) => {
+        if (!win) return
+        win.webContents.send('droid:debug', { message, sessionId: sid })
+      }
       emitDebug(
-        `ipc-exec-precheck-failed: sessionId=${sid ?? 'null'} reason=invalid-prompt-or-session`,
+        `ipc-exec-received: sessionId=${sid ?? 'null'} model=${typeof modelId === 'string' ? modelId : 'default'} auto=${typeof autoLevel === 'string' ? autoLevel : 'default'}`,
       )
-      void diagnostics.append({
-        ts: new Date().toISOString(),
-        level: 'warn',
-        scope: 'main',
-        event: 'ipc.exec.precheck_failed',
-        sessionId: sid || undefined,
-        data: { reason: 'invalid-prompt-or-session' },
-      })
-      return
-    }
-
-    const cwd = activeProjectDir
-    const env: Record<string, string | undefined> = { ...process.env }
-
-    if (!win) return
-    void (async () => {
-      if (!cwd || !(await isExistingDir(cwd))) {
+      if (typeof prompt === 'string' && sid) {
+        const sig = diagnostics.computePromptSig(prompt)
+        diagnostics.noteInputPromptSig(sid, sig)
+        void diagnostics.append({
+          ts: new Date().toISOString(),
+          level: 'info',
+          scope: 'main',
+          event: 'ipc.exec.received',
+          sessionId: sid,
+          correlation: {
+            modelId: typeof modelId === 'string' ? modelId : undefined,
+            autoLevel: typeof autoLevel === 'string' ? autoLevel : undefined,
+          },
+          data: { promptSig: sig },
+        })
+      }
+      if (typeof prompt !== 'string' || !prompt.trim() || !sid) {
         emitDebug(
-          `ipc-exec-precheck-failed: sessionId=${sid} reason=missing-or-invalid-project-dir cwd=${cwd || '(empty)'}`,
+          `ipc-exec-precheck-failed: sessionId=${sid ?? 'null'} reason=invalid-prompt-or-session`,
         )
-        win.webContents.send('droid:error', {
-          message: 'No active project directory set. Select a project first.',
-          sessionId: sid,
+        void diagnostics.append({
+          ts: new Date().toISOString(),
+          level: 'warn',
+          scope: 'main',
+          event: 'ipc.exec.precheck_failed',
+          sessionId: sid || undefined,
+          data: { reason: 'invalid-prompt-or-session' },
         })
-        win.webContents.send('droid:turn-end', { code: 1, sessionId: sid })
         return
       }
 
-      const machineId = (cachedState as PersistedAppStateV2).machineId
-      if (!machineId) {
-        emitDebug(`ipc-exec-precheck-failed: sessionId=${sid} reason=missing-machine-id`)
-        win.webContents.send('droid:error', {
-          message: 'Missing machineId in app state.',
-          sessionId: sid,
-        })
-        win.webContents.send('droid:turn-end', { code: 1, sessionId: sid })
-        return
-      }
-
-      const resumeSessionId = sid
-
-      if (!execManager.hasSession(sid)) {
-        if (cachedState.apiKey) {
-          env['FACTORY_API_KEY'] = cachedState.apiKey
-        } else {
-          const activeKey = await keyStore.getActiveKey()
-          if (activeKey) {
-            env['FACTORY_API_KEY'] = activeKey
-            if (activeKey !== cachedState.apiKey) {
-              cachedState = {
-                ...(cachedState as PersistedAppStateV2),
-                apiKey: activeKey,
-                version: 2,
-              }
-            }
-          }
+      const cwd = activeProjectDir
+      if (!win) return
+      void (async () => {
+        if (!cwd || !(await isExistingDir(cwd))) {
+          emitDebug(
+            `ipc-exec-precheck-failed: sessionId=${sid} reason=missing-or-invalid-project-dir cwd=${cwd || '(empty)'}`,
+          )
+          win.webContents.send('droid:error', {
+            message: 'No active project directory set. Select a project first.',
+            sessionId: sid,
+          })
+          win.webContents.send('droid:turn-end', { code: 1, sessionId: sid })
+          return
         }
-      }
 
-      emitDebug(`ipc-exec-send-start: sessionId=${sid}`)
-      void diagnostics.append({
-        ts: new Date().toISOString(),
-        level: 'debug',
-        scope: 'main',
-        event: 'ipc.exec.send_start',
-        sessionId: sid,
-      })
-      try {
-        await execManager.send({
-          sessionId: sid,
-          resumeSessionId,
-          machineId,
-          prompt,
-          cwd,
-          modelId: typeof modelId === 'string' ? modelId : undefined,
-          interactionMode: toInteractionMode(autoLevel),
-          autonomyLevel: toAutonomyLevel(autoLevel),
-          reasoningEffort: typeof reasoningEffort === 'string' ? reasoningEffort : undefined,
-          env,
-        })
-        emitDebug(`ipc-exec-send-returned: sessionId=${sid}`)
+        const machineId = (cachedState as PersistedAppStateV2).machineId
+        if (!machineId) {
+          emitDebug(`ipc-exec-precheck-failed: sessionId=${sid} reason=missing-machine-id`)
+          win.webContents.send('droid:error', {
+            message: 'Missing machineId in app state.',
+            sessionId: sid,
+          })
+          win.webContents.send('droid:turn-end', { code: 1, sessionId: sid })
+          return
+        }
+
+        const resumeSessionId = sid
+
+        const env = !execManager.hasSession(sid) ? await buildExecEnv() : { ...process.env }
+
+        emitDebug(`ipc-exec-send-start: sessionId=${sid}`)
         void diagnostics.append({
           ts: new Date().toISOString(),
           level: 'debug',
           scope: 'main',
-          event: 'ipc.exec.send_returned',
+          event: 'ipc.exec.send_start',
           sessionId: sid,
         })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        emitDebug(`ipc-exec-send-threw: sessionId=${sid} error=${msg}`)
-        void diagnostics.append({
-          ts: new Date().toISOString(),
-          level: 'error',
-          scope: 'main',
-          event: 'ipc.exec.send_threw',
-          sessionId: sid,
-          data: { error: msg },
-        })
-        win.webContents.send('droid:error', { message: msg, sessionId: sid })
-        win.webContents.send('droid:turn-end', { code: 1, sessionId: sid })
-      }
-    })()
-  })
+        try {
+          await execManager.send({
+            sessionId: sid,
+            resumeSessionId,
+            machineId,
+            prompt,
+            cwd,
+            modelId: typeof modelId === 'string' ? modelId : undefined,
+            interactionMode: protocol.interactionMode,
+            autonomyLevel: protocol.autonomyLevel,
+            decompSessionType: protocol.decompSessionType,
+            isMission: protocol.isMission,
+            sessionKind: protocol.sessionKind,
+            reasoningEffort: typeof reasoningEffort === 'string' ? reasoningEffort : undefined,
+            env,
+          })
+          emitDebug(`ipc-exec-send-returned: sessionId=${sid}`)
+          void diagnostics.append({
+            ts: new Date().toISOString(),
+            level: 'debug',
+            scope: 'main',
+            event: 'ipc.exec.send_returned',
+            sessionId: sid,
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          emitDebug(`ipc-exec-send-threw: sessionId=${sid} error=${msg}`)
+          void diagnostics.append({
+            ts: new Date().toISOString(),
+            level: 'error',
+            scope: 'main',
+            event: 'ipc.exec.send_threw',
+            sessionId: sid,
+            data: { error: msg },
+          })
+          win.webContents.send('droid:error', { message: msg, sessionId: sid })
+          win.webContents.send('droid:turn-end', { code: 1, sessionId: sid })
+        }
+      })()
+    },
+  )
 
   const unsub = execManager.onEvent((ev) => {
     const w = opts.getMainWindow()
@@ -432,23 +597,83 @@ export function registerIpcHandlers(opts: {
         sessionId: string
         modelId?: string
         autoLevel?: string
+        isMission?: boolean
+        sessionKind?: SessionKind
+        interactionMode?: DroidInteractionMode
+        autonomyLevel?: DroidAutonomyLevel
+        decompSessionType?: DecompSessionType
         reasoningEffort?: string
       },
     ) => {
       if (!payload || typeof payload !== 'object') throw new Error('Invalid payload')
       if (typeof payload.sessionId !== 'string' || !payload.sessionId.trim())
         throw new Error('Missing sessionId')
+      const protocol = resolveProtocolPayload(payload)
       await execManager.updateSessionSettings({
         sessionId: payload.sessionId,
         modelId: typeof payload.modelId === 'string' ? payload.modelId : undefined,
-        interactionMode:
-          typeof payload.autoLevel === 'string' ? toInteractionMode(payload.autoLevel) : undefined,
-        autonomyLevel:
-          typeof payload.autoLevel === 'string' ? toAutonomyLevel(payload.autoLevel) : undefined,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
         reasoningEffort:
           typeof payload.reasoningEffort === 'string' ? payload.reasoningEffort : undefined,
       })
 
+      return { ok: true } as const
+    },
+  )
+
+  ipcMain.handle(
+    'droid:killWorkerSession',
+    async (_event, payload: { sessionId: string; workerSessionId: string }) => {
+      const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+      const workerSessionId =
+        typeof payload?.workerSessionId === 'string' ? payload.workerSessionId.trim() : ''
+      if (!sessionId || !workerSessionId) throw new Error('Missing sessionId/workerSessionId')
+      await execManager.killWorkerSession({ sessionId, workerSessionId })
+      return { ok: true } as const
+    },
+  )
+
+  ipcMain.handle(
+    'droid:sendWorkerFollowup',
+    async (
+      _event,
+      payload: {
+        sessionId: string
+        workerSessionId: string
+        aliasSessionId: string
+        cwd: string
+        prompt: string
+      },
+    ) => {
+      const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+      const workerSessionId =
+        typeof payload?.workerSessionId === 'string' ? payload.workerSessionId.trim() : ''
+      const aliasSessionId =
+        typeof payload?.aliasSessionId === 'string' ? payload.aliasSessionId.trim() : ''
+      const cwd = typeof payload?.cwd === 'string' ? payload.cwd.trim() : ''
+      const prompt = typeof payload?.prompt === 'string' ? payload.prompt : ''
+      if (!sessionId || !workerSessionId || !aliasSessionId || !cwd || !prompt.trim()) {
+        throw new Error('Missing sessionId/workerSessionId/aliasSessionId/cwd/prompt')
+      }
+
+      const machineId = (cachedState as PersistedAppStateV2).machineId
+      if (!machineId) throw new Error('Missing machineId')
+
+      const env = !execManager.hasSession(aliasSessionId)
+        ? await buildExecEnv()
+        : { ...process.env }
+      await execManager.sendLoadedSessionMessage({
+        sessionId: aliasSessionId,
+        loadSessionId: workerSessionId,
+        machineId,
+        prompt,
+        cwd,
+        env,
+      })
       return { ok: true } as const
     },
   )
@@ -609,17 +834,28 @@ export function registerIpcHandlers(opts: {
   )
 
   ipcMain.handle('dialog:openDirectory', async () => {
-    const win = opts.getMainWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'info',
+      scope: 'main',
+      event: 'main.dialog.open_directory.start',
+    })
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'info',
+      scope: 'main',
+      event: result.canceled
+        ? 'main.dialog.open_directory.cancel'
+        : 'main.dialog.open_directory.success',
+      data: { count: result.filePaths.length },
+    })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
   })
 
   ipcMain.handle('dialog:openFile', async () => {
-    const win = opts.getMainWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'] })
+    const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths
   })
@@ -951,13 +1187,56 @@ export function registerIpcHandlers(opts: {
     setupScriptRunner.cancel(sessionId)
   })
 
-  ipcMain.handle('session:load', async (_event, id: string) => sessionStore.load(id))
+  ipcMain.handle('session:load', async (_event, id: string) => {
+    const sessionId = typeof id === 'string' ? id.trim() : ''
+    if (!sessionId) return null
+
+    const stored = await sessionStore.load(sessionId)
+    if (!stored) return null
+    if (stored.isMission !== true && stored.sessionKind !== 'mission') return stored
+
+    const machineId = (cachedState as PersistedAppStateV2).machineId
+    const cwd = String(stored.projectDir || '').trim() || activeProjectDir
+    if (!machineId || !cwd || !(await isExistingDir(cwd))) return stored
+
+    try {
+      const env = await buildExecEnv()
+      const live = await execManager.loadSessionSnapshot({
+        sessionId,
+        machineId,
+        cwd,
+        modelId: stored.model || undefined,
+        interactionMode: stored.interactionMode || toInteractionMode(stored.autoLevel),
+        autonomyLevel:
+          stored.autonomyLevel ||
+          (stored.autoLevel ? toAutonomyLevel(stored.autoLevel) : undefined),
+        decompSessionType: stored.decompSessionType,
+        isMission: stored.isMission,
+        sessionKind: stored.sessionKind,
+        reasoningEffort: stored.reasoningEffort || undefined,
+        env,
+      })
+      return mergeLoadSessionResponse(stored, live)
+    } catch {
+      return stored
+    }
+  })
 
   ipcMain.handle(
     'session:create',
     async (
       _event,
-      payload: { cwd: string; modelId?: string; autoLevel?: string; reasoningEffort?: string },
+      payload: {
+        cwd: string
+        modelId?: string
+        autoLevel?: string
+        isMission?: boolean
+        sessionKind?: SessionKind
+        interactionMode?: DroidInteractionMode
+        autonomyLevel?: DroidAutonomyLevel
+        decompSessionType?: DecompSessionType
+        reasoningEffort?: string
+      },
     ) => {
       const cwd = typeof payload?.cwd === 'string' ? payload.cwd.trim() : ''
       if (!cwd) throw new Error('Missing cwd')
@@ -966,23 +1245,19 @@ export function registerIpcHandlers(opts: {
       const machineId = (cachedState as PersistedAppStateV2).machineId
       if (!machineId) throw new Error('Missing machineId')
 
-      const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (activeKey !== cachedState.apiKey) {
-          cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-        }
-      } else if (cachedState.apiKey) env['FACTORY_API_KEY'] = cachedState.apiKey
+      const env = await buildExecEnv()
+
+      const protocol = resolveProtocolPayload(payload)
 
       const res = await execManager.createSession({
         machineId,
         cwd,
         modelId: typeof payload.modelId === 'string' ? payload.modelId : undefined,
-        interactionMode:
-          typeof payload.autoLevel === 'string' ? toInteractionMode(payload.autoLevel) : undefined,
-        autonomyLevel:
-          typeof payload.autoLevel === 'string' ? toAutonomyLevel(payload.autoLevel) : undefined,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
         reasoningEffort:
           typeof payload.reasoningEffort === 'string' ? payload.reasoningEffort : undefined,
         env,
@@ -991,19 +1266,11 @@ export function registerIpcHandlers(opts: {
     },
   )
 
-  ipcMain.handle('session:restart', async (_event, payload: { sessionId: string }) => {
-    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
-    if (!sessionId) throw new Error('Missing sessionId')
-    execManager.disposeSession(sessionId)
-
-    cachedState = await appStateStore.load()
-    const key = cachedState.apiKey || ''
-    return { ok: true, apiKeyFingerprint: key ? apiKeyFingerprint(key) : '' } as const
-  })
-
   ipcMain.handle('session:clear', async (_event, payload: { id: string }) => {
     const id = typeof payload?.id === 'string' ? payload.id.trim() : ''
     if (!id) return null
+    await stopMissionDirWatcher(id)
+    await stopMissionRuntimeWatcher(id)
 
     const existing = await sessionStore.load(id)
     const cwd = (existing?.projectDir || '').trim() || activeProjectDir
@@ -1014,21 +1281,19 @@ export function registerIpcHandlers(opts: {
 
     execManager.disposeSession(id)
 
-    const env: Record<string, string | undefined> = { ...process.env }
-    const activeKey = await keyStore.getActiveKey()
-    if (activeKey) {
-      env['FACTORY_API_KEY'] = activeKey
-      if (activeKey !== cachedState.apiKey) {
-        cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
-      }
-    } else if (cachedState.apiKey) env['FACTORY_API_KEY'] = cachedState.apiKey
+    const env = await buildExecEnv()
 
     const created = await execManager.createSession({
       machineId,
       cwd,
       modelId: existing?.model || undefined,
-      interactionMode: toInteractionMode(existing?.autoLevel),
-      autonomyLevel: existing?.autoLevel ? toAutonomyLevel(existing.autoLevel) : undefined,
+      interactionMode: existing?.interactionMode || toInteractionMode(existing?.autoLevel),
+      autonomyLevel:
+        existing?.autonomyLevel ||
+        (existing?.autoLevel ? toAutonomyLevel(existing.autoLevel) : undefined),
+      decompSessionType: existing?.decompSessionType,
+      isMission: existing?.isMission,
+      sessionKind: existing?.sessionKind,
       reasoningEffort: existing?.reasoningEffort || undefined,
       env,
     })
@@ -1037,7 +1302,131 @@ export function registerIpcHandlers(opts: {
     return meta
   })
   ipcMain.handle('session:list', async () => sessionStore.list())
-  ipcMain.handle('session:delete', async (_event, id: string) => sessionStore.delete(id))
+  ipcMain.handle('session:delete', async (_event, id: string) => {
+    const sessionId = typeof id === 'string' ? id.trim() : ''
+    if (sessionId) {
+      await stopMissionDirWatcher(sessionId)
+      await stopMissionRuntimeWatcher(sessionId)
+    }
+    return sessionStore.delete(id)
+  })
+
+  ipcMain.handle('mission:read-dir', async (_event, params: MissionDirRequest) => {
+    const { sessionId, missionDir } = resolveMissionDirRequest(params)
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.read_dir',
+      sessionId,
+      data: { missionDir },
+    })
+    const snapshot = await readMissionDirSnapshot(missionDir)
+    return { sessionId, snapshot }
+  })
+
+  ipcMain.handle('mission:watch-start', async (_event, params: MissionDirRequest) => {
+    const { sessionId, missionDir } = resolveMissionDirRequest(params)
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.watch_start',
+      sessionId,
+      data: { missionDir },
+    })
+    await stopMissionDirWatcher(sessionId)
+
+    const watcher = new MissionDirWatcher({
+      sessionId,
+      missionDir,
+      onChange: (payload) => {
+        const mainWindow = opts.getMainWindow()
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.webContents.send('mission:dir-changed', payload)
+      },
+    })
+
+    missionDirWatchers.set(sessionId, watcher)
+    await watcher.start()
+    return { ok: true, missionDir } as const
+  })
+
+  ipcMain.handle('mission:watch-stop', async (_event, payload: { sessionId: string }) => {
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.watch_stop',
+      sessionId,
+    })
+    await stopMissionDirWatcher(sessionId)
+    return { ok: true } as const
+  })
+
+  ipcMain.handle('mission:read-runtime', async (_event, params: MissionRuntimeRequest) => {
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.read_runtime',
+      sessionId,
+      data: {
+        workerSessionId: params?.workerSessionId,
+        workingDirectory: params?.workingDirectory,
+      },
+    })
+    const snapshot = await readMissionRuntimeSnapshot(params)
+    return { sessionId, snapshot }
+  })
+
+  ipcMain.handle('mission:runtime-watch-start', async (_event, params: MissionRuntimeRequest) => {
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.runtime_watch_start',
+      sessionId,
+      data: {
+        workerSessionId: params?.workerSessionId,
+        workingDirectory: params?.workingDirectory,
+      },
+    })
+    await stopMissionRuntimeWatcher(sessionId)
+
+    const watcher = new WorkerRuntimeWatcher({
+      request: params,
+      onChange: (payload) => {
+        const mainWindow = opts.getMainWindow()
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.webContents.send('mission:runtime-changed', payload)
+      },
+    })
+
+    missionRuntimeWatchers.set(sessionId, watcher)
+    await watcher.start()
+    return { ok: true } as const
+  })
+
+  ipcMain.handle('mission:runtime-watch-stop', async (_event, payload: { sessionId: string }) => {
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.runtime_watch_stop',
+      sessionId,
+    })
+    await stopMissionRuntimeWatcher(sessionId)
+    return { ok: true } as const
+  })
 
   ipcMain.handle('git:status', async (_event, params: { projectDir: string }) => {
     const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
@@ -1116,21 +1505,15 @@ export function registerIpcHandlers(opts: {
   })
 
   ipcMain.handle('factory:getCustomModels', async (): Promise<CustomModelDef[]> => {
-    try {
-      const settingsPath = join(homedir(), '.factory', 'settings.json')
-      const raw = JSON.parse(await readFile(settingsPath, 'utf-8'))
-      const models = Array.isArray(raw?.customModels) ? raw.customModels : []
-      return models
-        .filter((m: any) => typeof m?.id === 'string' && typeof m?.displayName === 'string')
-        .map((m: any) => ({
-          id: m.id,
-          displayName: m.displayName,
-          model: String(m.model || ''),
-          provider: String(m.provider || 'custom'),
-        }))
-    } catch {
-      return []
-    }
+    return readFactoryCustomModels()
+  })
+
+  ipcMain.handle('factory:getMissionModelSettings', async () => {
+    return readFactoryMissionModelSettings()
+  })
+
+  ipcMain.handle('factory:setMissionModelSettings', async (_event, settings) => {
+    return writeFactoryMissionModelSettings(settings ?? {})
   })
 
   ipcMain.handle('git:branch', async (_event, params: { projectDir: string }) => {
@@ -1267,7 +1650,7 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.handle('git:generate-commit-meta', async (_event, req: GenerateCommitMetaRequest) => {
     const state = cachedState
-    return generateCommitMeta({ req, state, execManager, keyStore })
+    return generateCommitMeta({ req, state, execManager, keyStore, buildExecEnv })
   })
 
   ipcMain.handle('git:commit-workflow', async (_event, req: CommitWorkflowRequest) => {
@@ -1286,6 +1669,9 @@ export function registerIpcHandlers(opts: {
       const cancelledExec = execManager.disposeAllSessions()
       const cancelledSetup = setupScriptRunner.disposeAll() > 0
       return cancelledExec || cancelledSetup
+    },
+    close: async () => {
+      await factoryApiProxy.close()
     },
   }
 }

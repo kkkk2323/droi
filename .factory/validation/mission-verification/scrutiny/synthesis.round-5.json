@@ -1,0 +1,58 @@
+{
+  "milestone": "mission-verification",
+  "round": 5,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 test -- --test-concurrency=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "failedFeatures": [
+      "mission-cross-flow-kill-worker-pause-proof"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "mission-cross-flow-kill-worker-pause-proof",
+      "severity": "blocking",
+      "description": "The new kill-worker proof flow misdescribes `kill-proof-after-askuser-submit.png`: the screenshot shows `Standard Chat` selected rather than Mission mode, so the claimed fresh Mission-surface setup evidence is inaccurate."
+    },
+    {
+      "featureId": "mission-cross-flow-kill-worker-pause-proof",
+      "severity": "blocking",
+      "description": "Current HEAD still does not provide one live same-session Electron Mission run traversing `Kill Worker -> droid.kill_worker_session -> worker_failed(reason = \"Killed by user\") -> mission_paused`. The proof reselects an already-killed session and uses disk/session artifacts as substantive transition evidence, which remains insufficient for VAL-CROSS-005."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document a bookkeeping convention for proof-only features that are satisfied by already-checked-in artifacts: either record a worker session plus handoff/transcript anyway, or encode an explicit artifact-only completion path in mission metadata so later scrutiny has a traceable audit chain.",
+      "evidence": "The completed proof features `mission-cross-flow-validator-completion-proof` and `mission-cross-flow-restart-reselection-proof` passed review from commit/artifact evidence alone because `completedWorkerSessionId` remained null and no matching handoff/transcript existed, weakening traceability even though the underlying proof mapping was acceptable.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Both passing proof-only follow-up reviews reported the same missing transcript/handoff convention gap for completed features backed by already-checked-in artifacts.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/synthesis.round-4.json"
+}

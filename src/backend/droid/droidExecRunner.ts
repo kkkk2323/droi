@@ -7,6 +7,7 @@ import type {
 } from './jsonrpc/jsonRpcTypes.ts'
 import { resolveDroidPath } from './resolveDroidPath.ts'
 import type { LocalDiagnostics } from '../diagnostics/localDiagnostics.ts'
+import type { DecompSessionType, SessionKind } from '../../shared/sessionProtocol.ts'
 
 export type { DroidBackendEvent }
 
@@ -19,6 +20,9 @@ export interface DroidExecSendOptions {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
   env?: Record<string, string | undefined>
 }
@@ -28,6 +32,9 @@ export interface DroidExecUpdateSettingsOptions {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
 }
 
@@ -37,7 +44,33 @@ export interface DroidExecCreateSessionOptions {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
+  env?: Record<string, string | undefined>
+}
+
+export interface DroidExecLoadSessionSnapshotOptions {
+  sessionId: string
+  machineId: string
+  cwd: string
+  modelId?: string
+  interactionMode?: DroidInteractionMode
+  autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
+  reasoningEffort?: string
+  env?: Record<string, string | undefined>
+}
+
+export interface DroidExecSendLoadedSessionMessageOptions {
+  sessionId: string
+  loadSessionId: string
+  machineId: string
+  prompt: string
+  cwd: string
   env?: Record<string, string | undefined>
 }
 
@@ -85,6 +118,9 @@ export class DroidExecManager {
       modelId: options.modelId,
       interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
       reasoningEffort: options.reasoningEffort,
       env: options.env,
     })
@@ -97,6 +133,9 @@ export class DroidExecManager {
       modelId: options.modelId,
       interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
       reasoningEffort: options.reasoningEffort,
       env: options.env,
     })
@@ -109,7 +148,36 @@ export class DroidExecManager {
       modelId: options.modelId,
       interactionMode: options.interactionMode,
       autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
       reasoningEffort: options.reasoningEffort,
+    })
+  }
+
+  async killWorkerSession(options: { sessionId: string; workerSessionId: string }): Promise<void> {
+    return this.manager.killWorkerSession(options)
+  }
+
+  sendLoadedSessionMessage(options: DroidExecSendLoadedSessionMessageOptions): Promise<void> {
+    return this.manager.sendLoadedSessionMessage(options)
+  }
+
+  loadSessionSnapshot(
+    options: DroidExecLoadSessionSnapshotOptions,
+  ): Promise<Record<string, unknown> | null> {
+    return this.manager.loadSessionSnapshot({
+      sessionId: options.sessionId,
+      machineId: options.machineId,
+      cwd: options.cwd,
+      modelId: options.modelId,
+      interactionMode: options.interactionMode,
+      autonomyLevel: options.autonomyLevel,
+      decompSessionType: options.decompSessionType,
+      isMission: options.isMission,
+      sessionKind: options.sessionKind,
+      reasoningEffort: options.reasoningEffort,
+      env: options.env,
     })
   }
 

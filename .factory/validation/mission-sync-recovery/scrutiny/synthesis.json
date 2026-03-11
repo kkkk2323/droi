@@ -1,0 +1,40 @@
+{
+  "milestone": "mission-sync-recovery",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 test -- --test-concurrency=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Clarify in `mission-core-worker` that for cross-layer Mission recovery/watcher work, limited helper extraction or continuation from an interrupted baseline may precede the first focused failing test, and workers must record any such deviation accurately in `skillFeedback` instead of marking the procedure fully followed.",
+      "evidence": "Both completed mission-sync-recovery feature reviews reported the same procedural mismatch: the watcher feature transcript showed implementation edits before the first failing-state test run while its handoff still marked `followedProcedure: true`, and the restore/reconciliation feature handoff explicitly recorded the same red-first tension for cross-layer helper extraction before targeted tests were practical.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/mission-sync-recovery/scrutiny/synthesis.round1.json"
+}

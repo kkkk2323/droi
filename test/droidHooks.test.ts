@@ -6,6 +6,7 @@ test('getMissingDroidHooks returns empty when all required hooks exist', () => {
   const client = {
     onRpcNotification: () => {},
     onRpcRequest: () => {},
+    onMissionDirChanged: () => {},
     onTurnEnd: () => {},
     onStdout: () => {},
     onStderr: () => {},
@@ -25,6 +26,7 @@ test('getMissingDroidHooks returns missing required hooks', () => {
 
   assert.deepEqual(getMissingDroidHooks(client), [
     'onRpcRequest',
+    'onMissionDirChanged',
     'onStdout',
     'onStderr',
     'onError',

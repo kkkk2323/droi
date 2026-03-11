@@ -1,0 +1,49 @@
+{
+  "featureId": "mission-store-restore-and-reconciliation",
+  "reviewedAt": "2026-03-09T13:05:00Z",
+  "commitId": "410f7762dce515ae1e375a750325291f8a2b293a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "touchedFiles": [
+    "src/shared/mission.ts",
+    "src/shared/protocol.ts",
+    "src/backend/droid/jsonrpc/droidJsonRpcSession.ts",
+    "src/backend/droid/jsonrpc/droidJsonRpcManager.ts",
+    "src/backend/droid/droidExecRunner.ts",
+    "src/main/ipc/registerHandlers.ts",
+    "src/renderer/src/state/missionState.ts",
+    "src/renderer/src/state/sessionRestore.ts",
+    "src/renderer/src/AppInitializer.tsx",
+    "src/renderer/src/store.tsx",
+    "src/renderer/src/state/appReducer.ts",
+    "test/sessionStore.test.ts",
+    "test/rpcNotificationMapping.test.ts"
+  ],
+  "validationAssertionsReviewed": [
+    "VAL-SESSION-004",
+    "VAL-RECOVERY-001",
+    "VAL-RECOVERY-002",
+    "VAL-RECOVERY-003",
+    "VAL-RECOVERY-005",
+    "VAL-RECOVERY-007",
+    "VAL-RECOVERY-008",
+    "VAL-RECOVERY-009",
+    "VAL-RECOVERY-010",
+    "VAL-RECOVERY-011"
+  ],
+  "codeReview": {
+    "summary": "The restore feature implementation matches the Mission recovery contract: stored Mission sessions are augmented from live `droid.load_session` data when available, first render bootstrap is seeded from Mission snapshot data, Mission-specific notifications remain authoritative over generic session updates, missionDir reconciliation applies the documented per-file merge rules, and completion/live-worker state is derived conservatively so validator injection, disk-only recovery, and stale `currentWorkerSessionId` values do not produce false completed or live-worker UI states. Focused tests in `test/sessionStore.test.ts` and `test/rpcNotificationMapping.test.ts` cover the claimed lifecycle and precedence scenarios, and I did not identify a product-code defect within the reviewed scope.",
+    "issues": []
+  },
+  "issues": [],
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `mission-core-worker` skill currently requires an explicit red-first workflow, but this cross-layer recovery change needed helper extraction before narrow restore/reconciliation tests were practical. The skill should clarify whether that helper-extraction step is an acceptable precursor to the first failing test for restore-heavy work.",
+      "evidence": "The handoff records `skillFeedback.followedProcedure = false` for steps 3-4, and the transcript skeleton shows implementation/helper work preceding the focused `rpcNotificationMapping` and `sessionStore` test runs."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Scrutiny review passed for `mission-store-restore-and-reconciliation`. The implementation stays within Mission boundaries and correctly covers restore bootstrap, notification/disk precedence, validator-injected running recovery, disk-only recovery, completion gating, and orphan-worker cleanup; no code issues were identified, and one skill-procedure observation was noted for shared-state follow-up."
+}

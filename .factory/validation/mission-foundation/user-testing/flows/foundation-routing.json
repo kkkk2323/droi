@@ -1,0 +1,84 @@
+{
+  "groupId": "foundation-routing",
+  "status": "pass",
+  "assertions": [
+    {
+      "id": "VAL-SESSION-001",
+      "status": "pass",
+      "reason": "The new-session UI kept Mission selection independent from workspace mode; Mission stayed selected while Local and New WorkTree toggled normally.",
+      "evidence": [
+        "Opened the real Mission-GUI-TEST new-session entry point via data-testid `new-session-Mission-GUI-TEST`.",
+        "DOM/test-id inspection confirmed `session-mode-mission`, `session-mode-local`, and `session-mode-new-worktree` were present together in the same SessionConfigPage.",
+        "After selecting Mission and then New WorkTree, `session-mode-mission` still had selected styling (`border-foreground/30 bg-accent/60`) while `session-mode-new-worktree` became selected.",
+        "After switching workspace back to Local, `session-mode-mission` remained selected and both workspace options were still available.",
+        "Annotated screenshot: /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-session-config.png"
+      ]
+    },
+    {
+      "id": "VAL-SESSION-005",
+      "status": "pass",
+      "reason": "Mission sessions were visually and programmatically distinct in the sidebar, with explicit Mission badges and `session-mission-{sessionId}` targeting.",
+      "evidence": [
+        "Created Mission session `6cbddfbd-ed60-4eeb-9549-7d311be32029` in project `Mission-GUI-TEST` using visible namespace text `foundation-routing mission validation session. Confirm Mission routing only.` and model `CCH-GPT-5.4`.",
+        "Sidebar DOM exposed `data-testid=\"session-mission-6cbddfbd-ed60-4eeb-9549-7d311be32029\"` for the created Mission row.",
+        "The sidebar row text for that session started with the explicit visible label `Mission`, matching the Mission indicator requirement.",
+        "Other Mission sessions in the same project also rendered with `session-mission-*` test ids, confirming consistent Mission targeting.",
+        "Annotated screenshot: /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-mission-route.png"
+      ]
+    },
+    {
+      "id": "VAL-ROUTING-001",
+      "status": "pass",
+      "reason": "Creating a Mission session opened `/mission` while preserving the shared shell chrome around MissionPage.",
+      "evidence": [
+        "After first send from Mission new-session flow, in-app router state was `/mission` with active session `6cbddfbd-ed60-4eeb-9549-7d311be32029`.",
+        "Store inspection at the same moment showed `activeIsMission: true` and `activeSessionKind: \"mission\"`.",
+        "DOM simultaneously contained `[data-testid=\"mission-page\"]` and `[data-testid=\"sidebar-trigger\"]`, proving MissionPage rendered inside the existing app shell rather than in a separate chrome.",
+        "Mission content was visible in the shared chat shell with the Mission sidebar row selected.",
+        "Annotated screenshot: /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-mission-route.png"
+      ]
+    },
+    {
+      "id": "VAL-ROUTING-002",
+      "status": "pass",
+      "reason": "A non-Mission session stayed on `/` and the route guard redirected a direct `/mission` navigation attempt back to `/` without rendering MissionPage.",
+      "evidence": [
+        "Created standard session `f57df244-34af-42ed-85e6-c54d87ccca39` in `Mission-GUI-TEST` with visible text `foundation-routing normal routing validation session.`.",
+        "Immediately after normal session creation, router state was `/`, `activeIsMission: false`, `activeSessionKind: \"normal\"`, and `missionPage: false`.",
+        "While that normal session was active, invoking in-app `router.navigate({ to: \"/mission\" })` left the router at `/` before and after the attempt.",
+        "`[data-testid=\"mission-page\"]` stayed absent during the normal-session redirect check, so Mission-only UI did not remain visible.",
+        "Annotated screenshots: /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-normal-session.png and /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-direct-mission-redirect.png"
+      ]
+    },
+    {
+      "id": "VAL-ROUTING-005",
+      "status": "pass",
+      "reason": "Real project and sidebar entry points routed Mission sessions to `/mission` and normal sessions to `/`, including sidebar reselection and project auto-selection of the latest session.",
+      "evidence": [
+        "Clicked Mission sidebar row `session-mission-6cbddfbd-ed60-4eeb-9549-7d311be32029` and confirmed router `/mission`, `activeIsMission: true`, and `missionPage: true`.",
+        "Clicked normal sidebar row `session-f57df244-34af-42ed-85e6-c54d87ccca39` and confirmed router `/`, `activeIsMission: false`, and `missionPage: false`.",
+        "Clicked the Mission sidebar row again for reselection and confirmed the app returned to `/mission` for the same Mission session.",
+        "Switched to another project (`droi`) and then clicked real project entry `project-Mission-GUI-TEST`; project auto-selection restored the latest normal Mission-GUI-TEST session `f57df244-34af-42ed-85e6-c54d87ccca39` on `/`.",
+        "Before any interaction, the live app had already restored an existing Mission-GUI-TEST session on `/mission`, providing latest-session restore evidence for the Mission path.",
+        "Annotated screenshot for normal reselection state: /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-reselection-normal.png"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "frictions": [
+    "`agent-browser` clicks on the sidebar plus button occasionally targeted the neighboring project row instead of the intended `new-session-Mission-GUI-TEST` control. I resolved this by dispatching a click directly against the exact `[data-testid]` element in the Electron DOM.",
+    "The normal-session creation path required setting the pending new-session textarea value through DOM events to ensure the send button enabled reliably in the live Electron view.",
+    "Console inspection showed pre-existing renderer noise (a favicon 404 and Base UI button-semantics warnings from `app-sidebar.tsx`), but no additional Mission-routing-specific errors during the tested flows."
+  ],
+  "blockers": [],
+  "artifacts": [
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-initial.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-session-config.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-mission-route.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-normal-session.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-reselection-normal.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-direct-mission-redirect.png"
+  ]
+}

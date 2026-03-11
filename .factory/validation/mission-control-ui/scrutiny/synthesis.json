@@ -1,0 +1,44 @@
+{
+  "milestone": "mission-control-ui",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 test -- --test-concurrency=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented the isolated Electron Mission validation preflight cleanup step in `.factory/library/user-testing.md`, including the need to run the manifest stop command before reusing ports 9222, 5173, and 3002.",
+      "sourceFeature": "mission-page-session-switch-cooldown-fix"
+    },
+    {
+      "target": "library",
+      "description": "Documented Mission permission option-label preservation in `.factory/library/mission-runtime.md`, clarifying that Mission-specific framing must keep backend-provided `optionsMeta` semantics when multiple approval choices are present.",
+      "sourceFeature": "mission-permission-option-semantics-fix"
+    }
+  ],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/mission-control-ui/scrutiny/synthesis.round1.json"
+}

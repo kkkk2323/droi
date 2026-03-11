@@ -12,6 +12,7 @@ import type {
   SaveSessionRequest,
   LoadSessionResponse,
   SessionMeta,
+  MissionModelSettings,
   JsonRpcNotification,
   JsonRpcRequest,
   SlashCommandDef,
@@ -447,6 +448,11 @@ const browserClient: DroidClientAPI = {
           sessionId: sid,
           modelId: params.modelId,
           autoLevel: params.autoLevel,
+          isMission: params.isMission,
+          sessionKind: params.sessionKind,
+          interactionMode: params.interactionMode,
+          autonomyLevel: params.autonomyLevel,
+          decompSessionType: params.decompSessionType,
           reasoningEffort: params.reasoningEffort,
         }),
       })
@@ -484,6 +490,14 @@ const browserClient: DroidClientAPI = {
     return (await res.json()) as { ok: true }
   },
 
+  killWorkerSession: async () => {
+    throw new Error('Mission worker control is only available in Electron mode')
+  },
+
+  sendWorkerFollowup: async () => {
+    throw new Error('Mission worker follow-up is only available in Electron mode')
+  },
+
   createSession: async (params) => {
     const cwd = String(params?.cwd || '').trim()
     if (!cwd) throw new Error('Missing cwd')
@@ -494,6 +508,11 @@ const browserClient: DroidClientAPI = {
         cwd,
         modelId: params.modelId,
         autoLevel: params.autoLevel,
+        isMission: params.isMission,
+        sessionKind: params.sessionKind,
+        interactionMode: params.interactionMode,
+        autonomyLevel: params.autonomyLevel,
+        decompSessionType: params.decompSessionType,
         reasoningEffort: params.reasoningEffort,
       }),
     })
@@ -502,22 +521,6 @@ const browserClient: DroidClientAPI = {
     const sessionId = String(data?.sessionId || '').trim()
     if (!sessionId) throw new Error('Missing sessionId in response')
     return { sessionId }
-  },
-
-  restartSessionWithActiveKey: async ({ sessionId }) => {
-    const sid = String(sessionId || '').trim()
-    if (!sid) throw new Error('Missing sessionId')
-    const res = await apiFetch(`${getApiBase()}/session/restart`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sid }),
-    })
-    if (!res.ok) throw new Error(await readApiError(res))
-    const data = await res.json()
-    return {
-      ok: true as const,
-      apiKeyFingerprint: String(data?.apiKeyFingerprint || ''),
-    }
   },
 
   runSetupScript: async (params) => {
@@ -1019,6 +1022,26 @@ const browserClient: DroidClientAPI = {
       return false
     }
   },
+  readMissionDir: async () => {
+    throw new Error('Mission directory reading is only available in Electron mode')
+  },
+  watchMissionDir: async () => {
+    throw new Error('Mission directory watching is only available in Electron mode')
+  },
+  unwatchMissionDir: async () => {
+    return { ok: true } as const
+  },
+  onMissionDirChanged: () => () => {},
+  readMissionRuntime: async () => {
+    throw new Error('Mission runtime reading is only available in Electron mode')
+  },
+  watchMissionRuntime: async () => {
+    throw new Error('Mission runtime watching is only available in Electron mode')
+  },
+  unwatchMissionRuntime: async () => {
+    return { ok: true } as const
+  },
+  onMissionRuntimeChanged: () => () => {},
 
   loadAppState: async () => {
     try {
@@ -1245,6 +1268,24 @@ const browserClient: DroidClientAPI = {
       return []
     }
   },
+  getMissionModelSettings: async () => {
+    try {
+      const res = await apiFetch(`${getApiBase()}/mission-model-settings`)
+      if (!res.ok) return {}
+      return (await res.json()) as MissionModelSettings
+    } catch {
+      return {}
+    }
+  },
+  setMissionModelSettings: async (settings) => {
+    const res = await apiFetch(`${getApiBase()}/mission-model-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    })
+    if (!res.ok) throw new Error(`Failed to save mission model settings: ${res.status}`)
+    return (await res.json()) as MissionModelSettings
+  },
 
   // Updater (not available in browser mode)
   checkForUpdate: async () => ({ available: false }),
@@ -1325,8 +1366,22 @@ export function getDroidClient(): DroidClientAPI {
       merged.clearSession = browserClient.clearSession
     if (typeof (merged as any).createSession !== 'function')
       merged.createSession = browserClient.createSession
-    if (typeof (merged as any).restartSessionWithActiveKey !== 'function')
-      merged.restartSessionWithActiveKey = browserClient.restartSessionWithActiveKey
+    if (typeof (merged as any).readMissionDir !== 'function')
+      merged.readMissionDir = browserClient.readMissionDir
+    if (typeof (merged as any).watchMissionDir !== 'function')
+      merged.watchMissionDir = browserClient.watchMissionDir
+    if (typeof (merged as any).unwatchMissionDir !== 'function')
+      merged.unwatchMissionDir = browserClient.unwatchMissionDir
+    if (typeof (merged as any).onMissionDirChanged !== 'function')
+      merged.onMissionDirChanged = browserClient.onMissionDirChanged
+    if (typeof (merged as any).readMissionRuntime !== 'function')
+      merged.readMissionRuntime = browserClient.readMissionRuntime
+    if (typeof (merged as any).watchMissionRuntime !== 'function')
+      merged.watchMissionRuntime = browserClient.watchMissionRuntime
+    if (typeof (merged as any).unwatchMissionRuntime !== 'function')
+      merged.unwatchMissionRuntime = browserClient.unwatchMissionRuntime
+    if (typeof (merged as any).onMissionRuntimeChanged !== 'function')
+      merged.onMissionRuntimeChanged = browserClient.onMissionRuntimeChanged
     if (typeof (merged as any).onSessionIdReplaced !== 'function')
       merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
     if (typeof (merged as any).checkForUpdate !== 'function')
@@ -1337,6 +1392,12 @@ export function getDroidClient(): DroidClientAPI {
       merged.relaunchApp = browserClient.relaunchApp
     if (typeof (merged as any).onUpdateProgress !== 'function')
       merged.onUpdateProgress = browserClient.onUpdateProgress
+    if (typeof (merged as any).getMissionModelSettings !== 'function')
+      merged.getMissionModelSettings = browserClient.getMissionModelSettings
+    if (typeof (merged as any).setMissionModelSettings !== 'function')
+      merged.setMissionModelSettings = browserClient.setMissionModelSettings
+    if (typeof (merged as any).getCustomModels !== 'function')
+      merged.getCustomModels = browserClient.getCustomModels
     return merged as DroidClientAPI
   }
   return browserClient

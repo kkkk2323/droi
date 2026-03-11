@@ -2,31 +2,14 @@ import React, { useState } from 'react'
 import { ShieldAlert, FileCode, FileEdit, Play, Search, Globe, Terminal, ChevronDown } from 'lucide-react'
 import type { PendingPermissionRequest } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
+import {
+  getMissionPermissionCardPresentation,
+  getMissionPermissionOptionLabel,
+} from '@/lib/missionUiSemantics'
 
 type PermissionResponseParams = {
   selectedOption: DroidPermissionOption
   autoLevel?: 'low' | 'medium' | 'high'
-}
-
-function permissionLabel(opt: DroidPermissionOption): string {
-  switch (opt) {
-    case 'proceed_once':
-      return 'Proceed once'
-    case 'proceed_always':
-      return 'Proceed always'
-    case 'proceed_auto_run':
-      return 'Auto-run'
-    case 'proceed_auto_run_low':
-      return 'Auto-run (Low)'
-    case 'proceed_auto_run_medium':
-      return 'Auto-run (Medium)'
-    case 'proceed_auto_run_high':
-      return 'Auto-run (High)'
-    case 'proceed_edit':
-      return 'Proceed edit'
-    case 'cancel':
-      return 'Cancel'
-  }
 }
 
 function normalizePermissionToolName(value: unknown): string {
@@ -201,17 +184,36 @@ function isPrimaryOption(opt: DroidPermissionOption): boolean {
 export function PermissionCard({ request, onRespond }: PermissionCardProps) {
   const [showMore, setShowMore] = useState(false)
   const permissionToolUses = Array.isArray(request.toolUses) ? request.toolUses : []
+  const missionPresentation = getMissionPermissionCardPresentation(request)
 
   const primaryOptions = request.options.filter(isPrimaryOption)
   const advancedOptions = request.options.filter((o) => !isPrimaryOption(o))
 
   return (
     <footer className="shrink-0 px-4 pb-4">
-      <div className="mx-auto flex max-w-3xl flex-col rounded-2xl border border-amber-400/50 bg-card shadow-sm overflow-hidden max-h-[70vh]">
+      <div
+        className={`mx-auto flex max-h-[70vh] max-w-3xl flex-col overflow-hidden rounded-2xl border bg-card shadow-sm ${
+          missionPresentation ? 'border-primary/40 shadow-primary/5' : 'border-amber-400/50'
+        }`}
+      >
         <div className="flex items-center gap-2 px-4 !py-3">
-          <ShieldAlert className="size-4 shrink-0 text-amber-500" />
-          <span className="text-xs font-medium text-foreground">Permission required</span>
+          <ShieldAlert
+            className={`size-4 shrink-0 ${missionPresentation ? 'text-primary' : 'text-amber-500'}`}
+          />
+          <span className="text-xs font-medium text-foreground">
+            {missionPresentation?.badgeLabel || 'Permission required'}
+          </span>
+          <span className="ml-auto text-[11px] text-muted-foreground">
+            {missionPresentation?.description || 'Droid is requesting permission to use tools.'}
+          </span>
         </div>
+
+        {/* {missionPresentation ? (
+          <div className="border-b border-border/70 bg-primary/5 px-4 py-3">
+            <p className="text-sm font-semibold text-foreground">{missionPresentation.title}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{missionPresentation.description}</p>
+          </div>
+        ) : null} */}
 
         {permissionToolUses.length > 0 && (
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 space-y-3">
@@ -233,7 +235,7 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
               }`}
               onClick={() => onRespond({ selectedOption: opt })}
             >
-              {permissionLabel(opt)}
+              {getMissionPermissionOptionLabel(request, opt)}
             </button>
           ))}
           {advancedOptions.length > 0 && (

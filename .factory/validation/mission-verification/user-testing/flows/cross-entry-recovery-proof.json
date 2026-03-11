@@ -1,0 +1,160 @@
+{
+  "groupId": "cross-entry-recovery",
+  "testedAt": "2026-03-10T23:33:00Z",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "mission-verification-cross-entry-recovery"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "Read",
+    "Grep",
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Mission-invoking E2E flow runs in Mission-GUI-TEST using Custom CCH-GPT-5.4",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Connect agent-browser to the already-running isolated Electron app on CDP port 9222 and inspect the active Mission surface.",
+          "expected": "A Mission-GUI-TEST Mission session is visible on the Electron Mission surface.",
+          "observed": "Connected successfully to Electron 40 on 127.0.0.1:9222; the live UI showed project `Mission-GUI-TEST`, active Mission DOM markers (`mission-page`, `mission-statusbar`, `mission-view-toggle`), and sidebar Mission rows including `session-mission-f1061069-8673-41ad-a30e-26eafb2e80dc`."
+        },
+        {
+          "action": "Read the active session body text and combobox text from the live Electron surface.",
+          "expected": "The constrained proof session remains on Custom -> CCH-GPT-5.4 without any OS-level project picker step.",
+          "observed": "The active Mission session body showed `Mission-GUI-TEST`, message text for the live kill-worker proof session, and the model chip text `CCH-GPT-5.4`; no native project picker or Web/LAN surface appeared during the check."
+        },
+        {
+          "action": "Cross-check the persisted isolated session JSON for the active proof session.",
+          "expected": "The saved Mission session points at the Mission-GUI-TEST project and a Custom CCH GPT model.",
+          "observed": "`/tmp/droi-mission-e2e/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc.json` records `projectDir`, `workspaceDir`, and `repoRoot` under `/Users/clive/Documents/Mission-GUI-TEST` and stores `model: \"custom:CCH-Code-GPT-5.4-2\"` with explicit Mission metadata."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/cross-entry-current-mission.png"
+        ],
+        "consoleErrors": "none after `agent-browser errors --clear`; the subsequent `agent-browser errors` check returned no output.",
+        "network": "No live renderer requests were captured during the read-only check. Supporting transport/state evidence came from `/tmp/droi-mission-e2e/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc.json`, `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-foundation/user-testing/flows/foundation-routing.json`, and `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json`."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Create → propose → accept → run → validator injection → validation completion works end to end",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review the checked-in feature-owned cross-flow proof bundle for VAL-CROSS-002.",
+          "expected": "A feature-owned artifact should map the end-to-end lifecycle to concrete checked-in evidence.",
+          "observed": "`/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/feature-owned-proof-followup.json` explicitly marks `VAL-CROSS-002` as `pass` and ties create/propose/run evidence to Mission-GUI-TEST user-surface artifacts plus focused Mission Control and reconciliation tests."
+        },
+        {
+          "action": "Cross-check the live mission directory lifecycle files for validator injection and validation progression.",
+          "expected": "The mission log should show implementation worker completion followed by milestone validation triggering and validator worker activity in the same mission context.",
+          "observed": "`/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl` contains `worker_completed` entries followed by `milestone_validation_triggered` and later validator worker activity, while `state.json` still tracks the same mission as `running` under `user-testing-validator-mission-verification`."
+        },
+        {
+          "action": "Inspect live Mission UI state for continuity with validator-phase Mission context.",
+          "expected": "The Electron Mission surface should still show the same Mission shell/state rather than a recreated non-Mission session.",
+          "observed": "The live Electron Mission surface remained on `mission-page` with Mission status bar and Mission-specific controls visible, matching the validator-phase continuity described by the proof bundle."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/cross-entry-current-mission.png",
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-routing-mission-route.png"
+        ],
+        "consoleErrors": "none during the live corroborating UI check.",
+        "network": "Lifecycle evidence came from `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl`, `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/state.json`, `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/validation-state.json`, and the checked-in proof mapping in `feature-owned-proof-followup.json`; no new live network traffic was required for this read-only validation pass."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "Restart and reselection recover an existing Mission via Mission entry points",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Use the real sidebar session entry point to reselect another existing Mission session in Mission-GUI-TEST.",
+          "expected": "Selecting a Mission sidebar row should keep the app on the Mission surface for that session.",
+          "observed": "Clicking `session-mission-bf25232d-deba-422a-84ee-b67f0d123e18` switched the active content to `Run the deterministic kill-worker valida...`; DOM inspection still showed `mission-page: true` and the active Mission row changed to that session."
+        },
+        {
+          "action": "Use real project entry points to leave and return to Mission-GUI-TEST.",
+          "expected": "Project reselection should rebuild a Mission session on the Mission surface instead of dropping to a normal chat route.",
+          "observed": "After clicking `project-droi` and then `project-Mission-GUI-TEST`, the Electron UI returned to the Mission surface with the Mission proof content and `CCH-GPT-5.4` still visible in the session body."
+        },
+        {
+          "action": "Cross-check checked-in restart/latest-session restore proof artifacts.",
+          "expected": "Earlier live restart proof should show latest-session restore and reload recovery back into Mission without fresh live notifications.",
+          "observed": "`foundation-routing.json` records that the live app had already restored an existing Mission-GUI-TEST session on `/mission` before manual interaction, and `restore-bootstrap.json` records `[data-testid=\"mission-page\"]` immediately after reload with `droid.load_session`-based restore evidence."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/cross-entry-reselected-other-mission.png",
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/cross-entry-project-return.png",
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/cross-entry-current-mission.png"
+        ],
+        "consoleErrors": "none during reselection/project-return checks.",
+        "network": "Read-only reselection produced no tracked live renderer requests. Route/recovery evidence came from the live DOM checks plus `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-foundation/user-testing/flows/foundation-routing.json`, `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-sync-recovery/user-testing/flows/restore-bootstrap.json`, and `/tmp/droi-mission-e2e/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc.json`."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "Mission E2E validation stays on the Electron surface with an isolated copied data directory",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the Mission testing guidance and services manifest.",
+          "expected": "The isolated Mission validation surface should be Electron-only and use `/tmp/droi-mission-e2e`, API port 3002, and CDP port 9222 instead of LAN/Web mode.",
+          "observed": "`/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/library/user-testing.md` and `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/services.yaml` both specify Electron-only Mission validation with `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e`, `DROID_APP_API_PORT=3002`, and `ELECTRON_REMOTE_DEBUGGING_PORT=9222`, and explicitly forbid using port 3001/Web-LAN mode."
+        },
+        {
+          "action": "Verify the running isolated Electron instance through the local CDP endpoint.",
+          "expected": "The validation app should answer on 127.0.0.1:9222 as Electron/Chrome rather than a LAN web deployment.",
+          "observed": "`curl -sf http://127.0.0.1:9222/json/version` returned Electron 40 / Chrome 144 metadata for the running Droi desktop app."
+        },
+        {
+          "action": "Capture the live test surface screenshot.",
+          "expected": "The proof should show the Electron Mission UI itself, not a browser-based LAN surface.",
+          "observed": "`cross-entry-current-mission.png` shows the desktop Mission shell with `Mission-GUI-TEST`, Mission session rows, and Mission controls; no Web/LAN address flow or OS-native picker was used."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/user-testing/flows/cross-entry-current-mission.png"
+        ],
+        "consoleErrors": "none during the live Electron-only inspection.",
+        "network": "Terminal/config evidence: `electron-dev.start` in `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/services.yaml` launches `DROID_APP_DATA_DIR=/tmp/droi-mission-e2e DROID_APP_API_PORT=3002 ELECTRON_REMOTE_DEBUGGING_PORT=9222 pnpm dev:test`; the live CDP probe on `http://127.0.0.1:9222/json/version` succeeded; agent-browser captured no requests against `127.0.0.1:3001`."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The older Mission session used for sidebar reselection (`session-mission-bf25232d-deba-422a-84ee-b67f0d123e18`) rendered `Kimi K2.5`, so it could prove Mission entry-point recovery but not the required Custom `CCH-GPT-5.4` constraint on its own.",
+      "resolved": true,
+      "resolution": "Used the active constrained proof session `f1061069-8673-41ad-a30e-26eafb2e80dc` plus its persisted isolated session JSON for VAL-CROSS-001 model proof, and used the older session only for read-only reselection evidence in VAL-CROSS-006.",
+      "affectedAssertions": [
+        "VAL-CROSS-001",
+        "VAL-CROSS-006"
+      ]
+    },
+    {
+      "description": "After returning via the `project-Mission-GUI-TEST` button, the sidebar session list collapsed so the active `data-active` Mission row was no longer exposed even though Mission content stayed visible.",
+      "resolved": true,
+      "resolution": "Confirmed recovery via the still-visible Mission page/body content, the `CCH-GPT-5.4` chip, and the supporting restart/reselection artifacts from `foundation-routing.json` and `restore-bootstrap.json`.",
+      "affectedAssertions": [
+        "VAL-CROSS-006"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 4 assigned cross-entry/recovery assertions: VAL-CROSS-001 pass, VAL-CROSS-002 pass, VAL-CROSS-006 pass, VAL-CROSS-007 pass. Fresh live Electron evidence came from the isolated app on CDP 9222 plus screenshots `cross-entry-current-mission.png`, `cross-entry-reselected-other-mission.png`, and `cross-entry-project-return.png`; lifecycle-heavy assertions were corroborated with the checked-in feature-owned proof bundle, foundation/restore flow artifacts, and the live mission files under `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda`."
+}

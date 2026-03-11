@@ -15,6 +15,7 @@ export type {
   SessionMeta,
   Project,
   ProjectSettings,
+  MissionModelSettings,
   PersistedAppState,
   JsonRpcRequest,
   JsonRpcNotification,
@@ -44,7 +45,10 @@ export type {
   EditorInfo,
   SetupScriptStatus,
   SetupScriptEvent,
+  RuntimeLogEntry,
 } from '../../shared/protocol'
+
+export type { MissionRuntimeSnapshot } from '../../shared/mission'
 
 // === Constants ===
 

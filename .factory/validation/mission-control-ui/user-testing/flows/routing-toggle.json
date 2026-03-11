@@ -1,0 +1,105 @@
+{
+  "groupId": "routing-toggle",
+  "testedAt": "2026-03-09T14:20:58.728507+00:00",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "mcui-routing-toggle"
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-ROUTING-003",
+      "title": "MissionPage toggles between Chat and Mission Control without changing sessions",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open the existing Mission session named similar to 'foundation-metadata mission identity val...' in the Mission-GUI-TEST project",
+          "expected": "MissionPage is active with the Mission view toggle visible",
+          "observed": "MissionPage rendered with data-testid='mission-view-toggle' and the active session remained mission session a901a190-5925-431e-8657-8db9bb502391"
+        },
+        {
+          "action": "Toggle from Chat to Mission Control using the MissionPage view toggle",
+          "expected": "Mission Control renders without changing the active orchestrator session",
+          "observed": "Mission Control content became visible, feature queue content rendered, and the active session id stayed a901a190-5925-431e-8657-8db9bb502391"
+        },
+        {
+          "action": "Toggle back from Mission Control to Chat",
+          "expected": "Chat view returns while keeping the same Mission session active",
+          "observed": "Chat view restored with AskUser and Tasks shell elements visible, and the active session id still matched a901a190-5925-431e-8657-8db9bb502391"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "routing-toggle-initial.png",
+          "routing-toggle-mission-control.png",
+          "routing-toggle-chat-return.png"
+        ],
+        "consoleErrors": "React emitted duplicate-key warnings for mission handoff entries: mission-handoff-mission-session-entry-routing-and-sidebar and mission-handoff-scrutiny-validator-mission-sync-recovery.",
+        "network": "No requests captured by agent-browser during the toggle flow; the Electron renderer appeared to switch views from existing in-app state."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ROUTING-006",
+      "title": "Mission Chat view preserves the existing conversation shell",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the Mission Chat view in the existing Mission session",
+          "expected": "The Mission Chat view keeps the normal conversation shell behaviors while remaining on the Mission session",
+          "observed": "Chat view stayed on mission session a901a190-5925-431e-8657-8db9bb502391 and showed normal shell controls including AskUser, Tasks 3/5, model/autonomy selectors, and the disabled mission-running input"
+        },
+        {
+          "action": "Check for visible shell elements called out by the contract",
+          "expected": "At least the visible ask-user/todo/debug or permission-related shell surfaces remain available if present",
+          "observed": "AskUser and Tasks were visible in Chat view; no permission card or debug trace panel was present in this session state"
+        },
+        {
+          "action": "Confirm the Mission status bar while remaining in Chat view",
+          "expected": "Mission status bar remains visible without changing sessions",
+          "observed": "The bottom mission status bar remained visible in Chat view with state, progress, current feature, worker, and update text while the active session id stayed unchanged"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "routing-toggle-initial.png",
+          "routing-toggle-chat-return.png"
+        ],
+        "consoleErrors": "React emitted duplicate-key warnings for mission handoff entries: mission-handoff-mission-session-entry-routing-and-sidebar and mission-handoff-scrutiny-validator-mission-sync-recovery.",
+        "network": "No requests captured by agent-browser while validating Chat shell preservation in the Electron Mission view."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-011",
+      "title": "Mission status bar remains visible in both Chat and Mission Control views",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the Mission page in Chat view",
+          "expected": "A bottom status bar with data-testid='mission-statusbar' is visible in Chat view",
+          "observed": "Chat view showed the mission status bar with state Running, progress 10/13, current feature text, worker c6da10ce\u2026aaa2, and update text 'Mission is running'"
+        },
+        {
+          "action": "Toggle to Mission Control and inspect the bottom bar again",
+          "expected": "The same mission status bar remains visible in Mission Control view",
+          "observed": "Mission Control view still showed data-testid='mission-statusbar' with the same mission state, progress, current feature, worker, and update context"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "routing-toggle-chat-return.png",
+          "routing-toggle-mission-control.png"
+        ],
+        "consoleErrors": "React emitted duplicate-key warnings for mission handoff entries: mission-handoff-mission-session-entry-routing-and-sidebar and mission-handoff-scrutiny-validator-mission-sync-recovery.",
+        "network": "No requests captured by agent-browser while validating status bar persistence across Mission views."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions in the existing Mission-GUI-TEST Mission session. VAL-ROUTING-003, VAL-ROUTING-006, and VAL-CONTROL-011 passed. The same Mission session stayed active across Chat and Mission Control toggles, the Chat shell preserved visible AskUser/Tasks surfaces, and the mission status bar remained visible in both views. React duplicate-key console warnings were present during the run but did not block the asserted behaviors."
+}

@@ -1,0 +1,66 @@
+{
+  "milestone": "mission-control-ui",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 test -- --test-concurrency=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
+    "failedFeatures": [
+      "mission-page-chat-shell-and-view-toggle",
+      "mission-control-queue-timeline-and-handoffs",
+      "mission-permissions-actions-and-inputbar-semantics"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "mission-page-chat-shell-and-view-toggle",
+      "severity": "blocking",
+      "description": "MissionPage keeps `viewMode` and `manualOverrideAt` in component-local state without resetting on `activeSessionId` change, so one Mission session can inherit another session's 30-second manual override and render the wrong Chat/Mission Control view."
+    },
+    {
+      "featureId": "mission-control-queue-timeline-and-handoffs",
+      "severity": "blocking",
+      "description": "`getMissionControlStatus` can surface a Mission as completed before validation has actually settled because it falls back to raw `currentState === \"completed\"` even when `mission.isCompleted` is still false."
+    },
+    {
+      "featureId": "mission-permissions-actions-and-inputbar-semantics",
+      "severity": "blocking",
+      "description": "Mission-specific permission relabeling in `PermissionCard` collapses distinct non-cancel approval options into the same visible CTA text, hiding one-time vs broader approval scope semantics from users."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Clarify `mission-ui-worker` step 6 so workers know whether route/state-only Mission UI changes may defer manual Electron sanity checks to the milestone validation phase, or require that sanity check for every visible Mission UI change without exception.",
+      "evidence": "The review for `mission-page-chat-shell-and-view-toggle` found that the worker handoff explicitly skipped the skill's required manual Electron sanity step while the current skill text still states that every visible Mission behavior change must perform one.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document that Mission-specific permission UI copy must preserve backend-provided option semantics and per-option labels from `optionsMeta` instead of flattening all non-cancel approvals into generic CTA text.",
+      "evidence": "The review for `mission-permissions-actions-and-inputbar-semantics` found that `PendingPermissionRequest.optionsMeta` is preserved in reducer state and `SpecReviewCard` respects per-option labels, but `PermissionCard` replaced every non-cancel Mission option with the same text and obscured approval scope.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

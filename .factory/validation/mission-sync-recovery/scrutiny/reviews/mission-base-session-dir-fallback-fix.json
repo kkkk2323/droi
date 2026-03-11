@@ -1,0 +1,15 @@
+{
+  "featureId": "mission-base-session-dir-fallback-fix",
+  "reviewedAt": "2026-03-09T05:42:15.776506+00:00",
+  "commitId": "9e6d7ecd348e935248dfa42f6dd9a527b5486c9c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the original watcher/path-capture commit together with the fix commit. The fix resolves the prior VAL-RECOVERY-004 blocker by making fallback missionDir resolution prefer the preserved base/original Mission session id, then threading that value through session persistence, restore, session-id replacement handling, IPC requests, and restart watch/read flows so rebased sessions still resolve the correct Mission directory after restart.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-sync-recovery/scrutiny/reviews/mission-dir-watcher-ipc-and-path-capture.json",
+  "summary": "Pass: the original base-session fallback defect is resolved. `resolveMissionDirPath` now uses `missionBaseSessionId` when explicit `missionDir` is unavailable, session save/load/replace and restored buffers preserve that base id, AppInitializer passes it into missionDir read/watch restart flows, and updated tests prove fallback recovery still finds `~/.factory/missions/<baseSessionId>` after session-id replacement without introducing new blocking issues in the touched scope."
+}

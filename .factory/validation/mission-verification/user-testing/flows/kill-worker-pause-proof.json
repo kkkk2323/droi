@@ -1,0 +1,63 @@
+{
+  "groupId": "kill-worker-pause-proof",
+  "testedAt": "2026-03-10T15:08:00Z",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "mission-cross-flow-kill-worker-pause-proof"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "Read",
+    "Grep",
+    "node --test"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-005",
+      "title": "Kill Worker produces `worker_failed(reason = \"Killed by user\") -> mission_paused` while leaving the Mission resumable and inspectable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create one fresh Mission-GUI-TEST Mission session on the Electron surface and keep that same live session selected through the kill-worker proof flow.",
+          "expected": "The checked-in proof should start from a fresh Mission session configuration with Mission mode selected, Custom -> CCH-GPT-5.4 visible, and no dependence on restored-session reselection as the substantive evidence.",
+          "observed": "`kill-proof-session-config.png` and `kill-proof-live-before-send.png` show a fresh `Mission-GUI-TEST` new-session flow with `Mission` selected, `Work from Local` selected, and the `CCH-GPT-5.4` model chip visible before send. After the first send, `kill-proof-live-proposal.png` shows the same newly created sidebar row `mission-cross-flow-kill-worker-pause-pro...` selected on the Mission surface with the Mission-specific proposal card still inside that same session."
+        },
+        {
+          "action": "Approve the live proposal, start the live run, and click Kill Worker on that same selected Mission session.",
+          "expected": "One selected Electron Mission session should traverse proposal approval, start-run approval, running state, immediate Kill Worker acknowledgement, and the real `droid.kill_worker_session` request without switching sessions.",
+          "observed": "`kill-proof-live-start-permission.png` shows the same selected `mission-cross-flow-kill-worker-pause-pro...` Mission session with the Mission-specific `Start Mission Run` approval card. `kill-proof-live-running.png` then shows that same selected session in Mission Control with status `Running`, the active feature `Deterministic kill worker repro harness`, and an active worker in the status bar. Immediately after the click, `kill-proof-live-kill-pending.png` still shows the same selected session while the runtime card changes to `Kill request sent` and the `Kill Worker` button is disabled pending completion, proving the UI acknowledged the live kill before async Mission events arrived."
+        },
+        {
+          "action": "Verify the live same-session kill transition recorded `droid.kill_worker_session -> worker_failed(reason = \"Killed by user\") -> mission_paused` for the newly created session.",
+          "expected": "The exact same Mission session should show the live kill request in diagnostics, then record `worker_failed(reason = \"Killed by user\")` and `mission_paused` in its own missionDir without any session switch.",
+          "observed": "The isolated diagnostics log `/tmp/droi-mission-e2e/diagnostics/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc-2026-03-10.jsonl` records `droid.kill_worker_session` for session `f1061069-8673-41ad-a30e-26eafb2e80dc` with `workerSessionId=worker-f10eb4b7-05c2-49c2-acd2-b5e194d4eb40`. The same session's missionDir `/tmp/droi-mission-e2e/mission-kill-worker-harness/f1061069-8673-41ad-a30e-26eafb2e80dc/progress_log.jsonl` then records `worker_failed` with `reason=Killed by user` followed by `mission_paused`, and `state.json` preserves the same `baseSessionId` while transitioning the Mission into a paused recovery state."
+        },
+        {
+          "action": "Inspect and continue the same selected Mission session after the user-kill transition.",
+          "expected": "After the real kill transition, the same Mission should remain inspectable in Mission Control, resumable in Chat, and capable of accepting a normal continuation message without a new session or resume RPC.",
+          "observed": "`kill-proof-live-paused.png` shows the same selected session paused after the live kill with the `Worker killed by user` recovery card and an enabled composer. `kill-proof-live-mission-control.png` shows that same selected session in Mission Control with status `Paused`, `Worker killed by user`, and `Worker: No active worker`. `kill-proof-live-chat-resumable.png` shows a filled continuation message on the same selected session, and `kill-proof-live-continuation-complete.png` shows the same session after send with the assistant message `Mission validation harness preserved the same session after the kill-worker path.` plus the original paused recovery copy still visible. The same isolated session file `/tmp/droi-mission-e2e/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc.json` contains both the initial proof prompt and the follow-up continuation prompt under one Mission session id."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "kill-proof-session-config.png",
+          "kill-proof-live-before-send.png",
+          "kill-proof-live-proposal.png",
+          "kill-proof-live-start-permission.png",
+          "kill-proof-live-running.png",
+          "kill-proof-live-kill-pending.png",
+          "kill-proof-live-paused.png",
+          "kill-proof-live-mission-control.png",
+          "kill-proof-live-chat-resumable.png",
+          "kill-proof-live-continuation-complete.png"
+        ],
+        "consoleErrors": "No new product-blocking console errors were introduced during the fresh same-session Electron kill-worker capture; the visible failure state is the intentional user-kill proof surface and the evidence is anchored in the live harness diagnostics plus missionDir files for session `f1061069-8673-41ad-a30e-26eafb2e80dc`.",
+        "network": "The live diagnostics log for session `f1061069-8673-41ad-a30e-26eafb2e80dc` records the real `droid.kill_worker_session` request, and focused automated coverage in `test/interactionModeHotSwitch.test.ts`, `test/missionControl.test.ts`, and `test/missionUiSemantics.test.ts` verifies the request path, the `Killed by user -> Mission paused` timeline semantics, and the paused/resumable UI behavior."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "This feature-owned flow now records one fresh live same-session Mission-GUI-TEST Electron chain for Kill Worker on session `f1061069-8673-41ad-a30e-26eafb2e80dc`: create Mission session, approve proposal, start the run, click Kill Worker, observe `Kill request sent`, observe `worker_failed(reason = \"Killed by user\") -> mission_paused`, inspect the paused Mission, and continue through normal chat on that same session. Together with the live diagnostics log and focused kill-worker RPC/UI automation, these artifacts discharge VAL-CROSS-005 without depending on restored-session reselection, disk-only corroboration, or the superseded shared follow-up bundle as the substantive proof."
+}

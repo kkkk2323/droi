@@ -1,10 +1,17 @@
 commands:
-  install: pnpm install
+  install: pnpm install --frozen-lockfile
   typecheck: pnpm typecheck
-  build: pnpm build
-  test: pnpm test
   lint: pnpm lint
-  format: pnpm format
+  test: pnpm test -- --test-concurrency=7
   check: pnpm check
+  build: pnpm build
+  mission-daemon-failure-harness: DROI_MISSION_VALIDATION_HARNESS=daemon-failure pnpm dev:test
+  mission-kill-worker-harness: DROI_MISSION_VALIDATION_HARNESS=kill-worker pnpm dev:test
 
-services: {}
+services:
+  electron-dev:
+    start: DROID_APP_DATA_DIR=/tmp/droi-mission-e2e DROID_APP_API_PORT=3002 ELECTRON_REMOTE_DEBUGGING_PORT=9222 pnpm dev:test
+    stop: lsof -tiTCP:9222 -sTCP:LISTEN | xargs kill 2>/dev/null || true; lsof -tiTCP:5173 -sTCP:LISTEN | xargs kill 2>/dev/null || true; lsof -tiTCP:3002 -sTCP:LISTEN | xargs kill 2>/dev/null || true
+    healthcheck: curl -sf http://127.0.0.1:9222/json/version >/dev/null && curl -sf http://127.0.0.1:5173 >/dev/null
+    port: 9222
+    depends_on: []

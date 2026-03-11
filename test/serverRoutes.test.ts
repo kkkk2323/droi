@@ -45,6 +45,7 @@ function createTestApp(params?: {
       update: async () => cachedStateRef.value,
       filePath: '',
     } as any,
+    buildExecEnv: async () => ({ ...process.env }),
     sessionStore: {
       save: async () => null,
       load: async () => null,
@@ -64,6 +65,7 @@ function createTestApp(params?: {
       updateNote: async () => {},
       getUsages: async () => new Map(),
       refreshUsages: async () => new Map(),
+      invalidateUsages: () => {},
       getActiveKey: async () => state.apiKey || null,
     } as any,
   }

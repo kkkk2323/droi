@@ -1,15 +1,22 @@
 import type {
   ChatMessage,
+  MissionRuntimeSnapshot,
   ToolCallBlock,
   JsonRpcNotification,
   JsonRpcRequest,
   DroidPermissionOption,
+  RuntimeLogEntry,
   WorkspaceType,
   SetupScriptEvent,
   SetupScriptStatus,
 } from '@/types'
 import { isTraceChainEnabled } from '../lib/notificationFingerprint.ts'
 import { uuidv4 } from '../lib/uuid.ts'
+import {
+  applyMissionNotificationUpdate,
+  applyStartMissionProgressUpdate,
+  type MissionState,
+} from './missionState.ts'
 
 export interface SessionBuffer {
   messages: ChatMessage[]
@@ -18,7 +25,6 @@ export interface SessionBuffer {
   isSetupRunning: boolean
   workingState?: string
   apiKeyFingerprint?: string
-  pendingApiKeyFingerprint?: string
   projectDir: string
   workspaceDir?: string
   cwdSubpath?: string
@@ -28,6 +34,14 @@ export interface SessionBuffer {
   baseBranch?: string
   model: string
   autoLevel: string
+  missionDir?: string
+  missionBaseSessionId?: string
+  mission?: MissionState
+  isMission?: boolean
+  sessionKind?: 'normal' | 'mission'
+  interactionMode?: 'spec' | 'auto' | 'agi'
+  autonomyLevel?: 'off' | 'low' | 'medium' | 'high'
+  decompSessionType?: 'orchestrator'
   reasoningEffort: string
   tokenUsage?: {
     inputTokens: number
@@ -43,6 +57,8 @@ export interface SessionBuffer {
   pendingPermissionRequests?: PendingPermissionRequest[]
   pendingAskUserRequests?: PendingAskUserRequest[]
   debugTrace?: string[]
+  runtimeLogs?: RuntimeLogEntry[]
+  runtimeLogState?: MissionRuntimeSnapshot
   setupScript: SessionSetupState
 }
 
@@ -57,6 +73,7 @@ export interface SessionSetupState {
 export const DEFAULT_MODEL = 'kimi-k2.5'
 export const DEFAULT_AUTO_LEVEL = 'default'
 const MAX_SETUP_OUTPUT_CHARS = 120_000
+const MAX_RUNTIME_LOG_ENTRIES = 400
 
 export function makeBuffer(
   projectDir: string,
@@ -76,7 +93,6 @@ export function makeBuffer(
     isSetupRunning: false,
     workingState: undefined,
     apiKeyFingerprint: undefined,
-    pendingApiKeyFingerprint: undefined,
     projectDir,
     repoRoot: workspace?.repoRoot,
     workspaceDir: workspace?.workspaceDir,
@@ -86,6 +102,13 @@ export function makeBuffer(
     baseBranch: workspace?.baseBranch,
     model: DEFAULT_MODEL,
     autoLevel: DEFAULT_AUTO_LEVEL,
+    missionDir: undefined,
+    mission: undefined,
+    isMission: false,
+    sessionKind: 'normal',
+    interactionMode: 'spec',
+    autonomyLevel: 'off',
+    decompSessionType: undefined,
     reasoningEffort: '',
     tokenUsage: undefined,
     mcpServers: undefined,
@@ -95,6 +118,8 @@ export function makeBuffer(
     pendingPermissionRequests: [],
     pendingAskUserRequests: [],
     debugTrace: [],
+    runtimeLogs: [],
+    runtimeLogState: undefined,
     setupScript: {
       script: '',
       status: 'idle',
@@ -154,6 +179,20 @@ function updateSessionMessages(
   return next
 }
 
+function updateSessionBuffer(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  updater: (session: SessionBuffer) => SessionBuffer,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+  const updated = updater(session)
+  if (updated === session) return prev
+  const next = new Map(prev)
+  next.set(sid, updated)
+  return next
+}
+
 export interface PermissionOptionMeta {
   value: DroidPermissionOption
   label: string
@@ -162,8 +201,10 @@ export interface PermissionOptionMeta {
 }
 
 export interface PendingPermissionRequest {
+  sessionId?: string
   requestId: string
   toolUses: unknown[]
+  confirmationType?: string
   options: DroidPermissionOption[]
   optionsMeta: PermissionOptionMeta[]
   raw: JsonRpcRequest
@@ -177,6 +218,7 @@ export interface AskUserQuestion {
 }
 
 export interface PendingAskUserRequest {
+  sessionId?: string
   requestId: string
   toolCallId: string
   questions: AskUserQuestion[]
@@ -272,6 +314,95 @@ function updateToolCall(
     return updated
   }
   return msgs
+}
+
+function findToolCallBlock(msgs: ChatMessage[], callId: string): ToolCallBlock | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const msg = msgs[i]
+    if (msg.role !== 'assistant') continue
+    const block = msg.blocks.find(
+      (candidate): candidate is ToolCallBlock =>
+        candidate.kind === 'tool_call' && candidate.callId === callId,
+    )
+    if (block) return block
+  }
+  return null
+}
+
+function normalizeToolName(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function parseEmbeddedJson(value: string): unknown {
+  const trimmed = value.trim()
+  if (!trimmed) return value
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+function findMissionDirInValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    if (
+      trimmed.includes('.factory/missions/') &&
+      !trimmed.startsWith('{') &&
+      !trimmed.startsWith('[')
+    ) {
+      return trimmed
+    }
+    const parsed = parseEmbeddedJson(trimmed)
+    if (parsed !== trimmed) return findMissionDirInValue(parsed)
+    return undefined
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = findMissionDirInValue(item)
+      if (candidate) return candidate
+    }
+    return undefined
+  }
+
+  if (!isObject(value)) return undefined
+
+  const direct =
+    typeof (value as any).missionDir === 'string'
+      ? String((value as any).missionDir).trim()
+      : typeof (value as any).mission_dir === 'string'
+        ? String((value as any).mission_dir).trim()
+        : ''
+  if (direct) return direct
+
+  for (const nested of Object.values(value)) {
+    const candidate = findMissionDirInValue(nested)
+    if (candidate) return candidate
+  }
+  return undefined
+}
+
+function extractMissionDirFromToolResult(
+  msgs: ChatMessage[],
+  notification: Record<string, unknown>,
+): string | undefined {
+  const toolUseId = String((notification as any).toolUseId || '').trim()
+  if (!toolUseId) return undefined
+
+  const existingBlock = findToolCallBlock(msgs, toolUseId)
+  const normalizedExistingName = normalizeToolName(existingBlock?.toolName)
+  const normalizedNotificationName = normalizeToolName((notification as any).toolName)
+  const isProposeMissionTool =
+    normalizedExistingName === 'proposemission' || normalizedNotificationName === 'proposemission'
+  if (!isProposeMissionTool) return undefined
+
+  return findMissionDirInValue((notification as any).content)
 }
 
 type ParsedToolUse = {
@@ -486,7 +617,8 @@ export function applyRpcNotification(
     const content = (notification as any).content
     const isError = Boolean((notification as any).isError)
     const rendered = content === undefined ? '' : formatUnknown(content)
-    return updateSessionMessages(prev, sid, (msgs) => {
+    const missionDir = extractMissionDirFromToolResult(prev.get(sid)?.messages || [], notification)
+    let next = updateSessionMessages(prev, sid, (msgs) => {
       const updated = updateToolCall(msgs, toolUseId, (block) => ({
         ...block,
         result: rendered,
@@ -503,6 +635,12 @@ export function applyRpcNotification(
         isError,
       })
     })
+    if (!missionDir) return next
+    const session = next.get(sid)
+    if (!session || session.missionDir === missionDir) return next
+    next = new Map(next)
+    next.set(sid, { ...session, missionDir })
+    return next
   }
 
   if (type === 'tool_progress_update') {
@@ -510,7 +648,7 @@ export function applyRpcNotification(
     if (!toolUseId) return prev
     const update = (notification as any).update
     const rendered = formatUnknown(update)
-    return updateSessionMessages(prev, sid, (msgs) => {
+    let next = updateSessionMessages(prev, sid, (msgs) => {
       const updated = updateToolCall(msgs, toolUseId, (block) => ({ ...block, progress: rendered }))
       if (updated !== msgs) return updated
       const toolName = String((notification as any).toolName || 'Tool')
@@ -522,6 +660,25 @@ export function applyRpcNotification(
         progress: rendered,
       })
     })
+
+    const toolName = String((notification as any).toolName || '')
+      .trim()
+      .toLowerCase()
+    if (toolName === 'startmissionrun') {
+      next = updateSessionBuffer(next, sid, (session) => ({
+        ...session,
+        mission: applyStartMissionProgressUpdate(session.mission, update),
+      }))
+    }
+
+    return next
+  }
+
+  if (type.startsWith('mission_')) {
+    return updateSessionBuffer(prev, sid, (session) => ({
+      ...session,
+      mission: applyMissionNotificationUpdate(session.mission, notification),
+    }))
   }
 
   if (type === 'permission_resolved') {
@@ -662,16 +819,17 @@ export function applyRpcNotification(
     const nextAuto = mapSettingsToAutoLevel(settings)
     const session = prev.get(sid)
     if (!session) return prev
+    const isMission = session.isMission === true || session.sessionKind === 'mission'
     const next = new Map(prev)
     const hasChange =
       (modelId && modelId !== session.model) ||
       (reasoningEffort && reasoningEffort !== session.reasoningEffort) ||
-      (nextAuto && nextAuto !== session.autoLevel)
+      (!isMission && nextAuto && nextAuto !== session.autoLevel)
     next.set(sid, {
       ...session,
       ...(modelId ? { model: modelId } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
-      ...(nextAuto ? { autoLevel: nextAuto } : {}),
+      ...(!isMission && nextAuto ? { autoLevel: nextAuto } : {}),
       ...(hasChange ? { settingsFlashAt: Date.now() } : {}),
     })
     return next
@@ -733,6 +891,7 @@ export function applyRpcRequest(
   prev: Map<string, SessionBuffer>,
   sid: string,
   message: JsonRpcRequest,
+  requestSessionId?: string,
 ): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
@@ -772,8 +931,13 @@ export function applyRpcRequest(
     })
 
     const req: PendingPermissionRequest = {
+      sessionId: requestSessionId,
       requestId: message.id,
       toolUses,
+      confirmationType:
+        isObject(params) && typeof (params as any).confirmationType === 'string'
+          ? String((params as any).confirmationType).trim() || undefined
+          : undefined,
       options: normalizedOptions,
       optionsMeta,
       raw: message,
@@ -806,6 +970,7 @@ export function applyRpcRequest(
       .filter((q): q is AskUserQuestion => Boolean(q.question))
 
     const req: PendingAskUserRequest = {
+      sessionId: requestSessionId,
       requestId: message.id,
       toolCallId,
       questions,
@@ -848,6 +1013,72 @@ export function appendDebugTrace(
     nextTrace.length > maxLines ? nextTrace.slice(nextTrace.length - maxLines) : nextTrace
   const next = new Map(prev)
   next.set(sid, { ...session, debugTrace: clipped })
+  return next
+}
+
+function normalizeRuntimeLogText(value: string): string {
+  if (!value) return ''
+  return value.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+export function appendRuntimeLog(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  entry: RuntimeLogEntry,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+
+  const text = normalizeRuntimeLogText(String(entry.text || ''))
+  if (!text) return prev
+
+  const existing = Array.isArray(session.runtimeLogs) ? session.runtimeLogs : []
+  const nextLogs = [...existing, { ...entry, text }]
+  const next = new Map(prev)
+  next.set(sid, {
+    ...session,
+    runtimeLogs: nextLogs.slice(-MAX_RUNTIME_LOG_ENTRIES),
+  })
+  return next
+}
+
+export function setRuntimeLogSnapshot(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  snapshot: MissionRuntimeSnapshot,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+
+  const existing = Array.isArray(session.runtimeLogs) ? session.runtimeLogs : []
+  const stickySystemEntries = existing.filter((entry) => {
+    if (entry.stream !== 'system') return false
+    if (entry.kind !== 'status') return false
+    if (!entry.workerSessionId) return true
+    return entry.workerSessionId === snapshot.workerSessionId
+  })
+  const merged = [...snapshot.entries, ...stickySystemEntries]
+    .sort((left, right) => left.ts - right.ts)
+    .slice(-MAX_RUNTIME_LOG_ENTRIES)
+  const currentSnapshot = session.runtimeLogState
+  const snapshotUnchanged =
+    currentSnapshot?.sessionId === snapshot.sessionId &&
+    currentSnapshot?.workerSessionId === snapshot.workerSessionId &&
+    currentSnapshot?.workingDirectory === snapshot.workingDirectory &&
+    currentSnapshot?.sessionFile === snapshot.sessionFile &&
+    currentSnapshot?.exists === snapshot.exists &&
+    currentSnapshot?.status === snapshot.status &&
+    currentSnapshot?.source === snapshot.source &&
+    currentSnapshot?.message === snapshot.message &&
+    JSON.stringify(currentSnapshot?.entries || []) === JSON.stringify(snapshot.entries || [])
+  const logsUnchanged = JSON.stringify(session.runtimeLogs || []) === JSON.stringify(merged)
+  if (snapshotUnchanged && logsUnchanged) return prev
+  const next = new Map(prev)
+  next.set(sid, {
+    ...session,
+    runtimeLogs: merged,
+    runtimeLogState: snapshot,
+  })
   return next
 }
 

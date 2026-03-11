@@ -1,0 +1,28 @@
+{
+  "featureId": "mission-permissions-actions-and-inputbar-semantics",
+  "reviewedAt": "2026-03-09T10:26:12.689716Z",
+  "commitId": "106b742dba697ab230f72b81cf4d535b3db0ad84",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit covers Mission runtime semantics, action visibility, status messaging, and focused automated tests, but the Mission permission UI regresses approval choice clarity by collapsing distinct non-cancel permission options into the same visible CTA.",
+    "issues": [
+      {
+        "file": "src/renderer/src/components/PermissionCard.tsx",
+        "line": 213,
+        "severity": "blocking",
+        "description": "Mission-specific permission relabeling applies the same primary CTA text to every non-cancel option, so users cannot distinguish one-time approval from broader options like proceed-always or auto-run when those choices are offered. The renderer already preserves per-option metadata in PendingPermissionRequest.optionsMeta, and SpecReviewCard respects those labels, so this change hides approval scope in the Mission permission flow."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Permission UIs should preserve backend-provided option semantics and labels from optionsMeta even when adding specialized Mission copy, but that convention is not documented in AGENTS.md or the mission library notes.",
+      "evidence": "src/renderer/src/state/appReducer.ts:913-933 stores request.optionsMeta from backend permission options; src/renderer/src/components/SpecReviewCard.tsx:43-63 renders per-option labels; src/renderer/src/components/PermissionCard.tsx:213-224 ignores optionsMeta and replaces every non-cancel Mission option with the same CTA text."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the assigned feature's handoff, transcript skeleton, skill, commit diff, and touched Mission UI tests. The runtime semantics work is mostly complete, but the PermissionCard change obscures distinct approval scopes in Mission permission prompts, so this feature should fail scrutiny."
+}

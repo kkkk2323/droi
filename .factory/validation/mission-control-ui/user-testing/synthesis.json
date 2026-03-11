@@ -1,0 +1,94 @@
+{
+  "milestone": "mission-control-ui",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 17,
+    "passed": 17,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SESSION-006",
+    "VAL-ROUTING-003",
+    "VAL-ROUTING-004",
+    "VAL-ROUTING-006",
+    "VAL-CONTROL-001",
+    "VAL-CONTROL-002",
+    "VAL-CONTROL-003",
+    "VAL-CONTROL-004",
+    "VAL-CONTROL-005",
+    "VAL-CONTROL-006",
+    "VAL-CONTROL-007",
+    "VAL-CONTROL-008",
+    "VAL-CONTROL-009",
+    "VAL-CONTROL-010",
+    "VAL-CONTROL-011",
+    "VAL-CONTROL-012",
+    "VAL-CONTROL-013"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented that the shared live Mission-GUI-TEST validator-phase Mission session should be treated as read-only for destructive pause/kill and optional-permission checks, using isolated renderer-state injection or copied snapshots instead.",
+      "source": "flow-report"
+    }
+  ],
+  "toolsUsed": [
+    "agent-browser",
+    "node --test",
+    "Read",
+    "Grep",
+    "Task"
+  ],
+  "frictions": [
+    {
+      "description": "The shared live Mission-GUI-TEST validator-phase session was actively running, so triggering real Pause/Kill Worker flows or optional Mission permissions would have mutated shared mission state for other validators.",
+      "resolved": true,
+      "resolution": "Used the live Electron surface for read-only running-state assertions, then validated destructive or optional runtime permutations with isolated in-memory renderer-state injection, copied Mission snapshots, and existing focused automated coverage.",
+      "affectedAssertions": [
+        "VAL-SESSION-006",
+        "VAL-ROUTING-004",
+        "VAL-CONTROL-001",
+        "VAL-CONTROL-002",
+        "VAL-CONTROL-008",
+        "VAL-CONTROL-009",
+        "VAL-CONTROL-010",
+        "VAL-CONTROL-012",
+        "VAL-CONTROL-013"
+      ]
+    },
+    {
+      "description": "Mission Control emitted duplicate-key React warnings for recovered handoff entries during live Mission view checks.",
+      "resolved": false,
+      "resolution": "Left unchanged in this validator run because the warnings did not block the asserted Mission-control behaviors.",
+      "affectedAssertions": [
+        "VAL-ROUTING-003",
+        "VAL-ROUTING-006",
+        "VAL-CONTROL-011",
+        "VAL-ROUTING-004",
+        "VAL-CONTROL-008",
+        "VAL-CONTROL-009",
+        "VAL-CONTROL-010"
+      ]
+    },
+    {
+      "description": "After full Electron reloads, the isolated UI briefly showed an empty/no-project state before the Mission session rehydrated from disk.",
+      "resolved": true,
+      "resolution": "Waited for restore to settle before collecting persistence/timeline evidence from the copied Mission snapshot.",
+      "affectedAssertions": [
+        "VAL-CONTROL-006",
+        "VAL-CONTROL-007"
+      ]
+    }
+  ],
+  "blockers": [],
+  "flowReports": [
+    ".factory/validation/mission-control-ui/user-testing/flows/routing-toggle.json",
+    ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+    ".factory/validation/mission-control-ui/user-testing/flows/control-panels.json"
+  ],
+  "previousRound": null
+}

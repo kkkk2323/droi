@@ -1,4 +1,5 @@
-import { Outlet } from '@tanstack/react-router'
+import { useEffect } from 'react'
+import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { FilesChangedBadge } from '@/components/FilesChangedBadge'
@@ -22,9 +23,11 @@ import {
   useWorkspaceError,
   useActions,
   usePendingNewSession,
+  useAppStore,
 } from '@/store'
 import { isBrowserMode } from '@/droidClient'
 import { cn } from '@/lib/utils'
+import { getAppRouteTarget } from '@/lib/sessionRouting'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
@@ -34,6 +37,8 @@ const isMacElectron =
   (navigator.userAgent.includes('Macintosh') || navigator.userAgent.includes('Mac OS X'))
 
 function InnerLayout() {
+  const navigate = useNavigate()
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const activeProjectDir = useActiveProjectDir()
   const isRunning = useIsRunning()
   const activeSessionTitle = useActiveSessionTitle()
@@ -41,6 +46,25 @@ function InnerLayout() {
   const workspaceError = useWorkspaceError()
   const { clearWorkspaceError } = useActions()
   const { open } = useSidebar()
+  const routeTarget = useAppStore((s) => {
+    const activeSessionId = s.activeSessionId
+    const activeSession = activeSessionId
+      ? s.sessionBuffers.get(activeSessionId) ||
+        s.projects
+          .flatMap((project) => project.sessions)
+          .find((session) => session.id === activeSessionId)
+      : null
+    return getAppRouteTarget({
+      hasPendingNewSession: Boolean(s.pendingNewSession),
+      activeSession,
+    })
+  })
+
+  useEffect(() => {
+    if (pathname !== '/' && pathname !== '/mission') return
+    if (pathname === routeTarget) return
+    navigate({ to: routeTarget, replace: true })
+  }, [navigate, pathname, routeTarget])
 
   return (
     <>

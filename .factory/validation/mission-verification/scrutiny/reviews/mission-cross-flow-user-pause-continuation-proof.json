@@ -1,0 +1,15 @@
+{
+  "featureId": "mission-cross-flow-user-pause-continuation-proof",
+  "reviewedAt": "2026-03-10T13:25:15Z",
+  "commitId": "cc920e2da94743cb0ba8097eb96d21d089c4c0d5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The prior VAL-CROSS-003 blockers are cleared on current HEAD. Commit `cc920e2` adds a dedicated feature-owned proof bundle (`.factory/validation/mission-verification/mission-cross-flow-user-pause-continuation-proof.json`), a feature-owned flow artifact (`.factory/validation/mission-verification/user-testing/flows/pause-continuation-proof.json`), and focused automation in `test/interactionModeHotSwitch.test.ts` that proves normal-chat continuation reuses the same Mission engine session without any `droid.load_session` resume RPC. The proof still reuses the earlier Mission-GUI-TEST session `a901a190-5925-431e-8657-8db9bb502391` for the paused/resumed screenshots, but it no longer closes the feature via the superseded shared follow-up bundle or injected paused-state evidence alone: the current deliverable explicitly owns VAL-CROSS-003, cites real Mission-GUI-TEST continuity artifacts for the same session before and after normal chat, and pairs the paused-chat screenshot with real timeline evidence (`Worker paused` -> `Mission paused` -> `Mission run started`) plus the new same-session continuation test.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-user-pause-continuation-proof.json",
+  "summary": "Scrutiny passed. Current HEAD now contains a feature-owned VAL-CROSS-003 deliverable from commit `cc920e2`, and the combined evidence is genuinely same-session Mission-GUI-TEST proof for user pause -> continue via normal chat -> same Mission session continuity rather than a shared-bundle remap or injection-only claim."
+}

@@ -50,6 +50,7 @@ import {
 import {
   AlertCircle,
   FolderIcon,
+  FolderPlusIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -58,11 +59,13 @@ import {
   Loader2,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import fxAck from '@/assets/fx-ack01.wav'
 import { isBrowserMode } from '@/droidClient'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getProjectDisplayName } from '@/store/projectHelpers'
+import { getSessionRouteTarget, getSessionSidebarTestId } from '@/lib/sessionRouting'
 
 const isDevMode = import.meta.env.DEV
 
@@ -137,7 +140,7 @@ function SessionItem({
     >
       <SidebarMenuSubItem className="group/session">
         <SidebarMenuSubButton
-          data-testid={`session-${session.id}`}
+          data-testid={getSessionSidebarTestId(session)}
           render={<button type="button" />}
           className={cn(
             'w-full max-w-full pr-6 h-auto py-1.5 flex-col items-start gap-0',
@@ -155,6 +158,14 @@ function SessionItem({
             )}
             {isSessionRunning && !needsAttention && (
               <Loader2 className="size-3 animate-spin text-emerald-500 shrink-0" />
+            )}
+            {getSessionRouteTarget(session) === '/mission' && (
+              <Badge
+                variant="outline"
+                className="h-4 shrink-0 px-1.5 py-0 text-[9px] font-medium uppercase tracking-[0.16em]"
+              >
+                Mission
+              </Badge>
             )}
             <SessionTitle title={session.title} />
           </span>
@@ -362,7 +373,32 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     <Sidebar variant="sidebar" {...props}>
       <SidebarHeader className="flex-row items-center justify-between py-3 pl-20 pr-2" />
 
-      <SidebarContent className="overflow-hidden pt-3">
+      {!browserMode && (
+        <div data-slot="sidebar-new-project" className="px-2 pt-4">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                data-testid="sidebar-add-project"
+                tooltip="Add project"
+                aria-disabled={isInitBlocked}
+                className={cn(
+                  'text-muted-foreground',
+                  isInitBlocked && 'pointer-events-none opacity-60',
+                )}
+                onClick={() => {
+                  if (isInitBlocked) return
+                  handleAddProject()
+                }}
+              >
+                <FolderPlusIcon className="size-4" />
+                <span className="text-sm font-medium">New Project</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
+      )}
+
+      <SidebarContent className="overflow-hidden">
         <ScrollArea className="flex-1">
           <SidebarGroup>
             <SidebarGroupContent>
@@ -420,6 +456,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           onClick={(e) => {
                             e.stopPropagation()
                             if (isCreatingSession || isInitBlocked) return
+                            navigate({ to: '/' })
                             handleNewSession(project.dir)
                           }}
                         >
@@ -543,26 +580,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     </Collapsible>
                   )
                 })}
-                {!browserMode && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      data-testid="sidebar-add-project"
-                      tooltip="Add project"
-                      aria-disabled={isInitBlocked}
-                      className={cn(
-                        'text-muted-foreground',
-                        isInitBlocked && 'pointer-events-none opacity-60',
-                      )}
-                      onClick={() => {
-                        if (isInitBlocked) return
-                        handleAddProject()
-                      }}
-                    >
-                      <PlusIcon className="size-4" />
-                      <span className="text-sm">Add Project</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -574,7 +591,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton data-testid="sidebar-settings" onClick={() => navigate({ to: '/settings' })}>
+            <SidebarMenuButton
+              data-testid="sidebar-settings"
+              onClick={() => navigate({ to: '/settings' })}
+            >
               <SettingsIcon className="size-4" />
               <span>Settings</span>
             </SidebarMenuButton>

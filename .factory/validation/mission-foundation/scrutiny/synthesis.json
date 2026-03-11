@@ -1,0 +1,46 @@
+{
+  "milestone": "mission-foundation",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 test -- --test-concurrency=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "pnpm --dir /Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5 lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented the validated Mission worker kill contract in .factory/library/mission-runtime.md, including the shared IPC shape and the JSON-RPC payload sent to Droid.",
+      "sourceFeature": "mission-protocol-metadata-and-kill-worker-plumbing"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Clarify in mission-ui-worker that when a worker resumes an interrupted draft and the focused feature test already exists, the worker may continue from that baseline instead of forcing a brand-new red test authoring step.",
+      "evidence": "The mission-session-entry-routing-and-sidebar review found the implementation acceptable, but the worker handoff explicitly noted a deviation from the skill's 'write failing tests first' step because the interrupted draft already contained the focused routing/sidebar test coverage.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

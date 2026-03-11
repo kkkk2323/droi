@@ -11,13 +11,13 @@ export interface KeyStoreAPI {
   updateNote: (index: number, note: string) => Promise<void>
   getUsages: () => Promise<Map<string, ApiKeyUsage>>
   refreshUsages: () => Promise<Map<string, ApiKeyUsage>>
+  invalidateUsages: () => void
   getActiveKey: () => Promise<string | null>
 }
 
 export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
   let usageCache: Map<string, ApiKeyUsage> | null = null
   let usageCacheAt = 0
-  let lastUsedIndex: number | undefined
 
   const getKeys = async (): Promise<ApiKeyEntry[]> => {
     const state = (await appStateStore.load()) as PersistedAppStateV2
@@ -85,14 +85,18 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
     return usageCache
   }
 
+  const invalidateUsages = (): void => {
+    usageCache = null
+    usageCacheAt = 0
+  }
+
   const getActiveKey = async (): Promise<string | null> => {
     const keys = await getKeys()
     if (keys.length === 0) return null
     if (keys.length === 1) return keys[0].key
     const usages = await getUsages()
-    const result = selectActiveKey(keys, usages, lastUsedIndex)
+    const result = selectActiveKey(keys, usages)
     if (result) {
-      lastUsedIndex = result.index
       if (((await appStateStore.load()) as PersistedAppStateV2).apiKey !== result.key) {
         await appStateStore.update({ apiKey: result.key })
       }
@@ -101,5 +105,14 @@ export function createKeyStore(appStateStore: AppStateStore): KeyStoreAPI {
     return keys[0].key
   }
 
-  return { getKeys, addKeys, removeKey, updateNote, getUsages, refreshUsages, getActiveKey }
+  return {
+    getKeys,
+    addKeys,
+    removeKey,
+    updateNote,
+    getUsages,
+    refreshUsages,
+    invalidateUsages,
+    getActiveKey,
+  }
 }

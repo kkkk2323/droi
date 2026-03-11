@@ -1,0 +1,34 @@
+{
+  "featureId": "mission-cross-flow-lifecycle-proof",
+  "reviewedAt": "2026-03-09T22:50:04Z",
+  "commitId": "bce5ae066d647dfd1381df70bb6b6efb01e5a235",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "This fix does not clear the prior blockers. The reviewed worker session is a proof-audit only: commit `bce5ae0` changes scrutiny/library artifacts, not product tests or new mission-verification evidence, and the handoff discharges VAL-CROSS-002 through VAL-CROSS-006 by pointing back to earlier milestone artifacts that were already available during the previous failed review. The remaining pause/continue, daemon-failure/continue, and kill-worker lifecycle claims still rely in part on isolated renderer-state injection plus focused tests rather than a same-session Mission-GUI-TEST end-to-end proof owned by this feature.",
+    "issues": [
+      {
+        "file": "/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-09T22-29-58-054Z__mission-cross-flow-lifecycle-proof__f9eb5614-85f5-494c-885f-e510e5406e77.json",
+        "line": 11,
+        "severity": "blocking",
+        "description": "The fix handoff maps VAL-CROSS-002 through VAL-CROSS-006 entirely to already-committed artifacts from `mission-control-ui`, `mission-sync-recovery`, and `mission-foundation`, and later states that no new tests were added because the proof was already present on the checked-in head. Since commit `bce5ae0` only records scrutiny/library files and adds no new lifecycle tests or mission-verification proof bundle, older milestone evidence remains the sole basis for the claimed cross-flow coverage instead of feature-owned checked-in proof."
+      },
+      {
+        "file": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+        "line": 267,
+        "severity": "blocking",
+        "description": "The cited runtime-controls artifact explicitly says the unsafe pause/kill/optional-permission permutations were validated with isolated in-memory renderer-state injection plus existing focused tests because exercising them on the shared Mission-GUI-TEST run would mutate mission progress. That means the fix still does not provide the same-session durable Mission-GUI-TEST end-to-end proof promised for pause -> continue, daemon/factoryd failure -> continue, and kill-worker -> paused/resumable Mission flows."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`mission-verification-worker` still describes a test-authoring workflow (`write failing tests first`, collect full-flow evidence, and call out unproven variants), but this fix feature completed as a pure proof-audit with no new tests and still marked `followedProcedure: true`. The skill should explicitly say whether proof-only re-reviews are allowed and how workers must record that they are reusing pre-existing evidence instead of producing new proof.",
+      "evidence": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/skills/mission-verification-worker/SKILL.md:25,37,48 require test-first/full-flow/gap-explicit behavior, while /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/handoffs/2026-03-09T22-29-58-054Z__mission-cross-flow-lifecycle-proof__f9eb5614-85f5-494c-885f-e510e5406e77.json:74 and :78-81 say no new tests were added and suggest clarifying that a pure verification/handoff session may be acceptable."
+    }
+  ],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-verification-coverage.json",
+  "summary": "Scrutiny failed. The re-review confirms that the current fix feature did not add new checked-in lifecycle proof; it repackages earlier milestone artifacts as the evidence for VAL-CROSS-002 through VAL-CROSS-006, while the most critical pause/daemon-failure/kill-worker variants still are not proven by a same-session Mission-GUI-TEST end-to-end run."
+}

@@ -1,0 +1,15 @@
+{
+  "featureId": "mission-cross-flow-kill-worker-pause-proof",
+  "reviewedAt": "2026-03-10T15:24:02Z",
+  "commitId": "f3f8deb02025542b8cd3584af93e215ee84e9d3c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The prior VAL-CROSS-005 blockers are cleared on current HEAD. Commits `fd7d624` and `f3f8deb` add a deterministic kill-worker harness (`scripts/mission-kill-worker-droid.cjs`, `src/backend/droid/missionValidationHarness.ts`, `test/missionKillWorkerHarness.test.ts`), wire it into `package.json` and `.factory/services.yaml`, and replace the old proof bundle with a fresh feature-owned Electron screenshot chain plus updated proof JSON. The new artifacts now start from a Mission-selected `Mission-GUI-TEST` session with Custom `CCH-GPT-5.4`, keep one live session selected through proposal approval, start-run approval, running state, immediate `Kill request sent` feedback, `worker_failed(reason = \"Killed by user\") -> mission_paused`, and same-session normal-chat continuation. The proof no longer depends on reselecting an already-killed session or on misdescribed Standard Chat setup evidence.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-kill-worker-pause-proof.json",
+  "summary": "Scrutiny passed. Current HEAD now contains a feature-owned VAL-CROSS-005 deliverable backed by a live same-session Mission-GUI-TEST Electron proof chain, direct `droid.kill_worker_session` diagnostics evidence, and deterministic harness coverage showing the Mission remains inspectable and resumable after a user-killed worker."
+}

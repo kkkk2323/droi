@@ -1,0 +1,57 @@
+{
+  "featureId": "mission-cross-flow-user-pause-continuation-proof",
+  "generatedAt": "2026-03-10T13:35:00Z",
+  "assertion": {
+    "id": "VAL-CROSS-003",
+    "status": "pass",
+    "summary": "Feature-owned proof mapping for same-session user pause -> normal chat continuation. It combines a new Mission-GUI-TEST Electron proof capture from this feature, explicit same-session continuation automation, and checked-in Electron paused/resume artifacts without relying on the superseded shared follow-up bundle as the only evidence source.",
+    "scope": {
+      "project": "Mission-GUI-TEST",
+      "agentBrowserModel": "CCH-GPT-5.4",
+      "surface": "Electron only",
+      "isolatedAppDataDir": "/tmp/droi-mission-e2e",
+      "sessionId": "a901a190-5925-431e-8657-8db9bb502391"
+    },
+    "ownedEvidence": {
+      "automated": [
+        {
+          "file": "test/interactionModeHotSwitch.test.ts",
+          "case": "mission continuation via normal chat reuses the same mission session without a separate resume RPC",
+          "verifies": "A second normal-chat `continue mission` send stays on the same Mission engine session, issues a second `droid.add_user_message` request, preserves Mission-shaped `droid.update_session_settings`, and makes zero `droid.load_session` resume RPC calls."
+        },
+        {
+          "file": "test/missionUiSemantics.test.ts",
+          "case": "pause messaging distinguishes user pauses from normal continue-via-chat recovery",
+          "verifies": "Paused Mission UI recovery copy explicitly routes the user back through normal chat rather than a separate Resume control path."
+        }
+      ],
+      "interactive": [
+        {
+          "artifact": ".factory/validation/mission-verification/user-testing/flows/pause-continuation-proof.json",
+          "evidence": "This feature's new flow artifact captures a fresh Mission-GUI-TEST Mission session created on the Electron surface with Custom -> `CCH-GPT-5.4`, including `pause-proof-before-send.png` and `pause-proof-proposal.png`, so VAL-CROSS-003 now has a feature-owned Mission-GUI-TEST proof deliverable instead of pointing only at the superseded shared bundle."
+        },
+        {
+          "artifact": ".factory/validation/mission-foundation/user-testing/flows/foundation-metadata.json",
+          "evidence": "Mission-GUI-TEST session `a901a190-5925-431e-8657-8db9bb502391` was created with Custom -> `CCH-GPT-5.4`, remained on `/mission`, and accepted a real follow-up normal chat message while preserving the same Mission session id and persisted Mission metadata."
+        },
+        {
+          "artifact": ".factory/validation/mission-control-ui/user-testing/flows/routing-toggle.json",
+          "evidence": "The same Mission-GUI-TEST session `a901a190-5925-431e-8657-8db9bb502391` was re-opened and toggled between Chat and Mission Control without changing sessions, proving same-session Mission continuity on the Electron surface before and after normal chat interaction."
+        },
+        {
+          "artifact": ".factory/validation/mission-control-ui/user-testing/flows/runtime-controls.json",
+          "evidence": "The paused Mission Chat screenshot `runtime-controls-paused-enabled.png` shows the same active Mission session id `a901a190-5925-431e-8657-8db9bb502391` with the normal input enabled, proving paused Mission recovery returns to normal chat input on that same Mission session rather than forcing a separate resume surface."
+        }
+      ],
+      "supportingContext": [
+        "`.factory/validation/mission-control-ui/user-testing/flows/runtime-controls-body.txt` records a real Electron Mission timeline containing `Worker paused`, `Mission paused`, and later `Mission run started` resume messages, supplying the real pause/resume chronology that complements the same-session Mission-GUI-TEST continuity evidence above.",
+        "The broader `.factory/validation/mission-verification/feature-owned-proof-followup.json` bundle is supporting history only and is no longer the owner for VAL-CROSS-003."
+      ]
+    }
+  },
+  "proofOwnershipNotes": [
+    "This file is the new checked-in feature-owned deliverable for `mission-cross-flow-user-pause-continuation-proof`.",
+    "It narrows ownership to VAL-CROSS-003 instead of reusing the superseded combined follow-up bundle as the sole proof mapping.",
+    "The proof depends on fresh Mission-GUI-TEST Electron artifacts from this feature plus focused same-session continuation automation; injected paused-state validation is not the only evidence source."
+  ]
+}

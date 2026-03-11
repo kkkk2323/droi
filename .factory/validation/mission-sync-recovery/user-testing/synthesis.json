@@ -1,0 +1,88 @@
+{
+  "milestone": "mission-sync-recovery",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-RECOVERY-001",
+    "VAL-RECOVERY-002",
+    "VAL-RECOVERY-003",
+    "VAL-RECOVERY-004",
+    "VAL-RECOVERY-005",
+    "VAL-RECOVERY-006",
+    "VAL-RECOVERY-007",
+    "VAL-RECOVERY-008",
+    "VAL-RECOVERY-009",
+    "VAL-RECOVERY-010",
+    "VAL-RECOVERY-011",
+    "VAL-SESSION-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "toolsUsed": [
+    "agent-browser",
+    "node --test",
+    "Read",
+    "Grep",
+    "LS"
+  ],
+  "frictions": [
+    {
+      "description": "The restorable Mission session available in the isolated UI was a lightweight foundation validation session rather than the active validator-injected mission, so rich recovery assertions had to be proven with a combination of Electron sanity checks, diagnostics, live missionDir files, and focused automated tests instead of a single all-in-one UI fixture.",
+      "resolved": true,
+      "resolution": "Used the restored Electron Mission session for real-surface proof of coherent restore/reload, then used /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda plus focused tests for validator-injected, disk-only, completion-gating, and orphan-worker assertions.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-001",
+        "VAL-RECOVERY-007",
+        "VAL-RECOVERY-008",
+        "VAL-RECOVERY-009",
+        "VAL-RECOVERY-010",
+        "VAL-RECOVERY-011"
+      ]
+    },
+    {
+      "description": "The restored foundation metadata session persisted a missionDir path that no longer exists on disk, so that specific session could prove Mission identity restore but not current missionDir reconciliation behavior.",
+      "resolved": true,
+      "resolution": "Validated missionDir-backed recovery behaviors against the active live mission directory a340063e-1391-4186-b698-8db9955f8eda and the focused recovery tests instead.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-007",
+        "VAL-RECOVERY-008",
+        "VAL-RECOVERY-009",
+        "VAL-RECOVERY-010",
+        "VAL-RECOVERY-011"
+      ]
+    },
+    {
+      "description": "The restorable Mission session available in the isolated Electron UI was a previously saved foundation-validation Mission session rather than the active validator-injected mission tied to the live missionDir under /Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda.",
+      "resolved": true,
+      "resolution": "Used the real Electron UI for a Mission-surface coherence sanity check, then validated the assigned recovery assertions with the active live missionDir plus focused passing tests that directly cover capture, fallback, merge, and late-file behavior.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-004",
+        "VAL-RECOVERY-005",
+        "VAL-RECOVERY-006"
+      ]
+    },
+    {
+      "description": "The saved Mission session used for UI sanity proof persisted missionDir metadata for /Users/clive/.factory/missions/a901a190-5925-431e-8657-8db9bb502391, but that specific historical missionDir no longer exists on disk.",
+      "resolved": true,
+      "resolution": "Used that session only for real-surface coherence proof and relied on the active live missionDir plus focused tests for current disk-backed recovery behavior.",
+      "affectedAssertions": [
+        "VAL-RECOVERY-004",
+        "VAL-RECOVERY-005",
+        "VAL-RECOVERY-006"
+      ]
+    }
+  ],
+  "blockers": [],
+  "flowReports": [
+    ".factory/validation/mission-sync-recovery/user-testing/flows/restore-bootstrap.json",
+    ".factory/validation/mission-sync-recovery/user-testing/flows/missiondir-watch.json"
+  ],
+  "previousRound": null
+}

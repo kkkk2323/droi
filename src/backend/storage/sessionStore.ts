@@ -3,6 +3,7 @@ import { readdir, readFile, unlink } from 'fs/promises'
 import type {
   ChatMessage,
   LoadSessionResponse,
+  RuntimeLogEntry,
   SaveSessionRequest,
   SessionMeta,
 } from '../../shared/protocol'
@@ -44,6 +45,36 @@ function safeSessionFilePath(sessionsDir: string, id: string): string | null {
   return filePath
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function normalizeRuntimeLogs(value: unknown): RuntimeLogEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const ts = Number((entry as any).ts)
+      const stream = String((entry as any).stream || '').trim()
+      const text = typeof (entry as any).text === 'string' ? (entry as any).text : ''
+      if (!Number.isFinite(ts) || !text.trim()) return null
+      if (stream !== 'stdout' && stream !== 'stderr' && stream !== 'system') return null
+      const kind =
+        (entry as any).kind === 'command' ||
+        (entry as any).kind === 'result' ||
+        (entry as any).kind === 'message' ||
+        (entry as any).kind === 'status'
+          ? (entry as any).kind
+          : undefined
+      const workerSessionId =
+        typeof (entry as any).workerSessionId === 'string'
+          ? String((entry as any).workerSessionId).trim() || undefined
+          : undefined
+      return { ts, stream, text, kind, workerSessionId } as RuntimeLogEntry
+    })
+    .filter(Boolean) as RuntimeLogEntry[]
+}
+
 export interface SessionStore {
   save: (req: SaveSessionRequest) => Promise<SessionMeta | null>
   load: (id: string) => Promise<LoadSessionResponse | null>
@@ -79,6 +110,13 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       baseBranch: req.baseBranch,
       model: req.model,
       autoLevel: req.autoLevel,
+      missionDir: req.missionDir,
+      missionBaseSessionId: normalizeOptionalString(req.missionBaseSessionId),
+      isMission: req.isMission,
+      sessionKind: req.sessionKind,
+      interactionMode: req.interactionMode,
+      autonomyLevel: req.autonomyLevel,
+      decompSessionType: req.decompSessionType,
       reasoningEffort: req.reasoningEffort,
       apiKeyFingerprint: req.apiKeyFingerprint,
       pinned: req.pinned,
@@ -86,6 +124,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       savedAt,
       lastMessageAt,
       messages: req.messages,
+      runtimeLogs: normalizeRuntimeLogs(req.runtimeLogs) || [],
     }
 
     await atomicWriteFile(filePath, JSON.stringify(record, null, 2))
@@ -103,6 +142,13 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       messageCount,
       model: req.model,
       autoLevel: req.autoLevel,
+      missionDir: req.missionDir,
+      missionBaseSessionId: normalizeOptionalString(req.missionBaseSessionId),
+      isMission: req.isMission,
+      sessionKind: req.sessionKind,
+      interactionMode: req.interactionMode,
+      autonomyLevel: req.autonomyLevel,
+      decompSessionType: req.decompSessionType,
       apiKeyFingerprint: req.apiKeyFingerprint,
       pinned: req.pinned,
       lastMessageAt,
@@ -135,6 +181,30 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           baseBranch: typeof raw.baseBranch === 'string' ? raw.baseBranch : undefined,
           model: String(raw.model || ''),
           autoLevel: String(raw.autoLevel || 'default'),
+          missionDir: typeof raw.missionDir === 'string' ? raw.missionDir : undefined,
+          missionBaseSessionId: normalizeOptionalString(raw.missionBaseSessionId),
+          isMission: raw.isMission === true ? true : undefined,
+          sessionKind:
+            raw.sessionKind === 'mission'
+              ? 'mission'
+              : raw.sessionKind === 'normal'
+                ? 'normal'
+                : undefined,
+          interactionMode:
+            raw.interactionMode === 'spec' ||
+            raw.interactionMode === 'auto' ||
+            raw.interactionMode === 'agi'
+              ? raw.interactionMode
+              : undefined,
+          autonomyLevel:
+            raw.autonomyLevel === 'off' ||
+            raw.autonomyLevel === 'low' ||
+            raw.autonomyLevel === 'medium' ||
+            raw.autonomyLevel === 'high'
+              ? raw.autonomyLevel
+              : undefined,
+          decompSessionType:
+            raw.decompSessionType === 'orchestrator' ? raw.decompSessionType : undefined,
           reasoningEffort:
             typeof raw.reasoningEffort === 'string' ? raw.reasoningEffort : undefined,
           apiKeyFingerprint:
@@ -144,6 +214,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           savedAt: Number(raw.savedAt || 0),
           lastMessageAt,
           messages,
+          runtimeLogs: normalizeRuntimeLogs(raw.runtimeLogs),
         }
       }
 
@@ -168,6 +239,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         savedAt: Number(raw?.savedAt || 0),
         lastMessageAt,
         messages,
+        runtimeLogs: normalizeRuntimeLogs(raw?.runtimeLogs),
       }
     } catch {
       return null
@@ -197,6 +269,13 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           messageCount: data.messages.length,
           model: data.model,
           autoLevel: data.autoLevel,
+          missionDir: data.missionDir,
+          missionBaseSessionId: data.missionBaseSessionId,
+          isMission: data.isMission,
+          sessionKind: data.sessionKind,
+          interactionMode: data.interactionMode,
+          autonomyLevel: data.autonomyLevel,
+          decompSessionType: data.decompSessionType,
           reasoningEffort: data.reasoningEffort,
           apiKeyFingerprint: data.apiKeyFingerprint,
           pinned: data.pinned,
@@ -243,6 +322,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         savedAt: now,
         lastMessageAt: now,
         messages: [],
+        runtimeLogs: [],
       }
 
       await atomicWriteFile(filePath, JSON.stringify(record, null, 2))
@@ -269,6 +349,33 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
+        missionDir:
+          typeof (raw as any).missionDir === 'string' ? (raw as any).missionDir : undefined,
+        missionBaseSessionId: normalizeOptionalString((raw as any).missionBaseSessionId),
+        isMission: (raw as any).isMission === true ? true : undefined,
+        sessionKind:
+          (raw as any).sessionKind === 'mission'
+            ? 'mission'
+            : (raw as any).sessionKind === 'normal'
+              ? 'normal'
+              : undefined,
+        interactionMode:
+          (raw as any).interactionMode === 'spec' ||
+          (raw as any).interactionMode === 'auto' ||
+          (raw as any).interactionMode === 'agi'
+            ? (raw as any).interactionMode
+            : undefined,
+        autonomyLevel:
+          (raw as any).autonomyLevel === 'off' ||
+          (raw as any).autonomyLevel === 'low' ||
+          (raw as any).autonomyLevel === 'medium' ||
+          (raw as any).autonomyLevel === 'high'
+            ? (raw as any).autonomyLevel
+            : undefined,
+        decompSessionType:
+          (raw as any).decompSessionType === 'orchestrator'
+            ? (raw as any).decompSessionType
+            : undefined,
         reasoningEffort:
           typeof (raw as any).reasoningEffort === 'string'
             ? (raw as any).reasoningEffort
@@ -298,15 +405,20 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         : []
       const titleRaw = typeof (raw as any).title === 'string' ? (raw as any).title : ''
       const title = titleRaw.trim() || getTitleFromMessages(prevMessages)
+      const missionBaseSessionId = normalizeOptionalString((raw as any).missionBaseSessionId)
+      const isMission = (raw as any).isMission === true || (raw as any).sessionKind === 'mission'
 
       const record = {
         ...(raw as any),
         version: 1,
         id: newId,
+        missionBaseSessionId:
+          missionBaseSessionId || (isMission ? String((raw as any).id || oldId) : undefined),
         title,
         savedAt: now,
         lastMessageAt: now,
         messages: [],
+        runtimeLogs: [],
       }
 
       await ensureDir(sessionsDir)
@@ -341,6 +453,34 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         messageCount: 0,
         model: String((raw as any).model || ''),
         autoLevel: String((raw as any).autoLevel || 'default'),
+        missionDir:
+          typeof (raw as any).missionDir === 'string' ? (raw as any).missionDir : undefined,
+        missionBaseSessionId:
+          missionBaseSessionId || (isMission ? String((raw as any).id || oldId) : undefined),
+        isMission: (raw as any).isMission === true ? true : undefined,
+        sessionKind:
+          (raw as any).sessionKind === 'mission'
+            ? 'mission'
+            : (raw as any).sessionKind === 'normal'
+              ? 'normal'
+              : undefined,
+        interactionMode:
+          (raw as any).interactionMode === 'spec' ||
+          (raw as any).interactionMode === 'auto' ||
+          (raw as any).interactionMode === 'agi'
+            ? (raw as any).interactionMode
+            : undefined,
+        autonomyLevel:
+          (raw as any).autonomyLevel === 'off' ||
+          (raw as any).autonomyLevel === 'low' ||
+          (raw as any).autonomyLevel === 'medium' ||
+          (raw as any).autonomyLevel === 'high'
+            ? (raw as any).autonomyLevel
+            : undefined,
+        decompSessionType:
+          (raw as any).decompSessionType === 'orchestrator'
+            ? (raw as any).decompSessionType
+            : undefined,
         reasoningEffort:
           typeof (raw as any).reasoningEffort === 'string'
             ? (raw as any).reasoningEffort

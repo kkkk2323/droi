@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronRightIcon } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ModelSelect } from '@/components/ModelSelect'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Select,
   SelectContent,
@@ -12,12 +14,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { getDroidClient } from '@/droidClient'
+import { DEFAULT_MODEL } from '@/state/appReducer'
 import { getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
 import {
   useCustomModels,
   useCommitMessageModelId,
   useCommitMessageReasoningEffort,
   useLanAccessEnabled,
+  useMissionModelSettings,
   useActions,
   useAppVersion,
   useDroidVersion,
@@ -32,25 +36,132 @@ type UpdateState =
   | { step: 'ready' }
   | { step: 'error'; message: string }
 
+function ModelOverrideRow({
+  title,
+  description,
+  follow,
+  onFollowChange,
+  value,
+  onChange,
+  customModels,
+}: {
+  title: string
+  description: string
+  follow: boolean
+  onFollowChange: (checked: boolean) => void
+  value: string
+  onChange: (value: string) => void
+  customModels: import('@/types').CustomModelDef[]
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium">{title}</div>
+          <div className="text-xs text-muted-foreground">{description}</div>
+        </div>
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+          <Switch checked={follow} onCheckedChange={onFollowChange} />
+          Follow orchestrator
+        </label>
+      </div>
+      <ModelSelect
+        value={value}
+        onChange={onChange}
+        customModels={customModels}
+        disabled={follow}
+        className="w-full"
+      />
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const navigate = useNavigate()
   const customModels = useCustomModels()
   const commitMessageModelId = useCommitMessageModelId()
   const commitMessageReasoningEffort = useCommitMessageReasoningEffort()
   const lanAccessEnabled = useLanAccessEnabled()
+  const missionModelSettings = useMissionModelSettings()
   const appVersion = useAppVersion()
   const droidVersion = useDroidVersion()
-  const { setCommitMessageModelId, setCommitMessageReasoningEffort, setLanAccessEnabled } =
-    useActions()
+  const {
+    setCommitMessageModelId,
+    setCommitMessageReasoningEffort,
+    setLanAccessEnabled,
+    setMissionModelSettings,
+  } = useActions()
 
   const [update, setUpdate] = useState<UpdateState>({ step: 'idle' })
+  const [missionModelsOpen, setMissionModelsOpen] = useState(false)
+  const [followWorkerModel, setFollowWorkerModel] = useState(true)
+  const [followValidatorModel, setFollowValidatorModel] = useState(true)
+  const [workerModel, setWorkerModel] = useState(DEFAULT_MODEL)
+  const [validatorModel, setValidatorModel] = useState(DEFAULT_MODEL)
   const unsubRef = useRef<(() => void) | null>(null)
+
+  const orchestratorModel = missionModelSettings.orchestratorModel || DEFAULT_MODEL
 
   useEffect(() => {
     return () => {
       unsubRef.current?.()
     }
   }, [])
+
+  useEffect(() => {
+    const nextWorkerModel = missionModelSettings.workerModel || orchestratorModel
+    const nextValidatorModel = missionModelSettings.validationWorkerModel || orchestratorModel
+    const nextFollowWorkerModel =
+      !missionModelSettings.workerModel || missionModelSettings.workerModel === orchestratorModel
+    const nextFollowValidatorModel =
+      !missionModelSettings.validationWorkerModel ||
+      missionModelSettings.validationWorkerModel === orchestratorModel
+
+    setWorkerModel(nextWorkerModel)
+    setValidatorModel(nextValidatorModel)
+    setFollowWorkerModel(nextFollowWorkerModel)
+    setFollowValidatorModel(nextFollowValidatorModel)
+    if (!nextFollowWorkerModel || !nextFollowValidatorModel) {
+      setMissionModelsOpen(true)
+    }
+  }, [
+    missionModelSettings.workerModel,
+    missionModelSettings.validationWorkerModel,
+    orchestratorModel,
+  ])
+
+  const persistMissionModels = useCallback(
+    (next: {
+      orchestratorModel?: string
+      workerModel?: string
+      validationWorkerModel?: string
+      followWorkerModel?: boolean
+      followValidatorModel?: boolean
+    }) => {
+      const nextOrchestratorModel = next.orchestratorModel || orchestratorModel
+      const nextFollowWorkerModel = next.followWorkerModel ?? followWorkerModel
+      const nextFollowValidatorModel = next.followValidatorModel ?? followValidatorModel
+      const nextWorkerModel = next.workerModel || workerModel || nextOrchestratorModel
+      const nextValidationWorkerModel =
+        next.validationWorkerModel || validatorModel || nextOrchestratorModel
+
+      return setMissionModelSettings({
+        orchestratorModel: nextOrchestratorModel,
+        workerModel: nextFollowWorkerModel ? nextOrchestratorModel : nextWorkerModel,
+        validationWorkerModel: nextFollowValidatorModel
+          ? nextOrchestratorModel
+          : nextValidationWorkerModel,
+      })
+    },
+    [
+      orchestratorModel,
+      followWorkerModel,
+      followValidatorModel,
+      workerModel,
+      validatorModel,
+      setMissionModelSettings,
+    ],
+  )
 
   const handleCheck = useCallback(async () => {
     setUpdate({ step: 'checking' })
@@ -109,7 +220,8 @@ export function SettingsPage() {
           <div>
             <h2 className="text-sm font-medium">API Keys</h2>
             <p className="text-xs text-muted-foreground">
-              Manage your Factory API keys. Keys are automatically rotated based on expiry date.
+              Manage your Factory API keys. Droi prioritizes the earliest expiry, then the lowest
+              usage, and rotates at 98%.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => navigate({ to: '/settings/keys' })}>
@@ -163,6 +275,107 @@ export function SettingsPage() {
                 </div>
               )
             })()}
+          </div>
+        </section>
+
+        <Separator />
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">Mission Models</h2>
+            <p className="text-xs text-muted-foreground">
+              Choose the model that coordinates your mission. Workers and validators use the same
+              model by default.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <span className="text-sm text-muted-foreground">Orchestrator model</span>
+              <ModelSelect
+                value={orchestratorModel}
+                onChange={(value) => {
+                  const nextModel = value || DEFAULT_MODEL
+                  if (followWorkerModel) setWorkerModel(nextModel)
+                  if (followValidatorModel) setValidatorModel(nextModel)
+                  void persistMissionModels({
+                    orchestratorModel: nextModel,
+                    workerModel: followWorkerModel ? nextModel : workerModel,
+                    validationWorkerModel: followValidatorModel ? nextModel : validatorModel,
+                  })
+                }}
+                customModels={customModels}
+                className="w-full"
+              />
+            </div>
+
+            <Collapsible open={missionModelsOpen} onOpenChange={setMissionModelsOpen}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent/40">
+                <div>
+                  <div className="font-medium">Advanced overrides</div>
+                  <div className="text-xs text-muted-foreground">
+                    Use different models for workers and validators.
+                  </div>
+                </div>
+                <ChevronRightIcon
+                  className={`size-4 transition-transform ${missionModelsOpen ? 'rotate-90' : ''}`}
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 px-1 pt-3">
+                <ModelOverrideRow
+                  title="Worker model"
+                  description="Runs implementation tasks for each feature."
+                  follow={followWorkerModel}
+                  onFollowChange={(checked) => {
+                    setFollowWorkerModel(checked)
+                    if (checked) {
+                      setWorkerModel(orchestratorModel)
+                      void persistMissionModels({
+                        followWorkerModel: true,
+                        workerModel: orchestratorModel,
+                      })
+                    }
+                  }}
+                  value={followWorkerModel ? orchestratorModel : workerModel}
+                  onChange={(value) => {
+                    setWorkerModel(value)
+                    if (!followWorkerModel) {
+                      void persistMissionModels({
+                        followWorkerModel: false,
+                        workerModel: value,
+                      })
+                    }
+                  }}
+                  customModels={customModels}
+                />
+                <ModelOverrideRow
+                  title="Validator model"
+                  description="Runs validation checks after implementation."
+                  follow={followValidatorModel}
+                  onFollowChange={(checked) => {
+                    setFollowValidatorModel(checked)
+                    if (checked) {
+                      setValidatorModel(orchestratorModel)
+                      void persistMissionModels({
+                        followValidatorModel: true,
+                        validationWorkerModel: orchestratorModel,
+                      })
+                    }
+                  }}
+                  value={followValidatorModel ? orchestratorModel : validatorModel}
+                  onChange={(value) => {
+                    setValidatorModel(value)
+                    if (!followValidatorModel) {
+                      void persistMissionModels({
+                        followValidatorModel: false,
+                        validationWorkerModel: value,
+                      })
+                    }
+                  }}
+                  customModels={customModels}
+                />
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         </section>
 

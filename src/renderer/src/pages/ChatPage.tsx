@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  useAppStore,
   useMessages,
   useIsRunning,
   useModel,
@@ -19,8 +20,10 @@ import {
   usePendingNewSession,
   useIsCreatingSession,
   useWorkingState,
+  useMissionModelSettings,
   useActions,
 } from '@/store'
+import { DEFAULT_MODEL } from '@/state/appReducer'
 import ChatView from '@/components/ChatView'
 import { InputBar } from '@/components/InputBar'
 import { TodoPanel } from '@/components/TodoPanel'
@@ -30,14 +33,24 @@ import { PermissionCard } from '@/components/PermissionCard'
 import { AskUserCard } from '@/components/AskUserCard'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
 import { getPendingSessionDraftKey } from '@/store/projectHelpers'
+import { getPreferredMissionView } from '@/lib/missionPage'
 
-export function ChatPage() {
+interface ChatPageProps {
+  forceInputDisabled?: boolean
+  forceDisabledPlaceholder?: string
+}
+
+export function ChatPage({
+  forceInputDisabled = false,
+  forceDisabledPlaceholder,
+}: ChatPageProps = {}) {
   const messages = useMessages()
   const isRunning = useIsRunning()
   const workingState = useWorkingState()
   const model = useModel()
   const autoLevel = useAutoLevel()
   const reasoningEffort = useReasoningEffort()
+  const missionModelSettings = useMissionModelSettings()
   const activeProjectDir = useActiveProjectDir()
   const activeSessionId = useActiveSessionId()
   const pendingNewSession = usePendingNewSession()
@@ -50,6 +63,10 @@ export function ChatPage() {
   const pendingPermissionRequest = usePendingPermissionRequest()
   const pendingAskUserRequest = usePendingAskUserRequest()
   const isCancelling = useIsCancelling()
+  const activeSessionBuffer = useAppStore((state) =>
+    activeSessionId ? state.sessionBuffers.get(activeSessionId) : undefined,
+  )
+  const mission = activeSessionBuffer?.mission
   const {
     setModel,
     setAutoLevel,
@@ -97,24 +114,37 @@ export function ChatPage() {
     pendingNewSession?.projectDir || pendingNewSession?.repoRoot || activeProjectDir
   const noProject = !effectiveProjectDir
   const noSession = !activeSessionId
-  const disabledPlaceholder = noProject
-    ? 'Select a project to start...'
-    : isCreatingSession
-      ? 'Preparing workspace...'
-      : pendingNewSession
-        ? 'Type a message to create this session...'
-        : noSession
-          ? 'Create or select a session to start...'
-          : setupScript?.status === 'running'
-            ? 'Setup script is running...'
-            : setupScript?.status === 'failed'
-              ? 'Setup script failed. Retry or skip to continue.'
-              : undefined
+  const missionPreferredView = getPreferredMissionView(mission)
+  const missionInputLocked = missionPreferredView === 'mission-control'
+  const isMissionSession =
+    activeSessionBuffer?.isMission === true || activeSessionBuffer?.sessionKind === 'mission'
+  const missionOrchestratorModel = missionModelSettings.orchestratorModel || model || DEFAULT_MODEL
+  const missionWorkerModel = missionModelSettings.workerModel || missionOrchestratorModel
+  const missionValidatorModel =
+    missionModelSettings.validationWorkerModel || missionOrchestratorModel
+
+  const disabledPlaceholder =
+    forceDisabledPlaceholder ||
+    (noProject
+      ? 'Select a project to start...'
+      : isCreatingSession
+        ? 'Preparing workspace...'
+        : pendingNewSession
+          ? 'Type a message to create this session...'
+          : noSession
+            ? 'Create or select a session to start...'
+            : setupScript?.status === 'running'
+              ? 'Setup script is running...'
+              : setupScript?.status === 'failed'
+                ? 'Setup script failed. Retry or skip to continue.'
+                : undefined)
 
   const pendingKey = getPendingSessionDraftKey(pendingNewSession)
   const inputKey = pendingNewSession ? pendingKey : activeSessionId || 'no-session'
   const draftKey = pendingNewSession ? pendingKey : activeSessionId
   const inputDisabled =
+    forceInputDisabled ||
+    missionInputLocked ||
     isCreatingSession ||
     noProject ||
     (!pendingNewSession && noSession) ||
@@ -181,6 +211,16 @@ export function ChatPage() {
               key={inputKey}
               draftKey={draftKey}
               model={model}
+              readonlyModelId={isMissionSession ? missionOrchestratorModel : undefined}
+              readonlyMissionModels={
+                isMissionSession
+                  ? {
+                      orchestrator: missionOrchestratorModel,
+                      worker: missionWorkerModel,
+                      validator: missionValidatorModel,
+                    }
+                  : undefined
+              }
               autoLevel={autoLevel}
               reasoningEffort={reasoningEffort}
               customModels={customModels}

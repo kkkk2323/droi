@@ -1,0 +1,15 @@
+{
+  "featureId": "mission-cross-flow-daemon-failure-continuation-proof",
+  "reviewedAt": "2026-03-10T13:42:00Z",
+  "commitId": "f93edbb02e5c467c2a7d38ae81900e371a6dfa24",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The prior VAL-CROSS-004 blockers are cleared on current HEAD. Commits `b869e0f`, `ba4a01f`, and `f93edbb` add a dedicated feature-owned proof bundle (`.factory/validation/mission-verification/mission-cross-flow-daemon-failure-continuation-proof.json`), a feature-owned Electron flow artifact (`.factory/validation/mission-verification/user-testing/flows/daemon-failure-continuation-proof.json`), and deterministic same-session automation in `test/missionDaemonFailureHarness.test.ts`. The proof no longer closes via the superseded shared follow-up bundle or injected paused-state evidence alone: the screenshot chain keeps one Mission-GUI-TEST session selected from retry exhaustion through normal-chat continuation, and the harness proves the same Mission session accepts the follow-up chat message with no extra permission request and zero continuation `droid.load_session` calls.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-verification/scrutiny/reviews/mission-cross-flow-daemon-failure-continuation-proof.json",
+  "summary": "Scrutiny passed. Current HEAD now contains a feature-owned VAL-CROSS-004 deliverable backed by a clean same-session Mission-GUI-TEST Electron screenshot chain and deterministic harness coverage for daemon/factoryd failure -> bounded retry -> orchestrator-turn recovery -> continue via normal chat on the same Mission session."
+}

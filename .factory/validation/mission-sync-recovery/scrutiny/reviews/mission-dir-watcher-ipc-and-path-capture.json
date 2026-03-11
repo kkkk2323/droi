@@ -1,0 +1,28 @@
+{
+  "featureId": "mission-dir-watcher-ipc-and-path-capture",
+  "reviewedAt": "2026-03-09T04:56:00.698875+00:00",
+  "commitId": "edbc49033b09585d4381c4849aa1dedfabad9017",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Mission dir IPC/watch plumbing, typed disk payload parsing, and late-file handling are implemented, but the documented restart fallback contract is incomplete because fallback resolution uses the current session id instead of the required base session id.",
+    "issues": [
+      {
+        "file": "src/backend/mission/missionDirReader.ts",
+        "line": 75,
+        "severity": "blocking",
+        "description": "`resolveMissionDirPath` falls back to `~/.factory/missions/<sessionId>`, but the Mission spec requires `~/.factory/missions/<baseSessionId>`. When a restored or replaced session id differs from the base mission id, restart recovery can watch and read the wrong directory, so VAL-RECOVERY-004 is not fully satisfied."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `mission-core-worker` skill requires writing/running failing tests before implementation, but this worker edited code before the first targeted failing-state test execution while still reporting `followedProcedure: true`.",
+      "evidence": "The transcript skeleton for worker session `6c1209b9-e713-49d4-8cae-b332ac00a33c` shows multiple `ApplyPatch` calls before the first Execute step described as observing the current failing state, while the handoff file `handoffs/2026-03-09T04-16-06-559Z__mission-dir-watcher-ipc-and-path-capture__6c1209b9-e713-49d4-8cae-b332ac00a33c.json` records `skillFeedback.followedProcedure: true`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: the feature mostly delivers the Electron-only missionDir reader/watch bridge and persistence wiring, but its restart fallback does not implement the required base-session missionDir convention, so recovery can target the wrong directory after session id replacement."
+}

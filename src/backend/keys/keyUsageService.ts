@@ -105,19 +105,20 @@ export async function fetchAllKeyUsages(keys: ApiKeyEntry[]): Promise<Map<string
   return result
 }
 
-const MAX_USED_RATIO_BEFORE_SPILLOVER = 0.9
+const MAX_USED_RATIO_BEFORE_SPILLOVER = 0.98
 
 export function selectActiveKey(
   keys: ApiKeyEntry[],
   usages: Map<string, ApiKeyUsage>,
-  lastUsedIndex?: number,
 ): { key: string; index: number } | null {
   if (keys.length === 0) return null
 
   type Candidate = {
     key: string
     index: number
+    expiresTs: number
     expires: string
+    usedRatio: number
     remaining: number
     total: number
   }
@@ -129,10 +130,13 @@ export function selectActiveKey(
     if (usage.total == null || usage.used == null) continue
     const remaining = usage.total - usage.used
     if (remaining <= 0) continue
+    const usedRatio = usage.total > 0 ? usage.used / usage.total : 1
     candidates.push({
       key: keys[i].key,
       index: i,
+      expiresTs: usage.expiresTs ?? Number.POSITIVE_INFINITY,
       expires: usage.expires || '9999-12-31',
+      usedRatio,
       remaining,
       total: usage.total,
     })
@@ -141,37 +145,17 @@ export function selectActiveKey(
   if (candidates.length === 0) return null
 
   candidates.sort((a, b) => {
-    const cmp = a.expires.slice(0, 10).localeCompare(b.expires.slice(0, 10))
-    if (cmp !== 0) return cmp
+    if (a.expiresTs !== b.expiresTs) return a.expiresTs - b.expiresTs
+    if (a.usedRatio !== b.usedRatio) return a.usedRatio - b.usedRatio
     return b.remaining - a.remaining
   })
 
-  // Group by expiry date, walk groups earliest-first.
-  // Pick from the first group that has a key below the spillover threshold.
-  const groups = new Map<string, Candidate[]>()
-  for (const c of candidates) {
-    const day = c.expires.slice(0, 10)
-    if (!groups.has(day)) groups.set(day, [])
-    groups.get(day)!.push(c)
-  }
+  const eligible = candidates.find(
+    (candidate) => candidate.usedRatio < MAX_USED_RATIO_BEFORE_SPILLOVER,
+  )
+  if (eligible) return { key: eligible.key, index: eligible.index }
 
-  const pickFromGroup = (group: Candidate[]) => {
-    if (lastUsedIndex != null) {
-      const next = group.find((c) => c.index > lastUsedIndex)
-      if (next) return { key: next.key, index: next.index }
-    }
-    return { key: group[0].key, index: group[0].index }
-  }
-
-  for (const group of groups.values()) {
-    const best = group[0] // already sorted by most remaining
-    const usedRatio = 1 - best.remaining / best.total
-    if (usedRatio < MAX_USED_RATIO_BEFORE_SPILLOVER) {
-      return pickFromGroup(group)
-    }
-  }
-
-  // All groups above threshold -- pick the key with most absolute remaining
+  // All remaining keys are near exhaustion: pick the one with the most headroom.
   const fallback = candidates.reduce((a, b) => (a.remaining >= b.remaining ? a : b))
   return { key: fallback.key, index: fallback.index }
 }

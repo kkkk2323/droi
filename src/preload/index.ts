@@ -9,9 +9,10 @@ const droidAPI: DroidClientAPI = {
   cancel: (params) => ipcRenderer.send('droid:cancel', params),
   setActiveSession: () => {},
   updateSessionSettings: (params) => ipcRenderer.invoke('droid:updateSessionSettings', params),
+  killWorkerSession: (params) => ipcRenderer.invoke('droid:killWorkerSession', params),
+  sendWorkerFollowup: (params) => ipcRenderer.invoke('droid:sendWorkerFollowup', params),
 
   createSession: (params) => ipcRenderer.invoke('session:create', params),
-  restartSessionWithActiveKey: (params) => ipcRenderer.invoke('session:restart', params),
   runSetupScript: (params) => ipcRenderer.invoke('session:setup:run', params),
   cancelSetupScript: (params) => ipcRenderer.send('session:setup:cancel', params),
   onSetupScriptEvent: (callback) => {
@@ -132,6 +133,22 @@ const droidAPI: DroidClientAPI = {
   clearSession: (params) => ipcRenderer.invoke('session:clear', params),
   listSessions: () => ipcRenderer.invoke('session:list'),
   deleteSession: (id) => ipcRenderer.invoke('session:delete', id),
+  readMissionDir: (params) => ipcRenderer.invoke('mission:read-dir', params),
+  watchMissionDir: (params) => ipcRenderer.invoke('mission:watch-start', params),
+  unwatchMissionDir: (params) => ipcRenderer.invoke('mission:watch-stop', params),
+  onMissionDirChanged: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('mission:dir-changed', handler)
+    return () => ipcRenderer.removeListener('mission:dir-changed', handler)
+  },
+  readMissionRuntime: (params) => ipcRenderer.invoke('mission:read-runtime', params),
+  watchMissionRuntime: (params) => ipcRenderer.invoke('mission:runtime-watch-start', params),
+  unwatchMissionRuntime: (params) => ipcRenderer.invoke('mission:runtime-watch-stop', params),
+  onMissionRuntimeChanged: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('mission:runtime-changed', handler)
+    return () => ipcRenderer.removeListener('mission:runtime-changed', handler)
+  },
   loadAppState: () => ipcRenderer.invoke('appState:load'),
   saveProjects: (projects) => ipcRenderer.send('appState:saveProjects', projects),
   updateProjectSettings: (params) => ipcRenderer.invoke('appState:updateProjectSettings', params),
@@ -158,6 +175,9 @@ const droidAPI: DroidClientAPI = {
     return () => ipcRenderer.removeListener('git:commit-workflow-progress', handler)
   },
   getCustomModels: () => ipcRenderer.invoke('factory:getCustomModels'),
+  getMissionModelSettings: () => ipcRenderer.invoke('factory:getMissionModelSettings'),
+  setMissionModelSettings: (settings) =>
+    ipcRenderer.invoke('factory:setMissionModelSettings', settings),
 
   // Updater
   checkForUpdate: () => ipcRenderer.invoke('updater:check'),

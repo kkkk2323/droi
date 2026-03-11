@@ -1,0 +1,56 @@
+{
+  "groupId": "foundation-metadata",
+  "status": "pass",
+  "assertions": [
+    {
+      "id": "VAL-SESSION-002",
+      "status": "pass",
+      "reason": "A newly created Mission session in Mission-GUI-TEST used the required CCH-GPT-5.4 model-selection flow, opened on the Mission route, and persisted explicit Mission metadata for the created session id.",
+      "evidence": [
+        "Opened the real new-session entry for project `Mission-GUI-TEST`, selected Mission in SessionConfigPage (`session-mode-mission`), and kept Local workspace selected. Screenshots: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-session-config-2.png` and `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-mission-selected.png`.",
+        "Before the first Mission message, opened the model picker and explicitly selected the `CCH-GPT-5.4` option. Screenshot: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-model-open.png`.",
+        "Submitted the initial prompt `foundation-metadata mission identity validation session. Confirm mission metadata persistence only.` and created Mission session `a901a190-5925-431e-8657-8db9bb502391`; the sidebar row rendered as `session-mission-a901a190-5925-431e-8657-8db9bb502391`. Screenshot: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-create.png`.",
+        "Immediately after creation, TanStack router state reported pathname `/mission` with match `/chat-layout/mission`, and MissionPage DOM was present (`data-testid=\"mission-page\"`).",
+        "Persisted file `/tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json` was created for the same session id and contains `isMission: true`, `sessionKind: \"mission\"`, `interactionMode: \"agi\"`, `decompSessionType: \"orchestrator\"`, `autonomyLevel: \"off\"`, and model `custom:CCH-Code-GPT-5.4-4`.",
+        "`agent-browser errors` returned no reported console/runtime errors for the validated flow."
+      ]
+    },
+    {
+      "id": "VAL-SESSION-003",
+      "status": "pass",
+      "reason": "After the Mission session existed, both a normal follow-up send and a generic UI settings update preserved the same session id, stayed on `/mission`, and kept persisted Mission metadata instead of downgrading the session to normal `spec/auto` semantics.",
+      "evidence": [
+        "Sent a normal follow-up message in the same session `a901a190-5925-431e-8657-8db9bb502391` (`foundation-metadata follow-up send: confirm this same session stays mission-shaped after settings update.`). After the send, router state still reported `/mission`, MissionPage remained visible, and `session-mission-a901a190-5925-431e-8657-8db9bb502391` stayed active. Screenshot: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-real-followup.png`.",
+        "This validation-oriented Mission session surfaced AskUser cards during the follow-up flow, but while they were present and after completing them through the normal UI, the route still stayed `/mission` and the same Mission sidebar row remained active. Screenshots: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-followup.png` and `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-askuser-complete.png`.",
+        "Performed a generic settings update from the normal InputBar controls by changing the auto-level selector from `Spec` to `Low`. After the update, the active session still rendered as Mission and the router still reported `/mission`. Screenshot: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-settings-update.png`.",
+        "After the settings update, persisted file `/tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json` still preserved `isMission: true`, `sessionKind: \"mission\"`, `interactionMode: \"agi\"`, `decompSessionType: \"orchestrator\"`; only `autoLevel` changed from `default` to `low`, matching the normal UI change.",
+        "Switched away to the normal session `f57df244-34af-42ed-85e6-c54d87ccca39` (route `/`) and then reselected `session-mission-a901a190-5925-431e-8657-8db9bb502391`; the app returned to `/mission`, confirming the session was still Mission-classified and not downgraded. Screenshot: `/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-returned-mission.png`.",
+        "`agent-browser errors` returned no reported console/runtime errors for the validated flow."
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "agent-browser",
+    "Read"
+  ],
+  "frictions": [
+    "The Electron app uses TanStack memory-history, so the browser address stayed `http://localhost:5173/`; route proof for `/mission` versus `/` had to come from router state plus MissionPage DOM rather than the address bar.",
+    "Direct `agent-browser click` on the visible send button intermittently timed out in this Electron surface. Dispatching the real `[data-testid=\"chat-send\"]` element click was needed to complete the same user-visible send flow reliably.",
+    "This Mission session is itself a validation/planning conversation, so follow-up sends produced intermediate AskUser prompts. I completed them through the normal UI and treated them as user-surface evidence rather than a blocker."
+  ],
+  "blockers": [],
+  "artifacts": [
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-initial.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-session-config.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-session-config-2.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-mission-selected.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-model-open.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-create.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-followup.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-askuser-complete.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-real-followup.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-after-settings-update.png",
+    "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/tmp/foundation-metadata-returned-mission.png",
+    "/tmp/droi-mission-e2e/sessions/a901a190-5925-431e-8657-8db9bb502391.json"
+  ]
+}

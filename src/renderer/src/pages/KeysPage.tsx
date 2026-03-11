@@ -186,7 +186,7 @@ export function KeysPage() {
         <div>
           <h1 className="text-xl font-semibold">API Keys</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage multiple API keys with automatic rotation based on expiry date.
+            Prioritize the earliest-expiring keys, then the lowest-usage keys, and rotate at 98%.
           </p>
         </div>
 

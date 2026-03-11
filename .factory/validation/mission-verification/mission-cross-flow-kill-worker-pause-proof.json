@@ -1,0 +1,59 @@
+{
+  "featureId": "mission-cross-flow-kill-worker-pause-proof",
+  "generatedAt": "2026-03-10T15:08:00Z",
+  "assertion": {
+    "id": "VAL-CROSS-005",
+    "status": "pass",
+    "summary": "Feature-owned proof mapping for one fresh live same-session kill-worker run on Mission session `f1061069-8673-41ad-a30e-26eafb2e80dc`. It ties this feature's checked-in Mission-GUI-TEST Electron screenshot chain to the live `droid.kill_worker_session` request, the same session's `worker_failed(reason = \"Killed by user\") -> mission_paused` missionDir timeline, and same-session resumable continuation evidence afterward.",
+    "scope": {
+      "project": "Mission-GUI-TEST",
+      "agentBrowserModel": "CCH-GPT-5.4",
+      "surface": "Electron only",
+      "isolatedAppDataDir": "/tmp/droi-mission-e2e",
+      "sessionId": "f1061069-8673-41ad-a30e-26eafb2e80dc"
+    },
+    "ownedEvidence": {
+      "automated": [
+        {
+          "file": "test/missionControl.test.ts",
+          "case": "Mission Control timeline distinguishes user kill and daemon failure events",
+          "verifies": "Mission progress renders `Worker killed by user` followed by `Mission paused`, proving the runtime timeline distinguishes `worker_failed(reason = \"Killed by user\") -> mission_paused` from daemon failure."
+        },
+        {
+          "file": "test/missionUiSemantics.test.ts",
+          "case": "kill messaging distinguishes user-killed workers from daemon failures and acknowledges pending kill",
+          "verifies": "The UI immediately acknowledges Kill Worker with pending feedback, then exposes paused-after-user-kill recovery copy saying the worker was terminated at the user's request, leaving the Mission inspectable and resumable."
+        },
+        {
+          "file": "test/interactionModeHotSwitch.test.ts",
+          "case": "mission session plumbing preserves agi/orchestrator settings and supports kill_worker_session",
+          "verifies": "The real JSON-RPC request path sends `droid.kill_worker_session` for the active Mission session and preserves Mission metadata before and after the worker-kill operation."
+        }
+      ],
+      "interactive": [
+        {
+          "artifact": ".factory/validation/mission-verification/user-testing/flows/kill-worker-pause-proof.json",
+          "evidence": "This feature's new flow artifact centers on one fresh Mission-GUI-TEST Electron run for session `f1061069-8673-41ad-a30e-26eafb2e80dc`: `kill-proof-session-config.png`, `kill-proof-live-before-send.png`, `kill-proof-live-proposal.png`, `kill-proof-live-start-permission.png`, `kill-proof-live-running.png`, `kill-proof-live-kill-pending.png`, `kill-proof-live-paused.png`, `kill-proof-live-mission-control.png`, `kill-proof-live-chat-resumable.png`, and `kill-proof-live-continuation-complete.png` all stay on that same selected Mission session from creation through post-kill continuation."
+        },
+        {
+          "artifact": "/tmp/droi-mission-e2e/diagnostics/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc-2026-03-10.jsonl",
+          "evidence": "The live diagnostics log for session `f1061069-8673-41ad-a30e-26eafb2e80dc` records the actual `droid.kill_worker_session` request with `workerSessionId=worker-f10eb4b7-05c2-49c2-acd2-b5e194d4eb40`, followed by same-session Mission notifications. This gives direct transport evidence for the live Kill Worker click instead of relying on restored-session reselection or screenshot-only inference."
+        },
+        {
+          "artifact": ".factory/validation/mission-verification/user-testing/flows/kill-proof-live-mission-control.png",
+          "evidence": "The fresh Mission Control screenshot for session `f1061069-8673-41ad-a30e-26eafb2e80dc` shows `Paused`, `Worker killed by user`, `Worker: No active worker`, and the deterministic kill-worker feature queue while the same sidebar session remains selected. The paired `kill-proof-live-chat-resumable.png` and `kill-proof-live-continuation-complete.png` screenshots show the same session's composer enabled and the follow-up continuation response in that same session, proving the killed Mission remains inspectable and resumable afterward."
+        }
+      ],
+      "supportingContext": [
+        "The same live harness missionDir `/tmp/droi-mission-e2e/mission-kill-worker-harness/f1061069-8673-41ad-a30e-26eafb2e80dc/progress_log.jsonl` records `worker_selected_feature`, `worker_started`, `worker_failed(reason = \"Killed by user\")`, and `mission_paused`, and its `state.json` later shows `orchestrator_turn` after the same-session normal-chat continuation. Those files support the live screenshot chain rather than replacing it.",
+        "The isolated session record `/tmp/droi-mission-e2e/sessions/f1061069-8673-41ad-a30e-26eafb2e80dc.json` keeps the same session id as `missionBaseSessionId`, preserves Mission metadata (`isMission`, `sessionKind`, `interactionMode=agi`, `decompSessionType=orchestrator`, `autonomyLevel=high`), and stores both the initial proof prompt and the same-session continuation prompt under the required Custom `CCH-GPT-5.4` model.",
+        "The broader `.factory/validation/mission-verification/feature-owned-proof-followup.json` bundle remains supporting context only and is no longer the owner for VAL-CROSS-005."
+      ]
+    }
+  },
+  "proofOwnershipNotes": [
+    "This file is the new checked-in feature-owned deliverable for `mission-cross-flow-kill-worker-pause-proof`.",
+    "It intentionally narrows ownership to VAL-CROSS-005 instead of relying on the superseded combined follow-up proof bundle.",
+    "The Mission-GUI-TEST evidence cited here stays on the Electron surface with the required isolated app-data directory and Custom `CCH-GPT-5.4` model selection."
+  ]
+}

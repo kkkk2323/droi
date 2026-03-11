@@ -1,0 +1,300 @@
+{
+  "groupId": "runtime-controls",
+  "testedAt": "2026-03-09T23:15:00Z",
+  "credentials": {
+    "account": "Mission-GUI-TEST",
+    "namespace": "mcui-runtime-controls"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "node --test",
+    "Read",
+    "Grep"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-SESSION-006",
+      "title": "Continuing a paused Mission via normal chat input preserves the same Mission session",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the live Mission session while it is running, then switch the isolated renderer store to a paused Mission state so the real Chat surface can be exercised safely without interrupting the shared mission.",
+          "expected": "Mission Chat becomes editable when Mission state is paused/orchestrator_turn.",
+          "observed": "The paused Chat screenshot showed the normal `Ask anything, / for commands` input enabled for the same active Mission session id `a901a190-5925-431e-8657-8db9bb502391`."
+        },
+        {
+          "action": "Review the focused continuation coverage for Mission sends after settings changes and resume semantics.",
+          "expected": "A normal follow-up message continues the same Mission session without a separate Resume RPC and preserves Mission classification.",
+          "observed": "`test/interactionModeHotSwitch.test.ts` sends `continue mission` with `resumeSessionId: engineSessionId` on the same Mission session id and confirms all subsequent `droid.update_session_settings` payloads stay Mission-shaped (`interactionMode: agi`, `autonomyLevel: high`)."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "runtime-controls-paused-enabled.png",
+          "foundation-metadata-real-followup.png",
+          "foundation-metadata-after-settings-update.png"
+        ],
+        "consoleErrors": "No app-blocking console errors for the paused-input scenario. Mission Control duplicate-key warnings remained present elsewhere in the session; one 404 was caused by the validator's temporary module import and excluded from product evidence.",
+        "network": "Focused automated RPC evidence from `test/interactionModeHotSwitch.test.ts` shows same-session continuation via `resumeSessionId: engineSessionId` and Mission-preserving `droid.update_session_settings`; no separate Resume RPC was required in the exercised continuation path."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ROUTING-004",
+      "title": "Auto-switch follows Mission state and respects the 30-second manual override cooldown",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open the existing Mission session while the Mission is running.",
+          "expected": "MissionPage auto-selects Mission Control for a running Mission.",
+          "observed": "`routing-view-toggle-initial.png` showed the running Mission on Mission Control with Mission status and queue visible."
+        },
+        {
+          "action": "Manually switch to Chat while the Mission remains running.",
+          "expected": "The UI stays in Chat during the manual-override cooldown instead of immediately switching back.",
+          "observed": "`runtime-controls-chat-manual-override.png` and `routing-toggle-chat-return.png` both showed Chat view remaining active while the Mission still reported `Mission is running` and the disabled running placeholder remained visible."
+        },
+        {
+          "action": "Check cooldown behavior after expiry and across session changes using existing live screenshots plus focused regression coverage.",
+          "expected": "Auto-switch is allowed again after the cooldown expires, and overrides do not leak across Mission sessions.",
+          "observed": "`routing-chat-after-cooldown.png` recorded the timed routing flow, `test/missionPage.test.ts` proved `shouldApplyMissionAutoSwitch` resumes at 30 seconds exactly, and the cooldown-fix handoff (`8bd6e1f8-4cca-4fe3-be77-36960d238e10`) verified manual overrides stay scoped per Mission session."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "routing-view-toggle-initial.png",
+          "runtime-controls-chat-manual-override.png",
+          "routing-chat-after-cooldown.png"
+        ],
+        "consoleErrors": "Live routing-toggle flow reported duplicate-key warnings for `mission-handoff-mission-session-entry-routing-and-sidebar` and `mission-handoff-scrutiny-validator-mission-sync-recovery`; the warnings did not block the toggle/cooldown behavior.",
+        "network": "No user-facing network/RPC requests were captured during the live Chat/Mission Control toggle; MissionPage switched views from existing renderer state. Timed auto-switch semantics were additionally confirmed by `test/missionPage.test.ts` and the cooldown-fix Electron handoff."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-001",
+      "title": "`propose_mission` permission uses Mission-specific UI copy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inject a `propose_mission` permission request into the isolated Mission renderer state and reopen Chat view.",
+          "expected": "PermissionCard uses Mission-specific wording instead of generic permission copy.",
+          "observed": "The rendered buttons were Mission-specific and distinct: `Approve once`, `Always allow for this Mission`, `Auto-run Mission workers (High)`, and `Cancel`, with the specialized Mission heading/description confirmed by the earlier permission-option sanity pass."
+        },
+        {
+          "action": "Cross-check permission-presentation helpers and focused tests.",
+          "expected": "Mission permission presentation maps `propose_mission` to Mission-specific labels/actions.",
+          "observed": "`test/missionUiSemantics.test.ts` asserts badge `Mission permission`, title `Mission proposal ready`, description `Review the proposed Mission plan...`, and Mission CTA labeling."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "runtime-controls-propose-permission.png"
+        ],
+        "consoleErrors": "No new blocking console errors were introduced by the synthetic permission render; existing duplicate-key warnings from Mission handoffs remained unrelated to PermissionCard behavior.",
+        "network": "No API/network call was required for this UI-copy assertion. Supporting evidence also comes from the permission-option Electron sanity check recorded in handoff `2026-03-09T12-38-51-129Z__mission-permission-option-semantics-fix__4a6f7f42-7e39-4404-9812-defda3351692.json`."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-002",
+      "title": "`start_mission_run` permission is handled correctly whether present or absent",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inject an optional `start_mission_run` permission into the isolated Mission session.",
+          "expected": "If present, the permission uses Mission-specific UI copy.",
+          "observed": "The rendered buttons became `Start Mission Run` and `Cancel`, matching the Mission-specific run-start presentation."
+        },
+        {
+          "action": "Inspect the live running Mission session where no `start_mission_run` card is present.",
+          "expected": "If absent, the Mission still progresses without the UI getting stuck.",
+          "observed": "The live Mission remained healthy in both Chat and Mission Control views with status `Mission is running` / progress `10/13 completed` and no stuck permission UI."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "runtime-controls-start-run-permission.png",
+          "runtime-controls-current-annotated.png",
+          "routing-view-toggle-initial.png"
+        ],
+        "consoleErrors": "No product-blocking console errors for the optional-permission paths; duplicate-key warnings remained limited to handoff rendering in Mission Control.",
+        "network": "No relevant agent-browser network traffic was required. Focused coverage in `test/missionUiSemantics.test.ts` and `test/rpcNotificationMapping.test.ts` confirms both explicit `start_mission_run` presentation and metadata preservation when that permission exists."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-008",
+      "title": "Pause and Kill Worker controls are available only in valid Mission states and drive correct paused transitions",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the live running Mission Control view.",
+          "expected": "Pause is available while the Mission is running.",
+          "observed": "The live running Mission showed a visible `Pause` action in the action bar."
+        },
+        {
+          "action": "Render a running Mission with a live worker in the isolated test state and click Kill Worker.",
+          "expected": "Kill Worker is available only with a live worker session.",
+          "observed": "The action bar showed both `Pause` and `Kill Worker`; after click, `Kill Worker` immediately became disabled in the pending state."
+        },
+        {
+          "action": "Render a paused Mission state in Chat view.",
+          "expected": "Pause/Kill Worker controls are hidden once the Mission is paused and the Chat input becomes resumable.",
+          "observed": "The paused screenshot had an enabled chat textbox and no Pause/Kill Worker controls in the visible action area. Progress-log evidence also showed real `worker_paused -> mission_paused` transitions for the mission."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "runtime-controls-current-annotated.png",
+          "runtime-controls-kill-pending.png",
+          "runtime-controls-paused-enabled.png"
+        ],
+        "consoleErrors": "No app-blocking control errors. Existing duplicate-key warnings were unrelated to action availability.",
+        "network": "Real mission progress evidence in `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl` shows `worker_paused` and `mission_paused` transitions. Focused RPC coverage in `test/interactionModeHotSwitch.test.ts` records both `droid.interrupt_session` and `droid.kill_worker_session` request paths."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-009",
+      "title": "InputBar uses Mission-specific running/paused semantics",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect Chat view while the live Mission is running.",
+          "expected": "InputBar is visible but disabled with the placeholder `Mission is running. Pause to send a message.`.",
+          "observed": "The live Chat surface showed the disabled textbox with the exact running placeholder text."
+        },
+        {
+          "action": "Switch the isolated Mission state to paused and reopen Chat view.",
+          "expected": "InputBar becomes editable again when the Mission is paused/orchestrator_turn.",
+          "observed": "The paused Chat screenshot showed the enabled textbox `Ask anything, / for commands`, confirming resumable input semantics."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "runtime-controls-chat-manual-override.png",
+          "runtime-controls-paused-enabled.png",
+          "mcui-initial-annotated.png"
+        ],
+        "consoleErrors": "No blocking input errors. Existing duplicate-key warnings were unrelated to InputBar state.",
+        "network": "No network traffic was necessary for this assertion. `test/missionUiSemantics.test.ts` independently verifies disabled running input and enabled paused/orchestrator-turn input semantics."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-010",
+      "title": "Daemon failure, user pause, and user-killed worker are visually distinct",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the live Mission timeline and status cards.",
+          "expected": "Daemon/factoryd failures, pauses, and user-kill paths have distinct labels/copy.",
+          "observed": "The live timeline and Mission Control text distinguished `Daemon failure`, `Mission paused`, and running-state copy; the contract wording for `Mission is running` remained separate from failure/pause states."
+        },
+        {
+          "action": "Check focused UI/runtime semantics coverage for pause, kill, and daemon-failure copy.",
+          "expected": "User pause, user kill, and daemon failure each produce at least one explicit differentiator.",
+          "observed": "`test/missionUiSemantics.test.ts` asserts `paused-by-user`, `paused-after-user-kill`, `daemon-failed`, and `daemon-retrying` statuses with distinct titles/descriptions, while `test/missionControl.test.ts` asserts timeline labels `Daemon failure`, `Worker killed by user`, and `Mission paused`."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "routing-view-toggle-initial.png",
+          "runtime-controls-paused-enabled.png",
+          "runtime-controls-kill-pending.png"
+        ],
+        "consoleErrors": "Duplicate-key Mission handoff warnings remained present in Mission Control but did not prevent distinct status/timeline labeling.",
+        "network": "Real mission progress log entries show daemon failures and pauses (`factoryd authentication failed`, `mission_paused`), while focused tests cover the user-kill and daemon-failure label differentiation with `droid.kill_worker_session` / failure-reason evidence."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-012",
+      "title": "Kill Worker gives immediate user feedback before async Mission events arrive",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Stage a running Mission with a live worker in the isolated renderer state and replace the local `killWorkerSession` bridge with a never-resolving promise so no async completion event can arrive.",
+          "expected": "The UI acknowledges the action immediately before later Mission events.",
+          "observed": "Immediately after clicking `Kill Worker`, the control became disabled and the pending kill screenshot captured the pre-async acknowledgement state."
+        },
+        {
+          "action": "Cross-check runtime-status coverage for pending kill feedback.",
+          "expected": "The runtime layer explicitly exposes a pending-kill acknowledgement state.",
+          "observed": "`test/missionUiSemantics.test.ts` verifies `getMissionRuntimeStatus(... pendingAction: 'kill')` returns `kill-pending` with title `Kill request sent`."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "runtime-controls-kill-pending.png"
+        ],
+        "consoleErrors": "No new blocking console errors were triggered by the isolated pending-kill scenario.",
+        "network": "No network call was allowed to complete in this synthetic pending-kill scenario by design; immediate feedback was proven before async completion. Focused RPC coverage separately confirms the real `droid.kill_worker_session` request path exists."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONTROL-013",
+      "title": "Runner-recommended daemon retry is surfaced and bounded",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the real mission progress timeline around the initial daemon failures.",
+          "expected": "The UI/reporting surfaces a single recommended retry before settling into recovery.",
+          "observed": "The progress log shows `worker_failed` for `factoryd authentication failed`, a single `mission_run_started` message `Retrying mission run once after factoryd authentication failure per runner guidance.`, a second failure, and then `mission_paused`."
+        },
+        {
+          "action": "Check runtime-status coverage for retry and post-retry failure messaging.",
+          "expected": "The retry state and exhausted-retry recovery state are distinct and bounded to one retry.",
+          "observed": "`test/missionUiSemantics.test.ts` asserts `daemon-retrying` with `Retrying once` text and `daemon-failed` / `Daemon retry exhausted` recovery messaging after the retry also fails."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "routing-view-toggle-initial.png"
+        ],
+        "consoleErrors": "No additional console errors were needed for retry evidence; this assertion relied on real mission progress plus focused runtime-status tests.",
+        "network": "Real progress evidence from `/Users/clive/.factory/missions/a340063e-1391-4186-b698-8db9955f8eda/progress_log.jsonl` lines 3-6 shows the bounded single retry and final pause after repeated factoryd failures."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The live Mission-GUI-TEST session was an actively shared Mission run, so triggering real Pause, Kill Worker, or optional permission prompts would have mutated mission progress for other validators.",
+      "resolved": true,
+      "resolution": "Used the real Electron surface for read-only running-state evidence, then used isolated in-memory renderer-state injection plus existing passing focused tests and mission progress artifacts for unsafe runtime-control permutations.",
+      "affectedAssertions": [
+        "VAL-SESSION-006",
+        "VAL-CONTROL-001",
+        "VAL-CONTROL-002",
+        "VAL-CONTROL-008",
+        "VAL-CONTROL-009",
+        "VAL-CONTROL-010",
+        "VAL-CONTROL-012"
+      ]
+    },
+    {
+      "description": "A long cooldown wait left the agent-browser daemon temporarily busy, so I reused the already-recorded cooldown screenshots from the earlier routing-toggle validation and paired them with focused MissionPage tests and the cooldown-fix Electron handoff instead of re-recording the full 30-second flow again.",
+      "resolved": true,
+      "resolution": "Combined existing `routing-*` cooldown screenshots with `test/missionPage.test.ts` and handoff `8bd6e1f8-4cca-4fe3-be77-36960d238e10` to complete VAL-ROUTING-004 safely and deterministically.",
+      "affectedAssertions": [
+        "VAL-ROUTING-004"
+      ]
+    },
+    {
+      "description": "Mission Control emitted duplicate-key warnings for two recovered handoff entries during live Mission view testing.",
+      "resolved": false,
+      "resolution": "Not resolved in this validator session because the warnings did not block any assigned assertions.",
+      "affectedAssertions": [
+        "VAL-ROUTING-004",
+        "VAL-CONTROL-008",
+        "VAL-CONTROL-009",
+        "VAL-CONTROL-010"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 9 assigned runtime-control assertions: 9 passed, 0 failed, 0 blocked. Live Electron evidence covered the running Mission surface, Mission Control status/timeline, and running/Chat input behavior, while unsafe pause/kill/optional-permission scenarios were validated through isolated in-memory UI injection plus existing passing focused tests and mission progress artifacts."
+}

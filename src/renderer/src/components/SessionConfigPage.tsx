@@ -1,9 +1,10 @@
 import React from 'react'
-import { GitBranch, FolderOpen, GitFork } from 'lucide-react'
+import { Bot, GitBranch, FolderOpen, GitFork, Target } from 'lucide-react'
 import { useGitBranchQuery } from '@/hooks/useGitStatus'
 import { SessionBootstrapCards } from '@/components/SessionBootstrapCards'
 import { usePendingNewSession, useIsCreatingSession, useWorkspaceError, useActions } from '@/store'
 import type { PendingNewSessionMode } from '@/store'
+import type { SessionKind } from '../../../shared/sessionProtocol.ts'
 import { cn } from '@/lib/utils'
 
 function ModeOption({
@@ -79,9 +80,14 @@ export function SessionConfigPage() {
 
   const repoName = repoRoot.split('/').pop() || repoRoot
   const mode: PendingNewSessionMode = pending.mode || 'local'
+  const sessionKind: SessionKind = pending.sessionKind || 'normal'
 
   const setMode = (m: PendingNewSessionMode) => {
     updatePendingNewSession({ mode: m, branch: '', isExistingBranch: false })
+  }
+
+  const setSessionKind = (nextSessionKind: SessionKind) => {
+    updatePendingNewSession({ sessionKind: nextSessionKind })
   }
 
   return (
@@ -102,6 +108,31 @@ export function SessionConfigPage() {
         </div>
 
         <div className="space-y-2">
+          <div className="px-1 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+            Session Type
+          </div>
+          <ModeOption
+            data-testid="session-mode-normal"
+            selected={sessionKind === 'normal'}
+            onSelect={() => setSessionKind('normal')}
+            icon={<Bot className="size-3.5" />}
+            label="Standard Chat"
+            description="Open the regular chat session experience on the default route"
+          />
+          <ModeOption
+            data-testid="session-mode-mission"
+            selected={sessionKind === 'mission'}
+            onSelect={() => setSessionKind('mission')}
+            icon={<Target className="size-3.5" />}
+            label="Mission"
+            description="Create an orchestrator Mission session with Mission-specific routing"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="px-1 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+            Workspace
+          </div>
           <ModeOption
             data-testid="session-mode-local"
             selected={mode === 'local'}

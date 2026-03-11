@@ -10,6 +10,11 @@ import type {
 import { DroidJsonRpcSession, type DroidRpcSessionEvent } from './droidJsonRpcSession.ts'
 import { formatNotificationTrace, isTraceChainEnabled } from './notificationFingerprint.ts'
 import type { LocalDiagnostics } from '../../diagnostics/localDiagnostics.ts'
+import {
+  resolveSessionProtocolFields,
+  type DecompSessionType,
+  type SessionKind,
+} from '../../../shared/sessionProtocol.ts'
 
 export type DroidBackendEvent =
   | { type: 'stdout'; sessionId: string; data: string }
@@ -30,6 +35,9 @@ export interface SendUserMessageParams {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
   env?: Record<string, string | undefined>
 }
@@ -40,7 +48,33 @@ export interface CreateSessionParams {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
+  env?: Record<string, string | undefined>
+}
+
+export interface LoadSessionSnapshotParams {
+  sessionId: string
+  cwd: string
+  machineId: string
+  modelId?: string
+  interactionMode?: DroidInteractionMode
+  autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
+  reasoningEffort?: string
+  env?: Record<string, string | undefined>
+}
+
+export interface SendLoadedSessionMessageParams {
+  sessionId: string
+  loadSessionId: string
+  cwd: string
+  machineId: string
+  prompt: string
   env?: Record<string, string | undefined>
 }
 
@@ -49,15 +83,21 @@ export interface UpdateSessionSettingsParams {
   modelId?: string
   interactionMode?: DroidInteractionMode
   autonomyLevel?: DroidAutonomyLevel
+  decompSessionType?: DecompSessionType
+  isMission?: boolean
+  sessionKind?: SessionKind
   reasoningEffort?: string
+}
+
+type ManagedSession = {
+  session: DroidJsonRpcSession
+  ref: { id: string }
+  protocol: ReturnType<typeof resolveSessionProtocolFields>
 }
 
 export class DroidJsonRpcManager {
   private readonly droidPath: string
-  private readonly sessions = new Map<
-    string,
-    { session: DroidJsonRpcSession; ref: { id: string } }
-  >()
+  private readonly sessions = new Map<string, ManagedSession>()
   private readonly emit: (ev: DroidBackendEvent) => void
   private readonly diagnostics?: LocalDiagnostics
 
@@ -75,6 +115,8 @@ export class DroidJsonRpcManager {
     let sid = params.sessionId
     const managed = this.getOrCreateSession(params)
     const session = managed.session
+    const protocol = this.resolveProtocol(params, managed.protocol)
+    managed.protocol = protocol
     let stage = 'ensureInitialized'
     try {
       this.emit({
@@ -85,8 +127,9 @@ export class DroidJsonRpcManager {
       const init = await session.ensureInitialized(
         {
           modelId: params.modelId,
-          interactionMode: params.interactionMode,
-          autonomyLevel: params.autonomyLevel,
+          interactionMode: protocol.interactionMode,
+          autonomyLevel: protocol.autonomyLevel,
+          decompSessionType: protocol.decompSessionType,
           reasoningEffort: params.reasoningEffort,
         },
         params.resumeSessionId,
@@ -120,8 +163,8 @@ export class DroidJsonRpcManager {
       this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: updateSettings start' })
       await session.updateSettings({
         modelId: params.modelId,
-        interactionMode: params.interactionMode,
-        autonomyLevel: params.autonomyLevel,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
         reasoningEffort: params.reasoningEffort,
       })
       this.emit({ type: 'debug', sessionId: sid, message: 'sendUserMessage: updateSettings done' })
@@ -156,15 +199,46 @@ export class DroidJsonRpcManager {
     })
 
     try {
+      const protocol = this.resolveProtocol(params)
       const init = await session.ensureInitialized({
         modelId: params.modelId,
-        interactionMode: params.interactionMode,
-        autonomyLevel: params.autonomyLevel,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
         reasoningEffort: params.reasoningEffort,
       })
       const id = String(init.engineSessionId || '').trim()
       if (!id) throw new Error('initialize_session did not return sessionId')
       return id
+    } finally {
+      session.dispose()
+    }
+  }
+
+  async loadSessionSnapshot(
+    params: LoadSessionSnapshotParams,
+  ): Promise<Record<string, unknown> | null> {
+    const tempSessionId = `load-${randomUUID()}`
+    const session = new DroidJsonRpcSession({
+      droidPath: this.droidPath,
+      sessionId: tempSessionId,
+      cwd: params.cwd,
+      machineId: params.machineId,
+      env: params.env || {},
+      diagnostics: this.diagnostics,
+      onEvent: () => {},
+    })
+
+    try {
+      const protocol = this.resolveProtocol(params)
+      await session.ensureInitialized({
+        modelId: params.modelId,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        reasoningEffort: params.reasoningEffort,
+      })
+      return await session.loadSessionSnapshot(params.sessionId)
     } finally {
       session.dispose()
     }
@@ -182,12 +256,66 @@ export class DroidJsonRpcManager {
   async updateSessionSettings(params: UpdateSessionSettingsParams): Promise<void> {
     const managed = this.sessions.get(params.sessionId)
     if (!managed) return
+    managed.protocol = this.resolveProtocol(params, managed.protocol)
     await managed.session.updateSettings({
       modelId: params.modelId,
-      interactionMode: params.interactionMode,
-      autonomyLevel: params.autonomyLevel,
+      interactionMode: managed.protocol.interactionMode,
+      autonomyLevel: managed.protocol.autonomyLevel,
       reasoningEffort: params.reasoningEffort,
     })
+  }
+
+  async killWorkerSession(params: { sessionId: string; workerSessionId: string }): Promise<void> {
+    const managed = this.sessions.get(params.sessionId)
+    if (!managed) return
+    await managed.session.killWorkerSession(params.workerSessionId)
+  }
+
+  async sendLoadedSessionMessage(params: SendLoadedSessionMessageParams): Promise<void> {
+    const managed = this.getOrCreateSession({
+      sessionId: params.sessionId,
+      prompt: params.prompt,
+      cwd: params.cwd,
+      machineId: params.machineId,
+      env: params.env,
+    })
+    const session = managed.session
+    let stage = 'ensureInitialized'
+
+    try {
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: ensureInitialized start load=${params.loadSessionId}`,
+      })
+      const init = await session.ensureInitialized({}, params.loadSessionId)
+      const effectiveEngineSessionId = String(init.engineSessionId || '').trim()
+      if (effectiveEngineSessionId !== params.loadSessionId || init.source !== 'resume') {
+        throw new Error(`Failed to load worker session ${params.loadSessionId}`)
+      }
+
+      stage = 'addUserMessage'
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: addUserMessage start load=${params.loadSessionId}`,
+      })
+      await session.addUserMessage({ text: params.prompt })
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: addUserMessage done load=${params.loadSessionId}`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: failed stage=${stage} error=${msg}`,
+      })
+      this.emit({ type: 'error', sessionId: params.sessionId, message: msg })
+      this.emit({ type: 'turn-end', sessionId: params.sessionId, code: 1 })
+    }
   }
 
   async listSkills(sessionId: string): Promise<unknown[]> {
@@ -254,12 +382,12 @@ export class DroidJsonRpcManager {
     return ids.length
   }
 
-  private getOrCreateSession(params: SendUserMessageParams): {
-    session: DroidJsonRpcSession
-    ref: { id: string }
-  } {
+  private getOrCreateSession(params: SendUserMessageParams): ManagedSession {
     const existing = this.sessions.get(params.sessionId)
-    if (existing) return existing
+    if (existing) {
+      existing.protocol = this.resolveProtocol(params, existing.protocol)
+      return existing
+    }
 
     const ref = { id: params.sessionId }
     const session = new DroidJsonRpcSession({
@@ -271,9 +399,29 @@ export class DroidJsonRpcManager {
       diagnostics: this.diagnostics,
       onEvent: (ev: DroidRpcSessionEvent) => this.handleSessionEvent(ref, ev),
     })
-    const managed = { session, ref }
+    const managed: ManagedSession = {
+      session,
+      ref,
+      protocol: this.resolveProtocol(params),
+    }
     this.sessions.set(params.sessionId, managed)
     return managed
+  }
+
+  private resolveProtocol(
+    params: SendUserMessageParams | CreateSessionParams | UpdateSessionSettingsParams,
+    existing?: ManagedSession['protocol'],
+  ): ManagedSession['protocol'] {
+    return resolveSessionProtocolFields({
+      explicit: {
+        isMission: params.isMission,
+        sessionKind: params.sessionKind,
+        interactionMode: params.interactionMode,
+        autonomyLevel: params.autonomyLevel,
+        decompSessionType: params.decompSessionType,
+      },
+      existing,
+    })
   }
 
   private rekeySession(oldSessionId: string, newSessionId: string): void {

@@ -1,0 +1,15 @@
+{
+  "featureId": "mission-control-validation-completion-gating-fix",
+  "reviewedAt": "2026-03-09T13:13:03Z",
+  "commitId": "6c2d8d3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix resolves the premature Mission-complete rendering regression by keeping both Mission Control and the runtime status panel pending until validation actually settles.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/clive/dev/droi/.worktrees/droi--happy-yak-p5n5/.factory/validation/mission-control-ui/scrutiny/reviews/mission-control-queue-timeline-and-handoffs.json",
+  "summary": "Reviewed the prior failed scrutiny report, mission validation contract, fix-session transcript skeleton, worker handoff, commit diff, current Mission Control/runtime sources, and regression tests. Result: pass — the original completion-gating blocker is resolved and no new in-scope issues were identified."
+}

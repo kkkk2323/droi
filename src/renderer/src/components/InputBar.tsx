@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from '@tanstack/react-router'
 import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select'
 import {
   ArrowUp,
@@ -10,12 +11,14 @@ import {
   Image as ImageIcon,
   BookOpen,
   Loader2,
+  Settings2,
 } from 'lucide-react'
 import {
   AUTO_LEVELS,
   type CustomModelDef,
   type SlashCommandDef,
   type SkillDef,
+  getModelLabel,
   getModelReasoningLevels,
   getModelDefaultReasoning,
 } from '@/types'
@@ -26,6 +29,7 @@ import { SessionDurationIndicator } from './SessionDurationIndicator'
 import { McpStatusIndicator } from './McpStatusIndicator'
 import { SettingsFlashIndicator } from './SettingsFlashIndicator'
 import { ModelSelect } from './ModelSelect'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { useSlashCommandsQuery, useSkillsQuery } from '@/hooks/useSlashCommands'
 import { usePendingNewSession } from '@/store'
 
@@ -110,6 +114,13 @@ function writeInputBarDraft(key: string, draft: InputBarDraft): void {
 
 type BuiltinCommandDef = { name: string; description: string }
 
+function getModelDisplayName(modelId: string, customModels?: CustomModelDef[]): string {
+  const value = String(modelId || '').trim()
+  if (!value) return ''
+  const custom = customModels?.find((model) => model.id === value)
+  return custom?.displayName || getModelLabel(value)
+}
+
 type SlashItem =
   | { type: 'command'; def: SlashCommandDef }
   | { type: 'skill'; def: SkillDef }
@@ -126,6 +137,12 @@ const MAX_SLASH_ITEMS_DISPLAY = 24
 interface InputBarProps {
   draftKey?: string
   model: string
+  readonlyModelId?: string
+  readonlyMissionModels?: {
+    orchestrator: string
+    worker: string
+    validator: string
+  }
   autoLevel: string
   reasoningEffort: string
   customModels?: CustomModelDef[]
@@ -146,6 +163,8 @@ interface InputBarProps {
 export function InputBar({
   draftKey,
   model,
+  readonlyModelId,
+  readonlyMissionModels,
   autoLevel,
   reasoningEffort,
   customModels,
@@ -162,6 +181,7 @@ export function InputBar({
   activeProjectDir,
   specChangesMode,
 }: InputBarProps) {
+  const navigate = useNavigate()
   const pendingNewSession = usePendingNewSession()
   const normalizedDraftKey = normalizeDraftKey(draftKey)
   const canPersistDraft = Boolean(normalizedDraftKey && String(activeProjectDir || '').trim())
@@ -183,6 +203,20 @@ export function InputBar({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dragCounterRef = useRef(0)
   const slashProjectKey = String(activeProjectDir || '').trim()
+  const isReadonlyModel = Boolean(readonlyModelId)
+  const readonlyModelLabel = readonlyModelId
+    ? getModelDisplayName(readonlyModelId, customModels)
+    : ''
+  const readonlyMissionModelLabels = readonlyMissionModels
+    ? {
+        orchestrator: getModelDisplayName(readonlyMissionModels.orchestrator, customModels),
+        worker: getModelDisplayName(readonlyMissionModels.worker, customModels),
+        validator: getModelDisplayName(readonlyMissionModels.validator, customModels),
+      }
+    : null
+  const readonlyTriggerLabel = readonlyMissionModelLabels
+    ? readonlyMissionModelLabels.orchestrator
+    : readonlyModelLabel
 
   const latestDraftRef = useRef<InputBarDraft>({ input: '', attachments: [], selectedTag: null })
   latestDraftRef.current = { input, attachments, selectedTag }
@@ -705,12 +739,40 @@ export function InputBar({
             <KeyUsageIndicator className="ml-2" />
             <McpStatusIndicator className="ml-1" />
 
-            <ModelSelect
-              value={model}
-              onChange={onModelChange}
-              customModels={customModels}
-              variant="compact"
-            />
+            {isReadonlyModel ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    className="ml-1 inline-flex h-7 min-w-0 shrink items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    onClick={() => navigate({ to: '/settings' })}
+                  >
+                    <Settings2 className="size-3.5" />
+                    <span className="truncate">{readonlyTriggerLabel}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <div className="space-y-1.5">
+                      {readonlyMissionModelLabels ? (
+                        <>
+                          <div>Orchestrator: {readonlyMissionModelLabels.orchestrator}</div>
+                          <div>Worker: {readonlyMissionModelLabels.worker}</div>
+                          <div>Validator: {readonlyMissionModelLabels.validator}</div>
+                        </>
+                      ) : (
+                        <div>Mission model: {readonlyModelLabel}</div>
+                      )}
+                      <div className="text-[11px] opacity-80">Click to edit in Settings</div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <ModelSelect
+                value={model}
+                onChange={onModelChange}
+                customModels={customModels}
+                variant="compact"
+              />
+            )}
 
             {(() => {
               const levels = getModelReasoningLevels(model)

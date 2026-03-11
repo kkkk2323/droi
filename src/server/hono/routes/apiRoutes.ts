@@ -1,8 +1,7 @@
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { createReadStream } from 'fs'
-import { readFile, stat } from 'fs/promises'
-import { homedir } from 'os'
+import { stat } from 'fs/promises'
 import { join, resolve } from 'path'
 import { PassThrough } from 'stream'
 import { Hono, type Context } from 'hono'
@@ -21,6 +20,11 @@ import { commitWorkflow, detectGitTools } from '../../../backend/git/commitWorkf
 import { generateCommitMeta } from '../../../backend/git/generateCommitMeta.ts'
 import { setTraceChainEnabledOverride } from '../../../backend/droid/jsonrpc/notificationFingerprint.ts'
 import { scanSkills } from '../../../backend/skills/skills.ts'
+import {
+  readFactoryCustomModels,
+  readFactoryMissionModelSettings,
+  writeFactoryMissionModelSettings,
+} from '../../../backend/storage/factorySettings.ts'
 import {
   scanSlashCommands,
   resolveSlashCommandText,
@@ -626,20 +630,7 @@ export function createApiRoutes() {
 
       const resumeSessionId = sid
 
-      const env: Record<string, string | undefined> = { ...process.env }
-      if (!deps.execManager.hasSession(sid)) {
-        if (state.apiKey) {
-          env['FACTORY_API_KEY'] = state.apiKey
-        } else {
-          const activeKey = await deps.keyStore.getActiveKey()
-          if (activeKey) {
-            env['FACTORY_API_KEY'] = activeKey
-            if (deps.cachedStateRef.value.apiKey !== activeKey) {
-              deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
-            }
-          }
-        }
-      }
+      const env = !deps.execManager.hasSession(sid) ? await deps.buildExecEnv() : { ...process.env }
 
       await deps.execManager.send({
         sessionId: sid,
@@ -698,20 +689,7 @@ export function createApiRoutes() {
 
       const resumeSessionId = sid
 
-      const env: Record<string, string | undefined> = { ...process.env }
-      if (!deps.execManager.hasSession(sid)) {
-        if (state.apiKey) {
-          env['FACTORY_API_KEY'] = state.apiKey
-        } else {
-          const activeKey2 = await deps.keyStore.getActiveKey()
-          if (activeKey2) {
-            env['FACTORY_API_KEY'] = activeKey2
-            if (deps.cachedStateRef.value.apiKey !== activeKey2) {
-              deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey2 }
-            }
-          }
-        }
-      }
+      const env = !deps.execManager.hasSession(sid) ? await deps.buildExecEnv() : { ...process.env }
 
       const encoder = new TextEncoder()
       let unsubscribe: (() => void) | null = null
@@ -997,14 +975,7 @@ export function createApiRoutes() {
       const machineId = (state as PersistedAppStateV2).machineId
       if (!machineId) return jsonError(c, 500, 'Missing machineId')
 
-      const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await deps.keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (deps.cachedStateRef.value.apiKey !== activeKey) {
-          deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
-        }
-      } else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
+      const env = await deps.buildExecEnv()
 
       const res = await deps.execManager.createSession({
         machineId,
@@ -1016,23 +987,6 @@ export function createApiRoutes() {
         env,
       })
       return c.json(res)
-    } catch {
-      return jsonError(c, 400, 'Invalid JSON')
-    }
-  })
-
-  api.post('/session/restart', async (c) => {
-    try {
-      const deps = c.get('deps')
-      const body = await readJsonBody<Record<string, unknown>>(c)
-      const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
-      if (!sessionId) return jsonError(c, 400, 'Missing sessionId')
-
-      deps.execManager.disposeSession(sessionId)
-
-      const state = await loadCachedState(c)
-      const key = state.apiKey || ''
-      return c.json({ ok: true, apiKeyFingerprint: key ? apiKeyFingerprint(key) : '' })
     } catch {
       return jsonError(c, 400, 'Invalid JSON')
     }
@@ -1055,14 +1009,7 @@ export function createApiRoutes() {
 
       deps.execManager.disposeSession(id)
 
-      const env: Record<string, string | undefined> = { ...process.env }
-      const activeKey = await deps.keyStore.getActiveKey()
-      if (activeKey) {
-        env['FACTORY_API_KEY'] = activeKey
-        if (deps.cachedStateRef.value.apiKey !== activeKey) {
-          deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: activeKey }
-        }
-      } else if (state.apiKey) env['FACTORY_API_KEY'] = state.apiKey
+      const env = await deps.buildExecEnv()
 
       const created = await deps.execManager.createSession({
         machineId,
@@ -1401,6 +1348,7 @@ export function createApiRoutes() {
         req,
         state,
         execManager: deps.execManager,
+        buildExecEnv: deps.buildExecEnv,
         keyStore: deps.keyStore,
       })
       return c.json(result)
@@ -1499,22 +1447,16 @@ export function createApiRoutes() {
   })
 
   api.get('/custom-models', async (c) => {
-    try {
-      const settingsPath = join(homedir(), '.factory', 'settings.json')
-      const raw = JSON.parse(await readFile(settingsPath, 'utf-8'))
-      const models = Array.isArray(raw?.customModels) ? raw.customModels : []
-      const result = models
-        .filter((m: any) => typeof m?.id === 'string' && typeof m?.displayName === 'string')
-        .map((m: any) => ({
-          id: m.id,
-          displayName: m.displayName,
-          model: String(m.model || ''),
-          provider: String(m.provider || 'custom'),
-        }))
-      return c.json(result)
-    } catch {
-      return c.json([])
-    }
+    return c.json(await readFactoryCustomModels())
+  })
+
+  api.get('/mission-model-settings', async (c) => {
+    return c.json(await readFactoryMissionModelSettings())
+  })
+
+  api.post('/mission-model-settings', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    return c.json(await writeFactoryMissionModelSettings(body ?? {}))
   })
 
   api.get('/file', async (c) => {

@@ -1,5 +1,29 @@
 // Shared, isomorphic types for Droid App (Electron + Browser modes)
 
+import type {
+  DecompSessionType,
+  SessionAutonomyLevel,
+  SessionInteractionMode,
+  SessionKind,
+} from './sessionProtocol'
+import type {
+  MissionDirChangeEvent,
+  MissionDirReadResult,
+  MissionDirRequest,
+  MissionLoadSnapshot,
+  MissionRuntimeChangeEvent,
+  MissionRuntimeReadResult,
+  MissionRuntimeRequest,
+  RuntimeLogEntry,
+} from './mission.ts'
+
+export type {
+  MissionRuntimeChangeEvent,
+  MissionRuntimeReadResult,
+  MissionRuntimeRequest,
+  RuntimeLogEntry,
+} from './mission.ts'
+
 // === stream-jsonrpc protocol (JSON-RPC over JSONL) ===
 
 export const JSONRPC_VERSION = '2.0' as const
@@ -44,10 +68,10 @@ export interface JsonRpcNotification extends JsonRpcBase {
 
 export type JsonRpcMessage = JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
 
-export type DroidInteractionMode = 'spec' | 'auto'
+export type DroidInteractionMode = SessionInteractionMode
 
 // Tool permission level (equivalent to `droid exec --auto <level>` semantics).
-export type DroidAutonomyLevel = 'off' | 'low' | 'medium' | 'high'
+export type DroidAutonomyLevel = SessionAutonomyLevel
 
 export type DroidPermissionOption =
   | 'proceed_once'
@@ -200,6 +224,13 @@ export interface SessionMeta {
   messageCount: number
   model: string
   autoLevel: string
+  missionDir?: string
+  missionBaseSessionId?: string
+  isMission?: boolean
+  sessionKind?: SessionKind
+  interactionMode?: SessionInteractionMode
+  autonomyLevel?: SessionAutonomyLevel
+  decompSessionType?: DecompSessionType
   reasoningEffort?: string
   apiKeyFingerprint?: string
   lastMessageAt?: number
@@ -221,6 +252,12 @@ export interface ProjectSettings {
   worktreePrefix?: string
   // Optional shell script executed right after creating a new session.
   setupScript?: string
+}
+
+export interface MissionModelSettings {
+  orchestratorModel?: string
+  workerModel?: string
+  validationWorkerModel?: string
 }
 
 // === Multi-Key Management ===
@@ -281,10 +318,18 @@ export interface SaveSessionRequest {
   baseBranch?: string
   model: string
   autoLevel: string
+  missionDir?: string
+  missionBaseSessionId?: string
+  isMission?: boolean
+  sessionKind?: SessionKind
+  interactionMode?: SessionInteractionMode
+  autonomyLevel?: SessionAutonomyLevel
+  decompSessionType?: DecompSessionType
   reasoningEffort?: string
   apiKeyFingerprint?: string
   pinned?: boolean
   messages: ChatMessage[]
+  runtimeLogs?: RuntimeLogEntry[]
 }
 
 export interface LoadSessionResponse {
@@ -298,12 +343,21 @@ export interface LoadSessionResponse {
   baseBranch?: string
   model: string
   autoLevel: string
+  missionDir?: string
+  missionBaseSessionId?: string
+  isMission?: boolean
+  sessionKind?: SessionKind
+  interactionMode?: SessionInteractionMode
+  autonomyLevel?: SessionAutonomyLevel
+  decompSessionType?: DecompSessionType
   reasoningEffort?: string
   apiKeyFingerprint?: string
   pinned?: boolean
   title: string
   savedAt: number
   messages: ChatMessage[]
+  runtimeLogs?: RuntimeLogEntry[]
+  mission?: MissionLoadSnapshot
   lastMessageAt?: number
 }
 
@@ -343,6 +397,11 @@ export interface DroidClientAPI {
     sessionId?: string | null
     modelId?: string
     autoLevel?: string
+    isMission?: boolean
+    sessionKind?: SessionKind
+    interactionMode?: SessionInteractionMode
+    autonomyLevel?: SessionAutonomyLevel
+    decompSessionType?: DecompSessionType
     reasoningEffort?: string
   }) => void
   cancel: (params: { sessionId: string | null }) => void
@@ -351,6 +410,11 @@ export interface DroidClientAPI {
     sessionId: string
     modelId?: string
     autoLevel?: string
+    isMission?: boolean
+    sessionKind?: SessionKind
+    interactionMode?: SessionInteractionMode
+    autonomyLevel?: SessionAutonomyLevel
+    decompSessionType?: DecompSessionType
     reasoningEffort?: string
   }) => Promise<{ ok: true }>
 
@@ -358,12 +422,26 @@ export interface DroidClientAPI {
     cwd: string
     modelId?: string
     autoLevel?: string
+    isMission?: boolean
+    sessionKind?: SessionKind
+    interactionMode?: SessionInteractionMode
+    autonomyLevel?: SessionAutonomyLevel
+    decompSessionType?: DecompSessionType
     reasoningEffort?: string
   }) => Promise<{ sessionId: string }>
 
-  restartSessionWithActiveKey: (params: {
+  killWorkerSession: (params: {
     sessionId: string
-  }) => Promise<{ ok: true; apiKeyFingerprint: string }>
+    workerSessionId: string
+  }) => Promise<{ ok: true }>
+
+  sendWorkerFollowup: (params: {
+    sessionId: string
+    workerSessionId: string
+    aliasSessionId: string
+    cwd: string
+    prompt: string
+  }) => Promise<{ ok: true }>
 
   runSetupScript: (params: {
     sessionId: string
@@ -484,6 +562,14 @@ export interface DroidClientAPI {
   clearSession: (params: { id: string }) => Promise<SessionMeta | null>
   listSessions: () => Promise<SessionMeta[]>
   deleteSession: (id: string) => Promise<boolean>
+  readMissionDir: (params: MissionDirRequest) => Promise<MissionDirReadResult>
+  watchMissionDir: (params: MissionDirRequest) => Promise<{ ok: true; missionDir: string }>
+  unwatchMissionDir: (params: { sessionId: string }) => Promise<{ ok: true }>
+  onMissionDirChanged: (callback: (payload: MissionDirChangeEvent) => void) => () => void
+  readMissionRuntime: (params: MissionRuntimeRequest) => Promise<MissionRuntimeReadResult>
+  watchMissionRuntime: (params: MissionRuntimeRequest) => Promise<{ ok: true }>
+  unwatchMissionRuntime: (params: { sessionId: string }) => Promise<{ ok: true }>
+  onMissionRuntimeChanged: (callback: (payload: MissionRuntimeChangeEvent) => void) => () => void
 
   loadAppState: () => Promise<PersistedAppState>
   saveProjects: (projects: Array<{ dir: string; name: string; displayName?: string }>) => void
@@ -494,6 +580,8 @@ export interface DroidClientAPI {
 
   setCommitMessageModelId: (modelId: string) => void
   setCommitMessageReasoningEffort: (r: string) => void
+  getMissionModelSettings: () => Promise<MissionModelSettings>
+  setMissionModelSettings: (settings: MissionModelSettings) => Promise<MissionModelSettings>
 
   getGitStatus: (params: { projectDir: string }) => Promise<GitStatusFile[]>
   getGitBranch: (params: { projectDir: string }) => Promise<string>
