@@ -1,5 +1,14 @@
 import React, { useState } from 'react'
-import { ShieldAlert, FileCode, FileEdit, Play, Search, Globe, Terminal, ChevronDown } from 'lucide-react'
+import {
+  ShieldAlert,
+  FileCode,
+  FileEdit,
+  Play,
+  Search,
+  Globe,
+  Terminal,
+  ChevronDown,
+} from 'lucide-react'
 import type { PendingPermissionRequest } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
 import {
@@ -151,9 +160,7 @@ function PermissionToolUseCard({ item }: { item: unknown }) {
           {entries.map(([key, val]) => (
             <div key={key} className="flex gap-2 text-[11px]">
               <span className="shrink-0 text-muted-foreground">{key}:</span>
-              <span className="text-foreground break-all">
-                {formatParamValue(val)}
-              </span>
+              <span className="text-foreground break-all">{formatParamValue(val)}</span>
             </div>
           ))}
         </div>
@@ -171,11 +178,7 @@ interface PermissionCardProps {
   onRespond: (params: PermissionResponseParams) => void
 }
 
-const PRIMARY_OPTIONS: DroidPermissionOption[] = [
-  'proceed_once',
-  'proceed_auto_run',
-  'cancel',
-]
+const PRIMARY_OPTIONS: DroidPermissionOption[] = ['proceed_once', 'proceed_auto_run', 'cancel']
 
 function isPrimaryOption(opt: DroidPermissionOption): boolean {
   return PRIMARY_OPTIONS.includes(opt)
@@ -246,18 +249,21 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
                 onClick={() => setShowMore(!showMore)}
               >
                 More
-                <ChevronDown className={`size-3 transition-transform ${showMore ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                  className={`size-3 transition-transform ${showMore ? 'rotate-180' : ''}`}
+                />
               </button>
-              {showMore && advancedOptions.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-[0.995]"
-                  onClick={() => onRespond({ selectedOption: opt })}
-                >
-                  {permissionLabel(opt)}
-                </button>
-              ))}
+              {showMore &&
+                advancedOptions.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-[0.995]"
+                    onClick={() => onRespond({ selectedOption: opt })}
+                  >
+                    {getMissionPermissionOptionLabel(request, opt)}
+                  </button>
+                ))}
             </>
           )}
         </div>

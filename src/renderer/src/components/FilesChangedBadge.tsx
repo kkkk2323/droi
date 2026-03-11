@@ -83,9 +83,7 @@ export function FilesChangedBadge({ projectDir, isRunning }: FilesChangedBadgePr
                   {file.additions > 0 && file.deletions > 0 && (
                     <span className="text-muted-foreground"> </span>
                   )}
-                  {file.deletions > 0 && (
-                    <span className="text-red-500">-{file.deletions}</span>
-                  )}
+                  {file.deletions > 0 && <span className="text-red-500">-{file.deletions}</span>}
                   {file.additions === 0 && file.deletions === 0 && (
                     <span className="text-muted-foreground">--</span>
                   )}
