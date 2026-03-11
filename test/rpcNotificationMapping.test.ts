@@ -525,6 +525,12 @@ test('applyRpcNotification keeps StartMissionRun progress supplemental while Mis
         type: 'mission_worker_completed',
         workerSessionId: 'worker-live',
         featureId: 'feature-live',
+        successState: 'success',
+        handoffFileName: 'feature-live.json',
+        handoff: {
+          salientSummary: 'Finished feature-live.',
+          whatWasImplemented: 'Completed the feature-live worker and recorded verification.',
+        },
       },
     },
   } as any)
@@ -533,6 +539,14 @@ test('applyRpcNotification keeps StartMissionRun progress supplemental while Mis
   assert.equal(completedMission.liveWorkerSessionId, undefined)
   assert.equal(completedMission.currentWorkerSessionId, undefined)
   assert.equal(completedMission.isCompleted, false)
+  assert.equal(completedMission.handoffs.length, 1)
+  assert.equal(completedMission.handoffs[0]?.fileName, 'feature-live.json')
+  assert.equal((completedMission.handoffs[0]?.payload as any)?.featureId, 'feature-live')
+  assert.equal((completedMission.handoffs[0]?.payload as any)?.successState, 'success')
+  assert.equal(
+    (((completedMission.handoffs[0]?.payload as any)?.handoff as any)?.salientSummary as string) || '',
+    'Finished feature-live.',
+  )
 })
 
 test('applyMissionDirSnapshot follows per-file merge rules and keeps validator-injected Missions running', () => {

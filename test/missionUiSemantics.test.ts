@@ -214,6 +214,30 @@ test('kill messaging distinguishes user-killed workers from daemon failures and 
   assert.match(killedByUser.description, /terminated at your request/i)
 })
 
+test('completed Missions suppress stale kill-worker banners after recovery', () => {
+  const completedAfterKill = getMissionRuntimeStatus({
+    mission: createMissionState({
+      isCompleted: true,
+      completedFeatures: 3,
+      totalFeatures: 3,
+      progressEntries: [
+        {
+          type: 'worker_failed',
+          reason: 'Killed by user',
+          timestamp: '2026-03-09T12:05:00.000Z',
+        },
+        {
+          type: 'mission_completed',
+          timestamp: '2026-03-09T12:10:00.000Z',
+        },
+      ],
+    }),
+  })
+
+  assert.equal(completedAfterKill.kind, 'completed')
+  assert.match(completedAfterKill.title, /mission completed/i)
+})
+
 test('retry messaging surfaces daemon retry guidance and bounded failure recovery', () => {
   const retrying = getMissionRuntimeStatus({
     mission: createMissionState({ currentState: 'running' }),

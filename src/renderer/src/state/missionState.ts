@@ -38,6 +38,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+function hasOwnKey(value: unknown, key: string): boolean {
+  return isObject(value) && Object.prototype.hasOwnProperty.call(value, key)
+}
+
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
   if (isObject(value)) {
@@ -110,6 +114,13 @@ function normalizeHandoffs(value: unknown): MissionDiskHandoff[] {
     .filter(Boolean) as MissionDiskHandoff[]
 }
 
+function normalizeFileName(value: unknown): string | undefined {
+  const raw = asTrimmedString(value)
+  if (!raw) return undefined
+  const normalized = raw.split(/[\\/]/).pop()?.trim()
+  return normalized || undefined
+}
+
 function readIsoTimestamp(value: unknown): number | undefined {
   const raw = asTrimmedString(value)
   if (!raw) return undefined
@@ -128,6 +139,48 @@ function readMissionObjectTimestamp(value: MissionDiskObject | null): number | u
 
 function readMissionStateValue(state: MissionDiskObject | null): string | undefined {
   return asTrimmedString((state as any)?.state) ?? asTrimmedString((state as any)?.missionState)
+}
+
+function normalizeMissionStatePatch(value: unknown): MissionDiskObject | null {
+  if (!isObject(value)) return null
+
+  const patch: MissionDiskObject = {}
+  const state =
+    asTrimmedString((value as any).missionState) ??
+    asTrimmedString((value as any).currentState) ??
+    asTrimmedString((value as any).state)
+  if (state) patch.state = state
+
+  const currentFeatureId = asTrimmedString((value as any).currentFeatureId)
+  if (currentFeatureId) patch.currentFeatureId = currentFeatureId
+
+  const currentWorkerSessionId = asTrimmedString((value as any).currentWorkerSessionId)
+  if (currentWorkerSessionId) patch.currentWorkerSessionId = currentWorkerSessionId
+
+  const completedFeatures = asNumber((value as any).completedFeatures)
+  if (completedFeatures !== undefined) patch.completedFeatures = completedFeatures
+
+  const totalFeatures = asNumber((value as any).totalFeatures)
+  if (totalFeatures !== undefined) patch.totalFeatures = totalFeatures
+
+  const updatedAt = asTrimmedString((value as any).updatedAt)
+  if (updatedAt) patch.updatedAt = updatedAt
+
+  const createdAt = asTrimmedString((value as any).createdAt)
+  if (createdAt) patch.createdAt = createdAt
+
+  const timestamp = asTrimmedString((value as any).timestamp)
+  if (timestamp) patch.timestamp = timestamp
+
+  const milestonesWithValidationPlanned = (value as any).milestonesWithValidationPlanned
+  if (
+    Array.isArray(milestonesWithValidationPlanned) &&
+    milestonesWithValidationPlanned.length > 0
+  ) {
+    patch.milestonesWithValidationPlanned = milestonesWithValidationPlanned
+  }
+
+  return Object.keys(patch).length > 0 ? patch : null
 }
 
 function readCurrentFeatureId(
@@ -278,9 +331,106 @@ function normalizeLiveWorkerSessionId(
   return liveWorker === nextCurrentWorkerSessionId ? liveWorker : undefined
 }
 
+function inferMissionState(params: {
+  state: MissionDiskObject | null
+  features: MissionDiskObject[]
+  progressEntries: MissionDiskObject[]
+  validationState: MissionDiskObject | null
+  currentWorkerSessionId?: string
+  completedFeatures: number
+  totalFeatures: number
+}): string | undefined {
+  const explicit = readMissionStateValue(params.state)
+  if (explicit) return explicit
+
+  if (params.currentWorkerSessionId) return 'running'
+  if (
+    params.features.some((feature) => {
+      const status = featureStatus(feature)
+      return status === 'in_progress' || status === 'running'
+    })
+  ) {
+    return 'running'
+  }
+
+  const featuresSettled =
+    params.totalFeatures > 0 && params.completedFeatures >= params.totalFeatures
+  if (featuresSettled) {
+    return 'completed'
+  }
+
+  const latestProgressEntry = [...params.progressEntries].sort((left, right) => {
+    const leftTime = readIsoTimestamp((left as any).timestamp) ?? Number.NEGATIVE_INFINITY
+    const rightTime = readIsoTimestamp((right as any).timestamp) ?? Number.NEGATIVE_INFINITY
+    return rightTime - leftTime
+  })[0]
+  const latestType = asTrimmedString((latestProgressEntry as any)?.type)?.toLowerCase()
+  if (latestType === 'mission_paused' || latestType === 'worker_paused') return 'paused'
+
+  return undefined
+}
+
+function extractNotificationHandoffs(notification: Record<string, unknown>): MissionDiskHandoff[] {
+  const explicit = normalizeHandoffs((notification as any).handoffs)
+  if (explicit.length > 0) return explicit
+
+  const nestedHandoff = normalizeDiskObject((notification as any).handoff)
+  if (!nestedHandoff) return []
+
+  const featureId =
+    asTrimmedString((notification as any).featureId) ??
+    asTrimmedString((nestedHandoff as any).featureId)
+  const successState = asTrimmedString((notification as any).successState)
+  const payload: MissionDiskObject = {
+    ...(featureId ? { featureId } : {}),
+    ...(successState ? { successState } : {}),
+    handoff: nestedHandoff,
+  }
+  const fileName =
+    normalizeFileName((notification as any).handoffFileName) ??
+    normalizeFileName((notification as any).handoffFile) ??
+    normalizeFileName((notification as any).handoffPath) ??
+    `${featureId || 'handoff'}.json`
+
+  return [{ fileName, payload }]
+}
+
 function finalizeMissionState(input: MissionState): MissionState {
-  const currentState = readMissionStateValue(input.state)
-  let currentWorkerSessionId = readCurrentWorkerSessionId(input.state)
+  const completedFromState = asNumber((input.state as any)?.completedFeatures) ?? 0
+  const completedFromSupplemental = input.supplemental?.completedFeatures ?? 0
+  const completedFromFeatures = countCompletedFeatures(input.features)
+  const completedFeatures = Math.max(
+    completedFromState,
+    completedFromSupplemental,
+    completedFromFeatures,
+    input.completedFeatures,
+  )
+
+  const totalFeatures =
+    input.features.length > 0
+      ? input.features.length
+      : Math.max(
+          asNumber((input.state as any)?.totalFeatures) ?? 0,
+          input.supplemental?.totalFeatures ?? 0,
+          input.totalFeatures ?? 0,
+        )
+
+  const currentWorkerFromState = readCurrentWorkerSessionId(input.state)
+  let currentWorkerSessionId = currentWorkerFromState
+  if (!currentWorkerSessionId && !hasOwnKey(input.state, 'currentWorkerSessionId')) {
+    currentWorkerSessionId =
+      input.supplemental?.currentWorkerSessionId ?? input.currentWorkerSessionId
+  }
+  const currentState =
+    inferMissionState({
+      state: input.state,
+      features: input.features,
+      progressEntries: input.progressEntries,
+      validationState: input.validationState,
+      currentWorkerSessionId,
+      completedFeatures,
+      totalFeatures,
+    }) ?? input.supplemental?.missionState
   let liveWorkerSessionId = normalizeLiveWorkerSessionId(
     input,
     currentWorkerSessionId,
@@ -298,16 +448,11 @@ function finalizeMissionState(input: MissionState): MissionState {
     }
   }
 
-  const completedFromState = asNumber((input.state as any)?.completedFeatures) ?? 0
-  const completedFromFeatures = countCompletedFeatures(input.features)
-  const completedFeatures = Math.max(completedFromState, completedFromFeatures)
-
-  const totalFeatures =
-    input.features.length > 0
-      ? input.features.length
-      : (asNumber((input.state as any)?.totalFeatures) ?? input.totalFeatures ?? 0)
-
-  const currentFeatureId = readCurrentFeatureId(input.state, input.features)
+  const currentFeatureFromState = readCurrentFeatureId(input.state, input.features)
+  const currentFeatureId =
+    currentFeatureFromState || hasOwnKey(input.state, 'currentFeatureId')
+      ? currentFeatureFromState
+      : (input.supplemental?.currentFeatureId ?? input.currentFeatureId)
   const validationPlanned = validationFlowPlanned(
     input.state,
     input.features,
@@ -350,7 +495,10 @@ function normalizeMissionLoadSnapshot(snapshot: MissionLoadSnapshot) {
   const progressEntries = normalizeDiskObjectArray(snapshot.progressEntries ?? snapshot.progressLog)
   const handoffs = normalizeHandoffs(snapshot.handoffs)
   return {
-    state: normalizeDiskObject(snapshot.state),
+    state: mergeStateSnapshots(
+      normalizeDiskObject(snapshot.state),
+      normalizeMissionStatePatch(snapshot),
+    ),
     features,
     progressEntries,
     handoffs,
@@ -484,16 +632,24 @@ export function applyMissionNotificationUpdate(
 
   if (type === 'mission_worker_completed') {
     const completed = base.completedFeatures + 1
+    const handoffs = extractNotificationHandoffs(notification)
     const nextState = patchState(base.state, {
       currentWorkerSessionId: undefined,
       ...(completed ? { completedFeatures: completed } : {}),
       ...(asTrimmedString((notification as any).featureId)
         ? { currentFeatureId: String((notification as any).featureId).trim() }
         : {}),
+      ...(asTrimmedString((notification as any).missionState)
+        ? { state: String((notification as any).missionState).trim() }
+        : {}),
+      ...(asTrimmedString((notification as any).newState)
+        ? { state: String((notification as any).newState).trim() }
+        : {}),
     })
     return finalizeMissionState({
       ...base,
       state: nextState,
+      handoffs: mergeHandoffs(base.handoffs, handoffs),
       liveWorkerSessionId: undefined,
       lastSource: 'notification',
     })

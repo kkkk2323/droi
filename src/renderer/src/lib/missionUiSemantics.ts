@@ -310,6 +310,10 @@ function hasPendingCompletionGate(mission?: MissionState | null): boolean {
   return normalizeLower(mission?.currentState) === 'completed' && !mission?.isCompleted
 }
 
+function isMissionEffectivelyCompleted(mission?: MissionState | null): boolean {
+  return normalizeLower(mission?.currentState) === 'completed' || mission?.isCompleted === true
+}
+
 export function getMissionRuntimeStatus(params: {
   mission?: MissionState | null
   messages?: ChatMessage[]
@@ -359,7 +363,7 @@ export function getMissionRuntimeStatus(params: {
     }
   }
 
-  if (currentState === 'completed') {
+  if (isMissionEffectivelyCompleted(mission)) {
     return {
       kind: 'completed',
       title: 'Mission completed',

@@ -358,6 +358,41 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
       expectedState: 'completed',
       expectedCompleted: true,
     },
+    {
+      label: 'completed from flat snapshot fields',
+      mission: {
+        currentState: 'completed',
+        completedFeatures: 3,
+        totalFeatures: 3,
+        currentFeatureId: 'user-testing-validator-runtime-smoke',
+        features: [
+          { id: 'runtime-smoke-root-inspection', status: 'completed' },
+          {
+            id: 'scrutiny-validator-runtime-smoke',
+            status: 'completed',
+            skillName: 'scrutiny-validator',
+          },
+          {
+            id: 'user-testing-validator-runtime-smoke',
+            status: 'completed',
+            skillName: 'user-testing-validator',
+          },
+        ],
+        validationState: {
+          assertions: {
+            'VAL-ROOT-001': { status: 'passed' },
+          },
+        },
+        handoffs: {
+          'runtime-smoke-root-inspection.json': {
+            featureId: 'runtime-smoke-root-inspection',
+            successState: 'success',
+          },
+        },
+      },
+      expectedState: 'completed',
+      expectedCompleted: true,
+    },
   ]
 
   for (const stage of stages) {
