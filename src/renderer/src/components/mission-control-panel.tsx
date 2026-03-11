@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
-  ArrowLeft,
-  Check,
   CheckCircle2,
-  ChevronRight,
-  Circle,
   List,
   LoaderCircle,
   Maximize2,
@@ -91,127 +87,6 @@ function getRuntimeLogTone(stream: RuntimeLogEntry['stream']): string {
   return 'text-foreground'
 }
 
-function getHandoffIcon(successState: string) {
-  const s = successState.toLowerCase()
-  if (s === 'success') return <Check className="size-3 shrink-0 text-emerald-600" />
-  if (s === 'failure') return <SquareX className="size-3 shrink-0 text-destructive" />
-  return <Circle className="size-3 shrink-0 text-muted-foreground" />
-}
-
-type HandoffData = ReturnType<typeof getMissionHandoffCards>[number]
-
-function HandoffRow({
-  handoff,
-  onSelect,
-}: {
-  handoff: HandoffData
-  onSelect: (h: HandoffData) => void
-}) {
-  return (
-    <div data-testid={handoff.testId} className="py-0.5">
-      <button
-        type="button"
-        className={cn(
-          'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
-          'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-        )}
-        onClick={() => onSelect(handoff)}
-      >
-        {getHandoffIcon(handoff.successState)}
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-          {handoff.title}
-        </span>
-        <Badge
-          className={cn('shrink-0', {
-            'text-emerald-600 dark:text-emerald-400':
-              handoff.successState.toLowerCase() === 'success',
-            'text-destructive': handoff.successState.toLowerCase() === 'failure',
-          })}
-          variant="outline"
-        >
-          {handoff.successState}
-        </Badge>
-        <ChevronRight className="size-3 shrink-0 opacity-40" />
-      </button>
-    </div>
-  )
-}
-
-function HandoffDetailView({ handoff, onBack }: { handoff: HandoffData; onBack: () => void }) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-border bg-background/95 px-4 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onBack}
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-          >
-            <ArrowLeft className="size-3.5" />
-            Back
-          </Button>
-          <span className="text-sm font-medium text-foreground">{handoff.title}</span>
-          <Badge className="ml-auto" variant={getSuccessBadgeVariant(handoff.successState)}>
-            {handoff.successState}
-          </Badge>
-        </div>
-      </div>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto max-w-5xl space-y-5 px-4 py-5">
-          <section>
-            <h4 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Summary
-            </h4>
-            <p className="text-sm text-foreground">{handoff.salientSummary}</p>
-          </section>
-
-          <section>
-            <h4 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Implementation
-            </h4>
-            <p className="text-sm text-muted-foreground">{handoff.whatWasImplemented}</p>
-          </section>
-
-          {handoff.commandResults.length > 0 && (
-            <section>
-              <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <TerminalSquare className="size-3" />
-                Commands
-              </h4>
-              <ul className="space-y-1 text-sm text-foreground">
-                {handoff.commandResults.map((item) => (
-                  <li key={item} className="rounded-md bg-muted/40 px-3 py-1.5 font-mono text-xs">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {handoff.interactiveResults.length > 0 && (
-            <section>
-              <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <CheckCircle2 className="size-3" />
-                Checks
-              </h4>
-              <ul className="space-y-1 text-sm text-foreground">
-                {handoff.interactiveResults.map((item) => (
-                  <li key={item} className="rounded-md bg-muted/40 px-3 py-1.5 text-xs">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-      </ScrollArea>
-    </div>
-  )
-}
-
 export function MissionControlPanel({
   mission,
   runtimeLogs = EMPTY_RUNTIME_LOGS,
@@ -232,7 +107,7 @@ export function MissionControlPanel({
   const { handleCancel, handleKillWorker, handleSendWorkerFollowup } = useActions()
   const [pendingAction, setPendingAction] = useState<'pause' | 'kill' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [activeHandoff, setActiveHandoff] = useState<HandoffData | null>(null)
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null)
   const [workerFollowupInput, setWorkerFollowupInput] = useState('')
   const [logsExpanded, setLogsExpanded] = useState(false)
   const [workerFollowupState, setWorkerFollowupState] = useState<
@@ -253,7 +128,15 @@ export function MissionControlPanel({
   )
   const hasRuntimeLogs = runtimeLogs.length > 0
   const hasTimeline = timeline.length > 0
-  const hasHandoffs = handoffs.length > 0
+  const activeFeatureId = selectedFeatureId ?? mission?.currentFeatureId ?? null
+  const selectedHandoff = useMemo(
+    () => handoffs.find((h) => h.featureId === activeFeatureId),
+    [handoffs, activeFeatureId],
+  )
+  const selectedFeature = useMemo(
+    () => featureQueue.find((f) => f.id === activeFeatureId),
+    [featureQueue, activeFeatureId],
+  )
   const followupUnavailableReason = useMemo(() => {
     if (!actionState.canMessagePausedWorker || !actionState.pausedWorkerSessionId) return undefined
     if (!runtimeLogState) return 'Waiting for paused worker session logs...'
@@ -367,17 +250,6 @@ export function MissionControlPanel({
         setWorkerFollowupError(message || 'Failed to send follow-up to paused worker.')
         setWorkerFollowupState('failed')
       })
-  }
-
-  if (activeHandoff) {
-    return (
-      <div
-        data-testid="mission-control-view"
-        className="flex min-w-0 flex-1 flex-col overflow-hidden"
-      >
-        <HandoffDetailView handoff={activeHandoff} onBack={() => setActiveHandoff(null)} />
-      </div>
-    )
   }
 
   return (
@@ -533,11 +405,11 @@ export function MissionControlPanel({
         </div>
       )}
 
-      {/* Main content: three columns + bottom logs */}
+      {/* Main content: left features + right (detail + timeline) */}
       <div className={cn('flex min-h-0 flex-1 flex-col', logsExpanded && 'hidden')}>
         <div className="flex min-h-0 flex-1">
-          {/* Left: Features */}
-          <section className="flex w-[280px] shrink-0 flex-col border-r border-border">
+          {/* Left: Feature list (master) */}
+          <section className="flex w-[320px] shrink-0 flex-col border-r border-border">
             <div className="shrink-0 px-3 pt-3 pb-2">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Features
@@ -550,112 +422,185 @@ export function MissionControlPanel({
                     No features queued yet.
                   </p>
                 ) : (
-                  featureQueue.map((feature) => (
-                    <div
-                      key={feature.id}
-                      data-testid={feature.testId}
-                      className={cn(
-                        'flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5',
-                        feature.isCurrent
-                          ? 'border-primary/20 bg-primary/5'
-                          : 'border-transparent hover:bg-muted/30',
-                      )}
-                    >
-                      <span
+                  featureQueue.map((feature) => {
+                    const isSelected = feature.id === activeFeatureId
+                    return (
+                      <button
+                        key={feature.id}
+                        type="button"
+                        data-testid={feature.testId}
+                        onClick={() => setSelectedFeatureId(feature.id)}
                         className={cn(
-                          'size-1.5 shrink-0 rounded-full',
-                          getFeatureStatusDot(feature.status, feature.isCurrent),
-                        )}
-                      />
-                      <span
-                        className={cn(
-                          'min-w-0 flex-1 truncate text-xs',
-                          feature.isCurrent ? 'text-foreground' : feature.status === 'completed' || feature.status === 'cancelled' ? 'text-muted-foreground' : 'text-foreground',
-                        )}
-                        title={feature.description}
-                      >
-                        {feature.description}
-                      </span>
-                      {feature.isValidator && (
-                        <ShieldCheck className="size-3 shrink-0 text-violet-500" />
-                      )}
-                      <span
-                        className={cn(
-                          'shrink-0 text-[10px]',
-                          feature.isCurrent
-                            ? 'font-medium text-primary'
-                            : 'text-muted-foreground',
+                          'flex w-full min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors',
+                          isSelected
+                            ? 'border-primary/20 bg-primary/5'
+                            : 'border-transparent hover:bg-muted/30',
                         )}
                       >
-                        {feature.statusLabel}
-                      </span>
-                    </div>
-                  ))
+                        <span
+                          className={cn(
+                            'size-1.5 shrink-0 rounded-full',
+                            getFeatureStatusDot(feature.status, feature.isCurrent),
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            'min-w-0 flex-1 truncate text-xs',
+                            isSelected || feature.isCurrent
+                              ? 'text-foreground'
+                              : feature.status === 'completed' || feature.status === 'cancelled'
+                                ? 'text-muted-foreground'
+                                : 'text-foreground',
+                          )}
+                          title={feature.description}
+                        >
+                          {feature.description}
+                        </span>
+                        {feature.isValidator && (
+                          <ShieldCheck className="size-3 shrink-0 text-violet-500" />
+                        )}
+                        <span
+                          className={cn(
+                            'shrink-0 text-[10px]',
+                            isSelected || feature.isCurrent
+                              ? 'font-medium text-primary'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {feature.statusLabel}
+                        </span>
+                      </button>
+                    )
+                  })
                 )}
               </div>
             </ScrollArea>
           </section>
 
-          {/* Center: Timeline */}
-          <section className="flex min-w-0 flex-1 flex-col border-r border-border">
-            <div className="shrink-0 px-3 pt-3 pb-2">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Timeline
-              </h3>
-            </div>
-            <ScrollArea data-testid="mission-progress-timeline" className="min-h-0 flex-1 px-3">
-              {hasTimeline ? (
-                <div className="relative ml-2 pb-3">
-                  <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
-                  {timeline.map((entry, index) => (
-                    <div
-                      key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
-                      className="relative flex min-w-0 items-baseline gap-2 py-1 pl-4"
+          {/* Right: Feature detail (top) + Timeline (bottom) */}
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* Top-right: Feature detail */}
+            <section className="flex min-h-0 flex-1 flex-col border-b border-border">
+              <div className="shrink-0 px-3 pt-3 pb-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {selectedFeature ? selectedFeature.description : 'Feature Detail'}
+                  </h3>
+                  {selectedHandoff && (
+                    <Badge
+                      variant={getSuccessBadgeVariant(selectedHandoff.successState)}
+                      className="ml-auto"
                     >
-                      <span className="absolute top-[9px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
-                        {formatTimeOnly(entry.timestampLabel)}
-                      </span>
-                      <span className="shrink-0 text-xs text-foreground">{entry.eventLabel}</span>
-                      {entry.detailLabel && (
-                        <span className="min-w-0 truncate text-[10px] text-muted-foreground/50">
-                          {entry.detailLabel}
-                        </span>
-                      )}
+                      {selectedHandoff.successState}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <ScrollArea className="min-h-0 flex-1 px-3">
+                {selectedHandoff ? (
+                  <div className="space-y-4 pb-3">
+                    <div>
+                      <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Summary
+                      </h4>
+                      <p className="text-xs text-foreground">{selectedHandoff.salientSummary}</p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="px-2 py-4 text-xs text-muted-foreground/60">
-                  No timeline events yet.
-                </p>
-              )}
-            </ScrollArea>
-          </section>
+                    <div>
+                      <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Implementation
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedHandoff.whatWasImplemented}
+                      </p>
+                    </div>
+                    {selectedHandoff.commandResults.length > 0 && (
+                      <div>
+                        <h4 className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <TerminalSquare className="size-3" />
+                          Commands
+                        </h4>
+                        <ul className="space-y-1">
+                          {selectedHandoff.commandResults.map((item) => (
+                            <li
+                              key={item}
+                              className="rounded-md bg-muted/40 px-2.5 py-1 font-mono text-[11px]"
+                            >
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedHandoff.interactiveResults.length > 0 && (
+                      <div>
+                        <h4 className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <CheckCircle2 className="size-3" />
+                          Checks
+                        </h4>
+                        <ul className="space-y-1">
+                          {selectedHandoff.interactiveResults.map((item) => (
+                            <li
+                              key={item}
+                              className="rounded-md bg-muted/40 px-2.5 py-1 text-[11px]"
+                            >
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-full min-h-[80px] items-center justify-center py-6">
+                    <p className="text-xs text-muted-foreground/60">
+                      {selectedFeature
+                        ? 'Feature in progress — no handoff data yet.'
+                        : 'Select a feature to view details.'}
+                    </p>
+                  </div>
+                )}
+              </ScrollArea>
+            </section>
 
-          {/* Right: Handoffs */}
-          <section className="flex min-w-0 flex-1 flex-col">
-            <div className="shrink-0 px-3 pt-3 pb-2">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Handoffs
-              </h3>
-            </div>
-            <ScrollArea className="min-h-0 flex-1 px-1">
-              {hasHandoffs ? (
-                <div className="pb-3">
-                  {handoffs.map((handoff) => (
-                    <HandoffRow
-                      key={handoff.key}
-                      handoff={handoff}
-                      onSelect={setActiveHandoff}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="px-3 py-4 text-xs text-muted-foreground/60">No handoffs yet.</p>
-              )}
-            </ScrollArea>
-          </section>
+            {/* Bottom-right: Timeline (compact) */}
+            <section className="flex h-[180px] shrink-0 flex-col">
+              <div className="shrink-0 px-3 pt-2 pb-1.5">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Timeline
+                </h3>
+              </div>
+              <ScrollArea data-testid="mission-progress-timeline" className="min-h-0 flex-1 px-3">
+                {hasTimeline ? (
+                  <div className="relative ml-2 pb-2">
+                    <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
+                    {timeline.map((entry, index) => (
+                      <div
+                        key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
+                        className="relative flex min-w-0 items-baseline gap-2 py-0.5 pl-4"
+                      >
+                        <span className="absolute top-[7px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
+                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
+                          {formatTimeOnly(entry.timestampLabel)}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-foreground">
+                          {entry.eventLabel}
+                        </span>
+                        {entry.detailLabel && (
+                          <span className="min-w-0 truncate text-[10px] text-muted-foreground/50">
+                            {entry.detailLabel}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="px-2 py-3 text-xs text-muted-foreground/60">
+                    No timeline events yet.
+                  </p>
+                )}
+              </ScrollArea>
+            </section>
+          </div>
         </div>
       </div>
 
