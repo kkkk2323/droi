@@ -267,6 +267,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
               },
               meta: activeMeta,
               data,
+              missionModelSettings,
             }),
           )
           useAppStore.setState({

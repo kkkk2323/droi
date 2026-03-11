@@ -41,6 +41,11 @@ import type {
   ProjectSettings,
   SaveSessionRequest,
 } from '../../../shared/protocol'
+import {
+  resolveSessionProtocolFields,
+  type DecompSessionType,
+  type SessionKind,
+} from '../../../shared/sessionProtocol.ts'
 import { getContentType } from '../../utils/path.ts'
 import { jsonError, readJsonBody } from '../../utils/http.ts'
 import { nodeToWebReadable, pipelineNode } from '../../utils/stream.ts'
@@ -65,6 +70,44 @@ function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
   if (v === 'medium') return 'medium'
   if (v === 'high') return 'high'
   return 'low'
+}
+
+function coerceInteractionMode(value: unknown): DroidInteractionMode | undefined {
+  return value === 'spec' || value === 'auto' || value === 'agi' ? value : undefined
+}
+
+function coerceAutonomyLevel(value: unknown): DroidAutonomyLevel | undefined {
+  return value === 'off' || value === 'low' || value === 'medium' || value === 'high'
+    ? value
+    : undefined
+}
+
+function coerceSessionKind(value: unknown): SessionKind | undefined {
+  return value === 'mission' || value === 'normal' ? value : undefined
+}
+
+function coerceDecompSessionType(value: unknown): DecompSessionType | undefined {
+  return value === 'orchestrator' ? value : undefined
+}
+
+function resolveProtocolPayload(payload: {
+  autoLevel?: unknown
+  isMission?: unknown
+  sessionKind?: unknown
+  interactionMode?: unknown
+  autonomyLevel?: unknown
+  decompSessionType?: unknown
+}) {
+  return resolveSessionProtocolFields({
+    autoLevel: payload.autoLevel,
+    explicit: {
+      isMission: payload.isMission === true ? true : undefined,
+      sessionKind: coerceSessionKind(payload.sessionKind),
+      interactionMode: coerceInteractionMode(payload.interactionMode),
+      autonomyLevel: coerceAutonomyLevel(payload.autonomyLevel),
+      decompSessionType: coerceDecompSessionType(payload.decompSessionType),
+    },
+  })
 }
 
 function readTraceChainEnabled(state: PersistedAppState): boolean | undefined {
@@ -602,6 +645,7 @@ export function createApiRoutes() {
       const reasoningEffort =
         typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
       const sid = typeof body.sessionId === 'string' ? body.sessionId : ''
+      const protocol = resolveProtocolPayload(body)
 
       if (!prompt.trim()) return jsonError(c, 400, 'Missing prompt')
       if (!sid) return jsonError(c, 400, 'Missing sessionId')
@@ -639,8 +683,11 @@ export function createApiRoutes() {
         prompt,
         cwd,
         modelId,
-        interactionMode: toInteractionMode(autoLevel),
-        autonomyLevel: toAutonomyLevel(autoLevel),
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
         reasoningEffort,
         env,
       })
@@ -965,9 +1012,9 @@ export function createApiRoutes() {
       const body = await readJsonBody<Record<string, unknown>>(c)
       const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
       const modelId = typeof body.modelId === 'string' ? body.modelId : undefined
-      const autoLevel = typeof body.autoLevel === 'string' ? body.autoLevel : undefined
       const reasoningEffort =
         typeof body.reasoningEffort === 'string' ? body.reasoningEffort : undefined
+      const protocol = resolveProtocolPayload(body)
       if (!cwd) return jsonError(c, 400, 'Missing cwd')
       if (!(await isDirectory(cwd))) return jsonError(c, 400, 'Invalid cwd')
 
@@ -981,8 +1028,11 @@ export function createApiRoutes() {
         machineId,
         cwd,
         modelId,
-        interactionMode: toInteractionMode(autoLevel),
-        autonomyLevel: toAutonomyLevel(autoLevel),
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
         reasoningEffort,
         env,
       })
@@ -1010,13 +1060,17 @@ export function createApiRoutes() {
       deps.execManager.disposeSession(id)
 
       const env = await deps.buildExecEnv()
+      const protocol = resolveProtocolPayload(existing || {})
 
       const created = await deps.execManager.createSession({
         machineId,
         cwd,
         modelId: existing?.model || undefined,
-        interactionMode: toInteractionMode(existing?.autoLevel),
-        autonomyLevel: existing?.autoLevel ? toAutonomyLevel(existing.autoLevel) : undefined,
+        interactionMode: protocol.interactionMode,
+        autonomyLevel: protocol.autonomyLevel,
+        decompSessionType: protocol.decompSessionType,
+        isMission: protocol.isMission,
+        sessionKind: protocol.sessionKind,
         reasoningEffort: existing?.reasoningEffort || undefined,
         env,
       })

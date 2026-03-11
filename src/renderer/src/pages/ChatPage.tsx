@@ -34,6 +34,7 @@ import { AskUserCard } from '@/components/AskUserCard'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
 import { getPendingSessionDraftKey } from '@/store/projectHelpers'
 import { getPreferredMissionView } from '@/lib/missionPage'
+import { resolveSessionRuntimeSelection } from '@/lib/missionModelState'
 
 interface ChatPageProps {
   forceInputDisabled?: boolean
@@ -118,7 +119,13 @@ export function ChatPage({
   const missionInputLocked = missionPreferredView === 'mission-control'
   const isMissionSession =
     activeSessionBuffer?.isMission === true || activeSessionBuffer?.sessionKind === 'mission'
-  const missionOrchestratorModel = missionModelSettings.orchestratorModel || model || DEFAULT_MODEL
+  const missionRuntimeSelection = resolveSessionRuntimeSelection({
+    isMission: isMissionSession,
+    sessionModel: model,
+    sessionReasoningEffort: reasoningEffort,
+    missionModelSettings,
+  })
+  const missionOrchestratorModel = missionRuntimeSelection.model || DEFAULT_MODEL
   const missionWorkerModel = missionModelSettings.workerModel || missionOrchestratorModel
   const missionValidatorModel =
     missionModelSettings.validationWorkerModel || missionOrchestratorModel
