@@ -175,6 +175,9 @@ const droidAPI: DroidClientAPI = {
     return () => ipcRenderer.removeListener('git:commit-workflow-progress', handler)
   },
   getCustomModels: () => ipcRenderer.invoke('factory:getCustomModels'),
+  getMissionModelSettings: () => ipcRenderer.invoke('factory:getMissionModelSettings'),
+  setMissionModelSettings: (settings) =>
+    ipcRenderer.invoke('factory:setMissionModelSettings', settings),
 
   // Updater
   checkForUpdate: () => ipcRenderer.invoke('updater:check'),

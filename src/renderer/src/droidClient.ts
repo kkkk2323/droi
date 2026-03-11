@@ -12,6 +12,7 @@ import type {
   SaveSessionRequest,
   LoadSessionResponse,
   SessionMeta,
+  MissionModelSettings,
   JsonRpcNotification,
   JsonRpcRequest,
   SlashCommandDef,
@@ -1267,6 +1268,24 @@ const browserClient: DroidClientAPI = {
       return []
     }
   },
+  getMissionModelSettings: async () => {
+    try {
+      const res = await apiFetch(`${getApiBase()}/mission-model-settings`)
+      if (!res.ok) return {}
+      return (await res.json()) as MissionModelSettings
+    } catch {
+      return {}
+    }
+  },
+  setMissionModelSettings: async (settings) => {
+    const res = await apiFetch(`${getApiBase()}/mission-model-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    })
+    if (!res.ok) throw new Error(`Failed to save mission model settings: ${res.status}`)
+    return (await res.json()) as MissionModelSettings
+  },
 
   // Updater (not available in browser mode)
   checkForUpdate: async () => ({ available: false }),
@@ -1373,6 +1392,12 @@ export function getDroidClient(): DroidClientAPI {
       merged.relaunchApp = browserClient.relaunchApp
     if (typeof (merged as any).onUpdateProgress !== 'function')
       merged.onUpdateProgress = browserClient.onUpdateProgress
+    if (typeof (merged as any).getMissionModelSettings !== 'function')
+      merged.getMissionModelSettings = browserClient.getMissionModelSettings
+    if (typeof (merged as any).setMissionModelSettings !== 'function')
+      merged.setMissionModelSettings = browserClient.setMissionModelSettings
+    if (typeof (merged as any).getCustomModels !== 'function')
+      merged.getCustomModels = browserClient.getCustomModels
     return merged as DroidClientAPI
   }
   return browserClient

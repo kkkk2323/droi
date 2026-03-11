@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 import { getDroidClient } from '@/droidClient'
-import type { ChatMessage, Project, SessionMeta, WorkspaceInfo, ProjectSettings } from '@/types'
+import type {
+  ChatMessage,
+  Project,
+  SessionMeta,
+  WorkspaceInfo,
+  ProjectSettings,
+  MissionModelSettings,
+} from '@/types'
 import type { DroidPermissionOption, CustomModelDef } from '@/types'
 import { buildHookMismatchMessage, getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from './lib/uuid.ts'
@@ -146,6 +153,7 @@ interface AppState {
   commitMessageModelId: string
   commitMessageReasoningEffort: string
   lanAccessEnabled: boolean
+  missionModelSettings: MissionModelSettings
   customModels: CustomModelDef[]
   projects: Project[]
   projectSettingsByRepo: Record<string, ProjectSettings>
@@ -205,6 +213,7 @@ interface AppActions {
   setCommitMessageModelId: (modelId: string) => void
   setCommitMessageReasoningEffort: (r: string) => void
   setLanAccessEnabled: (enabled: boolean) => void
+  setMissionModelSettings: (settings: MissionModelSettings) => Promise<void>
   refreshDiagnosticsDir: () => Promise<void>
   exportDiagnostics: (params?: { sessionId?: string }) => Promise<{ path: string }>
   openPath: (path: string) => Promise<void>
@@ -314,6 +323,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   commitMessageModelId: 'minimax-m2.5',
   commitMessageReasoningEffort: '',
   lanAccessEnabled: false,
+  missionModelSettings: {},
   customModels: [],
   projects: [],
   projectSettingsByRepo: {},
@@ -673,6 +683,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ lanAccessEnabled: next })
     if (typeof (droid as any)?.setLanAccessEnabled === 'function') {
       ;(droid as any).setLanAccessEnabled(next)
+    }
+  },
+
+  setMissionModelSettings: async (settings) => {
+    const normalize = (value: unknown) => {
+      if (typeof value !== 'string') return undefined
+      const trimmed = value.trim()
+      return trimmed || undefined
+    }
+    const next = {
+      orchestratorModel: normalize(settings.orchestratorModel),
+      workerModel: normalize(settings.workerModel),
+      validationWorkerModel: normalize(settings.validationWorkerModel),
+    }
+    set({ missionModelSettings: next })
+    if (typeof (droid as any)?.setMissionModelSettings === 'function') {
+      const persisted = await (droid as any).setMissionModelSettings(next)
+      set({ missionModelSettings: persisted ?? next })
     }
   },
 
@@ -2584,6 +2612,7 @@ export const useCommitMessageModelId = () => useAppStore((s) => s.commitMessageM
 export const useCommitMessageReasoningEffort = () =>
   useAppStore((s) => s.commitMessageReasoningEffort)
 export const useLanAccessEnabled = () => useAppStore((s) => s.lanAccessEnabled)
+export const useMissionModelSettings = () => useAppStore((s) => s.missionModelSettings)
 export const useCustomModels = () => useAppStore((s) => s.customModels)
 export const useProjects = () => useAppStore((s) => s.projects)
 export const useProjectSettingsByRepo = () => useAppStore((s) => s.projectSettingsByRepo)

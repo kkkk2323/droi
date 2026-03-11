@@ -22,6 +22,7 @@ export interface ModelSelectProps {
   variant?: ModelSelectVariant
   className?: string
   placeholder?: string
+  disabled?: boolean
 }
 
 const providerIcon: Record<ModelProvider, React.FC<{ size?: number | string }>> = {
@@ -61,15 +62,17 @@ export function ModelSelect({
   variant = 'default',
   className,
   placeholder,
+  disabled = false,
 }: ModelSelectProps) {
   const { label, provider, multiplier } = getCurrentModelInfo(value, customModels)
 
   if (variant === 'compact') {
     return (
-      <Select value={value} onValueChange={(v) => v && onChange(v)}>
+      <Select value={value} onValueChange={(v) => v && onChange(v)} disabled={disabled}>
         <SelectTrigger
           data-testid="model-select-trigger"
           size="sm"
+          disabled={disabled}
           className={`h-7 w-auto shrink-0 gap-1.5 rounded-lg border-none bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground ${className || ''}`}
         >
           {provider && <ModelIcon provider={provider} size={14} />}
@@ -114,8 +117,8 @@ export function ModelSelect({
 
   // Default variant - for Settings page
   return (
-    <Select value={value} onValueChange={(v) => v && onChange(v)}>
-      <SelectTrigger className={`w-full justify-between ${className || ''}`}>
+    <Select value={value} onValueChange={(v) => v && onChange(v)} disabled={disabled}>
+      <SelectTrigger disabled={disabled} className={`w-full justify-between ${className || ''}`}>
         <SelectValue placeholder={placeholder}>
           <span className="flex items-center gap-2">
             {provider && <ModelIcon provider={provider} size={14} />}

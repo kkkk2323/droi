@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { getDroidClient } from '@/droidClient'
 import type { Project, SessionMeta, ProjectSettings } from '@/types'
-import type { CustomModelDef } from '@/types'
+import type { CustomModelDef, MissionModelSettings } from '@/types'
 import { getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from '@/lib/uuid'
 import { defaultSessionTitleFromBranch } from '@/lib/sessionWorktree'
@@ -100,17 +100,25 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
     void (async () => {
       try {
-        const [version, appVersion, state, sessionMetas, loadedCustomModels, diagDir] =
-          await Promise.all([
-            withTimeout(droid.getVersion(), ''),
-            withTimeout(droid.getAppVersion(), ''),
-            withTimeout(droid.loadAppState(), { version: 2, machineId: '' } as any),
-            withTimeout(droid.listSessions(), [] as SessionMeta[]),
-            withTimeout(droid.getCustomModels(), [] as CustomModelDef[]),
-            typeof (droid as any)?.getDiagnosticsDir === 'function'
-              ? withTimeout((droid as any).getDiagnosticsDir(), '')
-              : Promise.resolve(''),
-          ])
+        const [
+          version,
+          appVersion,
+          state,
+          sessionMetas,
+          loadedCustomModels,
+          missionModelSettings,
+          diagDir,
+        ] = await Promise.all([
+          withTimeout(droid.getVersion(), ''),
+          withTimeout(droid.getAppVersion(), ''),
+          withTimeout(droid.loadAppState(), { version: 2, machineId: '' } as any),
+          withTimeout(droid.listSessions(), [] as SessionMeta[]),
+          withTimeout(droid.getCustomModels(), [] as CustomModelDef[]),
+          withTimeout(droid.getMissionModelSettings(), {} as MissionModelSettings),
+          typeof (droid as any)?.getDiagnosticsDir === 'function'
+            ? withTimeout((droid as any).getDiagnosticsDir(), '')
+            : Promise.resolve(''),
+        ])
 
         const traceEnabled =
           typeof (state as any).traceChainEnabled === 'boolean'
@@ -163,6 +171,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           appVersion: appVersion,
           droidVersion: version,
           customModels: loadedCustomModels,
+          missionModelSettings: missionModelSettings ?? {},
           apiKey: state.apiKey || '',
           traceChainEnabled: traceEnabled,
           showDebugTrace: showDebug,

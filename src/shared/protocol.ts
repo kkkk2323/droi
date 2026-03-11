@@ -254,6 +254,12 @@ export interface ProjectSettings {
   setupScript?: string
 }
 
+export interface MissionModelSettings {
+  orchestratorModel?: string
+  workerModel?: string
+  validationWorkerModel?: string
+}
+
 // === Multi-Key Management ===
 
 export interface ApiKeyEntry {
@@ -574,6 +580,8 @@ export interface DroidClientAPI {
 
   setCommitMessageModelId: (modelId: string) => void
   setCommitMessageReasoningEffort: (r: string) => void
+  getMissionModelSettings: () => Promise<MissionModelSettings>
+  setMissionModelSettings: (settings: MissionModelSettings) => Promise<MissionModelSettings>
 
   getGitStatus: (params: { projectDir: string }) => Promise<GitStatusFile[]>
   getGitBranch: (params: { projectDir: string }) => Promise<string>

@@ -15,6 +15,7 @@ export type {
   SessionMeta,
   Project,
   ProjectSettings,
+  MissionModelSettings,
   PersistedAppState,
   JsonRpcRequest,
   JsonRpcNotification,

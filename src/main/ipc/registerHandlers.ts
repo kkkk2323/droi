@@ -1,7 +1,6 @@
 import { ipcMain, dialog, shell, app, type BrowserWindow } from 'electron'
-import { copyFile, mkdir, readFile, stat, writeFile } from 'fs/promises'
+import { copyFile, mkdir, stat, writeFile } from 'fs/promises'
 import { basename, extname, join } from 'path'
-import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { getDroidVersion, DroidExecManager } from '../../backend/droid/droidExecRunner'
@@ -32,6 +31,11 @@ import { SetupScriptRunner } from '../../backend/session/setupScriptRunner'
 import { createFactoryApiProxy } from '../../backend/keys/factoryApiProxy'
 import { createKeyStore } from '../../backend/keys/keyStore'
 import { createAppStateStore } from '../../backend/storage/appStateStore'
+import {
+  readFactoryCustomModels,
+  readFactoryMissionModelSettings,
+  writeFactoryMissionModelSettings,
+} from '../../backend/storage/factorySettings.ts'
 import { createSessionStore } from '../../backend/storage/sessionStore'
 import {
   readMissionDirSnapshot,
@@ -1501,21 +1505,15 @@ export function registerIpcHandlers(opts: {
   })
 
   ipcMain.handle('factory:getCustomModels', async (): Promise<CustomModelDef[]> => {
-    try {
-      const settingsPath = join(homedir(), '.factory', 'settings.json')
-      const raw = JSON.parse(await readFile(settingsPath, 'utf-8'))
-      const models = Array.isArray(raw?.customModels) ? raw.customModels : []
-      return models
-        .filter((m: any) => typeof m?.id === 'string' && typeof m?.displayName === 'string')
-        .map((m: any) => ({
-          id: m.id,
-          displayName: m.displayName,
-          model: String(m.model || ''),
-          provider: String(m.provider || 'custom'),
-        }))
-    } catch {
-      return []
-    }
+    return readFactoryCustomModels()
+  })
+
+  ipcMain.handle('factory:getMissionModelSettings', async () => {
+    return readFactoryMissionModelSettings()
+  })
+
+  ipcMain.handle('factory:setMissionModelSettings', async (_event, settings) => {
+    return writeFactoryMissionModelSettings(settings ?? {})
   })
 
   ipcMain.handle('git:branch', async (_event, params: { projectDir: string }) => {
