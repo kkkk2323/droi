@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Circle,
+  List,
   LoaderCircle,
   MessagesSquare,
   PauseCircle,
@@ -435,17 +436,30 @@ export function MissionControlPanel({
             </div>
 
             {onViewChange && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                data-testid="mission-view-toggle"
-                onClick={() => onViewChange('chat')}
-                className="h-7 px-2 text-xs text-muted-foreground"
-              >
-                <MessagesSquare className="size-3.5" />
-                Chat
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  data-testid="mission-worker-list-toggle"
+                  onClick={() => onViewChange('worker-list')}
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                >
+                  <List className="size-3.5" />
+                  WorkerList
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  data-testid="mission-view-toggle"
+                  onClick={() => onViewChange('chat')}
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                >
+                  <MessagesSquare className="size-3.5" />
+                  Chat
+                </Button>
+              </>
             )}
           </div>
         </div>

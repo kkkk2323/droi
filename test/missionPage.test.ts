@@ -83,6 +83,16 @@ test('manual mission view cooldown suppresses auto-switches for 30 seconds', () 
     }),
     false,
   )
+
+  assert.equal(
+    shouldApplyMissionAutoSwitch({
+      currentView: 'worker-list',
+      preferredView: preferred,
+      manualOverrideAt: undefined,
+      now,
+    }),
+    false,
+  )
 })
 
 test('Mission session view state stays scoped to the active session id', () => {
@@ -90,8 +100,9 @@ test('Mission session view state stays scoped to the active session id', () => {
   const pausedMission = createMissionState({ currentState: 'paused' })
   const sessionViewStates = {
     'mission-a': {
-      viewMode: 'chat' as MissionViewMode,
+      viewMode: 'worker-detail' as MissionViewMode,
       manualOverrideAt: 42_000,
+      selectedWorkerSessionId: 'worker-123',
     },
   }
 
@@ -102,8 +113,9 @@ test('Mission session view state stays scoped to the active session id', () => {
       sessionViewStates,
     }),
     {
-      viewMode: 'chat',
+      viewMode: 'worker-detail',
       manualOverrideAt: 42_000,
+      selectedWorkerSessionId: 'worker-123',
     },
   )
 
@@ -116,6 +128,28 @@ test('Mission session view state stays scoped to the active session id', () => {
     {
       viewMode: 'mission-control',
       manualOverrideAt: undefined,
+      selectedWorkerSessionId: undefined,
+    },
+  )
+})
+
+test('worker detail view falls back to worker list when the selected worker is missing', () => {
+  const mission = createMissionState({ currentState: 'running' })
+
+  assert.deepEqual(
+    getMissionSessionViewState({
+      sessionId: 'mission-a',
+      mission,
+      sessionViewStates: {
+        'mission-a': {
+          viewMode: 'worker-detail',
+          manualOverrideAt: 1,
+        },
+      },
+    }),
+    {
+      viewMode: 'worker-list',
+      manualOverrideAt: 1,
     },
   )
 })

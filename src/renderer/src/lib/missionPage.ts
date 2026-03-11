@@ -1,16 +1,20 @@
 import type { MissionDiskObject } from '../../../shared/mission.ts'
 import type { MissionState } from '@/state/missionState'
 
-export type MissionViewMode = 'chat' | 'mission-control'
+export type MissionPrimaryViewMode = 'chat' | 'mission-control'
+export type MissionViewMode = MissionPrimaryViewMode | 'worker-list' | 'worker-detail'
 
 export interface MissionSessionViewState {
   viewMode: MissionViewMode
   manualOverrideAt?: number
+  selectedWorkerSessionId?: string
 }
 
 export const MISSION_AUTO_SWITCH_COOLDOWN_MS = 30_000
 
-export function getPreferredMissionView(mission?: MissionState | null): MissionViewMode | null {
+export function getPreferredMissionView(
+  mission?: MissionState | null,
+): MissionPrimaryViewMode | null {
   const state = String(mission?.currentState || '')
     .trim()
     .toLowerCase()
@@ -19,14 +23,19 @@ export function getPreferredMissionView(mission?: MissionState | null): MissionV
   return null
 }
 
+function isPrimaryMissionViewMode(value: MissionViewMode): value is MissionPrimaryViewMode {
+  return value === 'chat' || value === 'mission-control'
+}
+
 export function shouldApplyMissionAutoSwitch(params: {
   currentView: MissionViewMode
-  preferredView: MissionViewMode | null
+  preferredView: MissionPrimaryViewMode | null
   manualOverrideAt?: number
   now?: number
 }): boolean {
   const { currentView, preferredView, manualOverrideAt } = params
   const now = params.now ?? Date.now()
+  if (!isPrimaryMissionViewMode(currentView)) return false
   if (!preferredView || preferredView === currentView) return false
   if (typeof manualOverrideAt !== 'number') return true
   return now - manualOverrideAt >= MISSION_AUTO_SWITCH_COOLDOWN_MS
@@ -43,15 +52,27 @@ export function getMissionSessionViewState(params: {
     return {
       viewMode: preferredView,
       manualOverrideAt: undefined,
+      selectedWorkerSessionId: undefined,
     }
   }
 
-  return (
-    params.sessionViewStates?.[sessionId] ?? {
+  const stored = params.sessionViewStates?.[sessionId]
+  if (!stored) {
+    return {
       viewMode: preferredView,
       manualOverrideAt: undefined,
+      selectedWorkerSessionId: undefined,
     }
-  )
+  }
+
+  if (stored.viewMode === 'worker-detail' && !stored.selectedWorkerSessionId) {
+    return {
+      ...stored,
+      viewMode: 'worker-list',
+    }
+  }
+
+  return stored
 }
 
 function toTitleCase(value: string): string {

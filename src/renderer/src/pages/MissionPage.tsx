@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PanelsLeftRight } from 'lucide-react'
+import { List, PanelsLeftRight } from 'lucide-react'
 
 import { ChatPage } from './ChatPage'
 import { MissionControlPanel } from '@/components/mission-control-panel'
+import { MissionWorkerListPanel } from '@/components/mission-worker-list-panel'
 import { Button } from '@/components/ui/button'
 import { getMissionInputSemantics } from '@/lib/missionUiSemantics'
 import { useAppStore, useActiveSessionId } from '@/store'
@@ -36,6 +37,9 @@ export function MissionPage() {
           | undefined) ?? undefined)
       : undefined,
   )
+  const sessionBuffer = useAppStore((state) =>
+    activeSessionId ? state.sessionBuffers.get(activeSessionId) : undefined,
+  )
   const [sessionViewStates, setSessionViewStates] = useState<
     Record<string, MissionSessionViewState>
   >({})
@@ -54,6 +58,7 @@ export function MissionPage() {
   const inputSemantics = getMissionInputSemantics(mission)
   const viewMode = sessionViewState.viewMode
   const manualOverrideAt = sessionViewState.manualOverrideAt
+  const selectedWorkerSessionId = sessionViewState.selectedWorkerSessionId
 
   const hasMissionState = Boolean(
     mission?.currentState || (mission?.features && mission.features.length > 0),
@@ -76,15 +81,25 @@ export function MissionPage() {
     }
   }, [activeSessionId, manualOverrideAt, preferredView, viewMode])
 
-  const setManualView = (nextView: MissionViewMode) => {
+  const setManualView = (nextView: MissionViewMode, params?: { workerSessionId?: string }) => {
     if (!activeSessionId) return
     setSessionViewStates((current) => ({
       ...current,
       [activeSessionId]: {
         viewMode: nextView,
         manualOverrideAt: Date.now(),
+        selectedWorkerSessionId:
+          nextView === 'worker-detail'
+            ? params?.workerSessionId
+            : nextView === 'worker-list'
+              ? current[activeSessionId]?.selectedWorkerSessionId
+              : undefined,
       },
     }))
+  }
+
+  const handleOpenWorkerDetail = (workerSessionId: string) => {
+    setManualView('worker-detail', { workerSessionId })
   }
 
   if (!hasMissionState) {
@@ -106,7 +121,18 @@ export function MissionPage() {
             forceInputDisabled={inputSemantics.disabled}
             forceDisabledPlaceholder={inputSemantics.placeholder}
           />
-          <div className="absolute right-4 top-1 z-20">
+          <div className="absolute right-4 top-1 z-20 flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid="mission-worker-list-toggle"
+              onClick={() => setManualView('worker-list')}
+              className="h-7 gap-1 bg-background/90 px-2 text-xs shadow-sm backdrop-blur"
+            >
+              <List className="size-3.5" />
+              WorkerList
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -120,12 +146,26 @@ export function MissionPage() {
             </Button>
           </div>
         </>
-      ) : (
+      ) : viewMode === 'mission-control' ? (
         <MissionControlPanel
           mission={mission}
           runtimeLogs={runtimeLogs}
           runtimeLogState={runtimeLogState}
           onViewChange={setManualView}
+        />
+      ) : (
+        <MissionWorkerListPanel
+          mission={mission}
+          sessionId={activeSessionId}
+          missionDir={sessionBuffer?.missionDir}
+          missionBaseSessionId={sessionBuffer?.missionBaseSessionId}
+          projectDir={sessionBuffer?.projectDir}
+          selectedWorkerSessionId={
+            viewMode === 'worker-detail' ? selectedWorkerSessionId : undefined
+          }
+          onSelectWorker={handleOpenWorkerDetail}
+          onBackToList={() => setManualView('worker-list')}
+          onBackToMission={() => setManualView('mission-control')}
         />
       )}
     </div>
