@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Clock3, LoaderCircle } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Clock3, LoaderCircle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,6 @@ import {
   type MissionWorkerListFilter,
   type MissionWorkerSummary,
 } from '@/lib/missionWorkerList'
-import { truncateWorkerSessionId } from '@/lib/missionPage'
 import { cn } from '@/lib/utils'
 import type { MissionState } from '@/state/missionState'
 import type { MissionRuntimeSnapshot, RuntimeLogEntry } from '@/types'
@@ -65,18 +64,36 @@ function getRuntimeLogTone(stream: RuntimeLogEntry['stream']): string {
   return 'text-foreground'
 }
 
+function formatShortSessionId(workerSessionId: string): string {
+  if (workerSessionId.length <= 12) return workerSessionId
+  return `${workerSessionId.slice(0, 6)}…${workerSessionId.slice(-4)}`
+}
+
 function RuntimeLogBlock({
   snapshot,
   loading,
+  defaultCollapsed,
+  isWorkerActive,
 }: {
   snapshot?: MissionRuntimeSnapshot
   loading: boolean
+  defaultCollapsed?: boolean
+  isWorkerActive?: boolean
 }) {
   const entries = snapshot?.entries ?? EMPTY_RUNTIME_ENTRIES
+  const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false)
+  const showLive = isWorkerActive && snapshot?.status === 'ready'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="mb-2 flex items-center gap-2"
+      >
+        <ChevronRight
+          className={cn('size-3 text-muted-foreground transition-transform', !collapsed && 'rotate-90')}
+        />
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Runtime logs
         </h3>
@@ -85,44 +102,48 @@ function RuntimeLogBlock({
             <LoaderCircle className="size-3 animate-spin" />
             Loading
           </Badge>
-        ) : snapshot?.status === 'ready' ? (
+        ) : showLive ? (
           <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
             Live
           </Badge>
         ) : null}
-      </div>
+      </button>
 
-      <ScrollArea className="min-h-[220px] flex-1 rounded-md border border-border/70 bg-muted/10">
-        {entries.length > 0 ? (
-          <div className="space-y-1 p-3 font-mono text-xs">
-            {entries.map((entry, index) => (
-              <div key={`${entry.ts}-${entry.stream}-${index}`} className="flex min-w-0 gap-2">
-                <span className="shrink-0 text-[10px] text-muted-foreground/60">
-                  {formatRuntimeLogTime(entry.ts)}
-                </span>
-                <span className="shrink-0 text-[10px] uppercase text-muted-foreground/60">
-                  {entry.stream}
-                </span>
-                <span
-                  className={cn(
-                    'min-w-0 whitespace-pre-wrap break-words',
-                    getRuntimeLogTone(entry.stream),
-                  )}
-                >
-                  {entry.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex h-full min-h-[140px] items-center justify-center px-4 py-6 text-sm text-muted-foreground/70">
-            {snapshot?.message || 'No runtime logs captured for this worker yet.'}
-          </div>
-        )}
-      </ScrollArea>
+      {!collapsed && (
+        <ScrollArea className="max-h-[calc(100vh-18rem)] min-h-[220px] rounded-md border border-border/70 bg-muted/10">
+          {entries.length > 0 ? (
+            <div className="space-y-1 p-3 font-mono text-xs">
+              {entries.map((entry, index) => (
+                <div key={`${entry.ts}-${entry.stream}-${index}`} className="flex min-w-0 gap-2">
+                  <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                    {formatRuntimeLogTime(entry.ts)}
+                  </span>
+                  <span className="shrink-0 text-[10px] uppercase text-muted-foreground/60">
+                    {entry.stream}
+                  </span>
+                  <span
+                    className={cn(
+                      'min-w-0 whitespace-pre-wrap break-words',
+                      getRuntimeLogTone(entry.stream),
+                    )}
+                  >
+                    {entry.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full min-h-[140px] items-center justify-center px-4 py-6 text-sm text-muted-foreground/70">
+              {snapshot?.message || 'No runtime logs captured for this worker yet.'}
+            </div>
+          )}
+        </ScrollArea>
+      )}
     </div>
   )
 }
+
+type DetailTab = 'timeline' | 'logs' | 'result'
 
 function WorkerDetailView({
   mission,
@@ -145,6 +166,8 @@ function WorkerDetailView({
 }) {
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<MissionRuntimeSnapshot | undefined>()
   const [runtimeLoading, setRuntimeLoading] = useState(false)
+  const isTerminal = worker.status === 'success' || worker.status === 'partial' || worker.status === 'failed'
+  const [activeTab, setActiveTab] = useState<DetailTab>(isTerminal ? 'result' : 'timeline')
 
   const progressItems = useMemo(
     () => getMissionWorkerProgressItems(mission, worker.workerSessionId),
@@ -197,192 +220,199 @@ function WorkerDetailView({
     }
   }, [missionBaseSessionId, missionDir, sessionId, worker.workerSessionId, workingDirectory])
 
+  const tabs: Array<{ key: DetailTab; label: string; count?: number }> = [
+    { key: 'timeline', label: 'Timeline', count: progressItems.length },
+    { key: 'logs', label: 'Logs' },
+    { key: 'result', label: 'Result', count: handoffs.length },
+  ]
+
   return (
     <div
       data-testid="mission-worker-detail-view"
       className="flex min-w-0 flex-1 flex-col overflow-hidden"
     >
-      <div className="shrink-0 border-b border-border bg-background/95 px-4 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onBackToList}
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-          >
-            <ArrowLeft className="size-3.5" />
-            WorkerList
-          </Button>
-          <span className="text-sm font-medium text-foreground">{worker.featureTitle}</span>
-          <Badge variant={getMissionWorkerStatusVariant(worker.status)}>{worker.statusLabel}</Badge>
-          <Badge variant="outline" className="font-mono text-[10px]">
-            {worker.workerSessionId}
-          </Badge>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onBackToMission}
-            className="ml-auto h-7 px-2 text-xs text-muted-foreground"
-          >
-            Back to Mission
-          </Button>
+      {/* Header: back nav + inline metadata */}
+      <div className="shrink-0 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur">
+        <div className="mx-auto max-w-5xl space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={onBackToList}
+              className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            >
+              <ArrowLeft className="size-3.5" />
+              Workers
+            </Button>
+            <span className="text-muted-foreground/40">/</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={onBackToMission}
+              className="h-7 px-2 text-xs text-muted-foreground"
+            >
+              Mission
+            </Button>
+          </div>
+          {/* Feature title row */}
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 text-sm font-medium text-foreground line-clamp-2">
+              {worker.featureTitle}
+            </span>
+            <Badge
+              variant={getMissionWorkerStatusVariant(worker.status)}
+              className="shrink-0"
+            >
+              {worker.statusLabel}
+            </Badge>
+            {worker.isCurrent && (
+              <Badge variant="outline" className="shrink-0">
+                Current
+              </Badge>
+            )}
+          </div>
+          {/* Time metadata row */}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="shrink-0">{formatDateTime(worker.startedAt)}</span>
+            {worker.endedAt && (
+              <>
+                <span className="shrink-0 text-muted-foreground/30">→</span>
+                <span className="shrink-0">{formatDateTime(worker.endedAt)}</span>
+              </>
+            )}
+            <span className="flex shrink-0 items-center gap-1">
+              <Clock3 className="size-3" />
+              {formatDuration(worker.durationMs)}
+            </span>
+            <span
+              className="shrink-0 font-mono text-[10px] text-muted-foreground/50"
+              title={worker.workerSessionId}
+            >
+              {formatShortSessionId(worker.workerSessionId)}
+            </span>
+          </div>
+          {/* Status message */}
+          {worker.failureReason ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
+              {worker.failureReason}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-5">
-          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border border-border/70 bg-muted/10 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Session
-              </div>
-              <div className="mt-1 font-mono text-sm text-foreground">{worker.workerSessionId}</div>
-            </div>
-            <div className="rounded-lg border border-border/70 bg-muted/10 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Feature
-              </div>
-              <div className="mt-1 text-sm text-foreground">{worker.featureTitle}</div>
-            </div>
-            <div className="rounded-lg border border-border/70 bg-muted/10 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Started
-              </div>
-              <div className="mt-1 text-sm text-foreground">{formatDateTime(worker.startedAt)}</div>
-            </div>
-            <div className="rounded-lg border border-border/70 bg-muted/10 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Duration
-              </div>
-              <div className="mt-1 flex items-center gap-1.5 text-sm text-foreground">
-                <Clock3 className="size-3.5 text-muted-foreground" />
-                {formatDuration(worker.durationMs)}
-              </div>
-            </div>
-          </section>
-
-          <section className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="rounded-lg border border-border/70 bg-background p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Worker status
-                </h3>
-                {worker.isCurrent ? <Badge variant="outline">Current</Badge> : null}
-              </div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">State</span>
-                  <Badge variant={getMissionWorkerStatusVariant(worker.status)}>
-                    {worker.statusLabel}
-                  </Badge>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">Ended</span>
-                  <span className="text-right text-foreground">
-                    {formatDateTime(worker.endedAt)}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">Runtime source</span>
-                  <span className="text-right text-foreground">
-                    {runtimeSnapshot?.source === 'worker_session'
-                      ? 'Worker session transcript'
-                      : 'Mission state only'}
-                  </span>
-                </div>
-                {worker.failureReason ? (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-                    {worker.failureReason}
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-border/70 bg-muted/10 px-3 py-2 text-muted-foreground">
-                    {getMissionWorkerStateCopy(worker)}
-                  </div>
+      {/* Tab bar */}
+      <div className="shrink-0 border-b border-border bg-background px-4">
+        <div className="mx-auto flex max-w-5xl items-center gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'relative px-3 py-2 text-xs font-medium transition-colors',
+                activeTab === tab.key
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <span className="flex items-center gap-1.5">
+                {tab.label}
+                {typeof tab.count === 'number' && tab.count > 0 && (
+                  <span className="text-[10px] text-muted-foreground/60">{tab.count}</span>
                 )}
-              </div>
-            </div>
+              </span>
+              {activeTab === tab.key && (
+                <span className="absolute inset-x-0 -bottom-px h-px bg-foreground" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
 
-            <div className="rounded-lg border border-border/70 bg-background p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Worker timeline
-                </h3>
-                <Badge variant="outline">{progressItems.length}</Badge>
-              </div>
+      {/* Tab content */}
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="mx-auto max-w-5xl px-4 py-5">
+          {activeTab === 'timeline' && (
+            <div className="space-y-2">
               {progressItems.length > 0 ? (
-                <div className="space-y-2">
+                <div className="relative ml-3">
+                  <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
                   {progressItems.map((item, index) => (
                     <div
                       key={`${item.timestampMs || item.timestampLabel}-${index}`}
-                      className="rounded-md border border-border/60 bg-muted/10 px-3 py-2"
+                      className="relative flex min-w-0 items-baseline gap-3 py-2 pl-5"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium text-foreground">
-                          {item.eventLabel}
+                      <span className="absolute top-[13px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
+                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
+                        {item.timestampLabel}
+                      </span>
+                      <span className="text-sm font-medium text-foreground">
+                        {item.eventLabel}
+                      </span>
+                      {item.detailLabel && (
+                        <span className="min-w-0 truncate text-xs text-muted-foreground/60">
+                          {cleanDetailLabel(item.detailLabel)}
                         </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {item.timestampLabel}
-                        </span>
-                      </div>
-                      {item.detailLabel ? (
-                        <div className="mt-1 text-xs text-muted-foreground">{item.detailLabel}</div>
-                      ) : null}
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-4 text-sm text-muted-foreground">
-                  No worker timeline entries were captured for this session.
+                <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-6 text-center text-sm text-muted-foreground">
+                  No timeline entries captured for this worker.
                 </div>
               )}
             </div>
-          </section>
+          )}
 
-          <section className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <div className="min-h-0 rounded-lg border border-border/70 bg-background p-4">
-              <RuntimeLogBlock snapshot={runtimeSnapshot} loading={runtimeLoading} />
-            </div>
+          {activeTab === 'logs' && (
+            <RuntimeLogBlock
+              snapshot={runtimeSnapshot}
+              loading={runtimeLoading}
+              isWorkerActive={!isTerminal}
+            />
+          )}
 
-            <div className="rounded-lg border border-border/70 bg-background p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Result summary
-                </h3>
-                {handoffs.length > 0 ? <Badge variant="outline">{handoffs.length}</Badge> : null}
+          {activeTab === 'result' && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm text-muted-foreground">
+                {getMissionWorkerStateCopy(worker)}
               </div>
               {handoffs.length > 0 ? (
-                <div className="space-y-3">
-                  {handoffs.map((handoff) => (
-                    <div
-                      key={handoff.key}
-                      className="rounded-md border border-border/60 bg-muted/10 p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">{handoff.title}</span>
-                        <Badge variant="outline" className="ml-auto">
-                          {handoff.successState}
-                        </Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-foreground">{handoff.salientSummary}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {handoff.whatWasImplemented}
-                      </p>
+                handoffs.map((handoff) => (
+                  <div
+                    key={handoff.key}
+                    className="rounded-lg border border-border/70 bg-background p-4"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{handoff.title}</span>
+                      <Badge variant="outline" className="ml-auto">
+                        {handoff.successState}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
+                    <p className="mt-2 text-sm text-foreground">{handoff.salientSummary}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {handoff.whatWasImplemented}
+                    </p>
+                  </div>
+                ))
               ) : (
-                <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-4 text-sm text-muted-foreground">
-                  No handoff summary has been recorded for this worker yet.
+                <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-6 text-center text-sm text-muted-foreground">
+                  No handoff summary recorded for this worker yet.
                 </div>
               )}
             </div>
-          </section>
+          )}
         </div>
       </ScrollArea>
     </div>
   )
+}
+
+function cleanDetailLabel(detail: string): string {
+  return detail.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '').replace(/\s*·\s*·\s*/g, ' · ').replace(/^[\s·]+|[\s·]+$/g, '').trim() || detail
 }
 
 export function MissionWorkerListPanel({
@@ -445,7 +475,7 @@ export function MissionWorkerListPanel({
       className="flex min-w-0 flex-1 flex-col overflow-hidden"
     >
       <div className="shrink-0 border-b border-border bg-background/95 px-4 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
+        <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Button
             type="button"
             size="sm"
@@ -456,92 +486,108 @@ export function MissionWorkerListPanel({
             <ArrowLeft className="size-3.5" />
             Mission
           </Button>
-          <span className="text-sm font-medium text-foreground">WorkerList</span>
-          <Badge variant="outline">{counts.all} workers</Badge>
+          <span className="text-sm font-medium text-foreground">Workers</span>
+          <Badge variant="outline">{counts.all}</Badge>
           {mission?.currentState ? <Badge variant="outline">{mission.currentState}</Badge> : null}
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4">
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3">
           <section className="shrink-0">
             <div className="flex flex-wrap items-center gap-2">
-              {filterOptions.map((option) => (
-                <Button
-                  key={option.key}
-                  type="button"
-                  size="sm"
-                  variant={filter === option.key ? 'default' : 'outline'}
-                  onClick={() => setFilter(option.key)}
-                  className="h-8 gap-2 px-3 text-xs"
-                >
-                  {option.label}
-                  <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                    {option.count}
-                  </Badge>
-                </Button>
-              ))}
+              {filterOptions.map((option) => {
+                const isActive = filter === option.key
+                return (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    size="sm"
+                    variant={isActive ? 'default' : 'outline'}
+                    onClick={() => setFilter(option.key)}
+                    className="h-8 gap-2 px-3 text-xs"
+                  >
+                    {option.label}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'h-5 px-1.5 text-[10px]',
+                        isActive && 'border-primary-foreground/30 text-primary-foreground',
+                      )}
+                    >
+                      {option.count}
+                    </Badge>
+                  </Button>
+                )
+              })}
             </div>
           </section>
 
-          <section className="min-h-0 flex-1 rounded-lg border border-border/70 bg-background">
-            <div className="grid grid-cols-[56px_minmax(0,1.2fr)_132px_112px_104px_minmax(0,1.8fr)] gap-3 border-b border-border/70 px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-              <span>#</span>
-              <span>Session</span>
-              <span>Start</span>
-              <span>Duration</span>
-              <span>Status</span>
-              <span>Feature</span>
-            </div>
-
-            <ScrollArea className="min-h-0 h-full">
+          <section className="min-h-0 flex-1">
+            <ScrollArea className="min-h-0 h-full px-4">
               {filteredWorkers.length > 0 ? (
-                <div className="divide-y divide-border/60">
-                  {filteredWorkers.map((worker, index) => (
+                <div className="space-y-2">
+                  {filteredWorkers.map((worker) => (
                     <button
                       key={worker.workerSessionId}
                       type="button"
                       data-testid={`mission-worker-row-${worker.workerSessionId}`}
                       onClick={() => onSelectWorker(worker.workerSessionId)}
                       className={cn(
-                        'grid w-full grid-cols-[56px_minmax(0,1.2fr)_132px_112px_104px_minmax(0,1.8fr)] gap-3 px-4 py-3 text-left transition-colors',
-                        'hover:bg-muted/40',
-                        worker.isCurrent ? 'bg-primary/5' : 'bg-transparent',
+                        'group flex w-full items-center gap-4 rounded-lg border px-4 py-3.5 text-left transition-colors',
+                        'hover:bg-muted/30',
+                        worker.isCurrent
+                          ? 'border-primary/20 bg-primary/5'
+                          : 'border-border/50 bg-background',
                       )}
                     >
-                      <span className="text-sm text-muted-foreground">{index + 1}</span>
-                      <div className="min-w-0">
-                        <div className="truncate font-mono text-sm text-foreground">
-                          {truncateWorkerSessionId(worker.workerSessionId)}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm leading-snug font-medium text-foreground line-clamp-2">
+                            {worker.featureTitle}
+                          </span>
+                          {worker.isCurrent && (
+                            <Badge variant="outline" className="mt-0.5 shrink-0 text-[10px]">
+                              Current
+                            </Badge>
+                          )}
                         </div>
-                        {worker.isCurrent ? (
-                          <div className="mt-1 text-[11px] text-primary">Current worker</div>
-                        ) : null}
+                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                          <span
+                            className="font-mono"
+                            title={worker.workerSessionId}
+                          >
+                            {formatShortSessionId(worker.workerSessionId)}
+                          </span>
+                          {worker.hasHandoff && (
+                            <>
+                              <span className="text-muted-foreground/30">·</span>
+                              <span>Handoff</span>
+                            </>
+                          )}
+                          {worker.failureReason && (
+                            <>
+                              <span className="text-muted-foreground/30">·</span>
+                              <span className="truncate text-destructive/80">
+                                {worker.failureReason}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-sm text-foreground">
-                        {formatDateTime(worker.startedAt)}
-                      </span>
-                      <span className="text-sm text-foreground">
+
+                      <Badge
+                        variant={getMissionWorkerStatusVariant(worker.status)}
+                        className="shrink-0"
+                      >
+                        {worker.statusLabel}
+                      </Badge>
+
+                      <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                         {formatDuration(worker.durationMs)}
                       </span>
-                      <div>
-                        <Badge variant={getMissionWorkerStatusVariant(worker.status)}>
-                          {worker.statusLabel}
-                        </Badge>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm text-foreground">
-                          {worker.featureTitle}
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          {worker.hasHandoff ? <span>Handoff</span> : null}
-                          {worker.failureReason ? (
-                            <span className="truncate text-destructive">
-                              {worker.failureReason}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
+
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground/60" />
                     </button>
                   ))}
                 </div>
@@ -551,11 +597,6 @@ export function MissionWorkerListPanel({
                 </div>
               )}
             </ScrollArea>
-          </section>
-
-          <section className="shrink-0 rounded-lg border border-border/70 bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
-            Select a worker to inspect its timeline, runtime transcript, and latest handoff or
-            failure state.
           </section>
         </div>
       </div>

@@ -450,10 +450,11 @@ export function getMissionWorkerHandoffs(
 
 export function getMissionWorkerStatusVariant(
   status: MissionWorkerStatus,
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+): 'default' | 'secondary' | 'destructive' | 'warning' | 'outline' {
   if (status === 'success') return 'default'
   if (status === 'running' || status === 'partial') return 'secondary'
-  if (status === 'paused' || status === 'failed') return 'destructive'
+  if (status === 'paused') return 'warning'
+  if (status === 'failed') return 'destructive'
   return 'outline'
 }
 
