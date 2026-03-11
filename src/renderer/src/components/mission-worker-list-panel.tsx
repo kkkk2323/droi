@@ -92,7 +92,10 @@ function RuntimeLogBlock({
         className="mb-2 flex items-center gap-2"
       >
         <ChevronRight
-          className={cn('size-3 text-muted-foreground transition-transform', !collapsed && 'rotate-90')}
+          className={cn(
+            'size-3 text-muted-foreground transition-transform',
+            !collapsed && 'rotate-90',
+          )}
         />
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Runtime logs
@@ -166,7 +169,8 @@ function WorkerDetailView({
 }) {
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<MissionRuntimeSnapshot | undefined>()
   const [runtimeLoading, setRuntimeLoading] = useState(false)
-  const isTerminal = worker.status === 'success' || worker.status === 'partial' || worker.status === 'failed'
+  const isTerminal =
+    worker.status === 'success' || worker.status === 'partial' || worker.status === 'failed'
   const [activeTab, setActiveTab] = useState<DetailTab>(isTerminal ? 'result' : 'timeline')
 
   const progressItems = useMemo(
@@ -261,10 +265,7 @@ function WorkerDetailView({
             <span className="min-w-0 text-sm font-medium text-foreground line-clamp-2">
               {worker.featureTitle}
             </span>
-            <Badge
-              variant={getMissionWorkerStatusVariant(worker.status)}
-              className="shrink-0"
-            >
+            <Badge variant={getMissionWorkerStatusVariant(worker.status)} className="shrink-0">
               {worker.statusLabel}
             </Badge>
             {worker.isCurrent && (
@@ -348,9 +349,7 @@ function WorkerDetailView({
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
                         {item.timestampLabel}
                       </span>
-                      <span className="text-sm font-medium text-foreground">
-                        {item.eventLabel}
-                      </span>
+                      <span className="text-sm font-medium text-foreground">{item.eventLabel}</span>
                       {item.detailLabel && (
                         <span className="min-w-0 truncate text-xs text-muted-foreground/60">
                           {cleanDetailLabel(item.detailLabel)}
@@ -412,7 +411,13 @@ function WorkerDetailView({
 }
 
 function cleanDetailLabel(detail: string): string {
-  return detail.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '').replace(/\s*·\s*·\s*/g, ' · ').replace(/^[\s·]+|[\s·]+$/g, '').trim() || detail
+  return (
+    detail
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '')
+      .replace(/\s*·\s*·\s*/g, ' · ')
+      .replace(/^[\s·]+|[\s·]+$/g, '')
+      .trim() || detail
+  )
 }
 
 export function MissionWorkerListPanel({

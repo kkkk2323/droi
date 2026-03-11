@@ -155,6 +155,22 @@ test('pause and kill controls only appear in valid Mission states', () => {
       pausedWorkerSessionId: 'worker-123',
     },
   )
+
+  assert.deepEqual(
+    getMissionActionState(
+      createMissionState({
+        currentState: 'orchestrator_turn',
+        pausedWorkerSessionId: 'worker-123',
+      }),
+    ),
+    {
+      canPause: false,
+      canKillWorker: false,
+      canMessagePausedWorker: false,
+      workerSessionId: undefined,
+      pausedWorkerSessionId: undefined,
+    },
+  )
 })
 
 test('input semantics disable Mission chat while running and re-enable it when paused', () => {

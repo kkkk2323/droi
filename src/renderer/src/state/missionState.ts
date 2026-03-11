@@ -374,6 +374,50 @@ function inferPausedWorkerSessionId(params: {
   return latestWorkerSessionId
 }
 
+function getLatestProgressEntry(
+  progressEntries: MissionDiskObject[],
+): MissionDiskObject | undefined {
+  return [...progressEntries].sort((left, right) => {
+    const leftTime = readIsoTimestamp((left as any).timestamp) ?? Number.NEGATIVE_INFINITY
+    const rightTime = readIsoTimestamp((right as any).timestamp) ?? Number.NEGATIVE_INFINITY
+    return rightTime - leftTime
+  })[0]
+}
+
+function inferMissionStateFromProgress(params: {
+  progressEntries: MissionDiskObject[]
+  completedFeatures: number
+  totalFeatures: number
+}): string | undefined {
+  const latestProgressEntry = getLatestProgressEntry(params.progressEntries)
+  const latestType = asTrimmedString((latestProgressEntry as any)?.type)?.toLowerCase()
+  if (!latestType) return undefined
+
+  if (
+    latestType === 'mission_run_started' ||
+    latestType === 'mission_resumed' ||
+    latestType === 'worker_started' ||
+    latestType === 'worker_selected_feature'
+  ) {
+    return 'running'
+  }
+
+  if (latestType === 'mission_paused' || latestType === 'worker_paused') return 'paused'
+  if (latestType === 'mission_completed') return 'completed'
+
+  if (
+    latestType === 'worker_completed' ||
+    latestType === 'worker_failed' ||
+    latestType === 'handoff_items_dismissed'
+  ) {
+    const featuresSettled =
+      params.totalFeatures > 0 && params.completedFeatures >= params.totalFeatures
+    return featuresSettled ? 'completed' : 'orchestrator_turn'
+  }
+
+  return undefined
+}
+
 function inferMissionState(params: {
   state: MissionDiskObject | null
   features: MissionDiskObject[]
@@ -384,6 +428,19 @@ function inferMissionState(params: {
   totalFeatures: number
 }): string | undefined {
   const explicit = readMissionStateValue(params.state)
+  const explicitTimestamp = readMissionObjectTimestamp(params.state)
+  const latestProgressEntry = getLatestProgressEntry(params.progressEntries)
+  const latestProgressTimestamp = readIsoTimestamp((latestProgressEntry as any)?.timestamp)
+  const progressDerivedState = inferMissionStateFromProgress(params)
+
+  if (
+    progressDerivedState &&
+    explicitTimestamp !== undefined &&
+    latestProgressTimestamp !== undefined &&
+    latestProgressTimestamp > explicitTimestamp
+  ) {
+    return progressDerivedState
+  }
   if (explicit) return explicit
 
   if (params.currentWorkerSessionId) return 'running'
@@ -402,13 +459,7 @@ function inferMissionState(params: {
     return 'completed'
   }
 
-  const latestProgressEntry = [...params.progressEntries].sort((left, right) => {
-    const leftTime = readIsoTimestamp((left as any).timestamp) ?? Number.NEGATIVE_INFINITY
-    const rightTime = readIsoTimestamp((right as any).timestamp) ?? Number.NEGATIVE_INFINITY
-    return rightTime - leftTime
-  })[0]
-  const latestType = asTrimmedString((latestProgressEntry as any)?.type)?.toLowerCase()
-  if (latestType === 'mission_paused' || latestType === 'worker_paused') return 'paused'
+  if (progressDerivedState) return progressDerivedState
 
   return undefined
 }

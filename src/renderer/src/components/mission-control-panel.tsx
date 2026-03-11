@@ -137,19 +137,9 @@ export function MissionControlPanel({
     () => featureQueue.find((f) => f.id === activeFeatureId),
     [featureQueue, activeFeatureId],
   )
-  const followupUnavailableReason = useMemo(() => {
-    if (!actionState.canMessagePausedWorker || !actionState.pausedWorkerSessionId) return undefined
-    if (!runtimeLogState) return 'Waiting for paused worker session logs...'
-    if (runtimeLogState.workerSessionId !== actionState.pausedWorkerSessionId) {
-      return 'Paused worker session logs are not ready yet.'
-    }
-    if (!runtimeLogState.exists) {
-      return runtimeLogState.message || 'Paused worker session is unavailable.'
-    }
-    return undefined
-  }, [actionState.canMessagePausedWorker, actionState.pausedWorkerSessionId, runtimeLogState])
   const canSubmitWorkerFollowup =
-    !followupUnavailableReason &&
+    actionState.canMessagePausedWorker &&
+    Boolean(actionState.pausedWorkerSessionId) &&
     workerFollowupState !== 'sending' &&
     Boolean(workerFollowupInput.trim())
   const runtimeLogsEmptyState =
@@ -227,11 +217,6 @@ export function MissionControlPanel({
 
   const handleWorkerFollowupSubmit = () => {
     if (!actionState.pausedWorkerSessionId) return
-    if (followupUnavailableReason) {
-      setWorkerFollowupState('failed')
-      setWorkerFollowupError(followupUnavailableReason)
-      return
-    }
     const prompt = workerFollowupInput.trim()
     if (!prompt || workerFollowupState === 'sending') return
 
@@ -266,10 +251,7 @@ export function MissionControlPanel({
           <span className="text-sm text-muted-foreground">{status.progressLabel}</span>
 
           {runtimeStatus.tone !== 'default' && (
-            <span
-              data-testid="mission-runtime-status"
-              className="text-xs text-muted-foreground/70"
-            >
+            <span data-testid="mission-runtime-status" className="text-xs text-muted-foreground/70">
               {runtimeStatus.title}
             </span>
           )}
@@ -396,11 +378,6 @@ export function MissionControlPanel({
                 {workerFollowupError || 'Failed'}
               </span>
             )}
-            {followupUnavailableReason && workerFollowupState === 'idle' && (
-              <span className="shrink-0 text-[10px] text-muted-foreground/60">
-                {followupUnavailableReason}
-              </span>
-            )}
           </div>
         </div>
       )}
@@ -418,9 +395,7 @@ export function MissionControlPanel({
             <ScrollArea data-testid="mission-feature-queue" className="min-h-0 flex-1 px-3">
               <div className="space-y-0.5 pb-3">
                 {featureQueue.length === 0 ? (
-                  <p className="py-4 text-xs text-muted-foreground/60">
-                    No features queued yet.
-                  </p>
+                  <p className="py-4 text-xs text-muted-foreground/60">No features queued yet.</p>
                 ) : (
                   featureQueue.map((feature) => {
                     const isSelected = feature.id === activeFeatureId

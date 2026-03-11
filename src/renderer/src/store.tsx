@@ -1739,16 +1739,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       String(buf?.mission?.pausedWorkerSessionId || '').trim()
     const text = String(prompt || '').trim()
     const cwd = String(buf?.projectDir || '').trim()
-    const runtimeLogState = buf?.runtimeLogState
     if (!targetWorkerSessionId) throw new Error('No paused worker is available for follow-up.')
     if (!text) throw new Error('Follow-up message is empty.')
     if (!cwd) throw new Error('Missing working directory for Mission session.')
-    if (!runtimeLogState || runtimeLogState.workerSessionId !== targetWorkerSessionId) {
-      throw new Error('Paused worker session logs are not ready yet.')
-    }
-    if (!runtimeLogState.exists) {
-      throw new Error(runtimeLogState.message || 'Paused worker session is unavailable.')
-    }
 
     const aliasSessionId = getWorkerFollowupAliasSessionId(sid, targetWorkerSessionId)
     set((prev) => ({

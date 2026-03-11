@@ -688,6 +688,57 @@ test('applyMissionDirSnapshot supports disk-only recovery, completion gating, an
   assert.equal(finalized.handoffs.length, 1)
 })
 
+test('applyMissionDirSnapshot clears stale paused state when newer progress shows the worker finished', () => {
+  const reconciled = applyMissionDirSnapshot(undefined, {
+    missionDir: '/Users/clive/.factory/missions/base-session-789',
+    exists: true,
+    state: {
+      state: 'paused',
+      currentFeatureId: 'user-testing-validator-runtime',
+      currentWorkerSessionId: 'worker-paused',
+      pausedWorkerSessionId: 'worker-paused',
+      completedFeatures: 6,
+      totalFeatures: 7,
+      updatedAt: '2026-03-11T09:39:08.773Z',
+    },
+    features: [
+      { id: 'feature-a', status: 'completed' },
+      { id: 'feature-b', status: 'completed' },
+      { id: 'feature-c', status: 'completed' },
+      { id: 'feature-d', status: 'completed' },
+      { id: 'feature-e', status: 'completed' },
+      { id: 'feature-f', status: 'completed' },
+      { id: 'user-testing-validator-runtime', status: 'completed' },
+      { id: 'feature-g', status: 'pending' },
+    ],
+    progressEntries: [
+      {
+        timestamp: '2026-03-11T09:39:08.763Z',
+        type: 'worker_paused',
+        workerSessionId: 'worker-paused',
+        featureId: 'user-testing-validator-runtime',
+      },
+      {
+        timestamp: '2026-03-11T09:39:08.773Z',
+        type: 'mission_paused',
+      },
+      {
+        timestamp: '2026-03-11T11:17:21.544Z',
+        type: 'worker_completed',
+        workerSessionId: 'worker-paused',
+        featureId: 'user-testing-validator-runtime',
+      },
+    ],
+    handoffs: [],
+    validationState: null,
+  })
+
+  assert.equal(reconciled.currentState, 'orchestrator_turn')
+  assert.equal(reconciled.currentWorkerSessionId, undefined)
+  assert.equal(reconciled.liveWorkerSessionId, undefined)
+  assert.equal(reconciled.pausedWorkerSessionId, undefined)
+})
+
 test('applyRpcNotification stores session_token_usage_changed and mcp notifications', () => {
   const sid = 's1'
   const prev = new Map([[sid, makeBuffer('/repo')]])
