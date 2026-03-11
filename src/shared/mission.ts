@@ -3,6 +3,17 @@ export const MISSION_FEATURES_FILE = 'features.json'
 export const MISSION_PROGRESS_FILE = 'progress_log.jsonl'
 export const MISSION_HANDOFFS_DIR = 'handoffs'
 export const MISSION_VALIDATION_STATE_FILE = 'validation-state.json'
+export const MISSION_WORKING_DIRECTORY_FILE = 'working_directory.txt'
+
+export type RuntimeLogKind = 'command' | 'result' | 'message' | 'status'
+
+export interface RuntimeLogEntry {
+  ts: number
+  stream: 'stdout' | 'stderr' | 'system'
+  text: string
+  kind?: RuntimeLogKind
+  workerSessionId?: string
+}
 
 export type MissionDiskObject = Record<string, unknown>
 
@@ -23,6 +34,7 @@ export interface MissionLoadSnapshot {
 export interface MissionDirSnapshot {
   missionDir: string
   exists: boolean
+  workingDirectory?: string
   state: MissionDiskObject | null
   features: MissionDiskObject[] | null
   progressEntries: MissionDiskObject[]
@@ -49,4 +61,39 @@ export interface MissionDirChangeEvent {
   changedPaths: string[]
   source: MissionDirChangeSource
   snapshot: MissionDirSnapshot
+}
+
+export interface MissionRuntimeRequest {
+  sessionId: string
+  missionDir?: string | null
+  missionBaseSessionId?: string | null
+  workingDirectory?: string | null
+  workerSessionId?: string | null
+}
+
+export interface MissionRuntimeSnapshot {
+  sessionId: string
+  workerSessionId?: string
+  workingDirectory?: string
+  sessionFile?: string
+  exists: boolean
+  status: 'idle' | 'waiting' | 'ready' | 'unavailable'
+  source: 'none' | 'worker_session'
+  message?: string
+  entries: RuntimeLogEntry[]
+}
+
+export interface MissionRuntimeReadResult {
+  sessionId: string
+  snapshot: MissionRuntimeSnapshot
+}
+
+export type MissionRuntimeChangeSource = 'initial' | 'fs-watch' | 'poll'
+
+export interface MissionRuntimeChangeEvent {
+  sessionId: string
+  workerSessionId?: string
+  changedPaths: string[]
+  source: MissionRuntimeChangeSource
+  snapshot: MissionRuntimeSnapshot
 }

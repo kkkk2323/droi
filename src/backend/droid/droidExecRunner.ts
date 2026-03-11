@@ -65,6 +65,15 @@ export interface DroidExecLoadSessionSnapshotOptions {
   env?: Record<string, string | undefined>
 }
 
+export interface DroidExecSendLoadedSessionMessageOptions {
+  sessionId: string
+  loadSessionId: string
+  machineId: string
+  prompt: string
+  cwd: string
+  env?: Record<string, string | undefined>
+}
+
 export function getDroidVersion(droidPath = resolveDroidPath()): Promise<string> {
   return new Promise((resolve) => {
     execFile(droidPath, ['--version'], { env: { ...process.env } }, (err, stdout, stderr) => {
@@ -148,6 +157,10 @@ export class DroidExecManager {
 
   async killWorkerSession(options: { sessionId: string; workerSessionId: string }): Promise<void> {
     return this.manager.killWorkerSession(options)
+  }
+
+  sendLoadedSessionMessage(options: DroidExecSendLoadedSessionMessageOptions): Promise<void> {
+    return this.manager.sendLoadedSessionMessage(options)
   }
 
   loadSessionSnapshot(

@@ -7,7 +7,7 @@ import type {
   MissionDirChangeSource,
   MissionDirSnapshot,
 } from './missionTypes.ts'
-import { MISSION_HANDOFFS_DIR } from './missionTypes.ts'
+import { MISSION_HANDOFFS_DIR, MISSION_WORKING_DIRECTORY_FILE } from './missionTypes.ts'
 
 async function isDirectory(path: string): Promise<boolean> {
   try {
@@ -32,6 +32,9 @@ function stableStringify(value: unknown): string {
 
 function getFileSignatures(snapshot: MissionDirSnapshot): Map<string, string> {
   const signatures = new Map<string, string>()
+  if (snapshot.workingDirectory) {
+    signatures.set(MISSION_WORKING_DIRECTORY_FILE, stableStringify(snapshot.workingDirectory))
+  }
   if (snapshot.state) signatures.set('state.json', stableStringify(snapshot.state))
   if (snapshot.features) signatures.set('features.json', stableStringify(snapshot.features))
   if (snapshot.progressEntries.length > 0) {

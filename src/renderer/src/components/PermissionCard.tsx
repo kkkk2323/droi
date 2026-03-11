@@ -208,12 +208,12 @@ export function PermissionCard({ request, onRespond }: PermissionCardProps) {
           </span>
         </div>
 
-        {missionPresentation ? (
+        {/* {missionPresentation ? (
           <div className="border-b border-border/70 bg-primary/5 px-4 py-3">
             <p className="text-sm font-semibold text-foreground">{missionPresentation.title}</p>
             <p className="mt-1 text-sm text-muted-foreground">{missionPresentation.description}</p>
           </div>
-        ) : null}
+        ) : null} */}
 
         {permissionToolUses.length > 0 && (
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 space-y-3">

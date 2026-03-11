@@ -44,7 +44,10 @@ export type {
   EditorInfo,
   SetupScriptStatus,
   SetupScriptEvent,
+  RuntimeLogEntry,
 } from '../../shared/protocol'
+
+export type { MissionRuntimeSnapshot } from '../../shared/mission'
 
 // === Constants ===
 

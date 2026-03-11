@@ -19,6 +19,7 @@ import {
   applyRpcRequest,
   appendDebugTrace,
   setDebugTraceMaxLinesOverride,
+  setRuntimeLogSnapshot,
   applyStdout,
   applyStderr,
   applyTurnEnd,
@@ -35,10 +36,52 @@ import {
 } from './store/projectHelpers'
 
 const droid = getDroidClient()
+const STARTUP_IPC_TIMEOUT_MS = 8_000
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  fallback: T,
+  timeoutMs = STARTUP_IPC_TIMEOUT_MS,
+) {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise.catch(() => fallback),
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+function appendInitializerDiagnostics(
+  event: string,
+  data?: Record<string, unknown>,
+  sessionId?: string | null,
+) {
+  if (typeof (droid as any)?.appendDiagnosticsEvent !== 'function') return
+  ;(droid as any).appendDiagnosticsEvent({
+    sessionId: sessionId || null,
+    event,
+    level: 'debug',
+    data,
+  })
+}
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   const initializedRef = useRef(false)
   const isReady = useAppStore((s) => s._initialLoadDone)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!useAppStore.getState()._initialLoadDone) {
+        useAppStore.setState({ _initialLoadDone: true })
+      }
+    }, STARTUP_IPC_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (isReady) {
@@ -59,13 +102,13 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       try {
         const [version, appVersion, state, sessionMetas, loadedCustomModels, diagDir] =
           await Promise.all([
-            droid.getVersion(),
-            droid.getAppVersion(),
-            droid.loadAppState(),
-            droid.listSessions(),
-            droid.getCustomModels().catch(() => [] as CustomModelDef[]),
+            withTimeout(droid.getVersion(), ''),
+            withTimeout(droid.getAppVersion(), ''),
+            withTimeout(droid.loadAppState(), { version: 2, machineId: '' } as any),
+            withTimeout(droid.listSessions(), [] as SessionMeta[]),
+            withTimeout(droid.getCustomModels(), [] as CustomModelDef[]),
             typeof (droid as any)?.getDiagnosticsDir === 'function'
-              ? (droid as any).getDiagnosticsDir().catch(() => '')
+              ? withTimeout((droid as any).getDiagnosticsDir(), '')
               : Promise.resolve(''),
           ])
 
@@ -136,7 +179,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             : {}),
         })
 
-        const persistedProjects = (state.projects || []).map((p) => ({
+        const persistedProjects = ((state.projects || []) as Project[]).map((p) => ({
           dir: p.dir,
           name: p.name,
           displayName: p.displayName,
@@ -151,9 +194,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             sessionMetas.map(async (meta): Promise<SessionMeta | null> => {
               const guessedDir = meta.workspaceDir || meta.projectDir || fallbackProjectDir
               if (!guessedDir) return null
-              const info = await store
-                ._resolveWorkspace(guessedDir, meta.cwdSubpath)
-                .catch(() => null)
+              const info = await withTimeout(
+                store._resolveWorkspace(guessedDir, meta.cwdSubpath),
+                null,
+              )
               const repoRoot = info?.repoRoot || meta.repoRoot || guessedDir
               const projectDir = info?.projectDir || meta.projectDir || guessedDir
               const workspaceDir = info?.workspaceDir || meta.workspaceDir || guessedDir
@@ -198,7 +242,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         droid.setProjectDir(restoredProjectDir || null)
 
         if (restoredProjectDir && activeMeta) {
-          const data = await droid.loadSession(activeMeta.id)
+          const data = await withTimeout(droid.loadSession(activeMeta.id), null)
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
           newBuffers.set(
             activeMeta.id,
@@ -225,15 +269,18 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           })
         } else {
           const restoredInfo = restoredProjectDir
-            ? await store._resolveWorkspace(restoredProjectDir).catch(() => null)
+            ? await withTimeout(store._resolveWorkspace(restoredProjectDir), null)
             : null
           const newId = restoredProjectDir
             ? (
-                await droid.createSession({
-                  cwd: restoredProjectDir,
-                  modelId: DEFAULT_MODEL,
-                  autoLevel: DEFAULT_AUTO_LEVEL,
-                })
+                await withTimeout(
+                  droid.createSession({
+                    cwd: restoredProjectDir,
+                    modelId: DEFAULT_MODEL,
+                    autoLevel: DEFAULT_AUTO_LEVEL,
+                  }),
+                  { sessionId: uuidv4() },
+                )
               ).sessionId
             : uuidv4()
           const initialBuffer = makeBuffer(restoredProjectDir || '', {
@@ -266,19 +313,22 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             : nextProjects
 
           if (restoredProjectDir) {
-            void droid.saveSession({
-              id: newId,
-              projectDir: restoredProjectDir,
-              workspaceDir: restoredInfo?.workspaceDir,
-              cwdSubpath: restoredInfo?.cwdSubpath,
-              repoRoot: restoredInfo?.repoRoot,
-              branch: restoredInfo?.branch,
-              workspaceType: restoredInfo?.workspaceType,
-              baseBranch: restoredInfo?.baseBranch,
-              model: DEFAULT_MODEL,
-              autoLevel: DEFAULT_AUTO_LEVEL,
-              messages: [],
-            })
+            void withTimeout(
+              droid.saveSession({
+                id: newId,
+                projectDir: restoredProjectDir,
+                workspaceDir: restoredInfo?.workspaceDir,
+                cwdSubpath: restoredInfo?.cwdSubpath,
+                repoRoot: restoredInfo?.repoRoot || restoredProjectDir,
+                branch: restoredInfo?.branch,
+                workspaceType: restoredInfo?.workspaceType,
+                baseBranch: restoredInfo?.baseBranch,
+                model: DEFAULT_MODEL,
+                autoLevel: DEFAULT_AUTO_LEVEL,
+                messages: [],
+              }),
+              null,
+            )
           }
 
           useAppStore.setState({
@@ -345,6 +395,27 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
     let watchedSessionId = ''
     let watchKey = ''
     let syncToken = 0
+    let observedKey = ''
+
+    const computeObservedKey = () => {
+      const state = useAppStore.getState()
+      const sessionId = String(state.activeSessionId || '').trim()
+      const session = sessionId ? state.sessionBuffers.get(sessionId) : null
+      const meta = sessionId
+        ? state.projects
+            .flatMap((project) => project.sessions)
+            .find((candidate) => candidate.id === sessionId)
+        : null
+      const isMission =
+        session?.isMission === true ||
+        session?.sessionKind === 'mission' ||
+        meta?.isMission === true ||
+        meta?.sessionKind === 'mission'
+      const missionDir = String(session?.missionDir || meta?.missionDir || '').trim() || ''
+      const missionBaseSessionId =
+        String(session?.missionBaseSessionId || meta?.missionBaseSessionId || '').trim() || ''
+      return `${sessionId}:${isMission ? 'mission' : 'plain'}:${missionDir}:${missionBaseSessionId}`
+    }
 
     const applySnapshot = (sessionId: string, missionDir: string | undefined, snapshot: any) => {
       if (!snapshot) return
@@ -436,7 +507,13 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       }
     }
 
+    observedKey = computeObservedKey()
+
     const unsubscribeStore = useAppStore.subscribe(() => {
+      const nextObservedKey = computeObservedKey()
+      if (nextObservedKey === observedKey) return
+      observedKey = nextObservedKey
+      appendInitializerDiagnostics('ui.mission_watch.sync', { watchKey: nextObservedKey })
       void syncMissionWatch()
     })
 
@@ -460,6 +537,177 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
+    let watchedSessionId = ''
+    let watchKey = ''
+    let syncToken = 0
+    let observedKey = ''
+
+    const computeObservedKey = () => {
+      const state = useAppStore.getState()
+      const sessionId = String(state.activeSessionId || '').trim()
+      const session = sessionId ? state.sessionBuffers.get(sessionId) : null
+      const meta = sessionId
+        ? state.projects
+            .flatMap((project) => project.sessions)
+            .find((candidate) => candidate.id === sessionId)
+        : null
+      const isMission =
+        session?.isMission === true ||
+        session?.sessionKind === 'mission' ||
+        meta?.isMission === true ||
+        meta?.sessionKind === 'mission'
+      const mission = session?.mission
+      const missionDir = String(session?.missionDir || meta?.missionDir || '').trim() || ''
+      const missionBaseSessionId =
+        String(session?.missionBaseSessionId || meta?.missionBaseSessionId || '').trim() || ''
+      const workingDirectory =
+        String((mission?.state as any)?.workingDirectory || session?.projectDir || '').trim() || ''
+      const workerSessionId =
+        String(
+          mission?.currentState === 'running'
+            ? mission?.liveWorkerSessionId || mission?.currentWorkerSessionId || ''
+            : mission?.currentState === 'paused'
+              ? mission?.pausedWorkerSessionId || mission?.currentWorkerSessionId || ''
+              : '',
+        ).trim() || ''
+      return `${sessionId}:${isMission ? 'mission' : 'plain'}:${missionDir}:${missionBaseSessionId}:${workingDirectory}:${workerSessionId}`
+    }
+
+    const applyRuntimeSnapshot = (sessionId: string, snapshot: any) => {
+      if (!snapshot) return
+      useAppStore
+        .getState()
+        ._setSessionBuffers((prev) => setRuntimeLogSnapshot(prev, sessionId, snapshot))
+    }
+
+    const stopWatching = async () => {
+      const sessionId = watchedSessionId
+      watchedSessionId = ''
+      watchKey = ''
+      if (!sessionId) return
+      try {
+        await droid.unwatchMissionRuntime({ sessionId })
+      } catch {
+        // ignore Electron/browser differences while tearing down watcher state
+      }
+    }
+
+    const syncRuntimeWatch = async () => {
+      const state = useAppStore.getState()
+      const sessionId = String(state.activeSessionId || '').trim()
+      const session = sessionId ? state.sessionBuffers.get(sessionId) : null
+      const meta = sessionId
+        ? state.projects
+            .flatMap((project) => project.sessions)
+            .find((candidate) => candidate.id === sessionId)
+        : null
+      const isMission =
+        session?.isMission === true ||
+        session?.sessionKind === 'mission' ||
+        meta?.isMission === true ||
+        meta?.sessionKind === 'mission'
+      const mission = session?.mission
+      const missionDir = String(session?.missionDir || meta?.missionDir || '').trim() || undefined
+      const missionBaseSessionId =
+        String(session?.missionBaseSessionId || meta?.missionBaseSessionId || '').trim() ||
+        undefined
+      const workingDirectory =
+        String((mission?.state as any)?.workingDirectory || session?.projectDir || '').trim() ||
+        undefined
+      const workerSessionId =
+        String(
+          mission?.currentState === 'running'
+            ? mission?.liveWorkerSessionId || mission?.currentWorkerSessionId || ''
+            : mission?.currentState === 'paused'
+              ? mission?.pausedWorkerSessionId || mission?.currentWorkerSessionId || ''
+              : '',
+        ).trim() || undefined
+
+      if (!sessionId || !isMission) {
+        await stopWatching()
+        return
+      }
+
+      const request = {
+        sessionId,
+        missionDir,
+        missionBaseSessionId,
+        workingDirectory,
+        workerSessionId,
+      }
+      const nextKey = `${sessionId}:${workerSessionId || '(none)'}:${workingDirectory || missionDir || '(unknown)'}`
+
+      if (!workerSessionId) {
+        if (nextKey === watchKey) return
+        await stopWatching()
+        watchKey = nextKey
+        watchedSessionId = sessionId
+        appendInitializerDiagnostics(
+          'ui.runtime_watch.idle',
+          { watchKey: nextKey, workingDirectory, missionDir },
+          sessionId,
+        )
+        applyRuntimeSnapshot(sessionId, {
+          sessionId,
+          workerSessionId: undefined,
+          workingDirectory,
+          exists: false,
+          status: 'idle',
+          source: 'none',
+          message: 'No active worker session.',
+          entries: [],
+        })
+        return
+      }
+
+      if (nextKey === watchKey) return
+
+      const token = ++syncToken
+      await stopWatching()
+      watchKey = nextKey
+      watchedSessionId = sessionId
+
+      try {
+        const result = await droid.readMissionRuntime(request)
+        if (token !== syncToken) return
+        applyRuntimeSnapshot(sessionId, result?.snapshot)
+      } catch {
+        // Ignore read failures; watcher startup below may still recover later.
+      }
+
+      try {
+        await droid.watchMissionRuntime(request)
+      } catch {
+        // Ignore watcher startup failures in browser mode or when worker session files are unavailable.
+      }
+    }
+
+    observedKey = computeObservedKey()
+
+    const unsubscribeStore = useAppStore.subscribe(() => {
+      const nextObservedKey = computeObservedKey()
+      if (nextObservedKey === observedKey) return
+      observedKey = nextObservedKey
+      appendInitializerDiagnostics('ui.runtime_watch.sync', { watchKey: nextObservedKey })
+      void syncRuntimeWatch()
+    })
+
+    const unsubscribeRuntime = droid.onMissionRuntimeChanged((payload) => {
+      const sessionId = String(payload?.sessionId || '').trim()
+      if (!sessionId) return
+      applyRuntimeSnapshot(sessionId, payload?.snapshot)
+    })
+
+    void syncRuntimeWatch()
+
+    return () => {
+      unsubscribeStore()
+      unsubscribeRuntime()
+      void stopWatching()
+    }
+  }, [])
+
+  useEffect(() => {
     const missingHooks = getMissingDroidHooks(droid)
     if (missingHooks.length > 0) {
       const s = useAppStore.getState()
@@ -470,9 +718,17 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
     }
 
     const onDebug = (droid as any)?.onDebug
+    const resolveEventSessionId = (
+      sid: string,
+    ): { targetSessionId: string; sourceSessionId: string } => {
+      const state = useAppStore.getState()
+      const targetSessionId = state.sessionEventParentBySessionId[sid] || sid
+      return { targetSessionId, sourceSessionId: sid }
+    }
 
     const unsubNotif = droid.onRpcNotification(({ message, sessionId: sid }) => {
       if (!sid) return
+      const { targetSessionId } = resolveEventSessionId(sid)
       const t =
         (message as any)?.method === 'droid.session_notification'
           ? String((message as any)?.params?.notification?.type || '')
@@ -483,40 +739,53 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       useAppStore.getState()._setSessionBuffers((prev) => {
         let next = prev
         if (isTraceChainEnabled())
-          next = appendDebugTrace(next, sid, formatNotificationTrace('renderer-in', message))
-        next = appendDebugTrace(next, sid, label)
-        return applyRpcNotification(next, sid, message)
+          next = appendDebugTrace(
+            next,
+            targetSessionId,
+            formatNotificationTrace('renderer-in', message),
+          )
+        next = appendDebugTrace(next, targetSessionId, label)
+        return applyRpcNotification(next, targetSessionId, message)
       })
 
       if (t === 'session_title_updated') {
         const title = String((message as any)?.params?.notification?.title || '').trim()
         if (title) {
-          useAppStore.getState()._setProjects((prev) => updateSessionTitle(prev, sid, title))
+          useAppStore
+            .getState()
+            ._setProjects((prev) => updateSessionTitle(prev, targetSessionId, title))
         }
       }
     })
 
     const unsubReq = droid.onRpcRequest(({ message, sessionId: sid }) => {
       if (!sid) return
+      const { targetSessionId, sourceSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
         ._setSessionBuffers((prev) =>
           applyRpcRequest(
-            appendDebugTrace(prev, sid, `rpc-request: ${message.method} id=${message.id}`),
-            sid,
+            appendDebugTrace(
+              prev,
+              targetSessionId,
+              `rpc-request: ${message.method} id=${message.id}`,
+            ),
+            targetSessionId,
             message,
+            sourceSessionId !== targetSessionId ? sourceSessionId : undefined,
           ),
         )
     })
 
     const unsubStdout = droid.onStdout(({ data, sessionId: sid }) => {
       if (!sid) return
+      const { targetSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
         ._setSessionBuffers((prev) =>
           applyStdout(
-            appendDebugTrace(prev, sid, `stdout: ${String(data || '').slice(0, 200)}`),
-            sid,
+            appendDebugTrace(prev, targetSessionId, `stdout: ${String(data || '').slice(0, 200)}`),
+            targetSessionId,
             data,
           ),
         )
@@ -524,12 +793,13 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
     const unsubStderr = droid.onStderr(({ data, sessionId: sid }) => {
       if (!sid) return
+      const { targetSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
         ._setSessionBuffers((prev) =>
           applyStderr(
-            appendDebugTrace(prev, sid, `stderr: ${String(data || '').slice(0, 200)}`),
-            sid,
+            appendDebugTrace(prev, targetSessionId, `stderr: ${String(data || '').slice(0, 200)}`),
+            targetSessionId,
             data,
           ),
         )
@@ -537,21 +807,29 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
     const unsubTurnEnd = droid.onTurnEnd(({ sessionId: sid }) => {
       if (!sid) return
+      const { targetSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
-        ._setSessionBuffers((prev) => applyTurnEnd(appendDebugTrace(prev, sid, 'turn-end'), sid))
+        ._setSessionBuffers((prev) =>
+          applyTurnEnd(appendDebugTrace(prev, targetSessionId, 'turn-end'), targetSessionId),
+        )
 
       const state = useAppStore.getState()
-      const snapshot = state.sessionBuffers.get(sid)
-      if (snapshot) void state._saveSessionToDisk(sid, snapshot)
+      const snapshot = state.sessionBuffers.get(targetSessionId)
+      if (snapshot) void state._saveSessionToDisk(targetSessionId, snapshot)
     })
 
     const unsubError = droid.onError(({ message, sessionId: sid }) => {
       if (!sid) return
+      const { targetSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
         ._setSessionBuffers((prev) =>
-          applyError(appendDebugTrace(prev, sid, `error: ${message}`), sid, message),
+          applyError(
+            appendDebugTrace(prev, targetSessionId, `error: ${message}`),
+            targetSessionId,
+            message,
+          ),
         )
     })
 
@@ -637,6 +915,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                   debugTrace: [
                     `session-id-replaced: ${oldId} -> ${newId} reason=${String(reason || '')}`,
                   ],
+                  runtimeLogs: [],
+                  runtimeLogState: undefined,
                 })
                 return next
               })
@@ -660,10 +940,11 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       typeof onDebug === 'function'
         ? droid.onDebug(({ message, sessionId: sid }) => {
             if (!sid) return
+            const { targetSessionId } = resolveEventSessionId(sid)
             useAppStore
               .getState()
               ._setSessionBuffers((prev) =>
-                appendDebugTrace(prev, sid, `debug: ${String(message || '')}`),
+                appendDebugTrace(prev, targetSessionId, `debug: ${String(message || '')}`),
               )
           })
         : () => {}

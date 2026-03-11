@@ -6,6 +6,7 @@ import { MissionControlPanel } from '@/components/mission-control-panel'
 import { Button } from '@/components/ui/button'
 import { getMissionInputSemantics } from '@/lib/missionUiSemantics'
 import { useAppStore, useActiveSessionId } from '@/store'
+import type { MissionRuntimeSnapshot, RuntimeLogEntry } from '@/types'
 import {
   getMissionSessionViewState,
   getPreferredMissionView,
@@ -14,10 +15,26 @@ import {
   type MissionViewMode,
 } from '@/lib/missionPage'
 
+const EMPTY_RUNTIME_LOGS: RuntimeLogEntry[] = []
+
 export function MissionPage() {
   const activeSessionId = useActiveSessionId()
   const mission = useAppStore((state) =>
     activeSessionId ? state.sessionBuffers.get(activeSessionId)?.mission : undefined,
+  )
+  const runtimeLogs = useAppStore((state) =>
+    activeSessionId
+      ? ((state.sessionBuffers.get(activeSessionId)?.runtimeLogs as
+          | RuntimeLogEntry[]
+          | undefined) ?? EMPTY_RUNTIME_LOGS)
+      : EMPTY_RUNTIME_LOGS,
+  )
+  const runtimeLogState = useAppStore((state) =>
+    activeSessionId
+      ? ((state.sessionBuffers.get(activeSessionId)?.runtimeLogState as
+          | MissionRuntimeSnapshot
+          | undefined) ?? undefined)
+      : undefined,
   )
   const [sessionViewStates, setSessionViewStates] = useState<
     Record<string, MissionSessionViewState>
@@ -104,7 +121,12 @@ export function MissionPage() {
           </div>
         </>
       ) : (
-        <MissionControlPanel mission={mission} onViewChange={setManualView} />
+        <MissionControlPanel
+          mission={mission}
+          runtimeLogs={runtimeLogs}
+          runtimeLogState={runtimeLogState}
+          onViewChange={setManualView}
+        />
       )}
     </div>
   )

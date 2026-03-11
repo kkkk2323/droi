@@ -17,6 +17,7 @@ import {
   makeBuffer,
   applySetupScriptEvent,
   appendDebugTrace,
+  appendRuntimeLog,
   clearDebugTrace,
   setDebugTraceMaxLinesOverride,
   applyTurnEnd,
@@ -112,11 +113,16 @@ function getMissionBaseSessionId(
   return protocol.isMission && fallback ? fallback : undefined
 }
 
+function getWorkerFollowupAliasSessionId(parentSessionId: string, workerSessionId: string): string {
+  return `mission-worker:${parentSessionId}:${workerSessionId}`
+}
+
 // --- Zustand Store ---
 
 interface AppState {
   // Session buffers
   sessionBuffers: Map<string, SessionBuffer>
+  sessionEventParentBySessionId: Record<string, string>
   activeSessionId: string
   activeProjectDir: string
 
@@ -212,6 +218,7 @@ interface AppActions {
   handleCancel: () => void
   handleForceCancel: () => void
   handleKillWorker: (workerSessionId?: string) => Promise<void>
+  handleSendWorkerFollowup: (params: { workerSessionId?: string; prompt: string }) => Promise<void>
   handleRespondPermission: (params: {
     selectedOption: DroidPermissionOption
     autoLevel?: 'low' | 'medium' | 'high'
@@ -287,6 +294,7 @@ type AppStore = AppState & AppActions
 export const useAppStore = create<AppStore>((set, get) => ({
   // --- Initial State ---
   sessionBuffers: new Map(),
+  sessionEventParentBySessionId: {},
   activeSessionId: '',
   activeProjectDir: '',
   pendingNewSession: null,
@@ -463,6 +471,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       apiKeyFingerprint: buf.apiKeyFingerprint || undefined,
       pinned: existingMeta?.pinned || undefined,
       messages: buf.messages,
+      runtimeLogs: buf.runtimeLogs,
     })
     if (!meta) return
 
@@ -1205,6 +1214,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
           pendingAskUserRequests: [],
           messages: [],
           debugTrace: [],
+          runtimeLogs: [],
+          runtimeLogState: undefined,
         })
         return next
       })
@@ -1236,6 +1247,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         pendingAskUserRequests: [],
         messages: [],
         debugTrace: [],
+        runtimeLogs: [],
+        runtimeLogState: undefined,
       })
       return next
     })
@@ -1713,12 +1726,93 @@ export const useAppStore = create<AppStore>((set, get) => ({
     })
   },
 
+  handleSendWorkerFollowup: async ({ workerSessionId, prompt }) => {
+    const s = get()
+    const sid = s.activeSessionId || null
+    if (!sid) throw new Error('No active Mission session.')
+
+    const buf = s.sessionBuffers.get(sid)
+    const targetWorkerSessionId =
+      (typeof workerSessionId === 'string' ? workerSessionId.trim() : '') ||
+      String(buf?.mission?.pausedWorkerSessionId || '').trim()
+    const text = String(prompt || '').trim()
+    const cwd = String(buf?.projectDir || '').trim()
+    const runtimeLogState = buf?.runtimeLogState
+    if (!targetWorkerSessionId) throw new Error('No paused worker is available for follow-up.')
+    if (!text) throw new Error('Follow-up message is empty.')
+    if (!cwd) throw new Error('Missing working directory for Mission session.')
+    if (!runtimeLogState || runtimeLogState.workerSessionId !== targetWorkerSessionId) {
+      throw new Error('Paused worker session logs are not ready yet.')
+    }
+    if (!runtimeLogState.exists) {
+      throw new Error(runtimeLogState.message || 'Paused worker session is unavailable.')
+    }
+
+    const aliasSessionId = getWorkerFollowupAliasSessionId(sid, targetWorkerSessionId)
+    set((prev) => ({
+      sessionEventParentBySessionId: {
+        ...prev.sessionEventParentBySessionId,
+        [aliasSessionId]: sid,
+      },
+    }))
+
+    get()._setSessionBuffers((prev) => {
+      let next = appendDebugTrace(
+        prev,
+        sid,
+        `ui-worker-followup: worker=${targetWorkerSessionId} chars=${text.length}`,
+      )
+      next = appendRuntimeLog(next, sid, {
+        ts: Date.now(),
+        stream: 'system',
+        kind: 'status',
+        workerSessionId: targetWorkerSessionId,
+        text: `Sending follow-up to paused worker ${targetWorkerSessionId}`,
+      })
+      return next
+    })
+
+    try {
+      await droid.sendWorkerFollowup({
+        sessionId: sid,
+        workerSessionId: targetWorkerSessionId,
+        aliasSessionId,
+        cwd,
+        prompt: text,
+      })
+      get()._setSessionBuffers((prev) =>
+        appendRuntimeLog(prev, sid, {
+          ts: Date.now(),
+          stream: 'system',
+          kind: 'status',
+          workerSessionId: targetWorkerSessionId,
+          text: `Follow-up delivered to paused worker ${targetWorkerSessionId}`,
+        }),
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      get()._setSessionBuffers((prev) => {
+        let next = appendDebugTrace(prev, sid, `ui-worker-followup-failed: ${message}`)
+        next = appendRuntimeLog(next, sid, {
+          ts: Date.now(),
+          stream: 'system',
+          kind: 'status',
+          workerSessionId: targetWorkerSessionId,
+          text: `Failed to send follow-up to paused worker ${targetWorkerSessionId}: ${message}`,
+        })
+        return next
+      })
+      throw error
+    }
+  },
+
   handleRespondPermission: (params) => {
     const s = get()
     const sid = s.activeSessionId
     const buf = s.sessionBuffers.get(sid)
     const req = buf?.pendingPermissionRequests?.[0]
     if (!sid || !req) return
+    const requestSessionId = req.sessionId || sid
 
     const selectedOption = params.selectedOption
     const autoLevelMap: Partial<Record<DroidPermissionOption, string>> = {
@@ -1761,12 +1855,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (parts.length > 0) {
         const feedbackText = `[Spec Feedback] ${parts.join('\n')}`
         const capturedSid = sid
+        const capturedRequestSessionId = requestSessionId
         const capturedReq = req
         const capturedParams = params
         void droid.addUserMessage({ sessionId: capturedSid, text: feedbackText }).then(
           () => {
             droid.respondPermission({
-              sessionId: capturedSid,
+              sessionId: capturedRequestSessionId,
               requestId: capturedReq.requestId,
               selectedOption: capturedParams.selectedOption,
               selectedExitSpecModeOptionIndex: capturedParams.selectedExitSpecModeOptionIndex,
@@ -1776,7 +1871,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           () => {
             // Fallback: send permission response even if addUserMessage fails
             droid.respondPermission({
-              sessionId: capturedSid,
+              sessionId: capturedRequestSessionId,
               requestId: capturedReq.requestId,
               selectedOption: capturedParams.selectedOption,
               selectedExitSpecModeOptionIndex: capturedParams.selectedExitSpecModeOptionIndex,
@@ -1786,7 +1881,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         )
       } else {
         droid.respondPermission({
-          sessionId: sid,
+          sessionId: requestSessionId,
           requestId: req.requestId,
           selectedOption,
           selectedExitSpecModeOptionIndex: params.selectedExitSpecModeOptionIndex,
@@ -1795,7 +1890,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     } else {
       droid.respondPermission({
-        sessionId: sid,
+        sessionId: requestSessionId,
         requestId: req.requestId,
         selectedOption,
         selectedExitSpecModeOptionIndex: params.selectedExitSpecModeOptionIndex,
@@ -1854,6 +1949,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     const req = buf?.pendingAskUserRequests?.[0]
     if (!sid || !req) return
+    const requestSessionId = req.sessionId || sid
     get()._setSessionBuffers((prev) =>
       appendDebugTrace(
         prev,
@@ -1862,7 +1958,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ),
     )
     droid.respondAskUser({
-      sessionId: sid,
+      sessionId: requestSessionId,
       requestId: req.requestId,
       cancelled: params.cancelled,
       answers: params.answers,
@@ -2011,7 +2107,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   handleSetProjectDir: (dir) => {
     if (!dir) return
-    if (!get()._initialLoadDone) return
     void (async () => {
       const s = get()
       const info = await s._resolveWorkspace(dir).catch(() => null)
@@ -2045,9 +2140,41 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   handleAddProject: async () => {
-    if (!get()._initialLoadDone) return
-    const dir = await droid.openDirectory()
+    if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+      ;(droid as any).appendDiagnosticsEvent({
+        sessionId: get().activeSessionId || null,
+        event: 'ui.project_picker.open.start',
+        level: 'info',
+      })
+    }
+    const timeoutResult = '__dialog_timeout__'
+    const dir = await Promise.race([
+      droid.openDirectory(),
+      new Promise<string | null | typeof timeoutResult>((resolve) => {
+        setTimeout(() => resolve(timeoutResult), 10_000)
+      }),
+    ])
+    if (dir === timeoutResult) {
+      if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+        ;(droid as any).appendDiagnosticsEvent({
+          sessionId: get().activeSessionId || null,
+          event: 'ui.project_picker.open.timeout',
+          level: 'warn',
+        })
+      }
+      set({ workspaceError: 'Directory picker did not respond. Please try again.' })
+      return
+    }
     if (!dir) return
+    if (typeof (droid as any)?.appendDiagnosticsEvent === 'function') {
+      ;(droid as any).appendDiagnosticsEvent({
+        sessionId: get().activeSessionId || null,
+        event: 'ui.project_picker.open.success',
+        level: 'info',
+        data: { dir },
+      })
+    }
+    get().clearWorkspaceError()
     get().handleSetProjectDir(dir)
   },
 

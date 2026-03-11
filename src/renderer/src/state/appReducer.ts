@@ -1,9 +1,11 @@
 import type {
   ChatMessage,
+  MissionRuntimeSnapshot,
   ToolCallBlock,
   JsonRpcNotification,
   JsonRpcRequest,
   DroidPermissionOption,
+  RuntimeLogEntry,
   WorkspaceType,
   SetupScriptEvent,
   SetupScriptStatus,
@@ -55,6 +57,8 @@ export interface SessionBuffer {
   pendingPermissionRequests?: PendingPermissionRequest[]
   pendingAskUserRequests?: PendingAskUserRequest[]
   debugTrace?: string[]
+  runtimeLogs?: RuntimeLogEntry[]
+  runtimeLogState?: MissionRuntimeSnapshot
   setupScript: SessionSetupState
 }
 
@@ -69,6 +73,7 @@ export interface SessionSetupState {
 export const DEFAULT_MODEL = 'kimi-k2.5'
 export const DEFAULT_AUTO_LEVEL = 'default'
 const MAX_SETUP_OUTPUT_CHARS = 120_000
+const MAX_RUNTIME_LOG_ENTRIES = 400
 
 export function makeBuffer(
   projectDir: string,
@@ -113,6 +118,8 @@ export function makeBuffer(
     pendingPermissionRequests: [],
     pendingAskUserRequests: [],
     debugTrace: [],
+    runtimeLogs: [],
+    runtimeLogState: undefined,
     setupScript: {
       script: '',
       status: 'idle',
@@ -194,6 +201,7 @@ export interface PermissionOptionMeta {
 }
 
 export interface PendingPermissionRequest {
+  sessionId?: string
   requestId: string
   toolUses: unknown[]
   confirmationType?: string
@@ -210,6 +218,7 @@ export interface AskUserQuestion {
 }
 
 export interface PendingAskUserRequest {
+  sessionId?: string
   requestId: string
   toolCallId: string
   questions: AskUserQuestion[]
@@ -882,6 +891,7 @@ export function applyRpcRequest(
   prev: Map<string, SessionBuffer>,
   sid: string,
   message: JsonRpcRequest,
+  requestSessionId?: string,
 ): Map<string, SessionBuffer> {
   const session = prev.get(sid)
   if (!session) return prev
@@ -921,6 +931,7 @@ export function applyRpcRequest(
     })
 
     const req: PendingPermissionRequest = {
+      sessionId: requestSessionId,
       requestId: message.id,
       toolUses,
       confirmationType:
@@ -959,6 +970,7 @@ export function applyRpcRequest(
       .filter((q): q is AskUserQuestion => Boolean(q.question))
 
     const req: PendingAskUserRequest = {
+      sessionId: requestSessionId,
       requestId: message.id,
       toolCallId,
       questions,
@@ -1001,6 +1013,72 @@ export function appendDebugTrace(
     nextTrace.length > maxLines ? nextTrace.slice(nextTrace.length - maxLines) : nextTrace
   const next = new Map(prev)
   next.set(sid, { ...session, debugTrace: clipped })
+  return next
+}
+
+function normalizeRuntimeLogText(value: string): string {
+  if (!value) return ''
+  return value.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+export function appendRuntimeLog(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  entry: RuntimeLogEntry,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+
+  const text = normalizeRuntimeLogText(String(entry.text || ''))
+  if (!text) return prev
+
+  const existing = Array.isArray(session.runtimeLogs) ? session.runtimeLogs : []
+  const nextLogs = [...existing, { ...entry, text }]
+  const next = new Map(prev)
+  next.set(sid, {
+    ...session,
+    runtimeLogs: nextLogs.slice(-MAX_RUNTIME_LOG_ENTRIES),
+  })
+  return next
+}
+
+export function setRuntimeLogSnapshot(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  snapshot: MissionRuntimeSnapshot,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+
+  const existing = Array.isArray(session.runtimeLogs) ? session.runtimeLogs : []
+  const stickySystemEntries = existing.filter((entry) => {
+    if (entry.stream !== 'system') return false
+    if (entry.kind !== 'status') return false
+    if (!entry.workerSessionId) return true
+    return entry.workerSessionId === snapshot.workerSessionId
+  })
+  const merged = [...snapshot.entries, ...stickySystemEntries]
+    .sort((left, right) => left.ts - right.ts)
+    .slice(-MAX_RUNTIME_LOG_ENTRIES)
+  const currentSnapshot = session.runtimeLogState
+  const snapshotUnchanged =
+    currentSnapshot?.sessionId === snapshot.sessionId &&
+    currentSnapshot?.workerSessionId === snapshot.workerSessionId &&
+    currentSnapshot?.workingDirectory === snapshot.workingDirectory &&
+    currentSnapshot?.sessionFile === snapshot.sessionFile &&
+    currentSnapshot?.exists === snapshot.exists &&
+    currentSnapshot?.status === snapshot.status &&
+    currentSnapshot?.source === snapshot.source &&
+    currentSnapshot?.message === snapshot.message &&
+    JSON.stringify(currentSnapshot?.entries || []) === JSON.stringify(snapshot.entries || [])
+  const logsUnchanged = JSON.stringify(session.runtimeLogs || []) === JSON.stringify(merged)
+  if (snapshotUnchanged && logsUnchanged) return prev
+  const next = new Map(prev)
+  next.set(sid, {
+    ...session,
+    runtimeLogs: merged,
+    runtimeLogState: snapshot,
+  })
   return next
 }
 

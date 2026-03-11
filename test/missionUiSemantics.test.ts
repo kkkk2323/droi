@@ -126,7 +126,9 @@ test('pause and kill controls only appear in valid Mission states', () => {
     {
       canPause: true,
       canKillWorker: true,
+      canMessagePausedWorker: false,
       workerSessionId: 'worker-123',
+      pausedWorkerSessionId: undefined,
     },
   )
 
@@ -135,18 +137,22 @@ test('pause and kill controls only appear in valid Mission states', () => {
     {
       canPause: true,
       canKillWorker: false,
+      canMessagePausedWorker: false,
       workerSessionId: undefined,
+      pausedWorkerSessionId: undefined,
     },
   )
 
   assert.deepEqual(
     getMissionActionState(
-      createMissionState({ currentState: 'paused', liveWorkerSessionId: 'worker-123' }),
+      createMissionState({ currentState: 'paused', pausedWorkerSessionId: 'worker-123' }),
     ),
     {
       canPause: false,
       canKillWorker: false,
+      canMessagePausedWorker: true,
       workerSessionId: undefined,
+      pausedWorkerSessionId: 'worker-123',
     },
   )
 })

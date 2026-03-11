@@ -48,6 +48,7 @@ export function buildRestoredSessionBuffer(params: {
   const restored: SessionBuffer = {
     ...base,
     messages: (data?.messages as SessionBuffer['messages']) ?? [],
+    runtimeLogs: Array.isArray(data?.runtimeLogs) ? data.runtimeLogs : [],
     model: data?.model || meta?.model || DEFAULT_MODEL,
     autoLevel: data?.autoLevel || meta?.autoLevel || DEFAULT_AUTO_LEVEL,
     missionDir: data?.missionDir || meta?.missionDir,

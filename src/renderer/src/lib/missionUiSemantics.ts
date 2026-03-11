@@ -17,7 +17,9 @@ export interface MissionPermissionCardPresentation {
 export interface MissionActionState {
   canPause: boolean
   canKillWorker: boolean
+  canMessagePausedWorker: boolean
   workerSessionId?: string
+  pausedWorkerSessionId?: string
 }
 
 export interface MissionInputSemantics {
@@ -169,10 +171,14 @@ export function getMissionActionState(mission?: MissionState | null): MissionAct
   const currentState = normalizeLower(mission?.currentState)
   const workerSessionId =
     currentState === 'running' ? asTrimmedString(mission?.liveWorkerSessionId) : undefined
+  const pausedWorkerSessionId =
+    currentState === 'paused' ? asTrimmedString(mission?.pausedWorkerSessionId) : undefined
   return {
     canPause: currentState === 'running',
     canKillWorker: currentState === 'running' && Boolean(workerSessionId),
+    canMessagePausedWorker: currentState === 'paused' && Boolean(pausedWorkerSessionId),
     workerSessionId,
+    pausedWorkerSessionId,
   }
 }
 

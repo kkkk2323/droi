@@ -493,6 +493,10 @@ const browserClient: DroidClientAPI = {
     throw new Error('Mission worker control is only available in Electron mode')
   },
 
+  sendWorkerFollowup: async () => {
+    throw new Error('Mission worker follow-up is only available in Electron mode')
+  },
+
   createSession: async (params) => {
     const cwd = String(params?.cwd || '').trim()
     if (!cwd) throw new Error('Missing cwd')
@@ -1027,6 +1031,16 @@ const browserClient: DroidClientAPI = {
     return { ok: true } as const
   },
   onMissionDirChanged: () => () => {},
+  readMissionRuntime: async () => {
+    throw new Error('Mission runtime reading is only available in Electron mode')
+  },
+  watchMissionRuntime: async () => {
+    throw new Error('Mission runtime watching is only available in Electron mode')
+  },
+  unwatchMissionRuntime: async () => {
+    return { ok: true } as const
+  },
+  onMissionRuntimeChanged: () => () => {},
 
   loadAppState: async () => {
     try {
@@ -1341,6 +1355,14 @@ export function getDroidClient(): DroidClientAPI {
       merged.unwatchMissionDir = browserClient.unwatchMissionDir
     if (typeof (merged as any).onMissionDirChanged !== 'function')
       merged.onMissionDirChanged = browserClient.onMissionDirChanged
+    if (typeof (merged as any).readMissionRuntime !== 'function')
+      merged.readMissionRuntime = browserClient.readMissionRuntime
+    if (typeof (merged as any).watchMissionRuntime !== 'function')
+      merged.watchMissionRuntime = browserClient.watchMissionRuntime
+    if (typeof (merged as any).unwatchMissionRuntime !== 'function')
+      merged.unwatchMissionRuntime = browserClient.unwatchMissionRuntime
+    if (typeof (merged as any).onMissionRuntimeChanged !== 'function')
+      merged.onMissionRuntimeChanged = browserClient.onMissionRuntimeChanged
     if (typeof (merged as any).onSessionIdReplaced !== 'function')
       merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
     if (typeof (merged as any).checkForUpdate !== 'function')

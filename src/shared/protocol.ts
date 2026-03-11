@@ -11,6 +11,17 @@ import type {
   MissionDirReadResult,
   MissionDirRequest,
   MissionLoadSnapshot,
+  MissionRuntimeChangeEvent,
+  MissionRuntimeReadResult,
+  MissionRuntimeRequest,
+  RuntimeLogEntry,
+} from './mission.ts'
+
+export type {
+  MissionRuntimeChangeEvent,
+  MissionRuntimeReadResult,
+  MissionRuntimeRequest,
+  RuntimeLogEntry,
 } from './mission.ts'
 
 // === stream-jsonrpc protocol (JSON-RPC over JSONL) ===
@@ -312,6 +323,7 @@ export interface SaveSessionRequest {
   apiKeyFingerprint?: string
   pinned?: boolean
   messages: ChatMessage[]
+  runtimeLogs?: RuntimeLogEntry[]
 }
 
 export interface LoadSessionResponse {
@@ -338,6 +350,7 @@ export interface LoadSessionResponse {
   title: string
   savedAt: number
   messages: ChatMessage[]
+  runtimeLogs?: RuntimeLogEntry[]
   mission?: MissionLoadSnapshot
   lastMessageAt?: number
 }
@@ -414,6 +427,14 @@ export interface DroidClientAPI {
   killWorkerSession: (params: {
     sessionId: string
     workerSessionId: string
+  }) => Promise<{ ok: true }>
+
+  sendWorkerFollowup: (params: {
+    sessionId: string
+    workerSessionId: string
+    aliasSessionId: string
+    cwd: string
+    prompt: string
   }) => Promise<{ ok: true }>
 
   runSetupScript: (params: {
@@ -539,6 +560,10 @@ export interface DroidClientAPI {
   watchMissionDir: (params: MissionDirRequest) => Promise<{ ok: true; missionDir: string }>
   unwatchMissionDir: (params: { sessionId: string }) => Promise<{ ok: true }>
   onMissionDirChanged: (callback: (payload: MissionDirChangeEvent) => void) => () => void
+  readMissionRuntime: (params: MissionRuntimeRequest) => Promise<MissionRuntimeReadResult>
+  watchMissionRuntime: (params: MissionRuntimeRequest) => Promise<{ ok: true }>
+  unwatchMissionRuntime: (params: { sessionId: string }) => Promise<{ ok: true }>
+  onMissionRuntimeChanged: (callback: (payload: MissionRuntimeChangeEvent) => void) => () => void
 
   loadAppState: () => Promise<PersistedAppState>
   saveProjects: (projects: Array<{ dir: string; name: string; displayName?: string }>) => void

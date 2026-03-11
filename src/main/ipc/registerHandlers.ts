@@ -38,6 +38,8 @@ import {
   resolveMissionDirPath,
 } from '../../backend/mission/missionDirReader.ts'
 import { MissionDirWatcher } from '../../backend/mission/missionDirWatcher.ts'
+import { readMissionRuntimeSnapshot } from '../../backend/mission/workerRuntimeReader.ts'
+import { WorkerRuntimeWatcher } from '../../backend/mission/workerRuntimeWatcher.ts'
 import type {
   PersistedAppState,
   PersistedAppStateV2,
@@ -52,7 +54,10 @@ import type {
   GenerateCommitMetaRequest,
   CommitWorkflowRequest,
 } from '../../shared/protocol'
-import type { MissionDirRequest } from '../../backend/mission/missionTypes.ts'
+import type {
+  MissionDirRequest,
+  MissionRuntimeRequest,
+} from '../../backend/mission/missionTypes.ts'
 import {
   resolveSessionProtocolFields,
   type DecompSessionType,
@@ -169,6 +174,7 @@ export function registerIpcHandlers(opts: {
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
   const missionDirWatchers = new Map<string, MissionDirWatcher>()
+  const missionRuntimeWatchers = new Map<string, WorkerRuntimeWatcher>()
 
   let cachedState: PersistedAppState = { version: 2, machineId: '' }
   let activeProjectDir = ''
@@ -183,6 +189,13 @@ export function registerIpcHandlers(opts: {
     const watcher = missionDirWatchers.get(sessionId)
     if (!watcher) return
     missionDirWatchers.delete(sessionId)
+    await watcher.stop()
+  }
+
+  const stopMissionRuntimeWatcher = async (sessionId: string) => {
+    const watcher = missionRuntimeWatchers.get(sessionId)
+    if (!watcher) return
+    missionRuntimeWatchers.delete(sessionId)
     await watcher.stop()
   }
 
@@ -620,6 +633,47 @@ export function registerIpcHandlers(opts: {
     },
   )
 
+  ipcMain.handle(
+    'droid:sendWorkerFollowup',
+    async (
+      _event,
+      payload: {
+        sessionId: string
+        workerSessionId: string
+        aliasSessionId: string
+        cwd: string
+        prompt: string
+      },
+    ) => {
+      const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+      const workerSessionId =
+        typeof payload?.workerSessionId === 'string' ? payload.workerSessionId.trim() : ''
+      const aliasSessionId =
+        typeof payload?.aliasSessionId === 'string' ? payload.aliasSessionId.trim() : ''
+      const cwd = typeof payload?.cwd === 'string' ? payload.cwd.trim() : ''
+      const prompt = typeof payload?.prompt === 'string' ? payload.prompt : ''
+      if (!sessionId || !workerSessionId || !aliasSessionId || !cwd || !prompt.trim()) {
+        throw new Error('Missing sessionId/workerSessionId/aliasSessionId/cwd/prompt')
+      }
+
+      const machineId = (cachedState as PersistedAppStateV2).machineId
+      if (!machineId) throw new Error('Missing machineId')
+
+      const env = !execManager.hasSession(aliasSessionId)
+        ? await buildExecEnv()
+        : { ...process.env }
+      await execManager.sendLoadedSessionMessage({
+        sessionId: aliasSessionId,
+        loadSessionId: workerSessionId,
+        machineId,
+        prompt,
+        cwd,
+        env,
+      })
+      return { ok: true } as const
+    },
+  )
+
   ipcMain.on(
     'droid:permission-response',
     (
@@ -776,17 +830,28 @@ export function registerIpcHandlers(opts: {
   )
 
   ipcMain.handle('dialog:openDirectory', async () => {
-    const win = opts.getMainWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'info',
+      scope: 'main',
+      event: 'main.dialog.open_directory.start',
+    })
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'info',
+      scope: 'main',
+      event: result.canceled
+        ? 'main.dialog.open_directory.cancel'
+        : 'main.dialog.open_directory.success',
+      data: { count: result.filePaths.length },
+    })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
   })
 
   ipcMain.handle('dialog:openFile', async () => {
-    const win = opts.getMainWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'] })
+    const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths
   })
@@ -1201,6 +1266,7 @@ export function registerIpcHandlers(opts: {
     const id = typeof payload?.id === 'string' ? payload.id.trim() : ''
     if (!id) return null
     await stopMissionDirWatcher(id)
+    await stopMissionRuntimeWatcher(id)
 
     const existing = await sessionStore.load(id)
     const cwd = (existing?.projectDir || '').trim() || activeProjectDir
@@ -1234,18 +1300,37 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('session:list', async () => sessionStore.list())
   ipcMain.handle('session:delete', async (_event, id: string) => {
     const sessionId = typeof id === 'string' ? id.trim() : ''
-    if (sessionId) await stopMissionDirWatcher(sessionId)
+    if (sessionId) {
+      await stopMissionDirWatcher(sessionId)
+      await stopMissionRuntimeWatcher(sessionId)
+    }
     return sessionStore.delete(id)
   })
 
   ipcMain.handle('mission:read-dir', async (_event, params: MissionDirRequest) => {
     const { sessionId, missionDir } = resolveMissionDirRequest(params)
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.read_dir',
+      sessionId,
+      data: { missionDir },
+    })
     const snapshot = await readMissionDirSnapshot(missionDir)
     return { sessionId, snapshot }
   })
 
   ipcMain.handle('mission:watch-start', async (_event, params: MissionDirRequest) => {
     const { sessionId, missionDir } = resolveMissionDirRequest(params)
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.watch_start',
+      sessionId,
+      data: { missionDir },
+    })
     await stopMissionDirWatcher(sessionId)
 
     const watcher = new MissionDirWatcher({
@@ -1266,7 +1351,76 @@ export function registerIpcHandlers(opts: {
   ipcMain.handle('mission:watch-stop', async (_event, payload: { sessionId: string }) => {
     const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
     if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.watch_stop',
+      sessionId,
+    })
     await stopMissionDirWatcher(sessionId)
+    return { ok: true } as const
+  })
+
+  ipcMain.handle('mission:read-runtime', async (_event, params: MissionRuntimeRequest) => {
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.read_runtime',
+      sessionId,
+      data: {
+        workerSessionId: params?.workerSessionId,
+        workingDirectory: params?.workingDirectory,
+      },
+    })
+    const snapshot = await readMissionRuntimeSnapshot(params)
+    return { sessionId, snapshot }
+  })
+
+  ipcMain.handle('mission:runtime-watch-start', async (_event, params: MissionRuntimeRequest) => {
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.runtime_watch_start',
+      sessionId,
+      data: {
+        workerSessionId: params?.workerSessionId,
+        workingDirectory: params?.workingDirectory,
+      },
+    })
+    await stopMissionRuntimeWatcher(sessionId)
+
+    const watcher = new WorkerRuntimeWatcher({
+      request: params,
+      onChange: (payload) => {
+        const mainWindow = opts.getMainWindow()
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.webContents.send('mission:runtime-changed', payload)
+      },
+    })
+
+    missionRuntimeWatchers.set(sessionId, watcher)
+    await watcher.start()
+    return { ok: true } as const
+  })
+
+  ipcMain.handle('mission:runtime-watch-stop', async (_event, payload: { sessionId: string }) => {
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
+    if (!sessionId) throw new Error('Missing sessionId')
+    void diagnostics.append({
+      ts: new Date().toISOString(),
+      level: 'debug',
+      scope: 'main',
+      event: 'main.mission.runtime_watch_stop',
+      sessionId,
+    })
+    await stopMissionRuntimeWatcher(sessionId)
     return { ok: true } as const
   })
 

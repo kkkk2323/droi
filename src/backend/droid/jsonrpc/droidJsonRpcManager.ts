@@ -69,6 +69,15 @@ export interface LoadSessionSnapshotParams {
   env?: Record<string, string | undefined>
 }
 
+export interface SendLoadedSessionMessageParams {
+  sessionId: string
+  loadSessionId: string
+  cwd: string
+  machineId: string
+  prompt: string
+  env?: Record<string, string | undefined>
+}
+
 export interface UpdateSessionSettingsParams {
   sessionId: string
   modelId?: string
@@ -260,6 +269,53 @@ export class DroidJsonRpcManager {
     const managed = this.sessions.get(params.sessionId)
     if (!managed) return
     await managed.session.killWorkerSession(params.workerSessionId)
+  }
+
+  async sendLoadedSessionMessage(params: SendLoadedSessionMessageParams): Promise<void> {
+    const managed = this.getOrCreateSession({
+      sessionId: params.sessionId,
+      prompt: params.prompt,
+      cwd: params.cwd,
+      machineId: params.machineId,
+      env: params.env,
+    })
+    const session = managed.session
+    let stage = 'ensureInitialized'
+
+    try {
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: ensureInitialized start load=${params.loadSessionId}`,
+      })
+      const init = await session.ensureInitialized({}, params.loadSessionId)
+      const effectiveEngineSessionId = String(init.engineSessionId || '').trim()
+      if (effectiveEngineSessionId !== params.loadSessionId || init.source !== 'resume') {
+        throw new Error(`Failed to load worker session ${params.loadSessionId}`)
+      }
+
+      stage = 'addUserMessage'
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: addUserMessage start load=${params.loadSessionId}`,
+      })
+      await session.addUserMessage({ text: params.prompt })
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: addUserMessage done load=${params.loadSessionId}`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.emit({
+        type: 'debug',
+        sessionId: params.sessionId,
+        message: `sendLoadedSessionMessage: failed stage=${stage} error=${msg}`,
+      })
+      this.emit({ type: 'error', sessionId: params.sessionId, message: msg })
+      this.emit({ type: 'turn-end', sessionId: params.sessionId, code: 1 })
+    }
   }
 
   async listSkills(sessionId: string): Promise<unknown[]> {

@@ -22,7 +22,11 @@ test('sessionStore save/load/list roundtrip', async () => {
     messages: [
       { id: 'm1', role: 'user', blocks: [{ kind: 'text', content: 'Hello world' }], timestamp: 1 },
       { id: 'm2', role: 'assistant', blocks: [{ kind: 'text', content: 'Hi' }], timestamp: 2 },
-    ]
+    ],
+    runtimeLogs: [
+      { ts: 11, stream: 'stdout', text: 'worker booting' },
+      { ts: 12, stream: 'stderr', text: 'warning: retrying' },
+    ],
   })
 
   assert.ok(meta)
@@ -50,6 +54,9 @@ test('sessionStore save/load/list roundtrip', async () => {
   assert.equal(loaded?.workspaceDir, '/repo')
   assert.equal(loaded?.cwdSubpath, 'packages/foo')
   assert.equal(loaded?.messages.length, 2)
+  assert.equal(loaded?.runtimeLogs?.length, 2)
+  assert.equal(loaded?.runtimeLogs?.[0]?.stream, 'stdout')
+  assert.equal(loaded?.runtimeLogs?.[1]?.stream, 'stderr')
   assert.equal(loaded?.baseBranch, 'main')
   assert.equal(loaded?.apiKeyFingerprint, 'fp123')
 })
@@ -299,9 +306,19 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
           { id: 'feature-1', status: 'in_progress' },
           { id: 'feature-2', status: 'pending' },
         ],
+        progressLog: [
+          {
+            timestamp: '2026-03-09T00:01:00.000Z',
+            type: 'worker_started',
+            workerSessionId: 'worker-paused',
+          },
+          { timestamp: '2026-03-09T00:02:00.000Z',
+            type: 'mission_paused' },
+        ],
       },
       expectedState: 'paused',
       expectedCompleted: false,
+      expectedPausedWorkerSessionId: 'worker-paused',
     },
     {
       label: 'validator-injected running',
@@ -428,6 +445,13 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
     assert.equal(restored.missionBaseSessionId, baseMeta.missionBaseSessionId, stage.label)
     assert.equal(restored.mission?.currentState, stage.expectedState, stage.label)
     assert.equal(restored.mission?.isCompleted, stage.expectedCompleted, stage.label)
+    if ('expectedPausedWorkerSessionId' in stage) {
+      assert.equal(
+        restored.mission?.pausedWorkerSessionId,
+        stage.expectedPausedWorkerSessionId,
+        stage.label,
+      )
+    }
     assert.equal(restored.mission?.liveWorkerSessionId, undefined, stage.label)
   }
 })

@@ -10,6 +10,7 @@ const droidAPI: DroidClientAPI = {
   setActiveSession: () => {},
   updateSessionSettings: (params) => ipcRenderer.invoke('droid:updateSessionSettings', params),
   killWorkerSession: (params) => ipcRenderer.invoke('droid:killWorkerSession', params),
+  sendWorkerFollowup: (params) => ipcRenderer.invoke('droid:sendWorkerFollowup', params),
 
   createSession: (params) => ipcRenderer.invoke('session:create', params),
   runSetupScript: (params) => ipcRenderer.invoke('session:setup:run', params),
@@ -139,6 +140,14 @@ const droidAPI: DroidClientAPI = {
     const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
     ipcRenderer.on('mission:dir-changed', handler)
     return () => ipcRenderer.removeListener('mission:dir-changed', handler)
+  },
+  readMissionRuntime: (params) => ipcRenderer.invoke('mission:read-runtime', params),
+  watchMissionRuntime: (params) => ipcRenderer.invoke('mission:runtime-watch-start', params),
+  unwatchMissionRuntime: (params) => ipcRenderer.invoke('mission:runtime-watch-stop', params),
+  onMissionRuntimeChanged: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('mission:runtime-changed', handler)
+    return () => ipcRenderer.removeListener('mission:runtime-changed', handler)
   },
   loadAppState: () => ipcRenderer.invoke('appState:load'),
   saveProjects: (projects) => ipcRenderer.send('appState:saveProjects', projects),

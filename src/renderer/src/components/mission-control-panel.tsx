@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -27,9 +27,11 @@ import {
 import { getMissionActionState, getMissionRuntimeStatus } from '@/lib/missionUiSemantics'
 import type { MissionState } from '@/state/missionState'
 import type { MissionViewMode } from '@/lib/missionPage'
+import type { MissionRuntimeSnapshot, RuntimeLogEntry } from '@/types'
 import { useActions, useActiveSessionId, useAppStore } from '@/store'
 
 const EMPTY_MESSAGES: never[] = []
+const EMPTY_RUNTIME_LOGS: RuntimeLogEntry[] = []
 
 function getStateBadgeVariant(
   stateLabel: string,
@@ -74,6 +76,25 @@ function formatTimeOnly(timestampLabel: string): string {
   const match = timestampLabel.match(/(\d{1,2}:\d{2}:\d{2})\s*(AM|PM)?/i)
   if (!match) return timestampLabel
   return match[2] ? `${match[1]} ${match[2]}` : match[1]
+}
+
+function formatRuntimeLogTime(ts: number): string {
+  try {
+    return new Date(ts).toLocaleTimeString([], {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  } catch {
+    return '--:--:--'
+  }
+}
+
+function getRuntimeLogTone(stream: RuntimeLogEntry['stream']): string {
+  if (stream === 'stderr') return 'text-destructive'
+  if (stream === 'system') return 'text-sky-600 dark:text-sky-400'
+  return 'text-foreground'
 }
 
 function getHandoffIcon(successState: string) {
@@ -194,19 +215,32 @@ function HandoffDetailView({ handoff, onBack }: { handoff: HandoffData; onBack: 
 
 export function MissionControlPanel({
   mission,
+  runtimeLogs = EMPTY_RUNTIME_LOGS,
+  runtimeLogState,
   onViewChange,
 }: {
   mission?: MissionState | null
+  runtimeLogs?: RuntimeLogEntry[]
+  runtimeLogState?: MissionRuntimeSnapshot
   onViewChange?: (view: MissionViewMode) => void
 }) {
   const activeSessionId = useActiveSessionId()
   const messages = useAppStore((state) =>
-    activeSessionId ? state.sessionBuffers.get(activeSessionId)?.messages || [] : EMPTY_MESSAGES,
+    activeSessionId
+      ? state.sessionBuffers.get(activeSessionId)?.messages || EMPTY_MESSAGES
+      : EMPTY_MESSAGES,
   )
-  const { handleCancel, handleKillWorker } = useActions()
+  const { handleCancel, handleKillWorker, handleSendWorkerFollowup } = useActions()
   const [pendingAction, setPendingAction] = useState<'pause' | 'kill' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeHandoff, setActiveHandoff] = useState<HandoffData | null>(null)
+  const [workerFollowupInput, setWorkerFollowupInput] = useState('')
+  const [workerFollowupState, setWorkerFollowupState] = useState<
+    'idle' | 'sending' | 'sent' | 'failed'
+  >('idle')
+  const [workerFollowupError, setWorkerFollowupError] = useState<string | null>(null)
+  const logsViewportRef = useRef<HTMLDivElement | null>(null)
+  const [followLogs, setFollowLogs] = useState(true)
 
   const status = getMissionControlStatus(mission)
   const featureQueue = getMissionFeatureQueueItems(mission)
@@ -217,11 +251,35 @@ export function MissionControlPanel({
     () => getMissionRuntimeStatus({ mission, messages, pendingAction }),
     [messages, mission, pendingAction],
   )
+  const hasRuntimeLogs = runtimeLogs.length > 0
+  const followupUnavailableReason = useMemo(() => {
+    if (!actionState.canMessagePausedWorker || !actionState.pausedWorkerSessionId) return undefined
+    if (!runtimeLogState) return 'Waiting for paused worker session logs…'
+    if (runtimeLogState.workerSessionId !== actionState.pausedWorkerSessionId) {
+      return 'Paused worker session logs are not ready yet.'
+    }
+    if (!runtimeLogState.exists) {
+      return runtimeLogState.message || 'Paused worker session is unavailable.'
+    }
+    return undefined
+  }, [actionState.canMessagePausedWorker, actionState.pausedWorkerSessionId, runtimeLogState])
+  const canSubmitWorkerFollowup =
+    !followupUnavailableReason &&
+    workerFollowupState !== 'sending' &&
+    Boolean(workerFollowupInput.trim())
+  const runtimeLogsEmptyState =
+    runtimeLogState?.message ||
+    (mission?.currentState === 'running'
+      ? 'Waiting for worker session transcript…'
+      : 'No runtime logs captured for this worker yet.')
 
   useEffect(() => {
     if (!mission) {
       setPendingAction(null)
       setActionError(null)
+      setWorkerFollowupInput('')
+      setWorkerFollowupState('idle')
+      setWorkerFollowupError(null)
       return
     }
     if (pendingAction === 'pause' && !actionState.canPause) setPendingAction(null)
@@ -236,6 +294,34 @@ export function MissionControlPanel({
       setPendingAction(null)
     }
   }, [actionState.canKillWorker, actionState.canPause, mission, pendingAction, runtimeStatus.kind])
+
+  useEffect(() => {
+    if (actionState.canMessagePausedWorker) return
+    setWorkerFollowupInput('')
+    setWorkerFollowupState('idle')
+    setWorkerFollowupError(null)
+  }, [actionState.canMessagePausedWorker])
+
+  useEffect(() => {
+    const viewport = logsViewportRef.current
+    if (!viewport || !followLogs) return
+    viewport.scrollTop = viewport.scrollHeight
+  }, [followLogs, runtimeLogs])
+
+  const handleLogsScroll = useCallback(() => {
+    const viewport = logsViewportRef.current
+    if (!viewport) return
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+    const nextFollowLogs = distanceFromBottom < 24
+    setFollowLogs((current) => (current === nextFollowLogs ? current : nextFollowLogs))
+  }, [])
+
+  useEffect(() => {
+    const viewport = logsViewportRef.current
+    if (!viewport) return
+    viewport.addEventListener('scroll', handleLogsScroll)
+    return () => viewport.removeEventListener('scroll', handleLogsScroll)
+  }, [handleLogsScroll])
 
   const handlePauseClick = () => {
     setActionError(null)
@@ -254,10 +340,35 @@ export function MissionControlPanel({
     })
   }
 
+  const handleWorkerFollowupSubmit = () => {
+    if (!actionState.pausedWorkerSessionId) return
+    if (followupUnavailableReason) {
+      setWorkerFollowupState('failed')
+      setWorkerFollowupError(followupUnavailableReason)
+      return
+    }
+    const prompt = workerFollowupInput.trim()
+    if (!prompt || workerFollowupState === 'sending') return
+
+    setWorkerFollowupState('sending')
+    setWorkerFollowupError(null)
+    void handleSendWorkerFollowup({
+      workerSessionId: actionState.pausedWorkerSessionId,
+      prompt,
+    })
+      .then(() => {
+        setWorkerFollowupInput('')
+        setWorkerFollowupState('sent')
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        setWorkerFollowupError(message || 'Failed to send follow-up to paused worker.')
+        setWorkerFollowupState('failed')
+      })
+  }
+
   const hasTimeline = timeline.length > 0
   const hasHandoffs = handoffs.length > 0
-
-  console.log(hasHandoffs)
 
   if (activeHandoff) {
     return (
@@ -362,6 +473,60 @@ export function MissionControlPanel({
         </div>
       )}
 
+      {actionState.canMessagePausedWorker && actionState.pausedWorkerSessionId && (
+        <div className="shrink-0 border-b border-border bg-muted/10 px-4 py-3">
+          <div className="mx-auto max-w-5xl space-y-2">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+              <span>Paused worker follow-up</span>
+              <Badge variant="outline" className="font-mono text-[10px] normal-case">
+                {actionState.pausedWorkerSessionId}
+              </Badge>
+            </div>
+            <div className="flex items-start gap-2">
+              <textarea
+                value={workerFollowupInput}
+                onChange={(event) => {
+                  setWorkerFollowupInput(event.target.value)
+                  if (workerFollowupState !== 'idle') setWorkerFollowupState('idle')
+                  if (workerFollowupError) setWorkerFollowupError(null)
+                }}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                    event.preventDefault()
+                    handleWorkerFollowupSubmit()
+                  }
+                }}
+                rows={2}
+                placeholder="Send a focused note to the paused worker before resuming Mission execution..."
+                className="min-h-[64px] flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleWorkerFollowupSubmit}
+                disabled={!canSubmitWorkerFollowup}
+                className="h-9 px-3"
+              >
+                {workerFollowupState === 'sending' ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : null}
+                Send
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {workerFollowupState === 'sending'
+                ? 'Sending to the paused worker...'
+                : workerFollowupState === 'sent'
+                  ? 'Follow-up delivered to the paused worker.'
+                  : workerFollowupState === 'failed'
+                    ? workerFollowupError || 'Failed to send follow-up to the paused worker.'
+                    : followupUnavailableReason ||
+                      'This message goes directly to the paused worker session. Use Mission chat if you want the orchestrator to decide the next step.'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content: fills 100% remaining height */}
       <div className="flex min-h-0 flex-1 flex-col px-4">
         <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
@@ -414,36 +579,89 @@ export function MissionControlPanel({
             </div>
           </section>
 
-          {/* Timeline -- fills remaining space with ScrollArea */}
-          {hasTimeline && (
-            <section className="flex min-h-0 flex-1 flex-col">
-              <h3 className="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Timeline
-              </h3>
-              <ScrollArea data-testid="mission-progress-timeline" className="min-h-0 flex-1">
-                <div className="relative ml-3">
-                  <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
-                  {timeline.map((entry, index) => (
-                    <div
-                      key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
-                      className="relative flex min-w-0 items-baseline gap-3 py-1.5 pl-5"
-                    >
-                      <span className="absolute top-[11px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
-                        {formatTimeOnly(entry.timestampLabel)}
-                      </span>
-                      <span className="shrink-0 text-sm text-foreground">{entry.eventLabel}</span>
-                      {entry.detailLabel && (
-                        <span className="min-w-0 truncate text-xs text-muted-foreground/60">
-                          {entry.detailLabel}
+          <div className="flex min-h-0 flex-1 flex-col gap-4 pb-4">
+            {/* Timeline -- fills remaining space with ScrollArea */}
+            {hasTimeline && (
+              <section className="flex min-h-0 flex-1 flex-col">
+                <h3 className="mb-2 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Timeline
+                </h3>
+                <ScrollArea data-testid="mission-progress-timeline" className="min-h-0 flex-1">
+                  <div className="relative ml-3">
+                    <div className="absolute top-2 bottom-2 left-0 w-px bg-border" />
+                    {timeline.map((entry, index) => (
+                      <div
+                        key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
+                        className="relative flex min-w-0 items-baseline gap-3 py-1.5 pl-5"
+                      >
+                        <span className="absolute top-[11px] left-[-2px] size-[5px] rounded-full bg-muted-foreground/40" />
+                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
+                          {formatTimeOnly(entry.timestampLabel)}
                         </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        <span className="shrink-0 text-sm text-foreground">{entry.eventLabel}</span>
+                        {entry.detailLabel && (
+                          <span className="min-w-0 truncate text-xs text-muted-foreground/60">
+                            {entry.detailLabel}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </section>
+            )}
+
+            <section className={cn('flex min-h-0 flex-col', hasTimeline ? 'max-h-56' : 'flex-1')}>
+              <div className="mb-2  flex items-center gap-2">
+                <h3 className="text-xs py-1 font-medium uppercase tracking-wide text-muted-foreground">
+                  Runtime Logs
+                </h3>
+                {followLogs && hasRuntimeLogs ? (
+                  <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                    Live
+                  </Badge>
+                ) : null}
+              </div>
+              <ScrollArea
+                data-testid="mission-runtime-logs"
+                className={cn(
+                  'min-h-0 rounded-md border border-border/70 bg-muted/10',
+                  hasTimeline ? 'flex-1' : 'min-h-[220px] flex-1',
+                )}
+                viewportRef={logsViewportRef}
+              >
+                {hasRuntimeLogs ? (
+                  <div className="space-y-1 p-3 font-mono text-xs">
+                    {runtimeLogs.map((entry, index) => (
+                      <div
+                        key={`${entry.ts}-${entry.stream}-${index}`}
+                        className="flex min-w-0 items-start gap-2"
+                      >
+                        <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                          {formatRuntimeLogTime(entry.ts)}
+                        </span>
+                        <span className="shrink-0 text-[10px] uppercase text-muted-foreground/60">
+                          {entry.stream}
+                        </span>
+                        <span
+                          className={cn(
+                            'min-w-0 whitespace-pre-wrap break-words',
+                            getRuntimeLogTone(entry.stream),
+                          )}
+                        >
+                          {entry.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex h-full min-h-[140px] items-center justify-center px-4 py-6 text-sm text-muted-foreground/70">
+                    {runtimeLogsEmptyState}
+                  </div>
+                )}
               </ScrollArea>
             </section>
-          )}
+          </div>
 
           {/* Handoffs -- preview rows, click to open detail sub-page */}
           {hasHandoffs && (

@@ -8,6 +8,7 @@ import {
   MISSION_PROGRESS_FILE,
   MISSION_STATE_FILE,
   MISSION_VALIDATION_STATE_FILE,
+  MISSION_WORKING_DIRECTORY_FILE,
 } from './missionTypes.ts'
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -84,6 +85,7 @@ export async function readMissionDirSnapshot(missionDir: string): Promise<Missio
     return {
       missionDir: resolvedMissionDir,
       exists: false,
+      workingDirectory: undefined,
       state: null,
       features: null,
       progressEntries: [],
@@ -97,6 +99,15 @@ export async function readMissionDirSnapshot(missionDir: string): Promise<Missio
     readJsonFile(join(resolvedMissionDir, MISSION_FEATURES_FILE)),
     readJsonFile(join(resolvedMissionDir, MISSION_VALIDATION_STATE_FILE)),
   ])
+
+  let workingDirectory: string | undefined
+  try {
+    const raw = await readFile(join(resolvedMissionDir, MISSION_WORKING_DIRECTORY_FILE), 'utf8')
+    const trimmed = raw.trim()
+    workingDirectory = trimmed || undefined
+  } catch {
+    workingDirectory = undefined
+  }
 
   let progressEntries: MissionDiskObject[] = []
   try {
@@ -124,6 +135,7 @@ export async function readMissionDirSnapshot(missionDir: string): Promise<Missio
   return {
     missionDir: resolvedMissionDir,
     exists: true,
+    workingDirectory,
     state: normalizeObject(stateRaw),
     features: normalizeFeatures(featuresRaw),
     progressEntries,

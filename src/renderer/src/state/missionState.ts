@@ -27,6 +27,7 @@ export interface MissionState {
   currentFeatureId?: string
   currentWorkerSessionId?: string
   liveWorkerSessionId?: string
+  pausedWorkerSessionId?: string
   completedFeatures: number
   totalFeatures: number
   isCompleted: boolean
@@ -331,6 +332,48 @@ function normalizeLiveWorkerSessionId(
   return liveWorker === nextCurrentWorkerSessionId ? liveWorker : undefined
 }
 
+function inferPausedWorkerSessionId(params: {
+  state: MissionDiskObject | null
+  progressEntries: MissionDiskObject[]
+  currentState?: string
+  currentWorkerSessionId?: string
+  liveWorkerSessionId?: string
+  existingPausedWorkerSessionId?: string
+}): string | undefined {
+  const currentState = asTrimmedString(params.currentState)?.toLowerCase()
+  if (currentState !== 'paused') return undefined
+
+  const explicit =
+    asTrimmedString((params.state as any)?.pausedWorkerSessionId) ??
+    asTrimmedString((params.state as any)?.interruptedWorkerSessionId)
+  if (explicit) return explicit
+
+  const carried =
+    asTrimmedString(params.liveWorkerSessionId) ?? asTrimmedString(params.currentWorkerSessionId)
+  if (carried) return carried
+
+  const latestWorkerEntry = [...params.progressEntries].reverse().find((entry) => {
+    return Boolean(asTrimmedString((entry as any)?.workerSessionId))
+  })
+  const latestWorkerSessionId = asTrimmedString((latestWorkerEntry as any)?.workerSessionId)
+  if (!latestWorkerSessionId) return asTrimmedString(params.existingPausedWorkerSessionId)
+
+  const latestWorkerTimestamp = readIsoTimestamp((latestWorkerEntry as any)?.timestamp)
+  const latestCompletionEntry = [...params.progressEntries].reverse().find((entry) => {
+    return asTrimmedString((entry as any)?.type)?.toLowerCase() === 'worker_completed'
+  })
+  const latestCompletionTimestamp = readIsoTimestamp((latestCompletionEntry as any)?.timestamp)
+  if (
+    latestWorkerTimestamp !== undefined &&
+    latestCompletionTimestamp !== undefined &&
+    latestCompletionTimestamp >= latestWorkerTimestamp
+  ) {
+    return undefined
+  }
+
+  return latestWorkerSessionId
+}
+
 function inferMissionState(params: {
   state: MissionDiskObject | null
   features: MissionDiskObject[]
@@ -436,6 +479,14 @@ function finalizeMissionState(input: MissionState): MissionState {
     currentWorkerSessionId,
     currentState,
   )
+  const pausedWorkerSessionId = inferPausedWorkerSessionId({
+    state: input.state,
+    progressEntries: input.progressEntries,
+    currentState,
+    currentWorkerSessionId,
+    liveWorkerSessionId,
+    existingPausedWorkerSessionId: input.pausedWorkerSessionId,
+  })
 
   if (currentState && currentState !== 'running') {
     liveWorkerSessionId = undefined
@@ -470,6 +521,7 @@ function finalizeMissionState(input: MissionState): MissionState {
     currentFeatureId,
     currentWorkerSessionId,
     liveWorkerSessionId,
+    pausedWorkerSessionId,
     completedFeatures,
     totalFeatures,
     isCompleted,
@@ -483,6 +535,7 @@ export function createEmptyMissionState(): MissionState {
     progressEntries: [],
     handoffs: [],
     validationState: null,
+    pausedWorkerSessionId: undefined,
     completedFeatures: 0,
     totalFeatures: 0,
     isCompleted: false,

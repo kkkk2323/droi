@@ -3,6 +3,7 @@ import { readdir, readFile, unlink } from 'fs/promises'
 import type {
   ChatMessage,
   LoadSessionResponse,
+  RuntimeLogEntry,
   SaveSessionRequest,
   SessionMeta,
 } from '../../shared/protocol'
@@ -46,6 +47,32 @@ function safeSessionFilePath(sessionsDir: string, id: string): string | null {
 
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function normalizeRuntimeLogs(value: unknown): RuntimeLogEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const ts = Number((entry as any).ts)
+      const stream = String((entry as any).stream || '').trim()
+      const text = typeof (entry as any).text === 'string' ? (entry as any).text : ''
+      if (!Number.isFinite(ts) || !text.trim()) return null
+      if (stream !== 'stdout' && stream !== 'stderr' && stream !== 'system') return null
+      const kind =
+        (entry as any).kind === 'command' ||
+        (entry as any).kind === 'result' ||
+        (entry as any).kind === 'message' ||
+        (entry as any).kind === 'status'
+          ? (entry as any).kind
+          : undefined
+      const workerSessionId =
+        typeof (entry as any).workerSessionId === 'string'
+          ? String((entry as any).workerSessionId).trim() || undefined
+          : undefined
+      return { ts, stream, text, kind, workerSessionId } as RuntimeLogEntry
+    })
+    .filter(Boolean) as RuntimeLogEntry[]
 }
 
 export interface SessionStore {
@@ -97,6 +124,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       savedAt,
       lastMessageAt,
       messages: req.messages,
+      runtimeLogs: normalizeRuntimeLogs(req.runtimeLogs) || [],
     }
 
     await atomicWriteFile(filePath, JSON.stringify(record, null, 2))
@@ -186,6 +214,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           savedAt: Number(raw.savedAt || 0),
           lastMessageAt,
           messages,
+          runtimeLogs: normalizeRuntimeLogs(raw.runtimeLogs),
         }
       }
 
@@ -210,6 +239,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         savedAt: Number(raw?.savedAt || 0),
         lastMessageAt,
         messages,
+        runtimeLogs: normalizeRuntimeLogs(raw?.runtimeLogs),
       }
     } catch {
       return null
@@ -292,6 +322,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         savedAt: now,
         lastMessageAt: now,
         messages: [],
+        runtimeLogs: [],
       }
 
       await atomicWriteFile(filePath, JSON.stringify(record, null, 2))
@@ -387,6 +418,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         savedAt: now,
         lastMessageAt: now,
         messages: [],
+        runtimeLogs: [],
       }
 
       await ensureDir(sessionsDir)
