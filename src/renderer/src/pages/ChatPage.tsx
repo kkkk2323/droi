@@ -20,8 +20,10 @@ import {
   usePendingNewSession,
   useIsCreatingSession,
   useWorkingState,
+  useMissionModelSettings,
   useActions,
 } from '@/store'
+import { DEFAULT_MODEL } from '@/state/appReducer'
 import ChatView from '@/components/ChatView'
 import { InputBar } from '@/components/InputBar'
 import { TodoPanel } from '@/components/TodoPanel'
@@ -48,6 +50,7 @@ export function ChatPage({
   const model = useModel()
   const autoLevel = useAutoLevel()
   const reasoningEffort = useReasoningEffort()
+  const missionModelSettings = useMissionModelSettings()
   const activeProjectDir = useActiveProjectDir()
   const activeSessionId = useActiveSessionId()
   const pendingNewSession = usePendingNewSession()
@@ -60,9 +63,10 @@ export function ChatPage({
   const pendingPermissionRequest = usePendingPermissionRequest()
   const pendingAskUserRequest = usePendingAskUserRequest()
   const isCancelling = useIsCancelling()
-  const mission = useAppStore((state) =>
-    activeSessionId ? state.sessionBuffers.get(activeSessionId)?.mission : undefined,
+  const activeSessionBuffer = useAppStore((state) =>
+    activeSessionId ? state.sessionBuffers.get(activeSessionId) : undefined,
   )
+  const mission = activeSessionBuffer?.mission
   const {
     setModel,
     setAutoLevel,
@@ -112,6 +116,12 @@ export function ChatPage({
   const noSession = !activeSessionId
   const missionPreferredView = getPreferredMissionView(mission)
   const missionInputLocked = missionPreferredView === 'mission-control'
+  const isMissionSession =
+    activeSessionBuffer?.isMission === true || activeSessionBuffer?.sessionKind === 'mission'
+  const missionOrchestratorModel = missionModelSettings.orchestratorModel || model || DEFAULT_MODEL
+  const missionWorkerModel = missionModelSettings.workerModel || missionOrchestratorModel
+  const missionValidatorModel =
+    missionModelSettings.validationWorkerModel || missionOrchestratorModel
 
   const disabledPlaceholder =
     forceDisabledPlaceholder ||
@@ -201,6 +211,16 @@ export function ChatPage({
               key={inputKey}
               draftKey={draftKey}
               model={model}
+              readonlyModelId={isMissionSession ? missionOrchestratorModel : undefined}
+              readonlyMissionModels={
+                isMissionSession
+                  ? {
+                      orchestrator: missionOrchestratorModel,
+                      worker: missionWorkerModel,
+                      validator: missionValidatorModel,
+                    }
+                  : undefined
+              }
               autoLevel={autoLevel}
               reasoningEffort={reasoningEffort}
               customModels={customModels}
