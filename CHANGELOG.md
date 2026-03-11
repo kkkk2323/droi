@@ -1,3 +1,9 @@
+## 0.23.0 - 2026-03-11
+
+### Features
+- Enhance mission model handling and runtime selection logic
+- Enhance Mission Control feature details and state management
+
 ## 0.22.1 - 2026-03-11
 
 ### Refactor
