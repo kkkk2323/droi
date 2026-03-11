@@ -49,7 +49,12 @@ import {
   type PendingSessionDraft,
   type PendingSessionDraftMode,
 } from '@/lib/pendingSessionDraft'
-import { resolveSessionProtocolFields } from '../../shared/sessionProtocol.ts'
+import {
+  autonomyLevelFromAutoLevel,
+  interactionModeFromAutoLevel,
+  resolveSessionProtocolFields,
+} from '../../shared/sessionProtocol.ts'
+import { resolveSessionRuntimeSelection } from '@/lib/missionModelState'
 
 const droid = getDroidClient()
 const MISSION_RESUME_AFTER_WORKER_FOLLOWUP_PROMPT =
@@ -571,7 +576,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const buf = prev.get(sid)
       if (!buf) return prev
       const next = new Map(prev)
-      next.set(sid, { ...buf, autoLevel: l })
+      const isMission = buf.isMission === true || buf.sessionKind === 'mission'
+      next.set(sid, {
+        ...buf,
+        autoLevel: l,
+        ...(!isMission
+          ? {
+              interactionMode: interactionModeFromAutoLevel(l),
+              autonomyLevel: autonomyLevelFromAutoLevel(l),
+            }
+          : {}),
+      })
       return next
     })
   },
@@ -701,6 +716,83 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (typeof (droid as any)?.setMissionModelSettings === 'function') {
       const persisted = await (droid as any).setMissionModelSettings(next)
       set({ missionModelSettings: persisted ?? next })
+    }
+
+    const latest = get()
+    const sid = latest.activeSessionId
+    if (!sid) return
+
+    const activeBuffer = latest.sessionBuffers.get(sid)
+    const activeMeta = latest.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
+    const protocol = getSessionProtocol(activeBuffer || activeMeta)
+    if (!protocol.isMission) return
+
+    const runtimeSelection = resolveSessionRuntimeSelection({
+      isMission: true,
+      sessionModel: activeBuffer?.model || activeMeta?.model,
+      sessionReasoningEffort: activeBuffer?.reasoningEffort || activeMeta?.reasoningEffort,
+      missionModelSettings: get().missionModelSettings,
+    })
+
+    const currentModel = activeBuffer?.model || activeMeta?.model || DEFAULT_MODEL
+    const currentReasoningEffort =
+      activeBuffer?.reasoningEffort || activeMeta?.reasoningEffort || ''
+    if (
+      currentModel === runtimeSelection.model &&
+      currentReasoningEffort === runtimeSelection.reasoningEffort
+    ) {
+      return
+    }
+
+    let nextBuffer = activeBuffer
+    if (activeBuffer) {
+      nextBuffer = {
+        ...activeBuffer,
+        model: runtimeSelection.model,
+        reasoningEffort: runtimeSelection.reasoningEffort,
+      }
+      get()._setSessionBuffers((prev) => {
+        const session = prev.get(sid)
+        if (!session) return prev
+        const updated = new Map(prev)
+        updated.set(sid, {
+          ...session,
+          model: runtimeSelection.model,
+          reasoningEffort: runtimeSelection.reasoningEffort,
+        })
+        return updated
+      })
+    }
+
+    get()._setProjects((prev) =>
+      upsertSessionMeta(prev, {
+        ...(activeMeta || {
+          id: sid,
+          projectDir: activeBuffer?.projectDir || latest.activeProjectDir,
+          title: 'Untitled',
+          savedAt: Date.now(),
+          messageCount: activeBuffer?.messages.length || 0,
+          autoLevel: activeBuffer?.autoLevel || DEFAULT_AUTO_LEVEL,
+        }),
+        model: runtimeSelection.model,
+        reasoningEffort: runtimeSelection.reasoningEffort || undefined,
+      } as SessionMeta),
+    )
+
+    await droid.updateSessionSettings({
+      sessionId: sid,
+      modelId: runtimeSelection.model,
+      autoLevel: activeBuffer?.autoLevel || activeMeta?.autoLevel || DEFAULT_AUTO_LEVEL,
+      isMission: protocol.isMission,
+      sessionKind: protocol.sessionKind,
+      interactionMode: protocol.interactionMode,
+      autonomyLevel: protocol.autonomyLevel,
+      decompSessionType: protocol.decompSessionType,
+      reasoningEffort: runtimeSelection.reasoningEffort || undefined,
+    })
+
+    if (nextBuffer) {
+      await get()._saveSessionToDisk(sid, nextBuffer)
     }
   },
 
@@ -890,6 +982,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         { sessionKind: params.sessionKind },
         inheritAutoLevel,
       )
+      const runtimeSelection = resolveSessionRuntimeSelection({
+        isMission: sessionProtocol.isMission,
+        sessionModel: inheritModel,
+        sessionReasoningEffort: inheritReasoningEffort,
+        missionModelSettings: s.missionModelSettings,
+      })
       const sourceCwdSubpath =
         typeof params.cwdSubpath === 'string' && params.cwdSubpath.trim()
           ? params.cwdSubpath.trim()
@@ -943,14 +1041,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const targetDir = workspaceInfo.projectDir
       const { sessionId: newId } = await droid.createSession({
         cwd: targetDir,
-        modelId: inheritModel,
+        modelId: runtimeSelection.model,
         autoLevel: inheritAutoLevel,
         isMission: sessionProtocol.isMission,
         sessionKind: sessionProtocol.sessionKind,
         interactionMode: sessionProtocol.interactionMode,
         autonomyLevel: sessionProtocol.autonomyLevel,
         decompSessionType: sessionProtocol.decompSessionType,
-        reasoningEffort: inheritReasoningEffort || undefined,
+        reasoningEffort: runtimeSelection.reasoningEffort || undefined,
       })
 
       const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
@@ -968,7 +1066,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           title: initialTitle,
           savedAt: now,
           messageCount: 0,
-          model: inheritModel,
+          model: runtimeSelection.model,
           autoLevel: inheritAutoLevel,
           missionBaseSessionId,
           isMission: sessionProtocol.isMission,
@@ -976,7 +1074,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           interactionMode: sessionProtocol.interactionMode,
           autonomyLevel: sessionProtocol.autonomyLevel,
           decompSessionType: sessionProtocol.decompSessionType,
-          reasoningEffort: inheritReasoningEffort || undefined,
+          reasoningEffort: runtimeSelection.reasoningEffort || undefined,
           baseBranch: workspaceInfo!.baseBranch,
         }),
       )
@@ -989,7 +1087,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           workspaceType: workspaceInfo!.workspaceType,
           baseBranch: workspaceInfo!.baseBranch,
         }),
-        model: inheritModel,
+        model: runtimeSelection.model,
         autoLevel: inheritAutoLevel,
         missionBaseSessionId,
         isMission: sessionProtocol.isMission,
@@ -997,7 +1095,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         interactionMode: sessionProtocol.interactionMode,
         autonomyLevel: sessionProtocol.autonomyLevel,
         decompSessionType: sessionProtocol.decompSessionType,
-        reasoningEffort: inheritReasoningEffort || '',
+        reasoningEffort: runtimeSelection.reasoningEffort || '',
       }
       get()._setSessionBuffers((prev) => {
         const next = new Map(prev)
@@ -1335,11 +1433,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const buf = s.sessionBuffers.get(sid)
     if (buf?.isSetupRunning || buf?.setupScript.status === 'failed') return
-    const sessionModel = buf?.model ?? DEFAULT_MODEL
-    const sessionAutoLevel = buf?.autoLevel ?? DEFAULT_AUTO_LEVEL
-    const sessionReasoningEffort = buf?.reasoningEffort ?? ''
-
     const existingMeta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
+    const protocol = getSessionProtocol(buf || existingMeta)
+    const runtimeSelection = resolveSessionRuntimeSelection({
+      isMission: protocol.isMission,
+      sessionModel: buf?.model,
+      sessionReasoningEffort: buf?.reasoningEffort,
+      missionModelSettings: s.missionModelSettings,
+    })
+    const sessionModel = runtimeSelection.model
+    const sessionAutoLevel = buf?.autoLevel ?? DEFAULT_AUTO_LEVEL
+    const sessionReasoningEffort = runtimeSelection.reasoningEffort
 
     const now = Date.now()
     const userMessage: ChatMessage = {
@@ -1372,7 +1476,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       !existingMeta || existingMeta.title === 'Untitled' || existingMeta.messageCount === 0
         ? getTitleFromPrompt(rawPromptForTitle)
         : existingMeta.title
-    const protocol = getSessionProtocol(buf || existingMeta)
     const missionBaseSessionId = getMissionBaseSessionId(buf || existingMeta, sid)
     const draftMeta: SessionMeta = {
       id: sid,
@@ -1463,6 +1566,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         next.set(sid, {
           ...session,
           isRunning: false,
+          model: sessionModel,
+          reasoningEffort: sessionReasoningEffort,
           messages: [...session.messages, userMessage],
         })
         next = appendDebugTrace(
@@ -1495,6 +1600,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       next.set(sid, {
         ...session,
         isRunning: true,
+        model: sessionModel,
+        reasoningEffort: sessionReasoningEffort,
         messages: [...session.messages, userMessage],
         pendingSendMessageIds,
       })
@@ -2126,6 +2233,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             },
             meta: selectedMeta,
             data,
+            missionModelSettings: get().missionModelSettings,
           }),
         )
         return next
@@ -2395,36 +2503,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
           if (!existingBuffer) {
             const data = await droid.loadSession(pickFallback.id)
             const loaded = (data?.messages as ChatMessage[]) ?? []
-            const protocol = getSessionProtocol(data || pickFallback)
             get()._setSessionBuffers((prev) => {
               const next = new Map(prev)
-              const base = makeBuffer(aligned.projectDir, {
-                repoRoot: aligned.repoRoot,
-                workspaceDir: aligned.workspaceDir,
-                cwdSubpath: aligned.cwdSubpath,
-                branch: aligned.branch,
-                workspaceType: aligned.workspaceType,
-                baseBranch:
-                  (data as any)?.baseBranch || pickFallback.baseBranch || aligned.baseBranch,
+              const restored = buildRestoredSessionBuffer({
+                projectDir: aligned.projectDir,
+                workspace: {
+                  repoRoot: aligned.repoRoot,
+                  workspaceDir: aligned.workspaceDir,
+                  cwdSubpath: aligned.cwdSubpath,
+                  branch: aligned.branch,
+                  workspaceType: aligned.workspaceType,
+                  baseBranch:
+                    (data as any)?.baseBranch || pickFallback.baseBranch || aligned.baseBranch,
+                },
+                meta: pickFallback,
+                data: data ? { ...data, messages: loaded } : null,
+                missionModelSettings: get().missionModelSettings,
               })
-              next.set(pickFallback.id, {
-                ...base,
-                messages: loaded,
-                model: data?.model || pickFallback.model || DEFAULT_MODEL,
-                autoLevel: data?.autoLevel || pickFallback.autoLevel || DEFAULT_AUTO_LEVEL,
-                missionDir: (data as any)?.missionDir || pickFallback.missionDir,
-                missionBaseSessionId:
-                  (data as any)?.missionBaseSessionId || pickFallback.missionBaseSessionId,
-                isMission: protocol.isMission,
-                sessionKind: protocol.sessionKind,
-                interactionMode: protocol.interactionMode,
-                autonomyLevel: protocol.autonomyLevel,
-                decompSessionType: protocol.decompSessionType,
-                reasoningEffort:
-                  (data as any)?.reasoningEffort || pickFallback.reasoningEffort || '',
-                apiKeyFingerprint:
-                  (data as any)?.apiKeyFingerprint || pickFallback.apiKeyFingerprint,
-              })
+              next.set(pickFallback.id, restored)
               return next
             })
           }

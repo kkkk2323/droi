@@ -17,6 +17,10 @@ import {
   applyStartMissionProgressUpdate,
   type MissionState,
 } from './missionState.ts'
+import {
+  autonomyLevelFromAutoLevel,
+  interactionModeFromAutoLevel,
+} from '../../../shared/sessionProtocol.ts'
 
 export interface SessionBuffer {
   messages: ChatMessage[]
@@ -829,7 +833,13 @@ export function applyRpcNotification(
       ...session,
       ...(modelId ? { model: modelId } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
-      ...(!isMission && nextAuto ? { autoLevel: nextAuto } : {}),
+      ...(!isMission && nextAuto
+        ? {
+            autoLevel: nextAuto,
+            interactionMode: interactionModeFromAutoLevel(nextAuto),
+            autonomyLevel: autonomyLevelFromAutoLevel(nextAuto),
+          }
+        : {}),
       ...(hasChange ? { settingsFlashAt: Date.now() } : {}),
     })
     return next

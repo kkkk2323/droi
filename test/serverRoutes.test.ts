@@ -220,6 +220,86 @@ test('POST /api/message maps autoLevel=default to interactionMode=spec and auton
   assert.equal(sendCalls[0].autonomyLevel, 'off')
 })
 
+test('POST /api/message preserves explicit Mission protocol fields', async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), 'droid-server-message-mission-'))
+  const projectDir = join(baseDir, 'project')
+  await mkdir(projectDir, { recursive: true })
+
+  const sendCalls: any[] = []
+  const app = createTestApp({
+    state: { version: 2, machineId: 'm-test', activeProjectDir: projectDir },
+    execManager: {
+      send: async (params: any) => {
+        sendCalls.push(params)
+      },
+    },
+  })
+
+  const res = await app.request('http://localhost/api/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: 'continue mission',
+      sessionId: 'mission-1',
+      modelId: 'gemini-3-flash-preview',
+      autoLevel: 'default',
+      isMission: true,
+      sessionKind: 'mission',
+      interactionMode: 'agi',
+      autonomyLevel: 'high',
+      decompSessionType: 'orchestrator',
+    }),
+  })
+
+  assert.equal(res.status, 200)
+  assert.equal(sendCalls.length, 1)
+  assert.equal(sendCalls[0].interactionMode, 'agi')
+  assert.equal(sendCalls[0].autonomyLevel, 'high')
+  assert.equal(sendCalls[0].decompSessionType, 'orchestrator')
+  assert.equal(sendCalls[0].isMission, true)
+  assert.equal(sendCalls[0].sessionKind, 'mission')
+})
+
+test('POST /api/session/create preserves explicit Mission protocol fields', async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), 'droid-server-create-mission-'))
+  const projectDir = join(baseDir, 'project')
+  await mkdir(projectDir, { recursive: true })
+
+  const createCalls: any[] = []
+  const app = createTestApp({
+    state: { version: 2, machineId: 'm-test', activeProjectDir: projectDir },
+    execManager: {
+      createSession: async (params: any) => {
+        createCalls.push(params)
+        return { sessionId: 'mission-new' }
+      },
+    },
+  })
+
+  const res = await app.request('http://localhost/api/session/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cwd: projectDir,
+      modelId: 'gemini-3-flash-preview',
+      autoLevel: 'default',
+      isMission: true,
+      sessionKind: 'mission',
+      interactionMode: 'agi',
+      autonomyLevel: 'high',
+      decompSessionType: 'orchestrator',
+    }),
+  })
+
+  assert.equal(res.status, 200)
+  assert.equal(createCalls.length, 1)
+  assert.equal(createCalls[0].interactionMode, 'agi')
+  assert.equal(createCalls[0].autonomyLevel, 'high')
+  assert.equal(createCalls[0].decompSessionType, 'orchestrator')
+  assert.equal(createCalls[0].isMission, true)
+  assert.equal(createCalls[0].sessionKind, 'mission')
+})
+
 test('GET /api/stream returns event-stream and writes ok prelude', async () => {
   const app = createTestApp()
   const res = await app.request('http://localhost/api/stream?sessionId=s1', { method: 'GET' })

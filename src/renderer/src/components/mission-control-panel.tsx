@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import {
   getMissionControlStatus,
+  getMissionFeatureDetail,
   getMissionFeatureQueueItems,
   getMissionHandoffCards,
   getMissionProgressTimelineItems,
@@ -136,6 +137,10 @@ export function MissionControlPanel({
   const selectedFeature = useMemo(
     () => featureQueue.find((f) => f.id === activeFeatureId),
     [featureQueue, activeFeatureId],
+  )
+  const selectedFeatureDetail = useMemo(
+    () => getMissionFeatureDetail(mission, activeFeatureId),
+    [mission, activeFeatureId],
   )
   const canSubmitWorkerFollowup =
     actionState.canMessagePausedWorker &&
@@ -459,7 +464,9 @@ export function MissionControlPanel({
               <div className="shrink-0 px-3 pt-3 pb-2">
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {selectedFeature ? selectedFeature.description : 'Feature Detail'}
+                    {selectedFeatureDetail?.title ||
+                      selectedFeature?.description ||
+                      'Feature Detail'}
                   </h3>
                   {selectedHandoff && (
                     <Badge
@@ -472,58 +479,148 @@ export function MissionControlPanel({
                 </div>
               </div>
               <ScrollArea className="min-h-0 flex-1 px-3">
-                {selectedHandoff ? (
+                {selectedFeatureDetail ? (
                   <div className="space-y-4 pb-3">
-                    <div>
-                      <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Summary
-                      </h4>
-                      <p className="text-xs text-foreground">{selectedHandoff.salientSummary}</p>
-                    </div>
-                    <div>
-                      <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Implementation
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedHandoff.whatWasImplemented}
-                      </p>
-                    </div>
-                    {selectedHandoff.commandResults.length > 0 && (
+                    {(selectedFeatureDetail.skillName || selectedFeatureDetail.milestone) && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {selectedFeatureDetail.skillName && (
+                          <div>
+                            <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Skill
+                            </h4>
+                            <p className="text-xs text-foreground">
+                              {selectedFeatureDetail.skillName}
+                            </p>
+                          </div>
+                        )}
+                        {selectedFeatureDetail.milestone && (
+                          <div>
+                            <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Milestone
+                            </h4>
+                            <p className="text-xs text-foreground">
+                              {selectedFeatureDetail.milestone}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedFeatureDetail.preconditions.length > 0 && (
                       <div>
-                        <h4 className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          <TerminalSquare className="size-3" />
-                          Commands
+                        <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Preconditions
                         </h4>
                         <ul className="space-y-1">
-                          {selectedHandoff.commandResults.map((item) => (
-                            <li
-                              key={item}
-                              className="rounded-md bg-muted/40 px-2.5 py-1 font-mono text-[11px]"
-                            >
+                          {selectedFeatureDetail.preconditions.map((item) => (
+                            <li key={item} className="text-xs text-foreground">
                               {item}
                             </li>
                           ))}
                         </ul>
                       </div>
                     )}
-                    {selectedHandoff.interactiveResults.length > 0 && (
+
+                    {selectedFeatureDetail.expectedBehavior.length > 0 && (
                       <div>
-                        <h4 className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          <CheckCircle2 className="size-3" />
-                          Checks
+                        <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Expected Behavior
                         </h4>
                         <ul className="space-y-1">
-                          {selectedHandoff.interactiveResults.map((item) => (
-                            <li
-                              key={item}
-                              className="rounded-md bg-muted/40 px-2.5 py-1 text-[11px]"
-                            >
+                          {selectedFeatureDetail.expectedBehavior.map((item) => (
+                            <li key={item} className="text-xs text-foreground">
                               {item}
                             </li>
                           ))}
                         </ul>
                       </div>
                     )}
+
+                    {selectedFeatureDetail.verificationSteps.length > 0 && (
+                      <div>
+                        <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Verification Steps
+                        </h4>
+                        <ul className="space-y-1">
+                          {selectedFeatureDetail.verificationSteps.map((item) => (
+                            <li key={item} className="text-xs text-foreground">
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {selectedFeatureDetail.description && (
+                      <div>
+                        <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Description
+                        </h4>
+                        <p className="text-xs text-foreground">
+                          {selectedFeatureDetail.description}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedFeatureDetail.handoff && (
+                      <>
+                        <div>
+                          <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Summary
+                          </h4>
+                          <p className="text-xs text-foreground">
+                            {selectedFeatureDetail.handoff.salientSummary}
+                          </p>
+                        </div>
+                        <div>
+                          <h4 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Implementation
+                          </h4>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedFeatureDetail.handoff.whatWasImplemented}
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {selectedFeatureDetail.handoff &&
+                      selectedFeatureDetail.handoff.commandResults.length > 0 && (
+                        <div>
+                          <h4 className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            <TerminalSquare className="size-3" />
+                            Commands
+                          </h4>
+                          <ul className="space-y-1">
+                            {selectedFeatureDetail.handoff.commandResults.map((item) => (
+                              <li
+                                key={item}
+                                className="rounded-md bg-muted/40 px-2.5 py-1 font-mono text-[11px]"
+                              >
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    {selectedFeatureDetail.handoff &&
+                      selectedFeatureDetail.handoff.interactiveResults.length > 0 && (
+                        <div>
+                          <h4 className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            <CheckCircle2 className="size-3" />
+                            Checks
+                          </h4>
+                          <ul className="space-y-1">
+                            {selectedFeatureDetail.handoff.interactiveResults.map((item) => (
+                              <li
+                                key={item}
+                                className="rounded-md bg-muted/40 px-2.5 py-1 text-[11px]"
+                              >
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                   </div>
                 ) : (
                   <div className="flex h-full min-h-[80px] items-center justify-center py-6">

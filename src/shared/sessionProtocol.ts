@@ -62,14 +62,24 @@ export function resolveSessionProtocolFields(opts: {
     }
   }
 
+  const hasDerivedAutoLevel = typeof opts.autoLevel === 'string'
+  const derivedInteractionMode = hasDerivedAutoLevel
+    ? interactionModeFromAutoLevel(opts.autoLevel)
+    : undefined
+  const derivedAutonomyLevel = hasDerivedAutoLevel
+    ? autonomyLevelFromAutoLevel(opts.autoLevel)
+    : undefined
+
   return {
     isMission: false,
     sessionKind: 'normal',
     interactionMode:
+      derivedInteractionMode ||
       explicit?.interactionMode ||
       existing?.interactionMode ||
       interactionModeFromAutoLevel(opts.autoLevel),
     autonomyLevel:
+      derivedAutonomyLevel ||
       explicit?.autonomyLevel ||
       existing?.autonomyLevel ||
       autonomyLevelFromAutoLevel(opts.autoLevel),

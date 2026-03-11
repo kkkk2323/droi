@@ -455,3 +455,44 @@ test('buildRestoredSessionBuffer keeps Mission identity and snapshot data across
     assert.equal(restored.mission?.liveWorkerSessionId, undefined, stage.label)
   }
 })
+
+test('buildRestoredSessionBuffer applies the configured Mission orchestrator model during restore', () => {
+  const restored = buildRestoredSessionBuffer({
+    projectDir: '/repo',
+    workspace: {
+      repoRoot: '/repo',
+      workspaceDir: '/repo',
+      branch: 'main',
+      workspaceType: 'branch',
+    },
+    missionModelSettings: { orchestratorModel: 'gemini-3-flash-preview' },
+    meta: {
+      autoLevel: 'high',
+      isMission: true,
+      sessionKind: 'mission',
+      interactionMode: 'agi',
+      autonomyLevel: 'high',
+      decompSessionType: 'orchestrator',
+      model: 'gpt-5.4',
+      reasoningEffort: 'xhigh',
+    },
+    data: {
+      id: 'mission-restore',
+      projectDir: '/repo',
+      title: 'Mission restore',
+      savedAt: 1,
+      messages: [],
+      model: 'gpt-5.4',
+      autoLevel: 'high',
+      reasoningEffort: 'xhigh',
+      isMission: true,
+      sessionKind: 'mission',
+      interactionMode: 'agi',
+      autonomyLevel: 'high',
+      decompSessionType: 'orchestrator',
+    },
+  })
+
+  assert.equal(restored.model, 'gemini-3-flash-preview')
+  assert.equal(restored.reasoningEffort, 'high')
+})

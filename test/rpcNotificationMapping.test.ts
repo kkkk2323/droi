@@ -402,6 +402,41 @@ test('applyRpcNotification syncs settings_updated into session buffer fields', (
   assert.equal(buf.model, 'gpt-5.1')
   assert.equal(buf.reasoningEffort, 'none')
   assert.equal(buf.autoLevel, 'high')
+  assert.equal((buf as any).interactionMode, 'auto')
+  assert.equal((buf as any).autonomyLevel, 'high')
+})
+
+test('applyRpcNotification replaces stale normal-session protocol fields from settings_updated', () => {
+  const sid = 'normal-1'
+  const prev = new Map([
+    [
+      sid,
+      {
+        ...makeBuffer('/repo'),
+        autoLevel: 'medium',
+        interactionMode: 'auto',
+        autonomyLevel: 'medium',
+      },
+    ],
+  ])
+
+  const next = applyRpcNotification(prev, sid, {
+    ...baseNotif,
+    params: {
+      notification: {
+        type: 'settings_updated',
+        settings: {
+          interactionMode: 'spec',
+          autonomyLevel: 'off',
+        },
+      },
+    },
+  } as any)
+
+  const buf = next.get(sid)!
+  assert.equal(buf.autoLevel, 'default')
+  assert.equal((buf as any).interactionMode, 'spec')
+  assert.equal((buf as any).autonomyLevel, 'off')
 })
 
 test('applyRpcNotification does not downgrade explicit mission settings on generic settings_updated', () => {

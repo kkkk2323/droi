@@ -284,8 +284,8 @@ export function SettingsPage() {
           <div>
             <h2 className="text-sm font-medium">Mission Models</h2>
             <p className="text-xs text-muted-foreground">
-              Choose the model that coordinates your mission. Workers and validators use the same
-              model by default.
+              The orchestrator model is the real runtime model for Mission chat sessions. Worker and
+              validator models default to following it.
             </p>
           </div>
 
@@ -307,6 +307,9 @@ export function SettingsPage() {
                 customModels={customModels}
                 className="w-full"
               />
+              <p className="text-xs text-muted-foreground">
+                Used by the Mission orchestrator session when you send messages from Mission chat.
+              </p>
             </div>
 
             <Collapsible open={missionModelsOpen} onOpenChange={setMissionModelsOpen}>
@@ -324,7 +327,7 @@ export function SettingsPage() {
               <CollapsibleContent className="space-y-4 px-1 pt-3">
                 <ModelOverrideRow
                   title="Worker model"
-                  description="Runs implementation tasks for each feature."
+                  description="Runs implementation tasks for each feature worker."
                   follow={followWorkerModel}
                   onFollowChange={(checked) => {
                     setFollowWorkerModel(checked)
@@ -350,7 +353,7 @@ export function SettingsPage() {
                 />
                 <ModelOverrideRow
                   title="Validator model"
-                  description="Runs validation checks after implementation."
+                  description="Runs validation workers such as scrutiny and user testing."
                   follow={followValidatorModel}
                   onFollowChange={(checked) => {
                     setFollowValidatorModel(checked)

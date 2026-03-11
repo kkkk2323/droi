@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   getMissionControlStatus,
+  getMissionFeatureDetail,
   getMissionFeatureQueueItems,
   getMissionHandoffCards,
   getMissionProgressTimelineItems,
@@ -292,4 +293,71 @@ test('Mission Control handoff cards keep stable unique React keys when recovered
     ],
   )
   assert.equal(new Set(cards.map((card) => card.key)).size, 2)
+})
+
+test('Mission Control feature detail falls back to feature.json-style fields before a handoff exists', () => {
+  const mission = createMissionState({
+    currentState: 'running',
+    currentFeatureId: 'patch-formalize',
+    features: [
+      {
+        id: 'patch-formalize',
+        description: 'Formalize the ink no-flicker patch.',
+        status: 'in_progress',
+        skillName: 'stats-worker',
+        milestone: 'patch-formalization',
+        preconditions: ['node version >= 18', 'patch file is writable'],
+        expectedBehavior: ['patches/ink+6.8.0.patch exists and is non-empty'],
+        verificationSteps: ['grep -c clearTerminal patches/ink+6.8.0.patch'],
+      },
+    ],
+  })
+
+  assert.deepEqual(getMissionFeatureDetail(mission), {
+    featureId: 'patch-formalize',
+    title: 'Formalize the ink no-flicker patch.',
+    description: 'Formalize the ink no-flicker patch.',
+    skillName: 'stats-worker',
+    milestone: 'patch-formalization',
+    preconditions: ['node version >= 18', 'patch file is writable'],
+    expectedBehavior: ['patches/ink+6.8.0.patch exists and is non-empty'],
+    verificationSteps: ['grep -c clearTerminal patches/ink+6.8.0.patch'],
+    handoff: undefined,
+  })
+})
+
+test('Mission Control feature detail includes both feature metadata and handoff summary when available', () => {
+  const mission = createMissionState({
+    currentFeatureId: 'mission-page-chat-shell-and-view-toggle',
+    features: [
+      {
+        id: 'mission-page-chat-shell-and-view-toggle',
+        description: 'Build MissionPage shell and toggle',
+        status: 'completed',
+        verificationSteps: ['pnpm check'],
+      },
+    ],
+    handoffs: [
+      {
+        fileName: 'mission-page-chat-shell-and-view-toggle.json',
+        payload: {
+          featureId: 'mission-page-chat-shell-and-view-toggle',
+          successState: 'success',
+          handoff: {
+            salientSummary: 'Implemented MissionPage shell and toggle.',
+            whatWasImplemented: 'Built MissionPage with Chat and Mission Control views.',
+          },
+        },
+      },
+    ],
+  })
+
+  const detail = getMissionFeatureDetail(mission)
+  assert.equal(detail?.featureId, 'mission-page-chat-shell-and-view-toggle')
+  assert.equal(detail?.verificationSteps[0], 'pnpm check')
+  assert.equal(detail?.handoff?.salientSummary, 'Implemented MissionPage shell and toggle.')
+  assert.equal(
+    detail?.handoff?.whatWasImplemented,
+    'Built MissionPage with Chat and Mission Control views.',
+  )
 })

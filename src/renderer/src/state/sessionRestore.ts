@@ -1,7 +1,9 @@
 import type { LoadSessionResponse, SessionMeta, WorkspaceInfo } from '@/types'
+import type { MissionModelSettings } from '@/types'
 import { resolveSessionProtocolFields } from '../../../shared/sessionProtocol.ts'
 import { DEFAULT_AUTO_LEVEL, DEFAULT_MODEL, makeBuffer, type SessionBuffer } from './appReducer.ts'
 import { applyMissionLoadSnapshot } from './missionState.ts'
+import { resolveSessionRuntimeSelection } from '../lib/missionModelState.ts'
 
 type RestorableSessionMeta = Partial<
   Pick<
@@ -31,8 +33,9 @@ export function buildRestoredSessionBuffer(params: {
   >
   meta?: RestorableSessionMeta | null
   data?: LoadSessionResponse | null
+  missionModelSettings?: MissionModelSettings | null
 }): SessionBuffer {
-  const { projectDir, workspace, meta, data } = params
+  const { projectDir, workspace, meta, data, missionModelSettings } = params
   const protocol = resolveSessionProtocolFields({
     autoLevel: data?.autoLevel || meta?.autoLevel,
     explicit: {
@@ -44,12 +47,19 @@ export function buildRestoredSessionBuffer(params: {
     },
   })
 
+  const runtimeSelection = resolveSessionRuntimeSelection({
+    isMission: protocol.isMission,
+    sessionModel: data?.model || meta?.model,
+    sessionReasoningEffort: data?.reasoningEffort || meta?.reasoningEffort,
+    missionModelSettings,
+  })
+
   const base = makeBuffer(projectDir, workspace)
   const restored: SessionBuffer = {
     ...base,
     messages: (data?.messages as SessionBuffer['messages']) ?? [],
     runtimeLogs: Array.isArray(data?.runtimeLogs) ? data.runtimeLogs : [],
-    model: data?.model || meta?.model || DEFAULT_MODEL,
+    model: runtimeSelection.model || DEFAULT_MODEL,
     autoLevel: data?.autoLevel || meta?.autoLevel || DEFAULT_AUTO_LEVEL,
     missionDir: data?.missionDir || meta?.missionDir,
     missionBaseSessionId: data?.missionBaseSessionId || meta?.missionBaseSessionId,
@@ -58,7 +68,7 @@ export function buildRestoredSessionBuffer(params: {
     interactionMode: protocol.interactionMode,
     autonomyLevel: protocol.autonomyLevel,
     decompSessionType: protocol.decompSessionType,
-    reasoningEffort: data?.reasoningEffort || meta?.reasoningEffort || '',
+    reasoningEffort: runtimeSelection.reasoningEffort,
     apiKeyFingerprint: data?.apiKeyFingerprint || meta?.apiKeyFingerprint,
   }
 
