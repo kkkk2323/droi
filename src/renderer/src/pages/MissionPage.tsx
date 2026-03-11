@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PanelsLeftRight, MessagesSquare } from 'lucide-react'
+import { PanelsLeftRight } from 'lucide-react'
 
 import { ChatPage } from './ChatPage'
 import { MissionControlPanel } from '@/components/mission-control-panel'
@@ -81,49 +81,31 @@ export function MissionPage() {
   return (
     <div
       data-testid="mission-page"
-      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+      className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
     >
-      <div className="border-b border-border px-4 py-2">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <h1 className="shrink-0 text-sm font-semibold text-foreground">Mission</h1>
-          <div
-            data-testid="mission-view-toggle"
-            className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5"
-          >
+      {viewMode === 'chat' ? (
+        <>
+          <ChatPage
+            forceInputDisabled={inputSemantics.disabled}
+            forceDisabledPlaceholder={inputSemantics.placeholder}
+          />
+          <div className="absolute right-4 top-1 z-20">
             <Button
               type="button"
               size="sm"
-              variant={viewMode === 'chat' ? 'secondary' : 'ghost'}
-              onClick={() => setManualView('chat')}
-              className="h-7 px-2.5 text-xs"
-            >
-              <MessagesSquare className="size-3.5" />
-              Chat
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={viewMode === 'mission-control' ? 'secondary' : 'ghost'}
+              variant="outline"
+              data-testid="mission-view-toggle"
               onClick={() => setManualView('mission-control')}
-              className="h-7 px-2.5 text-xs"
+              className="h-7 gap-1 bg-background/90 px-2 text-xs shadow-sm backdrop-blur"
             >
               <PanelsLeftRight className="size-3.5" />
               Control
             </Button>
           </div>
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        {viewMode === 'chat' ? (
-          <ChatPage
-            forceInputDisabled={inputSemantics.disabled}
-            forceDisabledPlaceholder={inputSemantics.placeholder}
-          />
-        ) : (
-          <MissionControlPanel mission={mission} />
-        )}
-      </div>
+        </>
+      ) : (
+        <MissionControlPanel mission={mission} onViewChange={setManualView} />
+      )}
     </div>
   )
 }

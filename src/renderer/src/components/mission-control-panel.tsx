@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   LoaderCircle,
+  MessagesSquare,
   PauseCircle,
   ShieldCheck,
   SquareX,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/missionControl'
 import { getMissionActionState, getMissionRuntimeStatus } from '@/lib/missionUiSemantics'
 import type { MissionState } from '@/state/missionState'
+import type { MissionViewMode } from '@/lib/missionPage'
 import { useActions, useActiveSessionId, useAppStore } from '@/store'
 
 const EMPTY_MESSAGES: never[] = []
@@ -65,15 +67,17 @@ function getToneClasses(tone: 'default' | 'warning' | 'danger' | 'success'): str
   return 'border-border/70 bg-muted/20 text-muted-foreground'
 }
 
+function formatTimeOnly(timestampLabel: string): string {
+  const match = timestampLabel.match(/(\d{1,2}:\d{2}:\d{2})\s*(AM|PM)?/i)
+  if (!match) return timestampLabel
+  return match[2] ? `${match[1]} ${match[2]}` : match[1]
+}
+
 function HandoffCard({ handoff }: { handoff: ReturnType<typeof getMissionHandoffCards>[number] }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <article
-      key={handoff.key}
-      data-testid={handoff.testId}
-      className="rounded-lg border border-border/70 bg-background/60 px-3 py-3"
-    >
+    <article data-testid={handoff.testId} className="rounded-lg border border-border/50 px-3 py-2">
       <button
         type="button"
         className="flex w-full items-center justify-between gap-2 text-left"
@@ -81,70 +85,63 @@ function HandoffCard({ handoff }: { handoff: ReturnType<typeof getMissionHandoff
       >
         <div className="flex min-w-0 items-center gap-2">
           {expanded ? (
-            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
           ) : (
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+            <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
           )}
-          <span className="truncate text-sm font-medium text-foreground">{handoff.title}</span>
+          <span className="truncate text-sm text-foreground">{handoff.title}</span>
         </div>
         <Badge variant={getSuccessBadgeVariant(handoff.successState)}>{handoff.successState}</Badge>
       </button>
 
       {expanded && (
-        <div className="mt-3 space-y-3 border-t border-border/50 pt-3 text-sm">
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Summary
-            </div>
-            <p className="mt-1 text-foreground">{handoff.salientSummary}</p>
-          </div>
+        <div className="mt-2 space-y-2 border-t border-border/30 pt-2 text-sm text-muted-foreground">
+          <p className="text-foreground">{handoff.salientSummary}</p>
+          <p>{handoff.whatWasImplemented}</p>
 
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              What was implemented
+          {(handoff.commandResults.length > 0 || handoff.interactiveResults.length > 0) && (
+            <div className="grid gap-3 text-xs md:grid-cols-2">
+              {handoff.commandResults.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1 text-muted-foreground/60">
+                    <TerminalSquare className="size-3" />
+                    Commands
+                  </div>
+                  <ul className="mt-1 space-y-0.5">
+                    {handoff.commandResults.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {handoff.interactiveResults.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1 text-muted-foreground/60">
+                    <CheckCircle2 className="size-3" />
+                    Checks
+                  </div>
+                  <ul className="mt-1 space-y-0.5">
+                    {handoff.interactiveResults.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-            <p className="mt-1 text-foreground">{handoff.whatWasImplemented}</p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <TerminalSquare className="size-3" />
-                Commands
-              </div>
-              <ul className="mt-1.5 space-y-1 text-muted-foreground">
-                {handoff.commandResults.length === 0 ? (
-                  <li>None recorded.</li>
-                ) : (
-                  handoff.commandResults.map((item) => <li key={item}>{item}</li>)
-                )}
-              </ul>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <CheckCircle2 className="size-3" />
-                Checks
-              </div>
-              <ul className="mt-1.5 space-y-1 text-muted-foreground">
-                {handoff.interactiveResults.length === 0 ? (
-                  <li>None recorded.</li>
-                ) : (
-                  handoff.interactiveResults.map((item) => <li key={item}>{item}</li>)
-                )}
-              </ul>
-            </div>
-          </div>
-
-          <div className="text-xs text-muted-foreground/60">
-            <span className="font-mono">{handoff.featureId}</span>
-          </div>
+          )}
         </div>
       )}
     </article>
   )
 }
 
-export function MissionControlPanel({ mission }: { mission?: MissionState | null }) {
+export function MissionControlPanel({
+  mission,
+  onViewChange,
+}: {
+  mission?: MissionState | null
+  onViewChange?: (view: MissionViewMode) => void
+}) {
   const activeSessionId = useActiveSessionId()
   const messages = useAppStore((state) =>
     activeSessionId ? state.sessionBuffers.get(activeSessionId)?.messages || [] : EMPTY_MESSAGES,
@@ -202,107 +199,113 @@ export function MissionControlPanel({ mission }: { mission?: MissionState | null
   return (
     <div
       data-testid="mission-control-view"
-      className="flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
+      className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
     >
-      {/* Status header */}
-      <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-            <Badge data-testid="mission-status" variant={getStateBadgeVariant(status.stateLabel)}>
-              {status.stateLabel}
-            </Badge>
-            <span className="text-sm font-medium text-foreground">{status.progressLabel}</span>
-            <span className="text-muted-foreground/40">|</span>
-            <span className="min-w-0 truncate text-sm text-muted-foreground">
-              {status.currentFeatureLabel}
-            </span>
-            {status.phaseLabel !== 'Implementation in progress' && (
-              <>
-                <span className="text-muted-foreground/40">|</span>
-                <span className="text-xs text-muted-foreground">{status.phaseLabel}</span>
-              </>
-            )}
-          </div>
+      {/* Unified bar: status + actions + view toggle */}
+      <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-2 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3">
+          <Badge data-testid="mission-status" variant={getStateBadgeVariant(status.stateLabel)}>
+            {status.stateLabel}
+          </Badge>
+          <span className="text-sm text-muted-foreground">{status.progressLabel}</span>
 
-          <div data-testid="mission-action-bar" className="flex shrink-0 items-center gap-2">
-            {actionState.canPause && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div data-testid="mission-action-bar" className="flex items-center gap-1.5">
+              {actionState.canPause && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  data-testid="mission-pause"
+                  disabled={pendingAction === 'pause'}
+                  onClick={handlePauseClick}
+                  className="h-7 px-2 text-xs"
+                >
+                  {pendingAction === 'pause' ? (
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                  ) : (
+                    <PauseCircle className="size-3.5" />
+                  )}
+                  Pause
+                </Button>
+              )}
+              {actionState.canKillWorker && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  data-testid="mission-kill-worker"
+                  disabled={pendingAction === 'kill'}
+                  onClick={handleKillClick}
+                  className="h-7 px-2 text-xs"
+                >
+                  {pendingAction === 'kill' ? (
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                  ) : (
+                    <SquareX className="size-3.5" />
+                  )}
+                  Kill Worker
+                </Button>
+              )}
+            </div>
+
+            {onViewChange && (
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                data-testid="mission-pause"
-                disabled={pendingAction === 'pause'}
-                onClick={handlePauseClick}
+                variant="ghost"
+                data-testid="mission-view-toggle"
+                onClick={() => onViewChange('chat')}
+                className="h-7 px-2 text-xs text-muted-foreground"
               >
-                {pendingAction === 'pause' ? (
-                  <LoaderCircle className="size-3.5 animate-spin" />
-                ) : (
-                  <PauseCircle className="size-3.5" />
-                )}
-                Pause
-              </Button>
-            )}
-            {actionState.canKillWorker && (
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                data-testid="mission-kill-worker"
-                disabled={pendingAction === 'kill'}
-                onClick={handleKillClick}
-              >
-                {pendingAction === 'kill' ? (
-                  <LoaderCircle className="size-3.5 animate-spin" />
-                ) : (
-                  <SquareX className="size-3.5" />
-                )}
-                Kill Worker
+                <MessagesSquare className="size-3.5" />
+                Chat
               </Button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Runtime status banner - only when non-default tone */}
+      {/* Alert banner */}
       {runtimeStatus.tone !== 'default' && (
         <div
           data-testid="mission-runtime-status"
-          className={cn('border-b px-4 py-2.5', getToneClasses(runtimeStatus.tone))}
+          className={cn('border-b px-4 py-2', getToneClasses(runtimeStatus.tone))}
         >
-          <div className="mx-auto max-w-5xl">
-            <p className="text-sm font-medium">{runtimeStatus.title}</p>
-            <p className="text-xs opacity-80">{runtimeStatus.description}</p>
+          <div className="mx-auto max-w-5xl text-sm">
+            <span className="font-medium">{runtimeStatus.title}</span>
+            <span className="ml-2 text-xs opacity-70">{runtimeStatus.description}</span>
           </div>
         </div>
       )}
 
       {actionError && (
         <div className="border-b border-destructive/30 bg-destructive/5 px-4 py-2">
-          <div className="mx-auto flex max-w-5xl items-start gap-2 text-sm text-destructive">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <div className="mx-auto flex max-w-5xl items-center gap-2 text-sm text-destructive">
+            <AlertTriangle className="size-3.5 shrink-0" />
             <span>{actionError}</span>
           </div>
         </div>
       )}
 
-      {/* Main content */}
+      {/* Content */}
       <div className="min-w-0 px-4 py-5">
-        <div className="mx-auto min-w-0 max-w-5xl space-y-8">
+        <div className="mx-auto min-w-0 max-w-5xl space-y-6">
           {/* Feature Queue */}
           <section>
-            <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Feature Queue
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Features
             </h3>
-            <div data-testid="mission-feature-queue" className="space-y-1">
+            <div data-testid="mission-feature-queue" className="space-y-0.5">
               {featureQueue.length === 0 ? (
-                <p className="py-4 text-sm text-muted-foreground/60">No features queued yet.</p>
+                <p className="py-3 text-sm text-muted-foreground/60">No features queued yet.</p>
               ) : (
                 featureQueue.map((feature) => (
                   <div
                     key={feature.id}
                     data-testid={feature.testId}
                     className={cn(
-                      'flex min-w-0 items-center gap-3 rounded-lg px-3 py-2 transition-colors',
+                      'flex min-w-0 items-center gap-2.5 rounded-md px-2.5 py-1.5',
                       feature.isCurrent
                         ? 'bg-primary/5 ring-1 ring-primary/20'
                         : 'hover:bg-muted/30',
@@ -310,79 +313,67 @@ export function MissionControlPanel({ mission }: { mission?: MissionState | null
                   >
                     <span
                       className={cn(
-                        'size-2 shrink-0 rounded-full',
+                        'size-1.5 shrink-0 rounded-full',
                         getFeatureStatusDot(feature.status, feature.isCurrent),
                       )}
                     />
                     <span
                       className="min-w-0 flex-1 truncate text-sm text-foreground"
-                      title={`${feature.description} (${feature.id})`}
+                      title={feature.description}
                     >
                       {feature.description}
                     </span>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {feature.isValidator && (
-                        <Badge
-                          variant="outline"
-                          className="gap-0.5 border-violet-500/40 bg-violet-500/5 text-[10px]"
-                        >
-                          <ShieldCheck className="size-3" />
-                          Validator
-                        </Badge>
+                    {feature.isValidator && (
+                      <ShieldCheck className="size-3 shrink-0 text-violet-500" />
+                    )}
+                    <span
+                      className={cn(
+                        'shrink-0 text-xs',
+                        feature.isCurrent ? 'font-medium text-primary' : 'text-muted-foreground',
                       )}
-                      <span
-                        className={cn(
-                          'text-xs',
-                          feature.isCurrent ? 'font-medium text-primary' : 'text-muted-foreground',
-                        )}
-                      >
-                        {feature.statusLabel}
-                      </span>
-                    </div>
+                    >
+                      {feature.statusLabel}
+                    </span>
                   </div>
                 ))
               )}
             </div>
           </section>
 
-          {/* Progress Timeline */}
-          <section>
-            <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Timeline
-            </h3>
-            <div data-testid="mission-progress-timeline" className="space-y-px">
-              {timeline.length === 0 ? (
-                <p className="py-4 text-sm text-muted-foreground/60">No events recorded yet.</p>
-              ) : (
-                timeline.map((entry, index) => (
+          {/* Timeline */}
+          {timeline.length > 0 && (
+            <section>
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Timeline
+              </h3>
+              <div data-testid="mission-progress-timeline" className="space-y-px">
+                {timeline.map((entry, index) => (
                   <div
                     key={`${entry.timestampLabel}-${entry.eventLabel}-${index}`}
-                    className="flex min-w-0 items-baseline gap-3 rounded-lg px-3 py-1.5 hover:bg-muted/20"
+                    className="flex min-w-0 items-baseline gap-3 px-2.5 py-1"
                   >
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
-                      {entry.timestampLabel}
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
+                      {formatTimeOnly(entry.timestampLabel)}
                     </span>
-                    <span className="shrink-0 text-sm font-medium text-foreground">
-                      {entry.eventLabel}
-                    </span>
+                    <span className="shrink-0 text-sm text-foreground">{entry.eventLabel}</span>
                     {entry.detailLabel && (
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      <span className="min-w-0 truncate text-xs text-muted-foreground/60">
                         {entry.detailLabel}
                       </span>
                     )}
                   </div>
-                ))
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          )}
 
-          {/* Worker Handoffs - only show when there are handoffs */}
+          {/* Handoffs */}
           {handoffs.length > 0 && (
             <section>
-              <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Handoffs
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {handoffs.map((handoff) => (
                   <HandoffCard key={handoff.key} handoff={handoff} />
                 ))}
