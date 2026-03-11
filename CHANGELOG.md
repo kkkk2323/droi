@@ -1,3 +1,28 @@
+## 0.22.0 - 2026-03-11
+
+### Features
+- Implement Mission mode support with session management and UI enhancements
+- Add Mission GUI (Mission Control, Mission Page, Worker List Panel)
+- Integrate OpenSpec prompts and skills for change management (propose, explore, apply, archive)
+- Enhance InputBar with readonly model support and mission settings
+- Implement mission model settings management and UI integration
+- Add support for paused worker sessions and runtime logging
+- Surface mission control queue, timeline, and handoffs
+- Add mission-specific backend services (watcher, reader, ipc bridge)
+- Standardize Mission GUI testing with validation harnesses and proof recordings
+
+### Refactor
+- Streamline follow-up handling and mission state inference
+- Refactor feature selection and handoff display in Mission Control Panel
+- Enhance mission state handling with completion checks and notification updates
+- Remove restartSessionWithActiveKey and related legacy logic
+
+### Fixes
+- Preserver mission permission option semantics
+- Stabilize recovered handoff keys
+- Preserve base mission dir fallback across restarts
+- Await mission watcher teardown during cleanup
+
 ## 0.21.0 - 2026-03-08
 
 ### Features
