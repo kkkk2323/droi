@@ -180,7 +180,34 @@ export function createApiRoutes() {
         patch.apiKey = body.apiKey || undefined
       if (typeof body.activeProjectDir === 'string' || body.activeProjectDir === null)
         patch.activeProjectDir = body.activeProjectDir || undefined
-      if (Array.isArray(body.projects)) patch.projects = body.projects as any
+      if (Array.isArray(body.projects)) {
+        patch.projects = body.projects
+          .map((project) => {
+            const entry: {
+              dir: string
+              name: string
+              displayName?: string
+              workspaceType?: 'branch' | 'worktree' | 'local'
+            } = {
+              dir: String((project as any)?.dir || ''),
+              name: String((project as any)?.name || ''),
+            }
+            const displayName = (project as any)?.displayName
+            if (typeof displayName === 'string' && displayName.trim()) {
+              entry.displayName = displayName.trim()
+            }
+            const workspaceType = (project as any)?.workspaceType
+            if (
+              workspaceType === 'branch' ||
+              workspaceType === 'worktree' ||
+              workspaceType === 'local'
+            ) {
+              entry.workspaceType = workspaceType
+            }
+            return entry
+          })
+          .filter((project) => project.dir && project.name) as any
+      }
       if (typeof body.traceChainEnabled === 'boolean' || body.traceChainEnabled === null) {
         ;(patch as any).traceChainEnabled =
           body.traceChainEnabled === null ? undefined : body.traceChainEnabled

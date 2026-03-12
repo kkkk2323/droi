@@ -1,4 +1,12 @@
-import type { Project, SessionMeta } from '@/types'
+import type { Project, SessionMeta, WorkspaceType } from '@/types'
+
+function mergeProjectWorkspaceType(
+  current?: WorkspaceType,
+  next?: WorkspaceType,
+): WorkspaceType | undefined {
+  if (current === 'local' || next === 'local') return 'local'
+  return current || next
+}
 
 export function getRepoKey(
   meta: Pick<SessionMeta, 'repoRoot' | 'workspaceDir' | 'projectDir'>,
@@ -57,12 +65,13 @@ export function upsertSessionMeta(prev: Project[], meta: SessionMeta): Project[]
   const cleaned = prev.map((p) => ({ ...p, sessions: p.sessions.filter((s) => s.id !== meta.id) }))
   const target = cleaned.find((p) => p.dir === repoKey)
   if (target) {
+    target.workspaceType = mergeProjectWorkspaceType(target.workspaceType, meta.workspaceType)
     target.sessions.push(meta)
     target.sessions.sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
     return cleaned
   }
   const name = repoKey.split(/[\\/]/).pop() || repoKey
-  return [...cleaned, { dir: repoKey, name, sessions: [meta] }]
+  return [...cleaned, { dir: repoKey, name, workspaceType: meta.workspaceType, sessions: [meta] }]
 }
 
 export function updateSessionTitle(prev: Project[], sessionId: string, title: string): Project[] {

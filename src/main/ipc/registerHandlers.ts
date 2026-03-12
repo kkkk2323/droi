@@ -1107,12 +1107,25 @@ export function registerIpcHandlers(opts: {
     const normalized = Array.isArray(projects)
       ? projects
           .map((p) => {
-            const entry: { dir: string; name: string; displayName?: string } = {
+            const entry: {
+              dir: string
+              name: string
+              displayName?: string
+              workspaceType?: 'branch' | 'worktree' | 'local'
+            } = {
               dir: (p as any)?.dir,
               name: (p as any)?.name,
             }
             const dn = (p as any)?.displayName
             if (typeof dn === 'string' && dn.trim()) entry.displayName = dn.trim()
+            const workspaceType = (p as any)?.workspaceType
+            if (
+              workspaceType === 'branch' ||
+              workspaceType === 'worktree' ||
+              workspaceType === 'local'
+            ) {
+              entry.workspaceType = workspaceType
+            }
             return entry
           })
           .filter((p) => typeof p.dir === 'string' && p.dir && typeof p.name === 'string' && p.name)

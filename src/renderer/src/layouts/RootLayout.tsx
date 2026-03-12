@@ -28,6 +28,7 @@ import {
 import { isBrowserMode } from '@/droidClient'
 import { cn } from '@/lib/utils'
 import { getAppRouteTarget } from '@/lib/sessionRouting'
+import { supportsGitWorkspace } from '@/lib/workspaceType'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
@@ -58,6 +59,16 @@ function InnerLayout() {
       hasPendingNewSession: Boolean(s.pendingNewSession),
       activeSession,
     })
+  })
+  const activeSessionSupportsGit = useAppStore((s) => {
+    const activeSessionId = s.activeSessionId
+    const activeSession = activeSessionId
+      ? s.sessionBuffers.get(activeSessionId) ||
+        s.projects
+          .flatMap((project) => project.sessions)
+          .find((session) => session.id === activeSessionId)
+      : null
+    return supportsGitWorkspace(activeSession?.workspaceType)
   })
 
   useEffect(() => {
@@ -96,9 +107,13 @@ function InnerLayout() {
           {!pendingNewSession && (
             <div className="ml-auto flex items-center gap-1.5" style={noDrag}>
               {activeProjectDir && <OpenInEditorButton dir={activeProjectDir} />}
-              <WorktreeIndicator />
-              <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />
-              <FilesChangedBadge projectDir={activeProjectDir} isRunning={isRunning} />
+              {activeSessionSupportsGit && (
+                <>
+                  <WorktreeIndicator />
+                  <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />
+                  <FilesChangedBadge projectDir={activeProjectDir} isRunning={isRunning} />
+                </>
+              )}
             </div>
           )}
         </header>

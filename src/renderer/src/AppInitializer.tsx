@@ -5,6 +5,7 @@ import type { CustomModelDef, MissionModelSettings } from '@/types'
 import { getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from '@/lib/uuid'
 import { defaultSessionTitleFromBranch } from '@/lib/sessionWorktree'
+import { createLocalWorkspaceInfo, isLocalWorkspaceType } from '@/lib/workspaceType'
 import {
   formatNotificationTrace,
   isTraceChainEnabled,
@@ -192,6 +193,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           dir: p.dir,
           name: p.name,
           displayName: p.displayName,
+          workspaceType: p.workspaceType,
           sessions: [] as SessionMeta[],
         }))
         const fallbackProjectDir = state.activeProjectDir || persistedProjects[0]?.dir || ''
@@ -203,10 +205,14 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             sessionMetas.map(async (meta): Promise<SessionMeta | null> => {
               const guessedDir = meta.workspaceDir || meta.projectDir || fallbackProjectDir
               if (!guessedDir) return null
-              const info = await withTimeout(
-                store._resolveWorkspace(guessedDir, meta.cwdSubpath),
-                null,
-              )
+              const info = isLocalWorkspaceType(meta.workspaceType)
+                ? createLocalWorkspaceInfo({
+                    projectDir: meta.projectDir || guessedDir,
+                    repoRoot: meta.repoRoot || guessedDir,
+                    workspaceDir: meta.workspaceDir || guessedDir,
+                    cwdSubpath: meta.cwdSubpath,
+                  })
+                : await withTimeout(store._resolveWorkspace(guessedDir, meta.cwdSubpath), null)
               const repoRoot = info?.repoRoot || meta.repoRoot || guessedDir
               const projectDir = info?.projectDir || meta.projectDir || guessedDir
               const workspaceDir = info?.workspaceDir || meta.workspaceDir || guessedDir
@@ -228,16 +234,26 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           const repoRoot = getRepoKey(meta)
           if (!repoRoot) continue
           const existing = projectsByDir.get(repoRoot)
-          if (existing) existing.sessions.push(meta)
-          else {
+          if (existing) {
+            existing.sessions.push(meta)
+            if (!existing.workspaceType) existing.workspaceType = meta.workspaceType
+          } else {
             const name = repoRoot.split(/[\\/]/).pop() || repoRoot
-            projectsByDir.set(repoRoot, { dir: repoRoot, name, sessions: [meta] })
+            projectsByDir.set(repoRoot, {
+              dir: repoRoot,
+              name,
+              workspaceType: meta.workspaceType,
+              sessions: [meta],
+            })
           }
         }
         for (const p of projectsByDir.values())
           p.sessions.sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
 
         const nextProjects = Array.from(projectsByDir.values())
+        const restoredProject = nextProjects.find(
+          (project) => project.dir === state.activeProjectDir,
+        )
 
         const matchedByActiveDir = normalizedMetas
           .filter((m) => m.projectDir === state.activeProjectDir)
@@ -279,7 +295,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           })
         } else {
           const restoredInfo = restoredProjectDir
-            ? await withTimeout(store._resolveWorkspace(restoredProjectDir), null)
+            ? isLocalWorkspaceType(restoredProject?.workspaceType)
+              ? createLocalWorkspaceInfo({
+                  projectDir: restoredProjectDir,
+                  repoRoot: restoredProjectDir,
+                })
+              : await withTimeout(store._resolveWorkspace(restoredProjectDir), null)
             : null
           const newId = restoredProjectDir
             ? (
@@ -312,7 +333,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                 cwdSubpath: restoredInfo?.cwdSubpath,
                 repoRoot: restoredInfo?.repoRoot || restoredProjectDir,
                 branch: restoredInfo?.branch,
-                workspaceType: restoredInfo?.workspaceType,
+                workspaceType:
+                  restoredInfo?.workspaceType ||
+                  (isLocalWorkspaceType(restoredProject?.workspaceType) ? 'local' : undefined),
                 baseBranch: restoredInfo?.baseBranch,
                 title: defaultSessionTitleFromBranch(restoredInfo?.branch || ''),
                 savedAt: Date.now(),
@@ -331,7 +354,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                 cwdSubpath: restoredInfo?.cwdSubpath,
                 repoRoot: restoredInfo?.repoRoot || restoredProjectDir,
                 branch: restoredInfo?.branch,
-                workspaceType: restoredInfo?.workspaceType,
+                workspaceType:
+                  restoredInfo?.workspaceType ||
+                  (isLocalWorkspaceType(restoredProject?.workspaceType) ? 'local' : undefined),
                 baseBranch: restoredInfo?.baseBranch,
                 model: DEFAULT_MODEL,
                 autoLevel: DEFAULT_AUTO_LEVEL,
@@ -355,7 +380,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           const cur = useAppStore.getState().projects
           if (Array.isArray(cur) && cur.length > 0) {
             droid.saveProjects(
-              cur.map((p) => ({ dir: p.dir, name: p.name, displayName: p.displayName })),
+              cur.map((p) => ({
+                dir: p.dir,
+                name: p.name,
+                displayName: p.displayName,
+                workspaceType: p.workspaceType,
+              })),
             )
           }
         } catch {
@@ -383,7 +413,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       if (state.projects === prevProjects) return
       prevProjects = state.projects
       droid.saveProjects(
-        state.projects.map((p) => ({ dir: p.dir, name: p.name, displayName: p.displayName })),
+        state.projects.map((p) => ({
+          dir: p.dir,
+          name: p.name,
+          displayName: p.displayName,
+          workspaceType: p.workspaceType,
+        })),
       )
     })
   }, [])

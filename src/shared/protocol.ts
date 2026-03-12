@@ -242,6 +242,7 @@ export interface Project {
   dir: string
   name: string
   displayName?: string
+  workspaceType?: WorkspaceType
   sessions: SessionMeta[]
 }
 
@@ -280,7 +281,12 @@ export interface ApiKeyUsage {
 export interface PersistedAppStateV1 {
   version: 1
   apiKey?: string
-  projects?: Array<{ dir: string; name: string; displayName?: string }>
+  projects?: Array<{
+    dir: string
+    name: string
+    displayName?: string
+    workspaceType?: WorkspaceType
+  }>
   activeProjectDir?: string
   traceChainEnabled?: boolean
 }
@@ -290,7 +296,12 @@ export interface PersistedAppStateV2 {
   machineId: string
   apiKey?: string
   apiKeys?: ApiKeyEntry[]
-  projects?: Array<{ dir: string; name: string; displayName?: string }>
+  projects?: Array<{
+    dir: string
+    name: string
+    displayName?: string
+    workspaceType?: WorkspaceType
+  }>
   activeProjectDir?: string
   traceChainEnabled?: boolean
   showDebugTrace?: boolean
@@ -572,7 +583,14 @@ export interface DroidClientAPI {
   onMissionRuntimeChanged: (callback: (payload: MissionRuntimeChangeEvent) => void) => () => void
 
   loadAppState: () => Promise<PersistedAppState>
-  saveProjects: (projects: Array<{ dir: string; name: string; displayName?: string }>) => void
+  saveProjects: (
+    projects: Array<{
+      dir: string
+      name: string
+      displayName?: string
+      workspaceType?: WorkspaceType
+    }>,
+  ) => void
   updateProjectSettings: (params: {
     repoRoot: string
     settings: ProjectSettings
@@ -637,7 +655,7 @@ export interface GitStatusFile {
   deletions: number
 }
 
-export type WorkspaceType = 'branch' | 'worktree'
+export type WorkspaceType = 'branch' | 'worktree' | 'local'
 
 export interface WorkspaceInfo {
   repoRoot: string
