@@ -520,3 +520,61 @@ test('buildRestoredSessionBuffer applies the configured Mission orchestrator mod
   assert.equal(restored.model, 'gemini-3-flash-preview')
   assert.equal(restored.reasoningEffort, 'high')
 })
+
+test('buildRestoredSessionBuffer restores pending attention state from live session data', () => {
+  const restored = buildRestoredSessionBuffer({
+    projectDir: '/repo',
+    workspace: {
+      repoRoot: '/repo',
+      workspaceDir: '/repo',
+      branch: 'main',
+      workspaceType: 'branch',
+    },
+    meta: {
+      autoLevel: 'default',
+      model: 'gpt-5.4',
+      interactionMode: 'spec',
+      autonomyLevel: 'off',
+      sessionKind: 'normal',
+    },
+    data: {
+      id: 'pending-restore',
+      projectDir: '/repo',
+      title: 'Pending restore',
+      savedAt: 1,
+      messages: [],
+      model: 'gpt-5.4',
+      autoLevel: 'default',
+      pendingPermissions: [
+        {
+          requestId: 'perm-1',
+          toolUses: [{ id: 'tool-1', name: 'Execute' }],
+          options: ['proceed_once', 'cancel'],
+        },
+      ],
+      pendingAskUserRequests: [
+        {
+          requestId: 'ask-1',
+          toolCallId: 'tool-ask-1',
+          questions: [
+            {
+              index: 0,
+              topic: 'Mode',
+              question: 'Choose a mode',
+              options: ['Fast', 'Safe'],
+            },
+          ],
+        },
+      ],
+    },
+  })
+
+  assert.equal(restored.isRunning, true)
+  assert.equal(restored.workingState, 'waiting_for_tool_confirmation')
+  assert.equal(restored.pendingPermissionRequests?.length, 1)
+  assert.equal(restored.pendingPermissionRequests?.[0]?.requestId, 'perm-1')
+  assert.equal(restored.pendingPermissionRequests?.[0]?.options[0], 'proceed_once')
+  assert.equal(restored.pendingAskUserRequests?.length, 1)
+  assert.equal(restored.pendingAskUserRequests?.[0]?.requestId, 'ask-1')
+  assert.equal(restored.pendingAskUserRequests?.[0]?.questions[0]?.question, 'Choose a mode')
+})

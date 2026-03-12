@@ -28,6 +28,12 @@ import {
 import { commitWorkflow, detectGitTools } from '../../backend/git/commitWorkflow'
 import { generateCommitMeta } from '../../backend/git/generateCommitMeta'
 import { SetupScriptRunner } from '../../backend/session/setupScriptRunner'
+import {
+  mergeLoadSessionResponse,
+  resolveProtocolPayload,
+  toAutonomyLevel,
+  toInteractionMode,
+} from '../../backend/session/loadSessionResponse'
 import { createFactoryApiProxy } from '../../backend/keys/factoryApiProxy'
 import { createKeyStore } from '../../backend/keys/keyStore'
 import { createAppStateStore } from '../../backend/storage/appStateStore'
@@ -62,68 +68,12 @@ import type {
   MissionDirRequest,
   MissionRuntimeRequest,
 } from '../../backend/mission/missionTypes.ts'
-import {
-  resolveSessionProtocolFields,
-  type DecompSessionType,
-  type SessionKind,
-} from '../../shared/sessionProtocol.ts'
+import type { DecompSessionType, SessionKind } from '../../shared/sessionProtocol.ts'
 
 function apiKeyFingerprint(key: string): string {
   const k = String(key || '')
   if (!k) return ''
   return createHash('sha256').update(k, 'utf8').digest('hex').slice(0, 12)
-}
-
-function toInteractionMode(autoLevel: unknown): DroidInteractionMode {
-  const v = typeof autoLevel === 'string' ? autoLevel : 'default'
-  return v === 'default' ? 'spec' : 'auto'
-}
-
-function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
-  const v = typeof autoLevel === 'string' ? autoLevel : 'default'
-  if (v === 'default') return 'off'
-  if (v === 'low') return 'low'
-  if (v === 'medium') return 'medium'
-  if (v === 'high') return 'high'
-  return 'low'
-}
-
-function coerceInteractionMode(value: unknown): DroidInteractionMode | undefined {
-  return value === 'spec' || value === 'auto' || value === 'agi' ? value : undefined
-}
-
-function coerceAutonomyLevel(value: unknown): DroidAutonomyLevel | undefined {
-  return value === 'off' || value === 'low' || value === 'medium' || value === 'high'
-    ? value
-    : undefined
-}
-
-function coerceSessionKind(value: unknown): SessionKind | undefined {
-  return value === 'mission' || value === 'normal' ? value : undefined
-}
-
-function coerceDecompSessionType(value: unknown): DecompSessionType | undefined {
-  return value === 'orchestrator' ? value : undefined
-}
-
-function resolveProtocolPayload(payload: {
-  autoLevel?: unknown
-  isMission?: unknown
-  sessionKind?: unknown
-  interactionMode?: unknown
-  autonomyLevel?: unknown
-  decompSessionType?: unknown
-}) {
-  return resolveSessionProtocolFields({
-    autoLevel: payload.autoLevel,
-    explicit: {
-      isMission: payload.isMission === true ? true : undefined,
-      sessionKind: coerceSessionKind(payload.sessionKind),
-      interactionMode: coerceInteractionMode(payload.interactionMode),
-      autonomyLevel: coerceAutonomyLevel(payload.autonomyLevel),
-      decompSessionType: coerceDecompSessionType(payload.decompSessionType),
-    },
-  })
 }
 
 function readTraceChainEnabled(state: PersistedAppState): boolean | undefined {
@@ -224,62 +174,6 @@ export function registerIpcHandlers(opts: {
       cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: activeKey, version: 2 }
     }
     return env
-  }
-
-  const mergeLoadSessionResponse = (
-    stored: Awaited<ReturnType<typeof sessionStore.load>>,
-    live: Record<string, unknown> | null,
-  ) => {
-    if (!stored || !live) return stored
-
-    const settings =
-      live.settings && typeof live.settings === 'object' ? (live.settings as any) : {}
-    const protocol = resolveSessionProtocolFields({
-      autoLevel: stored.autoLevel,
-      explicit: {
-        isMission: (live as any).isMission ?? stored.isMission,
-        sessionKind: coerceSessionKind((live as any).sessionKind) || stored.sessionKind,
-        interactionMode:
-          coerceInteractionMode((live as any).interactionMode) ||
-          coerceInteractionMode(settings.interactionMode) ||
-          stored.interactionMode,
-        autonomyLevel:
-          coerceAutonomyLevel((live as any).autonomyLevel) ||
-          coerceAutonomyLevel(settings.autonomyLevel) ||
-          stored.autonomyLevel,
-        decompSessionType:
-          coerceDecompSessionType((live as any).decompSessionType) || stored.decompSessionType,
-      },
-    })
-
-    return {
-      ...stored,
-      model:
-        (typeof (live as any).modelId === 'string' ? (live as any).modelId : undefined) ||
-        (typeof settings.modelId === 'string' ? settings.modelId : undefined) ||
-        stored.model,
-      missionDir:
-        (typeof (live as any).missionDir === 'string' ? (live as any).missionDir : undefined) ||
-        stored.missionDir,
-      isMission: protocol.isMission,
-      sessionKind: protocol.sessionKind,
-      interactionMode: protocol.interactionMode,
-      autonomyLevel: protocol.autonomyLevel,
-      decompSessionType: protocol.decompSessionType,
-      reasoningEffort:
-        (typeof (live as any).reasoningEffort === 'string'
-          ? (live as any).reasoningEffort
-          : undefined) ||
-        (typeof settings.reasoningEffort === 'string' ? settings.reasoningEffort : undefined) ||
-        stored.reasoningEffort,
-      messages: Array.isArray((live as any).messages)
-        ? ((live as any).messages as any)
-        : stored.messages,
-      mission:
-        live.mission && typeof live.mission === 'object'
-          ? ({ ...(live.mission as Record<string, unknown>) } as any)
-          : stored.mission,
-    }
   }
 
   const getSlashCommands = async (): Promise<Map<string, SlashCommandEntry>> => {
@@ -1206,7 +1100,6 @@ export function registerIpcHandlers(opts: {
 
     const stored = await sessionStore.load(sessionId)
     if (!stored) return null
-    if (stored.isMission !== true && stored.sessionKind !== 'mission') return stored
 
     const machineId = (cachedState as PersistedAppStateV2).machineId
     const cwd = String(stored.projectDir || '').trim() || activeProjectDir
