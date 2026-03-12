@@ -1,3 +1,14 @@
+## 0.24.0 - 2026-03-12
+
+### Features
+- Enhance workspace handling with local workspace support
+
+### Fixes
+- Adjust TodoPanel padding for better layout
+
+### Refactor
+- Move and simplify the add-project button in the sidebar
+
 ## 0.23.0 - 2026-03-11
 
 ### Features
