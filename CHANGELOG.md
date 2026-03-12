@@ -1,3 +1,11 @@
+## 0.25.0 - 2026-03-12
+
+### Features
+- Implement session restoration and merging logic for live updates
+
+### Refactor
+- Externalize TodoPanel and GitActionsButton state management
+
 ## 0.24.0 - 2026-03-12
 
 ### Features
