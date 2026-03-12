@@ -21,6 +21,12 @@ import { generateCommitMeta } from '../../../backend/git/generateCommitMeta.ts'
 import { setTraceChainEnabledOverride } from '../../../backend/droid/jsonrpc/notificationFingerprint.ts'
 import { scanSkills } from '../../../backend/skills/skills.ts'
 import {
+  mergeLoadSessionResponse,
+  resolveProtocolPayload,
+  toAutonomyLevel,
+  toInteractionMode,
+} from '../../../backend/session/loadSessionResponse.ts'
+import {
   readFactoryCustomModels,
   readFactoryMissionModelSettings,
   writeFactoryMissionModelSettings,
@@ -31,8 +37,6 @@ import {
 } from '../../../backend/slashCommands/slashCommands.ts'
 import { isDirectory } from '../../../backend/utils/fs.ts'
 import type {
-  DroidAutonomyLevel,
-  DroidInteractionMode,
   DroidPermissionOption,
   GenerateCommitMetaRequest,
   CommitWorkflowRequest,
@@ -41,11 +45,6 @@ import type {
   ProjectSettings,
   SaveSessionRequest,
 } from '../../../shared/protocol'
-import {
-  resolveSessionProtocolFields,
-  type DecompSessionType,
-  type SessionKind,
-} from '../../../shared/sessionProtocol.ts'
 import { getContentType } from '../../utils/path.ts'
 import { jsonError, readJsonBody } from '../../utils/http.ts'
 import { nodeToWebReadable, pipelineNode } from '../../utils/stream.ts'
@@ -56,58 +55,6 @@ function apiKeyFingerprint(key: string): string {
   const k = String(key || '')
   if (!k) return ''
   return createHash('sha256').update(k, 'utf8').digest('hex').slice(0, 12)
-}
-
-function toInteractionMode(autoLevel: unknown): DroidInteractionMode {
-  const v = typeof autoLevel === 'string' ? autoLevel : 'default'
-  return v === 'default' ? 'spec' : 'auto'
-}
-
-function toAutonomyLevel(autoLevel: unknown): DroidAutonomyLevel {
-  const v = typeof autoLevel === 'string' ? autoLevel : 'default'
-  if (v === 'default') return 'off'
-  if (v === 'low') return 'low'
-  if (v === 'medium') return 'medium'
-  if (v === 'high') return 'high'
-  return 'low'
-}
-
-function coerceInteractionMode(value: unknown): DroidInteractionMode | undefined {
-  return value === 'spec' || value === 'auto' || value === 'agi' ? value : undefined
-}
-
-function coerceAutonomyLevel(value: unknown): DroidAutonomyLevel | undefined {
-  return value === 'off' || value === 'low' || value === 'medium' || value === 'high'
-    ? value
-    : undefined
-}
-
-function coerceSessionKind(value: unknown): SessionKind | undefined {
-  return value === 'mission' || value === 'normal' ? value : undefined
-}
-
-function coerceDecompSessionType(value: unknown): DecompSessionType | undefined {
-  return value === 'orchestrator' ? value : undefined
-}
-
-function resolveProtocolPayload(payload: {
-  autoLevel?: unknown
-  isMission?: unknown
-  sessionKind?: unknown
-  interactionMode?: unknown
-  autonomyLevel?: unknown
-  decompSessionType?: unknown
-}) {
-  return resolveSessionProtocolFields({
-    autoLevel: payload.autoLevel,
-    explicit: {
-      isMission: payload.isMission === true ? true : undefined,
-      sessionKind: coerceSessionKind(payload.sessionKind),
-      interactionMode: coerceInteractionMode(payload.interactionMode),
-      autonomyLevel: coerceAutonomyLevel(payload.autonomyLevel),
-      decompSessionType: coerceDecompSessionType(payload.decompSessionType),
-    },
-  })
 }
 
 function readTraceChainEnabled(state: PersistedAppState): boolean | undefined {
@@ -1029,8 +976,35 @@ export function createApiRoutes() {
   api.get('/session/load', async (c) => {
     const deps = c.get('deps')
     const id = c.req.query('id') || ''
-    const data = await deps.sessionStore.load(id)
-    return c.json(data)
+    const stored = await deps.sessionStore.load(id)
+    if (!stored) return c.json(null)
+
+    const state = await loadCachedState(c)
+    const machineId = (state as PersistedAppStateV2).machineId
+    const cwd = String(stored.projectDir || '').trim() || state.activeProjectDir || ''
+    if (!machineId || !cwd || !(await isDirectory(cwd))) return c.json(stored)
+
+    try {
+      const env = await deps.buildExecEnv()
+      const live = await deps.execManager.loadSessionSnapshot({
+        sessionId: stored.id,
+        machineId,
+        cwd,
+        modelId: stored.model || undefined,
+        interactionMode: stored.interactionMode || toInteractionMode(stored.autoLevel),
+        autonomyLevel:
+          stored.autonomyLevel ||
+          (stored.autoLevel ? toAutonomyLevel(stored.autoLevel) : undefined),
+        decompSessionType: stored.decompSessionType,
+        isMission: stored.isMission,
+        sessionKind: stored.sessionKind,
+        reasoningEffort: stored.reasoningEffort || undefined,
+        env,
+      })
+      return c.json(mergeLoadSessionResponse(stored, live))
+    } catch {
+      return c.json(stored)
+    }
   })
 
   api.post('/session/create', async (c) => {

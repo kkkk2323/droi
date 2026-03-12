@@ -2704,6 +2704,8 @@ export const useIsRunning = () =>
     const buf = selectActiveBuffer(s)
     return Boolean(buf?.isRunning)
   })
+export const useSessionRunning = (sessionId: string) =>
+  useAppStore((s) => Boolean(s.sessionBuffers.get(sessionId)?.isRunning))
 export const useIsAnyRunning = () =>
   useAppStore((s) => Array.from(s.sessionBuffers.values()).some((b) => Boolean(b?.isRunning)))
 export const useWorkingState = () => useAppStore((s) => selectActiveBuffer(s)?.workingState)

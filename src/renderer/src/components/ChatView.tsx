@@ -276,15 +276,16 @@ function MessageEntry({
   isPendingSend?: boolean
 }) {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const blocks = Array.isArray(message.blocks) ? message.blocks : []
 
   if (message.role === 'user') {
-    const cmd = message.blocks.find((b): b is CommandBlock => b.kind === 'command')
-    const skill = message.blocks.find((b): b is SkillBlock => b.kind === 'skill')
+    const cmd = blocks.find((b): b is CommandBlock => b.kind === 'command')
+    const skill = blocks.find((b): b is SkillBlock => b.kind === 'skill')
     const text =
-      message.blocks.find((b) => b.kind === 'text')?.kind === 'text'
-        ? (message.blocks.find((b) => b.kind === 'text') as TextBlock).content
+      blocks.find((b) => b.kind === 'text')?.kind === 'text'
+        ? (blocks.find((b) => b.kind === 'text') as TextBlock).content
         : ''
-    const attachments = message.blocks.filter((b): b is AttachmentBlock => b.kind === 'attachment')
+    const attachments = blocks.filter((b): b is AttachmentBlock => b.kind === 'attachment')
     const imageAttachments = attachments.filter((a) => isImageFile(a.name))
     const fileAttachments = attachments.filter((a) => !isImageFile(a.name))
     return (
@@ -359,7 +360,7 @@ function MessageEntry({
   }
 
   if (message.role === 'error') {
-    const text = message.blocks[0]?.kind === 'text' ? message.blocks[0].content : ''
+    const text = blocks[0]?.kind === 'text' ? blocks[0].content : ''
     return (
       <div className="my-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
         {message.errorType && <span className="mb-1 block font-medium">{message.errorType}</span>}
@@ -373,7 +374,7 @@ function MessageEntry({
     )
   }
 
-  const visibleBlocks = message.blocks.filter((b) => !isTodoWriteBlock(b))
+  const visibleBlocks = blocks.filter((b) => !isTodoWriteBlock(b))
   const hasNonThinkingContent = visibleBlocks.some(
     (b) => (b.kind === 'text' && b.content.trim()) || b.kind === 'tool_call',
   )

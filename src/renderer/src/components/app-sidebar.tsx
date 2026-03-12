@@ -11,6 +11,7 @@ import {
   useDeletingSessionIds,
   useIsCreatingSession,
   useIsInitialLoadDone,
+  useSessionRunning,
   useSessionNeedsAttention,
   useAppStore,
 } from '@/store'
@@ -102,10 +103,9 @@ function SessionList({ sessions }: { sessions: SessionMeta[] }) {
 function SessionItem({ session, sessionIdx }: { session: SessionMeta; sessionIdx: number }) {
   const activeSessionId = useActiveSessionId()
   const deletingSessionIds = useDeletingSessionIds()
-  const { getSessionRunning, handleSelectSession, handleTogglePin, handleDeleteSession } =
-    useActions()
+  const { handleSelectSession, handleTogglePin, handleDeleteSession } = useActions()
   const isActive = session.id === activeSessionId
-  const isSessionRunning = getSessionRunning(session.id)
+  const isSessionRunning = useSessionRunning(session.id)
   const needsAttention = useSessionNeedsAttention(session.id)
   const isSessionDeleting = deletingSessionIds.has(session.id)
   const branchName = session.branch?.split('/').pop() || session.branch

@@ -343,6 +343,26 @@ export interface SaveSessionRequest {
   runtimeLogs?: RuntimeLogEntry[]
 }
 
+export interface LoadSessionPendingPermission {
+  requestId: string
+  toolUses?: unknown[]
+  confirmationType?: string
+  options?: unknown[]
+}
+
+export interface LoadSessionAskUserQuestion {
+  index?: number
+  topic?: string
+  question?: string
+  options?: string[]
+}
+
+export interface LoadSessionPendingAskUserRequest {
+  requestId: string
+  toolCallId?: string
+  questions?: LoadSessionAskUserQuestion[]
+}
+
 export interface LoadSessionResponse {
   id: string
   projectDir: string
@@ -368,6 +388,9 @@ export interface LoadSessionResponse {
   savedAt: number
   messages: ChatMessage[]
   runtimeLogs?: RuntimeLogEntry[]
+  pendingPermissions?: LoadSessionPendingPermission[]
+  pendingAskUserRequests?: LoadSessionPendingAskUserRequest[]
+  isAgentLoopInProgress?: boolean
   mission?: MissionLoadSnapshot
   lastMessageAt?: number
 }
