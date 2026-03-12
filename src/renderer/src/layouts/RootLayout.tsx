@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { FilesChangedBadge } from '@/components/FilesChangedBadge'
 import { GitActionsButton } from '@/components/GitActionsButton'
+import { CommitWizard } from '@/components/commit/CommitWizard'
 import { WorktreeIndicator } from '@/components/WorktreeIndicator'
 import { OpenInEditorButton } from '@/components/OpenInEditorButton'
 import { UpdateNotification } from '@/components/UpdateNotification'
@@ -26,6 +27,7 @@ import {
   useAppStore,
 } from '@/store'
 import { isBrowserMode } from '@/droidClient'
+import { resolveCommitDialogHostState } from '@/lib/commitDialogState'
 import { cn } from '@/lib/utils'
 import { getAppRouteTarget } from '@/lib/sessionRouting'
 import { supportsGitWorkspace } from '@/lib/workspaceType'
@@ -47,6 +49,7 @@ function InnerLayout() {
   const workspaceError = useWorkspaceError()
   const { clearWorkspaceError } = useActions()
   const { open } = useSidebar()
+  const [commitDialogProjectDir, setCommitDialogProjectDir] = useState<string | null>(null)
   const routeTarget = useAppStore((s) => {
     const activeSessionId = s.activeSessionId
     const activeSession = activeSessionId
@@ -70,6 +73,14 @@ function InnerLayout() {
       : null
     return supportsGitWorkspace(activeSession?.workspaceType)
   })
+  const commitDialog = useMemo(
+    () =>
+      resolveCommitDialogHostState({
+        activeProjectDir,
+        requestedProjectDir: commitDialogProjectDir,
+      }),
+    [activeProjectDir, commitDialogProjectDir],
+  )
 
   useEffect(() => {
     if (pathname !== '/' && pathname !== '/mission') return
@@ -110,7 +121,11 @@ function InnerLayout() {
               {activeSessionSupportsGit && (
                 <>
                   <WorktreeIndicator />
-                  <GitActionsButton projectDir={activeProjectDir} isRunning={isRunning} />
+                  <GitActionsButton
+                    projectDir={activeProjectDir}
+                    isRunning={isRunning}
+                    onOpenCommitDialog={(projectDir) => setCommitDialogProjectDir(projectDir)}
+                  />
                   <FilesChangedBadge projectDir={activeProjectDir} isRunning={isRunning} />
                 </>
               )}
@@ -136,6 +151,14 @@ function InnerLayout() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CommitWizard
+        open={commitDialog.open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setCommitDialogProjectDir(null)
+        }}
+        projectDir={commitDialog.projectDir}
+      />
 
       <UpdateNotification />
     </>

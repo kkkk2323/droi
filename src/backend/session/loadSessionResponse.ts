@@ -71,11 +71,6 @@ export function mergeLoadSessionResponse(
     live.settings && typeof live.settings === 'object'
       ? (live.settings as Record<string, unknown>)
       : {}
-  const liveSession =
-    live.session && typeof live.session === 'object'
-      ? (live.session as Record<string, unknown>)
-      : null
-
   const protocol = resolveSessionProtocolFields({
     autoLevel: stored.autoLevel,
     explicit: {
@@ -114,9 +109,7 @@ export function mergeLoadSessionResponse(
         : undefined) ||
       (typeof settings.reasoningEffort === 'string' ? settings.reasoningEffort : undefined) ||
       stored.reasoningEffort,
-    messages: Array.isArray(liveSession?.messages)
-      ? (liveSession.messages as any)
-      : stored.messages,
+    messages: stored.messages,
     pendingPermissions: Array.isArray((live as any).pendingPermissions)
       ? ((live as any).pendingPermissions as any)
       : stored.pendingPermissions,

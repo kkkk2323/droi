@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mergeLoadSessionResponse } from '../src/backend/session/loadSessionResponse.ts'
 
-test('mergeLoadSessionResponse merges live nested messages and pending state', () => {
+test('mergeLoadSessionResponse preserves stored UI messages while merging live pending state', () => {
   const merged = mergeLoadSessionResponse(
     {
       id: 'session-1',
@@ -34,7 +34,7 @@ test('mergeLoadSessionResponse merges live nested messages and pending state', (
   assert.equal(merged?.interactionMode, 'auto')
   assert.equal(merged?.autonomyLevel, 'low')
   assert.equal(merged?.reasoningEffort, 'high')
-  assert.equal(merged?.messages[0]?.id, 'live-msg')
+  assert.equal(merged?.messages[0]?.id, 'stored-msg')
   assert.equal(merged?.pendingPermissions?.[0]?.requestId, 'perm-1')
   assert.equal(merged?.pendingAskUserRequests?.[0]?.requestId, 'ask-1')
   assert.equal(merged?.isAgentLoopInProgress, true)

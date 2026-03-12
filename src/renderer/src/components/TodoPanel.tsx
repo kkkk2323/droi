@@ -1,67 +1,15 @@
 import React, { useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Check, Circle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ChatMessage, ToolCallBlock } from '@/types'
+import type { ChatMessage } from '@/types'
+import { extractLastTodoString, parseTodos, type TodoItem } from '@/lib/todoPanel'
 
-export interface TodoItem {
-  index: number
-  status: 'completed' | 'in_progress' | 'pending'
-  text: string
-}
-
-export function parseTodos(todosStr: string): TodoItem[] {
-  const lines = todosStr.split('\n').filter((l) => l.trim())
-  return lines.map((line, i) => {
-    const trimmed = line.replace(/^\d+\.\s*/, '').trim()
-    let status: TodoItem['status'] = 'pending'
-    let text = trimmed
-    if (/^\[completed\]/i.test(trimmed)) {
-      status = 'completed'
-      text = trimmed.replace(/^\[completed\]\s*/i, '')
-    } else if (/^\[in_progress\]/i.test(trimmed)) {
-      status = 'in_progress'
-      text = trimmed.replace(/^\[in_progress\]\s*/i, '')
-    } else if (/^\[pending\]/i.test(trimmed)) {
-      status = 'pending'
-      text = trimmed.replace(/^\[pending\]\s*/i, '')
-    }
-    return { index: i, status, text }
-  })
-}
-
-function extractLastTodoString(messages: ChatMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg.role !== 'assistant') continue
-    for (let j = msg.blocks.length - 1; j >= 0; j--) {
-      const block = msg.blocks[j]
-      if (block.kind === 'tool_call' && /^TodoWrite$/i.test(block.toolName)) {
-        const tb = block as ToolCallBlock
-        const raw = tb.parameters?.todos
-        if (typeof raw === 'string' && raw.trim()) {
-          if (tb.result !== undefined) return raw
-          return raw
-        }
-      }
-    }
-  }
-  return ''
-}
-
-export function extractTodos(messages: ChatMessage[]): TodoItem[] {
-  const raw = extractLastTodoString(messages)
-  if (!raw) return []
-  return parseTodos(raw)
-}
-
-export function isTodoWriteBlock(block: { kind: string; toolName?: string }): boolean {
-  return block.kind === 'tool_call' && /^TodoWrite$/i.test((block as any).toolName || '')
-}
+export { isTodoWriteBlock } from '@/lib/todoPanel'
 
 const EMPTY_TODOS: TodoItem[] = []
 
 interface TodoPanelProps {
-  messages: ChatMessage[]
+  messages?: ChatMessage[] | null
 }
 
 export function TodoPanel({ messages }: TodoPanelProps) {
