@@ -99,6 +99,30 @@ test('sessionStore clearContext clears messages but preserves title', async () =
   assert.equal(loaded?.apiKeyFingerprint, 'fp1')
 })
 
+test('sessionStore preserves local workspace metadata', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
+  const store = createSessionStore({ baseDir: dir })
+
+  await store.save({
+    id: 'local_1',
+    projectDir: '/tmp/local-project',
+    workspaceDir: '/tmp/local-project',
+    repoRoot: '/tmp/local-project',
+    branch: '',
+    workspaceType: 'local',
+    model: 'gpt',
+    autoLevel: 'default',
+    messages: [],
+  })
+
+  const loaded = await store.load('local_1')
+  assert.equal(loaded?.workspaceType, 'local')
+  assert.equal(loaded?.repoRoot, '/tmp/local-project')
+
+  const list = await store.list()
+  assert.equal(list[0]?.workspaceType, 'local')
+})
+
 test('sessionStore replaceSessionId migrates and clears context', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
   const store = createSessionStore({ baseDir: dir })

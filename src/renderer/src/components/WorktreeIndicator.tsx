@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { GitBranch } from 'lucide-react'
 import { useProjects, useActiveSessionId } from '@/store'
+import { isLocalWorkspaceType } from '@/lib/workspaceType'
 
 export function WorktreeIndicator() {
   const projects = useProjects()
@@ -14,12 +15,12 @@ export function WorktreeIndicator() {
     return null
   }, [projects, activeSessionId])
 
-  if (!meta) return null
+  if (!meta || isLocalWorkspaceType(meta.workspaceType) || !meta.branch) return null
 
   return (
     <div className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground cursor-default">
       <GitBranch className="size-3.5 text-muted-foreground" />
-      <span className="max-w-56 truncate font-mono">{meta.branch || 'branch'}</span>
+      <span className="max-w-56 truncate font-mono">{meta.branch}</span>
     </div>
   )
 }

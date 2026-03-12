@@ -6,6 +6,7 @@ import { usePendingNewSession, useIsCreatingSession, useWorkspaceError, useActio
 import type { PendingNewSessionMode } from '@/store'
 import type { SessionKind } from '../../../shared/sessionProtocol.ts'
 import { cn } from '@/lib/utils'
+import { supportsGitWorkspace } from '@/lib/workspaceType'
 
 function ModeOption({
   selected,
@@ -69,10 +70,11 @@ export function SessionConfigPage() {
   const { updatePendingNewSession } = useActions()
 
   const repoRoot = String(pending?.repoRoot || '').trim()
+  const supportsGit = supportsGitWorkspace(pending?.workspaceType)
 
   const { data: currentBranch, isLoading: loadingBranch } = useGitBranchQuery(
     repoRoot,
-    Boolean(repoRoot),
+    Boolean(repoRoot) && supportsGit,
   )
   const branchDisplay = String(currentBranch || '').trim() || 'unknown'
 
@@ -119,14 +121,16 @@ export function SessionConfigPage() {
             label="Standard Chat"
             description="Open the regular chat session experience on the default route"
           />
-          <ModeOption
-            data-testid="session-mode-mission"
-            selected={sessionKind === 'mission'}
-            onSelect={() => setSessionKind('mission')}
-            icon={<Target className="size-3.5" />}
-            label="Mission"
-            description="Create an orchestrator Mission session with Mission-specific routing"
-          />
+          {supportsGit && (
+            <ModeOption
+              data-testid="session-mode-mission"
+              selected={sessionKind === 'mission'}
+              onSelect={() => setSessionKind('mission')}
+              icon={<Target className="size-3.5" />}
+              label="Mission"
+              description="Create an orchestrator Mission session with Mission-specific routing"
+            />
+          )}
         </div>
 
         <div className="space-y-2">
@@ -140,20 +144,32 @@ export function SessionConfigPage() {
             icon={<FolderOpen className="size-3.5" />}
             label="Work from Local"
             description={
-              <span>
-                Use current directory and branch (
-                <BranchLabel branch={branchDisplay} loading={loadingBranch} />)
-              </span>
+              supportsGit ? (
+                <span>
+                  Use current directory and branch (
+                  <BranchLabel branch={branchDisplay} loading={loadingBranch} />)
+                </span>
+              ) : (
+                'Use the selected local directory directly'
+              )
             }
           />
-          <ModeOption
-            data-testid="session-mode-new-worktree"
-            selected={mode === 'new-worktree'}
-            onSelect={() => setMode('new-worktree')}
-            icon={<GitFork className="size-3.5" />}
-            label="New WorkTree"
-            description="Create an isolated worktree with a new branch"
-          />
+          {supportsGit && (
+            <ModeOption
+              data-testid="session-mode-new-worktree"
+              selected={mode === 'new-worktree'}
+              onSelect={() => setMode('new-worktree')}
+              icon={<GitFork className="size-3.5" />}
+              label="New WorkTree"
+              description="Create an isolated worktree with a new branch"
+            />
+          )}
+          {!supportsGit && (
+            <div className="px-1 text-xs text-muted-foreground">
+              This directory has no Git repository, so only Standard Chat + Work from Local are
+              available.
+            </div>
+          )}
         </div>
 
         {isCreatingSession && <SessionBootstrapCards workspacePrepStatus="running" />}

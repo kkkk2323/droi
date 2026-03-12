@@ -3,6 +3,7 @@ import {
   resolveSessionProtocolFields,
   type SessionKind,
 } from '../../../shared/sessionProtocol.ts'
+import type { WorkspaceType } from '@/types'
 
 export type PendingSessionDraftMode = 'local' | 'new-worktree'
 
@@ -11,6 +12,7 @@ export interface PendingSessionDraft {
   projectDir?: string
   workspaceDir?: string
   cwdSubpath?: string
+  workspaceType?: WorkspaceType
   branch: string
   isExistingBranch?: boolean
   mode?: PendingSessionDraftMode
@@ -24,6 +26,14 @@ export function mergePendingSessionDraft<T extends PendingSessionDraft>(
   const nextPatch: Partial<T> = patch || {}
 
   return {
+    ...(nextPatch.workspaceType === 'local' || current.workspaceType === 'local'
+      ? {
+          branch: '',
+          isExistingBranch: false,
+          mode: 'local' as const,
+          sessionKind: 'normal' as const,
+        }
+      : {}),
     ...current,
     ...nextPatch,
     repoRoot:
@@ -40,9 +50,25 @@ export function mergePendingSessionDraft<T extends PendingSessionDraft>(
       typeof nextPatch.cwdSubpath === 'string'
         ? String(nextPatch.cwdSubpath).trim()
         : current.cwdSubpath,
-    branch: typeof nextPatch.branch === 'string' ? String(nextPatch.branch).trim() : current.branch,
-    mode: nextPatch.mode || current.mode || 'local',
-    sessionKind: nextPatch.sessionKind || current.sessionKind || 'normal',
+    workspaceType: nextPatch.workspaceType || current.workspaceType,
+    branch:
+      nextPatch.workspaceType === 'local' || current.workspaceType === 'local'
+        ? ''
+        : typeof nextPatch.branch === 'string'
+          ? String(nextPatch.branch).trim()
+          : current.branch,
+    mode:
+      nextPatch.workspaceType === 'local' || current.workspaceType === 'local'
+        ? 'local'
+        : nextPatch.mode || current.mode || 'local',
+    sessionKind:
+      nextPatch.workspaceType === 'local' || current.workspaceType === 'local'
+        ? 'normal'
+        : nextPatch.sessionKind || current.sessionKind || 'normal',
+    isExistingBranch:
+      nextPatch.workspaceType === 'local' || current.workspaceType === 'local'
+        ? false
+        : (nextPatch.isExistingBranch ?? current.isExistingBranch),
   }
 }
 

@@ -13,6 +13,7 @@ import {
 test('mission session kind stays selected when workspace mode changes', () => {
   const pending = {
     repoRoot: '/repo',
+    workspaceType: 'branch' as const,
     branch: '',
     mode: 'local' as const,
     sessionKind: 'mission' as const,
@@ -34,6 +35,29 @@ test('mission session kind stays selected when workspace mode changes', () => {
     decompSessionType: 'orchestrator',
   })
   assert.equal(getPendingSessionProtocol(next, 'default').autonomyLevel, 'off')
+})
+
+test('local workspace drafts clamp to standard local mode', () => {
+  const next = mergePendingSessionDraft(
+    {
+      repoRoot: '/local/project',
+      workspaceType: 'local' as const,
+      branch: '',
+      mode: 'local' as const,
+      sessionKind: 'normal' as const,
+    },
+    {
+      mode: 'new-worktree',
+      branch: 'feature/blocked',
+      sessionKind: 'mission',
+    },
+  )
+
+  assert.equal(next.workspaceType, 'local')
+  assert.equal(next.mode, 'local')
+  assert.equal(next.branch, '')
+  assert.equal(next.sessionKind, 'normal')
+  assert.equal(getPendingSessionProtocol(next, 'high').isMission, false)
 })
 
 test('mission sessions route to /mission while normal sessions route to /', () => {

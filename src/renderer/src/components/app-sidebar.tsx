@@ -50,7 +50,6 @@ import {
 import {
   AlertCircle,
   FolderIcon,
-  FolderPlusIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -367,32 +366,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     <Sidebar variant="sidebar" {...props}>
       <SidebarHeader className="flex-row items-center justify-between py-3 pl-20 pr-2" />
 
-      {!browserMode && (
-        <div data-slot="sidebar-new-project" className="px-2 pt-4">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                data-testid="sidebar-add-project"
-                tooltip="Add project"
-                aria-disabled={isInitBlocked}
-                className={cn(
-                  'text-muted-foreground',
-                  isInitBlocked && 'pointer-events-none opacity-60',
-                )}
-                onClick={() => {
-                  if (isInitBlocked) return
-                  handleAddProject()
-                }}
-              >
-                <FolderPlusIcon className="size-4" />
-                <span className="text-sm font-medium">New Project</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
-      )}
-
-      <SidebarContent className="overflow-hidden">
+      <SidebarContent className="overflow-hidden pt-3">
         <ScrollArea className="flex-1">
           <SidebarGroup>
             <SidebarGroupContent>
@@ -575,6 +549,26 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     </Collapsible>
                   )
                 })}
+                {!browserMode && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      data-testid="sidebar-add-project"
+                      tooltip="Add project"
+                      aria-disabled={isInitBlocked}
+                      className={cn(
+                        'text-muted-foreground',
+                        isInitBlocked && 'pointer-events-none opacity-60',
+                      )}
+                      onClick={() => {
+                        if (isInitBlocked) return
+                        handleAddProject()
+                      }}
+                    >
+                      <PlusIcon className="size-4" />
+                      <span className="text-sm">Add Project</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

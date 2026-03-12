@@ -175,9 +175,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
           workspaceType:
             raw.workspaceType === 'worktree'
               ? 'worktree'
-              : raw.workspaceType === 'branch'
-                ? 'branch'
-                : undefined,
+              : raw.workspaceType === 'local'
+                ? 'local'
+                : raw.workspaceType === 'branch'
+                  ? 'branch'
+                  : undefined,
           baseBranch: typeof raw.baseBranch === 'string' ? raw.baseBranch : undefined,
           model: String(raw.model || ''),
           autoLevel: String(raw.autoLevel || 'default'),
@@ -339,9 +341,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         workspaceType:
           (raw as any).workspaceType === 'worktree'
             ? 'worktree'
-            : (raw as any).workspaceType === 'branch'
-              ? 'branch'
-              : undefined,
+            : (raw as any).workspaceType === 'local'
+              ? 'local'
+              : (raw as any).workspaceType === 'branch'
+                ? 'branch'
+                : undefined,
         baseBranch:
           typeof (raw as any).baseBranch === 'string' ? (raw as any).baseBranch : undefined,
         title,
@@ -443,9 +447,11 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         workspaceType:
           (raw as any).workspaceType === 'worktree'
             ? 'worktree'
-            : (raw as any).workspaceType === 'branch'
-              ? 'branch'
-              : undefined,
+            : (raw as any).workspaceType === 'local'
+              ? 'local'
+              : (raw as any).workspaceType === 'branch'
+                ? 'branch'
+                : undefined,
         baseBranch:
           typeof (raw as any).baseBranch === 'string' ? (raw as any).baseBranch : undefined,
         title,
