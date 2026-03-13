@@ -180,6 +180,7 @@ interface AppState {
   commitMessageModelId: string
   commitMessageReasoningEffort: string
   lanAccessEnabled: boolean
+  telemetryEnabled: boolean
   missionModelSettings: MissionModelSettings
   customModels: CustomModelDef[]
   projects: Project[]
@@ -240,6 +241,11 @@ interface AppActions {
   setCommitMessageModelId: (modelId: string) => void
   setCommitMessageReasoningEffort: (r: string) => void
   setLanAccessEnabled: (enabled: boolean) => void
+  setTelemetryEnabled: (enabled: boolean) => void
+  telemetryCapture: (
+    event: string,
+    properties?: Record<string, string | number | boolean | undefined>,
+  ) => void
   setMissionModelSettings: (settings: MissionModelSettings) => Promise<void>
   refreshDiagnosticsDir: () => Promise<void>
   exportDiagnostics: (params?: { sessionId?: string }) => Promise<{ path: string }>
@@ -351,6 +357,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   commitMessageModelId: 'minimax-m2.5',
   commitMessageReasoningEffort: '',
   lanAccessEnabled: false,
+  telemetryEnabled: true,
   missionModelSettings: {},
   customModels: [],
   projects: [],
@@ -724,6 +731,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setTelemetryEnabled: (enabled) => {
+    const next = Boolean(enabled)
+    set({ telemetryEnabled: next })
+    if (typeof (droid as any)?.setTelemetryEnabled === 'function') {
+      ;(droid as any).setTelemetryEnabled(next)
+    }
+  },
+
+  telemetryCapture: (event, properties) => {
+    if (!get().telemetryEnabled) return
+    if (typeof (droid as any)?.telemetryCapture === 'function') {
+      ;(droid as any).telemetryCapture({ event, properties })
+    }
+  },
+
   setMissionModelSettings: async (settings) => {
     const normalize = (value: unknown) => {
       if (typeof value !== 'string') return undefined
@@ -1075,6 +1097,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         autonomyLevel: sessionProtocol.autonomyLevel,
         decompSessionType: sessionProtocol.decompSessionType,
         reasoningEffort: runtimeSelection.reasoningEffort || undefined,
+      })
+
+      get().telemetryCapture('session_created', {
+        is_mission: sessionProtocol.isMission === true,
       })
 
       const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
@@ -1678,6 +1704,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         })
       }
     }
+
+    get().telemetryCapture('message_sent', {
+      length_bucket: text.length < 50 ? 'short' : text.length < 500 ? 'medium' : 'long',
+      has_attachments: queuedAttachments.length > 0,
+      prompt_kind: isCommandTag ? 'command' : isSkillTag ? 'skill' : 'plain',
+    })
 
     void (async () => {
       let basePrompt = text
@@ -2847,6 +2879,7 @@ export const useCommitMessageModelId = () => useAppStore((s) => s.commitMessageM
 export const useCommitMessageReasoningEffort = () =>
   useAppStore((s) => s.commitMessageReasoningEffort)
 export const useLanAccessEnabled = () => useAppStore((s) => s.lanAccessEnabled)
+export const useTelemetryEnabled = () => useAppStore((s) => s.telemetryEnabled)
 export const useMissionModelSettings = () => useAppStore((s) => s.missionModelSettings)
 export const useCustomModels = () => useAppStore((s) => s.customModels)
 export const useProjects = () => useAppStore((s) => s.projects)

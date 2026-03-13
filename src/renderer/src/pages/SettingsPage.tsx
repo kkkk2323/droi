@@ -21,6 +21,7 @@ import {
   useCommitMessageModelId,
   useCommitMessageReasoningEffort,
   useLanAccessEnabled,
+  useTelemetryEnabled,
   useMissionModelSettings,
   useActions,
   useAppVersion,
@@ -82,6 +83,7 @@ export function SettingsPage() {
   const commitMessageModelId = useCommitMessageModelId()
   const commitMessageReasoningEffort = useCommitMessageReasoningEffort()
   const lanAccessEnabled = useLanAccessEnabled()
+  const telemetryEnabled = useTelemetryEnabled()
   const missionModelSettings = useMissionModelSettings()
   const appVersion = useAppVersion()
   const droidVersion = useDroidVersion()
@@ -89,6 +91,7 @@ export function SettingsPage() {
     setCommitMessageModelId,
     setCommitMessageReasoningEffort,
     setLanAccessEnabled,
+    setTelemetryEnabled,
     setMissionModelSettings,
   } = useActions()
 
@@ -394,6 +397,22 @@ export function SettingsPage() {
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
             <Switch checked={lanAccessEnabled} onCheckedChange={setLanAccessEnabled} />
             Enable LAN access
+          </label>
+        </section>
+
+        <Separator />
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">Usage Analytics</h2>
+            <p className="text-xs text-muted-foreground">
+              Send anonymous usage data to help improve Droi. No personal information, chat content,
+              code, or file paths are ever collected.
+            </p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+            <Switch checked={telemetryEnabled} onCheckedChange={setTelemetryEnabled} />
+            Enable anonymous usage analytics
           </label>
         </section>
 

@@ -313,6 +313,7 @@ export interface PersistedAppStateV2 {
   commitMessageModelId?: string
   commitMessageReasoningEffort?: string
   lanAccessEnabled?: boolean
+  telemetryEnabled?: boolean
   projectSettings?: Record<string, ProjectSettings>
 }
 
@@ -559,6 +560,11 @@ export interface DroidClientAPI {
   setLocalDiagnosticsEnabled: (enabled: boolean) => void
   setLocalDiagnosticsRetention: (params: { retentionDays: number; maxTotalMb: number }) => void
   setLanAccessEnabled: (enabled: boolean) => void
+  setTelemetryEnabled: (enabled: boolean) => void
+  telemetryCapture: (params: {
+    event: string
+    properties?: Record<string, string | number | boolean | undefined>
+  }) => void
   appendDiagnosticsEvent: (params: {
     sessionId?: string | null
     event: string

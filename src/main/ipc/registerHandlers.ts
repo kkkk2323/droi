@@ -69,6 +69,7 @@ import type {
   MissionRuntimeRequest,
 } from '../../backend/mission/missionTypes.ts'
 import type { DecompSessionType, SessionKind } from '../../shared/sessionProtocol.ts'
+import { TelemetryService } from '../../backend/telemetry/telemetryService.ts'
 
 function apiKeyFingerprint(key: string): string {
   const k = String(key || '')
@@ -127,6 +128,7 @@ export function registerIpcHandlers(opts: {
   const diagnostics = opts.diagnostics || new LocalDiagnostics({ baseDir: opts.baseDir })
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
+  const telemetry = new TelemetryService()
   const missionDirWatchers = new Map<string, MissionDirWatcher>()
   const missionRuntimeWatchers = new Map<string, WorkerRuntimeWatcher>()
 
@@ -900,6 +902,28 @@ export function registerIpcHandlers(opts: {
     void appStateStore.save(cachedState)
   })
 
+  ipcMain.on('appState:setTelemetryEnabled', (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return
+    cachedState = {
+      ...(cachedState as PersistedAppStateV2),
+      telemetryEnabled: enabled,
+      version: 2,
+    }
+    telemetry.setEnabled(enabled)
+    void appStateStore.save(cachedState)
+  })
+
+  ipcMain.on(
+    'telemetry:capture',
+    (
+      _event,
+      params: { event: string; properties?: Record<string, string | number | boolean | undefined> },
+    ) => {
+      if (!params || typeof params.event !== 'string') return
+      telemetry.capture({ event: params.event as any, properties: params.properties })
+    },
+  )
+
   ipcMain.on('appState:setCommitMessageModelId', (_event, modelId: unknown) => {
     const id = typeof modelId === 'string' ? modelId.trim() : ''
     cachedState = {
@@ -930,6 +954,15 @@ export function registerIpcHandlers(opts: {
     const bytes =
       typeof retention.maxTotalMb === 'number' ? retention.maxTotalMb * 1024 * 1024 : undefined
     diagnostics.setRetention({ maxAgeDays: retention.retentionDays, maxTotalBytes: bytes })
+    const telemetryEnabled =
+      typeof (cachedState as PersistedAppStateV2).telemetryEnabled === 'boolean'
+        ? (cachedState as PersistedAppStateV2).telemetryEnabled!
+        : true
+    telemetry.init({
+      machineId: (cachedState as PersistedAppStateV2).machineId,
+      appVersion: app.getVersion(),
+      enabled: telemetryEnabled,
+    })
     return cachedState
   })
 
@@ -1583,6 +1616,7 @@ export function registerIpcHandlers(opts: {
       return cancelledExec || cancelledSetup
     },
     close: async () => {
+      await telemetry.shutdown()
       await factoryApiProxy.close()
     },
   }

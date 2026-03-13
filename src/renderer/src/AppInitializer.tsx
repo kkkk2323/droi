@@ -237,6 +237,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           typeof (state as any).lanAccessEnabled === 'boolean'
             ? Boolean((state as any).lanAccessEnabled)
             : false
+        const telemetryEnabledValue =
+          typeof (state as any).telemetryEnabled === 'boolean'
+            ? Boolean((state as any).telemetryEnabled)
+            : true
         const ps = (state as any)?.projectSettings
 
         useAppStore.setState({
@@ -252,10 +256,22 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           commitMessageModelId: commitModel || 'minimax-m2.5',
           commitMessageReasoningEffort: commitReasoningEffort,
           lanAccessEnabled: lanAccess,
+          telemetryEnabled: telemetryEnabledValue,
           ...(ps && typeof ps === 'object'
             ? { projectSettingsByRepo: ps as Record<string, ProjectSettings> }
             : {}),
         })
+
+        if (telemetryEnabledValue && typeof (droid as any)?.telemetryCapture === 'function') {
+          ;(droid as any).telemetryCapture({
+            event: 'app_launched',
+            properties: {
+              app_version: appVersion,
+              os: navigator.platform,
+              locale: navigator.language,
+            },
+          })
+        }
 
         const persistedProjects = ((state.projects || []) as Project[]).map((p) => ({
           dir: p.dir,
@@ -975,7 +991,14 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
       const state = useAppStore.getState()
       const snapshot = state.sessionBuffers.get(targetSessionId)
-      if (snapshot) void state._saveSessionToDisk(targetSessionId, snapshot)
+      if (snapshot) {
+        void state._saveSessionToDisk(targetSessionId, snapshot)
+        const toolCallCount = snapshot.messages
+          .filter((m) => m.role === 'assistant')
+          .flatMap((m) => m.blocks)
+          .filter((b) => b.kind === 'tool_call').length
+        state.telemetryCapture('turn_completed', { tool_call_count: toolCallCount })
+      }
     })
 
     const unsubError = droid.onError(({ message, sessionId: sid }) => {

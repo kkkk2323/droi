@@ -115,6 +115,9 @@ const droidAPI = {
     ipcRenderer.send('appState:setLocalDiagnosticsRetention', params),
   setLanAccessEnabled: (enabled) =>
     ipcRenderer.send('appState:setLanAccessEnabled', Boolean(enabled)),
+  setTelemetryEnabled: (enabled) =>
+    ipcRenderer.send('appState:setTelemetryEnabled', Boolean(enabled)),
+  telemetryCapture: (params) => ipcRenderer.send('telemetry:capture', params),
   appendDiagnosticsEvent: (params) => ipcRenderer.send('diagnostics:event', params),
   getDiagnosticsDir: () => ipcRenderer.invoke('diagnostics:getDir'),
   exportDiagnostics: (params) => ipcRenderer.invoke('diagnostics:export', params),
