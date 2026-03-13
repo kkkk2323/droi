@@ -168,6 +168,22 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       if (!(window as any).__droiStartupAppReadyRecorded) {
         ;(window as any).__droiStartupAppReadyRecorded = true
         markStartupMetric('appReady')
+        void (async () => {
+          const bridge = getStartupBridge()
+          if (typeof bridge?.getStartupMetrics !== 'function') return
+          try {
+            const metrics = await bridge.getStartupMetrics()
+            const rel = (metrics as any)?.relative
+            if (!rel) return
+            const props: Record<string, number | undefined> = {}
+            for (const [k, v] of Object.entries(rel)) {
+              if (typeof v === 'number' && Number.isFinite(v)) props[k] = v
+            }
+            useAppStore.getState().telemetryCapture('startup_metrics', props)
+          } catch {
+            // ignore
+          }
+        })()
       }
     }
     return () => {
@@ -991,14 +1007,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
       const state = useAppStore.getState()
       const snapshot = state.sessionBuffers.get(targetSessionId)
-      if (snapshot) {
-        void state._saveSessionToDisk(targetSessionId, snapshot)
-        const toolCallCount = snapshot.messages
-          .filter((m) => m.role === 'assistant')
-          .flatMap((m) => m.blocks)
-          .filter((b) => b.kind === 'tool_call').length
-        state.telemetryCapture('turn_completed', { tool_call_count: toolCallCount })
-      }
+      if (snapshot) void state._saveSessionToDisk(targetSessionId, snapshot)
     })
 
     const unsubError = droid.onError(({ message, sessionId: sid }) => {

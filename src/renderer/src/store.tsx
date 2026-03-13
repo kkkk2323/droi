@@ -1099,10 +1099,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         reasoningEffort: runtimeSelection.reasoningEffort || undefined,
       })
 
-      get().telemetryCapture('session_created', {
-        is_mission: sessionProtocol.isMission === true,
-      })
-
       const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
       const now = Date.now()
       const missionBaseSessionId = sessionProtocol.isMission ? newId : undefined
@@ -1704,12 +1700,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         })
       }
     }
-
-    get().telemetryCapture('message_sent', {
-      length_bucket: text.length < 50 ? 'short' : text.length < 500 ? 'medium' : 'long',
-      has_attachments: queuedAttachments.length > 0,
-      prompt_kind: isCommandTag ? 'command' : isSkillTag ? 'skill' : 'plain',
-    })
 
     void (async () => {
       let basePrompt = text
