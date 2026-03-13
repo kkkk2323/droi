@@ -1,3 +1,8 @@
+## 0.26.0 - 2026-03-13
+
+### Features
+- Enhance session management and startup metrics tracking
+
 ## 0.25.0 - 2026-03-12
 
 ### Features
