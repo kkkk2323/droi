@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import type { DroidClientAPI, SaveSessionRequest } from '../shared/protocol'
 
-const droidAPI: DroidClientAPI = {
+const droidAPI = {
   getVersion: () => ipcRenderer.invoke('droid:version'),
   getAppVersion: () => ipcRenderer.invoke('app:version'),
   exec: (params) => ipcRenderer.send('droid:exec', params),
@@ -129,6 +129,7 @@ const droidAPI: DroidClientAPI = {
   setProjectDir: (dir) => ipcRenderer.send('project:setDir', dir),
   getProjectDir: () => ipcRenderer.invoke('project:getDir'),
   saveSession: (req: SaveSessionRequest) => ipcRenderer.invoke('session:save', req),
+  loadSessionStored: (id) => ipcRenderer.invoke('session:loadStored', id),
   loadSession: (id) => ipcRenderer.invoke('session:load', id),
   clearSession: (params) => ipcRenderer.invoke('session:clear', params),
   listSessions: () => ipcRenderer.invoke('session:list'),
@@ -178,6 +179,9 @@ const droidAPI: DroidClientAPI = {
   getMissionModelSettings: () => ipcRenderer.invoke('factory:getMissionModelSettings'),
   setMissionModelSettings: (settings) =>
     ipcRenderer.invoke('factory:setMissionModelSettings', settings),
+  getStartupMetrics: () => ipcRenderer.invoke('startup:getMetrics'),
+  markStartupMetric: (params: { name: string; ts?: number }) =>
+    ipcRenderer.send('startup:mark', params),
 
   // Updater
   checkForUpdate: () => ipcRenderer.invoke('updater:check'),
@@ -188,6 +192,10 @@ const droidAPI: DroidClientAPI = {
     ipcRenderer.on('updater:progress', handler)
     return () => ipcRenderer.removeListener('updater:progress', handler)
   },
+} as DroidClientAPI & {
+  loadSessionStored: (id: string) => Promise<Record<string, unknown> | null>
+  getStartupMetrics: () => Promise<Record<string, unknown>>
+  markStartupMetric: (params: { name: string; ts?: number }) => void
 }
 
 contextBridge.exposeInMainWorld('droid', droidAPI)

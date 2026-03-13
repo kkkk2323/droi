@@ -2264,7 +2264,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const existingBuffer = get().sessionBuffers.get(sessionId)
     if (!existingBuffer) {
-      const data = await droid.loadSession(sessionId)
+      const startupSessionData =
+        typeof (droid as any)?.loadSessionStored === 'function'
+          ? (droid as any).loadSessionStored(sessionId)
+          : droid.loadSession(sessionId)
+      const data = await startupSessionData
       get()._setSessionBuffers((prev) => {
         const next = new Map(prev)
         next.set(
@@ -2287,6 +2291,43 @@ export const useAppStore = create<AppStore>((set, get) => ({
         )
         return next
       })
+
+      void (async () => {
+        const liveData = await droid.loadSession(sessionId)
+        const latest = get()
+        if (latest.activeSessionId !== sessionId) return
+        latest._setSessionBuffers((prev) => {
+          const current = prev.get(sessionId)
+          const next = new Map(prev)
+          next.set(
+            sessionId,
+            buildRestoredSessionBuffer({
+              projectDir: aligned.projectDir,
+              workspace: {
+                repoRoot: (liveData as any)?.repoRoot || current?.repoRoot || aligned.repoRoot,
+                workspaceDir:
+                  (liveData as any)?.workspaceDir || current?.workspaceDir || aligned.workspaceDir,
+                cwdSubpath:
+                  (liveData as any)?.cwdSubpath || current?.cwdSubpath || aligned.cwdSubpath,
+                branch: (liveData as any)?.branch || current?.branch || aligned.branch,
+                workspaceType:
+                  (liveData as any)?.workspaceType ||
+                  current?.workspaceType ||
+                  aligned.workspaceType,
+                baseBranch:
+                  (liveData as any)?.baseBranch ||
+                  current?.baseBranch ||
+                  selectedMeta.baseBranch ||
+                  aligned.baseBranch,
+              },
+              meta: selectedMeta,
+              data: liveData,
+              missionModelSettings: get().missionModelSettings,
+            }),
+          )
+          return next
+        })
+      })()
     }
   },
 
@@ -2553,7 +2594,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
           const existingBuffer = get().sessionBuffers.get(pickFallback.id)
           if (!existingBuffer) {
-            const data = await droid.loadSession(pickFallback.id)
+            const startupSessionData =
+              typeof (droid as any)?.loadSessionStored === 'function'
+                ? (droid as any).loadSessionStored(pickFallback.id)
+                : droid.loadSession(pickFallback.id)
+            const data = await startupSessionData
             const loaded = (data?.messages as ChatMessage[]) ?? []
             get()._setSessionBuffers((prev) => {
               const next = new Map(prev)
@@ -2575,6 +2620,46 @@ export const useAppStore = create<AppStore>((set, get) => ({
               next.set(pickFallback.id, restored)
               return next
             })
+
+            void (async () => {
+              const liveData = await droid.loadSession(pickFallback.id)
+              const latest = get()
+              if (latest.activeSessionId !== pickFallback.id) return
+              latest._setSessionBuffers((prev) => {
+                const current = prev.get(pickFallback.id)
+                const next = new Map(prev)
+                next.set(
+                  pickFallback.id,
+                  buildRestoredSessionBuffer({
+                    projectDir: aligned.projectDir,
+                    workspace: {
+                      repoRoot:
+                        (liveData as any)?.repoRoot || current?.repoRoot || aligned.repoRoot,
+                      workspaceDir:
+                        (liveData as any)?.workspaceDir ||
+                        current?.workspaceDir ||
+                        aligned.workspaceDir,
+                      cwdSubpath:
+                        (liveData as any)?.cwdSubpath || current?.cwdSubpath || aligned.cwdSubpath,
+                      branch: (liveData as any)?.branch || current?.branch || aligned.branch,
+                      workspaceType:
+                        (liveData as any)?.workspaceType ||
+                        current?.workspaceType ||
+                        aligned.workspaceType,
+                      baseBranch:
+                        (liveData as any)?.baseBranch ||
+                        current?.baseBranch ||
+                        pickFallback.baseBranch ||
+                        aligned.baseBranch,
+                    },
+                    meta: pickFallback,
+                    data: liveData,
+                    missionModelSettings: get().missionModelSettings,
+                  }),
+                )
+                return next
+              })
+            })()
           }
           return
         } catch (err) {

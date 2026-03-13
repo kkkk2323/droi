@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { FilesChangedBadge } from '@/components/FilesChangedBadge'
 import { GitActionsButton } from '@/components/GitActionsButton'
-import { CommitWizard } from '@/components/commit/CommitWizard'
 import { WorktreeIndicator } from '@/components/WorktreeIndicator'
 import { OpenInEditorButton } from '@/components/OpenInEditorButton'
-import { UpdateNotification } from '@/components/UpdateNotification'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +29,15 @@ import { resolveCommitDialogHostState } from '@/lib/commitDialogState'
 import { cn } from '@/lib/utils'
 import { getAppRouteTarget } from '@/lib/sessionRouting'
 import { supportsGitWorkspace } from '@/lib/workspaceType'
+
+const CommitWizard = lazy(() =>
+  import('@/components/commit/CommitWizard').then((module) => ({ default: module.CommitWizard })),
+)
+const UpdateNotification = lazy(() =>
+  import('@/components/UpdateNotification').then((module) => ({
+    default: module.UpdateNotification,
+  })),
+)
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
@@ -152,15 +159,17 @@ function InnerLayout() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <CommitWizard
-        open={commitDialog.open}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setCommitDialogProjectDir(null)
-        }}
-        projectDir={commitDialog.projectDir}
-      />
+      <Suspense fallback={null}>
+        <CommitWizard
+          open={commitDialog.open}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setCommitDialogProjectDir(null)
+          }}
+          projectDir={commitDialog.projectDir}
+        />
 
-      <UpdateNotification />
+        <UpdateNotification />
+      </Suspense>
     </>
   )
 }

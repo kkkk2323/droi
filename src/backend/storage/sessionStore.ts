@@ -1,5 +1,5 @@
 import { join, resolve, sep } from 'path'
-import { readdir, readFile, unlink } from 'fs/promises'
+import { open, readdir, readFile, unlink } from 'fs/promises'
 import type {
   ChatMessage,
   LoadSessionResponse,
@@ -75,6 +75,94 @@ function normalizeRuntimeLogs(value: unknown): RuntimeLogEntry[] | undefined {
     .filter(Boolean) as RuntimeLogEntry[]
 }
 
+const SESSION_META_HEADER_BYTES = 32 * 1024
+
+function decodeJsonStringLiteral(value: string): string | undefined {
+  try {
+    return JSON.parse(`"${value}"`) as string
+  } catch {
+    return undefined
+  }
+}
+
+function extractStringField(raw: string, key: string): string | undefined {
+  const match = raw.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`))
+  if (!match) return undefined
+  return decodeJsonStringLiteral(match[1])
+}
+
+function extractNumberField(raw: string, key: string): number | undefined {
+  const match = raw.match(new RegExp(`"${key}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`))
+  if (!match) return undefined
+  const value = Number(match[1])
+  return Number.isFinite(value) ? value : undefined
+}
+
+function extractBooleanField(raw: string, key: string): boolean | undefined {
+  const match = raw.match(new RegExp(`"${key}"\\s*:\\s*(true|false)`))
+  if (!match) return undefined
+  return match[1] === 'true'
+}
+
+function extractEnumField<T extends string>(
+  raw: string,
+  key: string,
+  allowed: readonly T[],
+): T | undefined {
+  const value = extractStringField(raw, key)
+  return value && allowed.includes(value as T) ? (value as T) : undefined
+}
+
+async function readSessionMetaFast(filePath: string, id: string): Promise<SessionMeta | null> {
+  let handle = null
+  try {
+    handle = await open(filePath, 'r')
+    const buffer = Buffer.alloc(SESSION_META_HEADER_BYTES)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    const head = buffer.toString('utf-8', 0, bytesRead)
+    if (!/"version"\s*:\s*1/.test(head) || !/"messages"\s*:/.test(head)) return null
+
+    const projectDir = extractStringField(head, 'projectDir') || ''
+    if (!projectDir) return null
+
+    const savedAt = extractNumberField(head, 'savedAt') ?? 0
+    const lastMessageAt = extractNumberField(head, 'lastMessageAt') ?? savedAt
+
+    return {
+      id: extractStringField(head, 'id') || id,
+      projectDir,
+      workspaceDir: extractStringField(head, 'workspaceDir'),
+      cwdSubpath: extractStringField(head, 'cwdSubpath'),
+      repoRoot: extractStringField(head, 'repoRoot'),
+      branch: extractStringField(head, 'branch'),
+      workspaceType: extractEnumField(head, 'workspaceType', ['worktree', 'local', 'branch']),
+      baseBranch: extractStringField(head, 'baseBranch'),
+      title: extractStringField(head, 'title') || 'Untitled',
+      savedAt,
+      messageCount: extractNumberField(head, 'messageCount') ?? 0,
+      model: extractStringField(head, 'model') || '',
+      autoLevel: extractStringField(head, 'autoLevel') || 'default',
+      missionDir: extractStringField(head, 'missionDir'),
+      missionBaseSessionId: normalizeOptionalString(
+        extractStringField(head, 'missionBaseSessionId'),
+      ),
+      isMission: extractBooleanField(head, 'isMission') === true ? true : undefined,
+      sessionKind: extractEnumField(head, 'sessionKind', ['mission', 'normal']),
+      interactionMode: extractEnumField(head, 'interactionMode', ['spec', 'auto', 'agi']),
+      autonomyLevel: extractEnumField(head, 'autonomyLevel', ['off', 'low', 'medium', 'high']),
+      decompSessionType: extractEnumField(head, 'decompSessionType', ['orchestrator']),
+      reasoningEffort: extractStringField(head, 'reasoningEffort'),
+      apiKeyFingerprint: extractStringField(head, 'apiKeyFingerprint'),
+      pinned: extractBooleanField(head, 'pinned'),
+      lastMessageAt,
+    }
+  } catch {
+    return null
+  } finally {
+    await handle?.close().catch(() => {})
+  }
+}
+
 export interface SessionStore {
   save: (req: SaveSessionRequest) => Promise<SessionMeta | null>
   load: (id: string) => Promise<LoadSessionResponse | null>
@@ -123,6 +211,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
       title,
       savedAt,
       lastMessageAt,
+      messageCount,
       messages: req.messages,
       runtimeLogs: normalizeRuntimeLogs(req.runtimeLogs) || [],
     }
@@ -252,38 +341,45 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
     try {
       await ensureDir(sessionsDir)
       const files = (await readdir(sessionsDir)).filter((f) => f.endsWith('.json'))
-      const metas: SessionMeta[] = []
-      for (const file of files) {
-        const id = file.slice(0, -5)
-        const data = await load(id)
-        if (!data) continue
-        metas.push({
-          id: data.id,
-          projectDir: data.projectDir,
-          workspaceDir: data.workspaceDir,
-          cwdSubpath: data.cwdSubpath,
-          repoRoot: data.repoRoot,
-          branch: data.branch,
-          workspaceType: data.workspaceType,
-          baseBranch: data.baseBranch,
-          title: data.title,
-          savedAt: data.savedAt,
-          messageCount: data.messages.length,
-          model: data.model,
-          autoLevel: data.autoLevel,
-          missionDir: data.missionDir,
-          missionBaseSessionId: data.missionBaseSessionId,
-          isMission: data.isMission,
-          sessionKind: data.sessionKind,
-          interactionMode: data.interactionMode,
-          autonomyLevel: data.autonomyLevel,
-          decompSessionType: data.decompSessionType,
-          reasoningEffort: data.reasoningEffort,
-          apiKeyFingerprint: data.apiKeyFingerprint,
-          pinned: data.pinned,
-          lastMessageAt: data.lastMessageAt,
-        })
-      }
+      const metas = (
+        await Promise.all(
+          files.map(async (file) => {
+            const id = file.slice(0, -5)
+            const filePath = safeSessionFilePath(sessionsDir, id)
+            const fastMeta = filePath ? await readSessionMetaFast(filePath, id) : null
+            if (fastMeta) return fastMeta
+
+            const data = await load(id)
+            if (!data) return null
+            return {
+              id: data.id,
+              projectDir: data.projectDir,
+              workspaceDir: data.workspaceDir,
+              cwdSubpath: data.cwdSubpath,
+              repoRoot: data.repoRoot,
+              branch: data.branch,
+              workspaceType: data.workspaceType,
+              baseBranch: data.baseBranch,
+              title: data.title,
+              savedAt: data.savedAt,
+              messageCount: data.messages.length,
+              model: data.model,
+              autoLevel: data.autoLevel,
+              missionDir: data.missionDir,
+              missionBaseSessionId: data.missionBaseSessionId,
+              isMission: data.isMission,
+              sessionKind: data.sessionKind,
+              interactionMode: data.interactionMode,
+              autonomyLevel: data.autonomyLevel,
+              decompSessionType: data.decompSessionType,
+              reasoningEffort: data.reasoningEffort,
+              apiKeyFingerprint: data.apiKeyFingerprint,
+              pinned: data.pinned,
+              lastMessageAt: data.lastMessageAt,
+            } satisfies SessionMeta
+          }),
+        )
+      ).filter(Boolean) as SessionMeta[]
       metas.sort((a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt))
       return metas
     } catch {
@@ -323,6 +419,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         title,
         savedAt: now,
         lastMessageAt: now,
+        messageCount: 0,
         messages: [],
         runtimeLogs: [],
       }
@@ -421,6 +518,7 @@ export function createSessionStore(opts: { baseDir: string }): SessionStore {
         title,
         savedAt: now,
         lastMessageAt: now,
+        messageCount: 0,
         messages: [],
         runtimeLogs: [],
       }

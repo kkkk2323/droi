@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, protocol, net } from 'electron'
+import { app, shell, BrowserWindow, protocol, net, ipcMain } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -16,6 +16,63 @@ if (debugPort) {
 let mainWindow: BrowserWindow | null = null
 let ipcCtl: { cancelActiveRun: () => boolean; close?: () => Promise<void> } | null = null
 let apiCtl: { close: () => Promise<void> } | null = null
+const startupMetrics = {
+  launchAt: Date.now(),
+  whenReadyAt: null as number | null,
+  windowCreatedAt: null as number | null,
+  rendererLoadStartedAt: null as number | null,
+  rendererDidFinishLoadAt: null as number | null,
+  readyToShowAt: null as number | null,
+  rendererMarks: {} as Record<string, number>,
+}
+
+function setStartupTimestamp(
+  key:
+    | 'whenReadyAt'
+    | 'windowCreatedAt'
+    | 'rendererLoadStartedAt'
+    | 'rendererDidFinishLoadAt'
+    | 'readyToShowAt',
+  ts = Date.now(),
+) {
+  if (startupMetrics[key] === null) startupMetrics[key] = ts
+}
+
+function setRendererStartupMark(name: string, ts = Date.now()) {
+  const normalized = String(name || '').trim()
+  if (!normalized) return
+  const prev = startupMetrics.rendererMarks[normalized]
+  if (typeof prev !== 'number' || ts < prev) startupMetrics.rendererMarks[normalized] = ts
+}
+
+function getStartupMetricsSnapshot() {
+  const launchAt = startupMetrics.launchAt
+  const relative = Object.fromEntries(
+    Object.entries({
+      launchAt,
+      whenReadyAt: startupMetrics.whenReadyAt,
+      windowCreatedAt: startupMetrics.windowCreatedAt,
+      rendererLoadStartedAt: startupMetrics.rendererLoadStartedAt,
+      rendererDidFinishLoadAt: startupMetrics.rendererDidFinishLoadAt,
+      readyToShowAt: startupMetrics.readyToShowAt,
+      ...startupMetrics.rendererMarks,
+    }).map(([key, value]) => [
+      key,
+      typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value - launchAt) : null,
+    ]),
+  )
+
+  return {
+    launchAt,
+    whenReadyAt: startupMetrics.whenReadyAt,
+    windowCreatedAt: startupMetrics.windowCreatedAt,
+    rendererLoadStartedAt: startupMetrics.rendererLoadStartedAt,
+    rendererDidFinishLoadAt: startupMetrics.rendererDidFinishLoadAt,
+    readyToShowAt: startupMetrics.readyToShowAt,
+    rendererMarks: { ...startupMetrics.rendererMarks },
+    relative,
+  }
+}
 
 function readBool(name: string, def: boolean): boolean {
   const raw = (process.env[name] || '').trim().toLowerCase()
@@ -36,6 +93,7 @@ function parsePortFromUrl(raw: string | undefined): number | undefined {
 }
 
 function createWindow(): void {
+  setStartupTimestamp('windowCreatedAt')
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -50,7 +108,12 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    setStartupTimestamp('readyToShowAt')
     mainWindow!.show()
+  })
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    setStartupTimestamp('rendererDidFinishLoadAt')
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -89,13 +152,16 @@ function createWindow(): void {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    setStartupTimestamp('rendererLoadStartedAt')
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
+    setStartupTimestamp('rendererLoadStartedAt')
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
 app.whenReady().then(() => {
+  setStartupTimestamp('whenReadyAt')
   electronApp.setAppUserModelId('com.droi.app')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window, { zoom: true })
@@ -104,6 +170,14 @@ app.whenReady().then(() => {
   protocol.handle('local-file', (request) => {
     const filePath = decodeURIComponent(request.url.replace('local-file://', ''))
     return net.fetch(pathToFileURL(filePath).toString())
+  })
+
+  ipcMain.handle('startup:getMetrics', async () => getStartupMetricsSnapshot())
+  ipcMain.on('startup:mark', (_event, payload: { name?: string; ts?: number }) => {
+    const name = typeof payload?.name === 'string' ? payload.name : ''
+    const ts =
+      typeof payload?.ts === 'number' && Number.isFinite(payload.ts) ? payload.ts : Date.now()
+    setRendererStartupMark(name, ts)
   })
 
   createWindow()
