@@ -787,6 +787,20 @@ const browserClient: DroidClientAPI = {
       body: JSON.stringify({ lanAccessEnabled: Boolean(enabled) }),
     }).catch(() => {})
   },
+  setTelemetryEnabled: (enabled) => {
+    apiFetch(`${getApiBase()}/app-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telemetryEnabled: Boolean(enabled) }),
+    }).catch(() => {})
+  },
+  telemetryCapture: (params) => {
+    apiFetch(`${getApiBase()}/telemetry/capture`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }).catch(() => {})
+  },
   setLocalDiagnosticsRetention: ({ retentionDays, maxTotalMb }) => {
     const days =
       typeof retentionDays === 'number' && Number.isFinite(retentionDays)
@@ -1355,6 +1369,10 @@ export function getDroidClient(): DroidClientAPI {
       merged.setLocalDiagnosticsRetention = browserClient.setLocalDiagnosticsRetention
     if (typeof (merged as any).setLanAccessEnabled !== 'function')
       merged.setLanAccessEnabled = browserClient.setLanAccessEnabled
+    if (typeof (merged as any).setTelemetryEnabled !== 'function')
+      merged.setTelemetryEnabled = browserClient.setTelemetryEnabled
+    if (typeof (merged as any).telemetryCapture !== 'function')
+      merged.telemetryCapture = browserClient.telemetryCapture
     if (typeof (merged as any).appendDiagnosticsEvent !== 'function')
       merged.appendDiagnosticsEvent = browserClient.appendDiagnosticsEvent
     if (typeof (merged as any).getDiagnosticsDir !== 'function')

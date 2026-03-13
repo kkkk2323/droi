@@ -121,6 +121,8 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       commitMessageReasoningEffort: commitMessageReasoningEffort || undefined,
       lanAccessEnabled:
         typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
+      telemetryEnabled:
+        typeof raw.telemetryEnabled === 'boolean' ? raw.telemetryEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
     }
   }
@@ -166,6 +168,8 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       commitMessageReasoningEffort: commitMessageReasoningEffort || undefined,
       lanAccessEnabled:
         typeof raw.lanAccessEnabled === 'boolean' ? raw.lanAccessEnabled : undefined,
+      telemetryEnabled:
+        typeof raw.telemetryEnabled === 'boolean' ? raw.telemetryEnabled : undefined,
       projectSettings: normalizeProjectSettings(raw.projectSettings),
     }
   }

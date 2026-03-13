@@ -168,6 +168,22 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       if (!(window as any).__droiStartupAppReadyRecorded) {
         ;(window as any).__droiStartupAppReadyRecorded = true
         markStartupMetric('appReady')
+        void (async () => {
+          const bridge = getStartupBridge()
+          if (typeof bridge?.getStartupMetrics !== 'function') return
+          try {
+            const metrics = await bridge.getStartupMetrics()
+            const rel = (metrics as any)?.relative
+            if (!rel) return
+            const props: Record<string, number | undefined> = {}
+            for (const [k, v] of Object.entries(rel)) {
+              if (typeof v === 'number' && Number.isFinite(v)) props[k] = v
+            }
+            useAppStore.getState().telemetryCapture('startup_metrics', props)
+          } catch {
+            // ignore
+          }
+        })()
       }
     }
     return () => {
@@ -237,6 +253,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           typeof (state as any).lanAccessEnabled === 'boolean'
             ? Boolean((state as any).lanAccessEnabled)
             : false
+        const telemetryEnabledValue =
+          typeof (state as any).telemetryEnabled === 'boolean'
+            ? Boolean((state as any).telemetryEnabled)
+            : true
         const ps = (state as any)?.projectSettings
 
         useAppStore.setState({
@@ -252,10 +272,22 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           commitMessageModelId: commitModel || 'minimax-m2.5',
           commitMessageReasoningEffort: commitReasoningEffort,
           lanAccessEnabled: lanAccess,
+          telemetryEnabled: telemetryEnabledValue,
           ...(ps && typeof ps === 'object'
             ? { projectSettingsByRepo: ps as Record<string, ProjectSettings> }
             : {}),
         })
+
+        if (telemetryEnabledValue && typeof (droid as any)?.telemetryCapture === 'function') {
+          ;(droid as any).telemetryCapture({
+            event: 'app_launched',
+            properties: {
+              app_version: appVersion,
+              os: navigator.platform,
+              locale: navigator.language,
+            },
+          })
+        }
 
         const persistedProjects = ((state.projects || []) as Project[]).map((p) => ({
           dir: p.dir,
