@@ -71,6 +71,84 @@ function appendInitializerDiagnostics(
   })
 }
 
+function getStartupBridge(): {
+  getStartupMetrics?: () => Promise<Record<string, unknown>>
+  markStartupMetric?: (params: { name: string; ts?: number }) => void
+} | null {
+  return (droid as any) ?? null
+}
+
+async function refreshStartupMetrics() {
+  const bridge = getStartupBridge()
+  if (typeof bridge?.getStartupMetrics !== 'function') return
+  try {
+    ;(window as any).__droiStartupMetrics = await bridge.getStartupMetrics()
+  } catch {
+    // ignore startup metrics failures
+  }
+}
+
+function markStartupMetric(name: string) {
+  const bridge = getStartupBridge()
+  if (typeof bridge?.markStartupMetric === 'function') {
+    bridge.markStartupMetric({ name, ts: Date.now() })
+  }
+  void refreshStartupMetrics()
+}
+
+async function normalizeSessionMetaForStartup(
+  store: ReturnType<typeof useAppStore.getState>,
+  meta: SessionMeta,
+  fallbackProjectDir: string,
+): Promise<SessionMeta | null> {
+  const guessedDir = meta.workspaceDir || meta.projectDir || fallbackProjectDir
+  if (!guessedDir) return null
+
+  if (isLocalWorkspaceType(meta.workspaceType)) {
+    const info = createLocalWorkspaceInfo({
+      projectDir: meta.projectDir || guessedDir,
+      repoRoot: meta.repoRoot || guessedDir,
+      workspaceDir: meta.workspaceDir || guessedDir,
+      cwdSubpath: meta.cwdSubpath,
+    })
+    return {
+      ...meta,
+      repoRoot: info.repoRoot,
+      projectDir: info.projectDir,
+      workspaceDir: info.workspaceDir,
+      cwdSubpath: info.cwdSubpath || meta.cwdSubpath,
+      branch: meta.branch || info.branch,
+      workspaceType: info.workspaceType,
+      baseBranch: meta.baseBranch || info.baseBranch,
+      autoLevel: meta.autoLevel || DEFAULT_AUTO_LEVEL,
+    }
+  }
+
+  if (meta.repoRoot && meta.projectDir) {
+    return {
+      ...meta,
+      workspaceDir: meta.workspaceDir || meta.projectDir || guessedDir,
+      autoLevel: meta.autoLevel || DEFAULT_AUTO_LEVEL,
+    }
+  }
+
+  const info = await withTimeout(store._resolveWorkspace(guessedDir, meta.cwdSubpath), null)
+  const repoRoot = info?.repoRoot || meta.repoRoot || guessedDir
+  const projectDir = info?.projectDir || meta.projectDir || guessedDir
+  const workspaceDir = info?.workspaceDir || meta.workspaceDir || projectDir
+  return {
+    ...meta,
+    repoRoot,
+    projectDir,
+    workspaceDir,
+    cwdSubpath: info?.cwdSubpath || meta.cwdSubpath,
+    branch: meta.branch || info?.branch,
+    workspaceType: info?.workspaceType || meta.workspaceType,
+    baseBranch: meta.baseBranch || info?.baseBranch,
+    autoLevel: meta.autoLevel || DEFAULT_AUTO_LEVEL,
+  }
+}
+
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   const initializedRef = useRef(false)
   const isReady = useAppStore((s) => s._initialLoadDone)
@@ -87,6 +165,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isReady) {
       document.body.setAttribute('data-app-ready', 'true')
+      if (!(window as any).__droiStartupAppReadyRecorded) {
+        ;(window as any).__droiStartupAppReadyRecorded = true
+        markStartupMetric('appReady')
+      }
     }
     return () => {
       document.body.removeAttribute('data-app-ready')
@@ -101,21 +183,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
     void (async () => {
       try {
-        const [
-          version,
-          appVersion,
-          state,
-          sessionMetas,
-          loadedCustomModels,
-          missionModelSettings,
-          diagDir,
-        ] = await Promise.all([
-          withTimeout(droid.getVersion(), ''),
+        const [appVersion, state, sessionMetas, diagDir] = await Promise.all([
           withTimeout(droid.getAppVersion(), ''),
           withTimeout(droid.loadAppState(), { version: 2, machineId: '' } as any),
           withTimeout(droid.listSessions(), [] as SessionMeta[]),
-          withTimeout(droid.getCustomModels(), [] as CustomModelDef[]),
-          withTimeout(droid.getMissionModelSettings(), {} as MissionModelSettings),
           typeof (droid as any)?.getDiagnosticsDir === 'function'
             ? withTimeout((droid as any).getDiagnosticsDir(), '')
             : Promise.resolve(''),
@@ -170,9 +241,6 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
         useAppStore.setState({
           appVersion: appVersion,
-          droidVersion: version,
-          customModels: loadedCustomModels,
-          missionModelSettings: missionModelSettings ?? {},
           apiKey: state.apiKey || '',
           traceChainEnabled: traceEnabled,
           showDebugTrace: showDebug,
@@ -202,31 +270,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
         const normalizedMetas = (
           await Promise.all(
-            sessionMetas.map(async (meta): Promise<SessionMeta | null> => {
-              const guessedDir = meta.workspaceDir || meta.projectDir || fallbackProjectDir
-              if (!guessedDir) return null
-              const info = isLocalWorkspaceType(meta.workspaceType)
-                ? createLocalWorkspaceInfo({
-                    projectDir: meta.projectDir || guessedDir,
-                    repoRoot: meta.repoRoot || guessedDir,
-                    workspaceDir: meta.workspaceDir || guessedDir,
-                    cwdSubpath: meta.cwdSubpath,
-                  })
-                : await withTimeout(store._resolveWorkspace(guessedDir, meta.cwdSubpath), null)
-              const repoRoot = info?.repoRoot || meta.repoRoot || guessedDir
-              const projectDir = info?.projectDir || meta.projectDir || guessedDir
-              const workspaceDir = info?.workspaceDir || meta.workspaceDir || guessedDir
-              return {
-                ...meta,
-                repoRoot,
-                projectDir,
-                workspaceDir,
-                cwdSubpath: info?.cwdSubpath || meta.cwdSubpath,
-                branch: meta.branch || info?.branch,
-                workspaceType: info?.workspaceType || meta.workspaceType,
-                autoLevel: meta.autoLevel || DEFAULT_AUTO_LEVEL,
-              }
-            }),
+            sessionMetas.map((meta) =>
+              normalizeSessionMetaForStartup(store, meta, fallbackProjectDir),
+            ),
           )
         ).filter(Boolean) as SessionMeta[]
 
@@ -262,12 +308,42 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           (a, b) => (b.lastMessageAt ?? b.savedAt) - (a.lastMessageAt ?? a.savedAt),
         )[0]
         const activeMeta = matchedByActiveDir || fallbackLatest
+        const shouldAwaitMissionModelSettings =
+          activeMeta?.isMission === true || activeMeta?.sessionKind === 'mission'
+        const versionPromise = withTimeout(droid.getVersion(), '')
+        const customModelsPromise = withTimeout(droid.getCustomModels(), [] as CustomModelDef[])
+        const missionModelSettingsPromise = shouldAwaitMissionModelSettings
+          ? withTimeout(droid.getMissionModelSettings(), {} as MissionModelSettings)
+          : null
+
+        void Promise.all([
+          versionPromise,
+          customModelsPromise,
+          missionModelSettingsPromise ??
+            withTimeout(droid.getMissionModelSettings(), {} as MissionModelSettings),
+        ])
+          .then(([version, loadedCustomModels, loadedMissionModelSettings]) => {
+            useAppStore.setState({
+              droidVersion: version,
+              customModels: loadedCustomModels,
+              missionModelSettings: loadedMissionModelSettings ?? {},
+            })
+          })
+          .catch(() => {})
+
+        const missionModelSettings = missionModelSettingsPromise
+          ? await missionModelSettingsPromise
+          : ({} as MissionModelSettings)
 
         const restoredProjectDir = activeMeta?.projectDir || state.activeProjectDir || ''
         droid.setProjectDir(restoredProjectDir || null)
 
         if (restoredProjectDir && activeMeta) {
-          const data = await withTimeout(droid.loadSession(activeMeta.id), null)
+          const startupSessionData =
+            typeof (droid as any)?.loadSessionStored === 'function'
+              ? (droid as any).loadSessionStored(activeMeta.id)
+              : droid.loadSession(activeMeta.id)
+          const data = await withTimeout(startupSessionData, null)
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
           newBuffers.set(
             activeMeta.id,
@@ -293,6 +369,44 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             sessionBuffers: newBuffers,
             _initialLoadDone: true,
           })
+
+          void (async () => {
+            const liveData = await withTimeout(droid.loadSession(activeMeta.id), null)
+            if (!liveData) return
+            const latest = useAppStore.getState()
+            if (latest.activeSessionId !== activeMeta.id) return
+            latest._setSessionBuffers((prev) => {
+              const current = prev.get(activeMeta.id)
+              const next = new Map(prev)
+              next.set(
+                activeMeta.id,
+                buildRestoredSessionBuffer({
+                  projectDir: restoredProjectDir,
+                  workspace: {
+                    repoRoot:
+                      (liveData as any)?.repoRoot || current?.repoRoot || activeMeta.repoRoot,
+                    workspaceDir:
+                      (liveData as any)?.workspaceDir ||
+                      current?.workspaceDir ||
+                      activeMeta.workspaceDir,
+                    cwdSubpath:
+                      (liveData as any)?.cwdSubpath || current?.cwdSubpath || activeMeta.cwdSubpath,
+                    branch: (liveData as any)?.branch || current?.branch || activeMeta.branch,
+                    workspaceType:
+                      (liveData as any)?.workspaceType ||
+                      current?.workspaceType ||
+                      activeMeta.workspaceType,
+                    baseBranch:
+                      (liveData as any)?.baseBranch || current?.baseBranch || activeMeta.baseBranch,
+                  },
+                  meta: activeMeta,
+                  data: liveData,
+                  missionModelSettings: useAppStore.getState().missionModelSettings,
+                }),
+              )
+              return next
+            })
+          })()
         } else {
           const restoredInfo = restoredProjectDir
             ? isLocalWorkspaceType(restoredProject?.workspaceType)

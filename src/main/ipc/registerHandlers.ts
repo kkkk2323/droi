@@ -1073,6 +1073,12 @@ export function registerIpcHandlers(opts: {
     return sessionStore.save(req)
   })
 
+  ipcMain.handle('session:loadStored', async (_event, id: string) => {
+    const sessionId = typeof id === 'string' ? id.trim() : ''
+    if (!sessionId) return null
+    return sessionStore.load(sessionId)
+  })
+
   ipcMain.handle(
     'session:setup:run',
     async (_event, params: { sessionId: string; projectDir: string; script: string }) => {

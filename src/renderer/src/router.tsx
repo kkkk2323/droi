@@ -1,3 +1,4 @@
+import React, { Suspense, lazy } from 'react'
 import {
   createRouter,
   createRoute,
@@ -7,13 +8,36 @@ import {
   Outlet,
 } from '@tanstack/react-router'
 import { RootLayout } from './layouts/RootLayout'
-import { SettingsLayout } from './layouts/SettingsLayout'
 import { ChatPage } from './pages/ChatPage'
-import { MissionPage } from './pages/MissionPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { KeysPage } from './pages/KeysPage'
-import { ProjectSettingsPage } from './pages/ProjectSettingsPage'
-import { DebugSettingsPage } from './pages/DebugSettingsPage'
+
+const SettingsLayout = lazy(() =>
+  import('./layouts/SettingsLayout').then((module) => ({ default: module.SettingsLayout })),
+)
+const MissionPage = lazy(() =>
+  import('./pages/MissionPage').then((module) => ({ default: module.MissionPage })),
+)
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+)
+const KeysPage = lazy(() =>
+  import('./pages/KeysPage').then((module) => ({ default: module.KeysPage })),
+)
+const ProjectSettingsPage = lazy(() =>
+  import('./pages/ProjectSettingsPage').then((module) => ({ default: module.ProjectSettingsPage })),
+)
+const DebugSettingsPage = lazy(() =>
+  import('./pages/DebugSettingsPage').then((module) => ({ default: module.DebugSettingsPage })),
+)
+
+function renderLazy(Component: React.LazyExoticComponent<() => React.JSX.Element>) {
+  return function LazyRouteComponent() {
+    return (
+      <Suspense fallback={null}>
+        <Component />
+      </Suspense>
+    )
+  }
+}
 
 const rootRoute = createRootRoute({
   component: Outlet,
@@ -34,37 +58,37 @@ export const chatRoute = createRoute({
 export const missionRoute = createRoute({
   getParentRoute: () => chatLayoutRoute,
   path: '/mission',
-  component: MissionPage,
+  component: renderLazy(MissionPage),
 })
 
 const settingsLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'settings-layout',
-  component: SettingsLayout,
+  component: renderLazy(SettingsLayout),
 })
 
 export const settingsRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: '/settings',
-  component: SettingsPage,
+  component: renderLazy(SettingsPage),
 })
 
 export const keysSettingsRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: '/settings/keys',
-  component: KeysPage,
+  component: renderLazy(KeysPage),
 })
 
 export const projectSettingsRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: '/settings/projects/$projectDir',
-  component: ProjectSettingsPage,
+  component: renderLazy(ProjectSettingsPage),
 })
 
 export const debugSettingsRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: '/settings/debug',
-  component: DebugSettingsPage,
+  component: renderLazy(DebugSettingsPage),
 })
 
 const routeTree = rootRoute.addChildren([

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { Suspense, lazy, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select'
@@ -23,15 +23,30 @@ import {
   getModelDefaultReasoning,
 } from '@/types'
 import { getDroidClient, isBrowserMode } from '@/droidClient'
-import { KeyUsageIndicator } from './KeyUsageIndicator'
-import { TokenUsageIndicator } from './TokenUsageIndicator'
-import { SessionDurationIndicator } from './SessionDurationIndicator'
-import { McpStatusIndicator } from './McpStatusIndicator'
-import { SettingsFlashIndicator } from './SettingsFlashIndicator'
-import { ModelSelect } from './ModelSelect'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { useSlashCommandsQuery, useSkillsQuery } from '@/hooks/useSlashCommands'
 import { usePendingNewSession } from '@/store'
+
+const KeyUsageIndicator = lazy(() =>
+  import('./KeyUsageIndicator').then((module) => ({ default: module.KeyUsageIndicator })),
+)
+const TokenUsageIndicator = lazy(() =>
+  import('./TokenUsageIndicator').then((module) => ({ default: module.TokenUsageIndicator })),
+)
+const SessionDurationIndicator = lazy(() =>
+  import('./SessionDurationIndicator').then((module) => ({
+    default: module.SessionDurationIndicator,
+  })),
+)
+const McpStatusIndicator = lazy(() =>
+  import('./McpStatusIndicator').then((module) => ({ default: module.McpStatusIndicator })),
+)
+const SettingsFlashIndicator = lazy(() =>
+  import('./SettingsFlashIndicator').then((module) => ({ default: module.SettingsFlashIndicator })),
+)
+const ModelSelect = lazy(() =>
+  import('./ModelSelect').then((module) => ({ default: module.ModelSelect })),
+)
 
 const droid = getDroidClient()
 
@@ -736,8 +751,10 @@ export function InputBar({
               <Plus className="size-4" />
             </button>
 
-            <KeyUsageIndicator className="ml-2" />
-            <McpStatusIndicator className="ml-1" />
+            <Suspense fallback={null}>
+              <KeyUsageIndicator className="ml-2" />
+              <McpStatusIndicator className="ml-1" />
+            </Suspense>
 
             {isReadonlyModel ? (
               <TooltipProvider>
@@ -766,12 +783,24 @@ export function InputBar({
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              <ModelSelect
-                value={model}
-                onChange={onModelChange}
-                customModels={customModels}
-                variant="compact"
-              />
+              <Suspense
+                fallback={
+                  <button
+                    type="button"
+                    disabled
+                    className="ml-1 inline-flex h-7 min-w-0 shrink items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground"
+                  >
+                    <span className="truncate">{getModelDisplayName(model, customModels)}</span>
+                  </button>
+                }
+              >
+                <ModelSelect
+                  value={model}
+                  onChange={onModelChange}
+                  customModels={customModels}
+                  variant="compact"
+                />
+              </Suspense>
             )}
 
             {(() => {
@@ -815,16 +844,19 @@ export function InputBar({
                 ))}
               </SelectContent>
             </Select>
-
-            <SettingsFlashIndicator className="ml-1" />
+            <Suspense fallback={null}>
+              <SettingsFlashIndicator className="ml-1" />
+            </Suspense>
           </div>
 
           <div className=" flex shrink-0 items-center gap-2">
             {!pendingNewSession && (
-              <div className="-mb-2 flex items-center gap-2">
-                <SessionDurationIndicator />
-                <TokenUsageIndicator />
-              </div>
+              <Suspense fallback={null}>
+                <div className="-mb-2 flex items-center gap-2">
+                  <SessionDurationIndicator />
+                  <TokenUsageIndicator />
+                </div>
+              </Suspense>
             )}
             {isCancelling ? (
               <button

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { Suspense, lazy, useState, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   useAppStore,
@@ -26,15 +26,28 @@ import {
 import { DEFAULT_MODEL } from '@/state/appReducer'
 import ChatView from '@/components/ChatView'
 import { InputBar } from '@/components/InputBar'
-import { TodoPanel } from '@/components/TodoPanel'
-import { DebugTracePanel } from '@/components/DebugTracePanel'
-import { SessionConfigPage } from '@/components/SessionConfigPage'
-import { PermissionCard } from '@/components/PermissionCard'
-import { AskUserCard } from '@/components/AskUserCard'
 import { isExitSpecPermission } from '@/components/SpecReviewCard'
 import { getPendingSessionDraftKey } from '@/store/projectHelpers'
 import { getPreferredMissionView } from '@/lib/missionPage'
 import { resolveSessionRuntimeSelection } from '@/lib/missionModelState'
+
+const TodoPanel = lazy(() =>
+  import('@/components/TodoPanel').then((module) => ({ default: module.TodoPanel })),
+)
+const DebugTracePanel = lazy(() =>
+  import('@/components/DebugTracePanel').then((module) => ({ default: module.DebugTracePanel })),
+)
+const SessionConfigPage = lazy(() =>
+  import('@/components/SessionConfigPage').then((module) => ({
+    default: module.SessionConfigPage,
+  })),
+)
+const PermissionCard = lazy(() =>
+  import('@/components/PermissionCard').then((module) => ({ default: module.PermissionCard })),
+)
+const AskUserCard = lazy(() =>
+  import('@/components/AskUserCard').then((module) => ({ default: module.AskUserCard })),
+)
 
 interface ChatPageProps {
   forceInputDisabled?: boolean
@@ -164,7 +177,9 @@ export function ChatPage({
   return (
     <>
       {pendingNewSession ? (
-        <SessionConfigPage />
+        <Suspense fallback={null}>
+          <SessionConfigPage />
+        </Suspense>
       ) : (
         <ChatView
           sessionId={activeSessionId}
@@ -183,8 +198,16 @@ export function ChatPage({
           onRequestSpecChanges={handleRequestSpecChanges}
         />
       )}
-      {showDebugTrace && <DebugTracePanel />}
-      {!pendingNewSession && <TodoPanel messages={messages} />}
+      {showDebugTrace && (
+        <Suspense fallback={null}>
+          <DebugTracePanel />
+        </Suspense>
+      )}
+      {!pendingNewSession && (
+        <Suspense fallback={null}>
+          <TodoPanel messages={messages} />
+        </Suspense>
+      )}
       <AnimatePresence mode="wait" initial={false}>
         {hasPermission && pendingPermissionRequest ? (
           <motion.div
@@ -194,10 +217,12 @@ export function ChatPage({
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
           >
-            <PermissionCard
-              request={pendingPermissionRequest}
-              onRespond={handleRespondPermission}
-            />
+            <Suspense fallback={null}>
+              <PermissionCard
+                request={pendingPermissionRequest}
+                onRespond={handleRespondPermission}
+              />
+            </Suspense>
           </motion.div>
         ) : hasAskUser && pendingAskUserRequest ? (
           <motion.div
@@ -207,7 +232,9 @@ export function ChatPage({
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
           >
-            <AskUserCard request={pendingAskUserRequest} onRespond={handleRespondAskUser} />
+            <Suspense fallback={null}>
+              <AskUserCard request={pendingAskUserRequest} onRespond={handleRespondAskUser} />
+            </Suspense>
           </motion.div>
         ) : (
           <motion.div

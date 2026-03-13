@@ -6,6 +6,33 @@ import { router } from './router'
 import { AppInitializer } from './AppInitializer'
 import './styles/global.css'
 
+function getStartupBridge(): {
+  getStartupMetrics?: () => Promise<Record<string, unknown>>
+  markStartupMetric?: (params: { name: string; ts?: number }) => void
+} | null {
+  return typeof window !== 'undefined' ? ((window as any).droid ?? null) : null
+}
+
+async function refreshStartupMetrics() {
+  const bridge = getStartupBridge()
+  if (typeof bridge?.getStartupMetrics !== 'function') return
+  try {
+    ;(window as any).__droiStartupMetrics = await bridge.getStartupMetrics()
+  } catch {
+    // ignore startup metrics failures
+  }
+}
+
+function markStartupMetric(name: string) {
+  const bridge = getStartupBridge()
+  if (typeof bridge?.markStartupMetric === 'function') {
+    bridge.markStartupMetric({ name, ts: Date.now() })
+  }
+  void refreshStartupMetrics()
+}
+
+markStartupMetric('rendererBoot')
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -26,8 +53,16 @@ function Bootstrap() {
   )
 }
 
+void refreshStartupMetrics()
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Bootstrap />
   </React.StrictMode>,
 )
+
+requestAnimationFrame(() => {
+  if ((window as any).__droiStartupFirstFrameRecorded) return
+  ;(window as any).__droiStartupFirstFrameRecorded = true
+  markStartupMetric('firstFrame')
+})
