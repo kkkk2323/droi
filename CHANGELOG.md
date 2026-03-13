@@ -1,3 +1,9 @@
+## 0.27.0 - 2026-03-13
+
+### Features
+- Integrate telemetry service and enable usage analytics
+- Simplify telemetry events and enhance startup metrics tracking
+
 ## 0.26.0 - 2026-03-13
 
 ### Features
