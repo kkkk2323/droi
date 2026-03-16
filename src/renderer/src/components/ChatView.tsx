@@ -482,6 +482,88 @@ function AgentText({ content }: { content: string; isStreaming: boolean }) {
   )
 }
 
+function useTick(enabled: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!enabled) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [enabled])
+  return now
+}
+
+function useElapsedTime(startTimestamp?: number, endTimestamp?: number): string | null {
+  const isRunning = startTimestamp !== undefined && endTimestamp === undefined
+  const now = useTick(isRunning)
+  if (startTimestamp === undefined) return null
+  const elapsed = (endTimestamp ?? now) - startTimestamp
+  return formatDuration(Math.max(0, elapsed))
+}
+
+function parseTaskProgress(progress: string): {
+  toolName: string
+  status?: string
+  details?: string
+} | null {
+  try {
+    const obj = JSON.parse(progress)
+    if (obj && typeof obj === 'object' && typeof obj.toolName === 'string') {
+      return {
+        toolName: obj.toolName,
+        status: typeof obj.status === 'string' ? obj.status : undefined,
+        details: typeof obj.details === 'string' ? obj.details : undefined,
+      }
+    }
+  } catch {
+    // not JSON
+  }
+  return null
+}
+
+function TaskProgressView({
+  progress,
+  isComplete,
+}: {
+  progress: string
+  isComplete?: boolean
+}) {
+  const parsed = parseTaskProgress(progress)
+
+  if (!parsed) {
+    return (
+      <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+        {progress}
+      </pre>
+    )
+  }
+
+  const icon = getToolIcon(parsed.toolName)
+  const isExecuting = parsed.status === 'executing' && !isComplete
+  const displayStatus = isComplete && parsed.status === 'executing' ? undefined : parsed.status
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+      {isExecuting ? (
+        <Loader2 className="size-3 shrink-0 animate-spin" />
+      ) : (
+        <span className="shrink-0">{icon}</span>
+      )}
+      <span className="font-medium">{parsed.toolName}</span>
+      {displayStatus && (
+        <span className="rounded bg-background/60 px-1.5 py-0.5 text-[10px]">
+          {displayStatus}
+        </span>
+      )}
+      {parsed.details && (
+        <span className="truncate font-mono opacity-60">
+          {parsed.details.length > 100
+            ? parsed.details.slice(0, 100) + '...'
+            : parsed.details}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function ToolActivity({
   block,
   isSessionRunning,
@@ -491,10 +573,13 @@ function ToolActivity({
 }) {
   const [expanded, setExpanded] = useState(false)
   const hasResult = block.result !== undefined
-  const hasProgress = typeof block.progress === 'string' && block.progress.trim().length > 0
   const icon = getToolIcon(block.toolName)
   const summary = getToolSummary(block)
-  const isEdit = /edit|create|write|multiedit/i.test(block.toolName)
+  const isTask = block.toolName === 'Task'
+  const elapsed = useElapsedTime(
+    isTask ? block.startTimestamp : undefined,
+    isTask ? block.endTimestamp : undefined,
+  )
 
   // Show spinner only if no result AND session is still running
   const isLoading = !hasResult && isSessionRunning
@@ -529,7 +614,12 @@ function ToolActivity({
             {skillName}
           </span>
         )}
-        {summary && <span className="truncate font-mono opacity-60">{summary}</span>}
+        {summary && (
+          <span className="min-w-0 truncate font-mono opacity-60">{summary}</span>
+        )}
+        {elapsed && (
+          <span className="ml-1 shrink-0 tabular-nums text-[10px] opacity-50">{elapsed}</span>
+        )}
         {expanded ? (
           <ChevronDown className="ml-auto size-3 shrink-0 opacity-40" />
         ) : (
@@ -539,33 +629,110 @@ function ToolActivity({
 
       {expanded && (
         <div className="ml-5 mt-1 mb-2">
-          {isEdit && block.parameters.old_str !== undefined ? (
-            <DiffView
-              filePath={String(block.parameters.file_path || '')}
-              oldStr={String(block.parameters.old_str)}
-              newStr={String(block.parameters.new_str ?? '')}
-            />
-          ) : block.parameters.command ? (
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-300">
-              <span className="text-zinc-500">$ </span>
-              {String(block.parameters.command)}
-            </pre>
-          ) : (
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
-              {JSON.stringify(block.parameters, null, 2)}
-            </pre>
-          )}
-
-          {hasProgress && (
-            <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
-              {block.progress}
-            </pre>
-          )}
-
-          {hasResult && (!isEdit || block.isError) && (
-            <ResultView result={block.result || ''} isError={block.isError} isCode={isEdit} />
-          )}
+          <ToolExpandedContent block={block} />
         </div>
+      )}
+    </div>
+  )
+}
+
+function ToolExpandedContent({ block }: { block: ToolCallBlock }) {
+  if (block.toolName === 'Task') {
+    return <TaskExpandedView block={block} />
+  }
+
+  const isEdit = /edit|create|write|multiedit/i.test(block.toolName)
+  const hasProgress = typeof block.progress === 'string' && block.progress.trim().length > 0
+  const hasResult = block.result !== undefined
+
+  return (
+    <>
+      {isEdit && block.parameters.old_str !== undefined ? (
+        <DiffView
+          filePath={String(block.parameters.file_path || '')}
+          oldStr={String(block.parameters.old_str)}
+          newStr={String(block.parameters.new_str ?? '')}
+        />
+      ) : block.parameters.command ? (
+        <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-300">
+          <span className="text-zinc-500">$ </span>
+          {String(block.parameters.command)}
+        </pre>
+      ) : (
+        <pre className="whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+          {JSON.stringify(block.parameters, null, 2)}
+        </pre>
+      )}
+
+      {hasProgress && (
+        <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+          {block.progress}
+        </pre>
+      )}
+
+      {hasResult && (!isEdit || block.isError) && (
+        <ResultView result={block.result || ''} isError={block.isError} isCode={isEdit} />
+      )}
+    </>
+  )
+}
+
+function TaskExpandedView({ block }: { block: ToolCallBlock }) {
+  const p = block.parameters
+  const subagentType = p.subagent_type ? String(p.subagent_type) : ''
+  const description = p.description ? String(p.description) : ''
+  const prompt = p.prompt ? String(p.prompt) : ''
+  const hasProgress = typeof block.progress === 'string' && block.progress.trim().length > 0
+  const hasResult = block.result !== undefined
+  const [promptExpanded, setPromptExpanded] = useState(false)
+  const promptPreviewLen = 300
+
+  return (
+    <div className="space-y-1.5">
+      <div className="rounded-md bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+        {subagentType && (
+          <div>
+            <span className="text-foreground/70">droid:</span>{' '}
+            <span className="font-mono">{subagentType}</span>
+          </div>
+        )}
+        {description && (
+          <div>
+            <span className="text-foreground/70">task:</span> {description}
+          </div>
+        )}
+        {prompt && (
+          <div className="mt-1">
+            <span className="text-foreground/70">prompt:</span>{' '}
+            <span className="whitespace-pre-wrap break-words">
+              {promptExpanded || prompt.length <= promptPreviewLen
+                ? prompt
+                : prompt.slice(0, promptPreviewLen) + '...'}
+            </span>
+            {prompt.length > promptPreviewLen && (
+              <button
+                className="ml-1 text-[10px] text-muted-foreground/80 hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setPromptExpanded(!promptExpanded)
+                }}
+              >
+                {promptExpanded ? 'less' : 'more'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {hasProgress && (
+        <TaskProgressView
+          progress={block.progress!}
+          isComplete={hasResult}
+        />
+      )}
+
+      {hasResult && (
+        <ResultView result={block.result || ''} isError={block.isError} isCode={false} />
       )}
     </div>
   )

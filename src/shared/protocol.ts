@@ -169,6 +169,9 @@ export interface ToolCallBlock {
   progress?: string
   result?: string
   isError?: boolean
+  startTimestamp?: number
+  endTimestamp?: number
+  lastProgressAt?: number
 }
 
 export interface AttachmentBlock {

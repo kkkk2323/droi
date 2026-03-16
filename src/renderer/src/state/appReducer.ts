@@ -292,6 +292,7 @@ function addToolUse(
     callId: toolUse.id,
     toolName: toolUse.name,
     parameters: toolUse.input,
+    startTimestamp: timestamp,
   }
   const last = msgs[msgs.length - 1]
   if (last && last.role === 'assistant') {
@@ -607,8 +608,14 @@ export function applyRpcNotification(
         const hasParams = Boolean(block.parameters) && Object.keys(block.parameters).length > 0
         const nextName = block.toolName && block.toolName !== 'Tool' ? block.toolName : name
         const nextParams = hasParams ? block.parameters : (input as any)
-        if (nextName === block.toolName && nextParams === block.parameters) return block
-        return { ...block, toolName: nextName, parameters: nextParams }
+        if (nextName === block.toolName && nextParams === block.parameters && block.startTimestamp)
+          return block
+        return {
+          ...block,
+          toolName: nextName,
+          parameters: nextParams,
+          startTimestamp: block.startTimestamp || now,
+        }
       })
       if (updated !== msgs) return updated
       return addToolUse(msgs, { id, name, input: input as any }, now)
@@ -627,6 +634,7 @@ export function applyRpcNotification(
         ...block,
         result: rendered,
         isError,
+        endTimestamp: now,
       }))
       if (updated !== msgs) return updated
       const toolName = String((notification as any).toolName || 'Tool')
@@ -653,7 +661,11 @@ export function applyRpcNotification(
     const update = (notification as any).update
     const rendered = formatUnknown(update)
     let next = updateSessionMessages(prev, sid, (msgs) => {
-      const updated = updateToolCall(msgs, toolUseId, (block) => ({ ...block, progress: rendered }))
+      const updated = updateToolCall(msgs, toolUseId, (block) => ({
+        ...block,
+        progress: rendered,
+        lastProgressAt: now,
+      }))
       if (updated !== msgs) return updated
       const toolName = String((notification as any).toolName || 'Tool')
       return appendToolCallFallback(updated, now, {
