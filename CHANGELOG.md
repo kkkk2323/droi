@@ -1,3 +1,9 @@
+## 0.28.0 - 2026-03-16
+
+### Features
+- Remove deprecated model options and update the reasoning effort map
+- Enhance tool execution UI with duration tracking and progress details
+
 ## 0.27.0 - 2026-03-13
 
 ### Features
