@@ -520,13 +520,7 @@ function parseTaskProgress(progress: string): {
   return null
 }
 
-function TaskProgressView({
-  progress,
-  isComplete,
-}: {
-  progress: string
-  isComplete?: boolean
-}) {
+function TaskProgressView({ progress, isComplete }: { progress: string; isComplete?: boolean }) {
   const parsed = parseTaskProgress(progress)
 
   if (!parsed) {
@@ -549,15 +543,11 @@ function TaskProgressView({
       )}
       <span className="font-medium">{parsed.toolName}</span>
       {displayStatus && (
-        <span className="rounded bg-background/60 px-1.5 py-0.5 text-[10px]">
-          {displayStatus}
-        </span>
+        <span className="rounded bg-background/60 px-1.5 py-0.5 text-[10px]">{displayStatus}</span>
       )}
       {parsed.details && (
         <span className="truncate font-mono opacity-60">
-          {parsed.details.length > 100
-            ? parsed.details.slice(0, 100) + '...'
-            : parsed.details}
+          {parsed.details.length > 100 ? parsed.details.slice(0, 100) + '...' : parsed.details}
         </span>
       )}
     </div>
@@ -614,9 +604,7 @@ function ToolActivity({
             {skillName}
           </span>
         )}
-        {summary && (
-          <span className="min-w-0 truncate font-mono opacity-60">{summary}</span>
-        )}
+        {summary && <span className="min-w-0 truncate font-mono opacity-60">{summary}</span>}
         {elapsed && (
           <span className="ml-1 shrink-0 tabular-nums text-[10px] opacity-50">{elapsed}</span>
         )}
@@ -724,12 +712,7 @@ function TaskExpandedView({ block }: { block: ToolCallBlock }) {
         )}
       </div>
 
-      {hasProgress && (
-        <TaskProgressView
-          progress={block.progress!}
-          isComplete={hasResult}
-        />
-      )}
+      {hasProgress && <TaskProgressView progress={block.progress!} isComplete={hasResult} />}
 
       {hasResult && (
         <ResultView result={block.result || ''} isError={block.isError} isCode={false} />
