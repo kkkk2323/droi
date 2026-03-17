@@ -12,7 +12,10 @@ export interface HonoAppDeps {
   opts: StartApiServerOpts
   runtimePortRef: { value: number }
   appStateStore: AppStateStore
-  buildExecEnv: () => Promise<Record<string, string | undefined>>
+  buildExecEnv: (params?: {
+    sessionId?: string
+    key?: string
+  }) => Promise<Record<string, string | undefined>>
   sessionStore: SessionStore
   execManager: DroidExecManager
   setupScriptRunner: SetupScriptRunner

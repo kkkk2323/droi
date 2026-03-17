@@ -89,9 +89,16 @@ export async function startApiServer(opts: StartApiServerOpts) {
 
   const keyStore = createKeyStore(appStateStore)
   const factoryApiProxy = createFactoryApiProxy({ keyStore })
-  const buildExecEnv = async (): Promise<Record<string, string | undefined>> => {
+  const buildExecEnv = async (params?: {
+    sessionId?: string
+    key?: string
+  }): Promise<Record<string, string | undefined>> => {
     const env: Record<string, string | undefined> = { ...process.env }
-    const activeKey = await keyStore.getActiveKey()
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    const explicitKey = typeof params?.key === 'string' ? params.key.trim() : ''
+    const activeKey =
+      explicitKey ||
+      (sessionId ? await keyStore.getActiveKey(sessionId) : await keyStore.getActiveKey())
     const bootstrapKey = activeKey || cachedStateRef.value.apiKey || process.env['FACTORY_API_KEY']
     if (bootstrapKey) env['FACTORY_API_KEY'] = bootstrapKey
     env['FACTORY_API_BASE_URL'] = await factoryApiProxy.getBaseUrl()

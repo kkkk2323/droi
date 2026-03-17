@@ -166,9 +166,16 @@ export function registerIpcHandlers(opts: {
     return { sessionId, missionDir }
   }
 
-  const buildExecEnv = async (): Promise<Record<string, string | undefined>> => {
+  const buildExecEnv = async (params?: {
+    sessionId?: string
+    key?: string
+  }): Promise<Record<string, string | undefined>> => {
     const env: Record<string, string | undefined> = { ...process.env }
-    const activeKey = await keyStore.getActiveKey()
+    const sessionId = typeof params?.sessionId === 'string' ? params.sessionId.trim() : ''
+    const explicitKey = typeof params?.key === 'string' ? params.key.trim() : ''
+    const activeKey =
+      explicitKey ||
+      (sessionId ? await keyStore.getActiveKey(sessionId) : await keyStore.getActiveKey())
     const bootstrapKey = activeKey || cachedState.apiKey || process.env['FACTORY_API_KEY']
     if (bootstrapKey) env['FACTORY_API_KEY'] = bootstrapKey
     env['FACTORY_API_BASE_URL'] = await factoryApiProxy.getBaseUrl()
@@ -648,9 +655,11 @@ export function registerIpcHandlers(opts: {
   )
 
   // Multi-key management
-  ipcMain.handle('keys:list', async () => {
+  ipcMain.handle('keys:list', async (_event, sessionId?: string) => {
     const [keys, usages] = await Promise.all([keyStore.getKeys(), keyStore.getUsages()])
-    const activeKey = cachedState.apiKey || ''
+    const activeKey = sessionId
+      ? (await keyStore.getBoundKey(sessionId)) || ''
+      : cachedState.apiKey || ''
     return keys.map((entry, index) => ({
       key: entry.key,
       note: entry.note || '',
@@ -685,10 +694,12 @@ export function registerIpcHandlers(opts: {
     await keyStore.updateNote(index, note)
   })
 
-  ipcMain.handle('keys:refresh', async () => {
+  ipcMain.handle('keys:refresh', async (_event, sessionId?: string) => {
     const usages = await keyStore.refreshUsages()
     const keys = await keyStore.getKeys()
-    const activeKey = cachedState.apiKey || ''
+    const activeKey = sessionId
+      ? (await keyStore.getBoundKey(sessionId)) || ''
+      : cachedState.apiKey || ''
     return keys.map((entry, index) => ({
       key: entry.key,
       note: entry.note || '',
@@ -699,8 +710,8 @@ export function registerIpcHandlers(opts: {
     }))
   })
 
-  ipcMain.handle('keys:active', async () => {
-    const key = await keyStore.getActiveKey()
+  ipcMain.handle('keys:active', async (_event, sessionId?: string) => {
+    const key = await keyStore.getActiveKey(sessionId)
     if (key && key !== cachedState.apiKey) {
       cachedState = { ...(cachedState as PersistedAppStateV2), apiKey: key, version: 2 }
     }
@@ -1145,7 +1156,7 @@ export function registerIpcHandlers(opts: {
     if (!machineId || !cwd || !(await isExistingDir(cwd))) return stored
 
     try {
-      const env = await buildExecEnv()
+      const env = await buildExecEnv({ sessionId })
       const live = await execManager.loadSessionSnapshot({
         sessionId,
         machineId,
@@ -1190,7 +1201,8 @@ export function registerIpcHandlers(opts: {
       const machineId = (cachedState as PersistedAppStateV2).machineId
       if (!machineId) throw new Error('Missing machineId')
 
-      const env = await buildExecEnv()
+      const selectedKey = await keyStore.getActiveKey()
+      const env = await buildExecEnv({ key: selectedKey || undefined })
 
       const protocol = resolveProtocolPayload(payload)
 
@@ -1207,6 +1219,7 @@ export function registerIpcHandlers(opts: {
           typeof payload.reasoningEffort === 'string' ? payload.reasoningEffort : undefined,
         env,
       })
+      if (selectedKey) await keyStore.bindSessionKey(res.sessionId, selectedKey)
       return res
     },
   )
@@ -1226,7 +1239,7 @@ export function registerIpcHandlers(opts: {
 
     execManager.disposeSession(id)
 
-    const env = await buildExecEnv()
+    const env = await buildExecEnv({ sessionId: id })
 
     const created = await execManager.createSession({
       machineId,
@@ -1243,6 +1256,7 @@ export function registerIpcHandlers(opts: {
       env,
     })
 
+    await keyStore.moveSessionBinding(id, created.sessionId)
     const meta = await sessionStore.replaceSessionId(id, created.sessionId)
     return meta
   })
@@ -1252,6 +1266,7 @@ export function registerIpcHandlers(opts: {
     if (sessionId) {
       await stopMissionDirWatcher(sessionId)
       await stopMissionRuntimeWatcher(sessionId)
+      await keyStore.deleteSessionBinding(sessionId)
     }
     return sessionStore.delete(id)
   })

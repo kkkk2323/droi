@@ -1,8 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { getModelDefaultReasoning } from '../src/renderer/src/types.ts'
+import { MODELS, getModelDefaultReasoning, getModelReasoningLevels } from '../src/renderer/src/types.ts'
 import { resolveSessionRuntimeSelection } from '../src/renderer/src/lib/missionModelState.ts'
+
+test('gpt-5.4-mini is available and uses the expected reasoning defaults', () => {
+  const model = MODELS.find((entry) => entry.value === 'gpt-5.4-mini')
+
+  assert.ok(model)
+  assert.equal(model.provider, 'openai')
+  assert.equal(model.multiplier, '0.3×')
+  assert.deepEqual(getModelReasoningLevels('gpt-5.4-mini'), ['none', 'low', 'medium', 'high', 'xhigh'])
+  assert.equal(getModelDefaultReasoning('gpt-5.4-mini'), 'high')
+})
 
 test('Mission session creation prefers orchestrator model and resets reasoning for the new model', () => {
   const selection = resolveSessionRuntimeSelection({

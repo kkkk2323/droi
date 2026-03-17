@@ -66,6 +66,12 @@ test('Factory API proxy rewrites only the documented LLM inference headers', asy
       invalidations += 1
     },
     getActiveKey: async () => 'fk-rotated',
+    getBoundKey: async () => null,
+    bindSessionKey: async () => {},
+    moveSessionBinding: async () => {},
+    deleteSessionBinding: async () => {},
+    rebindSessionsUsingKey: async () => {},
+    resolveKeyForRequest: async () => ({ key: 'fk-rotated' }),
   }
 
   const proxy = createFactoryApiProxy({ keyStore, upstreamBaseUrl: upstream.url })
@@ -114,6 +120,67 @@ test('Factory API proxy rewrites only the documented LLM inference headers', asy
   assert.equal(invalidations, 1)
 })
 
+test('Factory API proxy preserves a sticky request key until keyStore asks to rebind', async (t) => {
+  const seen: string[] = []
+  const upstream = await startUpstreamServer(async (req, res) => {
+    seen.push(String(req.headers.authorization || ''))
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ ok: true }))
+  })
+
+  const presented: Array<string | null> = []
+  const keyStore: KeyStoreAPI = {
+    getKeys: async () => [],
+    addKeys: async () => ({ added: 0, duplicates: 0 }),
+    removeKey: async () => {},
+    updateNote: async () => {},
+    getUsages: async () => new Map(),
+    refreshUsages: async () => new Map(),
+    invalidateUsages: () => {},
+    getActiveKey: async () => 'fk-new',
+    getBoundKey: async () => null,
+    bindSessionKey: async () => {},
+    moveSessionBinding: async () => {},
+    deleteSessionBinding: async () => {},
+    rebindSessionsUsingKey: async () => {},
+    resolveKeyForRequest: async (currentKey) => {
+      presented.push(currentKey || null)
+      if (currentKey === 'fk-sticky') return { key: 'fk-sticky' }
+      return { key: 'fk-new', reboundFrom: currentKey || undefined }
+    },
+  }
+
+  const proxy = createFactoryApiProxy({ keyStore, upstreamBaseUrl: upstream.url })
+  t.after(async () => {
+    await proxy.close().catch(() => {})
+    await upstream.close().catch(() => {})
+  })
+
+  const proxyBaseUrl = await proxy.getBaseUrl()
+  const stickyRes = await fetch(`${proxyBaseUrl}/api/llm/o/v1/responses`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer fk-sticky',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ model: 'gpt-5.4' }),
+  })
+  assert.equal(stickyRes.status, 200)
+
+  const reboundRes = await fetch(`${proxyBaseUrl}/api/llm/o/v1/responses`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer fk-old',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ model: 'gpt-5.4' }),
+  })
+  assert.equal(reboundRes.status, 200)
+
+  assert.deepEqual(presented, ['fk-sticky', 'fk-old'])
+  assert.deepEqual(seen, ['Bearer fk-sticky', 'Bearer fk-new'])
+})
+
 test('Factory API proxy ignores FACTORY_API_BASE_URL when resolving the upstream target', async (t) => {
   const upstream = await startUpstreamServer((_req, res) => {
     res.statusCode = 204
@@ -134,6 +201,12 @@ test('Factory API proxy ignores FACTORY_API_BASE_URL when resolving the upstream
     refreshUsages: async () => new Map(),
     invalidateUsages: () => {},
     getActiveKey: async () => null,
+    getBoundKey: async () => null,
+    bindSessionKey: async () => {},
+    moveSessionBinding: async () => {},
+    deleteSessionBinding: async () => {},
+    rebindSessionsUsingKey: async () => {},
+    resolveKeyForRequest: async () => ({ key: null }),
   }
 
   const proxy = createFactoryApiProxy({ keyStore })
@@ -172,6 +245,12 @@ test('Factory API proxy strips compression headers to avoid double decompression
     refreshUsages: async () => new Map(),
     invalidateUsages: () => {},
     getActiveKey: async () => null,
+    getBoundKey: async () => null,
+    bindSessionKey: async () => {},
+    moveSessionBinding: async () => {},
+    deleteSessionBinding: async () => {},
+    rebindSessionsUsingKey: async () => {},
+    resolveKeyForRequest: async () => ({ key: null }),
   }
 
   const proxy = createFactoryApiProxy({ keyStore, upstreamBaseUrl: upstream.url })

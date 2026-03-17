@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'streamdown/styles.css';
 
 @font-face {
   font-family: 'Geist';
@@ -20,7 +19,6 @@
 }
 
 @source "../";
-@source "../../../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 

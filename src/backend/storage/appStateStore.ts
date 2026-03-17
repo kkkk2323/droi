@@ -73,6 +73,18 @@ function normalizeApiKeys(raw: unknown, legacyApiKey?: string): ApiKeyEntry[] | 
   return out.length ? out : undefined
 }
 
+function normalizeSessionKeyBindings(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, string> = {}
+  for (const [sessionId, value] of Object.entries(raw as Record<string, unknown>)) {
+    const sid = typeof sessionId === 'string' ? sessionId.trim() : ''
+    const key = typeof value === 'string' ? value.trim() : ''
+    if (!sid || !key) continue
+    out[sid] = key
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 function migrateToV2(raw: any): PersistedAppStateV2 {
   if (
     raw &&
@@ -107,6 +119,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       machineId: raw.machineId,
       apiKey,
       apiKeys: normalizeApiKeys(raw.apiKeys, apiKey),
+      sessionKeyBindings: normalizeSessionKeyBindings(raw.sessionKeyBindings),
       projects: normalizeProjects(raw.projects),
       activeProjectDir: typeof raw.activeProjectDir === 'string' ? raw.activeProjectDir : undefined,
       traceChainEnabled:
@@ -154,6 +167,7 @@ function migrateToV2(raw: any): PersistedAppStateV2 {
       machineId: randomUUID(),
       apiKey,
       apiKeys: normalizeApiKeys(raw.apiKeys, apiKey),
+      sessionKeyBindings: normalizeSessionKeyBindings(raw.sessionKeyBindings),
       projects: normalizeProjects(raw.projects),
       activeProjectDir: typeof raw.activeProjectDir === 'string' ? raw.activeProjectDir : undefined,
       traceChainEnabled:

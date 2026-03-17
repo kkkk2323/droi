@@ -23,6 +23,7 @@ import {
   useRemoveKeyMutation,
   useUpdateKeyNoteMutation,
 } from '@/hooks/useKeys'
+import { useActiveSessionId } from '@/store'
 
 function maskKey(k: string): string {
   if (k.length <= 10) return k.slice(0, 3) + '***'
@@ -41,8 +42,9 @@ type SortField = 'percent' | 'quota' | 'expiry'
 type SortDir = 'asc' | 'desc'
 
 export function KeysPage() {
-  const { data: keys = [], isLoading: loading } = useKeysQuery()
-  const refreshMutation = useRefreshKeysMutation()
+  const activeSessionId = useActiveSessionId()
+  const { data: keys = [], isLoading: loading } = useKeysQuery(activeSessionId || undefined)
+  const refreshMutation = useRefreshKeysMutation(activeSessionId || undefined)
   const addMutation = useAddKeysMutation()
   const removeMutation = useRemoveKeyMutation()
   const updateNoteMutation = useUpdateKeyNoteMutation()

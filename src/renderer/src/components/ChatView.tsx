@@ -18,7 +18,6 @@ import {
   BookOpen,
   Brain,
 } from 'lucide-react'
-import { Streamdown } from 'streamdown'
 import type {
   ChatMessage,
   TextBlock,
@@ -33,6 +32,7 @@ import { isTodoWriteBlock } from './TodoPanel'
 import { isBrowserMode, getApiBase } from '@/droidClient'
 import { SpecReviewCard, isExitSpecPermission } from './SpecReviewCard'
 import { SessionBootstrapCards } from './SessionBootstrapCards'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
 function isImageFile(name: string): boolean {
@@ -472,13 +472,16 @@ function ThinkingSection({
   )
 }
 
-function AgentText({ content }: { content: string; isStreaming: boolean }) {
+function AgentText({ content, isStreaming }: { content: string; isStreaming: boolean }) {
   if (!content.trim()) return null
 
   return (
-    <div className="prose prose-sm max-w-none text-foreground/90 prose-headings:text-foreground prose-p:leading-relaxed prose-pre:bg-zinc-950 prose-pre:text-zinc-200 prose-pre:overflow-x-auto prose-code:text-foreground prose-code:break-all overflow-hidden break-words">
-      <Streamdown>{content}</Streamdown>
-    </div>
+    <MarkdownRenderer
+      className="text-foreground/90"
+      content={content}
+      isStreaming={isStreaming}
+      variant="chat"
+    />
   )
 }
 
@@ -564,7 +567,8 @@ function ToolActivity({
   const [expanded, setExpanded] = useState(false)
   const hasResult = block.result !== undefined
   const icon = getToolIcon(block.toolName)
-  const summary = getToolSummary(block)
+  const applyPatchPath = block.toolName === 'ApplyPatch' ? getApplyPatchTargetPath(block) : ''
+  const summary = applyPatchPath ? '' : getToolSummary(block)
   const isTask = block.toolName === 'Task'
   const elapsed = useElapsedTime(
     isTask ? block.startTimestamp : undefined,
@@ -599,6 +603,9 @@ function ToolActivity({
           <span className="size-3 shrink-0 text-muted-foreground">{icon}</span>
         )}
         <span className="font-medium">{block.toolName}</span>
+        {applyPatchPath && (
+          <span className="min-w-0 truncate font-mono opacity-60">{applyPatchPath}</span>
+        )}
         {skillName && (
           <span className="ml-1 truncate rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-700">
             {skillName}
@@ -632,6 +639,8 @@ function ToolExpandedContent({ block }: { block: ToolCallBlock }) {
   const isEdit = /edit|create|write|multiedit/i.test(block.toolName)
   const hasProgress = typeof block.progress === 'string' && block.progress.trim().length > 0
   const hasResult = block.result !== undefined
+  const applyPatchResult =
+    block.toolName === 'ApplyPatch' && hasResult ? parseApplyPatchResult(block.result || '') : null
 
   return (
     <>
@@ -641,6 +650,8 @@ function ToolExpandedContent({ block }: { block: ToolCallBlock }) {
           oldStr={String(block.parameters.old_str)}
           newStr={String(block.parameters.new_str ?? '')}
         />
+      ) : applyPatchResult ? (
+        <ApplyPatchDiffView result={applyPatchResult} />
       ) : block.parameters.command ? (
         <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5 text-zinc-300">
           <span className="text-zinc-500">$ </span>
@@ -658,7 +669,7 @@ function ToolExpandedContent({ block }: { block: ToolCallBlock }) {
         </pre>
       )}
 
-      {hasResult && (!isEdit || block.isError) && (
+      {hasResult && (!isEdit || block.isError) && !applyPatchResult && (
         <ResultView result={block.result || ''} isError={block.isError} isCode={isEdit} />
       )}
     </>
@@ -750,6 +761,168 @@ function DiffView({
   )
 }
 
+type ParsedApplyPatchResult = {
+  success: boolean
+  filePath: string
+  diff?: string
+  content?: string
+}
+
+type ApplyPatchChangeBlock = {
+  oldText: string
+  newText: string
+}
+
+const APPLY_PATCH_PREVIEW_MAX_LINES = 40
+const APPLY_PATCH_PREVIEW_MAX_CHARS = 2400
+
+function parseApplyPatchResult(result: string): ParsedApplyPatchResult | null {
+  try {
+    const parsed = JSON.parse(result)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    if (typeof (parsed as any).success !== 'boolean') return null
+    if (typeof (parsed as any).file_path !== 'string') return null
+    const diff = typeof (parsed as any).diff === 'string' ? String((parsed as any).diff) : ''
+    const content =
+      typeof (parsed as any).content === 'string' ? String((parsed as any).content) : ''
+    if (!diff && !content) return null
+    return {
+      success: (parsed as any).success,
+      filePath: String((parsed as any).file_path),
+      diff: diff || undefined,
+      content: content || undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseApplyPatchChangeBlocks(diff: string): ApplyPatchChangeBlock[] {
+  const blocks: ApplyPatchChangeBlock[] = []
+  let oldLines: string[] = []
+  let newLines: string[] = []
+
+  const flush = () => {
+    if (oldLines.length === 0 && newLines.length === 0) return
+    blocks.push({ oldText: oldLines.join('\n'), newText: newLines.join('\n') })
+    oldLines = []
+    newLines = []
+  }
+
+  for (const line of diff.split('\n')) {
+    if (!line || line.startsWith('*** ') || line.startsWith('@@')) {
+      flush()
+      continue
+    }
+    if (line.startsWith('--- ') || line.startsWith('+++ ')) continue
+    if (line.startsWith('-')) {
+      oldLines.push(line.slice(1))
+      continue
+    }
+    if (line.startsWith('+')) {
+      newLines.push(line.slice(1))
+      continue
+    }
+    flush()
+  }
+
+  flush()
+  return blocks
+}
+
+function ApplyPatchTextBlock({
+  label,
+  text,
+  tone,
+}: {
+  label: string
+  text: string
+  tone: 'before' | 'after' | 'neutral'
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const lines = text.split('\n')
+  const overLineLimit = lines.length > APPLY_PATCH_PREVIEW_MAX_LINES
+  const overCharLimit = text.length > APPLY_PATCH_PREVIEW_MAX_CHARS
+  const truncated = !expanded && (overLineLimit || overCharLimit)
+  const preview = truncated
+    ? lines
+        .slice(0, APPLY_PATCH_PREVIEW_MAX_LINES)
+        .join('\n')
+        .slice(0, APPLY_PATCH_PREVIEW_MAX_CHARS)
+    : text
+
+  const labelClassName =
+    tone === 'before'
+      ? 'text-red-500/80'
+      : tone === 'after'
+        ? 'text-emerald-500/80'
+        : 'text-muted-foreground'
+  const bodyClassName =
+    tone === 'before'
+      ? 'text-red-400/80'
+      : tone === 'after'
+        ? 'text-emerald-400/80'
+        : 'text-muted-foreground'
+
+  return (
+    <div>
+      <div className={cn('mb-1 text-[10px] font-medium uppercase tracking-wide', labelClassName)}>
+        {label}
+      </div>
+      <pre
+        className={cn(
+          'whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5',
+          bodyClassName,
+        )}
+      >
+        {preview}
+      </pre>
+      {truncated && (
+        <button
+          className="mt-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded(true)}
+        >
+          Show more
+        </button>
+      )}
+    </div>
+  )
+}
+
+function ApplyPatchDiffView({ result }: { result: ParsedApplyPatchResult }) {
+  const blocks = result.diff
+    ? parseApplyPatchChangeBlocks(result.diff)
+    : result.content
+      ? [{ oldText: '', newText: result.content }]
+      : []
+
+  return (
+    <div className="space-y-2">
+      {blocks.length > 0 ? (
+        <div className="space-y-2">
+          {blocks.map((block, index) => (
+            <div key={`${result.filePath}:${index}`} className="space-y-1">
+              {block.oldText ? (
+                <ApplyPatchTextBlock label="Before" text={block.oldText} tone="before" />
+              ) : null}
+
+              {block.newText ? (
+                <ApplyPatchTextBlock label="After" text={block.newText} tone="after" />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <ApplyPatchTextBlock
+          label="Patch"
+          text={result.diff || result.content || ''}
+          tone="neutral"
+        />
+      )}
+    </div>
+  )
+}
+
 function ResultView({ result, isError }: { result: string; isError?: boolean; isCode: boolean }) {
   const [showFull, setShowFull] = useState(false)
   const maxLen = 500
@@ -826,6 +999,15 @@ function getToolIcon(toolName: string): React.ReactNode {
   if (/grep/i.test(toolName)) return <Search className="size-3" />
   if (/fetch|web/i.test(toolName)) return <Globe className="size-3" />
   return <Terminal className="size-3" />
+}
+
+function getApplyPatchTargetPath(block: ToolCallBlock): string {
+  const result = typeof block.result === 'string' ? parseApplyPatchResult(block.result) : null
+  if (result?.filePath) return result.filePath
+
+  const rawInput = typeof block.parameters.input === 'string' ? block.parameters.input : ''
+  const match = rawInput.match(/\*\*\* (?:Add|Update) File: (.+)/)
+  return match?.[1]?.trim() || ''
 }
 
 function getToolSummary(block: ToolCallBlock): string {

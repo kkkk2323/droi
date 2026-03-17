@@ -379,8 +379,11 @@ export function createApiRoutes() {
   api.get('/keys', async (c) => {
     const deps = c.get('deps')
     const [keys, usages] = await Promise.all([deps.keyStore.getKeys(), deps.keyStore.getUsages()])
+    const sessionId = c.req.query('sessionId') || ''
     const state = await loadCachedState(c)
-    const activeKey = state.apiKey || ''
+    const activeKey = sessionId
+      ? (await deps.keyStore.getBoundKey(sessionId)) || ''
+      : state.apiKey || ''
     const entries = keys.map((entry, index) => ({
       key: entry.key,
       note: entry.note || '',
@@ -440,8 +443,11 @@ export function createApiRoutes() {
     const deps = c.get('deps')
     const usages = await deps.keyStore.refreshUsages()
     const keys = await deps.keyStore.getKeys()
+    const sessionId = c.req.query('sessionId') || ''
     const state = await loadCachedState(c)
-    const activeKey = state.apiKey || ''
+    const activeKey = sessionId
+      ? (await deps.keyStore.getBoundKey(sessionId)) || ''
+      : state.apiKey || ''
     const entries = keys.map((entry, index) => ({
       key: entry.key,
       note: entry.note || '',
@@ -455,7 +461,8 @@ export function createApiRoutes() {
 
   api.get('/keys/active', async (c) => {
     const deps = c.get('deps')
-    const key = await deps.keyStore.getActiveKey()
+    const sessionId = c.req.query('sessionId') || ''
+    const key = await deps.keyStore.getActiveKey(sessionId || undefined)
     if (key && deps.cachedStateRef.value.apiKey !== key) {
       deps.cachedStateRef.value = { ...deps.cachedStateRef.value, apiKey: key }
     }
@@ -648,7 +655,9 @@ export function createApiRoutes() {
 
       const resumeSessionId = sid
 
-      const env = !deps.execManager.hasSession(sid) ? await deps.buildExecEnv() : { ...process.env }
+      const env = !deps.execManager.hasSession(sid)
+        ? await deps.buildExecEnv({ sessionId: sid })
+        : { ...process.env }
 
       await deps.execManager.send({
         sessionId: sid,
@@ -710,7 +719,9 @@ export function createApiRoutes() {
 
       const resumeSessionId = sid
 
-      const env = !deps.execManager.hasSession(sid) ? await deps.buildExecEnv() : { ...process.env }
+      const env = !deps.execManager.hasSession(sid)
+        ? await deps.buildExecEnv({ sessionId: sid })
+        : { ...process.env }
 
       const encoder = new TextEncoder()
       let unsubscribe: (() => void) | null = null
@@ -985,7 +996,7 @@ export function createApiRoutes() {
     if (!machineId || !cwd || !(await isDirectory(cwd))) return c.json(stored)
 
     try {
-      const env = await deps.buildExecEnv()
+      const env = await deps.buildExecEnv({ sessionId: stored.id })
       const live = await deps.execManager.loadSessionSnapshot({
         sessionId: stored.id,
         machineId,
@@ -1023,7 +1034,8 @@ export function createApiRoutes() {
       const machineId = (state as PersistedAppStateV2).machineId
       if (!machineId) return jsonError(c, 500, 'Missing machineId')
 
-      const env = await deps.buildExecEnv()
+      const selectedKey = await deps.keyStore.getActiveKey()
+      const env = await deps.buildExecEnv({ key: selectedKey || undefined })
 
       const res = await deps.execManager.createSession({
         machineId,
@@ -1037,6 +1049,7 @@ export function createApiRoutes() {
         reasoningEffort,
         env,
       })
+      if (selectedKey) await deps.keyStore.bindSessionKey(res.sessionId, selectedKey)
       return c.json(res)
     } catch {
       return jsonError(c, 400, 'Invalid JSON')
@@ -1060,7 +1073,7 @@ export function createApiRoutes() {
 
       deps.execManager.disposeSession(id)
 
-      const env = await deps.buildExecEnv()
+      const env = await deps.buildExecEnv({ sessionId: id })
       const protocol = resolveProtocolPayload(existing || {})
 
       const created = await deps.execManager.createSession({
@@ -1076,6 +1089,7 @@ export function createApiRoutes() {
         env,
       })
 
+      await deps.keyStore.moveSessionBinding(id, created.sessionId)
       const meta = await deps.sessionStore.replaceSessionId(id, created.sessionId)
       if (!meta) return jsonError(c, 400, 'Invalid session id')
       return c.json(meta)
@@ -1095,6 +1109,7 @@ export function createApiRoutes() {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
       const id = typeof body.id === 'string' ? body.id : ''
+      await deps.keyStore.deleteSessionBinding(id)
       const ok = await deps.sessionStore.delete(id)
       return c.json({ ok })
     } catch {

@@ -690,9 +690,10 @@ const browserClient: DroidClientAPI = {
       return ''
     }
   },
-  listKeys: async () => {
+  listKeys: async (sessionId) => {
     try {
-      const res = await apiFetch(`${getApiBase()}/keys`)
+      const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''
+      const res = await apiFetch(`${getApiBase()}/keys${suffix}`)
       if (!res.ok) return []
       const data = await res.json()
       return data.keys || []
@@ -727,9 +728,10 @@ const browserClient: DroidClientAPI = {
       body: JSON.stringify({ index, note }),
     }).catch(() => {})
   },
-  refreshKeys: async () => {
+  refreshKeys: async (sessionId) => {
     try {
-      const res = await apiFetch(`${getApiBase()}/keys/refresh`, { method: 'POST' })
+      const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''
+      const res = await apiFetch(`${getApiBase()}/keys/refresh${suffix}`, { method: 'POST' })
       if (!res.ok) return []
       const data = await res.json()
       return data.keys || []
@@ -737,9 +739,10 @@ const browserClient: DroidClientAPI = {
       return []
     }
   },
-  getActiveKeyInfo: async () => {
+  getActiveKeyInfo: async (sessionId) => {
     try {
-      const res = await apiFetch(`${getApiBase()}/keys/active`)
+      const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''
+      const res = await apiFetch(`${getApiBase()}/keys/active${suffix}`)
       if (!res.ok) return { key: '', apiKeyFingerprint: '' }
       return await res.json()
     } catch {

@@ -1773,7 +1773,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       try {
         let activeKeyFp = ''
         try {
-          const info = await droid.getActiveKeyInfo()
+          const info = await droid.getActiveKeyInfo(sid)
           activeKeyFp = String((info as any)?.apiKeyFingerprint || '')
         } catch {
           // ignore

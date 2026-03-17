@@ -1,6 +1,7 @@
 import { Key } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { useKeysQuery } from '@/hooks/useKeys'
+import { useActiveSessionId } from '@/store'
 
 function formatNumber(n: number | null): string {
   if (n === null) return '?'
@@ -11,7 +12,8 @@ function formatNumber(n: number | null): string {
 }
 
 export function KeyUsageIndicator({ className }: { className?: string }) {
-  const { data: keys = [] } = useKeysQuery()
+  const activeSessionId = useActiveSessionId()
+  const { data: keys = [] } = useKeysQuery(activeSessionId || undefined)
 
   if (keys.length === 0) return null
 

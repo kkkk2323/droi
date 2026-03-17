@@ -5,19 +5,19 @@ const droid = getDroidClient()
 
 export const keysQueryKey = ['keys'] as const
 
-export function useKeysQuery() {
+export function useKeysQuery(sessionId?: string) {
   return useQuery({
-    queryKey: keysQueryKey,
-    queryFn: () => droid.listKeys(),
+    queryKey: [...keysQueryKey, sessionId || 'global'],
+    queryFn: () => droid.listKeys(sessionId),
   })
 }
 
-export function useRefreshKeysMutation() {
+export function useRefreshKeysMutation(sessionId?: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => droid.refreshKeys(),
+    mutationFn: () => droid.refreshKeys(sessionId),
     onSuccess: (data) => {
-      queryClient.setQueryData(keysQueryKey, data)
+      queryClient.setQueryData([...keysQueryKey, sessionId || 'global'], data)
     },
   })
 }

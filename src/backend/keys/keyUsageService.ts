@@ -105,7 +105,18 @@ export async function fetchAllKeyUsages(keys: ApiKeyEntry[]): Promise<Map<string
   return result
 }
 
-const MAX_USED_RATIO_BEFORE_SPILLOVER = 0.98
+export const MAX_USED_RATIO_BEFORE_SPILLOVER = 0.98
+
+export function getUsageUsedRatio(usage: ApiKeyUsage | null | undefined): number | null {
+  if (!usage || usage.total == null || usage.used == null) return null
+  if (usage.total <= 0) return 1
+  return usage.used / usage.total
+}
+
+export function isUsagePastSpilloverThreshold(usage: ApiKeyUsage | null | undefined): boolean {
+  const ratio = getUsageUsedRatio(usage)
+  return ratio != null && ratio >= MAX_USED_RATIO_BEFORE_SPILLOVER
+}
 
 export function selectActiveKey(
   keys: ApiKeyEntry[],
@@ -130,7 +141,7 @@ export function selectActiveKey(
     if (usage.total == null || usage.used == null) continue
     const remaining = usage.total - usage.used
     if (remaining <= 0) continue
-    const usedRatio = usage.total > 0 ? usage.used / usage.total : 1
+    const usedRatio = getUsageUsedRatio(usage) ?? 1
     candidates.push({
       key: keys[i].key,
       index: i,
