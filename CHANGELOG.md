@@ -1,3 +1,9 @@
+## 0.29.0 - 2026-03-18
+
+### Features
+- Enhance key management with session bindings and usage tracking
+- Add ApplyPatch support with detailed diff view and target path extraction
+
 ## 0.28.0 - 2026-03-16
 
 ### Features
