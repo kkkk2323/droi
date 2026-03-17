@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, FileCode, MessageSquare } from 'lucide-react'
-import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { PendingPermissionRequest, PermissionOptionMeta } from '@/state/appReducer'
 import type { DroidPermissionOption } from '@/types'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface ExitSpecData {
   plan: string
@@ -130,8 +130,8 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
       <CollapsibleContent>
         <div className="px-4 pb-3">
           <ScrollArea className="max-h-[50vh] min-h-0 rounded-lg bg-muted">
-            <div className="px-4 py-3 prose prose-sm max-w-none text-foreground/90 prose-headings:text-foreground prose-p:leading-relaxed prose-pre:bg-zinc-950 prose-pre:text-zinc-200 prose-pre:overflow-x-auto prose-code:text-foreground prose-code:break-all overflow-hidden break-words">
-              <Streamdown>{plan}</Streamdown>
+            <div className="px-4 py-3">
+              <MarkdownRenderer className="text-foreground/90" content={plan} />
             </div>
           </ScrollArea>
         </div>

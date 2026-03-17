@@ -57,6 +57,13 @@ function copyRequestHeaders(headers: IncomingHttpHeaders): Headers {
   return outgoing
 }
 
+function readBearerToken(headers: Headers): string | null {
+  const auth = String(headers.get('Authorization') || '').trim()
+  if (!auth) return null
+  const match = /^Bearer\s+(.+)$/i.exec(auth)
+  return match?.[1]?.trim() || null
+}
+
 async function readRequestBody(req: NodeJS.ReadableStream): Promise<Buffer> {
   const chunks: Buffer[] = []
   for await (const chunk of req) {
@@ -111,9 +118,9 @@ export function createFactoryApiProxy(opts: {
 
           if (shouldRotate) {
             try {
-              const selectedKey = await opts.keyStore.getActiveKey()
-              if (selectedKey) {
-                headers.set('Authorization', `Bearer ${selectedKey}`)
+              const selectedKey = await opts.keyStore.resolveKeyForRequest(readBearerToken(headers))
+              if (selectedKey.key) {
+                headers.set('Authorization', `Bearer ${selectedKey.key}`)
                 opts.keyStore.invalidateUsages()
               }
             } catch {

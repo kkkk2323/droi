@@ -18,7 +18,6 @@ import {
   BookOpen,
   Brain,
 } from 'lucide-react'
-import { Streamdown } from 'streamdown'
 import type {
   ChatMessage,
   TextBlock,
@@ -33,6 +32,7 @@ import { isTodoWriteBlock } from './TodoPanel'
 import { isBrowserMode, getApiBase } from '@/droidClient'
 import { SpecReviewCard, isExitSpecPermission } from './SpecReviewCard'
 import { SessionBootstrapCards } from './SessionBootstrapCards'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
 function isImageFile(name: string): boolean {
@@ -472,13 +472,16 @@ function ThinkingSection({
   )
 }
 
-function AgentText({ content }: { content: string; isStreaming: boolean }) {
+function AgentText({ content, isStreaming }: { content: string; isStreaming: boolean }) {
   if (!content.trim()) return null
 
   return (
-    <div className="prose prose-sm max-w-none text-foreground/90 prose-headings:text-foreground prose-p:leading-relaxed prose-pre:bg-zinc-950 prose-pre:text-zinc-200 prose-pre:overflow-x-auto prose-code:text-foreground prose-code:break-all overflow-hidden break-words">
-      <Streamdown>{content}</Streamdown>
-    </div>
+    <MarkdownRenderer
+      className="text-foreground/90"
+      content={content}
+      isStreaming={isStreaming}
+      variant="chat"
+    />
   )
 }
 

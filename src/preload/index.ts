@@ -98,12 +98,12 @@ const droidAPI = {
 
   setApiKey: (apiKey) => ipcRenderer.send('droid:setApiKey', apiKey),
   getApiKey: () => ipcRenderer.invoke('droid:getApiKey'),
-  listKeys: () => ipcRenderer.invoke('keys:list'),
+  listKeys: (sessionId?: string) => ipcRenderer.invoke('keys:list', sessionId),
   addKeys: (keys: string[]) => ipcRenderer.invoke('keys:add', { keys }),
   removeKeyByIndex: (index: number) => ipcRenderer.invoke('keys:remove', { index }),
   updateKeyNote: (index: number, note: string) => ipcRenderer.invoke('keys:note', { index, note }),
-  refreshKeys: () => ipcRenderer.invoke('keys:refresh'),
-  getActiveKeyInfo: () => ipcRenderer.invoke('keys:active'),
+  refreshKeys: (sessionId?: string) => ipcRenderer.invoke('keys:refresh', sessionId),
+  getActiveKeyInfo: (sessionId?: string) => ipcRenderer.invoke('keys:active', sessionId),
   setTraceChainEnabled: (enabled) =>
     ipcRenderer.send('appState:setTraceChainEnabled', Boolean(enabled)),
   setShowDebugTrace: (enabled) => ipcRenderer.send('appState:setShowDebugTrace', Boolean(enabled)),

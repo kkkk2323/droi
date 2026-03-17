@@ -14,6 +14,7 @@ function createTestApp(params?: {
   pairingWebPort?: number
   state?: PersistedAppState
   execManager?: Partial<HonoAppDeps['execManager']>
+  keyStore?: Partial<HonoAppDeps['keyStore']>
 }) {
   const state = params?.state || { version: 2, machineId: 'm-test' }
   const cachedStateRef = { value: state }
@@ -67,6 +68,13 @@ function createTestApp(params?: {
       refreshUsages: async () => new Map(),
       invalidateUsages: () => {},
       getActiveKey: async () => state.apiKey || null,
+      getBoundKey: async () => null,
+      bindSessionKey: async () => {},
+      moveSessionBinding: async () => {},
+      deleteSessionBinding: async () => {},
+      rebindSessionsUsingKey: async () => {},
+      resolveKeyForRequest: async () => ({ key: state.apiKey || null }),
+      ...(params?.keyStore || {}),
     } as any,
   }
 
@@ -218,6 +226,20 @@ test('POST /api/message maps autoLevel=default to interactionMode=spec and auton
   assert.equal(sendCalls.length, 1)
   assert.equal(sendCalls[0].interactionMode, 'spec')
   assert.equal(sendCalls[0].autonomyLevel, 'off')
+})
+
+test('GET /api/keys/active resolves the bound key for the requested session', async () => {
+  const app = createTestApp({
+    state: { version: 2, machineId: 'm-test', apiKey: 'fk-global' },
+    keyStore: {
+      getActiveKey: async (sessionId?: string) => (sessionId === 's-bound' ? 'fk-bound' : 'fk-global'),
+    },
+  })
+
+  const res = await app.request('http://localhost/api/keys/active?sessionId=s-bound')
+  assert.equal(res.status, 200)
+  const data = (await res.json()) as any
+  assert.equal(data.key, 'fk-bound')
 })
 
 test('POST /api/message preserves explicit Mission protocol fields', async () => {

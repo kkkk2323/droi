@@ -43,3 +43,20 @@ test('appStateStore normalizes project settings setupScript', async () => {
   assert.equal(loaded.projectSettings['/repo'].worktreePrefix, 'droi')
   assert.equal(loaded.projectSettings['/repo'].setupScript, 'npm install')
 })
+
+test('appStateStore normalizes session key bindings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'droid-app-state-bindings-'))
+  await writeFile(join(dir, 'app-state.json'), JSON.stringify({
+    version: 2,
+    machineId: 'm1',
+    sessionKeyBindings: {
+      ' session-1 ': ' fk-one ',
+      '': 'fk-empty',
+      'session-2': '',
+    },
+  }))
+
+  const store = createAppStateStore({ baseDir: dir })
+  const loaded = (await store.load()) as any
+  assert.deepEqual(loaded.sessionKeyBindings, { 'session-1': 'fk-one' })
+})

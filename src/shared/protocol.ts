@@ -299,6 +299,7 @@ export interface PersistedAppStateV2 {
   machineId: string
   apiKey?: string
   apiKeys?: ApiKeyEntry[]
+  sessionKeyBindings?: Record<string, string>
   projects?: Array<{
     dir: string
     name: string
@@ -533,7 +534,7 @@ export interface DroidClientAPI {
   setApiKey: (apiKey: string) => void
   getApiKey: () => Promise<string>
 
-  listKeys: () => Promise<
+  listKeys: (sessionId?: string) => Promise<
     Array<{
       key: string
       note: string
@@ -546,7 +547,7 @@ export interface DroidClientAPI {
   addKeys: (keys: string[]) => Promise<{ added: number; duplicates: number }>
   removeKeyByIndex: (index: number) => Promise<void>
   updateKeyNote: (index: number, note: string) => Promise<void>
-  refreshKeys: () => Promise<
+  refreshKeys: (sessionId?: string) => Promise<
     Array<{
       key: string
       note: string
@@ -556,7 +557,7 @@ export interface DroidClientAPI {
       usage: ApiKeyUsage | null
     }>
   >
-  getActiveKeyInfo: () => Promise<{ key: string; apiKeyFingerprint: string }>
+  getActiveKeyInfo: (sessionId?: string) => Promise<{ key: string; apiKeyFingerprint: string }>
   setTraceChainEnabled: (enabled: boolean) => void
   setShowDebugTrace: (enabled: boolean) => void
   setDebugTraceMaxLines: (maxLines: number | null) => void
