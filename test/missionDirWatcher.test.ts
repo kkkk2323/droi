@@ -162,24 +162,18 @@ test('MissionDirWatcher emits paused MissionDir updates when only state.json and
     )
 
     await waitFor(() => {
-      const subsequentEvents = events.slice(initialEventCount)
-      return subsequentEvents.some(
-        (event) =>
-          event.changedPaths.includes('state.json') &&
-          event.changedPaths.includes('progress_log.jsonl'),
-      )
+      const changedPaths = new Set(events.slice(initialEventCount).flatMap((event) => event.changedPaths))
+      return changedPaths.has('state.json') && changedPaths.has('progress_log.jsonl')
     })
 
-    const pausedEvent = events
-      .slice(initialEventCount)
-      .find(
-        (event) =>
-          event.changedPaths.includes('state.json') &&
-          event.changedPaths.includes('progress_log.jsonl'),
-      )
-    assert.ok(pausedEvent)
-    assert.equal(pausedEvent.changedPaths.includes('features.json'), false)
-    assert.equal(pausedEvent.changedPaths.some((value) => value.startsWith('handoffs/')), false)
+    const pausedChangedPaths = new Set(
+      events.slice(initialEventCount).flatMap((event) => event.changedPaths),
+    )
+    assert.equal(pausedChangedPaths.has('features.json'), false)
+    assert.equal(
+      Array.from(pausedChangedPaths).some((value) => value.startsWith('handoffs/')),
+      false,
+    )
   } finally {
     await watcher.stop()
   }
