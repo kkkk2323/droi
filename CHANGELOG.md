@@ -1,3 +1,8 @@
+## 0.29.2 - 2026-03-18
+
+### Tests
+- Simplify mission directory watcher event assertion
+
 ## 0.29.1 - 2026-03-18
 
 ### Refactor
