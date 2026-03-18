@@ -203,12 +203,15 @@ export function ChatPage({
           <DebugTracePanel />
         </Suspense>
       )}
+
+      <AnimatePresence mode="wait" initial={false}>
+
       {!pendingNewSession && (
         <Suspense fallback={null}>
           <TodoPanel messages={messages} />
         </Suspense>
       )}
-      <AnimatePresence mode="wait" initial={false}>
+
         {hasPermission && pendingPermissionRequest ? (
           <motion.div
             key="permission"
