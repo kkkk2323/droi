@@ -203,12 +203,14 @@ export function ChatPage({
           <DebugTracePanel />
         </Suspense>
       )}
-      {!pendingNewSession && (
-        <Suspense fallback={null}>
-          <TodoPanel messages={messages} />
-        </Suspense>
-      )}
+
       <AnimatePresence mode="wait" initial={false}>
+        {!pendingNewSession && (
+          <Suspense fallback={null}>
+            <TodoPanel messages={messages} />
+          </Suspense>
+        )}
+
         {hasPermission && pendingPermissionRequest ? (
           <motion.div
             key="permission"
@@ -238,7 +240,7 @@ export function ChatPage({
           </motion.div>
         ) : (
           <motion.div
-            key={`input-${inputKey}`}
+            key="input"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
