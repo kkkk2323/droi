@@ -1,3 +1,8 @@
+## 0.30.0 - 2026-03-18
+
+### Features
+- Implement `getGitWorkspaceLookupDir` and improve session workspace handling
+
 ## 0.29.3 - 2026-03-18
 
 ### Fixes
