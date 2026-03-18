@@ -476,11 +476,7 @@ function AgentText({ content, isStreaming }: { content: string; isStreaming: boo
   if (!content.trim()) return null
 
   return (
-    <MarkdownRenderer
-      className="text-foreground/90"
-      content={content}
-      isStreaming={isStreaming}
-    />
+    <MarkdownRenderer className="text-foreground/90" content={content} isStreaming={isStreaming} />
   )
 }
 
