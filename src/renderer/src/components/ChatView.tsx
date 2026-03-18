@@ -480,7 +480,6 @@ function AgentText({ content, isStreaming }: { content: string; isStreaming: boo
       className="text-foreground/90"
       content={content}
       isStreaming={isStreaming}
-      variant="chat"
     />
   )
 }
@@ -732,6 +731,74 @@ function TaskExpandedView({ block }: { block: ToolCallBlock }) {
   )
 }
 
+type DiffLine = {
+  prefix: '+' | '-'
+  text: string
+}
+
+function SharedDiffView({
+  filePath,
+  lines,
+  previewMaxLines,
+  previewMaxChars,
+}: {
+  filePath: string
+  lines: DiffLine[]
+  previewMaxLines?: number
+  previewMaxChars?: number
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const fileName = filePath.split('/').slice(-2).join('/')
+  const combinedLength = lines.reduce((total, line) => total + line.text.length, 0)
+  const truncated =
+    !expanded &&
+    ((previewMaxLines !== undefined && lines.length > previewMaxLines) ||
+      (previewMaxChars !== undefined && combinedLength > previewMaxChars))
+
+  let renderedCharCount = 0
+  const visibleLines = truncated
+    ? lines.filter((line, index) => {
+        if (previewMaxLines !== undefined && index >= previewMaxLines) return false
+        if (previewMaxChars === undefined) return true
+        if (renderedCharCount >= previewMaxChars) return false
+        renderedCharCount += line.text.length
+        return true
+      })
+    : lines
+
+  return (
+    <div>
+      <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5">
+        {fileName && <div className="mb-1 text-zinc-500">{fileName}</div>}
+        {visibleLines.map((line, i) => (
+          <div
+            key={`${line.prefix}${i}`}
+            className={line.prefix === '-' ? 'text-red-400/80' : 'text-emerald-400/80'}
+          >
+            <span
+              className={cn(
+                'select-none',
+                line.prefix === '-' ? 'text-red-600/50' : 'text-emerald-600/50',
+              )}
+            >
+              {line.prefix}{' '}
+            </span>
+            {line.text}
+          </div>
+        ))}
+      </pre>
+      {truncated && (
+        <button
+          className="mt-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded(true)}
+        >
+          Show more
+        </button>
+      )}
+    </div>
+  )
+}
+
 function DiffView({
   filePath,
   oldStr,
@@ -741,23 +808,14 @@ function DiffView({
   oldStr: string
   newStr: string
 }) {
-  const fileName = filePath.split('/').slice(-2).join('/')
   return (
-    <pre className="whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5">
-      {fileName && <div className="mb-1 text-zinc-500">{fileName}</div>}
-      {oldStr.split('\n').map((line, i) => (
-        <div key={`o${i}`} className="text-red-400/80">
-          <span className="select-none text-red-600/50">- </span>
-          {line}
-        </div>
-      ))}
-      {newStr.split('\n').map((line, i) => (
-        <div key={`n${i}`} className="text-emerald-400/80">
-          <span className="select-none text-emerald-600/50">+ </span>
-          {line}
-        </div>
-      ))}
-    </pre>
+    <SharedDiffView
+      filePath={filePath}
+      lines={[
+        ...oldStr.split('\n').map((text) => ({ prefix: '-' as const, text })),
+        ...newStr.split('\n').map((text) => ({ prefix: '+' as const, text })),
+      ]}
+    />
   )
 }
 
@@ -766,11 +824,6 @@ type ParsedApplyPatchResult = {
   filePath: string
   diff?: string
   content?: string
-}
-
-type ApplyPatchChangeBlock = {
-  oldText: string
-  newText: string
 }
 
 const APPLY_PATCH_PREVIEW_MAX_LINES = 40
@@ -797,129 +850,29 @@ function parseApplyPatchResult(result: string): ParsedApplyPatchResult | null {
   }
 }
 
-function parseApplyPatchChangeBlocks(diff: string): ApplyPatchChangeBlock[] {
-  const blocks: ApplyPatchChangeBlock[] = []
-  let oldLines: string[] = []
-  let newLines: string[] = []
-
-  const flush = () => {
-    if (oldLines.length === 0 && newLines.length === 0) return
-    blocks.push({ oldText: oldLines.join('\n'), newText: newLines.join('\n') })
-    oldLines = []
-    newLines = []
-  }
-
+function parseApplyPatchDiffLines(diff: string): DiffLine[] {
+  const lines: DiffLine[] = []
   for (const line of diff.split('\n')) {
-    if (!line || line.startsWith('*** ') || line.startsWith('@@')) {
-      flush()
-      continue
-    }
+    if (!line || line.startsWith('*** ') || line.startsWith('@@')) continue
     if (line.startsWith('--- ') || line.startsWith('+++ ')) continue
-    if (line.startsWith('-')) {
-      oldLines.push(line.slice(1))
-      continue
-    }
-    if (line.startsWith('+')) {
-      newLines.push(line.slice(1))
-      continue
-    }
-    flush()
+    if (line.startsWith('-')) lines.push({ prefix: '-', text: line.slice(1) })
+    if (line.startsWith('+')) lines.push({ prefix: '+', text: line.slice(1) })
   }
-
-  flush()
-  return blocks
-}
-
-function ApplyPatchTextBlock({
-  label,
-  text,
-  tone,
-}: {
-  label: string
-  text: string
-  tone: 'before' | 'after' | 'neutral'
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const lines = text.split('\n')
-  const overLineLimit = lines.length > APPLY_PATCH_PREVIEW_MAX_LINES
-  const overCharLimit = text.length > APPLY_PATCH_PREVIEW_MAX_CHARS
-  const truncated = !expanded && (overLineLimit || overCharLimit)
-  const preview = truncated
-    ? lines
-        .slice(0, APPLY_PATCH_PREVIEW_MAX_LINES)
-        .join('\n')
-        .slice(0, APPLY_PATCH_PREVIEW_MAX_CHARS)
-    : text
-
-  const labelClassName =
-    tone === 'before'
-      ? 'text-red-500/80'
-      : tone === 'after'
-        ? 'text-emerald-500/80'
-        : 'text-muted-foreground'
-  const bodyClassName =
-    tone === 'before'
-      ? 'text-red-400/80'
-      : tone === 'after'
-        ? 'text-emerald-400/80'
-        : 'text-muted-foreground'
-
-  return (
-    <div>
-      <div className={cn('mb-1 text-[10px] font-medium uppercase tracking-wide', labelClassName)}>
-        {label}
-      </div>
-      <pre
-        className={cn(
-          'whitespace-pre-wrap break-all rounded-md bg-zinc-950 px-3 py-2 text-[11px] leading-5',
-          bodyClassName,
-        )}
-      >
-        {preview}
-      </pre>
-      {truncated && (
-        <button
-          className="mt-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-          onClick={() => setExpanded(true)}
-        >
-          Show more
-        </button>
-      )}
-    </div>
-  )
+  return lines
 }
 
 function ApplyPatchDiffView({ result }: { result: ParsedApplyPatchResult }) {
-  const blocks = result.diff
-    ? parseApplyPatchChangeBlocks(result.diff)
-    : result.content
-      ? [{ oldText: '', newText: result.content }]
-      : []
+  const lines = result.diff
+    ? parseApplyPatchDiffLines(result.diff)
+    : (result.content || '').split('\n').map((text) => ({ prefix: '+' as const, text }))
 
   return (
-    <div className="space-y-2">
-      {blocks.length > 0 ? (
-        <div className="space-y-2">
-          {blocks.map((block, index) => (
-            <div key={`${result.filePath}:${index}`} className="space-y-1">
-              {block.oldText ? (
-                <ApplyPatchTextBlock label="Before" text={block.oldText} tone="before" />
-              ) : null}
-
-              {block.newText ? (
-                <ApplyPatchTextBlock label="After" text={block.newText} tone="after" />
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <ApplyPatchTextBlock
-          label="Patch"
-          text={result.diff || result.content || ''}
-          tone="neutral"
-        />
-      )}
-    </div>
+    <SharedDiffView
+      filePath={result.filePath}
+      lines={lines}
+      previewMaxChars={APPLY_PATCH_PREVIEW_MAX_CHARS}
+      previewMaxLines={APPLY_PATCH_PREVIEW_MAX_LINES}
+    />
   )
 }
 

@@ -4,6 +4,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { router } from './router'
 import { AppInitializer } from './AppInitializer'
+import 'streamdown/styles.css'
 import './styles/global.css'
 
 function getStartupBridge(): {
