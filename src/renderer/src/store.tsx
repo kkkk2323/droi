@@ -18,6 +18,7 @@ import {
 } from '@/lib/sessionWorktree'
 import {
   createLocalWorkspaceInfo,
+  getGitWorkspaceLookupDir,
   isLocalWorkspaceType,
   supportsGitWorkspace,
 } from '@/lib/workspaceType'
@@ -279,6 +280,7 @@ interface AppActions {
   handleCreateSessionWithWorkspace: (params: {
     repoRoot?: string
     projectDir?: string
+    workspaceDir?: string
     cwdSubpath?: string
     workspaceType?: WorkspaceInfo['workspaceType']
     mode: 'plain' | 'switch-branch' | 'new-branch' | 'new-worktree'
@@ -1011,8 +1013,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (s.isCreatingSession) return null
     set({ isCreatingSession: true })
     try {
-      const sourceDir = params.projectDir || s._pickProjectDirForRepo(params.repoRoot)
-      if (!sourceDir) throw new Error('No project directory available')
+      const sourceProjectDir = params.projectDir || s._pickProjectDirForRepo(params.repoRoot)
+      const sourceDir = getGitWorkspaceLookupDir({
+        workspaceType: params.workspaceType,
+        workspaceDir: params.workspaceDir,
+        projectDir: sourceProjectDir,
+      })
+      if (!sourceProjectDir || !sourceDir) throw new Error('No project directory available')
 
       const currentSid = s.activeSessionId
       const currentBuf = s.sessionBuffers.get(currentSid)
@@ -1074,7 +1081,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       if (!workspaceInfo) {
         if (isLocalWorkspaceType(sourceWorkspaceType)) {
-          const normalizedSourceDir = String(sourceDir || '').trim()
+          const normalizedSourceDir = String(sourceProjectDir || '').trim()
           workspaceInfo = createLocalWorkspaceInfo({
             projectDir: normalizedSourceDir,
             repoRoot: params.repoRoot || normalizedSourceDir,
@@ -1182,7 +1189,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     const meta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
     if (isLocalWorkspaceType(buf?.workspaceType || meta?.workspaceType)) return false
-    const projectDir = buf?.projectDir || meta?.projectDir || s.activeProjectDir
+    const projectDir = getGitWorkspaceLookupDir({
+      workspaceType: buf?.workspaceType || meta?.workspaceType,
+      workspaceDir: buf?.workspaceDir || meta?.workspaceDir,
+      projectDir: buf?.projectDir || meta?.projectDir || s.activeProjectDir,
+    })
     const cwdSubpath = buf?.cwdSubpath || meta?.cwdSubpath
     if (!projectDir) return false
 
@@ -1329,6 +1340,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const newId = await s.handleCreateSessionWithWorkspace({
         repoRoot,
         projectDir,
+        workspaceDir: pending.workspaceDir,
         cwdSubpath,
         workspaceType,
         mode: createMode,
@@ -2213,15 +2225,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // --- Workspace for meta ---
   _ensureWorkspaceForMeta: async (meta) => {
-    const desiredDir = String(meta.projectDir || meta.workspaceDir || '').trim()
+    const desiredProjectDir = String(meta.projectDir || meta.workspaceDir || '').trim()
+    const desiredDir = getGitWorkspaceLookupDir({
+      workspaceType: meta.workspaceType,
+      workspaceDir: meta.workspaceDir,
+      projectDir: desiredProjectDir,
+    })
     const desiredCwdSubpath = String(meta.cwdSubpath || '').trim() || undefined
     if (!desiredDir) throw new Error('Session is missing project directory')
 
     if (isLocalWorkspaceType(meta.workspaceType)) {
       return createLocalWorkspaceInfo({
-        projectDir: desiredDir,
-        repoRoot: meta.repoRoot || desiredDir,
-        workspaceDir: meta.workspaceDir || desiredDir,
+        projectDir: desiredProjectDir,
+        repoRoot: meta.repoRoot || desiredProjectDir,
+        workspaceDir: meta.workspaceDir || desiredProjectDir,
         cwdSubpath: desiredCwdSubpath,
       })
     }
@@ -2240,7 +2257,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const desiredBranch = typeof meta.branch === 'string' ? meta.branch.trim() : ''
     if (desiredBranch && desiredBranch !== info.branch) {
       const switched = await droid.switchWorkspace({
-        projectDir: info.projectDir || desiredDir,
+        projectDir: info.workspaceDir || desiredDir,
         branch: desiredBranch,
         cwdSubpath: desiredCwdSubpath || info.cwdSubpath,
       })
@@ -2360,21 +2377,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (!s._initialLoadDone) return
       s.clearWorkspaceError()
       try {
-        const sourceDir = s._pickProjectDirForRepo(repoRoot)
-        if (!sourceDir) throw new Error('No project directory available')
+        const sourceProjectDir = s._pickProjectDirForRepo(repoRoot)
+        const activeBuf = s.activeSessionId ? s.sessionBuffers.get(s.activeSessionId) : null
+        const activeMeta = s.projects
+          .flatMap((p) => p.sessions)
+          .find((x) => x.id === s.activeSessionId)
+        const sourceDir = getGitWorkspaceLookupDir({
+          workspaceType: activeBuf?.workspaceType || activeMeta?.workspaceType,
+          workspaceDir: activeBuf?.workspaceDir || activeMeta?.workspaceDir,
+          projectDir: sourceProjectDir,
+        })
+        const sourceCwdSubpath = activeBuf?.cwdSubpath || activeMeta?.cwdSubpath
+        if (!sourceProjectDir || !sourceDir) throw new Error('No project directory available')
         const targetRepoRoot = String(repoRoot || sourceDir).trim()
         const targetProject = s.projects.find((project) => project.dir === targetRepoRoot)
 
-        const resolved = await s._resolveWorkspace(sourceDir).catch(() => null)
+        const resolved = await s._resolveWorkspace(sourceDir, sourceCwdSubpath).catch(() => null)
         if (!resolved) {
           if (!isLocalWorkspaceType(targetProject?.workspaceType)) {
             throw new Error('Not a git repository')
           }
 
           const localWorkspace = createLocalWorkspaceInfo({
-            projectDir: sourceDir,
+            projectDir: sourceProjectDir,
             repoRoot: targetRepoRoot,
-            workspaceDir: sourceDir,
+            workspaceDir: sourceProjectDir,
           })
           set({ pendingNewSession: createPendingSessionFromWorkspace(localWorkspace) })
           return

@@ -8,6 +8,17 @@ export function supportsGitWorkspace(workspaceType?: WorkspaceType | null): bool
   return workspaceType !== 'local'
 }
 
+export function getGitWorkspaceLookupDir(params: {
+  workspaceType?: WorkspaceType | null
+  workspaceDir?: string | null
+  projectDir?: string | null
+}): string {
+  const projectDir = String(params.projectDir || '').trim()
+  const workspaceDir = String(params.workspaceDir || '').trim()
+  if (isLocalWorkspaceType(params.workspaceType)) return projectDir || workspaceDir
+  return workspaceDir || projectDir
+}
+
 export function createLocalWorkspaceInfo(params: {
   projectDir: string
   repoRoot?: string
