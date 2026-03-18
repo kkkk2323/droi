@@ -1,3 +1,9 @@
+## 0.29.3 - 2026-03-18
+
+### Fixes
+- Adjust ChatPage layout for TodoPanel and AnimatePresence
+- Refine ChatPage layout and input animation key
+
 ## 0.29.2 - 2026-03-18
 
 ### Tests
