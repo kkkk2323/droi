@@ -1,3 +1,8 @@
+## 0.29.1 - 2026-03-18
+
+### Refactor
+- Replace `@lobehub/ui` with `streamdown` for markdown rendering
+
 ## 0.29.0 - 2026-03-18
 
 ### Features
