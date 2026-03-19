@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { getGitWorkspaceLookupDir } from '../src/renderer/src/lib/workspaceType.ts'
+import { getGitWorkspaceDir, getLaunchProjectDir } from '../src/renderer/src/lib/workspaceType.ts'
 
-test('getGitWorkspaceLookupDir prefers workspaceDir for git workspaces', () => {
+test('getGitWorkspaceDir prefers workspaceDir for git operations', () => {
   assert.equal(
-    getGitWorkspaceLookupDir({
-      workspaceType: 'worktree',
+    getGitWorkspaceDir({
       workspaceDir: '/repo/.worktrees/feature-x',
       projectDir: '/repo/.worktrees/feature-x/packages/app',
     }),
@@ -14,13 +13,30 @@ test('getGitWorkspaceLookupDir prefers workspaceDir for git workspaces', () => {
   )
 })
 
-test('getGitWorkspaceLookupDir keeps projectDir for local workspaces', () => {
+test('getLaunchProjectDir keeps projectDir for local launches', () => {
   assert.equal(
-    getGitWorkspaceLookupDir({
-      workspaceType: 'local',
+    getLaunchProjectDir({
+      repoRoot: '/repo',
       workspaceDir: '/repo',
       projectDir: '/repo/packages/app',
     }),
     '/repo/packages/app',
+  )
+})
+
+test('getLaunchProjectDir falls back to workspaceDir then repoRoot', () => {
+  assert.equal(
+    getLaunchProjectDir({
+      repoRoot: '/repo',
+      workspaceDir: '/repo/.worktrees/feature-x',
+    }),
+    '/repo/.worktrees/feature-x',
+  )
+
+  assert.equal(
+    getLaunchProjectDir({
+      repoRoot: '/repo',
+    }),
+    '/repo',
   )
 })

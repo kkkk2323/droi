@@ -645,7 +645,7 @@ export interface DroidClientAPI {
     cwdSubpath?: string
   }) => Promise<WorkspaceInfo | null>
   switchWorkspace: (params: {
-    projectDir: string
+    workspaceDir: string
     branch: string
     cwdSubpath?: string
   }) => Promise<WorkspaceInfo | null>
@@ -701,6 +701,7 @@ export interface WorkspaceInfo {
 }
 
 export interface WorkspaceCreateParams {
+  workspaceDir: string
   projectDir: string
   mode: WorkspaceType
   branch: string

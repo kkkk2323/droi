@@ -1534,13 +1534,13 @@ export function registerIpcHandlers(opts: {
 
   ipcMain.handle(
     'git:switch-workspace',
-    async (_event, params: { projectDir: string; branch: string; cwdSubpath?: string }) => {
-      const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
+    async (_event, params: { workspaceDir: string; branch: string; cwdSubpath?: string }) => {
+      const dir = typeof params?.workspaceDir === 'string' ? params.workspaceDir : activeProjectDir
       const branch = typeof params?.branch === 'string' ? params.branch.trim() : ''
       const cwdSubpath =
         typeof params?.cwdSubpath === 'string' ? params.cwdSubpath.trim() : undefined
       if (!dir || !branch) return null
-      return await switchWorkspaceBranch({ projectDir: dir, branch, cwdSubpath })
+      return await switchWorkspaceBranch({ workspaceDir: dir, branch, cwdSubpath })
     },
   )
 
@@ -1549,6 +1549,7 @@ export function registerIpcHandlers(opts: {
     async (
       _event,
       params: {
+        workspaceDir: string
         projectDir: string
         mode: 'branch' | 'worktree'
         branch: string
@@ -1557,7 +1558,10 @@ export function registerIpcHandlers(opts: {
         cwdSubpath?: string
       },
     ) => {
-      const dir = typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
+      const workspaceDir =
+        typeof params?.workspaceDir === 'string' ? params.workspaceDir : activeProjectDir
+      const projectDir =
+        typeof params?.projectDir === 'string' ? params.projectDir : activeProjectDir
       const mode = params?.mode === 'worktree' ? 'worktree' : 'branch'
       const branch = typeof params?.branch === 'string' ? params.branch.trim() : ''
       const baseBranch =
@@ -1565,9 +1569,10 @@ export function registerIpcHandlers(opts: {
       const useExistingBranch = Boolean(params?.useExistingBranch)
       const cwdSubpath =
         typeof params?.cwdSubpath === 'string' ? params.cwdSubpath.trim() : undefined
-      if (!dir || !branch) return null
+      if (!workspaceDir || !projectDir || !branch) return null
       return await createWorkspace({
-        projectDir: dir,
+        workspaceDir,
+        projectDir,
         mode,
         branch,
         baseBranch,

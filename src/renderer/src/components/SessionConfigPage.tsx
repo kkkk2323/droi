@@ -70,11 +70,12 @@ export function SessionConfigPage() {
   const { updatePendingNewSession } = useActions()
 
   const repoRoot = String(pending?.repoRoot || '').trim()
+  const previewProjectDir = String(pending?.projectDir || repoRoot).trim()
   const supportsGit = supportsGitWorkspace(pending?.workspaceType)
 
   const { data: currentBranch, isLoading: loadingBranch } = useGitBranchQuery(
-    repoRoot,
-    Boolean(repoRoot) && supportsGit,
+    previewProjectDir,
+    Boolean(previewProjectDir) && supportsGit,
   )
   const branchDisplay = String(currentBranch || '').trim() || 'unknown'
 
