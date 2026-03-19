@@ -342,21 +342,21 @@ async function pullBranch(projectDir: string, branch: string): Promise<void> {
 }
 
 export async function switchWorkspaceBranch(params: {
-  projectDir: string
+  workspaceDir: string
   branch: string
   cwdSubpath?: string
 }): Promise<WorkspaceInfo> {
-  const workspaceDir = await getWorktreeRoot(params.projectDir)
-  await checkoutBranch(params.projectDir, params.branch)
-  await pullBranch(params.projectDir, params.branch)
+  const workspaceDir = await getWorktreeRoot(params.workspaceDir)
+  await checkoutBranch(workspaceDir, params.branch)
+  await pullBranch(workspaceDir, params.branch)
   return buildWorkspaceInfo({
     workspaceDir,
-    projectDir: params.projectDir,
     cwdSubpath: params.cwdSubpath,
   })
 }
 
 export async function createWorkspace(params: {
+  workspaceDir: string
   projectDir: string
   mode: 'branch' | 'worktree'
   branch: string
@@ -364,16 +364,16 @@ export async function createWorkspace(params: {
   useExistingBranch?: boolean
   cwdSubpath?: string
 }): Promise<WorkspaceInfo> {
-  const repoRoot = await getRepoRoot(params.projectDir)
-  const workspaceDir = await getWorktreeRoot(params.projectDir)
+  const workspaceDir = await getWorktreeRoot(params.workspaceDir)
+  const repoRoot = await getRepoRoot(workspaceDir)
   const normalizedProjectDir = await normalizeFsPath(params.projectDir)
   const cwdSubpath = normalizeCwdSubpath(
     params.cwdSubpath || deriveCwdSubpath(workspaceDir, normalizedProjectDir),
   )
 
   if (params.mode === 'branch') {
-    if (params.useExistingBranch) await checkoutBranch(params.projectDir, params.branch)
-    else await createBranch(params.projectDir, params.branch, params.baseBranch)
+    if (params.useExistingBranch) await checkoutBranch(workspaceDir, params.branch)
+    else await createBranch(workspaceDir, params.branch, params.baseBranch)
     return buildWorkspaceInfo({
       workspaceDir,
       projectDir: normalizedProjectDir,

@@ -4,7 +4,13 @@ import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { createWorkspace, getWorkspaceInfo, pushBranch, removeWorktree } from '../src/backend/git/workspaceManager.ts'
+import {
+  createWorkspace,
+  getWorkspaceInfo,
+  pushBranch,
+  removeWorktree,
+  switchWorkspaceBranch,
+} from '../src/backend/git/workspaceManager.ts'
 
 function runGit(args: string[], cwd: string): Promise<string> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -38,6 +44,7 @@ test('workspaceManager detects worktrees and uses common repoRoot', async () => 
   assert.equal(mainInfo.workspaceType, 'branch')
 
   const wtInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: repoDir,
     mode: 'worktree',
     branch: 'feature/x',
@@ -90,6 +97,7 @@ test('workspaceManager rebases subdirectory cwd into new worktrees', async () =>
   await runGit(['branch', '-M', 'main'], repoDir)
 
   const wtInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: join(repoDir, 'packages', 'foo'),
     mode: 'worktree',
     branch: 'feature/pkg-foo',
@@ -118,6 +126,7 @@ test('workspaceManager derives subdirectory cwd when creating worktrees without 
   await runGit(['branch', '-M', 'main'], repoDir)
 
   const wtInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: join(repoDir, 'packages', 'foo'),
     mode: 'worktree',
     branch: 'feature/pkg-foo-derived',
@@ -134,6 +143,32 @@ test('workspaceManager derives subdirectory cwd when creating worktrees without 
   assert.equal(wtInfo.cwdSubpath, join('packages', 'foo'))
 })
 
+test('workspaceManager switches branches using workspaceDir while preserving project cwd', async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-switch-workspace-'))
+
+  await runGit(['init'], repoDir)
+  await runGit(['config', 'user.email', 'test@example.com'], repoDir)
+  await runGit(['config', 'user.name', 'test'], repoDir)
+  await mkdir(join(repoDir, 'packages', 'foo'), { recursive: true })
+  await writeFile(join(repoDir, 'packages', 'foo', 'index.ts'), 'export const foo = 1\n')
+  await runGit(['add', '.'], repoDir)
+  await runGit(['commit', '-m', 'init'], repoDir)
+  await runGit(['branch', '-M', 'main'], repoDir)
+  await runGit(['checkout', '-b', 'feature/foo'], repoDir)
+  await runGit(['checkout', 'main'], repoDir)
+
+  const switched = await switchWorkspaceBranch({
+    workspaceDir: repoDir,
+    branch: 'feature/foo',
+    cwdSubpath: join('packages', 'foo'),
+  })
+
+  assert.equal(switched.workspaceDir, await realpath(repoDir))
+  assert.equal(switched.projectDir, await realpath(join(repoDir, 'packages', 'foo')))
+  assert.equal(switched.branch, 'feature/foo')
+  assert.equal(switched.cwdSubpath, join('packages', 'foo'))
+})
+
 test('workspaceManager removeWorktree removes the worktree directory', async () => {
   const repoDir = await mkdtemp(join(tmpdir(), 'droid-worktree-remove-'))
   await runGit(['init'], repoDir)
@@ -146,6 +181,7 @@ test('workspaceManager removeWorktree removes the worktree directory', async () 
 
   const repoReal = await realpath(repoDir)
   const wtInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: repoDir,
     mode: 'worktree',
     branch: 'feature/remove',
@@ -168,6 +204,7 @@ test('workspaceManager removeWorktree tolerates already-removed worktrees', asyn
 
   const repoReal = await realpath(repoDir)
   const wtInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: repoDir,
     mode: 'worktree',
     branch: 'feature/remove-missing',
@@ -199,6 +236,7 @@ test('workspaceManager createWorktree does not keep upstream to origin/main', as
 
   const branch = 'droi/no-upstream-worktree'
   await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: repoDir,
     mode: 'worktree',
     branch,
@@ -227,6 +265,7 @@ test('workspaceManager createBranch does not keep upstream to origin/main', asyn
 
   const branch = 'droi/no-upstream-branch'
   const branchInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: repoDir,
     mode: 'branch',
     branch,
@@ -254,6 +293,7 @@ test('workspaceManager pushBranch pushes the current branch to origin', async ()
   await runGit(['remote', 'add', 'origin', remoteBare], repoDir)
 
   const wtInfo = await createWorkspace({
+    workspaceDir: repoDir,
     projectDir: repoDir,
     mode: 'worktree',
     branch: 'droi/push-test',

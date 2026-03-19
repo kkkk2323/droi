@@ -18,7 +18,8 @@ import {
 } from '@/lib/sessionWorktree'
 import {
   createLocalWorkspaceInfo,
-  getGitWorkspaceLookupDir,
+  getGitWorkspaceDir,
+  getLaunchProjectDir,
   isLocalWorkspaceType,
   supportsGitWorkspace,
 } from '@/lib/workspaceType'
@@ -1013,13 +1014,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (s.isCreatingSession) return null
     set({ isCreatingSession: true })
     try {
-      const sourceProjectDir = params.projectDir || s._pickProjectDirForRepo(params.repoRoot)
-      const sourceDir = getGitWorkspaceLookupDir({
-        workspaceType: params.workspaceType,
+      const sourceProjectDir = getLaunchProjectDir({
+        projectDir: params.projectDir || s._pickProjectDirForRepo(params.repoRoot),
+        workspaceDir: params.workspaceDir,
+        repoRoot: params.repoRoot,
+      })
+      const sourceWorkspaceDir = getGitWorkspaceDir({
         workspaceDir: params.workspaceDir,
         projectDir: sourceProjectDir,
       })
-      if (!sourceProjectDir || !sourceDir) throw new Error('No project directory available')
+      if (!sourceProjectDir || !sourceWorkspaceDir)
+        throw new Error('No project directory available')
 
       const currentSid = s.activeSessionId
       const currentBuf = s.sessionBuffers.get(currentSid)
@@ -1050,7 +1055,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (params.mode === 'switch-branch') {
         if (!params.branch?.trim()) throw new Error('Missing branch')
         workspaceInfo = await droid.switchWorkspace({
-          projectDir: sourceDir,
+          workspaceDir: sourceWorkspaceDir,
           branch: params.branch.trim(),
           cwdSubpath: sourceCwdSubpath,
         })
@@ -1058,7 +1063,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       } else if (params.mode === 'new-branch') {
         if (!params.branch?.trim()) throw new Error('Missing branch')
         workspaceInfo = await droid.createWorkspace({
-          projectDir: sourceDir,
+          workspaceDir: sourceWorkspaceDir,
+          projectDir: sourceProjectDir,
           mode: 'branch',
           branch: params.branch.trim(),
           baseBranch: params.baseBranch?.trim() || undefined,
@@ -1068,7 +1074,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       } else if (params.mode === 'new-worktree') {
         if (!params.branch?.trim()) throw new Error('Missing branch')
         workspaceInfo = await droid.createWorkspace({
-          projectDir: sourceDir,
+          workspaceDir: sourceWorkspaceDir,
+          projectDir: sourceProjectDir,
           mode: 'worktree',
           branch: params.branch.trim(),
           baseBranch: params.baseBranch?.trim() || undefined,
@@ -1076,7 +1083,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         })
         if (!workspaceInfo) throw new Error('Failed to create worktree')
       } else {
-        workspaceInfo = await s._resolveWorkspace(sourceDir, sourceCwdSubpath).catch(() => null)
+        workspaceInfo = await s
+          ._resolveWorkspace(sourceProjectDir, sourceCwdSubpath)
+          .catch(() => null)
       }
 
       if (!workspaceInfo) {
@@ -1189,17 +1198,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const buf = s.sessionBuffers.get(sid)
     const meta = s.projects.flatMap((p) => p.sessions).find((x) => x.id === sid)
     if (isLocalWorkspaceType(buf?.workspaceType || meta?.workspaceType)) return false
-    const projectDir = getGitWorkspaceLookupDir({
-      workspaceType: buf?.workspaceType || meta?.workspaceType,
+    const workspaceDir = getGitWorkspaceDir({
       workspaceDir: buf?.workspaceDir || meta?.workspaceDir,
       projectDir: buf?.projectDir || meta?.projectDir || s.activeProjectDir,
     })
     const cwdSubpath = buf?.cwdSubpath || meta?.cwdSubpath
-    if (!projectDir) return false
+    if (!workspaceDir) return false
 
     let info: WorkspaceInfo | null = null
     try {
-      info = await droid.switchWorkspace({ projectDir, branch, cwdSubpath })
+      info = await droid.switchWorkspace({ workspaceDir, branch, cwdSubpath })
     } catch {
       return false
     }
@@ -2225,14 +2233,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // --- Workspace for meta ---
   _ensureWorkspaceForMeta: async (meta) => {
-    const desiredProjectDir = String(meta.projectDir || meta.workspaceDir || '').trim()
-    const desiredDir = getGitWorkspaceLookupDir({
-      workspaceType: meta.workspaceType,
+    const desiredProjectDir = getLaunchProjectDir({
+      projectDir: meta.projectDir,
+      workspaceDir: meta.workspaceDir,
+      repoRoot: meta.repoRoot,
+    })
+    const desiredWorkspaceDir = getGitWorkspaceDir({
       workspaceDir: meta.workspaceDir,
       projectDir: desiredProjectDir,
     })
     const desiredCwdSubpath = String(meta.cwdSubpath || '').trim() || undefined
-    if (!desiredDir) throw new Error('Session is missing project directory')
+    if (!desiredProjectDir || !desiredWorkspaceDir)
+      throw new Error('Session is missing project directory')
 
     if (isLocalWorkspaceType(meta.workspaceType)) {
       return createLocalWorkspaceInfo({
@@ -2245,19 +2257,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     let info: WorkspaceInfo | null = null
     try {
-      info = await get()._resolveWorkspace(desiredDir, desiredCwdSubpath)
+      info = await get()._resolveWorkspace(desiredWorkspaceDir, desiredCwdSubpath)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredDir})`, {
+      throw new Error(`${msg || 'Failed to resolve git workspace'} (dir: ${desiredWorkspaceDir})`, {
         cause: err,
       })
     }
-    if (!info) throw new Error(`Failed to resolve git workspace (dir: ${desiredDir})`)
+    if (!info) throw new Error(`Failed to resolve git workspace (dir: ${desiredWorkspaceDir})`)
 
     const desiredBranch = typeof meta.branch === 'string' ? meta.branch.trim() : ''
     if (desiredBranch && desiredBranch !== info.branch) {
       const switched = await droid.switchWorkspace({
-        projectDir: info.workspaceDir || desiredDir,
+        workspaceDir: info.workspaceDir || desiredWorkspaceDir,
         branch: desiredBranch,
         cwdSubpath: desiredCwdSubpath || info.cwdSubpath,
       })
@@ -2377,31 +2389,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (!s._initialLoadDone) return
       s.clearWorkspaceError()
       try {
-        const sourceProjectDir = s._pickProjectDirForRepo(repoRoot)
-        const activeBuf = s.activeSessionId ? s.sessionBuffers.get(s.activeSessionId) : null
-        const activeMeta = s.projects
-          .flatMap((p) => p.sessions)
-          .find((x) => x.id === s.activeSessionId)
-        const sourceDir = getGitWorkspaceLookupDir({
-          workspaceType: activeBuf?.workspaceType || activeMeta?.workspaceType,
-          workspaceDir: activeBuf?.workspaceDir || activeMeta?.workspaceDir,
-          projectDir: sourceProjectDir,
-        })
-        const sourceCwdSubpath = activeBuf?.cwdSubpath || activeMeta?.cwdSubpath
-        if (!sourceProjectDir || !sourceDir) throw new Error('No project directory available')
+        const sourceDir = String(repoRoot || s.activeProjectDir || '').trim()
+        if (!sourceDir) throw new Error('No project directory available')
         const targetRepoRoot = String(repoRoot || sourceDir).trim()
         const targetProject = s.projects.find((project) => project.dir === targetRepoRoot)
 
-        const resolved = await s._resolveWorkspace(sourceDir, sourceCwdSubpath).catch(() => null)
+        const resolved = await s._resolveWorkspace(sourceDir).catch(() => null)
         if (!resolved) {
           if (!isLocalWorkspaceType(targetProject?.workspaceType)) {
             throw new Error('Not a git repository')
           }
 
           const localWorkspace = createLocalWorkspaceInfo({
-            projectDir: sourceProjectDir,
+            projectDir: sourceDir,
             repoRoot: targetRepoRoot,
-            workspaceDir: sourceProjectDir,
+            workspaceDir: sourceDir,
           })
           set({ pendingNewSession: createPendingSessionFromWorkspace(localWorkspace) })
           return
