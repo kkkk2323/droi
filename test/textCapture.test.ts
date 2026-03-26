@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { runDroidAndCaptureAssistantText } from '../src/backend/droid/textCapture.ts'
 
-test('runDroidAndCaptureAssistantText follows session-id-replaced and resolves on turn-end', async () => {
+test('runDroidAndCaptureAssistantText resolves on message + turn-end', async () => {
   let listener: ((ev: any) => void) | null = null
   const disposed: string[] = []
 
@@ -15,21 +15,15 @@ test('runDroidAndCaptureAssistantText follows session-id-replaced and resolves o
     },
     send: async () => {
       queueMicrotask(() => {
-        listener?.({ type: 'session-id-replaced', oldSessionId: 'temp', newSessionId: 'engine', reason: 'session_id_mismatch' })
         listener?.({
-          type: 'rpc-notification',
-          sessionId: 'engine',
+          type: 'message',
+          sessionId: 'temp',
           message: {
-            method: 'droid.session_notification',
-            params: {
-              notification: {
-                type: 'assistant_text_delta',
-                textDelta: 'fix: keep turn-end after session rekey',
-              },
-            },
+            type: 'assistant_text_delta',
+            text: 'fix: keep turn-end after session rekey',
           },
         })
-        listener?.({ type: 'turn-end', sessionId: 'engine', code: 0 })
+        listener?.({ type: 'turn-end', sessionId: 'temp', code: 0 })
       })
     },
     cancel: () => {},
@@ -50,10 +44,10 @@ test('runDroidAndCaptureAssistantText follows session-id-replaced and resolves o
   })
 
   assert.equal(text, 'fix: keep turn-end after session rekey')
-  assert.deepEqual(disposed, ['engine'])
+  assert.deepEqual(disposed, ['temp'])
 })
 
-test('runDroidAndCaptureAssistantText cancels latest session id on timeout', async () => {
+test('runDroidAndCaptureAssistantText cancels active session id on timeout', async () => {
   let listener: ((ev: any) => void) | null = null
   const cancelled: string[] = []
   const disposed: string[] = []
@@ -66,9 +60,7 @@ test('runDroidAndCaptureAssistantText cancels latest session id on timeout', asy
       }
     },
     send: async () => {
-      queueMicrotask(() => {
-        listener?.({ type: 'session-id-replaced', oldSessionId: 'temp', newSessionId: 'engine', reason: 'session_id_mismatch' })
-      })
+      queueMicrotask(() => {})
     },
     cancel: (sid: string) => {
       cancelled.push(sid)
@@ -92,6 +84,6 @@ test('runDroidAndCaptureAssistantText cancels latest session id on timeout', asy
     /Timed out generating text/
   )
 
-  assert.deepEqual(cancelled, ['engine'])
-  assert.deepEqual(disposed, ['engine'])
+  assert.deepEqual(cancelled, ['temp'])
+  assert.deepEqual(disposed, ['temp'])
 })

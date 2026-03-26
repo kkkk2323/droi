@@ -20,7 +20,7 @@ export function AskUserCard({ request, onRespond }: AskUserCardProps) {
     const next: Record<number, string> = {}
     for (const q of request.questions) next[q.index] = ''
     setAskAnswers(next)
-  }, [request.requestId, request.questions])
+  }, [request.requestKey, request.questions])
 
   const questions = request.questions
   const totalSteps = questions.length

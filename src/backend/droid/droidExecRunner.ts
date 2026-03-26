@@ -1,10 +1,11 @@
 import { execFile } from 'child_process'
-import { DroidJsonRpcManager, type DroidBackendEvent } from './jsonrpc/droidJsonRpcManager.ts'
+import { SessionManager } from './sessionManager.ts'
+import type { DroidBackendEvent } from './sdkSessionBridge.ts'
 import type {
   DroidAutonomyLevel,
   DroidInteractionMode,
   DroidPermissionOption,
-} from './jsonrpc/jsonRpcTypes.ts'
+} from '../../shared/protocol.ts'
 import { resolveDroidPath } from './resolveDroidPath.ts'
 import type { LocalDiagnostics } from '../diagnostics/localDiagnostics.ts'
 import type { DecompSessionType, SessionKind } from '../../shared/sessionProtocol.ts'
@@ -85,12 +86,11 @@ export function getDroidVersion(droidPath = resolveDroidPath()): Promise<string>
 
 export class DroidExecManager {
   private readonly listeners = new Set<(ev: DroidBackendEvent) => void>()
-  private readonly manager: DroidJsonRpcManager
+  private readonly manager: SessionManager
 
   constructor(opts?: { droidPath?: string; diagnostics?: LocalDiagnostics }) {
-    this.manager = new DroidJsonRpcManager({
+    this.manager = new SessionManager({
       droidPath: opts?.droidPath,
-      diagnostics: opts?.diagnostics,
       emit: (ev) => this.listeners.forEach((cb) => cb(ev)),
     })
   }
@@ -191,7 +191,6 @@ export class DroidExecManager {
 
   respondPermission(params: {
     sessionId: string
-    requestId: string
     selectedOption: DroidPermissionOption
     selectedExitSpecModeOptionIndex?: number
     exitSpecModeComment?: string
@@ -201,7 +200,6 @@ export class DroidExecManager {
 
   respondAskUser(params: {
     sessionId: string
-    requestId: string
     cancelled?: boolean
     answers: Array<{ index: number; question: string; answer: string }>
   }): void {
@@ -217,6 +215,6 @@ export class DroidExecManager {
   }
 
   disposeAllSessions(): boolean {
-    return this.manager.disposeAllSessions() > 0
+    return this.manager.disposeAll() > 0
   }
 }

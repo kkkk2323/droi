@@ -1,14 +1,14 @@
 import type { DroidExecManager, DroidExecSendOptions } from './droidExecRunner.ts'
 
 type SessionEvent =
-  | { type: 'rpc-notification'; sessionId: string; message: any }
-  | { type: 'rpc-request'; sessionId: string; message: any }
-  | { type: 'session-id-replaced'; oldSessionId: string; newSessionId: string; reason: string }
+  | { type: 'message'; sessionId: string; message: any }
+  | { type: 'permission-request'; sessionId: string; request: any }
+  | { type: 'ask-user-request'; sessionId: string; request: any }
   | { type: 'turn-end'; sessionId: string; code: number }
   | { type: 'error'; sessionId: string; message: string }
 
-function extractAssistantTextFromCreateMessage(notification: any): string {
-  const msg = notification?.message
+function extractAssistantTextFromCreateMessage(message: any): string {
+  const msg = message?.message
   if (!msg || msg.role !== 'assistant') return ''
   const content = msg.content
   if (!Array.isArray(content)) return ''
@@ -19,11 +19,6 @@ function extractAssistantTextFromCreateMessage(notification: any): string {
       parts.push((item as any).text)
   }
   return parts.join('')
-}
-
-function getSessionNotificationPayload(rpcNotification: any): any {
-  if (!rpcNotification || rpcNotification.method !== 'droid.session_notification') return null
-  return (rpcNotification.params as any)?.notification ?? null
 }
 
 export async function runDroidAndCaptureAssistantText(params: {
@@ -71,11 +66,6 @@ export async function runDroidAndCaptureAssistantText(params: {
       const e = ev as SessionEvent
       if (!e) return
 
-      if (e.type === 'session-id-replaced') {
-        if (e.oldSessionId === currentSessionId) currentSessionId = e.newSessionId
-        return
-      }
-
       if (e.sessionId !== currentSessionId) return
 
       if (e.type === 'error') {
@@ -83,7 +73,7 @@ export async function runDroidAndCaptureAssistantText(params: {
         return
       }
 
-      if (e.type === 'rpc-request') {
+      if (e.type === 'permission-request' || e.type === 'ask-user-request') {
         sawRpcRequest = true
         try {
           execManager.cancel(currentSessionId)
@@ -91,11 +81,10 @@ export async function runDroidAndCaptureAssistantText(params: {
         return
       }
 
-      if (e.type === 'rpc-notification') {
-        const payload = getSessionNotificationPayload((e as any).message)
-        if (!payload) return
-        if (payload.type === 'assistant_text_delta' && typeof payload.textDelta === 'string') {
-          deltaText += payload.textDelta
+      if (e.type === 'message') {
+        const payload = (e as any).message
+        if (payload.type === 'assistant_text_delta' && typeof payload.text === 'string') {
+          deltaText += payload.text
         } else if (payload.type === 'create_message') {
           const t = extractAssistantTextFromCreateMessage(payload)
           if (t) snapshotText = t

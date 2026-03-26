@@ -1,10 +1,9 @@
 const REQUIRED_DROID_HOOKS = [
-  'onRpcNotification',
-  'onRpcRequest',
+  'onMessage',
+  'onPermissionRequest',
+  'onAskUserRequest',
   'onMissionDirChanged',
   'onTurnEnd',
-  'onStdout',
-  'onStderr',
   'onError',
   'onSetupScriptEvent',
 ] as const
