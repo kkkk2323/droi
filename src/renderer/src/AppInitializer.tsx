@@ -6,25 +6,35 @@ import { getMissingDroidHooks } from '@/lib/droidHooks'
 import { uuidv4 } from '@/lib/uuid'
 import { defaultSessionTitleFromBranch } from '@/lib/sessionWorktree'
 import { createLocalWorkspaceInfo, isLocalWorkspaceType } from '@/lib/workspaceType'
-import { isTraceChainEnabled, setTraceChainEnabledOverride } from '@/lib/notificationFingerprint'
+import {
+  formatNotificationTrace,
+  isTraceChainEnabled,
+  setTraceChainEnabledOverride,
+} from '@/lib/notificationFingerprint'
 import {
   DEFAULT_AUTO_LEVEL,
   DEFAULT_MODEL,
   makeBuffer,
   applySetupScriptEvent,
-  applyAskUserRequest,
-  applyDroidMessage,
-  applyPermissionRequest,
+  applyRpcNotification,
+  applyRpcRequest,
   appendDebugTrace,
   setDebugTraceMaxLinesOverride,
   setRuntimeLogSnapshot,
+  applyStdout,
+  applyStderr,
   applyTurnEnd,
   applyError,
 } from '@/state/appReducer'
 import { applyMissionDirSnapshot } from '@/state/missionState'
 import { buildRestoredSessionBuffer } from '@/state/sessionRestore'
 import { useAppStore } from './store'
-import { getRepoKey, upsertSessionMeta, updateSessionTitle } from './store/projectHelpers'
+import {
+  getRepoKey,
+  upsertSessionMeta,
+  updateSessionTitle,
+  replaceSessionIdInProjects,
+} from './store/projectHelpers'
 
 const droid = getDroidClient()
 const STARTUP_IPC_TIMEOUT_MS = 8_000
@@ -907,19 +917,30 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       return { targetSessionId, sourceSessionId: sid }
     }
 
-    const unsubMessage = droid.onMessage(({ message, sessionId: sid }) => {
+    const unsubNotif = droid.onRpcNotification(({ message, sessionId: sid }) => {
       if (!sid) return
       const { targetSessionId } = resolveEventSessionId(sid)
-      const type = String((message as any)?.type || '').trim()
-      const label = type ? `message: ${type}` : 'message'
+      const t =
+        (message as any)?.method === 'droid.session_notification'
+          ? String((message as any)?.params?.notification?.type || '')
+          : ''
+      const label = t
+        ? `rpc-notification: ${message.method} type=${t}`
+        : `rpc-notification: ${message.method}`
       useAppStore.getState()._setSessionBuffers((prev) => {
         let next = prev
+        if (isTraceChainEnabled())
+          next = appendDebugTrace(
+            next,
+            targetSessionId,
+            formatNotificationTrace('renderer-in', message),
+          )
         next = appendDebugTrace(next, targetSessionId, label)
-        return applyDroidMessage(next, targetSessionId, message)
+        return applyRpcNotification(next, targetSessionId, message)
       })
 
-      if (type === 'session_title_updated') {
-        const title = String((message as any)?.title || '').trim()
+      if (t === 'session_title_updated') {
+        const title = String((message as any)?.params?.notification?.title || '').trim()
         if (title) {
           useAppStore
             .getState()
@@ -928,32 +949,49 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       }
     })
 
-    const unsubPermission = droid.onPermissionRequest(({ request, sessionId: sid }) => {
+    const unsubReq = droid.onRpcRequest(({ message, sessionId: sid }) => {
       if (!sid) return
       const { targetSessionId, sourceSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
         ._setSessionBuffers((prev) =>
-          applyPermissionRequest(
-            appendDebugTrace(prev, targetSessionId, `permission-request: ${request.requestKey}`),
+          applyRpcRequest(
+            appendDebugTrace(
+              prev,
+              targetSessionId,
+              `rpc-request: ${message.method} id=${message.id}`,
+            ),
             targetSessionId,
-            request,
+            message,
             sourceSessionId !== targetSessionId ? sourceSessionId : undefined,
           ),
         )
     })
 
-    const unsubAskUser = droid.onAskUserRequest(({ request, sessionId: sid }) => {
+    const unsubStdout = droid.onStdout(({ data, sessionId: sid }) => {
       if (!sid) return
-      const { targetSessionId, sourceSessionId } = resolveEventSessionId(sid)
+      const { targetSessionId } = resolveEventSessionId(sid)
       useAppStore
         .getState()
         ._setSessionBuffers((prev) =>
-          applyAskUserRequest(
-            appendDebugTrace(prev, targetSessionId, `ask-user-request: ${request.requestKey}`),
+          applyStdout(
+            appendDebugTrace(prev, targetSessionId, `stdout: ${String(data || '').slice(0, 200)}`),
             targetSessionId,
-            request,
-            sourceSessionId !== targetSessionId ? sourceSessionId : undefined,
+            data,
+          ),
+        )
+    })
+
+    const unsubStderr = droid.onStderr(({ data, sessionId: sid }) => {
+      if (!sid) return
+      const { targetSessionId } = resolveEventSessionId(sid)
+      useAppStore
+        .getState()
+        ._setSessionBuffers((prev) =>
+          applyStderr(
+            appendDebugTrace(prev, targetSessionId, `stderr: ${String(data || '').slice(0, 200)}`),
+            targetSessionId,
+            data,
           ),
         )
     })
@@ -1013,6 +1051,82 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
       }
     })
 
+    const unsubSessionReplace =
+      typeof (droid as any)?.onSessionIdReplaced === 'function'
+        ? (droid as any).onSessionIdReplaced(
+            ({
+              oldSessionId,
+              newSessionId,
+              reason,
+            }: {
+              oldSessionId: string
+              newSessionId: string
+              reason?: string
+            }) => {
+              const oldId = String(oldSessionId || '').trim()
+              const newId = String(newSessionId || '').trim()
+              if (!oldId || !newId || oldId === newId) return
+
+              const state = useAppStore.getState()
+              const meta = state.projects.flatMap((p) => p.sessions).find((x) => x.id === oldId)
+              if (!meta) return
+
+              const now = Date.now()
+              const isMission = meta.isMission === true || meta.sessionKind === 'mission'
+              const nextMeta: SessionMeta = {
+                ...meta,
+                id: newId,
+                missionBaseSessionId: meta.missionBaseSessionId || (isMission ? oldId : undefined),
+                savedAt: now,
+                lastMessageAt: undefined,
+                messageCount: 0,
+              }
+
+              state._setProjects((prev) => replaceSessionIdInProjects(prev, oldId, nextMeta))
+              state._setSessionBuffers((prev) => {
+                const buf = prev.get(oldId)
+                if (!buf) return prev
+                let next = new Map(prev)
+                next.delete(oldId)
+                const missionBaseSessionId =
+                  buf.missionBaseSessionId ||
+                  meta.missionBaseSessionId ||
+                  (buf.isMission === true || buf.sessionKind === 'mission' || isMission
+                    ? oldId
+                    : undefined)
+                next.set(newId, {
+                  ...buf,
+                  missionBaseSessionId,
+                  isRunning: false,
+                  isCancelling: false,
+                  pendingSendMessageIds: {},
+                  pendingPermissionRequests: [],
+                  pendingAskUserRequests: [],
+                  messages: [],
+                  debugTrace: [
+                    `session-id-replaced: ${oldId} -> ${newId} reason=${String(reason || '')}`,
+                  ],
+                  runtimeLogs: [],
+                  runtimeLogState: undefined,
+                })
+                return next
+              })
+
+              useAppStore.setState((prev) => ({
+                activeSessionId: prev.activeSessionId === oldId ? newId : prev.activeSessionId,
+              }))
+              useAppStore.setState((prev) => {
+                const gens = prev._sessionGenerations
+                if (!gens.has(oldId)) return prev
+                const next = new Map(gens)
+                next.set(newId, next.get(oldId) || 0)
+                next.delete(oldId)
+                return { _sessionGenerations: next }
+              })
+            },
+          )
+        : () => {}
+
     const unsubDebug =
       typeof onDebug === 'function'
         ? droid.onDebug(({ message, sessionId: sid }) => {
@@ -1027,12 +1141,14 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         : () => {}
 
     return () => {
-      unsubMessage()
-      unsubPermission()
-      unsubAskUser()
+      unsubNotif()
+      unsubReq()
+      unsubStdout()
+      unsubStderr()
       unsubTurnEnd()
       unsubError()
       unsubSetup()
+      unsubSessionReplace()
       unsubDebug()
     }
   }, [])

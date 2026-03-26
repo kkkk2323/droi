@@ -1,7 +1,14 @@
-import type { LoadSessionResponse, SessionMeta, WorkspaceInfo } from '@/types'
+import type { JsonRpcRequest, LoadSessionResponse, SessionMeta, WorkspaceInfo } from '@/types'
 import type { MissionModelSettings } from '@/types'
+import { FACTORY_API_VERSION, JSONRPC_VERSION } from '../../../shared/protocol.ts'
 import { resolveSessionProtocolFields } from '../../../shared/sessionProtocol.ts'
-import { DEFAULT_AUTO_LEVEL, DEFAULT_MODEL, makeBuffer, type SessionBuffer } from './appReducer.ts'
+import {
+  DEFAULT_AUTO_LEVEL,
+  DEFAULT_MODEL,
+  applyRpcRequest,
+  makeBuffer,
+  type SessionBuffer,
+} from './appReducer.ts'
 import { applyMissionLoadSnapshot } from './missionState.ts'
 import { resolveSessionRuntimeSelection } from '../lib/missionModelState.ts'
 
@@ -23,18 +30,70 @@ type RestorableSessionMeta = Partial<
   >
 >
 
+function createRestoredRpcRequest(
+  requestId: string,
+  method: 'droid.request_permission' | 'droid.ask_user',
+  params: Record<string, unknown>,
+): JsonRpcRequest {
+  return {
+    jsonrpc: JSONRPC_VERSION,
+    factoryApiVersion: FACTORY_API_VERSION,
+    type: 'request',
+    id: requestId,
+    method,
+    params,
+  }
+}
+
 function restorePendingSnapshot(
+  sessionId: string,
   buffer: SessionBuffer,
   data?: LoadSessionResponse | null,
 ): SessionBuffer {
-  const isRunning = Boolean(data?.isAgentLoopInProgress)
+  let next = new Map<string, SessionBuffer>([[sessionId, buffer]])
+
+  for (const pending of data?.pendingPermissions ?? []) {
+    const requestId = typeof pending?.requestId === 'string' ? pending.requestId.trim() : ''
+    if (!requestId) continue
+    next = applyRpcRequest(
+      next,
+      sessionId,
+      createRestoredRpcRequest(requestId, 'droid.request_permission', {
+        toolUses: Array.isArray(pending.toolUses) ? pending.toolUses : [],
+        confirmationType:
+          typeof pending.confirmationType === 'string' ? pending.confirmationType : undefined,
+        options: Array.isArray(pending.options) ? pending.options : [],
+      }),
+    )
+  }
+
+  for (const pending of data?.pendingAskUserRequests ?? []) {
+    const requestId = typeof pending?.requestId === 'string' ? pending.requestId.trim() : ''
+    if (!requestId) continue
+    next = applyRpcRequest(
+      next,
+      sessionId,
+      createRestoredRpcRequest(requestId, 'droid.ask_user', {
+        toolCallId: typeof pending.toolCallId === 'string' ? pending.toolCallId : '',
+        questions: Array.isArray(pending.questions) ? pending.questions : [],
+      }),
+    )
+  }
+
+  const restored = next.get(sessionId) ?? buffer
+  const hasPendingAttention =
+    (restored.pendingPermissionRequests?.length ?? 0) > 0 ||
+    (restored.pendingAskUserRequests?.length ?? 0) > 0
+  const isRunning = Boolean(data?.isAgentLoopInProgress || hasPendingAttention)
 
   return {
-    ...buffer,
-    pendingPermissionRequests: [],
-    pendingAskUserRequests: [],
+    ...restored,
     isRunning,
-    workingState: isRunning ? 'streaming_assistant_message' : undefined,
+    workingState: hasPendingAttention
+      ? 'waiting_for_tool_confirmation'
+      : isRunning
+        ? 'streaming_assistant_message'
+        : undefined,
   }
 }
 
@@ -71,6 +130,7 @@ export function buildRestoredSessionBuffer(params: {
 
   const base = makeBuffer(projectDir, workspace)
   const restored = restorePendingSnapshot(
+    data?.id || 'restored-session',
     {
       ...base,
       messages: (data?.messages as SessionBuffer['messages']) ?? [],

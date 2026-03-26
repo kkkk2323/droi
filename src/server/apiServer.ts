@@ -1,6 +1,6 @@
 import { createAdaptorServer } from '@hono/node-server'
 import { DroidExecManager } from '../backend/droid/droidExecRunner.ts'
-import { setTraceChainEnabledOverride } from '../backend/droid/traceChain.ts'
+import { setTraceChainEnabledOverride } from '../backend/droid/jsonrpc/notificationFingerprint.ts'
 import { createFactoryApiProxy } from '../backend/keys/factoryApiProxy.ts'
 import { createKeyStore } from '../backend/keys/keyStore.ts'
 import { SetupScriptRunner } from '../backend/session/setupScriptRunner.ts'
@@ -68,7 +68,10 @@ export async function startApiServer(opts: StartApiServerOpts) {
   const diagnostics = opts.diagnostics || new LocalDiagnostics({ baseDir })
   const execManager = new DroidExecManager({ diagnostics })
   const setupScriptRunner = new SetupScriptRunner()
-  const unsubscribeSessionReplace = execManager.onEvent(() => {})
+  const unsubscribeSessionReplace = execManager.onEvent((ev) => {
+    if (ev.type === 'session-id-replaced')
+      void sessionStore.replaceSessionId(ev.oldSessionId, ev.newSessionId)
+  })
 
   const cachedStateRef: { value: PersistedAppState } = {
     value: { version: 2, machineId: '' },

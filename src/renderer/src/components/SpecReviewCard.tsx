@@ -82,7 +82,7 @@ export function SpecReviewCard({ request, onRespond, onRequestChanges }: SpecRev
     setExpanded(true)
     setSelectedOptionIndex(undefined)
     setComment('')
-  }, [request.requestKey])
+  }, [request.requestId])
 
   const data = extractExitSpecData(request)
   if (!data) return null
