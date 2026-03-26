@@ -1,3 +1,8 @@
+## 0.31.1 - 2026-03-26
+
+### Fixes
+- Roll back the broken `0.31.0` release to the stable `0.30.1` code state
+
 ## 0.30.1 - 2026-03-19
 
 ### Refactor
