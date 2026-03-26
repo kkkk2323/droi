@@ -110,12 +110,8 @@ export function mergeLoadSessionResponse(
       (typeof settings.reasoningEffort === 'string' ? settings.reasoningEffort : undefined) ||
       stored.reasoningEffort,
     messages: stored.messages,
-    pendingPermissions: Array.isArray((live as any).pendingPermissions)
-      ? ((live as any).pendingPermissions as any)
-      : stored.pendingPermissions,
-    pendingAskUserRequests: Array.isArray((live as any).pendingAskUserRequests)
-      ? ((live as any).pendingAskUserRequests as any)
-      : stored.pendingAskUserRequests,
+    pendingPermissions: [],
+    pendingAskUserRequests: [],
     isAgentLoopInProgress:
       typeof (live as any).isAgentLoopInProgress === 'boolean'
         ? Boolean((live as any).isAgentLoopInProgress)

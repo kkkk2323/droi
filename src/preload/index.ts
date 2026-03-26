@@ -26,21 +26,29 @@ const droidAPI = {
   resolveSlashCommand: (params) => ipcRenderer.invoke('slash:resolve', params),
   listSkills: () => ipcRenderer.invoke('skills:list'),
 
-  onRpcNotification: (callback) => {
+  onMessage: (callback) => {
     const handler = (
       _event: IpcRendererEvent,
       payload: { message: any; sessionId: string | null },
     ) => callback(payload as any)
-    ipcRenderer.on('droid:rpc-notification', handler)
-    return () => ipcRenderer.removeListener('droid:rpc-notification', handler)
+    ipcRenderer.on('droid:message', handler)
+    return () => ipcRenderer.removeListener('droid:message', handler)
   },
-  onRpcRequest: (callback) => {
+  onPermissionRequest: (callback) => {
     const handler = (
       _event: IpcRendererEvent,
-      payload: { message: any; sessionId: string | null },
+      payload: { request: any; sessionId: string | null },
     ) => callback(payload as any)
-    ipcRenderer.on('droid:rpc-request', handler)
-    return () => ipcRenderer.removeListener('droid:rpc-request', handler)
+    ipcRenderer.on('droid:permission-request', handler)
+    return () => ipcRenderer.removeListener('droid:permission-request', handler)
+  },
+  onAskUserRequest: (callback) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: { request: any; sessionId: string | null },
+    ) => callback(payload as any)
+    ipcRenderer.on('droid:ask-user-request', handler)
+    return () => ipcRenderer.removeListener('droid:ask-user-request', handler)
   },
   onTurnEnd: (callback) => {
     const handler = (
@@ -59,34 +67,9 @@ const droidAPI = {
     return () => ipcRenderer.removeListener('droid:debug', handler)
   },
 
-  onSessionIdReplaced: (callback) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      payload: { oldSessionId: string; newSessionId: string; reason: string },
-    ) => callback(payload)
-    ipcRenderer.on('droid:session-id-replaced', handler)
-    return () => ipcRenderer.removeListener('droid:session-id-replaced', handler)
-  },
-
-  respondPermission: (params) => ipcRenderer.send('droid:permission-response', params),
+  respondPermission: (params) => ipcRenderer.send('droid:respondPermission', params),
   addUserMessage: (params) => ipcRenderer.invoke('droid:add-user-message', params),
-  respondAskUser: (params) => ipcRenderer.send('droid:askuser-response', params),
-  onStdout: (callback) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      payload: { data: string; sessionId: string | null },
-    ) => callback(payload)
-    ipcRenderer.on('droid:stdout', handler)
-    return () => ipcRenderer.removeListener('droid:stdout', handler)
-  },
-  onStderr: (callback) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      payload: { data: string; sessionId: string | null },
-    ) => callback(payload)
-    ipcRenderer.on('droid:stderr', handler)
-    return () => ipcRenderer.removeListener('droid:stderr', handler)
-  },
+  respondAskUser: (params) => ipcRenderer.send('droid:respondAskUser', params),
   onError: (callback) => {
     const handler = (
       _event: IpcRendererEvent,

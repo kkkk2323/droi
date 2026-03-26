@@ -106,6 +106,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",
+    "@factory/droid-sdk": "^0.1.4",
     "@hono/node-server": "^1.19.9",
     "@lobehub/icons": "^4.4.3",
     "@tanstack/react-query": "^5.90.21",

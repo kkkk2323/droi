@@ -1,5 +1,9 @@
 import type {
   ChatMessage,
+  DroidAskUserRequestPayload,
+  DroidMessage,
+  DroidPermissionOptionMeta,
+  DroidPermissionRequestPayload,
   MissionRuntimeSnapshot,
   ToolCallBlock,
   JsonRpcNotification,
@@ -206,12 +210,11 @@ export interface PermissionOptionMeta {
 
 export interface PendingPermissionRequest {
   sessionId?: string
-  requestId: string
+  requestKey: string
   toolUses: unknown[]
   confirmationType?: string
   options: DroidPermissionOption[]
-  optionsMeta: PermissionOptionMeta[]
-  raw: JsonRpcRequest
+  optionsMeta: DroidPermissionOptionMeta[]
 }
 
 export interface AskUserQuestion {
@@ -223,10 +226,9 @@ export interface AskUserQuestion {
 
 export interface PendingAskUserRequest {
   sessionId?: string
-  requestId: string
+  requestKey: string
   toolCallId: string
   questions: AskUserQuestion[]
-  raw: JsonRpcRequest
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -704,13 +706,14 @@ export function applyRpcNotification(
     const toolUseIds: string[] = Array.isArray(toolUseIdsRaw)
       ? toolUseIdsRaw.map((v: unknown) => String(v || '')).filter(Boolean)
       : []
-    if (!requestId) return prev
-
     const session = prev.get(sid)
     if (!session) return prev
 
     const pending = session.pendingPermissionRequests || []
-    const matching = pending.find((r) => r.requestId === requestId) || null
+    const matching =
+      (requestId ? pending.find((r) => r.requestKey === requestId) : undefined) ||
+      pending[0] ||
+      null
     const nameById = new Map<string, string>()
     if (matching && Array.isArray((matching as any).toolUses)) {
       for (const item of (matching as any).toolUses) {
@@ -725,7 +728,7 @@ export function applyRpcNotification(
     }
 
     // Always clear the pending request from local state once the backend confirms resolution.
-    const rest = pending.filter((r) => r.requestId !== requestId)
+    const rest = requestId ? pending.filter((r) => r.requestKey !== requestId) : pending.slice(1)
     let next = new Map(prev)
     next.set(sid, { ...session, pendingPermissionRequests: rest })
 
@@ -909,6 +912,186 @@ const DEFAULT_PERMISSION_OPTIONS: DroidPermissionOption[] = [
   'cancel',
 ]
 
+function toSessionNotification(message: DroidMessage): JsonRpcNotification | null {
+  let notification: Record<string, unknown> | null = null
+
+  if (message.type === 'assistant_text_delta') {
+    notification = {
+      type: 'assistant_text_delta',
+      messageId: message.messageId,
+      blockIndex: message.blockIndex,
+      textDelta: message.text,
+    }
+  } else if (message.type === 'thinking_text_delta') {
+    notification = {
+      type: 'thinking_text_delta',
+      messageId: message.messageId,
+      blockIndex: message.blockIndex,
+      textDelta: message.text,
+    }
+  } else if (message.type === 'tool_use') {
+    notification = {
+      type: 'tool_use',
+      id: message.toolUseId,
+      name: message.toolName,
+      input: message.toolInput,
+    }
+  } else if (message.type === 'tool_result') {
+    notification = {
+      type: 'tool_result',
+      toolUseId: message.toolUseId,
+      content: message.content,
+      isError: Boolean(message.isError),
+    }
+  } else if (message.type === 'tool_progress') {
+    notification = {
+      type: 'tool_progress_update',
+      toolUseId: message.toolUseId,
+      toolName: message.toolName,
+      update: message.update,
+    }
+  } else if (message.type === 'working_state_changed') {
+    notification = { type: 'working_state_changed', newState: message.state }
+  } else if (message.type === 'token_usage_update') {
+    notification = {
+      type: 'session_token_usage_changed',
+      tokenUsage: {
+        inputTokens: message.inputTokens,
+        outputTokens: message.outputTokens,
+        cacheCreationTokens: message.cacheWriteTokens,
+        cacheReadTokens: message.cacheReadTokens,
+        thinkingTokens: message.thinkingTokens,
+      },
+    }
+  } else if (message.type === 'create_message') {
+    notification = {
+      type: 'create_message',
+      message: {
+        id: message.messageId,
+        role: message.role,
+        content: message.content,
+      },
+    }
+  } else if (message.type === 'permission_resolved') {
+    notification = {
+      type: 'permission_resolved',
+      toolUseIds: (message as any).toolUseIds,
+      selectedOption: (message as any).selectedOption,
+    }
+  } else if (message.type === 'settings_updated') {
+    notification = { type: 'settings_updated', settings: (message as any).settings }
+  } else if (message.type === 'session_title_updated') {
+    notification = { type: 'session_title_updated', title: (message as any).title }
+  } else if (message.type === 'mcp_status_changed') {
+    notification = {
+      type: 'mcp_status_changed',
+      servers: (message as any).servers,
+      summary: (message as any).summary,
+    }
+  } else if (message.type === 'mcp_auth_required') {
+    notification = {
+      type: 'mcp_auth_required',
+      serverName: (message as any).serverName,
+      authUrl: (message as any).authUrl,
+    }
+  } else if (message.type === 'mcp_auth_completed') {
+    notification = {
+      type: 'mcp_auth_completed',
+      serverName: (message as any).serverName,
+      outcome: (message as any).outcome,
+    }
+  } else if (message.type === 'mission_state_changed') {
+    notification = { type: 'mission_state_changed', ...(message as any) }
+  } else if (message.type === 'mission_features_changed') {
+    notification = { type: 'mission_features_changed', ...(message as any) }
+  } else if (message.type === 'mission_progress_entry') {
+    notification = { type: 'mission_progress_entry', ...(message as any) }
+  } else if (message.type === 'mission_heartbeat') {
+    notification = { type: 'mission_heartbeat', ...(message as any) }
+  } else if (message.type === 'mission_worker_started') {
+    notification = { type: 'mission_worker_started', ...(message as any) }
+  } else if (message.type === 'mission_worker_completed') {
+    notification = { type: 'mission_worker_completed', ...(message as any) }
+  } else if (message.type === 'error') {
+    notification = {
+      type: 'error',
+      message: message.message,
+      errorType: (message as any).errorType,
+      timestamp: (message as any).timestamp,
+    }
+  }
+
+  if (!notification) return null
+  return {
+    jsonrpc: '2.0',
+    factoryApiVersion: '1.0.0',
+    type: 'notification',
+    method: 'droid.session_notification',
+    params: { notification },
+  }
+}
+
+export function applyDroidMessage(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  message: DroidMessage,
+): Map<string, SessionBuffer> {
+  const notification = toSessionNotification(message)
+  if (!notification) return prev
+  return applyRpcNotification(prev, sid, notification)
+}
+
+export function applyPermissionRequest(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  request: DroidPermissionRequestPayload,
+  requestSessionId?: string,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+  const optionsMeta =
+    request.optionsMeta.length > 0
+      ? request.optionsMeta
+      : DEFAULT_PERMISSION_OPTIONS.map((value) => ({ value, label: value }))
+  const options = optionsMeta.map((item) => item.value)
+  const req: PendingPermissionRequest = {
+    sessionId: requestSessionId,
+    requestKey: request.requestKey,
+    toolUses: request.toolUses,
+    confirmationType: request.confirmationType,
+    options: options.length > 0 ? options : DEFAULT_PERMISSION_OPTIONS,
+    optionsMeta,
+  }
+  const next = new Map(prev)
+  next.set(sid, {
+    ...session,
+    pendingPermissionRequests: [...(session.pendingPermissionRequests || []), req],
+  })
+  return next
+}
+
+export function applyAskUserRequest(
+  prev: Map<string, SessionBuffer>,
+  sid: string,
+  request: DroidAskUserRequestPayload,
+  requestSessionId?: string,
+): Map<string, SessionBuffer> {
+  const session = prev.get(sid)
+  if (!session) return prev
+  const req: PendingAskUserRequest = {
+    sessionId: requestSessionId,
+    requestKey: request.requestKey,
+    toolCallId: request.toolCallId,
+    questions: request.questions,
+  }
+  const next = new Map(prev)
+  next.set(sid, {
+    ...session,
+    pendingAskUserRequests: [...(session.pendingAskUserRequests || []), req],
+  })
+  return next
+}
+
 export function applyRpcRequest(
   prev: Map<string, SessionBuffer>,
   sid: string,
@@ -954,7 +1137,7 @@ export function applyRpcRequest(
 
     const req: PendingPermissionRequest = {
       sessionId: requestSessionId,
-      requestId: message.id,
+      requestKey: message.id,
       toolUses,
       confirmationType:
         isObject(params) && typeof (params as any).confirmationType === 'string'
@@ -962,7 +1145,6 @@ export function applyRpcRequest(
           : undefined,
       options: normalizedOptions,
       optionsMeta,
-      raw: message,
     }
     const next = new Map(prev)
     next.set(sid, {
@@ -993,10 +1175,9 @@ export function applyRpcRequest(
 
     const req: PendingAskUserRequest = {
       sessionId: requestSessionId,
-      requestId: message.id,
+      requestKey: message.id,
       toolCallId,
       questions,
-      raw: message,
     }
     const next = new Map(prev)
     next.set(sid, {

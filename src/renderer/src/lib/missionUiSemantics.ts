@@ -111,6 +111,8 @@ function getDefaultPermissionLabel(opt: DroidPermissionOption): string {
       return 'Proceed edit'
     case 'cancel':
       return 'Cancel'
+    default:
+      return opt
   }
 }
 

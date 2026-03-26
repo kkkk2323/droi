@@ -1,5 +1,6 @@
 // Shared, isomorphic types for Droid App (Electron + Browser modes)
 
+import type { DroidMessage, ToolConfirmationInfo } from '@factory/droid-sdk'
 import type {
   DecompSessionType,
   SessionAutonomyLevel,
@@ -23,6 +24,7 @@ export type {
   MissionRuntimeRequest,
   RuntimeLogEntry,
 } from './mission.ts'
+export type { DroidMessage, ToolConfirmationInfo } from '@factory/droid-sdk'
 
 // === stream-jsonrpc protocol (JSON-RPC over JSONL) ===
 
@@ -400,6 +402,33 @@ export interface LoadSessionResponse {
   lastMessageAt?: number
 }
 
+export interface DroidPermissionOptionMeta {
+  value: DroidPermissionOption
+  label: string
+  selectedColor?: string
+  selectedPrefix?: string
+}
+
+export interface DroidPermissionRequestPayload {
+  requestKey: string
+  toolUses: ToolConfirmationInfo[]
+  confirmationType?: string
+  optionsMeta: DroidPermissionOptionMeta[]
+}
+
+export interface DroidAskUserQuestion {
+  index: number
+  topic?: string
+  question: string
+  options: string[]
+}
+
+export interface DroidAskUserRequestPayload {
+  requestKey: string
+  toolCallId: string
+  questions: DroidAskUserQuestion[]
+}
+
 // === Client API (renderer-facing) ===
 
 export interface SlashCommandDef {
@@ -496,24 +525,25 @@ export interface DroidClientAPI {
   resolveSlashCommand: (params: { text: string }) => Promise<SlashResolveResult>
   listSkills: () => Promise<SkillDef[]>
 
-  onRpcNotification: (
-    callback: (payload: { message: JsonRpcNotification; sessionId: string | null }) => void,
+  onMessage: (
+    callback: (payload: { message: DroidMessage; sessionId: string | null }) => void,
   ) => () => void
-  onRpcRequest: (
-    callback: (payload: { message: JsonRpcRequest; sessionId: string | null }) => void,
+  onPermissionRequest: (
+    callback: (payload: {
+      request: DroidPermissionRequestPayload
+      sessionId: string | null
+    }) => void,
+  ) => () => void
+  onAskUserRequest: (
+    callback: (payload: { request: DroidAskUserRequestPayload; sessionId: string | null }) => void,
   ) => () => void
   onTurnEnd: (callback: (payload: { code: number; sessionId: string | null }) => void) => () => void
   onDebug: (
     callback: (payload: { message: string; sessionId: string | null }) => void,
   ) => () => void
 
-  onSessionIdReplaced: (
-    callback: (payload: { oldSessionId: string; newSessionId: string; reason: string }) => void,
-  ) => () => void
-
   respondPermission: (params: {
     sessionId: string
-    requestId: string
     selectedOption: DroidPermissionOption
     selectedExitSpecModeOptionIndex?: number
     exitSpecModeComment?: string
@@ -521,12 +551,9 @@ export interface DroidClientAPI {
   addUserMessage: (params: { sessionId: string; text: string }) => Promise<void>
   respondAskUser: (params: {
     sessionId: string
-    requestId: string
     cancelled?: boolean
     answers: Array<{ index: number; question: string; answer: string }>
   }) => void
-  onStdout: (callback: (payload: { data: string; sessionId: string | null }) => void) => () => void
-  onStderr: (callback: (payload: { data: string; sessionId: string | null }) => void) => () => void
   onError: (
     callback: (payload: { message: string; sessionId: string | null }) => void,
   ) => () => void

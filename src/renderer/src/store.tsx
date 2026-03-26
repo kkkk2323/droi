@@ -2083,7 +2083,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       appendDebugTrace(
         prev,
         sid,
-        `ui-permission-response: ${selectedOption} requestId=${req.requestId}`,
+        `ui-permission-response: ${selectedOption} requestKey=${req.requestKey}`,
       ),
     )
 
@@ -2112,13 +2112,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const feedbackText = `[Spec Feedback] ${parts.join('\n')}`
         const capturedSid = sid
         const capturedRequestSessionId = requestSessionId
-        const capturedReq = req
         const capturedParams = params
         void droid.addUserMessage({ sessionId: capturedSid, text: feedbackText }).then(
           () => {
             droid.respondPermission({
               sessionId: capturedRequestSessionId,
-              requestId: capturedReq.requestId,
               selectedOption: capturedParams.selectedOption,
               selectedExitSpecModeOptionIndex: capturedParams.selectedExitSpecModeOptionIndex,
               exitSpecModeComment: capturedParams.exitSpecModeComment,
@@ -2128,7 +2126,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
             // Fallback: send permission response even if addUserMessage fails
             droid.respondPermission({
               sessionId: capturedRequestSessionId,
-              requestId: capturedReq.requestId,
               selectedOption: capturedParams.selectedOption,
               selectedExitSpecModeOptionIndex: capturedParams.selectedExitSpecModeOptionIndex,
               exitSpecModeComment: capturedParams.exitSpecModeComment,
@@ -2138,7 +2135,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       } else {
         droid.respondPermission({
           sessionId: requestSessionId,
-          requestId: req.requestId,
           selectedOption,
           selectedExitSpecModeOptionIndex: params.selectedExitSpecModeOptionIndex,
           exitSpecModeComment: params.exitSpecModeComment,
@@ -2147,7 +2143,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } else {
       droid.respondPermission({
         sessionId: requestSessionId,
-        requestId: req.requestId,
         selectedOption,
         selectedExitSpecModeOptionIndex: params.selectedExitSpecModeOptionIndex,
         exitSpecModeComment: params.exitSpecModeComment,
@@ -2158,7 +2153,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const session = prev.get(sid)
       if (!session) return prev
       const rest = (session.pendingPermissionRequests || []).filter(
-        (r) => r.requestId !== req.requestId,
+        (r) => r.requestKey !== req.requestKey,
       )
       const next = new Map(prev)
       next.set(sid, {
@@ -2210,12 +2205,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       appendDebugTrace(
         prev,
         sid,
-        `ui-askuser-response: cancelled=${Boolean(params.cancelled)} requestId=${req.requestId}`,
+        `ui-askuser-response: cancelled=${Boolean(params.cancelled)} requestKey=${req.requestKey}`,
       ),
     )
     droid.respondAskUser({
       sessionId: requestSessionId,
-      requestId: req.requestId,
       cancelled: params.cancelled,
       answers: params.answers,
     })
@@ -2223,7 +2217,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const session = prev.get(sid)
       if (!session) return prev
       const rest = (session.pendingAskUserRequests || []).filter(
-        (r) => r.requestId !== req.requestId,
+        (r) => r.requestKey !== req.requestKey,
       )
       const next = new Map(prev)
       next.set(sid, { ...session, pendingAskUserRequests: rest })
