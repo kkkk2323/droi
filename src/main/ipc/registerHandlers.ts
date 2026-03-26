@@ -5,7 +5,11 @@ import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { getDroidVersion, DroidExecManager } from '../../backend/droid/droidExecRunner'
 import { LocalDiagnostics } from '../../backend/diagnostics/localDiagnostics'
-import { setTraceChainEnabledOverride } from '../../backend/droid/traceChain.ts'
+import {
+  formatNotificationTrace,
+  isTraceChainEnabled,
+  setTraceChainEnabledOverride,
+} from '../../backend/droid/jsonrpc/notificationFingerprint'
 import {
   resolveSlashCommandText,
   scanSlashCommands,
@@ -393,15 +397,32 @@ export function registerIpcHandlers(opts: {
   const unsub = execManager.onEvent((ev) => {
     const w = opts.getMainWindow()
     if (!w || w.isDestroyed()) return
+    if (ev.type === 'session-id-replaced') {
+      void sessionStore.replaceSessionId(ev.oldSessionId, ev.newSessionId)
+      w.webContents.send('droid:session-id-replaced', {
+        oldSessionId: ev.oldSessionId,
+        newSessionId: ev.newSessionId,
+        reason: ev.reason,
+      })
+      return
+    }
+
     const sid = ev.sessionId
-    if (ev.type === 'message') {
-      w.webContents.send('droid:message', { message: ev.message, sessionId: sid })
-    } else if (ev.type === 'permission-request') {
-      w.webContents.send('droid:permission-request', { request: ev.request, sessionId: sid })
-    } else if (ev.type === 'ask-user-request') {
-      w.webContents.send('droid:ask-user-request', { request: ev.request, sessionId: sid })
-    } else if (ev.type === 'error')
+    if (ev.type === 'stdout') w.webContents.send('droid:stdout', { data: ev.data, sessionId: sid })
+    else if (ev.type === 'stderr')
+      w.webContents.send('droid:stderr', { data: ev.data, sessionId: sid })
+    else if (ev.type === 'error')
       w.webContents.send('droid:error', { message: ev.message, sessionId: sid })
+    else if (ev.type === 'rpc-notification') {
+      if (isTraceChainEnabled()) {
+        w.webContents.send('droid:debug', {
+          message: formatNotificationTrace('ipc-out', ev.message),
+          sessionId: sid,
+        })
+      }
+      w.webContents.send('droid:rpc-notification', { message: ev.message, sessionId: sid })
+    } else if (ev.type === 'rpc-request')
+      w.webContents.send('droid:rpc-request', { message: ev.message, sessionId: sid })
     else if (ev.type === 'turn-end')
       w.webContents.send('droid:turn-end', { code: ev.code, sessionId: sid })
     else if (ev.type === 'debug')
@@ -409,32 +430,23 @@ export function registerIpcHandlers(opts: {
 
     if (diagnostics.isEnabled()) {
       const ts = new Date().toISOString()
-      if (ev.type === 'message')
+      if (ev.type === 'stdout')
         void diagnostics.append({
           ts,
           level: 'debug',
           scope: 'backend',
-          event: 'backend.message',
+          event: 'backend.stdout',
           sessionId: sid,
-          data: { type: ev.message.type },
+          data: { data: ev.data },
         })
-      else if (ev.type === 'permission-request')
+      else if (ev.type === 'stderr')
         void diagnostics.append({
           ts,
-          level: 'info',
+          level: 'debug',
           scope: 'backend',
-          event: 'backend.permission_request',
+          event: 'backend.stderr',
           sessionId: sid,
-          data: { requestKey: ev.request.requestKey },
-        })
-      else if (ev.type === 'ask-user-request')
-        void diagnostics.append({
-          ts,
-          level: 'info',
-          scope: 'backend',
-          event: 'backend.ask_user_request',
-          sessionId: sid,
-          data: { requestKey: ev.request.requestKey },
+          data: { data: ev.data },
         })
       else if (ev.type === 'error')
         void diagnostics.append({
@@ -570,20 +582,22 @@ export function registerIpcHandlers(opts: {
   )
 
   ipcMain.on(
-    'droid:respondPermission',
+    'droid:permission-response',
     (
       _event,
       payload: {
         sessionId: string
+        requestId: string
         selectedOption: any
         selectedExitSpecModeOptionIndex?: number
         exitSpecModeComment?: string
       },
     ) => {
       if (!payload || typeof payload !== 'object') return
-      if (typeof payload.sessionId !== 'string') return
+      if (typeof payload.sessionId !== 'string' || typeof payload.requestId !== 'string') return
       execManager.respondPermission({
         sessionId: payload.sessionId,
+        requestId: payload.requestId,
         selectedOption: payload.selectedOption,
         selectedExitSpecModeOptionIndex:
           typeof payload.selectedExitSpecModeOptionIndex === 'number'
@@ -605,12 +619,21 @@ export function registerIpcHandlers(opts: {
   )
 
   ipcMain.on(
-    'droid:respondAskUser',
-    (_event, payload: { sessionId: string; cancelled?: boolean; answers: any[] }) => {
+    'droid:askuser-response',
+    (
+      _event,
+      payload: { sessionId: string; requestId: string; cancelled?: boolean; answers: any[] },
+    ) => {
       if (!payload || typeof payload !== 'object') return
-      if (typeof payload.sessionId !== 'string' || !Array.isArray(payload.answers)) return
+      if (
+        typeof payload.sessionId !== 'string' ||
+        typeof payload.requestId !== 'string' ||
+        !Array.isArray(payload.answers)
+      )
+        return
       execManager.respondAskUser({
         sessionId: payload.sessionId,
+        requestId: payload.requestId,
         cancelled: payload.cancelled,
         answers: payload.answers as any,
       })

@@ -4,11 +4,12 @@ import { getMissingDroidHooks } from '../src/renderer/src/lib/droidHooks.ts'
 
 test('getMissingDroidHooks returns empty when all required hooks exist', () => {
   const client = {
-    onMessage: () => {},
-    onPermissionRequest: () => {},
-    onAskUserRequest: () => {},
+    onRpcNotification: () => {},
+    onRpcRequest: () => {},
     onMissionDirChanged: () => {},
     onTurnEnd: () => {},
+    onStdout: () => {},
+    onStderr: () => {},
     onError: () => {},
     onSetupScriptEvent: () => {},
   }
@@ -18,15 +19,16 @@ test('getMissingDroidHooks returns empty when all required hooks exist', () => {
 
 test('getMissingDroidHooks returns missing required hooks', () => {
   const client = {
-    onMessage: () => {},
+    onRpcNotification: () => {},
     onTurnEnd: () => {},
     onError: 'nope',
   }
 
   assert.deepEqual(getMissingDroidHooks(client), [
-    'onPermissionRequest',
-    'onAskUserRequest',
+    'onRpcRequest',
     'onMissionDirChanged',
+    'onStdout',
+    'onStderr',
     'onError',
     'onSetupScriptEvent',
   ])

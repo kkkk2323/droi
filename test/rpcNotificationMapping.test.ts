@@ -287,7 +287,7 @@ test('applyRpcRequest enqueues permission and ask_user requests', () => {
   } as any)
   const buf1 = withPerm.get(sid)!
   assert.equal(buf1.pendingPermissionRequests?.length, 1)
-  assert.equal(buf1.pendingPermissionRequests?.[0].requestKey, 'r1')
+  assert.equal(buf1.pendingPermissionRequests?.[0].requestId, 'r1')
 
   const withAsk = applyRpcRequest(withPerm, sid, {
     jsonrpc: '2.0',
@@ -299,7 +299,7 @@ test('applyRpcRequest enqueues permission and ask_user requests', () => {
   } as any)
   const buf2 = withAsk.get(sid)!
   assert.equal(buf2.pendingAskUserRequests?.length, 1)
-  assert.equal(buf2.pendingAskUserRequests?.[0].requestKey, 'r2')
+  assert.equal(buf2.pendingAskUserRequests?.[0].requestId, 'r2')
   assert.equal(buf2.pendingAskUserRequests?.[0].questions[0].question, 'Q?')
 })
 

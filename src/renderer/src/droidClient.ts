@@ -13,9 +13,8 @@ import type {
   LoadSessionResponse,
   SessionMeta,
   MissionModelSettings,
-  DroidMessage,
-  DroidPermissionRequestPayload,
-  DroidAskUserRequestPayload,
+  JsonRpcNotification,
+  JsonRpcRequest,
   SlashCommandDef,
   SlashResolveResult,
   SkillDef,
@@ -25,31 +24,34 @@ import type {
 } from '@/types'
 
 type RpcNotificationCallback = (payload: {
-  message: DroidMessage
+  message: JsonRpcNotification
   sessionId: string | null
 }) => void
-type PermissionRequestCallback = (payload: {
-  request: DroidPermissionRequestPayload
-  sessionId: string | null
-}) => void
-type AskUserRequestCallback = (payload: {
-  request: DroidAskUserRequestPayload
-  sessionId: string | null
-}) => void
+type RpcRequestCallback = (payload: { message: JsonRpcRequest; sessionId: string | null }) => void
 type TurnEndCallback = (payload: { code: number; sessionId: string | null }) => void
 type DebugCallback = (payload: { message: string; sessionId: string | null }) => void
+type StdoutCallback = (payload: { data: string; sessionId: string | null }) => void
+type StderrCallback = (payload: { data: string; sessionId: string | null }) => void
 type ErrorCallback = (payload: { message: string; sessionId: string | null }) => void
 type SetupScriptEventCallback = (payload: {
   event: SetupScriptEvent
   sessionId: string | null
 }) => void
-const messageListeners: Set<RpcNotificationCallback> = new Set()
-const permissionRequestListeners: Set<PermissionRequestCallback> = new Set()
-const askUserRequestListeners: Set<AskUserRequestCallback> = new Set()
+type SessionIdReplacedCallback = (payload: {
+  oldSessionId: string
+  newSessionId: string
+  reason: string
+}) => void
+
+const rpcNotificationListeners: Set<RpcNotificationCallback> = new Set()
+const rpcRequestListeners: Set<RpcRequestCallback> = new Set()
 const turnEndListeners: Set<TurnEndCallback> = new Set()
 const debugListeners: Set<DebugCallback> = new Set()
+const stdoutListeners: Set<StdoutCallback> = new Set()
+const stderrListeners: Set<StderrCallback> = new Set()
 const errorListeners: Set<ErrorCallback> = new Set()
 const setupScriptEventListeners: Set<SetupScriptEventCallback> = new Set()
+const sessionIdReplacedListeners: Set<SessionIdReplacedCallback> = new Set()
 
 export function getApiBase(): string {
   const envBase = (import.meta as any)?.env?.VITE_DROID_API_BASE as string | undefined
@@ -72,14 +74,11 @@ export function getServerOrigin(): string {
   return base.endsWith('/api') ? base.slice(0, -4) : base
 }
 
-function emitMessage(message: DroidMessage, sessionId: string | null) {
-  messageListeners.forEach((cb) => cb({ message, sessionId }))
+function emitRpcNotification(message: JsonRpcNotification, sessionId: string | null) {
+  rpcNotificationListeners.forEach((cb) => cb({ message, sessionId }))
 }
-function emitPermissionRequest(request: DroidPermissionRequestPayload, sessionId: string | null) {
-  permissionRequestListeners.forEach((cb) => cb({ request, sessionId }))
-}
-function emitAskUserRequest(request: DroidAskUserRequestPayload, sessionId: string | null) {
-  askUserRequestListeners.forEach((cb) => cb({ request, sessionId }))
+function emitRpcRequest(message: JsonRpcRequest, sessionId: string | null) {
+  rpcRequestListeners.forEach((cb) => cb({ message, sessionId }))
 }
 function emitTurnEnd(code: number, sessionId: string | null) {
   turnEndListeners.forEach((cb) => cb({ code, sessionId }))
@@ -87,11 +86,25 @@ function emitTurnEnd(code: number, sessionId: string | null) {
 function emitDebug(message: string, sessionId: string | null) {
   debugListeners.forEach((cb) => cb({ message, sessionId }))
 }
+function emitStdout(data: string, sessionId: string | null) {
+  stdoutListeners.forEach((cb) => cb({ data, sessionId }))
+}
+function emitStderr(data: string, sessionId: string | null) {
+  stderrListeners.forEach((cb) => cb({ data, sessionId }))
+}
 function emitError(message: string, sessionId: string | null) {
   errorListeners.forEach((cb) => cb({ message, sessionId }))
 }
 function emitSetupScriptEvent(event: SetupScriptEvent, sessionId: string | null) {
   setupScriptEventListeners.forEach((cb) => cb({ event, sessionId }))
+}
+
+function emitSessionIdReplaced(payload: {
+  oldSessionId: string
+  newSessionId: string
+  reason: string
+}) {
+  sessionIdReplacedListeners.forEach((cb) => cb(payload))
 }
 
 function handleStreamPayload(payload: string, sessionId: string | null) {
@@ -101,32 +114,33 @@ function handleStreamPayload(payload: string, sessionId: string | null) {
   try {
     const msg = JSON.parse(payload)
     if (sid) {
-      if (msg.type === 'message') {
-        const t = String(msg.message?.type || '')
-          .trim()
-          .toLowerCase()
-        if (t === 'working_state_changed') {
-          const newState = String(msg.message?.newState || '')
+      if (msg.type === 'rpc-notification') {
+        const n = msg.message
+        const notif =
+          n && typeof n === 'object' && n.method === 'droid.session_notification'
+            ? (n.params as any)?.notification
+            : null
+        const t = (notif as any)?.type
+        if (t === 'droid_working_state_changed' || t === 'working_state_changed') {
+          const newState = String((notif as any)?.newState || '')
             .trim()
             .toLowerCase()
           if (newState && newState !== 'idle') markStreamRunning(sid)
           else if (newState === 'idle') markStreamIdle(sid)
-        } else if (t && t !== 'turn_complete') {
-          markStreamRunning(sid)
         }
-      } else if (msg.type === 'permission-request' || msg.type === 'ask-user-request') {
-        markStreamRunning(sid)
       } else if (msg.type === 'turn-end') {
         markStreamIdle(sid)
       }
     }
 
-    if (msg.type === 'message') {
-      emitMessage(msg.message as DroidMessage, sessionId)
-    } else if (msg.type === 'permission-request') {
-      emitPermissionRequest(msg.request as DroidPermissionRequestPayload, sessionId)
-    } else if (msg.type === 'ask-user-request') {
-      emitAskUserRequest(msg.request as DroidAskUserRequestPayload, sessionId)
+    if (msg.type === 'stdout') {
+      emitStdout(String(msg.data || ''), sessionId)
+    } else if (msg.type === 'stderr') {
+      emitStderr(String(msg.data || ''), sessionId)
+    } else if (msg.type === 'rpc-notification') {
+      emitRpcNotification(msg.message as JsonRpcNotification, sessionId)
+    } else if (msg.type === 'rpc-request') {
+      emitRpcRequest(msg.message as JsonRpcRequest, sessionId)
     } else if (msg.type === 'turn-end') {
       emitTurnEnd(Number(msg.code) || 0, sessionId)
     } else if (msg.type === 'debug') {
@@ -137,6 +151,12 @@ function handleStreamPayload(payload: string, sessionId: string | null) {
       const event = msg.event as SetupScriptEvent | undefined
       if (!event || typeof event !== 'object') return
       emitSetupScriptEvent(event, sessionId)
+    } else if (msg.type === 'session-id-replaced') {
+      const oldSessionId = String(msg.oldSessionId || '').trim()
+      const newSessionId = String(msg.newSessionId || '').trim()
+      const reason = String(msg.reason || '').trim() || 'unknown'
+      if (oldSessionId && newSessionId)
+        emitSessionIdReplaced({ oldSessionId, newSessionId, reason })
     }
   } catch {
     // ignore
@@ -461,7 +481,7 @@ const browserClient: DroidClientAPI = {
     setBrowserActiveSession(params)
   },
   updateSessionSettings: async (params) => {
-    const res = await apiFetch(`${getApiBase()}/session-settings`, {
+    const res = await apiFetch(`${getApiBase()}/rpc/session-settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -569,22 +589,16 @@ const browserClient: DroidClientAPI = {
     }
   },
 
-  onMessage: (callback) => {
-    messageListeners.add(callback)
+  onRpcNotification: (callback) => {
+    rpcNotificationListeners.add(callback)
     return () => {
-      messageListeners.delete(callback)
+      rpcNotificationListeners.delete(callback)
     }
   },
-  onPermissionRequest: (callback) => {
-    permissionRequestListeners.add(callback)
+  onRpcRequest: (callback) => {
+    rpcRequestListeners.add(callback)
     return () => {
-      permissionRequestListeners.delete(callback)
-    }
-  },
-  onAskUserRequest: (callback) => {
-    askUserRequestListeners.add(callback)
-    return () => {
-      askUserRequestListeners.delete(callback)
+      rpcRequestListeners.delete(callback)
     }
   },
   onTurnEnd: (callback) => {
@@ -599,17 +613,27 @@ const browserClient: DroidClientAPI = {
       debugListeners.delete(callback)
     }
   },
+
+  onSessionIdReplaced: (callback) => {
+    sessionIdReplacedListeners.add(callback)
+    return () => {
+      sessionIdReplacedListeners.delete(callback)
+    }
+  },
+
   respondPermission: ({
     sessionId,
+    requestId,
     selectedOption,
     selectedExitSpecModeOptionIndex,
     exitSpecModeComment,
   }) => {
-    apiFetch(`${getApiBase()}/permission-response`, {
+    apiFetch(`${getApiBase()}/rpc/permission-response`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId,
+        requestId,
         selectedOption,
         ...(selectedExitSpecModeOptionIndex !== undefined && { selectedExitSpecModeOptionIndex }),
         ...(exitSpecModeComment !== undefined && { exitSpecModeComment }),
@@ -617,18 +641,30 @@ const browserClient: DroidClientAPI = {
     }).catch(() => {})
   },
   addUserMessage: async ({ sessionId, text }) => {
-    await apiFetch(`${getApiBase()}/add-user-message`, {
+    await apiFetch(`${getApiBase()}/rpc/add-user-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, text }),
     })
   },
-  respondAskUser: ({ sessionId, cancelled, answers }) => {
-    apiFetch(`${getApiBase()}/askuser-response`, {
+  respondAskUser: ({ sessionId, requestId, cancelled, answers }) => {
+    apiFetch(`${getApiBase()}/rpc/askuser-response`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, cancelled, answers }),
+      body: JSON.stringify({ sessionId, requestId, cancelled, answers }),
     }).catch(() => {})
+  },
+  onStdout: (callback) => {
+    stdoutListeners.add(callback)
+    return () => {
+      stdoutListeners.delete(callback)
+    }
+  },
+  onStderr: (callback) => {
+    stderrListeners.add(callback)
+    return () => {
+      stderrListeners.delete(callback)
+    }
   },
   onError: (callback) => {
     errorListeners.add(callback)
@@ -1367,6 +1403,8 @@ export function getDroidClient(): DroidClientAPI {
       merged.unwatchMissionRuntime = browserClient.unwatchMissionRuntime
     if (typeof (merged as any).onMissionRuntimeChanged !== 'function')
       merged.onMissionRuntimeChanged = browserClient.onMissionRuntimeChanged
+    if (typeof (merged as any).onSessionIdReplaced !== 'function')
+      merged.onSessionIdReplaced = browserClient.onSessionIdReplaced
     if (typeof (merged as any).checkForUpdate !== 'function')
       merged.checkForUpdate = browserClient.checkForUpdate
     if (typeof (merged as any).installUpdate !== 'function')

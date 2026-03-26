@@ -289,10 +289,10 @@ function useAttentionBeep() {
     const ids: string[] = []
     for (const buf of s.sessionBuffers.values()) {
       if (buf.pendingPermissionRequests) {
-        for (const r of buf.pendingPermissionRequests) ids.push(r.requestKey)
+        for (const r of buf.pendingPermissionRequests) ids.push(r.requestId)
       }
       if (buf.pendingAskUserRequests) {
-        for (const r of buf.pendingAskUserRequests) ids.push(r.requestKey)
+        for (const r of buf.pendingAskUserRequests) ids.push(r.requestId)
       }
     }
     return ids.join(',')

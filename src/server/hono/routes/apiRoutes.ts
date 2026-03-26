@@ -18,7 +18,7 @@ import {
 } from '../../../backend/git/workspaceManager.ts'
 import { commitWorkflow, detectGitTools } from '../../../backend/git/commitWorkflow.ts'
 import { generateCommitMeta } from '../../../backend/git/generateCommitMeta.ts'
-import { setTraceChainEnabledOverride } from '../../../backend/droid/traceChain.ts'
+import { setTraceChainEnabledOverride } from '../../../backend/droid/jsonrpc/notificationFingerprint.ts'
 import { scanSkills } from '../../../backend/skills/skills.ts'
 import {
   mergeLoadSessionResponse,
@@ -549,22 +549,35 @@ export function createApiRoutes() {
 
         unsubscribeExec = deps.execManager.onEvent((ev) => {
           if (closed) return
+          if (ev.type === 'session-id-replaced') {
+            if (!listenIds.has(ev.oldSessionId)) return
+            listenIds.add(ev.newSessionId)
+            write('event: session-id-replaced\n')
+            write(
+              `data:${JSON.stringify({ type: 'session-id-replaced', oldSessionId: ev.oldSessionId, newSessionId: ev.newSessionId, reason: ev.reason })}\n\n`,
+            )
+            return
+          }
+
           if (!listenIds.has(ev.sessionId)) return
-          if (ev.type === 'message') {
-            write('event: message\n')
-            write(`data:${JSON.stringify({ type: 'message', message: ev.message })}\n\n`)
-          } else if (ev.type === 'permission-request') {
-            write('event: permission-request\n')
-            write(`data:${JSON.stringify({ type: 'permission-request', request: ev.request })}\n\n`)
-          } else if (ev.type === 'ask-user-request') {
-            write('event: ask-user-request\n')
-            write(`data:${JSON.stringify({ type: 'ask-user-request', request: ev.request })}\n\n`)
+          if (ev.type === 'stdout') {
+            write('event: stdout\n')
+            write(`data:${JSON.stringify({ type: 'stdout', data: ev.data })}\n\n`)
+          } else if (ev.type === 'stderr') {
+            write('event: stderr\n')
+            write(`data:${JSON.stringify({ type: 'stderr', data: ev.data })}\n\n`)
           } else if (ev.type === 'error') {
             write('event: error\n')
             write(`data:${JSON.stringify({ type: 'error', message: ev.message })}\n\n`)
           } else if (ev.type === 'debug') {
             write('event: debug\n')
             write(`data:${JSON.stringify({ type: 'debug', message: ev.message })}\n\n`)
+          } else if (ev.type === 'rpc-notification') {
+            write('event: rpc-notification\n')
+            write(`data:${JSON.stringify({ type: 'rpc-notification', message: ev.message })}\n\n`)
+          } else if (ev.type === 'rpc-request') {
+            write('event: rpc-request\n')
+            write(`data:${JSON.stringify({ type: 'rpc-request', message: ev.message })}\n\n`)
           } else if (ev.type === 'turn-end') {
             write('event: turn-end\n')
             write(`data:${JSON.stringify({ type: 'turn-end', code: ev.code })}\n\n`)
@@ -759,24 +772,35 @@ export function createApiRoutes() {
 
           unsubscribe = deps.execManager.onEvent((ev) => {
             if (closed) return
-            if (!listenIds.has(ev.sessionId)) return
-            if (ev.type === 'message') {
-              write('event: message\n')
-              write(`data:${JSON.stringify({ type: 'message', message: ev.message })}\n\n`)
-            } else if (ev.type === 'permission-request') {
-              write('event: permission-request\n')
+            if (ev.type === 'session-id-replaced') {
+              if (!listenIds.has(ev.oldSessionId)) return
+              listenIds.add(ev.newSessionId)
+              write('event: session-id-replaced\n')
               write(
-                `data:${JSON.stringify({ type: 'permission-request', request: ev.request })}\n\n`,
+                `data:${JSON.stringify({ type: 'session-id-replaced', oldSessionId: ev.oldSessionId, newSessionId: ev.newSessionId, reason: ev.reason })}\n\n`,
               )
-            } else if (ev.type === 'ask-user-request') {
-              write('event: ask-user-request\n')
-              write(`data:${JSON.stringify({ type: 'ask-user-request', request: ev.request })}\n\n`)
+              return
+            }
+
+            if (!listenIds.has(ev.sessionId)) return
+            if (ev.type === 'stdout') {
+              write('event: stdout\n')
+              write(`data:${JSON.stringify({ type: 'stdout', data: ev.data })}\n\n`)
+            } else if (ev.type === 'stderr') {
+              write('event: stderr\n')
+              write(`data:${JSON.stringify({ type: 'stderr', data: ev.data })}\n\n`)
             } else if (ev.type === 'error') {
               write('event: error\n')
               write(`data:${JSON.stringify({ type: 'error', message: ev.message })}\n\n`)
             } else if (ev.type === 'debug') {
               write('event: debug\n')
               write(`data:${JSON.stringify({ type: 'debug', message: ev.message })}\n\n`)
+            } else if (ev.type === 'rpc-notification') {
+              write('event: rpc-notification\n')
+              write(`data:${JSON.stringify({ type: 'rpc-notification', message: ev.message })}\n\n`)
+            } else if (ev.type === 'rpc-request') {
+              write('event: rpc-request\n')
+              write(`data:${JSON.stringify({ type: 'rpc-request', message: ev.message })}\n\n`)
             } else if (ev.type === 'turn-end') {
               write('event: turn-end\n')
               write(`data:${JSON.stringify({ type: 'turn-end', code: ev.code })}\n\n`)
@@ -829,13 +853,14 @@ export function createApiRoutes() {
     }
   })
 
-  api.post('/permission-response', async (c) => {
+  api.post('/rpc/permission-response', async (c) => {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+      const requestId = typeof body.requestId === 'string' ? body.requestId : ''
       const selectedOption = body.selectedOption as DroidPermissionOption
-      if (!sessionId || typeof selectedOption !== 'string') {
+      if (!sessionId || !requestId || typeof selectedOption !== 'string') {
         return jsonError(c, 400, 'Invalid payload')
       }
       const selectedExitSpecModeOptionIndex =
@@ -846,6 +871,7 @@ export function createApiRoutes() {
         typeof body.exitSpecModeComment === 'string' ? body.exitSpecModeComment : undefined
       deps.execManager.respondPermission({
         sessionId,
+        requestId,
         selectedOption,
         selectedExitSpecModeOptionIndex,
         exitSpecModeComment,
@@ -856,7 +882,7 @@ export function createApiRoutes() {
     }
   })
 
-  api.post('/add-user-message', async (c) => {
+  api.post('/rpc/add-user-message', async (c) => {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
@@ -872,7 +898,7 @@ export function createApiRoutes() {
     }
   })
 
-  api.post('/session-settings', async (c) => {
+  api.post('/rpc/session-settings', async (c) => {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
@@ -897,16 +923,17 @@ export function createApiRoutes() {
     }
   })
 
-  api.post('/askuser-response', async (c) => {
+  api.post('/rpc/askuser-response', async (c) => {
     try {
       const deps = c.get('deps')
       const body = await readJsonBody<Record<string, unknown>>(c)
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+      const requestId = typeof body.requestId === 'string' ? body.requestId : ''
       const cancelled = typeof body.cancelled === 'boolean' ? body.cancelled : undefined
       const answers = Array.isArray(body.answers) ? body.answers : null
-      if (!sessionId || !answers) return jsonError(c, 400, 'Invalid payload')
+      if (!sessionId || !requestId || !answers) return jsonError(c, 400, 'Invalid payload')
 
-      deps.execManager.respondAskUser({ sessionId, cancelled, answers: answers as any })
+      deps.execManager.respondAskUser({ sessionId, requestId, cancelled, answers: answers as any })
       return c.json({ ok: true })
     } catch {
       return jsonError(c, 400, 'Invalid JSON')
