@@ -1,3 +1,8 @@
+## 0.31.0 - 2026-03-26
+
+### Refactor
+- Update workspace manager to use workspaceDir and improve session state
+
 ## 0.30.1 - 2026-03-19
 
 ### Refactor
