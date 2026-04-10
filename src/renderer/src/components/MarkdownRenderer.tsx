@@ -30,31 +30,40 @@ function parseSpec(raw: string): JsonRenderSpec | null {
   }
 }
 
+// Matches malformed output like <{"root":"d","elements":{...}}>
+const MALFORMED_RE = /<(\{"root"\s*:\s*"[^"]+"\s*,\s*"elements"\s*:\s*\{[\s\S]*?\}\s*\})>/g
+
 function extractJsonRenderBlocks(content: string): ParsedBlock[] {
+  // First, normalize malformed <{...}> patterns into proper <json-render>{...}</json-render>
+  const normalized = content.replace(
+    MALFORMED_RE,
+    (_match: string, json: string) => `${JSON_RENDER_OPEN}${json}${JSON_RENDER_CLOSE}`,
+  )
+
   const blocks: ParsedBlock[] = []
   let cursor = 0
 
-  while (cursor < content.length) {
-    const openIdx = content.indexOf(JSON_RENDER_OPEN, cursor)
+  while (cursor < normalized.length) {
+    const openIdx = normalized.indexOf(JSON_RENDER_OPEN, cursor)
     if (openIdx === -1) {
-      const text = content.slice(cursor)
+      const text = normalized.slice(cursor)
       if (text.trim()) blocks.push({ type: 'text', content: text })
       break
     }
 
     if (openIdx > cursor) {
-      const text = content.slice(cursor, openIdx)
+      const text = normalized.slice(cursor, openIdx)
       if (text.trim()) blocks.push({ type: 'text', content: text })
     }
 
-    const closeIdx = content.indexOf(JSON_RENDER_CLOSE, openIdx + JSON_RENDER_OPEN.length)
+    const closeIdx = normalized.indexOf(JSON_RENDER_CLOSE, openIdx + JSON_RENDER_OPEN.length)
     if (closeIdx === -1) {
-      const text = content.slice(openIdx)
+      const text = normalized.slice(openIdx)
       if (text.trim()) blocks.push({ type: 'text', content: text })
       break
     }
 
-    const jsonContent = content.slice(openIdx + JSON_RENDER_OPEN.length, closeIdx)
+    const jsonContent = normalized.slice(openIdx + JSON_RENDER_OPEN.length, closeIdx)
     const spec = parseSpec(jsonContent)
 
     if (spec) {
@@ -62,7 +71,7 @@ function extractJsonRenderBlocks(content: string): ParsedBlock[] {
     } else {
       blocks.push({
         type: 'text',
-        content: content.slice(openIdx, closeIdx + JSON_RENDER_CLOSE.length),
+        content: normalized.slice(openIdx, closeIdx + JSON_RENDER_CLOSE.length),
       })
     }
 
@@ -73,7 +82,8 @@ function extractJsonRenderBlocks(content: string): ParsedBlock[] {
 }
 
 function hasJsonRender(content: string): boolean {
-  if (!content.includes(JSON_RENDER_OPEN)) return false
+  if (!content.includes(JSON_RENDER_OPEN) && !MALFORMED_RE.test(content)) return false
+  MALFORMED_RE.lastIndex = 0
   return extractJsonRenderBlocks(content).some((b) => b.type === 'json-render')
 }
 
