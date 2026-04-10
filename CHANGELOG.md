@@ -1,3 +1,8 @@
+## 0.33.1 - 2026-04-10
+
+### Fixes
+- Handle malformed `<{...}>` JSON render blocks in MarkdownRenderer
+
 ## 0.33.0 - 2026-04-10
 
 ### Features
