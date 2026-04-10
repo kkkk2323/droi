@@ -398,6 +398,7 @@ export interface LoadSessionResponse {
   isAgentLoopInProgress?: boolean
   mission?: MissionLoadSnapshot
   lastMessageAt?: number
+  availableModels?: AvailableModelConfig[]
 }
 
 // === Client API (renderer-facing) ===
@@ -467,7 +468,7 @@ export interface DroidClientAPI {
     autonomyLevel?: SessionAutonomyLevel
     decompSessionType?: DecompSessionType
     reasoningEffort?: string
-  }) => Promise<{ sessionId: string }>
+  }) => Promise<CreateSessionResult>
 
   killWorkerSession: (params: {
     sessionId: string
@@ -780,6 +781,28 @@ export interface CustomModelDef {
   displayName: string
   model: string
   provider: string
+}
+
+export interface AvailableModelConfig {
+  id: string
+  modelId: string
+  displayName: string
+  shortDisplayName?: string
+  modelProvider: string
+  supportedReasoningEfforts?: string[]
+  defaultReasoningEffort?: string
+  isCustom?: boolean
+  tier?: string
+  tokenMultiplier?: number
+  promoLabel?: string
+  deprecated?: boolean
+  noImageSupport?: boolean
+  supportsPDFs?: boolean
+}
+
+export interface CreateSessionResult {
+  sessionId: string
+  availableModels?: AvailableModelConfig[]
 }
 
 // === Updater ===

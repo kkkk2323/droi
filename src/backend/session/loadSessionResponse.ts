@@ -1,4 +1,5 @@
 import type {
+  AvailableModelConfig,
   DroidAutonomyLevel,
   DroidInteractionMode,
   LoadSessionResponse,
@@ -124,5 +125,8 @@ export function mergeLoadSessionResponse(
       live.mission && typeof live.mission === 'object'
         ? ({ ...(live.mission as Record<string, unknown>) } as any)
         : stored.mission,
+    availableModels: Array.isArray((live as any).availableModels)
+      ? ((live as any).availableModels as AvailableModelConfig[])
+      : stored.availableModels,
   }
 }

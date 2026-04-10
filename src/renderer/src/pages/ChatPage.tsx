@@ -21,6 +21,7 @@ import {
   useIsCreatingSession,
   useWorkingState,
   useMissionModelSettings,
+  useAvailableModels,
   useActions,
 } from '@/store'
 import { DEFAULT_MODEL } from '@/state/appReducer'
@@ -64,6 +65,7 @@ export function ChatPage({
   const model = useModel()
   const autoLevel = useAutoLevel()
   const reasoningEffort = useReasoningEffort()
+  const availableModels = useAvailableModels()
   const missionModelSettings = useMissionModelSettings()
   const activeProjectDir = useActiveProjectDir()
   const activeSessionId = useActiveSessionId()
@@ -137,6 +139,7 @@ export function ChatPage({
     sessionModel: model,
     sessionReasoningEffort: reasoningEffort,
     missionModelSettings,
+    availableModels,
   })
   const missionOrchestratorModel = missionRuntimeSelection.model || DEFAULT_MODEL
   const missionWorkerModel = missionModelSettings.workerModel || missionOrchestratorModel
@@ -262,6 +265,7 @@ export function ChatPage({
               }
               autoLevel={autoLevel}
               reasoningEffort={reasoningEffort}
+              availableModels={availableModels}
               customModels={customModels}
               onModelChange={setModel}
               onAutoLevelChange={setAutoLevel}

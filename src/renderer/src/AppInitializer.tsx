@@ -376,6 +376,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
               ? (droid as any).loadSessionStored(activeMeta.id)
               : droid.loadSession(activeMeta.id)
           const data = await withTimeout(startupSessionData, null)
+          const startupAvailableModels = Array.isArray((data as any)?.availableModels)
+            ? ((data as any).availableModels as import('@/types').AvailableModelConfig[])
+            : useAppStore.getState().availableModels
           const newBuffers = new Map(useAppStore.getState().sessionBuffers)
           newBuffers.set(
             activeMeta.id,
@@ -392,6 +395,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
               meta: activeMeta,
               data,
               missionModelSettings,
+              availableModels: startupAvailableModels,
             }),
           )
           useAppStore.setState({
@@ -399,6 +403,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             activeProjectDir: restoredProjectDir,
             activeSessionId: activeMeta.id,
             sessionBuffers: newBuffers,
+            availableModels: startupAvailableModels,
             _initialLoadDone: true,
           })
 
@@ -406,6 +411,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             const liveData = await withTimeout(droid.loadSession(activeMeta.id), null)
             if (!liveData) return
             const latest = useAppStore.getState()
+            const liveAvailableModels = Array.isArray((liveData as any).availableModels)
+              ? ((liveData as any).availableModels as import('@/types').AvailableModelConfig[])
+              : useAppStore.getState().availableModels
+            if (Array.isArray((liveData as any).availableModels)) {
+              useAppStore.setState({ availableModels: liveAvailableModels })
+            }
             if (latest.activeSessionId !== activeMeta.id) return
             latest._setSessionBuffers((prev) => {
               const current = prev.get(activeMeta.id)
@@ -434,6 +445,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                   meta: activeMeta,
                   data: liveData,
                   missionModelSettings: useAppStore.getState().missionModelSettings,
+                  availableModels: liveAvailableModels,
                 }),
               )
               return next
@@ -448,18 +460,17 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                 })
               : await withTimeout(store._resolveWorkspace(restoredProjectDir), null)
             : null
-          const newId = restoredProjectDir
-            ? (
-                await withTimeout(
-                  droid.createSession({
-                    cwd: restoredProjectDir,
-                    modelId: DEFAULT_MODEL,
-                    autoLevel: DEFAULT_AUTO_LEVEL,
-                  }),
-                  { sessionId: uuidv4() },
-                )
-              ).sessionId
-            : uuidv4()
+          const createdSession = restoredProjectDir
+            ? await withTimeout(
+                droid.createSession({
+                  cwd: restoredProjectDir,
+                  modelId: DEFAULT_MODEL,
+                  autoLevel: DEFAULT_AUTO_LEVEL,
+                }),
+                { sessionId: uuidv4(), availableModels: undefined },
+              )
+            : null
+          const newId = createdSession?.sessionId || uuidv4()
           const initialBuffer = makeBuffer(restoredProjectDir || '', {
             repoRoot: restoredInfo?.repoRoot,
             workspaceDir: restoredInfo?.workspaceDir,
@@ -517,6 +528,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             activeProjectDir: restoredProjectDir,
             activeSessionId: newId,
             sessionBuffers: newBuffers,
+            availableModels:
+              createdSession?.availableModels ?? useAppStore.getState().availableModels,
             _initialLoadDone: true,
           })
         }

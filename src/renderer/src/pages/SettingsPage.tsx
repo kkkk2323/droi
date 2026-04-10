@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/select'
 import { getDroidClient } from '@/droidClient'
 import { DEFAULT_MODEL } from '@/state/appReducer'
-import { getModelReasoningLevels, getModelDefaultReasoning } from '@/types'
+import { getRuntimeModelDefaultReasoning, getRuntimeModelReasoningLevels } from '@/lib/modelCatalog'
 import {
+  useAvailableModels,
   useCustomModels,
   useCommitMessageModelId,
   useCommitMessageReasoningEffort,
@@ -44,7 +45,9 @@ function ModelOverrideRow({
   onFollowChange,
   value,
   onChange,
+  availableModels,
   customModels,
+  loading,
 }: {
   title: string
   description: string
@@ -52,7 +55,9 @@ function ModelOverrideRow({
   onFollowChange: (checked: boolean) => void
   value: string
   onChange: (value: string) => void
+  availableModels?: import('@/types').AvailableModelConfig[]
   customModels: import('@/types').CustomModelDef[]
+  loading: boolean
 }) {
   return (
     <div className="space-y-2 rounded-md border border-border p-3">
@@ -69,8 +74,10 @@ function ModelOverrideRow({
       <ModelSelect
         value={value}
         onChange={onChange}
+        availableModels={availableModels}
         customModels={customModels}
-        disabled={follow}
+        disabled={follow || loading}
+        loading={loading}
         className="w-full"
       />
     </div>
@@ -78,6 +85,7 @@ function ModelOverrideRow({
 }
 
 export function SettingsPage() {
+  const availableModels = useAvailableModels()
   const navigate = useNavigate()
   const customModels = useCustomModels()
   const commitMessageModelId = useCommitMessageModelId()
@@ -102,6 +110,7 @@ export function SettingsPage() {
   const [workerModel, setWorkerModel] = useState(DEFAULT_MODEL)
   const [validatorModel, setValidatorModel] = useState(DEFAULT_MODEL)
   const unsubRef = useRef<(() => void) | null>(null)
+  const modelsLoading = availableModels === undefined
 
   const orchestratorModel = missionModelSettings.orchestratorModel || DEFAULT_MODEL
 
@@ -247,15 +256,18 @@ export function SettingsPage() {
             <ModelSelect
               value={commitMessageModelId}
               onChange={setCommitMessageModelId}
+              availableModels={availableModels}
               customModels={customModels}
+              disabled={modelsLoading}
+              loading={modelsLoading}
               className="flex-1"
             />
             {(() => {
-              const levels = getModelReasoningLevels(commitMessageModelId)
+              const levels = getRuntimeModelReasoningLevels(commitMessageModelId, availableModels)
               if (!levels) return null
               const displayValue =
                 commitMessageReasoningEffort ||
-                getModelDefaultReasoning(commitMessageModelId) ||
+                getRuntimeModelDefaultReasoning(commitMessageModelId, availableModels) ||
                 levels[0]
               return (
                 <div className="flex shrink-0 items-center gap-2">
@@ -307,7 +319,10 @@ export function SettingsPage() {
                     validationWorkerModel: followValidatorModel ? nextModel : validatorModel,
                   })
                 }}
+                availableModels={availableModels}
                 customModels={customModels}
+                disabled={modelsLoading}
+                loading={modelsLoading}
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
@@ -352,7 +367,9 @@ export function SettingsPage() {
                       })
                     }
                   }}
+                  availableModels={availableModels}
                   customModels={customModels}
+                  loading={modelsLoading}
                 />
                 <ModelOverrideRow
                   title="Validator model"
@@ -378,7 +395,9 @@ export function SettingsPage() {
                       })
                     }
                   }}
+                  availableModels={availableModels}
                   customModels={customModels}
+                  loading={modelsLoading}
                 />
               </CollapsibleContent>
             </Collapsible>

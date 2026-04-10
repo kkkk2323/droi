@@ -1,4 +1,6 @@
 import type {
+  AvailableModelConfig,
+  CreateSessionResult,
   DroidClientAPI,
   GitToolsInfo,
   GenerateCommitMetaRequest,
@@ -517,10 +519,13 @@ const browserClient: DroidClientAPI = {
       }),
     })
     if (!res.ok) throw new Error(await readApiError(res))
-    const data = await res.json()
+    const data = (await res.json()) as CreateSessionResult
     const sessionId = String(data?.sessionId || '').trim()
     if (!sessionId) throw new Error('Missing sessionId in response')
-    return { sessionId }
+    const availableModels = Array.isArray(data?.availableModels)
+      ? (data.availableModels as AvailableModelConfig[])
+      : undefined
+    return { sessionId, availableModels }
   },
 
   runSetupScript: async (params) => {

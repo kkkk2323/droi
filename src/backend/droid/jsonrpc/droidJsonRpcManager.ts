@@ -15,6 +15,7 @@ import {
   type DecompSessionType,
   type SessionKind,
 } from '../../../shared/sessionProtocol.ts'
+import type { AvailableModelConfig } from '../../../shared/protocol.ts'
 
 export type DroidBackendEvent =
   | { type: 'stdout'; sessionId: string; data: string }
@@ -185,7 +186,9 @@ export class DroidJsonRpcManager {
     }
   }
 
-  async createSession(params: CreateSessionParams): Promise<string> {
+  async createSession(
+    params: CreateSessionParams,
+  ): Promise<{ sessionId: string; availableModels?: AvailableModelConfig[] }> {
     const tempSessionId = `create-${randomUUID()}`
     const noop = () => {}
     const session = new DroidJsonRpcSession({
@@ -207,9 +210,9 @@ export class DroidJsonRpcManager {
         decompSessionType: protocol.decompSessionType,
         reasoningEffort: params.reasoningEffort,
       })
-      const id = String(init.engineSessionId || '').trim()
-      if (!id) throw new Error('initialize_session did not return sessionId')
-      return id
+      const sessionId = String(init.engineSessionId || '').trim()
+      if (!sessionId) throw new Error('initialize_session did not return sessionId')
+      return { sessionId, availableModels: init.availableModels }
     } finally {
       session.dispose()
     }

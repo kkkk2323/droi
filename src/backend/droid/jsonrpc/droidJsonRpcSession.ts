@@ -14,6 +14,7 @@ import {
 } from './jsonRpcTypes.ts'
 import { formatNotificationTrace, isTraceChainEnabled } from './notificationFingerprint.ts'
 import type { LocalDiagnostics } from '../../diagnostics/localDiagnostics.ts'
+import type { AvailableModelConfig } from '../../../shared/protocol.ts'
 
 export type DroidRpcSessionEvent =
   | { type: 'stdout'; data: string }
@@ -312,6 +313,7 @@ export class DroidJsonRpcSession {
     resumeSessionId?: string,
   ): Promise<{
     engineSessionId: string
+    availableModels?: AvailableModelConfig[]
     source: 'init' | 'resume' | 'resume_failed' | 'resume_invalid'
   }> {
     this.start()
@@ -333,6 +335,9 @@ export class DroidJsonRpcSession {
 
     const initEngineSessionId = String((initRes as any)?.result?.sessionId || '').trim()
     if (!initEngineSessionId) throw new Error('initialize_session did not return sessionId')
+    const availableModels = Array.isArray((initRes as any)?.result?.availableModels)
+      ? ((initRes as any).result.availableModels as AvailableModelConfig[])
+      : undefined
 
     const resume = String(resumeSessionId || '').trim()
     let effectiveEngineSessionId = initEngineSessionId
@@ -378,7 +383,7 @@ export class DroidJsonRpcSession {
     }
     this.initialized = true
     this.engineSessionId = effectiveEngineSessionId
-    return { engineSessionId: effectiveEngineSessionId, source }
+    return { engineSessionId: effectiveEngineSessionId, availableModels, source }
   }
 
   async updateSettings(params: {

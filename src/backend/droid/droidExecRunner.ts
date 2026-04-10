@@ -1,10 +1,11 @@
 import { execFile } from 'child_process'
 import { DroidJsonRpcManager, type DroidBackendEvent } from './jsonrpc/droidJsonRpcManager.ts'
 import type {
+  AvailableModelConfig,
   DroidAutonomyLevel,
   DroidInteractionMode,
   DroidPermissionOption,
-} from './jsonrpc/jsonRpcTypes.ts'
+} from '../../shared/protocol.ts'
 import { resolveDroidPath } from './resolveDroidPath.ts'
 import type { LocalDiagnostics } from '../diagnostics/localDiagnostics.ts'
 import type { DecompSessionType, SessionKind } from '../../shared/sessionProtocol.ts'
@@ -126,8 +127,10 @@ export class DroidExecManager {
     })
   }
 
-  async createSession(options: DroidExecCreateSessionOptions): Promise<{ sessionId: string }> {
-    const sessionId = await this.manager.createSession({
+  async createSession(
+    options: DroidExecCreateSessionOptions,
+  ): Promise<{ sessionId: string; availableModels?: AvailableModelConfig[] }> {
+    const result = await this.manager.createSession({
       machineId: options.machineId,
       cwd: options.cwd,
       modelId: options.modelId,
@@ -139,7 +142,7 @@ export class DroidExecManager {
       reasoningEffort: options.reasoningEffort,
       env: options.env,
     })
-    return { sessionId }
+    return result
   }
 
   updateSessionSettings(options: DroidExecUpdateSettingsOptions): Promise<void> {
