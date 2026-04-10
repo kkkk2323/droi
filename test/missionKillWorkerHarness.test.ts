@@ -77,7 +77,7 @@ test(
     })
 
     try {
-      const sessionId = await manager.createSession({
+      const { sessionId } = await manager.createSession({
         machineId: 'm-test',
         cwd: repoRoot,
         interactionMode: 'agi' as any,
