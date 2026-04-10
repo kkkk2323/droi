@@ -1,3 +1,8 @@
+## 0.32.0 - 2026-04-10
+
+### Features
+- Implement model catalog and dynamic model selection
+
 ## 0.31.1 - 2026-03-26
 
 ### Fixes
