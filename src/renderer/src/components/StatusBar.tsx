@@ -1,7 +1,7 @@
 import { Badge } from './ui/badge'
 import { Bot } from 'lucide-react'
-import { getModelLabel } from '@/types'
-import { useModel } from '@/store'
+import { getRuntimeModelLabel } from '@/lib/modelCatalog'
+import { useAvailableModels, useCustomModels, useModel } from '@/store'
 
 interface StatusBarProps {
   version: string
@@ -9,7 +9,9 @@ interface StatusBarProps {
 
 export function StatusBar({ version }: StatusBarProps) {
   const model = useModel()
-  const modelLabel = getModelLabel(model)
+  const availableModels = useAvailableModels()
+  const customModels = useCustomModels()
+  const modelLabel = getRuntimeModelLabel(model, { availableModels, customModels })
 
   return (
     <div className="flex flex-1 items-center justify-between gap-4">

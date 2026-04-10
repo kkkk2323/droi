@@ -108,8 +108,9 @@ export function buildRestoredSessionBuffer(params: {
   meta?: RestorableSessionMeta | null
   data?: LoadSessionResponse | null
   missionModelSettings?: MissionModelSettings | null
+  availableModels?: import('@/types').AvailableModelConfig[]
 }): SessionBuffer {
-  const { projectDir, workspace, meta, data, missionModelSettings } = params
+  const { projectDir, workspace, meta, data, missionModelSettings, availableModels } = params
   const protocol = resolveSessionProtocolFields({
     autoLevel: data?.autoLevel || meta?.autoLevel,
     explicit: {
@@ -126,6 +127,7 @@ export function buildRestoredSessionBuffer(params: {
     sessionModel: data?.model || meta?.model,
     sessionReasoningEffort: data?.reasoningEffort || meta?.reasoningEffort,
     missionModelSettings,
+    availableModels,
   })
 
   const base = makeBuffer(projectDir, workspace)

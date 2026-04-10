@@ -15,14 +15,17 @@ import {
 } from 'lucide-react'
 import {
   AUTO_LEVELS,
+  type AvailableModelConfig,
   type CustomModelDef,
   type SlashCommandDef,
   type SkillDef,
-  getModelLabel,
-  getModelReasoningLevels,
-  getModelDefaultReasoning,
 } from '@/types'
 import { getDroidClient, isBrowserMode } from '@/droidClient'
+import {
+  getRuntimeModelDefaultReasoning,
+  getRuntimeModelLabel,
+  getRuntimeModelReasoningLevels,
+} from '@/lib/modelCatalog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { useSlashCommandsQuery, useSkillsQuery } from '@/hooks/useSlashCommands'
 import { usePendingNewSession } from '@/store'
@@ -129,11 +132,14 @@ function writeInputBarDraft(key: string, draft: InputBarDraft): void {
 
 type BuiltinCommandDef = { name: string; description: string }
 
-function getModelDisplayName(modelId: string, customModels?: CustomModelDef[]): string {
+function getModelDisplayName(
+  modelId: string,
+  availableModels?: AvailableModelConfig[],
+  customModels?: CustomModelDef[],
+): string {
   const value = String(modelId || '').trim()
   if (!value) return ''
-  const custom = customModels?.find((model) => model.id === value)
-  return custom?.displayName || getModelLabel(value)
+  return getRuntimeModelLabel(value, { availableModels, customModels })
 }
 
 type SlashItem =
@@ -160,6 +166,7 @@ interface InputBarProps {
   }
   autoLevel: string
   reasoningEffort: string
+  availableModels?: AvailableModelConfig[]
   customModels?: CustomModelDef[]
   onModelChange: (model: string) => void
   onAutoLevelChange: (level: string) => void
@@ -182,6 +189,7 @@ export function InputBar({
   readonlyMissionModels,
   autoLevel,
   reasoningEffort,
+  availableModels,
   customModels,
   onModelChange,
   onAutoLevelChange,
@@ -220,18 +228,27 @@ export function InputBar({
   const slashProjectKey = String(activeProjectDir || '').trim()
   const isReadonlyModel = Boolean(readonlyModelId)
   const readonlyModelLabel = readonlyModelId
-    ? getModelDisplayName(readonlyModelId, customModels)
+    ? getModelDisplayName(readonlyModelId, availableModels, customModels)
     : ''
   const readonlyMissionModelLabels = readonlyMissionModels
     ? {
-        orchestrator: getModelDisplayName(readonlyMissionModels.orchestrator, customModels),
-        worker: getModelDisplayName(readonlyMissionModels.worker, customModels),
-        validator: getModelDisplayName(readonlyMissionModels.validator, customModels),
+        orchestrator: getModelDisplayName(
+          readonlyMissionModels.orchestrator,
+          availableModels,
+          customModels,
+        ),
+        worker: getModelDisplayName(readonlyMissionModels.worker, availableModels, customModels),
+        validator: getModelDisplayName(
+          readonlyMissionModels.validator,
+          availableModels,
+          customModels,
+        ),
       }
     : null
   const readonlyTriggerLabel = readonlyMissionModelLabels
     ? readonlyMissionModelLabels.orchestrator
     : readonlyModelLabel
+  const modelListLoading = availableModels === undefined
 
   const latestDraftRef = useRef<InputBarDraft>({ input: '', attachments: [], selectedTag: null })
   latestDraftRef.current = { input, attachments, selectedTag }
@@ -790,23 +807,30 @@ export function InputBar({
                     disabled
                     className="ml-1 inline-flex h-7 min-w-0 shrink items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground"
                   >
-                    <span className="truncate">{getModelDisplayName(model, customModels)}</span>
+                    <span className="truncate">
+                      {getModelDisplayName(model, availableModels, customModels)}
+                    </span>
                   </button>
                 }
               >
                 <ModelSelect
                   value={model}
                   onChange={onModelChange}
+                  availableModels={availableModels}
                   customModels={customModels}
                   variant="compact"
+                  loading={modelListLoading}
                 />
               </Suspense>
             )}
 
             {(() => {
-              const levels = getModelReasoningLevels(model)
+              const levels = getRuntimeModelReasoningLevels(model, availableModels)
               if (!levels) return null
-              const displayValue = reasoningEffort || getModelDefaultReasoning(model) || levels[0]
+              const displayValue =
+                reasoningEffort ||
+                getRuntimeModelDefaultReasoning(model, availableModels) ||
+                levels[0]
               return (
                 <Select value={displayValue} onValueChange={(v) => v && onReasoningEffortChange(v)}>
                   <SelectTrigger

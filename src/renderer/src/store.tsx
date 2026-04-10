@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getDroidClient } from '@/droidClient'
 import type {
+  AvailableModelConfig,
   ChatMessage,
   Project,
   SessionMeta,
@@ -24,7 +25,7 @@ import {
   supportsGitWorkspace,
 } from '@/lib/workspaceType'
 import { isTraceChainEnabled, setTraceChainEnabledOverride } from '@/lib/notificationFingerprint'
-import { getModelDefaultReasoning } from '@/types'
+import { getRuntimeModelDefaultReasoning } from '@/lib/modelCatalog'
 import {
   DEFAULT_AUTO_LEVEL,
   DEFAULT_MODEL,
@@ -184,6 +185,7 @@ interface AppState {
   lanAccessEnabled: boolean
   telemetryEnabled: boolean
   missionModelSettings: MissionModelSettings
+  availableModels?: AvailableModelConfig[]
   customModels: CustomModelDef[]
   projects: Project[]
   projectSettingsByRepo: Record<string, ProjectSettings>
@@ -362,6 +364,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   lanAccessEnabled: false,
   telemetryEnabled: true,
   missionModelSettings: {},
+  availableModels: undefined,
   customModels: [],
   projects: [],
   projectSettingsByRepo: {},
@@ -594,11 +597,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setModel: (m) => {
     const sid = get().activeSessionId
+    const availableModels = get().availableModels
     get()._setSessionBuffers((prev) => {
       const buf = prev.get(sid)
       if (!buf) return prev
       const next = new Map(prev)
-      next.set(sid, { ...buf, model: m, reasoningEffort: getModelDefaultReasoning(m) })
+      next.set(sid, {
+        ...buf,
+        model: m,
+        reasoningEffort: getRuntimeModelDefaultReasoning(m, availableModels),
+      })
       return next
     })
   },
@@ -708,7 +716,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setCommitMessageModelId: (modelId) => {
     const next = String(modelId || '').trim() || 'minimax-m2.5'
-    const defaultReasoning = getModelDefaultReasoning(next)
+    const defaultReasoning = getRuntimeModelDefaultReasoning(next, get().availableModels)
     set({ commitMessageModelId: next, commitMessageReasoningEffort: defaultReasoning })
     if (typeof (droid as any)?.setCommitMessageModelId === 'function') {
       ;(droid as any).setCommitMessageModelId(next)
@@ -780,6 +788,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       sessionModel: activeBuffer?.model || activeMeta?.model,
       sessionReasoningEffort: activeBuffer?.reasoningEffort || activeMeta?.reasoningEffort,
       missionModelSettings: get().missionModelSettings,
+      availableModels: get().availableModels,
     })
 
     const currentModel = activeBuffer?.model || activeMeta?.model || DEFAULT_MODEL
@@ -1044,6 +1053,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         sessionModel: inheritModel,
         sessionReasoningEffort: inheritReasoningEffort,
         missionModelSettings: s.missionModelSettings,
+        availableModels: s.availableModels,
       })
       const sourceCwdSubpath =
         typeof params.cwdSubpath === 'string' && params.cwdSubpath.trim()
@@ -1103,7 +1113,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
 
       const targetDir = workspaceInfo.projectDir
-      const { sessionId: newId } = await droid.createSession({
+      const { sessionId: newId, availableModels } = await droid.createSession({
         cwd: targetDir,
         modelId: runtimeSelection.model,
         autoLevel: inheritAutoLevel,
@@ -1114,6 +1124,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         decompSessionType: sessionProtocol.decompSessionType,
         reasoningEffort: runtimeSelection.reasoningEffort || undefined,
       })
+      if (Array.isArray(availableModels)) {
+        set({ availableModels })
+      }
 
       const initialTitle = defaultSessionTitleFromBranch(workspaceInfo.branch)
       const now = Date.now()
@@ -1522,6 +1535,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       sessionModel: buf?.model,
       sessionReasoningEffort: buf?.reasoningEffort,
       missionModelSettings: s.missionModelSettings,
+      availableModels: s.availableModels,
     })
     const sessionModel = runtimeSelection.model
     const sessionAutoLevel = buf?.autoLevel ?? DEFAULT_AUTO_LEVEL
@@ -2320,6 +2334,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ? (droid as any).loadSessionStored(sessionId)
           : droid.loadSession(sessionId)
       const data = await startupSessionData
+      const availableModels = Array.isArray(data?.availableModels)
+        ? data.availableModels
+        : get().availableModels
+      if (Array.isArray(data?.availableModels)) {
+        set({ availableModels: data.availableModels })
+      }
       get()._setSessionBuffers((prev) => {
         const next = new Map(prev)
         next.set(
@@ -2338,6 +2358,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             meta: selectedMeta,
             data,
             missionModelSettings: get().missionModelSettings,
+            availableModels,
           }),
         )
         return next
@@ -2345,6 +2366,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       void (async () => {
         const liveData = await droid.loadSession(sessionId)
+        if (Array.isArray(liveData?.availableModels)) {
+          set({ availableModels: liveData.availableModels })
+        }
         const latest = get()
         if (latest.activeSessionId !== sessionId) return
         latest._setSessionBuffers((prev) => {
@@ -2374,6 +2398,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
               meta: selectedMeta,
               data: liveData,
               missionModelSettings: get().missionModelSettings,
+              availableModels: Array.isArray(liveData?.availableModels)
+                ? liveData.availableModels
+                : latest.availableModels,
             }),
           )
           return next
@@ -2651,6 +2678,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 : droid.loadSession(pickFallback.id)
             const data = await startupSessionData
             const loaded = (data?.messages as ChatMessage[]) ?? []
+            const availableModels = Array.isArray(data?.availableModels)
+              ? data.availableModels
+              : get().availableModels
+            if (Array.isArray(data?.availableModels)) {
+              set({ availableModels: data.availableModels })
+            }
             get()._setSessionBuffers((prev) => {
               const next = new Map(prev)
               const restored = buildRestoredSessionBuffer({
@@ -2667,6 +2700,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 meta: pickFallback,
                 data: data ? { ...data, messages: loaded } : null,
                 missionModelSettings: get().missionModelSettings,
+                availableModels,
               })
               next.set(pickFallback.id, restored)
               return next
@@ -2674,6 +2708,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
             void (async () => {
               const liveData = await droid.loadSession(pickFallback.id)
+              if (Array.isArray(liveData?.availableModels)) {
+                set({ availableModels: liveData.availableModels })
+              }
               const latest = get()
               if (latest.activeSessionId !== pickFallback.id) return
               latest._setSessionBuffers((prev) => {
@@ -2706,6 +2743,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
                     meta: pickFallback,
                     data: liveData,
                     missionModelSettings: get().missionModelSettings,
+                    availableModels: Array.isArray(liveData?.availableModels)
+                      ? liveData.availableModels
+                      : latest.availableModels,
                   }),
                 )
                 return next
@@ -2860,6 +2900,7 @@ export const useAutoLevel = () =>
   useAppStore((s) => selectActiveBuffer(s)?.autoLevel ?? DEFAULT_AUTO_LEVEL)
 export const useReasoningEffort = () =>
   useAppStore((s) => selectActiveBuffer(s)?.reasoningEffort ?? '')
+export const useAvailableModels = () => useAppStore((s) => s.availableModels)
 export const useTokenUsage = () => useAppStore((s) => selectActiveBuffer(s)?.tokenUsage ?? null)
 export const useMcpServers = () => useAppStore((s) => selectActiveBuffer(s)?.mcpServers ?? null)
 export const useMcpAuthRequired = () =>

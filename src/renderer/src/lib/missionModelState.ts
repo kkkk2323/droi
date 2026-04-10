@@ -1,5 +1,5 @@
-import type { MissionModelSettings } from '../types.ts'
-import { getModelDefaultReasoning } from '../types.ts'
+import type { AvailableModelConfig, MissionModelSettings } from '../types.ts'
+import { getRuntimeModelDefaultReasoning } from './modelCatalog.ts'
 import { DEFAULT_MODEL } from '../state/appReducer.ts'
 
 function normalizeString(value: unknown): string | undefined {
@@ -24,6 +24,7 @@ export function resolveSessionRuntimeSelection(params: {
   sessionModel?: string | null
   sessionReasoningEffort?: string | null
   missionModelSettings?: MissionModelSettings | null
+  availableModels?: AvailableModelConfig[]
 }): {
   model: string
   reasoningEffort: string
@@ -43,6 +44,6 @@ export function resolveSessionRuntimeSelection(params: {
 
   return {
     model,
-    reasoningEffort: getModelDefaultReasoning(model) || '',
+    reasoningEffort: getRuntimeModelDefaultReasoning(model, params.availableModels) || '',
   }
 }
