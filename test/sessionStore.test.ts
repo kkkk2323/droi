@@ -6,6 +6,18 @@ import { join } from 'node:path'
 import { createSessionStore } from '../src/backend/storage/sessionStore.ts'
 import { buildRestoredSessionBuffer } from '../src/renderer/src/state/sessionRestore.ts'
 
+const AVAILABLE_MODELS = [
+  {
+    id: 'gemini-3-flash-preview',
+    modelId: 'gemini-3-flash-preview',
+    displayName: 'Gemini 3 Flash Preview',
+    modelProvider: 'google',
+    supportedReasoningEfforts: ['low', 'medium', 'high'],
+    defaultReasoningEffort: 'high',
+    isCustom: false,
+  },
+] as const
+
 test('sessionStore save/load/list roundtrip', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'droid-session-'))
   const store = createSessionStore({ baseDir: dir })
@@ -490,6 +502,7 @@ test('buildRestoredSessionBuffer applies the configured Mission orchestrator mod
       workspaceType: 'branch',
     },
     missionModelSettings: { orchestratorModel: 'gemini-3-flash-preview' },
+    availableModels: [...AVAILABLE_MODELS],
     meta: {
       autoLevel: 'high',
       isMission: true,
