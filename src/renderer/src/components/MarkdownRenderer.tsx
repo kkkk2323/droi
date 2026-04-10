@@ -30,31 +30,14 @@ function parseSpec(raw: string): JsonRenderSpec | null {
   }
 }
 
-// Check if text ends with a partial `<json-render>` prefix during streaming
-function findPartialTagStart(text: string): number {
-  for (let i = Math.min(JSON_RENDER_OPEN.length, text.length); i >= 1; i--) {
-    const suffix = text.slice(-i)
-    if (JSON_RENDER_OPEN.startsWith(suffix)) {
-      return text.length - i
-    }
-  }
-  return -1
-}
-
-function extractJsonRenderBlocks(content: string, isStreaming = false): ParsedBlock[] {
+function extractJsonRenderBlocks(content: string): ParsedBlock[] {
   const blocks: ParsedBlock[] = []
   let cursor = 0
 
   while (cursor < content.length) {
     const openIdx = content.indexOf(JSON_RENDER_OPEN, cursor)
     if (openIdx === -1) {
-      let text = content.slice(cursor)
-      if (isStreaming) {
-        const partialIdx = findPartialTagStart(text)
-        if (partialIdx !== -1) {
-          text = text.slice(0, partialIdx)
-        }
-      }
+      const text = content.slice(cursor)
       if (text.trim()) blocks.push({ type: 'text', content: text })
       break
     }
@@ -66,7 +49,6 @@ function extractJsonRenderBlocks(content: string, isStreaming = false): ParsedBl
 
     const closeIdx = content.indexOf(JSON_RENDER_CLOSE, openIdx + JSON_RENDER_OPEN.length)
     if (closeIdx === -1) {
-      if (isStreaming) break
       const text = content.slice(openIdx)
       if (text.trim()) blocks.push({ type: 'text', content: text })
       break
@@ -90,9 +72,9 @@ function extractJsonRenderBlocks(content: string, isStreaming = false): ParsedBl
   return blocks
 }
 
-function hasJsonRender(content: string, isStreaming = false): boolean {
+function hasJsonRender(content: string): boolean {
   if (!content.includes(JSON_RENDER_OPEN)) return false
-  return extractJsonRenderBlocks(content, isStreaming).some((b) => b.type === 'json-render')
+  return extractJsonRenderBlocks(content).some((b) => b.type === 'json-render')
 }
 
 interface MarkdownRendererProps {
@@ -108,10 +90,7 @@ export function MarkdownRenderer({
 }: MarkdownRendererProps) {
   if (!content.trim()) return null
 
-  const containsJsonRender = useMemo(
-    () => hasJsonRender(content, isStreaming),
-    [content, isStreaming],
-  )
+  const containsJsonRender = useMemo(() => hasJsonRender(content), [content])
 
   if (!containsJsonRender) {
     return (
@@ -133,10 +112,7 @@ export function MarkdownRenderer({
     )
   }
 
-  const blocks = useMemo(
-    () => extractJsonRenderBlocks(content, isStreaming),
-    [content, isStreaming],
-  )
+  const blocks = useMemo(() => extractJsonRenderBlocks(content), [content])
 
   return (
     <div className={cn('min-w-0 overflow-hidden break-words', className)}>
