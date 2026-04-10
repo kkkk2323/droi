@@ -1,3 +1,11 @@
+## 0.33.0 - 2026-04-10
+
+### Features
+- Add support for `<json-render>` tags in MarkdownRenderer
+
+### Refactor
+- Simplify `<json-render>` parsing by removing streaming logic
+
 ## 0.32.1 - 2026-04-10
 
 ### Tests
