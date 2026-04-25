@@ -155,16 +155,23 @@ export function selectActiveKey(
 
   if (candidates.length === 0) return null
 
-  candidates.sort((a, b) => {
-    if (a.expiresTs !== b.expiresTs) return a.expiresTs - b.expiresTs
-    if (a.usedRatio !== b.usedRatio) return a.usedRatio - b.usedRatio
-    return b.remaining - a.remaining
-  })
-
-  const eligible = candidates.find(
+  const belowThreshold = candidates.filter(
     (candidate) => candidate.usedRatio < MAX_USED_RATIO_BEFORE_SPILLOVER,
   )
-  if (eligible) return { key: eligible.key, index: eligible.index }
+
+  if (belowThreshold.length > 0) {
+    // Concentrate consumption on the earliest-expiring key, and within the same
+    // expiry date prefer the candidate that is closest to (but still below) the
+    // spillover threshold so we exhaust one key before rotating to the next.
+    belowThreshold.sort((a, b) => {
+      if (a.expiresTs !== b.expiresTs) return a.expiresTs - b.expiresTs
+      if (a.usedRatio !== b.usedRatio) return b.usedRatio - a.usedRatio
+      if (a.remaining !== b.remaining) return a.remaining - b.remaining
+      return a.index - b.index
+    })
+    const winner = belowThreshold[0]
+    return { key: winner.key, index: winner.index }
+  }
 
   // All remaining keys are near exhaustion: pick the one with the most headroom.
   const fallback = candidates.reduce((a, b) => (a.remaining >= b.remaining ? a : b))

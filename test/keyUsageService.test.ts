@@ -38,7 +38,7 @@ test('selectActiveKey prefers the earliest expiry before lower usage', () => {
   assert.deepEqual(selectActiveKey(keys, usages), { key: 'fk-early', index: 0 })
 })
 
-test('selectActiveKey breaks same-expiry ties with the lowest usage ratio', () => {
+test('selectActiveKey breaks same-expiry ties with the highest usage ratio under the spillover threshold', () => {
   const keys = [makeKey('fk-busier'), makeKey('fk-lighter')]
   const usages = new Map<string, ApiKeyUsage>([
     [
@@ -51,7 +51,54 @@ test('selectActiveKey breaks same-expiry ties with the lowest usage ratio', () =
     ],
   ])
 
-  assert.deepEqual(selectActiveKey(keys, usages), { key: 'fk-lighter', index: 1 })
+  assert.deepEqual(selectActiveKey(keys, usages), { key: 'fk-busier', index: 0 })
+})
+
+test('selectActiveKey concentrates consumption on the most-used key when several share an expiry date', () => {
+  const keys = [makeKey('fk-30'), makeKey('fk-40'), makeKey('fk-50')]
+  const usages = new Map<string, ApiKeyUsage>([
+    ['fk-30', makeUsage({ used: 30, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 })],
+    ['fk-40', makeUsage({ used: 40, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 })],
+    ['fk-50', makeUsage({ used: 50, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 })],
+  ])
+
+  assert.deepEqual(selectActiveKey(keys, usages), { key: 'fk-50', index: 2 })
+})
+
+test('selectActiveKey skips keys past the 98% threshold and picks the next highest under it', () => {
+  const keys = [makeKey('fk-saturated'), makeKey('fk-mid'), makeKey('fk-high')]
+  const usages = new Map<string, ApiKeyUsage>([
+    [
+      'fk-saturated',
+      makeUsage({ used: 99, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 }),
+    ],
+    [
+      'fk-mid',
+      makeUsage({ used: 60, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 }),
+    ],
+    [
+      'fk-high',
+      makeUsage({ used: 80, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 }),
+    ],
+  ])
+
+  assert.deepEqual(selectActiveKey(keys, usages), { key: 'fk-high', index: 2 })
+})
+
+test('selectActiveKey is stable on identical usage ratios and falls back to list order', () => {
+  const keys = [makeKey('fk-first'), makeKey('fk-second')]
+  const usages = new Map<string, ApiKeyUsage>([
+    [
+      'fk-first',
+      makeUsage({ used: 50, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 }),
+    ],
+    [
+      'fk-second',
+      makeUsage({ used: 50, total: 100, expires: '2026-04-30', expiresTs: 1_777_564_800 }),
+    ],
+  ])
+
+  assert.deepEqual(selectActiveKey(keys, usages), { key: 'fk-first', index: 0 })
 })
 
 test('selectActiveKey rotates away once a key reaches the 98% threshold', () => {
