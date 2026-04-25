@@ -1,3 +1,8 @@
+## 0.33.2 - 2026-04-25
+
+### Fixes
+- Improve key selection logic for spillover threshold and tie-breaking in `selectActiveKey`
+
 ## 0.33.1 - 2026-04-10
 
 ### Fixes
