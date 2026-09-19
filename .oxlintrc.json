@@ -1,6 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "import"],
+  "plugins": [
+    "react",
+    "typescript",
+    "import"
+  ],
   "categories": {
     "correctness": "error",
     "suspicious": "warn",
@@ -8,15 +12,24 @@
   },
   "rules": {
     "react/react-in-jsx-scope": "off",
-    "import/no-unassigned-import": "off"
+    "import/no-unassigned-import": "off",
+    "no-await-in-loop": "off"
   },
   "settings": {
-    "react": { "version": "19" }
+    "react": {
+      "version": "19"
+    }
   },
   "env": {
     "builtin": true,
     "browser": true,
     "node": true
   },
-  "ignorePatterns": ["node_modules", "out", "dist", "resources", "legacy"]
+  "ignorePatterns": [
+    "node_modules",
+    "out",
+    "dist",
+    "resources",
+    "legacy"
+  ]
 }
