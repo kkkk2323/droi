@@ -4,5 +4,5 @@
   "singleQuote": true,
   "printWidth": 100,
   "trailingComma": "all",
-  "ignorePatterns": ["node_modules", "out", "dist", "resources", "legacy", "pnpm-lock.yaml"]
+  "ignorePatterns": ["node_modules", "out", "dist", "resources", "pnpm-lock.yaml"]
 }

@@ -73,3 +73,6 @@ release/
 .local
 package-lock.json
 .worktrees/
+# Playwright
+test-results/
+playwright-report/

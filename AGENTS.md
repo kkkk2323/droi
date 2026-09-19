@@ -1,93 +1,58 @@
+<coding_guidelines>
 # Repository Guidelines
+
+Droi is a thin Client of the Droid Daemon. Read `CONTEXT.md` for the vocabulary
+(Daemon, Desktop Shell, Gateway, Client, Pairing Token, Fake Daemon, ...) and
+`docs/adr/` for the decisions behind the layout. Use those names in code,
+comments, commits and issues.
 
 ## Project Structure
 
-Electron + React + TypeScript desktop application for Droid CLI.
-
 ```
 src/
-├── main/           # Electron main process, IPC handlers
-├── preload/        # Secure bridge APIs for renderer
-├── renderer/       # React application (UI)
-│   ├── components/ # UI components (shadcn/ui style)
-│   ├── pages/      # Route pages
-│   ├── hooks/      # React hooks
-│   ├── lib/        # Utilities
-│   └── state/      # Zustand state management
-├── server/         # Local HTTP API server (Hono)
-├── backend/        # Core business logic
-│   ├── droid/      # Droid CLI process management
-│   ├── git/        # Git integration
-│   ├── keys/       # API key management
-│   └── storage/    # Persistence layer
-├── shared/         # Cross-process types and protocols
-└── test/           # Test files (*.test.ts)
+├── main/       # Desktop Shell: Electron main process (Daemon lifecycle, Gateway, window)
+├── preload/    # Minimal bridge; conversation data never crosses it
+├── renderer/   # Client: React app, runs as Local Client and Remote Client
+└── shared/     # Types and pure helpers shared by Desktop Shell and Client
+e2e/            # Playwright tests: Client in a browser against the Fake Daemon
+legacy/         # Previous implementation, kept for reference only; excluded
+                # from build and checks; deleted by the last rebuild ticket
 ```
+
+Unit tests sit next to the code as `*.test.ts` / `*.test.tsx` and run with vitest.
 
 ## Development Commands
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Start Electron in development mode |
-| `pnpm dev:mobile` | Enable Web UI for LAN access (port 3001) |
-| `pnpm dev:api` | Start API server only |
-| `pnpm test` | Run Node.js test suite |
+| `pnpm dev` | Start the Desktop Shell in development mode |
+| `pnpm dev:client` | Serve only the Client in a browser (vite) |
+| `pnpm build` | Production build (electron-vite) |
+| `pnpm build:mac` | Build the macOS DMG |
+| `pnpm test` | Run vitest once |
+| `pnpm test:e2e` | Run Playwright against the Client dev server |
 | `pnpm typecheck` | TypeScript validation (node + web) |
-| `pnpm build` | Production build for Electron |
-| `pnpm build:mac` | Build macOS DMG installer |
-| `pnpm lint` | Run oxlint on src/ |
-| `pnpm lint:fix` | Run oxlint with auto-fix |
-| `pnpm format` | Format src/ with oxfmt |
-| `pnpm format:check` | Check formatting without writing |
-| `pnpm check` | Run format check + lint + typecheck |
+| `pnpm lint` / `pnpm lint:fix` | oxlint |
+| `pnpm format` / `pnpm format:check` | oxfmt |
+| `pnpm check` | format check + lint + typecheck |
 
 ## Validation Workflow
 
-Before committing code, run the full check pipeline:
-
-```bash
-pnpm check
-```
-
-This runs the following steps in order:
-1. `pnpm format:check` — Verify code formatting with oxfmt
-2. `pnpm lint` — Run oxlint for correctness, suspicious patterns, and perf issues
-3. `pnpm typecheck` — TypeScript type validation across all configs
-
-To auto-fix formatting and lint issues:
-
-```bash
-pnpm format      # auto-format with oxfmt
-pnpm lint:fix    # auto-fix lint issues with oxlint
-```
+Before committing run `pnpm check && pnpm test`. Run `pnpm test:e2e` when the
+Client or the Fake Daemon changed. The PR workflow runs all three.
 
 ## Code Style
 
-- **TypeScript**: Strict mode enabled across all configs
-- **Imports**: Use path aliases (`@/components`, `@/lib`, `@/hooks`)
-- **UI Components**: Base UI (Vega) + shadcn/ui patterns, located in `src/renderer/src/components/ui/`
-- **Icons**: Lucide React
-- **Styling**: Tailwind CSS 4.1 with CSS variables
+- TypeScript strict, `verbatimModuleSyntax`, `noUncheckedIndexedAccess`
+- Client imports use the `@/` alias for `src/renderer/src`
+- Tailwind CSS 4 with the CSS variables in `src/renderer/src/styles/global.css`
+- Geist Sans for UI, Geist Mono for code (vendored in `src/renderer/src/assets/fonts`)
+- Icons: Lucide React
+- File naming: kebab-case for components, camelCase for utilities
+- Git: Conventional Commits
 
 ## Testing
 
-- **Framework**: Node.js built-in test runner (`node --test`)
-- **Location**: `test/*.test.ts` files
-- **TypeScript**: Uses `--experimental-strip-types` flag
-
-## Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| `FACTORY_API_KEY` | Factory API authentication |
-| `DROID_WEB_ENABLED` | Enable HTTP server for LAN access |
-| `DROID_APP_API_PORT` | API server port (default: 3001) |
-| `DROID_TRACE_CHAIN` | Enable debugging traces |
-
-## Conventions
-
-- **File naming**: kebab-case for components (`app-sidebar.tsx`), camelCase for utilities
-- **React**: Functional components with hooks, React 19 features
-- **State**: Zustand for global state, TanStack Query for server state
-- **Git**: Follow Conventional Commits specification
-- **API**: Hono for HTTP routes, Zod (if needed) for validation
+- Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
+- E2E tests never need a Factory API key; they run against the Fake Daemon
+</coding_guidelines>

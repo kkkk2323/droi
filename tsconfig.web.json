@@ -1,26 +1,17 @@
 {
+  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "include": ["src/renderer/src/**/*", "src/shared/**/*", "src/preload/*.d.ts"],
   "compilerOptions": {
     "composite": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "target": "ESNext",
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
-    "strict": true,
-    "skipLibCheck": true,
-    "outDir": "./out/renderer",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    "types": ["vite/client"],
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/renderer/src/*"]
     }
-  },
-  "include": [
-    "src/renderer/src/**/*",
-    "src/shared/**/*",
-    "src/preload/index.d.ts"
-  ]
+  }
 }
