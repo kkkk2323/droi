@@ -1,0 +1,282 @@
+[daemon err] [daemon-bootstrap] loadShellEnvironment starting (2026-09-19T13:26:25.465Z)
+[daemon err] [daemon-bootstrap] initCliTracing starting (2026-09-19T13:26:25.465Z)
+[daemon err] [daemon-bootstrap] initCliTracing completed (1ms) (2026-09-19T13:26:25.466Z)
+[daemon err] [daemon-bootstrap] loadShellEnvironment completed (109ms) (2026-09-19T13:26:25.574Z)
+[daemon err] [daemon-bootstrap] daemon.start() calling (2026-09-19T13:26:25.574Z)
+[daemon err] [daemon-bootstrap] daemon.start() completed -- health endpoint live (2026-09-19T13:26:25.580Z)
+[daemon out] [droid daemon] Daemon is running
+[daemon out]   Version: 0.223.0
+  PID: 95536
+  Logs: /private/tmp/droi-spike/home/.factory/logs
+[daemon out]   WebSocket endpoint: ws://127.0.0.1:62219
+[daemon out]   Press Ctrl+C to stop
+[  1511ms] daemon listening on 62219
+[  1514ms] proxy listening on 62220
+[  1549ms] A -> daemon method=daemon.authenticate id=83ff5b2a-38c5-4f96-88cc-b9457a898234
+[  2004ms] daemon -> A id=83ff5b2a-38c5-4f96-88cc-b9457a898234 result
+[  2005ms] daemon -> A method=daemon.connection_status
+[  2014ms] B -> daemon method=daemon.authenticate id=a10ae9ef-8495-41bd-80e1-eb343ff6f095
+[  2530ms] daemon -> B id=a10ae9ef-8495-41bd-80e1-eb343ff6f095 result
+[  2531ms] daemon -> B method=daemon.connection_status
+[  2532ms] A and B authenticated
+[  2536ms] A -> daemon method=daemon.initialize_session id=77e9afae-67c6-4332-83fe-15c9c8e8e38a
+[  5834ms] daemon -> A id=77e9afae-67c6-4332-83fe-15c9c8e8e38a result
+[  5837ms] A created session a145997e-0a6c-41e7-8961-ef046eedce59
+[  5838ms] B -> daemon method=daemon.load_session id=f486f156-65da-4545-af6f-bae64161cdeb
+[  5843ms] daemon -> A method=daemon.session_notification notif=settings_updated
+[  5843ms] daemon -> B method=daemon.session_notification notif=settings_updated
+[  5849ms] daemon -> B id=f486f156-65da-4545-af6f-bae64161cdeb result
+[  5851ms] B resumed session a145997e-0a6c-41e7-8961-ef046eedce59
+[  5851ms] A streaming prompt
+[  5852ms] A -> daemon method=daemon.add_user_message id=4b5a8ba8-dc88-4f54-9fa9-11d997cc565d
+[  5853ms] daemon -> A id=4b5a8ba8-dc88-4f54-9fa9-11d997cc565d result
+[  5854ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[  5854ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[  6076ms] daemon -> A method=daemon.session_notification notif=create_message
+[  6076ms] daemon -> B method=daemon.session_notification notif=create_message
+[  6077ms] A stream message type=user
+[  6078ms] daemon -> A method=daemon.session_notification notif=create_message
+[  6078ms] daemon -> B method=daemon.session_notification notif=create_message
+[  6079ms] A stream message type=user
+[  6082ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[  6083ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[  8829ms] daemon -> A method=daemon.session_notification notif=session_token_usage_changed
+[  8829ms] daemon -> B method=daemon.session_notification notif=session_token_usage_changed
+[  8901ms] daemon -> A method=daemon.session_notification notif=thinking_text_complete
+[  8902ms] daemon -> B method=daemon.session_notification notif=thinking_text_complete
+[  8903ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[  8903ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[  8903ms] daemon -> A method=daemon.session_notification notif=tool_call
+[  8904ms] daemon -> B method=daemon.session_notification notif=tool_call
+[  9003ms] daemon -> A method=daemon.session_notification notif=tool_call
+[  9004ms] daemon -> B method=daemon.session_notification notif=tool_call
+[  9134ms] daemon -> A method=daemon.session_notification notif=create_message
+[  9135ms] daemon -> B method=daemon.session_notification notif=create_message
+[  9135ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[  9135ms] daemon -> B method=daemon.session_notification notif=tool_execution_phase_changed
+[  9135ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[  9135ms] daemon -> A method=daemon.session_notification notif=tool_execution_phase_changed
+[  9137ms] A stream message type=tool_call
+[  9137ms] A assistant: 
+[  9139ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[  9139ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[  9140ms] daemon -> A method=daemon.session_notification notif=session_token_usage_changed
+[  9140ms] daemon -> B method=daemon.session_notification notif=session_token_usage_changed
+[  9140ms] daemon -> B method=daemon.request_permission id=7a8541f1-d2e6-40f3-a989-4d39cc561632
+[  9140ms] daemon -> A method=daemon.request_permission id=7a8541f1-d2e6-40f3-a989-4d39cc561632
+[  9141ms] B PERMISSION received tools=Execute
+[  9142ms] A PERMISSION received tools=Execute
+[ 12143ms] A PERMISSION answering ProceedOnce
+[ 12146ms] A -> daemon id=7a8541f1-d2e6-40f3-a989-4d39cc561632 result
+[ 12153ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 12155ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 12167ms] daemon -> B method=daemon.session_notification notif=permission_resolved
+[ 12169ms] daemon -> A method=daemon.session_notification notif=permission_resolved
+[ 12169ms] daemon -> A method=daemon.session_notification notif=tool_execution_phase_changed
+[ 12170ms] daemon -> B method=daemon.session_notification notif=tool_execution_phase_changed
+[ 12171ms] daemon -> A method=daemon.session_notification notif=tool_progress_update
+[ 12171ms] daemon -> B method=daemon.session_notification notif=tool_progress_update
+[ 12178ms] daemon -> A method=daemon.session_notification notif=tool_result
+[ 12179ms] daemon -> B method=daemon.session_notification notif=tool_result
+[ 12179ms] A stream message type=tool_result
+[ 12180ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 12180ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 12185ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 12185ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 13858ms] C -> daemon method=daemon.authenticate id=0ebd848e-696c-40c5-abe2-d9ef14160624
+[ 14409ms] daemon -> C id=0ebd848e-696c-40c5-abe2-d9ef14160624 result
+[ 14410ms] daemon -> C method=daemon.connection_status
+[ 14413ms] C -> daemon method=daemon.load_session id=54b01aaf-9a37-43b4-a7d2-06ba02b51589
+[ 14436ms] daemon -> C id=54b01aaf-9a37-43b4-a7d2-06ba02b51589 result
+[ 14439ms] C resumed session mid-turn a145997e-0a6c-41e7-8961-ef046eedce59
+[ 15142ms] B PERMISSION answering ProceedOnce
+[ 15144ms] B onError No pending permission found with ID
+[ 15144ms] B onError No pending permission found with ID
+[ 15530ms] daemon -> A method=daemon.session_notification notif=thinking_text_complete
+[ 15533ms] daemon -> B method=daemon.session_notification notif=thinking_text_complete
+[ 15533ms] daemon -> C method=daemon.session_notification notif=thinking_text_complete
+[ 15534ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 15534ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 15535ms] daemon -> A method=daemon.session_notification notif=assistant_text_delta
+[ 15535ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 15535ms] daemon -> B method=daemon.session_notification notif=assistant_text_delta
+[ 15535ms] daemon -> C method=daemon.session_notification notif=assistant_text_delta
+[ 15710ms] daemon -> A method=daemon.session_notification notif=assistant_text_complete
+[ 15711ms] daemon -> B method=daemon.session_notification notif=assistant_text_complete
+[ 15712ms] daemon -> B method=daemon.session_notification notif=tool_call
+[ 15714ms] daemon -> C method=daemon.session_notification notif=assistant_text_complete
+[ 15716ms] daemon -> C method=daemon.session_notification notif=tool_call
+[ 15717ms] daemon -> A method=daemon.session_notification notif=tool_call
+[ 15717ms] daemon -> A method=daemon.session_notification notif=tool_call
+[ 15718ms] daemon -> B method=daemon.session_notification notif=tool_call
+[ 15718ms] daemon -> C method=daemon.session_notification notif=tool_call
+[ 15730ms] daemon -> A method=daemon.session_notification notif=create_message
+[ 15730ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 15731ms] daemon -> A method=daemon.session_notification notif=tool_execution_phase_changed
+[ 15736ms] daemon -> B method=daemon.session_notification notif=create_message
+[ 15736ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 15736ms] daemon -> B method=daemon.session_notification notif=tool_execution_phase_changed
+[ 15736ms] daemon -> C method=daemon.session_notification notif=create_message
+[ 15736ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 15736ms] daemon -> C method=daemon.session_notification notif=tool_execution_phase_changed
+[ 15736ms] daemon -> C method=daemon.session_notification notif=tool_execution_phase_changed
+[ 15737ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 15737ms] daemon -> C method=daemon.session_notification notif=session_token_usage_changed
+[ 15737ms] daemon -> C method=daemon.ask_user id=3bf40a30-03fa-493f-b806-54f51e552f06
+[ 15737ms] daemon -> A method=daemon.session_notification notif=tool_execution_phase_changed
+[ 15737ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 15737ms] daemon -> A method=daemon.session_notification notif=session_token_usage_changed
+[ 15737ms] daemon -> A method=daemon.ask_user id=3bf40a30-03fa-493f-b806-54f51e552f06
+[ 15737ms] daemon -> B method=daemon.session_notification notif=tool_execution_phase_changed
+[ 15738ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 15738ms] daemon -> B method=daemon.session_notification notif=session_token_usage_changed
+[ 15738ms] daemon -> B method=daemon.ask_user id=3bf40a30-03fa-493f-b806-54f51e552f06
+[ 15739ms] A ASK_USER received questions=["Which colour do you prefer?"]
+[ 15739ms] A stream message type=tool_call
+[ 15739ms] A assistant: `spike-hello`
+[ 15740ms] B ASK_USER received questions=["Which colour do you prefer?"]
+[ 15740ms] C ASK_USER received questions=["Which colour do you prefer?"]
+[ 18740ms] A ASK_USER answering
+[ 18743ms] A -> daemon id=3bf40a30-03fa-493f-b806-54f51e552f06 result
+[ 18752ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 18753ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 18755ms] daemon -> B method=daemon.session_notification notif=tool_result
+[ 18756ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 18758ms] daemon -> C method=daemon.session_notification notif=tool_result
+[ 18760ms] daemon -> A method=daemon.session_notification notif=tool_result
+[ 18763ms] A stream message type=tool_result
+[ 18773ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 18773ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 18773ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 21741ms] B ASK_USER answering
+[ 21742ms] B onError No pending ask-user request found with ID
+[ 21743ms] B onError No pending ask-user request found with ID
+[ 22082ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 22083ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 22086ms] daemon -> B method=daemon.session_notification notif=assistant_text_delta
+[ 22090ms] daemon -> B method=daemon.session_notification notif=assistant_text_complete
+[ 22091ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 22091ms] daemon -> C method=daemon.session_notification notif=assistant_text_delta
+[ 22092ms] daemon -> C method=daemon.session_notification notif=assistant_text_complete
+[ 22093ms] daemon -> A method=daemon.session_notification notif=assistant_text_delta
+[ 22093ms] daemon -> A method=daemon.session_notification notif=assistant_text_complete
+[ 22102ms] daemon -> A method=daemon.session_notification notif=create_message
+[ 22102ms] daemon -> B method=daemon.session_notification notif=create_message
+[ 22102ms] daemon -> C method=daemon.session_notification notif=create_message
+[ 22103ms] A assistant: You prefer blue.
+[ 22107ms] daemon -> A method=daemon.session_notification notif=session_token_usage_changed
+[ 22108ms] daemon -> B method=daemon.session_notification notif=session_token_usage_changed
+[ 22108ms] daemon -> C method=daemon.session_notification notif=session_token_usage_changed
+[ 22109ms] daemon -> A method=daemon.session_notification notif=agent_turn_completed
+[ 22109ms] daemon -> B method=daemon.session_notification notif=agent_turn_completed
+[ 22109ms] daemon -> C method=daemon.session_notification notif=agent_turn_completed
+[ 22110ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 22110ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 22110ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 22111ms] A stream message type=result
+[ 22111ms] A turn finished
+[ 24741ms] C ASK_USER answering
+[ 24742ms] C onError No pending ask-user request found with ID
+[ 24743ms] C onError No pending ask-user request found with ID
+[ 26112ms] B streaming prompt
+[ 26113ms] B -> daemon method=daemon.add_user_message id=7622db70-cb7d-43cb-adbe-8ac1d0e1de5f
+[ 26118ms] daemon -> B id=7622db70-cb7d-43cb-adbe-8ac1d0e1de5f result
+[ 26119ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 26119ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 26120ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 26133ms] daemon -> A method=daemon.session_notification notif=create_message
+[ 26134ms] daemon -> B method=daemon.session_notification notif=create_message
+[ 26134ms] daemon -> C method=daemon.session_notification notif=create_message
+[ 26135ms] B stream message type=user
+[ 26140ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 26140ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 26140ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 28841ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 28842ms] daemon -> A method=daemon.session_notification notif=tool_call
+[ 28843ms] daemon -> A method=daemon.session_notification notif=tool_call
+[ 28845ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 28845ms] daemon -> B method=daemon.session_notification notif=tool_call
+[ 28846ms] daemon -> B method=daemon.session_notification notif=tool_call
+[ 28847ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 28848ms] daemon -> C method=daemon.session_notification notif=tool_call
+[ 28849ms] daemon -> C method=daemon.session_notification notif=tool_call
+[ 28852ms] daemon -> A method=daemon.session_notification notif=create_message
+[ 28852ms] daemon -> B method=daemon.session_notification notif=create_message
+[ 28853ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 28853ms] daemon -> B method=daemon.session_notification notif=tool_execution_phase_changed
+[ 28853ms] daemon -> C method=daemon.session_notification notif=create_message
+[ 28853ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 28853ms] daemon -> C method=daemon.session_notification notif=tool_execution_phase_changed
+[ 28854ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 28854ms] daemon -> A method=daemon.session_notification notif=tool_execution_phase_changed
+[ 28854ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 28854ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 28855ms] daemon -> B method=daemon.session_notification notif=session_token_usage_changed
+[ 28855ms] daemon -> B method=daemon.request_permission id=f95eba85-b597-4694-922b-bc93313f60fb
+[ 28855ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 28855ms] daemon -> C method=daemon.session_notification notif=session_token_usage_changed
+[ 28855ms] daemon -> C method=daemon.request_permission id=f95eba85-b597-4694-922b-bc93313f60fb
+[ 28856ms] B PERMISSION received tools=Execute
+[ 28856ms] B stream message type=tool_call
+[ 28856ms] B assistant: 
+[ 28857ms] C PERMISSION received tools=Execute
+[ 28857ms] daemon -> A method=daemon.session_notification notif=session_token_usage_changed
+[ 28857ms] daemon -> A method=daemon.request_permission id=f95eba85-b597-4694-922b-bc93313f60fb
+[ 28857ms] A PERMISSION received tools=Execute
+[ 31858ms] A PERMISSION answering ProceedOnce
+[ 31863ms] A -> daemon id=f95eba85-b597-4694-922b-bc93313f60fb result
+[ 31873ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 31876ms] daemon -> A method=daemon.session_notification notif=permission_resolved
+[ 31877ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 31879ms] daemon -> B method=daemon.session_notification notif=permission_resolved
+[ 31880ms] daemon -> B method=daemon.session_notification notif=tool_execution_phase_changed
+[ 31881ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 31883ms] daemon -> C method=daemon.session_notification notif=permission_resolved
+[ 31887ms] daemon -> C method=daemon.session_notification notif=tool_execution_phase_changed
+[ 31888ms] daemon -> A method=daemon.session_notification notif=tool_execution_phase_changed
+[ 31888ms] daemon -> A method=daemon.session_notification notif=tool_progress_update
+[ 31889ms] daemon -> B method=daemon.session_notification notif=tool_progress_update
+[ 31889ms] daemon -> C method=daemon.session_notification notif=tool_progress_update
+[ 31898ms] daemon -> A method=daemon.session_notification notif=tool_result
+[ 31898ms] daemon -> B method=daemon.session_notification notif=tool_result
+[ 31898ms] daemon -> C method=daemon.session_notification notif=tool_result
+[ 31899ms] B stream message type=tool_result
+[ 31900ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 31900ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 31900ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 31903ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 31903ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 31904ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 34633ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 34635ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 34636ms] daemon -> B method=daemon.session_notification notif=assistant_text_delta
+[ 34637ms] daemon -> B method=daemon.session_notification notif=assistant_text_complete
+[ 34640ms] daemon -> A method=daemon.session_notification notif=assistant_text_delta
+[ 34641ms] daemon -> A method=daemon.session_notification notif=assistant_text_complete
+[ 34642ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 34642ms] daemon -> C method=daemon.session_notification notif=assistant_text_delta
+[ 34643ms] daemon -> C method=daemon.session_notification notif=assistant_text_complete
+[ 34647ms] daemon -> A method=daemon.session_notification notif=create_message
+[ 34647ms] daemon -> B method=daemon.session_notification notif=create_message
+[ 34647ms] daemon -> C method=daemon.session_notification notif=create_message
+[ 34648ms] B assistant: second-turn
+[ 34650ms] daemon -> A method=daemon.session_notification notif=session_token_usage_changed
+[ 34650ms] daemon -> B method=daemon.session_notification notif=session_token_usage_changed
+[ 34650ms] daemon -> C method=daemon.session_notification notif=session_token_usage_changed
+[ 34651ms] daemon -> A method=daemon.session_notification notif=agent_turn_completed
+[ 34651ms] daemon -> B method=daemon.session_notification notif=agent_turn_completed
+[ 34651ms] daemon -> B method=daemon.session_notification notif=droid_working_state_changed
+[ 34652ms] daemon -> C method=daemon.session_notification notif=agent_turn_completed
+[ 34652ms] daemon -> C method=daemon.session_notification notif=droid_working_state_changed
+[ 34652ms] daemon -> A method=daemon.session_notification notif=droid_working_state_changed
+[ 34652ms] B stream message type=result
+[ 34652ms] B turn finished
+[ 34858ms] B PERMISSION answering ProceedOnce
+[ 34859ms] B onError No pending permission found with ID
+[ 34860ms] B onError No pending permission found with ID
+[ 36652ms] closing
+[ 36653ms] A -> daemon method=daemon.close_session id=c0b311be-4a7b-4e66-a676-499df6e7ed51
+[ 36660ms] daemon -> A method=daemon.session_notification notif=session_closed
+[ 36661ms] daemon -> B method=daemon.session_notification notif=session_closed
+[ 36662ms] daemon -> C method=daemon.session_notification notif=session_closed
+[ 37688ms] daemon -> A id=c0b311be-4a7b-4e66-a676-499df6e7ed51 result

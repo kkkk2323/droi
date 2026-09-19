@@ -58,3 +58,7 @@ _Avoid_: chat, thread, worker, droi session file
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo
+
+**Prompt**:
+A question the Daemon asks the human mid-turn: a permission request for a tool call, or an ask-user questionnaire. The Daemon sends it to every Client attached to the Session; the first answer wins and the Daemon then tells every Client the Prompt is resolved.
+_Avoid_: confirmation, approval dialog, permission request (when the ask-user case is included)
