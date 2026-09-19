@@ -4,6 +4,8 @@ import { groupByWorkspace, useSessionList } from './daemon/sessions'
 import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
 import { SessionSidebar } from './components/sidebar/session-sidebar'
 import { SessionView } from './components/chat/session-view'
+import { NewSessionPage } from './components/new-session-page'
+import { recentWorkspaces } from './daemon/use-new-session'
 import { useHashRoute } from './lib/use-hash-route'
 
 export function App() {
@@ -27,6 +29,7 @@ function Workspace() {
   const [showArchived, setShowArchived] = useState(false)
   const sessions = useSessionList({ includeArchived: showArchived })
   const groups = useMemo(() => groupByWorkspace(sessions.data ?? []), [sessions.data])
+  const recent = useMemo(() => recentWorkspaces(sessions.data ?? []), [sessions.data])
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
 
@@ -41,10 +44,16 @@ function Workspace() {
           error={sessions.error ? sessions.error.message : null}
           showArchived={showArchived}
           onToggleArchived={setShowArchived}
+          onNewSession={() => navigate({ name: 'new' })}
         />
       </aside>
       <main className="min-w-0 flex-1">
-        {selectedId ? (
+        {route.name === 'new' ? (
+          <NewSessionPage
+            recent={recent}
+            onCreated={(sessionId) => navigate({ name: 'session', sessionId })}
+          />
+        ) : selectedId ? (
           <SessionView
             key={selectedId}
             sessionId={selectedId}

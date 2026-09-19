@@ -38,6 +38,8 @@ export type MethodHandler = (
 export interface ScenarioInput {
   sessions?: SessionFixture[]
   handlers?: Record<string, MethodHandler>
+  /** Directories the Fake Daemon treats as existing; others fail validation. */
+  validDirectories?: string[]
 }
 
 export interface Scenario {
@@ -81,6 +83,26 @@ export function createScenario(input: ScenarioInput): Scenario {
       found.archivedAt = new Date().toISOString()
       context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
       return { success: true, archivedAt: found.archivedAt }
+    },
+    'daemon.validate_working_directory': (params) => {
+      const path = String(params['workingDirectory'])
+      const known = new Set([...(input.validDirectories ?? []), ...sessions.map((s) => s.cwd)])
+      return known.has(path)
+        ? { isValid: true, resolvedPath: path }
+        : { isValid: false, error: `Directory does not exist: ${path}` }
+    },
+    'daemon.initialize_session': (params) => {
+      const created = session('New session', String(params['cwd']), [], {
+        ...(typeof params['sessionId'] === 'string' ? { sessionId: params['sessionId'] } : {}),
+      })
+      sessions.unshift(created)
+      return {
+        sessionId: created.sessionId,
+        hostId: HOST_ID,
+        session: { messages: [], title: created.title },
+        settings: sessionSettings(),
+        availableModels: AVAILABLE_MODELS,
+      }
     },
     'daemon.unarchive_session': (params, context) => {
       const found = mustFind(sessions, params['sessionId'])

@@ -56,6 +56,11 @@ const RESULT_SCHEMAS: Record<string, ZodLike> = {
   'daemon.update_session_settings': UpdateSessionSettingsResultSchema,
   'daemon.close_session': CloseSessionResultSchema,
   'daemon.archive_session': z.object({ success: z.boolean(), archivedAt: z.string() }),
+  'daemon.validate_working_directory': z.object({
+    isValid: z.boolean(),
+    error: z.string().optional(),
+    resolvedPath: z.string().optional(),
+  }),
   'daemon.unarchive_session': z.object({ success: z.boolean() }),
 }
 

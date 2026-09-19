@@ -115,6 +115,23 @@ describe('Gateway', () => {
     socket.close()
   })
 
+  test('swaps the placeholder spawn credential in initialize_session and load_session', async () => {
+    const socket = await connectClient(gatewayDaemonUrl(gateway.url, TOKEN))
+    for (const method of ['daemon.initialize_session', 'daemon.load_session']) {
+      socket.send(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: method,
+          method,
+          params: { cwd: '/x', token: GATEWAY_API_KEY_PLACEHOLDER },
+        }),
+      )
+      await nextMessage(socket)
+    }
+    expect(daemon.received.map((f) => JSON.parse(f).params.token)).toEqual([API_KEY, API_KEY])
+    socket.close()
+  })
+
   test('forwards every other frame byte-identical in both directions', async () => {
     const socket = await connectClient(gatewayDaemonUrl(gateway.url, TOKEN))
     const frames = [
@@ -125,6 +142,7 @@ describe('Gateway', () => {
         params: {},
       }),
       '{"jsonrpc":"2.0",  "id":"3","method":"x","params":{"apiKey":"not-an-auth-frame"}}',
+      '{"jsonrpc":"2.0","id":"4","method":"daemon.add_user_message","params":{"text":"say droi-gateway please"}}',
       'not even json',
     ]
     for (const frame of frames) {

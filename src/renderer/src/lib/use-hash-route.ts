@@ -4,9 +4,10 @@ import { useCallback, useSyncExternalStore } from 'react'
 // a shared link lands on the same Session. The `#pair=` fragment is consumed
 // and removed before this ever runs (see client-config.ts).
 
-export type Route = { name: 'home' } | { name: 'session'; sessionId: string }
+export type Route = { name: 'home' } | { name: 'new' } | { name: 'session'; sessionId: string }
 
 export function parseRoute(hash: string): Route {
+  if (hash === '#/new') return { name: 'new' }
   const match = /^#\/s\/([^/?#]+)/.exec(hash)
   return match?.[1]
     ? { name: 'session', sessionId: decodeURIComponent(match[1]) }
@@ -14,7 +15,14 @@ export function parseRoute(hash: string): Route {
 }
 
 export function routeHash(route: Route): string {
-  return route.name === 'session' ? `#/s/${encodeURIComponent(route.sessionId)}` : '#/'
+  switch (route.name) {
+    case 'session':
+      return `#/s/${encodeURIComponent(route.sessionId)}`
+    case 'new':
+      return '#/new'
+    case 'home':
+      return '#/'
+  }
 }
 
 export function useHashRoute(): [Route, (route: Route) => void] {

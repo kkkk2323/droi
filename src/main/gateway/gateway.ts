@@ -7,6 +7,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { once } from 'node:events'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
 import {
+  GATEWAY_API_KEY_PLACEHOLDER,
   GATEWAY_DAEMON_PATH,
   GATEWAY_META_PATH,
   GATEWAY_TOKEN_QUERY,
@@ -126,7 +127,7 @@ function bridge(client: WebSocket, daemonUrl: string, getApiKey: () => string | 
     queue.length = 0
   })
   client.on('message', (data, isBinary) => {
-    sendUpstream(isBinary ? data : rewriteAuthenticate(data, getApiKey()), isBinary)
+    sendUpstream(isBinary ? data : injectApiKey(data, getApiKey()), isBinary)
   })
   upstream.on('message', (data, isBinary) => {
     if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary })
@@ -144,39 +145,38 @@ function bridge(client: WebSocket, daemonUrl: string, getApiKey: () => string | 
 }
 
 /**
- * Replace the placeholder credential in a `daemon.authenticate` request with
- * the real Factory API key. Any other frame is returned untouched so it stays
- * byte-identical.
+ * Replace the Client's placeholder credential with the real Factory API key.
+ * The SDK sends the credential as `apiKey` in `daemon.authenticate` and as
+ * `token` (spawn credential) in `daemon.initialize_session` and
+ * `daemon.load_session`; only a top-level params field holding the exact
+ * placeholder is touched, so any other frame stays byte-identical.
  */
-export function rewriteAuthenticate(data: RawData, apiKey: string | null): RawData | string {
+export function injectApiKey(data: RawData, apiKey: string | null): RawData | string {
   if (!apiKey) return data
   const text = data.toString()
-  if (!text.includes('daemon.authenticate')) return data
+  if (!text.includes(GATEWAY_API_KEY_PLACEHOLDER)) return data
   let message: unknown
   try {
     message = JSON.parse(text)
   } catch {
     return data
   }
-  if (!isAuthenticateRequest(message)) return data
-  const params = { ...message.params, apiKey }
-  delete params['token']
-  return JSON.stringify({ ...message, params })
+  if (!hasParams(message)) return data
+  const params = { ...message.params }
+  let changed = false
+  for (const field of ['apiKey', 'token'] as const) {
+    if (params[field] === GATEWAY_API_KEY_PLACEHOLDER) {
+      params[field] = apiKey
+      changed = true
+    }
+  }
+  return changed ? JSON.stringify({ ...message, params }) : data
 }
 
-interface AuthenticateRequest {
-  method: 'daemon.authenticate'
-  params: Record<string, unknown>
-}
-
-function isAuthenticateRequest(message: unknown): message is AuthenticateRequest {
+function hasParams(message: unknown): message is { params: Record<string, unknown> } {
   if (typeof message !== 'object' || message === null) return false
-  const candidate = message as Record<string, unknown>
-  return (
-    candidate['method'] === 'daemon.authenticate' &&
-    typeof candidate['params'] === 'object' &&
-    candidate['params'] !== null
-  )
+  const params = (message as Record<string, unknown>)['params']
+  return typeof params === 'object' && params !== null
 }
 
 function handleHttp(options: GatewayOptions, request: IncomingMessage, response: ServerResponse) {

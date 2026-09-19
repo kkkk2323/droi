@@ -1,4 +1,5 @@
-import { Archive, FolderGit2, MessageSquare } from 'lucide-react'
+import { Archive, FolderGit2, MessageSquare, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { WorkspaceGroup } from '@/daemon/sessions'
 
@@ -10,6 +11,7 @@ export function SessionSidebar({
   error,
   showArchived,
   onToggleArchived,
+  onNewSession,
 }: {
   groups: WorkspaceGroup[]
   selectedSessionId: string | null
@@ -18,12 +20,19 @@ export function SessionSidebar({
   error: string | null
   showArchived: boolean
   onToggleArchived: (show: boolean) => void
+  onNewSession: () => void
 }) {
   return (
     <nav
       aria-label="Sessions"
       className="flex h-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
     >
+      <div className="px-2 pt-2">
+        <Button size="sm" variant="outline" className="w-full justify-start" onClick={onNewSession}>
+          <Plus aria-hidden />
+          New session
+        </Button>
+      </div>
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {error ? (
           <p role="alert" className="px-2 py-1 text-xs text-destructive-foreground">
