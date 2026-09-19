@@ -127,6 +127,18 @@ export class FakeDaemon {
     })
   }
 
+  /** Daemon-level (not Session-level) notification about archive state. */
+  notifyArchiveState(sessionId: string, archivedAt: string | undefined): void {
+    this.#broadcast({
+      jsonrpc: '2.0',
+      factoryApiVersion: '1.0.0',
+      factoryProtocolVersion: '1.217.0',
+      type: 'notification',
+      method: 'daemon.session.archive_state_changed',
+      params: { sessionId, ...(archivedAt ? { archivedAt } : {}) },
+    })
+  }
+
   /**
    * Send a Daemon-originated request (permission or ask-user) to every
    * connection and resolve with the first answer, mirroring ADR 0003.

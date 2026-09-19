@@ -55,11 +55,17 @@ const RESULT_SCHEMAS: Record<string, ZodLike> = {
   'daemon.rename_session': RenameSessionResultSchema,
   'daemon.update_session_settings': UpdateSessionSettingsResultSchema,
   'daemon.close_session': CloseSessionResultSchema,
+  'daemon.archive_session': z.object({ success: z.boolean(), archivedAt: z.string() }),
+  'daemon.unarchive_session': z.object({ success: z.boolean() }),
 }
 
 const NOTIFICATION_SCHEMAS: Record<string, ZodLike> = {
   'daemon.session_notification': SessionNotificationParamsSchema,
   'daemon.connection_status': ConnectionStatusParams,
+  'daemon.session.archive_state_changed': z.object({
+    sessionId: z.string(),
+    archivedAt: z.string().optional(),
+  }),
 }
 
 const REQUEST_SCHEMAS: Record<string, ZodLike> = {

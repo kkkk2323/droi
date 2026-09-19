@@ -1,21 +1,36 @@
 import { useSession } from '@/daemon/use-session'
+import { cn } from '@/lib/utils'
 import { useTurn } from '@/daemon/use-turn'
 import { LOAD_STATE, type LoadState } from '@/daemon/sdk-enums'
 import { InputBar } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
+import { SessionToolbar } from './session-toolbar'
 
-export function SessionView({ sessionId, title }: { sessionId: string; title: string }) {
+export function SessionView({
+  sessionId,
+  title,
+  archived,
+  onArchived,
+}: {
+  sessionId: string
+  title: string
+  archived: boolean
+  onArchived: () => void
+}) {
   const session = useSession(sessionId)
   const turn = useTurn(sessionId)
   const isRunning = session.workingState !== 'idle'
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
-        <h2 className="truncate text-sm font-medium">{title}</h2>
-        <WorkingState state={session.workingState} loadState={session.loadState} />
-      </header>
+      <SessionToolbar
+        sessionId={sessionId}
+        title={title}
+        archived={archived}
+        onArchived={onArchived}
+      />
+      <WorkingState state={session.workingState} loadState={session.loadState} />
       <div className="min-h-0 flex-1">
         {session.loadError ? (
           <p role="alert" className="p-4 text-sm text-destructive-foreground">
@@ -56,12 +71,15 @@ const WORKING_LABELS: Record<string, string> = {
 function WorkingState({ state, loadState }: { state: string; loadState: LoadState }) {
   const label = loadState === LOAD_STATE.loaded ? (WORKING_LABELS[state] ?? state) : ''
   return (
-    <span
+    <div
       role="status"
       aria-label="Session activity"
-      className="ml-auto text-xs text-muted-foreground"
+      className={cn(
+        'shrink-0 px-4 text-xs text-muted-foreground',
+        label ? 'py-1' : 'h-0 overflow-hidden',
+      )}
     >
       {label}
-    </span>
+    </div>
   )
 }

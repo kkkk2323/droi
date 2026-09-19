@@ -26,7 +26,8 @@ export interface WorkspaceGroup {
 
 export const SESSIONS_QUERY_KEY = ['sessions'] as const
 
-export function useSessionList() {
+export function useSessionList(options: { includeArchived?: boolean } = {}) {
+  const includeArchived = options.includeArchived ?? false
   const connection = useDaemonConnection()
   const queryClient = useQueryClient()
 
@@ -43,9 +44,12 @@ export function useSessionList() {
   }, [connection, queryClient])
 
   return useQuery({
-    queryKey: SESSIONS_QUERY_KEY,
+    queryKey: [...SESSIONS_QUERY_KEY, { includeArchived }],
     queryFn: async (): Promise<SessionSummary[]> => {
-      const result = await connection.controller.listAvailableSessions({ limit: 100 })
+      const result = await connection.controller.listAvailableSessions({
+        limit: 100,
+        includeArchived,
+      })
       return result.sessions.map((s) => ({
         sessionId: s.sessionId,
         title: s.title?.trim() || 'Untitled session',

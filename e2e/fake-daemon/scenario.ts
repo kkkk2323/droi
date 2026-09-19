@@ -12,6 +12,7 @@ export interface SessionFixture {
   updatedAt: number
   messages: MessageFixture[]
   archivedAt?: string
+  settings?: Record<string, unknown>
 }
 
 export interface MessageFixture {
@@ -49,17 +50,44 @@ export interface Scenario {
 export function createScenario(input: ScenarioInput): Scenario {
   const sessions = input.sessions ?? []
   const handlers: Record<string, MethodHandler> = {
-    'daemon.list_available_sessions': () => ({
-      sessions: sessions.map((s) => ({
-        sessionId: s.sessionId,
-        updatedAt: s.updatedAt,
-        title: s.title,
-        cwd: s.cwd,
-        messagesCount: s.messages.length,
-        ...(s.archivedAt ? { archivedAt: s.archivedAt } : {}),
-      })),
+    'daemon.list_available_sessions': (params) => ({
+      sessions: sessions
+        .filter((s) => params['includeArchived'] === true || !s.archivedAt)
+        .map((s) => ({
+          sessionId: s.sessionId,
+          updatedAt: s.updatedAt,
+          title: s.title,
+          cwd: s.cwd,
+          messagesCount: s.messages.length,
+          ...(s.archivedAt ? { archivedAt: s.archivedAt } : {}),
+        })),
       hasMore: false,
     }),
+    'daemon.update_session_settings': (params, context) => {
+      const found = mustFind(sessions, params['sessionId'])
+      const { sessionId: _ignored, ...patch } = params
+      found.settings = { ...sessionSettings(), ...found.settings, ...patch }
+      context.daemon.notify(found.sessionId, { type: 'settings_updated', settings: found.settings })
+      return {}
+    },
+    'daemon.rename_session': (params, context) => {
+      const found = mustFind(sessions, params['sessionId'])
+      found.title = String(params['title'])
+      context.daemon.notify(found.sessionId, { type: 'session_title_updated', title: found.title })
+      return { success: true }
+    },
+    'daemon.archive_session': (params, context) => {
+      const found = mustFind(sessions, params['sessionId'])
+      found.archivedAt = new Date().toISOString()
+      context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
+      return { success: true, archivedAt: found.archivedAt }
+    },
+    'daemon.unarchive_session': (params, context) => {
+      const found = mustFind(sessions, params['sessionId'])
+      delete found.archivedAt
+      context.daemon.notifyArchiveState(found.sessionId, undefined)
+      return { success: true }
+    },
     'daemon.load_session': (params) => {
       const found = sessions.find((s) => s.sessionId === params['sessionId'])
       if (!found) throw new Error(`Scenario has no session ${String(params['sessionId'])}`)
@@ -88,35 +116,58 @@ export function createScenario(input: ScenarioInput): Scenario {
 
 export const HOST_ID = '11111111-1111-4111-8111-111111111111'
 
+function mustFind(sessions: SessionFixture[], sessionId: unknown): SessionFixture {
+  const found = sessions.find((s) => s.sessionId === sessionId)
+  if (!found) throw new Error(`Scenario has no session ${String(sessionId)}`)
+  return found
+}
+
 export function loadSessionResult(fixture: SessionFixture): Record<string, unknown> {
   return {
     session: { messages: fixture.messages, title: fixture.title },
     hasOlderMessages: false,
     hostId: HOST_ID,
-    settings: sessionSettings(),
+    settings: { ...sessionSettings(), ...fixture.settings },
     isAgentLoopInProgress: false,
     workingState: 'idle',
     cwd: fixture.cwd,
     updatedAt: fixture.updatedAt,
-    availableModels: [
-      {
-        id: 'auto',
-        displayName: 'Auto Model',
-        shortDisplayName: 'Auto Model',
-        modelProvider: 'factory',
-        supportedReasoningEfforts: ['none'],
-        defaultReasoningEffort: 'none',
-        isCustom: false,
-        noImageSupport: false,
-        supportsImageGeneration: false,
-        tokenMultiplier: 1,
-        kind: 'router',
-      },
-    ],
+    availableModels: AVAILABLE_MODELS,
     tokenUsage: emptyTokenUsage(),
     inclusiveTokenUsage: emptyTokenUsage(),
   }
 }
+
+export const AVAILABLE_MODELS = [
+  {
+    id: 'auto',
+    displayName: 'Auto Model',
+    shortDisplayName: 'Auto',
+    modelProvider: 'factory',
+    supportedReasoningEfforts: ['none'],
+    defaultReasoningEffort: 'none',
+    isCustom: false,
+    kind: 'router',
+  },
+  {
+    id: 'claude-opus-4-1',
+    displayName: 'Claude Opus 4.1',
+    shortDisplayName: 'Opus 4.1',
+    modelProvider: 'anthropic',
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
+    defaultReasoningEffort: 'medium',
+    isCustom: false,
+  },
+  {
+    id: 'gpt-5',
+    displayName: 'GPT-5',
+    shortDisplayName: 'GPT-5',
+    modelProvider: 'openai',
+    supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+    defaultReasoningEffort: 'medium',
+    isCustom: false,
+  },
+]
 
 export function sessionSettings(): Record<string, unknown> {
   return {

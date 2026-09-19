@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useConnectionState } from './daemon/connection-context'
 import { groupByWorkspace, useSessionList } from './daemon/sessions'
 import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
@@ -24,7 +24,8 @@ export function App() {
 
 function Workspace() {
   const [route, navigate] = useHashRoute()
-  const sessions = useSessionList()
+  const [showArchived, setShowArchived] = useState(false)
+  const sessions = useSessionList({ includeArchived: showArchived })
   const groups = useMemo(() => groupByWorkspace(sessions.data ?? []), [sessions.data])
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
@@ -38,6 +39,8 @@ function Workspace() {
           onSelect={(sessionId) => navigate({ name: 'session', sessionId })}
           isLoading={sessions.isPending}
           error={sessions.error ? sessions.error.message : null}
+          showArchived={showArchived}
+          onToggleArchived={setShowArchived}
         />
       </aside>
       <main className="min-w-0 flex-1">
@@ -46,6 +49,8 @@ function Workspace() {
             key={selectedId}
             sessionId={selectedId}
             title={selected?.title ?? 'Session'}
+            archived={Boolean(selected?.archivedAt)}
+            onArchived={() => navigate({ name: 'home' })}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

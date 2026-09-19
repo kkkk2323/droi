@@ -1,4 +1,4 @@
-import { FolderGit2, MessageSquare } from 'lucide-react'
+import { Archive, FolderGit2, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkspaceGroup } from '@/daemon/sessions'
 
@@ -8,12 +8,16 @@ export function SessionSidebar({
   onSelect,
   isLoading,
   error,
+  showArchived,
+  onToggleArchived,
 }: {
   groups: WorkspaceGroup[]
   selectedSessionId: string | null
   onSelect: (sessionId: string) => void
   isLoading: boolean
   error: string | null
+  showArchived: boolean
+  onToggleArchived: (show: boolean) => void
 }) {
   return (
     <nav
@@ -60,6 +64,12 @@ export function SessionSidebar({
                         className="size-3.5 shrink-0 text-muted-foreground"
                       />
                       <span className="flex-1 truncate">{session.title}</span>
+                      {session.archivedAt ? (
+                        <Archive
+                          aria-label="Archived"
+                          className="size-3 shrink-0 text-muted-foreground"
+                        />
+                      ) : null}
                       <time
                         dateTime={new Date(session.updatedAt * 1000).toISOString()}
                         className="shrink-0 text-[11px] text-muted-foreground"
@@ -74,6 +84,15 @@ export function SessionSidebar({
           </section>
         ))}
       </div>
+      <label className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={showArchived}
+          onChange={(event) => onToggleArchived(event.target.checked)}
+          className="accent-primary"
+        />
+        Show archived
+      </label>
     </nav>
   )
 }
