@@ -3,6 +3,7 @@ import { useTurn } from '@/daemon/use-turn'
 import { LOAD_STATE, type LoadState } from '@/daemon/sdk-enums'
 import { InputBar } from './input-bar'
 import { MessageList } from './message-list'
+import { PromptArea } from './prompt-cards'
 
 export function SessionView({ sessionId, title }: { sessionId: string; title: string }) {
   const session = useSession(sessionId)
@@ -31,6 +32,7 @@ export function SessionView({ sessionId, title }: { sessionId: string; title: st
           />
         )}
       </div>
+      <PromptArea sessionId={sessionId} />
       <InputBar
         isRunning={isRunning}
         disabled={session.loadState !== LOAD_STATE.loaded}

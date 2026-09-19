@@ -141,7 +141,7 @@ function finishTurn(
   daemon: FakeDaemon,
   sessionId: string,
   turnId: string,
-  reason: 'completed' | 'cancelled',
+  reason: 'completed' | 'cancelled' | 'permission_rejected',
 ): void {
   activeTurns.delete(sessionId)
   daemon.notify(sessionId, {
@@ -154,3 +154,214 @@ function finishTurn(
 }
 
 export type { HandlerContext }
+
+export interface PermissionTurnOptions {
+  command: string
+  /** Reply streamed after the tool ran. */
+  reply: string
+  /** Text of the tool result when allowed. */
+  toolOutput?: string
+}
+
+/**
+ * Handler for `daemon.add_user_message` where the agent wants to run a shell
+ * command and asks every attached Client for permission first (ADR 0003).
+ */
+export function permissionTurn(options: PermissionTurnOptions): MethodHandler {
+  return (params, context, request) => {
+    const sessionId = String(params['sessionId'])
+    const daemon = context.daemon
+    const userMessageId =
+      typeof params['messageId'] === 'string' ? params['messageId'] : randomUUID()
+    void (async () => {
+      startTurn(daemon, sessionId, userMessageId, String(params['text']), String(request.id))
+      const toolUseId = `call_${randomUUID().slice(0, 8)}`
+      const toolUse = {
+        type: 'tool_use',
+        id: toolUseId,
+        name: 'Execute',
+        input: { command: options.command, summary: 'Run a command', riskLevel: 'low' },
+      }
+      daemon.notify(sessionId, { type: 'tool_call', toolUse })
+      daemon.notify(sessionId, {
+        type: 'droid_working_state_changed',
+        newState: 'waiting_for_tool_confirmation',
+      })
+      const { id, answer } = daemon.request('daemon.request_permission', {
+        sessionId,
+        toolUses: [
+          {
+            toolUse,
+            confirmationType: 'exec',
+            details: {
+              type: 'exec',
+              fullCommand: options.command,
+              command: options.command.split(' ')[0],
+              impactLevel: 'low',
+            },
+          },
+        ],
+        options: [
+          { label: 'Yes, allow', value: 'proceed_once' },
+          { label: 'Yes, and always allow low impact commands', value: 'proceed_always' },
+          { label: 'No, cancel', value: 'cancel' },
+        ],
+      })
+      const response = await answer
+      const selectedOption = String(
+        (response['result'] as Record<string, unknown> | undefined)?.['selectedOption'] ?? 'cancel',
+      )
+      daemon.notify(sessionId, {
+        type: 'permission_resolved',
+        requestId: id,
+        toolUseIds: [toolUseId],
+        selectedOption,
+      })
+      if (selectedOption === 'cancel') {
+        const now = Date.now()
+        daemon.notify(sessionId, {
+          type: 'tool_result',
+          toolUseId,
+          content: 'Command cancelled by user.',
+          isError: true,
+          messageId: randomUUID(),
+        })
+        daemon.notify(sessionId, {
+          type: 'create_message',
+          message: {
+            id: randomUUID(),
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Understood, I will not run that.' }],
+            createdAt: now,
+            updatedAt: now,
+          },
+        })
+        finishTurn(daemon, sessionId, userMessageId, 'permission_rejected')
+        return
+      }
+      daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'executing_tool' })
+      await sleep(100)
+      daemon.notify(sessionId, {
+        type: 'tool_result',
+        toolUseId,
+        content: options.toolOutput ?? 'ok\n\n[Process exited with code 0]',
+        isError: false,
+        messageId: randomUUID(),
+      })
+      await streamText(daemon, sessionId, options.reply)
+      finishTurn(daemon, sessionId, userMessageId, 'completed')
+    })()
+    return {}
+  }
+}
+
+export interface AskUserTurnOptions {
+  question: string
+  options: string[]
+  multiSelect?: boolean
+}
+
+/** Handler for `daemon.add_user_message` where the agent asks the user a question first. */
+export function askUserTurn(options: AskUserTurnOptions): MethodHandler {
+  return (params, context, request) => {
+    const sessionId = String(params['sessionId'])
+    const daemon = context.daemon
+    const userMessageId =
+      typeof params['messageId'] === 'string' ? params['messageId'] : randomUUID()
+    void (async () => {
+      startTurn(daemon, sessionId, userMessageId, String(params['text']), String(request.id))
+      const toolUseId = `call_${randomUUID().slice(0, 8)}`
+      daemon.notify(sessionId, {
+        type: 'tool_call',
+        toolUse: { type: 'tool_use', id: toolUseId, name: 'AskUser', input: {} },
+      })
+      daemon.notify(sessionId, {
+        type: 'droid_working_state_changed',
+        newState: 'waiting_for_tool_confirmation',
+      })
+      const { answer } = daemon.request('daemon.ask_user', {
+        sessionId,
+        toolCallId: toolUseId,
+        questions: [
+          {
+            index: 1,
+            topic: 'Choice',
+            question: options.question,
+            options: options.options,
+            ...(options.multiSelect ? { multiSelect: true } : {}),
+          },
+        ],
+      })
+      const response = await answer
+      const answers = ((response['result'] as Record<string, unknown> | undefined)?.['answers'] ??
+        []) as Array<{ answer: string }>
+      const chosen = answers.map((a) => a.answer).join(', ')
+      daemon.notify(sessionId, {
+        type: 'tool_result',
+        toolUseId,
+        content: `[answer] ${chosen}`,
+        isError: false,
+        messageId: randomUUID(),
+      })
+      await streamText(daemon, sessionId, `You chose ${chosen}.`)
+      finishTurn(daemon, sessionId, userMessageId, 'completed')
+    })()
+    return {}
+  }
+}
+
+function startTurn(
+  daemon: FakeDaemon,
+  sessionId: string,
+  userMessageId: string,
+  text: string,
+  requestId: string,
+): void {
+  const now = Date.now()
+  daemon.notify(sessionId, {
+    type: 'droid_working_state_changed',
+    newState: 'streaming_assistant_message',
+  })
+  daemon.notify(sessionId, {
+    type: 'create_message',
+    message: {
+      id: userMessageId,
+      role: 'user',
+      content: [{ type: 'text', text }],
+      createdAt: now,
+      updatedAt: now,
+    },
+    requestId,
+  })
+  daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'thinking' })
+}
+
+async function streamText(daemon: FakeDaemon, sessionId: string, text: string): Promise<void> {
+  const messageId = randomUUID()
+  daemon.notify(sessionId, {
+    type: 'droid_working_state_changed',
+    newState: 'streaming_assistant_message',
+  })
+  const words = text.split(' ')
+  for (let i = 0; i < words.length; i++) {
+    await sleep(40)
+    daemon.notify(sessionId, {
+      type: 'assistant_text_delta',
+      messageId,
+      blockIndex: 0,
+      textDelta: (i === 0 ? '' : ' ') + words[i],
+    })
+  }
+  daemon.notify(sessionId, { type: 'assistant_text_complete', messageId, blockIndex: 0 })
+  const now = Date.now()
+  daemon.notify(sessionId, {
+    type: 'create_message',
+    message: {
+      id: messageId,
+      role: 'assistant',
+      content: [{ type: 'text', text }],
+      createdAt: now,
+      updatedAt: now,
+    },
+  })
+}
