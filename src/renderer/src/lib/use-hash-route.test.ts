@@ -6,6 +6,7 @@ describe('hash routes', () => {
     for (const route of [
       { name: 'home' } as const,
       { name: 'new' } as const,
+      { name: 'settings' } as const,
       { name: 'session', sessionId: 'abc/def' } as const,
     ]) {
       expect(parseRoute(routeHash(route))).toEqual(route)

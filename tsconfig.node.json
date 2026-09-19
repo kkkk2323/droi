@@ -8,13 +8,18 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "e2e/**/*"
+    "e2e/**/*",
+    "playwright.electron.config.ts",
+    "e2e-electron/**/*.ts"
   ],
   "compilerOptions": {
     "composite": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["node", "electron-vite/node"],
+    "types": [
+      "node",
+      "electron-vite/node"
+    ],
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true
   }

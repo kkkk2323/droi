@@ -17,6 +17,6 @@ The Gateway exists because the Daemon's only remote credential is a Factory API 
 ## Consequences
 
 - No Electron IPC for conversation data. The Local Client also goes through the Gateway (preload injects only a local Pairing Token), so there is one Client code path and the API key never enters any renderer.
-- The Daemon is a child of the Desktop Shell (`--parent-pid`), loopback only; the Gateway is the only thing that may listen on a LAN interface, and only when Remote Access is switched on.
+- The Daemon is a child of the Desktop Shell (`--parent-pid`), loopback only; the Gateway is the only thing that may listen on a LAN interface, and only when Remote Access is switched on. It keeps a permanent loopback listener and adds one listener per LAN interface address while Remote Access is on, so toggling never disturbs the Local Client's bridge and the port stays closed to the network otherwise.
 - Droi's own session files under `~/.droid-app` are abandoned; the Daemon's session store is the only source of truth.
 - Droi is coupled to the Daemon protocol version shipped with the installed `droid` binary and the pinned `@factory/droid-sdk`.

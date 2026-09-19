@@ -32,7 +32,7 @@ The Client running in a browser on another device (typically a phone) and reachi
 _Avoid_: mobile, web mode, browser mode, LAN mode
 
 **Pairing Token**:
-The secret a Client presents to the Gateway to prove it was authorised from the Desktop Shell. There is one token; resetting it revokes every Remote Client at once.
+The secret a Remote Client presents to the Gateway to prove it was authorised from the Desktop Shell. There is one token, shown as a QR code and link in the Desktop Shell settings; resetting it revokes every Remote Client at once. The Local Client presents a separate per-launch token instead, so a reset never touches the desktop window.
 _Avoid_: API key (that is the Factory credential, which Clients never hold), device token
 
 **Remote Access**:

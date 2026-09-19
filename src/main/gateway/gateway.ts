@@ -4,6 +4,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { timingSafeEqual } from 'node:crypto'
+import { networkInterfaces } from 'node:os'
 import { once } from 'node:events'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
 import {
@@ -21,13 +22,21 @@ export type ClientSource =
   | { kind: 'static'; dir: string }
   | { kind: 'proxy'; target: URL }
 
+export type TokenKind = 'pairing' | 'local'
+
 export interface GatewayOptions {
   port: number
   remoteAccess: boolean
   /** Current Daemon WebSocket URL, or null while the Daemon is not running. */
   getDaemonUrl: () => string | null
+  /** The Pairing Token Remote Clients present. */
   getPairingToken: () => string
-  /** Factory API key to inject; null leaves `daemon.authenticate` untouched. */
+  /**
+   * A per-launch token only the Local Client knows. Resetting the Pairing
+   * Token then revokes phones without touching the desktop window.
+   */
+  getLocalToken?: () => string
+  /** Factory API key to inject; null leaves credentials untouched. */
   getApiKey: () => string | null
   getMeta: () => GatewayMeta
   client: ClientSource
@@ -35,66 +44,157 @@ export interface GatewayOptions {
 
 export interface Gateway {
   url: string
-  host: string
   port: number
+  /** True while LAN listeners are up. */
+  readonly remoteAccess: boolean
+  /** LAN addresses currently listening; empty when Remote Access is off. */
+  readonly lanAddresses: string[]
+  /** Bind or unbind the LAN listeners; the loopback listener never moves. */
+  setRemoteAccess(enabled: boolean): Promise<void>
+  /** Terminate every bridge that authenticated with this kind of token. */
+  revoke(kind: TokenKind): void
   close(): Promise<void>
 }
 
 const LOOPBACK = '127.0.0.1'
-const ALL_INTERFACES = '0.0.0.0'
 
+/**
+ * The Gateway keeps one listener on loopback for the Local Client and, only
+ * while Remote Access is on, one per LAN interface address for Remote Clients.
+ * Binding interface addresses rather than 0.0.0.0 lets the loopback listener
+ * stay untouched when Remote Access toggles, so the desktop window never
+ * loses its bridge, and keeps the port closed to the network otherwise.
+ */
 export async function startGateway(options: GatewayOptions): Promise<Gateway> {
-  const host = options.remoteAccess ? ALL_INTERFACES : LOOPBACK
-  const server = createServer((request, response) => handleHttp(options, request, response))
   const wss = new WebSocketServer({ noServer: true })
-  const upstreams = new Set<WebSocket>()
+  const bridges = new Map<WebSocket, { upstream: WebSocket; kind: TokenKind }>()
+  const lanServers = new Map<string, Server>()
 
-  server.on('upgrade', (request, socket, head) => {
-    const url = new URL(request.url ?? '/', 'http://gateway')
-    if (url.pathname !== GATEWAY_DAEMON_PATH) {
-      if (options.client.kind === 'proxy') {
-        proxyUpgrade(options.client.target, request, socket, head)
-      } else {
-        rejectUpgrade(socket, 404, 'Not Found')
+  const makeServer = (): Server => {
+    const server = createServer((request, response) => handleHttp(options, request, response))
+    server.on('upgrade', (request, socket, head) => {
+      const url = new URL(request.url ?? '/', 'http://gateway')
+      if (url.pathname !== GATEWAY_DAEMON_PATH) {
+        if (options.client.kind === 'proxy') {
+          proxyUpgrade(options.client.target, request, socket, head)
+        } else {
+          rejectUpgrade(socket, 404, 'Not Found')
+        }
+        return
       }
-      return
-    }
-    if (!tokenMatches(url.searchParams.get(GATEWAY_TOKEN_QUERY), options.getPairingToken())) {
-      rejectUpgrade(socket, 401, 'Unauthorized')
-      return
-    }
-    const daemonUrl = options.getDaemonUrl()
-    if (!daemonUrl) {
-      rejectUpgrade(socket, 503, 'Daemon Unavailable')
-      return
-    }
-    wss.handleUpgrade(request, socket, head, (client) => {
-      const upstream = bridge(client, daemonUrl, options.getApiKey)
-      upstreams.add(upstream)
-      upstream.on('close', () => upstreams.delete(upstream))
+      const kind = classifyToken(url.searchParams.get(GATEWAY_TOKEN_QUERY), options)
+      if (!kind) {
+        rejectUpgrade(socket, 401, 'Unauthorized')
+        return
+      }
+      const daemonUrl = options.getDaemonUrl()
+      if (!daemonUrl) {
+        rejectUpgrade(socket, 503, 'Daemon Unavailable')
+        return
+      }
+      wss.handleUpgrade(request, socket, head, (client) => {
+        const upstream = bridge(client, daemonUrl, options.getApiKey)
+        bridges.set(client, { upstream, kind })
+        client.on('close', () => bridges.delete(client))
+      })
     })
-  })
+    return server
+  }
 
-  server.listen(options.port, host)
-  await once(server, 'listening')
-  const address = server.address()
+  const loopback = makeServer()
+  loopback.listen(options.port, LOOPBACK)
+  await once(loopback, 'listening')
+  const address = loopback.address()
   if (!address || typeof address === 'string') throw new Error('Gateway did not bind a TCP port')
+  const port = address.port
+
+  const closeServer = (server: Server) =>
+    new Promise<void>((resolve) => {
+      server.closeIdleConnections()
+      server.close(() => resolve())
+    })
+
+  const bindLan = async () => {
+    for (const lanAddress of lanInterfaceAddresses()) {
+      if (lanServers.has(lanAddress)) continue
+      const server = makeServer()
+      server.listen(port, lanAddress)
+      try {
+        await once(server, 'listening')
+        lanServers.set(lanAddress, server)
+      } catch {
+        // An interface that refuses to bind is skipped; the others still serve.
+      }
+    }
+  }
+
+  const unbindLan = async () => {
+    const closing = [...lanServers.values()].map(closeServer)
+    lanServers.clear()
+    await Promise.all(closing)
+  }
+
+  const revoke = (kind: TokenKind) => {
+    for (const [client, entry] of bridges) {
+      if (entry.kind !== kind) continue
+      client.terminate()
+      entry.upstream.terminate()
+      bridges.delete(client)
+    }
+  }
+
+  if (options.remoteAccess) await bindLan()
 
   return {
     // The URL always points at loopback; a Remote Client is told the LAN
     // address separately, by whoever shows the pairing link.
-    url: `http://${LOOPBACK}:${address.port}`,
-    host,
-    port: address.port,
-    close: () =>
-      new Promise((resolve, reject) => {
-        for (const client of wss.clients) client.terminate()
-        for (const upstream of upstreams) upstream.terminate()
-        wss.close()
-        server.closeIdleConnections()
-        server.close((error) => (error ? reject(error) : resolve()))
-      }),
+    url: `http://${LOOPBACK}:${port}`,
+    port,
+    get remoteAccess() {
+      return lanServers.size > 0
+    },
+    get lanAddresses() {
+      return [...lanServers.keys()]
+    },
+    async setRemoteAccess(enabled) {
+      if (enabled) {
+        await bindLan()
+      } else {
+        // Phones lose access at once; the Local Client keeps its bridge.
+        revoke('pairing')
+        await unbindLan()
+      }
+    },
+    revoke,
+    async close() {
+      for (const [client, entry] of bridges) {
+        client.terminate()
+        entry.upstream.terminate()
+      }
+      bridges.clear()
+      wss.close()
+      await unbindLan()
+      await closeServer(loopback)
+    },
   }
+}
+
+/** IPv4 addresses of non-internal interfaces, the ones a phone could reach. */
+export function lanInterfaceAddresses(): string[] {
+  const addresses: string[] = []
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === 'IPv4' && !entry.internal) addresses.push(entry.address)
+    }
+  }
+  return addresses
+}
+
+function classifyToken(presented: string | null, options: GatewayOptions): TokenKind | null {
+  if (tokenMatches(presented, options.getPairingToken())) return 'pairing'
+  const local = options.getLocalToken?.()
+  if (local && tokenMatches(presented, local)) return 'local'
+  return null
 }
 
 function tokenMatches(presented: string | null, expected: string): boolean {
@@ -182,7 +282,7 @@ function hasParams(message: unknown): message is { params: Record<string, unknow
 function handleHttp(options: GatewayOptions, request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url ?? '/', 'http://gateway')
   if (url.pathname === GATEWAY_DAEMON_PATH) {
-    const ok = tokenMatches(url.searchParams.get(GATEWAY_TOKEN_QUERY), options.getPairingToken())
+    const ok = classifyToken(url.searchParams.get(GATEWAY_TOKEN_QUERY), options) !== null
     // Cross-origin so a Client served elsewhere (vite dev, tests) can check.
     // The answer carries no secret.
     response.writeHead(ok ? 204 : 401, {
@@ -214,5 +314,3 @@ function handleHttp(options: GatewayOptions, request: IncomingMessage, response:
       response.end()
   }
 }
-
-export type { Server }

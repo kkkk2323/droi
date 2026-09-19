@@ -1,6 +1,6 @@
-// Desktop Shell settings: a small JSON file. The Factory API key is stored
-// encrypted (Electron safeStorage in production) and is never handed to a
-// Client; only the Gateway reads it.
+// Desktop Shell settings: a small JSON file. The Factory API key and the
+// Pairing Token are stored encrypted (Electron safeStorage in production); the
+// key is never handed to a Client, only the Gateway reads it.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -31,7 +31,10 @@ export interface ShellSettingsStore {
   setApiKey(apiKey: string | null): void
 }
 
-interface StoredFile extends ShellSettings {
+interface StoredFile {
+  remoteAccess: boolean
+  droidPath: string | null
+  pairingTokenEncrypted: string
   apiKeyEncrypted: string | null
 }
 
@@ -41,51 +44,60 @@ export function generatePairingToken(): string {
 
 export function createShellSettingsStore(options: ShellSettingsStoreOptions): ShellSettingsStore {
   const env = options.env ?? process.env
-  let stored = load(options.file)
+  const { cipher } = options
+  const loaded = load(options.file)
+  const decryptToken = (encrypted: string | undefined): string | null => {
+    if (!encrypted) return null
+    try {
+      return cipher.decrypt(encrypted) || null
+    } catch {
+      return null
+    }
+  }
+
+  let pairingToken = decryptToken(loaded?.pairingTokenEncrypted) ?? generatePairingToken()
+  const current: StoredFile = {
+    remoteAccess: loaded?.remoteAccess ?? false,
+    droidPath: loaded?.droidPath ?? null,
+    pairingTokenEncrypted: cipher.encrypt(pairingToken),
+    apiKeyEncrypted: loaded?.apiKeyEncrypted ?? null,
+  }
 
   const save = () => {
     mkdirSync(dirname(options.file), { recursive: true })
     const tmp = `${options.file}.tmp`
-    writeFileSync(tmp, JSON.stringify(stored, null, 2), { mode: 0o600 })
+    writeFileSync(tmp, JSON.stringify(current, null, 2), { mode: 0o600 })
     renameSync(tmp, options.file)
   }
-  if (!stored) {
-    stored = {
-      remoteAccess: false,
-      pairingToken: generatePairingToken(),
-      droidPath: null,
-      apiKeyEncrypted: null,
-    }
-    save()
-  }
-  const current = stored
+  if (!loaded || !decryptToken(loaded.pairingTokenEncrypted)) save()
 
   return {
     get settings() {
-      const { apiKeyEncrypted: _omitted, ...settings } = current
-      return settings
+      return { remoteAccess: current.remoteAccess, droidPath: current.droidPath, pairingToken }
     },
     update(patch) {
-      Object.assign(current, patch)
+      if (patch.remoteAccess !== undefined) current.remoteAccess = patch.remoteAccess
+      if (patch.droidPath !== undefined) current.droidPath = patch.droidPath
       save()
     },
     resetPairingToken() {
-      current.pairingToken = generatePairingToken()
+      pairingToken = generatePairingToken()
+      current.pairingTokenEncrypted = cipher.encrypt(pairingToken)
       save()
-      return current.pairingToken
+      return pairingToken
     },
     getApiKey() {
       const fromEnv = env['FACTORY_API_KEY']
       if (fromEnv) return fromEnv
       if (!current.apiKeyEncrypted) return null
       try {
-        return options.cipher.decrypt(current.apiKeyEncrypted)
+        return cipher.decrypt(current.apiKeyEncrypted)
       } catch {
         return null
       }
     },
     setApiKey(apiKey) {
-      current.apiKeyEncrypted = apiKey ? options.cipher.encrypt(apiKey) : null
+      current.apiKeyEncrypted = apiKey ? cipher.encrypt(apiKey) : null
       save()
     },
   }
@@ -100,11 +112,12 @@ function load(file: string): StoredFile | null {
   }
   try {
     const parsed = JSON.parse(text) as Partial<StoredFile>
-    if (typeof parsed.pairingToken !== 'string') return null
+    if (typeof parsed !== 'object' || parsed === null) return null
     return {
       remoteAccess: parsed.remoteAccess === true,
-      pairingToken: parsed.pairingToken,
       droidPath: typeof parsed.droidPath === 'string' ? parsed.droidPath : null,
+      pairingTokenEncrypted:
+        typeof parsed.pairingTokenEncrypted === 'string' ? parsed.pairingTokenEncrypted : '',
       apiKeyEncrypted: typeof parsed.apiKeyEncrypted === 'string' ? parsed.apiKeyEncrypted : null,
     }
   } catch {

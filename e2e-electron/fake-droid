@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+// Stand-in for the `droid` binary used by the Desktop Shell smoke suite. Only
+// `daemon --port N` is understood: it opens a WebSocket server on loopback that
+// authenticates anyone and lists no Sessions, which is all the smoke cases need.
+// The Gateway does the Pairing Token check and key injection in front of it.
+import { WebSocketServer } from 'ws'
+
+const args = process.argv.slice(2)
+if (args[0] !== 'daemon') {
+  console.error('fake-droid only supports: daemon --port <n>')
+  process.exit(2)
+}
+const port = Number(args[args.indexOf('--port') + 1])
+const wss = new WebSocketServer({ host: '127.0.0.1', port })
+
+const envelope = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.217.0' }
+
+wss.on('connection', (ws) => {
+  ws.on('message', (data) => {
+    const message = JSON.parse(data.toString())
+    const reply = (result) => ws.send(JSON.stringify({ ...envelope, type: 'response', id: message.id, result }))
+    switch (message.method) {
+      case 'daemon.authenticate':
+        reply({ userId: 'user_smoke', orgId: 'org_smoke' })
+        ws.send(
+          JSON.stringify({
+            ...envelope,
+            type: 'notification',
+            method: 'daemon.connection_status',
+            params: { isDroidCLIInPath: true, droidCLIVersion: '0.0.0-smoke', homedir: '/tmp', platform: 'darwin' },
+          }),
+        )
+        break
+      case 'daemon.list_available_sessions':
+        reply({ sessions: [], hasMore: false })
+        break
+      default:
+        ws.send(
+          JSON.stringify({
+            ...envelope,
+            type: 'response',
+            id: message.id,
+            error: { code: -32601, message: `fake-droid does not implement ${message.method}` },
+          }),
+        )
+    }
+  })
+})
+
+const parentPid = Number(args[args.indexOf('--parent-pid') + 1])
+if (parentPid) {
+  setInterval(() => {
+    try {
+      process.kill(parentPid, 0)
+    } catch {
+      process.exit(0)
+    }
+  }, 1000)
+}
+console.log(`fake-droid daemon listening on ${port}`)

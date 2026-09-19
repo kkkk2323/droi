@@ -46,11 +46,27 @@ describe('shell settings', () => {
     expect(reloaded.getApiKey()).toBe('fk-test')
   })
 
-  test('stores the API key encrypted, never in clear text', () => {
+  test('stores the API key and Pairing Token encrypted, never in clear text', () => {
     const file = tempFile()
     const store = createShellSettingsStore({ file, cipher, env: {} })
     store.setApiKey('fk-secret')
-    expect(readFileSync(file, 'utf8')).not.toContain('fk-secret')
+    const text = readFileSync(file, 'utf8')
+    expect(text).not.toContain('fk-secret')
+    expect(text).not.toContain(store.settings.pairingToken)
+    expect(JSON.parse(text)).not.toHaveProperty('pairingToken')
+  })
+
+  test('an undecryptable Pairing Token is replaced instead of failing', () => {
+    const file = tempFile()
+    createShellSettingsStore({ file, cipher, env: {} })
+    const broken = {
+      ...cipher,
+      decrypt: () => {
+        throw new Error('bad key')
+      },
+    }
+    const store = createShellSettingsStore({ file, cipher: broken, env: {} })
+    expect(store.settings.pairingToken).toMatch(/^[A-Za-z0-9_-]{32}$/)
   })
 
   test('FACTORY_API_KEY in the environment wins over the stored key', () => {

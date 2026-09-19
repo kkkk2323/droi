@@ -5,18 +5,36 @@ import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './component
 import { SessionSidebar } from './components/sidebar/session-sidebar'
 import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
+import { SettingsPage } from './components/settings-page'
+import { Settings } from 'lucide-react'
+import { Button } from './components/ui/button'
 import { recentWorkspaces } from './daemon/use-new-session'
 import { useHashRoute } from './lib/use-hash-route'
 
 export function App() {
   const state = useConnectionState()
-  if (state.status === 'unpaired') return <PairingFailed reason={state.reason} />
+  const shellBridge = window.droiShell?.settings ?? null
+  if (state.status === 'unpaired' && !shellBridge) return <PairingFailed reason={state.reason} />
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <header className="flex h-10 shrink-0 items-center justify-between border-b px-3">
         <h1 className="text-sm font-semibold tracking-tight">Droi</h1>
-        <ConnectionStatus />
+        <div className="flex items-center gap-2">
+          <ConnectionStatus />
+          {shellBridge ? (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Settings"
+              onClick={() => {
+                window.location.hash = '#/settings'
+              }}
+            >
+              <Settings aria-hidden />
+            </Button>
+          ) : null}
+        </div>
       </header>
       <ReconnectingBanner />
       <Workspace />
@@ -48,7 +66,9 @@ function Workspace() {
         />
       </aside>
       <main className="min-w-0 flex-1">
-        {route.name === 'new' ? (
+        {route.name === 'settings' && window.droiShell ? (
+          <SettingsPage bridge={window.droiShell.settings} />
+        ) : route.name === 'new' ? (
           <NewSessionPage
             recent={recent}
             onCreated={(sessionId) => navigate({ name: 'session', sessionId })}

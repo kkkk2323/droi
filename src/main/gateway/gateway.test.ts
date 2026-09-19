@@ -6,9 +6,10 @@ import {
   gatewayPairingCheckUrl,
   GATEWAY_API_KEY_PLACEHOLDER,
 } from '../../shared/gateway'
-import { startGateway, type Gateway } from './gateway'
+import { lanInterfaceAddresses, startGateway, type Gateway } from './gateway'
 
 const TOKEN = 'correct-pairing-token'
+const LOCAL_TOKEN = 'local-window-token'
 const API_KEY = 'fk-secret-key'
 
 interface StandInDaemon {
@@ -69,6 +70,7 @@ describe('Gateway', () => {
       remoteAccess,
       getDaemonUrl: () => daemon.url,
       getPairingToken: () => TOKEN,
+      getLocalToken: () => LOCAL_TOKEN,
       getApiKey: () => API_KEY,
       getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess }),
       client: { kind: 'none' },
@@ -179,8 +181,53 @@ describe('Gateway', () => {
     expect(bad.status).toBe(401)
   })
 
+  test('accepts the Local Token too, and revoking pairing spares the local bridge', async () => {
+    const local = await connectClient(gatewayDaemonUrl(gateway.url, LOCAL_TOKEN))
+    const remote = await connectClient(gatewayDaemonUrl(gateway.url, TOKEN))
+    local.send('a')
+    remote.send('b')
+    await nextMessage(local)
+    await nextMessage(remote)
+
+    gateway.revoke('pairing')
+    await once(remote, 'close')
+    expect(local.readyState).toBe(WebSocket.OPEN)
+    local.send('still here')
+    expect(await nextMessage(local)).toBe('echo:still here')
+    local.close()
+  })
+
+  test('Remote Access binds LAN addresses on demand and never touches the local bridge', async () => {
+    const lan = lanInterfaceAddresses()
+    const local = await connectClient(gatewayDaemonUrl(gateway.url, LOCAL_TOKEN))
+    expect(gateway.remoteAccess).toBe(false)
+    if (lan[0]) {
+      await expect(fetch(`http://${lan[0]}:${gateway.port}/meta`)).rejects.toThrow()
+    }
+
+    await gateway.setRemoteAccess(true)
+    expect(gateway.lanAddresses).toEqual(lan)
+    if (lan[0]) {
+      const viaLan = await fetch(`http://${lan[0]}:${gateway.port}/meta`)
+      expect(viaLan.status).toBe(200)
+      const phone = await connectClient(gatewayDaemonUrl(`http://${lan[0]}:${gateway.port}`, TOKEN))
+      phone.send('from phone')
+      expect(await nextMessage(phone)).toBe('echo:from phone')
+      await gateway.setRemoteAccess(false)
+      await once(phone, 'close')
+      await expect(fetch(`http://${lan[0]}:${gateway.port}/meta`)).rejects.toThrow()
+    } else {
+      await gateway.setRemoteAccess(false)
+    }
+    expect(gateway.remoteAccess).toBe(false)
+    local.send('still local')
+    expect(await nextMessage(local)).toBe('echo:still local')
+    local.close()
+  })
+
   test('binds loopback only while Remote Access is off', () => {
-    expect(gateway.host).toBe('127.0.0.1')
+    expect(gateway.remoteAccess).toBe(false)
+    expect(gateway.lanAddresses).toEqual([])
   })
 
   test('fails the upgrade with 503 when no Daemon is running', async () => {
@@ -201,7 +248,7 @@ describe('Gateway', () => {
 })
 
 describe('Gateway with Remote Access on', () => {
-  test('binds all interfaces', async () => {
+  test('binds every LAN address from the start', async () => {
     const daemon = await startStandInDaemon()
     const gateway = await startGateway({
       port: 0,
@@ -212,7 +259,7 @@ describe('Gateway with Remote Access on', () => {
       getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: true }),
       client: { kind: 'none' },
     })
-    expect(gateway.host).toBe('0.0.0.0')
+    expect(gateway.lanAddresses).toEqual(lanInterfaceAddresses())
     await gateway.close()
     await daemon.close()
   })

@@ -29,6 +29,11 @@ jobs:
 
       - run: pnpm test:e2e
 
+      - run: pnpm build
+
+      - name: Desktop Shell smoke suite
+        run: xvfb-run -a pnpm test:smoke
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

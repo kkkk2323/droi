@@ -59,3 +59,17 @@ test.describe('pairing', () => {
     await expect(page.getByText(/has not been paired/)).toBeVisible()
   })
 })
+
+test.describe('remote client surface', () => {
+  test('a Remote Client has no Settings; the settings route falls back to home', async ({
+    page,
+    openClient,
+  }) => {
+    await openClient()
+    await expect(page.getByRole('status', { name: 'Connection' })).toHaveText(/Connected/)
+    await expect(page.getByRole('button', { name: 'Settings' })).toHaveCount(0)
+    await page.goto('/#/settings')
+    await expect(page.getByRole('region', { name: 'Settings' })).toHaveCount(0)
+    await expect(page.getByText('Select a session')).toBeVisible()
+  })
+})

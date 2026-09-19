@@ -30,6 +30,7 @@ describe('resolveClientConfig', () => {
         gatewayUrl: 'http://127.0.0.1:5000',
         pairingToken: 'local-token',
         platform: 'darwin',
+        settings: {} as never,
       },
       hash: '#pair=ignored',
     })
