@@ -9,7 +9,11 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
 import { locateDroid } from './daemon/locate-droid'
 import { startGateway, type ClientSource, type Gateway } from './gateway/gateway'
-import { createShellSettingsStore, type SettingsCipher } from './shell-settings'
+import {
+  createShellSettingsStore,
+  type SettingsCipher,
+  type ShellSettingsStore,
+} from './shell-settings'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
@@ -22,42 +26,51 @@ import {
 const userDataOverride = process.env['DROI_USER_DATA_DIR']
 if (userDataOverride) app.setPath('userData', userDataOverride)
 
-const settings = createShellSettingsStore({
-  file: join(app.getPath('userData'), 'settings.json'),
-  cipher: safeStorageCipher(),
-})
-
 // Known only to this launch's window; resetting the Pairing Token leaves it alone.
 const localToken = randomBytes(24).toString('base64url')
 
-const daemon = new DaemonSupervisor({
-  spawn: (port) => {
-    const droidPath = locateDroid({ override: settings.settings.droidPath })
-    if (!droidPath) throw new Error('droid executable not found')
-    const apiKey = settings.getApiKey()
-    // The Daemon must run as the same Factory user whose key the Gateway
-    // injects, otherwise it rejects every authenticate (see ADR 0003).
-    return spawn(
-      droidPath,
-      [
-        'daemon',
-        '--host',
-        '127.0.0.1',
-        '--port',
-        String(port),
-        '--parent-pid',
-        String(process.pid),
-      ],
-      {
-        stdio: 'ignore',
-        env: { ...process.env, ...(apiKey ? { FACTORY_API_KEY: apiKey } : {}) },
-      },
-    )
-  },
-})
-daemon.on('state', (state) => console.log('[daemon]', JSON.stringify(state)))
-
+// Both need Electron to be ready: safeStorage reports encryption unavailable
+// before `ready` on Windows and Linux, which would lock the store into its
+// fallback cipher for good.
+let settings: ShellSettingsStore
+let daemon: DaemonSupervisor
 let gateway: Gateway | null = null
+
+function createDaemonSupervisor(): DaemonSupervisor {
+  const supervisor = new DaemonSupervisor({
+    spawn: (port) => {
+      const droidPath = locateDroid({ override: settings.settings.droidPath })
+      if (!droidPath) throw new Error('droid executable not found')
+      const apiKey = settings.getApiKey()
+      const baseUrl = settings.settings.factoryApiBaseUrl ?? process.env['FACTORY_API_BASE_URL']
+      // The Daemon must run as the same Factory user whose key the Gateway
+      // injects, otherwise it rejects every authenticate (see ADR 0003). A base
+      // URL routes its Factory traffic through a local proxy such as droid-proxy.
+      return spawn(
+        droidPath,
+        [
+          'daemon',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          String(port),
+          '--parent-pid',
+          String(process.pid),
+        ],
+        {
+          stdio: 'ignore',
+          env: {
+            ...process.env,
+            ...(apiKey ? { FACTORY_API_KEY: apiKey } : {}),
+            ...(baseUrl ? { FACTORY_API_BASE_URL: baseUrl } : {}),
+          },
+        },
+      )
+    },
+  })
+  supervisor.on('state', (state) => console.log('[daemon]', JSON.stringify(state)))
+  return supervisor
+}
 
 function clientSource(): ClientSource {
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -174,6 +187,11 @@ void app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.droi.app')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
+  settings = createShellSettingsStore({
+    file: join(app.getPath('userData'), 'settings.json'),
+    cipher: safeStorageCipher(),
+  })
+  daemon = createDaemonSupervisor()
   registerIpc()
   daemon.start()
   gateway = await startGateway({
@@ -206,7 +224,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   quitting = true
   event.preventDefault()
-  void Promise.allSettled([daemon.stop(), gateway?.close()]).then(() => app.quit())
+  void Promise.allSettled([daemon?.stop(), gateway?.close()]).then(() => app.quit())
 })
 
 function safeStorageCipher(): SettingsCipher {

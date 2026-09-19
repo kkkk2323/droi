@@ -3,6 +3,7 @@
 // request id, and the Daemon's `create_message` carrying that id confirms it.
 import { LOCAL_MACHINE_ID, type MultiSessionStateManager } from '@factory/droid-sdk'
 import { useCallback, useState } from 'react'
+import { uuid } from '@/lib/uuid'
 import { useDaemonConnection } from './connection-context'
 
 type OptimisticUserMessage = Parameters<
@@ -24,8 +25,8 @@ export function useTurn(sessionId: string): TurnActions {
       const trimmed = text.trim()
       if (!trimmed) return
       setSendError(null)
-      const requestId = crypto.randomUUID()
-      const messageId = crypto.randomUUID()
+      const requestId = uuid()
+      const messageId = uuid()
       const now = Date.now()
       const userMessage = {
         id: messageId,
@@ -39,7 +40,7 @@ export function useTurn(sessionId: string): TurnActions {
         machineId: LOCAL_MACHINE_ID,
         externalKey: requestId,
         userMessage,
-        assistantBubbleId: crypto.randomUUID(),
+        assistantBubbleId: uuid(),
         onError: (error) => setSendError(error.message),
       })
       try {

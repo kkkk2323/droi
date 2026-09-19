@@ -7,7 +7,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -20,7 +20,11 @@ test.beforeAll(async () => {
   // The token is regenerated on first load; only the droid override matters.
   writeFileSync(
     join(userData, 'settings.json'),
-    JSON.stringify({ remoteAccess: false, droidPath: resolve(import.meta.dirname, 'fake-droid') }),
+    JSON.stringify({
+      remoteAccess: false,
+      droidPath: resolve(import.meta.dirname, 'fake-droid'),
+      factoryApiBaseUrl: 'http://127.0.0.1:1/smoke-proxy',
+    }),
   )
   app = await electron.launch({
     args: [resolve(import.meta.dirname, '../out/main/index.js')],
@@ -28,6 +32,7 @@ test.beforeAll(async () => {
       ...process.env,
       DROI_USER_DATA_DIR: userData,
       FACTORY_API_KEY: 'fk-smoke',
+      FAKE_DROID_ENV_FILE: join(userData, 'daemon-env.json'),
       NODE_ENV: 'production',
     },
   })
@@ -60,9 +65,13 @@ test('the Gateway answers /meta', async () => {
   })
 })
 
-test('the Local Client connects to the Daemon through the Gateway', async () => {
+test('the Local Client connects to the Daemon the Shell spawned with its settings', async () => {
   await expect(page.getByRole('status', { name: 'Connection' })).toHaveText(/Connected/, {
     timeout: 20_000,
+  })
+  expect(JSON.parse(readFileSync(join(userData, 'daemon-env.json'), 'utf8'))).toEqual({
+    FACTORY_API_KEY: 'fk-smoke',
+    FACTORY_API_BASE_URL: 'http://127.0.0.1:1/smoke-proxy',
   })
 })
 

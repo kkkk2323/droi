@@ -65,6 +65,12 @@ export function createDaemonConnection(
   let recoveryTimer: ReturnType<typeof setTimeout> | null = null
 
   const setState = (next: ConnectionState) => {
+    // The Daemon only pushes notifications for Sessions loaded on the current
+    // socket, and the SDK keeps them "loaded" across a drop. Marking them
+    // NotLoaded makes useSession load them again once we are back.
+    if (state.status === 'connected' && next.status !== 'connected') {
+      sessionState.markSessionsNotLoadedForMachine(LOCAL_MACHINE_ID)
+    }
     state = next
     for (const listener of listeners) listener()
   }

@@ -74,12 +74,20 @@ export class DaemonSupervisor extends EventEmitter<{ state: [DaemonState] }> {
   }
 
   async #launch(): Promise<void> {
-    const port = await pickFreePort()
-    if (!this.#running) return
+    let port: number
+    let child: ChildProcess
     this.#attempt += 1
-    this.#setState({ status: 'starting', port, attempt: this.#attempt })
-
-    const child = this.#options.spawn(port)
+    try {
+      port = await pickFreePort()
+      if (!this.#running) return
+      this.#setState({ status: 'starting', port, attempt: this.#attempt })
+      child = this.#options.spawn(port)
+    } catch (error) {
+      // No port or no `droid` executable: retry with backoff like a crash.
+      if (this.#running)
+        this.#scheduleRestart(error instanceof Error ? error.message : String(error))
+      return
+    }
     this.#child = child
     const startedAt = Date.now()
     let exited = false

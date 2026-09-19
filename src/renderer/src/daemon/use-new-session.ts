@@ -4,6 +4,7 @@ import { LOCAL_MACHINE_ID } from '@factory/droid-sdk'
 import { GATEWAY_API_KEY_PLACEHOLDER } from '@shared/gateway'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
+import { uuid } from '@/lib/uuid'
 import { useDaemonConnection } from './connection-context'
 import { SESSIONS_QUERY_KEY, workspaceLabel, type SessionSummary } from './sessions'
 
@@ -56,7 +57,7 @@ export function useNewSession(): NewSessionActions {
         }
         // The SDK wants the Session registered as loading before it asks the
         // Daemon to create it, so the id is chosen here.
-        const sessionId = crypto.randomUUID()
+        const sessionId = uuid()
         sessionState.markSessionLoading(sessionId, LOCAL_MACHINE_ID)
         try {
           const result = await controller.initializeSession({

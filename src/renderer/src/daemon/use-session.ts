@@ -41,14 +41,20 @@ export function useSession(sessionId: string | null): SessionView {
   const snapshot = useRef<{ key: string; view: SessionView } | null>(null)
   const loadError = useRef<string | null>(null)
   const version = useRef(0)
+  // Lets the load effect wake the useSyncExternalStore subscriber; the SDK
+  // emits nothing when loadSession rejects.
+  const notify = useRef<() => void>(() => {})
 
-  // Runs again after every reconnect: the SDK marks Sessions NotLoaded when the
-  // transport drops, and loading again re-subscribes to their notifications.
+  // Runs again after every reconnect: the connection marks Sessions NotLoaded
+  // when the transport drops, and loading again re-subscribes to their
+  // notifications on the new socket.
   useEffect(() => {
     if (!sessionId || !connected) return
     loadError.current = null
     const manager = sessionState.getSessionManager(sessionId)
     if ((manager?.getLoadState() as string | undefined) === LOAD_STATE.loaded) return
+    // StrictMode runs this effect twice on mount; one load is enough.
+    if (controller.isSessionLoadInFlight(sessionId)) return
     let cancelled = false
     controller
       .loadSession({
@@ -60,7 +66,7 @@ export function useSession(sessionId: string | null): SessionView {
         if (cancelled) return
         loadError.current = error instanceof Error ? error.message : String(error)
         version.current += 1
-        snapshot.current = null
+        notify.current()
       })
     return () => {
       cancelled = true
@@ -80,6 +86,7 @@ export function useSession(sessionId: string | null): SessionView {
           listener()
         })
       }
+      notify.current = scheduleRender
       const bump = (_event: unknown, payload: { sessionId: string }) => {
         if (payload.sessionId === sessionId) scheduleRender()
       }
@@ -91,6 +98,7 @@ export function useSession(sessionId: string | null): SessionView {
       }
       controller.on('sessionNotFound', onFailed)
       return () => {
+        notify.current = () => {}
         unsubscribe()
         controller.off('sessionNotFound', onFailed)
         if (frame !== null) cancelAnimationFrame(frame)

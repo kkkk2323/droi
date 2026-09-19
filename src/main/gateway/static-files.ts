@@ -23,7 +23,15 @@ const CONTENT_TYPES: Record<string, string> = {
  */
 export function serveStaticFile(dir: string, pathname: string, response: ServerResponse): void {
   const root = normalize(dir + sep)
-  let filePath = normalize(join(dir, decodeURIComponent(pathname)))
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(pathname)
+  } catch {
+    response.writeHead(400)
+    response.end()
+    return
+  }
+  let filePath = normalize(join(dir, decoded))
   if (!filePath.startsWith(root)) {
     response.writeHead(403)
     response.end()

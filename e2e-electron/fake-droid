@@ -3,6 +3,7 @@
 // `daemon --port N` is understood: it opens a WebSocket server on loopback that
 // authenticates anyone and lists no Sessions, which is all the smoke cases need.
 // The Gateway does the Pairing Token check and key injection in front of it.
+import { writeFileSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 
 const args = process.argv.slice(2)
@@ -56,5 +57,15 @@ if (parentPid) {
       process.exit(0)
     }
   }, 1000)
+}
+// Lets the smoke suite check what the Desktop Shell put in the Daemon's environment.
+if (process.env.FAKE_DROID_ENV_FILE) {
+  writeFileSync(
+    process.env.FAKE_DROID_ENV_FILE,
+    JSON.stringify({
+      FACTORY_API_KEY: process.env.FACTORY_API_KEY ?? null,
+      FACTORY_API_BASE_URL: process.env.FACTORY_API_BASE_URL ?? null,
+    }),
+  )
 }
 console.log(`fake-droid daemon listening on ${port}`)

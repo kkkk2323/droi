@@ -94,11 +94,15 @@ test.describe('phone form factor', () => {
     const fragment = new URLSearchParams({ pair: fakeDaemon.token, gateway: fakeDaemon.url })
     await page.goto(`/#${fragment.toString()}`)
     await expect(page.getByRole('status', { name: 'Connection' })).toHaveText(/Connected/)
-    const duration = await page
-      .getByRole('status', { name: 'Connection' })
-      .locator('span')
-      .first()
-      .evaluate((el) => getComputedStyle(el).animationDuration)
+    // The reconnecting banner's dot pulses; the status dot is static when connected.
+    fakeDaemon.goDown()
+    const dot = page.getByRole('alert').locator('span[aria-hidden]').first()
+    await expect(dot).toBeAttached()
+    const { name, duration } = await dot.evaluate((el) => ({
+      name: getComputedStyle(el).animationName,
+      duration: getComputedStyle(el).animationDuration,
+    }))
+    expect(name).not.toBe('none')
     expect(parseFloat(duration)).toBeLessThan(0.001)
     await context.close()
   })

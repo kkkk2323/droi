@@ -106,4 +106,27 @@ describe('DaemonSupervisor', () => {
     while (delays.length < 3) await once(supervisor, 'state')
     expect(delays.slice(0, 3)).toEqual([10, 20, 20])
   })
+
+  test('a spawn that throws is retried with backoff instead of crashing', async () => {
+    let calls = 0
+    supervisor = new DaemonSupervisor({
+      spawn: (port) => {
+        calls += 1
+        if (calls === 1) throw new Error('droid executable not found')
+        return spawnFakeDaemon(port)
+      },
+      backoffMs: [10],
+    })
+    const states: DaemonState[] = []
+    supervisor.on('state', (state) => states.push(state))
+    supervisor.start()
+    await waitForStatus(supervisor, 'running')
+    expect(states).toContainEqual({
+      status: 'restarting',
+      delayMs: 10,
+      attempt: 1,
+      reason: 'droid executable not found',
+    })
+    expect(calls).toBe(2)
+  })
 })

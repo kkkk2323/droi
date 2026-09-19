@@ -171,5 +171,10 @@ test.describe('reconnect keeps the Session', () => {
     })
     await expect(page.getByRole('region', { name: 'Fix the login bug' })).toBeVisible()
     await expect(transcript).toContainText('Why does login fail?')
+    // The Daemon streams only to sockets that loaded the Session, so the
+    // Client must load it again on the new connection.
+    await expect
+      .poll(() => fakeDaemon.requests.filter((r) => r.method === 'daemon.load_session').length)
+      .toBe(2)
   })
 })
