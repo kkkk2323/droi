@@ -15,13 +15,12 @@
     ],
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/renderer/src/*"
+        "./src/renderer/src/*"
       ],
       "@shared/*": [
-        "src/shared/*"
+        "./src/shared/*"
       ]
     }
   }
