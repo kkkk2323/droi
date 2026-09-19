@@ -10,7 +10,6 @@ export interface SessionView {
   messages: FactoryDroidMessage[]
   loadState: LoadState
   workingState: DroidWorkingState
-  streamingMessageIds: ReadonlySet<string>
   hasOlderMessages: boolean
   loadError: string | null
 }
@@ -19,7 +18,6 @@ const EMPTY: SessionView = {
   messages: [],
   loadState: LOAD_STATE.notLoaded,
   workingState: 'idle' as DroidWorkingState,
-  streamingMessageIds: new Set(),
   hasOlderMessages: false,
   loadError: null,
 }
@@ -71,22 +69,31 @@ export function useSession(sessionId: string | null): SessionView {
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      const bump = (_event: unknown, payload: { sessionId: string }) => {
-        if (payload.sessionId !== sessionId) return
+      // A streaming turn fires several events per delta; render at most once
+      // per animation frame.
+      let frame: number | null = null
+      const scheduleRender = () => {
         version.current += 1
-        listener()
+        if (frame !== null) return
+        frame = requestAnimationFrame(() => {
+          frame = null
+          listener()
+        })
+      }
+      const bump = (_event: unknown, payload: { sessionId: string }) => {
+        if (payload.sessionId === sessionId) scheduleRender()
       }
       const unsubscribe = sessionState.subscribeToSessionEvents(WATCHED_EVENTS, bump)
       const onFailed = (id: string) => {
         if (id !== sessionId) return
         loadError.current = 'Session not found'
-        version.current += 1
-        listener()
+        scheduleRender()
       }
       controller.on('sessionNotFound', onFailed)
       return () => {
         unsubscribe()
         controller.off('sessionNotFound', onFailed)
+        if (frame !== null) cancelAnimationFrame(frame)
       }
     },
     [controller, sessionState, sessionId],
@@ -102,7 +109,6 @@ export function useSession(sessionId: string | null): SessionView {
           messages: manager.getDisplayMessages(),
           loadState: manager.getLoadState() as unknown as LoadState,
           workingState: manager.getDroidWorkingState(),
-          streamingMessageIds: new Set(manager.getStreamingMessageIds()),
           hasOlderMessages: manager.getHasOlderMessages(),
           loadError: loadError.current,
         }

@@ -5,22 +5,26 @@ import { MessageEntry } from './message-entry'
 import { buildTranscript, type TranscriptEntry } from './transcript'
 
 interface ListContext {
-  streamingMessageIds: ReadonlySet<string>
+  /** Id of the entry that is still being streamed by the Daemon, if any. */
+  streamingEntryId: string | null
 }
 
 function renderEntry(_index: number, entry: TranscriptEntry, context: ListContext) {
-  return <MessageEntry entry={entry} isStreaming={context.streamingMessageIds.has(entry.id)} />
+  return <MessageEntry entry={entry} isStreaming={entry.id === context.streamingEntryId} />
 }
 
 /** Virtualised transcript that starts at, and follows, the latest message. */
 export function MessageList({
   messages,
-  streamingMessageIds,
+  isStreaming,
 }: {
   messages: readonly FactoryDroidMessage[]
-  streamingMessageIds: ReadonlySet<string>
+  /** True while the Daemon is producing assistant text; marks the last assistant entry. */
+  isStreaming: boolean
 }) {
   const entries = useMemo(() => buildTranscript(messages), [messages])
+  const last = entries[entries.length - 1]
+  const streamingEntryId = isStreaming && last?.role === 'assistant' ? last.id : null
 
   if (entries.length === 0) {
     return (
@@ -36,7 +40,7 @@ export function MessageList({
       aria-label="Transcript"
       className="h-full"
       data={entries}
-      context={{ streamingMessageIds }}
+      context={{ streamingEntryId }}
       computeItemKey={(_, entry) => entry.id}
       initialTopMostItemIndex={entries.length - 1}
       followOutput="smooth"

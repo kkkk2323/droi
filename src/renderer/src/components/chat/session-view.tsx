@@ -1,9 +1,13 @@
 import { useSession } from '@/daemon/use-session'
+import { useTurn } from '@/daemon/use-turn'
 import { LOAD_STATE, type LoadState } from '@/daemon/sdk-enums'
+import { InputBar } from './input-bar'
 import { MessageList } from './message-list'
 
 export function SessionView({ sessionId, title }: { sessionId: string; title: string }) {
   const session = useSession(sessionId)
+  const turn = useTurn(sessionId)
+  const isRunning = session.workingState !== 'idle'
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
@@ -23,10 +27,17 @@ export function SessionView({ sessionId, title }: { sessionId: string; title: st
         ) : (
           <MessageList
             messages={session.messages}
-            streamingMessageIds={session.streamingMessageIds}
+            isStreaming={session.workingState === 'streaming_assistant_message'}
           />
         )}
       </div>
+      <InputBar
+        isRunning={isRunning}
+        disabled={session.loadState !== LOAD_STATE.loaded}
+        onSend={(text) => void turn.send(text)}
+        onCancel={() => void turn.cancel()}
+        error={turn.sendError}
+      />
     </section>
   )
 }
