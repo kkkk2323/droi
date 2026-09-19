@@ -1,11 +1,11 @@
-import { expect, test, openPairingLink } from './fixtures'
+import { expect, test, openPairingLink, openSidebar } from './fixtures'
 import { session, userMessage } from './fake-daemon/scenario'
 import { askUserTurn, permissionTurn } from './fake-daemon/turns'
 
 const chat = session('Deploy', '/Users/dev/acme-web', [userMessage('hi')])
 
 async function openAndSend(page: import('@playwright/test').Page, text: string) {
-  await page.getByRole('button', { name: /Deploy/ }).click()
+  await (await openSidebar(page)).getByRole('button', { name: /Deploy/ }).click()
   await page.getByRole('textbox', { name: 'Message' }).fill(text)
   await page.getByRole('button', { name: 'Send' }).click()
 }
@@ -119,7 +119,7 @@ test.describe('two Clients on one Session (ADR 0003)', () => {
     const phoneContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const phone = await phoneContext.newPage()
     await openPairingLink(phone, fakeDaemon, fakeDaemon.token)
-    await phone.getByRole('button', { name: /Deploy/ }).click()
+    await (await openSidebar(phone)).getByRole('button', { name: /Deploy/ }).click()
     await expect(phone.getByRole('log', { name: 'Transcript' })).toBeVisible()
 
     await openAndSend(desktop, 'Run the tests')

@@ -16,9 +16,10 @@ test.describe('new session', () => {
   test('recent Workspaces come from existing Sessions, newest first, deduplicated', async ({
     page,
     openClient,
+    openSidebar,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
     const form = page.getByRole('region', { name: 'New session' })
     const recent = form.getByRole('list').getByRole('button')
     await expect(recent).toHaveCount(2)
@@ -31,9 +32,10 @@ test.describe('new session', () => {
     page,
     fakeDaemon,
     openClient,
+    openSidebar,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
     await page.getByRole('button', { name: /billing-service/ }).click()
 
     const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
@@ -45,9 +47,7 @@ test.describe('new session', () => {
     expect(new URL(page.url()).hash).toMatch(/^#\/s\//)
 
     // The Session appears in the sidebar under its Workspace.
-    const billing = page
-      .getByRole('navigation', { name: 'Sessions' })
-      .getByRole('region', { name: 'billing-service' })
+    const billing = (await openSidebar()).getByRole('region', { name: 'billing-service' })
     await expect(billing.getByRole('button', { name: /New session/ })).toBeVisible()
     await expect(billing.getByRole('button', { name: /New session/ })).toHaveAttribute(
       'aria-current',
@@ -55,9 +55,14 @@ test.describe('new session', () => {
     )
   })
 
-  test('a typed path is validated by the Daemon', async ({ page, fakeDaemon, openClient }) => {
+  test('a typed path is validated by the Daemon', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
     await openClient()
-    await page.getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
     const path = page.getByRole('textbox', { name: 'Workspace path' })
     const start = page.getByRole('button', { name: 'Start' })
     await expect(start).toBeDisabled()
@@ -76,10 +81,6 @@ test.describe('new session', () => {
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeEnabled()
     const created = fakeDaemon.requests.find((r) => r.method === 'daemon.initialize_session')
     expect(created?.params).toMatchObject({ cwd: '/Users/dev/fresh-project' })
-    await expect(
-      page
-        .getByRole('navigation', { name: 'Sessions' })
-        .getByRole('region', { name: 'fresh-project' }),
-    ).toBeVisible()
+    await expect((await openSidebar()).getByRole('region', { name: 'fresh-project' })).toBeVisible()
   })
 })

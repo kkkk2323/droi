@@ -3,6 +3,7 @@ import { Virtuoso } from 'react-virtuoso'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { MessageEntry } from './message-entry'
 import { buildTranscript, type TranscriptEntry } from './transcript'
+import { prefersReducedMotion } from '@/lib/use-media-query'
 
 interface ListContext {
   /** Id of the entry that is still being streamed by the Daemon, if any. */
@@ -43,7 +44,7 @@ export function MessageList({
       context={{ streamingEntryId }}
       computeItemKey={(_, entry) => entry.id}
       initialTopMostItemIndex={entries.length - 1}
-      followOutput="smooth"
+      followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
       alignToBottom
       increaseViewportBy={{ top: 600, bottom: 600 }}
       itemContent={renderEntry}

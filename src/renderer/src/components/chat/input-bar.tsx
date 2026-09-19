@@ -36,7 +36,7 @@ export function InputBar({
   return (
     <form
       aria-label="Message composer"
-      className="shrink-0 border-t bg-background p-3"
+      className="shrink-0 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       onSubmit={(event) => {
         event.preventDefault()
         submit()

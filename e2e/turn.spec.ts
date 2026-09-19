@@ -25,9 +25,10 @@ test.describe('sending a prompt', () => {
     page,
     fakeDaemon,
     openClient,
+    pickSession,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: /Chat/ }).click()
+    await pickSession(/Chat/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
     await expect(transcript).toContainText('How can I help?')
 
@@ -65,9 +66,10 @@ test.describe('sending a prompt', () => {
   test('send stays disabled while a turn runs and for empty input', async ({
     page,
     openClient,
+    pickSession,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: /Chat/ }).click()
+    await pickSession(/Chat/)
     const input = page.getByRole('textbox', { name: 'Message' })
     const send = page.getByRole('button', { name: 'Send' })
     await expect(send).toBeDisabled()
@@ -100,9 +102,10 @@ test.describe('cancelling a turn', () => {
     page,
     fakeDaemon,
     openClient,
+    pickSession,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: /Chat/ }).click()
+    await pickSession(/Chat/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
     await page.getByRole('textbox', { name: 'Message' }).fill('Tell me a long story')
     await page.getByRole('button', { name: 'Send' }).click()

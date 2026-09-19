@@ -70,6 +70,6 @@ test.describe('remote client surface', () => {
     await expect(page.getByRole('button', { name: 'Settings' })).toHaveCount(0)
     await page.goto('/#/settings')
     await expect(page.getByRole('region', { name: 'Settings' })).toHaveCount(0)
-    await expect(page.getByText('Select a session')).toBeVisible()
+    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
   })
 })

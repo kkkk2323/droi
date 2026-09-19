@@ -13,9 +13,10 @@ test.describe('session settings', () => {
     page,
     fakeDaemon,
     openClient,
+    pickSession,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: /First session/ }).click()
+    await pickSession(/First session/)
 
     const model = page.getByRole('combobox', { name: 'Model' })
     const effort = page.getByRole('combobox', { name: 'Reasoning effort' })
@@ -72,35 +73,39 @@ test.describe('session settings', () => {
     page,
     fakeDaemon,
     openClient,
+    pickSession,
+    openSidebar,
   }) => {
     await openClient()
-    await page.getByRole('button', { name: /First session/ }).click()
+    await pickSession(/First session/)
     await page.getByRole('button', { name: 'Rename session' }).click()
     const input = page.getByRole('textbox', { name: 'Session title' })
     await input.fill('Renamed session')
     await input.press('Enter')
 
     await fakeDaemon.waitForRequest('daemon.rename_session')
-    const sidebar = page.getByRole('navigation', { name: 'Sessions' })
+    await expect(page.getByRole('heading', { level: 2, name: 'Renamed session' })).toBeVisible()
+    const sidebar = await openSidebar()
     await expect(sidebar.getByRole('button', { name: /Renamed session/ })).toBeVisible()
     await expect(sidebar.getByRole('button', { name: /First session/ })).toHaveCount(0)
-    await expect(page.getByRole('heading', { level: 2, name: 'Renamed session' })).toBeVisible()
   })
 
   test('archiving removes the Session; the archived filter shows it again', async ({
     page,
     fakeDaemon,
     openClient,
+    pickSession,
+    openSidebar,
   }) => {
     await openClient()
-    const sidebar = page.getByRole('navigation', { name: 'Sessions' })
-    await page.getByRole('button', { name: /Second session/ }).click()
+    await pickSession(/Second session/)
     await page.getByRole('button', { name: 'Archive session' }).click()
 
     await fakeDaemon.waitForRequest('daemon.archive_session')
+    const sidebar = await openSidebar()
     await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
     await expect(sidebar.getByRole('button', { name: /First session/ })).toBeVisible()
-    await expect(page.getByText('Select a session')).toBeVisible()
+    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
 
     await sidebar.getByRole('checkbox', { name: 'Show archived' }).check()
     const archived = sidebar.getByRole('button', { name: /Second session/ })

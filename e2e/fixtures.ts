@@ -1,4 +1,4 @@
-import { test as base, type Page } from '@playwright/test'
+import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { FakeDaemon } from './fake-daemon/fake-daemon'
 import type { ScenarioInput } from './fake-daemon/scenario'
 
@@ -12,6 +12,10 @@ interface Fixtures {
   scenario: ScenarioInput
   /** Open the Client as a Remote Client following a pairing link. */
   openClient: (options?: OpenClientOptions) => Promise<void>
+  /** The Sessions sidebar, opening the drawer first on narrow screens. */
+  openSidebar: () => Promise<Locator>
+  /** Pick a Session from the sidebar (or drawer) by its title. */
+  pickSession: (title: RegExp | string) => Promise<void>
 }
 
 export const test = base.extend<Fixtures>({
@@ -26,7 +30,27 @@ export const test = base.extend<Fixtures>({
       await openPairingLink(page, fakeDaemon, options.token ?? fakeDaemon.token)
     })
   },
+  openSidebar: async ({ page }, use) => {
+    await use(() => openSidebar(page))
+  },
+  pickSession: async ({ page }, use) => {
+    await use(async (title) => {
+      const sidebar = await openSidebar(page)
+      await sidebar.getByRole('button', { name: title }).click()
+    })
+  },
 })
+
+export async function openSidebar(page: Page): Promise<Locator> {
+  const inline = page.getByRole('navigation', { name: 'Sessions' })
+  if (await inline.isVisible()) return inline
+  const drawer = page.getByRole('dialog', { name: 'Sessions' })
+  if (!(await drawer.isVisible())) {
+    await page.getByRole('button', { name: 'Open sessions' }).click()
+  }
+  await expect(drawer).toBeVisible()
+  return drawer.getByRole('navigation', { name: 'Sessions' })
+}
 
 export async function openPairingLink(
   page: Page,
@@ -37,4 +61,4 @@ export async function openPairingLink(
   await page.goto(`/#${fragment.toString()}`)
 }
 
-export { expect } from '@playwright/test'
+export { expect }

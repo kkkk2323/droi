@@ -1,0 +1,20 @@
+{
+  "name": "Droi",
+  "short_name": "Droi",
+  "description": "Front end for the Droid coding agent",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1c1c1e",
+  "theme_color": "#1c1c1e",
+  "icons": [
+    { "src": "/icons/icon-256.png", "sizes": "256x256", "type": "image/png" },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
