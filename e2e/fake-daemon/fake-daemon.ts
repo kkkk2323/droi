@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
 import { GATEWAY_DAEMON_PATH, GATEWAY_TOKEN_QUERY } from '../../src/shared/gateway'
 import { validateOutbound, validateInboundEnvelope } from './schemas'
-import { createScenario, type Scenario, type ScenarioInput } from './scenario'
+import { createScenario, HOST_ID, type Scenario, type ScenarioInput } from './scenario'
 import type { JsonRpcRequest } from './protocol'
 
 export interface RecordedRequest {
@@ -216,7 +216,7 @@ export class FakeDaemon {
           droidCLIVersion: '0.223.0',
           homedir: '/Users/test',
           platform: 'darwin',
-          hostId: 'host-test',
+          hostId: HOST_ID,
         },
       })
       return

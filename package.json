@@ -78,9 +78,17 @@
   "author": "kkkk2323",
   "license": "MIT",
   "dependencies": {
+    "@base-ui/react": "^1.8.0",
     "@factory/droid-sdk": "0.9.1",
+    "@tanstack/react-query": "^5.103.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.47.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-virtuoso": "^4.18.13",
+    "streamdown": "^2.6.0",
+    "tailwind-merge": "^3.7.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {

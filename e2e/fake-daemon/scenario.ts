@@ -86,11 +86,13 @@ export function createScenario(input: ScenarioInput): Scenario {
   }
 }
 
+export const HOST_ID = '11111111-1111-4111-8111-111111111111'
+
 export function loadSessionResult(fixture: SessionFixture): Record<string, unknown> {
   return {
     session: { messages: fixture.messages, title: fixture.title },
     hasOlderMessages: false,
-    hostId: 'host-test',
+    hostId: HOST_ID,
     settings: sessionSettings(),
     isAgentLoopInProgress: false,
     workingState: 'idle',
@@ -157,6 +159,10 @@ export function userMessage(text: string): MessageFixture {
     updatedAt: clock,
     visibility: 'both',
   }
+}
+
+export function thinkingBlock(thinking: string, durationMs?: number): Record<string, unknown> {
+  return { type: 'thinking', thinking, signature: '', ...(durationMs ? { durationMs } : {}) }
 }
 
 export function assistantMessage(text: string): MessageFixture {
