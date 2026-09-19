@@ -11,7 +11,12 @@ import { locateDroid } from './daemon/locate-droid'
 import { startGateway, type ClientSource, type Gateway } from './gateway/gateway'
 import { createShellSettingsStore, type SettingsCipher } from './shell-settings'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
-import { SHELL_IPC, type PairingInfo, type ShellSettingsSnapshot } from '../shared/shell-settings'
+import {
+  SHELL_IPC,
+  type PairingInfo,
+  type ShellSettingsPatch,
+  type ShellSettingsSnapshot,
+} from '../shared/shell-settings'
 
 // Tests point the Shell at a throwaway profile so they never touch real settings.
 const userDataOverride = process.env['DROI_USER_DATA_DIR']
@@ -93,6 +98,8 @@ function snapshot(): ShellSettingsSnapshot {
   return {
     remoteAccess: settings.settings.remoteAccess,
     droidPath: settings.settings.droidPath,
+    factoryApiBaseUrl: settings.settings.factoryApiBaseUrl,
+    factoryApiBaseUrlFromEnvironment: process.env['FACTORY_API_BASE_URL'] ?? null,
     hasApiKey: settings.getApiKey() !== null,
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
@@ -120,24 +127,29 @@ function broadcastChange(): void {
 function registerIpc(): void {
   ipcMain.handle(SHELL_IPC.get, () => snapshot())
   ipcMain.handle(SHELL_IPC.getPairing, () => pairing())
-  ipcMain.handle(
-    SHELL_IPC.update,
-    async (_event, patch: { remoteAccess?: boolean; droidPath?: string | null }) => {
-      const before = settings.settings
-      settings.update({
-        ...(patch.remoteAccess !== undefined ? { remoteAccess: patch.remoteAccess } : {}),
-        ...(patch.droidPath !== undefined ? { droidPath: patch.droidPath || null } : {}),
-      })
-      if (patch.remoteAccess !== undefined && patch.remoteAccess !== before.remoteAccess) {
-        await gateway?.setRemoteAccess(patch.remoteAccess)
-      }
-      if (patch.droidPath !== undefined && patch.droidPath !== before.droidPath) {
-        await restartDaemon()
-      }
-      broadcastChange()
-      return snapshot()
-    },
-  )
+  ipcMain.handle(SHELL_IPC.update, async (_event, patch: ShellSettingsPatch) => {
+    const before = settings.settings
+    settings.update({
+      ...(patch.remoteAccess !== undefined ? { remoteAccess: patch.remoteAccess } : {}),
+      ...(patch.droidPath !== undefined ? { droidPath: patch.droidPath || null } : {}),
+      ...(patch.factoryApiBaseUrl !== undefined
+        ? { factoryApiBaseUrl: patch.factoryApiBaseUrl?.trim() || null }
+        : {}),
+    })
+    const after = settings.settings
+    if (patch.remoteAccess !== undefined && after.remoteAccess !== before.remoteAccess) {
+      await gateway?.setRemoteAccess(after.remoteAccess)
+    }
+    // The Daemon reads its path and environment at spawn only.
+    if (
+      after.droidPath !== before.droidPath ||
+      after.factoryApiBaseUrl !== before.factoryApiBaseUrl
+    ) {
+      await restartDaemon()
+    }
+    broadcastChange()
+    return snapshot()
+  })
   ipcMain.handle(SHELL_IPC.setApiKey, async (_event, apiKey: string | null) => {
     settings.setApiKey(apiKey?.trim() || null)
     // The Daemon inherits the key at spawn, so a new key needs a new Daemon.

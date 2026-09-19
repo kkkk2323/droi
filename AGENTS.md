@@ -30,7 +30,9 @@ Unit tests sit next to the code as `*.test.ts` / `*.test.tsx` and run with vites
 | `pnpm build` | Production build (electron-vite) |
 | `pnpm build:mac` | Build the macOS DMG |
 | `pnpm test` | Run vitest once |
-| `pnpm test:e2e` | Run Playwright against the Client dev server |
+| `pnpm test:e2e` | Run Playwright against the Client dev server (Fake Daemon) |
+| `pnpm test:smoke` | Electron smoke suite against the built Shell (`pnpm build` first) |
+| `pnpm test:live` | One case against a real Daemon; skips unless `FACTORY_API_KEY` is set |
 | `pnpm typecheck` | TypeScript validation (node + web) |
 | `pnpm lint` / `pnpm lint:fix` | oxlint |
 | `pnpm format` / `pnpm format:check` | oxfmt |
@@ -55,4 +57,13 @@ Client or the Fake Daemon changed. The PR workflow runs all three.
 
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
+- Live test through the local droid-proxy (`dp`) with a cheap model:
+  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') pnpm test:live`
+  (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)
+
+## Factory API base URL
+
+The Desktop Shell passes `FACTORY_API_BASE_URL` to the Daemon when the Settings page has a
+"Factory API base URL" (or the Shell's own environment sets it). Point it at droid-proxy
+(`dp status` → baseURL) to route the Daemon's Factory traffic through the proxy.
 </coding_guidelines>

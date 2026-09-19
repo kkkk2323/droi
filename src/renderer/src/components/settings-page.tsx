@@ -63,6 +63,12 @@ export function SettingsPage({ bridge }: { bridge: ShellSettingsBridge }) {
         bridge={bridge}
         onSaved={setSnapshot}
       />
+      <BaseUrlSection
+        key={snapshot.factoryApiBaseUrl ?? ''}
+        snapshot={snapshot}
+        bridge={bridge}
+        onSaved={setSnapshot}
+      />
       <RemoteAccessSection
         key={String(snapshot.remoteAccess)}
         snapshot={snapshot}
@@ -202,6 +208,52 @@ function DroidPathSection({
         />
         <Button type="submit" variant="outline">
           Save path
+        </Button>
+      </form>
+    </Field>
+  )
+}
+
+function BaseUrlSection({
+  snapshot,
+  bridge,
+  onSaved,
+}: {
+  snapshot: ShellSettingsSnapshot
+  bridge: ShellSettingsBridge
+  onSaved: (s: ShellSettingsSnapshot) => void
+}) {
+  const [value, setValue] = useState(snapshot.factoryApiBaseUrl ?? '')
+  const inherited = snapshot.factoryApiBaseUrlFromEnvironment
+  return (
+    <Field
+      label="Factory API base URL"
+      hint={
+        snapshot.factoryApiBaseUrl
+          ? 'The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy.'
+          : inherited
+            ? `Inherited from the environment: ${inherited}. Set a value here to override it.`
+            : 'Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).'
+      }
+    >
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void bridge.update({ factoryApiBaseUrl: value.trim() || null }).then(onSaved)
+        }}
+      >
+        <input
+          aria-label="Factory API base URL"
+          placeholder={inherited ?? 'https://api.factory.ai'}
+          value={value}
+          spellCheck={false}
+          autoCapitalize="off"
+          onChange={(event) => setValue(event.target.value)}
+          className={`${inputClass} font-mono`}
+        />
+        <Button type="submit" variant="outline">
+          Save URL
         </Button>
       </form>
     </Field>

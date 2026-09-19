@@ -27,6 +27,7 @@ describe('shell settings', () => {
     expect(store.settings.remoteAccess).toBe(false)
     expect(store.settings.pairingToken).toMatch(/^[A-Za-z0-9_-]{32}$/)
     expect(store.settings.droidPath).toBeNull()
+    expect(store.settings.factoryApiBaseUrl).toBeNull()
     expect(store.getApiKey()).toBeNull()
   })
 
@@ -34,13 +35,18 @@ describe('shell settings', () => {
     const file = tempFile()
     const store = createShellSettingsStore({ file, cipher, env: {} })
     const token = store.settings.pairingToken
-    store.update({ remoteAccess: true, droidPath: '/x/droid' })
+    store.update({
+      remoteAccess: true,
+      droidPath: '/x/droid',
+      factoryApiBaseUrl: 'http://127.0.0.1:37650',
+    })
     store.setApiKey('fk-test')
 
     const reloaded = createShellSettingsStore({ file, cipher, env: {} })
     expect(reloaded.settings).toMatchObject({
       remoteAccess: true,
       droidPath: '/x/droid',
+      factoryApiBaseUrl: 'http://127.0.0.1:37650',
       pairingToken: token,
     })
     expect(reloaded.getApiKey()).toBe('fk-test')

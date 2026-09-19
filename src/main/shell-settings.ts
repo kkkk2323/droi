@@ -10,6 +10,11 @@ export interface ShellSettings {
   pairingToken: string
   /** Explicit path to the `droid` executable; null means auto-detect. */
   droidPath: string | null
+  /**
+   * Base URL the Daemon uses for Factory's API (FACTORY_API_BASE_URL), for a
+   * local proxy such as droid-proxy; null keeps the Daemon's default.
+   */
+  factoryApiBaseUrl: string | null
 }
 
 export interface SettingsCipher {
@@ -34,6 +39,7 @@ export interface ShellSettingsStore {
 interface StoredFile {
   remoteAccess: boolean
   droidPath: string | null
+  factoryApiBaseUrl: string | null
   pairingTokenEncrypted: string
   apiKeyEncrypted: string | null
 }
@@ -59,6 +65,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
   const current: StoredFile = {
     remoteAccess: loaded?.remoteAccess ?? false,
     droidPath: loaded?.droidPath ?? null,
+    factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
     pairingTokenEncrypted: cipher.encrypt(pairingToken),
     apiKeyEncrypted: loaded?.apiKeyEncrypted ?? null,
   }
@@ -73,11 +80,17 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
 
   return {
     get settings() {
-      return { remoteAccess: current.remoteAccess, droidPath: current.droidPath, pairingToken }
+      return {
+        remoteAccess: current.remoteAccess,
+        droidPath: current.droidPath,
+        factoryApiBaseUrl: current.factoryApiBaseUrl,
+        pairingToken,
+      }
     },
     update(patch) {
       if (patch.remoteAccess !== undefined) current.remoteAccess = patch.remoteAccess
       if (patch.droidPath !== undefined) current.droidPath = patch.droidPath
+      if (patch.factoryApiBaseUrl !== undefined) current.factoryApiBaseUrl = patch.factoryApiBaseUrl
       save()
     },
     resetPairingToken() {
@@ -116,6 +129,8 @@ function load(file: string): StoredFile | null {
     return {
       remoteAccess: parsed.remoteAccess === true,
       droidPath: typeof parsed.droidPath === 'string' ? parsed.droidPath : null,
+      factoryApiBaseUrl:
+        typeof parsed.factoryApiBaseUrl === 'string' ? parsed.factoryApiBaseUrl : null,
       pairingTokenEncrypted:
         typeof parsed.pairingTokenEncrypted === 'string' ? parsed.pairingTokenEncrypted : '',
       apiKeyEncrypted: typeof parsed.apiKeyEncrypted === 'string' ? parsed.apiKeyEncrypted : null,

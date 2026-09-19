@@ -10,7 +10,9 @@
     "src/shared/**/*",
     "e2e/**/*",
     "playwright.electron.config.ts",
-    "e2e-electron/**/*.ts"
+    "e2e-electron/**/*.ts",
+    "playwright.live.config.ts",
+    "e2e-live/**/*.ts"
   ],
   "compilerOptions": {
     "composite": true,

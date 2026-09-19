@@ -4,6 +4,10 @@
 export interface ShellSettingsSnapshot {
   remoteAccess: boolean
   droidPath: string | null
+  /** FACTORY_API_BASE_URL handed to the Daemon; null keeps its default. */
+  factoryApiBaseUrl: string | null
+  /** True when FACTORY_API_BASE_URL is set in the Shell's environment. */
+  factoryApiBaseUrlFromEnvironment: string | null
   /** Whether a Factory API key is stored or supplied by the environment. Never the key. */
   hasApiKey: boolean
   /** True when the key comes from FACTORY_API_KEY and cannot be edited here. */
@@ -21,12 +25,15 @@ export interface PairingInfo {
   port: number
 }
 
+export interface ShellSettingsPatch {
+  remoteAccess?: boolean
+  droidPath?: string | null
+  factoryApiBaseUrl?: string | null
+}
+
 export interface ShellSettingsBridge {
   get(): Promise<ShellSettingsSnapshot>
-  update(patch: {
-    remoteAccess?: boolean
-    droidPath?: string | null
-  }): Promise<ShellSettingsSnapshot>
+  update(patch: ShellSettingsPatch): Promise<ShellSettingsSnapshot>
   setApiKey(apiKey: string | null): Promise<ShellSettingsSnapshot>
   resetPairingToken(): Promise<PairingInfo>
   getPairing(): Promise<PairingInfo>
