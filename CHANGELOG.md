@@ -3,6 +3,19 @@
 ### Fixes
 - Improve key selection logic for spillover threshold and tie-breaking in `selectActiveKey`
 
+## Unreleased
+
+### Changed
+
+- Rebuilt as a thin Client of `droid daemon`: the Desktop Shell starts and supervises the Daemon and hosts a Gateway; the Client (desktop window and phone browser) speaks only the Daemon protocol through `@factory/droid-sdk`.
+- Phone access through pairing (QR code / link) and Remote Access, with a PWA manifest.
+- Per-Session model, reasoning effort and autonomy from the Daemon's model list; rename and archive; new Session from a recent Workspace or a typed path.
+- Settings: Factory API key stored with `safeStorage`, `droid` path override, Factory API base URL (for a local proxy such as droid-proxy).
+
+### Removed
+
+- Droi's own JSON-RPC layer, session files under `~/.droid-app`, API key rotation and proxy, Hono API, Mission GUI, diagnostics and trace-chain, PostHog.
+
 ## 0.33.1 - 2026-04-10
 
 ### Fixes

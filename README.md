@@ -5,174 +5,86 @@
 # Droi
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
-[![Electron](https://img.shields.io/badge/Electron-40-47848F?logo=electron)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron)](https://www.electronjs.org/)
 
-A desktop GUI application for [Droid CLI](https://docs.factory.ai), built with Electron + React + TypeScript. It provides an intuitive chat interface for easier interaction with AI assistants.
+Droi is a desktop and mobile-web front end for the [Factory Droid](https://docs.factory.ai) coding agent. It does not run the agent itself: it starts `droid daemon` and presents the Daemon's Sessions in a fast, keyboard-friendly interface on your computer and, if you turn it on, on your phone.
 
-![Page Screenshot](./screenshot/page.png)
+![Droi](./screenshot/page.png)
 
-## Features
+## What it does
 
-- **Multi-Model Support** - Switch between Claude, GPT, Gemini, and more
-- **Persistent Sessions** - Stream JSON-RPC sessions via `droid exec` with auto-save to local files
-- **Auto-Level Control** - Choose from default/low/medium/high autonomy levels
-- **Real-time Streaming** - Live AI responses via JSON-RPC notifications
-- **Permission Prompts** - Handle permission requests and user confirmations in the UI
-- **API Key Rotation** - Manage multiple API keys with one-click switching
-- **Web UI via LAN** - Access the app from other devices on your local network
-- **Session Fingerprinting** - Sessions bound to API keys for secure isolation
+- **Every Session, one list** — the sidebar shows all Sessions the Daemon knows, grouped by Workspace, including ones started from the `droid` CLI.
+- **Full transcripts** — user and assistant turns, tool calls with their results, and reasoning blocks, virtualised for long histories.
+- **Live turns** — send a prompt, watch the reply stream, cancel mid-turn.
+- **Prompts** — approve or deny tool permissions and answer the agent's questions; when a Session is open on the desktop and on a phone, both see the prompt and the first answer wins.
+- **Per-Session settings** — model, reasoning effort and autonomy from the Daemon's own model list; rename and archive.
+- **New Sessions** — from a recent Workspace or a typed path, also from a phone.
+- **Phone access** — turn on Remote Access, scan the QR code, add Droi to your home screen. The phone talks to a Gateway on your computer; the Factory API key never leaves it.
+- **Local proxy support** — point the Daemon at a Factory API base URL such as a local `droid-proxy`.
 
-## Installation
+## How it fits together
 
-### Prerequisites
+```
+phone browser ──┐
+                ├── Gateway (Desktop Shell) ── droid daemon (loopback)
+desktop window ─┘        │
+                    Pairing Token check, API key injection
+```
 
-- Node.js 25+
-- pnpm (recommended) or npm
-- [Droid CLI](https://docs.factory.ai) installed and configured
+- **Daemon**: `droid daemon`, started and supervised by the Desktop Shell. Owns every Session.
+- **Desktop Shell**: the Electron app. Starts the Daemon, hosts the Gateway, opens the window. Holds no conversation state.
+- **Gateway**: checks the Pairing Token at the WebSocket upgrade, swaps in the Factory API key, forwards everything else verbatim. Listens on loopback; on LAN interfaces only while Remote Access is on.
+- **Client**: one React app served by the Gateway; the same bundle runs in the desktop window and on the phone.
 
-### Quick Start
+The vocabulary is in [CONTEXT.md](./CONTEXT.md); the decisions are in [docs/adr](./docs/adr).
+
+## Requirements
+
+- [Droid CLI](https://docs.factory.ai) installed (`droid` on PATH or in `~/.local/bin`, or set the path in Settings)
+- A Factory API key that belongs to the user logged into `droid` on this computer
+- Node.js 24+ and pnpm for development
+
+## Getting started
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd droi
-
-# Install dependencies
 pnpm install
-
-# Set API Key (optional, can also be set in-app)
-export FACTORY_API_KEY=fk-...
-
-# Start development mode
-pnpm dev
+pnpm dev            # opens the Desktop Shell
 ```
+
+Open **Settings** (gear icon) to store your Factory API key, optionally set a Factory API base URL (for example a local `droid-proxy`), and turn on **Remote Access** to pair a phone.
+
+`FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
 
 ## Development
 
-```bash
-# Standard development mode
-pnpm dev
+| Command | What it does |
+|---------|--------------|
+| `pnpm dev` | Desktop Shell with hot reload |
+| `pnpm dev:client` | Client alone in a browser (vite) |
+| `pnpm check` | format check, lint, typecheck |
+| `pnpm test` | unit tests (vitest) |
+| `pnpm test:e2e` | Playwright: Client against the Fake Daemon, desktop and phone viewports |
+| `pnpm test:smoke` | Playwright: the built Desktop Shell (`pnpm build` first) |
+| `pnpm test:live` | one case against a real Daemon; runs only with `FACTORY_API_KEY` |
+| `pnpm build` / `pnpm build:mac` | production build / macOS DMG |
 
-# Development with Web UI + HMR (enables LAN access)
-# - Renderer runs on Vite dev server (default http://localhost:5173)
-# - API server runs on port 3001, Web UI accessible from LAN
-pnpm dev:mobile
+The E2E suite never needs a Factory key: it drives the real Client against a scripted Fake Daemon that validates its own messages with the SDK's schemas (see [ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md)).
 
-# Start API server only
-pnpm dev:api
-
-# Type checking
-pnpm typecheck
-
-# Run tests
-pnpm test
-
-# Build production version
-pnpm build
-```
-
-### Build Desktop Apps
-
-```bash
-# macOS
-pnpm build:mac
-
-# Windows
-pnpm build:win
-
-# Linux
-pnpm build:linux
-```
-
-## Web UI via LAN
-
-Droi can expose a local HTTP server, allowing you to access the app from other devices on your local network (including phones).
-
-> Security Note: **Devices on your LAN have full control** (same capabilities as desktop UI, including running `/api/exec` and changing settings).
-
-### Enable Web UI
-
-```bash
-# Enable HTTP server + Web UI
-export DROID_WEB_ENABLED=true
-
-# Configure server bind address and port
-export DROID_APP_API_HOST=0.0.0.0
-export DROID_APP_API_PORT=3001
-
-# Start with Web UI enabled
-pnpm dev:mobile
-```
-
-Then open `http://<your-lan-ip>:3001` on any device in the same network.
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FACTORY_API_KEY` | Factory API Key | - |
-| `DROID_WEB_ENABLED` | Enable Web UI for LAN access | `true` |
-| `DROID_APP_API_HOST` | API server bind address | `0.0.0.0` |
-| `DROID_APP_API_PORT` | API server port | `3001` |
-| `DROID_APP_DATA_DIR` | Data storage directory | Electron userData |
-| `DROID_TRACE_CHAIN` | Enable chain debugging trace | `0` |
-
-## Project Structure
+## Project structure
 
 ```
-src/
-├── main/           # Electron main process and IPC handlers
-├── preload/        # Secure bridge APIs exposed to renderer
-├── renderer/       # React application
-│   ├── components/ # UI components
-│   ├── pages/      # Page components
-│   ├── hooks/      # React Hooks
-│   ├── state/      # State management
-│   └── lib/        # Utility libraries
-├── server/         # Local API server and mobile pairing endpoints
-├── backend/        # Core application logic
-│   ├── droid/      # Droid process management
-│   ├── keys/       # API Key management
-│   ├── git/        # Git integration
-│   ├── storage/    # Storage layer
-│   └── diagnostics/# Diagnostic tools
-└── shared/         # Cross-process protocols and types
+src/main/       Desktop Shell: Daemon supervisor, Gateway, settings, IPC
+src/preload/    minimal bridge (Gateway URL, window token, settings calls)
+src/renderer/   Client (React)
+src/shared/     contracts shared by Shell and Client
+e2e/            Playwright + Fake Daemon
+e2e-electron/   Desktop Shell smoke suite
+e2e-live/       live test
+docs/adr/       architecture decisions
 ```
-
-## Tech Stack
-
-- **Electron 40** + **electron-vite 5** - Cross-platform desktop app framework
-- **React 19** + **TypeScript 5.8** - Modern frontend development
-- **Vite 7.3** + **TailwindCSS 4.1** - Fast builds and styling
-- **TanStack Router** - Type-safe routing
-- **TanStack Query** - Data fetching and caching
-- **Zustand** - Lightweight state management
-- **Hono** - Fast, lightweight backend framework
-
-## Contributing
-
-Issues and Pull Requests are welcome!
-
-1. Fork this repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-Please follow the [Conventional Commits](https://conventionalcommits.org/) specification for commit messages.
-
-## Documentation
-
-- [Droid Exec Protocol](./docs/droid-exec.md)
-- [Droid Exec JSON-RPC Methods (Chinese)](./docs/droid-exec-jsonrpc-methods.zh-CN.md)
-- [Building Apps with Exec](./docs/use-exec-build-app.md)
 
 ## License
 
-[MIT](LICENSE) © 2026 kkkk2323
-
----
-
-> This project is a third-party desktop client for [Factory](https://factory.ai) Droid CLI and is not officially affiliated with Factory.
+MIT

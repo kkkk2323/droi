@@ -28,6 +28,8 @@ The interface should feel like a precision instrument -- quiet confidence rather
 
 5. **Code is the content** -- The chat and code output are the primary focus. All surrounding UI (sidebar, input bar, status indicators) exists to support the content area, not compete with it.
 
+6. **Accessible by construction** -- Every interactive element has a real role and an accessible name; state is exposed through `aria-current`, `aria-expanded`, `aria-live` and friends, not colour alone. Everything works from the keyboard and honours `prefers-reduced-motion`. The E2E suite selects by role and label, so an element a screen reader cannot name is an element the tests cannot find.
+
 ## Agent skills
 
 ### Issue tracker

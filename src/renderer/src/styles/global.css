@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Streamdown's own markup uses Tailwind utilities; scan it so they exist. */
+@source '../../../../node_modules/streamdown/dist/*.js';
 
 @font-face {
   font-family: 'Geist';
