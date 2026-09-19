@@ -11,6 +11,7 @@ export const clientConfig: UserConfig = {
   resolve: {
     alias: {
       '@': resolve(import.meta.dirname, 'src/renderer/src'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
     },
   },
   plugins: [tailwindcss(), react()],

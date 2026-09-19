@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
 import { once } from 'node:events'
-import { gatewayDaemonUrl, GATEWAY_API_KEY_PLACEHOLDER } from '../../shared/gateway'
+import {
+  gatewayDaemonUrl,
+  gatewayPairingCheckUrl,
+  GATEWAY_API_KEY_PLACEHOLDER,
+} from '../../shared/gateway'
 import { startGateway, type Gateway } from './gateway'
 
 const TOKEN = 'correct-pairing-token'
@@ -148,6 +152,13 @@ describe('Gateway', () => {
     const text = JSON.stringify(body)
     expect(text).not.toContain(API_KEY)
     expect(text).not.toContain(TOKEN)
+  })
+
+  test('GET /daemon answers 204 for the right token and 401 otherwise', async () => {
+    const ok = await fetch(gatewayPairingCheckUrl(gateway.url, TOKEN))
+    expect(ok.status).toBe(204)
+    const bad = await fetch(gatewayPairingCheckUrl(gateway.url, 'nope'))
+    expect(bad.status).toBe(401)
   })
 
   test('binds loopback only while Remote Access is off', () => {

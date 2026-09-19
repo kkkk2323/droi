@@ -181,11 +181,23 @@ function isAuthenticateRequest(message: unknown): message is AuthenticateRequest
 
 function handleHttp(options: GatewayOptions, request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url ?? '/', 'http://gateway')
+  if (url.pathname === GATEWAY_DAEMON_PATH) {
+    const ok = tokenMatches(url.searchParams.get(GATEWAY_TOKEN_QUERY), options.getPairingToken())
+    // Cross-origin so a Client served elsewhere (vite dev, tests) can check.
+    // The answer carries no secret.
+    response.writeHead(ok ? 204 : 401, {
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+    })
+    response.end()
+    return
+  }
   if (url.pathname === GATEWAY_META_PATH) {
     const body = JSON.stringify(options.getMeta())
     response.writeHead(200, {
       'content-type': 'application/json',
       'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
     })
     response.end(body)
     return
