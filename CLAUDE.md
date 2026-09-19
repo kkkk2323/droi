@@ -27,3 +27,17 @@ The interface should feel like a precision instrument -- quiet confidence rather
 4. **Consistency through constraint** -- Use the established component library (shadcn/ui + Base UI Vega). Resist adding one-off styles. Stick to the design token system (CSS variables, Tailwind utilities). New patterns must justify their existence.
 
 5. **Code is the content** -- The chat and code output are the primary focus. All surrounding UI (sidebar, input bar, status indicators) exists to support the content area, not compete with it.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues on `kkkk2323/droi` (via `gh`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the root and ADRs in `docs/adr/`. See `docs/agents/domain.md`.
