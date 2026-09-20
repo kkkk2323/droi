@@ -7,6 +7,7 @@ import { useSlashItems } from '@/daemon/use-slash-items'
 import { useContextUsage } from '@/daemon/use-context-usage'
 import { useSessionSettings } from '@/daemon/use-session-settings'
 import { COMPACT_COMMAND, useCompact } from '@/daemon/use-compact'
+import { usePrompts } from '@/daemon/use-prompts'
 import type { SessionSummary } from '@/daemon/sessions'
 import { LOAD_STATE } from '@/daemon/sdk-enums'
 import { takePendingPrompt } from '@/lib/pending-prompt'
@@ -46,6 +47,8 @@ export function SessionView({
   const isRunning = session.workingState !== 'idle' || compaction.isCompacting
   const loaded = session.loadState === LOAD_STATE.loaded
   const settings = useSessionSettings(sessionId)
+  const prompts = usePrompts(sessionId)
+  const hasPrompt = prompts.permissions.length > 0 || prompts.askUser.length > 0
   const contextUsage = useContextUsage(sessionId, { loaded, modelId: settings.modelId })
 
   // The parent's transcript is only loaded once asked for; it can be large.
@@ -122,18 +125,23 @@ export function SessionView({
       </div>
 
       <div className={cn(COLUMN, 'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]')}>
-        <PromptArea sessionId={sessionId} />
         <ComposerShelf sessionId={sessionId} />
-        <InputBar
-          isRunning={isRunning}
-          disabled={!loaded}
-          onSend={submit}
-          onCancel={() => void turn.cancel()}
-          error={turn.sendError ?? compaction.error}
-          footer={<SessionSettingsBar sessionId={sessionId} />}
-          slashItems={slashItems}
-          draftKey={sessionId}
-        />
+        {hasPrompt ? (
+          // The question or permission takes the composer's place; the draft
+          // is kept and comes back with the composer once answered.
+          <PromptArea sessionId={sessionId} />
+        ) : (
+          <InputBar
+            isRunning={isRunning}
+            disabled={!loaded}
+            onSend={submit}
+            onCancel={() => void turn.cancel()}
+            error={turn.sendError ?? compaction.error}
+            footer={<SessionSettingsBar sessionId={sessionId} />}
+            slashItems={slashItems}
+            draftKey={sessionId}
+          />
+        )}
         <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
           {workspace ? (
             <span className="flex min-w-0 items-center gap-1.5" title={workspace}>

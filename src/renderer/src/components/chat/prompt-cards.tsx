@@ -5,14 +5,14 @@ import { Button } from '@/components/ui/button'
 import { usePromptActions, usePrompts } from '@/daemon/use-prompts'
 import { cn } from '@/lib/utils'
 
-/** Every open Prompt for the Session, stacked above the composer. */
+/** Every open Prompt for the Session; it stands in for the composer while one is open. */
 export function PromptArea({ sessionId }: { sessionId: string }) {
   const prompts = usePrompts(sessionId)
   const actions = usePromptActions(sessionId)
   if (prompts.permissions.length === 0 && prompts.askUser.length === 0 && !actions.error)
     return null
   return (
-    <div aria-live="polite" className="flex shrink-0 flex-col gap-2 pb-3">
+    <div aria-live="polite" className="flex shrink-0 flex-col gap-2">
       {actions.error ? (
         <p role="alert" className="text-xs text-destructive-foreground">
           {actions.error}
@@ -51,7 +51,7 @@ export function PermissionCard({
     <section
       role="group"
       aria-label={`Permission request: ${title}`}
-      className="rounded-[13px] border bg-card px-3.5 pt-3 pb-2.5"
+      className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5 shadow-composer"
     >
       <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
         <ShieldAlert aria-hidden className="size-3" />
@@ -62,7 +62,7 @@ export function PermissionCard({
         {permission.toolUses.map((use) => (
           <li
             key={use.toolUse.id}
-            className="rounded-lg bg-background px-2.5 py-1.5 font-mono text-xs leading-5 break-all"
+            className="rounded-lg bg-card px-2.5 py-1.5 font-mono text-xs leading-5 break-all"
           >
             <ToolDetails details={use.details} input={use.toolUse.input} />
           </li>
@@ -79,7 +79,7 @@ export function PermissionCard({
               type="button"
               onClick={() => onAnswer(option.value)}
               className={cn(
-                'flex min-h-9 w-full items-center gap-2 rounded-lg border border-transparent bg-background px-2.5 py-1.5 text-left text-[12px] font-medium outline-none transition-colors hover:border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30',
+                'flex min-h-9 w-full items-center gap-2 rounded-lg border border-transparent bg-card px-2.5 py-1.5 text-left text-[12px] font-medium outline-none transition-colors hover:border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30',
                 cancel && 'text-muted-foreground',
               )}
             >
@@ -171,7 +171,7 @@ export function AskUserCard({
     <section
       role="group"
       aria-label="Droid has a question"
-      className="rounded-[13px] border bg-card px-3.5 pt-3 pb-2.5"
+      className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5 shadow-composer"
     >
       <div className="flex items-center gap-2">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
@@ -179,7 +179,7 @@ export function AskUserCard({
           {question.topic}
         </span>
         {request.questions.length > 1 ? (
-          <span className="flex h-[18px] items-center rounded-[5px] bg-background px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+          <span className="flex h-[18px] items-center rounded-[5px] bg-card px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground">
             {step + 1} / {request.questions.length}
           </span>
         ) : null}
@@ -203,7 +203,7 @@ export function AskUserCard({
                 aria-checked={checked}
                 onClick={() => select(option)}
                 className={cn(
-                  'flex min-h-9 w-full items-center gap-2 rounded-lg border border-transparent bg-background px-2.5 py-1.5 text-left text-[12px] font-medium outline-none transition-colors hover:border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30',
+                  'flex min-h-9 w-full items-center gap-2 rounded-lg border border-transparent bg-card px-2.5 py-1.5 text-left text-[12px] font-medium outline-none transition-colors hover:border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30',
                   checked && 'border-primary/35 bg-primary/[0.08]',
                 )}
               >
@@ -216,7 +216,7 @@ export function AskUserCard({
       ) : null}
       <div
         className={cn(
-          'mt-1 flex h-[34px] items-center gap-2 rounded-lg border border-transparent bg-background px-2.5 focus-within:border-ring',
+          'mt-1 flex h-[34px] items-center gap-2 rounded-lg border border-transparent bg-card px-2.5 focus-within:border-ring',
           typed.trim() && 'border-primary/35 bg-primary/[0.06]',
         )}
       >
