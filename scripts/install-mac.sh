@@ -5,9 +5,16 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-pnpm build:mac
 
-app="dist/mac-universal/Droi.app"
+# A universal build signs a 400 MB fat Electron framework twice over; the
+# local install only needs this machine's architecture.
+case "$(uname -m)" in
+  arm64) arch=arm64 ;;
+  *) arch=x64 ;;
+esac
+pnpm build && pnpm exec electron-builder --mac "--$arch"
+
+app="dist/mac-$arch/Droi.app"
 target="/Applications/Droi.app"
 [ -d "$app" ] || { echo "build output missing: $app" >&2; exit 1; }
 
