@@ -146,7 +146,7 @@ function WorkspaceSection({
                       <span
                         role="status"
                         aria-label="Working"
-                        className="flex min-w-0 items-center gap-1"
+                        className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
                       >
                         <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
                         <span className="truncate">Working</span>
