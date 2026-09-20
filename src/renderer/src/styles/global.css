@@ -138,6 +138,11 @@
     overflow: hidden;
     overscroll-behavior: none;
   }
+  /* Sized by the containing block rather than 100dvh: in an iOS home-screen
+     web app dvh comes up short and the body shows through under the app. */
+  #root {
+    height: 100%;
+  }
   /* Quiet until needed: thin scrollbars that show on hover. */
   * {
     scrollbar-width: thin;

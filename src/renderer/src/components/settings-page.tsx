@@ -83,7 +83,7 @@ export function SettingsPage({
   return (
     <section
       aria-label="Settings"
-      className="flex h-dvh overflow-hidden bg-sidebar text-foreground"
+      className="flex h-full overflow-hidden bg-sidebar text-foreground"
     >
       <nav
         aria-label="Settings sections"

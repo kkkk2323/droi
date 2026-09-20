@@ -172,7 +172,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   )
 
   return (
-    <div className="relative flex h-dvh overflow-hidden bg-sidebar text-foreground">
+    <div className="relative flex h-full overflow-hidden bg-sidebar text-foreground">
       {status}
       {narrow ? (
         <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
