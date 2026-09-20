@@ -71,12 +71,37 @@ function richHistory(): MessageFixture[] {
       },
     ],
   }
+  const createId = 'call_create_1'
+  const assistantWithCreate: MessageFixture = {
+    ...assistantMessage(''),
+    content: [
+      {
+        type: 'tool_use',
+        id: createId,
+        name: 'Create',
+        input: { file_path: 'src/auth.test.ts', content: 'test()' },
+      },
+    ],
+  }
+  const createResult: MessageFixture = {
+    ...assistantMessage(''),
+    role: 'tool',
+    content: [
+      {
+        type: 'tool_result',
+        toolUseId: createId,
+        content: JSON.stringify({ success: true, file_path: 'src/auth.test.ts' }),
+      },
+    ],
+  }
   return [
     userMessage('Why does login fail?'),
     assistantWithTool,
     toolResult,
     assistantWithEdit,
     editResult,
+    assistantWithCreate,
+    createResult,
     assistantMessage('The `login` function never awaits the token refresh. Here is the fix.'),
   ]
 }
@@ -280,6 +305,14 @@ test.describe('session history', () => {
     await expect(diff.locator('[data-type="removed"]')).toContainText('login()')
     await expect(diff.locator('[data-type="added"]')).toContainText('await login()')
     await expect(diff.locator('[data-type="unchanged"]')).toHaveCount(2)
+
+    // A finished call carries a success mark; Create's bare JSON reads as a status line.
+    const create = transcript.getByRole('button', { name: 'Create: src/auth.test.ts' })
+    await expect(create.getByRole('img', { name: 'Succeeded' })).toBeVisible()
+    await create.click()
+    const panel = transcript.getByText('Succeeded', { exact: true })
+    await expect(panel).toBeVisible()
+    await expect(transcript.getByText('"success"')).toHaveCount(0)
 
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
     expect(load.params).toMatchObject({ sessionId: richSession.sessionId })

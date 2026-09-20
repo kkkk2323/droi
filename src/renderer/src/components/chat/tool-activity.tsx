@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import {
+  Check,
   ChevronRight,
+  CircleX,
   FileEdit,
   FilePlus,
   FileText,
@@ -69,6 +71,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   const summary = toolSummary(call)
   const result = toolResultText(call.result)
   const diff = parseDiffResult(result)
+  const status = diff ? null : parseStatusResult(result)
   const pending = call.result === null
   const isError = call.result?.isError === true
 
@@ -104,10 +107,25 @@ function ToolRow({ call }: { call: ToolCall }) {
             className="size-3.5 shrink-0 animate-spin text-muted-foreground"
           />
         ) : (
-          <ChevronRight
+          <>
+            {isError ? (
+              <CircleX
+                role="img"
+                aria-label="Failed"
+                className="size-3.5 shrink-0 text-destructive-foreground"
+              />
+            ) : (
+              <Check
+                role="img"
+                aria-label="Succeeded"
+                className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+              />
+            )}
+            <ChevronRight
             aria-hidden
             className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[panel-open]:rotate-90 group-data-[panel-open]:opacity-100"
-          />
+            />
+          </>
         )}
       </Collapsible.Trigger>
       <Collapsible.Panel className="mb-1 mt-0.5 overflow-hidden rounded-lg border bg-card/60">
@@ -121,7 +139,23 @@ function ToolRow({ call }: { call: ToolCall }) {
         ) : (
           <pre className="max-h-96 overflow-auto p-2.5 font-mono text-[11.5px] leading-5 whitespace-pre-wrap break-words">
             <ToolInput call={call} />
-            {result ? (
+            {status ? (
+              <span
+                className={cn(
+                  'mt-1 flex items-center gap-1.5',
+                  status.success
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-destructive-foreground',
+                )}
+              >
+                {status.success ? (
+                  <Check aria-hidden className="size-3.5" />
+                ) : (
+                  <CircleX aria-hidden className="size-3.5" />
+                )}
+                {status.message ?? (status.success ? 'Succeeded' : 'Failed')}
+              </span>
+            ) : result ? (
               <>
                 {'\n'}
                 <span
@@ -199,6 +233,37 @@ export function parseDiffResult(text: string): DiffResult | null {
     added: lines.filter((l) => l.type === 'added').length,
     removed: lines.filter((l) => l.type === 'removed').length,
   }
+}
+
+export interface StatusResult {
+  success: boolean
+  /** The Daemon's own words when it gave any (`message` or `error`). */
+  message: string | null
+}
+
+/**
+ * Create and friends answer with a small JSON object such as
+ * `{"success":true,"file_path":"..."}`. Its path is already on the row, so
+ * the result reads as a status line rather than as JSON. Anything with more
+ * to say is shown as it came.
+ */
+export function parseStatusResult(text: string): StatusResult | null {
+  if (!text.startsWith('{') || !text.includes('"success"')) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const object = parsed as Record<string, unknown>
+  if (typeof object['success'] !== 'boolean') return null
+  const message = [object['message'], object['error']].find(
+    (v): v is string => typeof v === 'string' && v.trim() !== '',
+  )
+  const known = new Set(['success', 'file_path', 'path', 'message', 'error'])
+  if (Object.keys(object).some((key) => !known.has(key))) return null
+  return { success: object['success'], message: message ?? null }
 }
 
 function DiffView({ lines }: { lines: DiffLine[] }) {
