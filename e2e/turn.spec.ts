@@ -154,6 +154,47 @@ test.describe('sending from further up the transcript', () => {
   })
 })
 
+test.describe('a reply longer than the viewport', () => {
+  test.use({
+    scenario: {
+      sessions: [chat],
+      handlers: {
+        'daemon.add_user_message': streamedReply({
+          deltas: [
+            // A code block grows again once highlighted, after the list has settled.
+            'Here is the code:\n\n```ts\n' +
+              Array.from({ length: 40 }, (_, i) => `const v${i} = ${i}`).join('\n') +
+              '\n```\n',
+            'Done.',
+          ],
+          delayMs: 200,
+        }),
+        'daemon.interrupt_session': interruptHandler,
+      },
+    },
+  })
+
+  test('keeps the very end in view while it streams and settles', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await page.getByRole('textbox', { name: 'Message' }).fill('tell me more')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(transcript).toContainText('Done.')
+    await expect(transcript.getByText('Done.')).toBeInViewport()
+    await expect(page.getByRole('button', { name: 'Scroll to latest' })).toHaveCount(0)
+    // Late growth (syntax highlighting, the timestamp) must not leave a strip hidden below.
+    await page.waitForTimeout(500)
+    await expect
+      .poll(() => transcript.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+      .toBeLessThanOrEqual(1)
+  })
+})
+
 test.describe('cancelling a turn', () => {
   test.use({
     scenario: {

@@ -26,6 +26,9 @@ interface ListContext {
 // index goes down by the number of items added, so indices count down from here.
 const INDEX_BASE = 1_000_000
 
+/** How far above the bottom, in px, still counts as reading the latest output. */
+const FOLLOW_THRESHOLD = 120
+
 const NO_MESSAGES: FactoryDroidMessage[] = []
 
 const WORKING_LABELS: Record<string, string> = {
@@ -134,6 +137,29 @@ export function MessageList({
 }) {
   const virtuoso = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
+  // Virtuoso's followOutput fires on a count change only; a streaming reply
+  // grows the last entry for seconds without one. Follow height changes too,
+  // unless the reader has scrolled away (judged on their scroll events, so
+  // content growing under a pinned viewport does not count as leaving).
+  const scroller = useRef<HTMLElement | null>(null)
+  const following = useRef(true)
+  const onScroll = useRef(() => {
+    const el = scroller.current
+    if (el) following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD
+  }).current
+  const attachScroller = (el: HTMLElement | Window | null) => {
+    scroller.current?.removeEventListener('scroll', onScroll)
+    scroller.current = el instanceof HTMLElement ? el : null
+    scroller.current?.addEventListener('scroll', onScroll, { passive: true })
+  }
+  const onHeightChange = () => {
+    if (!following.current) return
+    // The list's DOM takes the new height on the next frame.
+    requestAnimationFrame(() => {
+      const el = scroller.current
+      if (el && following.current) el.scrollTop = el.scrollHeight
+    })
+  }
   useEffect(() => {
     if (!scrollToEndKey) return
     // The sent message is appended a tick after the send; scroll once now and
@@ -187,8 +213,10 @@ export function MessageList({
         followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
         // The panels above the composer resize the viewport; a few pixels off
         // the bottom must still count as "following".
-        atBottomThreshold={120}
+        atBottomThreshold={FOLLOW_THRESHOLD}
         atBottomStateChange={setAtBottom}
+        scrollerRef={attachScroller}
+        totalListHeightChanged={onHeightChange}
         components={{ Header: ListHeader, Footer: ActivityRow }}
         increaseViewportBy={{ top: 600, bottom: 600 }}
         itemContent={renderEntry}
