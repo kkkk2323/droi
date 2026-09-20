@@ -268,6 +268,8 @@ export function InputBar({
           onKeyUp={syncCaret}
           onClick={syncCaret}
           onPaste={onPaste}
+          // An iOS keyboard may push the document up; put it back once it goes.
+          onBlur={() => window.scrollTo(0, 0)}
           aria-autocomplete="list"
           aria-controls={suggestions.length > 0 ? 'slash-suggestions' : undefined}
           aria-expanded={suggestions.length > 0}

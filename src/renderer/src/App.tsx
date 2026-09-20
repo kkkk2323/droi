@@ -180,7 +180,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/30 transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
             <Dialog.Popup
               aria-label="Sessions"
-              className="fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-72 flex-col bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-xl outline-none transition-transform duration-200 ease-out data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full"
+              className="fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-72 flex-col bg-sidebar pb-[env(safe-area-inset-bottom)] shadow-xl outline-none transition-transform duration-200 ease-out data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full"
             >
               <Dialog.Title className="sr-only">Sessions</Dialog.Title>
               <div className="min-h-0 flex-1">{sidebar}</div>
@@ -244,7 +244,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             // Floats over the window-drag strips. Electron folds drag and no-drag
             // rects in DOM order, so this must come after every strip it covers or
             // the strips win and the button never gets the click.
-            'app-no-drag absolute top-0 z-20 flex h-11 items-center pt-[env(safe-area-inset-top)]',
+            'app-no-drag absolute top-0 z-20 flex h-[calc(env(safe-area-inset-top)+2.75rem)] items-center pt-[env(safe-area-inset-top)]',
             hasShellBridge ? 'left-[76px]' : 'left-2',
           )}
         >

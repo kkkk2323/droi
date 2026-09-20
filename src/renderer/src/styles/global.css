@@ -133,6 +133,10 @@
   body {
     @apply h-full bg-sidebar font-sans text-foreground antialiased;
     font-size: 14px;
+    /* The app fills the viewport and scrolls inside; the document itself
+       must not, or an iOS keyboard leaves it shifted once dismissed. */
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   /* Quiet until needed: thin scrollbars that show on hover. */
   * {

@@ -115,7 +115,7 @@ export function SettingsPage({
       </nav>
 
       <div className="min-w-0 flex-1 overflow-y-auto bg-background">
-        <div className="app-drag h-11 pt-[env(safe-area-inset-top)]" />
+        <div className="app-drag h-[calc(env(safe-area-inset-top)+2.75rem)]" />
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-8 pb-12">
           <h2 className="mb-2 text-lg font-semibold tracking-tight">{current.label}</h2>
           {error ? (

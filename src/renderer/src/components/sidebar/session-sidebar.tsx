@@ -71,7 +71,7 @@ export function SessionSidebar({
       {/* Drag strip; on wide screens the pinned sidebar toggle sits over it. */}
       <div
         className={cn(
-          'app-drag h-11 shrink-0 pt-[env(safe-area-inset-top)]',
+          'app-drag h-[calc(env(safe-area-inset-top)+2.75rem)] shrink-0',
           insetTop && 'pl-[76px]',
         )}
       />

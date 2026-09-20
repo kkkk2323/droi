@@ -15,7 +15,7 @@ export function PageHeader({
   children?: ReactNode
 }) {
   return (
-    <header className="app-drag flex h-11 shrink-0 items-center gap-1 px-2 pt-[env(safe-area-inset-top)] md:px-3">
+    <header className="app-drag flex h-[calc(env(safe-area-inset-top)+2.75rem)] shrink-0 items-center gap-1 px-2 pt-[env(safe-area-inset-top)] md:px-3">
       {leading}
       <div className="flex min-w-0 flex-1 items-center gap-1 text-sm font-medium">{title}</div>
       {children ? <div className="flex shrink-0 items-center gap-0.5">{children}</div> : null}
