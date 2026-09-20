@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
-import { PanelLeft, Settings } from 'lucide-react'
+import { PanelLeft } from 'lucide-react'
 import { useConnectionState } from './daemon/connection-context'
 import { groupByWorkspace, useSessionList } from './daemon/sessions'
 import { recentWorkspaces } from './daemon/use-new-session'
-import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
+import { PairingFailed, ReconnectingBanner } from './components/connection-status'
+import { PageHeader } from './components/page-header'
 import { SessionSidebar } from './components/sidebar/session-sidebar'
 import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
@@ -43,6 +44,10 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     setDrawerOpen(false)
   }
 
+  if (route.name === 'settings' && window.droiShell) {
+    return <SettingsPage bridge={window.droiShell.settings} onBack={() => go({ name: 'home' })} />
+  }
+
   const sidebar = (
     <SessionSidebar
       groups={groups}
@@ -53,91 +58,71 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       showArchived={showArchived}
       onToggleArchived={setShowArchived}
       onNewSession={() => go({ name: 'new' })}
+      onSettings={hasShellBridge ? () => go({ name: 'settings' }) : null}
+      // Traffic lights sit over the sidebar's top strip on macOS.
+      insetTop={hasShellBridge && !narrow}
     />
   )
 
+  const menuButton = narrow ? (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      aria-label="Open sessions"
+      aria-expanded={drawerOpen}
+      onClick={() => setDrawerOpen(true)}
+    >
+      <PanelLeft aria-hidden />
+    </Button>
+  ) : null
+
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-2 pt-[env(safe-area-inset-top)] md:px-3">
-        <div className="flex min-w-0 items-center gap-1">
-          {narrow ? (
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label="Open sessions"
-              aria-expanded={drawerOpen}
-              onClick={() => setDrawerOpen(true)}
+    <div className="flex h-dvh overflow-hidden bg-sidebar text-foreground">
+      {narrow ? (
+        <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <Dialog.Portal>
+            <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/30 transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
+            <Dialog.Popup
+              aria-label="Sessions"
+              className="fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-72 flex-col bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-xl outline-none transition-transform duration-200 ease-out data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full"
             >
-              <PanelLeft aria-hidden />
-            </Button>
-          ) : null}
-          <h1 className="truncate text-sm font-semibold tracking-tight">Droi</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <ConnectionStatus />
-          {hasShellBridge ? (
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label="Settings"
-              onClick={() => go({ name: 'settings' })}
-            >
-              <Settings aria-hidden />
-            </Button>
-          ) : null}
-        </div>
-      </header>
-      <ReconnectingBanner />
-      <div className="flex min-h-0 flex-1">
-        {narrow ? (
-          <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
-            <Dialog.Portal>
-              <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/50 transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-              <Dialog.Popup
-                aria-label="Sessions"
-                className="fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-72 flex-col bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-xl outline-none transition-transform duration-200 ease-out data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full"
-              >
-                <div className="flex h-10 shrink-0 items-center justify-between border-b px-3">
-                  <Dialog.Title className="text-sm font-semibold">Sessions</Dialog.Title>
-                  <Dialog.Close
-                    aria-label="Close sessions"
-                    className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-                  >
-                    Close
-                  </Dialog.Close>
-                </div>
-                <div className="min-h-0 flex-1">{sidebar}</div>
-              </Dialog.Popup>
-            </Dialog.Portal>
-          </Dialog.Root>
+              <Dialog.Title className="sr-only">Sessions</Dialog.Title>
+              <div className="min-h-0 flex-1">{sidebar}</div>
+            </Dialog.Popup>
+          </Dialog.Portal>
+        </Dialog.Root>
+      ) : (
+        <aside className="w-60 shrink-0">{sidebar}</aside>
+      )}
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:border-l">
+        <ReconnectingBanner />
+        {route.name === 'new' ? (
+          <NewSessionPage
+            recent={recent}
+            onCreated={(sessionId) => go({ name: 'session', sessionId })}
+            header={<PageHeader leading={menuButton} title="New session" />}
+          />
+        ) : selectedId ? (
+          <SessionView
+            key={selectedId}
+            sessionId={selectedId}
+            title={selected?.title ?? 'Session'}
+            workspace={selected?.cwd ?? null}
+            archived={Boolean(selected?.archivedAt)}
+            onArchived={() => go({ name: 'home' })}
+            leading={menuButton}
+          />
         ) : (
-          <aside className="w-64 shrink-0 border-r">{sidebar}</aside>
-        )}
-        <main className="min-w-0 flex-1">
-          {route.name === 'settings' && window.droiShell ? (
-            <SettingsPage bridge={window.droiShell.settings} />
-          ) : route.name === 'new' ? (
-            <NewSessionPage
-              recent={recent}
-              onCreated={(sessionId) => go({ name: 'session', sessionId })}
-            />
-          ) : selectedId ? (
-            <SessionView
-              key={selectedId}
-              sessionId={selectedId}
-              title={selected?.title ?? 'Session'}
-              archived={Boolean(selected?.archivedAt)}
-              onArchived={() => go({ name: 'home' })}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          <>
+            <PageHeader leading={menuButton} title="" />
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
               {narrow
                 ? 'Open the sessions list to pick a session.'
-                : 'Select a session to view its history.'}
+                : 'Select a session, or start a new one.'}
             </div>
-          )}
-        </main>
-      </div>
+          </>
+        )}
+      </main>
     </div>
   )
 }

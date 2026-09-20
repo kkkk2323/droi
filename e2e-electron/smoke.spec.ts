@@ -77,6 +77,10 @@ test('the Local Client connects to the Daemon the Shell spawned with its setting
 
 test('toggling Remote Access binds and unbinds the LAN addresses', async () => {
   await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Remote Access' }).click()
+  if (process.env['DROI_SCREENSHOT_DIR']) {
+    await page.screenshot({ path: `${process.env['DROI_SCREENSHOT_DIR']}/settings.png` })
+  }
   const toggle = page.getByRole('switch', { name: 'Remote Access' })
   await expect(toggle).not.toBeChecked()
 

@@ -8,9 +8,11 @@ import { App } from './App'
 import { ConnectionProvider } from './daemon/connection-context'
 import { createDaemonConnection } from './daemon/connection'
 import { browserEnvironment, resolveClientConfig } from './lib/client-config'
+import { applyStoredTheme } from './lib/theme'
 import 'streamdown/styles.css'
 import './styles/global.css'
 
+applyStoredTheme()
 const root = document.getElementById('root')
 if (!root) throw new Error('missing #root element')
 

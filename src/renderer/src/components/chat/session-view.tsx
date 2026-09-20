@@ -1,43 +1,52 @@
+import type { ReactNode } from 'react'
+import { Folder, Loader2 } from 'lucide-react'
+import { PageHeader } from '@/components/page-header'
 import { useSession } from '@/daemon/use-session'
-import { cn } from '@/lib/utils'
 import { useTurn } from '@/daemon/use-turn'
 import { LOAD_STATE, type LoadState } from '@/daemon/sdk-enums'
+import { cn } from '@/lib/utils'
 import { InputBar } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
-import { SessionToolbar } from './session-toolbar'
+import { ArchiveButton, SessionSettingsBar, SessionTitle } from './session-toolbar'
+
+/** Transcript, Prompts and composer share one reading column. */
+export const COLUMN = 'mx-auto w-full max-w-3xl px-4 md:px-6'
 
 export function SessionView({
   sessionId,
   title,
+  workspace,
   archived,
   onArchived,
+  leading,
 }: {
   sessionId: string
   title: string
+  workspace: string | null
   archived: boolean
   onArchived: () => void
+  leading?: ReactNode
 }) {
   const session = useSession(sessionId)
   const turn = useTurn(sessionId)
   const isRunning = session.workingState !== 'idle'
+  const loaded = session.loadState === LOAD_STATE.loaded
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
-      <SessionToolbar
-        sessionId={sessionId}
-        title={title}
-        archived={archived}
-        onArchived={onArchived}
-      />
-      <WorkingState state={session.workingState} loadState={session.loadState} />
+      <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />}>
+        <ArchiveButton sessionId={sessionId} archived={archived} onArchived={onArchived} />
+      </PageHeader>
+
       <div className="min-h-0 flex-1">
         {session.loadError ? (
-          <p role="alert" className="p-4 text-sm text-destructive-foreground">
+          <p role="alert" className={cn(COLUMN, 'py-6 text-sm text-destructive-foreground')}>
             {session.loadError}
           </p>
-        ) : session.loadState !== LOAD_STATE.loaded && session.messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        ) : !loaded && session.messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 aria-hidden className="size-4 animate-spin" />
             Loading session…
           </div>
         ) : (
@@ -47,14 +56,27 @@ export function SessionView({
           />
         )}
       </div>
-      <PromptArea sessionId={sessionId} />
-      <InputBar
-        isRunning={isRunning}
-        disabled={session.loadState !== LOAD_STATE.loaded}
-        onSend={(text) => void turn.send(text)}
-        onCancel={() => void turn.cancel()}
-        error={turn.sendError}
-      />
+
+      <div className={cn(COLUMN, 'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]')}>
+        <PromptArea sessionId={sessionId} />
+        <InputBar
+          isRunning={isRunning}
+          disabled={!loaded}
+          onSend={(text) => void turn.send(text)}
+          onCancel={() => void turn.cancel()}
+          error={turn.sendError}
+          footer={<SessionSettingsBar sessionId={sessionId} />}
+        />
+        <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
+          {workspace ? (
+            <span className="flex min-w-0 items-center gap-1.5" title={workspace}>
+              <Folder aria-hidden className="size-3.5 shrink-0" />
+              <span className="truncate">{workspaceName(workspace)}</span>
+            </span>
+          ) : null}
+          <WorkingState state={session.workingState} loadState={session.loadState} />
+        </div>
+      </div>
     </section>
   )
 }
@@ -74,12 +96,14 @@ function WorkingState({ state, loadState }: { state: string; loadState: LoadStat
     <div
       role="status"
       aria-label="Session activity"
-      className={cn(
-        'shrink-0 px-4 text-xs text-muted-foreground',
-        label ? 'py-1' : 'h-0 overflow-hidden',
-      )}
+      className="ml-auto flex shrink-0 items-center gap-1.5 text-right"
     >
+      {label ? <Loader2 aria-hidden className="size-3 animate-spin" /> : null}
       {label}
     </div>
   )
+}
+
+function workspaceName(path: string): string {
+  return path.split('/').filter(Boolean).pop() ?? path
 }

@@ -57,6 +57,8 @@ Client or the Fake Daemon changed. The PR workflow runs all three.
 
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
+- README screenshot: `DROI_SCREENSHOT=1 pnpm test:e2e --project=desktop e2e/screenshot.spec.ts`
+  (skipped in a normal run)
 - Live test through the local droid-proxy (`dp`) with a cheap model:
   `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') pnpm test:live`
   (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)

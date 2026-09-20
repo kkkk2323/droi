@@ -11,7 +11,7 @@ The interface should feel like a precision instrument -- quiet confidence rather
 - **Visual tone**: Refined and information-dense, inspired by Linear and Raycast. Clean lines, tight spacing, high signal-to-noise ratio.
 - **References**: Linear (polish, dark-mode-first, subtle animations), Raycast (command-driven efficiency, minimal chrome).
 - **Anti-references**: Overly playful or colorful interfaces (Slack-style), heavy illustrations or mascots, excessive whitespace that wastes screen real estate.
-- **Theme**: Dark mode is the primary experience. Light mode supported but secondary.
+- **Theme**: Light mode is the primary experience (a warm-neutral window like a native macOS app, in the spirit of Waku). Dark mode is a first-class toggle, stored per browser.
 - **Typography**: Geist Sans for UI, Geist Mono for code. No decorative fonts.
 - **Color**: Neutral palette (oklch-based) with minimal accent usage. Color is reserved for status, actions, and differentiation -- never for decoration.
 - **Motion**: Subtle and purposeful (framer-motion). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.

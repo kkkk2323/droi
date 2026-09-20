@@ -86,7 +86,7 @@ function createWindow(gatewayUrl: string): void {
     minHeight: 480,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#1c1c1e',
+    backgroundColor: '#f3f3f3',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),

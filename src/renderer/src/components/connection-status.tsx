@@ -24,7 +24,7 @@ export function ConnectionStatus() {
     <div
       role="status"
       aria-label="Connection"
-      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+      className="flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground"
     >
       <span aria-hidden className={`size-1.5 rounded-full ${DOT_CLASS[state.status]}`} />
       <span>{LABELS[state.status]}</span>
@@ -39,7 +39,7 @@ export function ReconnectingBanner() {
   return (
     <div
       role="alert"
-      className="flex items-center justify-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200"
+      className="flex items-center justify-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-200"
     >
       <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-amber-500" />
       {state.status === 'reconnecting'

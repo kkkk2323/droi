@@ -10,6 +10,10 @@ interface ListContext {
   streamingEntryId: string | null
 }
 
+function ListPadding() {
+  return <div aria-hidden className="h-3" />
+}
+
 function renderEntry(_index: number, entry: TranscriptEntry, context: ListContext) {
   return <MessageEntry entry={entry} isStreaming={entry.id === context.streamingEntryId} />
 }
@@ -30,7 +34,7 @@ export function MessageList({
   if (entries.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        No messages yet.
+        What should Droid work on?
       </div>
     )
   }
@@ -46,6 +50,7 @@ export function MessageList({
       initialTopMostItemIndex={entries.length - 1}
       followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
       alignToBottom
+      components={{ Header: ListPadding, Footer: ListPadding }}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       itemContent={renderEntry}
     />

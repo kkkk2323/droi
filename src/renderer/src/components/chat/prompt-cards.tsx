@@ -11,7 +11,7 @@ export function PromptArea({ sessionId }: { sessionId: string }) {
   if (prompts.permissions.length === 0 && prompts.askUser.length === 0 && !actions.error)
     return null
   return (
-    <div aria-live="polite" className="flex shrink-0 flex-col gap-2 border-t px-4 py-3">
+    <div aria-live="polite" className="flex shrink-0 flex-col gap-2 pb-3">
       {actions.error ? (
         <p role="alert" className="text-xs text-destructive-foreground">
           {actions.error}
@@ -50,17 +50,19 @@ export function PermissionCard({
     <section
       role="group"
       aria-label={`Permission request: ${title}`}
-      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3"
+      className="rounded-2xl border bg-card/60 p-4 shadow-composer"
     >
-      <header className="mb-2 flex items-center gap-2 text-sm font-medium">
-        <ShieldAlert aria-hidden className="size-4 text-amber-400" />
+      <header className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <span className="flex size-7 items-center justify-center rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <ShieldAlert aria-hidden className="size-4" />
+        </span>
         Droid wants to run {title}
       </header>
       <ul className="mb-3 flex flex-col gap-1.5">
         {permission.toolUses.map((use) => (
           <li
             key={use.toolUse.id}
-            className="rounded-md bg-muted/60 px-2.5 py-1.5 font-mono text-xs"
+            className="rounded-lg border bg-background px-3 py-2 font-mono text-xs leading-5 break-all"
           >
             <ToolDetails details={use.details} input={use.toolUse.input} />
           </li>
@@ -136,10 +138,12 @@ export function AskUserCard({
     <section
       role="group"
       aria-label="Droid has a question"
-      className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3"
+      className="rounded-2xl border bg-card/60 p-4 shadow-composer"
     >
-      <header className="mb-2 flex items-center gap-2 text-sm font-medium">
-        <MessageCircleQuestion aria-hidden className="size-4 text-sky-400" />
+      <header className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <span className="flex size-7 items-center justify-center rounded-md bg-sky-500/15 text-sky-600 dark:text-sky-400">
+          <MessageCircleQuestion aria-hidden className="size-4" />
+        </span>
         Droid has a question
       </header>
       <form
@@ -178,7 +182,7 @@ export function AskUserCard({
               onChange={(event) =>
                 setCustom((prev) => ({ ...prev, [question.index]: event.target.value }))
               }
-              className="mt-1 rounded-md border bg-background px-2 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="mt-1 h-8 rounded-lg border bg-background px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             />
           </fieldset>
         ))}

@@ -1,4 +1,4 @@
-import { Archive, FolderGit2, MessageSquare, Plus } from 'lucide-react'
+import { Archive, Folder, Plus, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { WorkspaceGroup } from '@/daemon/sessions'
@@ -12,6 +12,8 @@ export function SessionSidebar({
   showArchived,
   onToggleArchived,
   onNewSession,
+  onSettings,
+  insetTop,
 }: {
   groups: WorkspaceGroup[]
   selectedSessionId: string | null
@@ -21,19 +23,30 @@ export function SessionSidebar({
   showArchived: boolean
   onToggleArchived: (show: boolean) => void
   onNewSession: () => void
+  onSettings: (() => void) | null
+  insetTop: boolean
 }) {
   return (
     <nav
       aria-label="Sessions"
       className="flex h-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
     >
-      <div className="px-2 pt-2">
-        <Button size="sm" variant="outline" className="w-full justify-start" onClick={onNewSession}>
-          <Plus aria-hidden />
-          New session
-        </Button>
+      <div
+        className={cn(
+          'app-drag flex h-11 shrink-0 items-center px-4 pt-[env(safe-area-inset-top)]',
+          insetTop && 'pl-[76px]',
+        )}
+      >
+        <h1 className="text-[13px] font-semibold tracking-tight text-foreground">Droi</h1>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+
+      <div className="flex flex-col gap-px px-2 pb-2">
+        <SidebarRow icon={<Plus aria-hidden />} onClick={onNewSession}>
+          New session
+        </SidebarRow>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 pb-2">
         {error ? (
           <p role="alert" className="px-2 py-1 text-xs text-destructive-foreground">
             {error}
@@ -44,12 +57,12 @@ export function SessionSidebar({
           <p className="px-2 py-1 text-xs text-muted-foreground">No sessions yet.</p>
         ) : null}
         {groups.map((group) => (
-          <section key={group.key} aria-label={group.label} className="mb-3">
+          <section key={group.key} aria-label={group.label} className="mb-2">
             <h2
               title={group.path}
-              className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+              className="flex h-8 items-center gap-2 px-2 text-[13px] font-medium text-foreground"
             >
-              <FolderGit2 aria-hidden className="size-3" />
+              <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{group.label}</span>
             </h2>
             <ul className="flex flex-col gap-px">
@@ -63,25 +76,18 @@ export function SessionSidebar({
                       onClick={() => onSelect(session.sessionId)}
                       title={session.title}
                       className={cn(
-                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors',
-                        'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                        'flex h-8 w-full items-center gap-2 rounded-lg pl-8 pr-2 text-left text-[13px] text-muted-foreground outline-none transition-colors duration-150',
+                        'hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
                         selected && 'bg-sidebar-accent text-sidebar-accent-foreground',
                       )}
                     >
-                      <MessageSquare
-                        aria-hidden
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                      />
                       <span className="flex-1 truncate">{session.title}</span>
                       {session.archivedAt ? (
-                        <Archive
-                          aria-label="Archived"
-                          className="size-3 shrink-0 text-muted-foreground"
-                        />
+                        <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
                       ) : null}
                       <time
                         dateTime={new Date(session.updatedAt * 1000).toISOString()}
-                        className="shrink-0 text-[11px] text-muted-foreground"
+                        className="shrink-0 text-[11px] tabular-nums opacity-70"
                       >
                         {relativeTime(session.updatedAt * 1000)}
                       </time>
@@ -93,16 +99,52 @@ export function SessionSidebar({
           </section>
         ))}
       </div>
-      <label className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={showArchived}
-          onChange={(event) => onToggleArchived(event.target.checked)}
-          className="accent-primary"
-        />
-        Show archived
-      </label>
+
+      <div className="flex shrink-0 items-center gap-1 px-2 pb-2 pt-1">
+        {onSettings ? (
+          <Button size="icon-sm" variant="ghost" aria-label="Settings" onClick={onSettings}>
+            <Settings aria-hidden />
+          </Button>
+        ) : null}
+        <label
+          className={cn(
+            'relative ml-auto flex h-8 select-none items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-sidebar-ring',
+            showArchived && 'text-foreground',
+          )}
+        >
+          <input
+            type="checkbox"
+            aria-label="Show archived"
+            checked={showArchived}
+            onChange={(event) => onToggleArchived(event.target.checked)}
+            className="absolute inset-0 cursor-pointer opacity-0"
+          />
+          <Archive aria-hidden className="size-3.5" />
+          Show archived
+        </label>
+      </div>
     </nav>
+  )
+}
+
+function SidebarRow({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-foreground outline-none transition-colors duration-150 hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground"
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 
@@ -112,7 +154,7 @@ function SidebarSkeleton() {
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className="h-6 animate-pulse rounded-md bg-muted/60"
+          className="h-6 animate-pulse rounded-md bg-sidebar-accent/70"
           style={{ width: `${70 + (i % 3) * 10}%` }}
         />
       ))}

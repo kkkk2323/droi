@@ -1,8 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { Check, Copy, RefreshCw } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  RefreshCw,
+  Server,
+  Settings2,
+  Smartphone,
+  type LucideIcon,
+} from 'lucide-react'
+import { ConnectionStatus } from '@/components/connection-status'
 import { Button } from '@/components/ui/button'
+import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
+import { useTheme } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 import type {
   PairingInfo,
   ShellSettingsBridge,
@@ -13,8 +26,23 @@ import type {
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
-export function SettingsPage({ bridge }: { bridge: ShellSettingsBridge }) {
+type Tab = 'general' | 'daemon' | 'remote'
+
+const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
+  { id: 'general', label: 'General', icon: Settings2 },
+  { id: 'daemon', label: 'Daemon', icon: Server },
+  { id: 'remote', label: 'Remote Access', icon: Smartphone },
+]
+
+export function SettingsPage({
+  bridge,
+  onBack,
+}: {
+  bridge: ShellSettingsBridge
+  onBack: () => void
+}) {
   const queryClient = useQueryClient()
+  const [tab, setTab] = useState<Tab>('general')
   const settingsQuery = useQuery({ queryKey: SETTINGS_KEY, queryFn: () => bridge.get() })
   const pairingQuery = useQuery({ queryKey: PAIRING_KEY, queryFn: () => bridge.getPairing() })
 
@@ -32,91 +60,130 @@ export function SettingsPage({ bridge }: { bridge: ShellSettingsBridge }) {
   const snapshot = settingsQuery.data
   const pairing = pairingQuery.data
   const error = settingsQuery.error?.message ?? pairingQuery.error?.message ?? null
-
-  if (!snapshot || !pairing) {
-    return (
-      <section aria-label="Settings" className="p-6 text-sm text-muted-foreground">
-        Loading settings…
-      </section>
-    )
-  }
+  const current = TABS.find((t) => t.id === tab) ?? TABS[0]!
 
   return (
     <section
       aria-label="Settings"
-      className="mx-auto flex h-full w-full max-w-xl flex-col gap-8 overflow-y-auto px-6 py-8"
+      className="flex h-dvh overflow-hidden bg-sidebar text-foreground"
     >
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Settings</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Droi {snapshot.version}</p>
-      </div>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          {error}
-        </p>
-      ) : null}
+      <nav
+        aria-label="Settings sections"
+        className="app-drag flex w-56 shrink-0 flex-col gap-1 border-r px-3 pb-3 pt-[calc(env(safe-area-inset-top)+2.75rem)]"
+      >
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-2 flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <ArrowLeft aria-hidden className="size-4" />
+          Back
+        </button>
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            aria-current={tab === id ? 'page' : undefined}
+            onClick={() => setTab(id)}
+            className={cn(
+              'flex h-8 items-center gap-2 rounded-lg px-2 text-left text-[13px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+              tab === id && 'bg-sidebar-accent text-sidebar-accent-foreground',
+            )}
+          >
+            <Icon aria-hidden className="size-4 text-muted-foreground" />
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      <ApiKeySection snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
-      <DroidPathSection
-        key={snapshot.droidPath ?? ''}
-        snapshot={snapshot}
-        bridge={bridge}
-        onSaved={setSnapshot}
-      />
-      <BaseUrlSection
-        key={snapshot.factoryApiBaseUrl ?? ''}
-        snapshot={snapshot}
-        bridge={bridge}
-        onSaved={setSnapshot}
-      />
-      <RemoteAccessSection
-        key={String(snapshot.remoteAccess)}
-        snapshot={snapshot}
-        bridge={bridge}
-        onSaved={setSnapshot}
-      />
-      <PairingSection
-        enabled={snapshot.remoteAccess}
-        pairing={pairing}
-        bridge={bridge}
-        onReset={setPairing}
-      />
+      <div className="min-w-0 flex-1 overflow-y-auto bg-background">
+        <div className="app-drag flex h-11 items-center justify-end px-3 pt-[env(safe-area-inset-top)]">
+          <ConnectionStatus />
+        </div>
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-8 pb-12">
+          <h2 className="mb-2 text-lg font-semibold tracking-tight">{current.label}</h2>
+          {error ? (
+            <p role="alert" className="text-sm text-destructive-foreground">
+              {error}
+            </p>
+          ) : null}
+          {!snapshot || !pairing ? (
+            <p className="text-sm text-muted-foreground">Loading settings…</p>
+          ) : tab === 'general' ? (
+            <GeneralTab snapshot={snapshot} />
+          ) : tab === 'daemon' ? (
+            <>
+              <ApiKeyRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
+              <BaseUrlRow
+                key={snapshot.factoryApiBaseUrl ?? ''}
+                snapshot={snapshot}
+                bridge={bridge}
+                onSaved={setSnapshot}
+              />
+              <DroidPathRow
+                key={snapshot.droidPath ?? ''}
+                snapshot={snapshot}
+                bridge={bridge}
+                onSaved={setSnapshot}
+              />
+            </>
+          ) : (
+            <>
+              <RemoteAccessRow
+                key={String(snapshot.remoteAccess)}
+                snapshot={snapshot}
+                bridge={bridge}
+                onSaved={setSnapshot}
+              />
+              <PairingRow
+                enabled={snapshot.remoteAccess}
+                pairing={pairing}
+                bridge={bridge}
+                onReset={setPairing}
+              />
+            </>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}) {
+function GeneralTab({ snapshot }: { snapshot: ShellSettingsSnapshot }) {
+  const [theme, setTheme] = useTheme()
   return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </h3>
-      {children}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
+    <>
+      <SettingRow
+        title="Appearance"
+        description="Light is the default. The choice is stored per browser."
+        control={
+          <select
+            aria-label="Theme"
+            value={theme}
+            onChange={(event) => setTheme(event.target.value === 'dark' ? 'dark' : 'light')}
+            className="h-8 rounded-lg border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        }
+      />
+      <SettingRow
+        title="Everything stays on this computer"
+        description="Sessions, settings and the Factory API key live here. Phones connect to this computer through the Gateway; nothing is sent elsewhere."
+      />
+      <SettingRow title="About" description={`Droi ${snapshot.version}`} />
+    </>
   )
 }
 
-const inputClass =
-  'h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
-
-function ApiKeySection({
-  snapshot,
-  bridge,
-  onSaved,
-}: {
+type RowProps = {
   snapshot: ShellSettingsSnapshot
   bridge: ShellSettingsBridge
   onSaved: (s: ShellSettingsSnapshot) => void
-}) {
+}
+
+function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
   const [value, setValue] = useState('')
   const [saving, setSaving] = useState(false)
   const save = async (apiKey: string | null) => {
@@ -129,12 +196,15 @@ function ApiKeySection({
     }
   }
   return (
-    <Field
-      label="Factory API key"
-      hint={
+    <SettingRow
+      title="Factory API key"
+      description={
         snapshot.apiKeyFromEnvironment
           ? 'Supplied by FACTORY_API_KEY in the environment; the stored key is ignored.'
           : 'Stored encrypted on this computer and used by the Gateway. Phones never see it.'
+      }
+      control={
+        <StatusPill ok={snapshot.hasApiKey} label={snapshot.hasApiKey ? 'Set' : 'Missing'} />
       }
     >
       <form
@@ -152,7 +222,7 @@ function ApiKeySection({
           value={value}
           disabled={snapshot.apiKeyFromEnvironment}
           onChange={(event) => setValue(event.target.value)}
-          className={inputClass}
+          className={settingInputClass}
         />
         <Button type="submit" disabled={saving || !value.trim() || snapshot.apiKeyFromEnvironment}>
           Save key
@@ -163,32 +233,30 @@ function ApiKeySection({
           </Button>
         ) : null}
       </form>
-      <p role="status" aria-label="API key status" className="text-xs text-muted-foreground">
+      <p role="status" aria-label="API key status" className="mt-2 text-xs text-muted-foreground">
         {snapshot.hasApiKey
           ? 'A key is set.'
           : 'No key set. The Daemon cannot authenticate without one.'}
       </p>
-    </Field>
+    </SettingRow>
   )
 }
 
-function DroidPathSection({
-  snapshot,
-  bridge,
-  onSaved,
-}: {
-  snapshot: ShellSettingsSnapshot
-  bridge: ShellSettingsBridge
-  onSaved: (s: ShellSettingsSnapshot) => void
-}) {
+function DroidPathRow({ snapshot, bridge, onSaved }: RowProps) {
   const [value, setValue] = useState(snapshot.droidPath ?? '')
   return (
-    <Field
-      label="droid executable"
-      hint={
+    <SettingRow
+      title="droid executable"
+      description={
         snapshot.droidFound
           ? `Using ${snapshot.droidFound}`
           : 'droid was not found on PATH or in ~/.local/bin. Enter its full path.'
+      }
+      control={
+        <StatusPill
+          ok={Boolean(snapshot.droidFound)}
+          label={snapshot.droidFound ? 'Found' : 'Not found'}
+        />
       }
     >
       <form
@@ -204,31 +272,23 @@ function DroidPathSection({
           value={value}
           spellCheck={false}
           onChange={(event) => setValue(event.target.value)}
-          className={`${inputClass} font-mono`}
+          className={`${settingInputClass} font-mono`}
         />
         <Button type="submit" variant="outline">
           Save path
         </Button>
       </form>
-    </Field>
+    </SettingRow>
   )
 }
 
-function BaseUrlSection({
-  snapshot,
-  bridge,
-  onSaved,
-}: {
-  snapshot: ShellSettingsSnapshot
-  bridge: ShellSettingsBridge
-  onSaved: (s: ShellSettingsSnapshot) => void
-}) {
+function BaseUrlRow({ snapshot, bridge, onSaved }: RowProps) {
   const [value, setValue] = useState(snapshot.factoryApiBaseUrl ?? '')
   const inherited = snapshot.factoryApiBaseUrlFromEnvironment
   return (
-    <Field
-      label="Factory API base URL"
-      hint={
+    <SettingRow
+      title="Factory API base URL"
+      description={
         snapshot.factoryApiBaseUrl
           ? 'The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy.'
           : inherited
@@ -250,25 +310,17 @@ function BaseUrlSection({
           spellCheck={false}
           autoCapitalize="off"
           onChange={(event) => setValue(event.target.value)}
-          className={`${inputClass} font-mono`}
+          className={`${settingInputClass} font-mono`}
         />
         <Button type="submit" variant="outline">
           Save URL
         </Button>
       </form>
-    </Field>
+    </SettingRow>
   )
 }
 
-function RemoteAccessSection({
-  snapshot,
-  bridge,
-  onSaved,
-}: {
-  snapshot: ShellSettingsSnapshot
-  bridge: ShellSettingsBridge
-  onSaved: (s: ShellSettingsSnapshot) => void
-}) {
+function RemoteAccessRow({ snapshot, bridge, onSaved }: RowProps) {
   // Flips at once; the Shell confirms (or reverts) when the Gateway has rebound.
   const [checked, setChecked] = useState(snapshot.remoteAccess)
   const toggle = async (next: boolean) => {
@@ -280,27 +332,25 @@ function RemoteAccessSection({
     }
   }
   return (
-    <Field
-      label="Remote Access"
-      hint="When on, the Gateway also listens on this computer's network addresses so a paired phone can connect. Off by default."
-    >
-      <label className="flex items-center gap-3 text-sm">
-        <input
-          type="checkbox"
-          role="switch"
+    <SettingRow
+      title="Remote Access"
+      description={
+        checked
+          ? 'On: the Gateway also listens on this computer’s network addresses so a paired phone can connect.'
+          : 'Off: only this window can connect. Turn it on to pair a phone on the same network.'
+      }
+      control={
+        <Switch
           aria-label="Remote Access"
-          aria-checked={checked}
           checked={checked}
-          onChange={(event) => void toggle(event.target.checked)}
-          className="size-4 accent-primary"
+          onCheckedChange={(next) => void toggle(next)}
         />
-        {checked ? 'On: phones on this network can pair' : 'Off: only this window can connect'}
-      </label>
-    </Field>
+      }
+    />
   )
 }
 
-function PairingSection({
+function PairingRow({
   enabled,
   pairing,
   bridge,
@@ -328,26 +378,26 @@ function PairingSection({
   }
 
   return (
-    <Field
-      label="Pair a phone"
-      hint={
+    <SettingRow
+      title="Pair a phone"
+      description={
         enabled
           ? 'Scan the code or open the link on a phone connected to the same network. Resetting revokes every paired phone.'
           : 'Turn on Remote Access to pair a phone.'
       }
     >
       {enabled && pairing.link ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div
             role="img"
             aria-label="Pairing QR code"
-            className="size-48 shrink-0 rounded-md bg-white p-2 [&_svg]:size-full"
+            className="size-44 shrink-0 rounded-lg border bg-white p-2 [&_svg]:size-full"
             dangerouslySetInnerHTML={{ __html: svg }}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <code
               aria-label="Pairing link"
-              className="break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs"
+              className="break-all rounded-lg border bg-background px-3 py-2 font-mono text-xs leading-5"
             >
               {pairing.link}
             </code>
@@ -373,6 +423,23 @@ function PairingSection({
           No network address found. Connect this computer to a network and try again.
         </p>
       ) : null}
-    </Field>
+    </SettingRow>
+  )
+}
+
+function StatusPill({ ok, label }: { ok: boolean; label: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-xs',
+        ok ? 'text-foreground' : 'text-muted-foreground',
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn('size-1.5 rounded-full', ok ? 'bg-emerald-500' : 'bg-muted-foreground')}
+      />
+      {label}
+    </span>
   )
 }

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
-import { Brain, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from './markdown'
 import { ToolActivity } from './tool-activity'
 import type { TranscriptBlock, TranscriptEntry } from './transcript'
+
+const COLUMN = 'mx-auto w-full max-w-3xl px-4 md:px-6'
 
 export function MessageEntry({
   entry,
@@ -19,8 +21,8 @@ export function MessageEntry({
       .map((b) => b.text)
       .join('\n')
     return (
-      <article aria-label="You" className="flex justify-end px-4 py-2">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-secondary px-3.5 py-2 text-sm text-secondary-foreground">
+      <article aria-label="You" className={cn(COLUMN, 'flex justify-end py-3')}>
+        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-[15px] leading-6 text-secondary-foreground">
           {text}
         </div>
       </article>
@@ -30,7 +32,7 @@ export function MessageEntry({
   return (
     <article
       aria-label="Assistant"
-      className={cn('px-4 py-2', entry.isError && 'text-destructive-foreground')}
+      className={cn(COLUMN, 'py-3', entry.isError && 'text-destructive-foreground')}
     >
       {entry.blocks.map((block) => {
         switch (block.kind) {
@@ -52,8 +54,16 @@ export function MessageEntry({
       {isStreaming ? (
         <span
           aria-label="Assistant is typing"
-          className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-foreground/70 align-middle"
+          className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-foreground/60 align-middle"
         />
+      ) : null}
+      {entry.createdAt ? (
+        <time
+          dateTime={new Date(entry.createdAt).toISOString()}
+          className="mt-2 block text-xs text-muted-foreground"
+        >
+          {formatTimestamp(entry.createdAt)}
+        </time>
       ) : null}
     </article>
   )
@@ -75,17 +85,16 @@ function ThinkingSection({
       ? 'Reasoning…'
       : 'Reasoning'
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} className="my-1.5">
-      <Collapsible.Trigger className="group flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+    <Collapsible.Root open={open} onOpenChange={setOpen} className="my-2">
+      <Collapsible.Trigger className="group -ml-1.5 flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+        <span className={cn(isStreaming && !durationMs && 'animate-pulse')}>{label}</span>
         <ChevronRight
           aria-hidden
-          className="size-3 transition-transform duration-150 group-data-[panel-open]:rotate-90"
+          className="size-3.5 transition-transform duration-150 group-data-[panel-open]:rotate-90"
         />
-        <Brain aria-hidden className="size-3.5" />
-        <span>{label}</span>
       </Collapsible.Trigger>
-      <Collapsible.Panel className="ml-[1.35rem] mt-1 border-l-2 border-border pl-3 text-xs text-muted-foreground">
-        <Markdown text={text} className="text-xs" />
+      <Collapsible.Panel className="mt-1 border-l-2 border-border pl-4 text-muted-foreground">
+        <Markdown text={text} className="text-sm leading-6" />
       </Collapsible.Panel>
     </Collapsible.Root>
   )
@@ -96,4 +105,12 @@ function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1_000)
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+function formatTimestamp(ms: number, now = new Date()): string {
+  const date = new Date(ms)
+  const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const sameDay = date.toDateString() === now.toDateString()
+  if (sameDay) return time
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`
 }
