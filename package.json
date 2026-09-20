@@ -48,7 +48,8 @@
             "universal"
           ]
         }
-      ]
+      ],
+      "identity": null
     },
     "win": {
       "icon": "resources/icon.ico",

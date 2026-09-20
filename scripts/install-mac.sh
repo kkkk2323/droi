@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Build the macOS app and replace the installed copy: `pnpm install:mac`.
-# Quits a running Droi, swaps /Applications/Droi.app, verifies the signature
-# and relaunches. Set DROI_NO_LAUNCH=1 to skip the relaunch.
+# Quits a running Droi, swaps /Applications/Droi.app and relaunches. Set DROI_NO_LAUNCH=1 to skip the relaunch.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -25,7 +24,6 @@ fi
 
 rm -rf "$target"
 ditto "$app" "$target"
-codesign --verify --deep --strict "$target"
 echo "installed $(defaults read "$target/Contents/Info.plist" CFBundleShortVersionString) to $target"
 
 if [ -z "${DROI_NO_LAUNCH:-}" ]; then

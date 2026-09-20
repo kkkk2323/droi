@@ -57,6 +57,12 @@ Open **Settings** (gear icon) → **Account** → **Sign in** (the same device-c
 
 A Factory API key (Settings → Daemon, or `FACTORY_API_KEY`) works as a fallback when you are not signed in; `FACTORY_API_BASE_URL` in the environment is honoured too.
 
+### Installing a build
+
+`pnpm build:mac` produces a DMG under `dist/`; `pnpm install:mac` builds for this Mac and replaces `/Applications/Droi.app`. Builds carry an ad-hoc signature (no developer identity), so on a Mac that downloaded the DMG, Gatekeeper refuses the first launch: right-click **Droi.app** → **Open**, or run `xattr -cr /Applications/Droi.app`.
+
+Settings, the Factory login and the Pairing Token are kept in `~/Library/Application Support/Droi/settings.json`, readable only by your user, the same way the CLI keeps its credentials under `~/.factory`.
+
 ## Development
 
 | Command | What it does |

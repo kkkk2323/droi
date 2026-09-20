@@ -18,11 +18,7 @@ import {
   type GatewayCredential,
   type GatewayOptions,
 } from './gateway/gateway'
-import {
-  createShellSettingsStore,
-  type SettingsCipher,
-  type ShellSettingsStore,
-} from './shell-settings'
+import { createShellSettingsStore, type ShellSettingsStore } from './shell-settings'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
@@ -38,9 +34,7 @@ if (userDataOverride) app.setPath('userData', userDataOverride)
 // Known only to this launch's window; resetting the Pairing Token leaves it alone.
 const localToken = randomBytes(24).toString('base64url')
 
-// Both need Electron to be ready: safeStorage reports encryption unavailable
-// before `ready` on Windows and Linux, which would lock the store into its
-// fallback cipher for good.
+// Both need Electron to be ready.
 let settings: ShellSettingsStore
 let auth: FactoryAuth
 let daemon: DaemonSupervisor
@@ -285,7 +279,7 @@ void app.whenReady().then(async () => {
 
   settings = createShellSettingsStore({
     file: join(app.getPath('userData'), 'settings.json'),
-    cipher: safeStorageCipher(),
+    decryptLegacy: legacySafeStorageDecrypt(),
   })
   auth = createFactoryAuth({
     load: () => settings.getLogin(),
@@ -343,17 +337,15 @@ app.on('before-quit', (event) => {
   void Promise.allSettled([daemon?.stop(), gateway?.close()]).then(() => app.quit())
 })
 
-function safeStorageCipher(): SettingsCipher {
+/**
+ * Earlier versions kept secrets under Electron safeStorage; the store moves
+ * them to the clear-text layout on first load. safeStorage's key is bound to
+ * the app's code signature, so an ad-hoc-signed build cannot read what a
+ * certificate-signed one wrote; that just means signing in again.
+ */
+function legacySafeStorageDecrypt(): ((stored: string) => string) | undefined {
   if (!safeStorage.isEncryptionAvailable()) {
-    // Without OS key storage we still avoid clear text; this is obfuscation
-    // only, and the settings file is created mode 0600.
-    return {
-      encrypt: (plain) => Buffer.from(plain).toString('base64'),
-      decrypt: (stored) => Buffer.from(stored, 'base64').toString(),
-    }
+    return (stored) => Buffer.from(stored, 'base64').toString()
   }
-  return {
-    encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
-    decrypt: (stored) => safeStorage.decryptString(Buffer.from(stored, 'base64')),
-  }
+  return (stored) => safeStorage.decryptString(Buffer.from(stored, 'base64'))
 }

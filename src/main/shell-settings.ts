@@ -1,6 +1,8 @@
-// Desktop Shell settings: a small JSON file. The Factory login, API key and
-// Pairing Token are stored encrypted (Electron safeStorage in production); the
-// key is never handed to a Client, only the Gateway reads it.
+// Desktop Shell settings: a small JSON file created mode 0600 in the user's
+// data directory. The Factory login, API key and Pairing Token live in it in
+// clear, like the droid CLI keeps its own credentials under ~/.factory; the
+// user's home directory is the trust boundary. The key is never handed to a
+// Client, only the Gateway reads it.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -17,15 +19,15 @@ export interface ShellSettings {
   factoryApiBaseUrl: string | null
 }
 
-export interface SettingsCipher {
-  encrypt(plain: string): string
-  decrypt(stored: string): string
-}
-
 export interface ShellSettingsStoreOptions {
   file: string
-  cipher: SettingsCipher
   env?: NodeJS.ProcessEnv
+  /**
+   * Decrypts values written by versions that kept secrets under Electron
+   * safeStorage (`*Encrypted` fields); they are moved to clear on first load.
+   * Failures are swallowed: the value is then simply gone.
+   */
+  decryptLegacy?: (stored: string) => string
 }
 
 export interface ShellSettingsStore {
@@ -34,7 +36,7 @@ export interface ShellSettingsStore {
   resetPairingToken(): string
   getApiKey(): string | null
   setApiKey(apiKey: string | null): void
-  /** Factory login tokens (see factory-auth.ts); stored encrypted like the key. */
+  /** Factory login tokens (see factory-auth.ts). */
   getLogin(): string | null
   setLogin(serialized: string | null): void
 }
@@ -43,9 +45,9 @@ interface StoredFile {
   remoteAccess: boolean
   droidPath: string | null
   factoryApiBaseUrl: string | null
-  pairingTokenEncrypted: string
-  apiKeyEncrypted: string | null
-  loginEncrypted: string | null
+  pairingToken: string
+  apiKey: string | null
+  login: string | null
 }
 
 export function generatePairingToken(): string {
@@ -54,25 +56,15 @@ export function generatePairingToken(): string {
 
 export function createShellSettingsStore(options: ShellSettingsStoreOptions): ShellSettingsStore {
   const env = options.env ?? process.env
-  const { cipher } = options
-  const loaded = load(options.file)
-  const decryptToken = (encrypted: string | undefined): string | null => {
-    if (!encrypted) return null
-    try {
-      return cipher.decrypt(encrypted) || null
-    } catch {
-      return null
-    }
-  }
+  const loaded = load(options.file, options.decryptLegacy)
 
-  let pairingToken = decryptToken(loaded?.pairingTokenEncrypted) ?? generatePairingToken()
   const current: StoredFile = {
     remoteAccess: loaded?.remoteAccess ?? false,
     droidPath: loaded?.droidPath ?? null,
     factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
-    pairingTokenEncrypted: cipher.encrypt(pairingToken),
-    apiKeyEncrypted: loaded?.apiKeyEncrypted ?? null,
-    loginEncrypted: loaded?.loginEncrypted ?? null,
+    pairingToken: loaded?.pairingToken || generatePairingToken(),
+    apiKey: loaded?.apiKey ?? null,
+    login: loaded?.login ?? null,
   }
 
   const save = () => {
@@ -81,7 +73,8 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     writeFileSync(tmp, JSON.stringify(current, null, 2), { mode: 0o600 })
     renameSync(tmp, options.file)
   }
-  if (!loaded || !decryptToken(loaded.pairingTokenEncrypted)) save()
+  // Write straight away when the file is new, corrupt or in the old encrypted layout.
+  if (!loaded || loaded.migrated) save()
 
   return {
     get settings() {
@@ -89,7 +82,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         remoteAccess: current.remoteAccess,
         droidPath: current.droidPath,
         factoryApiBaseUrl: current.factoryApiBaseUrl,
-        pairingToken,
+        pairingToken: current.pairingToken,
       }
     },
     update(patch) {
@@ -99,56 +92,65 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
       save()
     },
     resetPairingToken() {
-      pairingToken = generatePairingToken()
-      current.pairingTokenEncrypted = cipher.encrypt(pairingToken)
+      current.pairingToken = generatePairingToken()
       save()
-      return pairingToken
+      return current.pairingToken
     },
     getApiKey() {
-      const fromEnv = env['FACTORY_API_KEY']
-      if (fromEnv) return fromEnv
-      if (!current.apiKeyEncrypted) return null
-      try {
-        return cipher.decrypt(current.apiKeyEncrypted)
-      } catch {
-        return null
-      }
+      return env['FACTORY_API_KEY'] || current.apiKey
     },
     setApiKey(apiKey) {
-      current.apiKeyEncrypted = apiKey ? cipher.encrypt(apiKey) : null
+      current.apiKey = apiKey || null
       save()
     },
     getLogin() {
-      return decryptToken(current.loginEncrypted ?? undefined)
+      return current.login
     },
     setLogin(serialized) {
-      current.loginEncrypted = serialized ? cipher.encrypt(serialized) : null
+      current.login = serialized || null
       save()
     },
   }
 }
 
-function load(file: string): StoredFile | null {
+function load(
+  file: string,
+  decryptLegacy: ((stored: string) => string) | undefined,
+): (Partial<StoredFile> & { migrated: boolean }) | null {
   let text: string
   try {
     text = readFileSync(file, 'utf8')
   } catch {
     return null
   }
+  let parsed: Record<string, unknown>
   try {
-    const parsed = JSON.parse(text) as Partial<StoredFile>
-    if (typeof parsed !== 'object' || parsed === null) return null
-    return {
-      remoteAccess: parsed.remoteAccess === true,
-      droidPath: typeof parsed.droidPath === 'string' ? parsed.droidPath : null,
-      factoryApiBaseUrl:
-        typeof parsed.factoryApiBaseUrl === 'string' ? parsed.factoryApiBaseUrl : null,
-      pairingTokenEncrypted:
-        typeof parsed.pairingTokenEncrypted === 'string' ? parsed.pairingTokenEncrypted : '',
-      apiKeyEncrypted: typeof parsed.apiKeyEncrypted === 'string' ? parsed.apiKeyEncrypted : null,
-      loginEncrypted: typeof parsed.loginEncrypted === 'string' ? parsed.loginEncrypted : null,
-    }
+    const value: unknown = JSON.parse(text)
+    if (typeof value !== 'object' || value === null) return null
+    parsed = value as Record<string, unknown>
   } catch {
     return null
+  }
+  const str = (key: string): string | null =>
+    typeof parsed[key] === 'string' ? String(parsed[key]) : null
+  const legacy = (key: string): string | null => {
+    const stored = str(key)
+    if (!stored || !decryptLegacy) return null
+    try {
+      return decryptLegacy(stored) || null
+    } catch {
+      return null
+    }
+  }
+  const migrated =
+    'pairingTokenEncrypted' in parsed || 'apiKeyEncrypted' in parsed || 'loginEncrypted' in parsed
+  return {
+    remoteAccess: parsed['remoteAccess'] === true,
+    droidPath: str('droidPath'),
+    factoryApiBaseUrl: str('factoryApiBaseUrl'),
+    pairingToken: str('pairingToken') ?? legacy('pairingTokenEncrypted') ?? undefined,
+    apiKey: str('apiKey') ?? legacy('apiKeyEncrypted'),
+    login: str('login') ?? legacy('loginEncrypted'),
+    migrated,
   }
 }
