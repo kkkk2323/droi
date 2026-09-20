@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
-import { Check, MessageCircleQuestion, Pencil, ShieldAlert } from 'lucide-react'
+import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { usePromptActions, usePrompts } from '@/daemon/use-prompts'
 import { cn } from '@/lib/utils'
@@ -51,13 +51,14 @@ export function PermissionCard({
     <section
       role="group"
       aria-label={`Permission request: ${title}`}
-      className="rounded-[13px] border border-amber-500/30 bg-card px-3.5 pt-3 pb-2.5"
+      className="rounded-[13px] border bg-card px-3.5 pt-3 pb-2.5"
     >
-      <header className="mb-2 flex items-center gap-1.5 text-[13px] font-medium">
-        <ShieldAlert aria-hidden className="size-3.5 text-amber-600 dark:text-amber-400" />
-        Droid wants to run {title}
-      </header>
-      <ul className="mb-2.5 flex flex-col gap-1.5">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+        <ShieldAlert aria-hidden className="size-3" />
+        Permission
+      </span>
+      <p className="mt-1.5 text-[13px] leading-[18px] font-medium">Droid wants to run {title}</p>
+      <ul className="mt-2 flex flex-col gap-1">
         {permission.toolUses.map((use) => (
           <li
             key={use.toolUse.id}
@@ -67,19 +68,30 @@ export function PermissionCard({
           </li>
         ))}
       </ul>
-      <div className="flex flex-wrap justify-end gap-2">
-        {permission.options.map((option, index) => (
-          <Button
-            key={option.value}
-            ref={index === 0 ? firstButton : undefined}
-            size="sm"
-            className="h-7 px-2.5 text-[11px]"
-            variant={option.value === 'cancel' ? 'outline' : index === 0 ? 'default' : 'secondary'}
-            onClick={() => onAnswer(option.value)}
-          >
-            {option.label}
-          </Button>
-        ))}
+      {/* One row per answer, like the question card's options; a click answers. */}
+      <div className="mt-2.5 grid gap-1">
+        {permission.options.map((option, index) => {
+          const cancel = option.value === 'cancel'
+          return (
+            <button
+              key={option.value}
+              ref={index === 0 ? firstButton : undefined}
+              type="button"
+              onClick={() => onAnswer(option.value)}
+              className={cn(
+                'flex min-h-9 w-full items-center gap-2 rounded-lg border border-transparent bg-background px-2.5 py-1.5 text-left text-[12px] font-medium outline-none transition-colors hover:border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30',
+                cancel && 'text-muted-foreground',
+              )}
+            >
+              <span className="min-w-0 flex-1">{option.label}</span>
+              {cancel ? (
+                <X aria-hidden className="size-3 shrink-0" />
+              ) : (
+                <Check aria-hidden className="size-3 shrink-0 text-primary" />
+              )}
+            </button>
+          )
+        })}
       </div>
     </section>
   )
