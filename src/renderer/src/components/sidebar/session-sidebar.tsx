@@ -1,14 +1,30 @@
 import { useState } from 'react'
-import { Archive, ChevronRight, Folder, Loader2, MessageSquare, Plus, Settings } from 'lucide-react'
+import { ContextMenu } from '@base-ui/react/context-menu'
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronRight,
+  Folder,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Settings,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { OLDER_BATCH, visibleSessions, type WorkspaceGroup } from '@/daemon/sessions'
+import {
+  OLDER_BATCH,
+  visibleSessions,
+  type SessionSummary,
+  type WorkspaceGroup,
+} from '@/daemon/sessions'
 
 export function SessionSidebar({
   groups,
   selectedSessionId,
   workingSessionIds,
   onSelect,
+  onArchiveToggle,
   isLoading,
   error,
   onNewSession,
@@ -20,6 +36,8 @@ export function SessionSidebar({
   /** Sessions the Daemon is working in right now; they get a spinner. */
   workingSessionIds: ReadonlySet<string>
   onSelect: (sessionId: string) => void
+  /** From the row's context menu: archive, or unarchive when already archived. */
+  onArchiveToggle: (session: SessionSummary) => void
   isLoading: boolean
   error: string | null
   onNewSession: () => void
@@ -62,6 +80,7 @@ export function SessionSidebar({
             selectedSessionId={selectedSessionId}
             workingSessionIds={workingSessionIds}
             onSelect={onSelect}
+            onArchiveToggle={onArchiveToggle}
           />
         ))}
       </div>
@@ -80,11 +99,13 @@ function WorkspaceSection({
   selectedSessionId,
   workingSessionIds,
   onSelect,
+  onArchiveToggle,
 }: {
   group: WorkspaceGroup
   selectedSessionId: string | null
   workingSessionIds: ReadonlySet<string>
   onSelect: (sessionId: string) => void
+  onArchiveToggle: (session: SessionSummary) => void
 }) {
   const [open, setOpen] = useState(true)
   const [revealed, setRevealed] = useState(0)
@@ -123,52 +144,79 @@ function WorkspaceSection({
             const selected = session.sessionId === selectedSessionId
             const working = workingSessionIds.has(session.sessionId)
             return (
-              <li key={session.sessionId}>
-                <button
-                  type="button"
-                  aria-current={selected ? 'page' : undefined}
-                  onClick={() => onSelect(session.sessionId)}
-                  title={session.title}
-                  className={cn(
-                    'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pl-8 pr-2 text-left outline-none transition-colors duration-150',
-                    'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
-                    selected && 'bg-sidebar-accent',
-                  )}
-                >
-                  <span className="flex items-center gap-1.5 text-[13px] text-foreground">
-                    <span className="flex-1 truncate">{session.title}</span>
-                    {session.archivedAt ? (
-                      <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
-                    ) : null}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    {working ? (
-                      <span
-                        role="status"
-                        aria-label="Working"
-                        className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
-                      >
-                        <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
-                        <span className="truncate">Working</span>
-                      </span>
-                    ) : session.messagesCount !== null ? (
-                      <span className="flex min-w-0 items-center gap-1">
-                        <MessageSquare aria-hidden className="size-3 shrink-0" />
-                        <span className="truncate">
-                          {session.messagesCount}{' '}
-                          {session.messagesCount === 1 ? 'message' : 'messages'}
+              <ContextMenu.Root key={session.sessionId}>
+                <ContextMenu.Trigger render={<li />}>
+                  <button
+                    type="button"
+                    aria-current={selected ? 'page' : undefined}
+                    onClick={() => onSelect(session.sessionId)}
+                    title={session.title}
+                    className={cn(
+                      'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pl-8 pr-2 text-left outline-none transition-colors duration-150',
+                      'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                      selected && 'bg-sidebar-accent',
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5 text-[13px] text-foreground">
+                      <span className="flex-1 truncate">{session.title}</span>
+                      {session.archivedAt ? (
+                        <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
+                      ) : null}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {working ? (
+                        <span
+                          role="status"
+                          aria-label="Working"
+                          className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
+                        >
+                          <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+                          <span className="truncate">Working</span>
                         </span>
-                      </span>
-                    ) : null}
-                    <time
-                      dateTime={new Date(session.updatedAt * 1000).toISOString()}
-                      className="ml-auto shrink-0 tabular-nums"
+                      ) : session.messagesCount !== null ? (
+                        <span className="flex min-w-0 items-center gap-1">
+                          <MessageSquare aria-hidden className="size-3 shrink-0" />
+                          <span className="truncate">
+                            {session.messagesCount}{' '}
+                            {session.messagesCount === 1 ? 'message' : 'messages'}
+                          </span>
+                        </span>
+                      ) : null}
+                      <time
+                        dateTime={new Date(session.updatedAt * 1000).toISOString()}
+                        className="ml-auto shrink-0 tabular-nums"
+                      >
+                        {relativeTime(session.updatedAt * 1000)}
+                      </time>
+                    </span>
+                  </button>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Positioner className="z-50 outline-none">
+                    <ContextMenu.Popup
+                      aria-label={`Actions for ${session.title}`}
+                      className="min-w-40 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none"
                     >
-                      {relativeTime(session.updatedAt * 1000)}
-                    </time>
-                  </span>
-                </button>
-              </li>
+                      <ContextMenu.Item
+                        onClick={() => onArchiveToggle(session)}
+                        className="flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        {session.archivedAt ? (
+                          <>
+                            <ArchiveRestore aria-hidden className="size-4 text-muted-foreground" />
+                            Unarchive
+                          </>
+                        ) : (
+                          <>
+                            <Archive aria-hidden className="size-4 text-muted-foreground" />
+                            Archive
+                          </>
+                        )}
+                      </ContextMenu.Item>
+                    </ContextMenu.Popup>
+                  </ContextMenu.Positioner>
+                </ContextMenu.Portal>
+              </ContextMenu.Root>
             )
           })}
         </ul>

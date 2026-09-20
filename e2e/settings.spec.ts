@@ -150,4 +150,23 @@ test.describe('session settings', () => {
       .at(-1)
     expect(listed?.params).toMatchObject({ includeArchived: true })
   })
+
+  test('a Session can be archived from its context menu in the sidebar', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    await sidebar.getByRole('button', { name: /Second session/ }).click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Actions for Second session' })
+    await menu.getByRole('menuitem', { name: 'Archive' }).click()
+
+    const archived = await fakeDaemon.waitForRequest('daemon.archive_session')
+    expect(archived.params).toMatchObject({ sessionId: second.sessionId })
+    await expect(menu).toHaveCount(0)
+    await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
+    await expect(sidebar.getByRole('button', { name: /First session/ })).toBeVisible()
+  })
 })

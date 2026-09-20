@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
-import { useConnectionState } from './daemon/connection-context'
+import { useConnectionState, useDaemonConnection } from './daemon/connection-context'
 import { foldContinued, groupByWorkspace, useSessionList, type SessionTag } from './daemon/sessions'
 
 const NO_TAGS: SessionTag[] = []
@@ -34,6 +34,7 @@ export function App() {
 
 function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [route, navigate] = useHashRoute()
+  const { controller } = useDaemonConnection()
   const narrow = useMediaQuery(NARROW)
   const [drawerRequested, setDrawerOpen] = useState(false)
   // A drawer only exists on narrow screens; widening the window closes it.
@@ -92,6 +93,18 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       selectedSessionId={selectedId}
       workingSessionIds={workingSessionIds}
       onSelect={(sessionId) => go({ name: 'session', sessionId })}
+      onArchiveToggle={(session) => {
+        if (session.archivedAt) {
+          void controller.unarchiveSession(session.sessionId).catch(console.error)
+          return
+        }
+        void controller
+          .archiveSession(session.sessionId)
+          .then(() => {
+            if (session.sessionId === selectedId) go({ name: 'home' })
+          })
+          .catch(console.error)
+      }}
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
       onNewSession={() => go({ name: 'new' })}
