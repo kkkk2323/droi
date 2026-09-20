@@ -272,8 +272,15 @@
   padding-inline: 0.75rem;
   font-family: var(--font-mono);
 }
+/* Streamdown pulls the actions up over a 2rem header with a 0.5rem gap; ours
+   is 2.25rem with no gap, so the overlay is re-measured to sit on it. */
+.prose-droi [data-streamdown='code-block'] > :has(> [data-streamdown='code-block-actions']) {
+  top: 0;
+  height: 2.25rem;
+  margin-top: -2.25rem;
+  padding: 0 0.5rem;
+}
 .prose-droi [data-streamdown='code-block-actions'] {
-  margin-right: 0.25rem;
   border-color: transparent;
   background: transparent;
   backdrop-filter: none;
