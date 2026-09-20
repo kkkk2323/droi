@@ -37,7 +37,9 @@ export function GitChangesButton({ changes }: { changes: GitChanges | null }) {
                   ? `${changes.files.length} uncommitted ${plural(changes.files.length, 'file')}`
                   : 'Working tree clean'}
               </span>
-              {dirty ? <Counts additions={changes.additions} deletions={changes.deletions} /> : null}
+              {dirty ? (
+                <Counts additions={changes.additions} deletions={changes.deletions} />
+              ) : null}
             </Popover.Title>
             {dirty ? (
               <ul aria-label="Changed files" className="overflow-y-auto px-1.5 pb-1.5">

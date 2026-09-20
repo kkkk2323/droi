@@ -1,20 +1,34 @@
-## 0.33.2 - 2026-04-25
+## 1.0.0 - 2026-09-20
 
-### Fixes
-- Improve key selection logic for spillover threshold and tie-breaking in `selectActiveKey`
+### Upgrading
 
-## Unreleased
+- Droi 1.0 is a rebuild: a thin Client of `droid daemon` with a Desktop Shell and a phone Client. A 0.x install cannot update in place; download the DMG once, and from 1.0 on updates arrive in the app.
 
 ### Changed
 
 - Rebuilt as a thin Client of `droid daemon`: the Desktop Shell starts and supervises the Daemon and hosts a Gateway; the Client (desktop window and phone browser) speaks only the Daemon protocol through `@factory/droid-sdk`.
-- Phone access through pairing (QR code / link) and Remote Access, with a PWA manifest.
-- Per-Session model, reasoning effort and autonomy from the Daemon's model list; rename and archive; new Session from a recent Workspace or a typed path.
-- Settings: Factory API key stored with `safeStorage`, `droid` path override, Factory API base URL (for a local proxy such as droid-proxy).
+- Sign in with Factory through the `droid` CLI's device flow; an API key remains the fallback for automation.
+- Redesigned after Waku: collapsible sidebar grouped by Workspace with pins, folds and context menus; a model picker with brands and favorites; quiet tool clusters with success and failure marks, Edit results as line diffs, reasoning folded away.
+- Composer with pasted or picked images, queued messages, task list, context meter, `/` commands and skills, `/compact` handing off to a child Session, drafts kept per Session.
+- Prompts (permissions and ask-user questions) take the composer's place; every attached Client sees and answers them, first answer wins.
+- Transcript opens on the latest message, follows streamed output, and offers a way back down.
+- Session header shows the Git branch with uncommitted counts and the changed files.
+- Settings: theme, font (Geist or the system face), text size, `droid` path, Factory API base URL, Remote Access with pairing QR code and link.
+
+### Added
+
+- Phone access through pairing (QR code or pasted link) and Remote Access, with a PWA manifest and iOS safe-area handling.
+- In-app update: the Shell fetches the latest Release's `app.asar`, verifies its SHA-256 and swaps it in; Settings → About checks and installs, a banner offers the restart.
+- End-to-end suite against a Fake Daemon, an Electron smoke suite, and a live test against a real Daemon.
 
 ### Removed
 
 - Droi's own JSON-RPC layer, session files under `~/.droid-app`, API key rotation and proxy, Hono API, Mission GUI, diagnostics and trace-chain, PostHog.
+
+## 0.33.2 - 2026-04-25
+
+### Fixes
+- Improve key selection logic for spillover threshold and tie-breaking in `selectActiveKey`
 
 ## 0.33.1 - 2026-04-10
 

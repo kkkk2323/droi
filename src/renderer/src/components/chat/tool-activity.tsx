@@ -122,8 +122,8 @@ function ToolRow({ call }: { call: ToolCall }) {
               />
             )}
             <ChevronRight
-            aria-hidden
-            className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[panel-open]:rotate-90 group-data-[panel-open]:opacity-100"
+              aria-hidden
+              className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[panel-open]:rotate-90 group-data-[panel-open]:opacity-100"
             />
           </>
         )}
