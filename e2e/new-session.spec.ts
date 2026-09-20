@@ -65,10 +65,29 @@ test.describe('new session', () => {
 
     // The Session appears in the sidebar under its Workspace.
     const billing = (await openSidebar()).getByRole('region', { name: 'billing-service' })
-    await expect(billing.getByRole('button', { name: /New session/ })).toHaveAttribute(
+    await expect(billing.getByRole('listitem').first().getByRole('button')).toHaveAttribute(
       'aria-current',
       'page',
     )
+  })
+
+  test('a Workspace group in the sidebar starts a new Session working there', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const billing = (await openSidebar()).getByRole('region', { name: 'billing-service' })
+    await billing.getByRole('heading').hover()
+    await billing.getByRole('button', { name: 'New session in billing-service' }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    await expect(form.getByRole('heading', { level: 2 })).toContainText('billing-service')
+    expect(new URL(page.url()).hash).toContain('#/new?ws=')
+
+    await form.getByRole('button', { name: 'Start session' }).click()
+    const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    expect(created.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
   })
 
   test('sending nothing still opens an empty Session in the preselected Workspace', async ({

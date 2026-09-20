@@ -6,12 +6,17 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 export type Route =
   | { name: 'home' }
-  | { name: 'new' }
+  /** `workspace` preselects where the Session will work (from a sidebar group). */
+  | { name: 'new'; workspace?: string }
   | { name: 'settings' }
   | { name: 'session'; sessionId: string }
 
 export function parseRoute(hash: string): Route {
   if (hash === '#/new') return { name: 'new' }
+  if (hash.startsWith('#/new?')) {
+    const workspace = new URLSearchParams(hash.slice('#/new?'.length)).get('ws')
+    return workspace ? { name: 'new', workspace } : { name: 'new' }
+  }
   if (hash === '#/settings') return { name: 'settings' }
   const match = /^#\/s\/([^/?#]+)/.exec(hash)
   return match?.[1]
@@ -24,7 +29,9 @@ export function routeHash(route: Route): string {
     case 'session':
       return `#/s/${encodeURIComponent(route.sessionId)}`
     case 'new':
-      return '#/new'
+      return route.workspace
+        ? `#/new?${new URLSearchParams({ ws: route.workspace }).toString()}`
+        : '#/new'
     case 'settings':
       return '#/settings'
     case 'home':

@@ -82,7 +82,7 @@ test.describe('sidebar', () => {
     expect(acmeTitles[0]).toMatch(/Add dark mode/)
 
     // A Workspace folds away and comes back.
-    const fold = acme.getByRole('button', { name: 'acme-web' })
+    const fold = acme.getByRole('button', { name: 'acme-web', exact: true })
     await expect(fold).toHaveAttribute('aria-expanded', 'true')
     await fold.click()
     await expect(acme.getByRole('listitem')).toHaveCount(0)
@@ -101,9 +101,11 @@ test.describe('sidebar', () => {
     const current = (await openSidebar()).getByRole('button', { name: /Refactor billing/ })
     await expect(current).toHaveAttribute('aria-current', 'page')
     await current.focus()
-    // Next stop is the following Workspace's fold, then its first Session.
+    // Next stops: the following Workspace's fold, its new-session button, its first Session.
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('button', { name: 'acme-web' })).toBeFocused()
+    await expect(page.getByRole('button', { name: 'acme-web', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(page.getByRole('button', { name: 'New session in acme-web' })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: /Add dark mode/ })).toBeFocused()
   })

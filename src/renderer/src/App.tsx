@@ -108,6 +108,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
       onNewSession={() => go({ name: 'new' })}
+      onNewSessionIn={(workspace) => go({ name: 'new', workspace })}
       onSettings={() => go({ name: 'settings' })}
       // Traffic lights sit over the sidebar's top strip on macOS.
       insetTop={hasShellBridge && !narrow}
@@ -176,7 +177,9 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         <ReconnectingBanner />
         {route.name === 'new' ? (
           <NewSessionPage
+            key={route.workspace ?? ''}
             recent={recent}
+            initialWorkspace={route.workspace ?? null}
             onCreated={(sessionId) => go({ name: 'session', sessionId })}
             header={<PageHeader leading={leading} title="New session" />}
           />

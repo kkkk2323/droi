@@ -17,10 +17,13 @@ import { cn } from '@/lib/utils'
  */
 export function NewSessionPage({
   recent,
+  initialWorkspace = null,
   onCreated,
   header,
 }: {
   recent: RecentWorkspace[]
+  /** Preselected Workspace (the page was opened from a sidebar group). */
+  initialWorkspace?: string | null
   onCreated: (sessionId: string) => void
   header: ReactNode
 }) {
@@ -28,7 +31,7 @@ export function NewSessionPage({
   // Until the user picks, the most recent Workspace is the target; recents
   // arrive with the session list, so the default is derived, not stored.
   const [choice, setChoice] = useState<{ kind: 'recent'; path: string } | { kind: 'other' } | null>(
-    null,
+    initialWorkspace ? { kind: 'recent', path: initialWorkspace } : null,
   )
   const workspace =
     choice === null ? (recent[0]?.path ?? null) : choice.kind === 'recent' ? choice.path : null

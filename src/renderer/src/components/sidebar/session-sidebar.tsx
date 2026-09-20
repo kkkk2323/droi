@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Plus,
   Settings,
+  SquarePen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -28,6 +29,7 @@ export function SessionSidebar({
   isLoading,
   error,
   onNewSession,
+  onNewSessionIn,
   onSettings,
   insetTop,
 }: {
@@ -41,6 +43,8 @@ export function SessionSidebar({
   isLoading: boolean
   error: string | null
   onNewSession: () => void
+  /** From a Workspace group's header: a new Session working in that Workspace. */
+  onNewSessionIn: (workspace: string) => void
   onSettings: () => void
   insetTop: boolean
 }) {
@@ -81,6 +85,7 @@ export function SessionSidebar({
             workingSessionIds={workingSessionIds}
             onSelect={onSelect}
             onArchiveToggle={onArchiveToggle}
+            onNewSessionIn={onNewSessionIn}
           />
         ))}
       </div>
@@ -100,12 +105,14 @@ function WorkspaceSection({
   workingSessionIds,
   onSelect,
   onArchiveToggle,
+  onNewSessionIn,
 }: {
   group: WorkspaceGroup
   selectedSessionId: string | null
   workingSessionIds: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onArchiveToggle: (session: SessionSummary) => void
+  onNewSessionIn: (workspace: string) => void
 }) {
   const [open, setOpen] = useState(true)
   const [revealed, setRevealed] = useState(0)
@@ -120,7 +127,7 @@ function WorkspaceSection({
           aria-controls={listId}
           title={group.path}
           onClick={() => setOpen(!open)}
-          className="flex h-full w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
         >
           <span className="relative size-4 shrink-0 text-muted-foreground">
             <Folder
@@ -136,6 +143,16 @@ function WorkspaceSection({
             />
           </span>
           <span className="truncate">{group.label}</span>
+        </button>
+        {/* Shows on hover and when focused, so the keyboard reaches it too. */}
+        <button
+          type="button"
+          aria-label={`New session in ${group.label}`}
+          title={`New session in ${group.label}`}
+          onClick={() => onNewSessionIn(group.path)}
+          className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
+        >
+          <SquarePen aria-hidden className="size-3.5" />
         </button>
       </h2>
       <div id={listId} hidden={!open}>
