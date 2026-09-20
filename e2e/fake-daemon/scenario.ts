@@ -88,6 +88,10 @@ export function createScenario(input: ScenarioInput): Scenario {
       context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
       return { success: true, archivedAt: found.archivedAt }
     },
+    'daemon.get_default_settings': () => ({
+      ...sessionSettings(),
+      availableModels: AVAILABLE_MODELS,
+    }),
     'daemon.list_commands': () => ({ commands: input.commands ?? [] }),
     'daemon.list_skills': () => ({
       skills: (input.skills ?? []).map((skill) => ({

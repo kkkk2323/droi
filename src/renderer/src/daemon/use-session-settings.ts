@@ -1,6 +1,7 @@
 // Per-Session settings (model, reasoning effort, autonomy) read from the SDK
 // store and written through the controller. The Daemon confirms a change with
 // a settings_updated notification, which the SDK applies and we re-render on.
+import type { MultiSessionStateManager } from '@factory/droid-sdk'
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react'
 import { useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
@@ -29,6 +30,22 @@ const EMPTY: SessionSettingsView = {
 }
 
 export const AUTONOMY_LEVELS = ['off', 'low', 'medium', 'high'] as const
+
+type AvailableModel = NonNullable<
+  ReturnType<
+    NonNullable<ReturnType<MultiSessionStateManager['getSessionManager']>>['getAvailableModels']
+  >
+>[number]
+
+export function toModelChoices(models: readonly AvailableModel[]): ModelChoice[] {
+  return models.map((model) => ({
+    id: model.id,
+    label: model.displayName,
+    reasoningEfforts: model.supportedReasoningEfforts,
+    disabled: 'disabled' in model && model.disabled === true,
+    provider: model.kind === 'router' ? null : model.modelProvider,
+  }))
+}
 
 export function useSessionSettings(sessionId: string): SessionSettingsView {
   const { sessionState } = useDaemonConnection()
@@ -63,13 +80,7 @@ export function useSessionSettings(sessionId: string): SessionSettingsView {
           modelId: manager.getModelId(),
           reasoningEffort: manager.getReasoningEffort(),
           autonomyLevel: manager.getAutonomyLevel(),
-          models: (manager.getAvailableModels() ?? []).map((model) => ({
-            id: model.id,
-            label: model.displayName,
-            reasoningEfforts: model.supportedReasoningEfforts,
-            disabled: 'disabled' in model && model.disabled === true,
-            provider: model.kind === 'router' ? null : model.modelProvider,
-          })),
+          models: toModelChoices(manager.getAvailableModels() ?? []),
         }
       : EMPTY
     snapshot.current = { version: version.current, value }

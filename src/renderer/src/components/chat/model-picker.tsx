@@ -135,7 +135,7 @@ export function ModelPicker({
               role="toolbar"
               aria-label="Filter models"
               aria-orientation="vertical"
-              className="flex w-14 shrink-0 flex-col items-center gap-2 overflow-y-auto border-r bg-sidebar px-2 py-3"
+              className="flex w-14 shrink-0 flex-col items-center gap-2 overflow-x-hidden overflow-y-auto border-r bg-sidebar px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <RailButton
                 label="Favorites"

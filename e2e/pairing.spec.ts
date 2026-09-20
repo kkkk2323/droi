@@ -74,6 +74,11 @@ test.describe('remote client surface', () => {
       sections.getByRole('button', { name: /Account|Daemon|Remote Access/ }),
     ).toHaveCount(0)
     await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible()
+    await page.getByRole('combobox', { name: 'Text size' }).click()
+    await page.getByRole('listbox').getByRole('option', { name: 'Large', exact: true }).click()
+    await expect(page.locator('html')).toHaveCSS('font-size', '17.5px')
+    await page.reload()
+    await expect(page.locator('html')).toHaveCSS('font-size', '17.5px')
     await expect(page.getByRole('switch', { name: 'Show archived sessions' })).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'Factory API key' })).toHaveCount(0)
   })

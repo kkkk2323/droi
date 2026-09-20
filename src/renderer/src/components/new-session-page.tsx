@@ -5,6 +5,8 @@ import { InputBar } from '@/components/chat/input-bar'
 import { COLUMN } from '@/components/chat/session-view'
 import { Button } from '@/components/ui/button'
 import { useNewSession, type RecentWorkspace } from '@/daemon/use-new-session'
+import { useSessionDefaults } from '@/daemon/use-session-defaults'
+import { SettingsControls } from '@/components/chat/session-toolbar'
 import { setPendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
 
@@ -35,8 +37,33 @@ export function NewSessionPage({
   const setOther = () => setChoice({ kind: 'other' })
   const [path, setPath] = useState('')
 
+  // The Daemon's defaults, with whatever the user changed on this page on top.
+  const defaults = useSessionDefaults()
+  const [overrides, setOverrides] = useState<{
+    modelId?: string
+    reasoningEffort?: string
+    autonomyLevel?: string
+  }>({})
+  const settings = {
+    models: defaults.models,
+    modelId: overrides.modelId ?? defaults.modelId,
+    reasoningEffort: overrides.reasoningEffort ?? defaults.reasoningEffort,
+    autonomyLevel: overrides.autonomyLevel ?? defaults.autonomyLevel,
+  }
+  const pickModel = (modelId: string) => {
+    // A new model may not offer the current effort; fall back to its list.
+    const model = defaults.models.find((m) => m.id === modelId)
+    const effort = settings.reasoningEffort
+    const keep = effort && model?.reasoningEfforts.includes(effort)
+    setOverrides({
+      ...overrides,
+      modelId,
+      ...(keep ? {} : { reasoningEffort: model?.reasoningEfforts[0] ?? undefined }),
+    })
+  }
+
   const start = async (target: string, prompt = '') => {
-    const sessionId = await create(target)
+    const sessionId = await create(target, settings)
     if (!sessionId) return
     if (prompt.trim()) setPendingPrompt(sessionId, prompt)
     onCreated(sessionId)
@@ -128,6 +155,16 @@ export function NewSessionPage({
           }}
           onCancel={() => {}}
           error={null}
+          footer={
+            <SettingsControls
+              settings={settings}
+              onModel={pickModel}
+              onReasoningEffort={(reasoningEffort) =>
+                setOverrides({ ...overrides, reasoningEffort })
+              }
+              onAutonomyLevel={(autonomyLevel) => setOverrides({ ...overrides, autonomyLevel })}
+            />
+          }
         />
         <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
           {workspace ? (

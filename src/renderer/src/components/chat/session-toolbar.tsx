@@ -6,6 +6,7 @@ import {
   AUTONOMY_LEVELS,
   useSessionSettings,
   useSessionSettingsActions,
+  type SessionSettingsView,
 } from '@/daemon/use-session-settings'
 import { ModelPicker } from './model-picker'
 
@@ -75,22 +76,43 @@ export function ArchiveButton({
 export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
   const settings = useSessionSettings(sessionId)
   const actions = useSessionSettingsActions(sessionId)
+  return (
+    <SettingsControls
+      settings={settings}
+      onModel={(value) => void actions.setModel(value)}
+      onReasoningEffort={(value) => void actions.setReasoningEffort(value)}
+      onAutonomyLevel={(value) => void actions.setAutonomyLevel(value)}
+      error={actions.error}
+    />
+  )
+}
+
+/** The three pickers, driven by whoever owns the values (a Session or a draft). */
+export function SettingsControls({
+  settings,
+  onModel,
+  onReasoningEffort,
+  onAutonomyLevel,
+  error = null,
+}: {
+  settings: SessionSettingsView
+  onModel: (modelId: string) => void
+  onReasoningEffort: (effort: string) => void
+  onAutonomyLevel: (level: string) => void
+  error?: string | null
+}) {
   const model = settings.models.find((m) => m.id === settings.modelId)
   const efforts =
     model?.reasoningEfforts ?? (settings.reasoningEffort ? [settings.reasoningEffort] : [])
 
   return (
     <div className="relative flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-      <ModelPicker
-        models={settings.models}
-        value={settings.modelId}
-        onChange={(value) => void actions.setModel(value)}
-      />
+      <ModelPicker models={settings.models} value={settings.modelId} onChange={onModel} />
       <Select
         quiet
         label="Reasoning effort"
         value={settings.reasoningEffort ?? ''}
-        onChange={(value) => void actions.setReasoningEffort(value)}
+        onChange={onReasoningEffort}
         options={efforts.map((e) => ({ value: e, label: EFFORT_LABELS[e] ?? e }))}
       />
       <Select
@@ -98,18 +120,18 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
         label="Autonomy"
         icon={<ShieldCheck aria-hidden className="size-3.5" />}
         value={settings.autonomyLevel ?? ''}
-        onChange={(value) => void actions.setAutonomyLevel(value)}
+        onChange={onAutonomyLevel}
         options={AUTONOMY_LEVELS.map((level) => ({
           value: level,
           label: AUTONOMY_LABELS[level] ?? level,
         }))}
       />
-      {actions.error ? (
+      {error ? (
         <p
           role="alert"
           className="absolute bottom-full left-0 mb-2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive-foreground"
         >
-          {actions.error}
+          {error}
         </p>
       ) : null}
     </div>

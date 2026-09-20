@@ -19,6 +19,7 @@ import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
 import { showArchivedSessions } from '@/lib/local-preference'
 import { useTheme } from '@/lib/theme'
+import { TEXT_SIZES, TEXT_SIZE_LABELS, applyTextSize, textSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
 import type {
   PairingInfo,
@@ -168,11 +169,12 @@ export function SettingsPage({
 
 function GeneralTab({ version }: { version: string | null }) {
   const [theme, setTheme] = useTheme()
+  const [size, setSize] = textSize.use()
   const [showArchived, setShowArchived] = showArchivedSessions.use()
   return (
     <>
       <SettingRow
-        title="Appearance"
+        title="Theme"
         description="Light is the default. The choice is stored per browser."
         control={
           <Select
@@ -183,6 +185,22 @@ function GeneralTab({ version }: { version: string | null }) {
               { value: 'light', label: 'Light' },
               { value: 'dark', label: 'Dark' },
             ]}
+          />
+        }
+      />
+      <SettingRow
+        title="Text size"
+        description="Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."
+        control={
+          <Select
+            label="Text size"
+            value={size}
+            onChange={(next) => {
+              const picked = TEXT_SIZES.find((s) => s === next) ?? 'default'
+              setSize(picked)
+              applyTextSize(picked)
+            }}
+            options={TEXT_SIZES.map((value) => ({ value, label: TEXT_SIZE_LABELS[value] }))}
           />
         }
       />

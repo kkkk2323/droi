@@ -27,9 +27,9 @@ describe('buildTranscript', () => {
       message('tool', [{ type: 'tool_result', toolUseId: 'call-1', content: 'a\nb' }]),
       message('assistant', [{ type: 'text', text: 'done' }]),
     ])
-    expect(entries.map((e) => e.role)).toEqual(['user', 'assistant', 'assistant'])
+    expect(entries.map((e) => e.role)).toEqual(['user', 'assistant'])
     const [, assistant] = entries
-    expect(assistant!.blocks.map((b) => b.kind)).toEqual(['thinking', 'tools'])
+    expect(assistant!.blocks.map((b) => b.kind)).toEqual(['thinking', 'tools', 'text'])
     const tools = assistant!.blocks[1]
     if (tools?.kind !== 'tools') throw new Error('expected tools block')
     expect(toolResultText(tools.calls[0]!.result)).toBe('a\nb')
@@ -50,6 +50,27 @@ describe('buildTranscript', () => {
       'text',
       1,
     ])
+  })
+
+  test('consecutive assistant messages merge into one entry; a user turn splits them', () => {
+    const entries = buildTranscript([
+      message('assistant', [{ type: 'tool_use', id: 'a', name: 'Read', input: {} }], {
+        createdAt: 1,
+      }),
+      message('assistant', [{ type: 'tool_use', id: 'b', name: 'Grep', input: {} }], {
+        createdAt: 2,
+      }),
+      message('assistant', [{ type: 'text', text: 'done' }], { createdAt: 3 }),
+      message('user', [{ type: 'text', text: 'thanks' }]),
+      message('assistant', [{ type: 'text', text: 'welcome' }]),
+    ])
+    expect(entries.map((e) => e.role)).toEqual(['assistant', 'user', 'assistant'])
+    const first = entries[0]!
+    expect(first.blocks.map((b) => (b.kind === 'tools' ? b.calls.length : b.kind))).toEqual([
+      2,
+      'text',
+    ])
+    expect(first.createdAt).toBe(3)
   })
 
   test('skips empty assistant messages and hidden messages', () => {

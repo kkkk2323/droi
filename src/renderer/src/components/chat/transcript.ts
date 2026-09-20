@@ -68,6 +68,19 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
       }
     })
     if (blocks.length === 0 && message.role === 'assistant') continue
+    const previous = entries[entries.length - 1]
+    // One turn arrives as several assistant messages (reasoning, tool calls,
+    // text); shown as one entry so nothing splits it. Tool runs join up too.
+    if (message.role === 'assistant' && previous?.role === 'assistant') {
+      for (const block of blocks) {
+        const last = previous.blocks[previous.blocks.length - 1]
+        if (block.kind === 'tools' && last?.kind === 'tools') last.calls.push(...block.calls)
+        else previous.blocks.push(block)
+      }
+      previous.createdAt = message.createdAt
+      previous.isError = previous.isError || message.isError === true
+      continue
+    }
     entries.push({
       id: message.id,
       role: message.role,

@@ -28,8 +28,14 @@ export function recentWorkspaces(sessions: readonly SessionSummary[]): RecentWor
   return [...byPath.values()].sort((a, b) => b.lastUsedAt - a.lastUsedAt)
 }
 
+export interface NewSessionSettings {
+  modelId: string | null
+  reasoningEffort: string | null
+  autonomyLevel: string | null
+}
+
 export interface NewSessionActions {
-  create(path: string): Promise<string | null>
+  create(path: string, settings?: NewSessionSettings): Promise<string | null>
   isCreating: boolean
   error: string | null
 }
@@ -41,7 +47,7 @@ export function useNewSession(): NewSessionActions {
   const [error, setError] = useState<string | null>(null)
 
   const create = useCallback(
-    async (path: string): Promise<string | null> => {
+    async (path: string, settings?: NewSessionSettings): Promise<string | null> => {
       const trimmed = path.trim()
       if (!trimmed) {
         setError('Enter a directory path.')
@@ -68,6 +74,11 @@ export function useNewSession(): NewSessionActions {
             cwd: check.resolvedPath ?? trimmed,
             sessionOriginHint: undefined,
             sessionSource: undefined,
+            ...(settings?.modelId ? { modelId: settings.modelId } : {}),
+            ...(settings?.reasoningEffort
+              ? { reasoningEffort: settings.reasoningEffort as never }
+              : {}),
+            ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
           })
           await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
           return result.sessionId

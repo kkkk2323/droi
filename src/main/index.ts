@@ -1,7 +1,7 @@
 // Desktop Shell: the installed desktop application. It starts the Daemon, opens a
 // window for the Local Client, and hosts the Gateway. It holds no conversation
 // state. (See CONTEXT.md.)
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, safeStorage, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -155,6 +155,35 @@ function createWindow(gatewayUrl: string): void {
   void window.loadURL(gatewayUrl)
 }
 
+/**
+ * The standard menu, spelled out so the zoom shortcuts are the ones people
+ * press: ⌘= / ⌘- / ⌘0. Electron's default View menu binds Zoom In to
+ * ⌘⇧= (Plus) and leaves ⌘- unreliable on some layouts.
+ */
+function buildMenu(): Menu {
+  const mac = process.platform === 'darwin'
+  return Menu.buildFromTemplate([
+    ...(mac ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom', accelerator: 'CommandOrControl+0' },
+        { role: 'zoomIn', accelerator: 'CommandOrControl+=' },
+        { role: 'zoomIn', accelerator: 'CommandOrControl+Plus', visible: false },
+        { role: 'zoomOut', accelerator: 'CommandOrControl+-' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    { role: 'windowMenu' },
+  ])
+}
+
 function snapshot(): ShellSettingsSnapshot {
   const fromEnv = Boolean(process.env['FACTORY_API_KEY'])
   return {
@@ -287,6 +316,7 @@ void app.whenReady().then(async () => {
     client: clientSource(),
   })
 
+  Menu.setApplicationMenu(buildMenu())
   createWindow(gateway.url)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && gateway) createWindow(gateway.url)

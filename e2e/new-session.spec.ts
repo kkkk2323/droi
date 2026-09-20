@@ -91,6 +91,42 @@ test.describe('new session', () => {
     )
   })
 
+  test('the model, effort and autonomy picked on the start page go into the new Session', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    // Defaults come from the Daemon.
+    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('Auto Model')
+    await expect(form.getByRole('combobox', { name: 'Autonomy' })).toHaveText('Low autonomy')
+
+    await form.getByRole('button', { name: 'Model' }).click()
+    await page
+      .getByRole('listbox', { name: 'Models' })
+      .getByRole('option', { name: /GPT-5/ })
+      .click()
+    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('GPT-5')
+    // The effort list follows the model; "none" is not on GPT-5's list.
+    await expect(form.getByRole('combobox', { name: 'Reasoning effort' })).toHaveText('Low')
+    await form.getByRole('combobox', { name: 'Reasoning effort' }).click()
+    await page.getByRole('listbox').getByRole('option', { name: 'Extra high' }).click()
+    await form.getByRole('combobox', { name: 'Autonomy' }).click()
+    await page.getByRole('listbox').getByRole('option', { name: 'High autonomy' }).click()
+
+    await form.getByRole('button', { name: 'Start session' }).click()
+    const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    expect(created.params).toMatchObject({
+      cwd: '/Users/dev/acme-web',
+      modelId: 'gpt-5',
+      reasoningEffort: 'xhigh',
+      autonomyLevel: 'high',
+    })
+  })
+
   test('a typed path is validated by the Daemon', async ({
     page,
     fakeDaemon,
