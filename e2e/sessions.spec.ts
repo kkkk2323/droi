@@ -43,8 +43,23 @@ function richHistory(): MessageFixture[] {
 
 const richSession = session('Fix the login bug', '/Users/dev/acme-web', richHistory())
 
+const DAY = 24 * 60 * 60
+const staleSession = session('Old spike', '/Users/dev/acme-web', [userMessage('spike')], {
+  updatedAt: Math.floor(Date.now() / 1000) - 10 * DAY,
+})
+
 test.describe('sidebar', () => {
   test.use({ scenario: { sessions: [droiSession, anotherDroiSession, cliSession] } })
+
+  test('rows show the title, the message count and the age on two lines', async ({
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const row = (await openSidebar()).getByRole('button', { name: /Fix the login bug/ })
+    await expect(row).toContainText('2 messages')
+    await expect(row.locator('time')).toHaveText(/^\d+[mh]$|^now$/)
+  })
 
   test('lists every Session grouped by Workspace, including ones made outside Droi', async ({
     openClient,
@@ -90,6 +105,23 @@ test.describe('sidebar', () => {
     await expect(page.getByRole('button', { name: 'acme-web' })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: /Add dark mode/ })).toBeFocused()
+  })
+})
+
+test.describe('sidebar with old sessions', () => {
+  test.use({ scenario: { sessions: [droiSession, staleSession] } })
+
+  test('sessions untouched for days hide behind "Show older" until asked for', async ({
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const acme = (await openSidebar()).getByRole('region', { name: 'acme-web' })
+    await expect(acme.getByRole('listitem')).toHaveCount(1)
+    await expect(acme.getByRole('button', { name: /Old spike/ })).toHaveCount(0)
+    await acme.getByRole('button', { name: 'Show 1 older' }).click()
+    await expect(acme.getByRole('button', { name: /Old spike/ })).toBeVisible()
+    await expect(acme.getByRole('button', { name: /Show \d+ older/ })).toHaveCount(0)
   })
 })
 

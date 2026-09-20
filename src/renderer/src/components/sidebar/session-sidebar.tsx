@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Archive, ChevronRight, Folder, Plus, Settings } from 'lucide-react'
+import { Archive, ChevronRight, Folder, MessageSquare, Plus, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SidebarToggle } from '@/components/sidebar-toggle'
 import { cn } from '@/lib/utils'
-import type { WorkspaceGroup } from '@/daemon/sessions'
+import { OLDER_BATCH, visibleSessions, type WorkspaceGroup } from '@/daemon/sessions'
 
 export function SessionSidebar({
   groups,
@@ -86,6 +86,8 @@ function WorkspaceSection({
   onSelect: (sessionId: string) => void
 }) {
   const [open, setOpen] = useState(true)
+  const [revealed, setRevealed] = useState(0)
+  const { visible, hidden } = visibleSessions(group.sessions, revealed)
   const listId = `workspace-${group.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
   return (
     <section aria-label={group.label} className="mb-2">
@@ -114,37 +116,61 @@ function WorkspaceSection({
           <span className="truncate">{group.label}</span>
         </button>
       </h2>
-      <ul id={listId} hidden={!open} className="flex flex-col gap-px">
-        {group.sessions.map((session) => {
-          const selected = session.sessionId === selectedSessionId
-          return (
-            <li key={session.sessionId}>
-              <button
-                type="button"
-                aria-current={selected ? 'page' : undefined}
-                onClick={() => onSelect(session.sessionId)}
-                title={session.title}
-                className={cn(
-                  'flex h-8 w-full items-center gap-2 rounded-lg pl-8 pr-2 text-left text-[13px] text-muted-foreground outline-none transition-colors duration-150',
-                  'hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
-                  selected && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                )}
-              >
-                <span className="flex-1 truncate">{session.title}</span>
-                {session.archivedAt ? (
-                  <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
-                ) : null}
-                <time
-                  dateTime={new Date(session.updatedAt * 1000).toISOString()}
-                  className="shrink-0 text-[11px] tabular-nums opacity-70"
+      <div id={listId} hidden={!open}>
+        <ul className="flex flex-col gap-px">
+          {visible.map((session) => {
+            const selected = session.sessionId === selectedSessionId
+            return (
+              <li key={session.sessionId}>
+                <button
+                  type="button"
+                  aria-current={selected ? 'page' : undefined}
+                  onClick={() => onSelect(session.sessionId)}
+                  title={session.title}
+                  className={cn(
+                    'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pl-8 pr-2 text-left outline-none transition-colors duration-150',
+                    'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                    selected && 'bg-sidebar-accent',
+                  )}
                 >
-                  {relativeTime(session.updatedAt * 1000)}
-                </time>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+                  <span className="flex items-center gap-1.5 text-[13px] text-foreground">
+                    <span className="flex-1 truncate">{session.title}</span>
+                    {session.archivedAt ? (
+                      <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
+                    ) : null}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    {session.messagesCount !== null ? (
+                      <span className="flex min-w-0 items-center gap-1">
+                        <MessageSquare aria-hidden className="size-3 shrink-0" />
+                        <span className="truncate">
+                          {session.messagesCount}{' '}
+                          {session.messagesCount === 1 ? 'message' : 'messages'}
+                        </span>
+                      </span>
+                    ) : null}
+                    <time
+                      dateTime={new Date(session.updatedAt * 1000).toISOString()}
+                      className="ml-auto shrink-0 tabular-nums"
+                    >
+                      {relativeTime(session.updatedAt * 1000)}
+                    </time>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        {hidden > 0 ? (
+          <button
+            type="button"
+            onClick={() => setRevealed(revealed + OLDER_BATCH)}
+            className="flex h-7 w-full items-center rounded-lg pl-8 pr-2 text-left text-[11px] text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            Show {hidden} older
+          </button>
+        ) : null}
+      </div>
     </section>
   )
 }

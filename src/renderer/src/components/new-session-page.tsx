@@ -159,7 +159,7 @@ function WorkspaceMenu({
     <Menu.Root>
       <Menu.Trigger
         aria-label="Workspace"
-        className="inline-flex items-baseline gap-0.5 rounded-sm border-b border-dashed border-muted-foreground/50 outline-none transition-colors hover:border-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:border-foreground"
+        className="inline-flex items-baseline gap-0.5 border-b border-dashed border-muted-foreground/50 outline-none transition-colors hover:border-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:border-foreground"
       >
         {children}
         <ChevronDown aria-hidden className="size-3.5 self-center opacity-50" />

@@ -84,6 +84,30 @@ export function groupByWorkspace(sessions: readonly SessionSummary[]): Workspace
   return result
 }
 
+/** Sessions touched within this window always show; older ones sit behind "Show more". */
+export const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+export const OLDER_BATCH = 30
+
+/**
+ * The rows a Workspace section shows: every recent Session plus the first
+ * `revealed` older ones (the list is newest first), and how many stay hidden.
+ */
+export function visibleSessions(
+  sessions: readonly SessionSummary[],
+  revealed: number,
+  now = Date.now(),
+): { visible: SessionSummary[]; hidden: number } {
+  const cutoff = now - RECENT_WINDOW_MS
+  const visible: SessionSummary[] = []
+  let older = 0
+  for (const session of sessions) {
+    const recent = session.updatedAt * 1000 >= cutoff
+    if (recent || older < revealed) visible.push(session)
+    if (!recent) older += 1
+  }
+  return { visible, hidden: Math.max(0, older - revealed) }
+}
+
 export function workspaceLabel(path: string): string {
   if (!path) return 'Unknown workspace'
   const trimmed = path.replace(/[\\/]+$/, '')

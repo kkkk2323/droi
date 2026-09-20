@@ -220,7 +220,8 @@ export function emptyTokenUsage(): Record<string, number> {
   }
 }
 
-let clock = 1_760_000_000_000
+// Fixtures are "recent" for the sidebar's three-day window: start a few hours ago.
+let clock = Date.now() - 6 * 60 * 60 * 1000
 
 export function userMessage(text: string): MessageFixture {
   clock += 1_000
