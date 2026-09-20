@@ -9,21 +9,15 @@ export interface SelectOption {
   disabled?: boolean
 }
 
-export interface SelectGroup {
-  label: string
-  options: SelectOption[]
-}
-
 /**
  * Base UI Select with the Client's styling. The trigger is a combobox button
- * named by `label`; the popup lists `options` flat or in labelled groups.
+ * named by `label`; the popup lists `options`.
  */
 export function Select({
   label,
   value,
   onChange,
   options,
-  groups,
   icon,
   quiet = false,
   className,
@@ -31,17 +25,15 @@ export function Select({
   label: string
   value: string
   onChange: (value: string) => void
-  options?: SelectOption[]
-  groups?: SelectGroup[]
+  options: SelectOption[]
   icon?: ReactNode
   /** Text-button look for toolbars instead of a framed field. */
   quiet?: boolean
   className?: string
 }) {
-  const flat = options ?? groups?.flatMap((g) => g.options) ?? []
-  const known = flat.some((o) => o.value === value)
+  const known = options.some((o) => o.value === value)
   // The Daemon may hold a value the list no longer offers; still show it.
-  const items = known || !value ? flat : [{ value, label: value }, ...flat]
+  const items = known || !value ? options : [{ value, label: value }, ...options]
   const empty = items.length === 0
 
   return (
@@ -78,18 +70,9 @@ export function Select({
         >
           <SelectPrimitive.Popup className="max-h-[min(24rem,var(--available-height))] min-w-[var(--anchor-width)] overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none">
             {!known && value ? <Item option={{ value, label: value }} /> : null}
-            {groups
-              ? groups.map((group) => (
-                  <SelectPrimitive.Group key={group.label}>
-                    <SelectPrimitive.GroupLabel className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground">
-                      {group.label}
-                    </SelectPrimitive.GroupLabel>
-                    {group.options.map((option) => (
-                      <Item key={option.value} option={option} />
-                    ))}
-                  </SelectPrimitive.Group>
-                ))
-              : (options ?? []).map((option) => <Item key={option.value} option={option} />)}
+            {options.map((option) => (
+              <Item key={option.value} option={option} />
+            ))}
           </SelectPrimitive.Popup>
         </SelectPrimitive.Positioner>
       </SelectPrimitive.Portal>

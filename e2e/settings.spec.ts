@@ -18,23 +18,44 @@ test.describe('session settings', () => {
     await openClient()
     await pickSession(/First session/)
 
-    const model = page.getByRole('combobox', { name: 'Model' })
+    const model = page.getByRole('button', { name: 'Model' })
     const effort = page.getByRole('combobox', { name: 'Reasoning effort' })
     const autonomy = page.getByRole('combobox', { name: 'Autonomy' })
     await expect(model).toHaveText('Claude Opus 4.1')
     await expect(effort).toHaveText('Medium')
     await expect(autonomy).toHaveText('Low autonomy')
 
-    // Models come from the Daemon's list for this Session, grouped by provider.
+    // Models come from the Daemon's list for this Session; the picker opens on all of them.
     await model.click()
-    const listbox = page.getByRole('listbox')
-    await expect(listbox.getByRole('option')).toHaveText(['Auto Model', 'Claude Opus 4.1', 'GPT-5'])
-    await expect(listbox.getByRole('group')).toHaveCount(3)
-    await expect(listbox.getByRole('group', { name: 'OpenAI' }).getByRole('option')).toHaveText([
-      'GPT-5',
-    ])
+    const picker = page.getByRole('dialog', { name: 'Choose a model' })
+    const models = picker.getByRole('listbox', { name: 'Models' })
+    await expect(models.getByRole('option')).toHaveCount(3)
+    await expect(models.getByRole('option').nth(0)).toContainText('Auto Model')
+    await expect(picker.getByRole('searchbox', { name: 'Search models' })).toBeFocused()
 
-    await listbox.getByRole('option', { name: 'GPT-5' }).click()
+    // The rail filters by brand; clicking the active brand again shows everything.
+    const rail = picker.getByRole('toolbar', { name: 'Filter models' })
+    await expect(rail.getByRole('button')).toHaveCount(4) // Favorites, Anthropic, OpenAI, Other
+    await rail.getByRole('button', { name: 'OpenAI' }).click()
+    await expect(models.getByRole('option')).toHaveCount(1)
+    await expect(models.getByRole('option').first()).toContainText('GPT-5')
+    await rail.getByRole('button', { name: 'OpenAI' }).click()
+    await expect(models.getByRole('option')).toHaveCount(3)
+
+    // Searching ignores the filter and matches label, id or brand.
+    await rail.getByRole('button', { name: 'Anthropic' }).click()
+    await picker.getByRole('searchbox', { name: 'Search models' }).fill('gpt')
+    await expect(models.getByRole('option')).toHaveCount(1)
+
+    // Favorites: star a model, and the Favorites tab lists it.
+    await models.getByRole('button', { name: 'Star GPT-5' }).click()
+    await picker.getByRole('searchbox', { name: 'Search models' }).fill('')
+    await rail.getByRole('button', { name: 'Favorites' }).click()
+    await expect(models.getByRole('option')).toHaveCount(1)
+    await expect(models.getByRole('option').first()).toContainText('GPT-5')
+
+    await models.getByRole('option', { name: /GPT-5/ }).click()
+    await expect(picker).toBeHidden()
     await expect
       .poll(
         () =>
@@ -49,6 +70,7 @@ test.describe('session settings', () => {
 
     // GPT-5 offers different efforts; the list follows the model.
     await effort.click()
+    const listbox = page.getByRole('listbox')
     await expect(listbox.getByRole('option')).toHaveText(['Low', 'Medium', 'High', 'Extra high'])
     await listbox.getByRole('option', { name: 'Extra high' }).click()
     await expect

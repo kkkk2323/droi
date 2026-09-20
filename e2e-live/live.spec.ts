@@ -109,9 +109,11 @@ test('pair, create a Session, send a prompt, get a reply', async ({ page }) => {
   const input = page.getByRole('textbox', { name: 'Message' })
   await expect(input).toBeEnabled({ timeout: 60_000 })
 
-  const modelSelect = page.getByRole('combobox', { name: 'Model' })
+  const modelSelect = page.getByRole('button', { name: 'Model' })
   await modelSelect.click()
-  const option = page.getByRole('listbox').locator(`[role="option"][data-value="${model}"]`)
+  const option = page
+    .getByRole('listbox', { name: 'Models' })
+    .locator(`[role="option"][data-value="${model}"]`)
   if ((await option.count()) > 0) {
     const label = await option.textContent()
     await option.click()

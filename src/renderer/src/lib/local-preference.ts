@@ -9,26 +9,30 @@ export interface LocalPreference<T> {
   use(): [T, (value: T) => void]
 }
 
-export function createBooleanPreference(key: string, fallback: boolean): LocalPreference<boolean> {
+export function createPreference<T>(
+  key: string,
+  fallback: T,
+  codec: { parse: (raw: string) => T; serialize: (value: T) => string },
+): LocalPreference<T> {
   const listeners = new Set<() => void>()
-  let value: boolean | null = null
+  let value: { current: T } | null = null
 
-  const get = (): boolean => {
+  const get = (): T => {
     if (value === null) {
       try {
         const stored = localStorage.getItem(key)
-        value = stored === null ? fallback : stored === 'true'
+        value = { current: stored === null ? fallback : codec.parse(stored) }
       } catch {
-        value = fallback
+        value = { current: fallback }
       }
     }
-    return value
+    return value.current
   }
 
-  const set = (next: boolean): void => {
-    value = next
+  const set = (next: T): void => {
+    value = { current: next }
     try {
-      localStorage.setItem(key, String(next))
+      localStorage.setItem(key, codec.serialize(next))
     } catch {
       // Private mode: the choice still holds for this page.
     }
@@ -47,5 +51,21 @@ export function createBooleanPreference(key: string, fallback: boolean): LocalPr
   }
 }
 
+export function createBooleanPreference(key: string, fallback: boolean): LocalPreference<boolean> {
+  return createPreference(key, fallback, { parse: (raw) => raw === 'true', serialize: String })
+}
+
+function createStringListPreference(key: string): LocalPreference<string[]> {
+  return createPreference<string[]>(key, [], {
+    parse: (raw) => {
+      const parsed: unknown = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+    },
+    serialize: JSON.stringify,
+  })
+}
+
 export const sidebarVisible = createBooleanPreference('droi.sidebar', true)
 export const showArchivedSessions = createBooleanPreference('droi.showArchived', false)
+/** Model ids starred in the picker, in the order they were starred. */
+export const favoriteModels = createStringListPreference('droi.favoriteModels')

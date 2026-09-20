@@ -1,42 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Archive, ArchiveRestore, Check, Pencil, ShieldCheck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Select, type SelectGroup } from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import {
   AUTONOMY_LEVELS,
   useSessionSettings,
   useSessionSettingsActions,
-  type ModelChoice,
 } from '@/daemon/use-session-settings'
-
-const PROVIDER_LABELS: Record<string, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  google: 'Google',
-  xai: 'xAI',
-  factory: 'Factory',
-  'generic-chat-completion-api': 'Custom',
-}
-
-/** Models grouped by provider, in the Daemon's order; the Auto router leads. */
-export function groupModels(models: ModelChoice[]): SelectGroup[] {
-  const groups = new Map<string, SelectGroup>()
-  for (const model of models) {
-    const key = model.provider ?? ''
-    let group = groups.get(key)
-    if (!group) {
-      const label = model.provider === null ? 'Auto' : (PROVIDER_LABELS[key] ?? capitalize(key))
-      group = { label, options: [] }
-      groups.set(key, group)
-    }
-    group.options.push({ value: model.id, label: model.label, disabled: model.disabled })
-  }
-  return [...groups.values()]
-}
-
-function capitalize(word: string): string {
-  return word.charAt(0).toUpperCase() + word.slice(1)
-}
+import { ModelPicker } from './model-picker'
 
 const EFFORT_LABELS: Record<string, string> = {
   none: 'None',
@@ -110,12 +81,10 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="relative flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-      <Select
-        quiet
-        label="Model"
-        value={settings.modelId ?? ''}
+      <ModelPicker
+        models={settings.models}
+        value={settings.modelId}
         onChange={(value) => void actions.setModel(value)}
-        groups={groupModels(settings.models)}
       />
       <Select
         quiet
