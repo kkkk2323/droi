@@ -14,6 +14,8 @@ export interface SessionFixture {
   archivedAt?: string
   settings?: Record<string, unknown>
   tags?: Array<{ name: string; metadata?: Record<string, string> }>
+  /** Exists on disk but is not loaded in the Daemon; per-Session RPCs fail until load_session. */
+  inactive?: boolean
 }
 
 export interface MessageFixture {
@@ -77,6 +79,7 @@ export function createScenario(input: ScenarioInput): Scenario {
     }),
     'daemon.update_session_settings': (params, context) => {
       const found = mustFind(sessions, params['sessionId'])
+      if (found.inactive) throw new Error('No active session found for ID')
       const { sessionId: _ignored, ...patch } = params
       found.settings = { ...sessionSettings(), ...found.settings, ...patch }
       if (Array.isArray(patch['tags'])) found.tags = patch['tags'] as SessionFixture['tags']
@@ -155,6 +158,7 @@ export function createScenario(input: ScenarioInput): Scenario {
         ),
       ])
       if (found.tags) child.tags = [...found.tags]
+      child.inactive = true
       sessions.unshift(child)
       return { newSessionId: child.sessionId, removedCount: found.messages.length }
     },
@@ -167,6 +171,7 @@ export function createScenario(input: ScenarioInput): Scenario {
     'daemon.load_session': (params) => {
       const found = sessions.find((s) => s.sessionId === params['sessionId'])
       if (!found) throw new Error(`Scenario has no session ${String(params['sessionId'])}`)
+      delete found.inactive
       return loadSessionResult(found)
     },
     ...input.handlers,

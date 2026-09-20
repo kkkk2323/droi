@@ -28,6 +28,12 @@ export function useCompact(sessionId: string, tags: readonly SessionTag[]): Comp
       setError(null)
       try {
         const result = await controller.compactSession(sessionId, instructions?.trim() || undefined)
+        // The handoff creates the child inactive; settings only apply to a loaded Session.
+        await controller.loadSession({
+          sessionId: result.newSessionId,
+          sessionOriginHint: undefined,
+          sessionSource: undefined,
+        })
         await controller.updateSessionSettings(result.newSessionId, {
           tags: continuationTags(sessionId, tags),
         })
