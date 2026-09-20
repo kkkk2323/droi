@@ -16,7 +16,8 @@ export interface ToolCall {
 export type TranscriptBlock =
   | { kind: 'text'; id: string; text: string }
   | { kind: 'thinking'; id: string; text: string; durationMs: number | undefined }
-  | { kind: 'tool'; id: string; call: ToolCall }
+  /** A run of tool calls with nothing said in between; rendered as one cluster. */
+  | { kind: 'tools'; id: string; calls: ToolCall[] }
 
 export interface TranscriptEntry {
   id: string
@@ -55,13 +56,13 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
               durationMs: block.durationMs,
             })
           break
-        case 'tool_use':
-          blocks.push({
-            kind: 'tool',
-            id,
-            call: { use: block, result: results.get(block.id) ?? null },
-          })
+        case 'tool_use': {
+          const call = { use: block, result: results.get(block.id) ?? null }
+          const last = blocks[blocks.length - 1]
+          if (last?.kind === 'tools') last.calls.push(call)
+          else blocks.push({ kind: 'tools', id, calls: [call] })
           break
+        }
         default:
           break
       }

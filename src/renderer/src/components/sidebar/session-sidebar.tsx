@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Archive, ChevronRight, Folder, MessageSquare, Plus, Settings } from 'lucide-react'
+import { Archive, ChevronRight, Folder, Loader2, MessageSquare, Plus, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { OLDER_BATCH, visibleSessions, type WorkspaceGroup } from '@/daemon/sessions'
@@ -7,6 +7,7 @@ import { OLDER_BATCH, visibleSessions, type WorkspaceGroup } from '@/daemon/sess
 export function SessionSidebar({
   groups,
   selectedSessionId,
+  workingSessionIds,
   onSelect,
   isLoading,
   error,
@@ -16,6 +17,8 @@ export function SessionSidebar({
 }: {
   groups: WorkspaceGroup[]
   selectedSessionId: string | null
+  /** Sessions the Daemon is working in right now; they get a spinner. */
+  workingSessionIds: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   isLoading: boolean
   error: string | null
@@ -57,6 +60,7 @@ export function SessionSidebar({
             key={group.key}
             group={group}
             selectedSessionId={selectedSessionId}
+            workingSessionIds={workingSessionIds}
             onSelect={onSelect}
           />
         ))}
@@ -74,10 +78,12 @@ export function SessionSidebar({
 function WorkspaceSection({
   group,
   selectedSessionId,
+  workingSessionIds,
   onSelect,
 }: {
   group: WorkspaceGroup
   selectedSessionId: string | null
+  workingSessionIds: ReadonlySet<string>
   onSelect: (sessionId: string) => void
 }) {
   const [open, setOpen] = useState(true)
@@ -115,6 +121,7 @@ function WorkspaceSection({
         <ul className="flex flex-col gap-px">
           {visible.map((session) => {
             const selected = session.sessionId === selectedSessionId
+            const working = workingSessionIds.has(session.sessionId)
             return (
               <li key={session.sessionId}>
                 <button
@@ -135,7 +142,16 @@ function WorkspaceSection({
                     ) : null}
                   </span>
                   <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    {session.messagesCount !== null ? (
+                    {working ? (
+                      <span
+                        role="status"
+                        aria-label="Working"
+                        className="flex min-w-0 items-center gap-1"
+                      >
+                        <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+                        <span className="truncate">Working</span>
+                      </span>
+                    ) : session.messagesCount !== null ? (
                       <span className="flex min-w-0 items-center gap-1">
                         <MessageSquare aria-hidden className="size-3 shrink-0" />
                         <span className="truncate">

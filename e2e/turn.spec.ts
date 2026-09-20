@@ -26,6 +26,7 @@ test.describe('sending a prompt', () => {
     fakeDaemon,
     openClient,
     pickSession,
+    openSidebar,
   }) => {
     await openClient()
     await pickSession(/Chat/)
@@ -48,6 +49,11 @@ test.describe('sending a prompt', () => {
     const cancel = page.getByRole('button', { name: 'Cancel' })
     await expect(cancel).toBeVisible()
     await expect(activity).not.toHaveText('')
+    // The activity row sits in the transcript, after the last message, and
+    // the sidebar marks the busy Session.
+    await expect(transcript.getByRole('status', { name: 'Session activity' })).toBeVisible()
+    const row = (await openSidebar()).getByRole('button', { name: /Chat/ })
+    await expect(row.getByRole('status', { name: 'Working' })).toBeVisible()
 
     const assistant = transcript.getByRole('article', { name: 'Assistant' }).last()
     await expect(assistant).toContainText('The answer')

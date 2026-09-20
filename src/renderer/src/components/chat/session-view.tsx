@@ -3,16 +3,16 @@ import { Folder, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { useSession } from '@/daemon/use-session'
 import { useTurn } from '@/daemon/use-turn'
-import { LOAD_STATE, type LoadState } from '@/daemon/sdk-enums'
+import { LOAD_STATE } from '@/daemon/sdk-enums'
 import { takePendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
 import { InputBar } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
 import { ArchiveButton, SessionSettingsBar, SessionTitle } from './session-toolbar'
+import { COLUMN } from './column'
 
-/** Transcript, Prompts and composer share one reading column. */
-export const COLUMN = 'mx-auto w-full max-w-3xl px-4 md:px-6'
+export { COLUMN } from './column'
 
 export function SessionView({
   sessionId,
@@ -59,10 +59,7 @@ export function SessionView({
             Loading session…
           </div>
         ) : (
-          <MessageList
-            messages={session.messages}
-            isStreaming={session.workingState === 'streaming_assistant_message'}
-          />
+          <MessageList messages={session.messages} workingState={session.workingState} />
         )}
       </div>
 
@@ -83,33 +80,9 @@ export function SessionView({
               <span className="truncate">{workspaceName(workspace)}</span>
             </span>
           ) : null}
-          <WorkingState state={session.workingState} loadState={session.loadState} />
         </div>
       </div>
     </section>
-  )
-}
-
-const WORKING_LABELS: Record<string, string> = {
-  idle: '',
-  thinking: 'Thinking',
-  streaming_assistant_message: 'Responding',
-  waiting_for_tool_confirmation: 'Waiting for your approval',
-  executing_tool: 'Running a tool',
-  compacting_conversation: 'Compacting',
-}
-
-function WorkingState({ state, loadState }: { state: string; loadState: LoadState }) {
-  const label = loadState === LOAD_STATE.loaded ? (WORKING_LABELS[state] ?? state) : ''
-  return (
-    <div
-      role="status"
-      aria-label="Session activity"
-      className="ml-auto flex shrink-0 items-center gap-1.5 text-right"
-    >
-      {label ? <Loader2 aria-hidden className="size-3 animate-spin" /> : null}
-      {label}
-    </div>
   )
 }
 

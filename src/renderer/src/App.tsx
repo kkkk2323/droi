@@ -4,6 +4,7 @@ import { PanelLeft } from 'lucide-react'
 import { useConnectionState } from './daemon/connection-context'
 import { groupByWorkspace, useSessionList } from './daemon/sessions'
 import { recentWorkspaces } from './daemon/use-new-session'
+import { useWorkingSessionIds } from './daemon/use-working-sessions'
 import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
 import { PageHeader } from './components/page-header'
 import { SessionSidebar } from './components/sidebar/session-sidebar'
@@ -38,6 +39,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [sidebarShown, setSidebarShown] = sidebarVisible.use()
   const [showArchived] = showArchivedSessions.use()
   const sessions = useSessionList({ includeArchived: showArchived })
+  const workingSessionIds = useWorkingSessionIds()
   const groups = useMemo(() => groupByWorkspace(sessions.data ?? []), [sessions.data])
   const recent = useMemo(() => recentWorkspaces(sessions.data ?? []), [sessions.data])
   const selectedId = route.name === 'session' ? route.sessionId : null
@@ -85,6 +87,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     <SessionSidebar
       groups={groups}
       selectedSessionId={selectedId}
+      workingSessionIds={workingSessionIds}
       onSelect={(sessionId) => go({ name: 'session', sessionId })}
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}

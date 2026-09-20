@@ -3,17 +3,19 @@ import { Collapsible } from '@base-ui/react/collapsible'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from './markdown'
-import { ToolActivity } from './tool-activity'
+import { ToolCluster } from './tool-activity'
 import type { TranscriptBlock, TranscriptEntry } from './transcript'
-
-const COLUMN = 'mx-auto w-full max-w-3xl px-4 md:px-6'
+import { COLUMN } from './column'
 
 export function MessageEntry({
   entry,
   isStreaming,
+  showTime,
 }: {
   entry: TranscriptEntry
   isStreaming: boolean
+  /** Only the entry that closes a turn carries a timestamp. */
+  showTime: boolean
 }) {
   if (entry.role === 'user') {
     const text = entry.blocks
@@ -47,8 +49,8 @@ export function MessageEntry({
                 isStreaming={isStreaming}
               />
             )
-          case 'tool':
-            return <ToolActivity key={block.id} call={block.call} />
+          case 'tools':
+            return <ToolCluster key={block.id} calls={block.calls} />
         }
       })}
       {isStreaming ? (
@@ -57,7 +59,7 @@ export function MessageEntry({
           className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-foreground/60 align-middle"
         />
       ) : null}
-      {entry.createdAt ? (
+      {showTime && entry.createdAt ? (
         <time
           dateTime={new Date(entry.createdAt).toISOString()}
           className="mt-2 block text-xs text-muted-foreground"

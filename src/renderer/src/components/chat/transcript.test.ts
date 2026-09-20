@@ -29,10 +29,27 @@ describe('buildTranscript', () => {
     ])
     expect(entries.map((e) => e.role)).toEqual(['user', 'assistant', 'assistant'])
     const [, assistant] = entries
-    expect(assistant!.blocks.map((b) => b.kind)).toEqual(['thinking', 'tool'])
-    const tool = assistant!.blocks[1]
-    if (tool?.kind !== 'tool') throw new Error('expected tool block')
-    expect(toolResultText(tool.call.result)).toBe('a\nb')
+    expect(assistant!.blocks.map((b) => b.kind)).toEqual(['thinking', 'tools'])
+    const tools = assistant!.blocks[1]
+    if (tools?.kind !== 'tools') throw new Error('expected tools block')
+    expect(toolResultText(tools.calls[0]!.result)).toBe('a\nb')
+  })
+
+  test('consecutive tool calls form one cluster; text splits clusters', () => {
+    const entries = buildTranscript([
+      message('assistant', [
+        { type: 'tool_use', id: 'a', name: 'Read', input: {} },
+        { type: 'tool_use', id: 'b', name: 'Grep', input: {} },
+        { type: 'text', text: 'found it' },
+        { type: 'tool_use', id: 'c', name: 'Edit', input: {} },
+      ]),
+    ])
+    const blocks = entries[0]!.blocks
+    expect(blocks.map((b) => (b.kind === 'tools' ? b.calls.length : b.kind))).toEqual([
+      2,
+      'text',
+      1,
+    ])
   })
 
   test('skips empty assistant messages and hidden messages', () => {
