@@ -285,8 +285,7 @@ test.describe('drafts', () => {
     page,
     openClient,
     pickSession,
-  }, testInfo) => {
-    test.skip(testInfo.project.name === 'phone', 'the drawer, not the draft, is under test there')
+  }) => {
     await openClient()
     await pickSession(/Chat/)
     const input = page.getByRole('textbox', { name: 'Message' })

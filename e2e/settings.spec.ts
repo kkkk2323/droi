@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures'
+import { drawerGone, expect, test } from './fixtures'
 import { session, userMessage } from './fake-daemon/scenario'
 
 const first = session('First session', '/Users/dev/acme-web', [userMessage('hi')], {
@@ -128,13 +128,19 @@ test.describe('session settings', () => {
   }) => {
     await openClient()
     await pickSession(/Second session/)
-    await page.getByRole('button', { name: 'Archive session' }).click()
-
-    await fakeDaemon.waitForRequest('daemon.archive_session')
+    await expect(page.getByRole('heading', { level: 2, name: 'Second session' })).toBeVisible()
     let sidebar = await openSidebar()
+    await sidebar.getByRole('button', { name: /Second session/ }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Archive' }).click()
+
+    const archiveRequest = await fakeDaemon.waitForRequest('daemon.archive_session')
+    expect(archiveRequest.params).toMatchObject({ sessionId: second.sessionId })
+    // The open Session was the one archived, so the view goes home.
+    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
+    await drawerGone(page)
+    sidebar = await openSidebar()
     await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
     await expect(sidebar.getByRole('button', { name: /First session/ })).toBeVisible()
-    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
 
     // The preference lives in Settings > General and is available to every Client.
     await sidebar.getByRole('button', { name: 'Settings' }).click()
@@ -149,9 +155,15 @@ test.describe('session settings', () => {
       .filter((r) => r.method === 'daemon.list_available_sessions')
       .at(-1)
     expect(listed?.params).toMatchObject({ includeArchived: true })
+
+    // The same menu brings it back.
+    await archived.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Unarchive' }).click()
+    await fakeDaemon.waitForRequest('daemon.unarchive_session')
+    await expect(archived.getByLabel('Archived')).toHaveCount(0)
   })
 
-  test('a Session can be archived from its context menu in the sidebar', async ({
+  test('a Session can be archived from the sidebar without opening it', async ({
     page,
     fakeDaemon,
     openClient,

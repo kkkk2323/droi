@@ -37,6 +37,7 @@ export const test = base.extend<Fixtures>({
     await use(async (title) => {
       const sidebar = await openSidebar(page)
       await sidebar.getByRole('button', { name: title }).click()
+      await drawerGone(page)
     })
   },
 })
@@ -45,11 +46,24 @@ export async function openSidebar(page: Page): Promise<Locator> {
   const inline = page.getByRole('navigation', { name: 'Sessions' })
   if (await inline.isVisible()) return inline
   const drawer = page.getByRole('dialog', { name: 'Sessions' })
+  // A drawer on its way out still counts as visible; let it go rather than
+  // hand back a panel about to leave the DOM.
+  await expect(page.locator('[role="dialog"][data-closed]')).toHaveCount(0)
   if (!(await drawer.isVisible())) {
     await page.getByRole('button', { name: 'Open sessions' }).click()
   }
-  await expect(drawer).toBeVisible()
+  await expect(drawer).toHaveAttribute('data-open')
+  await expect(drawer).not.toHaveAttribute('data-starting-style')
   return drawer.getByRole('navigation', { name: 'Sessions' })
+}
+
+/**
+ * On the phone a pick closes the drawer, and its closed state lands a frame
+ * after the click. Call this after picking so a following openSidebar does
+ * not catch the drawer on its way out.
+ */
+export async function drawerGone(page: Page): Promise<void> {
+  await expect(page.getByRole('dialog', { name: 'Sessions' })).toBeHidden()
 }
 
 export async function openPairingLink(

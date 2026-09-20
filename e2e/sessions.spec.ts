@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures'
+import { drawerGone, expect, test } from './fixtures'
 import {
   assistantMessage,
   session,
@@ -97,6 +97,7 @@ test.describe('sidebar', () => {
     await page.keyboard.press('Enter')
     await expect(page.getByRole('region', { name: 'Refactor billing' })).toBeVisible()
     // On narrow screens the drawer closed after the pick; open it again.
+    await drawerGone(page)
     const current = (await openSidebar()).getByRole('button', { name: /Refactor billing/ })
     await expect(current).toHaveAttribute('aria-current', 'page')
     await current.focus()

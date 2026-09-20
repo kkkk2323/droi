@@ -15,7 +15,7 @@ import { ComposerShelf, ContextMeter } from './composer-panels'
 import { InputBar, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
-import { ArchiveButton, SessionSettingsBar, SessionTitle } from './session-toolbar'
+import { SessionSettingsBar, SessionTitle } from './session-toolbar'
 import { COLUMN } from './column'
 
 export { COLUMN } from './column'
@@ -24,21 +24,17 @@ export function SessionView({
   sessionId,
   title,
   workspace,
-  archived,
   tags,
   parent,
-  onArchived,
   onContinued,
   leading,
 }: {
   sessionId: string
   title: string
   workspace: string | null
-  archived: boolean
   tags: SessionSummary['tags']
   /** The Session this one continues after a compaction, when listed. */
   parent: Pick<SessionSummary, 'sessionId' | 'title'> | null
-  onArchived: () => void
   /** `/compact` produced a child Session; the view should move there. */
   onContinued: (sessionId: string) => void
   leading?: ReactNode
@@ -100,9 +96,7 @@ export function SessionView({
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
-      <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />}>
-        <ArchiveButton sessionId={sessionId} archived={archived} onArchived={onArchived} />
-      </PageHeader>
+      <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />} />
 
       <div className="min-h-0 flex-1">
         {session.loadError ? (

@@ -95,8 +95,6 @@ export interface SessionSettingsActions {
   setReasoningEffort(effort: string): Promise<void>
   setAutonomyLevel(level: string): Promise<void>
   rename(title: string): Promise<void>
-  archive(): Promise<void>
-  unarchive(): Promise<void>
   error: string | null
 }
 
@@ -120,8 +118,6 @@ export function useSessionSettingsActions(sessionId: string): SessionSettingsAct
     setAutonomyLevel: (level) =>
       run(() => controller.updateSessionSettings(sessionId, { autonomyLevel: level as never })),
     rename: (title) => run(() => controller.renameSession(sessionId, title)),
-    archive: () => run(() => controller.archiveSession(sessionId)),
-    unarchive: () => run(() => controller.unarchiveSession(sessionId)),
     error,
   }
 }

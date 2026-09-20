@@ -186,10 +186,8 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             sessionId={selectedId}
             title={selected?.title ?? 'Session'}
             workspace={selected?.cwd ?? null}
-            archived={Boolean(selected?.archivedAt)}
             tags={selected?.tags ?? NO_TAGS}
             parent={parent}
-            onArchived={() => go({ name: 'home' })}
             onContinued={(sessionId) => go({ name: 'session', sessionId })}
             leading={leading}
           />

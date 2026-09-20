@@ -125,6 +125,27 @@ test.describe('sending from further up the transcript', () => {
     )
     await expect(transcript.getByRole('article', { name: 'Assistant' }).last()).toBeInViewport()
   })
+
+  test('opening lands on the latest message; a button offers the way back down', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Long/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('question 28')).toBeInViewport()
+    const down = page.getByRole('button', { name: 'Scroll to latest' })
+    await expect(down).toHaveCount(0)
+
+    // The list re-pins itself to the end shortly after opening; scroll up after that.
+    await page.waitForTimeout(300)
+    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await expect(transcript.getByText('question 28')).not.toBeInViewport()
+    await down.click()
+    await expect(transcript.getByText('question 28')).toBeInViewport()
+    await expect(down).toHaveCount(0)
+  })
 })
 
 test.describe('cancelling a turn', () => {

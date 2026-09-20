@@ -1,6 +1,8 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
+import { ArrowDown } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
 import { buildTranscript, type TranscriptEntry } from './transcript'
 import { COLUMN } from './column'
@@ -123,20 +125,28 @@ export function MessageList({
   scrollToEndKey?: number
 }) {
   const virtuoso = useRef<VirtuosoHandle>(null)
+  const [atBottom, setAtBottom] = useState(true)
+  const scrollToEnd = (behavior: 'auto' | 'smooth') =>
+    virtuoso.current?.scrollToIndex({
+      index: 'LAST',
+      align: 'end',
+      behavior: prefersReducedMotion() ? 'auto' : behavior,
+    })
   useEffect(() => {
     if (!scrollToEndKey) return
     // The sent message is appended a tick after the send; scroll once now and
     // once after it has landed.
-    const scroll = () =>
-      virtuoso.current?.scrollToIndex({
-        index: 'LAST',
-        align: 'end',
-        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-      })
-    scroll()
-    const timer = setTimeout(scroll, 120)
+    scrollToEnd('smooth')
+    const timer = setTimeout(() => scrollToEnd('smooth'), 120)
     return () => clearTimeout(timer)
   }, [scrollToEndKey])
+  // Opening a Session lands on its latest message. The initial index gets
+  // there before entries have their real heights (markdown, images), so
+  // re-pin once they have settled.
+  useEffect(() => {
+    const timer = setTimeout(() => scrollToEnd('auto'), 150)
+    return () => clearTimeout(timer)
+  }, [])
   const earlier = buildTranscript(earlierMessages)
   const own = buildTranscript(messages)
   const entries = [...earlier, ...own]
@@ -161,23 +171,37 @@ export function MessageList({
   }
 
   return (
-    <Virtuoso<TranscriptEntry, ListContext>
-      ref={virtuoso}
-      role="log"
-      aria-label="Transcript"
-      className="h-full"
-      data={entries}
-      context={context}
-      computeItemKey={(_, entry) => entry.id}
-      firstItemIndex={INDEX_BASE - earlier.length}
-      initialTopMostItemIndex={entries.length - 1}
-      followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
-      // The panels above the composer resize the viewport; a few pixels off
-      // the bottom must still count as "following".
-      atBottomThreshold={120}
-      components={{ Header: ListHeader, Footer: ActivityRow }}
-      increaseViewportBy={{ top: 600, bottom: 600 }}
-      itemContent={renderEntry}
-    />
+    <div className="relative h-full">
+      <Virtuoso<TranscriptEntry, ListContext>
+        ref={virtuoso}
+        role="log"
+        aria-label="Transcript"
+        className="h-full"
+        data={entries}
+        context={context}
+        computeItemKey={(_, entry) => entry.id}
+        firstItemIndex={INDEX_BASE - earlier.length}
+        initialTopMostItemIndex={entries.length - 1}
+        followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
+        // The panels above the composer resize the viewport; a few pixels off
+        // the bottom must still count as "following".
+        atBottomThreshold={120}
+        atBottomStateChange={setAtBottom}
+        components={{ Header: ListHeader, Footer: ActivityRow }}
+        increaseViewportBy={{ top: 600, bottom: 600 }}
+        itemContent={renderEntry}
+      />
+      {!atBottom ? (
+        <Button
+          size="icon-sm"
+          variant="outline"
+          aria-label="Scroll to latest"
+          onClick={() => scrollToEnd('smooth')}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-background shadow-composer"
+        >
+          <ArrowDown aria-hidden />
+        </Button>
+      ) : null}
+    </div>
   )
 }

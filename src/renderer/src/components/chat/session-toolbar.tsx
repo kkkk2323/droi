@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Archive, ArchiveRestore, Check, Pencil, ShieldCheck, X } from 'lucide-react'
+import { Check, Pencil, ShieldCheck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import {
@@ -38,38 +38,6 @@ export function SessionTitle({
 }): ReactNode {
   const actions = useSessionSettingsActions(sessionId)
   return <EditableTitle title={title} onRename={(next) => void actions.rename(next)} />
-}
-
-/** Archive / unarchive control for the page header. */
-export function ArchiveButton({
-  sessionId,
-  archived,
-  onArchived,
-}: {
-  sessionId: string
-  archived: boolean
-  onArchived: () => void
-}) {
-  const actions = useSessionSettingsActions(sessionId)
-  return archived ? (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      aria-label="Unarchive session"
-      onClick={() => void actions.unarchive()}
-    >
-      <ArchiveRestore aria-hidden />
-    </Button>
-  ) : (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      aria-label="Archive session"
-      onClick={() => void actions.archive().then(onArchived)}
-    >
-      <Archive aria-hidden />
-    </Button>
-  )
 }
 
 /** Model, reasoning effort and autonomy for the composer's footer row. */
