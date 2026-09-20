@@ -546,7 +546,7 @@ function PairingRow({
       title="Pair a phone"
       description={
         enabled
-          ? 'Scan the code or open the link on a phone connected to the same network. Resetting revokes every paired phone.'
+          ? 'Scan the code or open the link on a phone connected to the same network. To keep Droi on an iPhone home screen, add the page to the home screen first, then paste the link once inside the app. Resetting revokes every paired phone.'
           : 'Turn on Remote Access to pair a phone.'
       }
     >

@@ -28,19 +28,57 @@ export function resolveClientConfig(env: ClientEnvironment): ClientConfig {
     }
   }
 
-  const fragment = new URLSearchParams(env.hash.replace(/^#/, ''))
-  const pairedToken = fragment.get('pair')
-  const gatewayOverride = fragment.get('gateway')
-  if (pairedToken) env.storage.setItem(TOKEN_KEY, pairedToken)
-  if (gatewayOverride) env.storage.setItem(GATEWAY_KEY, gatewayOverride)
-  // The token must not linger in the address bar, history or a shared screenshot.
-  if (pairedToken || gatewayOverride) env.replaceUrl(new URL('/', env.origin).toString())
+  const pairing = parsePairingFragment(env.hash)
+  if (pairing) {
+    savePairing(env.storage, pairing)
+    // The token must not linger in the address bar, history or a shared screenshot.
+    env.replaceUrl(new URL('/', env.origin).toString())
+  }
 
   return {
     kind: 'remote',
     gatewayUrl: env.storage.getItem(GATEWAY_KEY) ?? env.origin,
     pairingToken: env.storage.getItem(TOKEN_KEY),
   }
+}
+
+export interface Pairing {
+  token: string
+  gateway: string | null
+}
+
+function parsePairingFragment(hash: string): Pairing | null {
+  const fragment = new URLSearchParams(hash.replace(/^#/, ''))
+  const token = fragment.get('pair')
+  return token ? { token, gateway: fragment.get('gateway') } : null
+}
+
+/**
+ * A pairing link pasted by hand: the whole link, just its fragment, or the
+ * bare token. An iOS home-screen web app gets none of the link it was added
+ * from and has its own storage, so this is how it gets paired.
+ */
+export function parsePairingInput(text: string): Pairing | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+  const hashAt = trimmed.indexOf('#')
+  if (hashAt >= 0) {
+    const pairing = parsePairingFragment(trimmed.slice(hashAt))
+    if (!pairing) return null
+    if (pairing.gateway) return pairing
+    try {
+      return { ...pairing, gateway: new URL(trimmed).origin }
+    } catch {
+      return pairing
+    }
+  }
+  if (/^[A-Za-z0-9_-]+$/.test(trimmed)) return { token: trimmed, gateway: null }
+  return null
+}
+
+export function savePairing(storage: ClientEnvironment['storage'], pairing: Pairing): void {
+  storage.setItem(TOKEN_KEY, pairing.token)
+  if (pairing.gateway) storage.setItem(GATEWAY_KEY, pairing.gateway)
 }
 
 export function forgetPairing(storage: ClientEnvironment['storage']): void {

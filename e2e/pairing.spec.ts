@@ -58,6 +58,23 @@ test.describe('pairing', () => {
     await expect(page.getByRole('heading', { name: 'Pairing failed' })).toBeVisible()
     await expect(page.getByText(/has not been paired/)).toBeVisible()
   })
+
+  test('a pasted pairing link pairs a Client that opened without one (iOS home screen)', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await page.goto('/')
+    const input = page.getByRole('textbox', { name: 'Pairing link' })
+    await input.fill('not a link at all')
+    await page.getByRole('button', { name: 'Pair' }).click()
+    await expect(page.getByRole('alert')).toContainText('not a pairing link')
+
+    const params = new URLSearchParams({ pair: fakeDaemon.token, gateway: fakeDaemon.url })
+    await input.fill(`http://192.168.5.123:41417/#${params.toString()}`)
+    await page.getByRole('button', { name: 'Pair' }).click()
+    await expect(page.getByRole('status', { name: 'Connection' })).toHaveText(/Connected/)
+    expect(new URL(page.url()).hash).toBe('')
+  })
 })
 
 test.describe('remote client surface', () => {
