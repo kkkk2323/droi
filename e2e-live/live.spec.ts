@@ -102,7 +102,10 @@ test('pair, create a Session, send a prompt, get a reply', async ({ page }) => {
   const sidebar = page.getByRole('navigation', { name: 'Sessions' })
   await sidebar.getByRole('button', { name: 'New session' }).click()
   await page.getByRole('textbox', { name: 'Workspace path' }).fill(workspace)
-  await page.getByRole('button', { name: 'Start' }).click()
+  await page
+    .getByRole('region', { name: 'New session' })
+    .getByRole('button', { name: 'Start' })
+    .click()
   const input = page.getByRole('textbox', { name: 'Message' })
   await expect(input).toBeEnabled({ timeout: 60_000 })
 

@@ -10,6 +10,7 @@ import { SessionSidebar } from './components/sidebar/session-sidebar'
 import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
+import { SetupBanner } from './components/setup-banner'
 import { Button } from './components/ui/button'
 import { useHashRoute, type Route } from './lib/use-hash-route'
 import { useMediaQuery } from './lib/use-media-query'
@@ -95,6 +96,12 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         <aside className="w-60 shrink-0">{sidebar}</aside>
       )}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:border-l">
+        {window.droiShell ? (
+          <SetupBanner
+            bridge={window.droiShell.settings}
+            onOpenSettings={() => go({ name: 'settings' })}
+          />
+        ) : null}
         <ReconnectingBanner />
         {route.name === 'new' ? (
           <NewSessionPage
