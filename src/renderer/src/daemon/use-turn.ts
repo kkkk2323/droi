@@ -74,8 +74,17 @@ export function useTurn(sessionId: string): TurnActions {
           {
             text: trimmed,
             messageId,
-            // The SDK types block kinds as enums it does not export at runtime.
-            ...(images.length > 0 ? { content: content as never } : {}),
+            // The Daemon (0.223) ignores image blocks inside `content` on a
+            // direct send; `images` is the field it reads.
+            ...(images.length > 0
+              ? {
+                  images: images.map((image) => ({
+                    type: 'base64' as const,
+                    data: image.data,
+                    mediaType: image.mediaType,
+                  })),
+                }
+              : {}),
             ...(options.placement ? { queuePlacement: options.placement as never } : {}),
           },
           requestId,

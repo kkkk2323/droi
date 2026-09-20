@@ -40,8 +40,14 @@ export function streamedReply(options: StreamedReplyOptions): MethodHandler {
       requestId: String(request.id),
       userMessageId,
       text,
-      content: Array.isArray(params['content'])
-        ? (params['content'] as Array<Record<string, unknown>>)
+      content: Array.isArray(params['images'])
+        ? [
+            { type: 'text', text },
+            ...(params['images'] as Array<Record<string, unknown>>).map((image) => ({
+              type: 'image',
+              source: image,
+            })),
+          ]
         : undefined,
       ...options,
     })
@@ -55,7 +61,7 @@ interface RunTurnInput extends StreamedReplyOptions {
   requestId: string
   userMessageId: string
   text: string
-  /** Full content blocks when the Client sent more than text (images). */
+  /** Content blocks when the Client sent images alongside the text. */
   content?: Array<Record<string, unknown>>
 }
 

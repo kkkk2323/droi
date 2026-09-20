@@ -145,13 +145,12 @@ test.describe('images in the composer', () => {
     await page.getByRole('textbox', { name: 'Message' }).fill('What is this?')
     await send.click()
     const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-    const content = (sent.params as Record<string, unknown>)['content'] as Array<
-      Record<string, unknown>
-    >
-    expect(content.map((b) => b['type'])).toEqual(['text', 'image'])
-    expect(content[1]).toMatchObject({
-      source: { type: 'base64', mediaType: 'image/png', data: PNG_BASE64 },
+    // The Daemon reads images from `images`, not from `content`.
+    expect(sent.params).toMatchObject({
+      text: 'What is this?',
+      images: [{ type: 'base64', mediaType: 'image/png', data: PNG_BASE64 }],
     })
+    expect(sent.params).not.toHaveProperty('content')
     await expect(attachments).toHaveCount(0)
 
     const you = page.getByRole('log', { name: 'Transcript' }).getByRole('article', { name: 'You' })
@@ -180,11 +179,7 @@ test.describe('images in the composer', () => {
       )
     }, PNG_BASE64)
     const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-    const content = (sent.params as Record<string, unknown>)['content'] as Array<
-      Record<string, unknown>
-    >
-    expect(sent.params).toMatchObject({ text: 'quick' })
-    expect(content.map((b) => b['type'])).toEqual(['text', 'image'])
+    expect(sent.params).toMatchObject({ text: 'quick', images: [{ mediaType: 'image/png' }] })
     await expect(input).toHaveValue('')
     await expect(page.getByRole('list', { name: 'Attachments' })).toHaveCount(0)
   })
