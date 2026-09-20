@@ -138,28 +138,17 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           </Dialog.Portal>
         </Dialog.Root>
       ) : (
-        <>
-          <div
-            className={cn(
-              // Floats over the drag strips, so it must opt out of window dragging itself.
-              'app-no-drag absolute top-0 z-20 flex h-11 items-center pt-[env(safe-area-inset-top)]',
-              hasShellBridge ? 'left-[76px]' : 'left-2',
-            )}
-          >
-            <SidebarToggle expanded={sidebarShown} onClick={() => setSidebarShown(!sidebarShown)} />
-          </div>
-          <aside
-            id="sessions-sidebar"
-            // Width clips the panel; the visibility flip waits for the width so the
-            // slide is seen, and lands at once when opening.
-            className={cn(
-              'shrink-0 overflow-hidden transition-[width,visibility] duration-200 ease-out motion-reduce:transition-none',
-              sidebarShown ? 'w-60' : 'invisible w-0',
-            )}
-          >
-            <div className="h-full w-60">{sidebar}</div>
-          </aside>
-        </>
+        <aside
+          id="sessions-sidebar"
+          // Width clips the panel; the visibility flip waits for the width so the
+          // slide is seen, and lands at once when opening.
+          className={cn(
+            'shrink-0 overflow-hidden transition-[width,visibility] duration-200 ease-out motion-reduce:transition-none',
+            sidebarShown ? 'w-60' : 'invisible w-0',
+          )}
+        >
+          <div className="h-full w-60">{sidebar}</div>
+        </aside>
       )}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:border-l">
         {window.droiShell ? (
@@ -196,6 +185,19 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           </>
         )}
       </main>
+      {narrow ? null : (
+        <div
+          className={cn(
+            // Floats over the window-drag strips. Electron folds drag and no-drag
+            // rects in DOM order, so this must come after every strip it covers or
+            // the strips win and the button never gets the click.
+            'app-no-drag absolute top-0 z-20 flex h-11 items-center pt-[env(safe-area-inset-top)]',
+            hasShellBridge ? 'left-[76px]' : 'left-2',
+          )}
+        >
+          <SidebarToggle expanded={sidebarShown} onClick={() => setSidebarShown(!sidebarShown)} />
+        </div>
+      )}
     </div>
   )
 }
