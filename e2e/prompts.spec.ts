@@ -87,7 +87,12 @@ test.describe('ask-user questions', () => {
     await expect(card).toContainText('Which environment?')
     const answer = card.getByRole('button', { name: 'Answer' })
     await expect(answer).toBeDisabled()
-    await card.getByRole('radio', { name: 'staging' }).check()
+    await expect(card).toContainText('Choice')
+    await card.getByRole('radio', { name: 'staging' }).click()
+    await expect(card.getByRole('radio', { name: 'staging' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
     await expect(answer).toBeEnabled()
     await answer.click()
 

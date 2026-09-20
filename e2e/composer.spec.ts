@@ -273,3 +273,36 @@ test.describe('finished task list', () => {
     await expect(page.getByRole('button', { name: /^Tasks,/ })).toHaveCount(0)
   })
 })
+
+test.describe('drafts', () => {
+  test.use({
+    scenario: {
+      sessions: [chat, session('Other', '/Users/dev/acme-web', [userMessage('yo')])],
+    },
+  })
+
+  test('what was typed is still there after visiting another Session', async ({
+    page,
+    openClient,
+    pickSession,
+  }, testInfo) => {
+    test.skip(testInfo.project.name === 'phone', 'the drawer, not the draft, is under test there')
+    await openClient()
+    await pickSession(/Chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.fill('half a thought')
+    await pickSession(/Other/)
+    await expect(input).toHaveValue('')
+    await pickSession(/Chat/)
+    await expect(input).toHaveValue('half a thought')
+
+    // The text outlives a reload; emptying the box drops it.
+    await page.reload()
+    await pickSession(/Chat/)
+    await expect(input).toHaveValue('half a thought')
+    await input.fill('')
+    await pickSession(/Other/)
+    await pickSession(/Chat/)
+    await expect(input).toHaveValue('')
+  })
+})

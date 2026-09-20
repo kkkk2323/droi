@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -16,6 +17,7 @@ import {
   readImageAttachment,
   type ImageAttachment,
 } from '@/lib/attachments'
+import { loadDraft, saveDraft } from '@/lib/drafts'
 import { uuid } from '@/lib/uuid'
 import { cn } from '@/lib/utils'
 import type { QueuePlacement } from '@/daemon/use-turn'
@@ -46,6 +48,7 @@ export function InputBar({
   allowEmpty = false,
   sendLabel = 'Send',
   slashItems = NO_ITEMS,
+  draftKey,
 }: {
   isRunning: boolean
   disabled: boolean
@@ -59,9 +62,16 @@ export function InputBar({
   sendLabel?: string
   /** Commands and skills offered when the message starts with "/". */
   slashItems?: SlashItem[]
+  /** Keeps what is typed while the user is away from this Session. */
+  draftKey?: string
 }) {
-  const [text, setText] = useState('')
-  const [images, setImages] = useState<ImageAttachment[]>([])
+  const [text, setText] = useState(() => (draftKey ? loadDraft(draftKey).text : ''))
+  const [images, setImages] = useState<ImageAttachment[]>(() =>
+    draftKey ? loadDraft(draftKey).images : [],
+  )
+  useEffect(() => {
+    if (draftKey) saveDraft(draftKey, { text, images })
+  }, [draftKey, text, images])
   const [caret, setCaret] = useState(0)
   const [highlight, setHighlight] = useState(0)
   const [dismissedFor, setDismissedFor] = useState<string | null>(null)
@@ -205,7 +215,7 @@ export function InputBar({
       ) : null}
       <div
         className={cn(
-          'relative flex flex-col rounded-2xl border bg-background transition-colors focus-within:border-foreground/25',
+          'relative flex flex-col rounded-2xl border bg-background shadow-composer transition-colors focus-within:border-foreground/25',
           dragging && 'border-primary/60 bg-primary/5',
         )}
         onClick={(event) => {

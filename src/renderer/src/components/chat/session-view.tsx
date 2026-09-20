@@ -11,7 +11,7 @@ import type { SessionSummary } from '@/daemon/sessions'
 import { LOAD_STATE } from '@/daemon/sdk-enums'
 import { takePendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
-import { ContextMeter, QueuedMessages, TodoPanel } from './composer-panels'
+import { ComposerShelf, ContextMeter } from './composer-panels'
 import { InputBar, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
@@ -129,8 +129,7 @@ export function SessionView({
 
       <div className={cn(COLUMN, 'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]')}>
         <PromptArea sessionId={sessionId} />
-        <TodoPanel sessionId={sessionId} />
-        <QueuedMessages sessionId={sessionId} />
+        <ComposerShelf sessionId={sessionId} />
         <InputBar
           isRunning={isRunning}
           disabled={!loaded}
@@ -139,6 +138,7 @@ export function SessionView({
           error={turn.sendError ?? compaction.error}
           footer={<SessionSettingsBar sessionId={sessionId} />}
           slashItems={slashItems}
+          draftKey={sessionId}
         />
         <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
           {workspace ? (

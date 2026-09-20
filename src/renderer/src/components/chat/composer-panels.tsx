@@ -1,6 +1,6 @@
 // What sits around the composer: the Session's task list and the messages the
-// Daemon is holding for a running turn, above it; the context meter beside
-// the workspace name under it.
+// Daemon is holding for a running turn, on a shelf tucked under its top edge;
+// the context meter beside the workspace name under it.
 import { useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import { Check, ChevronRight, Circle, Clock, CornerDownLeft, Loader2, X } from 'lucide-react'
@@ -14,20 +14,45 @@ import {
 import { useTodos, type TodoItem } from '@/daemon/use-todos'
 import { cn } from '@/lib/utils'
 
-export function TodoPanel({ sessionId }: { sessionId: string }) {
+/**
+ * The task list and the queued messages, in one card tucked against the
+ * composer's top edge (rounded top corners only, open bottom) so the two read
+ * as one piece with it.
+ */
+export function ComposerShelf({ sessionId }: { sessionId: string }) {
   const todos = useTodos(sessionId)
-  const [open, setOpen] = useState(false)
+  const queued = useQueuedMessages(sessionId)
+  const actions = useQueuedMessageActions(sessionId)
   const done = todos.filter((t) => t.status === 'completed').length
   // A finished list has nothing left to steer; it stays in the transcript's tool rows.
-  if (todos.length === 0 || done === todos.length) return null
+  const showTodos = todos.length > 0 && done < todos.length
+  if (!showTodos && queued.length === 0 && !actions.error) return null
+  return (
+    <div className="px-3.5">
+      <div className="flex flex-col divide-y overflow-hidden rounded-t-xl border border-b-0 bg-card">
+        {showTodos ? <TodoPanel todos={todos} done={done} /> : null}
+        {queued.length > 0 || actions.error ? (
+          <QueuedMessages
+            queued={queued}
+            error={actions.error}
+            onRemove={(id) => void actions.remove(id)}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
+  const [open, setOpen] = useState(false)
   const current =
     todos.find((t) => t.status === 'in_progress') ?? todos.find((t) => t.status === 'pending')
 
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} className="mb-1.5 px-1">
+    <Collapsible.Root open={open} onOpenChange={setOpen} className="py-1">
       <Collapsible.Trigger
         aria-label={`Tasks, ${done} of ${todos.length} done`}
-        className="group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] outline-none transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="group flex h-[30px] w-full items-center gap-2 px-3 text-left text-[12.5px] outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       >
         <span
           aria-hidden
@@ -48,7 +73,7 @@ export function TodoPanel({ sessionId }: { sessionId: string }) {
         />
       </Collapsible.Trigger>
       <Collapsible.Panel>
-        <ul aria-label="Tasks" className="flex flex-col gap-0.5 px-1.5 pt-1 pb-1.5">
+        <ul aria-label="Tasks" className="flex flex-col gap-0.5 px-3 pt-0.5 pb-1.5">
           {todos.map((todo) => (
             <TodoRow key={todo.id} todo={todo} />
           ))}
@@ -79,29 +104,34 @@ function TodoRow({ todo }: { todo: TodoItem }) {
   )
 }
 
-export function QueuedMessages({ sessionId }: { sessionId: string }) {
-  const queued = useQueuedMessages(sessionId)
-  const actions = useQueuedMessageActions(sessionId)
-  if (queued.length === 0 && !actions.error) return null
+function QueuedMessages({
+  queued,
+  error,
+  onRemove,
+}: {
+  queued: ReturnType<typeof useQueuedMessages>
+  error: string | null
+  onRemove: (requestId: string) => void
+}) {
   return (
-    <div className="mb-2 flex flex-col gap-1">
-      {actions.error ? (
-        <p role="alert" className="px-1 text-xs text-destructive-foreground">
-          {actions.error}
+    <div className="py-1">
+      {error ? (
+        <p role="alert" className="px-3 py-1 text-xs text-destructive-foreground">
+          {error}
         </p>
       ) : null}
-      <ul aria-label="Queued messages" className="flex flex-col gap-1">
+      <ul aria-label="Queued messages" className="flex flex-col">
         {queued.map((message) => {
           const steer = message.kind !== 'daemon_queued_end_of_loop'
           return (
             <li
               key={message.requestId}
-              className="flex items-center gap-2 rounded-xl border border-dashed bg-card/40 px-3 py-1.5 text-sm"
+              className="flex h-[30px] items-center gap-2 pr-1.5 pl-3 text-[12.5px] hover:bg-accent"
             >
               {steer ? (
-                <CornerDownLeft aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                <CornerDownLeft aria-hidden className="size-3 shrink-0 text-muted-foreground" />
               ) : (
-                <Clock aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                <Clock aria-hidden className="size-3 shrink-0 text-muted-foreground" />
               )}
               <span className="min-w-0 flex-1 truncate">{queuedText(message)}</span>
               <span className="shrink-0 text-[11px] text-muted-foreground">
@@ -112,7 +142,7 @@ export function QueuedMessages({ sessionId }: { sessionId: string }) {
                 variant="ghost"
                 aria-label="Remove queued message"
                 className="text-muted-foreground"
-                onClick={() => void actions.remove(message.requestId)}
+                onClick={() => onRemove(message.requestId)}
               >
                 <X aria-hidden />
               </Button>
