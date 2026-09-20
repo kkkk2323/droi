@@ -69,8 +69,10 @@ test.describe('compaction handoff', () => {
     await expect(
       transcript.getByRole('separator', { name: 'Context compacted here' }),
     ).toBeVisible()
-    const articles = transcript.getByRole('article')
-    await expect(articles).toHaveCount(5)
-    await expect(articles.last()).toContainText('Summary of the earlier conversation')
+    // (No exact article count: the list is virtualised and the phone viewport is short.)
+    await expect(transcript).toContainText('second answer')
+    await expect(transcript.getByRole('article').last()).toContainText(
+      'Summary of the earlier conversation',
+    )
   })
 })
