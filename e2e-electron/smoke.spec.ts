@@ -47,7 +47,7 @@ test.afterAll(async () => {
 test.describe.configure({ mode: 'serial' })
 
 test('the window opens and shows the Client served by the Gateway', async () => {
-  await expect(page.getByRole('heading', { name: 'Droi', level: 1 })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeVisible()
   expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/?/)
   const hasBridge = await page.evaluate(() =>
     Boolean((window as unknown as { droiShell?: { settings?: unknown } }).droiShell?.settings),

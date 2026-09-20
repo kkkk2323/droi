@@ -57,14 +57,22 @@ test.describe('sidebar', () => {
     const billing = sidebar.getByRole('region', { name: 'billing-service' })
     await expect(acme).toBeVisible()
     await expect(billing).toBeVisible()
-    await expect(acme.getByRole('button')).toHaveCount(2)
+    await expect(acme.getByRole('listitem')).toHaveCount(2)
     await expect(billing.getByRole('button', { name: /Refactor billing/ })).toBeVisible()
 
     // Newest Workspace first, newest Session first within it.
     const headings = await sidebar.getByRole('heading', { level: 2 }).allTextContents()
     expect(headings).toEqual(['billing-service', 'acme-web'])
-    const acmeTitles = await acme.getByRole('button').allTextContents()
+    const acmeTitles = await acme.getByRole('listitem').allTextContents()
     expect(acmeTitles[0]).toMatch(/Add dark mode/)
+
+    // A Workspace folds away and comes back.
+    const fold = acme.getByRole('button', { name: 'acme-web' })
+    await expect(fold).toHaveAttribute('aria-expanded', 'true')
+    await fold.click()
+    await expect(acme.getByRole('listitem')).toHaveCount(0)
+    await fold.click()
+    await expect(acme.getByRole('listitem')).toHaveCount(2)
   })
 
   test('is keyboard navigable', async ({ page, openClient, openSidebar }) => {
@@ -77,6 +85,9 @@ test.describe('sidebar', () => {
     const current = (await openSidebar()).getByRole('button', { name: /Refactor billing/ })
     await expect(current).toHaveAttribute('aria-current', 'page')
     await current.focus()
+    // Next stop is the following Workspace's fold, then its first Session.
+    await page.keyboard.press('Tab')
+    await expect(page.getByRole('button', { name: 'acme-web' })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: /Add dark mode/ })).toBeFocused()
   })

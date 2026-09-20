@@ -4,16 +4,19 @@ import { PanelLeft } from 'lucide-react'
 import { useConnectionState } from './daemon/connection-context'
 import { groupByWorkspace, useSessionList } from './daemon/sessions'
 import { recentWorkspaces } from './daemon/use-new-session'
-import { PairingFailed, ReconnectingBanner } from './components/connection-status'
+import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
 import { PageHeader } from './components/page-header'
 import { SessionSidebar } from './components/sidebar/session-sidebar'
+import { SidebarToggle } from './components/sidebar-toggle'
 import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
 import { Button } from './components/ui/button'
+import { showArchivedSessions, sidebarVisible } from './lib/local-preference'
 import { useHashRoute, type Route } from './lib/use-hash-route'
 import { useMediaQuery } from './lib/use-media-query'
+import { cn } from './lib/utils'
 
 // Below this width the sidebar becomes a drawer and the conversation takes
 // the whole screen. Matches Tailwind's `md`.
@@ -32,7 +35,8 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [drawerRequested, setDrawerOpen] = useState(false)
   // A drawer only exists on narrow screens; widening the window closes it.
   const drawerOpen = narrow && drawerRequested
-  const [showArchived, setShowArchived] = useState(false)
+  const [sidebarShown, setSidebarShown] = sidebarVisible.use()
+  const [showArchived] = showArchivedSessions.use()
   const sessions = useSessionList({ includeArchived: showArchived })
   const groups = useMemo(() => groupByWorkspace(sessions.data ?? []), [sessions.data])
   const recent = useMemo(() => recentWorkspaces(sessions.data ?? []), [sessions.data])
@@ -45,8 +49,23 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     setDrawerOpen(false)
   }
 
-  if (route.name === 'settings' && window.droiShell) {
-    return <SettingsPage bridge={window.droiShell.settings} onBack={() => go({ name: 'home' })} />
+  // The connection is announced, not shown: the banner below covers trouble.
+  const status = (
+    <div className="sr-only">
+      <ConnectionStatus />
+    </div>
+  )
+
+  if (route.name === 'settings') {
+    return (
+      <>
+        {status}
+        <SettingsPage
+          bridge={window.droiShell?.settings ?? null}
+          onBack={() => go({ name: 'home' })}
+        />
+      </>
+    )
   }
 
   const sidebar = (
@@ -56,16 +75,17 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       onSelect={(sessionId) => go({ name: 'session', sessionId })}
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
-      showArchived={showArchived}
-      onToggleArchived={setShowArchived}
       onNewSession={() => go({ name: 'new' })}
-      onSettings={hasShellBridge ? () => go({ name: 'settings' }) : null}
+      onSettings={() => go({ name: 'settings' })}
+      onHide={narrow ? null : () => setSidebarShown(false)}
       // Traffic lights sit over the sidebar's top strip on macOS.
       insetTop={hasShellBridge && !narrow}
     />
   )
 
-  const menuButton = narrow ? (
+  // Narrow: a button that opens the drawer. Wide with the sidebar hidden: the
+  // toggle moves into the header, clearing the traffic lights like the sidebar did.
+  const leading = narrow ? (
     <Button
       size="icon-sm"
       variant="ghost"
@@ -75,10 +95,15 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     >
       <PanelLeft aria-hidden />
     </Button>
+  ) : !sidebarShown ? (
+    <div className={cn('flex items-center', hasShellBridge && 'pl-[68px]')}>
+      <SidebarToggle expanded={false} onClick={() => setSidebarShown(true)} />
+    </div>
   ) : null
 
   return (
     <div className="flex h-dvh overflow-hidden bg-sidebar text-foreground">
+      {status}
       {narrow ? (
         <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
           <Dialog.Portal>
@@ -93,9 +118,16 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           </Dialog.Portal>
         </Dialog.Root>
       ) : (
-        <aside className="w-60 shrink-0">{sidebar}</aside>
+        <aside id="sessions-sidebar" hidden={!sidebarShown} className="w-60 shrink-0">
+          {sidebar}
+        </aside>
       )}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:border-l">
+      <main
+        className={cn(
+          'flex min-w-0 flex-1 flex-col overflow-hidden bg-background',
+          sidebarShown && 'md:border-l',
+        )}
+      >
         {window.droiShell ? (
           <SetupBanner
             bridge={window.droiShell.settings}
@@ -107,7 +139,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           <NewSessionPage
             recent={recent}
             onCreated={(sessionId) => go({ name: 'session', sessionId })}
-            header={<PageHeader leading={menuButton} title="New session" />}
+            header={<PageHeader leading={leading} title="New session" />}
           />
         ) : selectedId ? (
           <SessionView
@@ -117,11 +149,11 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             workspace={selected?.cwd ?? null}
             archived={Boolean(selected?.archivedAt)}
             onArchived={() => go({ name: 'home' })}
-            leading={menuButton}
+            leading={leading}
           />
         ) : (
           <>
-            <PageHeader leading={menuButton} title="" />
+            <PageHeader leading={leading} title="" />
             <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
               {narrow
                 ? 'Open the sessions list to pick a session.'

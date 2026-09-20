@@ -36,7 +36,10 @@ test.describe('new session', () => {
   }) => {
     await openClient()
     await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
-    await page.getByRole('button', { name: /billing-service/ }).click()
+    await page
+      .getByRole('region', { name: 'New session' })
+      .getByRole('button', { name: /billing-service/ })
+      .click()
 
     const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
     expect(created.params).toMatchObject({ cwd: '/Users/dev/billing-service' })

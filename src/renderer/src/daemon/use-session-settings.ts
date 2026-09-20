@@ -10,6 +10,8 @@ export interface ModelChoice {
   label: string
   reasoningEfforts: string[]
   disabled: boolean
+  /** Provider id from the Daemon (anthropic, openai, ...); null for the Auto router. */
+  provider: string | null
 }
 
 export interface SessionSettingsView {
@@ -66,6 +68,7 @@ export function useSessionSettings(sessionId: string): SessionSettingsView {
             label: model.displayName,
             reasoningEfforts: model.supportedReasoningEfforts,
             disabled: 'disabled' in model && model.disabled === true,
+            provider: model.kind === 'router' ? null : model.modelProvider,
           })),
         }
       : EMPTY

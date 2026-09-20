@@ -21,15 +21,20 @@ test.describe('session settings', () => {
     const model = page.getByRole('combobox', { name: 'Model' })
     const effort = page.getByRole('combobox', { name: 'Reasoning effort' })
     const autonomy = page.getByRole('combobox', { name: 'Autonomy' })
-    await expect(model).toHaveValue('claude-opus-4-1')
-    await expect(effort).toHaveValue('medium')
-    await expect(autonomy).toHaveValue('low')
+    await expect(model).toHaveText('Claude Opus 4.1')
+    await expect(effort).toHaveText('Medium')
+    await expect(autonomy).toHaveText('Low autonomy')
 
-    // Models come from the Daemon's list for this Session.
-    const modelOptions = await model.locator('option').allTextContents()
-    expect(modelOptions).toEqual(['Auto Model', 'Claude Opus 4.1', 'GPT-5'])
+    // Models come from the Daemon's list for this Session, grouped by provider.
+    await model.click()
+    const listbox = page.getByRole('listbox')
+    await expect(listbox.getByRole('option')).toHaveText(['Auto Model', 'Claude Opus 4.1', 'GPT-5'])
+    await expect(listbox.getByRole('group')).toHaveCount(3)
+    await expect(listbox.getByRole('group', { name: 'OpenAI' }).getByRole('option')).toHaveText([
+      'GPT-5',
+    ])
 
-    await model.selectOption('gpt-5')
+    await listbox.getByRole('option', { name: 'GPT-5' }).click()
     await expect
       .poll(
         () =>
@@ -40,11 +45,12 @@ test.describe('session settings', () => {
         sessionId: first.sessionId,
         modelId: 'gpt-5',
       })
-    await expect(model).toHaveValue('gpt-5')
-    // GPT-5 offers different efforts; the list follows the model.
-    await expect(effort.locator('option')).toHaveText(['Low', 'Medium', 'High', 'Extra high'])
+    await expect(model).toHaveText('GPT-5')
 
-    await effort.selectOption('xhigh')
+    // GPT-5 offers different efforts; the list follows the model.
+    await effort.click()
+    await expect(listbox.getByRole('option')).toHaveText(['Low', 'Medium', 'High', 'Extra high'])
+    await listbox.getByRole('option', { name: 'Extra high' }).click()
     await expect
       .poll(
         () =>
@@ -54,9 +60,10 @@ test.describe('session settings', () => {
       .toMatchObject({
         reasoningEffort: 'xhigh',
       })
-    await expect(effort).toHaveValue('xhigh')
+    await expect(effort).toHaveText('Extra high')
 
-    await autonomy.selectOption('high')
+    await autonomy.click()
+    await listbox.getByRole('option', { name: 'High autonomy' }).click()
     await expect
       .poll(
         () =>
@@ -66,7 +73,7 @@ test.describe('session settings', () => {
       .toMatchObject({
         autonomyLevel: 'high',
       })
-    await expect(autonomy).toHaveValue('high')
+    await expect(autonomy).toHaveText('High autonomy')
   })
 
   test('renaming updates the sidebar once the Daemon confirms', async ({
@@ -90,7 +97,7 @@ test.describe('session settings', () => {
     await expect(sidebar.getByRole('button', { name: /First session/ })).toHaveCount(0)
   })
 
-  test('archiving removes the Session; the archived filter shows it again', async ({
+  test('archiving removes the Session; the Settings preference shows it again', async ({
     page,
     fakeDaemon,
     openClient,
@@ -102,12 +109,17 @@ test.describe('session settings', () => {
     await page.getByRole('button', { name: 'Archive session' }).click()
 
     await fakeDaemon.waitForRequest('daemon.archive_session')
-    const sidebar = await openSidebar()
+    let sidebar = await openSidebar()
     await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
     await expect(sidebar.getByRole('button', { name: /First session/ })).toBeVisible()
     await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
 
-    await sidebar.getByRole('checkbox', { name: 'Show archived' }).check()
+    // The preference lives in Settings > General and is available to every Client.
+    await sidebar.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('switch', { name: 'Show archived sessions' }).check()
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
+    sidebar = await openSidebar()
     const archived = sidebar.getByRole('button', { name: /Second session/ })
     await expect(archived).toBeVisible()
     await expect(archived.getByLabel('Archived')).toBeVisible()

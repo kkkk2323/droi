@@ -61,15 +61,20 @@ test.describe('pairing', () => {
 })
 
 test.describe('remote client surface', () => {
-  test('a Remote Client has no Settings; the settings route falls back to home', async ({
+  test('a Remote Client gets only the General settings; the Shell tabs need the bridge', async ({
     page,
     openClient,
   }) => {
     await openClient()
     await expect(page.getByRole('status', { name: 'Connection' })).toHaveText(/Connected/)
-    await expect(page.getByRole('button', { name: 'Settings' })).toHaveCount(0)
     await page.goto('/#/settings')
-    await expect(page.getByRole('region', { name: 'Settings' })).toHaveCount(0)
-    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
+    const sections = page.getByRole('navigation', { name: 'Settings sections' })
+    await expect(sections.getByRole('button', { name: 'General' })).toBeVisible()
+    await expect(
+      sections.getByRole('button', { name: /Account|Daemon|Remote Access/ }),
+    ).toHaveCount(0)
+    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible()
+    await expect(page.getByRole('switch', { name: 'Show archived sessions' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Factory API key' })).toHaveCount(0)
   })
 })

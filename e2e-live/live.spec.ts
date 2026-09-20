@@ -110,15 +110,16 @@ test('pair, create a Session, send a prompt, get a reply', async ({ page }) => {
   await expect(input).toBeEnabled({ timeout: 60_000 })
 
   const modelSelect = page.getByRole('combobox', { name: 'Model' })
-  const offered = await modelSelect
-    .locator('option')
-    .evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value))
-  if (offered.includes(model)) {
-    await modelSelect.selectOption(model)
-    await expect(modelSelect).toHaveValue(model)
+  await modelSelect.click()
+  const option = page.getByRole('listbox').locator(`[role="option"][data-value="${model}"]`)
+  if ((await option.count()) > 0) {
+    const label = await option.textContent()
+    await option.click()
+    await expect(modelSelect).toHaveText(label ?? model)
   } else {
+    await page.keyboard.press('Escape')
     console.warn(
-      `live: model ${model} not offered by the Daemon; using ${await modelSelect.inputValue()}`,
+      `live: model ${model} not offered by the Daemon; using ${await modelSelect.textContent()}`,
     )
   }
 

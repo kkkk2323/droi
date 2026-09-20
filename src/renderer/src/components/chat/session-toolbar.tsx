@@ -1,12 +1,42 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Archive, ArchiveRestore, Check, ChevronDown, Pencil, ShieldCheck, X } from 'lucide-react'
+import { Archive, ArchiveRestore, Check, Pencil, ShieldCheck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select, type SelectGroup } from '@/components/ui/select'
 import {
   AUTONOMY_LEVELS,
   useSessionSettings,
   useSessionSettingsActions,
+  type ModelChoice,
 } from '@/daemon/use-session-settings'
-import { cn } from '@/lib/utils'
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google',
+  xai: 'xAI',
+  factory: 'Factory',
+  'generic-chat-completion-api': 'Custom',
+}
+
+/** Models grouped by provider, in the Daemon's order; the Auto router leads. */
+export function groupModels(models: ModelChoice[]): SelectGroup[] {
+  const groups = new Map<string, SelectGroup>()
+  for (const model of models) {
+    const key = model.provider ?? ''
+    let group = groups.get(key)
+    if (!group) {
+      const label = model.provider === null ? 'Auto' : (PROVIDER_LABELS[key] ?? capitalize(key))
+      group = { label, options: [] }
+      groups.set(key, group)
+    }
+    group.options.push({ value: model.id, label: model.label, disabled: model.disabled })
+  }
+  return [...groups.values()]
+}
+
+function capitalize(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1)
+}
 
 const EFFORT_LABELS: Record<string, string> = {
   none: 'None',
@@ -81,22 +111,21 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
   return (
     <div className="relative flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
       <Select
+        quiet
         label="Model"
         value={settings.modelId ?? ''}
         onChange={(value) => void actions.setModel(value)}
-        options={settings.models.map((m) => ({
-          value: m.id,
-          label: m.label,
-          disabled: m.disabled,
-        }))}
+        groups={groupModels(settings.models)}
       />
       <Select
+        quiet
         label="Reasoning effort"
         value={settings.reasoningEffort ?? ''}
         onChange={(value) => void actions.setReasoningEffort(value)}
         options={efforts.map((e) => ({ value: e, label: EFFORT_LABELS[e] ?? e }))}
       />
       <Select
+        quiet
         label="Autonomy"
         icon={<ShieldCheck aria-hidden className="size-3.5" />}
         value={settings.autonomyLevel ?? ''}
@@ -115,54 +144,6 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
         </p>
       ) : null}
     </div>
-  )
-}
-
-/**
- * A native <select> dressed as a quiet text button: the current value reads
- * like a label, the list is the platform's own.
- */
-function Select({
-  label,
-  icon,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  icon?: ReactNode
-  value: string
-  options: Array<{ value: string; label: string; disabled?: boolean }>
-  onChange: (value: string) => void
-}) {
-  const known = options.some((o) => o.value === value)
-  const current = options.find((o) => o.value === value)?.label ?? value ?? label
-  return (
-    <span
-      className={cn(
-        'relative inline-flex h-7 max-w-52 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors',
-        'hover:bg-muted hover:text-foreground has-[select:focus-visible]:ring-2 has-[select:focus-visible]:ring-ring/50',
-        options.length === 0 && 'opacity-50',
-      )}
-    >
-      {icon}
-      <span className="truncate">{current || label}</span>
-      <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
-      <select
-        aria-label={label}
-        value={value}
-        disabled={options.length === 0}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0 outline-none"
-      >
-        {!known && value ? <option value={value}>{value}</option> : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value} disabled={option.disabled}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </span>
   )
 }
 

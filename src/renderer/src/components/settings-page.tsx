@@ -14,9 +14,10 @@ import {
   Smartphone,
   type LucideIcon,
 } from 'lucide-react'
-import { ConnectionStatus } from '@/components/connection-status'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
+import { showArchivedSessions } from '@/lib/local-preference'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import type {
@@ -25,34 +26,46 @@ import type {
   ShellSettingsSnapshot,
 } from '@shared/shell-settings'
 
-/** Desktop Shell settings. Rendered only in the Local Client, which has the preload bridge. */
+/**
+ * Settings. General holds Client-side preferences and works everywhere; the
+ * Desktop Shell tabs need the preload bridge, so a Remote Client sees General only.
+ */
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
 type Tab = 'account' | 'general' | 'daemon' | 'remote'
 
-const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
-  { id: 'account', label: 'Account', icon: UserRound },
-  { id: 'general', label: 'General', icon: Settings2 },
-  { id: 'daemon', label: 'Daemon', icon: Server },
-  { id: 'remote', label: 'Remote Access', icon: Smartphone },
+const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolean }> = [
+  { id: 'account', label: 'Account', icon: UserRound, needsShell: true },
+  { id: 'general', label: 'General', icon: Settings2, needsShell: false },
+  { id: 'daemon', label: 'Daemon', icon: Server, needsShell: true },
+  { id: 'remote', label: 'Remote Access', icon: Smartphone, needsShell: true },
 ]
 
 export function SettingsPage({
   bridge,
   onBack,
 }: {
-  bridge: ShellSettingsBridge
+  bridge: ShellSettingsBridge | null
   onBack: () => void
 }) {
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<Tab>('account')
-  const settingsQuery = useQuery({ queryKey: SETTINGS_KEY, queryFn: () => bridge.get() })
-  const pairingQuery = useQuery({ queryKey: PAIRING_KEY, queryFn: () => bridge.getPairing() })
+  const tabs = TABS.filter((t) => bridge || !t.needsShell)
+  const [tab, setTab] = useState<Tab>(bridge ? 'account' : 'general')
+  const settingsQuery = useQuery({
+    queryKey: SETTINGS_KEY,
+    queryFn: () => bridge!.get(),
+    enabled: bridge !== null,
+  })
+  const pairingQuery = useQuery({
+    queryKey: PAIRING_KEY,
+    queryFn: () => bridge!.getPairing(),
+    enabled: bridge !== null,
+  })
 
   useEffect(
     () =>
-      bridge.onChange(() => {
+      bridge?.onChange(() => {
         void queryClient.invalidateQueries({ queryKey: SETTINGS_KEY })
         void queryClient.invalidateQueries({ queryKey: PAIRING_KEY })
       }),
@@ -64,7 +77,7 @@ export function SettingsPage({
   const snapshot = settingsQuery.data
   const pairing = pairingQuery.data
   const error = settingsQuery.error?.message ?? pairingQuery.error?.message ?? null
-  const current = TABS.find((t) => t.id === tab) ?? TABS[0]!
+  const current = tabs.find((t) => t.id === tab) ?? tabs[0]!
 
   return (
     <section
@@ -83,7 +96,7 @@ export function SettingsPage({
           <ArrowLeft aria-hidden className="size-4" />
           Back
         </button>
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -101,9 +114,7 @@ export function SettingsPage({
       </nav>
 
       <div className="min-w-0 flex-1 overflow-y-auto bg-background">
-        <div className="app-drag flex h-11 items-center justify-end px-3 pt-[env(safe-area-inset-top)]">
-          <ConnectionStatus />
-        </div>
+        <div className="app-drag h-11 pt-[env(safe-area-inset-top)]" />
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-8 pb-12">
           <h2 className="mb-2 text-lg font-semibold tracking-tight">{current.label}</h2>
           {error ? (
@@ -111,12 +122,12 @@ export function SettingsPage({
               {error}
             </p>
           ) : null}
-          {!snapshot || !pairing ? (
+          {tab === 'general' ? (
+            <GeneralTab version={snapshot?.version ?? null} />
+          ) : !bridge || !snapshot || !pairing ? (
             <p className="text-sm text-muted-foreground">Loading settings…</p>
           ) : tab === 'account' ? (
             <AccountTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
-          ) : tab === 'general' ? (
-            <GeneralTab snapshot={snapshot} />
           ) : tab === 'daemon' ? (
             <>
               <ApiKeyRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
@@ -155,30 +166,46 @@ export function SettingsPage({
   )
 }
 
-function GeneralTab({ snapshot }: { snapshot: ShellSettingsSnapshot }) {
+function GeneralTab({ version }: { version: string | null }) {
   const [theme, setTheme] = useTheme()
+  const [showArchived, setShowArchived] = showArchivedSessions.use()
   return (
     <>
       <SettingRow
         title="Appearance"
         description="Light is the default. The choice is stored per browser."
         control={
-          <select
-            aria-label="Theme"
+          <Select
+            label="Theme"
             value={theme}
-            onChange={(event) => setTheme(event.target.value === 'dark' ? 'dark' : 'light')}
-            className="h-8 rounded-lg border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-          >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
+            onChange={(next) => setTheme(next === 'dark' ? 'dark' : 'light')}
+            options={[
+              { value: 'light', label: 'Light' },
+              { value: 'dark', label: 'Dark' },
+            ]}
+          />
         }
       />
       <SettingRow
-        title="Everything stays on this computer"
-        description="Sessions, settings and the Factory API key live here. Phones connect to this computer through the Gateway; nothing is sent elsewhere."
+        title="Show archived sessions"
+        description="List archived sessions in the sidebar alongside the active ones."
+        control={
+          <Switch
+            aria-label="Show archived sessions"
+            checked={showArchived}
+            onCheckedChange={setShowArchived}
+          />
+        }
       />
-      <SettingRow title="About" description={`Droi ${snapshot.version}`} />
+      {version ? (
+        <>
+          <SettingRow
+            title="Everything stays on this computer"
+            description="Sessions, settings and the Factory API key live here. Phones connect to this computer through the Gateway; nothing is sent elsewhere."
+          />
+          <SettingRow title="About" description={`Droi ${version}`} />
+        </>
+      ) : null}
     </>
   )
 }
