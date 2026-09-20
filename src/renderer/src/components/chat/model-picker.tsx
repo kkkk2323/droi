@@ -135,7 +135,7 @@ export function ModelPicker({
               role="toolbar"
               aria-label="Filter models"
               aria-orientation="vertical"
-              className="flex w-12 shrink-0 flex-col items-center gap-1 border-r bg-sidebar p-1.5"
+              className="flex w-14 shrink-0 flex-col items-center gap-2 overflow-y-auto border-r bg-sidebar px-2 py-3"
             >
               <RailButton
                 label="Favorites"
@@ -144,10 +144,10 @@ export function ModelPicker({
               >
                 <Star
                   aria-hidden
-                  className={cn('size-4', filter === 'favorites' && 'fill-current')}
+                  className={cn('size-3.5', filter === 'favorites' && 'fill-current')}
                 />
               </RailButton>
-              <div aria-hidden className="my-0.5 h-px w-6 bg-border" />
+              <div aria-hidden className="my-1 h-px w-5 shrink-0 bg-border" />
               {brands.map((brand) => (
                 <RailButton
                   key={brand}
@@ -155,7 +155,7 @@ export function ModelPicker({
                   pressed={filter === brand && !searching}
                   onClick={() => choose(brand)}
                 >
-                  <BrandIcon brand={brand} className="size-[18px]" />
+                  <BrandIcon brand={brand} className="size-3.5" />
                 </RailButton>
               ))}
             </div>
@@ -280,7 +280,7 @@ function RailButton({
       title={label}
       onClick={onClick}
       className={cn(
-        'flex size-9 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
+        'flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
         pressed && 'bg-sidebar-accent text-foreground',
       )}
     >
