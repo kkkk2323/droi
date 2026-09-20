@@ -17,38 +17,38 @@ import { cn } from '@/lib/utils'
 export function TodoPanel({ sessionId }: { sessionId: string }) {
   const todos = useTodos(sessionId)
   const [open, setOpen] = useState(false)
-  if (todos.length === 0) return null
   const done = todos.filter((t) => t.status === 'completed').length
+  // A finished list has nothing left to steer; it stays in the transcript's tool rows.
+  if (todos.length === 0 || done === todos.length) return null
   const current =
     todos.find((t) => t.status === 'in_progress') ?? todos.find((t) => t.status === 'pending')
-  const allDone = done === todos.length
 
   return (
-    <Collapsible.Root
-      open={open}
-      onOpenChange={setOpen}
-      className="mb-2 rounded-xl border bg-card/60 text-sm"
-    >
+    <Collapsible.Root open={open} onOpenChange={setOpen} className="mb-1.5 px-1">
       <Collapsible.Trigger
         aria-label={`Tasks, ${done} of ${todos.length} done`}
-        className="group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] outline-none transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        <ChevronRight
+        <span
           aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[panel-open]:rotate-90"
-        />
-        <span className="shrink-0 font-medium tabular-nums text-muted-foreground">
+          className="relative h-1 w-10 shrink-0 overflow-hidden rounded-full bg-border"
+        >
+          <span
+            className="absolute inset-y-0 left-0 rounded-full bg-foreground/60 transition-[width] duration-200"
+            style={{ width: `${(done / todos.length) * 100}%` }}
+          />
+        </span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">
           {done}/{todos.length}
         </span>
-        <span className="min-w-0 flex-1 truncate">
-          {allDone ? 'All tasks done' : current?.content}
-        </span>
-        {!allDone && current?.status === 'in_progress' ? (
-          <Loader2 aria-hidden className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-        ) : null}
+        <span className="min-w-0 flex-1 truncate text-foreground/85">{current?.content}</span>
+        <ChevronRight
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 group-data-[panel-open]:rotate-90"
+        />
       </Collapsible.Trigger>
       <Collapsible.Panel>
-        <ul aria-label="Tasks" className="flex flex-col gap-1 px-3 pb-2.5">
+        <ul aria-label="Tasks" className="flex flex-col gap-0.5 px-1.5 pt-1 pb-1.5">
           {todos.map((todo) => (
             <TodoRow key={todo.id} todo={todo} />
           ))}
@@ -63,23 +63,16 @@ function TodoRow({ todo }: { todo: TodoItem }) {
     <li
       data-status={todo.status}
       className={cn(
-        'flex items-start gap-2 leading-5',
-        todo.status === 'completed' &&
-          'text-muted-foreground line-through decoration-muted-foreground/50',
+        'flex items-start gap-2 text-[13px] leading-5',
+        todo.status === 'completed' ? 'text-muted-foreground/70' : 'text-foreground/85',
       )}
     >
       {todo.status === 'completed' ? (
-        <Check
-          aria-label="Done"
-          className="mt-1 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
-        />
+        <Check aria-label="Done" className="mt-1 size-3.5 shrink-0" />
       ) : todo.status === 'in_progress' ? (
-        <Loader2
-          aria-label="In progress"
-          className="mt-1 size-3.5 shrink-0 animate-spin text-muted-foreground"
-        />
+        <Loader2 aria-label="In progress" className="mt-1 size-3.5 shrink-0 animate-spin" />
       ) : (
-        <Circle aria-label="Pending" className="mt-1 size-3.5 shrink-0 text-muted-foreground/60" />
+        <Circle aria-label="Pending" className="mt-1 size-3.5 shrink-0 text-muted-foreground/50" />
       )}
       <span className="min-w-0 flex-1">{todo.content}</span>
     </li>

@@ -16,10 +16,21 @@ export function isImageMediaType(type: string): type is ImageMediaType {
   return (IMAGE_MEDIA_TYPES as readonly string[]).includes(type)
 }
 
-/** Image files in a paste or drop; other kinds are ignored. */
+/**
+ * Image files in a paste or drop; other kinds are ignored. Some clipboards
+ * (an image copied out of a browser, say) list the bitmap only under `items`,
+ * with `files` empty, so both are read.
+ */
 export function imageFiles(transfer: DataTransfer | null): File[] {
   if (!transfer) return []
-  return Array.from(transfer.files).filter((file) => isImageMediaType(file.type))
+  const files = Array.from(transfer.files ?? [])
+  if (files.length === 0 && transfer.items) {
+    for (const item of Array.from(transfer.items)) {
+      const file = item.kind === 'file' ? item.getAsFile() : null
+      if (file) files.push(file)
+    }
+  }
+  return files.filter((file) => isImageMediaType(file.type))
 }
 
 /** Longest edge the model can use; Anthropic downsamples anything larger anyway. */

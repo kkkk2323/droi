@@ -61,7 +61,7 @@ test.describe('sending while a turn runs', () => {
     await fakeDaemon.waitForRequest('daemon.add_user_message')
     await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
 
-    // The composer stays usable; Send becomes Queue + Insert now.
+    // The composer stays usable; Send becomes Queue (⌘↩ still inserts).
     await expect(input).toHaveAttribute('placeholder', /Queue a message/)
     await input.fill('later')
     await input.press('Enter')
@@ -158,6 +158,36 @@ test.describe('images in the composer', () => {
     await expect(you.last().getByRole('img', { name: 'Attached image' })).toBeVisible()
     await expect(you.last()).toContainText('What is this?')
   })
+
+  test('Enter right after a paste waits for the image instead of dropping it', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.fill('quick')
+    // Paste and submit in the same tick, before the image has been read.
+    await input.evaluate((element, base64) => {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+      const data = new DataTransfer()
+      data.items.add(new File([bytes], 'fast.png', { type: 'image/png' }))
+      element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }))
+      element.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      )
+    }, PNG_BASE64)
+    const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
+    const content = (sent.params as Record<string, unknown>)['content'] as Array<
+      Record<string, unknown>
+    >
+    expect(sent.params).toMatchObject({ text: 'quick' })
+    expect(content.map((b) => b['type'])).toEqual(['text', 'image'])
+    await expect(input).toHaveValue('')
+    await expect(page.getByRole('list', { name: 'Attachments' })).toHaveCount(0)
+  })
 })
 
 test.describe('task list and context meter', () => {
@@ -215,5 +245,36 @@ test.describe('task list and context meter', () => {
     await page.getByRole('textbox', { name: 'Message' }).fill('go')
     await page.getByRole('button', { name: 'Send' }).click()
     await expect(meter).toContainText(`10k / ${CONTEXT_BUDGET / 1000}k · 5%`)
+  })
+})
+
+test.describe('finished task list', () => {
+  test.use({
+    scenario: {
+      sessions: [chat],
+      handlers: {
+        'daemon.add_user_message': todoTurn({
+          todos: [
+            { id: '1', content: 'Read the config', status: 'completed' },
+            { id: '2', content: 'Run the tests', status: 'completed' },
+          ],
+          reply: 'All done.',
+        }),
+        'daemon.interrupt_session': interruptHandler,
+      },
+    },
+  })
+
+  test('a list with everything done is not shown above the composer', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    await page.getByRole('textbox', { name: 'Message' }).fill('go')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('All done.')
+    await expect(page.getByRole('button', { name: /^Tasks,/ })).toHaveCount(0)
   })
 })

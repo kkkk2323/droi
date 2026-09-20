@@ -41,8 +41,10 @@ export function useContextUsage(
         listener()
       }
       controller.on('sessionTokenUsageChanged', bump)
+      // load_session carries the last call's usage too; the store announces it
+      // as metadata, after the load state flips.
       const unsubscribe = sessionState.subscribeToSessionEvents(
-        [SESSION_EVENT.loadStateChanged],
+        [SESSION_EVENT.loadStateChanged, SESSION_EVENT.metadataUpdated],
         (_event, payload) => bump(payload),
       )
       return () => {

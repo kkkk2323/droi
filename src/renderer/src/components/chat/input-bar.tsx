@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { ArrowUp, CornerDownLeft, Square, SquareSlash, Sparkles, X } from 'lucide-react'
+import { ArrowUp, Square, SquareSlash, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { filterSlashItems, slashQuery, type SlashItem } from '@/daemon/use-slash-items'
 import {
@@ -66,21 +66,36 @@ export function InputBar({
   const [highlight, setHighlight] = useState(0)
   const [dismissedFor, setDismissedFor] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  // Pastes still being read/shrunk; a send in the meantime goes out once they land.
+  const [pendingFiles, setPendingFiles] = useState(0)
+  const pendingRef = useRef(0)
+  const heldSubmit = useRef<{ text: string; placement?: QueuePlacement } | null>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
   const hasContent = text.trim().length > 0 || images.length > 0
-  const canSend = !disabled && (allowEmpty || hasContent)
+  const canSend = !disabled && (allowEmpty || hasContent || pendingFiles > 0)
 
   const query = slashQuery(text, caret)
   const suggestions =
     query !== null && dismissedFor !== text ? filterSlashItems(slashItems, query) : []
   const activeIndex = Math.min(highlight, Math.max(suggestions.length - 1, 0))
 
-  const submit = (placement?: QueuePlacement) => {
-    if (!canSend) return
-    onSend({ text, images, ...(isRunning ? { placement: placement ?? 'end_of_loop' } : {}) })
+  const dispatch = (submission: Submission) => {
+    onSend(submission)
     setText('')
     setImages([])
     textarea.current?.focus()
+  }
+  const placementFor = (placement?: QueuePlacement) =>
+    isRunning ? { placement: placement ?? 'end_of_loop' } : {}
+
+  const submit = (placement?: QueuePlacement) => {
+    if (!canSend) return
+    if (pendingRef.current > 0) {
+      heldSubmit.current = { text, placement }
+      setText('')
+      return
+    }
+    dispatch({ text, images, ...placementFor(placement) })
   }
 
   // The caret must land after the inserted name in the same commit as the
@@ -104,9 +119,30 @@ export function InputBar({
 
   const addFiles = (files: File[]) => {
     if (files.length === 0) return
-    void Promise.all(files.map((file) => readImageAttachment(file, uuid()))).then((added) =>
-      setImages((current) => [...current, ...added]),
-    )
+    pendingRef.current += files.length
+    setPendingFiles(pendingRef.current)
+    void Promise.all(files.map((file) => readImageAttachment(file, uuid())))
+      .catch((cause: unknown) => {
+        console.error('Could not read pasted image', cause)
+        return [] as ImageAttachment[]
+      })
+      .then((added) => {
+        pendingRef.current -= files.length
+        setPendingFiles(pendingRef.current)
+        setImages((current) => {
+          const next = [...current, ...added]
+          const held = heldSubmit.current
+          if (held && pendingRef.current === 0) {
+            heldSubmit.current = null
+            // Deferred to leave the state update pure.
+            queueMicrotask(() =>
+              dispatch({ text: held.text, images: next, ...placementFor(held.placement) }),
+            )
+            return []
+          }
+          return next
+        })
+      })
   }
 
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -288,23 +324,11 @@ export function InputBar({
                   <Square aria-hidden className="size-3 fill-current" />
                 </Button>
                 <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="secondary"
-                  className="rounded-full"
-                  aria-label="Insert now"
-                  title="Hand it to the running turn (⌘↩)"
-                  disabled={!canSend}
-                  onClick={() => submit('end_of_turn')}
-                >
-                  <CornerDownLeft aria-hidden className="size-3.5" />
-                </Button>
-                <Button
                   type="submit"
                   size="icon-sm"
                   className="rounded-full"
                   aria-label="Queue"
-                  title="Send after this turn (↩)"
+                  title="Send after this turn (↩); ⌘↩ hands it to the running turn"
                   disabled={!canSend}
                 >
                   <ArrowUp aria-hidden />
