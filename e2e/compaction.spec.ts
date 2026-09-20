@@ -60,6 +60,11 @@ test.describe('compaction handoff', () => {
     await expect(sidebar.getByRole('button', { name: /Long chat/ })).toHaveCount(1)
     await expect(sidebar.getByRole('button', { name: /Long chat/ })).toContainText('1 message')
 
+    // On the phone the list is a drawer over the transcript; put it away first.
+    if (await page.getByRole('dialog', { name: 'Sessions' }).isVisible()) {
+      await page.keyboard.press('Escape')
+    }
+
     // Earlier messages load on request and sit above the boundary.
     await page.getByRole('button', { name: /Continued from “Long chat”/ }).click()
     await fakeDaemon.waitForRequest('daemon.load_session', 2)
