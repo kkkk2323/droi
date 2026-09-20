@@ -77,7 +77,9 @@ export function SessionView({
     </div>
   ) : null
 
+  const [sentCount, setSentCount] = useState(0)
   const submit = ({ text, images, placement }: Submission) => {
+    setSentCount((n) => n + 1)
     const command = COMPACT_COMMAND.exec(text.trim())
     if (command && images.length === 0) {
       void compaction.compact(command[1]).then((next) => {
@@ -120,6 +122,7 @@ export function SessionView({
               compaction.isCompacting ? 'compacting_conversation' : session.workingState
             }
             lead={lead}
+            scrollToEndKey={sentCount}
           />
         )}
       </div>

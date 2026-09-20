@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { Virtuoso } from 'react-virtuoso'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { MessageEntry } from './message-entry'
 import { buildTranscript, type TranscriptEntry } from './transcript'
@@ -111,6 +111,7 @@ export function MessageList({
   earlierMessages = NO_MESSAGES,
   workingState,
   lead = null,
+  scrollToEndKey = 0,
 }: {
   messages: readonly FactoryDroidMessage[]
   /** The parent Session's transcript, shown above this one's after a compaction. */
@@ -118,7 +119,24 @@ export function MessageList({
   /** The Daemon's working state for this Session. */
   workingState: string
   lead?: ReactNode
+  /** Bumped when the user sends; the list then scrolls to the end whatever the position. */
+  scrollToEndKey?: number
 }) {
+  const virtuoso = useRef<VirtuosoHandle>(null)
+  useEffect(() => {
+    if (!scrollToEndKey) return
+    // The sent message is appended a tick after the send; scroll once now and
+    // once after it has landed.
+    const scroll = () =>
+      virtuoso.current?.scrollToIndex({
+        index: 'LAST',
+        align: 'end',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      })
+    scroll()
+    const timer = setTimeout(scroll, 120)
+    return () => clearTimeout(timer)
+  }, [scrollToEndKey])
   const earlier = buildTranscript(earlierMessages)
   const own = buildTranscript(messages)
   const entries = [...earlier, ...own]
@@ -144,6 +162,7 @@ export function MessageList({
 
   return (
     <Virtuoso<TranscriptEntry, ListContext>
+      ref={virtuoso}
       role="log"
       aria-label="Transcript"
       className="h-full"
@@ -153,6 +172,9 @@ export function MessageList({
       firstItemIndex={INDEX_BASE - earlier.length}
       initialTopMostItemIndex={entries.length - 1}
       followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
+      // The panels above the composer resize the viewport; a few pixels off
+      // the bottom must still count as "following".
+      atBottomThreshold={120}
       components={{ Header: ListHeader, Footer: ActivityRow }}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       itemContent={renderEntry}

@@ -86,6 +86,47 @@ test.describe('sending a prompt', () => {
   })
 })
 
+test.describe('sending from further up the transcript', () => {
+  const long = session(
+    'Long',
+    '/Users/dev/acme-web',
+    Array.from({ length: 30 }, (_, i) =>
+      i % 2 === 0 ? userMessage(`question ${i}`) : assistantMessage(`answer ${i}\n`.repeat(6)),
+    ),
+  )
+  test.use({
+    scenario: {
+      sessions: [long],
+      handlers: {
+        'daemon.add_user_message': streamedReply({ deltas: ['Right away.'], delayMs: 100 }),
+        'daemon.interrupt_session': interruptHandler,
+      },
+    },
+  })
+
+  test('the new message scrolls into view even when the list was scrolled up', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Long/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript).toContainText('question 28')
+    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await expect(transcript.getByText('question 28')).not.toBeInViewport()
+
+    await page.getByRole('textbox', { name: 'Message' }).fill('one more')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(transcript.getByRole('article', { name: 'You' }).last()).toContainText('one more')
+    await expect(transcript.getByRole('article', { name: 'You' }).last()).toBeInViewport()
+    await expect(transcript.getByRole('article', { name: 'Assistant' }).last()).toContainText(
+      'Right away.',
+    )
+    await expect(transcript.getByRole('article', { name: 'Assistant' }).last()).toBeInViewport()
+  })
+})
+
 test.describe('cancelling a turn', () => {
   test.use({
     scenario: {
