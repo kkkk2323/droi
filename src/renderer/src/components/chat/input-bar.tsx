@@ -13,6 +13,9 @@ export function InputBar({
   onCancel,
   error,
   footer,
+  placeholder = 'Ask anything',
+  allowEmpty = false,
+  sendLabel = 'Send',
 }: {
   isRunning: boolean
   disabled: boolean
@@ -20,10 +23,14 @@ export function InputBar({
   onCancel: () => void
   error: string | null
   footer?: ReactNode
+  placeholder?: string
+  /** Let the button fire with nothing typed (starting a Session without a first message). */
+  allowEmpty?: boolean
+  sendLabel?: string
 }) {
   const [text, setText] = useState('')
   const textarea = useRef<HTMLTextAreaElement>(null)
-  const canSend = !disabled && !isRunning && text.trim().length > 0
+  const canSend = !disabled && !isRunning && (allowEmpty || text.trim().length > 0)
 
   const submit = () => {
     if (!canSend) return
@@ -63,7 +70,7 @@ export function InputBar({
         <textarea
           ref={textarea}
           aria-label="Message"
-          placeholder={isRunning ? 'Droid is working…' : 'Ask anything'}
+          placeholder={isRunning ? 'Droid is working…' : placeholder}
           value={text}
           rows={1}
           disabled={disabled}
@@ -90,7 +97,7 @@ export function InputBar({
                 type="submit"
                 size="icon-sm"
                 className="rounded-full"
-                aria-label="Send"
+                aria-label={sendLabel}
                 disabled={!canSend}
               >
                 <ArrowUp aria-hidden />

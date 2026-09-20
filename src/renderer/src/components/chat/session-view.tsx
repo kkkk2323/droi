@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Folder, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { useSession } from '@/daemon/use-session'
 import { useTurn } from '@/daemon/use-turn'
 import { LOAD_STATE, type LoadState } from '@/daemon/sdk-enums'
+import { takePendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
 import { InputBar } from './input-bar'
 import { MessageList } from './message-list'
@@ -32,6 +33,14 @@ export function SessionView({
   const turn = useTurn(sessionId)
   const isRunning = session.workingState !== 'idle'
   const loaded = session.loadState === LOAD_STATE.loaded
+
+  // A message typed on the New session page goes out as soon as the Session can take it.
+  const send = turn.send
+  useEffect(() => {
+    if (!loaded) return
+    const text = takePendingPrompt(sessionId)
+    if (text) void send(text)
+  }, [loaded, sessionId, send])
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">

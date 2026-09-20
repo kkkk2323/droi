@@ -1,8 +1,18 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowRight, Folder, Loader2 } from 'lucide-react'
+import { Menu } from '@base-ui/react/menu'
+import { Asterisk, Check, ChevronDown, Folder, FolderPlus, Loader2 } from 'lucide-react'
+import { InputBar } from '@/components/chat/input-bar'
+import { COLUMN } from '@/components/chat/session-view'
 import { Button } from '@/components/ui/button'
 import { useNewSession, type RecentWorkspace } from '@/daemon/use-new-session'
+import { setPendingPrompt } from '@/lib/pending-prompt'
+import { cn } from '@/lib/utils'
 
+/**
+ * Waku-style start page: one question with the Workspace as a menu inside
+ * it, and the composer underneath. The first message rides along into the
+ * Session; sending nothing just opens it.
+ */
 export function NewSessionPage({
   recent,
   onCreated,
@@ -13,87 +23,181 @@ export function NewSessionPage({
   header: ReactNode
 }) {
   const { create, isCreating, error } = useNewSession()
+  // Until the user picks, the most recent Workspace is the target; recents
+  // arrive with the session list, so the default is derived, not stored.
+  const [choice, setChoice] = useState<{ kind: 'recent'; path: string } | { kind: 'other' } | null>(
+    null,
+  )
+  const workspace =
+    choice === null ? (recent[0]?.path ?? null) : choice.kind === 'recent' ? choice.path : null
+  const typing = choice?.kind === 'other' || (choice === null && recent.length === 0)
+  const setWorkspace = (path: string) => setChoice({ kind: 'recent', path })
+  const setOther = () => setChoice({ kind: 'other' })
   const [path, setPath] = useState('')
 
-  const start = async (target: string) => {
+  const start = async (target: string, prompt = '') => {
     const sessionId = await create(target)
-    if (sessionId) onCreated(sessionId)
+    if (!sessionId) return
+    if (prompt.trim()) setPendingPrompt(sessionId, prompt)
+    onCreated(sessionId)
   }
+
+  const label = workspace
+    ? (recent.find((w) => w.path === workspace)?.label ?? name(workspace))
+    : null
 
   return (
     <section aria-label="New session" className="flex h-full min-h-0 flex-col">
       {header}
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 overflow-y-auto px-6 pb-12 pt-6 md:px-8">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">Where should Droid work?</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Pick a recent workspace or type the path of a directory on the computer running Droi.
-          </p>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-y-auto px-6 text-center">
+        <Asterisk aria-hidden className="size-8 text-orange-500" strokeWidth={2.25} />
+        <h2 className="flex flex-wrap items-baseline justify-center gap-x-1.5 text-xl font-medium tracking-tight">
+          {label ? (
+            <>
+              <span>What do you want to build in</span>
+              <span className="inline-flex items-baseline">
+                <WorkspaceMenu
+                  recent={recent}
+                  value={workspace}
+                  onPick={setWorkspace}
+                  onOther={setOther}
+                >
+                  {label}
+                </WorkspaceMenu>
+                ?
+              </span>
+            </>
+          ) : (
+            <>
+              <span>Where should Droid work?</span>
+              {recent.length > 0 ? (
+                <WorkspaceMenu
+                  recent={recent}
+                  value={workspace}
+                  onPick={setWorkspace}
+                  onOther={setOther}
+                >
+                  Choose a workspace
+                </WorkspaceMenu>
+              ) : null}
+            </>
+          )}
+        </h2>
 
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void start(path)
-          }}
-        >
-          <label htmlFor="new-session-path" className="text-sm font-medium">
-            Workspace path
-          </label>
-          <div className="flex gap-2">
+        {typing ? (
+          <form
+            className="flex w-full max-w-md gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void start(path)
+            }}
+          >
             <input
-              id="new-session-path"
+              aria-label="Workspace path"
               value={path}
               onChange={(event) => setPath(event.target.value)}
               placeholder="/Users/you/projects/app"
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
+              autoFocus={recent.length > 0}
               className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 font-mono text-sm outline-none transition-colors focus-visible:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring/30"
             />
             <Button type="submit" disabled={isCreating || !path.trim()}>
               {isCreating ? <Loader2 aria-hidden className="animate-spin" /> : null}
               Start
             </Button>
-          </div>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive-foreground">
-              {error}
-            </p>
-          ) : null}
-        </form>
-
-        {recent.length > 0 ? (
-          <div>
-            <h3 className="mb-2 text-sm font-medium">Recent workspaces</h3>
-            <ul className="flex flex-col gap-1.5">
-              {recent.map((workspace) => (
-                <li key={workspace.path}>
-                  <button
-                    type="button"
-                    disabled={isCreating}
-                    onClick={() => void start(workspace.path)}
-                    className="group flex w-full items-center gap-3 rounded-xl bg-card px-4 py-3 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
-                  >
-                    <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-medium">{workspace.label}</span>
-                      <span className="truncate font-mono text-xs text-muted-foreground">
-                        {workspace.path}
-                      </span>
-                    </span>
-                    <ArrowRight
-                      aria-hidden
-                      className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                    />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          </form>
         ) : null}
+        {error ? (
+          <p role="alert" className="text-sm text-destructive-foreground">
+            {error}
+          </p>
+        ) : null}
+      </div>
+
+      <div className={cn(COLUMN, 'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]')}>
+        <InputBar
+          isRunning={false}
+          disabled={!workspace || isCreating}
+          allowEmpty
+          placeholder="Do anything…"
+          sendLabel="Start session"
+          onSend={(text) => {
+            if (workspace) void start(workspace, text)
+          }}
+          onCancel={() => {}}
+          error={null}
+        />
+        <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
+          {workspace ? (
+            <span className="flex min-w-0 items-center gap-1.5" title={workspace}>
+              <Folder aria-hidden className="size-3.5 shrink-0" />
+              <span className="truncate">{workspace}</span>
+            </span>
+          ) : null}
+        </div>
       </div>
     </section>
   )
+}
+
+function WorkspaceMenu({
+  recent,
+  value,
+  onPick,
+  onOther,
+  children,
+}: {
+  recent: RecentWorkspace[]
+  value: string | null
+  onPick: (path: string) => void
+  onOther: () => void
+  children: ReactNode
+}) {
+  return (
+    <Menu.Root>
+      <Menu.Trigger
+        aria-label="Workspace"
+        className="inline-flex items-baseline gap-0.5 rounded-sm border-b border-dashed border-muted-foreground/50 outline-none transition-colors hover:border-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:border-foreground"
+      >
+        {children}
+        <ChevronDown aria-hidden className="size-3.5 self-center opacity-50" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="start" sideOffset={6} className="z-50 outline-none">
+          <Menu.Popup className="max-h-[min(22rem,var(--available-height))] min-w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-left text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none">
+            <Menu.RadioGroup value={value} onValueChange={(next) => onPick(String(next))}>
+              {recent.map((workspace) => (
+                <Menu.RadioItem
+                  key={workspace.path}
+                  value={workspace.path}
+                  title={workspace.path}
+                  closeOnClick
+                  className="flex cursor-default items-center gap-3 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                >
+                  <span className="min-w-0 flex-1 truncate">{workspace.label}</span>
+                  <Menu.RadioItemIndicator className="flex size-4 items-center justify-center">
+                    <Check aria-hidden className="size-3.5" />
+                  </Menu.RadioItemIndicator>
+                </Menu.RadioItem>
+              ))}
+            </Menu.RadioGroup>
+            <Menu.Separator className="my-1 h-px bg-border" />
+            <Menu.Item
+              onClick={onOther}
+              className="flex cursor-default items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+            >
+              <FolderPlus aria-hidden className="size-4 text-muted-foreground" />
+              Other folder…
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  )
+}
+
+function name(path: string): string {
+  return path.split('/').filter(Boolean).pop() ?? path
 }

@@ -1,5 +1,6 @@
 import { expect, test } from './fixtures'
 import { session, userMessage } from './fake-daemon/scenario'
+import { streamedReply } from './fake-daemon/turns'
 
 const older = session('Old work', '/Users/dev/billing-service', [userMessage('a')])
 const newer = session('Recent work', '/Users/dev/acme-web', [userMessage('b')])
@@ -10,10 +11,11 @@ test.describe('new session', () => {
     scenario: {
       sessions: [older, newer, newest],
       validDirectories: ['/Users/dev/fresh-project'],
+      handlers: { 'daemon.add_user_message': streamedReply({ deltas: ['On it.'] }) },
     },
   })
 
-  test('recent Workspaces come from existing Sessions, newest first, deduplicated', async ({
+  test('the most recent Workspace is preselected; the menu lists the rest, deduplicated', async ({
     page,
     openClient,
     openSidebar,
@@ -21,14 +23,55 @@ test.describe('new session', () => {
     await openClient()
     await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
     const form = page.getByRole('region', { name: 'New session' })
-    const recent = form.getByRole('list').getByRole('button')
-    await expect(recent).toHaveCount(2)
-    await expect(recent.nth(0)).toContainText('acme-web')
-    await expect(recent.nth(0)).toContainText('/Users/dev/acme-web')
-    await expect(recent.nth(1)).toContainText('billing-service')
+    await expect(form.getByRole('heading', { level: 2 })).toHaveText(
+      /What do you want to build in\s*acme-web\s*\?/,
+    )
+    await form.getByRole('button', { name: 'Workspace' }).click()
+    const items = page.getByRole('menu').getByRole('menuitemradio')
+    await expect(items).toHaveText(['acme-web', 'billing-service'])
+    await expect(items.nth(0)).toHaveAttribute('aria-checked', 'true')
+    await expect(
+      page.getByRole('menu').getByRole('menuitem', { name: 'Other folder…' }),
+    ).toBeVisible()
   })
 
-  test('choosing a recent Workspace creates and opens a Session there', async ({
+  test('choosing a recent Workspace and sending creates the Session and posts the first message', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    await form.getByRole('button', { name: 'Workspace' }).click()
+    await page.getByRole('menuitemradio', { name: 'billing-service' }).click()
+    await expect(form.getByRole('heading', { level: 2 })).toContainText('billing-service')
+
+    await form.getByRole('textbox', { name: 'Message' }).fill('Refactor the invoices')
+    await form.getByRole('button', { name: 'Start session' }).click()
+
+    const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    expect(created.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
+    await expect(
+      page.getByRole('region', { name: 'New session' }).getByRole('heading', { level: 2 }),
+    ).toBeVisible()
+    expect(new URL(page.url()).hash).toMatch(/^#\/s\//)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByRole('article', { name: 'You' })).toContainText(
+      'Refactor the invoices',
+    )
+    await fakeDaemon.waitForRequest('daemon.add_user_message')
+
+    // The Session appears in the sidebar under its Workspace.
+    const billing = (await openSidebar()).getByRole('region', { name: 'billing-service' })
+    await expect(billing.getByRole('button', { name: /New session/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+
+  test('sending nothing still opens an empty Session in the preselected Workspace', async ({
     page,
     fakeDaemon,
     openClient,
@@ -38,23 +81,13 @@ test.describe('new session', () => {
     await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
     await page
       .getByRole('region', { name: 'New session' })
-      .getByRole('button', { name: /billing-service/ })
+      .getByRole('button', { name: 'Start session' })
       .click()
-
     const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
-    expect(created.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
-    await expect(
-      page.getByRole('region', { name: 'New session' }).getByRole('heading', { level: 2 }),
-    ).toBeVisible()
+    expect(created.params).toMatchObject({ cwd: '/Users/dev/acme-web' })
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeEnabled()
-    expect(new URL(page.url()).hash).toMatch(/^#\/s\//)
-
-    // The Session appears in the sidebar under its Workspace.
-    const billing = (await openSidebar()).getByRole('region', { name: 'billing-service' })
-    await expect(billing.getByRole('button', { name: /New session/ })).toBeVisible()
-    await expect(billing.getByRole('button', { name: /New session/ })).toHaveAttribute(
-      'aria-current',
-      'page',
+    expect(fakeDaemon.requests.filter((r) => r.method === 'daemon.add_user_message')).toHaveLength(
+      0,
     )
   })
 
@@ -66,8 +99,12 @@ test.describe('new session', () => {
   }) => {
     await openClient()
     await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    await form.getByRole('button', { name: 'Workspace' }).click()
+    await page.getByRole('menuitem', { name: 'Other folder…' }).click()
+    await expect(form.getByRole('heading', { level: 2 })).toContainText('Where should Droid work?')
     const path = page.getByRole('textbox', { name: 'Workspace path' })
-    const start = page.getByRole('button', { name: 'Start' })
+    const start = page.getByRole('button', { name: 'Start', exact: true })
     await expect(start).toBeDisabled()
 
     await path.fill('/nope/missing')
