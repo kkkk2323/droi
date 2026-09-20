@@ -14,7 +14,9 @@ export const clientConfig: UserConfig = {
       '@shared': resolve(import.meta.dirname, 'src/shared'),
     },
   },
-  plugins: [tailwindcss(), react()],
+  // React Compiler through oxc: components memoize themselves, so hooks only
+  // spell out useMemo/useCallback where the identity carries meaning.
+  plugins: [tailwindcss(), react({ compiler: { logDiagnostics: true } })],
   server: {
     port: 5173,
     strictPort: true,

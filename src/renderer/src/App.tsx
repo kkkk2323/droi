@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
 import { useConnectionState } from './daemon/connection-context'
@@ -14,7 +14,7 @@ import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
 import { Button } from './components/ui/button'
-import { showArchivedSessions, sidebarVisible } from './lib/local-preference'
+import { showArchivedSessions, sidebarVisible, usePreference } from './lib/local-preference'
 import { useHashRoute, type Route } from './lib/use-hash-route'
 import { useMediaQuery } from './lib/use-media-query'
 import { cn } from './lib/utils'
@@ -36,12 +36,12 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [drawerRequested, setDrawerOpen] = useState(false)
   // A drawer only exists on narrow screens; widening the window closes it.
   const drawerOpen = narrow && drawerRequested
-  const [sidebarShown, setSidebarShown] = sidebarVisible.use()
-  const [showArchived] = showArchivedSessions.use()
+  const [sidebarShown, setSidebarShown] = usePreference(sidebarVisible)
+  const [showArchived] = usePreference(showArchivedSessions)
   const sessions = useSessionList({ includeArchived: showArchived })
   const workingSessionIds = useWorkingSessionIds()
-  const groups = useMemo(() => groupByWorkspace(sessions.data ?? []), [sessions.data])
-  const recent = useMemo(() => recentWorkspaces(sessions.data ?? []), [sessions.data])
+  const groups = groupByWorkspace(sessions.data ?? [])
+  const recent = recentWorkspaces(sessions.data ?? [])
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
 

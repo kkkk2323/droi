@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
-import { showArchivedSessions } from '@/lib/local-preference'
+import { showArchivedSessions, usePreference } from '@/lib/local-preference'
 import { useTheme } from '@/lib/theme'
 import { TEXT_SIZES, TEXT_SIZE_LABELS, applyTextSize, textSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
@@ -169,8 +169,8 @@ export function SettingsPage({
 
 function GeneralTab({ version }: { version: string | null }) {
   const [theme, setTheme] = useTheme()
-  const [size, setSize] = textSize.use()
-  const [showArchived, setShowArchived] = showArchivedSessions.use()
+  const [size, setSize] = usePreference(textSize)
+  const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   return (
     <>
       <SettingRow

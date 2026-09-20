@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { MessageEntry } from './message-entry'
@@ -82,7 +81,7 @@ export function MessageList({
   /** The Daemon's working state for this Session. */
   workingState: string
 }) {
-  const entries = useMemo(() => buildTranscript(messages), [messages])
+  const entries = buildTranscript(messages)
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const isStreaming = workingState === 'streaming_assistant_message'

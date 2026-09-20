@@ -6,7 +6,8 @@ import { useSyncExternalStore } from 'react'
 export interface LocalPreference<T> {
   get(): T
   set(value: T): void
-  use(): [T, (value: T) => void]
+  subscribe(listener: () => void): () => void
+  readonly fallback: T
 }
 
 export function createPreference<T>(
@@ -44,11 +45,17 @@ export function createPreference<T>(
     return () => void listeners.delete(listener)
   }
 
-  return {
-    get,
-    set,
-    use: () => [useSyncExternalStore(subscribe, get, () => fallback), set],
-  }
+  return { get, set, subscribe, fallback }
+}
+
+/** React binding; a real hook so the React Compiler sees it as one. */
+export function usePreference<T>(preference: LocalPreference<T>): [T, (value: T) => void] {
+  const value = useSyncExternalStore(
+    preference.subscribe,
+    preference.get,
+    () => preference.fallback,
+  )
+  return [value, preference.set]
 }
 
 export function createBooleanPreference(key: string, fallback: boolean): LocalPreference<boolean> {

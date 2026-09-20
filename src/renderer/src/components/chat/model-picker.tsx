@@ -2,7 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import { Popover } from '@base-ui/react/popover'
 import { ChevronDown, Search, Star } from 'lucide-react'
 import { BrandIcon } from './brand-icon'
-import { favoriteModels } from '@/lib/local-preference'
+import { favoriteModels, usePreference } from '@/lib/local-preference'
 import { BRAND_LABELS, BRAND_ORDER, brandOf, type Brand } from '@/lib/model-brand'
 import { cn } from '@/lib/utils'
 import type { ModelChoice } from '@/daemon/use-session-settings'
@@ -60,7 +60,7 @@ export function ModelPicker({
   const [filter, setFilter] = useState<PickerFilter>('all')
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
-  const [favorites, setFavorites] = favoriteModels.use()
+  const [favorites, setFavorites] = usePreference(favoriteModels)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const current = models.find((m) => m.id === value) ?? null

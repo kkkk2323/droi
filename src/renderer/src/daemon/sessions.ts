@@ -3,7 +3,7 @@
 // transcript lives in the SDK state manager (see use-session.ts).
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { useDaemonConnection } from './connection-context'
+import { useConnectionState, useDaemonConnection } from './connection-context'
 
 export interface SessionSummary {
   sessionId: string
@@ -29,6 +29,9 @@ export const SESSIONS_QUERY_KEY = ['sessions'] as const
 export function useSessionList(options: { includeArchived?: boolean } = {}) {
   const includeArchived = options.includeArchived ?? false
   const connection = useDaemonConnection()
+  // Read through the hook, not connection.getState(): the compiler memoizes
+  // the options on `connection`, which never changes identity.
+  const connected = useConnectionState().status === 'connected'
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
         archivedAt: s.archivedAt ?? null,
       }))
     },
-    enabled: connection.getState().status === 'connected',
+    enabled: connected,
     staleTime: 10_000,
   })
 }

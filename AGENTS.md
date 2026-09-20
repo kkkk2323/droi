@@ -29,6 +29,7 @@ Unit tests sit next to the code as `*.test.ts` / `*.test.tsx` and run with vites
 | `pnpm dev:client` | Serve only the Client in a browser (vite) |
 | `pnpm build` | Production build (electron-vite) |
 | `pnpm build:mac` | Build the macOS DMG |
+| `pnpm install:mac` | Build the DMG and replace `/Applications/Droi.app` (quits, swaps, relaunches) |
 | `pnpm test` | Run vitest once |
 | `pnpm test:e2e` | Run Playwright against the Client dev server (Fake Daemon) |
 | `pnpm test:smoke` | Electron smoke suite against the built Shell (`pnpm build` first) |
