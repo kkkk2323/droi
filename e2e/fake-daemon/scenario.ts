@@ -16,6 +16,11 @@ export interface SessionFixture {
   tags?: Array<{ name: string; metadata?: Record<string, string> }>
   /** Exists on disk but is not loaded in the Daemon; per-Session RPCs fail until load_session. */
   inactive?: boolean
+  /** Branch and uncommitted changes get_git_diff reports; absent means not a Git repository. */
+  git?: {
+    branch: string
+    files: Array<{ path: string; status: string; additions: number; deletions: number }>
+  }
 }
 
 export interface MessageFixture {
@@ -115,6 +120,46 @@ export function createScenario(input: ScenarioInput): Scenario {
         skills: [],
         mcpServers: [],
         droids: [],
+      }
+    },
+    'daemon.get_git_diff': (params) => {
+      const found = mustFind(sessions, params['sessionId'])
+      if (!found.git) {
+        return {
+          success: false,
+          unavailableReason: 'not_git_repository',
+          unavailableMessage: 'This session working directory is not a Git repository.',
+        }
+      }
+      const sum = (key: 'additions' | 'deletions') =>
+        found.git!.files.reduce((total, file) => total + file[key], 0)
+      const range = {
+        diff: '',
+        files: found.git.files,
+        totalAdditions: sum('additions'),
+        totalDeletions: sum('deletions'),
+      }
+      return {
+        success: true,
+        data: {
+          branch: found.git.branch,
+          baseBranch: 'main',
+          remoteUrl: null,
+          commits: [],
+          ...range,
+          committedDiff: '',
+          committedFiles: [],
+          committedTotalAdditions: 0,
+          committedTotalDeletions: 0,
+          localDiff: range.diff,
+          localFiles: range.files,
+          localTotalAdditions: range.totalAdditions,
+          localTotalDeletions: range.totalDeletions,
+          unstagedDiff: range.diff,
+          unstagedFiles: range.files,
+          unstagedTotalAdditions: range.totalAdditions,
+          unstagedTotalDeletions: range.totalDeletions,
+        },
       }
     },
     'daemon.list_commands': () => ({ commands: input.commands ?? [] }),

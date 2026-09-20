@@ -298,6 +298,65 @@ test.describe('session history', () => {
   })
 })
 
+test.describe('git changes in the header', () => {
+  const dirty = session(
+    'Fix the login bug',
+    '/Users/dev/acme-web',
+    [userMessage('Why does login fail?')],
+    {
+      git: {
+        branch: 'fix/login',
+        files: [
+          { path: 'src/auth/login.ts', status: 'modified', additions: 12, deletions: 3 },
+          { path: 'src/auth/login.test.ts', status: 'added', additions: 40, deletions: 0 },
+        ],
+      },
+    },
+  )
+  const clean = session('Add dark mode', '/Users/dev/acme-web', [userMessage('Add dark mode')], {
+    git: { branch: 'main', files: [] },
+  })
+  const notRepo = session('Refactor billing', '/Users/dev/scratch', [
+    userMessage('Refactor the invoice generator'),
+  ])
+  test.use({ scenario: { sessions: [dirty, clean, notRepo] } })
+
+  test('shows the branch with the uncommitted counts and lists the files', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Fix the login bug/)
+    const button = page.getByRole('button', { name: 'Branch fix/login, 2 changed files' })
+    await expect(button).toContainText('fix/login')
+    await expect(button).toContainText('+52')
+    await expect(button).toContainText('−3')
+    await button.click()
+    const files = page.getByRole('list', { name: 'Changed files' })
+    await expect(files.getByRole('listitem')).toHaveCount(2)
+    await expect(files.getByRole('listitem').first()).toContainText('login.ts')
+    await expect(files.getByRole('listitem').first()).toContainText('src/auth/')
+    await expect(files.getByRole('listitem').nth(1)).toContainText('+40')
+    await page.keyboard.press('Escape')
+    await expect(files).toHaveCount(0)
+  })
+
+  test('a clean tree shows only the branch; a plain directory shows nothing', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Add dark mode/)
+    const button = page.getByRole('button', { name: 'Branch main, no changes' })
+    await expect(button).toHaveText('main')
+    await pickSession(/Refactor billing/)
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('invoice generator')
+    await expect(page.getByRole('button', { name: /^Branch / })).toHaveCount(0)
+  })
+})
+
 test.describe('long history', () => {
   const many = Array.from({ length: 120 }, (_, i) =>
     i % 2 === 0 ? userMessage(`Question ${i}`) : assistantMessage(`Answer ${i}`),

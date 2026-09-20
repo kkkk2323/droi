@@ -5,6 +5,7 @@ import { useSession } from '@/daemon/use-session'
 import { useTurn } from '@/daemon/use-turn'
 import { useSlashItems } from '@/daemon/use-slash-items'
 import { useContextUsage } from '@/daemon/use-context-usage'
+import { useGitChanges } from '@/daemon/use-git-changes'
 import { useSessionSettings } from '@/daemon/use-session-settings'
 import { COMPACT_COMMAND, useCompact } from '@/daemon/use-compact'
 import { usePrompts } from '@/daemon/use-prompts'
@@ -13,6 +14,7 @@ import { LOAD_STATE } from '@/daemon/sdk-enums'
 import { takePendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
 import { ComposerShelf, ContextMeter } from './composer-panels'
+import { GitChangesButton } from './git-changes'
 import { InputBar, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
@@ -50,6 +52,7 @@ export function SessionView({
   const prompts = usePrompts(sessionId)
   const hasPrompt = prompts.permissions.length > 0 || prompts.askUser.length > 0
   const contextUsage = useContextUsage(sessionId, { loaded, modelId: settings.modelId })
+  const gitChanges = useGitChanges(sessionId, { loaded, running: isRunning })
 
   // The parent's transcript is only loaded once asked for; it can be large.
   const [showEarlier, setShowEarlier] = useState(false)
@@ -99,7 +102,9 @@ export function SessionView({
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
-      <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />} />
+      <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />}>
+        <GitChangesButton changes={gitChanges} />
+      </PageHeader>
 
       <div className="min-h-0 flex-1">
         {session.loadError ? (
