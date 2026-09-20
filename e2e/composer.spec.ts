@@ -207,7 +207,13 @@ test.describe('task list and context meter', () => {
     await pickSession(/Chat/)
     const meter = page.getByRole('meter', { name: 'Context used' })
     await expect(meter).toBeVisible()
+    // Before any call the Daemon's estimate stands in.
     await expect(meter).toHaveAttribute('aria-valuenow', '25')
     await expect(meter).toContainText(`50k / ${CONTEXT_BUDGET / 1000}k · 25%`)
+
+    // After a call the meter shows what that call actually sent.
+    await page.getByRole('textbox', { name: 'Message' }).fill('go')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(meter).toContainText(`10k / ${CONTEXT_BUDGET / 1000}k · 5%`)
   })
 })

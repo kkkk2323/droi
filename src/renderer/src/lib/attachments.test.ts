@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { attachmentUrl, imageFiles, readImageAttachment } from './attachments'
+import { attachmentUrl, fitWithin, imageFiles, readImageAttachment } from './attachments'
 
 describe('attachments', () => {
   test('imageFiles keeps only image files and tolerates no transfer', () => {
@@ -20,5 +20,11 @@ describe('attachments', () => {
       data: Buffer.from([0, 255, 16]).toString('base64'),
     })
     expect(attachmentUrl(attachment)).toBe(`data:image/jpeg;base64,${attachment.data}`)
+  })
+
+  test('fitWithin scales the longest edge down and never up', () => {
+    expect(fitWithin(4000, 2000, 1568)).toEqual([1568, 784])
+    expect(fitWithin(500, 3136, 1568)).toEqual([250, 1568])
+    expect(fitWithin(800, 600, 1568)).toEqual([800, 600])
   })
 })

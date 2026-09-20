@@ -110,7 +110,6 @@ export function MessageList({
       computeItemKey={(_, entry) => entry.id}
       initialTopMostItemIndex={entries.length - 1}
       followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
-      alignToBottom
       components={{ Header: ListPadding, Footer: ActivityRow }}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       itemContent={renderEntry}

@@ -39,11 +39,7 @@ export function SessionView({
   const isRunning = session.workingState !== 'idle'
   const loaded = session.loadState === LOAD_STATE.loaded
   const settings = useSessionSettings(sessionId)
-  const contextUsage = useContextUsage(sessionId, {
-    loaded,
-    idle: !isRunning,
-    modelId: settings.modelId,
-  })
+  const contextUsage = useContextUsage(sessionId, { loaded, modelId: settings.modelId })
 
   // A message typed on the New session page goes out as soon as the Session can take it.
   const send = turn.send

@@ -61,6 +61,15 @@ interface RunTurnInput extends StreamedReplyOptions {
 
 const activeTurns = new Map<string, TurnHandle & { cancelled: boolean }>()
 
+/** 10k of prompt (input + cache read) on every scripted call. */
+export const LAST_CALL_TOKEN_USAGE = {
+  inputTokens: 8_000,
+  outputTokens: 300,
+  cacheCreationTokens: 2_000,
+  cacheReadTokens: 2_000,
+  thinkingTokens: 0,
+}
+
 interface HeldMessage {
   request: JsonRpcRequest
   params: Record<string, unknown>
@@ -207,6 +216,13 @@ function finishTurn(
     reason,
     turnId,
     tokenUsage: emptyTokenUsage(),
+  })
+  // What the last model call cost; the Client's context meter reads its size.
+  daemon.notify(sessionId, {
+    type: 'session_token_usage_changed',
+    sessionId,
+    tokenUsage: emptyTokenUsage(),
+    lastCallTokenUsage: LAST_CALL_TOKEN_USAGE,
   })
   daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'idle' })
   if (reason === 'completed') drainHeld(sessionId)

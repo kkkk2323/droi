@@ -1,9 +1,13 @@
-// How full the Session's context window is, from the Daemon's context
-// breakdown. It only moves when a turn ends or the model changes, so it is
-// fetched then rather than polled.
+// How full the Session's context window is. "Used" is what the last model
+// call actually sent (input + cache-read tokens), which the Daemon reports after
+// every call; the budget comes from its context breakdown once per model. The
+// breakdown's own `usedTokens` is a chars/4 guess over the stored history and
+// counts base64 images at full length, so it only stands in before the first
+// call.
 import { useQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { useDaemonConnection } from './connection-context'
+import { SESSION_EVENT } from './sdk-enums'
 
 export interface ContextUsage {
   usedTokens: number
@@ -14,28 +18,60 @@ export interface ContextUsage {
 
 export function useContextUsage(
   sessionId: string,
-  deps: { loaded: boolean; idle: boolean; modelId: string | null },
+  deps: { loaded: boolean; modelId: string | null },
 ): ContextUsage | null {
-  const { controller } = useDaemonConnection()
-  const query = useQuery({
-    queryKey: ['context-usage', sessionId, deps.modelId],
+  const { controller, sessionState } = useDaemonConnection()
+  const budget = useQuery({
+    queryKey: ['context-budget', sessionId, deps.modelId],
     enabled: deps.loaded,
     staleTime: Infinity,
-    queryFn: async (): Promise<ContextUsage> => {
+    queryFn: async () => {
       const breakdown = await controller.getContextBreakdown(sessionId)
-      const budget = breakdown.contextBudget
-      return {
-        usedTokens: breakdown.usedTokens,
-        budgetTokens: budget,
-        ratio: budget > 0 ? Math.min(1, breakdown.usedTokens / budget) : 0,
-      }
+      return { budgetTokens: breakdown.contextBudget, estimatedTokens: breakdown.usedTokens }
     },
   })
-  const refetch = query.refetch
-  useEffect(() => {
-    if (deps.loaded && deps.idle) void refetch()
-  }, [deps.loaded, deps.idle, refetch])
-  return query.data ?? null
+
+  const version = useRef(0)
+  const snapshot = useRef<{ version: number; value: number | null }>({ version: -1, value: null })
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const bump = (payload: { sessionId: string }) => {
+        if (payload.sessionId !== sessionId) return
+        version.current += 1
+        listener()
+      }
+      controller.on('sessionTokenUsageChanged', bump)
+      const unsubscribe = sessionState.subscribeToSessionEvents(
+        [SESSION_EVENT.loadStateChanged],
+        (_event, payload) => bump(payload),
+      )
+      return () => {
+        controller.off('sessionTokenUsageChanged', bump)
+        unsubscribe()
+      }
+    },
+    [controller, sessionState, sessionId],
+  )
+  const getLastCall = useCallback((): number | null => {
+    if (snapshot.current.version === version.current) return snapshot.current.value
+    // Only the store keeps the last-call figure; the manager does not proxy it.
+    const last =
+      sessionState.getSessionManager(sessionId)?.getStore().getLastCallTokenUsage() ?? null
+    // The Daemon reports exactly what its own compaction meter uses.
+    const value = last ? last.inputTokens + last.cacheReadTokens : null
+    snapshot.current = { version: version.current, value }
+    return value
+  }, [sessionState, sessionId])
+  const lastCallTokens = useSyncExternalStore(subscribe, getLastCall, getLastCall)
+
+  if (!budget.data) return null
+  const usedTokens = lastCallTokens ?? budget.data.estimatedTokens
+  const budgetTokens = budget.data.budgetTokens
+  return {
+    usedTokens,
+    budgetTokens,
+    ratio: budgetTokens > 0 ? Math.min(1, usedTokens / budgetTokens) : 0,
+  }
 }
 
 export function formatTokens(count: number): string {
