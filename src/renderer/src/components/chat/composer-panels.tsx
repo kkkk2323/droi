@@ -38,7 +38,7 @@ export function ComposerShelf({ sessionId }: { sessionId: string }) {
   if (!showTodos && queued.length === 0 && !actions.error) return null
   return (
     <div className="px-3.5">
-      <div className="flex flex-col divide-y overflow-hidden rounded-t-xl border border-b-0 bg-card">
+      <div className="flex flex-col divide-y overflow-hidden rounded-t-xl border border-b-0 bg-background">
         {showTodos ? <TodoPanel todos={todos} done={done} /> : null}
         {queued.length > 0 || actions.error ? (
           <QueuedMessages
