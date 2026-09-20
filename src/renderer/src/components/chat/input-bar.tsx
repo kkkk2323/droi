@@ -333,16 +333,18 @@ export function InputBar({
                 >
                   <Square aria-hidden className="size-3 fill-current" />
                 </Button>
-                <Button
-                  type="submit"
-                  size="icon-sm"
-                  className="rounded-full"
-                  aria-label="Queue"
-                  title="Send after this turn (↩); ⌘↩ hands it to the running turn"
-                  disabled={!canSend}
-                >
-                  <ArrowUp aria-hidden />
-                </Button>
+                {/* Stop alone while nothing is typed; Queue appears with the first character. */}
+                {canSend ? (
+                  <Button
+                    type="submit"
+                    size="icon-sm"
+                    className="rounded-full"
+                    aria-label="Queue"
+                    title="Send after this turn (↩); ⌘↩ hands it to the running turn"
+                  >
+                    <ArrowUp aria-hidden />
+                  </Button>
+                ) : null}
               </>
             ) : (
               <Button

@@ -81,8 +81,12 @@ test.describe('sending a prompt', () => {
     await send.click()
     await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
     await expect(send).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Queue' })).toBeDisabled()
-    await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 10_000 })
+    // Nothing typed: only Stop shows. Queue appears with text.
+    await expect(page.getByRole('button', { name: 'Queue' })).toHaveCount(0)
+    await input.fill('later')
+    await expect(page.getByRole('button', { name: 'Queue' })).toBeVisible()
+    await input.fill('')
+    await expect(send).toBeVisible({ timeout: 10_000 })
   })
 })
 
