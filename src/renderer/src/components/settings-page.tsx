@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
+import { UpdateControl } from '@/components/update-control'
 import { showArchivedSessions, usePreference } from '@/lib/local-preference'
 import { FONTS, FONT_LABELS, applyFont, font } from '@/lib/font'
 import { useTheme } from '@/lib/theme'
@@ -125,7 +126,14 @@ export function SettingsPage({
             </p>
           ) : null}
           {tab === 'general' ? (
-            <GeneralTab version={snapshot?.version ?? null} />
+            <GeneralTab
+              version={snapshot?.version ?? null}
+              update={
+                bridge && snapshot ? (
+                  <UpdateControl update={snapshot.update} bridge={bridge} onSaved={setSnapshot} />
+                ) : null
+              }
+            />
           ) : !bridge || !snapshot || !pairing ? (
             <p className="text-sm text-muted-foreground">Loading settings…</p>
           ) : tab === 'account' ? (
@@ -168,7 +176,7 @@ export function SettingsPage({
   )
 }
 
-function GeneralTab({ version }: { version: string | null }) {
+function GeneralTab({ version, update }: { version: string | null; update: ReactNode }) {
   const [theme, setTheme] = useTheme()
   const [size, setSize] = usePreference(textSize)
   const [fontChoice, setFontChoice] = usePreference(font)
@@ -239,7 +247,7 @@ function GeneralTab({ version }: { version: string | null }) {
             title="Everything stays on this computer"
             description="Sessions, settings and the Factory API key live here. Phones connect to this computer through the Gateway; nothing is sent elsewhere."
           />
-          <SettingRow title="About" description={`Droi ${version}`} />
+          <SettingRow title="About" description={`Droi ${version}`} control={update} />
         </>
       ) : null}
     </>

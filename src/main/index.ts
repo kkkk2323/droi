@@ -1,12 +1,14 @@
 // Desktop Shell: the installed desktop application. It starts the Daemon, opens a
 // window for the Local Client, and hosts the Gateway. It holds no conversation
 // state. (See CONTEXT.md.)
-import { app, BrowserWindow, ipcMain, Menu, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, net, safeStorage, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+// Electron's fs treats .asar files as directories; original-fs sees the file.
+import * as originalFs from 'original-fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
 import { locateDroid } from './daemon/locate-droid'
@@ -19,6 +21,7 @@ import {
   type GatewayOptions,
 } from './gateway/gateway'
 import { createShellSettingsStore, type ShellSettingsStore } from './shell-settings'
+import { createUpdater, type Updater } from './updater'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
@@ -39,9 +42,31 @@ let settings: ShellSettingsStore
 let auth: FactoryAuth
 let daemon: DaemonSupervisor
 let gateway: Gateway | null = null
+let updater: Updater
 
 const DEFAULT_FACTORY_API_BASE_URL = 'https://api.factory.ai'
 const PREFERRED_GATEWAY_PORT = 41_417
+const UPDATE_REPOSITORY = 'kkkk2323/droi'
+/** A launch checks for a Release after settling; only a packaged app can swap its archive. */
+const UPDATE_CHECK_DELAY_MS = 15_000
+
+function createShellUpdater(): Updater {
+  return createUpdater({
+    currentVersion: app.getVersion(),
+    repository: UPDATE_REPOSITORY,
+    releaseBaseUrl: process.env['DROI_UPDATE_BASE_URL'],
+    asarPath: join(dirname(app.getAppPath()), 'app.asar'),
+    downloadDir: app.getPath('userData'),
+    fetch: (url) => net.fetch(url),
+    fs: {
+      createWriteStream: (p) => originalFs.createWriteStream(p),
+      createReadStream: (p) => originalFs.createReadStream(p),
+      copyFile: originalFs.promises.copyFile,
+      rename: originalFs.promises.rename,
+      unlink: originalFs.promises.unlink,
+    },
+  })
+}
 
 function factoryApiBaseUrl(): string {
   return (
@@ -194,6 +219,7 @@ function snapshot(): ShellSettingsSnapshot {
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
     version: app.getVersion(),
+    update: updater.state,
   }
 }
 
@@ -266,6 +292,18 @@ function registerIpc(): void {
     broadcastChange()
     return pairing()
   })
+  ipcMain.handle(SHELL_IPC.checkForUpdate, async () => {
+    await updater.check()
+    return snapshot()
+  })
+  ipcMain.handle(SHELL_IPC.installUpdate, async () => {
+    await updater.install()
+    return snapshot()
+  })
+  ipcMain.handle(SHELL_IPC.relaunch, () => {
+    app.relaunch()
+    app.quit()
+  })
 }
 
 async function restartDaemon(): Promise<void> {
@@ -287,6 +325,11 @@ void app.whenReady().then(async () => {
     factoryApiBaseUrl: factoryApiBaseUrl(),
   })
   daemon = createDaemonSupervisor()
+  updater = createShellUpdater()
+  updater.on('change', broadcastChange)
+  if (app.isPackaged && !process.env['DROI_NO_UPDATE_CHECK']) {
+    setTimeout(() => void updater.check(), UPDATE_CHECK_DELAY_MS).unref()
+  }
   let wasSignedIn = auth.state.status === 'signed-in'
   auth.on('change', (state) => {
     broadcastChange()

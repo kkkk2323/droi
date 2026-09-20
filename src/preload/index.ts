@@ -15,6 +15,9 @@ const settings: ShellSettingsBridge = {
   signOut: () => ipcRenderer.invoke(SHELL_IPC.signOut),
   resetPairingToken: () => ipcRenderer.invoke(SHELL_IPC.resetPairingToken),
   getPairing: () => ipcRenderer.invoke(SHELL_IPC.getPairing),
+  checkForUpdate: () => ipcRenderer.invoke(SHELL_IPC.checkForUpdate),
+  installUpdate: () => ipcRenderer.invoke(SHELL_IPC.installUpdate),
+  relaunch: () => ipcRenderer.invoke(SHELL_IPC.relaunch),
   onChange: (listener) => {
     const handler = () => listener()
     ipcRenderer.on(SHELL_IPC.changed, handler)

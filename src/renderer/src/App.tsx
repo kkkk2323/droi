@@ -15,6 +15,7 @@ import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
+import { UpdateBanner } from './components/update-control'
 import { Button } from './components/ui/button'
 import {
   lastSessionId,
@@ -202,10 +203,16 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       )}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:border-l">
         {window.droiShell ? (
-          <SetupBanner
-            bridge={window.droiShell.settings}
-            onOpenSettings={() => go({ name: 'settings' })}
-          />
+          <>
+            <SetupBanner
+              bridge={window.droiShell.settings}
+              onOpenSettings={() => go({ name: 'settings' })}
+            />
+            <UpdateBanner
+              bridge={window.droiShell.settings}
+              onOpenSettings={() => go({ name: 'settings' })}
+            />
+          </>
         ) : null}
         <ReconnectingBanner />
         {route.name === 'new' ? (

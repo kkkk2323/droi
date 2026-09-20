@@ -21,6 +21,20 @@ export type LoginState =
   | { status: 'pending'; pending: LoginPending }
   | { status: 'signed-in'; account: FactoryAccount }
 
+/**
+ * Where the in-app update stands. The Shell swaps its own `app.asar` for the
+ * one attached to the latest GitHub Release; "ready" means the swap is done
+ * and the next launch runs the new version.
+ */
+export type UpdateState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'up-to-date'; version: string }
+  | { status: 'available'; version: string }
+  | { status: 'downloading'; version: string; percent: number }
+  | { status: 'ready'; version: string }
+  | { status: 'error'; message: string }
+
 export interface ShellSettingsSnapshot {
   login: LoginState
   /**
@@ -44,6 +58,7 @@ export interface ShellSettingsSnapshot {
   /** Whether the `droid` executable was found (override, PATH or ~/.local/bin). */
   droidFound: string | null
   version: string
+  update: UpdateState
 }
 
 export interface PairingInfo {
@@ -70,6 +85,12 @@ export interface ShellSettingsBridge {
   signOut(): Promise<ShellSettingsSnapshot>
   resetPairingToken(): Promise<PairingInfo>
   getPairing(): Promise<PairingInfo>
+  /** Asks GitHub for the latest Release; the snapshot's `update` says what it found. */
+  checkForUpdate(): Promise<ShellSettingsSnapshot>
+  /** Downloads, verifies and swaps in the new `app.asar`; resolves once `update` is ready or failed. */
+  installUpdate(): Promise<ShellSettingsSnapshot>
+  /** Quits and starts again, so a ready update takes effect. */
+  relaunch(): Promise<void>
   onChange(listener: () => void): () => void
 }
 
@@ -82,5 +103,8 @@ export const SHELL_IPC = {
   signOut: 'droi:settings:sign-out',
   resetPairingToken: 'droi:settings:reset-pairing-token',
   getPairing: 'droi:settings:get-pairing',
+  checkForUpdate: 'droi:update:check',
+  installUpdate: 'droi:update:install',
+  relaunch: 'droi:update:relaunch',
   changed: 'droi:settings:changed',
 } as const
