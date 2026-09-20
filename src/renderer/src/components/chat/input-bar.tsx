@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { ArrowUp, Square, SquareSlash, Sparkles, X } from 'lucide-react'
+import { ArrowUp, Plus, Square, SquareSlash, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { filterSlashItems, slashQuery, type SlashItem } from '@/daemon/use-slash-items'
 import {
@@ -81,6 +81,7 @@ export function InputBar({
   const pendingRef = useRef(0)
   const heldSubmit = useRef<{ text: string; placement?: QueuePlacement } | null>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const hasContent = text.trim().length > 0 || images.length > 0
   const canSend = !disabled && (allowEmpty || hasContent || pendingFiles > 0)
 
@@ -319,6 +320,30 @@ export function InputBar({
           </ul>
         ) : null}
         <div className="flex items-center gap-1 px-2 pb-2 pt-1">
+          {/* The picker is the way in on a phone; paste and drop cover the desktop. */}
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            aria-label="Choose images"
+            onChange={(event) => {
+              addFiles(Array.from(event.target.files ?? []))
+              event.target.value = ''
+            }}
+          />
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="rounded-full text-muted-foreground"
+            aria-label="Add image"
+            disabled={disabled}
+            onClick={() => fileInput.current?.click()}
+          >
+            <Plus aria-hidden />
+          </Button>
           {footer}
           <div className="ml-auto flex shrink-0 items-center gap-1 pl-1">
             {isRunning ? (

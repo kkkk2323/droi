@@ -183,6 +183,29 @@ test.describe('images in the composer', () => {
     await expect(input).toHaveValue('')
     await expect(page.getByRole('list', { name: 'Attachments' })).toHaveCount(0)
   })
+
+  test('the plus button opens a picker; chosen images attach like a paste', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: 'Add image' }).click()
+    await (
+      await chooser
+    ).setFiles({
+      name: 'photo.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(PNG_BASE64, 'base64'),
+    })
+    await expect(page.getByRole('list', { name: 'Attachments' }).getByRole('img')).toHaveCount(1)
+    await page.getByRole('button', { name: 'Send' }).click()
+    const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
+    expect(sent.params).toMatchObject({ images: [{ mediaType: 'image/png', data: PNG_BASE64 }] })
+  })
 })
 
 test.describe('task list and context meter', () => {
