@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import {
   Archive,
@@ -7,12 +7,26 @@ import {
   Folder,
   Loader2,
   MessageSquare,
+  Pin,
+  PinOff,
   Plus,
   Settings,
   SquarePen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  foldedWorkspaces,
+  pinnedSessions,
+  pinnedWorkspaces,
+  toggleListed,
+  usePreference,
+} from '@/lib/local-preference'
 import { cn } from '@/lib/utils'
+
+const MENU =
+  'min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none'
+const MENU_ITEM =
+  'flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground'
 import {
   OLDER_BATCH,
   visibleSessions,
@@ -48,6 +62,7 @@ export function SessionSidebar({
   onSettings: () => void
   insetTop: boolean
 }) {
+  const [pinnedGroups] = usePreference(pinnedWorkspaces)
   return (
     <nav
       aria-label="Sessions"
@@ -77,17 +92,27 @@ export function SessionSidebar({
         {!isLoading && groups.length === 0 && !error ? (
           <p className="px-2 py-1 text-xs text-muted-foreground">No sessions yet.</p>
         ) : null}
-        {groups.map((group) => (
-          <WorkspaceSection
-            key={group.key}
-            group={group}
-            selectedSessionId={selectedSessionId}
-            workingSessionIds={workingSessionIds}
-            onSelect={onSelect}
-            onArchiveToggle={onArchiveToggle}
-            onNewSessionIn={onNewSessionIn}
-          />
-        ))}
+        {/* With a pin in place the list splits into Pinned and Workspaces. */}
+        {groups.map((group, index) => {
+          const isPinned = pinnedGroups.includes(group.key)
+          const firstPinned = index === 0 && isPinned
+          const firstRest =
+            !isPinned && (index === 0 ? false : pinnedGroups.includes(groups[index - 1]!.key))
+          return (
+            <Fragment key={group.key}>
+              {firstPinned ? <SectionLabel>Pinned</SectionLabel> : null}
+              {firstRest ? <SectionLabel>Workspaces</SectionLabel> : null}
+              <WorkspaceSection
+                group={group}
+                selectedSessionId={selectedSessionId}
+                workingSessionIds={workingSessionIds}
+                onSelect={onSelect}
+                onArchiveToggle={onArchiveToggle}
+                onNewSessionIn={onNewSessionIn}
+              />
+            </Fragment>
+          )
+        })}
       </div>
 
       <div className="flex shrink-0 items-center px-2 pb-2 pt-1">
@@ -114,52 +139,98 @@ function WorkspaceSection({
   onArchiveToggle: (session: SessionSummary) => void
   onNewSessionIn: (workspace: string) => void
 }) {
-  const [open, setOpen] = useState(true)
+  // Folds and pins are this Client's; they outlive a restart.
+  const [folded] = usePreference(foldedWorkspaces)
+  const [pinnedGroups] = usePreference(pinnedWorkspaces)
+  const [pinnedIds] = usePreference(pinnedSessions)
+  const open = !folded.includes(group.key)
+  const pinned = pinnedGroups.includes(group.key)
   const [revealed, setRevealed] = useState(0)
-  const { visible, hidden } = visibleSessions(group.sessions, revealed)
+  const { visible, hidden } = visibleSessions(
+    group.sessions,
+    revealed,
+    undefined,
+    new Set(pinnedIds),
+  )
   const listId = `workspace-${group.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
   return (
     <section aria-label={group.label} className="mb-2">
-      <h2 className="group/ws flex h-8 items-center text-[13px] font-medium text-foreground">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={listId}
-          title={group.path}
-          onClick={() => setOpen(!open)}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      <ContextMenu.Root>
+        <ContextMenu.Trigger
+          render={
+            <h2 className="group/ws flex h-8 items-center text-[13px] font-medium text-foreground" />
+          }
         >
-          <span className="relative size-4 shrink-0 text-muted-foreground">
-            <Folder
-              aria-hidden
-              className="absolute inset-0 size-4 transition-opacity group-hover/ws:opacity-0"
-            />
-            <ChevronRight
-              aria-hidden
-              className={cn(
-                'absolute inset-0 size-4 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
-                open && 'rotate-90',
-              )}
-            />
-          </span>
-          <span className="truncate">{group.label}</span>
-        </button>
-        {/* Shows on hover and when focused, so the keyboard reaches it too. */}
-        <button
-          type="button"
-          aria-label={`New session in ${group.label}`}
-          title={`New session in ${group.label}`}
-          onClick={() => onNewSessionIn(group.path)}
-          className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
-        >
-          <SquarePen aria-hidden className="size-3.5" />
-        </button>
-      </h2>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={listId}
+            title={group.path}
+            onClick={() => toggleListed(foldedWorkspaces, group.key)}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            <span className="relative size-4 shrink-0 text-muted-foreground">
+              <Folder
+                aria-hidden
+                className="absolute inset-0 size-4 transition-opacity group-hover/ws:opacity-0"
+              />
+              <ChevronRight
+                aria-hidden
+                className={cn(
+                  'absolute inset-0 size-4 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
+                  open && 'rotate-90',
+                )}
+              />
+            </span>
+            <span className="truncate">{group.label}</span>
+            {pinned ? (
+              <Pin aria-label="Pinned" className="size-3 shrink-0 text-muted-foreground" />
+            ) : null}
+          </button>
+          {/* Shows on hover and when focused, so the keyboard reaches it too. */}
+          <button
+            type="button"
+            aria-label={`New session in ${group.label}`}
+            title={`New session in ${group.label}`}
+            onClick={() => onNewSessionIn(group.path)}
+            className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
+          >
+            <SquarePen aria-hidden className="size-3.5" />
+          </button>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Positioner className="z-50 outline-none">
+            <ContextMenu.Popup aria-label={`Actions for ${group.label}`} className={MENU}>
+              <ContextMenu.Item
+                onClick={() => toggleListed(pinnedWorkspaces, group.key)}
+                className={MENU_ITEM}
+              >
+                {pinned ? (
+                  <>
+                    <PinOff aria-hidden className="size-4 text-muted-foreground" />
+                    Unpin workspace
+                  </>
+                ) : (
+                  <>
+                    <Pin aria-hidden className="size-4 text-muted-foreground" />
+                    Pin workspace
+                  </>
+                )}
+              </ContextMenu.Item>
+              <ContextMenu.Item onClick={() => onNewSessionIn(group.path)} className={MENU_ITEM}>
+                <SquarePen aria-hidden className="size-4 text-muted-foreground" />
+                New session here
+              </ContextMenu.Item>
+            </ContextMenu.Popup>
+          </ContextMenu.Positioner>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
       <div id={listId} hidden={!open}>
         <ul className="flex flex-col gap-px">
           {visible.map((session) => {
             const selected = session.sessionId === selectedSessionId
             const working = workingSessionIds.has(session.sessionId)
+            const sessionPinned = pinnedIds.includes(session.sessionId)
             return (
               <ContextMenu.Root key={session.sessionId}>
                 <ContextMenu.Trigger render={<li />}>
@@ -176,6 +247,9 @@ function WorkspaceSection({
                   >
                     <span className="flex items-center gap-1.5 text-[13px] text-foreground">
                       <span className="flex-1 truncate">{session.title}</span>
+                      {sessionPinned ? (
+                        <Pin aria-label="Pinned" className="size-3 shrink-0 opacity-70" />
+                      ) : null}
                       {session.archivedAt ? (
                         <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
                       ) : null}
@@ -210,13 +284,26 @@ function WorkspaceSection({
                 </ContextMenu.Trigger>
                 <ContextMenu.Portal>
                   <ContextMenu.Positioner className="z-50 outline-none">
-                    <ContextMenu.Popup
-                      aria-label={`Actions for ${session.title}`}
-                      className="min-w-40 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none"
-                    >
+                    <ContextMenu.Popup aria-label={`Actions for ${session.title}`} className={MENU}>
+                      <ContextMenu.Item
+                        onClick={() => toggleListed(pinnedSessions, session.sessionId)}
+                        className={MENU_ITEM}
+                      >
+                        {sessionPinned ? (
+                          <>
+                            <PinOff aria-hidden className="size-4 text-muted-foreground" />
+                            Unpin
+                          </>
+                        ) : (
+                          <>
+                            <Pin aria-hidden className="size-4 text-muted-foreground" />
+                            Pin
+                          </>
+                        )}
+                      </ContextMenu.Item>
                       <ContextMenu.Item
                         onClick={() => onArchiveToggle(session)}
-                        className="flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        className={MENU_ITEM}
                       >
                         {session.archivedAt ? (
                           <>
@@ -248,6 +335,12 @@ function WorkspaceSection({
         ) : null}
       </div>
     </section>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-1 mb-1 px-2 text-[11px] font-medium text-muted-foreground/80">{children}</p>
   )
 }
 

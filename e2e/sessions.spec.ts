@@ -126,6 +126,81 @@ test.describe('sidebar with old sessions', () => {
     await expect(acme.getByRole('button', { name: /Old spike/ })).toBeVisible()
     await expect(acme.getByRole('button', { name: /Show \d+ older/ })).toHaveCount(0)
   })
+
+  test('a pinned Session stays visible and on top; the pin survives a reload', async ({
+    page,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    let acme = (await openSidebar()).getByRole('region', { name: 'acme-web' })
+    await acme.getByRole('button', { name: 'Show 1 older' }).click()
+    await acme.getByRole('button', { name: /Old spike/ }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Pin', exact: true }).click()
+
+    const rows = acme.getByRole('listitem')
+    await expect(rows.first()).toContainText('Old spike')
+    await expect(rows.first().getByLabel('Pinned')).toBeVisible()
+
+    await page.reload()
+    acme = (await openSidebar()).getByRole('region', { name: 'acme-web' })
+    await expect(acme.getByRole('listitem').first()).toContainText('Old spike')
+    await expect(acme.getByRole('button', { name: /Show \d+ older/ })).toHaveCount(0)
+
+    await acme.getByRole('button', { name: /Old spike/ }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Unpin' }).click()
+    await expect(acme.getByRole('button', { name: /Old spike/ })).toHaveCount(0)
+  })
+})
+
+test.describe('sidebar memory', () => {
+  test.use({ scenario: { sessions: [droiSession, anotherDroiSession, cliSession] } })
+
+  test('a pinned Workspace leads the list and a folded one stays folded after a reload', async ({
+    page,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    let sidebar = await openSidebar()
+    expect(await sidebar.getByRole('heading', { level: 2 }).allTextContents()).toEqual([
+      'billing-service',
+      'acme-web',
+    ])
+    await sidebar.getByRole('button', { name: 'acme-web', exact: true }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Pin workspace' }).click()
+    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('acme-web')
+    await expect(sidebar.getByText('Pinned', { exact: true })).toBeVisible()
+    await expect(sidebar.getByText('Workspaces', { exact: true })).toBeVisible()
+
+    const fold = sidebar.getByRole('button', { name: 'billing-service', exact: true })
+    await fold.click()
+    await expect(fold).toHaveAttribute('aria-expanded', 'false')
+
+    await page.reload()
+    sidebar = await openSidebar()
+    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('acme-web')
+    await expect(
+      sidebar.getByRole('button', { name: 'billing-service', exact: true }),
+    ).toHaveAttribute('aria-expanded', 'false')
+    await expect(
+      sidebar.getByRole('region', { name: 'billing-service' }).getByRole('listitem'),
+    ).toHaveCount(0)
+  })
+
+  test('launching on the home route reopens the Session that was open last', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Add dark mode/)
+    await expect(page.getByRole('region', { name: 'Add dark mode' })).toBeVisible()
+
+    await page.goto('/')
+    await expect(page.getByRole('region', { name: 'Add dark mode' })).toBeVisible()
+    expect(new URL(page.url()).hash).toMatch(/^#\/s\//)
+  })
 })
 
 test.describe('session history', () => {

@@ -43,6 +43,20 @@ describe('groupByWorkspace', () => {
     const groups = groupByWorkspace([summary({ sessionId: 'x' })])
     expect(groups[0]!.label).toBe('Unknown workspace')
   })
+
+  test('pinned workspaces and sessions come first, otherwise newest first', () => {
+    const groups = groupByWorkspace(
+      [
+        summary({ sessionId: 'a', cwd: '/w/alpha', updatedAt: 10 }),
+        summary({ sessionId: 'b', cwd: '/w/beta', updatedAt: 30 }),
+        summary({ sessionId: 'c', cwd: '/w/alpha', updatedAt: 20 }),
+        summary({ sessionId: 'g', cwd: '/w/gamma', updatedAt: 40 }),
+      ],
+      { workspaces: new Set(['/w/alpha']), sessions: new Set(['a']) },
+    )
+    expect(groups.map((g) => g.label)).toEqual(['alpha', 'gamma', 'beta'])
+    expect(groups[0]!.sessions.map((s) => s.sessionId)).toEqual(['a', 'c'])
+  })
 })
 
 describe('workspaceLabel', () => {
@@ -70,6 +84,13 @@ describe('visibleSessions', () => {
   test('reveals older sessions newest first, up to the requested number', () => {
     expect(visibleSessions(list, 1, now)).toEqual({ visible: [list[0], list[1]], hidden: 1 })
     expect(visibleSessions(list, 30, now).hidden).toBe(0)
+  })
+
+  test('a pinned session always shows and is not counted as hidden', () => {
+    expect(visibleSessions(list, 0, now, new Set(['lastMonth']))).toEqual({
+      visible: [list[0], list[2]],
+      hidden: 1,
+    })
   })
 })
 

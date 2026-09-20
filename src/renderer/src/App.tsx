@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
 import { useConnectionState, useDaemonConnection } from './daemon/connection-context'
@@ -16,7 +16,14 @@ import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
 import { Button } from './components/ui/button'
-import { showArchivedSessions, sidebarVisible, usePreference } from './lib/local-preference'
+import {
+  lastSessionId,
+  pinnedSessions,
+  pinnedWorkspaces,
+  showArchivedSessions,
+  sidebarVisible,
+  usePreference,
+} from './lib/local-preference'
 import { useHashRoute, type Route } from './lib/use-hash-route'
 import { useMediaQuery } from './lib/use-media-query'
 import { cn } from './lib/utils'
@@ -43,11 +50,34 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [showArchived] = usePreference(showArchivedSessions)
   const sessions = useSessionList({ includeArchived: showArchived })
   const workingSessionIds = useWorkingSessionIds()
-  const groups = groupByWorkspace(foldContinued(sessions.data ?? []))
+  const [pinnedGroups] = usePreference(pinnedWorkspaces)
+  const [pinnedIds] = usePreference(pinnedSessions)
+  const groups = groupByWorkspace(foldContinued(sessions.data ?? []), {
+    workspaces: new Set(pinnedGroups),
+    sessions: new Set(pinnedIds),
+  })
   const recent = recentWorkspaces(sessions.data ?? [])
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
   const parent = sessions.data?.find((s) => s.sessionId === selected?.parentId) ?? null
+
+  // Launching on the bare home route reopens the Session that was open last,
+  // once the list confirms it still exists. Only the first list counts: going
+  // home on purpose afterwards must stick.
+  const [lastId] = usePreference(lastSessionId)
+  const launchRoute = useRef(route)
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current || !sessions.data) return
+    restored.current = true
+    if (launchRoute.current.name !== 'home' || !lastId) return
+    if (sessions.data.some((s) => s.sessionId === lastId)) {
+      navigate({ name: 'session', sessionId: lastId })
+    }
+  }, [sessions.data, lastId, navigate])
+  useEffect(() => {
+    if (selectedId) lastSessionId.set(selectedId)
+  }, [selectedId])
 
   // ⌘B / Ctrl+B toggles the sidebar on wide screens, as the previous Droi did.
   useEffect(() => {
@@ -101,7 +131,10 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         void controller
           .archiveSession(session.sessionId)
           .then(() => {
-            if (session.sessionId === selectedId) go({ name: 'home' })
+            if (session.sessionId === selectedId) {
+              lastSessionId.set(null)
+              go({ name: 'home' })
+            }
           })
           .catch(console.error)
       }}

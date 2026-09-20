@@ -72,7 +72,27 @@ function createStringListPreference(key: string): LocalPreference<string[]> {
   })
 }
 
+function createStringPreference(key: string): LocalPreference<string | null> {
+  return createPreference<string | null>(key, null, {
+    parse: (raw) => raw || null,
+    serialize: (value) => value ?? '',
+  })
+}
+
+/** Toggle one entry of a list preference. */
+export function toggleListed(preference: LocalPreference<string[]>, entry: string): void {
+  const current = preference.get()
+  preference.set(current.includes(entry) ? current.filter((e) => e !== entry) : [...current, entry])
+}
+
 export const sidebarVisible = createBooleanPreference('droi.sidebar', true)
 export const showArchivedSessions = createBooleanPreference('droi.showArchived', false)
 /** Model ids starred in the picker, in the order they were starred. */
 export const favoriteModels = createStringListPreference('droi.favoriteModels')
+/** The Session open when the Client was last used; opened again on launch. */
+export const lastSessionId = createStringPreference('droi.lastSession')
+/** Workspace groups the user folded away in the sidebar. */
+export const foldedWorkspaces = createStringListPreference('droi.foldedWorkspaces')
+/** Workspace groups and Sessions kept at the top of the sidebar. */
+export const pinnedWorkspaces = createStringListPreference('droi.pinnedWorkspaces')
+export const pinnedSessions = createStringListPreference('droi.pinnedSessions')

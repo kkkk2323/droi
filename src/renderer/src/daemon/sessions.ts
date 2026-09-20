@@ -103,8 +103,22 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
   })
 }
 
-/** Newest Workspace first; within a Workspace, newest Session first. */
-export function groupByWorkspace(sessions: readonly SessionSummary[]): WorkspaceGroup[] {
+export interface Pins {
+  workspaces: ReadonlySet<string>
+  sessions: ReadonlySet<string>
+}
+
+export const NO_PINS: Pins = { workspaces: new Set(), sessions: new Set() }
+
+/**
+ * Newest Workspace first; within a Workspace, newest Session first. Pinned
+ * Workspaces and Sessions come before the rest, in the same order among
+ * themselves.
+ */
+export function groupByWorkspace(
+  sessions: readonly SessionSummary[],
+  pins: Pins = NO_PINS,
+): WorkspaceGroup[] {
   const groups = new Map<string, WorkspaceGroup>()
   for (const session of sessions) {
     const path = session.repoRoot ?? session.cwd ?? ''
@@ -117,8 +131,20 @@ export function groupByWorkspace(sessions: readonly SessionSummary[]): Workspace
     group.sessions.push(session)
   }
   const result = [...groups.values()]
-  for (const group of result) group.sessions.sort((a, b) => b.updatedAt - a.updatedAt)
-  result.sort((a, b) => (b.sessions[0]?.updatedAt ?? 0) - (a.sessions[0]?.updatedAt ?? 0))
+  for (const group of result) {
+    group.sessions.sort(
+      (a, b) =>
+        Number(pins.sessions.has(b.sessionId)) - Number(pins.sessions.has(a.sessionId)) ||
+        b.updatedAt - a.updatedAt,
+    )
+  }
+  const newest = (group: WorkspaceGroup) =>
+    Math.max(0, ...group.sessions.map((session) => session.updatedAt))
+  result.sort(
+    (a, b) =>
+      Number(pins.workspaces.has(b.key)) - Number(pins.workspaces.has(a.key)) ||
+      newest(b) - newest(a),
+  )
   return result
 }
 
@@ -127,18 +153,23 @@ export const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
 export const OLDER_BATCH = 30
 
 /**
- * The rows a Workspace section shows: every recent Session plus the first
- * `revealed` older ones (the list is newest first), and how many stay hidden.
+ * The rows a Workspace section shows: every pinned or recent Session plus the
+ * first `revealed` older ones (the list is newest first), and how many stay hidden.
  */
 export function visibleSessions(
   sessions: readonly SessionSummary[],
   revealed: number,
   now = Date.now(),
+  pinned: ReadonlySet<string> = NO_PINS.sessions,
 ): { visible: SessionSummary[]; hidden: number } {
   const cutoff = now - RECENT_WINDOW_MS
   const visible: SessionSummary[] = []
   let older = 0
   for (const session of sessions) {
+    if (pinned.has(session.sessionId)) {
+      visible.push(session)
+      continue
+    }
     const recent = session.updatedAt * 1000 >= cutoff
     if (recent || older < revealed) visible.push(session)
     if (!recent) older += 1
