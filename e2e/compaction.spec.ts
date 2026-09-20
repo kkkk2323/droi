@@ -24,7 +24,12 @@ test.describe('compaction handoff', () => {
     await openClient()
     await pickSession(/Long chat/)
     const input = page.getByRole('textbox', { name: 'Message' })
-    await input.fill('/compact keep the decisions')
+    // The built-in command is offered like any other.
+    await input.fill('/comp')
+    await expect(page.getByRole('option', { name: /compact/ })).toBeVisible()
+    await input.press('Enter')
+    await expect(input).toHaveValue('/compact ')
+    await input.pressSequentially('keep the decisions')
     await input.press('Enter')
 
     const compacted = await fakeDaemon.waitForRequest('daemon.compact_session')

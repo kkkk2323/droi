@@ -1,6 +1,7 @@
-// What "/" can start in the composer: the Workspace's custom commands and the
-// skills a user may invoke. The Daemon expands "/name args" itself when the
-// message arrives, so the Client only has to offer the names.
+// What "/" can start in the composer: the commands the Client runs itself,
+// the Workspace's custom commands and the skills a user may invoke. The Daemon
+// expands "/name args" itself when the message arrives, so for the latter two
+// the Client only has to offer the names.
 import { useQuery } from '@tanstack/react-query'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 
@@ -11,6 +12,16 @@ export interface SlashItem {
   argumentHint: string | null
   kind: 'command' | 'skill'
 }
+
+/** Commands the composer handles before anything reaches the Daemon (see session-view.tsx). */
+export const BUILTIN_SLASH_ITEMS: SlashItem[] = [
+  {
+    name: 'compact',
+    description: 'Summarise the conversation and continue in a new session',
+    argumentHint: '[instructions]',
+    kind: 'command',
+  },
+]
 
 export function useSlashItems(sessionId: string): SlashItem[] {
   const { controller } = useDaemonConnection()
@@ -24,13 +35,18 @@ export function useSlashItems(sessionId: string): SlashItem[] {
         controller.listCommands(sessionId),
         controller.listSkills(sessionId),
       ])
-      const items: SlashItem[] = commands.commands.map((c) => ({
-        name: c.name,
-        description: c.description,
-        argumentHint: c.argumentHint ?? null,
-        kind: 'command',
-      }))
+      const items: SlashItem[] = [...BUILTIN_SLASH_ITEMS]
       const taken = new Set(items.map((i) => i.name))
+      for (const c of commands.commands) {
+        if (taken.has(c.name)) continue
+        taken.add(c.name)
+        items.push({
+          name: c.name,
+          description: c.description,
+          argumentHint: c.argumentHint ?? null,
+          kind: 'command',
+        })
+      }
       for (const skill of skills.skills) {
         if (skill.userInvocable === false || skill.enabled === false || taken.has(skill.name)) {
           continue
@@ -45,10 +61,8 @@ export function useSlashItems(sessionId: string): SlashItem[] {
       return items
     },
   })
-  return query.data ?? EMPTY
+  return query.data ?? BUILTIN_SLASH_ITEMS
 }
-
-const EMPTY: SlashItem[] = []
 
 /** The "/word" being typed at the start of the composer, or null. */
 export function slashQuery(text: string, caret: number): string | null {

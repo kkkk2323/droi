@@ -36,7 +36,11 @@ test.describe('slash commands', () => {
     const input = page.getByRole('textbox', { name: 'Message' })
     await input.fill('/')
     const list = page.getByRole('listbox', { name: 'Commands and skills' })
-    await expect(list.getByRole('option')).toHaveText([/opsx-propose.*Command/, /handoff.*Skill/])
+    await expect(list.getByRole('option')).toHaveText([
+      /compact.*Command/,
+      /opsx-propose.*Command/,
+      /handoff.*Skill/,
+    ])
 
     await input.pressSequentially('ha')
     await expect(list.getByRole('option')).toHaveText([/handoff/])
