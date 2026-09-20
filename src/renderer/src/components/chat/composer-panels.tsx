@@ -3,7 +3,16 @@
 // the context meter beside the workspace name under it.
 import { useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
-import { Check, ChevronRight, Circle, Clock, CornerDownLeft, Loader2, X } from 'lucide-react'
+import {
+  ChevronDown,
+  Circle,
+  CircleCheck,
+  Clock,
+  CornerDownLeft,
+  ListChecks,
+  Loader2,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatTokens, type ContextUsage } from '@/daemon/use-context-usage'
 import {
@@ -48,34 +57,50 @@ function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
   const current =
     todos.find((t) => t.status === 'in_progress') ?? todos.find((t) => t.status === 'pending')
 
+  // Folded: the task under way, with the count. Open: the count, then the list.
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="py-1">
       <Collapsible.Trigger
         aria-label={`Tasks, ${done} of ${todos.length} done`}
-        className="group flex h-[30px] w-full items-center gap-2 px-3 text-left text-[12.5px] outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+        className="group flex h-[30px] w-full items-center gap-2 pr-1.5 pl-3 text-left text-[12.5px] outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       >
-        <span
-          aria-hidden
-          className="relative h-1 w-10 shrink-0 overflow-hidden rounded-full bg-border"
-        >
-          <span
-            className="absolute inset-y-0 left-0 rounded-full bg-foreground/60 transition-[width] duration-200"
-            style={{ width: `${(done / todos.length) * 100}%` }}
-          />
-        </span>
-        <span className="shrink-0 tabular-nums text-muted-foreground">
+        {open ? (
+          <>
+            <ListChecks aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">Tasks</span>
+          </>
+        ) : (
+          <>
+            <StatusIcon status={current?.status ?? 'pending'} />
+            <span className="min-w-0 flex-1 truncate">{current?.content}</span>
+          </>
+        )}
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
           {done}/{todos.length}
         </span>
-        <span className="min-w-0 flex-1 truncate text-foreground/85">{current?.content}</span>
-        <ChevronRight
-          aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 group-data-[panel-open]:rotate-90"
-        />
+        <span className="grid size-6 shrink-0 place-items-center text-muted-foreground">
+          <ChevronDown
+            aria-hidden
+            className="size-3 transition-transform duration-150 group-data-[panel-open]:rotate-180"
+          />
+        </span>
       </Collapsible.Trigger>
       <Collapsible.Panel>
-        <ul aria-label="Tasks" className="flex flex-col gap-0.5 px-3 pt-0.5 pb-1.5">
+        <ul aria-label="Tasks" className="flex flex-col pb-1">
           {todos.map((todo) => (
-            <TodoRow key={todo.id} todo={todo} />
+            <li
+              key={todo.id}
+              data-status={todo.status}
+              className={cn(
+                'flex min-h-[26px] items-start gap-2 py-[3px] pr-3 pl-3 text-[12.5px] leading-5',
+                todo.status === 'completed' && 'text-muted-foreground',
+              )}
+            >
+              <span className="flex h-5 items-center">
+                <StatusIcon status={todo.status} />
+              </span>
+              <span className="min-w-0 flex-1">{todo.content}</span>
+            </li>
           ))}
         </ul>
       </Collapsible.Panel>
@@ -83,25 +108,17 @@ function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
   )
 }
 
-function TodoRow({ todo }: { todo: TodoItem }) {
-  return (
-    <li
-      data-status={todo.status}
-      className={cn(
-        'flex items-start gap-2 text-[13px] leading-5',
-        todo.status === 'completed' ? 'text-muted-foreground/70' : 'text-foreground/85',
-      )}
-    >
-      {todo.status === 'completed' ? (
-        <Check aria-label="Done" className="mt-1 size-3.5 shrink-0" />
-      ) : todo.status === 'in_progress' ? (
-        <Loader2 aria-label="In progress" className="mt-1 size-3.5 shrink-0 animate-spin" />
-      ) : (
-        <Circle aria-label="Pending" className="mt-1 size-3.5 shrink-0 text-muted-foreground/50" />
-      )}
-      <span className="min-w-0 flex-1">{todo.content}</span>
-    </li>
-  )
+function StatusIcon({ status }: { status: TodoItem['status'] }) {
+  if (status === 'completed')
+    return <CircleCheck aria-label="Done" className="size-3 shrink-0 text-muted-foreground" />
+  if (status === 'in_progress')
+    return (
+      <Loader2
+        aria-label="In progress"
+        className="size-3 shrink-0 animate-spin text-sky-600 dark:text-sky-400"
+      />
+    )
+  return <Circle aria-label="Pending" className="size-3 shrink-0 text-muted-foreground/50" />
 }
 
 function QueuedMessages({
