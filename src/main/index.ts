@@ -16,6 +16,7 @@ import {
   type ClientSource,
   type Gateway,
   type GatewayCredential,
+  type GatewayOptions,
 } from './gateway/gateway'
 import {
   createShellSettingsStore,
@@ -46,6 +47,7 @@ let daemon: DaemonSupervisor
 let gateway: Gateway | null = null
 
 const DEFAULT_FACTORY_API_BASE_URL = 'https://api.factory.ai'
+const PREFERRED_GATEWAY_PORT = 41_417
 
 function factoryApiBaseUrl(): string {
   return (
@@ -301,8 +303,11 @@ void app.whenReady().then(async () => {
   })
   registerIpc()
   daemon.start()
-  gateway = await startGateway({
-    port: 0,
+  // The Local Client's origin is this port, and its localStorage (theme,
+  // favourites, sidebar) lives under that origin; a fresh port every launch
+  // would wipe it. Fall back to an ephemeral port only when ours is taken.
+  const gatewayOptions = (port: number): GatewayOptions => ({
+    port,
     remoteAccess: settings.settings.remoteAccess,
     getDaemonUrl: () => daemon.daemonUrl,
     getPairingToken: () => settings.settings.pairingToken,
@@ -315,6 +320,9 @@ void app.whenReady().then(async () => {
     }),
     client: clientSource(),
   })
+  gateway = await startGateway(gatewayOptions(PREFERRED_GATEWAY_PORT)).catch(() =>
+    startGateway(gatewayOptions(0)),
+  )
 
   Menu.setApplicationMenu(buildMenu())
   createWindow(gateway.url)

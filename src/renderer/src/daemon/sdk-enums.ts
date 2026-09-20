@@ -14,6 +14,7 @@ export const SESSION_EVENT: Record<
   | 'workingStateChanged'
   | 'settingsUpdated'
   | 'queuedMessagesUpdated'
+  | 'todoListUpdated'
   | 'streamingPlaceholderUpdated'
   | 'metadataUpdated',
   SessionEventName
@@ -23,6 +24,7 @@ export const SESSION_EVENT: Record<
   workingStateChanged: event('working_state_changed'),
   settingsUpdated: event('settings_updated'),
   queuedMessagesUpdated: event('queued_messages_updated'),
+  todoListUpdated: event('todo_list_updated'),
   streamingPlaceholderUpdated: event('streaming_placeholder_updated'),
   metadataUpdated: event('metadata_updated'),
 }

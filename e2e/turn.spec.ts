@@ -65,7 +65,7 @@ test.describe('sending a prompt', () => {
     expect(await transcript.getByRole('article', { name: 'You' }).count()).toBe(2)
   })
 
-  test('send stays disabled while a turn runs and for empty input', async ({
+  test('send is disabled for empty input; a running turn offers Cancel, Queue and Insert now', async ({
     page,
     openClient,
     pickSession,
@@ -79,9 +79,10 @@ test.describe('sending a prompt', () => {
     await expect(send).toBeDisabled()
     await input.fill('go')
     await send.click()
-    // While running, the Send control is replaced by Cancel.
     await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
     await expect(send).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Queue' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Insert now' })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 10_000 })
   })
 })

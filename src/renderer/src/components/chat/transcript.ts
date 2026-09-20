@@ -15,6 +15,7 @@ export interface ToolCall {
 
 export type TranscriptBlock =
   | { kind: 'text'; id: string; text: string }
+  | { kind: 'image'; id: string; src: string }
   | { kind: 'thinking'; id: string; text: string; durationMs: number | undefined }
   /** A run of tool calls with nothing said in between; rendered as one cluster. */
   | { kind: 'tools'; id: string; calls: ToolCall[] }
@@ -46,6 +47,14 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
       switch (block.type) {
         case 'text':
           if (block.text) blocks.push({ kind: 'text', id, text: block.text })
+          break
+        case 'image':
+          if (block.source.type === 'base64')
+            blocks.push({
+              kind: 'image',
+              id,
+              src: `data:${block.source.mediaType};base64,${block.source.data}`,
+            })
           break
         case 'thinking':
           if (block.thinking)

@@ -35,6 +35,19 @@ describe('buildTranscript', () => {
     expect(toolResultText(tools.calls[0]!.result)).toBe('a\nb')
   })
 
+  test('inline images become image blocks with a data URL', () => {
+    const entries = buildTranscript([
+      message('user', [
+        { type: 'text', text: 'see' },
+        { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: 'AAAA' } },
+      ]),
+    ])
+    expect(entries[0]!.blocks).toEqual([
+      { kind: 'text', id: expect.any(String), text: 'see' },
+      { kind: 'image', id: expect.any(String), src: 'data:image/png;base64,AAAA' },
+    ])
+  })
+
   test('consecutive tool calls form one cluster; text splits clusters', () => {
     const entries = buildTranscript([
       message('assistant', [

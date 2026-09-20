@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
 import { Asterisk, Check, ChevronDown, Folder, FolderPlus, Loader2 } from 'lucide-react'
-import { InputBar } from '@/components/chat/input-bar'
+import { InputBar, type Submission } from '@/components/chat/input-bar'
 import { COLUMN } from '@/components/chat/session-view'
 import { Button } from '@/components/ui/button'
 import { useNewSession, type RecentWorkspace } from '@/daemon/use-new-session'
@@ -62,10 +62,12 @@ export function NewSessionPage({
     })
   }
 
-  const start = async (target: string, prompt = '') => {
+  const start = async (target: string, prompt?: Submission) => {
     const sessionId = await create(target, settings)
     if (!sessionId) return
-    if (prompt.trim()) setPendingPrompt(sessionId, prompt)
+    if (prompt && (prompt.text.trim() || prompt.images.length > 0)) {
+      setPendingPrompt(sessionId, { text: prompt.text, images: prompt.images })
+    }
     onCreated(sessionId)
   }
 
@@ -150,8 +152,8 @@ export function NewSessionPage({
           allowEmpty
           placeholder="Do anything…"
           sendLabel="Start session"
-          onSend={(text) => {
-            if (workspace) void start(workspace, text)
+          onSend={(submission) => {
+            if (workspace) void start(workspace, submission)
           }}
           onCancel={() => {}}
           error={null}

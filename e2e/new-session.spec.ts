@@ -21,7 +21,7 @@ test.describe('new session', () => {
     openSidebar,
   }) => {
     await openClient()
-    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     const form = page.getByRole('region', { name: 'New session' })
     await expect(form.getByRole('heading', { level: 2 })).toHaveText(
       /What do you want to build in\s*acme-web\s*\?/,
@@ -42,7 +42,7 @@ test.describe('new session', () => {
     openSidebar,
   }) => {
     await openClient()
-    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     const form = page.getByRole('region', { name: 'New session' })
     await form.getByRole('button', { name: 'Workspace' }).click()
     await page.getByRole('menuitemradio', { name: 'billing-service' }).click()
@@ -78,7 +78,7 @@ test.describe('new session', () => {
     openSidebar,
   }) => {
     await openClient()
-    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     await page
       .getByRole('region', { name: 'New session' })
       .getByRole('button', { name: 'Start session' })
@@ -98,7 +98,7 @@ test.describe('new session', () => {
     openSidebar,
   }) => {
     await openClient()
-    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     const form = page.getByRole('region', { name: 'New session' })
     // Defaults come from the Daemon.
     await expect(form.getByRole('button', { name: 'Model' })).toHaveText('Auto Model')
@@ -134,7 +134,7 @@ test.describe('new session', () => {
     openSidebar,
   }) => {
     await openClient()
-    await (await openSidebar()).getByRole('button', { name: 'New session' }).click()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     const form = page.getByRole('region', { name: 'New session' })
     await form.getByRole('button', { name: 'Workspace' }).click()
     await page.getByRole('menuitem', { name: 'Other folder…' }).click()

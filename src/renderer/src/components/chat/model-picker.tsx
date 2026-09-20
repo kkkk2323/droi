@@ -115,7 +115,7 @@ export function ModelPicker({
         aria-label="Model"
         disabled={models.length === 0}
         className={cn(
-          'inline-flex h-7 max-w-52 select-none items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground outline-none transition-colors',
+          'inline-flex h-7 max-w-52 select-none items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/75 outline-none transition-colors',
           'hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:bg-muted data-[popup-open]:text-foreground data-[disabled]:opacity-50',
         )}
       >

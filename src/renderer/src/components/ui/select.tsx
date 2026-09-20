@@ -48,10 +48,10 @@ export function Select({
       <SelectPrimitive.Trigger
         aria-label={label}
         className={cn(
-          'inline-flex items-center gap-1 text-xs outline-none transition-colors select-none',
+          'inline-flex items-center gap-1 outline-none transition-colors select-none',
           'focus-visible:ring-2 focus-visible:ring-ring/50 data-[disabled]:opacity-50',
           quiet
-            ? 'h-7 max-w-52 rounded-md px-2 text-muted-foreground hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground'
+            ? 'h-7 max-w-52 rounded-md px-2 text-[13px] text-foreground/75 hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground'
             : 'h-8 min-w-32 justify-between rounded-lg border bg-background px-2.5 text-sm hover:bg-muted/60',
           className,
         )}

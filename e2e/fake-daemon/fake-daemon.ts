@@ -104,11 +104,11 @@ export class FakeDaemon {
     return this.#connections.size
   }
 
-  /** Wait until the Client has sent a request with this method. */
-  async waitForRequest(method: string, timeoutMs = 5_000): Promise<RecordedRequest> {
+  /** Wait until the Client has sent a request with this method (the nth one, 1-based). */
+  async waitForRequest(method: string, nth = 1, timeoutMs = 5_000): Promise<RecordedRequest> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      const found = this.requests.find((r) => r.method === method)
+      const found = this.requests.filter((r) => r.method === method)[nth - 1]
       if (found) return found
       await new Promise((r) => setTimeout(r, 25))
     }

@@ -1,13 +1,39 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { ArrowUp, Square, SquareSlash, Sparkles } from 'lucide-react'
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
+import { ArrowUp, CornerDownLeft, Square, SquareSlash, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { filterSlashItems, slashQuery, type SlashItem } from '@/daemon/use-slash-items'
+import {
+  attachmentUrl,
+  imageFiles,
+  readImageAttachment,
+  type ImageAttachment,
+} from '@/lib/attachments'
+import { uuid } from '@/lib/uuid'
+import { cn } from '@/lib/utils'
+import type { QueuePlacement } from '@/daemon/use-turn'
 
 const NO_ITEMS: SlashItem[] = []
 
+export interface Submission {
+  text: string
+  images: ImageAttachment[]
+  /** Set when the Session was busy: Enter queues, ⌘/Ctrl+Enter injects. */
+  placement?: QueuePlacement
+}
+
 /**
- * The composer card: text on top, per-Session controls and the send button in
- * the footer row. Enter sends, Shift+Enter breaks the line.
+ * The composer card: attachments and text on top, per-Session controls and the
+ * send button in the footer row. Enter sends, Shift+Enter breaks the line.
+ * While a turn runs, Enter queues the message for after the turn and
+ * ⌘/Ctrl+Enter hands it to the running turn.
  */
 export function InputBar({
   isRunning,
@@ -23,7 +49,7 @@ export function InputBar({
 }: {
   isRunning: boolean
   disabled: boolean
-  onSend: (text: string) => void
+  onSend: (submission: Submission) => void
   onCancel: () => void
   error: string | null
   footer?: ReactNode
@@ -35,21 +61,25 @@ export function InputBar({
   slashItems?: SlashItem[]
 }) {
   const [text, setText] = useState('')
+  const [images, setImages] = useState<ImageAttachment[]>([])
   const [caret, setCaret] = useState(0)
   const [highlight, setHighlight] = useState(0)
   const [dismissedFor, setDismissedFor] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
   const textarea = useRef<HTMLTextAreaElement>(null)
-  const canSend = !disabled && !isRunning && (allowEmpty || text.trim().length > 0)
+  const hasContent = text.trim().length > 0 || images.length > 0
+  const canSend = !disabled && (allowEmpty || hasContent)
 
   const query = slashQuery(text, caret)
   const suggestions =
     query !== null && dismissedFor !== text ? filterSlashItems(slashItems, query) : []
   const activeIndex = Math.min(highlight, Math.max(suggestions.length - 1, 0))
 
-  const submit = () => {
+  const submit = (placement?: QueuePlacement) => {
     if (!canSend) return
-    onSend(text)
+    onSend({ text, images, ...(isRunning ? { placement: placement ?? 'end_of_loop' } : {}) })
     setText('')
+    setImages([])
     textarea.current?.focus()
   }
 
@@ -70,6 +100,26 @@ export function InputBar({
     setText(next)
     setCaret(next.length)
     setHighlight(0)
+  }
+
+  const addFiles = (files: File[]) => {
+    if (files.length === 0) return
+    void Promise.all(files.map((file) => readImageAttachment(file, uuid()))).then((added) =>
+      setImages((current) => [...current, ...added]),
+    )
+  }
+
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = imageFiles(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    addFiles(files)
+  }
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setDragging(false)
+    addFiles(imageFiles(event.dataTransfer))
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -97,7 +147,7 @@ export function InputBar({
     }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      submit()
+      submit(event.metaKey || event.ctrlKey ? 'end_of_turn' : undefined)
     }
   }
 
@@ -118,16 +168,47 @@ export function InputBar({
         </p>
       ) : null}
       <div
-        className="relative flex flex-col rounded-2xl border bg-background shadow-composer transition-shadow focus-within:border-ring/40"
+        className={cn(
+          'relative flex flex-col rounded-2xl border bg-background transition-colors focus-within:border-foreground/25',
+          dragging && 'border-primary/60 bg-primary/5',
+        )}
         onClick={(event) => {
           // Clicking the card's padding should still land in the textarea.
           if (event.target === event.currentTarget) textarea.current?.focus()
         }}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
       >
+        {images.length > 0 ? (
+          <ul aria-label="Attachments" className="flex flex-wrap gap-2 px-3 pt-3">
+            {images.map((image) => (
+              <li key={image.id} className="group relative">
+                <img
+                  src={attachmentUrl(image)}
+                  alt={image.name}
+                  className="size-16 rounded-lg border object-cover"
+                />
+                <button
+                  type="button"
+                  aria-label={`Remove ${image.name}`}
+                  onClick={() => setImages((current) => current.filter((i) => i.id !== image.id))}
+                  className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  <X aria-hidden className="size-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <textarea
           ref={textarea}
           aria-label="Message"
-          placeholder={isRunning ? 'Droid is working…' : placeholder}
+          placeholder={isRunning ? 'Queue a message… (⌘↩ inserts it now)' : placeholder}
           value={text}
           rows={1}
           disabled={disabled}
@@ -139,6 +220,7 @@ export function InputBar({
           onKeyDown={onKeyDown}
           onKeyUp={syncCaret}
           onClick={syncCaret}
+          onPaste={onPaste}
           aria-autocomplete="list"
           aria-controls={suggestions.length > 0 ? 'slash-suggestions' : undefined}
           aria-expanded={suggestions.length > 0}
@@ -192,18 +274,42 @@ export function InputBar({
         ) : null}
         <div className="flex items-center gap-1 px-2 pb-2 pt-1">
           {footer}
-          <div className="ml-auto shrink-0 pl-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1 pl-1">
             {isRunning ? (
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="secondary"
-                className="rounded-full"
-                aria-label="Cancel"
-                onClick={onCancel}
-              >
-                <Square aria-hidden className="size-3 fill-current" />
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="secondary"
+                  className="rounded-full"
+                  aria-label="Cancel"
+                  onClick={onCancel}
+                >
+                  <Square aria-hidden className="size-3 fill-current" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="secondary"
+                  className="rounded-full"
+                  aria-label="Insert now"
+                  title="Hand it to the running turn (⌘↩)"
+                  disabled={!canSend}
+                  onClick={() => submit('end_of_turn')}
+                >
+                  <CornerDownLeft aria-hidden className="size-3.5" />
+                </Button>
+                <Button
+                  type="submit"
+                  size="icon-sm"
+                  className="rounded-full"
+                  aria-label="Queue"
+                  title="Send after this turn (↩)"
+                  disabled={!canSend}
+                >
+                  <ArrowUp aria-hidden />
+                </Button>
+              </>
             ) : (
               <Button
                 type="submit"

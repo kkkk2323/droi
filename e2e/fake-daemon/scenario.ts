@@ -44,7 +44,11 @@ export interface ScenarioInput {
   commands?: Array<{ name: string; description: string; argumentHint?: string }>
   /** Skills the Daemon lists; `userInvocable` defaults to true. */
   skills?: Array<{ name: string; description?: string; userInvocable?: boolean }>
+  /** Context tokens the breakdown reports for every Session; defaults to 1k per message. */
+  contextUsedTokens?: number
 }
+
+export const CONTEXT_BUDGET = 200_000
 
 export interface Scenario {
   sessions: SessionFixture[]
@@ -92,6 +96,21 @@ export function createScenario(input: ScenarioInput): Scenario {
       ...sessionSettings(),
       availableModels: AVAILABLE_MODELS,
     }),
+    'daemon.get_context_breakdown': (params) => {
+      const found = mustFind(sessions, params['sessionId'])
+      const usedTokens = input.contextUsedTokens ?? found.messages.length * 1_000
+      return {
+        modelId: 'claude-fable-5.1',
+        modelDisplayName: 'Claude Fable 5.1',
+        contextBudget: CONTEXT_BUDGET,
+        usedTokens,
+        freeTokens: CONTEXT_BUDGET - usedTokens,
+        categories: [{ name: 'Messages', tokens: usedTokens, colorKey: 'messages' }],
+        skills: [],
+        mcpServers: [],
+        droids: [],
+      }
+    },
     'daemon.list_commands': () => ({ commands: input.commands ?? [] }),
     'daemon.list_skills': () => ({
       skills: (input.skills ?? []).map((skill) => ({

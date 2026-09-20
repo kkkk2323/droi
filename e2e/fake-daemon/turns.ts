@@ -2,6 +2,7 @@
 // sequence a real Daemon produces (captured in docs/adr/0003-spike/raw.txt).
 import { randomUUID } from 'node:crypto'
 import type { FakeDaemon } from './fake-daemon'
+import type { JsonRpcRequest } from './protocol'
 import type { HandlerContext, MethodHandler } from './scenario'
 import { emptyTokenUsage } from './scenario'
 
@@ -39,6 +40,9 @@ export function streamedReply(options: StreamedReplyOptions): MethodHandler {
       requestId: String(request.id),
       userMessageId,
       text,
+      content: Array.isArray(params['content'])
+        ? (params['content'] as Array<Record<string, unknown>>)
+        : undefined,
       ...options,
     })
     return {}
@@ -51,9 +55,63 @@ interface RunTurnInput extends StreamedReplyOptions {
   requestId: string
   userMessageId: string
   text: string
+  /** Full content blocks when the Client sent more than text (images). */
+  content?: Array<Record<string, unknown>>
 }
 
 const activeTurns = new Map<string, TurnHandle & { cancelled: boolean }>()
+
+interface HeldMessage {
+  request: JsonRpcRequest
+  params: Record<string, unknown>
+  context: HandlerContext
+  placement: 'end_of_turn' | 'end_of_loop'
+}
+
+/** Messages a Session received while a turn ran, in arrival order. */
+const heldMessages = new Map<string, HeldMessage[]>()
+const queueHandlers = new Map<string, MethodHandler>()
+
+/**
+ * Wraps an `add_user_message` handler so that, like the real Daemon, a message
+ * arriving mid-turn is held and run after the turn: `end_of_turn` ones first,
+ * then `end_of_loop` ones.
+ */
+export function withQueue(handler: MethodHandler): MethodHandler {
+  return (params, context, request) => {
+    const sessionId = String(params['sessionId'])
+    queueHandlers.set(sessionId, handler)
+    if (!activeTurns.has(sessionId)) return handler(params, context, request)
+    const placement = params['queuePlacement'] === 'end_of_turn' ? 'end_of_turn' : 'end_of_loop'
+    const held = heldMessages.get(sessionId) ?? []
+    held.push({ request, params, context, placement })
+    heldMessages.set(sessionId, held)
+    return {}
+  }
+}
+
+/** Handler for `daemon.resolve_queued_user_message`: only `delete` is scripted. */
+export const resolveQueuedHandler: MethodHandler = (params) => {
+  const sessionId = String(params['sessionId'])
+  const held = heldMessages.get(sessionId) ?? []
+  heldMessages.set(
+    sessionId,
+    held.filter((m) => String(m.request.id) !== String(params['requestId'])),
+  )
+  return {}
+}
+
+function drainHeld(sessionId: string): void {
+  const held = heldMessages.get(sessionId) ?? []
+  const next = held.find((m) => m.placement === 'end_of_turn') ?? held[0]
+  const handler = queueHandlers.get(sessionId)
+  if (!next || !handler) return
+  heldMessages.set(
+    sessionId,
+    held.filter((m) => m !== next),
+  )
+  void handler(next.params, next.context, next.request)
+}
 
 /** Handler for `daemon.interrupt_session`: ends the running turn as cancelled. */
 export const interruptHandler: MethodHandler = (params, context) => {
@@ -88,7 +146,7 @@ async function runTurn(input: RunTurnInput): Promise<void> {
     message: {
       id: userMessageId,
       role: 'user',
-      content: [{ type: 'text', text }],
+      content: input.content ?? [{ type: 'text', text }],
       createdAt: now,
       updatedAt: now,
     },
@@ -151,6 +209,8 @@ function finishTurn(
     tokenUsage: emptyTokenUsage(),
   })
   daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'idle' })
+  if (reason === 'completed') drainHeld(sessionId)
+  else heldMessages.delete(sessionId)
 }
 
 export type { HandlerContext }
@@ -364,4 +424,50 @@ async function streamText(daemon: FakeDaemon, sessionId: string, text: string): 
       updatedAt: now,
     },
   })
+}
+
+export interface TodoTurnOptions {
+  todos: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>
+  reply: string
+}
+
+/** Handler for `daemon.add_user_message` where the agent writes a task list, then replies. */
+export function todoTurn(options: TodoTurnOptions): MethodHandler {
+  return (params, context, request) => {
+    const sessionId = String(params['sessionId'])
+    const daemon = context.daemon
+    const userMessageId =
+      typeof params['messageId'] === 'string' ? params['messageId'] : randomUUID()
+    void (async () => {
+      startTurn(daemon, sessionId, userMessageId, String(params['text']), String(request.id))
+      activeTurns.set(sessionId, {
+        sessionId,
+        turnId: userMessageId,
+        cancelled: false,
+        cancel() {},
+      })
+      const toolUseId = `call_${randomUUID().slice(0, 8)}`
+      daemon.notify(sessionId, {
+        type: 'tool_call',
+        toolUse: {
+          type: 'tool_use',
+          id: toolUseId,
+          name: 'TodoWrite',
+          input: { todos: options.todos.map((t) => ({ ...t, priority: 'medium' })) },
+        },
+      })
+      daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'executing_tool' })
+      await sleep(50)
+      daemon.notify(sessionId, {
+        type: 'tool_result',
+        toolUseId,
+        content: 'TODO List Updated',
+        isError: false,
+        messageId: randomUUID(),
+      })
+      await streamText(daemon, sessionId, options.reply)
+      finishTurn(daemon, sessionId, userMessageId, 'completed')
+    })()
+    return {}
+  }
 }

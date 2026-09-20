@@ -22,11 +22,28 @@ export function MessageEntry({
       .filter((b): b is Extract<TranscriptBlock, { kind: 'text' }> => b.kind === 'text')
       .map((b) => b.text)
       .join('\n')
+    const images = entry.blocks.filter(
+      (b): b is Extract<TranscriptBlock, { kind: 'image' }> => b.kind === 'image',
+    )
     return (
-      <article aria-label="You" className={cn(COLUMN, 'flex justify-end py-3')}>
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-[15px] leading-6 text-secondary-foreground">
-          {text}
-        </div>
+      <article aria-label="You" className={cn(COLUMN, 'flex flex-col items-end gap-1.5 py-3')}>
+        {images.length > 0 ? (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+            {images.map((image) => (
+              <img
+                key={image.id}
+                src={image.src}
+                alt="Attached image"
+                className="max-h-48 max-w-full rounded-xl border object-contain"
+              />
+            ))}
+          </div>
+        ) : null}
+        {text ? (
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-[15px] leading-6 text-secondary-foreground">
+            {text}
+          </div>
+        ) : null}
       </article>
     )
   }
@@ -40,6 +57,15 @@ export function MessageEntry({
         switch (block.kind) {
           case 'text':
             return <Markdown key={block.id} text={block.text} />
+          case 'image':
+            return (
+              <img
+                key={block.id}
+                src={block.src}
+                alt="Image from Droid"
+                className="my-2 max-h-72 max-w-full rounded-xl border object-contain"
+              />
+            )
           case 'thinking':
             return (
               <ThinkingSection
