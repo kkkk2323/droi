@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
 import { showArchivedSessions, usePreference } from '@/lib/local-preference'
+import { FONTS, FONT_LABELS, applyFont, font } from '@/lib/font'
 import { useTheme } from '@/lib/theme'
 import { TEXT_SIZES, TEXT_SIZE_LABELS, applyTextSize, textSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
@@ -170,6 +171,7 @@ export function SettingsPage({
 function GeneralTab({ version }: { version: string | null }) {
   const [theme, setTheme] = useTheme()
   const [size, setSize] = usePreference(textSize)
+  const [fontChoice, setFontChoice] = usePreference(font)
   const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   return (
     <>
@@ -185,6 +187,22 @@ function GeneralTab({ version }: { version: string | null }) {
               { value: 'light', label: 'Light' },
               { value: 'dark', label: 'Dark' },
             ]}
+          />
+        }
+      />
+      <SettingRow
+        title="Font"
+        description="Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."
+        control={
+          <Select
+            label="Font"
+            value={fontChoice}
+            onChange={(next) => {
+              const picked = FONTS.find((f) => f === next) ?? 'geist'
+              setFontChoice(picked)
+              applyFont(picked)
+            }}
+            options={FONTS.map((value) => ({ value, label: FONT_LABELS[value] }))}
           />
         }
       />

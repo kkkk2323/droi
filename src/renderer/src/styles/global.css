@@ -19,6 +19,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Font choice (Settings → Font). Geist is vendored; "system" hands over to
+   the platform face, San Francisco on Apple devices. */
+:root {
+  --font-sans-choice: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono-choice: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+}
+html[data-font='system'] {
+  --font-sans-choice: -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui, sans-serif;
+  --font-mono-choice: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 :root {
   /* Light first: a warm-neutral window like a native macOS app. Colour is
      reserved for status; everything else is grey. */
@@ -87,8 +98,8 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-sans: var(--font-sans-choice);
+  --font-mono: var(--font-mono-choice);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
