@@ -27,4 +27,10 @@ test('the sidebar collapses from either edge and the choice survives a reload', 
 
   await page.getByRole('button', { name: 'Show sidebar' }).click()
   await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeVisible()
+
+  // ⌘B / Ctrl+B toggles it too.
+  await page.keyboard.press('ControlOrMeta+b')
+  await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeHidden()
+  await page.keyboard.press('ControlOrMeta+b')
+  await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeVisible()
 })

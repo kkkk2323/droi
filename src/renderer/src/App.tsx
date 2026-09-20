@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
 import { useConnectionState } from './daemon/connection-context'
@@ -43,6 +43,19 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
 
+  // ⌘B / Ctrl+B toggles the sidebar on wide screens, as the previous Droi did.
+  useEffect(() => {
+    if (narrow) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'b' && (event.metaKey || event.ctrlKey) && !event.altKey) {
+        event.preventDefault()
+        setSidebarShown(!sidebarVisible.get())
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [narrow, setSidebarShown])
+
   // Picking anything in the drawer is the end of the drawer's job.
   const go = (next: Route) => {
     navigate(next)
@@ -77,14 +90,14 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       error={sessions.error ? sessions.error.message : null}
       onNewSession={() => go({ name: 'new' })}
       onSettings={() => go({ name: 'settings' })}
-      onHide={narrow ? null : () => setSidebarShown(false)}
       // Traffic lights sit over the sidebar's top strip on macOS.
       insetTop={hasShellBridge && !narrow}
     />
   )
 
-  // Narrow: a button that opens the drawer. Wide with the sidebar hidden: the
-  // toggle moves into the header, clearing the traffic lights like the sidebar did.
+  // Narrow: a button in the header that opens the drawer. Wide: the toggle is
+  // pinned top-left and never moves; the sidebar slides under it, and the main
+  // header grows a matching gap so its title clears the button.
   const leading = narrow ? (
     <Button
       size="icon-sm"
@@ -95,14 +108,18 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     >
       <PanelLeft aria-hidden />
     </Button>
-  ) : !sidebarShown ? (
-    <div className={cn('flex items-center', hasShellBridge && 'pl-[68px]')}>
-      <SidebarToggle expanded={false} onClick={() => setSidebarShown(true)} />
-    </div>
-  ) : null
+  ) : (
+    <div
+      aria-hidden
+      className={cn(
+        'shrink-0 transition-[width] duration-200 ease-out motion-reduce:transition-none',
+        sidebarShown ? 'w-0' : hasShellBridge ? 'w-[100px]' : 'w-8',
+      )}
+    />
+  )
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-sidebar text-foreground">
+    <div className="relative flex h-dvh overflow-hidden bg-sidebar text-foreground">
       {status}
       {narrow ? (
         <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -118,16 +135,29 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           </Dialog.Portal>
         </Dialog.Root>
       ) : (
-        <aside id="sessions-sidebar" hidden={!sidebarShown} className="w-60 shrink-0">
-          {sidebar}
-        </aside>
+        <>
+          <div
+            className={cn(
+              'absolute top-0 z-20 flex h-11 items-center pt-[env(safe-area-inset-top)]',
+              hasShellBridge ? 'left-[76px]' : 'left-2',
+            )}
+          >
+            <SidebarToggle expanded={sidebarShown} onClick={() => setSidebarShown(!sidebarShown)} />
+          </div>
+          <aside
+            id="sessions-sidebar"
+            // Width clips the panel; the visibility flip waits for the width so the
+            // slide is seen, and lands at once when opening.
+            className={cn(
+              'shrink-0 overflow-hidden transition-[width,visibility] duration-200 ease-out motion-reduce:transition-none',
+              sidebarShown ? 'w-60' : 'invisible w-0',
+            )}
+          >
+            <div className="h-full w-60">{sidebar}</div>
+          </aside>
+        </>
       )}
-      <main
-        className={cn(
-          'flex min-w-0 flex-1 flex-col overflow-hidden bg-background',
-          sidebarShown && 'md:border-l',
-        )}
-      >
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:border-l">
         {window.droiShell ? (
           <SetupBanner
             bridge={window.droiShell.settings}

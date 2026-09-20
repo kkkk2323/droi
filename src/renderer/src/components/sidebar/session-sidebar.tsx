@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Archive, ChevronRight, Folder, MessageSquare, Plus, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { SidebarToggle } from '@/components/sidebar-toggle'
 import { cn } from '@/lib/utils'
 import { OLDER_BATCH, visibleSessions, type WorkspaceGroup } from '@/daemon/sessions'
 
@@ -13,7 +12,6 @@ export function SessionSidebar({
   error,
   onNewSession,
   onSettings,
-  onHide,
   insetTop,
 }: {
   groups: WorkspaceGroup[]
@@ -23,8 +21,6 @@ export function SessionSidebar({
   error: string | null
   onNewSession: () => void
   onSettings: () => void
-  /** Collapses the sidebar; absent inside the drawer, which closes itself. */
-  onHide: (() => void) | null
   insetTop: boolean
 }) {
   return (
@@ -32,14 +28,13 @@ export function SessionSidebar({
       aria-label="Sessions"
       className="flex h-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
     >
+      {/* Drag strip; on wide screens the pinned sidebar toggle sits over it. */}
       <div
         className={cn(
-          'app-drag flex h-11 shrink-0 items-center px-2 pt-[env(safe-area-inset-top)]',
+          'app-drag h-11 shrink-0 pt-[env(safe-area-inset-top)]',
           insetTop && 'pl-[76px]',
         )}
-      >
-        {onHide ? <SidebarToggle expanded onClick={onHide} /> : null}
-      </div>
+      />
 
       <div className="flex flex-col gap-px px-2 pb-2">
         <SidebarRow icon={<Plus aria-hidden />} onClick={onNewSession}>
