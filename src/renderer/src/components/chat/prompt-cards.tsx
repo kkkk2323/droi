@@ -51,7 +51,7 @@ export function PermissionCard({
     <section
       role="group"
       aria-label={`Permission request: ${title}`}
-      className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5 shadow-composer"
+      className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5"
     >
       <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
         <ShieldAlert aria-hidden className="size-3" />
@@ -171,7 +171,7 @@ export function AskUserCard({
     <section
       role="group"
       aria-label="Droid has a question"
-      className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5 shadow-composer"
+      className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5"
     >
       <div className="flex items-center gap-2">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">

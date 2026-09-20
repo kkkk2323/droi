@@ -62,7 +62,7 @@ function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
     <Collapsible.Root open={open} onOpenChange={setOpen} className="py-1">
       <Collapsible.Trigger
         aria-label={`Tasks, ${done} of ${todos.length} done`}
-        className="group flex h-[30px] w-full items-center gap-2 pr-1.5 pl-3 text-left text-[12.5px] outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+        className="group flex h-[30px] w-full items-center gap-2 pr-1.5 pl-3 text-left text-[12.5px] outline-none transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       >
         {open ? (
           <>
@@ -143,7 +143,7 @@ function QueuedMessages({
           return (
             <li
               key={message.requestId}
-              className="flex h-[30px] items-center gap-2 pr-1.5 pl-3 text-[12.5px] hover:bg-accent"
+              className="flex h-[30px] items-center gap-2 pr-1.5 pl-3 text-[12.5px]"
             >
               {steer ? (
                 <CornerDownLeft aria-hidden className="size-3 shrink-0 text-muted-foreground" />

@@ -215,7 +215,7 @@ export function InputBar({
       ) : null}
       <div
         className={cn(
-          'relative flex flex-col rounded-2xl border bg-background shadow-composer transition-colors focus-within:border-foreground/25',
+          'relative flex flex-col rounded-2xl border bg-background transition-colors focus-within:border-foreground/25',
           dragging && 'border-primary/60 bg-primary/5',
         )}
         onClick={(event) => {

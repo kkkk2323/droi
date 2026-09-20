@@ -96,6 +96,14 @@ function renderEntry(_index: number, entry: TranscriptEntry, context: ListContex
   )
 }
 
+function scrollToEnd(handle: VirtuosoHandle | null, behavior: 'auto' | 'smooth') {
+  handle?.scrollToIndex({
+    index: 'LAST',
+    align: 'end',
+    behavior: prefersReducedMotion() ? 'auto' : behavior,
+  })
+}
+
 /** Assistant entries followed by a user turn, plus the last one once the Daemon rests. */
 export function turnEndIds(entries: readonly TranscriptEntry[], running: boolean): Set<string> {
   const ids = new Set<string>()
@@ -126,25 +134,19 @@ export function MessageList({
 }) {
   const virtuoso = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
-  const scrollToEnd = (behavior: 'auto' | 'smooth') =>
-    virtuoso.current?.scrollToIndex({
-      index: 'LAST',
-      align: 'end',
-      behavior: prefersReducedMotion() ? 'auto' : behavior,
-    })
   useEffect(() => {
     if (!scrollToEndKey) return
     // The sent message is appended a tick after the send; scroll once now and
     // once after it has landed.
-    scrollToEnd('smooth')
-    const timer = setTimeout(() => scrollToEnd('smooth'), 120)
+    scrollToEnd(virtuoso.current, 'smooth')
+    const timer = setTimeout(() => scrollToEnd(virtuoso.current, 'smooth'), 120)
     return () => clearTimeout(timer)
   }, [scrollToEndKey])
   // Opening a Session lands on its latest message. The initial index gets
   // there before entries have their real heights (markdown, images), so
   // re-pin once they have settled.
   useEffect(() => {
-    const timer = setTimeout(() => scrollToEnd('auto'), 150)
+    const timer = setTimeout(() => scrollToEnd(virtuoso.current, 'auto'), 150)
     return () => clearTimeout(timer)
   }, [])
   const earlier = buildTranscript(earlierMessages)
@@ -196,7 +198,7 @@ export function MessageList({
           size="icon-sm"
           variant="outline"
           aria-label="Scroll to latest"
-          onClick={() => scrollToEnd('smooth')}
+          onClick={() => scrollToEnd(virtuoso.current, 'smooth')}
           className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-background shadow-composer"
         >
           <ArrowDown aria-hidden />
