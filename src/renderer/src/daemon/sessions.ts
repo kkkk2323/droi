@@ -15,6 +15,39 @@ export interface SessionSummary {
   updatedAt: number
   messagesCount: number | null
   archivedAt: string | null
+  tags: SessionTag[]
+  /** The Session this one continues after a compaction (see use-compact.ts). */
+  parentId: string | null
+}
+
+export interface SessionTag {
+  name: string
+  metadata?: Record<string, string>
+}
+
+/**
+ * Tag a compaction's child Session carries so every Client can chain it to
+ * its parent; the Daemon writes the link into the session file but does not
+ * list it.
+ */
+export const CONTINUES_TAG = 'droi.continues'
+
+export function continuationParent(tags: readonly SessionTag[] | undefined): string | null {
+  return tags?.find((t) => t.name === CONTINUES_TAG)?.metadata?.['parent'] ?? null
+}
+
+/** Tags for a child Session: the parent's, minus any older link, plus the new one. */
+export function continuationTags(parentId: string, inherited: readonly SessionTag[]): SessionTag[] {
+  return [
+    ...inherited.filter((t) => t.name !== CONTINUES_TAG),
+    { name: CONTINUES_TAG, metadata: { parent: parentId } },
+  ]
+}
+
+/** Drops Sessions that another listed Session continues; the chain shows as its latest link. */
+export function foldContinued(sessions: readonly SessionSummary[]): SessionSummary[] {
+  const parents = new Set(sessions.map((s) => s.parentId).filter((id): id is string => !!id))
+  return sessions.filter((s) => !parents.has(s.sessionId))
 }
 
 export interface WorkspaceGroup {
@@ -61,6 +94,8 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
         updatedAt: s.updatedAt,
         messagesCount: s.messagesCount ?? null,
         archivedAt: s.archivedAt ?? null,
+        tags: s.tags ?? [],
+        parentId: continuationParent(s.tags),
       }))
     },
     enabled: connected,

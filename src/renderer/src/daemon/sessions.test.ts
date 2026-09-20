@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
+  CONTINUES_TAG,
   RECENT_WINDOW_MS,
+  continuationParent,
+  continuationTags,
+  foldContinued,
   groupByWorkspace,
   visibleSessions,
   workspaceLabel,
@@ -16,6 +20,8 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
     updatedAt: 0,
     messagesCount: null,
     archivedAt: null,
+    tags: [],
+    parentId: null,
     ...overrides,
   }
 }
@@ -64,5 +70,23 @@ describe('visibleSessions', () => {
   test('reveals older sessions newest first, up to the requested number', () => {
     expect(visibleSessions(list, 1, now)).toEqual({ visible: [list[0], list[1]], hidden: 1 })
     expect(visibleSessions(list, 30, now).hidden).toBe(0)
+  })
+})
+
+describe('continuation chain', () => {
+  test('a child folds its parent out of the list and reads the link from its tag', () => {
+    const parent = summary({ sessionId: 'old' })
+    const tags = continuationTags('old', [{ name: 'team', metadata: { id: '1' } }])
+    const child = summary({ sessionId: 'new', tags, parentId: continuationParent(tags) })
+    expect(child.parentId).toBe('old')
+    expect(tags.map((t) => t.name)).toEqual(['team', CONTINUES_TAG])
+    expect(
+      foldContinued([child, parent, summary({ sessionId: 'other' })]).map((s) => s.sessionId),
+    ).toEqual(['new', 'other'])
+  })
+
+  test('continuationTags replaces an older link instead of stacking them', () => {
+    const tags = continuationTags('b', continuationTags('a', []))
+    expect(tags).toEqual([{ name: CONTINUES_TAG, metadata: { parent: 'b' } }])
   })
 })

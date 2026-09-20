@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
 import { useConnectionState } from './daemon/connection-context'
-import { groupByWorkspace, useSessionList } from './daemon/sessions'
+import { foldContinued, groupByWorkspace, useSessionList, type SessionTag } from './daemon/sessions'
+
+const NO_TAGS: SessionTag[] = []
 import { recentWorkspaces } from './daemon/use-new-session'
 import { useWorkingSessionIds } from './daemon/use-working-sessions'
 import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
@@ -40,10 +42,11 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [showArchived] = usePreference(showArchivedSessions)
   const sessions = useSessionList({ includeArchived: showArchived })
   const workingSessionIds = useWorkingSessionIds()
-  const groups = groupByWorkspace(sessions.data ?? [])
+  const groups = groupByWorkspace(foldContinued(sessions.data ?? []))
   const recent = recentWorkspaces(sessions.data ?? [])
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
+  const parent = sessions.data?.find((s) => s.sessionId === selected?.parentId) ?? null
 
   // ⌘B / Ctrl+B toggles the sidebar on wide screens, as the previous Droi did.
   useEffect(() => {
@@ -171,7 +174,10 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             title={selected?.title ?? 'Session'}
             workspace={selected?.cwd ?? null}
             archived={Boolean(selected?.archivedAt)}
+            tags={selected?.tags ?? NO_TAGS}
+            parent={parent}
             onArchived={() => go({ name: 'home' })}
+            onContinued={(sessionId) => go({ name: 'session', sessionId })}
             leading={leading}
           />
         ) : (

@@ -13,6 +13,7 @@ export interface SessionFixture {
   messages: MessageFixture[]
   archivedAt?: string
   settings?: Record<string, unknown>
+  tags?: Array<{ name: string; metadata?: Record<string, string> }>
 }
 
 export interface MessageFixture {
@@ -70,6 +71,7 @@ export function createScenario(input: ScenarioInput): Scenario {
           cwd: s.cwd,
           messagesCount: s.messages.length,
           ...(s.archivedAt ? { archivedAt: s.archivedAt } : {}),
+          ...(s.tags ? { tags: s.tags } : {}),
         })),
       hasMore: false,
     }),
@@ -77,6 +79,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       const found = mustFind(sessions, params['sessionId'])
       const { sessionId: _ignored, ...patch } = params
       found.settings = { ...sessionSettings(), ...found.settings, ...patch }
+      if (Array.isArray(patch['tags'])) found.tags = patch['tags'] as SessionFixture['tags']
       context.daemon.notify(found.sessionId, { type: 'settings_updated', settings: found.settings })
       return {}
     },
@@ -141,6 +144,19 @@ export function createScenario(input: ScenarioInput): Scenario {
         settings: sessionSettings(),
         availableModels: AVAILABLE_MODELS,
       }
+    },
+    // `/compact` is a handoff: the summary starts a new Session that carries
+    // the parent's tags; the parent stays listed.
+    'daemon.compact_session': (params) => {
+      const found = mustFind(sessions, params['sessionId'])
+      const child = session(found.title, found.cwd, [
+        assistantMessage(
+          `Summary of the earlier conversation (${found.messages.length} messages).`,
+        ),
+      ])
+      if (found.tags) child.tags = [...found.tags]
+      sessions.unshift(child)
+      return { newSessionId: child.sessionId, removedCount: found.messages.length }
     },
     'daemon.unarchive_session': (params, context) => {
       const found = mustFind(sessions, params['sessionId'])

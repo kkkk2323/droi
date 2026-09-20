@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { MessageEntry } from './message-entry'
@@ -13,7 +14,17 @@ interface ListContext {
   turnEndIds: ReadonlySet<string>
   /** What the Daemon is doing; shown under the last entry while not idle. */
   activity: string
+  /** Rendered above the first entry (a "continued from" link, say). */
+  lead: ReactNode
+  /** Entry that starts this Session's own messages when earlier ones are shown above. */
+  boundaryId: string | null
 }
+
+// Virtuoso keeps the scroll position across a prepend when the first item's
+// index goes down by the number of items added, so indices count down from here.
+const INDEX_BASE = 1_000_000
+
+const NO_MESSAGES: FactoryDroidMessage[] = []
 
 const WORKING_LABELS: Record<string, string> = {
   idle: '',
@@ -24,8 +35,27 @@ const WORKING_LABELS: Record<string, string> = {
   compacting_conversation: 'Compacting',
 }
 
-function ListPadding() {
-  return <div aria-hidden className="h-3" />
+function ListHeader({ context }: { context?: ListContext }) {
+  return (
+    <>
+      <div aria-hidden className="h-3" />
+      {context?.lead}
+    </>
+  )
+}
+
+function Boundary() {
+  return (
+    <div
+      role="separator"
+      aria-label="Context compacted here"
+      className={cn(COLUMN, 'flex items-center gap-3 py-3 text-[11px] text-muted-foreground')}
+    >
+      <span className="h-px flex-1 bg-border" />
+      Context compacted here; the conversation continues in a new session
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
 }
 
 /** The live turn's closing row, in the transcript where the reply will land. */
@@ -53,11 +83,14 @@ function ActivityRow({ context }: { context?: ListContext }) {
 
 function renderEntry(_index: number, entry: TranscriptEntry, context: ListContext) {
   return (
-    <MessageEntry
-      entry={entry}
-      isStreaming={entry.id === context.streamingEntryId}
-      showTime={context.turnEndIds.has(entry.id)}
-    />
+    <>
+      {entry.id === context.boundaryId ? <Boundary /> : null}
+      <MessageEntry
+        entry={entry}
+        isStreaming={entry.id === context.streamingEntryId}
+        showTime={context.turnEndIds.has(entry.id)}
+      />
+    </>
   )
 }
 
@@ -75,13 +108,20 @@ export function turnEndIds(entries: readonly TranscriptEntry[], running: boolean
 /** Virtualised transcript that starts at, and follows, the latest message. */
 export function MessageList({
   messages,
+  earlierMessages = NO_MESSAGES,
   workingState,
+  lead = null,
 }: {
   messages: readonly FactoryDroidMessage[]
+  /** The parent Session's transcript, shown above this one's after a compaction. */
+  earlierMessages?: readonly FactoryDroidMessage[]
   /** The Daemon's working state for this Session. */
   workingState: string
+  lead?: ReactNode
 }) {
-  const entries = buildTranscript(messages)
+  const earlier = buildTranscript(earlierMessages)
+  const own = buildTranscript(messages)
+  const entries = [...earlier, ...own]
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const isStreaming = workingState === 'streaming_assistant_message'
@@ -90,9 +130,11 @@ export function MessageList({
     streamingEntryId,
     turnEndIds: turnEndIds(entries, running),
     activity: WORKING_LABELS[workingState] ?? workingState,
+    lead,
+    boundaryId: earlier.length > 0 ? (own[0]?.id ?? null) : null,
   }
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && !lead) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         What should Droid work on?
@@ -108,9 +150,10 @@ export function MessageList({
       data={entries}
       context={context}
       computeItemKey={(_, entry) => entry.id}
+      firstItemIndex={INDEX_BASE - earlier.length}
       initialTopMostItemIndex={entries.length - 1}
       followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
-      components={{ Header: ListPadding, Footer: ActivityRow }}
+      components={{ Header: ListHeader, Footer: ActivityRow }}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       itemContent={renderEntry}
     />

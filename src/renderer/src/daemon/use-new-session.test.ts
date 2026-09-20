@@ -10,6 +10,8 @@ const summary = (overrides: Partial<SessionSummary>): SessionSummary => ({
   updatedAt: 0,
   messagesCount: null,
   archivedAt: null,
+  tags: [],
+  parentId: null,
   ...overrides,
 })
 
