@@ -33,10 +33,50 @@ function richHistory(): MessageFixture[] {
     role: 'tool',
     content: [{ type: 'tool_result', toolUseId, content: 'export function login() {}' }],
   }
+  const editId = 'call_edit_1'
+  const assistantWithEdit: MessageFixture = {
+    ...assistantMessage(''),
+    content: [
+      {
+        type: 'tool_use',
+        id: editId,
+        name: 'Edit',
+        input: { file_path: 'src/auth.ts', old_str: 'login()', new_str: 'await login()' },
+      },
+    ],
+  }
+  const editResult: MessageFixture = {
+    ...assistantMessage(''),
+    role: 'tool',
+    content: [
+      {
+        type: 'tool_result',
+        toolUseId: editId,
+        content: JSON.stringify({
+          success: true,
+          file_path: 'src/auth.ts',
+          diffLines: [
+            {
+              type: 'unchanged',
+              content: 'export async function run() {',
+              lineNumber: { old: 1, new: 1 },
+            },
+            { type: 'removed', content: '  login()', lineNumber: { old: 2 } },
+            { type: 'added', content: '  await login()', lineNumber: { new: 2 } },
+            { type: 'unchanged', content: '}', lineNumber: { old: 3, new: 3 } },
+          ],
+          linesAdded: 1,
+          linesRemoved: 1,
+        }),
+      },
+    ],
+  }
   return [
     userMessage('Why does login fail?'),
     assistantWithTool,
     toolResult,
+    assistantWithEdit,
+    editResult,
     assistantMessage('The `login` function never awaits the token refresh. Here is the fix.'),
   ]
 }
@@ -230,6 +270,16 @@ test.describe('session history', () => {
     await expect(tool).toBeVisible()
     await tool.click()
     await expect(transcript.getByText('export function login() {}')).toBeVisible()
+
+    // An Edit shows its counts on the row and its result as a coloured diff.
+    const edit = transcript.getByRole('button', { name: 'Edit: src/auth.ts' })
+    await expect(edit).toContainText('+1')
+    await expect(edit).toContainText('−1')
+    await edit.click()
+    const diff = transcript.getByLabel('Diff')
+    await expect(diff.locator('[data-type="removed"]')).toContainText('login()')
+    await expect(diff.locator('[data-type="added"]')).toContainText('await login()')
+    await expect(diff.locator('[data-type="unchanged"]')).toHaveCount(2)
 
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
     expect(load.params).toMatchObject({ sessionId: richSession.sessionId })
