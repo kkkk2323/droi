@@ -3,6 +3,7 @@ import { Folder, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { useSession } from '@/daemon/use-session'
 import { useTurn } from '@/daemon/use-turn'
+import { useSlashItems } from '@/daemon/use-slash-items'
 import { LOAD_STATE } from '@/daemon/sdk-enums'
 import { takePendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ export function SessionView({
 }) {
   const session = useSession(sessionId)
   const turn = useTurn(sessionId)
+  const slashItems = useSlashItems(sessionId)
   const isRunning = session.workingState !== 'idle'
   const loaded = session.loadState === LOAD_STATE.loaded
 
@@ -72,6 +74,7 @@ export function SessionView({
           onCancel={() => void turn.cancel()}
           error={turn.sendError}
           footer={<SessionSettingsBar sessionId={sessionId} />}
+          slashItems={slashItems}
         />
         <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
           {workspace ? (

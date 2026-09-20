@@ -148,6 +148,25 @@
   textarea {
     font: inherit;
   }
+  /* Everything that reacts to a click says so with the pointer. */
+  button,
+  [role='button'],
+  [role='option'],
+  [role='menuitem'],
+  [role='menuitemradio'],
+  [role='menuitemcheckbox'],
+  [role='tab'],
+  [role='switch'],
+  a[href],
+  label:has(> input[type='checkbox']),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled='true'],
+  [data-disabled] {
+    cursor: default;
+  }
 }
 
 /* The window's own title bar is hidden on macOS; this strip drags the window. */

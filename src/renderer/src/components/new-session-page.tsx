@@ -174,7 +174,7 @@ function WorkspaceMenu({
                   value={workspace.path}
                   title={workspace.path}
                   closeOnClick
-                  className="flex cursor-default items-center gap-3 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                  className="flex items-center gap-3 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <span className="min-w-0 flex-1 truncate">{workspace.label}</span>
                   <Menu.RadioItemIndicator className="flex size-4 items-center justify-center">
@@ -186,7 +186,7 @@ function WorkspaceMenu({
             <Menu.Separator className="my-1 h-px bg-border" />
             <Menu.Item
               onClick={onOther}
-              className="flex cursor-default items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              className="flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <FolderPlus aria-hidden className="size-4 text-muted-foreground" />
               Other folder…

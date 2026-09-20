@@ -87,7 +87,7 @@ function Item({ option }: { option: SelectOption }) {
       label={option.label}
       disabled={option.disabled}
       data-value={option.value}
-      className="grid cursor-default grid-cols-[1rem_1fr] items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-3 text-[13px] outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+      className="grid grid-cols-[1rem_1fr] items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-3 text-[13px] outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
     >
       <SelectPrimitive.ItemIndicator className="col-start-1 flex justify-center">
         <Check aria-hidden className="size-3.5" />

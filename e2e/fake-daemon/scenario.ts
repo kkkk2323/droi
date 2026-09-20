@@ -40,6 +40,10 @@ export interface ScenarioInput {
   handlers?: Record<string, MethodHandler>
   /** Directories the Fake Daemon treats as existing; others fail validation. */
   validDirectories?: string[]
+  /** Custom commands (`.factory/commands`) the Daemon lists for every Session. */
+  commands?: Array<{ name: string; description: string; argumentHint?: string }>
+  /** Skills the Daemon lists; `userInvocable` defaults to true. */
+  skills?: Array<{ name: string; description?: string; userInvocable?: boolean }>
 }
 
 export interface Scenario {
@@ -84,6 +88,17 @@ export function createScenario(input: ScenarioInput): Scenario {
       context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
       return { success: true, archivedAt: found.archivedAt }
     },
+    'daemon.list_commands': () => ({ commands: input.commands ?? [] }),
+    'daemon.list_skills': () => ({
+      skills: (input.skills ?? []).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        filePath: `/Users/dev/.factory/skills/${skill.name}/SKILL.md`,
+        location: 'personal',
+        userInvocable: skill.userInvocable ?? true,
+        enabled: true,
+      })),
+    }),
     'daemon.validate_working_directory': (params) => {
       const path = String(params['workingDirectory'])
       const known = new Set([...(input.validDirectories ?? []), ...sessions.map((s) => s.cwd)])

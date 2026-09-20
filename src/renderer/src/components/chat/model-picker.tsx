@@ -213,7 +213,7 @@ export function ModelPicker({
                         if (!row.disabled) pick(row.id)
                       }}
                       className={cn(
-                        'group/row flex cursor-default items-center gap-3 rounded-lg px-2.5 py-2 outline-none',
+                        'group/row flex items-center gap-3 rounded-lg px-2.5 py-2 outline-none',
                         'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground',
                         selected && 'bg-muted',
                         row.disabled && 'opacity-50',
