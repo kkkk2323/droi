@@ -71,7 +71,7 @@ describe('Gateway', () => {
       getDaemonUrl: () => daemon.url,
       getPairingToken: () => TOKEN,
       getLocalToken: () => LOCAL_TOKEN,
-      getApiKey: () => API_KEY,
+      getCredential: async () => ({ apiKey: API_KEY }),
       getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess }),
       client: { kind: 'none' },
     })
@@ -131,6 +131,40 @@ describe('Gateway', () => {
       await nextMessage(socket)
     }
     expect(daemon.received.map((f) => JSON.parse(f).params.token)).toEqual([API_KEY, API_KEY])
+    socket.close()
+  })
+
+  test('a login token replaces apiKey with token and keeps frames in order', async () => {
+    await gateway.close()
+    let resolveToken: (t: { token: string }) => void = () => {}
+    gateway = await startGateway({
+      port: 0,
+      remoteAccess: false,
+      getDaemonUrl: () => daemon.url,
+      getPairingToken: () => TOKEN,
+      getCredential: () => new Promise((resolve) => (resolveToken = resolve)),
+      getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: false }),
+      client: { kind: 'none' },
+    })
+    const socket = await connectClient(gatewayDaemonUrl(gateway.url, TOKEN))
+    socket.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: '1',
+        method: 'daemon.authenticate',
+        params: { apiKey: GATEWAY_API_KEY_PLACEHOLDER, caller: 'sdk' },
+      }),
+    )
+    // Sent while the credential is still being fetched; must not overtake it.
+    socket.send('{"jsonrpc":"2.0","id":"2","method":"daemon.list_available_sessions","params":{}}')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(daemon.received).toHaveLength(0)
+    resolveToken({ token: 'eyJ.login.jwt' })
+    await expect.poll(() => daemon.received.length).toBe(2)
+    const [first, second] = daemon.received.map((f) => JSON.parse(f))
+    expect(first.method).toBe('daemon.authenticate')
+    expect(first.params).toEqual({ token: 'eyJ.login.jwt', caller: 'sdk' })
+    expect(second.id).toBe('2')
     socket.close()
   })
 
@@ -237,7 +271,7 @@ describe('Gateway', () => {
       remoteAccess: false,
       getDaemonUrl: () => null,
       getPairingToken: () => TOKEN,
-      getApiKey: () => API_KEY,
+      getCredential: async () => ({ apiKey: API_KEY }),
       getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: false }),
       client: { kind: 'none' },
     })
@@ -255,7 +289,7 @@ describe('Gateway with Remote Access on', () => {
       remoteAccess: true,
       getDaemonUrl: () => daemon.url,
       getPairingToken: () => TOKEN,
-      getApiKey: () => API_KEY,
+      getCredential: async () => ({ apiKey: API_KEY }),
       getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: true }),
       client: { kind: 'none' },
     })

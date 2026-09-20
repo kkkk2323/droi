@@ -4,11 +4,19 @@
 import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
 import { locateDroid } from './daemon/locate-droid'
-import { startGateway, type ClientSource, type Gateway } from './gateway/gateway'
+import { createFactoryAuth, type FactoryAuth } from './factory-auth'
+import {
+  startGateway,
+  type ClientSource,
+  type Gateway,
+  type GatewayCredential,
+} from './gateway/gateway'
 import {
   createShellSettingsStore,
   type SettingsCipher,
@@ -33,19 +41,60 @@ const localToken = randomBytes(24).toString('base64url')
 // before `ready` on Windows and Linux, which would lock the store into its
 // fallback cipher for good.
 let settings: ShellSettingsStore
+let auth: FactoryAuth
 let daemon: DaemonSupervisor
 let gateway: Gateway | null = null
+
+const DEFAULT_FACTORY_API_BASE_URL = 'https://api.factory.ai'
+
+function factoryApiBaseUrl(): string {
+  return (
+    settings.settings.factoryApiBaseUrl ??
+    process.env['FACTORY_API_BASE_URL'] ??
+    DEFAULT_FACTORY_API_BASE_URL
+  )
+}
+
+/**
+ * What the Gateway authenticates Clients with. The Factory login comes first;
+ * an API key (stored or FACTORY_API_KEY) is the fallback for automation.
+ */
+async function gatewayCredential(): Promise<GatewayCredential | null> {
+  const token = await auth.getAccessToken()
+  if (token) return { token }
+  const apiKey = settings.getApiKey()
+  return apiKey ? { apiKey } : null
+}
+
+/** The `droid` CLI's login on this computer, which is who the Daemon runs as. */
+function daemonIdentity(): ShellSettingsSnapshot['daemonIdentity'] {
+  const factoryHome = process.env['FACTORY_HOME_OVERRIDE'] ?? join(homedir(), '.factory')
+  try {
+    const host = JSON.parse(readFileSync(join(factoryHome, 'host.json'), 'utf8')) as {
+      computerRegistration?: { userId?: unknown; firestoreOrgId?: unknown }
+    }
+    const registration = host.computerRegistration
+    if (typeof registration?.userId !== 'string') return null
+    return {
+      userId: registration.userId,
+      orgId: typeof registration.firestoreOrgId === 'string' ? registration.firestoreOrgId : null,
+    }
+  } catch {
+    return null
+  }
+}
 
 function createDaemonSupervisor(): DaemonSupervisor {
   const supervisor = new DaemonSupervisor({
     spawn: (port) => {
       const droidPath = locateDroid({ override: settings.settings.droidPath })
       if (!droidPath) throw new Error('droid executable not found')
-      const apiKey = settings.getApiKey()
+      // Signed in: the Daemon runs as the `droid` CLI's login, like `dp` does,
+      // and the Gateway authenticates Clients with the Droi login (ADR 0005).
+      // Without a login an API key has to serve both sides (ADR 0003). A base
+      // URL routes the Daemon's Factory traffic through a proxy such as droid-proxy.
+      const apiKey = auth.state.status === 'signed-in' ? null : settings.getApiKey()
       const baseUrl = settings.settings.factoryApiBaseUrl ?? process.env['FACTORY_API_BASE_URL']
-      // The Daemon must run as the same Factory user whose key the Gateway
-      // injects, otherwise it rejects every authenticate (see ADR 0003). A base
-      // URL routes its Factory traffic through a local proxy such as droid-proxy.
       return spawn(
         droidPath,
         [
@@ -109,6 +158,9 @@ function createWindow(gatewayUrl: string): void {
 function snapshot(): ShellSettingsSnapshot {
   const fromEnv = Boolean(process.env['FACTORY_API_KEY'])
   return {
+    login: auth.state,
+    daemonIdentity: daemonIdentity(),
+    hasCredential: auth.state.status === 'signed-in' || settings.getApiKey() !== null,
     remoteAccess: settings.settings.remoteAccess,
     droidPath: settings.settings.droidPath,
     factoryApiBaseUrl: settings.settings.factoryApiBaseUrl,
@@ -170,6 +222,19 @@ function registerIpc(): void {
     broadcastChange()
     return snapshot()
   })
+  ipcMain.handle(SHELL_IPC.signIn, async () => {
+    const pending = await auth.signIn()
+    void shell.openExternal(pending.verificationUriComplete)
+    return snapshot()
+  })
+  ipcMain.handle(SHELL_IPC.cancelSignIn, () => {
+    auth.cancelSignIn()
+    return snapshot()
+  })
+  ipcMain.handle(SHELL_IPC.signOut, () => {
+    auth.signOut()
+    return snapshot()
+  })
   ipcMain.handle(SHELL_IPC.resetPairingToken, () => {
     settings.resetPairingToken()
     gateway?.revoke('pairing')
@@ -191,7 +256,20 @@ void app.whenReady().then(async () => {
     file: join(app.getPath('userData'), 'settings.json'),
     cipher: safeStorageCipher(),
   })
+  auth = createFactoryAuth({
+    load: () => settings.getLogin(),
+    save: (serialized) => settings.setLogin(serialized),
+    factoryApiBaseUrl: factoryApiBaseUrl(),
+  })
   daemon = createDaemonSupervisor()
+  let wasSignedIn = auth.state.status === 'signed-in'
+  auth.on('change', (state) => {
+    broadcastChange()
+    // Signing in moves the Daemon off the API key; the env is read at spawn.
+    const signedIn = state.status === 'signed-in'
+    if (signedIn !== wasSignedIn) void restartDaemon()
+    wasSignedIn = signedIn
+  })
   registerIpc()
   daemon.start()
   gateway = await startGateway({
@@ -200,7 +278,7 @@ void app.whenReady().then(async () => {
     getDaemonUrl: () => daemon.daemonUrl,
     getPairingToken: () => settings.settings.pairingToken,
     getLocalToken: () => localToken,
-    getApiKey: () => settings.getApiKey(),
+    getCredential: gatewayCredential,
     getMeta: () => ({
       app: 'Droi',
       version: app.getVersion(),

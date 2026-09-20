@@ -72,7 +72,7 @@ test.beforeAll(async () => {
     remoteAccess: false,
     getDaemonUrl: () => daemon.daemonUrl,
     getPairingToken: () => PAIRING_TOKEN,
-    getApiKey: () => apiKey!,
+    getCredential: async () => ({ apiKey: apiKey! }),
     getMeta: () => ({ app: 'Droi', version: 'live', remoteAccess: false }),
     client: { kind: 'none' },
   })

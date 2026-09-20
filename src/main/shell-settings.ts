@@ -1,4 +1,4 @@
-// Desktop Shell settings: a small JSON file. The Factory API key and the
+// Desktop Shell settings: a small JSON file. The Factory login, API key and
 // Pairing Token are stored encrypted (Electron safeStorage in production); the
 // key is never handed to a Client, only the Gateway reads it.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -34,6 +34,9 @@ export interface ShellSettingsStore {
   resetPairingToken(): string
   getApiKey(): string | null
   setApiKey(apiKey: string | null): void
+  /** Factory login tokens (see factory-auth.ts); stored encrypted like the key. */
+  getLogin(): string | null
+  setLogin(serialized: string | null): void
 }
 
 interface StoredFile {
@@ -42,6 +45,7 @@ interface StoredFile {
   factoryApiBaseUrl: string | null
   pairingTokenEncrypted: string
   apiKeyEncrypted: string | null
+  loginEncrypted: string | null
 }
 
 export function generatePairingToken(): string {
@@ -68,6 +72,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
     pairingTokenEncrypted: cipher.encrypt(pairingToken),
     apiKeyEncrypted: loaded?.apiKeyEncrypted ?? null,
+    loginEncrypted: loaded?.loginEncrypted ?? null,
   }
 
   const save = () => {
@@ -113,6 +118,13 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
       current.apiKeyEncrypted = apiKey ? cipher.encrypt(apiKey) : null
       save()
     },
+    getLogin() {
+      return decryptToken(current.loginEncrypted ?? undefined)
+    },
+    setLogin(serialized) {
+      current.loginEncrypted = serialized ? cipher.encrypt(serialized) : null
+      save()
+    },
   }
 }
 
@@ -134,6 +146,7 @@ function load(file: string): StoredFile | null {
       pairingTokenEncrypted:
         typeof parsed.pairingTokenEncrypted === 'string' ? parsed.pairingTokenEncrypted : '',
       apiKeyEncrypted: typeof parsed.apiKeyEncrypted === 'string' ? parsed.apiKeyEncrypted : null,
+      loginEncrypted: typeof parsed.loginEncrypted === 'string' ? parsed.loginEncrypted : null,
     }
   } catch {
     return null

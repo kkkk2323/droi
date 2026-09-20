@@ -36,11 +36,17 @@ export interface GatewayOptions {
    * Token then revokes phones without touching the desktop window.
    */
   getLocalToken?: () => string
-  /** Factory API key to inject; null leaves credentials untouched. */
-  getApiKey: () => string | null
+  /**
+   * Credential to put where the Client left its placeholder: a Factory login
+   * token or an API key. Async because a token may need refreshing first.
+   * Null leaves the frame untouched (the Daemon then rejects it).
+   */
+  getCredential: () => Promise<GatewayCredential | null>
   getMeta: () => GatewayMeta
   client: ClientSource
 }
+
+export type GatewayCredential = { token: string } | { apiKey: string }
 
 export interface Gateway {
   url: string
@@ -93,7 +99,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         return
       }
       wss.handleUpgrade(request, socket, head, (client) => {
-        const upstream = bridge(client, daemonUrl, options.getApiKey)
+        const upstream = bridge(client, daemonUrl, options.getCredential)
         bridges.set(client, { upstream, kind })
         client.on('close', () => bridges.delete(client))
       })
@@ -213,7 +219,11 @@ function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
  * Pipe frames between a Client socket and a fresh Daemon socket. Frames the
  * Client sends before the Daemon socket opens are queued in order.
  */
-function bridge(client: WebSocket, daemonUrl: string, getApiKey: () => string | null): WebSocket {
+function bridge(
+  client: WebSocket,
+  daemonUrl: string,
+  getCredential: () => Promise<GatewayCredential | null>,
+): WebSocket {
   const upstream = new WebSocket(daemonUrl)
   const queue: Array<{ data: RawData | string; binary: boolean }> = []
 
@@ -226,8 +236,18 @@ function bridge(client: WebSocket, daemonUrl: string, getApiKey: () => string | 
     for (const frame of queue) upstream.send(frame.data, { binary: frame.binary })
     queue.length = 0
   })
+  // Frames are forwarded in arrival order even when one has to wait for a
+  // credential; each forward chains on the previous one.
+  let inOrder: Promise<void> = Promise.resolve()
   client.on('message', (data, isBinary) => {
-    sendUpstream(isBinary ? data : injectApiKey(data, getApiKey()), isBinary)
+    if (isBinary || !data.toString().includes(GATEWAY_API_KEY_PLACEHOLDER)) {
+      inOrder = inOrder.then(() => sendUpstream(data, isBinary))
+      return
+    }
+    inOrder = inOrder
+      .then(() => getCredential())
+      .catch(() => null)
+      .then((credential) => sendUpstream(injectCredential(data, credential), false))
   })
   upstream.on('message', (data, isBinary) => {
     if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary })
@@ -245,14 +265,18 @@ function bridge(client: WebSocket, daemonUrl: string, getApiKey: () => string | 
 }
 
 /**
- * Replace the Client's placeholder credential with the real Factory API key.
- * The SDK sends the credential as `apiKey` in `daemon.authenticate` and as
- * `token` (spawn credential) in `daemon.initialize_session` and
- * `daemon.load_session`; only a top-level params field holding the exact
- * placeholder is touched, so any other frame stays byte-identical.
+ * Replace the Client's placeholder with the real credential. The SDK sends it
+ * as `apiKey` in `daemon.authenticate` and as `token` (spawn credential) in
+ * `daemon.initialize_session` / `daemon.load_session`. A login token goes in
+ * `token` in both cases (the Daemon reads `apiKey` strictly as an API key);
+ * only a top-level params field holding the exact placeholder is touched, so
+ * any other frame stays byte-identical.
  */
-export function injectApiKey(data: RawData, apiKey: string | null): RawData | string {
-  if (!apiKey) return data
+export function injectCredential(
+  data: RawData,
+  credential: GatewayCredential | null,
+): RawData | string {
+  if (!credential) return data
   const text = data.toString()
   if (!text.includes(GATEWAY_API_KEY_PLACEHOLDER)) return data
   let message: unknown
@@ -264,11 +288,17 @@ export function injectApiKey(data: RawData, apiKey: string | null): RawData | st
   if (!hasParams(message)) return data
   const params = { ...message.params }
   let changed = false
-  for (const field of ['apiKey', 'token'] as const) {
-    if (params[field] === GATEWAY_API_KEY_PLACEHOLDER) {
-      params[field] = apiKey
-      changed = true
+  if (params['apiKey'] === GATEWAY_API_KEY_PLACEHOLDER) {
+    if ('apiKey' in credential) params['apiKey'] = credential.apiKey
+    else {
+      delete params['apiKey']
+      params['token'] = credential.token
     }
+    changed = true
+  }
+  if (params['token'] === GATEWAY_API_KEY_PLACEHOLDER) {
+    params['token'] = 'apiKey' in credential ? credential.apiKey : credential.token
+    changed = true
   }
   return changed ? JSON.stringify({ ...message, params }) : data
 }

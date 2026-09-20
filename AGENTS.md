@@ -63,6 +63,12 @@ Client or the Fake Daemon changed. The PR workflow runs all three.
   `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') pnpm test:live`
   (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)
 
+## Factory login
+
+The Desktop Shell signs in with Factory using the `droid` CLI's device flow (ADR 0005,
+`src/main/factory-auth.ts`). While signed in the Daemon is started without `FACTORY_API_KEY`
+and runs as the CLI's login, so `droid login` on this computer must be the same account.
+
 ## Factory API base URL
 
 The Desktop Shell passes `FACTORY_API_BASE_URL` to the Daemon when the Settings page has a

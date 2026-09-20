@@ -5,6 +5,9 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  ExternalLink,
+  LogOut,
+  UserRound,
   RefreshCw,
   Server,
   Settings2,
@@ -26,9 +29,10 @@ import type {
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
-type Tab = 'general' | 'daemon' | 'remote'
+type Tab = 'account' | 'general' | 'daemon' | 'remote'
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
+  { id: 'account', label: 'Account', icon: UserRound },
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'daemon', label: 'Daemon', icon: Server },
   { id: 'remote', label: 'Remote Access', icon: Smartphone },
@@ -42,7 +46,7 @@ export function SettingsPage({
   onBack: () => void
 }) {
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<Tab>('general')
+  const [tab, setTab] = useState<Tab>('account')
   const settingsQuery = useQuery({ queryKey: SETTINGS_KEY, queryFn: () => bridge.get() })
   const pairingQuery = useQuery({ queryKey: PAIRING_KEY, queryFn: () => bridge.getPairing() })
 
@@ -109,6 +113,8 @@ export function SettingsPage({
           ) : null}
           {!snapshot || !pairing ? (
             <p className="text-sm text-muted-foreground">Loading settings…</p>
+          ) : tab === 'account' ? (
+            <AccountTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
           ) : tab === 'general' ? (
             <GeneralTab snapshot={snapshot} />
           ) : tab === 'daemon' ? (
@@ -173,6 +179,119 @@ function GeneralTab({ snapshot }: { snapshot: ShellSettingsSnapshot }) {
         description="Sessions, settings and the Factory API key live here. Phones connect to this computer through the Gateway; nothing is sent elsewhere."
       />
       <SettingRow title="About" description={`Droi ${snapshot.version}`} />
+    </>
+  )
+}
+
+function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
+  const [busy, setBusy] = useState(false)
+  const login = snapshot.login
+  const run = async (action: () => Promise<ShellSettingsSnapshot>) => {
+    setBusy(true)
+    try {
+      onSaved(await action())
+    } finally {
+      setBusy(false)
+    }
+  }
+  const mismatch =
+    login.status === 'signed-in' &&
+    snapshot.daemonIdentity !== null &&
+    snapshot.daemonIdentity.userId !== login.account.userId
+
+  return (
+    <>
+      {login.status === 'signed-in' ? (
+        <SettingRow
+          title="Signed in with Factory"
+          description={
+            <span className="font-mono text-xs">
+              {login.account.email ?? login.account.userId}
+              {login.account.orgId ? ` · ${login.account.orgId}` : ''}
+            </span>
+          }
+          control={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void run(() => bridge.signOut())}
+            >
+              <LogOut aria-hidden />
+              Sign out
+            </Button>
+          }
+        />
+      ) : login.status === 'pending' ? (
+        <SettingRow
+          title="Finish signing in"
+          description="Your browser opened Factory. Enter this code there if it asks for one."
+          control={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void run(() => bridge.cancelSignIn())}
+            >
+              Cancel
+            </Button>
+          }
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <code
+              aria-label="Sign-in code"
+              className="rounded-lg border bg-background px-3 py-1.5 font-mono text-base tracking-[0.2em]"
+            >
+              {login.pending.userCode}
+            </code>
+            <a
+              href={login.pending.verificationUriComplete}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm underline underline-offset-2"
+            >
+              Open the sign-in page again
+              <ExternalLink aria-hidden className="size-3.5" />
+            </a>
+          </div>
+        </SettingRow>
+      ) : (
+        <SettingRow
+          title="Sign in with Factory"
+          description="Uses the same login as the droid CLI. Droi then needs no API key; sessions and settings stay on this computer."
+          control={
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() => void run(() => bridge.signIn())}
+            >
+              Sign in
+            </Button>
+          }
+        >
+          {login.error ? (
+            <p role="alert" className="text-sm text-destructive-foreground">
+              {login.error}
+            </p>
+          ) : null}
+        </SettingRow>
+      )}
+      {mismatch ? (
+        <SettingRow
+          className="border border-amber-500/40"
+          title="The droid CLI is logged in as someone else"
+          description={`The Daemon runs as ${snapshot.daemonIdentity!.userId} (from droid login) while Droi is signed in as ${login.status === 'signed-in' ? login.account.userId : ''}. Sessions belong to the CLI's user, so run \`droid login\` with the same account or sign in here with that one.`}
+        />
+      ) : null}
+      {snapshot.daemonIdentity === null ? (
+        <SettingRow
+          title="The droid CLI is not logged in"
+          description="The Daemon signs in with the droid CLI's login on this computer. Run `droid login` in a terminal, or add a Factory API key under Daemon."
+        />
+      ) : null}
     </>
   )
 }

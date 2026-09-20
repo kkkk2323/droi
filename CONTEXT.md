@@ -15,7 +15,7 @@ The installed desktop application. It starts the Daemon, opens a window for the 
 _Avoid_: main process, backend, app
 
 **Gateway**:
-The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory API key so the key never leaves the computer.
+The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Shell's Factory login token, or an API key as fallback) so it never leaves the computer.
 _Avoid_: proxy, API server, Hono server, web server
 
 ### Clients
@@ -33,7 +33,7 @@ _Avoid_: mobile, web mode, browser mode, LAN mode
 
 **Pairing Token**:
 The secret a Remote Client presents to the Gateway to prove it was authorised from the Desktop Shell. There is one token, shown as a QR code and link in the Desktop Shell settings; resetting it revokes every Remote Client at once. The Local Client presents a separate per-launch token instead, so a reset never touches the desktop window.
-_Avoid_: API key (that is the Factory credential, which Clients never hold), device token
+_Avoid_: API key or login token (those are Factory credentials, which Clients never hold), device token
 
 **Remote Access**:
 The Desktop Shell setting that decides whether the Gateway accepts Remote Clients at all. Off by default.

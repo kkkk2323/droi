@@ -21,7 +21,7 @@ Droi is a desktop and mobile-web front end for the [Factory Droid](https://docs.
 - **Prompts** — approve or deny tool permissions and answer the agent's questions; when a Session is open on the desktop and on a phone, both see the prompt and the first answer wins.
 - **Per-Session settings** — model, reasoning effort and autonomy from the Daemon's own model list; rename and archive.
 - **New Sessions** — from a recent Workspace or a typed path, also from a phone.
-- **Phone access** — turn on Remote Access, scan the QR code, add Droi to your home screen. The phone talks to a Gateway on your computer; the Factory API key never leaves it.
+- **Phone access** — turn on Remote Access, scan the QR code, add Droi to your home screen. The phone talks to a Gateway on your computer; your Factory credentials never leave it.
 - **Local proxy support** — point the Daemon at a Factory API base URL such as a local `droid-proxy`.
 
 ## How it fits together
@@ -30,12 +30,12 @@ Droi is a desktop and mobile-web front end for the [Factory Droid](https://docs.
 phone browser ──┐
                 ├── Gateway (Desktop Shell) ── droid daemon (loopback)
 desktop window ─┘        │
-                    Pairing Token check, API key injection
+                    Pairing Token check, credential injection
 ```
 
 - **Daemon**: `droid daemon`, started and supervised by the Desktop Shell. Owns every Session.
 - **Desktop Shell**: the Electron app. Starts the Daemon, hosts the Gateway, opens the window. Holds no conversation state.
-- **Gateway**: checks the Pairing Token at the WebSocket upgrade, swaps in the Factory API key, forwards everything else verbatim. Listens on loopback; on LAN interfaces only while Remote Access is on.
+- **Gateway**: checks the Pairing Token at the WebSocket upgrade, swaps in your Factory login token (or an API key), forwards everything else verbatim. Listens on loopback; on LAN interfaces only while Remote Access is on.
 - **Client**: one React app served by the Gateway; the same bundle runs in the desktop window and on the phone.
 
 The vocabulary is in [CONTEXT.md](./CONTEXT.md); the decisions are in [docs/adr](./docs/adr).
@@ -43,7 +43,7 @@ The vocabulary is in [CONTEXT.md](./CONTEXT.md); the decisions are in [docs/adr]
 ## Requirements
 
 - [Droid CLI](https://docs.factory.ai) installed (`droid` on PATH or in `~/.local/bin`, or set the path in Settings)
-- A Factory API key that belongs to the user logged into `droid` on this computer
+- `droid login` done on this computer (the Daemon runs as that login); Droi signs in with the same account
 - Node.js 24+ and pnpm for development
 
 ## Getting started
@@ -53,9 +53,9 @@ pnpm install
 pnpm dev            # opens the Desktop Shell
 ```
 
-Open **Settings** (gear icon) to store your Factory API key, optionally set a Factory API base URL (for example a local `droid-proxy`), and turn on **Remote Access** to pair a phone.
+Open **Settings** (gear icon) → **Account** → **Sign in** (the same device-code login as `droid login`). Optionally set a Factory API base URL under **Daemon** (for example a local `droid-proxy`, which then rotates keys for the LLM calls), and turn on **Remote Access** to pair a phone.
 
-`FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
+A Factory API key (Settings → Daemon, or `FACTORY_API_KEY`) works as a fallback when you are not signed in; `FACTORY_API_BASE_URL` in the environment is honoured too.
 
 ## Development
 
