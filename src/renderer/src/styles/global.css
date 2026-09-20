@@ -157,7 +157,8 @@
 .app-drag button,
 .app-drag input,
 .app-drag select,
-.app-drag a {
+.app-drag a,
+.app-no-drag {
   -webkit-app-region: no-drag;
 }
 

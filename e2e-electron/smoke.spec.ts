@@ -49,6 +49,16 @@ test.describe.configure({ mode: 'serial' })
 test('the window opens and shows the Client served by the Gateway', async () => {
   await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeVisible()
   expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/?/)
+  // The pinned toggle floats over the window-drag strip and must still take clicks.
+  const toggle = page.getByRole('button', { name: 'Hide sidebar' })
+  const region = await toggle.evaluate((el) =>
+    getComputedStyle(el).getPropertyValue('-webkit-app-region'),
+  )
+  expect(region).toBe('no-drag')
+  await toggle.click()
+  await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeHidden()
+  await page.getByRole('button', { name: 'Show sidebar' }).click()
+  await expect(page.getByRole('navigation', { name: 'Sessions' })).toBeVisible()
   const hasBridge = await page.evaluate(() =>
     Boolean((window as unknown as { droiShell?: { settings?: unknown } }).droiShell?.settings),
   )

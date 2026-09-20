@@ -138,7 +138,8 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         <>
           <div
             className={cn(
-              'absolute top-0 z-20 flex h-11 items-center pt-[env(safe-area-inset-top)]',
+              // Floats over the drag strips, so it must opt out of window dragging itself.
+              'app-no-drag absolute top-0 z-20 flex h-11 items-center pt-[env(safe-area-inset-top)]',
               hasShellBridge ? 'left-[76px]' : 'left-2',
             )}
           >
