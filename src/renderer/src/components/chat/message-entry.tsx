@@ -79,7 +79,9 @@ export function MessageEntry({
             return <ToolCluster key={block.id} calls={block.calls} />
         }
       })}
-      {isStreaming ? (
+      {/* The caret follows text only; after a tool cluster it read as a stray
+          grey block, and the activity row below already says what is going on. */}
+      {isStreaming && entry.blocks.at(-1)?.kind === 'text' ? (
         <span
           aria-label="Assistant is typing"
           className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-foreground/60 align-middle"
