@@ -117,6 +117,8 @@ test.describe('sending from further up the transcript', () => {
     await pickSession(/Long/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
     await expect(transcript).toContainText('question 28')
+    // The list re-pins itself to the end shortly after opening; scroll up after that.
+    await page.waitForTimeout(300)
     await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
     await expect(transcript.getByText('question 28')).not.toBeInViewport()
 
