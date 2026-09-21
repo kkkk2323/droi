@@ -15,7 +15,7 @@ import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
-import { UpdateBanner } from './components/update-control'
+import { UpdateToast } from './components/update-control'
 import { Button } from './components/ui/button'
 import {
   lastSessionId,
@@ -208,7 +208,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
               bridge={window.droiShell.settings}
               onOpenSettings={() => go({ name: 'settings' })}
             />
-            <UpdateBanner
+            <UpdateToast
               bridge={window.droiShell.settings}
               onOpenSettings={() => go({ name: 'settings' })}
             />

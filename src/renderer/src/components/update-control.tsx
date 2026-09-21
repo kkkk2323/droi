@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownToLine, Loader2 } from 'lucide-react'
+import { ArrowDownToLine, Loader2, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type {
   ShellSettingsBridge,
@@ -82,11 +82,12 @@ function describe(update: UpdateState): string {
 }
 
 /**
- * Local Client only: a line under the header once a Release is waiting or
- * has been installed. Says nothing while checking or after a failure; the
- * About row carries those.
+ * Local Client only: a small card in the bottom-left corner once a Release is
+ * waiting, downloading or installed. Says nothing while checking or after a
+ * failure; the About row carries those. Closing it hides that one step; the
+ * card comes back when the update moves on (say, from downloading to ready).
  */
-export function UpdateBanner({
+export function UpdateToast({
   bridge,
   onOpenSettings,
 }: {
@@ -99,6 +100,7 @@ export function UpdateBanner({
     () => bridge.onChange(() => void queryClient.invalidateQueries({ queryKey: SETTINGS_KEY })),
     [bridge, queryClient],
   )
+  const [dismissed, setDismissed] = useState<string | null>(null)
   const update = settings.data?.update
   if (
     !update ||
@@ -106,37 +108,78 @@ export function UpdateBanner({
   ) {
     return null
   }
+  const step = `${update.status}:${update.version}`
+  if (dismissed === step) return null
   return (
-    <div role="status" className="flex items-center gap-3 border-b bg-card px-4 py-2 text-sm">
-      <ArrowDownToLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1">
-        {update.status === 'ready'
-          ? `Droi ${update.version} is installed and takes effect on the next launch.`
-          : update.status === 'downloading'
-            ? `Downloading Droi ${update.version}… ${update.percent}%`
-            : `Droi ${update.version} is available.`}
-      </span>
-      {update.status === 'ready' ? (
-        <Button size="sm" onClick={() => void bridge.relaunch()}>
-          Restart now
+    <div
+      role="status"
+      aria-label="Update"
+      className="animate-toast-in fixed bottom-4 left-4 z-50 w-72 rounded-lg border bg-popover p-3 text-sm shadow-lg"
+    >
+      <div className="flex items-start gap-2.5">
+        {update.status === 'ready' ? (
+          <RefreshCw aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ArrowDownToLine aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">
+            {update.status === 'ready'
+              ? `Droi ${update.version} is ready`
+              : update.status === 'downloading'
+                ? `Downloading Droi ${update.version}…`
+                : `Droi ${update.version} is available`}
+          </p>
+          {update.status === 'downloading' ? (
+            <div
+              role="progressbar"
+              aria-label="Download progress"
+              aria-valuenow={update.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted"
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-[width]"
+                style={{ width: `${update.percent}%` }}
+              />
+            </div>
+          ) : (
+            <div className="mt-2 flex items-center gap-1">
+              {update.status === 'ready' ? (
+                <Button size="sm" onClick={() => void bridge.relaunch()}>
+                  Restart now
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void bridge
+                        .installUpdate()
+                        .then((next) => queryClient.setQueryData(SETTINGS_KEY, next))
+                    }
+                  >
+                    Update
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={onOpenSettings}>
+                    Details
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          aria-label="Dismiss"
+          className="-mr-1 -mt-1 shrink-0"
+          onClick={() => setDismissed(step)}
+        >
+          <X aria-hidden />
         </Button>
-      ) : update.status === 'available' ? (
-        <>
-          <Button size="sm" variant="ghost" onClick={onOpenSettings}>
-            Details
-          </Button>
-          <Button
-            size="sm"
-            onClick={() =>
-              void bridge
-                .installUpdate()
-                .then((next) => queryClient.setQueryData(SETTINGS_KEY, next))
-            }
-          >
-            Update
-          </Button>
-        </>
-      ) : null}
+      </div>
     </div>
   )
 }

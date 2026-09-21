@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- An available, downloading or installed update shows as a small card in the bottom-left corner (close it to hide that step), instead of a line under the header.
+
 ## 1.1.0 - 2026-09-21
 
 ### Changed
