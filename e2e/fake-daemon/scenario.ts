@@ -66,7 +66,10 @@ export interface Scenario {
 }
 
 export function createScenario(input: ScenarioInput): Scenario {
-  const sessions = input.sessions ?? []
+  // Handlers mutate the fixtures (rename, archive, settings). Spec files
+  // declare theirs at module level, shared by every test in the worker, so
+  // each Fake Daemon works on its own copy.
+  const sessions = structuredClone(input.sessions ?? [])
   const handlers: Record<string, MethodHandler> = {
     'daemon.list_available_sessions': (params) => ({
       sessions: sessions
