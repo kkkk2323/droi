@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { parsePairingInput, savePairing } from '@/lib/client-config'
 import { useConnectionState } from '../daemon/connection-context'
-import type { ConnectionState } from '../daemon/connection'
+import { isStartingUp, type ConnectionState } from '../daemon/connection'
+
+/**
+ * How long the Daemon may take to come up before the startup wait turns into
+ * a warning. The Desktop Shell restarts a crashed Daemon with backoff, so a
+ * healthy launch is well inside this.
+ */
+const STARTUP_GRACE_MS = 20_000
 
 const LABELS: Record<ConnectionState['status'], string> = {
-  connecting: 'Connecting',
+  connecting: 'Starting',
   connected: 'Connected',
   reconnecting: 'Reconnecting',
   unpaired: 'Not paired',
@@ -23,22 +30,61 @@ const DOT_CLASS: Record<ConnectionState['status'], string> = {
 /** Compact indicator for the header; the full-width banner lives elsewhere. */
 export function ConnectionStatus() {
   const state = useConnectionState()
+  const starting = isStartingUp(state)
   return (
     <div
       role="status"
       aria-label="Connection"
       className="flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground"
     >
-      <span aria-hidden className={`size-1.5 rounded-full ${DOT_CLASS[state.status]}`} />
-      <span>{LABELS[state.status]}</span>
+      <span
+        aria-hidden
+        className={`size-1.5 rounded-full ${starting ? DOT_CLASS.connecting : DOT_CLASS[state.status]}`}
+      />
+      <span>{starting ? LABELS.connecting : LABELS[state.status]}</span>
     </div>
   )
 }
 
-/** Shown while the Client has lost the Daemon and is trying to get it back. */
+/** True once the Client has been waiting for its first connection longer than the grace period. */
+function useStartupOverdue(): boolean {
+  const [overdue, setOverdue] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setOverdue(true), STARTUP_GRACE_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  return overdue
+}
+
+/**
+ * Quiet startup: a breathing dot and one line where the content will appear,
+ * instead of a warning for a Daemon that is simply not up yet.
+ */
+export function StartingUp() {
+  return (
+    <div
+      role="status"
+      aria-label="Starting"
+      className="flex items-center justify-center gap-2.5 text-sm text-muted-foreground"
+    >
+      <span aria-hidden className="relative flex size-2">
+        <span className="absolute inset-0 animate-ping rounded-full bg-muted-foreground/40 [animation-duration:1.8s]" />
+        <span className="relative size-2 rounded-full bg-muted-foreground/70" />
+      </span>
+      Starting the Daemon
+    </div>
+  )
+}
+
+/**
+ * Shown while the Client has lost the Daemon and is trying to get it back.
+ * A Daemon that has never answered gets the grace period first.
+ */
 export function ReconnectingBanner() {
   const state = useConnectionState()
+  const overdue = useStartupOverdue()
   if (state.status !== 'reconnecting' && state.status !== 'unreachable') return null
+  if (isStartingUp(state) && !overdue) return null
   return (
     <div
       role="alert"

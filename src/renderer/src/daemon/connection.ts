@@ -22,7 +22,13 @@ export type ConnectionState =
   | { status: 'connected' }
   | { status: 'reconnecting' }
   | { status: 'unpaired'; reason: 'missing-token' | 'rejected-token' }
-  | { status: 'unreachable'; detail: string }
+  /** `initial`: never connected in this Client's lifetime, so the Daemon may just be starting. */
+  | { status: 'unreachable'; detail: string; initial: boolean }
+
+/** Before the first connection: the Desktop Shell is most likely still starting the Daemon. */
+export function isStartingUp(state: ConnectionState): boolean {
+  return state.status === 'connecting' || (state.status === 'unreachable' && state.initial)
+}
 
 export interface DaemonConnection {
   readonly controller: DaemonSessionController
@@ -62,6 +68,7 @@ export function createDaemonConnection(
   let state: ConnectionState = { status: 'connecting' }
   const listeners = new Set<() => void>()
   let disposed = false
+  let everConnected = false
   let recoveryTimer: ReturnType<typeof setTimeout> | null = null
 
   const setState = (next: ConnectionState) => {
@@ -98,7 +105,7 @@ export function createDaemonConnection(
       return
     }
     if (pairing === 'unreachable') {
-      setState({ status: 'unreachable', detail: 'Gateway not reachable' })
+      setState({ status: 'unreachable', detail: 'Gateway not reachable', initial: !everConnected })
       scheduleRecovery()
       return
     }
@@ -106,7 +113,7 @@ export function createDaemonConnection(
       await controller.attemptInitialConnection()
     } catch (error) {
       if (disposed) return
-      setState({ status: 'unreachable', detail: describe(error) })
+      setState({ status: 'unreachable', detail: describe(error), initial: !everConnected })
       scheduleRecovery()
     }
   }
@@ -122,6 +129,7 @@ export function createDaemonConnection(
   controller.on('connectionStatusChanged', (status) => {
     if (disposed) return
     if (status.transport === 'connected' && status.isAuthenticated) {
+      everConnected = true
       setState({ status: 'connected' })
       return
     }

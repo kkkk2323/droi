@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- While the Desktop Shell is still starting the Daemon, the Client shows a quiet "Starting the Daemon" wait in place of the content; the warning banner is kept for a connection that was lost, or a Daemon that has not answered after 20 seconds.
+
 ## 1.1.1 - 2026-09-21
 
 ### Changed

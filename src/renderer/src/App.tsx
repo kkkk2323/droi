@@ -2,12 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
 import { useConnectionState, useDaemonConnection } from './daemon/connection-context'
+import { isStartingUp } from './daemon/connection'
 import { foldContinued, groupByWorkspace, useSessionList, type SessionTag } from './daemon/sessions'
 
 const NO_TAGS: SessionTag[] = []
 import { recentWorkspaces } from './daemon/use-new-session'
 import { useWorkingSessionIds } from './daemon/use-working-sessions'
-import { ConnectionStatus, PairingFailed, ReconnectingBanner } from './components/connection-status'
+import {
+  ConnectionStatus,
+  PairingFailed,
+  ReconnectingBanner,
+  StartingUp,
+} from './components/connection-status'
 import { PageHeader } from './components/page-header'
 import { SessionSidebar } from './components/sidebar/session-sidebar'
 import { SidebarToggle } from './components/sidebar-toggle'
@@ -43,6 +49,7 @@ export function App() {
 function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [route, navigate] = useHashRoute()
   const { controller } = useDaemonConnection()
+  const startingUp = isStartingUp(useConnectionState())
   const narrow = useMediaQuery(NARROW)
   const [drawerRequested, setDrawerOpen] = useState(false)
   // A drawer only exists on narrow screens; widening the window closes it.
@@ -238,9 +245,13 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           <>
             <PageHeader leading={leading} title="" />
             <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              {narrow
-                ? 'Open the sessions list to pick a session.'
-                : 'Select a session, or start a new one.'}
+              {startingUp ? (
+                <StartingUp />
+              ) : narrow ? (
+                'Open the sessions list to pick a session.'
+              ) : (
+                'Select a session, or start a new one.'
+              )}
             </div>
           </>
         )}
