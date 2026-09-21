@@ -136,7 +136,7 @@ test.describe('session settings', () => {
     const archiveRequest = await fakeDaemon.waitForRequest('daemon.archive_session')
     expect(archiveRequest.params).toMatchObject({ sessionId: second.sessionId })
     // The open Session was the one archived, so the view goes home.
-    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
+    await expect(page.getByRole('region', { name: 'New session' })).toBeVisible()
     await drawerGone(page)
     sidebar = await openSidebar()
     await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
@@ -146,7 +146,7 @@ test.describe('session settings', () => {
     await sidebar.getByRole('button', { name: 'Settings' }).click()
     await page.getByRole('switch', { name: 'Show archived sessions' }).check()
     await page.getByRole('button', { name: 'Back' }).click()
-    await expect(page.getByText(/Select a session|Open the sessions list/)).toBeVisible()
+    await expect(page.getByRole('region', { name: 'New session' })).toBeVisible()
     sidebar = await openSidebar()
     const archived = sidebar.getByRole('button', { name: /Second session/ })
     await expect(archived).toBeVisible()

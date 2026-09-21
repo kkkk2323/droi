@@ -73,16 +73,25 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   // once the list confirms it still exists. Only the first list counts: going
   // home on purpose afterwards must stick.
   const [lastId] = usePreference(lastSessionId)
-  const launchRoute = useRef(route)
+  const [launchedHome] = useState(route.name === 'home')
+  const [homeByChoice, setHomeByChoice] = useState(false)
   const restored = useRef(false)
   useEffect(() => {
     if (restored.current || !sessions.data) return
     restored.current = true
-    if (launchRoute.current.name !== 'home' || !lastId) return
+    if (!launchedHome || !lastId) return
     if (sessions.data.some((s) => s.sessionId === lastId)) {
       navigate({ name: 'session', sessionId: lastId })
     }
-  }, [sessions.data, lastId, navigate])
+  }, [sessions.data, lastId, navigate, launchedHome])
+  // Home stays blank while that restore is pending (list loading, or the
+  // hash change on its way), so nothing paints that the Session replaces.
+  const restoring =
+    route.name === 'home' &&
+    launchedHome &&
+    !homeByChoice &&
+    lastId !== null &&
+    (sessions.data?.some((s) => s.sessionId === lastId) ?? true)
   useEffect(() => {
     if (selectedId) lastSessionId.set(selectedId)
   }, [selectedId])
@@ -102,6 +111,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
 
   // Picking anything in the drawer is the end of the drawer's job.
   const go = (next: Route) => {
+    if (next.name === 'home') setHomeByChoice(true)
     navigate(next)
     setDrawerOpen(false)
   }
@@ -222,15 +232,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           </>
         ) : null}
         <ReconnectingBanner />
-        {route.name === 'new' ? (
-          <NewSessionPage
-            key={route.workspace ?? ''}
-            recent={recent}
-            initialWorkspace={route.workspace ?? null}
-            onCreated={(sessionId) => go({ name: 'session', sessionId })}
-            header={<PageHeader leading={leading} title="New session" />}
-          />
-        ) : selectedId ? (
+        {selectedId ? (
           <SessionView
             key={selectedId}
             sessionId={selectedId}
@@ -241,19 +243,24 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             onContinued={(sessionId) => go({ name: 'session', sessionId })}
             leading={leading}
           />
-        ) : (
+        ) : startingUp || restoring ? (
+          // Home with nothing to show yet: the Daemon is coming up, or the last
+          // Session is about to be reopened. Anything else here would flash.
           <>
             <PageHeader leading={leading} title="" />
-            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              {startingUp ? (
-                <StartingUp />
-              ) : narrow ? (
-                'Open the sessions list to pick a session.'
-              ) : (
-                'Select a session, or start a new one.'
-              )}
+            <div className="flex flex-1 items-center justify-center px-6">
+              {startingUp ? <StartingUp /> : null}
             </div>
           </>
+        ) : (
+          // Home is a new Session: there is nothing to pick until one exists.
+          <NewSessionPage
+            key={route.name === 'new' ? (route.workspace ?? '') : ''}
+            recent={recent}
+            initialWorkspace={route.name === 'new' ? (route.workspace ?? null) : null}
+            onCreated={(sessionId) => go({ name: 'session', sessionId })}
+            header={<PageHeader leading={leading} title="New session" />}
+          />
         )}
       </main>
       {narrow ? null : (

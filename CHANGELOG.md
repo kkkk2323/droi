@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- The home view is the New session page; the "Select a session" placeholder is gone. Launch still reopens the last Session, and archiving the open Session or leaving Settings lands on New session.
+
 ## 1.1.2 - 2026-09-21
 
 ### Changed
