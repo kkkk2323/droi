@@ -30,7 +30,7 @@ export interface LoginPending {
 export type LoginState =
   | { status: 'signed-out'; error: string | null }
   | { status: 'pending'; pending: LoginPending }
-  | { status: 'signed-in'; account: FactoryAccount }
+  | { status: 'signed-in'; account: FactoryAccount; source: 'droi' }
 
 interface StoredLogin {
   accessToken: string
@@ -69,7 +69,7 @@ export function createFactoryAuth(options: FactoryAuthOptions): FactoryAuth {
 
   let login = parseStored(options.load())
   let state: LoginState = login
-    ? { status: 'signed-in', account: login.account }
+    ? { status: 'signed-in', account: login.account, source: 'droi' }
     : { status: 'signed-out', error: null }
   let pollAbort: AbortController | null = null
   let refreshing: Promise<string | null> | null = null
@@ -134,7 +134,7 @@ export function createFactoryAuth(options: FactoryAuthOptions): FactoryAuth {
             refreshToken: tokens.refresh_token,
             account,
           })
-          setState({ status: 'signed-in', account })
+          setState({ status: 'signed-in', account, source: 'droi' })
           return
         }
         const error = parseError(text)
@@ -229,7 +229,7 @@ export function createFactoryAuth(options: FactoryAuthOptions): FactoryAuth {
     pollAbort = null
     setState(
       login
-        ? { status: 'signed-in', account: login.account }
+        ? { status: 'signed-in', account: login.account, source: 'droi' }
         : { status: 'signed-out', error: null },
     )
   }

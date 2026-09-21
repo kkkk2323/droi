@@ -4,7 +4,6 @@
 import { app, BrowserWindow, ipcMain, Menu, net, safeStorage, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 // Electron's fs treats .asar files as directories; original-fs sees the file.
 import * as originalFs from 'original-fs'
 import { homedir } from 'node:os'
@@ -12,6 +11,7 @@ import { dirname, join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
 import { locateDroid } from './daemon/locate-droid'
+import { createCliLoginReader, readRegistration, type CliLoginReader } from './cli-login'
 import { createFactoryAuth, type FactoryAuth } from './factory-auth'
 import {
   startGateway,
@@ -25,6 +25,7 @@ import { createUpdater, type Updater } from './updater'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
+  type LoginState,
   type PairingInfo,
   type ShellSettingsPatch,
   type ShellSettingsSnapshot,
@@ -40,6 +41,7 @@ const localToken = randomBytes(24).toString('base64url')
 // Both need Electron to be ready.
 let settings: ShellSettingsStore
 let auth: FactoryAuth
+let cliLogin: CliLoginReader
 let daemon: DaemonSupervisor
 let gateway: Gateway | null = null
 let updater: Updater
@@ -76,33 +78,30 @@ function factoryApiBaseUrl(): string {
   )
 }
 
+/** The `droid` CLI's home; the Daemon reads its login and registration from here. */
+function factoryHome(): string {
+  return process.env['FACTORY_HOME_OVERRIDE'] ?? join(homedir(), '.factory')
+}
+
 /**
- * What the Gateway authenticates Clients with. The Factory login comes first;
+ * What the Gateway authenticates Clients with. A sign-in done in Droi comes
+ * first, then the `droid` CLI's own login (the Daemon runs as it anyway), and
  * an API key (stored or FACTORY_API_KEY) is the fallback for automation.
  */
 async function gatewayCredential(): Promise<GatewayCredential | null> {
   const token = await auth.getAccessToken()
   if (token) return { token }
+  const cli = await cliLogin.read()
+  if (cli) return { token: cli.accessToken }
   const apiKey = settings.getApiKey()
   return apiKey ? { apiKey } : null
 }
 
-/** The `droid` CLI's login on this computer, which is who the Daemon runs as. */
-function daemonIdentity(): ShellSettingsSnapshot['daemonIdentity'] {
-  const factoryHome = process.env['FACTORY_HOME_OVERRIDE'] ?? join(homedir(), '.factory')
-  try {
-    const host = JSON.parse(readFileSync(join(factoryHome, 'host.json'), 'utf8')) as {
-      computerRegistration?: { userId?: unknown; firestoreOrgId?: unknown }
-    }
-    const registration = host.computerRegistration
-    if (typeof registration?.userId !== 'string') return null
-    return {
-      userId: registration.userId,
-      orgId: typeof registration.firestoreOrgId === 'string' ? registration.firestoreOrgId : null,
-    }
-  } catch {
-    return null
-  }
+/** Droi's own sign-in when there is one, else the CLI's login. */
+async function loginState(): Promise<LoginState> {
+  if (auth.state.status !== 'signed-out') return auth.state
+  const cli = await cliLogin.read()
+  return cli ? { status: 'signed-in', account: cli.account, source: 'cli' } : auth.state
 }
 
 function createDaemonSupervisor(): DaemonSupervisor {
@@ -205,12 +204,13 @@ function buildMenu(): Menu {
   ])
 }
 
-function snapshot(): ShellSettingsSnapshot {
+async function snapshot(): Promise<ShellSettingsSnapshot> {
   const fromEnv = Boolean(process.env['FACTORY_API_KEY'])
+  const login = await loginState()
   return {
-    login: auth.state,
-    daemonIdentity: daemonIdentity(),
-    hasCredential: auth.state.status === 'signed-in' || settings.getApiKey() !== null,
+    login,
+    daemonIdentity: readRegistration(factoryHome()),
+    hasCredential: login.status === 'signed-in' || settings.getApiKey() !== null,
     remoteAccess: settings.settings.remoteAccess,
     droidPath: settings.settings.droidPath,
     factoryApiBaseUrl: settings.settings.factoryApiBaseUrl,
@@ -324,6 +324,7 @@ void app.whenReady().then(async () => {
     save: (serialized) => settings.setLogin(serialized),
     factoryApiBaseUrl: factoryApiBaseUrl(),
   })
+  cliLogin = createCliLoginReader({ factoryHome: factoryHome() })
   daemon = createDaemonSupervisor()
   updater = createShellUpdater()
   updater.on('change', broadcastChange)

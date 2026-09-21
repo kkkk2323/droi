@@ -15,11 +15,15 @@ export interface LoginPending {
   expiresAt: number
 }
 
-/** "Sign in with Factory": the same device flow as `droid login`. */
+/**
+ * Who the Gateway authenticates Clients as. `droi` is a "Sign in with Factory"
+ * done in the app (the same device flow as `droid login`); `cli` reuses the
+ * `droid` CLI's own login from ~/.factory, which needs no sign-in here.
+ */
 export type LoginState =
   | { status: 'signed-out'; error: string | null }
   | { status: 'pending'; pending: LoginPending }
-  | { status: 'signed-in'; account: FactoryAccount }
+  | { status: 'signed-in'; account: FactoryAccount; source: 'droi' | 'cli' }
 
 /**
  * Where the in-app update stands. The Shell swaps its own `app.asar` for the

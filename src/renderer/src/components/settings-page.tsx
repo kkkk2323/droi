@@ -267,6 +267,7 @@ function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
   }
   const mismatch =
     login.status === 'signed-in' &&
+    login.source === 'droi' &&
     snapshot.daemonIdentity !== null &&
     snapshot.daemonIdentity.userId !== login.account.userId
 
@@ -274,7 +275,11 @@ function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
     <>
       {login.status === 'signed-in' ? (
         <SettingRow
-          title="Signed in with Factory"
+          title={
+            login.source === 'cli'
+              ? 'Signed in with the droid CLI’s login'
+              : 'Signed in with Factory'
+          }
           description={
             <span className="font-mono text-xs">
               {login.account.email ?? login.account.userId}
@@ -282,18 +287,37 @@ function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
             </span>
           }
           control={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => void run(() => bridge.signOut())}
-            >
-              <LogOut aria-hidden />
-              Sign out
-            </Button>
+            login.source === 'cli' ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void run(() => bridge.signIn())}
+              >
+                Sign in as someone else
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void run(() => bridge.signOut())}
+              >
+                <LogOut aria-hidden />
+                Sign out
+              </Button>
+            )
           }
-        />
+        >
+          {login.source === 'cli' ? (
+            <p className="text-sm text-muted-foreground">
+              Reused from ~/.factory, the same login the Daemon runs as. Run `droid logout` in a
+              terminal to drop it.
+            </p>
+          ) : null}
+        </SettingRow>
       ) : login.status === 'pending' ? (
         <SettingRow
           title="Finish signing in"

@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- The Desktop Shell reuses the `droid` CLI's login from `~/.factory` (the same login the Daemon runs as), so opening Droi needs no sign-in of its own. Sign in with Factory in Settings only to use a different account; an API key remains the fallback.
+
 ## 1.0.0 - 2026-09-20
 
 ### Upgrading

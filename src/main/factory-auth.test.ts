@@ -89,6 +89,7 @@ describe('factory auth', () => {
     expect(auth.state).toEqual({
       status: 'signed-in',
       account: { userId: 'user_01FACTORY', orgId: 'firestoreOrg', email: null },
+      source: 'droi',
     })
     expect(store.value).toContain('rt_1')
     expect(await auth.getAccessToken()).toMatch(/^eyJ/)
