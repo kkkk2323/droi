@@ -131,6 +131,18 @@ export function toolInputText(call: ToolCall): string {
   return path ?? JSON.stringify(input, null, 2)
 }
 
+/**
+ * What a permission Prompt shows of the tool it asks about: the Daemon's
+ * details (the full command, the file) first, else the tool's input.
+ */
+export function permissionDetail(details: unknown, input: Record<string, unknown>): string {
+  const d = (details ?? {}) as Record<string, unknown>
+  if (typeof d['fullCommand'] === 'string') return `$ ${d['fullCommand']}`
+  if (typeof d['filePath'] === 'string') return d['filePath']
+  if (typeof input['command'] === 'string') return `$ ${input['command']}`
+  return JSON.stringify(input)
+}
+
 /** The result's text and how it reads, for the row and its detail. */
 export function readToolResult(call: ToolCall) {
   const result = toolResultText(call.result)

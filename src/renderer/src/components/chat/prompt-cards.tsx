@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
 import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { permissionDetail } from '@droi/daemon-layer/tool-calls'
 import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
 import { cn } from '@/lib/utils'
 
@@ -65,7 +66,7 @@ export function PermissionCard({
             key={use.toolUse.id}
             className="rounded-lg bg-card px-2.5 py-1.5 font-mono text-xs leading-5 break-all"
           >
-            <ToolDetails details={use.details} input={use.toolUse.input} />
+            {permissionDetail(use.details, use.toolUse.input)}
           </li>
         ))}
       </ul>
@@ -96,14 +97,6 @@ export function PermissionCard({
       </div>
     </section>
   )
-}
-
-function ToolDetails({ details, input }: { details: unknown; input: Record<string, unknown> }) {
-  const d = details as Record<string, unknown>
-  if (typeof d['fullCommand'] === 'string') return <>$ {d['fullCommand']}</>
-  if (typeof d['filePath'] === 'string') return <>{d['filePath']}</>
-  if (typeof input['command'] === 'string') return <>$ {input['command']}</>
-  return <>{JSON.stringify(input)}</>
 }
 
 /**

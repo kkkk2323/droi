@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createdFileDiff, parseDiffResult, parseStatusResult } from './tool-calls'
+import { createdFileDiff, parseDiffResult, parseStatusResult, permissionDetail } from './tool-calls'
 import type { ToolCall } from './transcript'
 
 describe('parseStatusResult', () => {
@@ -73,5 +73,22 @@ describe('createdFileDiff', () => {
   test('is null for other tools and for a Create without content', () => {
     expect(createdFileDiff(call('Edit', { content: 'x' }))).toBeNull()
     expect(createdFileDiff(call('Create', { file_path: 'a.ts' }))).toBeNull()
+  })
+})
+
+describe('permissionDetail', () => {
+  test('shows the full command the Daemon worked out, before the raw input', () => {
+    expect(permissionDetail({ fullCommand: 'npm test -- --watch' }, { command: 'npm test' })).toBe(
+      '$ npm test -- --watch',
+    )
+  })
+
+  test('shows the file an edit touches', () => {
+    expect(permissionDetail({ filePath: '/w/a.ts' }, { file_path: '/w/a.ts' })).toBe('/w/a.ts')
+  })
+
+  test('falls back to the input: its command, else all of it', () => {
+    expect(permissionDetail(undefined, { command: 'ls' })).toBe('$ ls')
+    expect(permissionDetail(null, { url: 'https://x' })).toBe('{"url":"https://x"}')
   })
 })

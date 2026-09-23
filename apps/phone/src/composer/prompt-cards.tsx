@@ -3,6 +3,7 @@
 // line for an answer of one's own, or cancelled. Whichever Client answers
 // first wins, and the card goes everywhere.
 import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
+import { permissionDetail } from '@droi/daemon-layer/tool-calls'
 import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
 import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react-native'
 import { useState } from 'react'
@@ -79,7 +80,7 @@ function PermissionCard({
           mono
           style={[styles.detail, { backgroundColor: colors.card }]}
         >
-          {toolDetails(use.details, use.toolUse.input)}
+          {permissionDetail(use.details, use.toolUse.input)}
         </Text>
       ))}
       <View style={styles.options}>
@@ -115,14 +116,6 @@ function PermissionCard({
       </View>
     </View>
   )
-}
-
-function toolDetails(details: unknown, input: Record<string, unknown>): string {
-  const d = (details ?? {}) as Record<string, unknown>
-  if (typeof d['fullCommand'] === 'string') return `$ ${d['fullCommand']}`
-  if (typeof d['filePath'] === 'string') return d['filePath']
-  if (typeof input['command'] === 'string') return `$ ${input['command']}`
-  return JSON.stringify(input)
 }
 
 type Answers = Array<{ index: number; question: string; answer: string }>
