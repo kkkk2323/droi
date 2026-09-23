@@ -17,9 +17,10 @@ import {
   usePreference,
 } from '@droi/daemon-layer/local-preference'
 import { useSessionActivity, type SessionActivity } from '@droi/daemon-layer/use-session-activity'
-import { ChevronDown, Pin, Plus, Settings, SquarePen } from 'lucide-react-native'
+import { ChevronDown, CircleAlert, Pin, Plus, Settings, SquarePen } from 'lucide-react-native'
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { Spinner } from '../ui/activity'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { selectedComputerId, type PairedComputer } from '../computers/store'
 import type { ComputerSessions } from './use-computer-sessions'
@@ -429,15 +430,19 @@ function ActivityMark({ activity }: { activity: SessionActivity | undefined }) {
   const colors = useColors()
   if (activity === 'working') {
     return (
-      <View role="status" aria-label="Working">
-        <ActivityIndicator size="small" color={colors.mutedForeground} />
+      <View role="status" aria-label="Working" style={styles.mark}>
+        <Spinner size={12} color={colors.working} />
+        <Text size="xs" style={{ color: colors.working }}>
+          Working
+        </Text>
       </View>
     )
   }
   if (activity === 'needs-input') {
     return (
-      <View role="status" aria-label="Needs input">
-        <Text size="xs" weight="medium" style={{ color: colors.attention }}>
+      <View role="status" aria-label="Needs input" style={styles.mark}>
+        <CircleAlert size={12} color={colors.attention} strokeWidth={2} />
+        <Text size="xs" style={{ color: colors.attention }}>
           Needs input
         </Text>
       </View>
@@ -513,4 +518,5 @@ const styles = StyleSheet.create({
   },
   title: { flex: 1 },
   unread: { width: 6, height: 6, borderRadius: 3 },
+  mark: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 })

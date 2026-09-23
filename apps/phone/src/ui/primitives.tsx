@@ -2,7 +2,6 @@
 import type { LucideIcon } from 'lucide-react-native'
 import type { ReactNode } from 'react'
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text as RNText,
@@ -12,6 +11,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native'
+import { Spinner } from './activity'
 import { useTextScale } from './text-scale'
 import { fontSize, fonts, radius, space } from './theme'
 import { useColors } from './use-colors'
@@ -152,7 +152,7 @@ export function Button({
         style,
       ]}
     >
-      {busy ? <ActivityIndicator size="small" color={foreground} /> : null}
+      {busy ? <Spinner size={16} color={foreground} /> : null}
       <Text weight="medium" style={{ color: foreground }}>
         {label}
       </Text>

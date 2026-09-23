@@ -26,10 +26,11 @@ const light = {
   sidebarBorder: '#dedede',
   code: '#af2938',
   codeBackground: '#f0f0f0',
-  // Status only: Tailwind's emerald-600 and amber-600, as the web Client uses
-  // them, and sky-500 for the unread dot.
+  // Status only, as the web Client uses them: emerald-600, amber-600, sky-600
+  // for Working, and sky-500 for the unread dot.
   success: '#009966',
   attention: '#dd7400',
+  working: '#0084d1',
   unread: '#00a6f4',
   backdrop: 'rgba(0, 0, 0, 0.3)',
 }
@@ -58,9 +59,10 @@ const dark: Colors = {
   sidebarBorder: '#242424',
   code: '#fb9797',
   codeBackground: '#262626',
-  // Tailwind's emerald-400, amber-400 and sky-500.
+  // Tailwind's emerald-400, amber-400, sky-400 and sky-500.
   success: '#00d492',
   attention: '#ffb900',
+  working: '#00bcff',
   unread: '#00a6f4',
   backdrop: 'rgba(0, 0, 0, 0.5)',
 }

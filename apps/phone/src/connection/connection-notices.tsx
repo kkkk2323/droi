@@ -8,7 +8,8 @@ import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
 import { X } from 'lucide-react-native'
 import type { ReactNode } from 'react'
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, View } from 'react-native'
+import { PulsingDot, Spinner } from '../ui/activity'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { PairingForm } from '../computers/pairing-form'
 import type { PairedComputer } from '../computers/store'
@@ -85,7 +86,7 @@ function Unreachable({ computer }: { computer: PairedComputer }) {
         <Check>The computer is awake and Droi is running.</Check>
       </View>
       <View style={styles.retrying}>
-        <ActivityIndicator size="small" color={colors.mutedForeground} />
+        <Spinner size={14} color={colors.mutedForeground} />
         <Text tone="muted" size="sm">
           Trying again…
         </Text>
@@ -131,7 +132,7 @@ function Notices({ computer, reconnecting }: { computer: PairedComputer; reconne
           aria-label="Reconnecting"
           style={[styles.banner, { backgroundColor: colors.popover, borderColor: colors.border }]}
         >
-          <ActivityIndicator size="small" color={colors.mutedForeground} />
+          <PulsingDot color={colors.attention} />
           <Text size="sm">Reconnecting…</Text>
         </View>
       ) : null}

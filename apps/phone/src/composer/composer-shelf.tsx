@@ -19,7 +19,8 @@ import {
   X,
 } from 'lucide-react-native'
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { Spinner } from '../ui/activity'
 import Svg, { Circle as SvgCircle } from 'react-native-svg'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
@@ -111,8 +112,7 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
   const colors = useColors()
   if (status === 'completed')
     return <CircleCheck size={14} color={colors.success} strokeWidth={2} />
-  if (status === 'in_progress')
-    return <ActivityIndicator size="small" color={colors.mutedForeground} />
+  if (status === 'in_progress') return <Spinner size={14} color={colors.working} />
   return <Circle size={14} color={colors.mutedForeground} strokeWidth={1.5} />
 }
 

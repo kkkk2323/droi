@@ -11,7 +11,6 @@ import {
 import { ArrowDown } from 'lucide-react-native'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -20,6 +19,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native'
+import { BouncingDots } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
@@ -146,7 +146,7 @@ export function TranscriptView({
           <View role="status" aria-label="Session activity" style={styles.activity}>
             {activity ? (
               <>
-                <ActivityIndicator size="small" color={colors.mutedForeground} />
+                <BouncingDots color={colors.mutedForeground} />
                 <Text tone="muted" size="sm">
                   {activity}
                 </Text>

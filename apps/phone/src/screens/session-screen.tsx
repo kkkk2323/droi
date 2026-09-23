@@ -14,14 +14,8 @@ import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
 import { useEffect, useMemo, useState } from 'react'
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native'
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Spinner } from '../ui/activity'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Composer, type Submission } from '../composer/composer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
@@ -95,7 +89,7 @@ export function SessionScreen({
     </Text>
   ) : earlierViews.some((v) => v.loadState !== LOAD_STATE.loaded) ? (
     <View style={styles.leadRow}>
-      <ActivityIndicator size="small" color={colors.mutedForeground} />
+      <Spinner size={14} color={colors.mutedForeground} />
       <Text tone="muted" size="xs">
         Loading earlier messages…
       </Text>
@@ -127,7 +121,7 @@ export function SessionScreen({
           </Text>
         ) : !loaded && view.messages.length === 0 ? (
           <View style={styles.loading}>
-            <ActivityIndicator size="small" color={colors.mutedForeground} />
+            <Spinner size={16} color={colors.mutedForeground} />
             <Text tone="muted" size="sm">
               Loading session…
             </Text>

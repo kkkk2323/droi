@@ -24,7 +24,8 @@ import {
   type LucideIcon,
 } from 'lucide-react-native'
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Spinner } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
@@ -57,7 +58,7 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
         onPress={() => setOpen(!open)}
         style={styles.clusterHeader}
       >
-        {pending > 0 ? <ActivityIndicator size="small" color={colors.mutedForeground} /> : null}
+        {pending > 0 ? <Spinner size={12} color={colors.mutedForeground} /> : null}
         <Text tone="muted" size="xs" weight="medium">
           {pending > 0 ? `Running ${what}` : `Used ${what}`}
         </Text>
@@ -117,7 +118,7 @@ function ToolRow({ call }: { call: ToolCall }) {
         ) : null}
         {pending ? (
           <View role="status" aria-label="Running">
-            <ActivityIndicator size="small" color={colors.mutedForeground} />
+            <Spinner size={14} color={colors.mutedForeground} />
           </View>
         ) : isError ? (
           <View role="img" aria-label="Failed">
