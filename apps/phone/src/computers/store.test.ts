@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import {
   mergeComputer,
   pairedComputers,
+  removeComputer,
+  sessionSummaries,
   savePairing,
   selectedComputer,
   selectedComputerId,
@@ -59,5 +61,30 @@ describe('Paired Computer store', () => {
   test('the selection falls back to the first computer', () => {
     expect(selectedComputer([home], 'gone')).toEqual(home)
     expect(selectedComputer([], null)).toBeNull()
+  })
+})
+
+describe('removing a computer', () => {
+  test('forgets its token and summary and selects another', async () => {
+    const keychain = fakeKeychain()
+    const office = { id: 'c-office', name: 'Office', address: 'http://10.0.0.5:41417' }
+    await savePairing({ ...home, token: 'a' }, keychain)
+    await savePairing({ ...office, token: 'b' }, keychain)
+    sessionSummaries('c-office').set([
+      {
+        sessionId: 's',
+        title: 'T',
+        cwd: '/x',
+        repoRoot: null,
+        updatedAt: 1,
+        archivedAt: null,
+        parentId: null,
+      },
+    ])
+    await removeComputer('c-office', keychain)
+    expect(pairedComputers.get()).toEqual([home])
+    expect(selectedComputerId.get()).toBe('c-home')
+    expect(keychain.secrets.has(tokenKey('c-office'))).toBe(false)
+    expect(sessionSummaries('c-office').get()).toEqual([])
   })
 })

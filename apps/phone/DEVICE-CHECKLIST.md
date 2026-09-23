@@ -22,3 +22,7 @@ Droi on the computer must be a build with the computer name and id in its
 - [ ] Pasting the pairing link from Droi → Settings → Remote Access asks for
       local network access once, with Droi's explanation, then connects.
 - [ ] The drawer shows the computer's name and its Sessions by Workspace.
+- [ ] Scan QR code asks for the camera once and pairs from the code in
+      Droi → Settings → Remote Access.
+- [ ] After `pnpm install:phone` again, the Paired Computers are still there
+      and connect without pairing again (the tokens live in the keychain).

@@ -5,47 +5,51 @@ import {
   foldContinued,
   groupByWorkspace,
   OLDER_BATCH,
-  useSessionList,
   visibleSessions,
-  type SessionSummary,
   type WorkspaceGroup,
 } from '@droi/daemon-layer/sessions'
 import {
   pinnedSessions,
   pinnedWorkspaces,
-  showArchivedSessions,
   usePreference,
 } from '@droi/daemon-layer/local-preference'
 import { useSessionActivity, type SessionActivity } from '@droi/daemon-layer/use-session-activity'
-import { Settings, SquarePen } from 'lucide-react-native'
+import { ChevronDown, Plus, Settings, SquarePen } from 'lucide-react-native'
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { selectedComputerId, type PairedComputer } from '../computers/store'
+import type { ComputerSessions } from './use-computer-sessions'
 import { IconButton, Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
 export function SessionList({
-  computerName,
+  computer,
+  computers,
+  sessions,
   selectedId,
   onSelect,
   onNewSession,
   onSettings,
+  onAddComputer,
 }: {
-  computerName: string
+  computer: PairedComputer
+  computers: readonly PairedComputer[]
+  sessions: ComputerSessions
   selectedId: string | null
-  onSelect: (session: SessionSummary) => void
+  onSelect: (sessionId: string) => void
   onNewSession: () => void
   onSettings: () => void
+  onAddComputer: () => void
 }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
-  const [showArchived] = usePreference(showArchivedSessions)
-  const sessions = useSessionList({ includeArchived: showArchived })
+  const [switching, setSwitching] = useState(false)
   const activity = useSessionActivity()
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
-  const groups = groupByWorkspace(foldContinued(sessions.data ?? []), {
+  const groups = groupByWorkspace(foldContinued(sessions.sessions), {
     workspaces: new Set(pinnedGroups),
     sessions: new Set(pinnedIds),
   })
@@ -57,14 +61,55 @@ export function SessionList({
       style={[styles.panel, { backgroundColor: colors.sidebar, paddingTop: insets.top }]}
     >
       <View style={styles.header}>
-        <View style={styles.computer}>
-          <Text weight="semibold" numberOfLines={1}>
-            {computerName}
-          </Text>
+        <Pressable
+          role="button"
+          aria-label={`Switch computer, ${computer.name}`}
+          aria-expanded={switching}
+          onPress={() => setSwitching(!switching)}
+          style={styles.computer}
+        >
+          <View style={styles.computerName}>
+            <Text weight="semibold" numberOfLines={1} style={styles.shrink}>
+              {computer.name}
+            </Text>
+            <ChevronDown size={14} color={colors.mutedForeground} strokeWidth={2} />
+          </View>
           <ConnectionLine />
-        </View>
+        </Pressable>
         <IconButton label="Settings" icon={Settings} onPress={onSettings} />
       </View>
+      {switching ? (
+        <View role="menu" aria-label="Computers" style={styles.switcher}>
+          {computers
+            .filter((c) => c.id !== computer.id)
+            .map((c) => (
+              <Pressable
+                key={c.id}
+                role="menuitem"
+                onPress={() => selectedComputerId.set(c.id)}
+                style={({ pressed }) => [
+                  styles.switcherRow,
+                  pressed ? { backgroundColor: colors.sidebarAccent } : null,
+                ]}
+              >
+                <Text size="sm" numberOfLines={1}>
+                  {c.name}
+                </Text>
+              </Pressable>
+            ))}
+          <Pressable
+            role="menuitem"
+            onPress={onAddComputer}
+            style={({ pressed }) => [
+              styles.switcherRow,
+              pressed ? { backgroundColor: colors.sidebarAccent } : null,
+            ]}
+          >
+            <Plus size={16} color={colors.mutedForeground} strokeWidth={1.75} />
+            <Text size="sm">Add a computer</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <Pressable
         role="button"
         onPress={onNewSession}
@@ -85,7 +130,7 @@ export function SessionList({
             {sessions.error.message}
           </Text>
         ) : null}
-        {!sessions.isPending && groups.length === 0 && !sessions.error ? (
+        {!sessions.isPending && sessions.live && groups.length === 0 && !sessions.error ? (
           <Text tone="muted" size="xs" style={styles.empty}>
             No sessions yet.
           </Text>
@@ -141,7 +186,7 @@ function WorkspaceSection({
   selectedId: string | null
   activity: ReadonlyMap<string, SessionActivity>
   pinned: ReadonlySet<string>
-  onSelect: (session: SessionSummary) => void
+  onSelect: (sessionId: string) => void
 }) {
   const colors = useColors()
   const [revealed, setRevealed] = useState(0)
@@ -165,7 +210,7 @@ function WorkspaceSection({
             key={session.sessionId}
             role="button"
             aria-current={selected ? 'page' : undefined}
-            onPress={() => onSelect(session)}
+            onPress={() => onSelect(session.sessionId)}
             style={({ pressed }) => [
               styles.row,
               selected || pressed ? { backgroundColor: colors.sidebarAccent } : null,
@@ -224,6 +269,17 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
   },
   computer: { flex: 1, minWidth: 0 },
+  computerName: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  shrink: { flexShrink: 1 },
+  switcher: { marginHorizontal: space.sm, marginBottom: space.sm },
+  switcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 36,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.lg,
+  },
   newSession: {
     flexDirection: 'row',
     alignItems: 'center',

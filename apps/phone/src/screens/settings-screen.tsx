@@ -1,15 +1,20 @@
-// Settings: for now the app's version and how long its signature has left.
+// Settings: the Paired Computers, and the app's version and signature.
+import { usePreference } from '@droi/daemon-layer/local-preference'
 import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { useRouter } from 'expo-router'
+import { ScrollView, StyleSheet } from 'react-native'
+import { pairedComputers } from '../computers/store'
 import { daysLeft } from '../lib/signature'
 import { signatureExpiry } from '../platform/signature'
-import { Text } from '../ui/primitives'
-import { radius, space } from '../ui/theme'
+import { ListRow, ListSection } from '../ui/list'
+import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
 export function SettingsScreen() {
   const colors = useColors()
+  const router = useRouter()
+  const [computers] = usePreference(pairedComputers)
   const expiry = useQuery({ queryKey: ['signature-expiry'], queryFn: signatureExpiry })
   const version = Constants.expoConfig?.version ?? 'unknown'
 
@@ -28,40 +33,24 @@ export function SettingsScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
     >
-      <Text tone="muted" size="sm" weight="medium" accessibilityRole="header">
-        About
-      </Text>
-      <View style={[styles.group, { backgroundColor: colors.card }]}>
-        <Row label="Version" value={version} />
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <Row label="Signature" value={signature} />
-      </View>
-      <Text tone="muted" size="sm">
-        The app is signed with a free Apple account for seven days. Run pnpm install:phone on the
-        computer with the iPhone connected to sign and install it again.
-      </Text>
+      <ListSection>
+        <ListRow
+          label="Paired computers"
+          value={String(computers.length)}
+          onPress={() => router.push('/computers')}
+        />
+      </ListSection>
+      <ListSection
+        title="About"
+        footer="The app is signed with a free Apple account for seven days. Run pnpm install:phone on the computer with the iPhone connected to sign and install it again."
+      >
+        <ListRow label="Version" value={version} />
+        <ListRow label="Signature" value={signature} />
+      </ListSection>
     </ScrollView>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row} accessible accessibilityLabel={`${label}: ${value}`}>
-      <Text>{label}</Text>
-      <Text tone="muted">{value}</Text>
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.sm },
-  group: { borderRadius: radius.lg, overflow: 'hidden' },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: space.lg,
-    minHeight: 44,
-  },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: space.lg },
+  content: { padding: space.lg, gap: space.xl },
 })

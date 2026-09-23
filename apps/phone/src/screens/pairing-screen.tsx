@@ -1,53 +1,40 @@
-// First launch, or a computer to add: pair the Phone App with Droi on a
-// computer by pasting the pairing link its Settings show.
+// Pair the Phone App with Droi on a computer: scan the QR code its Settings
+// show, or paste the pairing link. On first launch this is the whole app.
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { PairingError, resolvePairing } from '../computers/pairing'
-import { savePairing } from '../computers/store'
-import { PAIRING_TOKEN_QUERY } from '../connection/computer-connection'
-import { keychain } from '../platform/keychain'
-import { appQueryClient } from '../query-client'
+import { usePairing } from '../computers/use-pairing'
+import { backToMain } from '../navigation'
 import { Button, Heading, Text } from '../ui/primitives'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
-export function PairingScreen() {
+export function PairingScreen({ firstLaunch }: { firstLaunch: boolean }) {
   const colors = useColors()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const [link, setLink] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const pair = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await resolvePairing(link)
-      await savePairing(result, keychain)
-      await appQueryClient.invalidateQueries({ queryKey: [PAIRING_TOKEN_QUERY, result.id] })
-    } catch (cause) {
-      setError(cause instanceof PairingError ? cause.message : String(cause))
-      setBusy(false)
-    }
-  }
+  const { pair, busy, error } = usePairing(() => backToMain(router))
 
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.xl },
+        {
+          paddingTop: (firstLaunch ? insets.top : 0) + space.xl,
+          paddingBottom: insets.bottom + space.xl,
+        },
       ]}
       keyboardShouldPersistTaps="handled"
     >
       <Heading>Pair with a computer</Heading>
       <Text tone="muted">
-        On your computer, open Droi → Settings → Remote Access, turn it on and copy the pairing link
-        shown there.
+        On your computer, open Droi → Settings → Remote Access and turn it on. Then scan the QR code
+        shown there, or paste its pairing link.
       </Text>
+      <Button label="Scan QR code" onPress={() => router.push('/scan')} />
       <TextInput
         aria-label="Pairing link"
         placeholder="http://192.168.1.10:41417/#pair=…"
@@ -58,7 +45,7 @@ export function PairingScreen() {
         autoCorrect={false}
         keyboardType="url"
         returnKeyType="go"
-        onSubmitEditing={() => void pair()}
+        onSubmitEditing={() => void pair(link)}
         style={[
           styles.input,
           {
@@ -73,14 +60,22 @@ export function PairingScreen() {
           {error}
         </Text>
       ) : null}
-      <Button label="Pair" busy={busy} disabled={!link.trim()} onPress={() => void pair()} />
+      <Button
+        label="Pair"
+        variant="secondary"
+        busy={busy}
+        disabled={!link.trim()}
+        onPress={() => void pair(link)}
+      />
       <Text tone="muted" size="sm">
-        To reach the computer away from home too, use its Tailscale name in the link (for example
-        http://my-mac.tailnet.ts.net:41417); it works on the home network as well.
+        To reach the computer away from home too, change the address to its Tailscale name (for
+        example my-mac.tailnet.ts.net) after pairing; it works on the home network as well.
       </Text>
-      <View style={styles.footer}>
-        <Button label="Settings" variant="ghost" onPress={() => router.push('/settings')} />
-      </View>
+      {firstLaunch ? (
+        <View style={styles.footer}>
+          <Button label="Settings" variant="ghost" onPress={() => router.push('/settings')} />
+        </View>
+      ) : null}
     </ScrollView>
   )
 }

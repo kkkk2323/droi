@@ -33,7 +33,8 @@ const APP_VERSION = (
 ).version
 
 export class FakeDaemon {
-  readonly token: string
+  /** The current Pairing Token; resetToken() replaces it. */
+  token: string
   /** What /meta answers, as the Gateway would; tests may change it. */
   meta: GatewayMeta
   readonly url: string
@@ -127,6 +128,12 @@ export class FakeDaemon {
   /** Simulate the Pairing Token being reset in the Desktop Shell. */
   revokeToken(): void {
     this.#tokenRevoked = true
+  }
+
+  /** Simulate "Reset pairing" in the Desktop Shell: a new token, the old one refused. */
+  resetToken(): string {
+    this.token = `test-token-${randomUUID()}`
+    return this.token
   }
 
   get connectionCount(): number {

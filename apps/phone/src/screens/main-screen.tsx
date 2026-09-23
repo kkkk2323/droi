@@ -1,12 +1,14 @@
 // The connected screen: the open Session (or New session) fills the phone,
-// and the Session list slides in from the left.
-import type { SessionSummary } from '@droi/daemon-layer/sessions'
+// and the Session list slides in from the left. The open Session is kept per
+// Paired Computer, so the app reopens where it was.
+import { usePreference } from '@droi/daemon-layer/local-preference'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Drawer } from 'react-native-drawer-layout'
-import type { PairedComputer } from '../computers/store'
+import { lastSessionOf, pairedComputers, type PairedComputer } from '../computers/store'
 import { SessionList } from '../sessions/session-list'
+import { useComputerSessions } from '../sessions/use-computer-sessions'
 import { useColors } from '../ui/use-colors'
 import { NewSessionScreen } from './new-session-screen'
 import { SessionScreen } from './session-screen'
@@ -14,9 +16,17 @@ import { SessionScreen } from './session-screen'
 export function MainScreen({ computer }: { computer: PairedComputer }) {
   const colors = useColors()
   const router = useRouter()
+  const [computers] = usePreference(pairedComputers)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selected, setSelected] = useState<SessionSummary | null>(null)
+  const [lastId, setLastId] = usePreference(lastSessionOf(computer.id))
+  const sessions = useComputerSessions(computer.id)
+  // The last Session reopens only while the list still has it.
+  const selected = sessions.sessions.find((s) => s.sessionId === lastId) ?? null
   const openDrawer = () => setDrawerOpen(true)
+  const select = (sessionId: string | null) => {
+    setLastId(sessionId)
+    setDrawerOpen(false)
+  }
 
   return (
     <Drawer
@@ -30,19 +40,19 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
       renderDrawerContent={() => (
         <View role="dialog" aria-label="Sessions" aria-hidden={!drawerOpen} style={styles.fill}>
           <SessionList
-            computerName={computer.name}
+            computer={computer}
+            computers={computers}
+            sessions={sessions}
             selectedId={selected?.sessionId ?? null}
-            onSelect={(session) => {
-              setSelected(session)
-              setDrawerOpen(false)
-            }}
-            onNewSession={() => {
-              setSelected(null)
-              setDrawerOpen(false)
-            }}
+            onSelect={select}
+            onNewSession={() => select(null)}
             onSettings={() => {
               setDrawerOpen(false)
               router.push('/settings')
+            }}
+            onAddComputer={() => {
+              setDrawerOpen(false)
+              router.push('/pair')
             }}
           />
         </View>
