@@ -1,6 +1,6 @@
 # Droi
 
-Droi is a desktop and mobile-web front end for the Factory Droid coding agent. It does not run the agent itself; it presents and controls agent conversations that live in the Droid Daemon.
+Droi is a desktop, iPhone and mobile-web front end for the Factory Droid coding agent. It does not run the agent itself; it presents and controls agent conversations that live in the Droid Daemon.
 
 ## Language
 
@@ -21,19 +21,27 @@ _Avoid_: proxy, API server, Hono server, web server
 ### Clients
 
 **Client**:
-The single Droi user interface. The same interface runs as a Local Client or a Remote Client; it speaks only the Daemon protocol.
-_Avoid_: renderer, frontend, web UI, mobile app
+A Droi user interface. Every Client speaks only the Daemon protocol and keeps no conversation state of its own. There are two: the web Client, which runs as the Local Client and as a Remote Client in a browser, and the Phone App.
+_Avoid_: renderer, frontend, web UI
 
 **Local Client**:
-The Client running inside the Desktop Shell window on the same computer as the Daemon.
+The web Client running inside the Desktop Shell window on the same computer as the Daemon.
 
 **Remote Client**:
-The Client running in a browser on another device (typically a phone) and reaching the Daemon through the Gateway.
+A Client on another device that reaches the Daemon through the Gateway: the Phone App on an iPhone, or the web Client in a browser anywhere else.
 _Avoid_: mobile, web mode, browser mode, LAN mode
+
+**Phone App**:
+The native iPhone Client. It is the Remote Client on iOS and takes the browser's place there; the browser Remote Client stays for every other device. It offers what the web Client offers, and nothing the desktop lacks.
+_Avoid_: mobile app, iOS app, iOS Client
 
 **Pairing Token**:
 The secret a Remote Client presents to the Gateway to prove it was authorised from the Desktop Shell. There is one token, shown as a QR code and link in the Desktop Shell settings; resetting it revokes every Remote Client at once. The Local Client presents a separate per-launch token instead, so a reset never touches the desktop window.
 _Avoid_: API key or login token (those are Factory credentials, which Clients never hold), device token
+
+**Paired Computer**:
+A Desktop Shell the Phone App has been paired with: one Gateway address, the Pairing Token, and the computer's name and id as the Gateway reports them. Scanning the same computer again updates it rather than adding another. The Phone App is connected to one Paired Computer at a time.
+_Avoid_: host, daemon profile, server, device
 
 **Remote Access**:
 The Desktop Shell setting that decides whether the Gateway accepts Remote Clients at all. Off by default.
