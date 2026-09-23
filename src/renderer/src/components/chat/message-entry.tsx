@@ -4,7 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from './markdown'
 import { ToolCluster } from './tool-activity'
-import type { TranscriptBlock, TranscriptEntry } from './transcript'
+import type { TranscriptBlock, TranscriptEntry } from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
 
 export function MessageEntry({

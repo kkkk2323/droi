@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createdFileDiff, parseDiffResult, parseStatusResult } from './tool-activity'
+import { createdFileDiff, parseDiffResult, parseStatusResult } from './tool-calls'
 import type { ToolCall } from './transcript'
 
 describe('parseStatusResult', () => {

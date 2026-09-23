@@ -116,3 +116,28 @@ export function toolResultText(result: ToolResultBlock | null): string {
   }
   return ''
 }
+
+/** Assistant entries followed by a user turn, plus the last one once the Daemon rests. */
+export function turnEndIds(entries: readonly TranscriptEntry[], running: boolean): Set<string> {
+  const ids = new Set<string>()
+  entries.forEach((entry, index) => {
+    if (entry.role !== 'assistant') return
+    const next = entries[index + 1]
+    if (next ? next.role === 'user' : !running) ids.add(entry.id)
+  })
+  return ids
+}
+
+const WORKING_LABELS: Record<string, string> = {
+  idle: '',
+  thinking: 'Thinking',
+  streaming_assistant_message: 'Responding',
+  waiting_for_tool_confirmation: 'Waiting for your approval',
+  executing_tool: 'Running a tool',
+  compacting_conversation: 'Compacting',
+}
+
+/** What the activity row under the transcript says for a working state. */
+export function workingLabel(workingState: string): string {
+  return WORKING_LABELS[workingState] ?? workingState
+}

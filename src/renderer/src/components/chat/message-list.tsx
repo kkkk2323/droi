@@ -4,7 +4,12 @@ import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
-import { buildTranscript, type TranscriptEntry } from './transcript'
+import {
+  buildTranscript,
+  turnEndIds,
+  workingLabel,
+  type TranscriptEntry,
+} from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
 import { prefersReducedMotion } from '@/lib/use-media-query'
 import { cn } from '@/lib/utils'
@@ -33,15 +38,6 @@ const FOLLOW_THRESHOLD = 120
 const USER_RESIZE_WINDOW_MS = 500
 
 const NO_MESSAGES: FactoryDroidMessage[] = []
-
-const WORKING_LABELS: Record<string, string> = {
-  idle: '',
-  thinking: 'Thinking',
-  streaming_assistant_message: 'Responding',
-  waiting_for_tool_confirmation: 'Waiting for your approval',
-  executing_tool: 'Running a tool',
-  compacting_conversation: 'Compacting',
-}
 
 function ListHeader({ context }: { context?: ListContext }) {
   return (
@@ -108,17 +104,6 @@ function scrollToEnd(handle: VirtuosoHandle | null, behavior: 'auto' | 'smooth')
     align: 'end',
     behavior: prefersReducedMotion() ? 'auto' : behavior,
   })
-}
-
-/** Assistant entries followed by a user turn, plus the last one once the Daemon rests. */
-export function turnEndIds(entries: readonly TranscriptEntry[], running: boolean): Set<string> {
-  const ids = new Set<string>()
-  entries.forEach((entry, index) => {
-    if (entry.role !== 'assistant') return
-    const next = entries[index + 1]
-    if (next ? next.role === 'user' : !running) ids.add(entry.id)
-  })
-  return ids
 }
 
 /** Virtualised transcript that starts at, and follows, the latest message. */
@@ -200,7 +185,7 @@ export function MessageList({
   const context: ListContext = {
     streamingEntryId,
     turnEndIds: turnEndIds(entries, running),
-    activity: WORKING_LABELS[workingState] ?? workingState,
+    activity: workingLabel(workingState),
     lead,
     boundaryId: earlier.length > 0 ? (own[0]?.id ?? null) : null,
   }
