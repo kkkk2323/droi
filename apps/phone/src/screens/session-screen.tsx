@@ -6,6 +6,7 @@ import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
+import { useGitChanges } from '@droi/daemon-layer/use-git-changes'
 import { usePrompts } from '@droi/daemon-layer/use-prompts'
 import { useSession } from '@droi/daemon-layer/use-session'
 import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
@@ -26,6 +27,7 @@ import { Composer, type Submission } from '../composer/composer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { SessionSettingsBar } from '../composer/session-settings'
+import { GitChangesButton } from '../transcript/git-changes'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
 import { ScreenHeader } from '../ui/screen-header'
@@ -58,6 +60,7 @@ export function SessionScreen({
   const prompts = usePrompts(session.sessionId)
   const compaction = useCompact(session.sessionId, session.tags)
   const isRunning = view.workingState !== 'idle' || compaction.isCompacting
+  const gitChanges = useGitChanges(session.sessionId, { loaded, running: isRunning })
   const [sentCount, setSentCount] = useState(0)
   // A message typed on the New session page goes out once the Session can take it.
   const send = turn.send
@@ -105,7 +108,12 @@ export function SessionScreen({
       style={styles.fill}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScreenHeader title={session.title} drawerOpen={drawerOpen} onOpenDrawer={onOpenDrawer} />
+      <ScreenHeader
+        title={session.title}
+        drawerOpen={drawerOpen}
+        onOpenDrawer={onOpenDrawer}
+        trailing={<GitChangesButton changes={gitChanges} />}
+      />
       {view.loadError ? (
         <Text role="alert" style={[styles.message, { color: colors.destructiveForeground }]}>
           {view.loadError}

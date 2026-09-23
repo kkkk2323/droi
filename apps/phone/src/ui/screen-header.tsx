@@ -11,12 +11,13 @@ export function ScreenHeader({
   title,
   drawerOpen,
   onOpenDrawer,
-  children,
+  trailing,
 }: {
   title: string
   drawerOpen: boolean
   onOpenDrawer: () => void
-  children?: ReactNode
+  /** Controls at the right end of the bar. */
+  trailing?: ReactNode
 }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
@@ -41,8 +42,8 @@ export function ScreenHeader({
         <Text role="heading" weight="semibold" numberOfLines={1} style={styles.title}>
           {title}
         </Text>
+        {trailing}
       </View>
-      {children}
     </View>
   )
 }
