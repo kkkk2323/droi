@@ -43,6 +43,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // tsconfig's paths only steer React's types (see tsconfig.json); Metro
     // must not follow them.
     tsconfigPaths: false,
+    // Components memoize themselves, as in the web Client.
+    reactCompiler: true,
   },
   plugins: [
     'expo-router',
