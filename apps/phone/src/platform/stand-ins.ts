@@ -7,6 +7,8 @@ export interface StandIns {
   sounds: string[]
   /** What the provisioning profile would say; null as on a simulator. */
   signatureExpiry: string | null
+  /** The last text copied. */
+  clipboard: string | null
   /** Set while the scanner is open: "scan" a QR code with this text. */
   scan: ((text: string) => void) | null
 }
@@ -18,6 +20,7 @@ export function standIns(): StandIns {
     haptics: current.haptics ?? [],
     sounds: current.sounds ?? [],
     signatureExpiry: current.signatureExpiry ?? null,
+    clipboard: current.clipboard ?? null,
     scan: current.scan ?? null,
   }
   scope.droiStandIns = filled

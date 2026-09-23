@@ -3,12 +3,15 @@
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../e2e/fixtures'
 import type { FakeDaemon } from '../e2e/fake-daemon/fake-daemon'
+import type { JsonRpcRequest } from '../e2e/fake-daemon/protocol'
+import { streamedReply } from '../e2e/fake-daemon/turns'
 
 /** What the Phone App's stand-ins recorded (see apps/phone/src/platform/stand-ins.ts). */
 export interface StandIns {
   haptics: string[]
   sounds: string[]
   signatureExpiry: string | null
+  clipboard?: string | null
 }
 
 export function standIns(page: Page): Promise<StandIns> {
@@ -63,3 +66,19 @@ export async function pickSession(page: Page, title: RegExp | string): Promise<v
 }
 
 export { test, expect }
+
+/**
+ * Plays a turn in a Session as if a message had been sent from another
+ * Client: the user message, then the reply streamed in these chunks.
+ */
+export function playTurn(
+  daemon: FakeDaemon,
+  sessionId: string,
+  text: string,
+  deltas: string[],
+  delayMs = 150,
+): void {
+  void streamedReply({ deltas, delayMs })({ sessionId, text }, { daemon, connectionId: 0 }, {
+    id: `turn-${Date.now()}`,
+  } as unknown as JsonRpcRequest)
+}

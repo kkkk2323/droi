@@ -35,6 +35,9 @@
     "expo-status-bar": "~56.0.4",
     "expo-system-ui": "~56.0.5",
     "lucide-react-native": "^1.47.0",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
@@ -48,6 +51,7 @@
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
+    "@types/mdast": "^4.0.4",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   }
