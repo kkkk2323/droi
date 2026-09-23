@@ -5,6 +5,7 @@
 - The home view is the New session page; the "Select a session" placeholder is gone. Launch still reopens the last Session, and archiving the open Session or leaving Settings lands on New session.
 - The sidebar shows "Needs input" for a Session waiting on a question or permission, and marks a Session that finished or started waiting while you looked elsewhere. The desktop app plays a sound (Factory's own, a bell, or a file you pick) and can show a notification that opens the Session; Settings → Notifications picks the sound per event and whether it plays always, only while Droi is focused, or only while it is not.
 - The Session header has an "Open in" button that opens the Workspace in an installed editor, Finder or terminal (VS Code, Cursor, Zed, Xcode, Android Studio, Terminal, iTerm2, Ghostty, kitty, Warp) and remembers the last one picked. Desktop app only.
+- The header's Git changes follow a turn's edits as they happen, and pick up edits made outside Droi within 15 seconds, without reopening the Session.
 
 ## 1.1.2 - 2026-09-21
 

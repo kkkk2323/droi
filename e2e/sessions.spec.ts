@@ -375,6 +375,68 @@ test.describe('git changes in the header', () => {
     await expect(files).toHaveCount(0)
   })
 
+  test('the counts follow the edits while a turn runs', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    // A turn that edits one file and then keeps working.
+    fakeDaemon.scenario.on('daemon.add_user_message', (params, { daemon }) => {
+      const sessionId = String(params['sessionId'])
+      const fixture = daemon.scenario.sessions.find((s) => s.sessionId === sessionId)!
+      daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'executing_tool' })
+      const toolUse = {
+        type: 'tool_use',
+        id: 'call_create_dark',
+        name: 'Create',
+        input: { file_path: 'src/theme/dark.css', content: ':root {}' },
+      }
+      daemon.notify(sessionId, { type: 'tool_call', toolUse })
+      fixture.git!.files.push({
+        path: 'src/theme/dark.css',
+        status: 'added',
+        additions: 8,
+        deletions: 0,
+      })
+      daemon.notify(sessionId, {
+        type: 'tool_result',
+        toolUseId: toolUse.id,
+        content: JSON.stringify({ success: true, file_path: 'src/theme/dark.css' }),
+        isError: false,
+        messageId: 'msg_dark',
+      })
+      return {}
+    })
+    await openClient()
+    await pickSession(/Add dark mode/)
+    await expect(page.getByRole('button', { name: 'Branch main, no changes' })).toBeVisible()
+    await page.getByRole('textbox', { name: 'Message' }).fill('Add the dark theme file')
+    await page.getByRole('button', { name: 'Send' }).click()
+
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    const button = page.getByRole('button', { name: 'Branch main, 1 changed file' })
+    await expect(button).toContainText('+8')
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+  })
+
+  test('edits made outside Droi show up without reopening the Session', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await page.clock.install()
+    await openClient()
+    await pickSession(/Add dark mode/)
+    await expect(page.getByRole('button', { name: 'Branch main, no changes' })).toBeVisible()
+
+    const fixture = fakeDaemon.scenario.sessions.find((s) => s.sessionId === clean.sessionId)!
+    fixture.git!.files.push({ path: 'README.md', status: 'modified', additions: 1, deletions: 1 })
+    await page.clock.runFor(16_000)
+    await expect(page.getByRole('button', { name: 'Branch main, 1 changed file' })).toBeVisible()
+  })
+
   test('a clean tree shows only the branch; a plain directory shows nothing', async ({
     page,
     openClient,

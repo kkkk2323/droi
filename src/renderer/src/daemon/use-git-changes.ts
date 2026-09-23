@@ -24,17 +24,37 @@ export function useGitChanges(
   sessionId: string,
   deps: { loaded: boolean; running: boolean },
 ): GitChanges | null {
-  const { controller } = useDaemonConnection()
+  const { controller, sessionState } = useDaemonConnection()
   const queryClient = useQueryClient()
   const queryKey = ['git-changes', sessionId]
-  // The Daemon edits files while a turn runs; the count is read once it rests.
+  // The Daemon edits files while a turn runs: read again after each tool
+  // result, and once more when the turn rests.
   useEffect(() => {
     if (!deps.running) void queryClient.invalidateQueries({ queryKey: ['git-changes', sessionId] })
   }, [deps.running, sessionId, queryClient])
+  useEffect(() => {
+    // The notification does not name its Session. This one's working state in
+    // the SDK (current already, unlike React's view of it) says whether it is busy.
+    const refresh = () => {
+      const state = sessionState.getSessionManager(sessionId)?.getDroidWorkingState()
+      if (!state || state === 'idle') return
+      // A read already under way is left to finish rather than restarted per result.
+      void queryClient.invalidateQueries(
+        { queryKey: ['git-changes', sessionId] },
+        { cancelRefetch: false },
+      )
+    }
+    controller.on('toolResult', refresh)
+    return () => {
+      controller.off('toolResult', refresh)
+    }
+  }, [controller, sessionState, sessionId, queryClient])
   const query = useQuery({
     queryKey,
     enabled: deps.loaded,
     staleTime: 5_000,
+    // Edits made outside Droi (an editor, a terminal, a commit) show up on this beat.
+    refetchInterval: 15_000,
     retry: false,
     queryFn: async (): Promise<GitChanges | null> => {
       const result = await controller.getGitDiff({ sessionId, statsOnly: true })
