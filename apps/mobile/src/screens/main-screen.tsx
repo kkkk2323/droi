@@ -9,6 +9,7 @@ import {
   runningSubagents,
   SubagentLinksProvider,
   subagentsByToolUse,
+  subagentSiblings,
   subagentsOf,
   useSubagentRuns,
 } from '@droi/daemon-layer/subagents'
@@ -118,11 +119,7 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
                 session={selected}
                 chain={chain}
                 trail={callerTrail(sessions.sessions, selected)}
-                siblings={
-                  selected.callingSessionId
-                    ? subagentsOf(sessions.sessions, [selected.callingSessionId])
-                    : []
-                }
+                siblings={subagentSiblings(sessions.sessions, selected)}
                 subagents={subagentsOf(sessions.sessions, [
                   selected.sessionId,
                   ...chain.map((s) => s.sessionId),

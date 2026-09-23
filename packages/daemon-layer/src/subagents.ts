@@ -28,9 +28,32 @@ export function subagentsOf(
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
+/** Every link of the compaction chain a Session belongs to, latest first. */
+function compactionChain(sessions: readonly SessionSummary[], sessionId: string): string[] {
+  const continuedBy = new Map<string, string>()
+  const parentOf = new Map<string, string>()
+  for (const s of sessions) {
+    if (!s.parentId) continue
+    continuedBy.set(s.parentId, s.sessionId)
+    parentOf.set(s.sessionId, s.parentId)
+  }
+  let latest = sessionId
+  const seen = new Set([latest])
+  while (continuedBy.has(latest) && !seen.has(continuedBy.get(latest)!)) {
+    latest = continuedBy.get(latest)!
+    seen.add(latest)
+  }
+  const chain = [latest]
+  for (let id = parentOf.get(latest); id && !chain.includes(id); id = parentOf.get(id)) {
+    chain.push(id)
+  }
+  return chain
+}
+
 /**
  * The Sessions above a subagent, its main Session first; empty for a main
- * Session. A caller missing from the list still gets a crumb.
+ * Session. A caller that has since been compacted leads to the Session that
+ * continues it. A caller missing from the list still gets a crumb.
  */
 export function callerTrail(
   sessions: readonly SessionSummary[],
@@ -43,10 +66,24 @@ export function callerTrail(
   while (callerId && !seen.has(callerId)) {
     seen.add(callerId)
     const caller = byId.get(callerId)
-    trail.unshift({ sessionId: callerId, title: caller?.title ?? 'Main session' })
+    const latestId = compactionChain(sessions, callerId)[0] ?? callerId
+    const latest = byId.get(latestId) ?? caller
+    trail.unshift({ sessionId: latestId, title: latest?.title ?? 'Main session' })
     callerId = caller?.callingSessionId ?? null
   }
   return trail
+}
+
+/**
+ * The subagents a subagent can switch to: everything its caller called, across
+ * the caller's compactions, as the caller's header lists them.
+ */
+export function subagentSiblings(
+  sessions: readonly SessionSummary[],
+  session: Pick<SessionSummary, 'callingSessionId'>,
+): SessionSummary[] {
+  if (!session.callingSessionId) return []
+  return subagentsOf(sessions, compactionChain(sessions, session.callingSessionId))
 }
 
 /**

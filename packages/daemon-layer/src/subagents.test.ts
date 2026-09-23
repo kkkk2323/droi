@@ -8,6 +8,7 @@ import {
   mainSessions,
   runningSubagents,
   subagentName,
+  subagentSiblings,
   subagentsOf,
   taskReport,
   taskRequest,
@@ -71,6 +72,20 @@ describe('subagents in the list', () => {
     expect(callerTrail([], { sessionId: 'x', callingSessionId: 'gone' })).toEqual([
       { sessionId: 'gone', title: 'Main session' },
     ])
+  })
+
+  test('a caller continued after a compaction leads back to its latest link', () => {
+    const main2 = summary({ sessionId: 'main2', title: 'Main', parentId: 'main' })
+    const main3 = summary({ sessionId: 'main3', title: 'Main again', parentId: 'main2' })
+    const late = summary({ sessionId: 'd', callingSessionId: 'main3', updatedAt: 3 })
+    const all = [...sessions, main2, main3, late]
+    expect(callerTrail(all, nested)).toEqual([
+      { sessionId: 'main3', title: 'Main again' },
+      { sessionId: 'b', title: 't' },
+    ])
+    expect(subagentSiblings(all, older).map((s) => s.sessionId)).toEqual(['d', 'b', 'a'])
+    expect(subagentSiblings(all, nested).map((s) => s.sessionId)).toEqual(['c'])
+    expect(subagentSiblings(all, main)).toEqual([])
   })
 
   test('a subagent belongs to its main Session’s row, at the latest compaction', () => {

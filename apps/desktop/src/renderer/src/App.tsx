@@ -16,6 +16,7 @@ import {
   listedSessionOf,
   mainSessions,
   runningSubagents,
+  subagentSiblings,
   subagentsByToolUse,
   subagentsOf,
   SubagentLinksProvider,
@@ -290,9 +291,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
               tags={selected?.tags ?? NO_TAGS}
               chain={chain}
               trail={selected ? callerTrail(listed, selected) : []}
-              siblings={
-                selected?.callingSessionId ? subagentsOf(listed, [selected.callingSessionId]) : []
-              }
+              siblings={selected ? subagentSiblings(listed, selected) : []}
               subagents={subagentsOf(listed, [selectedId, ...chain.map((s) => s.sessionId)])}
               onContinued={(sessionId) => go({ name: 'session', sessionId })}
               leading={leading}
