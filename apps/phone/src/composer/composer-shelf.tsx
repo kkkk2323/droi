@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     // Tucked against the composer's straight top edge, between its rounded
     // corners, so the two read as one piece (as in the web Client).
     marginHorizontal: space.md + COMPOSER_RADIUS,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderBottomWidth: 0,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,

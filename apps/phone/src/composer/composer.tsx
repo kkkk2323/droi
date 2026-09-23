@@ -297,7 +297,9 @@ const styles = StyleSheet.create({
   wrap: { gap: space.xs, paddingHorizontal: space.md },
   error: { paddingHorizontal: space.xs },
   card: {
-    borderWidth: StyleSheet.hairlineWidth,
+    // A full point, like the web Client's 1px border; a hairline is a third
+    // of that on an iPhone and all but disappears.
+    borderWidth: 1,
     borderRadius: COMPOSER_RADIUS,
     paddingTop: space.sm,
   },
@@ -313,7 +315,7 @@ const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm },
   spacer: { flex: 1 },
   suggestions: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: radius.lg,
     paddingVertical: space.xs,
   },
@@ -325,7 +327,7 @@ const styles = StyleSheet.create({
   // The scroller clips its content, so the remove button's overhang is room
   // inside the chip rather than a negative offset.
   attachment: { position: 'relative', paddingTop: 6, paddingRight: 6 },
-  thumb: { width: 56, height: 56, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
+  thumb: { width: 56, height: 56, borderRadius: radius.md, borderWidth: 1 },
   removeImage: {
     position: 'absolute',
     top: 0,

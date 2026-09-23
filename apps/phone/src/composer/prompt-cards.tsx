@@ -261,7 +261,7 @@ function AskUserCard({
 const styles = StyleSheet.create({
   area: { gap: space.sm, paddingHorizontal: space.md },
   card: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: radius.xl + 4,
     padding: space.md,
     gap: space.sm,
