@@ -23,8 +23,8 @@ interface ListContext {
   activity: string
   /** Rendered above the first entry (a "continued from" link, say). */
   lead: ReactNode
-  /** Entry that starts this Session's own messages when earlier ones are shown above. */
-  boundaryId: string | null
+  /** Entries that start a continued Session, below the one it continues. */
+  boundaryIds: ReadonlySet<string>
 }
 
 // Virtuoso keeps the scroll position across a prepend when the first item's
@@ -37,7 +37,7 @@ const FOLLOW_THRESHOLD = 120
 /** A height change this soon after a click or key press in the list is the reader's. */
 const USER_RESIZE_WINDOW_MS = 500
 
-const NO_MESSAGES: FactoryDroidMessage[] = []
+const NO_EARLIER: ReadonlyArray<readonly FactoryDroidMessage[]> = []
 
 function ListHeader({ context }: { context?: ListContext }) {
   return (
@@ -88,7 +88,7 @@ function ActivityRow({ context }: { context?: ListContext }) {
 function renderEntry(_index: number, entry: TranscriptEntry, context: ListContext) {
   return (
     <>
-      {entry.id === context.boundaryId ? <Boundary /> : null}
+      {context.boundaryIds.has(entry.id) ? <Boundary /> : null}
       <MessageEntry
         entry={entry}
         isStreaming={entry.id === context.streamingEntryId}
@@ -109,14 +109,14 @@ function scrollToEnd(handle: VirtuosoHandle | null, behavior: 'auto' | 'smooth')
 /** Virtualised transcript that starts at, and follows, the latest message. */
 export function MessageList({
   messages,
-  earlierMessages = NO_MESSAGES,
+  earlier = NO_EARLIER,
   workingState,
   lead = null,
   scrollToEndKey = 0,
 }: {
   messages: readonly FactoryDroidMessage[]
-  /** The parent Session's transcript, shown above this one's after a compaction. */
-  earlierMessages?: readonly FactoryDroidMessage[]
+  /** The Sessions this one continues after compactions, oldest first, shown above it. */
+  earlier?: ReadonlyArray<readonly FactoryDroidMessage[]>
   /** The Daemon's working state for this Session. */
   workingState: string
   lead?: ReactNode
@@ -175,9 +175,9 @@ export function MessageList({
     const timer = setTimeout(() => scrollToEnd(virtuoso.current, 'auto'), 150)
     return () => clearTimeout(timer)
   }, [])
-  const earlier = buildTranscript(earlierMessages)
-  const own = buildTranscript(messages)
-  const entries = [...earlier, ...own]
+  const parts = [...earlier, messages].map((part) => buildTranscript(part))
+  const entries = parts.flat()
+  const earlierCount = entries.length - (parts[parts.length - 1]?.length ?? 0)
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const isStreaming = workingState === 'streaming_assistant_message'
@@ -187,7 +187,7 @@ export function MessageList({
     turnEndIds: turnEndIds(entries, running),
     activity: workingLabel(workingState),
     lead,
-    boundaryId: earlier.length > 0 ? (own[0]?.id ?? null) : null,
+    boundaryIds: new Set(parts.slice(1).flatMap((part) => (part[0] ? [part[0].id] : []))),
   }
 
   if (entries.length === 0 && !lead) {
@@ -208,7 +208,7 @@ export function MessageList({
         data={entries}
         context={context}
         computeItemKey={(_, entry) => entry.id}
-        firstItemIndex={INDEX_BASE - earlier.length}
+        firstItemIndex={INDEX_BASE - earlierCount}
         initialTopMostItemIndex={entries.length - 1}
         followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
         // The panels above the composer resize the viewport; a few pixels off

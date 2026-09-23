@@ -4,6 +4,7 @@ import { PanelLeft } from 'lucide-react'
 import { useConnectionState, useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { isStartingUp } from '@droi/daemon-layer/connection'
 import {
+  continuationChain,
   foldContinued,
   groupByWorkspace,
   useSessionList,
@@ -73,7 +74,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const recent = recentWorkspaces(sessions.data ?? [])
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
-  const parent = sessions.data?.find((s) => s.sessionId === selected?.parentId) ?? null
+  const chain = selected ? continuationChain(sessions.data ?? [], selected) : []
   const unread = useDesktopAlerts({
     bridge: window.droiShell?.alerts ?? null,
     selectedId,
@@ -254,7 +255,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             title={selected?.title ?? 'Session'}
             workspace={selected?.cwd ?? null}
             tags={selected?.tags ?? NO_TAGS}
-            parent={parent}
+            chain={chain}
             onContinued={(sessionId) => go({ name: 'session', sessionId })}
             leading={leading}
           />

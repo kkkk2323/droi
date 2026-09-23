@@ -86,7 +86,7 @@ export function SessionScreen({
   const shown = chain.slice(0, revealed).reverse()
   const earlierViews = useSessions(shown.map((s) => s.sessionId))
   const earlier = useMemo(() => earlierViews.map((v) => v.messages), [earlierViews])
-  const next = chain[revealed]
+  const nextEarlier = chain[revealed]
   const earlierError = earlierViews.find((v) => v.loadError)?.loadError
 
   const lead = earlierError ? (
@@ -100,11 +100,11 @@ export function SessionScreen({
         Loading earlier messages…
       </Text>
     </View>
-  ) : next ? (
+  ) : nextEarlier ? (
     <Pressable role="button" onPress={() => setRevealed(revealed + 1)} style={styles.leadRow}>
       <ChevronUp size={14} color={colors.mutedForeground} />
       <Text tone="muted" size="xs">
-        Continued from “{next.title}” · Show earlier messages
+        Continued from “{nextEarlier.title}” · Show earlier messages
       </Text>
     </Pressable>
   ) : null

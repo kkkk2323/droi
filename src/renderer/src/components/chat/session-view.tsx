@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ChevronUp, Folder, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
-import { useSession } from '@droi/daemon-layer/use-session'
+import { useSession, useSessions } from '@droi/daemon-layer/use-session'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
@@ -29,7 +29,7 @@ export function SessionView({
   title,
   workspace,
   tags,
-  parent,
+  chain,
   onContinued,
   leading,
 }: {
@@ -37,8 +37,8 @@ export function SessionView({
   title: string
   workspace: string | null
   tags: SessionSummary['tags']
-  /** The Session this one continues after a compaction, when listed. */
-  parent: Pick<SessionSummary, 'sessionId' | 'title'> | null
+  /** The listed Sessions this one continues after compactions, nearest first. */
+  chain: readonly Pick<SessionSummary, 'sessionId' | 'title'>[]
   /** `/compact` produced a child Session; the view should move there. */
   onContinued: (sessionId: string) => void
   leading?: ReactNode
@@ -55,30 +55,38 @@ export function SessionView({
   const contextUsage = useContextUsage(sessionId, { loaded, modelId: settings.modelId })
   const gitChanges = useGitChanges(sessionId, { loaded, running: isRunning })
 
-  // The parent's transcript is only loaded once asked for; it can be large.
-  const [showEarlier, setShowEarlier] = useState(false)
-  const earlier = useSession(showEarlier && parent ? parent.sessionId : null)
-  const lead = parent ? (
-    <div className={cn(COLUMN, 'pb-2')}>
-      {showEarlier ? (
-        earlier.loadState !== LOAD_STATE.loaded ? (
+  // Earlier Sessions load one per click, nearest first; each can be large.
+  const [revealed, setRevealed] = useState(0)
+  const shown = chain.slice(0, revealed).reverse()
+  const earlierViews = useSessions(shown.map((s) => s.sessionId))
+  const earlier = useMemo(() => earlierViews.map((v) => v.messages), [earlierViews])
+  const nextEarlier = chain[revealed]
+  const earlierError = earlierViews.find((v) => v.loadError)?.loadError
+  const loadingEarlier = earlierViews.some((v) => v.loadState !== LOAD_STATE.loaded)
+  const lead =
+    earlierError || loadingEarlier || nextEarlier ? (
+      <div className={cn(COLUMN, 'pb-2')}>
+        {earlierError ? (
+          <p role="alert" className="text-xs text-destructive-foreground">
+            Earlier messages did not load: {earlierError}
+          </p>
+        ) : loadingEarlier ? (
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 aria-hidden className="size-3.5 animate-spin" />
             Loading earlier messages…
           </p>
-        ) : null
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowEarlier(true)}
-          className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          <ChevronUp aria-hidden className="size-3.5" />
-          Continued from “{parent.title}” · Show earlier messages
-        </button>
-      )}
-    </div>
-  ) : null
+        ) : nextEarlier ? (
+          <button
+            type="button"
+            onClick={() => setRevealed(revealed + 1)}
+            className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <ChevronUp aria-hidden className="size-3.5" />
+            Continued from “{nextEarlier.title}” · Show earlier messages
+          </button>
+        ) : null}
+      </div>
+    ) : null
 
   const [sentCount, setSentCount] = useState(0)
   const submit = ({ text, images, placement }: Submission) => {
@@ -121,7 +129,7 @@ export function SessionView({
         ) : (
           <MessageList
             messages={session.messages}
-            earlierMessages={showEarlier ? earlier.messages : undefined}
+            earlier={earlier}
             workingState={
               compaction.isCompacting ? 'compacting_conversation' : session.workingState
             }
