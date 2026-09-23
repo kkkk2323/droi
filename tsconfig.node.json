@@ -8,6 +8,7 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
+    "packages/daemon-layer/src/gateway.ts",
     "e2e/**/*",
     "playwright.electron.config.ts",
     "e2e-electron/**/*.ts",

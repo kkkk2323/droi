@@ -2,10 +2,10 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import { Popover } from '@base-ui/react/popover'
 import { ChevronDown, Search, Star } from 'lucide-react'
 import { BrandIcon } from './brand-icon'
-import { favoriteModels, usePreference } from '@/lib/local-preference'
-import { BRAND_LABELS, BRAND_ORDER, brandOf, type Brand } from '@/lib/model-brand'
+import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
+import { BRAND_LABELS, BRAND_ORDER, brandOf, type Brand } from '@droi/daemon-layer/model-brand'
 import { cn } from '@/lib/utils'
-import type { ModelChoice } from '@/daemon/use-session-settings'
+import type { ModelChoice } from '@droi/daemon-layer/use-session-settings'
 
 /** Which rows the picker lists: everything, the starred ones, or one brand. */
 export type PickerFilter = 'all' | 'favorites' | Brand

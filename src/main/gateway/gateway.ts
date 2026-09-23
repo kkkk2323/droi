@@ -13,7 +13,7 @@ import {
   GATEWAY_META_PATH,
   GATEWAY_TOKEN_QUERY,
   type GatewayMeta,
-} from '../../shared/gateway'
+} from '@droi/daemon-layer/gateway'
 import { serveStaticFile } from './static-files'
 import { proxyHttp, proxyUpgrade } from './dev-proxy'
 

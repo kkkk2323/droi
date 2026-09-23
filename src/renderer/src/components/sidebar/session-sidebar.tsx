@@ -21,20 +21,20 @@ import {
   pinnedWorkspaces,
   toggleListed,
   usePreference,
-} from '@/lib/local-preference'
+} from '@droi/daemon-layer/local-preference'
 import { cn } from '@/lib/utils'
 
 const MENU =
   'min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none'
 const MENU_ITEM =
   'flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground'
-import type { SessionActivity } from '@/daemon/use-session-activity'
+import type { SessionActivity } from '@droi/daemon-layer/use-session-activity'
 import {
   OLDER_BATCH,
   visibleSessions,
   type SessionSummary,
   type WorkspaceGroup,
-} from '@/daemon/sessions'
+} from '@droi/daemon-layer/sessions'
 
 export function SessionSidebar({
   groups,

@@ -1,10 +1,10 @@
 // Create a Session in a Workspace. Recent Workspaces come from the Sessions the
 // Daemon already knows; a typed path is validated by the Daemon before use.
 import { LOCAL_MACHINE_ID } from '@factory/droid-sdk'
-import { GATEWAY_API_KEY_PLACEHOLDER } from '@shared/gateway'
+import { GATEWAY_API_KEY_PLACEHOLDER } from './gateway'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
-import { uuid } from '@/lib/uuid'
+import { uuid } from './uuid'
 import type { DaemonConnection } from './connection'
 import { useDaemonConnection } from './connection-context'
 import {

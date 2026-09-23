@@ -1,0 +1,16 @@
+{
+  "name": "@droi/daemon-layer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Clients' shared daemon layer: connection, Session state and local preferences",
+  "type": "module",
+  "exports": {
+    "./connection-context": "./src/connection-context.tsx",
+    "./*": "./src/*.ts"
+  },
+  "peerDependencies": {
+    "@factory/droid-sdk": "0.9.1",
+    "@tanstack/react-query": "^5.103.1",
+    "react": ">=19.2"
+  }
+}

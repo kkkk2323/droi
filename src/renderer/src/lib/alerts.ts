@@ -1,11 +1,10 @@
-// Session alerts, after Factory App: a sound when Droid finishes or needs an
-// answer, a desktop notification when that happens out of sight, and an
-// unread mark in the sidebar. Sounds and notifications need the Desktop
-// Shell, so only the Local Client plays them.
+// The Local Client's side of Session alerts, after Factory App: a sound when
+// Droid finishes or needs an answer and a desktop notification when that
+// happens out of sight. Both need the Desktop Shell; when to alert is decided
+// by the shared daemon layer.
+import type { AlertEvent } from '@droi/daemon-layer/alerts'
+import { createPreference } from '@droi/daemon-layer/local-preference'
 import type { AlertsBridge, BuiltinSound } from '@shared/alerts'
-import { createPreference } from './local-preference'
-
-export type AlertEvent = 'completion' | 'awaiting-input'
 
 export type SoundChoice = 'off' | 'bell' | BuiltinSound | 'custom'
 export const SOUND_CHOICES: SoundChoice[] = ['off', 'bell', 'fx-ok01', 'fx-ack01', 'custom']
@@ -60,34 +59,6 @@ export const alertPreferences = createPreference<AlertPreferences>(
   DEFAULT_ALERT_PREFERENCES,
   { parse: (raw) => parseAlertPreferences(JSON.parse(raw)), serialize: JSON.stringify },
 )
-
-/**
- * Follows each Session's working state and says when it calls for an alert,
- * the way Factory App does: once when it starts waiting for an answer, and
- * once when it goes idle after doing something.
- */
-export class AlertTracker {
-  #active = new Set<string>()
-  #awaiting = new Set<string>()
-
-  update(sessionId: string, workingState: string): AlertEvent | null {
-    if (workingState === 'idle') {
-      this.#awaiting.delete(sessionId)
-      return this.#active.delete(sessionId) ? 'completion' : null
-    }
-    this.#active.add(sessionId)
-    if (workingState !== 'waiting_for_tool_confirmation') return null
-    if (this.#awaiting.has(sessionId)) return null
-    this.#awaiting.add(sessionId)
-    return 'awaiting-input'
-  }
-
-  /** The Session dropped out of this Client (a reconnect, a close); its next state is no news. */
-  forget(sessionId: string): void {
-    this.#active.delete(sessionId)
-    this.#awaiting.delete(sessionId)
-  }
-}
 
 export function soundGateAllows(mode: FocusMode, focused: boolean): boolean {
   return mode === 'always' || (mode === 'focused') === focused

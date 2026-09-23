@@ -1,6 +1,6 @@
 import { Popover } from '@base-ui/react/popover'
 import { GitBranch } from 'lucide-react'
-import type { ChangedFile, GitChanges } from '@/daemon/use-git-changes'
+import type { ChangedFile, GitChanges } from '@droi/daemon-layer/use-git-changes'
 import { cn } from '@/lib/utils'
 
 /**

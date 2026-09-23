@@ -20,10 +20,10 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
-    "lint": "oxlint src e2e e2e-electron e2e-live",
-    "lint:fix": "oxlint --fix src e2e e2e-electron e2e-live",
-    "format": "oxfmt --write src e2e e2e-electron e2e-live",
-    "format:check": "oxfmt --check src e2e e2e-electron e2e-live",
+    "lint": "oxlint src packages e2e e2e-electron e2e-live",
+    "lint:fix": "oxlint --fix src packages e2e e2e-electron e2e-live",
+    "format": "oxfmt --write src packages e2e e2e-electron e2e-live",
+    "format:check": "oxfmt --check src packages e2e e2e-electron e2e-live",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck",
     "test:smoke": "playwright test -c playwright.electron.config.ts",
     "test:live": "playwright test -c playwright.live.config.ts"
@@ -97,6 +97,7 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@droi/daemon-layer": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@electron-toolkit/utils": "^4.0.0",

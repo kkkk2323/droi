@@ -5,8 +5,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './App'
-import { ConnectionProvider } from './daemon/connection-context'
-import { createDaemonConnection } from './daemon/connection'
+import { ConnectionProvider } from '@droi/daemon-layer/connection-context'
+import { createDaemonConnection } from '@droi/daemon-layer/connection'
+import { setPreferenceStorage } from '@droi/daemon-layer/local-preference'
 import { browserEnvironment, resolveClientConfig } from './lib/client-config'
 import { applyStoredTheme } from './lib/theme'
 import { applyTextSize } from './lib/text-size'
@@ -14,6 +15,11 @@ import { applyFont } from './lib/font'
 import 'streamdown/styles.css'
 import './styles/global.css'
 
+try {
+  setPreferenceStorage(window.localStorage)
+} catch {
+  // Storage blocked: preferences hold in memory for this page.
+}
 applyStoredTheme()
 applyTextSize()
 applyFont()

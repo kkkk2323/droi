@@ -5,7 +5,7 @@ import {
   gatewayDaemonUrl,
   gatewayPairingCheckUrl,
   GATEWAY_API_KEY_PLACEHOLDER,
-} from '../../shared/gateway'
+} from '@droi/daemon-layer/gateway'
 import { lanInterfaceAddresses, startGateway, type Gateway } from './gateway'
 
 const TOKEN = 'correct-pairing-token'

@@ -5,7 +5,7 @@ import google from '@/assets/providers/google.svg'
 import minimax from '@/assets/providers/minimax.svg'
 import zhipu from '@/assets/providers/zhipu.svg'
 import { cn } from '@/lib/utils'
-import type { Brand } from '@/lib/model-brand'
+import type { Brand } from '@droi/daemon-layer/model-brand'
 
 // Colour marks are static SVGs rendered from @lobehub/icons (MIT). OpenAI,
 // xAI and Moonshot are drawn inline so they follow the text colour.

@@ -2,7 +2,8 @@ import { Menu } from '@base-ui/react/menu'
 import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, FolderOpen } from 'lucide-react'
 import type { OpenInApp, OpenInBridge } from '@shared/open-in'
-import { openInApp, usePreference } from '@/lib/local-preference'
+import { usePreference } from '@droi/daemon-layer/local-preference'
+import { openInApp } from '@/lib/local-preference'
 
 /** The remembered app while it is still installed, otherwise Finder, otherwise the first one. */
 export function preferredApp(

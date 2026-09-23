@@ -7,7 +7,7 @@ import {
   useSessionSettings,
   useSessionSettingsActions,
   type SessionSettingsView,
-} from '@/daemon/use-session-settings'
+} from '@droi/daemon-layer/use-session-settings'
 import { ModelPicker } from './model-picker'
 
 const EFFORT_LABELS: Record<string, string> = {

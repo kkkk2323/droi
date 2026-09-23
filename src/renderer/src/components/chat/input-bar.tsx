@@ -10,17 +10,13 @@ import {
 } from 'react'
 import { ArrowUp, Plus, Square, SquareSlash, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { filterSlashItems, slashQuery, type SlashItem } from '@/daemon/use-slash-items'
-import {
-  attachmentUrl,
-  imageFiles,
-  readImageAttachment,
-  type ImageAttachment,
-} from '@/lib/attachments'
-import { loadDraft, saveDraft } from '@/lib/drafts'
-import { uuid } from '@/lib/uuid'
+import { filterSlashItems, slashQuery, type SlashItem } from '@droi/daemon-layer/use-slash-items'
+import { attachmentUrl, type ImageAttachment } from '@droi/daemon-layer/attachments'
+import { imageFiles, readImageAttachment } from '@/lib/attachments'
+import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
+import { uuid } from '@droi/daemon-layer/uuid'
 import { cn } from '@/lib/utils'
-import type { QueuePlacement } from '@/daemon/use-turn'
+import type { QueuePlacement } from '@droi/daemon-layer/use-turn'
 
 const NO_ITEMS: SlashItem[] = []
 

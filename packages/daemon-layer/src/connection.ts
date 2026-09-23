@@ -10,12 +10,14 @@ import {
   MachineType,
   MultiSessionStateManager,
 } from '@factory/droid-sdk'
-import {
-  GATEWAY_API_KEY_PLACEHOLDER,
-  gatewayDaemonUrl,
-  gatewayPairingCheckUrl,
-} from '@shared/gateway'
-import type { ClientConfig } from '../lib/client-config'
+import { GATEWAY_API_KEY_PLACEHOLDER, gatewayDaemonUrl, gatewayPairingCheckUrl } from './gateway'
+
+/** Where a Client reaches the Gateway, and whether it is the Desktop Shell's own window. */
+export interface ClientConfig {
+  kind: 'local' | 'remote'
+  gatewayUrl: string
+  pairingToken: string | null
+}
 
 export type ConnectionState =
   | { status: 'connecting' }

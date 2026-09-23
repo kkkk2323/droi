@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
 import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { usePromptActions, usePrompts } from '@/daemon/use-prompts'
+import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
 import { cn } from '@/lib/utils'
 
 /** Every open Prompt for the Session; it stands in for the composer while one is open. */

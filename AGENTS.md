@@ -12,14 +12,20 @@ comments, commits and issues.
 src/
 ├── main/       # Desktop Shell: Electron main process (Daemon lifecycle, Gateway, window)
 ├── preload/    # Minimal bridge; conversation data never crosses it
-├── renderer/   # Client: React app, runs as Local Client and Remote Client
+├── renderer/   # web Client: React app, runs as Local Client and Remote Client
 └── shared/     # Types and pure helpers shared by Desktop Shell and Client
+packages/
+└── daemon-layer/  # @droi/daemon-layer: the Clients' shared daemon layer (connection,
+                   # Session state hooks, Gateway contract, local preferences); no DOM
+                   # or Electron, the host supplies storage, focus and sound
 e2e/            # Playwright tests: Client in a browser against the Fake Daemon
 legacy/         # Previous implementation, kept for reference only; excluded
                 # from build and checks; deleted by the last rebuild ticket
 ```
 
-Unit tests sit next to the code as `*.test.ts` / `*.test.tsx` and run with vitest.
+The repository is a pnpm workspace; every command below runs from the root and
+covers the packages too. Unit tests sit next to the code as `*.test.ts` /
+`*.test.tsx` and run with vitest.
 
 ## Development Commands
 
@@ -47,7 +53,8 @@ Client or the Fake Daemon changed. The PR workflow runs all three.
 ## Code Style
 
 - TypeScript strict, `verbatimModuleSyntax`, `noUncheckedIndexedAccess`
-- Client imports use the `@/` alias for `src/renderer/src`
+- Client imports use the `@/` alias for `src/renderer/src`; the shared layer is imported
+  as `@droi/daemon-layer/<module>` and uses relative imports inside itself
 - Tailwind CSS 4 with the CSS variables in `src/renderer/src/styles/global.css`
 - Geist Sans for UI, Geist Mono for code (vendored in `src/renderer/src/assets/fonts`)
 - Icons: Lucide React

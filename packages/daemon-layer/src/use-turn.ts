@@ -8,8 +8,8 @@
 // both under the Session's queued messages until the Daemon takes them.
 import { LOCAL_MACHINE_ID, type MultiSessionStateManager } from '@factory/droid-sdk'
 import { useCallback, useState } from 'react'
-import type { ImageAttachment } from '@/lib/attachments'
-import { uuid } from '@/lib/uuid'
+import type { ImageAttachment } from './attachments'
+import { uuid } from './uuid'
 import { useDaemonConnection } from './connection-context'
 
 type OptimisticUserMessage = Parameters<

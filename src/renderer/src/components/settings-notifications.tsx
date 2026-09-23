@@ -1,3 +1,5 @@
+import type { AlertEvent } from '@droi/daemon-layer/alerts'
+import { usePreference } from '@droi/daemon-layer/local-preference'
 import type { AlertsBridge } from '@shared/alerts'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -7,12 +9,10 @@ import {
   FOCUS_MODES,
   playAlertSound,
   SOUND_CHOICES,
-  type AlertEvent,
   type AlertPreferences,
   type FocusMode,
   type SoundChoice,
 } from '@/lib/alerts'
-import { usePreference } from '@/lib/local-preference'
 
 const SOUND_LABELS: Record<SoundChoice, string> = {
   off: 'Off',

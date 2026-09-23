@@ -14,13 +14,13 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { formatTokens, type ContextUsage } from '@/daemon/use-context-usage'
+import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
   queuedText,
   useQueuedMessageActions,
   useQueuedMessages,
-} from '@/daemon/use-queued-messages'
-import { useTodos, type TodoItem } from '@/daemon/use-todos'
+} from '@droi/daemon-layer/use-queued-messages'
+import { useTodos, type TodoItem } from '@droi/daemon-layer/use-todos'
 import { cn } from '@/lib/utils'
 
 /**

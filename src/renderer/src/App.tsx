@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { PanelLeft } from 'lucide-react'
-import { useConnectionState, useDaemonConnection } from './daemon/connection-context'
-import { isStartingUp } from './daemon/connection'
-import { foldContinued, groupByWorkspace, useSessionList, type SessionTag } from './daemon/sessions'
+import { useConnectionState, useDaemonConnection } from '@droi/daemon-layer/connection-context'
+import { isStartingUp } from '@droi/daemon-layer/connection'
+import {
+  foldContinued,
+  groupByWorkspace,
+  useSessionList,
+  type SessionTag,
+} from '@droi/daemon-layer/sessions'
 
 const NO_TAGS: SessionTag[] = []
-import { recentWorkspaces } from './daemon/use-new-session'
-import { useSessionActivity } from './daemon/use-session-activity'
-import { useSessionAlerts } from './daemon/use-session-alerts'
+import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
+import { useSessionActivity } from '@droi/daemon-layer/use-session-activity'
 import {
   ConnectionStatus,
   PairingFailed,
@@ -29,9 +33,10 @@ import {
   pinnedSessions,
   pinnedWorkspaces,
   showArchivedSessions,
-  sidebarVisible,
   usePreference,
-} from './lib/local-preference'
+} from '@droi/daemon-layer/local-preference'
+import { sidebarVisible } from './lib/local-preference'
+import { useDesktopAlerts } from './lib/use-desktop-alerts'
 import { useHashRoute, type Route } from './lib/use-hash-route'
 import { useMediaQuery } from './lib/use-media-query'
 import { cn } from './lib/utils'
@@ -69,7 +74,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
   const parent = sessions.data?.find((s) => s.sessionId === selected?.parentId) ?? null
-  const unread = useSessionAlerts({
+  const unread = useDesktopAlerts({
     bridge: window.droiShell?.alerts ?? null,
     selectedId,
     titleOf: (sessionId) =>

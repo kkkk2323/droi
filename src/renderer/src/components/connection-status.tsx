@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { parsePairingInput, savePairing } from '@/lib/client-config'
-import { useConnectionState } from '../daemon/connection-context'
-import { isStartingUp, type ConnectionState } from '../daemon/connection'
+import { parsePairingInput } from '@droi/daemon-layer/pairing'
+import { savePairing } from '@/lib/client-config'
+import { useConnectionState } from '@droi/daemon-layer/connection-context'
+import { isStartingUp, type ConnectionState } from '@droi/daemon-layer/connection'
 
 /**
  * How long the Daemon may take to come up before the startup wait turns into

@@ -1,7 +1,7 @@
 // The UI font: the vendored Geist pair, or the platform's own (San Francisco
 // on Apple devices). Stored per browser like the theme; the CSS switches the
 // font variables on the root's data-font attribute.
-import { createPreference } from './local-preference'
+import { createPreference } from '@droi/daemon-layer/local-preference'
 
 export const FONTS = ['geist', 'system'] as const
 export type Font = (typeof FONTS)[number]

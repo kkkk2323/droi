@@ -1,32 +1,26 @@
-// Turns Session working states into alerts (see lib/alerts.ts). Every Client
+// Turns Session working states into alerts (see alerts.ts). Every Client
 // keeps unread marks for Sessions that finished or started waiting while
-// another one was open; the Local Client also plays the sound and, when the
-// Session is out of sight, shows a desktop notification that opens it.
+// another one was open; what else an alert does is the Client's `onAlert`.
 import { useEffect, useRef, useState } from 'react'
-import type { AlertsBridge } from '@shared/alerts'
-import { AlertTracker, alertPreferences, playAlertSound } from '@/lib/alerts'
+import { AlertTracker, type AlertEvent } from './alerts'
 import { useDaemonConnection } from './connection-context'
 import { LOAD_STATE, SESSION_EVENT } from './sdk-enums'
 
 const NONE: ReadonlySet<string> = new Set()
 
 export function useSessionAlerts({
-  bridge,
   selectedId,
-  titleOf,
-  onOpen,
+  onAlert,
 }: {
-  bridge: AlertsBridge | null
   selectedId: string | null
-  titleOf: (sessionId: string) => string
-  onOpen: (sessionId: string) => void
+  onAlert: (sessionId: string, alert: AlertEvent) => void
 }): ReadonlySet<string> {
   const { sessionState } = useDaemonConnection()
   const [unread, setUnread] = useState<ReadonlySet<string>>(NONE)
   // The subscription outlives renders; it reads the latest values from here.
-  const latest = useRef({ bridge, selectedId, titleOf, onOpen })
+  const latest = useRef({ selectedId, onAlert })
   useEffect(() => {
-    latest.current = { bridge, selectedId, titleOf, onOpen }
+    latest.current = { selectedId, onAlert }
   })
 
   useEffect(() => {
@@ -48,29 +42,10 @@ export function useSessionAlerts({
         if (now.selectedId !== sessionId) {
           setUnread((prev) => (prev.has(sessionId) ? prev : new Set(prev).add(sessionId)))
         }
-        if (!now.bridge) return
-        const preferences = alertPreferences.get()
-        void playAlertSound(now.bridge, preferences, alert)
-        if (document.hasFocus() && now.selectedId === sessionId) return
-        const title = now.titleOf(sessionId)
-        if (alert === 'completion' && preferences.notifyOnComplete) {
-          void now.bridge.notify({ title: 'Droid finished', body: title, sessionId })
-        }
-        if (alert === 'awaiting-input' && preferences.notifyOnWaitingForInput) {
-          void now.bridge.notify({
-            title: 'Droid needs input',
-            body: `${title} — waiting for your answer`,
-            sessionId,
-          })
-        }
+        now.onAlert(sessionId, alert)
       },
     )
   }, [sessionState])
-
-  useEffect(
-    () => bridge?.onNotificationClick((sessionId) => latest.current.onOpen(sessionId)),
-    [bridge],
-  )
 
   // Opening a Session reads it.
   if (selectedId && unread.has(selectedId)) {
