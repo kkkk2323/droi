@@ -5,11 +5,16 @@
 // Client, only the Gateway reads it.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 export interface ShellSettings {
   remoteAccess: boolean
   pairingToken: string
+  /**
+   * Stable id of this computer, made once and never reset; the Gateway's
+   * /meta reports it so a phone recognises a computer it paired before.
+   */
+  computerId: string
   /** Explicit path to the `droid` executable; null means auto-detect. */
   droidPath: string | null
   /**
@@ -32,7 +37,7 @@ export interface ShellSettingsStoreOptions {
 
 export interface ShellSettingsStore {
   readonly settings: Readonly<ShellSettings>
-  update(patch: Partial<Omit<ShellSettings, 'pairingToken'>>): void
+  update(patch: Partial<Omit<ShellSettings, 'pairingToken' | 'computerId'>>): void
   resetPairingToken(): string
   getApiKey(): string | null
   setApiKey(apiKey: string | null): void
@@ -46,6 +51,7 @@ interface StoredFile {
   droidPath: string | null
   factoryApiBaseUrl: string | null
   pairingToken: string
+  computerId: string
   apiKey: string | null
   login: string | null
 }
@@ -63,6 +69,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     droidPath: loaded?.droidPath ?? null,
     factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
     pairingToken: loaded?.pairingToken || generatePairingToken(),
+    computerId: loaded?.computerId || randomUUID(),
     apiKey: loaded?.apiKey ?? null,
     login: loaded?.login ?? null,
   }
@@ -73,8 +80,9 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     writeFileSync(tmp, JSON.stringify(current, null, 2), { mode: 0o600 })
     renameSync(tmp, options.file)
   }
-  // Write straight away when the file is new, corrupt or in the old encrypted layout.
-  if (!loaded || loaded.migrated) save()
+  // Write straight away when the file is new, corrupt, in the old encrypted
+  // layout, or from before the computer id (which must not change on the next load).
+  if (!loaded || loaded.migrated || !loaded.computerId) save()
 
   return {
     get settings() {
@@ -83,6 +91,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         droidPath: current.droidPath,
         factoryApiBaseUrl: current.factoryApiBaseUrl,
         pairingToken: current.pairingToken,
+        computerId: current.computerId,
       }
     },
     update(patch) {
@@ -149,6 +158,7 @@ function load(
     droidPath: str('droidPath'),
     factoryApiBaseUrl: str('factoryApiBaseUrl'),
     pairingToken: str('pairingToken') ?? legacy('pairingTokenEncrypted') ?? undefined,
+    computerId: str('computerId') ?? undefined,
     apiKey: str('apiKey') ?? legacy('apiKeyEncrypted'),
     login: str('login') ?? legacy('loginEncrypted'),
     migrated,

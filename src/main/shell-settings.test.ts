@@ -49,6 +49,26 @@ describe('shell settings', () => {
     expect(reloaded.getLogin()).toBe('{"access":"a"}')
   })
 
+  test('the computer id is made once and survives reloads and Pairing Token resets', () => {
+    const file = tempFile()
+    const store = createShellSettingsStore({ file, env: {} })
+    const id = store.settings.computerId
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    store.resetPairingToken()
+    store.update({ remoteAccess: true })
+    expect(store.settings.computerId).toBe(id)
+    expect(createShellSettingsStore({ file, env: {} }).settings.computerId).toBe(id)
+  })
+
+  test('a settings file from before the computer id gets one and keeps it', () => {
+    const file = tempFile()
+    writeFileSync(file, JSON.stringify({ remoteAccess: true, pairingToken: 'kept-token' }))
+    const id = createShellSettingsStore({ file, env: {} }).settings.computerId
+    expect(id).toBeTruthy()
+    const reloaded = createShellSettingsStore({ file, env: {} }).settings
+    expect(reloaded).toMatchObject({ computerId: id, pairingToken: 'kept-token' })
+  })
+
   test('the file is only readable by its owner', () => {
     const file = tempFile()
     createShellSettingsStore({ file, env: {} })

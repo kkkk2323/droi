@@ -11,6 +11,12 @@ import { lanInterfaceAddresses, startGateway, type Gateway } from './gateway'
 const TOKEN = 'correct-pairing-token'
 const LOCAL_TOKEN = 'local-window-token'
 const API_KEY = 'fk-secret-key'
+const META = {
+  app: 'Droi',
+  version: '1.2.3',
+  name: 'Studio Mac',
+  computerId: 'c0ffee00-0000-4000-8000-000000000000',
+} as const
 
 interface StandInDaemon {
   url: string
@@ -72,7 +78,7 @@ describe('Gateway', () => {
       getPairingToken: () => TOKEN,
       getLocalToken: () => LOCAL_TOKEN,
       getCredential: async () => ({ apiKey: API_KEY }),
-      getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess }),
+      getMeta: () => ({ ...META, remoteAccess }),
       client: { kind: 'none' },
     })
   })
@@ -143,7 +149,7 @@ describe('Gateway', () => {
       getDaemonUrl: () => daemon.url,
       getPairingToken: () => TOKEN,
       getCredential: () => new Promise((resolve) => (resolveToken = resolve)),
-      getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: false }),
+      getMeta: () => ({ ...META, remoteAccess: false }),
       client: { kind: 'none' },
     })
     const socket = await connectClient(gatewayDaemonUrl(gateway.url, TOKEN))
@@ -198,11 +204,17 @@ describe('Gateway', () => {
     expect(socket.readyState).toBe(WebSocket.CLOSED)
   })
 
-  test('/meta describes the shell without secrets', async () => {
+  test('/meta describes the shell and names the computer without secrets or a token', async () => {
     const response = await fetch(new URL('/meta', gateway.url))
     expect(response.status).toBe(200)
     const body = await response.json()
-    expect(body).toEqual({ app: 'Droi', version: '1.2.3', remoteAccess: false })
+    expect(body).toEqual({
+      app: 'Droi',
+      version: '1.2.3',
+      remoteAccess: false,
+      name: 'Studio Mac',
+      computerId: 'c0ffee00-0000-4000-8000-000000000000',
+    })
     const text = JSON.stringify(body)
     expect(text).not.toContain(API_KEY)
     expect(text).not.toContain(TOKEN)
@@ -272,7 +284,7 @@ describe('Gateway', () => {
       getDaemonUrl: () => null,
       getPairingToken: () => TOKEN,
       getCredential: async () => ({ apiKey: API_KEY }),
-      getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: false }),
+      getMeta: () => ({ ...META, remoteAccess: false }),
       client: { kind: 'none' },
     })
     const socket = new WebSocket(gatewayDaemonUrl(gateway.url, TOKEN))
@@ -290,7 +302,7 @@ describe('Gateway with Remote Access on', () => {
       getDaemonUrl: () => daemon.url,
       getPairingToken: () => TOKEN,
       getCredential: async () => ({ apiKey: API_KEY }),
-      getMeta: () => ({ app: 'Droi', version: '1.2.3', remoteAccess: true }),
+      getMeta: () => ({ ...META, remoteAccess: true }),
       client: { kind: 'none' },
     })
     expect(gateway.lanAddresses).toEqual(lanInterfaceAddresses())

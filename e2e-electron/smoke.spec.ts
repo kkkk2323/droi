@@ -65,14 +65,18 @@ test('the window opens and shows the Client served by the Gateway', async () => 
   expect(hasBridge).toBe(true)
 })
 
-test('the Gateway answers /meta', async () => {
+test('the Gateway answers /meta with the computer name and id', async () => {
   const response = await fetch(new URL('/meta', page.url()))
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({
+  const meta = await response.json()
+  expect(meta).toEqual({
     app: 'Droi',
     version: expect.any(String),
     remoteAccess: false,
+    name: expect.any(String),
+    computerId: expect.stringMatching(/^[0-9a-f-]{36}$/),
   })
+  expect(meta.name).not.toBe('')
 })
 
 test('the Local Client connects to the Daemon the Shell spawned with its settings', async () => {

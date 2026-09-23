@@ -35,6 +35,7 @@ import {
 } from './gateway/gateway'
 import { builtinSoundPath, readSoundAsDataUrl, SOUND_FILE_EXTENSIONS } from './alert-sounds'
 import { locateOpenInApps, type InstalledApp } from './open-in'
+import { computerName } from './computer-name'
 import { createShellSettingsStore, type ShellSettingsStore } from './shell-settings'
 import { createUpdater, type Updater } from './updater'
 import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
@@ -449,6 +450,7 @@ void app.whenReady().then(async () => {
   // The Local Client's origin is this port, and its localStorage (theme,
   // favourites, sidebar) lives under that origin; a fresh port every launch
   // would wipe it. Fall back to an ephemeral port only when ours is taken.
+  const name = computerName()
   const gatewayOptions = (port: number): GatewayOptions => ({
     port,
     remoteAccess: settings.settings.remoteAccess,
@@ -460,6 +462,8 @@ void app.whenReady().then(async () => {
       app: 'Droi',
       version: app.getVersion(),
       remoteAccess: gateway?.remoteAccess ?? false,
+      name,
+      computerId: settings.settings.computerId,
     }),
     client: clientSource(),
   })

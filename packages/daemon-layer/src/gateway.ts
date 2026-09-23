@@ -20,6 +20,10 @@ export interface GatewayMeta {
   app: 'Droi'
   version: string
   remoteAccess: boolean
+  /** The computer's display name, as the user named it in the system settings. */
+  name: string
+  /** Stable id of the computer; survives restarts, Pairing Token resets and address changes. */
+  computerId: string
 }
 
 /**
