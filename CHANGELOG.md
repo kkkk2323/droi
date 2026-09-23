@@ -1,3 +1,14 @@
+## 1.6.0 - 2026-09-23
+
+### Changed
+
+- Droi uses far less CPU while a Session works or streams. The spinners no longer repaint the window every frame; a streamed reply redraws only the message it adds to, at most about 30 times a second; and scrolling back through a long Session does less work per message. On the desktop, the web Client and the iPhone app.
+- iPhone app: built with the React Compiler, as the web Client is, and settled Markdown is parsed once.
+
+### Fixed
+
+- A subagent started from a Session that another program drives (the `droid` CLI, say) shows in the header's subagent menu and leads back to that Session.
+
 ## 1.5.0 - 2026-09-23
 
 ### Changed
