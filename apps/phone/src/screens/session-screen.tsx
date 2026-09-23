@@ -5,6 +5,7 @@ import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
+import { usePrompts } from '@droi/daemon-layer/use-prompts'
 import { useSession } from '@droi/daemon-layer/use-session'
 import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
@@ -22,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Composer, type Submission } from '../composer/composer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
+import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
 import { ScreenHeader } from '../ui/screen-header'
@@ -51,6 +53,7 @@ export function SessionScreen({
   const settings = useSessionSettings(session.sessionId)
   const contextUsage = useContextUsage(session.sessionId, { loaded, modelId: settings.modelId })
   const slashItems = useSlashItems(session.sessionId)
+  const prompts = usePrompts(session.sessionId)
   const compaction = useCompact(session.sessionId, session.tags)
   const isRunning = view.workingState !== 'idle' || compaction.isCompacting
   const [sentCount, setSentCount] = useState(0)
@@ -116,15 +119,20 @@ export function SessionScreen({
       )}
       <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
         <ComposerShelf sessionId={session.sessionId} />
-        <Composer
-          isRunning={isRunning}
-          disabled={!loaded}
-          onSend={submit}
-          onCancel={() => void turn.cancel()}
-          error={turn.sendError ?? compaction.error}
-          draftKey={session.sessionId}
-          slashItems={slashItems}
-        />
+        {hasPrompt(prompts) ? (
+          // The Prompt stands in for the composer; the draft comes back after.
+          <PromptArea sessionId={session.sessionId} />
+        ) : (
+          <Composer
+            isRunning={isRunning}
+            disabled={!loaded}
+            onSend={submit}
+            onCancel={() => void turn.cancel()}
+            error={turn.sendError ?? compaction.error}
+            draftKey={session.sessionId}
+            slashItems={slashItems}
+          />
+        )}
         <ComposerFooter workspace={session.cwd} usage={contextUsage} />
       </View>
     </KeyboardAvoidingView>
