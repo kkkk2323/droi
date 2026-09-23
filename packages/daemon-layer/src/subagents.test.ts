@@ -13,9 +13,10 @@ import {
   taskReport,
   taskRequest,
   taskState,
+  unlistedTaskCalls,
   type SubagentRun,
 } from './subagents'
-import type { ToolCall } from './transcript'
+import type { ToolCall, TranscriptEntry } from './transcript'
 
 function summary(overrides: Partial<SessionSummary>): SessionSummary {
   return {
@@ -137,5 +138,24 @@ describe('Task calls', () => {
     expect(formatRunDuration(4_200)).toBe('4s')
     expect(formatRunDuration(134_000)).toBe('2m 14s')
     expect(formatRunDuration(3_900_000)).toBe('1h 5m')
+  })
+})
+
+describe('unlistedTaskCalls', () => {
+  const entry = (call: ToolCall): TranscriptEntry => ({
+    id: 'e',
+    role: 'assistant',
+    blocks: [{ kind: 'subagent', id: 'e:0', call }],
+    createdAt: 0,
+    isError: false,
+  })
+
+  test('names the Task calls the list lacks, and changes once one answers', () => {
+    const listed = new Map([['call', summary({ sessionId: 's' })]])
+    expect(unlistedTaskCalls([entry(task(null))], listed)).toBe('')
+    expect(unlistedTaskCalls([entry(task(null))], new Map())).toBe('call')
+    expect(unlistedTaskCalls([entry(task({ content: 'session_id: s' }))], new Map())).toBe(
+      'call:answered',
+    )
   })
 })

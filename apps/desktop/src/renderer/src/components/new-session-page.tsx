@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
-import { Check, ChevronDown, Folder, FolderPlus, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Folder, FolderPlus } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { DroiMark } from '@/components/droi-mark'
 import { InputBar, type Submission } from '@/components/chat/input-bar'
 import { COLUMN } from '@/components/chat/session-view'
@@ -145,7 +146,7 @@ export function NewSessionPage({
               className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 font-mono text-sm outline-none transition-colors focus-visible:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring/30"
             />
             <Button type="submit" disabled={isCreating || !path.trim()}>
-              {isCreating ? <Loader2 aria-hidden className="animate-spin" /> : null}
+              {isCreating ? <Spinner aria-hidden /> : null}
               Start
             </Button>
           </form>

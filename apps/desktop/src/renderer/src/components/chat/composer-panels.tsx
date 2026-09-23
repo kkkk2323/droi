@@ -10,9 +10,9 @@ import {
   Clock,
   CornerDownLeft,
   ListChecks,
-  Loader2,
   X,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
@@ -118,9 +118,10 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
     )
   if (status === 'in_progress')
     return (
-      <Loader2
+      <Spinner
+        role="img"
         aria-label="In progress"
-        className="size-3 shrink-0 animate-spin text-sky-600 dark:text-sky-400"
+        className="size-3 text-sky-600 dark:text-sky-400"
       />
     )
   return <Circle aria-label="Pending" className="size-3 shrink-0 text-muted-foreground/50" />

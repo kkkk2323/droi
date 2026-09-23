@@ -4,7 +4,7 @@
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
-import type { SessionRef } from '@droi/daemon-layer/subagents'
+import { useListNewSubagents, type SessionRef } from '@droi/daemon-layer/subagents'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
 import { useGitChanges } from '@droi/daemon-layer/use-git-changes'
@@ -58,6 +58,7 @@ export function SessionScreen({
   const colors = useColors()
   const insets = useSafeAreaInsets()
   const view = useSession(session.sessionId)
+  useListNewSubagents(view.transcript)
   const loaded = view.loadState === LOAD_STATE.loaded
   const turn = useTurn(session.sessionId)
   const settings = useSessionSettings(session.sessionId)
@@ -90,7 +91,7 @@ export function SessionScreen({
   const [revealed, setRevealed] = useState(0)
   const shown = chain.slice(0, revealed).reverse()
   const earlierViews = useSessions(shown.map((s) => s.sessionId))
-  const earlier = useMemo(() => earlierViews.map((v) => v.messages), [earlierViews])
+  const earlier = useMemo(() => earlierViews.map((v) => v.transcript), [earlierViews])
   const nextEarlier = chain[revealed]
   const earlierError = earlierViews.find((v) => v.loadError)?.loadError
 
@@ -154,7 +155,7 @@ export function SessionScreen({
           </View>
         ) : (
           <TranscriptView
-            messages={view.messages}
+            transcript={view.transcript}
             earlier={earlier}
             workingState={compaction.isCompacting ? 'compacting_conversation' : view.workingState}
             lead={lead}

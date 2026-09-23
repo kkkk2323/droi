@@ -5,9 +5,12 @@ import type { DroidWorkingState, FactoryDroidMessage } from '@factory/droid-sdk'
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { LOAD_STATE, SESSION_EVENT, type LoadState } from './sdk-enums'
+import { buildTranscript, reuseUnchanged, type TranscriptEntry } from './transcript'
 
 export interface SessionView {
   messages: FactoryDroidMessage[]
+  /** What the transcript shows; an unchanged entry keeps its object from one snapshot to the next. */
+  transcript: readonly TranscriptEntry[]
   loadState: LoadState
   workingState: DroidWorkingState
   hasOlderMessages: boolean
@@ -16,6 +19,7 @@ export interface SessionView {
 
 const EMPTY: SessionView = {
   messages: [],
+  transcript: [],
   loadState: LOAD_STATE.notLoaded,
   workingState: 'idle' as DroidWorkingState,
   hasOlderMessages: false,
@@ -23,6 +27,8 @@ const EMPTY: SessionView = {
 }
 
 const NO_IDS: readonly string[] = []
+
+const MIN_RENDER_INTERVAL_MS = 32
 
 const WATCHED_EVENTS = [
   SESSION_EVENT.loadStateChanged,
@@ -87,16 +93,29 @@ export function useSessions(sessionIds: readonly string[]): readonly SessionView
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      // A streaming turn fires several events per delta; render at most once
-      // per animation frame.
+      // A streaming turn fires several events per delta, and each render
+      // rebuilds the whole transcript; render at most once per animation frame
+      // and no more than about 30 times a second (a 120 Hz display would
+      // otherwise draw every token).
       let frame: number | null = null
-      const scheduleRender = () => {
-        version.current += 1
-        if (frame !== null) return
+      let timer: ReturnType<typeof setTimeout> | null = null
+      let lastRender = 0
+      const render = () => {
         frame = requestAnimationFrame(() => {
           frame = null
+          lastRender = Date.now()
           listener()
         })
+      }
+      const scheduleRender = () => {
+        version.current += 1
+        if (frame !== null || timer !== null) return
+        const wait = lastRender + MIN_RENDER_INTERVAL_MS - Date.now()
+        if (wait <= 0) return render()
+        timer = setTimeout(() => {
+          timer = null
+          render()
+        }, wait)
       }
       notify.current = scheduleRender
       const bump = (_event: unknown, payload: { sessionId: string }) => {
@@ -114,6 +133,7 @@ export function useSessions(sessionIds: readonly string[]): readonly SessionView
         unsubscribe()
         controller.off('sessionNotFound', onFailed)
         if (frame !== null) cancelAnimationFrame(frame)
+        if (timer !== null) clearTimeout(timer)
       }
     },
     [controller, sessionState, ids],
@@ -122,18 +142,20 @@ export function useSessions(sessionIds: readonly string[]): readonly SessionView
   const getSnapshot = useCallback((): readonly SessionView[] => {
     const snapshotKey = `${key}:${version.current}`
     if (snapshot.current?.key === snapshotKey) return snapshot.current.views
-    const views = ids.map((sessionId): SessionView => {
+    const previous = snapshot.current?.views ?? []
+    const views = ids.map((sessionId, index): SessionView => {
       const loadError = loadErrors.current.get(sessionId) ?? null
       const manager = sessionState.getSessionManager(sessionId)
-      return manager
-        ? {
-            messages: manager.getDisplayMessages(),
-            loadState: manager.getLoadState() as unknown as LoadState,
-            workingState: manager.getDroidWorkingState(),
-            hasOlderMessages: manager.getHasOlderMessages(),
-            loadError,
-          }
-        : { ...EMPTY, loadError }
+      if (!manager) return { ...EMPTY, loadError }
+      const messages = manager.getDisplayMessages()
+      return {
+        messages,
+        transcript: reuseUnchanged(previous[index]?.transcript ?? [], buildTranscript(messages)),
+        loadState: manager.getLoadState() as unknown as LoadState,
+        workingState: manager.getDroidWorkingState(),
+        hasOlderMessages: manager.getHasOlderMessages(),
+        loadError,
+      }
     })
     snapshot.current = { key: snapshotKey, views }
     return views

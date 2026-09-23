@@ -8,8 +8,8 @@ import {
   CircleDashed,
   CircleSlash,
   CircleX,
-  Loader2,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import {
   formatRunDuration,
   subagentName,
@@ -130,7 +130,7 @@ function StateMark({ state }: { state: TaskState }) {
       )}
     >
       {running ? (
-        <Loader2 aria-hidden className="size-3 animate-spin" />
+        <Spinner aria-hidden className="size-3" />
       ) : state === 'completed' ? (
         <Check aria-hidden className="size-3" />
       ) : state === 'failed' ? (

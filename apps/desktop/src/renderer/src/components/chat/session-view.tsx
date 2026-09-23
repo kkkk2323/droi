@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ChevronUp, Folder, Loader2 } from 'lucide-react'
+import { ChevronUp, Folder } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { PageHeader } from '@/components/page-header'
 import { useSession, useSessions } from '@droi/daemon-layer/use-session'
 import { useTurn } from '@droi/daemon-layer/use-turn'
@@ -10,7 +11,7 @@ import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { usePrompts } from '@droi/daemon-layer/use-prompts'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
-import type { SessionRef } from '@droi/daemon-layer/subagents'
+import { useListNewSubagents, type SessionRef } from '@droi/daemon-layer/subagents'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { cn } from '@/lib/utils'
@@ -55,6 +56,7 @@ export function SessionView({
   leading?: ReactNode
 }) {
   const session = useSession(sessionId)
+  useListNewSubagents(session.transcript)
   const turn = useTurn(sessionId)
   const slashItems = useSlashItems(sessionId)
   const compaction = useCompact(sessionId, tags)
@@ -70,7 +72,7 @@ export function SessionView({
   const [revealed, setRevealed] = useState(0)
   const shown = chain.slice(0, revealed).reverse()
   const earlierViews = useSessions(shown.map((s) => s.sessionId))
-  const earlier = useMemo(() => earlierViews.map((v) => v.messages), [earlierViews])
+  const earlier = useMemo(() => earlierViews.map((v) => v.transcript), [earlierViews])
   const nextEarlier = chain[revealed]
   const earlierError = earlierViews.find((v) => v.loadError)?.loadError
   const loadingEarlier = earlierViews.some((v) => v.loadState !== LOAD_STATE.loaded)
@@ -83,7 +85,7 @@ export function SessionView({
           </p>
         ) : loadingEarlier ? (
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 aria-hidden className="size-3.5 animate-spin" />
+            <Spinner aria-hidden className="size-3.5" />
             Loading earlier messages…
           </p>
         ) : nextEarlier ? (
@@ -144,12 +146,12 @@ export function SessionView({
           </p>
         ) : !loaded && session.messages.length === 0 ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 aria-hidden className="size-4 animate-spin" />
+            <Spinner aria-hidden className="size-4" />
             Loading session…
           </div>
         ) : (
           <MessageList
-            messages={session.messages}
+            transcript={session.transcript}
             earlier={earlier}
             workingState={
               compaction.isCompacting ? 'compacting_conversation' : session.workingState

@@ -1,5 +1,6 @@
 import { Menu } from '@base-ui/react/menu'
-import { Bot, Check, ChevronDown, ChevronRight, CircleDashed, Loader2 } from 'lucide-react'
+import { Bot, Check, ChevronDown, ChevronRight, CircleDashed } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import {
   isRunning,
@@ -27,7 +28,7 @@ export function SubagentMenu({ subagents }: { subagents: readonly SessionSummary
         className="app-no-drag flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:bg-accent"
       >
         {running > 0 ? (
-          <Loader2 aria-hidden className="size-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+          <Spinner aria-hidden className="size-3.5 text-sky-600 dark:text-sky-400" />
         ) : (
           <Bot aria-hidden className="size-3.5" />
         )}
@@ -117,10 +118,10 @@ function SubagentRow({ session, run }: { session: SessionSummary; run: SubagentR
   return (
     <>
       {running ? (
-        <Loader2
+        <Spinner
           role="img"
           aria-label="Running"
-          className="size-3.5 shrink-0 animate-spin text-sky-600 dark:text-sky-400"
+          className="size-3.5 text-sky-600 dark:text-sky-400"
         />
       ) : run?.status === 'completed' ? (
         <Check

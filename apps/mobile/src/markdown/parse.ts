@@ -7,11 +7,26 @@ import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
 
+// A settled text parses the same every time; rows mount again as they scroll
+// back into view. The newest texts stay cached, a streaming one never.
+const CACHE_SIZE = 200
+const parsed = new Map<string, Root>()
+
 export function parseMarkdown(text: string, { streaming = false } = {}): Root {
-  return fromMarkdown(streaming ? repairStreaming(text) : text, {
-    extensions: [gfm()],
-    mdastExtensions: [gfmFromMarkdown()],
-  })
+  if (streaming) return parse(repairStreaming(text))
+  let tree = parsed.get(text)
+  if (tree) {
+    parsed.delete(text)
+  } else {
+    tree = parse(text)
+    if (parsed.size >= CACHE_SIZE) parsed.delete(parsed.keys().next().value!)
+  }
+  parsed.set(text, tree)
+  return tree
+}
+
+function parse(text: string): Root {
+  return fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] })
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/

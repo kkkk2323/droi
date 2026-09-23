@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
-import { buildTranscript, toolResultText } from './transcript'
+import { buildTranscript, reuseUnchanged, toolResultText } from './transcript'
 
 const message = (
   role: 'user' | 'assistant' | 'tool',
@@ -119,5 +119,38 @@ describe('buildTranscript', () => {
         content: [{ type: 'text', text: 'hi' }],
       } as never),
     ).toBe('hi')
+  })
+})
+
+describe('reuseUnchanged', () => {
+  // The SDK copies every message on each read but keeps the blocks inside.
+  const copies = (messages: FactoryDroidMessage[]) => messages.map((m) => ({ ...m }))
+  const use = { type: 'tool_use', id: 'call-1', name: 'Read', input: {} }
+  const image = { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: 'AAAA' } }
+  const asked = message('user', [{ type: 'text', text: 'look' }, image])
+  const reading = message('assistant', [use])
+  const answered = message('tool', [{ type: 'tool_result', toolUseId: 'call-1', content: 'x' }])
+
+  test('keeps every entry, and the list, when nothing changed', () => {
+    const first = buildTranscript([asked, reading, answered])
+    const again = reuseUnchanged(first, buildTranscript(copies([asked, reading, answered])))
+    expect(again).toBe(first)
+  })
+
+  test('replaces only the entry that changed', () => {
+    const first = buildTranscript([asked, reading])
+    const next = reuseUnchanged(first, buildTranscript(copies([asked, reading, answered])))
+    expect(next).not.toBe(first)
+    expect(next[0]).toBe(first[0])
+    expect(next[1]).not.toBe(first[1])
+  })
+
+  test('a streamed text keeps earlier entries and renews the growing one', () => {
+    const reply = (text: string) => message('assistant', [{ type: 'text', text }], { id: 'reply' })
+    const first = buildTranscript([asked, reply('Hel')])
+    const next = reuseUnchanged(first, buildTranscript([asked, reply('Hello')]))
+    expect(next[0]).toBe(first[0])
+    expect(next[1]).not.toBe(first[1])
+    expect(next[1]!.blocks[0]).toMatchObject({ text: 'Hello' })
   })
 })

@@ -1,11 +1,19 @@
 // Subagents: Sessions the Daemon starts for a Task tool call. The list carries
 // each one's calling Session and tool call; Clients keep them out of the
 // Session list and reach them from the Session that called them.
-import { createContext, useCallback, useContext, useRef, useSyncExternalStore } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from 'react'
 import { useDaemonConnection } from './connection-context'
 import { SESSION_EVENT, type SubagentStatus } from './sdk-enums'
-import type { SessionSummary } from './sessions'
-import { toolResultText, type ToolCall } from './transcript'
+import { SESSIONS_QUERY_KEY, type SessionSummary } from './sessions'
+import { toolResultText, type ToolCall, type TranscriptEntry } from './transcript'
 
 export interface SessionRef {
   sessionId: string
@@ -258,6 +266,39 @@ export const SubagentLinksProvider = SubagentLinksContext.Provider
 
 export function useSubagentLinks(): SubagentLinks | null {
   return useContext(SubagentLinksContext)
+}
+
+/**
+ * The Task calls whose subagent the list does not show, each with whether it
+ * has answered yet; empty when every one is listed.
+ */
+export function unlistedTaskCalls(
+  transcript: readonly TranscriptEntry[],
+  byToolUse: ReadonlyMap<string, SessionSummary>,
+): string {
+  const missing: string[] = []
+  for (const entry of transcript) {
+    for (const block of entry.blocks) {
+      if (block.kind === 'subagent' && !byToolUse.has(block.call.use.id)) {
+        missing.push(`${block.call.use.id}${block.call.result ? ':answered' : ''}`)
+      }
+    }
+  }
+  return missing.join(',')
+}
+
+/**
+ * Reads the Session list again when the transcript shows a Task call whose
+ * subagent the list lacks. A Session another process drives (the CLI, say)
+ * starts subagents without any event reaching this Client.
+ */
+export function useListNewSubagents(transcript: readonly TranscriptEntry[]): void {
+  const links = useContext(SubagentLinksContext)
+  const queryClient = useQueryClient()
+  const missing = links ? unlistedTaskCalls(transcript, links.byToolUse) : ''
+  useEffect(() => {
+    if (missing) void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
+  }, [missing, queryClient])
 }
 
 export interface SubagentLink {

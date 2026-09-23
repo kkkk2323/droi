@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownToLine, Loader2, RefreshCw, X } from 'lucide-react'
+import { ArrowDownToLine, RefreshCw, X } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import type {
   ShellSettingsBridge,
@@ -54,7 +55,7 @@ export function UpdateControl({
           disabled={working}
           onClick={() => void run(() => bridge.checkForUpdate())}
         >
-          {working ? <Loader2 aria-hidden className="animate-spin" /> : null}
+          {working ? <Spinner aria-hidden /> : null}
           {update.status === 'error' ? 'Try again' : 'Check for updates'}
         </Button>
       )}

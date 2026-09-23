@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import {
   Check,
@@ -9,12 +9,12 @@ import {
   FileText,
   FolderSearch,
   Globe,
-  Loader2,
   Search,
   Terminal,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import {
   readToolResult,
@@ -47,28 +47,41 @@ const RESULT_PREVIEW_LINES = 40
  */
 export function ToolCluster({ calls }: { calls: ToolCall[] }) {
   const [open, setOpen] = useState(true)
+  const panelId = useId()
   const pending = calls.filter((c) => c.result === null).length
   const label =
     pending > 0
       ? `Running ${calls.length === 1 ? (calls[0]?.use.name ?? 'a tool') : `${calls.length} tools`}`
       : `Used ${calls.length === 1 ? (calls[0]?.use.name ?? 'a tool') : `${calls.length} tools`}`
 
+  // A plain disclosure, not Collapsible: it opens without motion, and every
+  // cluster mounts open, where Collapsible reads computed styles, forcing a
+  // style pass per cluster as the transcript scrolls.
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} className="my-2">
-      <Collapsible.Trigger className="group -ml-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50">
-        {pending > 0 ? <Loader2 aria-hidden className="size-3 animate-spin" /> : null}
+    <div className="my-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        data-panel-open={open ? '' : undefined}
+        onClick={() => setOpen(!open)}
+        className="group -ml-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        {pending > 0 ? <Spinner aria-hidden className="size-3" /> : null}
         <span>{label}</span>
         <ChevronRight
           aria-hidden
           className="size-3 transition-transform duration-150 group-data-[panel-open]:rotate-90"
         />
-      </Collapsible.Trigger>
-      <Collapsible.Panel className="ml-1.5 mt-1 flex flex-col gap-0.5 border-l pl-3">
-        {calls.map((call) => (
-          <ToolRow key={call.use.id} call={call} />
-        ))}
-      </Collapsible.Panel>
-    </Collapsible.Root>
+      </button>
+      {open ? (
+        <div id={panelId} className="ml-1.5 mt-1 flex flex-col gap-0.5 border-l pl-3">
+          {calls.map((call) => (
+            <ToolRow key={call.use.id} call={call} />
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -104,11 +117,7 @@ function ToolRow({ call }: { call: ToolCall }) {
           </span>
         ) : null}
         {pending ? (
-          <Loader2
-            role="status"
-            aria-label="Running"
-            className="size-3.5 shrink-0 animate-spin text-muted-foreground"
-          />
+          <Spinner role="status" aria-label="Running" className="size-3.5 text-muted-foreground" />
         ) : (
           <>
             {isError ? (

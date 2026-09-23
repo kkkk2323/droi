@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
-import {
-  buildTranscript,
-  turnEndIds,
-  workingLabel,
-  type TranscriptEntry,
-} from '@droi/daemon-layer/transcript'
+import { turnEndIds, workingLabel, type TranscriptEntry } from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
 import { prefersReducedMotion } from '@/lib/use-media-query'
 import { cn } from '@/lib/utils'
@@ -37,7 +31,7 @@ const FOLLOW_THRESHOLD = 120
 /** A height change this soon after a click or key press in the list is the reader's. */
 const USER_RESIZE_WINDOW_MS = 500
 
-const NO_EARLIER: ReadonlyArray<readonly FactoryDroidMessage[]> = []
+const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
 
 function ListHeader({ context }: { context?: ListContext }) {
   return (
@@ -108,15 +102,15 @@ function scrollToEnd(handle: VirtuosoHandle | null, behavior: 'auto' | 'smooth')
 
 /** Virtualised transcript that starts at, and follows, the latest message. */
 export function MessageList({
-  messages,
+  transcript,
   earlier = NO_EARLIER,
   workingState,
   lead = null,
   scrollToEndKey = 0,
 }: {
-  messages: readonly FactoryDroidMessage[]
+  transcript: readonly TranscriptEntry[]
   /** The Sessions this one continues after compactions, oldest first, shown above it. */
-  earlier?: ReadonlyArray<readonly FactoryDroidMessage[]>
+  earlier?: ReadonlyArray<readonly TranscriptEntry[]>
   /** The Daemon's working state for this Session. */
   workingState: string
   lead?: ReactNode
@@ -131,9 +125,17 @@ export function MessageList({
   // content growing under a pinned viewport does not count as leaving).
   const scroller = useRef<HTMLElement | null>(null)
   const following = useRef(true)
+  // Reading the geometry forces a layout; scroll events come several per
+  // frame while Virtuoso is adding rows, so read once per frame.
+  const scrollFrame = useRef<number | null>(null)
   const onScroll = useRef(() => {
-    const el = scroller.current
-    if (el) following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD
+    if (scrollFrame.current !== null) return
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null
+      const el = scroller.current
+      if (el)
+        following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD
+    })
   }).current
   const attachScroller = (el: HTMLElement | Window | null) => {
     scroller.current?.removeEventListener('scroll', onScroll)
@@ -175,7 +177,7 @@ export function MessageList({
     const timer = setTimeout(() => scrollToEnd(virtuoso.current, 'auto'), 150)
     return () => clearTimeout(timer)
   }, [])
-  const parts = [...earlier, messages].map((part) => buildTranscript(part))
+  const parts = [...earlier, transcript]
   const entries = parts.flat()
   const earlierCount = entries.length - (parts[parts.length - 1]?.length ?? 0)
   const last = entries[entries.length - 1]

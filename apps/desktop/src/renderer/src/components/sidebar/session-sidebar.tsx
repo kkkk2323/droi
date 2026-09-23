@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CircleAlert,
   Folder,
-  Loader2,
   MessageSquare,
   Pin,
   PinOff,
@@ -14,6 +13,7 @@ import {
   Settings,
   SquarePen,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import {
   foldedWorkspaces,
@@ -294,7 +294,7 @@ function WorkspaceSection({
                           role="status"
                           className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
                         >
-                          <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+                          <Spinner aria-hidden className="size-3" />
                           <span className="truncate">
                             {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
                           </span>
@@ -305,7 +305,7 @@ function WorkspaceSection({
                           aria-label="Working"
                           className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
                         >
-                          <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+                          <Spinner aria-hidden className="size-3" />
                           <span className="truncate">Working</span>
                         </span>
                       ) : session.messagesCount !== null ? (

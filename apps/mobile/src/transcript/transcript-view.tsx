@@ -1,13 +1,7 @@
 // The transcript: opens on the latest message, follows streamed output while
 // the reader is at the bottom, stays put once they scroll up, and offers the
 // way back down. Same rules as the web Client's list, on a FlatList.
-import type { FactoryDroidMessage } from '@factory/droid-sdk'
-import {
-  buildTranscript,
-  turnEndIds,
-  workingLabel,
-  type TranscriptEntry,
-} from '@droi/daemon-layer/transcript'
+import { turnEndIds, workingLabel, type TranscriptEntry } from '@droi/daemon-layer/transcript'
 import { ArrowDown } from 'lucide-react-native'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
@@ -30,18 +24,18 @@ const FOLLOW_THRESHOLD = 120
 /** A height change this soon after a touch in the list is the reader's own (a row opening). */
 const USER_RESIZE_WINDOW_MS = 500
 
-const NO_EARLIER: ReadonlyArray<readonly FactoryDroidMessage[]> = []
+const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
 
 export function TranscriptView({
-  messages,
+  transcript,
   earlier = NO_EARLIER,
   workingState,
   lead = null,
   scrollToEndKey = 0,
 }: {
-  messages: readonly FactoryDroidMessage[]
+  transcript: readonly TranscriptEntry[]
   /** The Sessions this one continues after compactions, oldest first, shown above it. */
-  earlier?: ReadonlyArray<readonly FactoryDroidMessage[]>
+  earlier?: ReadonlyArray<readonly TranscriptEntry[]>
   workingState: string
   lead?: ReactNode
   /** Bumped on send: the list goes to the end wherever it was. */
@@ -54,7 +48,7 @@ export function TranscriptView({
   const lastTouched = useRef(0)
   const [atBottom, setAtBottom] = useState(true)
 
-  const parts = [...earlier, messages].map((part) => buildTranscript(part))
+  const parts = [...earlier, transcript]
   const entries = parts.flat()
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'

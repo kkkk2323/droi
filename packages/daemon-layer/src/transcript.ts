@@ -55,11 +55,7 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
           break
         case 'image':
           if (block.source.type === 'base64')
-            blocks.push({
-              kind: 'image',
-              id,
-              src: `data:${block.source.mediaType};base64,${block.source.data}`,
-            })
+            blocks.push({ kind: 'image', id, src: dataUrl(block.source) })
           break
         case 'thinking':
           if (block.thinking)
@@ -110,6 +106,77 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
   return entries
 }
 
+// The SDK hands out the same source object for an image on every read; the
+// same string back keeps entries comparable without scanning megabytes.
+const dataUrls = new WeakMap<object, string>()
+
+function dataUrl(source: { mediaType: string; data: string }): string {
+  let url = dataUrls.get(source)
+  if (url === undefined) {
+    url = `data:${source.mediaType};base64,${source.data}`
+    dataUrls.set(source, url)
+  }
+  return url
+}
+
+function sameCalls(a: readonly ToolCall[], b: readonly ToolCall[]): boolean {
+  return a.length === b.length && a.every((call, i) => sameCall(call, b[i]!))
+}
+
+function sameCall(a: ToolCall, b: ToolCall): boolean {
+  return a.use === b.use && a.result === b.result
+}
+
+function sameBlock(a: TranscriptBlock, b: TranscriptBlock): boolean {
+  if (a.kind !== b.kind || a.id !== b.id) return false
+  switch (a.kind) {
+    case 'text':
+      return a.text === (b as typeof a).text
+    case 'image':
+      return a.src === (b as typeof a).src
+    case 'thinking':
+      return a.text === (b as typeof a).text && a.durationMs === (b as typeof a).durationMs
+    case 'tools':
+      return sameCalls(a.calls, (b as typeof a).calls)
+    case 'subagent':
+      return sameCall(a.call, (b as typeof a).call)
+  }
+}
+
+function sameEntry(a: TranscriptEntry, b: TranscriptEntry): boolean {
+  return (
+    a.role === b.role &&
+    a.createdAt === b.createdAt &&
+    a.isError === b.isError &&
+    a.blocks.length === b.blocks.length &&
+    a.blocks.every((block, i) => sameBlock(block, b.blocks[i]!))
+  )
+}
+
+/**
+ * A freshly built transcript that keeps the previous build's entry objects
+ * wherever nothing changed, so rows can skip rendering. The SDK rebuilds every
+ * message on each read; while a turn streams, only its last entry is new.
+ */
+export function reuseUnchanged(
+  previous: readonly TranscriptEntry[],
+  next: TranscriptEntry[],
+): readonly TranscriptEntry[] {
+  if (previous.length === 0) return next
+  const byId = new Map(previous.map((entry) => [entry.id, entry]))
+  let changed = previous.length !== next.length
+  const entries = next.map((entry, i) => {
+    const old = byId.get(entry.id)
+    if (old && sameEntry(old, entry)) {
+      if (previous[i] !== old) changed = true
+      return old
+    }
+    changed = true
+    return entry
+  })
+  return changed ? entries : previous
+}
+
 export function toolResultText(result: ToolResultBlock | null): string {
   if (!result) return ''
   const content: unknown = result.content
@@ -124,6 +191,19 @@ export function toolResultText(result: ToolResultBlock | null): string {
       .join('\n')
   }
   return ''
+}
+
+// Building a formatter is the slow part of toLocaleTimeString; a turn's
+// timestamp renders every time its row mounts.
+const TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+const DAY = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+
+/** A turn's time, with the day in front when it was not today. */
+export function formatTimestamp(ms: number, now = new Date()): string {
+  const date = new Date(ms)
+  const time = TIME.format(date)
+  if (date.toDateString() === now.toDateString()) return time
+  return `${DAY.format(date)} ${time}`
 }
 
 /** Assistant entries followed by a user turn, plus the last one once the Daemon rests. */

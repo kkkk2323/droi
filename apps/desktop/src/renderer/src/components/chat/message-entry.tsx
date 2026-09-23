@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from './markdown'
 import { SubagentCard } from './subagent-card'
 import { ToolCluster } from './tool-activity'
-import type { TranscriptBlock, TranscriptEntry } from '@droi/daemon-layer/transcript'
+import {
+  formatTimestamp,
+  type TranscriptBlock,
+  type TranscriptEntry,
+} from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
 
-export function MessageEntry({
+export const MessageEntry = memo(function MessageEntry({
   entry,
   isStreaming,
   showTime,
@@ -100,7 +104,7 @@ export function MessageEntry({
       ) : null}
     </article>
   )
-}
+})
 
 function ThinkingSection({
   text,
@@ -138,12 +142,4 @@ function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1_000)
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-}
-
-function formatTimestamp(ms: number, now = new Date()): string {
-  const date = new Date(ms)
-  const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  const sameDay = date.toDateString() === now.toDateString()
-  if (sameDay) return time
-  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`
 }

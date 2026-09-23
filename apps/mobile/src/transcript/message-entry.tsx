@@ -1,6 +1,11 @@
 // One transcript entry: the user's message as a bubble, or an assistant turn
 // as Markdown, images, folded reasoning and quiet tool rows.
-import type { TranscriptBlock, TranscriptEntry } from '@droi/daemon-layer/transcript'
+import {
+  formatTimestamp,
+  type TranscriptBlock,
+  type TranscriptEntry,
+} from '@droi/daemon-layer/transcript'
+import { memo } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
 import { Markdown } from '../markdown/markdown'
 import { Text } from '../ui/primitives'
@@ -13,7 +18,7 @@ import { ToolCluster } from './tool-cluster'
 type TextBlock = Extract<TranscriptBlock, { kind: 'text' }>
 type ImageBlock = Extract<TranscriptBlock, { kind: 'image' }>
 
-export function MessageEntry({
+export const MessageEntry = memo(function MessageEntry({
   entry,
   isStreaming,
   showTime,
@@ -102,14 +107,7 @@ export function MessageEntry({
       ) : null}
     </View>
   )
-}
-
-function formatTimestamp(ms: number, now = new Date()): string {
-  const date = new Date(ms)
-  const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  if (date.toDateString() === now.toDateString()) return time
-  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`
-}
+})
 
 const styles = StyleSheet.create({
   user: { alignItems: 'flex-end', gap: space.xs, paddingVertical: space.sm },
