@@ -15,6 +15,7 @@
     "@expo-google-fonts/geist": "^0.4.2",
     "@expo-google-fonts/geist-mono": "^0.4.3",
     "@expo/metro-runtime": "~56.0.21",
+    "@expo/ui": "~56.0.26",
     "@factory/droid-sdk": "0.9.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.103.1",

@@ -1,7 +1,10 @@
-// A sheet that slides up from the bottom over a dimmed screen: the phone's
-// stand-in for the web Client's popovers and selects.
-import type { ReactNode } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+// A sheet for pickers and action menus: the phone's stand-in for the web
+// Client's popovers and selects. It is the platform's own bottom sheet (SwiftUI
+// on iOS, vaul in the web build), so the dim fades in place while only the
+// panel slides, and a swipe down or a tap outside dismisses it.
+import { BottomSheetModal, BottomSheetView } from '@expo/ui/community/bottom-sheet'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Text } from './primitives'
 import { radius, space } from './theme'
@@ -20,31 +23,40 @@ export function Sheet({
 }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
+  const { height } = useWindowDimensions()
+  const sheet = useRef<BottomSheetModal>(null)
+  // The native sheet reports its dismissal only after the slide ends; by then
+  // the caller may have opened something else that this must not close.
+  const open = useRef(visible)
+
+  useEffect(() => {
+    open.current = visible
+    if (visible) sheet.current?.present()
+    else sheet.current?.dismiss()
+  }, [visible])
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <Pressable
-          role="button"
-          aria-label="Close"
-          style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]}
-          onPress={onClose}
-        />
+    <BottomSheetModal
+      ref={sheet}
+      enablePanDownToClose
+      backgroundStyle={{ backgroundColor: colors.popover }}
+      onDismiss={() => {
+        if (open.current) onClose()
+      }}
+    >
+      <BottomSheetView>
         <View
           role="dialog"
           aria-label={title}
-          style={[
-            styles.sheet,
-            { backgroundColor: colors.popover, paddingBottom: insets.bottom + space.md },
-          ]}
+          style={{ maxHeight: Math.round(height * 0.85), paddingBottom: insets.bottom + space.md }}
         >
-          <View style={[styles.grabber, { backgroundColor: colors.border }]} />
           <Text role="heading" weight="semibold" style={styles.title}>
             {title}
           </Text>
           {children}
         </View>
-      </View>
-    </Modal>
+      </BottomSheetView>
+    </BottomSheetModal>
   )
 }
 
@@ -76,14 +88,6 @@ export function SheetOption({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  sheet: {
-    borderTopLeftRadius: radius.xl + 6,
-    borderTopRightRadius: radius.xl + 6,
-    paddingTop: space.sm,
-    maxHeight: '85%',
-  },
-  grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginBottom: space.sm },
   title: { paddingHorizontal: space.lg, paddingBottom: space.sm },
   option: {
     minHeight: 44,

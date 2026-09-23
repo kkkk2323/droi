@@ -63,8 +63,12 @@ export function SessionList({
   const colors = useColors()
   const insets = useSafeAreaInsets()
   const [switching, setSwitching] = useState(false)
+  // The row a sheet acts on outlives the sheet being open, so its actions stay
+  // on the panel while it slides away.
   const [sessionActions, setSessionActions] = useState<SessionSummary | null>(null)
+  const [sessionActionsOpen, setSessionActionsOpen] = useState(false)
   const [workspaceActions, setWorkspaceActions] = useState<WorkspaceGroup | null>(null)
+  const [workspaceActionsOpen, setWorkspaceActionsOpen] = useState(false)
   const activity = useSessionActivity()
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
@@ -164,21 +168,28 @@ export function SessionList({
             activity={activity}
             subagentsRunning={subagentsRunning}
             onSelect={onSelect}
-            onSessionActions={setSessionActions}
-            onWorkspaceActions={setWorkspaceActions}
+            onSessionActions={(session) => {
+              setSessionActions(session)
+              setSessionActionsOpen(true)
+            }}
+            onWorkspaceActions={(picked) => {
+              setWorkspaceActions(picked)
+              setWorkspaceActionsOpen(true)
+            }}
           />
         ))}
       </ScrollView>
       <SessionActions
         session={sessionActions}
-        onClose={() => setSessionActions(null)}
+        open={sessionActionsOpen}
+        onClose={() => setSessionActionsOpen(false)}
         onArchiveToggle={onArchiveToggle}
         onRename={onRename}
       />
       <Sheet
-        visible={workspaceActions !== null}
+        visible={workspaceActionsOpen}
         title={workspaceActions ? `Actions for ${workspaceActions.label}` : ''}
-        onClose={() => setWorkspaceActions(null)}
+        onClose={() => setWorkspaceActionsOpen(false)}
       >
         {workspaceActions ? (
           <>
@@ -188,13 +199,13 @@ export function SessionList({
               }
               onPress={() => {
                 toggleListed(pinnedWorkspaces, workspaceActions.key)
-                setWorkspaceActions(null)
+                setWorkspaceActionsOpen(false)
               }}
             />
             <SheetButton
               label="New session here"
               onPress={() => {
-                setWorkspaceActions(null)
+                setWorkspaceActionsOpen(false)
                 onNewSessionIn(workspaceActions.path)
               }}
             />
@@ -207,11 +218,13 @@ export function SessionList({
 
 function SessionActions({
   session,
+  open,
   onClose,
   onArchiveToggle,
   onRename,
 }: {
   session: SessionSummary | null
+  open: boolean
   onClose: () => void
   onArchiveToggle: (session: SessionSummary) => void
   onRename: (session: SessionSummary, title: string) => void
@@ -219,20 +232,19 @@ function SessionActions({
   const colors = useColors()
   const [pinnedIds] = usePreference(pinnedSessions)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const close = () => {
-    setRenaming(null)
-    onClose()
+  // Reset on opening rather than closing, so the rename field does not turn
+  // back into the buttons while the sheet slides away.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setRenaming(null)
   }
   const saveRename = () => {
     if (session && renaming?.trim()) onRename(session, renaming.trim())
-    close()
+    onClose()
   }
   return (
-    <Sheet
-      visible={session !== null}
-      title={session ? `Actions for ${session.title}` : ''}
-      onClose={close}
-    >
+    <Sheet visible={open} title={session ? `Actions for ${session.title}` : ''} onClose={onClose}>
       {session && renaming !== null ? (
         <View style={styles.rename}>
           <TextInput
@@ -251,7 +263,7 @@ function SessionActions({
             label={pinnedIds.includes(session.sessionId) ? 'Unpin' : 'Pin'}
             onPress={() => {
               toggleListed(pinnedSessions, session.sessionId)
-              close()
+              onClose()
             }}
           />
           <SheetButton label="Rename" onPress={() => setRenaming(session.title)} />
@@ -259,7 +271,7 @@ function SessionActions({
             label={session.archivedAt ? 'Unarchive' : 'Archive'}
             onPress={() => {
               onArchiveToggle(session)
-              close()
+              onClose()
             }}
           />
         </>

@@ -51,8 +51,17 @@ export async function pasteLink(page: Page, link: string): Promise<void> {
   await page.getByRole('button', { name: 'Pair' }).click()
 }
 
+/**
+ * Waits for sheets to finish sliding away. The web build's sheet (vaul) hides
+ * the rest of the page from the accessibility tree until its exit ends.
+ */
+export async function sheetsClosed(page: Page): Promise<void> {
+  await expect(page.locator('[data-vaul-drawer]')).toHaveCount(0)
+}
+
 /** The Session list in the drawer, opening the drawer first. */
 export async function openDrawer(page: Page): Promise<Locator> {
+  await sheetsClosed(page)
   const drawer = page.getByRole('dialog', { name: 'Sessions' })
   if (!(await drawer.isVisible())) {
     await page.getByRole('button', { name: 'Open sessions' }).click()
