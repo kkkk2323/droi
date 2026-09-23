@@ -3,7 +3,7 @@
 # Quits a running Droi, swaps /Applications/Droi.app and relaunches. Set DROI_NO_LAUNCH=1 to skip the relaunch.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../apps/desktop"
 
 # A universal build signs a 400 MB fat Electron framework twice over; the
 # local install only needs this machine's architecture.

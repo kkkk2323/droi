@@ -1,0 +1,20 @@
+{
+  "name": "@droi/tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright suites: web Client and Phone App against the Fake Daemon, Desktop Shell smoke, live",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@droi/daemon-layer": "workspace:*",
+    "@factory/droid-sdk": "0.9.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "~7.0.2",
+    "ws": "^8.21.3",
+    "zod": "^4.6.5"
+  }
+}

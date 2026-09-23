@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./resources/icon.svg" width="128" height="128" alt="Droi Logo">
+  <img src="./apps/desktop/resources/icon.svg" width="128" height="128" alt="Droi Logo">
 </p>
 
 # Droi
@@ -11,7 +11,7 @@
 
 Droi is a desktop and mobile-web front end for the [Factory Droid](https://docs.factory.ai) coding agent. It does not run the agent itself: it starts `droid daemon` and presents the Daemon's Sessions in a fast, keyboard-friendly interface on your computer and, if you turn it on, on your phone.
 
-![Droi](./screenshot/page.png)
+![Droi](./docs/screenshot.png)
 
 ## What it does
 
@@ -59,7 +59,7 @@ A Factory API key (Settings → Daemon, or `FACTORY_API_KEY`) works as a fallbac
 
 ### Installing a build
 
-`pnpm build:mac` produces a DMG under `dist/`; `pnpm install:mac` builds for this Mac and replaces `/Applications/Droi.app`. Builds carry an ad-hoc signature (no developer identity), so on a Mac that downloaded the DMG, Gatekeeper refuses the first launch: right-click **Droi.app** → **Open**, or run `xattr -cr /Applications/Droi.app`.
+`pnpm build:mac` produces a DMG under `apps/desktop/dist/`; `pnpm install:mac` builds for this Mac and replaces `/Applications/Droi.app`. Builds carry an ad-hoc signature (no developer identity), so on a Mac that downloaded the DMG, Gatekeeper refuses the first launch: right-click **Droi.app** → **Open**, or run `xattr -cr /Applications/Droi.app`.
 
 Settings, the Factory login and the Pairing Token are kept in `~/Library/Application Support/Droi/settings.json`, readable only by your user, the same way the CLI keeps its credentials under `~/.factory`.
 
@@ -81,14 +81,18 @@ The E2E suite never needs a Factory key: it drives the real Client against a scr
 ## Project structure
 
 ```
-src/main/       Desktop Shell: Daemon supervisor, Gateway, settings, IPC
-src/preload/    minimal bridge (Gateway URL, window token, settings calls)
-src/renderer/   Client (React)
-src/shared/     contracts shared by Shell and Client
-e2e/            Playwright + Fake Daemon
-e2e-electron/   Desktop Shell smoke suite
-e2e-live/       live test
-docs/adr/       architecture decisions
+apps/desktop/src/main/       Desktop Shell: Daemon supervisor, Gateway, settings, IPC
+apps/desktop/src/preload/    minimal bridge (Gateway URL, window token, settings calls)
+apps/desktop/src/renderer/   Client (React)
+apps/desktop/src/shared/     contracts shared by Shell and Client
+apps/mobile/                 Phone App (Expo, iPhone)
+packages/daemon-layer/       daemon layer shared by both Clients
+tests/fake-daemon/           scripted Fake Daemon
+tests/web/                   Playwright: Client against the Fake Daemon
+tests/mobile/                Playwright: Phone App web build against the Fake Daemon
+tests/electron/              Desktop Shell smoke suite
+tests/live/                  live test
+docs/adr/                    architecture decisions
 ```
 
 ## License

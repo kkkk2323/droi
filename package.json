@@ -1,127 +1,42 @@
 {
-  "name": "droi",
-  "version": "1.4.0",
-  "description": "Desktop and mobile-web front end for the Droid Daemon",
-  "main": "./out/main/index.js",
+  "name": "droi-workspace",
+  "private": true,
+  "description": "Droi: desktop, web and iPhone front ends for the Droid Daemon",
   "type": "module",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
-    "dev": "electron-vite dev",
-    "dev:client": "vite",
-    "build": "electron-vite build",
-    "preview": "electron-vite preview",
-    "build:mac": "pnpm build && electron-builder --mac",
+    "dev": "pnpm -C apps/desktop dev",
+    "dev:client": "pnpm -C apps/desktop dev:client",
+    "build": "pnpm -C apps/desktop build",
+    "build:mac": "pnpm -C apps/desktop build:mac",
+    "build:win": "pnpm -C apps/desktop build:win",
+    "build:linux": "pnpm -C apps/desktop build:linux",
     "install:mac": "scripts/install-mac.sh",
     "install:phone": "scripts/install-phone.sh",
-    "build:win": "pnpm build && electron-builder --win",
-    "build:linux": "pnpm build && electron-builder --linux",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:phone": "playwright test -c playwright.phone.config.ts",
-    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
-    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
-    "typecheck:phone": "pnpm --filter @droi/phone typecheck",
-    "typecheck": "pnpm typecheck:node && pnpm typecheck:web && pnpm typecheck:phone",
-    "lint": "oxlint src packages apps e2e e2e-phone e2e-electron e2e-live",
-    "lint:fix": "oxlint --fix src packages apps e2e e2e-phone e2e-electron e2e-live",
-    "format": "oxfmt --write src packages apps e2e e2e-phone e2e-electron e2e-live",
-    "format:check": "oxfmt --check src packages apps e2e e2e-phone e2e-electron e2e-live",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck",
-    "test:smoke": "playwright test -c playwright.electron.config.ts",
-    "test:live": "playwright test -c playwright.live.config.ts"
-  },
-  "build": {
-    "appId": "com.droi.app",
-    "productName": "Droi",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "out/**/*",
-      "resources/**/*"
-    ],
-    "icon": "resources/icon.png",
-    "mac": {
-      "icon": "resources/icon.icns",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        }
-      ],
-      "identity": null
-    },
-    "win": {
-      "icon": "resources/icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "linux": {
-      "icon": "resources/icon.png",
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "dmg": {
-      "title": "Droi",
-      "icon": "resources/icon.icns"
-    },
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
+    "test:e2e": "pnpm -C tests exec playwright test -c web/playwright.config.ts",
+    "test:e2e:phone": "pnpm -C tests exec playwright test -c mobile/playwright.config.ts",
+    "test:smoke": "pnpm -C tests exec playwright test -c electron/playwright.config.ts",
+    "test:live": "pnpm -C tests exec playwright test -c live/playwright.config.ts",
+    "typecheck:root": "tsc --noEmit -p tsconfig.json",
+    "typecheck:desktop": "pnpm -C apps/desktop typecheck",
+    "typecheck:mobile": "pnpm -C apps/mobile typecheck",
+    "typecheck:tests": "pnpm -C tests typecheck",
+    "typecheck": "pnpm typecheck:root && pnpm typecheck:desktop && pnpm typecheck:mobile && pnpm typecheck:tests",
+    "lint": "oxlint apps packages tests",
+    "lint:fix": "oxlint --fix apps packages tests",
+    "format": "oxfmt --write apps packages tests",
+    "format:check": "oxfmt --check apps packages tests",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck"
   },
   "author": "kkkk2323",
   "license": "MIT",
-  "dependencies": {
-    "@base-ui/react": "^1.8.0",
-    "@factory/droid-sdk": "0.9.1",
-    "@tanstack/react-query": "^5.103.1",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.47.0",
-    "qrcode": "^1.5.4",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-virtuoso": "^4.18.13",
-    "streamdown": "^2.6.0",
-    "tailwind-merge": "^3.7.0",
-    "ws": "^8.21.3"
-  },
   "devDependencies": {
-    "@droi/daemon-layer": "workspace:*",
-    "@electron-toolkit/preload": "^3.0.2",
-    "@electron-toolkit/tsconfig": "^2.0.0",
-    "@electron-toolkit/utils": "^4.0.0",
-    "@playwright/test": "^1.63.0",
-    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.2",
-    "@types/qrcode": "^1.5.6",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@types/ws": "^8.18.1",
-    "@vitejs/plugin-react": "^6.1.1",
-    "electron": "^44.4.3",
-    "electron-builder": "^26.15.3",
-    "electron-vite": "^6.0.0-beta.1",
-    "oxc-transform-react": "^0.150.0",
     "oxfmt": "^0.68.0",
     "oxlint": "^1.83.0",
-    "tailwindcss": "^4.3.3",
     "typescript": "~7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.1",
-    "zod": "^4.6.5"
+    "vitest": "^5.0.1"
   }
 }

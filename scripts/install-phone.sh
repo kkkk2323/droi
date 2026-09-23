@@ -7,7 +7,7 @@
 # APPLE_TEAM_ID overrides the team read from the certificate.
 set -euo pipefail
 
-cd "$(dirname "$0")/../apps/phone"
+cd "$(dirname "$0")/../apps/mobile"
 # CocoaPods fails on non-ASCII paths without a UTF-8 locale.
 export LANG="${LANG:-en_US.UTF-8}" LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
@@ -51,5 +51,5 @@ xcodebuild -workspace ios/Droi.xcworkspace -scheme Droi -configuration Release \
 xcrun devicectl device install app --device "$device" build/Build/Products/Release-iphoneos/Droi.app
 xcrun devicectl device process launch --device "$device" com.kkkk2323.droi >/dev/null ||
   echo "Installed but not launched: is the iPhone locked, or the developer not trusted yet?"
-echo "Installed Droi $(node -p 'require("../../package.json").version') on the iPhone."
+echo "Installed Droi $(node -p 'require("../desktop/package.json").version') on the iPhone."
 echo "First install: trust the developer in Settings → General → VPN & Device Management."

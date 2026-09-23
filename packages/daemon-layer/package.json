@@ -8,6 +8,9 @@
     "./connection-context": "./src/connection-context.tsx",
     "./*": "./src/*.ts"
   },
+  "devDependencies": {
+    "@types/react": "^19.3.0"
+  },
   "peerDependencies": {
     "@factory/droid-sdk": "0.9.1",
     "@tanstack/react-query": "^5.103.1",

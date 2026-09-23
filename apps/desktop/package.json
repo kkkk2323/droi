@@ -1,0 +1,107 @@
+{
+  "name": "droi",
+  "version": "1.4.0",
+  "private": true,
+  "description": "The Desktop Shell and web Client: Droi's front end for the Droid Daemon",
+  "license": "MIT",
+  "author": "kkkk2323",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:client": "vite",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:win": "electron-vite build && electron-builder --win",
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.8.0",
+    "@factory/droid-sdk": "0.9.1",
+    "@tanstack/react-query": "^5.103.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.47.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-virtuoso": "^4.18.13",
+    "streamdown": "^2.6.0",
+    "tailwind-merge": "^3.7.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@droi/daemon-layer": "workspace:*",
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^6.0.0-beta.1",
+    "oxc-transform-react": "^0.150.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.0",
+    "zod": "^4.6.5"
+  },
+  "build": {
+    "appId": "com.droi.app",
+    "productName": "Droi",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "resources/**/*"
+    ],
+    "icon": "resources/icon.png",
+    "mac": {
+      "icon": "resources/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "identity": null
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "resources/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Droi",
+      "icon": "resources/icon.icns"
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  }
+}

@@ -4,5 +4,5 @@
   "singleQuote": true,
   "printWidth": 100,
   "trailingComma": "all",
-  "ignorePatterns": ["node_modules", "out", "dist", "resources", "legacy", "apps/phone/dist", "apps/phone/ios", "apps/phone/.expo", "apps/phone/build", "pnpm-lock.yaml"]
+  "ignorePatterns": ["node_modules", "out", "dist", "resources", "legacy", "apps/mobile/dist", "apps/mobile/ios", "apps/mobile/.expo", "apps/mobile/build", "pnpm-lock.yaml"]
 }
