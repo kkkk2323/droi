@@ -11,6 +11,7 @@
 - A diff's line numbers stay readable when it is scrolled sideways, and a Create row shows the new file's content.
 - A long link or word in a sent message wraps inside its bubble.
 - More than two queued messages fold into one row that opens to the list, and finished tasks in the task list show a green check.
+- The Kimi mark in the model picker is visible on the light theme.
 
 ## 1.1.2 - 2026-09-21
 
