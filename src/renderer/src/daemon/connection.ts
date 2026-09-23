@@ -41,11 +41,21 @@ export interface DaemonConnection {
 
 const RECOVERY_POLL_MS = 2_000
 
+/**
+ * The SDK's state manager as the Client wants it. Progressive UI rendering is
+ * off: with it on, the SDK shows only the last 30 messages of a long Session
+ * and deletes everything before the boundary when the Daemon compacts the
+ * context in place. The transcript is virtualised, so it keeps them all.
+ */
+export function createSessionState(): MultiSessionStateManager {
+  return new MultiSessionStateManager({ enableProgressiveUiRendering: false })
+}
+
 export function createDaemonConnection(
   config: ClientConfig,
   fetchImpl: typeof fetch = (input, init) => fetch(input, init),
 ): DaemonConnection {
-  const sessionState = new MultiSessionStateManager()
+  const sessionState = createSessionState()
   const controller = new DaemonSessionController({
     sessionStateManager: sessionState,
     config: {

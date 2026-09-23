@@ -2,14 +2,15 @@
 // from Daemon notifications (ADR 0004). These cases pin the behaviour the
 // transcript relies on so an SDK upgrade that changes it fails here first.
 import { describe, expect, test } from 'vitest'
-import { LOCAL_MACHINE_ID, MultiSessionStateManager } from '@factory/droid-sdk'
+import { LOCAL_MACHINE_ID } from '@factory/droid-sdk'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
+import { createSessionState } from './connection'
 
 const SESSION = 'session-1'
 
-function manager() {
-  const state = new MultiSessionStateManager()
-  state.loadSession(SESSION, LOCAL_MACHINE_ID, [], { workingState: 'idle' as never })
+function manager(history: FactoryDroidMessage[] = []) {
+  const state = createSessionState()
+  state.loadSession(SESSION, LOCAL_MACHINE_ID, history as never, { workingState: 'idle' as never })
   const notify = (notification: Record<string, unknown>) =>
     state.handleNotification({ sessionId: SESSION, notification } as never)
   const messages = () => state.getDisplayMessages(SESSION)
@@ -96,6 +97,34 @@ describe('SDK state manager as the turn reducer', () => {
     m.notify({ type: 'droid_working_state_changed', newState: 'idle' })
     expect(m.messages().map(text)).toEqual(['partial'])
     expect(m.working()).toBe('idle')
+  })
+})
+
+describe('long and compacted Sessions', () => {
+  const history = (count: number): FactoryDroidMessage[] =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `m${i}`,
+      role: (i % 2 ? 'assistant' : 'user') as never,
+      content: [{ type: 'text', text: `message ${i}` }] as never,
+      createdAt: i + 1,
+      updatedAt: i + 1,
+      ...(i > 0 ? { parentId: `m${i - 1}` } : {}),
+    }))
+
+  test('every message of a long Session is shown, not just the last 30', () => {
+    expect(manager(history(80)).messages()).toHaveLength(80)
+  })
+
+  test('the Daemon compacting the context in place keeps the earlier messages', () => {
+    const m = manager(history(40))
+    m.notify({
+      type: 'session_compacted',
+      summaryId: 'summary-1',
+      removedCount: 20,
+      visibleBoundaryMessageId: 'm20',
+    })
+    expect(m.messages()).toHaveLength(40)
+    expect(text(m.messages()[0]!)).toBe('message 0')
   })
 })
 

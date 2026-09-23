@@ -11,6 +11,76 @@ const chat = session('Long chat', '/Users/dev/acme-web', [
   assistantMessage('second answer'),
 ])
 
+test.describe('automatic compaction', () => {
+  const long = session('Busy chat', '/Users/dev/acme-web', [
+    userMessage('first question'),
+    assistantMessage('first answer'),
+    userMessage('second question'),
+    assistantMessage('second answer'),
+  ])
+  test.use({ scenario: { sessions: [long] } })
+
+  test('the Daemon compacting mid-turn keeps the earlier messages on screen', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    // The Daemon summarises the context in place: the Session stays, and its
+    // notification names the first message the model still sees.
+    const boundary = long.messages[2]!.id
+    fakeDaemon.scenario.on('daemon.add_user_message', (params, { daemon }, request) => {
+      const sessionId = String(params['sessionId'])
+      const now = Date.now()
+      daemon.notify(sessionId, {
+        type: 'create_message',
+        message: {
+          id: String(params['messageId'] ?? 'sent'),
+          role: 'user',
+          content: [{ type: 'text', text: String(params['text']) }],
+          createdAt: now,
+          updatedAt: now,
+        },
+        requestId: String(request.id),
+      })
+      daemon.notify(sessionId, {
+        type: 'droid_working_state_changed',
+        newState: 'compacting_conversation',
+      })
+      daemon.notify(sessionId, {
+        type: 'session_compacted',
+        summaryId: 'summary_1',
+        removedCount: 2,
+        visibleBoundaryMessageId: boundary,
+      })
+      daemon.notify(sessionId, {
+        type: 'create_message',
+        message: {
+          id: 'after_compaction',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Carrying on from the summary.' }],
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'idle' })
+      return {}
+    })
+    await openClient()
+    await pickSession(/Busy chat/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript).toContainText('first question')
+    await page.getByRole('textbox', { name: 'Message' }).fill('keep going')
+    await page.getByRole('button', { name: 'Send' }).click()
+
+    await expect(transcript).toContainText('Carrying on from the summary.')
+    await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
+    await expect(transcript).toContainText('second answer')
+    await expect(transcript).toContainText('first question')
+    await expect(transcript).toContainText('first answer')
+  })
+})
+
 test.describe('compaction handoff', () => {
   test.use({ scenario: { sessions: [chat] } })
 
