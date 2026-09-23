@@ -33,6 +33,7 @@ export function SessionList({
   computers,
   sessions,
   selectedId,
+  unread,
   onSelect,
   onNewSession,
   onNewSessionIn,
@@ -45,6 +46,7 @@ export function SessionList({
   computers: readonly PairedComputer[]
   sessions: ComputerSessions
   selectedId: string | null
+  unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onNewSessionIn: (workspace: string) => void
@@ -152,6 +154,7 @@ export function SessionList({
             key={group.key}
             group={group}
             selectedId={selectedId}
+            unread={unread}
             activity={activity}
             onSelect={onSelect}
             onSessionActions={setSessionActions}
@@ -302,6 +305,7 @@ function ConnectionLine() {
 function WorkspaceSection({
   group,
   selectedId,
+  unread,
   activity,
   onSelect,
   onSessionActions,
@@ -309,6 +313,7 @@ function WorkspaceSection({
 }: {
   group: WorkspaceGroup
   selectedId: string | null
+  unread: ReadonlySet<string>
   activity: ReadonlyMap<string, SessionActivity>
   onSelect: (sessionId: string) => void
   onSessionActions: (session: SessionSummary) => void
@@ -361,6 +366,7 @@ function WorkspaceSection({
       {open
         ? visible.map((session) => {
             const selected = session.sessionId === selectedId
+            const isUnread = unread.has(session.sessionId)
             return (
               <Pressable
                 key={session.sessionId}
@@ -374,9 +380,21 @@ function WorkspaceSection({
                   selected || pressed ? { backgroundColor: colors.sidebarAccent } : null,
                 ]}
               >
-                <Text size="sm" numberOfLines={1} style={styles.title}>
+                <Text
+                  size="sm"
+                  weight={isUnread ? 'medium' : 'regular'}
+                  numberOfLines={1}
+                  style={styles.title}
+                >
                   {session.title}
                 </Text>
+                {isUnread ? (
+                  <View
+                    role="img"
+                    aria-label="Unread"
+                    style={[styles.unread, { backgroundColor: colors.unread }]}
+                  />
+                ) : null}
                 {pinnedIds.includes(session.sessionId) ? (
                   <View role="img" aria-label="Pinned">
                     <Pin size={11} color={colors.mutedForeground} strokeWidth={2} />
@@ -494,4 +512,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   title: { flex: 1 },
+  unread: { width: 6, height: 6, borderRadius: 3 },
 })

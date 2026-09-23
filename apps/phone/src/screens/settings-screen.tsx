@@ -1,9 +1,11 @@
-// Settings: the Paired Computers, and the app's version and signature.
+// Settings: the Paired Computers, Session list and alert preferences, and the
+// app's version and signature.
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import { ScrollView, StyleSheet } from 'react-native'
+import { alertSwitches } from '../alerts/alert-preferences'
 import { pairedComputers } from '../computers/store'
 import { daysLeft } from '../lib/signature'
 import { signatureExpiry } from '../platform/signature'
@@ -16,6 +18,7 @@ export function SettingsScreen() {
   const router = useRouter()
   const [computers] = usePreference(pairedComputers)
   const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
+  const [alerts, setAlerts] = usePreference(alertSwitches)
   const expiry = useQuery({ queryKey: ['signature-expiry'], queryFn: signatureExpiry })
   const version = Constants.expoConfig?.version ?? 'unknown'
 
@@ -46,6 +49,31 @@ export function SettingsScreen() {
           label="Show archived sessions"
           value={showArchived}
           onChange={setShowArchived}
+        />
+      </ListSection>
+      <ListSection
+        title="Alerts"
+        footer="While the app is open, for Sessions other than the one on screen. Sounds follow the silent switch."
+      >
+        <ListSwitch
+          label="Sound when finished"
+          value={alerts.finishedSound}
+          onChange={(on) => setAlerts({ ...alerts, finishedSound: on })}
+        />
+        <ListSwitch
+          label="Haptic when finished"
+          value={alerts.finishedHaptic}
+          onChange={(on) => setAlerts({ ...alerts, finishedHaptic: on })}
+        />
+        <ListSwitch
+          label="Sound when it needs input"
+          value={alerts.needsInputSound}
+          onChange={(on) => setAlerts({ ...alerts, needsInputSound: on })}
+        />
+        <ListSwitch
+          label="Haptic when it needs input"
+          value={alerts.needsInputHaptic}
+          onChange={(on) => setAlerts({ ...alerts, needsInputHaptic: on })}
         />
       </ListSection>
       <ListSection

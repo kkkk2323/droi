@@ -5,6 +5,7 @@ import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { usePreference } from '@droi/daemon-layer/local-preference'
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
 import { useRouter } from 'expo-router'
+import { usePhoneAlerts } from '../alerts/use-phone-alerts'
 import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Drawer } from 'react-native-drawer-layout'
@@ -28,6 +29,7 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
   const sessions = useComputerSessions(computer.id)
   // The last Session reopens only while the list still has it.
   const selected = sessions.sessions.find((s) => s.sessionId === lastId) ?? null
+  const unread = usePhoneAlerts(selected?.sessionId ?? null)
   const openDrawer = () => setDrawerOpen(true)
   const select = (sessionId: string | null) => {
     setLastId(sessionId)
@@ -50,6 +52,7 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
             computers={computers}
             sessions={sessions}
             selectedId={selected?.sessionId ?? null}
+            unread={unread}
             onSelect={select}
             onNewSession={() => {
               setNewIn(null)

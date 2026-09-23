@@ -36,3 +36,11 @@ Droi on the computer must be a build with the computer name and id in its
 - [ ] Add image → Photo library attaches one or several photos (HEIC photos go
       out as JPEG); Take photo asks for the camera once; Paste image attaches an
       image copied in another app.
+
+## Alerts
+
+- [ ] With another Session open, a Session finishing plays the finished sound
+      and a success haptic; one starting to wait for an answer plays the
+      needs-input sound and a warning haptic.
+- [ ] With the silent switch on, the haptic is still felt but no sound plays.
+- [ ] Music from another app keeps playing under the alert sound.
