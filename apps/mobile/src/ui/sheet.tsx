@@ -4,11 +4,15 @@
 // panel slides, and a swipe down or a tap outside dismisses it.
 import { BottomSheetModal, BottomSheetView } from '@expo/ui/community/bottom-sheet'
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Text } from './primitives'
 import { radius, space } from './theme'
 import { useColors } from './use-colors'
+
+// iOS 26 draws sheets in Liquid Glass, which follows the app's colour scheme;
+// an opaque fill would cover it.
+const systemGlass = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 26
 
 export function Sheet({
   visible,
@@ -39,7 +43,7 @@ export function Sheet({
     <BottomSheetModal
       ref={sheet}
       enablePanDownToClose
-      backgroundStyle={{ backgroundColor: colors.popover }}
+      backgroundStyle={systemGlass ? undefined : { backgroundColor: colors.popover }}
       onDismiss={() => {
         if (open.current) onClose()
       }}
@@ -48,9 +52,12 @@ export function Sheet({
         <View
           role="dialog"
           aria-label={title}
-          style={{ maxHeight: Math.round(height * 0.85), paddingBottom: insets.bottom + space.md }}
+          style={[
+            styles.content,
+            { maxHeight: Math.round(height * 0.85), paddingBottom: Math.max(insets.bottom, 14) },
+          ]}
         >
-          <Text role="heading" weight="semibold" style={styles.title}>
+          <Text role="heading" size="xs" weight="semibold" tone="muted" style={styles.title}>
             {title}
           </Text>
           {children}
@@ -88,7 +95,14 @@ export function SheetOption({
 }
 
 const styles = StyleSheet.create({
-  title: { paddingHorizontal: space.lg, paddingBottom: space.sm },
+  content: { paddingTop: space.sm },
+  // A quiet label, lined up with the rows' text.
+  title: {
+    paddingHorizontal: space.xl,
+    paddingBottom: space.sm,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   option: {
     minHeight: 44,
     justifyContent: 'center',
