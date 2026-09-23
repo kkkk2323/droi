@@ -5,6 +5,7 @@
 // zod schemas exported by @factory/droid-sdk so the Client is exercised with
 // realistic data. (See ADR 0002.)
 import { createServer, type IncomingMessage, type Server } from 'node:http'
+import type { Socket } from 'node:net'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
@@ -43,6 +44,8 @@ export class FakeDaemon {
   #server: Server
   #wss: WebSocketServer
   #connections = new Map<number, WebSocket>()
+  /** Every TCP socket, HTTP or upgraded, so stop() can end them all. */
+  #sockets = new Set<Socket>()
   #nextConnectionId = 1
   #down = false
   #tokenRevoked = false
@@ -92,6 +95,10 @@ export class FakeDaemon {
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('no port')
     const daemon = new FakeDaemon(server, wss, address.port, createScenario(input))
+    server.on('connection', (socket) => {
+      daemon.#sockets.add(socket)
+      socket.once('close', () => daemon.#sockets.delete(socket))
+    })
 
     server.on('upgrade', (request, socket, head) => {
       const url = new URL(request.url ?? '/', 'http://fake')
@@ -203,10 +210,15 @@ export class FakeDaemon {
   }
 
   async stop(): Promise<void> {
+    this.#down = true
     for (const ws of this.#connections.values()) ws.terminate()
     this.#wss.close()
-    this.#server.closeIdleConnections()
-    await new Promise<void>((resolve) => this.#server.close(() => resolve()))
+    const closed = new Promise<void>((resolve) => this.#server.close(() => resolve()))
+    // close() waits for every open socket, and the page is still open: its
+    // Client keeps reconnecting and polling the pairing check. On CI that kept
+    // one alive until the test timed out; end them all instead.
+    for (const socket of this.#sockets) socket.destroy()
+    await closed
   }
 
   #accept(ws: WebSocket, _request: IncomingMessage): void {
