@@ -1,3 +1,19 @@
+## 1.3.0 - 2026-09-23
+
+### Added
+
+- Droi for iPhone: a native iPhone app that is another Client of the Droi on your computers. Install it from this repository with `pnpm install:phone` while the iPhone is connected; it is signed with your own Apple account, and a free account's signature lasts seven days, so run the command again to renew it (Settings shows the days left).
+- Pair it by scanning the QR code in Droi → Settings → Remote Access or by pasting the pairing link. Several computers can be paired and switched from the drawer; the phone recognises a computer after its address changes, and keeps the Pairing Tokens in the iPhone keychain.
+- It offers what the web Client offers: the Session list by Workspace with Working, Needs input and unread marks; the transcript with Markdown, tool rows, diffs and reasoning; the composer with photos and the camera, queued messages, the task list, the context meter, `/` commands and skills and per-Session drafts; permission and ask-user Prompts; New session; the Git changes in the header; pin, fold, archive and rename; the model, reasoning effort and autonomy.
+- While the app is open, a Session finishing or starting to wait for an answer plays a short sound and a haptic, unless it is the Session on screen. Sounds follow the silent switch, and Settings turns the sound and the haptic on or off per event. Settings also picks the theme (system, light or dark) and the text size.
+- In the background the app lets go of its connection; back in the foreground it reconnects and reloads the open Session, keeping the transcript and any typed text on screen.
+
+### Changed
+
+- The Gateway's `/meta` gives the computer's name and a stable id, which the iPhone app uses to recognise a computer.
+- A Session continued after several `/compact`s can show every Session before it: each "Show earlier messages" adds the next earlier one, back to the first.
+- Starting a New session in a typed folder no longer leaves a hidden draft Session open on the Daemon.
+
 ## 1.2.0 - 2026-09-23
 
 ### Changed
