@@ -7,6 +7,7 @@ import { useState, type ReactNode } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text as RNText, View } from 'react-native'
 import { copyText } from '../platform/clipboard'
 import { Text } from '../ui/primitives'
+import { useTextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space, type Colors } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 import { parseMarkdown } from './parse'
@@ -21,8 +22,9 @@ export function Markdown({
   muted?: boolean
 }) {
   const colors = useColors()
+  const scale = useTextScale()
   const tree = parseMarkdown(text, { streaming })
-  const context: Context = { colors, muted }
+  const context: Context = { colors, muted, scale }
   return (
     <View style={styles.blocks}>{tree.children.map((node, i) => block(node, i, context))}</View>
   )
@@ -31,6 +33,8 @@ export function Markdown({
 interface Context {
   colors: Colors
   muted: boolean
+  /** The text size; nested raw Text with its own size scales by hand. */
+  scale: number
 }
 
 function block(node: RootContent, key: number, context: Context): ReactNode {
@@ -136,7 +140,7 @@ function inline(nodes: readonly PhrasingContent[], context: Context): ReactNode[
             key={keyOf(node, i)}
             style={{
               fontFamily: fonts.mono,
-              fontSize: fontSize.sm,
+              fontSize: fontSize.sm * context.scale,
               color: colors.code,
               backgroundColor: colors.codeBackground,
             }}

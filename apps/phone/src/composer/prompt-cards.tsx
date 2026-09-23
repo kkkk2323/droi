@@ -8,6 +8,7 @@ import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-rea
 import { useState } from 'react'
 import { Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { Button, Text } from '../ui/primitives'
+import { useTextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
@@ -136,6 +137,7 @@ function AskUserCard({
   onCancel: () => void
 }) {
   const colors = useColors()
+  const scale = useTextScale()
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<Record<number, string[]>>({})
   const [custom, setCustom] = useState<Record<number, string>>({})
@@ -245,7 +247,10 @@ function AskUserCard({
           value={typed}
           onChangeText={type}
           onSubmitEditing={advance}
-          style={[styles.ownInput, { color: colors.foreground }]}
+          style={[
+            styles.ownInput,
+            { color: colors.foreground, fontSize: styles.ownInput.fontSize * scale },
+          ]}
         />
       </View>
       <View style={styles.footer}>

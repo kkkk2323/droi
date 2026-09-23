@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import {
   ActivityIndicator,
   Pressable,
+  StyleSheet,
   Text as RNText,
   type PressableProps,
   type StyleProp,
@@ -11,6 +12,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native'
+import { useTextScale } from './text-scale'
 import { fontSize, fonts, radius, space } from './theme'
 import { useColors } from './use-colors'
 
@@ -30,6 +32,8 @@ export function Text({
   mono?: boolean
 }) {
   const colors = useColors()
+  const scale = useTextScale()
+  const own = scale === 1 ? undefined : StyleSheet.flatten(style)
   const family = mono
     ? weight === 'regular'
       ? fonts.mono
@@ -46,9 +50,11 @@ export function Text({
         {
           color: tone === 'muted' ? colors.mutedForeground : colors.foreground,
           fontFamily: family,
-          fontSize: fontSize[size],
+          fontSize: fontSize[size] * scale,
         },
         style,
+        own?.fontSize !== undefined && { fontSize: own.fontSize * scale },
+        own?.lineHeight !== undefined && { lineHeight: own.lineHeight * scale },
       ]}
     />
   )

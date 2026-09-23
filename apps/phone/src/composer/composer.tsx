@@ -11,6 +11,7 @@ import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react
 import { ImageSourceError, pickImages, type ImageSource } from '../platform/images'
 import { IconButton } from '../ui/primitives'
 import { Text } from '../ui/primitives'
+import { useTextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
@@ -52,6 +53,7 @@ export function Composer({
   accessory?: ReactNode
 }) {
   const colors = useColors()
+  const scale = useTextScale()
   const [draft] = useState(() => (draftKey ? loadDraft(draftKey) : { text: '', images: [] }))
   const [text, setText] = useState(draft.text)
   const [images, setImages] = useState<ImageAttachment[]>(draft.images)
@@ -197,7 +199,14 @@ export function Composer({
           onSelectionChange={(event) => setCaret(event.nativeEvent.selection.end)}
           multiline
           editable={!disabled}
-          style={[styles.input, { color: colors.foreground }]}
+          style={[
+            styles.input,
+            {
+              color: colors.foreground,
+              fontSize: styles.input.fontSize * scale,
+              lineHeight: styles.input.lineHeight * scale,
+            },
+          ]}
         />
         {adding ? (
           <View

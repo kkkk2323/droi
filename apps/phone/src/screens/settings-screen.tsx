@@ -1,6 +1,7 @@
-// Settings: the Paired Computers, Session list and alert preferences, and the
-// app's version and signature.
+// Settings: the Paired Computers, appearance, Session list and alert
+// preferences, and the app's version and signature.
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
+import { TEXT_SIZE_LABELS, TEXT_SIZES, textSize } from '@droi/daemon-layer/text-size'
 import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
@@ -9,9 +10,16 @@ import { alertSwitches } from '../alerts/alert-preferences'
 import { pairedComputers } from '../computers/store'
 import { daysLeft } from '../lib/signature'
 import { signatureExpiry } from '../platform/signature'
-import { ListRow, ListSection, ListSwitch } from '../ui/list'
+import { ListChoices, ListRow, ListSection, ListSwitch } from '../ui/list'
 import { space } from '../ui/theme'
-import { useColors } from '../ui/use-colors'
+import { themeChoice, useColors, type ThemeChoice } from '../ui/use-colors'
+
+const THEMES: Array<{ value: ThemeChoice; label: string }> = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
+const TEXT_SIZE_OPTIONS = TEXT_SIZES.map((value) => ({ value, label: TEXT_SIZE_LABELS[value] }))
 
 export function SettingsScreen() {
   const colors = useColors()
@@ -19,6 +27,8 @@ export function SettingsScreen() {
   const [computers] = usePreference(pairedComputers)
   const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   const [alerts, setAlerts] = usePreference(alertSwitches)
+  const [theme, setTheme] = usePreference(themeChoice)
+  const [size, setSize] = usePreference(textSize)
   const expiry = useQuery({ queryKey: ['signature-expiry'], queryFn: signatureExpiry })
   const version = Constants.expoConfig?.version ?? 'unknown'
 
@@ -44,6 +54,8 @@ export function SettingsScreen() {
           onPress={() => router.push('/computers')}
         />
       </ListSection>
+      <ListChoices title="Theme" options={THEMES} value={theme} onChange={setTheme} />
+      <ListChoices title="Text size" options={TEXT_SIZE_OPTIONS} value={size} onChange={setSize} />
       <ListSection title="Sessions">
         <ListSwitch
           label="Show archived sessions"

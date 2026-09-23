@@ -44,3 +44,9 @@ Droi on the computer must be a build with the computer name and id in its
       needs-input sound and a warning haptic.
 - [ ] With the silent switch on, the haptic is still felt but no sound plays.
 - [ ] Music from another app keeps playing under the alert sound.
+
+## Appearance
+
+- [ ] With Theme on System, switching the iPhone between light and dark
+      (Control Center) switches the app at once.
+- [ ] With Theme on Dark while the iPhone is light, the keyboard is dark too.

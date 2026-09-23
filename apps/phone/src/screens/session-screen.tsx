@@ -31,6 +31,7 @@ import { GitChangesButton } from '../transcript/git-changes'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
 import { ScreenHeader } from '../ui/screen-header'
+import { TextScale } from '../ui/text-scale'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
@@ -114,45 +115,47 @@ export function SessionScreen({
         onOpenDrawer={onOpenDrawer}
         trailing={<GitChangesButton changes={gitChanges} />}
       />
-      {view.loadError ? (
-        <Text role="alert" style={[styles.message, { color: colors.destructiveForeground }]}>
-          {view.loadError}
-        </Text>
-      ) : !loaded && view.messages.length === 0 ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="small" color={colors.mutedForeground} />
-          <Text tone="muted" size="sm">
-            Loading session…
+      <TextScale>
+        {view.loadError ? (
+          <Text role="alert" style={[styles.message, { color: colors.destructiveForeground }]}>
+            {view.loadError}
           </Text>
-        </View>
-      ) : (
-        <TranscriptView
-          messages={view.messages}
-          earlierMessages={showEarlier ? earlier.messages : undefined}
-          workingState={compaction.isCompacting ? 'compacting_conversation' : view.workingState}
-          lead={lead}
-          scrollToEndKey={sentCount}
-        />
-      )}
-      <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
-        <ComposerShelf sessionId={session.sessionId} />
-        {hasPrompt(prompts) ? (
-          // The Prompt stands in for the composer; the draft comes back after.
-          <PromptArea sessionId={session.sessionId} />
+        ) : !loaded && view.messages.length === 0 ? (
+          <View style={styles.loading}>
+            <ActivityIndicator size="small" color={colors.mutedForeground} />
+            <Text tone="muted" size="sm">
+              Loading session…
+            </Text>
+          </View>
         ) : (
-          <Composer
-            isRunning={isRunning}
-            disabled={!loaded}
-            onSend={submit}
-            onCancel={() => void turn.cancel()}
-            error={turn.sendError ?? compaction.error}
-            draftKey={session.sessionId}
-            slashItems={slashItems}
-            accessory={<SessionSettingsBar sessionId={session.sessionId} />}
+          <TranscriptView
+            messages={view.messages}
+            earlierMessages={showEarlier ? earlier.messages : undefined}
+            workingState={compaction.isCompacting ? 'compacting_conversation' : view.workingState}
+            lead={lead}
+            scrollToEndKey={sentCount}
           />
         )}
-        <ComposerFooter workspace={session.cwd} usage={contextUsage} />
-      </View>
+        <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
+          <ComposerShelf sessionId={session.sessionId} />
+          {hasPrompt(prompts) ? (
+            // The Prompt stands in for the composer; the draft comes back after.
+            <PromptArea sessionId={session.sessionId} />
+          ) : (
+            <Composer
+              isRunning={isRunning}
+              disabled={!loaded}
+              onSend={submit}
+              onCancel={() => void turn.cancel()}
+              error={turn.sendError ?? compaction.error}
+              draftKey={session.sessionId}
+              slashItems={slashItems}
+              accessory={<SessionSettingsBar sessionId={session.sessionId} />}
+            />
+          )}
+          <ComposerFooter workspace={session.cwd} usage={contextUsage} />
+        </View>
+      </TextScale>
     </KeyboardAvoidingView>
   )
 }

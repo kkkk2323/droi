@@ -25,6 +25,7 @@ import { SettingsControls } from '../composer/session-settings'
 import { Button, Text } from '../ui/primitives'
 import { ScreenHeader } from '../ui/screen-header'
 import { Sheet, SheetOption } from '../ui/sheet'
+import { TextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
@@ -177,29 +178,31 @@ export function NewSessionScreen({
         ) : null}
       </ScrollView>
       <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
-        <Composer
-          isRunning={false}
-          disabled={!workspace || isCreating || draft.isTaking}
-          allowEmpty
-          placeholder="Do anything…"
-          sendLabel="Start session"
-          onSend={(submission) => {
-            if (workspace) void start(workspace, submission)
-          }}
-          onCancel={() => {}}
-          error={null}
-          slashItems={slashItems}
-          accessory={
-            <SettingsControls
-              settings={settings}
-              onModel={pickModel}
-              onReasoningEffort={(reasoningEffort) =>
-                setOverrides({ ...overrides, reasoningEffort })
-              }
-              onAutonomyLevel={(autonomyLevel) => setOverrides({ ...overrides, autonomyLevel })}
-            />
-          }
-        />
+        <TextScale>
+          <Composer
+            isRunning={false}
+            disabled={!workspace || isCreating || draft.isTaking}
+            allowEmpty
+            placeholder="Do anything…"
+            sendLabel="Start session"
+            onSend={(submission) => {
+              if (workspace) void start(workspace, submission)
+            }}
+            onCancel={() => {}}
+            error={null}
+            slashItems={slashItems}
+            accessory={
+              <SettingsControls
+                settings={settings}
+                onModel={pickModel}
+                onReasoningEffort={(reasoningEffort) =>
+                  setOverrides({ ...overrides, reasoningEffort })
+                }
+                onAutonomyLevel={(autonomyLevel) => setOverrides({ ...overrides, autonomyLevel })}
+              />
+            }
+          />
+        </TextScale>
         {workspace ? (
           <Text tone="muted" size="xs" numberOfLines={1} style={styles.footer}>
             {workspace}

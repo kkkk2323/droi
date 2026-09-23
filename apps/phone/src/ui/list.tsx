@@ -1,5 +1,5 @@
 // Grouped rows in the style of iOS settings, drawn with Droi's tokens.
-import { ChevronRight } from 'lucide-react-native'
+import { Check, ChevronRight } from 'lucide-react-native'
 import { Children, Fragment, isValidElement, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Switch, View } from 'react-native'
 import { Text } from './primitives'
@@ -113,6 +113,45 @@ export function ListSwitch({
         onValueChange={onChange}
         trackColor={{ true: colors.primary, false: colors.input }}
       />
+    </View>
+  )
+}
+
+/** A section whose rows are one choice among several, the picked one ticked. */
+export function ListChoices<T extends string>({
+  title,
+  options,
+  value,
+  onChange,
+}: {
+  title: string
+  options: ReadonlyArray<{ value: T; label: string }>
+  value: T
+  onChange: (value: T) => void
+}) {
+  const colors = useColors()
+  return (
+    <View role="radiogroup" aria-label={title}>
+      <ListSection title={title}>
+        {options.map((option) => (
+          <Pressable
+            key={option.value}
+            role="radio"
+            aria-checked={option.value === value}
+            aria-label={option.label}
+            onPress={() => onChange(option.value)}
+            style={({ pressed }) => [
+              styles.row,
+              pressed ? { backgroundColor: colors.accent } : null,
+            ]}
+          >
+            <Text style={styles.switchLabel}>{option.label}</Text>
+            {option.value === value ? (
+              <Check size={16} color={colors.foreground} strokeWidth={2} />
+            ) : null}
+          </Pressable>
+        ))}
+      </ListSection>
     </View>
   )
 }
