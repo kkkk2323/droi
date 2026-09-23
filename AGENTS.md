@@ -18,7 +18,12 @@ packages/
 └── daemon-layer/  # @droi/daemon-layer: the Clients' shared daemon layer (connection,
                    # Session state hooks, Gateway contract, local preferences); no DOM
                    # or Electron, the host supplies storage, focus and sound
+apps/
+└── phone/      # Phone App: Expo SDK 56 iPhone Client (expo-router under src/app,
+                # screens under src/screens, hardware behind src/platform with
+                # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md
 e2e/            # Playwright tests: Client in a browser against the Fake Daemon
+e2e-phone/      # Playwright tests: the Phone App's web build against the Fake Daemon
 legacy/         # Previous implementation, kept for reference only; excluded
                 # from build and checks; deleted by the last rebuild ticket
 ```
@@ -38,9 +43,11 @@ covers the packages too. Unit tests sit next to the code as `*.test.ts` /
 | `pnpm install:mac` | Build for this Mac's architecture only and replace `/Applications/Droi.app` (quits, swaps, relaunches) |
 | `pnpm test` | Run vitest once |
 | `pnpm test:e2e` | Run Playwright against the Client dev server (Fake Daemon) |
+| `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
+| `pnpm install:phone` | Build a signed Release of the Phone App and install it on the connected iPhone |
 | `pnpm test:smoke` | Electron smoke suite against the built Shell (`pnpm build` first) |
 | `pnpm test:live` | One case against a real Daemon; skips unless `FACTORY_API_KEY` is set |
-| `pnpm typecheck` | TypeScript validation (node + web) |
+| `pnpm typecheck` | TypeScript validation (node + web + Phone App) |
 | `pnpm lint` / `pnpm lint:fix` | oxlint |
 | `pnpm format` / `pnpm format:check` | oxfmt |
 | `pnpm check` | format check + lint + typecheck |
@@ -48,7 +55,15 @@ covers the packages too. Unit tests sit next to the code as `*.test.ts` /
 ## Validation Workflow
 
 Before committing run `pnpm check && pnpm test`. Run `pnpm test:e2e` when the
-Client or the Fake Daemon changed. The PR workflow runs all three.
+web Client, the shared daemon layer or the Fake Daemon changed, and
+`pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the Fake
+Daemon changed. The PR workflow runs all of them. For what only an iPhone can
+show, walk `apps/phone/DEVICE-CHECKLIST.md`.
+
+The Phone App is pinned to Expo SDK 56 (ADR 0006). Expo changes its APIs every
+SDK: read the versioned docs (`https://docs.expo.dev/versions/v56.0.0/`) or the
+installed types before using an Expo module, and add Expo packages with
+`npx expo install` from `apps/phone` so the versions match the SDK.
 
 ## Code Style
 

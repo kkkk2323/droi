@@ -1,0 +1,15 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    // The shared daemon layer sits outside this app and would otherwise pick
+    // up the web Client's React types from the repository root.
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"]
+    }
+  },
+  "include": ["src/**/*", "app.config.ts", "expo-env.d.ts", ".expo/types/**/*.ts"]
+}

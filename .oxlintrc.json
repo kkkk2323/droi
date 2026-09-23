@@ -51,6 +51,10 @@
     "out",
     "dist",
     "resources",
-    "legacy"
+    "legacy",
+    "apps/phone/dist",
+    "apps/phone/ios",
+    "apps/phone/.expo",
+    "apps/phone/build"
   ]
 }

@@ -29,6 +29,9 @@ jobs:
 
       - run: pnpm test:e2e
 
+      - name: Phone App web build against the Fake Daemon
+        run: pnpm test:e2e:phone
+
       - run: pnpm build
 
       - name: Desktop Shell smoke suite
