@@ -34,13 +34,18 @@ export const test = base.extend<Fixtures>({
     await use(() => openSidebar(page))
   },
   pickSession: async ({ page }, use) => {
-    await use(async (title) => {
-      const sidebar = await openSidebar(page)
-      await sidebar.getByRole('button', { name: title }).click()
-      await drawerGone(page)
-    })
+    await use((title) => pickSession(page, title))
   },
 })
+
+export async function pickSession(page: Page, title: RegExp | string): Promise<void> {
+  const sidebar = await openSidebar(page)
+  await sidebar.getByRole('button', { name: title }).click()
+  await drawerGone(page)
+  // Home is the New session page, whose composer is also named "Message";
+  // typing before the Session replaces it would land there.
+  await expect(page.getByRole('button', { name: 'Start session' })).toHaveCount(0)
+}
 
 export async function openSidebar(page: Page): Promise<Locator> {
   const inline = page.getByRole('navigation', { name: 'Sessions' })
