@@ -102,6 +102,9 @@ export interface SessionSummaryCache {
   updatedAt: number
   archivedAt: string | null
   parentId: string | null
+  /** Absent in caches written before subagents were told apart. */
+  callingSessionId?: string | null
+  callingToolUseId?: string | null
 }
 
 const summaryPreferences = new Map<string, LocalPreference<SessionSummaryCache[]>>()

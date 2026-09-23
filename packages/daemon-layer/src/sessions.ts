@@ -4,6 +4,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useConnectionState, useDaemonConnection } from './connection-context'
+import { SESSION_EVENT } from './sdk-enums'
 
 export interface SessionSummary {
   sessionId: string
@@ -18,6 +19,10 @@ export interface SessionSummary {
   tags: SessionTag[]
   /** The Session this one continues after a compaction (see use-compact.ts). */
   parentId: string | null
+  /** For a subagent: the Session whose Task tool call started it (see subagents.ts). */
+  callingSessionId: string | null
+  /** For a subagent: that Task tool call's id in the calling Session. */
+  callingToolUseId: string | null
 }
 
 export interface SessionTag {
@@ -99,10 +104,16 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
     connection.controller.on('connected', invalidate)
     connection.controller.on('sessionTitleUpdated', invalidate)
     connection.controller.on('sessionArchiveStateChanged', invalidate)
+    // A subagent starting or finishing: its Session is new to the list, or has news.
+    const unsubscribe = connection.sessionState.subscribeToSessionEvents(
+      [SESSION_EVENT.subagentInvocationSummaryUpdated],
+      invalidate,
+    )
     return () => {
       connection.controller.off('connected', invalidate)
       connection.controller.off('sessionTitleUpdated', invalidate)
       connection.controller.off('sessionArchiveStateChanged', invalidate)
+      unsubscribe()
     }
   }, [connection, queryClient])
 
@@ -125,6 +136,8 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
           archivedAt: s.archivedAt ?? null,
           tags: s.tags ?? [],
           parentId: continuationParent(s.tags),
+          callingSessionId: s.callingSessionId ?? null,
+          callingToolUseId: s.callingToolUseId ?? null,
         }))
     },
     enabled: connected,

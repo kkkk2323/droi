@@ -67,6 +67,10 @@ _Avoid_: chat, thread, worker, droi session file
 A Session the New session page opens as soon as it knows the Workspace, so the composer can offer that Workspace's skills and commands before anything is sent. It carries the `droi.draft` tag, which keeps it out of every Client's session list, until the first send takes it over; an abandoned draft is closed, and the Daemon deletes it.
 _Avoid_: pre-init session, placeholder session
 
+**Subagent**:
+A Session the Daemon starts for a Task tool call; the Daemon lists it with its calling Session and tool call (`callingSessionId`, `callingToolUseId`). Clients keep it out of the session list and reach it from the Session that called it: the Task call's card, the header's subagent menu, and the trail back.
+_Avoid_: child session, sub-session, task session
+
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo

@@ -9,6 +9,7 @@ import {
   type SessionSummary,
   type WorkspaceGroup,
 } from '@droi/daemon-layer/sessions'
+import { listedSessionOf, mainSessions } from '@droi/daemon-layer/subagents'
 import {
   foldedWorkspaces,
   pinnedSessions,
@@ -34,6 +35,7 @@ export function SessionList({
   computers,
   sessions,
   selectedId,
+  subagentsRunning,
   unread,
   onSelect,
   onNewSession,
@@ -47,6 +49,8 @@ export function SessionList({
   computers: readonly PairedComputer[]
   sessions: ComputerSessions
   selectedId: string | null
+  /** How many subagents each row's Session has running. */
+  subagentsRunning: ReadonlyMap<string, number>
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onNewSession: () => void
@@ -64,7 +68,7 @@ export function SessionList({
   const activity = useSessionActivity()
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
-  const groups = groupByWorkspace(foldContinued(sessions.sessions), {
+  const groups = groupByWorkspace(foldContinued(mainSessions(sessions.sessions)), {
     workspaces: new Set(pinnedGroups),
     sessions: new Set(pinnedIds),
   })
@@ -154,9 +158,11 @@ export function SessionList({
           <WorkspaceSection
             key={group.key}
             group={group}
-            selectedId={selectedId}
+            // A subagent's row is the Session that called it.
+            selectedId={selectedId ? listedSessionOf(sessions.sessions, selectedId) : null}
             unread={unread}
             activity={activity}
+            subagentsRunning={subagentsRunning}
             onSelect={onSelect}
             onSessionActions={setSessionActions}
             onWorkspaceActions={setWorkspaceActions}
@@ -308,6 +314,7 @@ function WorkspaceSection({
   selectedId,
   unread,
   activity,
+  subagentsRunning,
   onSelect,
   onSessionActions,
   onWorkspaceActions,
@@ -316,6 +323,7 @@ function WorkspaceSection({
   selectedId: string | null
   unread: ReadonlySet<string>
   activity: ReadonlyMap<string, SessionActivity>
+  subagentsRunning: ReadonlyMap<string, number>
   onSelect: (sessionId: string) => void
   onSessionActions: (session: SessionSummary) => void
   onWorkspaceActions: (group: WorkspaceGroup) => void
@@ -406,7 +414,10 @@ function WorkspaceSection({
                     Archived
                   </Text>
                 ) : null}
-                <ActivityMark activity={activity.get(session.sessionId)} />
+                <ActivityMark
+                  activity={activity.get(session.sessionId)}
+                  subagents={subagentsRunning.get(session.sessionId) ?? 0}
+                />
               </Pressable>
             )
           })
@@ -426,8 +437,24 @@ function WorkspaceSection({
   )
 }
 
-function ActivityMark({ activity }: { activity: SessionActivity | undefined }) {
+function ActivityMark({
+  activity,
+  subagents,
+}: {
+  activity: SessionActivity | undefined
+  subagents: number
+}) {
   const colors = useColors()
+  if (activity !== 'needs-input' && subagents > 0) {
+    return (
+      <View role="status" style={styles.mark}>
+        <Spinner size={12} color={colors.working} />
+        <Text size="xs" style={{ color: colors.working }}>
+          {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
+        </Text>
+      </View>
+    )
+  }
   if (activity === 'working') {
     return (
       <View role="status" aria-label="Working" style={styles.mark}>

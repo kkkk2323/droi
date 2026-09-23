@@ -21,6 +21,16 @@ export interface SessionFixture {
     branch: string
     files: Array<{ path: string; status: string; additions: number; deletions: number }>
   }
+  /** A subagent: the calling Session and Task call, and the run its caller's load reports. */
+  subagent?: {
+    callingSessionId: string
+    callingToolUseId: string
+    subagentType: string
+    description: string
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+    toolUseCount?: number
+    durationMs?: number
+  }
 }
 
 export interface MessageFixture {
@@ -82,6 +92,12 @@ export function createScenario(input: ScenarioInput): Scenario {
           messagesCount: s.messages.length,
           ...(s.archivedAt ? { archivedAt: s.archivedAt } : {}),
           ...(s.tags ? { tags: s.tags } : {}),
+          ...(s.subagent
+            ? {
+                callingSessionId: s.subagent.callingSessionId,
+                callingToolUseId: s.subagent.callingToolUseId,
+              }
+            : {}),
         })),
       hasMore: false,
     }),
@@ -231,7 +247,34 @@ export function createScenario(input: ScenarioInput): Scenario {
       const found = sessions.find((s) => s.sessionId === params['sessionId'])
       if (!found) throw new Error(`Scenario has no session ${String(params['sessionId'])}`)
       delete found.inactive
-      return loadSessionResult(found)
+      const subagentInvocations = sessions.flatMap((s) =>
+        s.subagent?.callingSessionId === found.sessionId
+          ? [
+              {
+                childSessionId: s.sessionId,
+                status: s.subagent.status,
+                subagentType: s.subagent.subagentType,
+                description: s.subagent.description,
+                ...(s.subagent.toolUseCount !== undefined
+                  ? { toolUseCount: s.subagent.toolUseCount }
+                  : {}),
+                ...(s.subagent.durationMs !== undefined
+                  ? { durationMs: s.subagent.durationMs }
+                  : {}),
+              },
+            ]
+          : [],
+      )
+      return {
+        ...loadSessionResult(found),
+        ...(found.subagent
+          ? {
+              callingSessionId: found.subagent.callingSessionId,
+              callingToolUseId: found.subagent.callingToolUseId,
+            }
+          : {}),
+        ...(subagentInvocations.length > 0 ? { subagentInvocations } : {}),
+      }
     },
     ...input.handlers,
   }
@@ -366,6 +409,22 @@ export function assistantMessage(text: string): MessageFixture {
     createdAt: clock,
     updatedAt: clock,
     visibility: 'both',
+  }
+}
+
+export function toolCallMessage(
+  id: string,
+  name: string,
+  input: Record<string, unknown>,
+): MessageFixture {
+  return { ...assistantMessage(''), content: [{ type: 'tool_use', id, name, input }] }
+}
+
+export function toolResultMessage(toolUseId: string, content: string): MessageFixture {
+  return {
+    ...assistantMessage(''),
+    role: 'tool',
+    content: [{ type: 'tool_result', toolUseId, content }],
   }
 }
 

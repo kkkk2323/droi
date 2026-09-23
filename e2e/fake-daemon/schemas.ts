@@ -37,6 +37,8 @@ const AvailableSession = z.object({
   repoRoot: z.string().optional(),
   messagesCount: z.number().optional(),
   archivedAt: z.string().optional(),
+  callingSessionId: z.string().optional(),
+  callingToolUseId: z.string().optional(),
 })
 const ListAvailableSessionsResult = z.object({
   sessions: z.array(AvailableSession),

@@ -9,9 +9,22 @@ import {
   groupByWorkspace,
   useSessionList,
   type SessionTag,
+  type SessionSummary,
 } from '@droi/daemon-layer/sessions'
+import {
+  callerTrail,
+  listedSessionOf,
+  mainSessions,
+  runningSubagents,
+  subagentsByToolUse,
+  subagentsOf,
+  SubagentLinksProvider,
+  useSubagentRuns,
+  type SubagentLinks,
+} from '@droi/daemon-layer/subagents'
 
 const NO_TAGS: SessionTag[] = []
+const NO_SESSIONS: SessionSummary[] = []
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
 import { useSessionActivity } from '@droi/daemon-layer/use-session-activity'
 import {
@@ -67,14 +80,21 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const activity = useSessionActivity()
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
-  const groups = groupByWorkspace(foldContinued(sessions.data ?? []), {
+  const listed = sessions.data ?? NO_SESSIONS
+  const groups = groupByWorkspace(foldContinued(mainSessions(listed)), {
     workspaces: new Set(pinnedGroups),
     sessions: new Set(pinnedIds),
   })
-  const recent = recentWorkspaces(sessions.data ?? [])
+  const recent = recentWorkspaces(listed)
   const selectedId = route.name === 'session' ? route.sessionId : null
-  const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
-  const chain = selected ? continuationChain(sessions.data ?? [], selected) : []
+  const selected = listed.find((s) => s.sessionId === selectedId) ?? null
+  const chain = selected ? continuationChain(listed, selected) : []
+  const runs = useSubagentRuns(listed.filter((s) => s.callingSessionId).map((s) => s.sessionId))
+  const subagentLinks: SubagentLinks = {
+    byToolUse: subagentsByToolUse(listed),
+    runs,
+    open: (sessionId) => go({ name: 'session', sessionId }),
+  }
   const unread = useDesktopAlerts({
     bridge: window.droiShell?.alerts ?? null,
     selectedId,
@@ -153,8 +173,10 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const sidebar = (
     <SessionSidebar
       groups={groups}
-      selectedSessionId={selectedId}
+      // A subagent's row is the Session that called it.
+      selectedSessionId={selectedId ? listedSessionOf(listed, selectedId) : null}
       activity={activity}
+      subagentsRunning={runningSubagents(listed, runs)}
       unread={unread}
       onSelect={(sessionId) => go({ name: 'session', sessionId })}
       onArchiveToggle={(session) => {
@@ -249,16 +271,23 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         ) : null}
         <ReconnectingBanner />
         {selectedId ? (
-          <SessionView
-            key={selectedId}
-            sessionId={selectedId}
-            title={selected?.title ?? 'Session'}
-            workspace={selected?.cwd ?? null}
-            tags={selected?.tags ?? NO_TAGS}
-            chain={chain}
-            onContinued={(sessionId) => go({ name: 'session', sessionId })}
-            leading={leading}
-          />
+          <SubagentLinksProvider value={subagentLinks}>
+            <SessionView
+              key={selectedId}
+              sessionId={selectedId}
+              title={selected?.title ?? 'Session'}
+              workspace={selected?.cwd ?? null}
+              tags={selected?.tags ?? NO_TAGS}
+              chain={chain}
+              trail={selected ? callerTrail(listed, selected) : []}
+              siblings={
+                selected?.callingSessionId ? subagentsOf(listed, [selected.callingSessionId]) : []
+              }
+              subagents={subagentsOf(listed, [selectedId, ...chain.map((s) => s.sessionId)])}
+              onContinued={(sessionId) => go({ name: 'session', sessionId })}
+              leading={leading}
+            />
+          </SubagentLinksProvider>
         ) : startingUp || restoring ? (
           // Home with nothing to show yet: the Daemon is coming up, or the last
           // Session is about to be reopened. Anything else here would flash.

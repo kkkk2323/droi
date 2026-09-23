@@ -37,9 +37,17 @@ function toCache(s: SessionSummary): SessionSummaryCache {
     updatedAt: s.updatedAt,
     archivedAt: s.archivedAt,
     parentId: s.parentId,
+    callingSessionId: s.callingSessionId,
+    callingToolUseId: s.callingToolUseId,
   }
 }
 
 function fromCache(s: SessionSummaryCache): SessionSummary {
-  return { ...s, messagesCount: null, tags: [] }
+  return {
+    ...s,
+    messagesCount: null,
+    tags: [],
+    callingSessionId: s.callingSessionId ?? null,
+    callingToolUseId: s.callingToolUseId ?? null,
+  }
 }

@@ -3,6 +3,7 @@ import { Collapsible } from '@base-ui/react/collapsible'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from './markdown'
+import { SubagentCard } from './subagent-card'
 import { ToolCluster } from './tool-activity'
 import type { TranscriptBlock, TranscriptEntry } from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
@@ -77,6 +78,8 @@ export function MessageEntry({
             )
           case 'tools':
             return <ToolCluster key={block.id} calls={block.calls} />
+          case 'subagent':
+            return <SubagentCard key={block.id} call={block.call} />
         }
       })}
       {/* The caret follows text only; after a tool cluster it read as a stray

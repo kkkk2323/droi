@@ -23,6 +23,8 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
     archivedAt: null,
     tags: [],
     parentId: null,
+    callingSessionId: null,
+    callingToolUseId: null,
     ...overrides,
   }
 }

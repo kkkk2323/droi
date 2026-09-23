@@ -16,7 +16,8 @@ export const SESSION_EVENT: Record<
   | 'queuedMessagesUpdated'
   | 'todoListUpdated'
   | 'streamingPlaceholderUpdated'
-  | 'metadataUpdated',
+  | 'metadataUpdated'
+  | 'subagentInvocationSummaryUpdated',
   SessionEventName
 > = {
   loadStateChanged: event('load_state_changed'),
@@ -27,7 +28,11 @@ export const SESSION_EVENT: Record<
   todoListUpdated: event('todo_list_updated'),
   streamingPlaceholderUpdated: event('streaming_placeholder_updated'),
   metadataUpdated: event('metadata_updated'),
+  subagentInvocationSummaryUpdated: event('subagent_invocation_summary_updated'),
 }
+
+/** A subagent's run as the Daemon reports it (the SDK's TaskInvocationStatus). */
+export type SubagentStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export const LOAD_STATE = {
   notLoaded: 'NOT_LOADED',

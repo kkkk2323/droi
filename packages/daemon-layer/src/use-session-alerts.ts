@@ -35,7 +35,10 @@ export function useSessionAlerts({
           }
           return
         }
-        const state = sessionState.getSessionManager(sessionId)?.getDroidWorkingState() ?? 'idle'
+        const manager = sessionState.getSessionManager(sessionId)
+        // A subagent reports back to its calling Session; that Session's own alert is the one to see.
+        if (manager?.getStore().getCallingSessionId()) return
+        const state = manager?.getDroidWorkingState() ?? 'idle'
         const alert = tracker.update(sessionId, state)
         if (!alert) return
         const now = latest.current

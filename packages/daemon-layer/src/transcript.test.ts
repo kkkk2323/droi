@@ -48,6 +48,22 @@ describe('buildTranscript', () => {
     ])
   })
 
+  test('a Task call stands on its own and splits the tool run around it', () => {
+    const entries = buildTranscript([
+      message('assistant', [
+        { type: 'tool_use', id: 'a', name: 'Read', input: {} },
+        { type: 'tool_use', id: 't', name: 'Task', input: { subagent_type: 'explorer' } },
+        { type: 'tool_use', id: 'b', name: 'Grep', input: {} },
+      ]),
+      message('tool', [{ type: 'tool_result', toolUseId: 't', content: 'report' }]),
+    ])
+    const blocks = entries[0]!.blocks
+    expect(blocks.map((b) => b.kind)).toEqual(['tools', 'subagent', 'tools'])
+    const task = blocks[1]
+    if (task?.kind !== 'subagent') throw new Error('expected subagent block')
+    expect(toolResultText(task.call.result)).toBe('report')
+  })
+
   test('consecutive tool calls form one cluster; text splits clusters', () => {
     const entries = buildTranscript([
       message('assistant', [

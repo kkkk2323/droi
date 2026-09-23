@@ -4,6 +4,14 @@
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { usePreference } from '@droi/daemon-layer/local-preference'
 import { continuationChain } from '@droi/daemon-layer/sessions'
+import {
+  callerTrail,
+  runningSubagents,
+  SubagentLinksProvider,
+  subagentsByToolUse,
+  subagentsOf,
+  useSubagentRuns,
+} from '@droi/daemon-layer/subagents'
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
 import { useRouter } from 'expo-router'
 import { usePhoneAlerts } from '../alerts/use-phone-alerts'
@@ -31,6 +39,10 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
   // The last Session reopens only while the list still has it.
   const selected = sessions.sessions.find((s) => s.sessionId === lastId) ?? null
   const unread = usePhoneAlerts(selected?.sessionId ?? null)
+  const runs = useSubagentRuns(
+    sessions.sessions.filter((s) => s.callingSessionId).map((s) => s.sessionId),
+  )
+  const chain = selected ? continuationChain(sessions.sessions, selected) : []
   const openDrawer = () => setDrawerOpen(true)
   const select = (sessionId: string | null) => {
     setLastId(sessionId)
@@ -53,6 +65,7 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
             computers={computers}
             sessions={sessions}
             selectedId={selected?.sessionId ?? null}
+            subagentsRunning={runningSubagents(sessions.sessions, runs)}
             unread={unread}
             onSelect={select}
             onNewSession={() => {
@@ -93,14 +106,32 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
       <View style={[styles.fill, { backgroundColor: colors.background }]}>
         <ConnectionGate computer={computer} drawerOpen={drawerOpen} onOpenDrawer={openDrawer}>
           {selected ? (
-            <SessionScreen
-              key={selected.sessionId}
-              session={selected}
-              chain={continuationChain(sessions.sessions, selected)}
-              onContinued={(sessionId) => setLastId(sessionId)}
-              drawerOpen={drawerOpen}
-              onOpenDrawer={openDrawer}
-            />
+            <SubagentLinksProvider
+              value={{
+                byToolUse: subagentsByToolUse(sessions.sessions),
+                runs,
+                open: (sessionId) => setLastId(sessionId),
+              }}
+            >
+              <SessionScreen
+                key={selected.sessionId}
+                session={selected}
+                chain={chain}
+                trail={callerTrail(sessions.sessions, selected)}
+                siblings={
+                  selected.callingSessionId
+                    ? subagentsOf(sessions.sessions, [selected.callingSessionId])
+                    : []
+                }
+                subagents={subagentsOf(sessions.sessions, [
+                  selected.sessionId,
+                  ...chain.map((s) => s.sessionId),
+                ])}
+                onContinued={(sessionId) => setLastId(sessionId)}
+                drawerOpen={drawerOpen}
+                onOpenDrawer={openDrawer}
+              />
+            </SubagentLinksProvider>
           ) : (
             <NewSessionScreen
               key={newIn ?? ''}

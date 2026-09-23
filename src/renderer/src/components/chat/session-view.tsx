@@ -10,6 +10,7 @@ import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { usePrompts } from '@droi/daemon-layer/use-prompts'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
+import type { SessionRef } from '@droi/daemon-layer/subagents'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,7 @@ import { InputBar, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
 import { SessionSettingsBar, SessionTitle } from './session-toolbar'
+import { SessionTrail, SubagentMenu } from './subagent-nav'
 import { COLUMN } from './column'
 
 export { COLUMN } from './column'
@@ -30,6 +32,9 @@ export function SessionView({
   workspace,
   tags,
   chain,
+  trail,
+  siblings,
+  subagents,
   onContinued,
   leading,
 }: {
@@ -39,6 +44,12 @@ export function SessionView({
   tags: SessionSummary['tags']
   /** The listed Sessions this one continues after compactions, nearest first. */
   chain: readonly Pick<SessionSummary, 'sessionId' | 'title'>[]
+  /** For a subagent: the Sessions above it, its main Session first. */
+  trail: readonly SessionRef[]
+  /** For a subagent: every subagent of the same caller, itself included. */
+  siblings: readonly SessionSummary[]
+  /** The subagents this Session (or an earlier link of its chain) called. */
+  subagents: readonly SessionSummary[]
   /** `/compact` produced a child Session; the view should move there. */
   onContinued: (sessionId: string) => void
   leading?: ReactNode
@@ -111,7 +122,17 @@ export function SessionView({
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
-      <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />}>
+      <PageHeader
+        leading={leading}
+        title={
+          trail.length > 0 ? (
+            <SessionTrail sessionId={sessionId} title={title} trail={trail} siblings={siblings} />
+          ) : (
+            <SessionTitle sessionId={sessionId} title={title} />
+          )
+        }
+      >
+        <SubagentMenu subagents={subagents} />
         <GitChangesButton changes={gitChanges} />
         <OpenInButton path={workspace} bridge={window.droiShell?.openIn ?? null} />
       </PageHeader>

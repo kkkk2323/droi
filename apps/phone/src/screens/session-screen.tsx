@@ -4,6 +4,7 @@
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
+import type { SessionRef } from '@droi/daemon-layer/subagents'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
 import { useGitChanges } from '@droi/daemon-layer/use-git-changes'
@@ -21,6 +22,7 @@ import { Composer, type Submission } from '../composer/composer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { SessionSettingsBar } from '../composer/session-settings'
+import { SubagentsButton, SubagentTitle } from '../sessions/subagent-nav'
 import { GitChangesButton } from '../transcript/git-changes'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
@@ -32,6 +34,9 @@ import { useColors } from '../ui/use-colors'
 export function SessionScreen({
   session,
   chain,
+  trail,
+  siblings,
+  subagents,
   onContinued,
   drawerOpen,
   onOpenDrawer,
@@ -41,6 +46,12 @@ export function SessionScreen({
   onContinued: (sessionId: string) => void
   /** The listed Sessions this one continues after compactions, nearest first. */
   chain: readonly SessionSummary[]
+  /** For a subagent: the Sessions above it, its main Session first. */
+  trail: readonly SessionRef[]
+  /** For a subagent: every subagent of the same caller, itself included. */
+  siblings: readonly SessionSummary[]
+  /** The subagents this Session (or an earlier link of its chain) called. */
+  subagents: readonly SessionSummary[]
   drawerOpen: boolean
   onOpenDrawer: () => void
 }) {
@@ -112,7 +123,22 @@ export function SessionScreen({
         title={session.title}
         drawerOpen={drawerOpen}
         onOpenDrawer={onOpenDrawer}
-        trailing={<GitChangesButton changes={gitChanges} />}
+        titleContent={
+          trail.length > 0 ? (
+            <SubagentTitle
+              sessionId={session.sessionId}
+              title={session.title}
+              trail={trail}
+              siblings={siblings}
+            />
+          ) : undefined
+        }
+        trailing={
+          <>
+            <SubagentsButton subagents={subagents} />
+            <GitChangesButton changes={gitChanges} />
+          </>
+        }
       />
       <TextScale>
         {view.loadError ? (

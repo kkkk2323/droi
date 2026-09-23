@@ -19,6 +19,11 @@ export type TranscriptBlock =
   | { kind: 'thinking'; id: string; text: string; durationMs: number | undefined }
   /** A run of tool calls with nothing said in between; rendered as one cluster. */
   | { kind: 'tools'; id: string; calls: ToolCall[] }
+  /** A Task call: work handed to a subagent, shown on its own (see subagents.ts). */
+  | { kind: 'subagent'; id: string; call: ToolCall }
+
+/** The tool that starts a subagent. */
+export const TASK_TOOL = 'Task'
 
 export interface TranscriptEntry {
   id: string
@@ -67,6 +72,10 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
           break
         case 'tool_use': {
           const call = { use: block, result: results.get(block.id) ?? null }
+          if (block.name === TASK_TOOL) {
+            blocks.push({ kind: 'subagent', id, call })
+            break
+          }
           const last = blocks[blocks.length - 1]
           if (last?.kind === 'tools') last.calls.push(call)
           else blocks.push({ kind: 'tools', id, calls: [call] })

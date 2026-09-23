@@ -40,6 +40,7 @@ export function SessionSidebar({
   groups,
   selectedSessionId,
   activity,
+  subagentsRunning,
   unread,
   onSelect,
   onArchiveToggle,
@@ -54,6 +55,8 @@ export function SessionSidebar({
   selectedSessionId: string | null
   /** What the Daemon is doing in each busy Session: a spinner, or a call for an answer. */
   activity: ReadonlyMap<string, SessionActivity>
+  /** How many subagents each row's Session has running. */
+  subagentsRunning: ReadonlyMap<string, number>
   /** Sessions that finished or started waiting while another one was open. */
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
@@ -111,6 +114,7 @@ export function SessionSidebar({
                 group={group}
                 selectedSessionId={selectedSessionId}
                 activity={activity}
+                subagentsRunning={subagentsRunning}
                 unread={unread}
                 onSelect={onSelect}
                 onArchiveToggle={onArchiveToggle}
@@ -134,6 +138,7 @@ function WorkspaceSection({
   group,
   selectedSessionId,
   activity,
+  subagentsRunning,
   unread,
   onSelect,
   onArchiveToggle,
@@ -142,6 +147,7 @@ function WorkspaceSection({
   group: WorkspaceGroup
   selectedSessionId: string | null
   activity: ReadonlyMap<string, SessionActivity>
+  subagentsRunning: ReadonlyMap<string, number>
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onArchiveToggle: (session: SessionSummary) => void
@@ -238,6 +244,7 @@ function WorkspaceSection({
           {visible.map((session) => {
             const selected = session.sessionId === selectedSessionId
             const doing = activity.get(session.sessionId)
+            const subagents = subagentsRunning.get(session.sessionId) ?? 0
             const isUnread = unread.has(session.sessionId)
             const sessionPinned = pinnedIds.includes(session.sessionId)
             return (
@@ -281,6 +288,16 @@ function WorkspaceSection({
                         >
                           <CircleAlert aria-hidden className="size-3 shrink-0" />
                           <span className="truncate">Needs input</span>
+                        </span>
+                      ) : subagents > 0 ? (
+                        <span
+                          role="status"
+                          className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
+                        >
+                          <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+                          <span className="truncate">
+                            {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
+                          </span>
                         </span>
                       ) : doing === 'working' ? (
                         <span

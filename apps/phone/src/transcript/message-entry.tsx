@@ -6,6 +6,7 @@ import { Markdown } from '../markdown/markdown'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { SubagentCard } from './subagent-card'
 import { ThinkingSection } from './thinking-section'
 import { ToolCluster } from './tool-cluster'
 
@@ -85,6 +86,8 @@ export function MessageEntry({
             )
           case 'tools':
             return <ToolCluster key={block.id} calls={block.calls} />
+          case 'subagent':
+            return <SubagentCard key={block.id} call={block.call} />
         }
       })}
       {entry.isError ? (
