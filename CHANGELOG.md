@@ -1,3 +1,14 @@
+## 1.5.0 - 2026-09-23
+
+### Changed
+
+- iPhone app: menus and pickers open as the system's bottom sheet. The dimmed background fades in place while only the sheet slides up, a swipe down or a tap outside closes it, and on iOS 26 it is drawn in Liquid Glass with a quieter title.
+- The repository is split into `apps/desktop` (the desktop app and web Client), `apps/mobile` (the iPhone app) and `tests`; the commands are unchanged.
+
+### Fixed
+
+- Leaving a subagent that was started before its Session was compacted returns to the current Session, not an earlier part of the conversation, and the subagent switcher lists all of that Session's subagents.
+
 ## 1.4.0 - 2026-09-23
 
 ### Added
