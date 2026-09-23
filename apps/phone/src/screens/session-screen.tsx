@@ -3,9 +3,11 @@
 // notifications, which is also what makes its activity show in the list.
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
+import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
 import { useSession } from '@droi/daemon-layer/use-session'
 import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
+import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
 import { useState } from 'react'
@@ -29,10 +31,13 @@ import { useColors } from '../ui/use-colors'
 export function SessionScreen({
   session,
   parent,
+  onContinued,
   drawerOpen,
   onOpenDrawer,
 }: {
   session: SessionSummary
+  /** `/compact` moved the conversation to a new Session; show that one. */
+  onContinued: (sessionId: string) => void
   /** The Session this one continues after a compaction, when listed. */
   parent: SessionSummary | null
   drawerOpen: boolean
@@ -45,10 +50,19 @@ export function SessionScreen({
   const turn = useTurn(session.sessionId)
   const settings = useSessionSettings(session.sessionId)
   const contextUsage = useContextUsage(session.sessionId, { loaded, modelId: settings.modelId })
-  const isRunning = view.workingState !== 'idle'
+  const slashItems = useSlashItems(session.sessionId)
+  const compaction = useCompact(session.sessionId, session.tags)
+  const isRunning = view.workingState !== 'idle' || compaction.isCompacting
   const [sentCount, setSentCount] = useState(0)
   const submit = ({ text, images, placement }: Submission) => {
     setSentCount((n) => n + 1)
+    const command = COMPACT_COMMAND.exec(text.trim())
+    if (command && images.length === 0) {
+      void compaction.compact(command[1]).then((next) => {
+        if (next) onContinued(next)
+      })
+      return
+    }
     void turn.send(text, { images, placement })
   }
   const [showEarlier, setShowEarlier] = useState(false)
@@ -95,7 +109,7 @@ export function SessionScreen({
         <TranscriptView
           messages={view.messages}
           earlierMessages={showEarlier ? earlier.messages : undefined}
-          workingState={view.workingState}
+          workingState={compaction.isCompacting ? 'compacting_conversation' : view.workingState}
           lead={lead}
           scrollToEndKey={sentCount}
         />
@@ -107,8 +121,9 @@ export function SessionScreen({
           disabled={!loaded}
           onSend={submit}
           onCancel={() => void turn.cancel()}
-          error={turn.sendError}
+          error={turn.sendError ?? compaction.error}
           draftKey={session.sessionId}
+          slashItems={slashItems}
         />
         <ComposerFooter workspace={session.cwd} usage={contextUsage} />
       </View>

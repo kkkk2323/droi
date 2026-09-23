@@ -66,6 +66,7 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
               key={selected.sessionId}
               session={selected}
               parent={sessions.sessions.find((s) => s.sessionId === selected.parentId) ?? null}
+              onContinued={(sessionId) => setLastId(sessionId)}
               drawerOpen={drawerOpen}
               onOpenDrawer={openDrawer}
             />

@@ -3,6 +3,7 @@
 // to the running turn instead, like ⌘↩ in the web Client.
 import { attachmentUrl, type ImageAttachment } from '@droi/daemon-layer/attachments'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
+import { filterSlashItems, slashQuery, type SlashItem } from '@droi/daemon-layer/use-slash-items'
 import type { QueuePlacement } from '@droi/daemon-layer/use-turn'
 import { ArrowUp, ListPlus, Plus, Square, X } from 'lucide-react-native'
 import { useState, type ReactNode } from 'react'
@@ -12,6 +13,8 @@ import { IconButton } from '../ui/primitives'
 import { Text } from '../ui/primitives'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+
+const NO_ITEMS: SlashItem[] = []
 
 export interface Submission {
   text: string
@@ -29,6 +32,7 @@ export function Composer({
   placeholder = 'Ask anything',
   sendLabel = 'Send',
   allowEmpty = false,
+  slashItems = NO_ITEMS,
   accessory,
 }: {
   isRunning: boolean
@@ -42,6 +46,8 @@ export function Composer({
   sendLabel?: string
   /** Let Send fire with nothing typed (starting a Session without a first message). */
   allowEmpty?: boolean
+  /** Commands and skills offered when the message starts with "/". */
+  slashItems?: SlashItem[]
   /** Controls in the composer's bottom row, before the send button. */
   accessory?: ReactNode
 }) {
@@ -49,6 +55,7 @@ export function Composer({
   const [draft] = useState(() => (draftKey ? loadDraft(draftKey) : { text: '', images: [] }))
   const [text, setText] = useState(draft.text)
   const [images, setImages] = useState<ImageAttachment[]>(draft.images)
+  const [caret, setCaret] = useState(draft.text.length)
   const [adding, setAdding] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
 
@@ -71,6 +78,14 @@ export function Composer({
     }
   }
 
+  const query = slashQuery(text, caret)
+  const suggestions = query === null ? NO_ITEMS : filterSlashItems(slashItems, query)
+  const accept = (item: SlashItem) => {
+    const next = `/${item.name} `
+    update(next)
+    setCaret(next.length)
+  }
+
   const canSend = !disabled && (allowEmpty || text.trim() !== '' || images.length > 0)
   const submit = (placement?: QueuePlacement) => {
     if (!canSend) return
@@ -88,6 +103,47 @@ export function Composer({
         >
           {error ?? imageError}
         </Text>
+      ) : null}
+      {suggestions.length > 0 ? (
+        <View
+          role="menu"
+          aria-label="Commands and skills"
+          style={[
+            styles.suggestions,
+            { borderColor: colors.border, backgroundColor: colors.popover },
+          ]}
+        >
+          {suggestions.map((item) => (
+            <Pressable
+              key={item.name}
+              role="menuitem"
+              onPress={() => accept(item)}
+              style={({ pressed }) => [
+                styles.option,
+                pressed ? { backgroundColor: colors.accent } : null,
+              ]}
+            >
+              <View style={styles.optionHead}>
+                <Text size="sm" mono weight="medium">
+                  /{item.name}
+                </Text>
+                {item.argumentHint ? (
+                  <Text size="xs" tone="muted" mono numberOfLines={1} style={styles.shrink}>
+                    {item.argumentHint}
+                  </Text>
+                ) : null}
+                <Text size="xs" tone="muted" style={styles.kind}>
+                  {item.kind === 'skill' ? 'Skill' : 'Command'}
+                </Text>
+              </View>
+              {item.description ? (
+                <Text size="xs" tone="muted" numberOfLines={1}>
+                  {item.description}
+                </Text>
+              ) : null}
+            </Pressable>
+          ))}
+        </View>
       ) : null}
       <View
         role="form"
@@ -132,7 +188,13 @@ export function Composer({
           placeholder={isRunning ? 'Queue a message' : placeholder}
           placeholderTextColor={colors.mutedForeground}
           value={text}
-          onChangeText={(next) => update(next)}
+          onChangeText={(next) => {
+            update(next)
+            // Typing leaves the caret at the end; a selection event corrects
+            // it when the edit was elsewhere (web builds send none on input).
+            setCaret(next.length)
+          }}
+          onSelectionChange={(event) => setCaret(event.nativeEvent.selection.end)}
           multiline
           editable={!disabled}
           style={[styles.input, { color: colors.foreground }]}
@@ -238,6 +300,15 @@ const styles = StyleSheet.create({
   },
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm },
   spacer: { flex: 1 },
+  suggestions: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.lg,
+    paddingVertical: space.xs,
+  },
+  option: { paddingHorizontal: space.md, paddingVertical: 6, gap: 2 },
+  optionHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  shrink: { flexShrink: 1 },
+  kind: { marginLeft: 'auto' },
   attachments: { gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.xs },
   attachment: { position: 'relative' },
   thumb: { width: 56, height: 56, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
