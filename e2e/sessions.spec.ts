@@ -474,6 +474,56 @@ test.describe('long history', () => {
   })
 })
 
+test.describe('opening a tool row at the bottom of the transcript', () => {
+  const toolCall = (id: string, command: string): MessageFixture[] => [
+    {
+      ...assistantMessage(''),
+      content: [{ type: 'tool_use', id, name: 'Execute', input: { command, summary: command } }],
+    },
+    {
+      ...assistantMessage(''),
+      role: 'tool',
+      content: [
+        {
+          type: 'tool_result',
+          toolUseId: id,
+          content: Array.from({ length: 15 }, (_, n) => `line ${n} of ${command}`).join('\n'),
+        },
+      ],
+    },
+  ]
+  const history: MessageFixture[] = []
+  for (let i = 0; i < 12; i++) {
+    history.push(
+      userMessage(`Question ${i} `.repeat(8)),
+      assistantMessage(`Answer ${i} `.repeat(30)),
+    )
+  }
+  history.push(userMessage('run the steps'))
+  for (let i = 0; i < 4; i++) history.push(...toolCall(`call_step_${i}`, `echo step ${i}`))
+  history.push(assistantMessage('All steps done.'))
+  const steps = session('Many steps', '/Users/dev/acme-web', history)
+  test.use({ scenario: { sessions: [steps] } })
+
+  test('keeps the row where it was clicked instead of jumping to the end', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Many steps/)
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('All steps done.')
+    const row = page.getByRole('button', { name: 'Execute: echo step 3' })
+    // Let the opening scroll to the latest message settle first.
+    await page.waitForTimeout(400)
+    const before = (await row.boundingBox())!.y
+    await row.click()
+    await expect(row).toHaveAttribute('aria-expanded', 'true')
+    await page.waitForTimeout(600)
+    expect(Math.abs((await row.boundingBox())!.y - before)).toBeLessThan(2)
+  })
+})
+
 test.describe('reconnect keeps the Session', () => {
   test.use({ scenario: { sessions: [droiSession] } })
 

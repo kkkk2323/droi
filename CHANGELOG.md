@@ -7,6 +7,7 @@
 - The Session header has an "Open in" button that opens the Workspace in an installed editor, Finder or terminal (VS Code, Cursor, Zed, Xcode, Android Studio, Terminal, iTerm2, Ghostty, kitty, Warp) and remembers the last one picked. Desktop app only.
 - The header's Git changes follow a turn's edits as they happen, and pick up edits made outside Droi within 15 seconds, without reopening the Session.
 - Earlier messages stay in the transcript after the Daemon compacts a long Session's context, and a long Session opens with its whole history instead of the last 30 messages.
+- Opening a tool row or reasoning block near the bottom keeps it where it was clicked instead of jumping to the end.
 
 ## 1.1.2 - 2026-09-21
 

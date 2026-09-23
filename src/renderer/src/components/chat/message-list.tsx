@@ -29,6 +29,9 @@ const INDEX_BASE = 1_000_000
 /** How far above the bottom, in px, still counts as reading the latest output. */
 const FOLLOW_THRESHOLD = 120
 
+/** A height change this soon after a click or key press in the list is the reader's. */
+const USER_RESIZE_WINDOW_MS = 500
+
 const NO_MESSAGES: FactoryDroidMessage[] = []
 
 const WORKING_LABELS: Record<string, string> = {
@@ -152,12 +155,24 @@ export function MessageList({
     scroller.current = el instanceof HTMLElement ? el : null
     scroller.current?.addEventListener('scroll', onScroll, { passive: true })
   }
+  // Opening a tool row or a reasoning block also changes the height. That is
+  // the reader's own doing: the row stays where it was clicked instead of the
+  // list jumping to the end, and following resumes only from the bottom.
+  const lastTouched = useRef(0)
+  const touched = () => {
+    lastTouched.current = performance.now()
+  }
   const onHeightChange = () => {
     if (!following.current) return
     // The list's DOM takes the new height on the next frame.
     requestAnimationFrame(() => {
       const el = scroller.current
-      if (el && following.current) el.scrollTop = el.scrollHeight
+      if (!el || !following.current) return
+      if (performance.now() - lastTouched.current < USER_RESIZE_WINDOW_MS) {
+        following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD
+        return
+      }
+      el.scrollTop = el.scrollHeight
     })
   }
   useEffect(() => {
@@ -199,7 +214,7 @@ export function MessageList({
   }
 
   return (
-    <div className="relative h-full">
+    <div className="relative h-full" onPointerDownCapture={touched} onKeyDownCapture={touched}>
       <Virtuoso<TranscriptEntry, ListContext>
         ref={virtuoso}
         role="log"
