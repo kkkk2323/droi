@@ -65,6 +65,33 @@ test.describe('sending a prompt', () => {
     expect(await transcript.getByRole('article', { name: 'You' }).count()).toBe(2)
   })
 
+  test('a long link in a sent message wraps inside the bubble', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const link = `https://example.com/home/api-studio/inside/${'a1b2c3d4'.repeat(20)}/detail?spaceKey=x`
+    await page.getByRole('textbox', { name: 'Message' }).fill(`Please look at ${link}`)
+    await page.getByRole('button', { name: 'Send' }).click()
+
+    const bubble = page
+      .getByRole('log', { name: 'Transcript' })
+      .getByRole('article', { name: 'You' })
+      .last()
+      .getByText(link, { exact: false })
+    await expect(bubble).toBeVisible()
+    const box = await bubble.evaluate((el) => ({
+      scroll: el.scrollWidth,
+      client: el.clientWidth,
+      right: el.getBoundingClientRect().right,
+      column: el.closest('article')!.getBoundingClientRect().right,
+    }))
+    expect(box.scroll).toBeLessThanOrEqual(box.client)
+    expect(box.right).toBeLessThanOrEqual(box.column + 1)
+  })
+
   test('send is disabled for empty input; a running turn offers Cancel and Queue', async ({
     page,
     openClient,

@@ -40,7 +40,7 @@ export function MessageEntry({
           </div>
         ) : null}
         {text ? (
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-[15px] leading-6 text-secondary-foreground">
+          <div className="max-w-[85%] whitespace-pre-wrap wrap-anywhere rounded-2xl bg-secondary px-4 py-2.5 text-[15px] leading-6 text-secondary-foreground">
             {text}
           </div>
         ) : null}
