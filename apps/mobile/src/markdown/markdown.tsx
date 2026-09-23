@@ -141,8 +141,8 @@ function inline(nodes: readonly PhrasingContent[], context: Context): ReactNode[
             style={{
               fontFamily: fonts.mono,
               fontSize: fontSize.sm * context.scale,
-              color: colors.code,
-              backgroundColor: colors.codeBackground,
+              color: colors.codeInline,
+              backgroundColor: colors.codeWash,
             }}
           >
             {node.value}
