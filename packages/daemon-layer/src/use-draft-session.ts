@@ -63,8 +63,8 @@ export interface DraftSession {
   isTaking: boolean
   /**
    * Turns the draft into an ordinary Session with these settings. Resolves to
-   * its id, or to null when there is no usable draft and the caller should
-   * create the Session itself.
+   * its id, or to null when there is no usable draft (one for another
+   * Workspace is closed) and the caller should create the Session itself.
    */
   take(path: string, settings: NewSessionSettings): Promise<string | null>
 }
@@ -89,7 +89,10 @@ export function useDraftSession(path: string | null): DraftSession {
 
   const take = async (target: string, settings: NewSessionSettings): Promise<string | null> => {
     const draft = drafts.get(connection)
-    if (!draft || draft.path !== target || !draft.settled || draft.settled !== sessionId) {
+    if (!draft) return null
+    if (draft.path !== target || !draft.settled || draft.settled !== sessionId) {
+      // The caller creates the Session itself; this draft would linger unseen.
+      discard(connection, draft)
       return null
     }
     drafts.delete(connection)

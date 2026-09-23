@@ -80,6 +80,7 @@ test('a typed path is checked by the Daemon and starts a Session there', async (
 }) => {
   await pairPhone(page, fakeDaemon)
   const form = page.getByRole('region', { name: 'New session' })
+  const abandoned = await fakeDaemon.waitForRequest('daemon.initialize_session')
   await form.getByRole('button', { name: 'Workspace' }).click()
   await page.getByRole('button', { name: 'Other folder…' }).click()
   await expect(form.getByRole('heading', { name: 'Where should Droid work?' })).toBeVisible()
@@ -96,6 +97,9 @@ test('a typed path is checked by the Daemon and starts a Session there', async (
   )
   const list = await openDrawer(page)
   await expect(list.getByRole('group', { name: 'fresh-project' })).toBeVisible()
+  // The draft opened for the recent Workspace is not left behind.
+  const closed = await fakeDaemon.waitForRequest('daemon.close_session')
+  expect(closed.params).toMatchObject({ sessionId: sessionIdOf(abandoned) })
 })
 
 test('"/" lists the Workspace’s skills before the first send', async ({ page, fakeDaemon }) => {

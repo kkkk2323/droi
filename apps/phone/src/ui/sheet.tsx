@@ -24,6 +24,7 @@ export function Sheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.root}>
         <Pressable
+          role="button"
           aria-label="Close"
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]}
           onPress={onClose}

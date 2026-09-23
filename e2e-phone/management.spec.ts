@@ -13,7 +13,7 @@ async function actionsFor(page: Page, name: RegExp | string) {
   const actions = page.getByRole('dialog', { name: /^Actions for / })
   // A sheet still sliding away (its backdrop still there) holds focus and
   // would cancel the press.
-  await expect(page.getByLabel('Close', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0)
   const list = await openDrawer(page)
   await list.getByRole('button', { name, exact: typeof name === 'string' }).click({ delay: 800 })
   await expect(actions).toBeVisible()
