@@ -8,25 +8,8 @@ import {
   useSessionSettingsActions,
   type SessionSettingsView,
 } from '@droi/daemon-layer/use-session-settings'
+import { AUTONOMY_LABELS, EFFORT_LABELS } from '@droi/daemon-layer/model-choices'
 import { ModelPicker } from './model-picker'
-
-const EFFORT_LABELS: Record<string, string> = {
-  none: 'None',
-  dynamic: 'Dynamic',
-  off: 'Off',
-  minimal: 'Minimal',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Extra high',
-}
-
-const AUTONOMY_LABELS: Record<string, string> = {
-  off: 'Ask for everything',
-  low: 'Low autonomy',
-  medium: 'Medium autonomy',
-  high: 'High autonomy',
-}
 
 /** Editable title for the page header. */
 export function SessionTitle({

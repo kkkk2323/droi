@@ -3,49 +3,10 @@ import { Popover } from '@base-ui/react/popover'
 import { ChevronDown, Search, Star } from 'lucide-react'
 import { BrandIcon } from './brand-icon'
 import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
-import { BRAND_LABELS, BRAND_ORDER, brandOf, type Brand } from '@droi/daemon-layer/model-brand'
+import { BRAND_LABELS, brandOf } from '@droi/daemon-layer/model-brand'
+import { brandsOf, visibleModels, type PickerFilter } from '@droi/daemon-layer/model-choices'
 import { cn } from '@/lib/utils'
 import type { ModelChoice } from '@droi/daemon-layer/use-session-settings'
-
-/** Which rows the picker lists: everything, the starred ones, or one brand. */
-export type PickerFilter = 'all' | 'favorites' | Brand
-
-export interface PickerRow extends ModelChoice {
-  brand: Brand
-}
-
-/**
- * Rows in display order. A non-empty query searches every model regardless of
- * the filter; favorites keep the order they were starred in.
- */
-export function visibleModels(
-  models: ModelChoice[],
-  favorites: string[],
-  filter: PickerFilter,
-  query: string,
-): PickerRow[] {
-  const rows = models.map((m) => ({ ...m, brand: brandOf(m.id, m.provider) }))
-  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean)
-  if (tokens.length > 0) {
-    return rows.filter((row) => {
-      const haystack = `${row.label} ${row.id} ${BRAND_LABELS[row.brand]}`.toLowerCase()
-      return tokens.every((t) => haystack.includes(t))
-    })
-  }
-  if (filter === 'all') return rows
-  if (filter === 'favorites') {
-    return rows
-      .filter((row) => favorites.includes(row.id))
-      .sort((a, b) => favorites.indexOf(a.id) - favorites.indexOf(b.id))
-  }
-  return rows.filter((row) => row.brand === filter)
-}
-
-/** Brands present in the list, in rail order. */
-export function brandsOf(models: ModelChoice[]): Brand[] {
-  const present = new Set(models.map((m) => brandOf(m.id, m.provider)))
-  return BRAND_ORDER.filter((b) => present.has(b))
-}
 
 export function ModelPicker({
   models,

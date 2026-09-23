@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { brandsOf, visibleModels } from './model-picker'
-import { brandOf } from '@droi/daemon-layer/model-brand'
-import type { ModelChoice } from '@droi/daemon-layer/use-session-settings'
+import { brandOf } from './model-brand'
+import { brandsOf, visibleModels } from './model-choices'
+import type { ModelChoice } from './use-session-settings'
 
 const model = (id: string, provider: string | null, label = id): ModelChoice => ({
   id,

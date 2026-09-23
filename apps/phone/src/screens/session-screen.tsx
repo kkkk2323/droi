@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Composer, type Submission } from '../composer/composer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
+import { SessionSettingsBar } from '../composer/session-settings'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
 import { ScreenHeader } from '../ui/screen-header'
@@ -131,6 +132,7 @@ export function SessionScreen({
             error={turn.sendError ?? compaction.error}
             draftKey={session.sessionId}
             slashItems={slashItems}
+            accessory={<SessionSettingsBar sessionId={session.sessionId} />}
           />
         )}
         <ComposerFooter workspace={session.cwd} usage={contextUsage} />
