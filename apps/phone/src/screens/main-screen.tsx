@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Drawer } from 'react-native-drawer-layout'
 import { lastSessionOf, pairedComputers, type PairedComputer } from '../computers/store'
+import { ConnectionGate } from '../connection/connection-notices'
 import { SessionList } from '../sessions/session-list'
 import { useComputerSessions } from '../sessions/use-computer-sessions'
 import { useColors } from '../ui/use-colors'
@@ -59,16 +60,18 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
       )}
     >
       <View style={[styles.fill, { backgroundColor: colors.background }]}>
-        {selected ? (
-          <SessionScreen
-            key={selected.sessionId}
-            session={selected}
-            drawerOpen={drawerOpen}
-            onOpenDrawer={openDrawer}
-          />
-        ) : (
-          <NewSessionScreen drawerOpen={drawerOpen} onOpenDrawer={openDrawer} />
-        )}
+        <ConnectionGate computer={computer} drawerOpen={drawerOpen} onOpenDrawer={openDrawer}>
+          {selected ? (
+            <SessionScreen
+              key={selected.sessionId}
+              session={selected}
+              drawerOpen={drawerOpen}
+              onOpenDrawer={openDrawer}
+            />
+          ) : (
+            <NewSessionScreen drawerOpen={drawerOpen} onOpenDrawer={openDrawer} />
+          )}
+        </ConnectionGate>
       </View>
     </Drawer>
   )

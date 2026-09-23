@@ -5,6 +5,7 @@ import { ConnectionProvider } from '@droi/daemon-layer/connection-context'
 import { createDaemonConnection } from '@droi/daemon-layer/connection'
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
+import { AppState } from 'react-native'
 import { tokenKey, type PairedComputer } from '../computers/store'
 import { keychain } from '../platform/keychain'
 import { createQueryClient } from '../query-client'
@@ -56,7 +57,14 @@ function Connected({
   }))
   useEffect(() => {
     live.connection.start()
+    // iOS suspends a backgrounded app and its socket with it; let go on the
+    // way out and reconnect on the way back rather than trust a dead socket.
+    const appState = AppState.addEventListener('change', (next) => {
+      if (next === 'background') live.connection.suspend()
+      if (next === 'active') live.connection.resume()
+    })
     return () => {
+      appState.remove()
       live.connection.dispose()
       live.queries.clear()
     }

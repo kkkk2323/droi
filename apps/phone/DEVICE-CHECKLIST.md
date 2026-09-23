@@ -26,3 +26,7 @@ Droi on the computer must be a build with the computer name and id in its
       Droi → Settings → Remote Access.
 - [ ] After `pnpm install:phone` again, the Paired Computers are still there
       and connect without pairing again (the tokens live in the keychain).
+- [ ] Sending the app to the background for a minute and back keeps the open
+      Session on screen; it reconnects on its own (a Reconnecting banner at most).
+- [ ] With Remote Access turned off on the computer, the app says it cannot
+      reach it, lists what to check, and connects once it is back on.

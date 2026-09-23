@@ -38,6 +38,13 @@ export interface DaemonConnection {
   getState(): ConnectionState
   subscribe(listener: () => void): () => void
   start(): void
+  /** The host went to the background (an iPhone app): stop polling for the Gateway. */
+  suspend(): void
+  /**
+   * Back in the foreground: re-check the pairing and connect again at once if
+   * the socket went while away. The SDK reconnects a socket the OS closed.
+   */
+  resume(): void
   dispose(): void
 }
 
@@ -80,6 +87,7 @@ export function createDaemonConnection(
   let state: ConnectionState = { status: 'connecting' }
   const listeners = new Set<() => void>()
   let disposed = false
+  let suspended = false
   let everConnected = false
   let recoveryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -109,9 +117,9 @@ export function createDaemonConnection(
   }
 
   const connect = async () => {
-    if (disposed) return
+    if (disposed || suspended) return
     const pairing = await checkPairing()
-    if (disposed) return
+    if (disposed || suspended) return
     if (pairing === 'rejected') {
       setState({ status: 'unpaired', reason: 'rejected-token' })
       return
@@ -124,14 +132,14 @@ export function createDaemonConnection(
     try {
       await controller.attemptInitialConnection()
     } catch (error) {
-      if (disposed) return
+      if (disposed || suspended) return
       setState({ status: 'unreachable', detail: describe(error), initial: !everConnected })
       scheduleRecovery()
     }
   }
 
   const scheduleRecovery = () => {
-    if (recoveryTimer || disposed) return
+    if (recoveryTimer || disposed || suspended) return
     recoveryTimer = setTimeout(() => {
       recoveryTimer = null
       void connect()
@@ -170,6 +178,28 @@ export function createDaemonConnection(
         return
       }
       void connect()
+    },
+    suspend() {
+      if (disposed) return
+      suspended = true
+      if (recoveryTimer) clearTimeout(recoveryTimer)
+      recoveryTimer = null
+    },
+    resume() {
+      if (disposed || !suspended) return
+      suspended = false
+      if (state.status === 'unpaired') return
+      if (state.status !== 'connected') {
+        void connect()
+        return
+      }
+      // Connected as far as the SDK knows; the Pairing Token may have been
+      // reset while the phone was away.
+      void checkPairing().then((pairing) => {
+        if (disposed || pairing !== 'rejected') return
+        controller.disconnect()
+        setState({ status: 'unpaired', reason: 'rejected-token' })
+      })
     },
     dispose() {
       disposed = true
