@@ -1,6 +1,6 @@
 {
   "name": "droi",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Desktop and mobile-web front end for the Droid Daemon",
   "main": "./out/main/index.js",
   "type": "module",

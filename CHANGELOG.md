@@ -1,3 +1,16 @@
+## 1.4.0 - 2026-09-23
+
+### Added
+
+- Subagents no longer crowd the Session list. A Session that handed work to a subagent (a Task call) shows it as a card in the transcript: the subagent and its task, whether it is running, finished or failed, how many tools it used and for how long, an Open button, and the prompt and report under Details. The header lists the Session's subagents; inside a subagent the title leads back to the Session that called it and switches to its other subagents. The calling Session's row says how many subagents are running, and subagents raise no alerts of their own. On the desktop, the web Client and the iPhone app.
+- The model pickers show Factory's usage multiplier for each model (for example 1.6×); custom models show none.
+- A picked `/` command or skill shows as a tag in front of the message, so it is clear it will run; Backspace at the start or the tag's × removes it.
+
+### Changed
+
+- Back from Settings returns to the Session (or page) it was opened from, instead of New session.
+- iPhone app: brand marks in the model picker and on the model button, the desktop's spinner and activity marks instead of iOS's, a full-point composer border, and more room around the composer's footer.
+
 ## 1.3.0 - 2026-09-23
 
 ### Added
