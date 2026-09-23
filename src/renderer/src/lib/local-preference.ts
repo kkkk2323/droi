@@ -96,3 +96,5 @@ export const foldedWorkspaces = createStringListPreference('droi.foldedWorkspace
 /** Workspace groups and Sessions kept at the top of the sidebar. */
 export const pinnedWorkspaces = createStringListPreference('droi.pinnedWorkspaces')
 export const pinnedSessions = createStringListPreference('droi.pinnedSessions')
+/** The app the header's "open in" button opens the Workspace in; the last one picked. */
+export const openInApp = createStringPreference('droi.openInApp')

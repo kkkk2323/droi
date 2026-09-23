@@ -1,13 +1,26 @@
 // Desktop Shell: the installed desktop application. It starts the Daemon, opens a
 // window for the Local Client, and hosts the Gateway. It holds no conversation
 // state. (See CONTEXT.md.)
-import { app, BrowserWindow, ipcMain, Menu, net, safeStorage, shell } from 'electron'
-import { spawn } from 'node:child_process'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  net,
+  Notification,
+  safeStorage,
+  shell,
+} from 'electron'
+import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 // Electron's fs treats .asar files as directories; original-fs sees the file.
 import * as originalFs from 'original-fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
 import { locateDroid } from './daemon/locate-droid'
@@ -20,8 +33,12 @@ import {
   type GatewayCredential,
   type GatewayOptions,
 } from './gateway/gateway'
+import { builtinSoundPath, readSoundAsDataUrl, SOUND_FILE_EXTENSIONS } from './alert-sounds'
+import { locateOpenInApps, type InstalledApp } from './open-in'
 import { createShellSettingsStore, type ShellSettingsStore } from './shell-settings'
 import { createUpdater, type Updater } from './updater'
+import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
+import { OPEN_IN_IPC, type OpenInApp } from '../shared/open-in'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
@@ -240,7 +257,95 @@ function broadcastChange(): void {
   }
 }
 
+// Looked up once per launch, like Waku. app.getFileIcon answers a generic
+// folder for an .app bundle; the thumbnail is the app's own icon. 32px so the
+// 16px button stays sharp on a Retina screen.
+let openInApps: Promise<Array<InstalledApp & OpenInApp>> | null = null
+
+function installedOpenInApps(): Promise<Array<InstalledApp & OpenInApp>> {
+  openInApps ??= Promise.all(
+    locateOpenInApps({ platform: process.platform, homedir: homedir(), exists: existsSync }).map(
+      async (found) => ({
+        ...found,
+        icon: await nativeImage
+          .createThumbnailFromPath(found.appPath, { width: 32, height: 32 })
+          .then(
+            (image) => image.toDataURL(),
+            () => null,
+          ),
+      }),
+    ),
+  )
+  return openInApps
+}
+
+async function openInApp(path: unknown, appId: unknown): Promise<void> {
+  const target = (await installedOpenInApps()).find((found) => found.id === appId)
+  if (!target) throw new Error(`Unknown app: ${String(appId)}`)
+  const isDirectory =
+    typeof path === 'string' &&
+    isAbsolute(path) &&
+    (await stat(path).then(
+      (entry) => entry.isDirectory(),
+      () => false,
+    ))
+  if (!isDirectory) throw new Error(`Not a directory: ${String(path)}`)
+  await new Promise<void>((resolve, reject) => {
+    execFile('open', ['-a', target.appPath, path], (error) => (error ? reject(error) : resolve()))
+  })
+}
+
+// A notification that is collected before it is clicked loses its click handler.
+const shownNotifications = new Set<Notification>()
+
+function showAlert(window: BrowserWindow | null, alert: AlertNotification): void {
+  if (!Notification.isSupported()) return
+  // The Client plays its own sound for the same moment.
+  const notification = new Notification({
+    title: String(alert.title),
+    body: String(alert.body),
+    silent: true,
+  })
+  const sessionId = String(alert.sessionId)
+  notification.on('click', () => {
+    shownNotifications.delete(notification)
+    if (!window || window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send(ALERTS_IPC.notificationClicked, sessionId)
+  })
+  notification.on('close', () => shownNotifications.delete(notification))
+  shownNotifications.add(notification)
+  notification.show()
+}
+
 function registerIpc(): void {
+  ipcMain.handle(ALERTS_IPC.builtinSound, (_event, name: unknown) => {
+    const path = builtinSoundPath(factoryHome(), name)
+    return path ? readSoundAsDataUrl(path) : null
+  })
+  ipcMain.handle(ALERTS_IPC.readSoundFile, (_event, path: unknown) => readSoundAsDataUrl(path))
+  ipcMain.handle(ALERTS_IPC.pickSoundFile, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      properties: ['openFile' as const],
+      filters: [{ name: 'Audio', extensions: SOUND_FILE_EXTENSIONS }],
+    }
+    const picked = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options)
+    return picked.canceled ? null : (picked.filePaths[0] ?? null)
+  })
+  ipcMain.handle(ALERTS_IPC.notify, (event, alert: AlertNotification) =>
+    showAlert(BrowserWindow.fromWebContents(event.sender), alert),
+  )
+  ipcMain.handle(OPEN_IN_IPC.list, async (): Promise<OpenInApp[]> =>
+    (await installedOpenInApps()).map(({ id, label, icon }) => ({ id, label, icon })),
+  )
+  ipcMain.handle(OPEN_IN_IPC.open, (_event, path: unknown, appId: unknown) =>
+    openInApp(path, appId),
+  )
   ipcMain.handle(SHELL_IPC.get, () => snapshot())
   ipcMain.handle(SHELL_IPC.getPairing, () => pairing())
   ipcMain.handle(SHELL_IPC.update, async (_event, patch: ShellSettingsPatch) => {

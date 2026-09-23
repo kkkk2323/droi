@@ -71,6 +71,91 @@ export async function drawerGone(page: Page): Promise<void> {
   await expect(page.getByRole('dialog', { name: 'Sessions' })).toBeHidden()
 }
 
+/** What the stand-in Desktop Shell was asked to do, read with shellRecord(page). */
+export interface ShellRecord {
+  opened: Array<[string, string]>
+  notifications: Array<{ title: string; body: string; sessionId: string }>
+  /** The src of every sound played, in order. */
+  sounds: string[]
+}
+
+/**
+ * Open the Client as the Local Client: a stand-in for the Desktop Shell
+ * preload that points at the Fake Daemon and records what it is asked to do.
+ * Built-in sounds come back as `data:audio/wav,<name>`, custom ones as
+ * `data:audio/wav,<path>`. The window counts as focused until
+ * setWindowFocused(page, false).
+ */
+export async function openLocalClient(page: Page, daemon: FakeDaemon): Promise<void> {
+  await page.addInitScript(
+    ({ gatewayUrl, pairingToken }) => {
+      const record: ShellRecord = { opened: [], notifications: [], sounds: [] }
+      let focused = true
+      let onClick: ((sessionId: string) => void) | null = null
+      HTMLMediaElement.prototype.play = function () {
+        record.sounds.push(this.src)
+        return Promise.resolve()
+      }
+      document.hasFocus = () => focused
+      Object.assign(window, {
+        shellRecord: record,
+        setWindowFocused: (value: boolean) => void (focused = value),
+        clickNotification: (sessionId: string) => onClick?.(sessionId),
+        droiShell: {
+          gatewayUrl,
+          pairingToken,
+          platform: 'darwin',
+          settings: {
+            get: async () => ({ hasCredential: true, update: { status: 'idle' } }),
+            onChange: () => () => {},
+          },
+          openIn: {
+            list: async () => [
+              { id: 'vscode', label: 'VS Code', icon: null },
+              { id: 'finder', label: 'Finder', icon: null },
+            ],
+            open: async (path: string, appId: string) => void record.opened.push([path, appId]),
+          },
+          alerts: {
+            builtinSound: async (name: string) => `data:audio/wav,${name}`,
+            pickSoundFile: async () => '/Users/dev/sounds/ding.wav',
+            readSoundFile: async (path: string) => `data:audio/wav,${path}`,
+            notify: async (notification: ShellRecord['notifications'][number]) =>
+              void record.notifications.push(notification),
+            onNotificationClick: (listener: (sessionId: string) => void) => {
+              onClick = listener
+              return () => void (onClick = null)
+            },
+          },
+        },
+      })
+    },
+    { gatewayUrl: daemon.url, pairingToken: daemon.token },
+  )
+  await page.goto('/')
+}
+
+export function shellRecord(page: Page): Promise<ShellRecord> {
+  return page.evaluate(() => (window as unknown as { shellRecord: ShellRecord }).shellRecord)
+}
+
+export async function setWindowFocused(page: Page, focused: boolean): Promise<void> {
+  await page.evaluate(
+    (value) =>
+      (window as unknown as { setWindowFocused: (v: boolean) => void }).setWindowFocused(value),
+    focused,
+  )
+}
+
+/** As if the Desktop Shell's notification for this Session were clicked. */
+export async function clickNotification(page: Page, sessionId: string): Promise<void> {
+  await page.evaluate(
+    (id) =>
+      (window as unknown as { clickNotification: (id: string) => void }).clickNotification(id),
+    sessionId,
+  )
+}
+
 export async function openPairingLink(
   page: Page,
   daemon: FakeDaemon,

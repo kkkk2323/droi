@@ -1,9 +1,12 @@
 // Preload: the only bridge between the Desktop Shell and the Local Client. It
-// exposes the Gateway URL, this window's token, the platform, and the Shell
-// settings calls. Conversation data never crosses here; it goes through the
+// exposes the Gateway URL, this window's token, the platform, the Shell
+// settings calls, opening a Workspace in another app, and alert sounds and
+// notifications. Conversation data never crosses here; it goes through the
 // Gateway.
 import { contextBridge, ipcRenderer } from 'electron'
 import { readShellArg, SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
+import { ALERTS_IPC, type AlertsBridge } from '../shared/alerts'
+import { OPEN_IN_IPC, type OpenInBridge } from '../shared/open-in'
 import { SHELL_IPC, type ShellSettingsBridge } from '../shared/shell-settings'
 
 const settings: ShellSettingsBridge = {
@@ -25,11 +28,30 @@ const settings: ShellSettingsBridge = {
   },
 }
 
+const openIn: OpenInBridge = {
+  list: () => ipcRenderer.invoke(OPEN_IN_IPC.list),
+  open: (path, appId) => ipcRenderer.invoke(OPEN_IN_IPC.open, path, appId),
+}
+
+const alerts: AlertsBridge = {
+  builtinSound: (name) => ipcRenderer.invoke(ALERTS_IPC.builtinSound, name),
+  pickSoundFile: () => ipcRenderer.invoke(ALERTS_IPC.pickSoundFile),
+  readSoundFile: (path) => ipcRenderer.invoke(ALERTS_IPC.readSoundFile, path),
+  notify: (notification) => ipcRenderer.invoke(ALERTS_IPC.notify, notification),
+  onNotificationClick: (listener) => {
+    const handler = (_event: unknown, sessionId: string) => listener(sessionId)
+    ipcRenderer.on(ALERTS_IPC.notificationClicked, handler)
+    return () => ipcRenderer.off(ALERTS_IPC.notificationClicked, handler)
+  },
+}
+
 const droiShell = {
   gatewayUrl: readShellArg(process.argv, SHELL_ARG_GATEWAY_URL) ?? '',
   pairingToken: readShellArg(process.argv, SHELL_ARG_PAIRING_TOKEN) ?? '',
   platform: process.platform,
   settings,
+  openIn,
+  alerts,
 }
 
 export type DroiShell = typeof droiShell

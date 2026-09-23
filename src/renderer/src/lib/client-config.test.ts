@@ -31,6 +31,8 @@ describe('resolveClientConfig', () => {
         pairingToken: 'local-token',
         platform: 'darwin',
         settings: {} as never,
+        openIn: {} as never,
+        alerts: {} as never,
       },
       hash: '#pair=ignored',
     })

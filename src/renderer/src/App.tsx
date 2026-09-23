@@ -7,7 +7,8 @@ import { foldContinued, groupByWorkspace, useSessionList, type SessionTag } from
 
 const NO_TAGS: SessionTag[] = []
 import { recentWorkspaces } from './daemon/use-new-session'
-import { useWorkingSessionIds } from './daemon/use-working-sessions'
+import { useSessionActivity } from './daemon/use-session-activity'
+import { useSessionAlerts } from './daemon/use-session-alerts'
 import {
   ConnectionStatus,
   PairingFailed,
@@ -57,7 +58,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [sidebarShown, setSidebarShown] = usePreference(sidebarVisible)
   const [showArchived] = usePreference(showArchivedSessions)
   const sessions = useSessionList({ includeArchived: showArchived })
-  const workingSessionIds = useWorkingSessionIds()
+  const activity = useSessionActivity()
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
   const groups = groupByWorkspace(foldContinued(sessions.data ?? []), {
@@ -68,6 +69,13 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = sessions.data?.find((s) => s.sessionId === selectedId) ?? null
   const parent = sessions.data?.find((s) => s.sessionId === selected?.parentId) ?? null
+  const unread = useSessionAlerts({
+    bridge: window.droiShell?.alerts ?? null,
+    selectedId,
+    titleOf: (sessionId) =>
+      sessions.data?.find((s) => s.sessionId === sessionId)?.title ?? 'Session',
+    onOpen: (sessionId) => navigate({ name: 'session', sessionId }),
+  })
 
   // Launching on the bare home route reopens the Session that was open last,
   // once the list confirms it still exists. Only the first list counts: going
@@ -129,6 +137,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         {status}
         <SettingsPage
           bridge={window.droiShell?.settings ?? null}
+          alerts={window.droiShell?.alerts ?? null}
           onBack={() => go({ name: 'home' })}
         />
       </>
@@ -139,7 +148,8 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     <SessionSidebar
       groups={groups}
       selectedSessionId={selectedId}
-      workingSessionIds={workingSessionIds}
+      activity={activity}
+      unread={unread}
       onSelect={(sessionId) => go({ name: 'session', sessionId })}
       onArchiveToggle={(session) => {
         if (session.archivedAt) {

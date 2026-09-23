@@ -15,6 +15,7 @@ import { takePendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
 import { ComposerShelf, ContextMeter } from './composer-panels'
 import { GitChangesButton } from './git-changes'
+import { OpenInButton } from './open-in'
 import { InputBar, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
@@ -104,6 +105,7 @@ export function SessionView({
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
       <PageHeader leading={leading} title={<SessionTitle sessionId={sessionId} title={title} />}>
         <GitChangesButton changes={gitChanges} />
+        <OpenInButton path={workspace} bridge={window.droiShell?.openIn ?? null} />
       </PageHeader>
 
       <div className="min-h-0 flex-1">

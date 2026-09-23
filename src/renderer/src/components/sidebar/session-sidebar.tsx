@@ -4,6 +4,7 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
+  CircleAlert,
   Folder,
   Loader2,
   MessageSquare,
@@ -27,6 +28,7 @@ const MENU =
   'min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none'
 const MENU_ITEM =
   'flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground'
+import type { SessionActivity } from '@/daemon/use-session-activity'
 import {
   OLDER_BATCH,
   visibleSessions,
@@ -37,7 +39,8 @@ import {
 export function SessionSidebar({
   groups,
   selectedSessionId,
-  workingSessionIds,
+  activity,
+  unread,
   onSelect,
   onArchiveToggle,
   isLoading,
@@ -49,8 +52,10 @@ export function SessionSidebar({
 }: {
   groups: WorkspaceGroup[]
   selectedSessionId: string | null
-  /** Sessions the Daemon is working in right now; they get a spinner. */
-  workingSessionIds: ReadonlySet<string>
+  /** What the Daemon is doing in each busy Session: a spinner, or a call for an answer. */
+  activity: ReadonlyMap<string, SessionActivity>
+  /** Sessions that finished or started waiting while another one was open. */
+  unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   /** From the row's context menu: archive, or unarchive when already archived. */
   onArchiveToggle: (session: SessionSummary) => void
@@ -105,7 +110,8 @@ export function SessionSidebar({
               <WorkspaceSection
                 group={group}
                 selectedSessionId={selectedSessionId}
-                workingSessionIds={workingSessionIds}
+                activity={activity}
+                unread={unread}
                 onSelect={onSelect}
                 onArchiveToggle={onArchiveToggle}
                 onNewSessionIn={onNewSessionIn}
@@ -127,14 +133,16 @@ export function SessionSidebar({
 function WorkspaceSection({
   group,
   selectedSessionId,
-  workingSessionIds,
+  activity,
+  unread,
   onSelect,
   onArchiveToggle,
   onNewSessionIn,
 }: {
   group: WorkspaceGroup
   selectedSessionId: string | null
-  workingSessionIds: ReadonlySet<string>
+  activity: ReadonlyMap<string, SessionActivity>
+  unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onArchiveToggle: (session: SessionSummary) => void
   onNewSessionIn: (workspace: string) => void
@@ -229,7 +237,8 @@ function WorkspaceSection({
         <ul className="flex flex-col gap-px">
           {visible.map((session) => {
             const selected = session.sessionId === selectedSessionId
-            const working = workingSessionIds.has(session.sessionId)
+            const doing = activity.get(session.sessionId)
+            const isUnread = unread.has(session.sessionId)
             const sessionPinned = pinnedIds.includes(session.sessionId)
             return (
               <ContextMenu.Root key={session.sessionId}>
@@ -246,7 +255,16 @@ function WorkspaceSection({
                     )}
                   >
                     <span className="flex items-center gap-1.5 text-[13px] text-foreground">
-                      <span className="flex-1 truncate">{session.title}</span>
+                      <span className={cn('flex-1 truncate', isUnread && 'font-medium')}>
+                        {session.title}
+                      </span>
+                      {isUnread ? (
+                        <span
+                          role="img"
+                          aria-label="Unread"
+                          className="size-1.5 shrink-0 rounded-full bg-sky-500"
+                        />
+                      ) : null}
                       {sessionPinned ? (
                         <Pin aria-label="Pinned" className="size-3 shrink-0 opacity-70" />
                       ) : null}
@@ -255,7 +273,16 @@ function WorkspaceSection({
                       ) : null}
                     </span>
                     <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      {working ? (
+                      {doing === 'needs-input' ? (
+                        <span
+                          role="status"
+                          aria-label="Needs input"
+                          className="flex min-w-0 items-center gap-1 text-amber-600 dark:text-amber-400"
+                        >
+                          <CircleAlert aria-hidden className="size-3 shrink-0" />
+                          <span className="truncate">Needs input</span>
+                        </span>
+                      ) : doing === 'working' ? (
                         <span
                           role="status"
                           aria-label="Working"

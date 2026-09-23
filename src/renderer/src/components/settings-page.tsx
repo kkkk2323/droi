@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
 import {
   ArrowLeft,
+  Bell,
   Check,
   Copy,
   ExternalLink,
@@ -17,12 +18,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
+import { NotificationsTab } from '@/components/settings-notifications'
 import { UpdateControl } from '@/components/update-control'
 import { showArchivedSessions, usePreference } from '@/lib/local-preference'
 import { FONTS, FONT_LABELS, applyFont, font } from '@/lib/font'
 import { useTheme } from '@/lib/theme'
 import { TEXT_SIZES, TEXT_SIZE_LABELS, applyTextSize, textSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
+import type { AlertsBridge } from '@shared/alerts'
 import type {
   PairingInfo,
   ShellSettingsBridge,
@@ -36,20 +39,23 @@ import type {
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
-type Tab = 'account' | 'general' | 'daemon' | 'remote'
+type Tab = 'account' | 'general' | 'notifications' | 'daemon' | 'remote'
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolean }> = [
   { id: 'account', label: 'Account', icon: UserRound, needsShell: true },
   { id: 'general', label: 'General', icon: Settings2, needsShell: false },
+  { id: 'notifications', label: 'Notifications', icon: Bell, needsShell: true },
   { id: 'daemon', label: 'Daemon', icon: Server, needsShell: true },
   { id: 'remote', label: 'Remote Access', icon: Smartphone, needsShell: true },
 ]
 
 export function SettingsPage({
   bridge,
+  alerts,
   onBack,
 }: {
   bridge: ShellSettingsBridge | null
+  alerts: AlertsBridge | null
   onBack: () => void
 }) {
   const queryClient = useQueryClient()
@@ -134,6 +140,8 @@ export function SettingsPage({
                 ) : null
               }
             />
+          ) : tab === 'notifications' && alerts ? (
+            <NotificationsTab alerts={alerts} />
           ) : !bridge || !snapshot || !pairing ? (
             <p className="text-sm text-muted-foreground">Loading settings…</p>
           ) : tab === 'account' ? (
