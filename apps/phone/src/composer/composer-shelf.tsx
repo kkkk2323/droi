@@ -296,7 +296,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.md,
     height: 28,
-    paddingHorizontal: space.sm,
+    // In line with the text inside the composer above, clear of the edges.
+    paddingHorizontal: space.xl,
   },
   workspace: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
   meter: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: space.xs },

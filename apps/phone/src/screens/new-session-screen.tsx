@@ -264,6 +264,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: fontSize.sm,
   },
-  footer: { paddingHorizontal: space.lg, paddingTop: space.xs },
+  footer: { paddingHorizontal: space.xl, paddingTop: space.xs },
   other: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.xl },
 })
