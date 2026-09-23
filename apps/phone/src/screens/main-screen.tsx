@@ -3,6 +3,7 @@
 // Paired Computer, so the app reopens where it was.
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { usePreference } from '@droi/daemon-layer/local-preference'
+import { continuationChain } from '@droi/daemon-layer/sessions'
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
 import { useRouter } from 'expo-router'
 import { usePhoneAlerts } from '../alerts/use-phone-alerts'
@@ -95,7 +96,7 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
             <SessionScreen
               key={selected.sessionId}
               session={selected}
-              parent={sessions.sessions.find((s) => s.sessionId === selected.parentId) ?? null}
+              chain={continuationChain(sessions.sessions, selected)}
               onContinued={(sessionId) => setLastId(sessionId)}
               drawerOpen={drawerOpen}
               onOpenDrawer={openDrawer}

@@ -30,17 +30,18 @@ const FOLLOW_THRESHOLD = 120
 /** A height change this soon after a touch in the list is the reader's own (a row opening). */
 const USER_RESIZE_WINDOW_MS = 500
 
-const NO_MESSAGES: FactoryDroidMessage[] = []
+const NO_EARLIER: ReadonlyArray<readonly FactoryDroidMessage[]> = []
 
 export function TranscriptView({
   messages,
-  earlierMessages = NO_MESSAGES,
+  earlier = NO_EARLIER,
   workingState,
   lead = null,
   scrollToEndKey = 0,
 }: {
   messages: readonly FactoryDroidMessage[]
-  earlierMessages?: readonly FactoryDroidMessage[]
+  /** The Sessions this one continues after compactions, oldest first, shown above it. */
+  earlier?: ReadonlyArray<readonly FactoryDroidMessage[]>
   workingState: string
   lead?: ReactNode
   /** Bumped on send: the list goes to the end wherever it was. */
@@ -53,15 +54,15 @@ export function TranscriptView({
   const lastTouched = useRef(0)
   const [atBottom, setAtBottom] = useState(true)
 
-  const earlier = buildTranscript(earlierMessages)
-  const own = buildTranscript(messages)
-  const entries = [...earlier, ...own]
+  const parts = [...earlier, messages].map((part) => buildTranscript(part))
+  const entries = parts.flat()
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const streamingId =
     workingState === 'streaming_assistant_message' && last?.role === 'assistant' ? last.id : null
   const ends = turnEndIds(entries, running)
-  const boundaryId = earlier.length > 0 ? (own[0]?.id ?? null) : null
+  // Where each continued Session starts, below the one it continues.
+  const boundaryIds = new Set(parts.slice(1).flatMap((part) => (part[0] ? [part[0].id] : [])))
   const activity = workingLabel(workingState)
 
   // Not FlatList.scrollToEnd: it measures the end from cell layouts that lag
@@ -132,7 +133,7 @@ export function TranscriptView({
         keyExtractor={(entry) => entry.id}
         renderItem={({ item }) => (
           <>
-            {item.id === boundaryId ? <Boundary /> : null}
+            {boundaryIds.has(item.id) ? <Boundary /> : null}
             <MessageEntry
               entry={item}
               isStreaming={item.id === streamingId}

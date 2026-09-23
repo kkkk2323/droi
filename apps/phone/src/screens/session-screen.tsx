@@ -8,12 +8,12 @@ import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
 import { useGitChanges } from '@droi/daemon-layer/use-git-changes'
 import { usePrompts } from '@droi/daemon-layer/use-prompts'
-import { useSession } from '@droi/daemon-layer/use-session'
+import { useSession, useSessions } from '@droi/daemon-layer/use-session'
 import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -37,7 +37,7 @@ import { useColors } from '../ui/use-colors'
 
 export function SessionScreen({
   session,
-  parent,
+  chain,
   onContinued,
   drawerOpen,
   onOpenDrawer,
@@ -45,8 +45,8 @@ export function SessionScreen({
   session: SessionSummary
   /** `/compact` moved the conversation to a new Session; show that one. */
   onContinued: (sessionId: string) => void
-  /** The Session this one continues after a compaction, when listed. */
-  parent: SessionSummary | null
+  /** The listed Sessions this one continues after compactions, nearest first. */
+  chain: readonly SessionSummary[]
   drawerOpen: boolean
   onOpenDrawer: () => void
 }) {
@@ -81,27 +81,32 @@ export function SessionScreen({
     }
     void turn.send(text, { images, placement })
   }
-  const [showEarlier, setShowEarlier] = useState(false)
-  const earlier = useSession(showEarlier && parent ? parent.sessionId : null)
+  // Earlier Sessions load one per tap, nearest first; each can be large.
+  const [revealed, setRevealed] = useState(0)
+  const shown = chain.slice(0, revealed).reverse()
+  const earlierViews = useSessions(shown.map((s) => s.sessionId))
+  const earlier = useMemo(() => earlierViews.map((v) => v.messages), [earlierViews])
+  const next = chain[revealed]
+  const earlierError = earlierViews.find((v) => v.loadError)?.loadError
 
-  const lead = parent ? (
-    showEarlier ? (
-      earlier.loadState !== LOAD_STATE.loaded ? (
-        <View style={styles.leadRow}>
-          <ActivityIndicator size="small" color={colors.mutedForeground} />
-          <Text tone="muted" size="xs">
-            Loading earlier messages…
-          </Text>
-        </View>
-      ) : null
-    ) : (
-      <Pressable role="button" onPress={() => setShowEarlier(true)} style={styles.leadRow}>
-        <ChevronUp size={14} color={colors.mutedForeground} />
-        <Text tone="muted" size="xs">
-          Continued from “{parent.title}” · Show earlier messages
-        </Text>
-      </Pressable>
-    )
+  const lead = earlierError ? (
+    <Text role="alert" size="xs" style={[styles.leadRow, { color: colors.destructiveForeground }]}>
+      Earlier messages did not load: {earlierError}
+    </Text>
+  ) : earlierViews.some((v) => v.loadState !== LOAD_STATE.loaded) ? (
+    <View style={styles.leadRow}>
+      <ActivityIndicator size="small" color={colors.mutedForeground} />
+      <Text tone="muted" size="xs">
+        Loading earlier messages…
+      </Text>
+    </View>
+  ) : next ? (
+    <Pressable role="button" onPress={() => setRevealed(revealed + 1)} style={styles.leadRow}>
+      <ChevronUp size={14} color={colors.mutedForeground} />
+      <Text tone="muted" size="xs">
+        Continued from “{next.title}” · Show earlier messages
+      </Text>
+    </Pressable>
   ) : null
 
   return (
@@ -130,7 +135,7 @@ export function SessionScreen({
         ) : (
           <TranscriptView
             messages={view.messages}
-            earlierMessages={showEarlier ? earlier.messages : undefined}
+            earlier={earlier}
             workingState={compaction.isCompacting ? 'compacting_conversation' : view.workingState}
             lead={lead}
             scrollToEndKey={sentCount}

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   CONTINUES_TAG,
   RECENT_WINDOW_MS,
+  continuationChain,
   continuationParent,
   continuationTags,
   foldContinued,
@@ -109,5 +110,22 @@ describe('continuation chain', () => {
   test('continuationTags replaces an older link instead of stacking them', () => {
     const tags = continuationTags('b', continuationTags('a', []))
     expect(tags).toEqual([{ name: CONTINUES_TAG, metadata: { parent: 'b' } }])
+  })
+})
+
+describe('continuationChain', () => {
+  test('walks back through every compaction, nearest first', () => {
+    const first = summary({ sessionId: 'a' })
+    const second = summary({ sessionId: 'b', parentId: 'a' })
+    const third = summary({ sessionId: 'c', parentId: 'b' })
+    expect(continuationChain([third, first, second], third)).toEqual([second, first])
+  })
+
+  test('stops where the list no longer has the parent, and at a loop', () => {
+    const orphan = summary({ sessionId: 'b', parentId: 'gone' })
+    expect(continuationChain([orphan], orphan)).toEqual([])
+    const x = summary({ sessionId: 'x', parentId: 'y' })
+    const y = summary({ sessionId: 'y', parentId: 'x' })
+    expect(continuationChain([x, y], x)).toEqual([y])
   })
 })

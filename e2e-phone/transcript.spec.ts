@@ -56,6 +56,54 @@ test.describe('opening a Session', () => {
   })
 })
 
+test.describe('a Session continued after two compactions', () => {
+  const first = session('Plan v1', '/Users/dev/acme-web', [
+    userMessage('first question'),
+    assistantMessage('first answer'),
+  ])
+  const continues = (parent: { sessionId: string }) => ({
+    tags: [{ name: 'droi.continues', metadata: { parent: parent.sessionId } }],
+  })
+  const second = session(
+    'Plan v2',
+    '/Users/dev/acme-web',
+    [userMessage('middle question'), assistantMessage('middle answer')],
+    continues(first),
+  )
+  const third = session(
+    'Plan v3',
+    '/Users/dev/acme-web',
+    [userMessage('latest question')],
+    continues(second),
+  )
+  test.use({ scenario: { sessions: [first, second, third] } })
+
+  test('offers each earlier Session in turn, back to the first', async ({ page, fakeDaemon }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Plan v3/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript).toContainText('latest question')
+    await expect(transcript).not.toContainText('middle question')
+
+    await transcript.getByRole('button', { name: /Continued from “Plan v2”/ }).click()
+    await expect(transcript).toContainText('middle answer')
+    await expect(transcript).not.toContainText('first question')
+    await expect(transcript.getByRole('separator', { name: 'Context compacted here' })).toHaveCount(
+      1,
+    )
+
+    await transcript.getByRole('button', { name: /Continued from “Plan v1”/ }).click()
+    await expect(transcript.getByRole('article', { name: 'You' }).first()).toHaveText(
+      'first question',
+    )
+    await expect(transcript.getByRole('separator', { name: 'Context compacted here' })).toHaveCount(
+      2,
+    )
+    await expect(transcript.getByRole('button', { name: /Continued from/ })).toHaveCount(0)
+    await expect(transcript.getByRole('article').last()).toHaveText('latest question')
+  })
+})
+
 test.describe('a streamed reply', () => {
   test.use({ scenario: { sessions: [chat] } })
 

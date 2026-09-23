@@ -60,6 +60,23 @@ export function foldContinued(sessions: readonly SessionSummary[]): SessionSumma
   return sessions.filter((s) => !parents.has(s.sessionId))
 }
 
+/** The listed Sessions this one continues after each compaction, nearest first. */
+export function continuationChain(
+  sessions: readonly SessionSummary[],
+  session: SessionSummary,
+): SessionSummary[] {
+  const byId = new Map(sessions.map((s) => [s.sessionId, s]))
+  const chain: SessionSummary[] = []
+  const seen = new Set([session.sessionId])
+  let parent = session.parentId ? byId.get(session.parentId) : undefined
+  while (parent && !seen.has(parent.sessionId)) {
+    chain.push(parent)
+    seen.add(parent.sessionId)
+    parent = parent.parentId ? byId.get(parent.parentId) : undefined
+  }
+  return chain
+}
+
 export interface WorkspaceGroup {
   key: string
   label: string
