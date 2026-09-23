@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { parseDiffResult, parseStatusResult } from './tool-activity'
+import { createdFileDiff, parseDiffResult, parseStatusResult } from './tool-activity'
+import type { ToolCall } from './transcript'
 
 describe('parseStatusResult', () => {
   test("reads Create's bare success object", () => {
@@ -51,5 +52,26 @@ describe('parseDiffResult', () => {
     expect(parseDiffResult('[Process exited with code 0]')).toBeNull()
     expect(parseDiffResult('{"success":true}')).toBeNull()
     expect(parseDiffResult('{"diffLines": not json')).toBeNull()
+  })
+})
+
+describe('createdFileDiff', () => {
+  const call = (name: string, input: Record<string, unknown>): ToolCall =>
+    ({ use: { type: 'tool_use', id: 'c1', name, input }, result: null }) as unknown as ToolCall
+
+  test("shows a Create's content as numbered added lines, ignoring the final newline", () => {
+    expect(createdFileDiff(call('Create', { file_path: 'a.ts', content: 'one\ntwo\n' }))).toEqual({
+      lines: [
+        { type: 'added', content: 'one', old: null, new: 1 },
+        { type: 'added', content: 'two', old: null, new: 2 },
+      ],
+      added: 2,
+      removed: 0,
+    })
+  })
+
+  test('is null for other tools and for a Create without content', () => {
+    expect(createdFileDiff(call('Edit', { content: 'x' }))).toBeNull()
+    expect(createdFileDiff(call('Create', { file_path: 'a.ts' }))).toBeNull()
   })
 })

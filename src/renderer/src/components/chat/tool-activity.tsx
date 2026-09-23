@@ -70,10 +70,10 @@ function ToolRow({ call }: { call: ToolCall }) {
   const Icon = ICONS[call.use.name] ?? Wrench
   const summary = toolSummary(call)
   const result = toolResultText(call.result)
-  const diff = parseDiffResult(result)
-  const status = diff ? null : parseStatusResult(result)
   const pending = call.result === null
   const isError = call.result?.isError === true
+  const diff = parseDiffResult(result) ?? (isError ? null : createdFileDiff(call))
+  const status = diff ? null : parseStatusResult(result)
 
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen}>
@@ -266,6 +266,33 @@ export function parseStatusResult(text: string): StatusResult | null {
   return { success: object['success'], message: message ?? null }
 }
 
+/**
+ * Create answers with a bare status, so the file it wrote is read from the
+ * call's own input and shown as all-added lines.
+ */
+export function createdFileDiff(call: ToolCall): DiffResult | null {
+  const content = call.use.input['content']
+  if (call.use.name !== 'Create' || typeof content !== 'string') return null
+  const text = content.endsWith('\n') ? content.slice(0, -1) : content
+  const lines: DiffLine[] = text
+    .split('\n')
+    .map((line, index) => ({ type: 'added', content: line, old: null, new: index + 1 }))
+  return { lines, added: lines.length, removed: 0 }
+}
+
+// The gutter stays put while the code scrolls under it, so it needs a solid
+// background: the panel's own (card at 60% over the page) with the line's tint on top.
+const PANEL_BACKGROUND = 'color-mix(in oklab, var(--card) 60%, var(--background))'
+const LINE_TINT: Partial<Record<DiffLine['type'], string>> = {
+  added: 'color-mix(in oklab, var(--color-emerald-500) 10%, transparent)',
+  removed: 'color-mix(in oklab, var(--color-rose-500) 10%, transparent)',
+}
+
+function gutterBackground(type: DiffLine['type']): string {
+  const tint = LINE_TINT[type]
+  return tint ? `linear-gradient(${tint}, ${tint}), ${PANEL_BACKGROUND}` : PANEL_BACKGROUND
+}
+
 function DiffView({ lines }: { lines: DiffLine[] }) {
   const width = String(Math.max(1, ...lines.map((l) => Math.max(l.old ?? 0, l.new ?? 0)))).length
   return (
@@ -285,7 +312,8 @@ function DiffView({ lines }: { lines: DiffLine[] }) {
         >
           <span
             aria-hidden
-            className="sticky left-0 flex shrink-0 select-none gap-1.5 bg-inherit pl-2.5 pr-2 text-muted-foreground/60 tabular-nums"
+            className="sticky left-0 z-10 flex shrink-0 select-none gap-1.5 pl-2.5 pr-2 text-muted-foreground/60 tabular-nums"
+            style={{ background: gutterBackground(line.type) }}
           >
             <span className="text-right" style={{ minWidth: `${width}ch` }}>
               {line.old ?? ''}

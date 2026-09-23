@@ -8,6 +8,7 @@
 - The header's Git changes follow a turn's edits as they happen, and pick up edits made outside Droi within 15 seconds, without reopening the Session.
 - Earlier messages stay in the transcript after the Daemon compacts a long Session's context, and a long Session opens with its whole history instead of the last 30 messages.
 - Opening a tool row or reasoning block near the bottom keeps it where it was clicked instead of jumping to the end.
+- A diff's line numbers stay readable when it is scrolled sideways, and a Create row shows the new file's content.
 
 ## 1.1.2 - 2026-09-21
 

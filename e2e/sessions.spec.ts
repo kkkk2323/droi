@@ -79,7 +79,10 @@ function richHistory(): MessageFixture[] {
         type: 'tool_use',
         id: createId,
         name: 'Create',
-        input: { file_path: 'src/auth.test.ts', content: 'test()' },
+        input: {
+          file_path: 'src/auth.test.ts',
+          content: `import { login } from './auth'\n\ntest('logs in', async () => {\n  await login() // ${'a very long line that needs horizontal scrolling '.repeat(4)}\n})\n`,
+        },
       },
     ],
   }
@@ -306,13 +309,27 @@ test.describe('session history', () => {
     await expect(diff.locator('[data-type="added"]')).toContainText('await login()')
     await expect(diff.locator('[data-type="unchanged"]')).toHaveCount(2)
 
-    // A finished call carries a success mark; Create's bare JSON reads as a status line.
+    // Line numbers stay put and hide the code scrolled under them.
+    const gutter = diff.locator('[data-type="unchanged"] > span').first()
+    expect(await gutter.evaluate((el) => getComputedStyle(el).position)).toBe('sticky')
+    expect(await gutter.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+      'rgba(0, 0, 0, 0)',
+    )
+    await edit.click()
+
+    // Create answers with bare JSON; its row shows the file it wrote instead.
     const create = transcript.getByRole('button', { name: 'Create: src/auth.test.ts' })
     await expect(create.getByRole('img', { name: 'Succeeded' })).toBeVisible()
+    await expect(create).toContainText('+5')
     await create.click()
-    const panel = transcript.getByText('Succeeded', { exact: true })
-    await expect(panel).toBeVisible()
+    const created = transcript.getByLabel('Diff')
+    await expect(created.locator('[data-type="added"]')).toHaveCount(5)
+    await expect(created).toContainText("test('logs in', async () => {")
     await expect(transcript.getByText('"success"')).toHaveCount(0)
+    const addedGutter = created.locator('[data-type="added"] > span').first()
+    expect(await addedGutter.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
+      'gradient',
+    )
 
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
     expect(load.params).toMatchObject({ sessionId: richSession.sessionId })
