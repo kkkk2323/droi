@@ -30,3 +30,9 @@ Droi on the computer must be a build with the computer name and id in its
       Session on screen; it reconnects on its own (a Reconnecting banner at most).
 - [ ] With Remote Access turned off on the computer, the app says it cannot
       reach it, lists what to check, and connects once it is back on.
+
+## Composer
+
+- [ ] Add image → Photo library attaches one or several photos (HEIC photos go
+      out as JPEG); Take photo asks for the camera once; Paste image attaches an
+      image copied in another app.

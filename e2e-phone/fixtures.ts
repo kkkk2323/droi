@@ -12,6 +12,8 @@ export interface StandIns {
   sounds: string[]
   signatureExpiry: string | null
   clipboard?: string | null
+  nextImages?: Array<{ name: string; mediaType: 'image/png' | 'image/jpeg'; data: string }>
+  picked?: string[]
 }
 
 export function standIns(page: Page): Promise<StandIns> {

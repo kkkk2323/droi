@@ -7,6 +7,10 @@ export interface StandIns {
   sounds: string[]
   /** What the provisioning profile would say; null as on a simulator. */
   signatureExpiry: string | null
+  /** Images the next pick, photo or paste returns. */
+  nextImages: Array<{ name: string; mediaType: 'image/png' | 'image/jpeg'; data: string }>
+  /** Where images were asked for, in order. */
+  picked: string[]
   /** The last text copied. */
   clipboard: string | null
   /** Set while the scanner is open: "scan" a QR code with this text. */
@@ -20,6 +24,8 @@ export function standIns(): StandIns {
     haptics: current.haptics ?? [],
     sounds: current.sounds ?? [],
     signatureExpiry: current.signatureExpiry ?? null,
+    nextImages: current.nextImages ?? [],
+    picked: current.picked ?? [],
     clipboard: current.clipboard ?? null,
     scan: current.scan ?? null,
   }

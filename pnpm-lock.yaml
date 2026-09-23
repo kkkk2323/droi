@@ -168,6 +168,9 @@ importers:
       expo-haptics:
         specifier: ~56.0.3
         version: 56.0.3(expo@56.0.22)
+      expo-image-manipulator:
+        specifier: ~56.0.26
+        version: 56.0.26(expo@56.0.22)
       expo-image-picker:
         specifier: ~56.0.25
         version: 56.0.25(expo@56.0.22)
@@ -3480,6 +3483,11 @@ packages:
 
   expo-image-loader@56.0.3:
     resolution: {integrity: sha512-JgUo4fUeU1ZC+z8iBFj8v7yoGQnZrLbOVPyNE+DWVrld55F2F6R1ck+rmdm/8TNWLz1LhNQfD7c3XYP1ZikxXA==}
+    peerDependencies:
+      expo: '*'
+
+  expo-image-manipulator@56.0.26:
+    resolution: {integrity: sha512-63HyJ9OdBNQlJsHeNhdLgTA893oJzNf3yMYNqROJ5o/baW6bdviqy3LFBSsjF1+j+5tbfpH84DSQlCMbDysvGw==}
     peerDependencies:
       expo: '*'
 
@@ -9536,6 +9544,11 @@ snapshots:
   expo-image-loader@56.0.3(expo@56.0.22):
     dependencies:
       expo: 56.0.22(@babel/core@7.29.0)(@expo/dom-webview@56.0.6)(@expo/metro-runtime@56.0.21)(expo-router@56.2.21)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(react-native@0.85.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+
+  expo-image-manipulator@56.0.26(expo@56.0.22):
+    dependencies:
+      expo: 56.0.22(@babel/core@7.29.0)(@expo/dom-webview@56.0.6)(@expo/metro-runtime@56.0.21)(expo-router@56.2.21)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(react-native@0.85.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-image-loader: 56.0.3(expo@56.0.22)
 
   expo-image-picker@56.0.25(expo@56.0.22):
     dependencies:
