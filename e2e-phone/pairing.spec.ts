@@ -18,7 +18,9 @@ test('pasting a pairing link connects and lists the Sessions grouped by Workspac
   const web = list.getByRole('group', { name: 'acme-web' })
   await expect(web.getByRole('button', { name: /Deploy/ })).toBeVisible()
   await expect(web.getByRole('button', { name: /Notes/ })).toBeVisible()
-  await expect(list.getByRole('group', { name: 'handbook' }).getByRole('button')).toHaveText(/Docs/)
+  await expect(
+    list.getByRole('group', { name: 'handbook' }).getByRole('button', { name: /Docs/ }),
+  ).toBeVisible()
 })
 
 test('the Pairing Token goes to the keychain, not to app storage', async ({ page, fakeDaemon }) => {

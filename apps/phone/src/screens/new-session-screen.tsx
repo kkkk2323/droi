@@ -31,11 +31,14 @@ import { useColors } from '../ui/use-colors'
 const NO_BUILTINS: SlashItem[] = []
 
 export function NewSessionScreen({
+  initialWorkspace = null,
   recent,
   onCreated,
   drawerOpen,
   onOpenDrawer,
 }: {
+  /** Preselected Workspace (opened from a Workspace group's actions). */
+  initialWorkspace?: string | null
   recent: RecentWorkspace[]
   onCreated: (sessionId: string) => void
   drawerOpen: boolean
@@ -46,7 +49,7 @@ export function NewSessionScreen({
   const connection = useDaemonConnection()
   const { create, isCreating, error } = useNewSession()
   const [choice, setChoice] = useState<{ kind: 'recent'; path: string } | { kind: 'other' } | null>(
-    null,
+    initialWorkspace ? { kind: 'recent', path: initialWorkspace } : null,
   )
   const workspace =
     choice === null ? (recent[0]?.path ?? null) : choice.kind === 'recent' ? choice.path : null

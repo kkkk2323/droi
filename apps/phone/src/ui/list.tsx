@@ -1,7 +1,7 @@
 // Grouped rows in the style of iOS settings, drawn with Droi's tokens.
 import { ChevronRight } from 'lucide-react-native'
 import { Children, Fragment, isValidElement, type ReactNode } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, Switch, View } from 'react-native'
 import { Text } from './primitives'
 import { radius, space } from './theme'
 import { useColors } from './use-colors'
@@ -93,7 +93,32 @@ export function ListRow({
   )
 }
 
+/** A row with an on/off switch. */
+export function ListSwitch({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: boolean
+  onChange: (value: boolean) => void
+}) {
+  const colors = useColors()
+  return (
+    <View style={styles.row}>
+      <Text style={styles.switchLabel}>{label}</Text>
+      <Switch
+        aria-label={label}
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ true: colors.primary, false: colors.input }}
+      />
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  switchLabel: { flex: 1 },
   section: { gap: space.sm },
   title: { paddingHorizontal: space.xs },
   group: { borderRadius: radius.lg, overflow: 'hidden' },

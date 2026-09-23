@@ -1,5 +1,5 @@
 // Settings: the Paired Computers, and the app's version and signature.
-import { usePreference } from '@droi/daemon-layer/local-preference'
+import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
@@ -7,7 +7,7 @@ import { ScrollView, StyleSheet } from 'react-native'
 import { pairedComputers } from '../computers/store'
 import { daysLeft } from '../lib/signature'
 import { signatureExpiry } from '../platform/signature'
-import { ListRow, ListSection } from '../ui/list'
+import { ListRow, ListSection, ListSwitch } from '../ui/list'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
@@ -15,6 +15,7 @@ export function SettingsScreen() {
   const colors = useColors()
   const router = useRouter()
   const [computers] = usePreference(pairedComputers)
+  const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   const expiry = useQuery({ queryKey: ['signature-expiry'], queryFn: signatureExpiry })
   const version = Constants.expoConfig?.version ?? 'unknown'
 
@@ -38,6 +39,13 @@ export function SettingsScreen() {
           label="Paired computers"
           value={String(computers.length)}
           onPress={() => router.push('/computers')}
+        />
+      </ListSection>
+      <ListSection title="Sessions">
+        <ListSwitch
+          label="Show archived sessions"
+          value={showArchived}
+          onChange={setShowArchived}
         />
       </ListSection>
       <ListSection
