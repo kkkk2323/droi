@@ -88,6 +88,41 @@ test.describe('sending while a turn runs', () => {
     await expect(queued).toHaveCount(0)
   })
 
+  test('more than two queued messages fold into one row that opens to the list', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.fill('first')
+    await input.press('Enter')
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    for (const text of ['one', 'two', 'three']) {
+      await input.fill(text)
+      await input.press('Enter')
+    }
+    await fakeDaemon.waitForRequest('daemon.add_user_message', 4)
+
+    const fold = page.getByRole('button', { name: 'Queued messages, 3' })
+    await expect(fold).toHaveAttribute('aria-expanded', 'false')
+    await expect(fold).toContainText('one')
+    await expect(fold).toContainText('3 queued')
+    const queued = page.getByRole('list', { name: 'Queued messages' })
+    await expect(queued).toHaveCount(0)
+
+    await fold.click()
+    await expect(fold).toHaveAttribute('aria-expanded', 'true')
+    await expect(queued.getByRole('listitem')).toHaveText([/one/, /two/, /three/])
+    await queued.getByRole('button', { name: 'Remove queued message' }).nth(1).click()
+    await fakeDaemon.waitForRequest('daemon.resolve_queued_user_message')
+    // Down to two: a plain list again.
+    await expect(queued.getByRole('listitem')).toHaveText([/one/, /three/])
+    await expect(fold).toHaveCount(0)
+  })
+
   test('a queued message can be removed before it goes out', async ({
     page,
     fakeDaemon,

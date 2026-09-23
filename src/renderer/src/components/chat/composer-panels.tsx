@@ -110,7 +110,12 @@ function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
 
 function StatusIcon({ status }: { status: TodoItem['status'] }) {
   if (status === 'completed')
-    return <CircleCheck aria-label="Done" className="size-3 shrink-0 text-muted-foreground" />
+    return (
+      <CircleCheck
+        aria-label="Done"
+        className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400"
+      />
+    )
   if (status === 'in_progress')
     return (
       <Loader2
@@ -121,53 +126,105 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
   return <Circle aria-label="Pending" className="size-3 shrink-0 text-muted-foreground/50" />
 }
 
+type QueuedMessage = ReturnType<typeof useQueuedMessages>[number]
+
+/** Up to this many queued messages show as a plain list; more fold like the task list. */
+const QUEUED_UNFOLDED = 2
+
 function QueuedMessages({
   queued,
   error,
   onRemove,
 }: {
-  queued: ReturnType<typeof useQueuedMessages>
+  queued: QueuedMessage[]
   error: string | null
   onRemove: (requestId: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const alert = error ? (
+    <p role="alert" className="px-3 py-1 text-xs text-destructive-foreground">
+      {error}
+    </p>
+  ) : null
+  const list = (
+    <ul aria-label="Queued messages" className="flex flex-col">
+      {queued.map((message) => (
+        <li
+          key={message.requestId}
+          className="flex h-[30px] items-center gap-2 pr-1.5 pl-3 text-[12.5px]"
+        >
+          <QueuedIcon message={message} />
+          <span className="min-w-0 flex-1 truncate">{queuedText(message)}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {isSteer(message) ? 'Next' : 'Queued'}
+          </span>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Remove queued message"
+            className="text-muted-foreground"
+            onClick={() => onRemove(message.requestId)}
+          >
+            <X aria-hidden />
+          </Button>
+        </li>
+      ))}
+    </ul>
+  )
+  if (queued.length <= QUEUED_UNFOLDED) {
+    return (
+      <div className="py-1">
+        {alert}
+        {list}
+      </div>
+    )
+  }
+
+  // Folded: the message that goes out first, with the count. Open: the count, then the list.
+  const next = queued.find(isSteer) ?? queued[0]!
   return (
-    <div className="py-1">
-      {error ? (
-        <p role="alert" className="px-3 py-1 text-xs text-destructive-foreground">
-          {error}
-        </p>
-      ) : null}
-      <ul aria-label="Queued messages" className="flex flex-col">
-        {queued.map((message) => {
-          const steer = message.kind !== 'daemon_queued_end_of_loop'
-          return (
-            <li
-              key={message.requestId}
-              className="flex h-[30px] items-center gap-2 pr-1.5 pl-3 text-[12.5px]"
-            >
-              {steer ? (
-                <CornerDownLeft aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-              ) : (
-                <Clock aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{queuedText(message)}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {steer ? 'Next' : 'Queued'}
-              </span>
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                aria-label="Remove queued message"
-                className="text-muted-foreground"
-                onClick={() => onRemove(message.requestId)}
-              >
-                <X aria-hidden />
-              </Button>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+    <Collapsible.Root open={open} onOpenChange={setOpen} className="py-1">
+      {alert}
+      <Collapsible.Trigger
+        aria-label={`Queued messages, ${queued.length}`}
+        className="group flex h-[30px] w-full items-center gap-2 pr-1.5 pl-3 text-left text-[12.5px] outline-none transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+      >
+        {open ? (
+          <>
+            <Clock aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">Queued messages</span>
+          </>
+        ) : (
+          <>
+            <QueuedIcon message={next} />
+            <span className="min-w-0 flex-1 truncate">{queuedText(next)}</span>
+          </>
+        )}
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          {queued.length} queued
+        </span>
+        <span className="grid size-6 shrink-0 place-items-center text-muted-foreground">
+          <ChevronDown
+            aria-hidden
+            className="size-3 transition-transform duration-150 group-data-[panel-open]:rotate-180"
+          />
+        </span>
+      </Collapsible.Trigger>
+      <Collapsible.Panel>{list}</Collapsible.Panel>
+    </Collapsible.Root>
+  )
+}
+
+/** Handed to the running turn (⌘↩) rather than waiting for it to end. */
+function isSteer(message: QueuedMessage): boolean {
+  return message.kind !== 'daemon_queued_end_of_loop'
+}
+
+function QueuedIcon({ message }: { message: QueuedMessage }) {
+  return isSteer(message) ? (
+    <CornerDownLeft aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+  ) : (
+    <Clock aria-hidden className="size-3 shrink-0 text-muted-foreground" />
   )
 }
 
