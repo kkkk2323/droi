@@ -77,3 +77,23 @@ test('favourite models are kept on the phone', async ({ page, fakeDaemon }) => {
   await expect(picker.getByRole('button', { name: 'Unstar GPT-5' })).toBeVisible()
   expect(fakeDaemon.requests.map((r) => r.method)).not.toContain('daemon.update_session_settings')
 })
+
+test('models show their brand’s mark, and Auto Model says Router', async ({ page, fakeDaemon }) => {
+  await pairPhone(page, fakeDaemon)
+  await pickSession(page, /First session/)
+  const model = page.getByRole('button', { name: 'Model', exact: true })
+  await expect(model.getByTestId('brand-anthropic')).toBeVisible()
+
+  await model.click()
+  const picker = page.getByRole('dialog', { name: 'Choose a model' })
+  const rail = picker.getByRole('toolbar', { name: 'Filter models' })
+  await expect(
+    rail.getByRole('button', { name: 'OpenAI' }).getByTestId('brand-openai'),
+  ).toBeVisible()
+  const rows = picker.getByRole('list', { name: 'Models' }).getByRole('listitem')
+  await expect(
+    rows.filter({ hasText: 'Claude Opus 4.1' }).getByTestId('brand-anthropic'),
+  ).toBeVisible()
+  await expect(rows.filter({ hasText: 'GPT-5' }).getByTestId('brand-openai')).toBeVisible()
+  await expect(rows.filter({ hasText: 'Auto Model' })).toContainText('Router')
+})

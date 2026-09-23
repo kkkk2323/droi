@@ -17,6 +17,9 @@ import { useColors } from '../ui/use-colors'
 
 const NO_ITEMS: SlashItem[] = []
 
+/** The composer card's corner radius; the shelf above it sits inside the corners. */
+export const COMPOSER_RADIUS = radius.xl + 4
+
 export interface Submission {
   text: string
   images: ImageAttachment[]
@@ -295,7 +298,7 @@ const styles = StyleSheet.create({
   error: { paddingHorizontal: space.xs },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.xl + 4,
+    borderRadius: COMPOSER_RADIUS,
     paddingTop: space.sm,
   },
   input: {
@@ -319,12 +322,14 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   kind: { marginLeft: 'auto' },
   attachments: { gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.xs },
-  attachment: { position: 'relative' },
+  // The scroller clips its content, so the remove button's overhang is room
+  // inside the chip rather than a negative offset.
+  attachment: { position: 'relative', paddingTop: 6, paddingRight: 6 },
   thumb: { width: 56, height: 56, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   removeImage: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: 0,
+    right: 0,
     width: 18,
     height: 18,
     borderRadius: 9,

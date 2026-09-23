@@ -23,6 +23,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import Svg, { Circle as SvgCircle } from 'react-native-svg'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
+import { COMPOSER_RADIUS } from './composer'
 import { useColors } from '../ui/use-colors'
 
 /** Up to this many queued messages show as a list; more fold into one row. */
@@ -270,7 +271,9 @@ function ContextMeter({ usage }: { usage: ContextUsage | null }) {
 
 const styles = StyleSheet.create({
   shelf: {
-    marginHorizontal: space.md,
+    // Tucked against the composer's straight top edge, between its rounded
+    // corners, so the two read as one piece (as in the web Client).
+    marginHorizontal: space.md + COMPOSER_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: 0,
     borderTopLeftRadius: radius.xl,

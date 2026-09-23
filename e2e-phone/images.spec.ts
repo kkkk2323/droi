@@ -36,6 +36,10 @@ test('a picked image is shown, can be removed, and goes out with the message', a
   await page.getByRole('menuitem', { name: 'Photo library' }).click()
   const attachments = page.getByRole('list', { name: 'Attachments' })
   await expect(attachments.getByRole('listitem')).toHaveCount(2)
+  // The remove button sits wholly inside the scrolling row, not cut off by it.
+  const list = (await attachments.boundingBox())!
+  const remove = (await page.getByRole('button', { name: 'Remove first.png' }).boundingBox())!
+  expect(remove.y).toBeGreaterThanOrEqual(list.y)
   await page.getByRole('button', { name: 'Remove first.png' }).click()
   await expect(attachments.getByRole('listitem')).toHaveCount(1)
 

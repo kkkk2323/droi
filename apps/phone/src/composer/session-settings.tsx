@@ -2,7 +2,7 @@
 // opening a sheet. The model sheet has the web Client's brand rail, search
 // and favourites (kept on this phone).
 import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
-import { BRAND_LABELS } from '@droi/daemon-layer/model-brand'
+import { BRAND_LABELS, brandOf, type Brand } from '@droi/daemon-layer/model-brand'
 import {
   AUTONOMY_LABELS,
   EFFORT_LABELS,
@@ -19,6 +19,7 @@ import {
 import { ChevronDown, ShieldCheck, Star } from 'lucide-react-native'
 import { useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { BrandIcon } from '../ui/brand-icon'
 import { Text } from '../ui/primitives'
 import { Sheet, SheetOption } from '../ui/sheet'
 import { fontSize, fonts, radius, space } from '../ui/theme'
@@ -74,6 +75,15 @@ export function SettingsControls({
       >
         <Pill
           label="Model"
+          icon={
+            model ? (
+              <BrandIcon
+                brand={brandOf(model.id, model.provider)}
+                size={12}
+                color={colors.mutedForeground}
+              />
+            ) : undefined
+          }
           value={model?.label ?? settings.modelId ?? '…'}
           onPress={() => setOpen('model')}
         />
@@ -219,6 +229,20 @@ function ModelSheet({
               { backgroundColor: filter === option ? colors.primary : colors.card },
             ]}
           >
+            {option === 'favorites' ? (
+              <Star
+                size={12}
+                color={filter === option ? colors.primaryForeground : colors.foreground}
+                fill={filter === option ? colors.primaryForeground : 'transparent'}
+                strokeWidth={1.75}
+              />
+            ) : (
+              <BrandIcon
+                brand={option as Brand}
+                size={12}
+                color={filter === option ? colors.primaryForeground : colors.foreground}
+              />
+            )}
             <Text
               size="xs"
               weight="medium"
@@ -252,9 +276,12 @@ function ModelSheet({
                 ]}
               >
                 <Text weight={row.id === settings.modelId ? 'medium' : 'regular'}>{row.label}</Text>
-                <Text size="xs" tone="muted">
-                  {BRAND_LABELS[row.brand]}
-                </Text>
+                <View style={styles.brandLine}>
+                  <BrandIcon brand={row.brand} size={12} color={colors.mutedForeground} />
+                  <Text size="xs" tone="muted">
+                    {row.provider === null ? 'Router' : BRAND_LABELS[row.brand]}
+                  </Text>
+                </View>
               </Pressable>
               <Pressable
                 role="button"
@@ -301,11 +328,14 @@ const styles = StyleSheet.create({
   },
   rail: { gap: space.xs, paddingHorizontal: space.lg, paddingVertical: space.sm },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     height: 28,
     paddingHorizontal: space.md,
     borderRadius: radius.full,
-    justifyContent: 'center',
   },
+  brandLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   models: { flexGrow: 0 },
   modelRow: { flexDirection: 'row', alignItems: 'center', paddingRight: space.lg },
   model: {
