@@ -3,10 +3,23 @@
 // notifications, which is also what makes its activity show in the list.
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
+import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
 import { useSession } from '@droi/daemon-layer/use-session'
+import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
+import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Composer, type Submission } from '../composer/composer'
+import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
 import { ScreenHeader } from '../ui/screen-header'
@@ -26,8 +39,18 @@ export function SessionScreen({
   onOpenDrawer: () => void
 }) {
   const colors = useColors()
+  const insets = useSafeAreaInsets()
   const view = useSession(session.sessionId)
   const loaded = view.loadState === LOAD_STATE.loaded
+  const turn = useTurn(session.sessionId)
+  const settings = useSessionSettings(session.sessionId)
+  const contextUsage = useContextUsage(session.sessionId, { loaded, modelId: settings.modelId })
+  const isRunning = view.workingState !== 'idle'
+  const [sentCount, setSentCount] = useState(0)
+  const submit = ({ text, images, placement }: Submission) => {
+    setSentCount((n) => n + 1)
+    void turn.send(text, { images, placement })
+  }
   const [showEarlier, setShowEarlier] = useState(false)
   const earlier = useSession(showEarlier && parent ? parent.sessionId : null)
 
@@ -52,7 +75,10 @@ export function SessionScreen({
   ) : null
 
   return (
-    <View style={styles.fill}>
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <ScreenHeader title={session.title} drawerOpen={drawerOpen} onOpenDrawer={onOpenDrawer} />
       {view.loadError ? (
         <Text role="alert" style={[styles.message, { color: colors.destructiveForeground }]}>
@@ -71,9 +97,22 @@ export function SessionScreen({
           earlierMessages={showEarlier ? earlier.messages : undefined}
           workingState={view.workingState}
           lead={lead}
+          scrollToEndKey={sentCount}
         />
       )}
-    </View>
+      <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
+        <ComposerShelf sessionId={session.sessionId} />
+        <Composer
+          isRunning={isRunning}
+          disabled={!loaded}
+          onSend={submit}
+          onCancel={() => void turn.cancel()}
+          error={turn.sendError}
+          draftKey={session.sessionId}
+        />
+        <ComposerFooter workspace={session.cwd} usage={contextUsage} />
+      </View>
+    </KeyboardAvoidingView>
   )
 }
 
