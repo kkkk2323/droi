@@ -4,7 +4,12 @@ import { ChevronDown, Search, Star } from 'lucide-react'
 import { BrandIcon } from './brand-icon'
 import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
 import { BRAND_LABELS, brandOf } from '@droi/daemon-layer/model-brand'
-import { brandsOf, visibleModels, type PickerFilter } from '@droi/daemon-layer/model-choices'
+import {
+  brandsOf,
+  formatMultiplier,
+  visibleModels,
+  type PickerFilter,
+} from '@droi/daemon-layer/model-choices'
 import { cn } from '@/lib/utils'
 import type { ModelChoice } from '@droi/daemon-layer/use-session-settings'
 
@@ -189,6 +194,14 @@ export function ModelPicker({
                           </span>
                         </div>
                       </div>
+                      {row.multiplier !== null ? (
+                        <span
+                          title="Usage multiplier"
+                          className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums"
+                        >
+                          {formatMultiplier(row.multiplier)}
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         aria-label={starred ? `Unstar ${row.label}` : `Star ${row.label}`}

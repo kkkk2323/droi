@@ -42,6 +42,11 @@ export function brandsOf(models: ModelChoice[]): Brand[] {
   return BRAND_ORDER.filter((b) => present.has(b))
 }
 
+/** `1.6` → `1.6×`, as Factory shows its usage multipliers. */
+export function formatMultiplier(multiplier: number): string {
+  return `${Number(multiplier.toFixed(2))}×`
+}
+
 export const EFFORT_LABELS: Record<string, string> = {
   none: 'None',
   dynamic: 'Dynamic',

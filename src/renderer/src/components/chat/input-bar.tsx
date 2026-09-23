@@ -10,7 +10,12 @@ import {
 } from 'react'
 import { ArrowUp, Plus, Square, SquareSlash, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { filterSlashItems, slashQuery, type SlashItem } from '@droi/daemon-layer/use-slash-items'
+import {
+  filterSlashItems,
+  pickedSlashItem,
+  slashQuery,
+  type SlashItem,
+} from '@droi/daemon-layer/use-slash-items'
 import { attachmentUrl, type ImageAttachment } from '@droi/daemon-layer/attachments'
 import { imageFiles, readImageAttachment } from '@/lib/attachments'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
@@ -81,6 +86,9 @@ export function InputBar({
   const hasContent = text.trim().length > 0 || images.length > 0
   const canSend = !disabled && (allowEmpty || hasContent || pendingFiles > 0)
 
+  // A picked command or skill shows as a tag; the textarea edits what follows it.
+  const picked = pickedSlashItem(text, slashItems)
+  const prefix = picked ? text.slice(0, text.length - picked.rest.length) : ''
   const query = slashQuery(text, caret)
   const suggestions =
     query !== null && dismissedFor !== text ? filterSlashItems(slashItems, query) : []
@@ -118,7 +126,8 @@ export function InputBar({
 
   const accept = (item: SlashItem) => {
     const next = `/${item.name} `
-    pendingCaret.current = next.length
+    // The name becomes the tag, so the caret starts the empty textarea.
+    pendingCaret.current = 0
     setText(next)
     setCaret(next.length)
     setHighlight(0)
@@ -188,13 +197,19 @@ export function InputBar({
         return
       }
     }
+    const el = event.currentTarget
+    if (picked && event.key === 'Backspace' && el.selectionStart === 0 && el.selectionEnd === 0) {
+      event.preventDefault()
+      setText(picked.rest)
+      return
+    }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
       submit(event.metaKey || event.ctrlKey ? 'end_of_turn' : undefined)
     }
   }
 
-  const syncCaret = () => setCaret(textarea.current?.selectionStart ?? 0)
+  const syncCaret = () => setCaret(prefix.length + (textarea.current?.selectionStart ?? 0))
 
   return (
     <form
@@ -248,32 +263,50 @@ export function InputBar({
             ))}
           </ul>
         ) : null}
-        <textarea
-          ref={textarea}
-          aria-label="Message"
-          placeholder={isRunning ? 'Queue a message… (⌘↩ inserts it now)' : placeholder}
-          value={text}
-          rows={1}
-          disabled={disabled}
-          onChange={(event) => {
-            setText(event.target.value)
-            setCaret(event.target.selectionStart ?? event.target.value.length)
-            setHighlight(0)
-          }}
-          onKeyDown={onKeyDown}
-          onKeyUp={syncCaret}
-          onClick={syncCaret}
-          onPaste={onPaste}
-          // An iOS keyboard may push the document up; put it back once it goes.
-          onBlur={() => window.scrollTo(0, 0)}
-          aria-autocomplete="list"
-          aria-controls={suggestions.length > 0 ? 'slash-suggestions' : undefined}
-          aria-expanded={suggestions.length > 0}
-          aria-activedescendant={
-            suggestions[activeIndex] ? `slash-${suggestions[activeIndex].name}` : undefined
-          }
-          className="max-h-56 min-h-6 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-6 outline-none placeholder:text-muted-foreground field-sizing-content"
-        />
+        <div className="flex items-start">
+          {picked ? (
+            <SlashTag
+              item={picked.item}
+              onRemove={() => {
+                setText(picked.rest)
+                textarea.current?.focus()
+              }}
+            />
+          ) : null}
+          <textarea
+            ref={textarea}
+            aria-label="Message"
+            placeholder={
+              isRunning
+                ? 'Queue a message… (⌘↩ inserts it now)'
+                : (picked?.item.argumentHint ?? placeholder)
+            }
+            value={text.slice(prefix.length)}
+            rows={1}
+            disabled={disabled}
+            onChange={(event) => {
+              setText(prefix + event.target.value)
+              setCaret(prefix.length + (event.target.selectionStart ?? event.target.value.length))
+              setHighlight(0)
+            }}
+            onKeyDown={onKeyDown}
+            onKeyUp={syncCaret}
+            onClick={syncCaret}
+            onPaste={onPaste}
+            // An iOS keyboard may push the document up; put it back once it goes.
+            onBlur={() => window.scrollTo(0, 0)}
+            aria-autocomplete="list"
+            aria-controls={suggestions.length > 0 ? 'slash-suggestions' : undefined}
+            aria-expanded={suggestions.length > 0}
+            aria-activedescendant={
+              suggestions[activeIndex] ? `slash-${suggestions[activeIndex].name}` : undefined
+            }
+            className={cn(
+              'max-h-56 min-h-6 w-full min-w-0 flex-1 resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-6 outline-none placeholder:text-muted-foreground field-sizing-content',
+              picked && 'pl-2',
+            )}
+          />
+        </div>
         {suggestions.length > 0 ? (
           <ul
             id="slash-suggestions"
@@ -384,5 +417,30 @@ export function InputBar({
         </div>
       </div>
     </form>
+  )
+}
+
+/** The command or skill the message will run, so a pick is not mistaken for plain text. */
+function SlashTag({ item, onRemove }: { item: SlashItem; onRemove: () => void }) {
+  const kind = item.kind === 'skill' ? 'Skill' : 'Command'
+  const Icon = item.kind === 'skill' ? Sparkles : SquareSlash
+  return (
+    <span
+      role="group"
+      aria-label={`${kind} ${item.name}`}
+      title={item.description || undefined}
+      className="mt-3.5 ml-3 inline-flex h-6 max-w-[45%] shrink-0 items-center gap-1 rounded-md bg-sky-500/10 pr-0.5 pl-1.5 text-[13px] font-medium text-sky-700 dark:text-sky-300"
+    >
+      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <span className="truncate">{item.name}</span>
+      <button
+        type="button"
+        aria-label={`Remove ${kind.toLowerCase()} ${item.name}`}
+        onClick={onRemove}
+        className="flex size-5 shrink-0 items-center justify-center rounded opacity-60 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <X aria-hidden className="size-3" />
+      </button>
+    </span>
   )
 }

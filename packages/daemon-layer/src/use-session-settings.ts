@@ -13,6 +13,8 @@ export interface ModelChoice {
   disabled: boolean
   /** Provider id from the Daemon (anthropic, openai, ...); null for the Auto router. */
   provider: string | null
+  /** Factory's usage multiplier for the model; null for custom (BYOK) models. */
+  multiplier: number | null
 }
 
 export interface SessionSettingsView {
@@ -44,6 +46,7 @@ export function toModelChoices(models: readonly AvailableModel[]): ModelChoice[]
     reasoningEfforts: model.supportedReasoningEfforts,
     disabled: 'disabled' in model && model.disabled === true,
     provider: model.kind === 'router' ? null : model.modelProvider,
+    multiplier: model.isCustom ? null : (model.tokenMultiplier ?? null),
   }))
 }
 

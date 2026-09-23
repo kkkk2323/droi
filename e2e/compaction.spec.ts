@@ -98,7 +98,7 @@ test.describe('compaction handoff', () => {
     await input.fill('/comp')
     await expect(page.getByRole('option', { name: /compact/ })).toBeVisible()
     await input.press('Enter')
-    await expect(input).toHaveValue('/compact ')
+    await expect(page.getByRole('group', { name: 'Command compact' })).toBeVisible()
     await input.pressSequentially('keep the decisions')
     await input.press('Enter')
 

@@ -36,6 +36,9 @@ test('model, reasoning effort and autonomy change the Session on the Daemon', as
   const picker = page.getByRole('dialog', { name: 'Choose a model' })
   const models = picker.getByRole('list', { name: 'Models' })
   await expect(models.getByRole('radio')).toHaveCount(3)
+  await expect(models.getByRole('listitem').filter({ hasText: 'Claude Opus 4.1' })).toContainText(
+    '1.6×',
+  )
   const rail = picker.getByRole('toolbar', { name: 'Filter models' })
   await rail.getByRole('button', { name: 'OpenAI' }).click()
   await expect(models.getByRole('radio')).toHaveText([/GPT-5/])

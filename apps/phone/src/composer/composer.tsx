@@ -3,9 +3,14 @@
 // to the running turn instead, like ⌘↩ in the web Client.
 import { attachmentUrl, type ImageAttachment } from '@droi/daemon-layer/attachments'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
-import { filterSlashItems, slashQuery, type SlashItem } from '@droi/daemon-layer/use-slash-items'
+import {
+  filterSlashItems,
+  pickedSlashItem,
+  slashQuery,
+  type SlashItem,
+} from '@droi/daemon-layer/use-slash-items'
 import type { QueuePlacement } from '@droi/daemon-layer/use-turn'
-import { ArrowUp, ListPlus, Plus, Square, X } from 'lucide-react-native'
+import { ArrowUp, ListPlus, Plus, Sparkles, Square, SquareSlash, X } from 'lucide-react-native'
 import { useState, type ReactNode } from 'react'
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { ImageSourceError, pickImages, type ImageSource } from '../platform/images'
@@ -83,6 +88,9 @@ export function Composer({
     }
   }
 
+  // A picked command or skill shows as a tag; the input edits what follows it.
+  const picked = pickedSlashItem(text, slashItems)
+  const prefix = picked ? text.slice(0, text.length - picked.rest.length) : ''
   const query = slashQuery(text, caret)
   const suggestions = query === null ? NO_ITEMS : filterSlashItems(slashItems, query)
   const accept = (item: SlashItem) => {
@@ -188,29 +196,48 @@ export function Composer({
             ))}
           </ScrollView>
         ) : null}
-        <TextInput
-          aria-label="Message"
-          placeholder={isRunning ? 'Queue a message' : placeholder}
-          placeholderTextColor={colors.mutedForeground}
-          value={text}
-          onChangeText={(next) => {
-            update(next)
-            // Typing leaves the caret at the end; a selection event corrects
-            // it when the edit was elsewhere (web builds send none on input).
-            setCaret(next.length)
-          }}
-          onSelectionChange={(event) => setCaret(event.nativeEvent.selection.end)}
-          multiline
-          editable={!disabled}
-          style={[
-            styles.input,
-            {
-              color: colors.foreground,
-              fontSize: styles.input.fontSize * scale,
-              lineHeight: styles.input.lineHeight * scale,
-            },
-          ]}
-        />
+        <View style={styles.inputRow}>
+          {picked ? (
+            <SlashTag
+              item={picked.item}
+              onRemove={() => {
+                update(picked.rest)
+                setCaret(picked.rest.length)
+              }}
+            />
+          ) : null}
+          <TextInput
+            aria-label="Message"
+            placeholder={isRunning ? 'Queue a message' : (picked?.item.argumentHint ?? placeholder)}
+            placeholderTextColor={colors.mutedForeground}
+            value={text.slice(prefix.length)}
+            onChangeText={(next) => {
+              update(prefix + next)
+              // Typing leaves the caret at the end; a selection event corrects
+              // it when the edit was elsewhere (web builds send none on input).
+              setCaret(prefix.length + next.length)
+            }}
+            onSelectionChange={(event) => setCaret(prefix.length + event.nativeEvent.selection.end)}
+            onKeyPress={(event) => {
+              // Backspace at the very start takes the tag away.
+              if (picked && event.nativeEvent.key === 'Backspace' && caret === prefix.length) {
+                update(picked.rest)
+                setCaret(0)
+              }
+            }}
+            multiline
+            editable={!disabled}
+            style={[
+              styles.input,
+              picked ? styles.inputAfterTag : null,
+              {
+                color: colors.foreground,
+                fontSize: styles.input.fontSize * scale,
+                lineHeight: styles.input.lineHeight * scale,
+              },
+            ]}
+          />
+        </View>
         {adding ? (
           <View
             role="menu"
@@ -293,6 +320,39 @@ export function Composer({
   )
 }
 
+/** The command or skill the message will run, so a pick is not mistaken for plain text. */
+function SlashTag({ item, onRemove }: { item: SlashItem; onRemove: () => void }) {
+  const colors = useColors()
+  const kind = item.kind === 'skill' ? 'Skill' : 'Command'
+  const Icon = item.kind === 'skill' ? Sparkles : SquareSlash
+  return (
+    <View
+      role="group"
+      aria-label={`${kind} ${item.name}`}
+      style={[styles.tag, { backgroundColor: `${colors.working}1a` }]}
+    >
+      <Icon size={13} color={colors.working} strokeWidth={2} />
+      <Text
+        size="sm"
+        weight="medium"
+        numberOfLines={1}
+        style={[styles.shrink, { color: colors.working }]}
+      >
+        {item.name}
+      </Text>
+      <Pressable
+        role="button"
+        aria-label={`Remove ${kind.toLowerCase()} ${item.name}`}
+        hitSlop={8}
+        onPress={onRemove}
+        style={styles.tagRemove}
+      >
+        <X size={12} color={colors.working} strokeWidth={2.25} />
+      </Pressable>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   wrap: { gap: space.xs, paddingHorizontal: space.md },
   error: { paddingHorizontal: space.xs },
@@ -303,7 +363,22 @@ const styles = StyleSheet.create({
     borderRadius: COMPOSER_RADIUS,
     paddingTop: space.sm,
   },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 26,
+    maxWidth: '50%',
+    marginLeft: space.md,
+    marginTop: 2,
+    paddingLeft: 6,
+    borderRadius: radius.md,
+  },
+  tagRemove: { paddingHorizontal: 5, height: 26, justifyContent: 'center' },
+  inputAfterTag: { paddingLeft: space.sm },
   input: {
+    flex: 1,
     minHeight: 40,
     maxHeight: 160,
     paddingHorizontal: space.md,

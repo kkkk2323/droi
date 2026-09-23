@@ -7,6 +7,7 @@ import {
   AUTONOMY_LABELS,
   EFFORT_LABELS,
   brandsOf,
+  formatMultiplier,
   visibleModels,
   type PickerFilter,
 } from '@droi/daemon-layer/model-choices'
@@ -283,6 +284,11 @@ function ModelSheet({
                   </Text>
                 </View>
               </Pressable>
+              {row.multiplier !== null ? (
+                <Text size="xs" tone="muted" mono>
+                  {formatMultiplier(row.multiplier)}
+                </Text>
+              ) : null}
               <Pressable
                 role="button"
                 aria-label={`${starred ? 'Unstar' : 'Star'} ${row.label}`}

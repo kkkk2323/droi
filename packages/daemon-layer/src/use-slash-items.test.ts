@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { filterSlashItems, mergeSlashItems, slashQuery, type SlashItem } from './use-slash-items'
+import {
+  filterSlashItems,
+  mergeSlashItems,
+  pickedSlashItem,
+  slashQuery,
+  type SlashItem,
+} from './use-slash-items'
 
 const item = (name: string, description = '', kind: SlashItem['kind'] = 'command'): SlashItem => ({
   name,
@@ -64,5 +70,23 @@ describe('mergeSlashItems', () => {
       'handoff',
     ])
     expect(mergeSlashItems([], [])).toEqual([])
+  })
+})
+
+describe('pickedSlashItem', () => {
+  const items = [item('handoff', '', 'skill'), item('compact')]
+
+  test('is the known name a message starts with, once a space ends it', () => {
+    expect(pickedSlashItem('/handoff carry on', items)).toEqual({
+      item: items[0],
+      rest: 'carry on',
+    })
+    expect(pickedSlashItem('/compact ', items)).toEqual({ item: items[1], rest: '' })
+  })
+
+  test('is nothing while the name is being typed, or for an unknown one', () => {
+    expect(pickedSlashItem('/handoff', items)).toBeNull()
+    expect(pickedSlashItem('/nope carry on', items)).toBeNull()
+    expect(pickedSlashItem('say /handoff ', items)).toBeNull()
   })
 })

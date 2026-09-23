@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { brandOf } from './model-brand'
-import { brandsOf, visibleModels } from './model-choices'
-import type { ModelChoice } from './use-session-settings'
+import { brandsOf, formatMultiplier, visibleModels } from './model-choices'
+import { toModelChoices, type ModelChoice } from './use-session-settings'
 
 const model = (id: string, provider: string | null, label = id): ModelChoice => ({
   id,
@@ -9,6 +9,7 @@ const model = (id: string, provider: string | null, label = id): ModelChoice => 
   provider,
   reasoningEfforts: [],
   disabled: false,
+  multiplier: null,
 })
 
 const models = [
@@ -64,5 +65,30 @@ describe('visibleModels', () => {
     expect(visibleModels(models, [], 'all', 'opus 4.1').map((m) => m.id)).toEqual([
       'claude-opus-4-1',
     ])
+  })
+})
+
+describe('multipliers', () => {
+  it('keeps Factory’s multiplier, and none for a custom model', () => {
+    const base = {
+      displayName: 'm',
+      shortDisplayName: 'm',
+      modelProvider: 'anthropic',
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: 'none',
+    }
+    const choices = toModelChoices([
+      { ...base, id: 'opus', isCustom: false, tokenMultiplier: 1.6 },
+      { ...base, id: 'mine', isCustom: true, tokenMultiplier: 1 },
+      { ...base, id: 'unpriced', isCustom: false },
+    ] as unknown as Parameters<typeof toModelChoices>[0])
+    expect(choices.map((c) => c.multiplier)).toEqual([1.6, null, null])
+  })
+
+  it('formats like Factory', () => {
+    expect(formatMultiplier(1.6)).toBe('1.6×')
+    expect(formatMultiplier(0.04)).toBe('0.04×')
+    expect(formatMultiplier(1)).toBe('1×')
+    expect(formatMultiplier(0.333333)).toBe('0.33×')
   })
 })

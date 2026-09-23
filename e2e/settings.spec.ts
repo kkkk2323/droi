@@ -31,6 +31,9 @@ test.describe('session settings', () => {
     const models = picker.getByRole('listbox', { name: 'Models' })
     await expect(models.getByRole('option')).toHaveCount(3)
     await expect(models.getByRole('option').nth(0)).toContainText('Auto Model')
+    // Factory's usage multiplier for each model, as the Factory App shows it.
+    await expect(models.getByRole('option', { name: /Claude Opus 4\.1/ })).toContainText('1.6×')
+    await expect(models.getByRole('option', { name: /GPT-5/ })).toContainText('0.8×')
     await expect(picker.getByRole('searchbox', { name: 'Search models' })).toBeFocused()
 
     // The rail filters by brand; clicking the active brand again shows everything.
@@ -117,6 +120,26 @@ test.describe('session settings', () => {
     const sidebar = await openSidebar()
     await expect(sidebar.getByRole('button', { name: /Renamed session/ })).toBeVisible()
     await expect(sidebar.getByRole('button', { name: /First session/ })).toHaveCount(0)
+  })
+
+  test('Back from Settings returns to the Session it was opened from, even after a reload', async ({
+    page,
+    openClient,
+    pickSession,
+    openSidebar,
+  }) => {
+    await openClient()
+    await pickSession(/Second session/)
+    await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page).toHaveURL(new RegExp(second.sessionId))
+    await expect(page.getByRole('heading', { level: 2, name: 'Second session' })).toBeVisible()
+
+    // A reload on Settings forgets where it came from; the last Session stands in.
+    await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
+    await page.reload()
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page).toHaveURL(new RegExp(second.sessionId))
   })
 
   test('archiving removes the Session; the Settings preference shows it again', async ({

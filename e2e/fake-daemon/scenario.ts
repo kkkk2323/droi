@@ -330,6 +330,7 @@ export const AVAILABLE_MODELS = [
     supportedReasoningEfforts: ['none'],
     defaultReasoningEffort: 'none',
     isCustom: false,
+    tokenMultiplier: 1,
     kind: 'router',
   },
   {
@@ -340,6 +341,7 @@ export const AVAILABLE_MODELS = [
     supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
     defaultReasoningEffort: 'medium',
     isCustom: false,
+    tokenMultiplier: 1.6,
   },
   {
     id: 'gpt-5',
@@ -349,6 +351,7 @@ export const AVAILABLE_MODELS = [
     supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
     defaultReasoningEffort: 'medium',
     isCustom: false,
+    tokenMultiplier: 0.8,
   },
 ]
 

@@ -94,3 +94,16 @@ export function filterSlashItems(items: SlashItem[], query: string, limit = 8): 
   const contains = items.filter((i) => !starts.includes(i) && i.name.toLowerCase().includes(q))
   return [...starts, ...contains].slice(0, limit)
 }
+
+/**
+ * The command or skill a message starts with, once its name is complete
+ * ("/name " then the rest): the composer shows it as a tag before the text.
+ */
+export function pickedSlashItem(
+  text: string,
+  items: readonly SlashItem[],
+): { item: SlashItem; rest: string } | null {
+  const match = /^\/(\S+) /.exec(text)
+  const item = match ? items.find((i) => i.name === match[1]) : undefined
+  return match && item ? { item, rest: text.slice(match[0].length) } : null
+}

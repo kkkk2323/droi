@@ -143,8 +143,13 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [narrow, setSidebarShown])
 
+  // Settings goes back where it was opened from; after a reload on Settings,
+  // to the last Session.
+  const [settingsReturn, setSettingsReturn] = useState<Route | null>(null)
+
   // Picking anything in the drawer is the end of the drawer's job.
   const go = (next: Route) => {
+    if (next.name === 'settings' && route.name !== 'settings') setSettingsReturn(route)
     if (next.name === 'home') setHomeByChoice(true)
     navigate(next)
     setDrawerOpen(false)
@@ -164,7 +169,12 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         <SettingsPage
           bridge={window.droiShell?.settings ?? null}
           alerts={window.droiShell?.alerts ?? null}
-          onBack={() => go({ name: 'home' })}
+          onBack={() =>
+            go(
+              settingsReturn ??
+                (lastId ? { name: 'session', sessionId: lastId } : { name: 'home' }),
+            )
+          }
         />
       </>
     )

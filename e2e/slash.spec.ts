@@ -45,7 +45,9 @@ test.describe('slash commands', () => {
     await input.pressSequentially('ha')
     await expect(list.getByRole('option')).toHaveText([/handoff/])
     await input.press('Enter')
-    await expect(input).toHaveValue('/handoff ')
+    // The pick shows as a tag before the text, so it reads as a skill to run.
+    await expect(page.getByRole('group', { name: 'Skill handoff' })).toBeVisible()
+    await expect(input).toHaveValue('')
     await expect(list).toHaveCount(0)
 
     await input.pressSequentially('next session is for tests')
@@ -79,11 +81,36 @@ test.describe('slash commands', () => {
 
     await input.pressSequentially('ha')
     await input.press('Enter')
-    await expect(input).toHaveValue('/handoff ')
+    await expect(form.getByRole('group', { name: 'Skill handoff' })).toBeVisible()
     await input.pressSequentially('carry on')
     await input.press('Enter')
     const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
     expect(sent.params).toMatchObject({ sessionId: draftId, text: '/handoff carry on' })
+  })
+
+  test('a typed name becomes a tag; Backspace or its remove button drops it', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.pressSequentially('/opsx-propose ')
+    const tag = page.getByRole('group', { name: 'Command opsx-propose' })
+    await expect(tag).toBeVisible()
+    await expect(input).toHaveAttribute('placeholder', 'command arguments')
+    await input.press('Backspace')
+    await expect(tag).toHaveCount(0)
+
+    await input.pressSequentially('/handoff tidy up')
+    await page.getByRole('button', { name: 'Remove skill handoff' }).click()
+    await expect(page.getByRole('group', { name: 'Skill handoff' })).toHaveCount(0)
+    await expect(input).toHaveValue('tidy up')
+    await input.press('Enter')
+    const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
+    expect(sent.params).toMatchObject({ text: 'tidy up' })
   })
 
   test('Escape hides the list; a plain message still sends on Enter', async ({
