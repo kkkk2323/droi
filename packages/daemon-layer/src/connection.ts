@@ -38,12 +38,12 @@ export interface DaemonConnection {
   getState(): ConnectionState
   subscribe(listener: () => void): () => void
   start(): void
-  /** The host went to the background (an iPhone app): stop polling for the Gateway. */
-  suspend(): void
   /**
-   * Back in the foreground: re-check the pairing and connect again at once if
-   * the socket went while away. The SDK reconnects a socket the OS closed.
+   * The host went to the background (an iPhone app): let the socket go and
+   * stop polling for the Gateway. Session state and listeners are kept.
    */
+  suspend(): void
+  /** Back in the foreground: re-check the pairing and connect again at once. */
   resume(): void
   dispose(): void
 }
@@ -65,24 +65,60 @@ export function createDaemonConnection(
   fetchImpl: typeof fetch = (input, init) => fetch(input, init),
 ): DaemonConnection {
   const sessionState = createSessionState()
-  const controller = new DaemonSessionController({
-    sessionStateManager: sessionState,
-    config: {
-      machineId: LOCAL_MACHINE_ID,
-      machineType: MachineType.Local,
-      url: gatewayDaemonUrl(config.gatewayUrl, config.pairingToken ?? ''),
-      clientType: config.kind === 'local' ? 'desktop' : 'web',
-      getCredential: async () => ({ apiKey: GATEWAY_API_KEY_PLACEHOLDER }),
-      connectionTimeoutMs: 5_000,
-      requestTimeout: 30_000,
-      maxPollAttempts: 15,
-      maxReconnectAttempts: 3,
-      reconnectInterval: 1_000,
-      maxReconnectDelay: 10_000,
-      reconnectBackoffFactor: 1.5,
-      supportsTerminalRestoreOnLoad: false,
+  const makeController = () =>
+    new DaemonSessionController({
+      sessionStateManager: sessionState,
+      config: {
+        machineId: LOCAL_MACHINE_ID,
+        machineType: MachineType.Local,
+        url: gatewayDaemonUrl(config.gatewayUrl, config.pairingToken ?? ''),
+        clientType: config.kind === 'local' ? 'desktop' : 'web',
+        getCredential: async () => ({ apiKey: GATEWAY_API_KEY_PLACEHOLDER }),
+        connectionTimeoutMs: 5_000,
+        requestTimeout: 30_000,
+        maxPollAttempts: 15,
+        maxReconnectAttempts: 3,
+        reconnectInterval: 1_000,
+        maxReconnectDelay: 10_000,
+        reconnectBackoffFactor: 1.5,
+        supportsTerminalRestoreOnLoad: false,
+      },
+    })
+
+  // The SDK's disconnect() is final (the controller never reads a socket
+  // again), so letting the socket go in the background means a new controller
+  // on the same Session state. Everyone holds this stand-in instead; it
+  // forwards to the current controller and moves every listener across.
+  let current = makeController()
+  const subscriptions: Array<[string, (...args: never[]) => void]> = []
+  const controller = new Proxy({} as DaemonSessionController, {
+    get(_, prop) {
+      if (prop === 'on') {
+        return (event: string, listener: (...args: never[]) => void) => {
+          subscriptions.push([event, listener])
+          current.on(event as never, listener as never)
+          return controller
+        }
+      }
+      if (prop === 'off') {
+        return (event: string, listener: (...args: never[]) => void) => {
+          const index = subscriptions.findIndex(([e, l]) => e === event && l === listener)
+          if (index >= 0) subscriptions.splice(index, 1)
+          current.off(event as never, listener as never)
+          return controller
+        }
+      }
+      const value: unknown = Reflect.get(current, prop, current)
+      return typeof value === 'function' ? value.bind(current) : value
     },
   })
+
+  const replaceController = () => {
+    const previous = current
+    current = makeController()
+    for (const [event, listener] of subscriptions) current.on(event as never, listener as never)
+    previous.destroy()
+  }
 
   let state: ConnectionState = { status: 'connecting' }
   const listeners = new Set<() => void>()
@@ -180,26 +216,22 @@ export function createDaemonConnection(
       void connect()
     },
     suspend() {
-      if (disposed) return
+      if (disposed || suspended) return
       suspended = true
       if (recoveryTimer) clearTimeout(recoveryTimer)
       recoveryTimer = null
+      if (state.status === 'unpaired') return
+      // What is on screen stays; its Sessions load again on the next socket.
+      if (state.status === 'connected') setState({ status: 'reconnecting' })
+      replaceController()
     },
     resume() {
       if (disposed || !suspended) return
       suspended = false
       if (state.status === 'unpaired') return
-      if (state.status !== 'connected') {
-        void connect()
-        return
-      }
-      // Connected as far as the SDK knows; the Pairing Token may have been
+      // connect() checks the pairing first: the Pairing Token may have been
       // reset while the phone was away.
-      void checkPairing().then((pairing) => {
-        if (disposed || pairing !== 'rejected') return
-        controller.disconnect()
-        setState({ status: 'unpaired', reason: 'rejected-token' })
-      })
+      void connect()
     },
     dispose() {
       disposed = true

@@ -7,6 +7,7 @@ import {
   pairPhone,
   pasteLink,
   pickSession,
+  playTurn,
   test,
 } from './fixtures'
 
@@ -87,6 +88,56 @@ test('coming back to the foreground re-checks the pairing', async ({ page, fakeD
   fakeDaemon.resetToken()
   await setAppVisible(page, true)
   await expect(page.getByRole('heading', { name: 'Test Mac is no longer paired' })).toBeVisible()
+})
+
+test('the background lets the socket go; the foreground reconnects to the same screen', async ({
+  page,
+  fakeDaemon,
+}) => {
+  const loads = () => fakeDaemon.requests.filter((r) => r.method === 'daemon.load_session').length
+  await pairPhone(page, fakeDaemon)
+  await pickSession(page, /Deploy/)
+  await expect.poll(loads).toBe(1)
+  const composer = page.getByRole('textbox', { name: 'Message' })
+  await composer.fill('half a thought')
+  const transcript = page.getByRole('log', { name: 'Transcript' })
+
+  await setAppVisible(page, false)
+  await expect.poll(() => fakeDaemon.connectionCount).toBe(0)
+  await expect(transcript.getByRole('article', { name: 'You' })).toHaveText('ship it')
+
+  await setAppVisible(page, true)
+  await expect.poll(() => fakeDaemon.connectionCount).toBe(1)
+  await expect.poll(loads).toBe(2)
+  await expect(page.getByRole('status', { name: 'Reconnecting' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
+  await expect(transcript.getByRole('article', { name: 'You' })).toHaveText('ship it')
+  await expect(composer).toHaveValue('half a thought')
+  // Notifications flow again on the new socket.
+  playTurn(fakeDaemon, deploy.sessionId, 'status?', ['All ', 'green.'])
+  await expect(transcript).toContainText('All green.')
+  const list = await openDrawer(page)
+  await expect(list.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
+})
+
+test('the New session page comes back with its Draft Session and its text', async ({
+  page,
+  fakeDaemon,
+}) => {
+  const drafts = () =>
+    fakeDaemon.requests.filter((r) => r.method === 'daemon.initialize_session').length
+  await pairPhone(page, fakeDaemon)
+  await expect.poll(drafts).toBe(1)
+  const composer = page.getByRole('textbox', { name: 'Message' })
+  await composer.fill('build a thing')
+
+  await setAppVisible(page, false)
+  await expect.poll(() => fakeDaemon.connectionCount).toBe(0)
+  await setAppVisible(page, true)
+  await expect.poll(drafts).toBe(2)
+  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
+  await expect(composer).toHaveValue('build a thing')
+  await expect(page.getByRole('button', { name: 'Start session' })).toBeEnabled()
 })
 
 test('a dropped socket reconnects with a banner and keeps the open Session', async ({
