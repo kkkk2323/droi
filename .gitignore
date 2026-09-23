@@ -51,7 +51,7 @@ coverage/
 .nyc_output/
 
 # Electron
-app/
+/app/
 release/
 
 # Cache
