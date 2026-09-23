@@ -1,4 +1,5 @@
 // The few building blocks every Phone App screen uses, styled from the theme.
+import type { LucideIcon } from 'lucide-react-native'
 import type { ReactNode } from 'react'
 import {
   ActivityIndicator,
@@ -64,6 +65,44 @@ export function Heading({
     <Text accessibilityRole="header" size="xl" weight="semibold" style={style}>
       {children}
     </Text>
+  )
+}
+
+export function IconButton({
+  label,
+  icon: Icon,
+  onPress,
+  expanded,
+  style,
+}: {
+  label: string
+  icon: LucideIcon
+  onPress: () => void
+  expanded?: boolean
+  style?: StyleProp<ViewStyle>
+}) {
+  const colors = useColors()
+  return (
+    <Pressable
+      role="button"
+      aria-label={label}
+      aria-expanded={expanded}
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          width: 36,
+          height: 36,
+          borderRadius: radius.md,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: pressed ? colors.accent : undefined,
+        },
+        style,
+      ]}
+    >
+      <Icon size={20} color={colors.foreground} strokeWidth={1.75} />
+    </Pressable>
   )
 }
 

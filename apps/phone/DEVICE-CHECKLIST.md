@@ -13,3 +13,12 @@ iPhone connected to this Mac and Droi running here with Remote Access on.
 - [ ] The app opens without a dev server running (the JS bundle is inside).
 - [ ] Settings shows the desktop app's version and "7 days left" right after
       installing; running `pnpm install:phone` again resets it.
+
+## Pairing and connecting
+
+Droi on the computer must be a build with the computer name and id in its
+`/meta` (`pnpm install:mac` from this repository).
+
+- [ ] Pasting the pairing link from Droi → Settings → Remote Access asks for
+      local network access once, with Droi's explanation, then connects.
+- [ ] The drawer shows the computer's name and its Sessions by Workspace.

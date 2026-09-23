@@ -8,7 +8,13 @@ import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
-import { GATEWAY_DAEMON_PATH, GATEWAY_TOKEN_QUERY } from '../../packages/daemon-layer/src/gateway'
+import { readFileSync } from 'node:fs'
+import {
+  GATEWAY_DAEMON_PATH,
+  GATEWAY_META_PATH,
+  GATEWAY_TOKEN_QUERY,
+  type GatewayMeta,
+} from '../../packages/daemon-layer/src/gateway'
 import { validateOutbound, validateInboundEnvelope } from './schemas'
 import { createScenario, HOST_ID, type Scenario, type ScenarioInput } from './scenario'
 import type { JsonRpcRequest } from './protocol'
@@ -20,8 +26,16 @@ export interface RecordedRequest {
   id: string | number | null
 }
 
+const APP_VERSION = (
+  JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
+
 export class FakeDaemon {
   readonly token: string
+  /** What /meta answers, as the Gateway would; tests may change it. */
+  meta: GatewayMeta
   readonly url: string
   readonly requests: RecordedRequest[] = []
   readonly scenario: Scenario
@@ -39,6 +53,13 @@ export class FakeDaemon {
     this.scenario = scenario
     this.token = `test-token-${randomUUID()}`
     this.url = `http://127.0.0.1:${port}`
+    this.meta = {
+      app: 'Droi',
+      version: APP_VERSION,
+      remoteAccess: true,
+      name: 'Test Mac',
+      computerId: randomUUID(),
+    }
   }
 
   static async start(input: ScenarioInput = {}): Promise<FakeDaemon> {
@@ -51,6 +72,14 @@ export class FakeDaemon {
           'access-control-allow-origin': '*',
         })
         response.end()
+        return
+      }
+      if (url.pathname === GATEWAY_META_PATH) {
+        response.writeHead(200, {
+          'content-type': 'application/json',
+          'access-control-allow-origin': '*',
+        })
+        response.end(JSON.stringify(daemon.meta))
         return
       }
       response.writeHead(404)
