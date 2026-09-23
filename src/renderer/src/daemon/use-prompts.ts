@@ -62,6 +62,7 @@ export interface PromptActions {
     request: PendingAskUserRequest,
     answers: Array<{ index: number; question: string; answer: string }>,
   ): Promise<void>
+  cancelQuestions(request: PendingAskUserRequest): Promise<void>
   error: string | null
 }
 
@@ -101,7 +102,22 @@ export function usePromptActions(sessionId: string): PromptActions {
     [controller, sessionId],
   )
 
-  return { answerPermission, answerQuestions, error }
+  const cancelQuestions = useCallback(
+    async (request: PendingAskUserRequest) => {
+      try {
+        await controller.respondToAskUser({
+          requestId: request.requestId,
+          sessionId,
+          result: { cancelled: true, answers: [] },
+        })
+      } catch (cause) {
+        if (!isAlreadyResolved(cause)) setError(describe(cause))
+      }
+    },
+    [controller, sessionId],
+  )
+
+  return { answerPermission, answerQuestions, cancelQuestions, error }
 }
 
 type PromptAnswers = Array<{ index: number; question: string; answer: string }>

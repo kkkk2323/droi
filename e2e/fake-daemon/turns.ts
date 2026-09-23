@@ -375,8 +375,20 @@ export function askUserTurn(options: AskUserTurnOptions): MethodHandler {
         ],
       })
       const response = await answer
-      const answers = ((response['result'] as Record<string, unknown> | undefined)?.['answers'] ??
-        []) as Array<{ answer: string }>
+      const result = response['result'] as Record<string, unknown> | undefined
+      if (result?.['cancelled'] === true) {
+        daemon.notify(sessionId, {
+          type: 'tool_result',
+          toolUseId,
+          content: 'The user cancelled the questionnaire.',
+          isError: true,
+          messageId: randomUUID(),
+        })
+        await streamText(daemon, sessionId, 'Understood, I will not ask.')
+        finishTurn(daemon, sessionId, userMessageId, 'completed')
+        return
+      }
+      const answers = (result?.['answers'] ?? []) as Array<{ answer: string }>
       const chosen = answers.map((a) => a.answer).join(', ')
       daemon.notify(sessionId, {
         type: 'tool_result',

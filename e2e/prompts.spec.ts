@@ -1,11 +1,11 @@
-import { expect, test, openPairingLink, openSidebar } from './fixtures'
+import { expect, test, openPairingLink, pickSession } from './fixtures'
 import { session, userMessage } from './fake-daemon/scenario'
 import { askUserTurn, permissionTurn } from './fake-daemon/turns'
 
 const chat = session('Deploy', '/Users/dev/acme-web', [userMessage('hi')])
 
 async function openAndSend(page: import('@playwright/test').Page, text: string) {
-  await (await openSidebar(page)).getByRole('button', { name: /Deploy/ }).click()
+  await pickSession(page, /Deploy/)
   await page.getByRole('textbox', { name: 'Message' }).fill(text)
   await page.getByRole('button', { name: 'Send' }).click()
 }
@@ -99,6 +99,30 @@ test.describe('ask-user questions', () => {
     await expect(card).toHaveCount(0)
     await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('You chose staging.')
   })
+
+  test('Cancel declines the question without an answer', async ({ page, openClient }) => {
+    await openClient()
+    await openAndSend(page, 'Deploy it')
+
+    const card = page.getByRole('group', { name: 'Droid has a question' })
+    await card.getByRole('button', { name: 'Cancel' }).click()
+    await expect(card).toHaveCount(0)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript).toContainText('I will not ask')
+    await expect(transcript).not.toContainText('You chose')
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible()
+  })
+
+  test('Escape inside the question cancels it too', async ({ page, openClient }) => {
+    await openClient()
+    await openAndSend(page, 'Deploy it')
+
+    const card = page.getByRole('group', { name: 'Droid has a question' })
+    await card.getByRole('textbox', { name: /Other answer/ }).fill('half typed')
+    await card.getByRole('textbox', { name: /Other answer/ }).press('Escape')
+    await expect(card).toHaveCount(0)
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('I will not ask')
+  })
 })
 
 test.describe('two Clients on one Session (ADR 0003)', () => {
@@ -124,7 +148,7 @@ test.describe('two Clients on one Session (ADR 0003)', () => {
     const phoneContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const phone = await phoneContext.newPage()
     await openPairingLink(phone, fakeDaemon, fakeDaemon.token)
-    await (await openSidebar(phone)).getByRole('button', { name: /Deploy/ }).click()
+    await pickSession(phone, /Deploy/)
     await expect(phone.getByRole('log', { name: 'Transcript' })).toBeVisible()
 
     await openAndSend(desktop, 'Run the tests')

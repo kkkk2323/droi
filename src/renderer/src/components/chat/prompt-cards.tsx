@@ -30,6 +30,7 @@ export function PromptArea({ sessionId }: { sessionId: string }) {
           key={request.requestId}
           request={request}
           onAnswer={(answers) => void actions.answerQuestions(request, answers)}
+          onCancel={() => void actions.cancelQuestions(request)}
         />
       ))}
     </div>
@@ -108,14 +109,17 @@ function ToolDetails({ details, input }: { details: unknown; input: Record<strin
 /**
  * One question at a time, in the style of Waku's user-input panel: topic and
  * progress on top, the options as full-width rows, a line for a custom answer,
- * Back/Next until the last question, where Answer sends everything.
+ * Back/Next until the last question, where Answer sends everything. Cancel
+ * (or Escape) declines the whole questionnaire.
  */
 export function AskUserCard({
   request,
   onAnswer,
+  onCancel,
 }: {
   request: PendingAskUserRequest
   onAnswer: (answers: Array<{ index: number; question: string; answer: string }>) => void
+  onCancel: () => void
 }) {
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<Record<number, string[]>>({})
@@ -172,6 +176,12 @@ export function AskUserCard({
       role="group"
       aria-label="Droid has a question"
       className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+          event.preventDefault()
+          onCancel()
+        }
+      }}
     >
       <div className="flex items-center gap-2">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
@@ -252,6 +262,16 @@ export function AskUserCard({
           </Button>
         ) : null}
         <div className="flex-1" />
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-[11px] text-muted-foreground"
+          aria-keyshortcuts="Escape"
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
         <Button
           type="button"
           size="sm"
