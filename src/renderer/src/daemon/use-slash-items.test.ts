@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { filterSlashItems, slashQuery, type SlashItem } from './use-slash-items'
+import { filterSlashItems, mergeSlashItems, slashQuery, type SlashItem } from './use-slash-items'
 
 const item = (name: string, description = '', kind: SlashItem['kind'] = 'command'): SlashItem => ({
   name,
@@ -44,5 +44,25 @@ describe('filterSlashItems', () => {
   test('caps the list', () => {
     const many = Array.from({ length: 20 }, (_, i) => item(`cmd${i}`))
     expect(filterSlashItems(many, 'cmd')).toHaveLength(8)
+  })
+})
+
+describe('mergeSlashItems', () => {
+  test('builtins come first and shadow a Daemon item of the same name', () => {
+    const merged = mergeSlashItems(
+      [item('compact', 'builtin')],
+      [item('compact', 'workspace'), item('handoff', '', 'skill')],
+    )
+    expect(merged.map((i) => [i.name, i.description])).toEqual([
+      ['compact', 'builtin'],
+      ['handoff', ''],
+    ])
+  })
+
+  test('without builtins only the Daemon items are offered', () => {
+    expect(mergeSlashItems([], [item('handoff', '', 'skill')]).map((i) => i.name)).toEqual([
+      'handoff',
+    ])
+    expect(mergeSlashItems([], [])).toEqual([])
   })
 })

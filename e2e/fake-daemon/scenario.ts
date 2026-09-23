@@ -186,6 +186,9 @@ export function createScenario(input: ScenarioInput): Scenario {
     'daemon.initialize_session': (params) => {
       const created = session('New session', String(params['cwd']), [], {
         ...(typeof params['sessionId'] === 'string' ? { sessionId: params['sessionId'] } : {}),
+        ...(Array.isArray(params['tags'])
+          ? { tags: params['tags'] as SessionFixture['tags'] }
+          : {}),
       })
       sessions.unshift(created)
       return {
@@ -195,6 +198,14 @@ export function createScenario(input: ScenarioInput): Scenario {
         settings: sessionSettings(),
         availableModels: AVAILABLE_MODELS,
       }
+    },
+    // Like the real Daemon, closing a Session nobody wrote to deletes it.
+    'daemon.close_session': (params) => {
+      const index = sessions.findIndex((s) => s.sessionId === params['sessionId'])
+      const found = sessions[index]
+      if (found && found.messages.length === 0) sessions.splice(index, 1)
+      else if (found) found.inactive = true
+      return {}
     },
     // `/compact` is a handoff: the summary starts a new Session that carries
     // the parent's tags; the parent stays listed.

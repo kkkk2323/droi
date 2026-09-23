@@ -55,6 +55,10 @@ _Avoid_: fixture data, recording, replay log
 One conversation with the agent, owned and persisted by the Daemon and identified by the Daemon's session id.
 _Avoid_: chat, thread, worker, droi session file
 
+**Draft Session**:
+A Session the New session page opens as soon as it knows the Workspace, so the composer can offer that Workspace's skills and commands before anything is sent. It carries the `droi.draft` tag, which keeps it out of every Client's session list, until the first send takes it over; an abandoned draft is closed, and the Daemon deletes it.
+_Avoid_: pre-init session, placeholder session
+
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo

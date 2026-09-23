@@ -5,8 +5,14 @@ import { GATEWAY_API_KEY_PLACEHOLDER } from '@shared/gateway'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { uuid } from '@/lib/uuid'
+import type { DaemonConnection } from './connection'
 import { useDaemonConnection } from './connection-context'
-import { SESSIONS_QUERY_KEY, workspaceLabel, type SessionSummary } from './sessions'
+import {
+  SESSIONS_QUERY_KEY,
+  workspaceLabel,
+  type SessionSummary,
+  type SessionTag,
+} from './sessions'
 
 export interface RecentWorkspace {
   path: string
@@ -40,8 +46,47 @@ export interface NewSessionActions {
   error: string | null
 }
 
+type Connection = Pick<DaemonConnection, 'controller' | 'sessionState'>
+
+/**
+ * Validates the directory and asks the Daemon for a Session there. Resolves
+ * to the Session id, or to the message to show when the directory is unusable.
+ */
+export async function openSession(
+  { controller, sessionState }: Connection,
+  path: string,
+  options: { settings?: NewSessionSettings; tags?: SessionTag[] } = {},
+): Promise<{ sessionId: string } | { error: string }> {
+  const check = await controller.validateWorkingDirectory(path)
+  if (!check.isValid) return { error: check.error ?? `${path} is not a usable directory.` }
+  const { settings, tags } = options
+  // The SDK wants the Session registered as loading before it asks the
+  // Daemon to create it, so the id is chosen here.
+  const sessionId = uuid()
+  sessionState.markSessionLoading(sessionId, LOCAL_MACHINE_ID)
+  try {
+    const result = await controller.initializeSession({
+      sessionId,
+      machineId: LOCAL_MACHINE_ID,
+      // Spawn credential; the Gateway swaps the placeholder for the real key.
+      token: GATEWAY_API_KEY_PLACEHOLDER,
+      cwd: check.resolvedPath ?? path,
+      sessionOriginHint: undefined,
+      sessionSource: undefined,
+      ...(settings?.modelId ? { modelId: settings.modelId } : {}),
+      ...(settings?.reasoningEffort ? { reasoningEffort: settings.reasoningEffort as never } : {}),
+      ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
+      ...(tags ? { tags } : {}),
+    })
+    return { sessionId: result.sessionId }
+  } catch (cause) {
+    sessionState.removeSession(sessionId)
+    throw cause
+  }
+}
+
 export function useNewSession(): NewSessionActions {
-  const { controller, sessionState } = useDaemonConnection()
+  const connection = useDaemonConnection()
   const queryClient = useQueryClient()
   const [isCreating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,36 +101,13 @@ export function useNewSession(): NewSessionActions {
       setCreating(true)
       setError(null)
       try {
-        const check = await controller.validateWorkingDirectory(trimmed)
-        if (!check.isValid) {
-          setError(check.error ?? `${trimmed} is not a usable directory.`)
+        const opened = await openSession(connection, trimmed, settings ? { settings } : {})
+        if ('error' in opened) {
+          setError(opened.error)
           return null
         }
-        // The SDK wants the Session registered as loading before it asks the
-        // Daemon to create it, so the id is chosen here.
-        const sessionId = uuid()
-        sessionState.markSessionLoading(sessionId, LOCAL_MACHINE_ID)
-        try {
-          const result = await controller.initializeSession({
-            sessionId,
-            machineId: LOCAL_MACHINE_ID,
-            // Spawn credential; the Gateway swaps the placeholder for the real key.
-            token: GATEWAY_API_KEY_PLACEHOLDER,
-            cwd: check.resolvedPath ?? trimmed,
-            sessionOriginHint: undefined,
-            sessionSource: undefined,
-            ...(settings?.modelId ? { modelId: settings.modelId } : {}),
-            ...(settings?.reasoningEffort
-              ? { reasoningEffort: settings.reasoningEffort as never }
-              : {}),
-            ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
-          })
-          await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
-          return result.sessionId
-        } catch (cause) {
-          sessionState.removeSession(sessionId)
-          throw cause
-        }
+        await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
+        return opened.sessionId
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
         return null
@@ -93,7 +115,7 @@ export function useNewSession(): NewSessionActions {
         setCreating(false)
       }
     },
-    [controller, sessionState, queryClient],
+    [connection, queryClient],
   )
 
   return { create, isCreating, error }

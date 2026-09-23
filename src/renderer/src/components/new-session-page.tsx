@@ -1,14 +1,19 @@
 import { useState, type ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
-import { Asterisk, Check, ChevronDown, Folder, FolderPlus, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Folder, FolderPlus, Loader2 } from 'lucide-react'
+import { DroiMark } from '@/components/droi-mark'
 import { InputBar, type Submission } from '@/components/chat/input-bar'
 import { COLUMN } from '@/components/chat/session-view'
 import { Button } from '@/components/ui/button'
+import { useDraftSession } from '@/daemon/use-draft-session'
 import { useNewSession, type RecentWorkspace } from '@/daemon/use-new-session'
 import { useSessionDefaults } from '@/daemon/use-session-defaults'
+import { useSlashItems, type SlashItem } from '@/daemon/use-slash-items'
 import { SettingsControls } from '@/components/chat/session-toolbar'
 import { setPendingPrompt } from '@/lib/pending-prompt'
 import { cn } from '@/lib/utils'
+
+const NO_BUILTINS: SlashItem[] = []
 
 /**
  * Waku-style start page: one question with the Workspace as a menu inside
@@ -65,8 +70,12 @@ export function NewSessionPage({
     })
   }
 
+  const draft = useDraftSession(workspace)
+  // `/compact` has nothing to summarise yet, so only the Workspace's own items.
+  const slashItems = useSlashItems(draft.sessionId, NO_BUILTINS)
+
   const start = async (target: string, prompt?: Submission) => {
-    const sessionId = await create(target, settings)
+    const sessionId = (await draft.take(target, settings)) ?? (await create(target, settings))
     if (!sessionId) return
     if (prompt && (prompt.text.trim() || prompt.images.length > 0)) {
       setPendingPrompt(sessionId, { text: prompt.text, images: prompt.images })
@@ -82,7 +91,7 @@ export function NewSessionPage({
     <section aria-label="New session" className="flex h-full min-h-0 flex-col">
       {header}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-y-auto px-6 text-center">
-        <Asterisk aria-hidden className="size-8 text-orange-500" strokeWidth={2.25} />
+        <DroiMark className="size-9" />
         <h2 className="flex flex-wrap items-baseline justify-center gap-x-1.5 text-xl font-medium tracking-tight">
           {label ? (
             <>
@@ -151,7 +160,7 @@ export function NewSessionPage({
       <div className={cn(COLUMN, 'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]')}>
         <InputBar
           isRunning={false}
-          disabled={!workspace || isCreating}
+          disabled={!workspace || isCreating || draft.isTaking}
           allowEmpty
           placeholder="Do anything…"
           sendLabel="Start session"
@@ -160,6 +169,7 @@ export function NewSessionPage({
           }}
           onCancel={() => {}}
           error={null}
+          slashItems={slashItems}
           footer={
             <SettingsControls
               settings={settings}

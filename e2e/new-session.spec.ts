@@ -1,10 +1,39 @@
 import { expect, test } from './fixtures'
+import type { RecordedRequest } from './fake-daemon/fake-daemon'
 import { session, userMessage } from './fake-daemon/scenario'
 import { streamedReply } from './fake-daemon/turns'
+
+function sessionIdOf(request: RecordedRequest): string {
+  return String((request.params as Record<string, unknown>)['sessionId'])
+}
 
 const older = session('Old work', '/Users/dev/billing-service', [userMessage('a')])
 const newer = session('Recent work', '/Users/dev/acme-web', [userMessage('b')])
 const newest = session('Newest work', '/Users/dev/acme-web', [userMessage('c')])
+
+test.describe('draft sessions', () => {
+  test.use({
+    scenario: {
+      sessions: [
+        session('Real work', '/Users/dev/acme-web', [userMessage('a')]),
+        // Left over from an earlier launch that never sent anything.
+        session('New session', '/Users/dev/leftover', [], { tags: [{ name: 'droi.draft' }] }),
+      ],
+    },
+  })
+
+  test('a Draft Session is never listed, not even one from an earlier launch', async ({
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await fakeDaemon.waitForRequest('daemon.initialize_session')
+    const sidebar = await openSidebar()
+    await expect(sidebar.getByRole('region', { name: 'acme-web' })).toBeVisible()
+    await expect(sidebar.getByRole('region', { name: 'leftover' })).toHaveCount(0)
+  })
+})
 
 test.describe('new session', () => {
   test.use({
@@ -44,24 +73,38 @@ test.describe('new session', () => {
     await openClient()
     await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     const form = page.getByRole('region', { name: 'New session' })
+    // The page opens a Draft Session for the preselected Workspace at once.
+    const firstDraft = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    expect(firstDraft.params).toMatchObject({
+      cwd: '/Users/dev/acme-web',
+      tags: [{ name: 'droi.draft' }],
+    })
     await form.getByRole('button', { name: 'Workspace' }).click()
     await page.getByRole('menuitemradio', { name: 'billing-service' }).click()
     await expect(form.getByRole('heading', { level: 2 })).toContainText('billing-service')
 
+    // Switching Workspace closes that draft and opens one in the new Workspace.
+    const draft = await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
+    expect(draft.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
+    const closed = await fakeDaemon.waitForRequest('daemon.close_session')
+    expect(closed.params).toMatchObject({ sessionId: sessionIdOf(firstDraft) })
+
     await form.getByRole('textbox', { name: 'Message' }).fill('Refactor the invoices')
     await form.getByRole('button', { name: 'Start session' }).click()
 
-    const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
-    expect(created.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
-    await expect(
-      page.getByRole('region', { name: 'New session' }).getByRole('heading', { level: 2 }),
-    ).toBeVisible()
-    expect(new URL(page.url()).hash).toMatch(/^#\/s\//)
+    // Sending takes the draft over instead of creating another Session.
+    const takeover = await fakeDaemon.waitForRequest('daemon.update_session_settings')
+    expect(takeover.params).toMatchObject({ sessionId: sessionIdOf(draft), tags: [] })
+    await expect(page).toHaveURL(new RegExp(`#/s/${sessionIdOf(draft)}`))
     const transcript = page.getByRole('log', { name: 'Transcript' })
     await expect(transcript.getByRole('article', { name: 'You' })).toContainText(
       'Refactor the invoices',
     )
-    await fakeDaemon.waitForRequest('daemon.add_user_message')
+    const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
+    expect(sent.params).toMatchObject({ sessionId: sessionIdOf(draft) })
+    expect(
+      fakeDaemon.requests.filter((r) => r.method === 'daemon.initialize_session'),
+    ).toHaveLength(2)
 
     // The Session appears in the sidebar under its Workspace.
     const billing = (await openSidebar()).getByRole('region', { name: 'billing-service' })
@@ -86,8 +129,10 @@ test.describe('new session', () => {
     expect(new URL(page.url()).hash).toContain('#/new?ws=')
 
     await form.getByRole('button', { name: 'Start session' }).click()
-    const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
-    expect(created.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
+    // Home opened a draft in the most recent Workspace first; this page's is the second.
+    const draft = await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
+    expect(draft.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
+    await expect(page).toHaveURL(new RegExp(`#/s/${sessionIdOf(draft)}`))
   })
 
   test('sending nothing still opens an empty Session in the preselected Workspace', async ({
@@ -104,6 +149,7 @@ test.describe('new session', () => {
       .click()
     const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
     expect(created.params).toMatchObject({ cwd: '/Users/dev/acme-web' })
+    await expect(page).toHaveURL(new RegExp(`#/s/${sessionIdOf(created)}`))
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeEnabled()
     expect(fakeDaemon.requests.filter((r) => r.method === 'daemon.add_user_message')).toHaveLength(
       0,
@@ -137,12 +183,16 @@ test.describe('new session', () => {
     await page.getByRole('listbox').getByRole('option', { name: 'High autonomy' }).click()
 
     await form.getByRole('button', { name: 'Start session' }).click()
-    const created = await fakeDaemon.waitForRequest('daemon.initialize_session')
-    expect(created.params).toMatchObject({
-      cwd: '/Users/dev/acme-web',
+    // The Draft Session already exists; the choices are applied as it is taken over.
+    const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    expect(draft.params).toMatchObject({ cwd: '/Users/dev/acme-web' })
+    const takeover = await fakeDaemon.waitForRequest('daemon.update_session_settings')
+    expect(takeover.params).toMatchObject({
+      sessionId: sessionIdOf(draft),
       modelId: 'gpt-5',
       reasoningEffort: 'xhigh',
       autonomyLevel: 'high',
+      tags: [],
     })
   })
 
@@ -165,17 +215,21 @@ test.describe('new session', () => {
     await path.fill('/nope/missing')
     await start.click()
     await expect(page.getByRole('alert')).toContainText('Directory does not exist: /nope/missing')
-    const checked = await fakeDaemon.waitForRequest('daemon.validate_working_directory')
-    expect(checked.params).toMatchObject({ workingDirectory: '/nope/missing' })
     expect(
-      fakeDaemon.requests.filter((r) => r.method === 'daemon.initialize_session'),
-    ).toHaveLength(0)
+      fakeDaemon.requests
+        .filter((r) => r.method === 'daemon.validate_working_directory')
+        .map((r) => (r.params as Record<string, unknown>)['workingDirectory']),
+    ).toContain('/nope/missing')
+    const initialized = () =>
+      fakeDaemon.requests
+        .filter((r) => r.method === 'daemon.initialize_session')
+        .map((r) => (r.params as Record<string, unknown>)['cwd'])
+    expect(initialized()).not.toContain('/nope/missing')
 
     await path.fill('/Users/dev/fresh-project')
     await start.click()
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeEnabled()
-    const created = fakeDaemon.requests.find((r) => r.method === 'daemon.initialize_session')
-    expect(created?.params).toMatchObject({ cwd: '/Users/dev/fresh-project' })
+    expect(initialized()).toContain('/Users/dev/fresh-project')
     await expect((await openSidebar()).getByRole('region', { name: 'fresh-project' })).toBeVisible()
   })
 })

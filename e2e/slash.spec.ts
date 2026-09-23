@@ -58,6 +58,34 @@ test.describe('slash commands', () => {
     )
   })
 
+  test('the New session page offers the Workspace commands and skills before the Session exists', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    const input = form.getByRole('textbox', { name: 'Message' })
+    await input.fill('/')
+    const list = page.getByRole('listbox', { name: 'Commands and skills' })
+    // `/compact` is left out: there is no conversation to summarise yet.
+    await expect(list.getByRole('option')).toHaveText([/opsx-propose.*Command/, /handoff.*Skill/])
+    const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    const listed = await fakeDaemon.waitForRequest('daemon.list_skills')
+    const draftId = (draft.params as Record<string, unknown>)['sessionId']
+    expect(listed.params).toMatchObject({ sessionId: draftId })
+
+    await input.pressSequentially('ha')
+    await input.press('Enter')
+    await expect(input).toHaveValue('/handoff ')
+    await input.pressSequentially('carry on')
+    await input.press('Enter')
+    const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
+    expect(sent.params).toMatchObject({ sessionId: draftId, text: '/handoff carry on' })
+  })
+
   test('Escape hides the list; a plain message still sends on Enter', async ({
     page,
     fakeDaemon,

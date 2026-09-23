@@ -44,6 +44,16 @@ export function continuationTags(parentId: string, inherited: readonly SessionTa
   ]
 }
 
+/**
+ * Tag of a Draft Session (see use-draft-session.ts). It lives in the session
+ * file, so every Client and every later launch leaves the draft unlisted.
+ */
+export const DRAFT_TAG = 'droi.draft'
+
+export function isDraft(tags: readonly SessionTag[] | undefined): boolean {
+  return tags?.some((t) => t.name === DRAFT_TAG) ?? false
+}
+
 /** Drops Sessions that another listed Session continues; the chain shows as its latest link. */
 export function foldContinued(sessions: readonly SessionSummary[]): SessionSummary[] {
   const parents = new Set(sessions.map((s) => s.parentId).filter((id): id is string => !!id))
@@ -86,17 +96,19 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
         limit: 100,
         includeArchived,
       })
-      return result.sessions.map((s) => ({
-        sessionId: s.sessionId,
-        title: s.title?.trim() || 'Untitled session',
-        cwd: s.cwd ?? null,
-        repoRoot: s.repoRoot ?? null,
-        updatedAt: s.updatedAt,
-        messagesCount: s.messagesCount ?? null,
-        archivedAt: s.archivedAt ?? null,
-        tags: s.tags ?? [],
-        parentId: continuationParent(s.tags),
-      }))
+      return result.sessions
+        .filter((s) => !isDraft(s.tags))
+        .map((s) => ({
+          sessionId: s.sessionId,
+          title: s.title?.trim() || 'Untitled session',
+          cwd: s.cwd ?? null,
+          repoRoot: s.repoRoot ?? null,
+          updatedAt: s.updatedAt,
+          messagesCount: s.messagesCount ?? null,
+          archivedAt: s.archivedAt ?? null,
+          tags: s.tags ?? [],
+          parentId: continuationParent(s.tags),
+        }))
     },
     enabled: connected,
     staleTime: 10_000,

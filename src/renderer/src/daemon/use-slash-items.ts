@@ -23,20 +23,28 @@ export const BUILTIN_SLASH_ITEMS: SlashItem[] = [
   },
 ]
 
-export function useSlashItems(sessionId: string): SlashItem[] {
+/**
+ * `builtins` are the commands the caller handles itself; they come first and
+ * win over a Workspace command of the same name. Without a Session only they
+ * are offered.
+ */
+export function useSlashItems(
+  sessionId: string | null,
+  builtins: SlashItem[] = BUILTIN_SLASH_ITEMS,
+): SlashItem[] {
   const { controller } = useDaemonConnection()
   const connected = useConnectionState().status === 'connected'
   const query = useQuery({
     queryKey: ['slash-items', sessionId],
-    enabled: connected,
+    enabled: connected && sessionId !== null,
     staleTime: 60_000,
     queryFn: async (): Promise<SlashItem[]> => {
       const [commands, skills] = await Promise.all([
-        controller.listCommands(sessionId),
-        controller.listSkills(sessionId),
+        controller.listCommands(sessionId!),
+        controller.listSkills(sessionId!),
       ])
-      const items: SlashItem[] = [...BUILTIN_SLASH_ITEMS]
-      const taken = new Set(items.map((i) => i.name))
+      const items: SlashItem[] = []
+      const taken = new Set<string>()
       for (const c of commands.commands) {
         if (taken.has(c.name)) continue
         taken.add(c.name)
@@ -61,7 +69,15 @@ export function useSlashItems(sessionId: string): SlashItem[] {
       return items
     },
   })
-  return query.data ?? BUILTIN_SLASH_ITEMS
+  return mergeSlashItems(builtins, query.data ?? NO_ITEMS)
+}
+
+const NO_ITEMS: SlashItem[] = []
+
+export function mergeSlashItems(builtins: SlashItem[], fromDaemon: SlashItem[]): SlashItem[] {
+  if (fromDaemon.length === 0) return builtins
+  const names = new Set(builtins.map((i) => i.name))
+  return [...builtins, ...fromDaemon.filter((i) => !names.has(i.name))]
 }
 
 /** The "/word" being typed at the start of the composer, or null. */
