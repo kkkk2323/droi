@@ -2,6 +2,7 @@
 // and the Session list slides in from the left. The open Session is kept per
 // Paired Computer, so the app reopens where it was.
 import { usePreference } from '@droi/daemon-layer/local-preference'
+import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -71,7 +72,12 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
               onOpenDrawer={openDrawer}
             />
           ) : (
-            <NewSessionScreen drawerOpen={drawerOpen} onOpenDrawer={openDrawer} />
+            <NewSessionScreen
+              recent={recentWorkspaces(sessions.sessions)}
+              onCreated={(sessionId) => setLastId(sessionId)}
+              drawerOpen={drawerOpen}
+              onOpenDrawer={openDrawer}
+            />
           )}
         </ConnectionGate>
       </View>

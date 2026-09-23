@@ -1,6 +1,7 @@
 // An open Session: its transcript, and what came before a compaction when
 // the reader asks for it. Loading it subscribes this phone to its
 // notifications, which is also what makes its activity show in the list.
+import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
@@ -11,7 +12,7 @@ import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -58,6 +59,13 @@ export function SessionScreen({
   const compaction = useCompact(session.sessionId, session.tags)
   const isRunning = view.workingState !== 'idle' || compaction.isCompacting
   const [sentCount, setSentCount] = useState(0)
+  // A message typed on the New session page goes out once the Session can take it.
+  const send = turn.send
+  useEffect(() => {
+    if (!loaded) return
+    const prompt = takePendingPrompt(session.sessionId)
+    if (prompt) void send(prompt.text, { images: prompt.images })
+  }, [loaded, session.sessionId, send])
   const submit = ({ text, images, placement }: Submission) => {
     setSentCount((n) => n + 1)
     const command = COMPACT_COMMAND.exec(text.trim())

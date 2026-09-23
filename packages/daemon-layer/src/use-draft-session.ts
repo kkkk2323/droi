@@ -28,6 +28,12 @@ function discard(connection: DaemonConnection, draft: Draft): void {
   })
 }
 
+/** Closes the connection's draft, if any: the New session page was left without sending. */
+export function closeDraftSession(connection: DaemonConnection): void {
+  const current = drafts.get(connection)
+  if (current) discard(connection, current)
+}
+
 /** The draft for this Workspace, opened (or reopened) when there is none usable. */
 function draftFor(connection: DaemonConnection, path: string): Promise<string | null> {
   const current = drafts.get(connection)
