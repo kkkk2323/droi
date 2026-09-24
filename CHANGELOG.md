@@ -1,3 +1,9 @@
+## 1.8.2 - 2026-09-24
+
+### Changed
+
+- Inline code in replies on the iPhone is monospaced and tinted, without a grey box behind it. The iPhone cannot round or pad that box as the desktop does, so it only hugged the letters.
+
 ## 1.8.1 - 2026-09-24
 
 ### Fixed
