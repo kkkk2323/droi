@@ -341,6 +341,11 @@ html[data-font='system'] {
   padding: 0.75rem 1rem;
   background: var(--background);
 }
+/* The table sits inside Streamdown's own framed scroller; a margin there shows
+   as a white strip above the header. */
+.prose-droi [data-streamdown='table'] {
+  margin-block: 0;
+}
 .prose-droi [data-streamdown='inline-code'] {
   color: var(--code);
   background: var(--code-bg);
