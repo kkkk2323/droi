@@ -276,6 +276,7 @@ html[data-font='system'] {
   background: var(--code-bg);
   border-radius: 0.3rem;
   padding: 0.1em 0.35em;
+  overflow-wrap: anywhere;
 }
 .prose-droi blockquote {
   border-inline-start: 2px solid var(--border);

@@ -264,3 +264,42 @@ test.describe('cancelling a turn', () => {
     await expect(assistant).not.toContainText('Part four.')
   })
 })
+
+test.describe('a reply with a long inline path', () => {
+  const path = `apps/web/src/pages/Core/${'VesselTracking/'.repeat(8)}ManagementInfoPanel/index.tsx:133`
+  test.use({
+    scenario: {
+      sessions: [
+        session('Paths', '/Users/dev/acme-web', [
+          userMessage('where is it?'),
+          assistantMessage(`The button lives in \`${path}\`.`),
+        ]),
+      ],
+    },
+  })
+
+  test('wraps the inline code inside the message column', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Paths/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const code = transcript
+      .getByRole('article', { name: 'Assistant' })
+      .last()
+      .getByText(path, { exact: true })
+    await expect(code).toBeVisible()
+    const box = await code.evaluate((el) => ({
+      right: el.getBoundingClientRect().right,
+      column: el.closest('article')!.getBoundingClientRect().right,
+    }))
+    expect(box.right).toBeLessThanOrEqual(box.column + 1)
+    const log = await transcript.evaluate((el) => ({
+      scroll: el.scrollWidth,
+      client: el.clientWidth,
+    }))
+    expect(log.scroll).toBeLessThanOrEqual(log.client)
+  })
+})
