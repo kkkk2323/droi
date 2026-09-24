@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { drawerGone, expect, test } from './fixtures'
 import {
   assistantMessage,
@@ -488,6 +489,101 @@ test.describe('long history', () => {
     const rendered = await transcript.getByRole('article').count()
     expect(rendered).toBeLessThan(80)
     await expect(transcript.getByText('Question 0')).toHaveCount(0)
+  })
+})
+
+test.describe('switching Sessions', () => {
+  const history = (name: string) =>
+    Array.from({ length: 40 }, (_, i) =>
+      i % 2 === 0
+        ? userMessage(`${name} question ${i}`)
+        : assistantMessage(
+            `## ${name} answer ${i}\n\nSome **markdown**:\n\n- one\n- two\n\n\`\`\`ts\nconst v = ${i}\n\`\`\``,
+          ),
+    )
+  test.use({
+    scenario: {
+      sessions: [
+        session('Alpha', '/Users/dev/acme-web', history('Alpha')),
+        session('Beta', '/Users/dev/acme-web', history('Beta')),
+      ],
+    },
+  })
+
+  /** Every frame, until `stop()`, the visible transcript's distance from its end. */
+  async function watchFrames(page: Page) {
+    await page.evaluate(() => {
+      const w = window as unknown as { droiGaps: number[]; droiWatching: boolean }
+      w.droiGaps = []
+      w.droiWatching = true
+      requestAnimationFrame(function sample() {
+        const log = document.querySelector<HTMLElement>('[role="log"]')
+        if (log?.checkVisibility({ visibilityProperty: true }) && log.querySelector('article')) {
+          w.droiGaps.push(log.scrollHeight - log.scrollTop - log.clientHeight)
+        }
+        if (w.droiWatching) requestAnimationFrame(sample)
+      })
+    })
+    return () =>
+      page.evaluate(() => {
+        const w = window as unknown as { droiGaps: number[]; droiWatching: boolean }
+        w.droiWatching = false
+        return w.droiGaps
+      })
+  }
+
+  test('a Session appears at its end, never part way up first', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Alpha/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
+    for (const title of [/Beta/, /Alpha/, /Beta/]) {
+      const stop = await watchFrames(page)
+      await pickSession(title)
+      await expect(transcript.getByRole('article').last()).toBeInViewport()
+      await page.waitForTimeout(400)
+      const gaps = await stop()
+      expect(gaps.length).toBeGreaterThan(0)
+      expect(Math.max(...gaps)).toBeLessThanOrEqual(2)
+    }
+  })
+
+  test('returning opens where the reader left off; one left at the end opens at the end', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Alpha/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
+    // The list re-pins itself to the end shortly after opening; scroll up after that.
+    await page.waitForTimeout(300)
+    await transcript.evaluate((el) => el.scrollTo({ top: el.scrollHeight / 2 }))
+    await expect(transcript.getByText('Alpha answer 39')).not.toBeInViewport()
+    await page.waitForTimeout(100)
+    const readingAt = await transcript.evaluate((el) => el.scrollTop)
+
+    await pickSession(/Beta/)
+    await expect(transcript.getByText('Beta answer 39')).toBeInViewport()
+    await pickSession(/Alpha/)
+    await expect(transcript.getByText('Alpha answer 1', { exact: true })).toHaveCount(0)
+    await expect.poll(() => transcript.evaluate((el) => el.scrollTop)).toBeCloseTo(readingAt, -1)
+    await page.waitForTimeout(300)
+    expect(await transcript.evaluate((el) => el.scrollTop)).toBeCloseTo(readingAt, -1)
+    await expect(page.getByRole('button', { name: 'Scroll to latest' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Scroll to latest' }).click()
+    await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
+    await page.waitForTimeout(300)
+    await pickSession(/Beta/)
+    await pickSession(/Alpha/)
+    await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
+    await expect(page.getByRole('button', { name: 'Scroll to latest' })).toHaveCount(0)
   })
 })
 

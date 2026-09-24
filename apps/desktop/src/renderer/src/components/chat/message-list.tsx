@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
@@ -31,7 +31,17 @@ const FOLLOW_THRESHOLD = 120
 /** A height change this soon after a click or key press in the list is the reader's. */
 const USER_RESIZE_WINDOW_MS = 500
 
+/** How long a freshly opened list may take to land at the end before it is shown anyway. */
+const SETTLE_TIMEOUT_MS = 400
+
 const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
+
+/**
+ * Each list's measured row heights and scroll position, by `stateKey`, for
+ * as long as the Client runs. A list opened without them draws its rows at
+ * estimated heights first and then jumps; with them it opens in place.
+ */
+const savedLists = new Map<string, { state: StateSnapshot; scrollTop: number; atBottom: boolean }>()
 
 function ListHeader({ context }: { context?: ListContext }) {
   return (
@@ -107,6 +117,7 @@ export function MessageList({
   workingState,
   lead = null,
   scrollToEndKey = 0,
+  stateKey,
 }: {
   transcript: readonly TranscriptEntry[]
   /** The Sessions this one continues after compactions, oldest first, shown above it. */
@@ -116,15 +127,22 @@ export function MessageList({
   lead?: ReactNode
   /** Bumped when the user sends; the list then scrolls to the end whatever the position. */
   scrollToEndKey?: number
+  /**
+   * Remembers the list under this key when it unmounts. Coming back, it opens
+   * where the reader left it; one left at the end opens at the (new) end.
+   */
+  stateKey?: string
 }) {
   const virtuoso = useRef<VirtuosoHandle>(null)
-  const [atBottom, setAtBottom] = useState(true)
+  const [restored] = useState(() => (stateKey ? savedLists.get(stateKey) : undefined))
+  const restoredMidway = restored !== undefined && !restored.atBottom
+  const [atBottom, setAtBottom] = useState(!restoredMidway)
   // Virtuoso's followOutput fires on a count change only; a streaming reply
   // grows the last entry for seconds without one. Follow height changes too,
   // unless the reader has scrolled away (judged on their scroll events, so
   // content growing under a pinned viewport does not count as leaving).
   const scroller = useRef<HTMLElement | null>(null)
-  const following = useRef(true)
+  const following = useRef(!restoredMidway)
   // Reading the geometry forces a layout; scroll events come several per
   // frame while Virtuoso is adding rows, so read once per frame.
   const scrollFrame = useRef<number | null>(null)
@@ -174,12 +192,48 @@ export function MessageList({
   // there before entries have their real heights (markdown, images), so
   // re-pin once they have settled.
   useEffect(() => {
+    if (restoredMidway) return
     const timer = setTimeout(() => scrollToEnd(virtuoso.current, 'auto'), 150)
     return () => clearTimeout(timer)
-  }, [])
+  }, [restoredMidway])
+  // Until then the list shows rows at estimated heights, part way up the
+  // conversation, and jumps; it stays hidden until it has landed at the end.
+  const [settled, setSettled] = useState(restoredMidway)
+  const rowsRendered = useRef(false)
+  useEffect(() => {
+    if (settled) return
+    const start = performance.now()
+    let frame = requestAnimationFrame(function check() {
+      const el = scroller.current
+      const landed =
+        rowsRendered.current && el && el.scrollHeight - el.scrollTop - el.clientHeight <= 2
+      if (landed || performance.now() - start > SETTLE_TIMEOUT_MS) setSettled(true)
+      else frame = requestAnimationFrame(check)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [settled])
   const parts = [...earlier, transcript]
   const entries = parts.flat()
   const earlierCount = entries.length - (parts[parts.length - 1]?.length ?? 0)
+  // Rows are saved by position, and earlier Sessions shown above shift every
+  // position; the view that opens next starts without them, so such a list is
+  // not saved.
+  useLayoutEffect(() => {
+    if (!stateKey) return
+    const handle = virtuoso
+    return () => {
+      if (earlierCount > 0) {
+        savedLists.delete(stateKey)
+        return
+      }
+      const atEnd = following.current
+      // The snapshot's scrollTop leaves out the header; the scroller's own does not.
+      const scrollTop = scroller.current?.scrollTop ?? 0
+      handle.current?.getState((state) =>
+        savedLists.set(stateKey, { state, scrollTop, atBottom: atEnd }),
+      )
+    }
+  }, [stateKey, earlierCount])
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const isStreaming = workingState === 'streaming_assistant_message'
@@ -201,7 +255,11 @@ export function MessageList({
   }
 
   return (
-    <div className="relative h-full" onPointerDownCapture={touched} onKeyDownCapture={touched}>
+    <div
+      className={cn('relative h-full', !settled && 'invisible')}
+      onPointerDownCapture={touched}
+      onKeyDownCapture={touched}
+    >
       <Virtuoso<TranscriptEntry, ListContext>
         ref={virtuoso}
         role="log"
@@ -211,7 +269,12 @@ export function MessageList({
         context={context}
         computeItemKey={(_, entry) => entry.id}
         firstItemIndex={INDEX_BASE - earlierCount}
-        initialTopMostItemIndex={entries.length - 1}
+        initialTopMostItemIndex={restored ? undefined : entries.length - 1}
+        restoreStateFrom={restored?.state}
+        initialScrollTop={restored?.scrollTop}
+        itemsRendered={(items) => {
+          rowsRendered.current = items.length > 0
+        }}
         followOutput={prefersReducedMotion() ? 'auto' : 'smooth'}
         // The panels above the composer resize the viewport; a few pixels off
         // the bottom must still count as "following".

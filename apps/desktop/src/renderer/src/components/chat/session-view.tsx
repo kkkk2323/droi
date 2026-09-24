@@ -145,7 +145,7 @@ export function SessionView({
             {session.loadError}
           </p>
         ) : !loaded && session.messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="appear-after-wait flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
             <Spinner aria-hidden className="size-4" />
             Loading session…
           </div>
@@ -158,6 +158,7 @@ export function SessionView({
             }
             lead={lead}
             scrollToEndKey={sentCount}
+            stateKey={sessionId}
           />
         )}
       </div>
