@@ -9,8 +9,21 @@ import { cn } from '@/lib/utils'
  */
 export function Spinner({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span {...props} className={cn('inline-flex size-4 shrink-0 animate-spin', className)}>
+    <span
+      {...props}
+      ref={inPhase}
+      className={cn('inline-flex size-4 shrink-0 animate-spin', className)}
+    >
       <Loader2 aria-hidden className="size-full" />
     </span>
   )
+}
+
+/**
+ * A CSS animation starts when its element mounts, so spinners that appear at
+ * different moments (a column of tool rows) point different ways. Starting
+ * every one at the document timeline's zero keeps them turning as one.
+ */
+function inPhase(el: HTMLSpanElement | null) {
+  for (const animation of el?.getAnimations?.() ?? []) animation.startTime = 0
 }

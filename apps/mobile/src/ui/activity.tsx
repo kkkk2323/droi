@@ -12,21 +12,35 @@ function loop(animation: Animated.CompositeAnimation): () => void {
   return () => running.stop()
 }
 
+// Every Spinner turns on this one value, so ones that appear at different
+// moments (a column of tool rows) point the same way. It runs while any shows.
+const turn = new Animated.Value(0)
+const rotate = turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+let spinners = 0
+let stopTurning: (() => void) | null = null
+
+function useSharedTurn() {
+  useEffect(() => {
+    spinners += 1
+    stopTurning ??= loop(
+      Animated.timing(turn, {
+        toValue: 1,
+        duration: 1000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    )
+    return () => {
+      spinners -= 1
+      if (spinners > 0) return
+      stopTurning?.()
+      stopTurning = null
+    }
+  }, [])
+}
+
 export function Spinner({ size, color }: { size: number; color: string }) {
-  const [turn] = useState(() => new Animated.Value(0))
-  useEffect(
-    () =>
-      loop(
-        Animated.timing(turn, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ),
-    [turn],
-  )
-  const rotate = turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+  useSharedTurn()
   return (
     <Animated.View aria-hidden style={{ width: size, height: size, transform: [{ rotate }] }}>
       <LoaderCircle size={size} color={color} strokeWidth={2} />

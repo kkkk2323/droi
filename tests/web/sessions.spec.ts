@@ -4,6 +4,7 @@ import {
   assistantMessage,
   session,
   thinkingBlock,
+  toolCallMessage,
   userMessage,
   type MessageFixture,
 } from '../fake-daemon/scenario'
@@ -489,6 +490,46 @@ test.describe('long history', () => {
     const rendered = await transcript.getByRole('article').count()
     expect(rendered).toBeLessThan(80)
     await expect(transcript.getByText('Question 0')).toHaveCount(0)
+  })
+})
+
+test.describe('running tools', () => {
+  test.use({
+    scenario: {
+      sessions: [
+        session('Busy', '/Users/dev/acme-web', [
+          userMessage('Check both files'),
+          toolCallMessage('t1', 'Read', { file_path: '/repo/a.ts' }),
+          toolCallMessage('t2', 'Read', { file_path: '/repo/b.ts' }),
+        ]),
+      ],
+    },
+  })
+
+  test('spinners that appear at different moments turn as one', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Busy/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const cluster = transcript.getByRole('button', { name: 'Running 2 tools' })
+    // Folding and reopening the cluster mounts its rows' spinners anew, later
+    // than the one in the cluster's own button.
+    await page.waitForTimeout(300)
+    await cluster.click()
+    await page.waitForTimeout(170)
+    await cluster.click()
+    await expect(transcript.getByRole('status', { name: 'Running' })).toHaveCount(2)
+    const angles = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[role="log"] .animate-spin'), (el) => {
+        const { a, b } = new DOMMatrix(getComputedStyle(el).transform)
+        return Math.round((Math.atan2(b, a) * 180) / Math.PI)
+      }),
+    )
+    expect(angles).toHaveLength(3)
+    for (const angle of angles) expect(Math.abs(angle - angles[0]!)).toBeLessThanOrEqual(3)
   })
 })
 
