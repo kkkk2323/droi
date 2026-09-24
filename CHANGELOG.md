@@ -1,3 +1,9 @@
+## 1.6.3 - 2026-09-24
+
+### Fixed
+
+- Switching Sessions no longer flashes the transcript part way up the conversation before it jumps to the end. Coming back to a Session opens it where you left it; one you left at the latest message opens at the latest message. "Loading session…" shows only when loading takes a moment. On the desktop and the web Client.
+
 ## 1.6.2 - 2026-09-24
 
 ### Fixed
