@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Server,
   Settings2,
+  SlidersHorizontal,
   Smartphone,
   type LucideIcon,
 } from 'lucide-react'
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
 import { NotificationsTab } from '@/components/settings-notifications'
+import { SessionDefaultsTab } from '@/components/settings-session-defaults'
 import { UpdateControl } from '@/components/update-control'
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { FONTS, FONT_LABELS, applyFont, font } from '@/lib/font'
@@ -40,11 +42,12 @@ import type {
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
-type Tab = 'account' | 'general' | 'notifications' | 'daemon' | 'remote'
+type Tab = 'account' | 'general' | 'defaults' | 'notifications' | 'daemon' | 'remote'
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolean }> = [
   { id: 'account', label: 'Account', icon: UserRound, needsShell: true },
   { id: 'general', label: 'General', icon: Settings2, needsShell: false },
+  { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal, needsShell: false },
   { id: 'notifications', label: 'Notifications', icon: Bell, needsShell: true },
   { id: 'daemon', label: 'Daemon', icon: Server, needsShell: true },
   { id: 'remote', label: 'Remote Access', icon: Smartphone, needsShell: true },
@@ -92,16 +95,16 @@ export function SettingsPage({
   return (
     <section
       aria-label="Settings"
-      className="flex h-full overflow-hidden bg-sidebar text-foreground"
+      className="flex h-full flex-col overflow-hidden bg-sidebar text-foreground sm:flex-row"
     >
       <nav
         aria-label="Settings sections"
-        className="app-drag flex w-56 shrink-0 flex-col gap-1 border-r px-3 pb-3 pt-[calc(env(safe-area-inset-top)+2.75rem)]"
+        className="app-drag flex shrink-0 gap-1 overflow-x-auto border-b px-3 pb-2 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:w-56 sm:flex-col sm:overflow-x-visible sm:border-r sm:border-b-0 sm:pb-3 sm:pt-[calc(env(safe-area-inset-top)+2.75rem)]"
       >
         <button
           type="button"
           onClick={onBack}
-          className="mb-2 flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-[13px] text-muted-foreground sm:mb-2 transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <ArrowLeft aria-hidden className="size-4" />
           Back
@@ -113,7 +116,7 @@ export function SettingsPage({
             aria-current={tab === id ? 'page' : undefined}
             onClick={() => setTab(id)}
             className={cn(
-              'flex h-8 items-center gap-2 rounded-lg px-2 text-left text-[13px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+              'flex h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-[13px] whitespace-nowrap text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
               tab === id && 'bg-sidebar-accent text-sidebar-accent-foreground',
             )}
           >
@@ -124,8 +127,8 @@ export function SettingsPage({
       </nav>
 
       <div className="min-w-0 flex-1 overflow-y-auto bg-background">
-        <div className="app-drag h-[calc(env(safe-area-inset-top)+2.75rem)]" />
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-8 pb-12">
+        <div className="app-drag h-4 sm:h-[calc(env(safe-area-inset-top)+2.75rem)]" />
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 pb-12 sm:px-8">
           <h2 className="mb-2 text-lg font-semibold tracking-tight">{current.label}</h2>
           {error ? (
             <p role="alert" className="text-sm text-destructive-foreground">
@@ -138,6 +141,19 @@ export function SettingsPage({
               update={
                 bridge && snapshot ? (
                   <UpdateControl update={snapshot.update} bridge={bridge} onSaved={setSnapshot} />
+                ) : null
+              }
+            />
+          ) : tab === 'defaults' ? (
+            <SessionDefaultsTab
+              systemPrompt={
+                bridge && snapshot ? (
+                  <SystemPromptRow
+                    key={snapshot.appendSystemPrompt ?? ''}
+                    snapshot={snapshot}
+                    bridge={bridge}
+                    onSaved={setSnapshot}
+                  />
                 ) : null
               }
             />
@@ -461,6 +477,46 @@ function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
           ? 'A key is set.'
           : 'No key set. The Daemon cannot authenticate without one.'}
       </p>
+    </SettingRow>
+  )
+}
+
+function SystemPromptRow({ snapshot, bridge, onSaved }: RowProps) {
+  const stored = snapshot.appendSystemPrompt ?? ''
+  const [value, setValue] = useState(stored)
+  const save = (next: string) =>
+    void bridge.update({ appendSystemPrompt: next.trim() || null }).then(onSaved)
+  return (
+    <SettingRow
+      title="Added to the system prompt"
+      description="Appended to Droid's own system prompt in every new Session, whether it starts here, in a browser or on a phone. Existing Sessions and subagents keep theirs."
+    >
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          save(value)
+        }}
+      >
+        <textarea
+          aria-label="Added to the system prompt"
+          placeholder="e.g. Reply in the language I write in. Prefer small, reviewable commits."
+          value={value}
+          rows={5}
+          onChange={(event) => setValue(event.target.value)}
+          className={cn(settingInputClass, 'h-auto min-h-24 resize-y py-2 leading-5')}
+        />
+        <div className="flex gap-2">
+          <Button type="submit" variant="outline" disabled={value.trim() === stored}>
+            Save
+          </Button>
+          {stored ? (
+            <Button type="button" variant="ghost" onClick={() => save('')}>
+              Clear
+            </Button>
+          ) : null}
+        </div>
+      </form>
     </SettingRow>
   )
 }

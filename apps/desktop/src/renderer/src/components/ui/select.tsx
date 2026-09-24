@@ -20,6 +20,7 @@ export function Select({
   options,
   icon,
   quiet = false,
+  disabled = false,
   className,
 }: {
   label: string
@@ -29,6 +30,7 @@ export function Select({
   icon?: ReactNode
   /** Text-button look for toolbars instead of a framed field. */
   quiet?: boolean
+  disabled?: boolean
   className?: string
 }) {
   const known = options.some((o) => o.value === value)
@@ -43,7 +45,7 @@ export function Select({
       onValueChange={(next) => {
         if (typeof next === 'string' && next !== value) onChange(next)
       }}
-      disabled={empty}
+      disabled={empty || disabled}
     >
       <SelectPrimitive.Trigger
         aria-label={label}

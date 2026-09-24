@@ -233,6 +233,7 @@ async function snapshot(): Promise<ShellSettingsSnapshot> {
     droidPath: settings.settings.droidPath,
     factoryApiBaseUrl: settings.settings.factoryApiBaseUrl,
     factoryApiBaseUrlFromEnvironment: process.env['FACTORY_API_BASE_URL'] ?? null,
+    appendSystemPrompt: settings.settings.appendSystemPrompt,
     hasApiKey: settings.getApiKey() !== null,
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
@@ -357,6 +358,10 @@ function registerIpc(): void {
       ...(patch.factoryApiBaseUrl !== undefined
         ? { factoryApiBaseUrl: patch.factoryApiBaseUrl?.trim() || null }
         : {}),
+      // Read by the Gateway at each Session start; the Daemon needs no restart.
+      ...(patch.appendSystemPrompt !== undefined
+        ? { appendSystemPrompt: patch.appendSystemPrompt?.trim() || null }
+        : {}),
     })
     const after = settings.settings
     if (patch.remoteAccess !== undefined && after.remoteAccess !== before.remoteAccess) {
@@ -458,6 +463,7 @@ void app.whenReady().then(async () => {
     getPairingToken: () => settings.settings.pairingToken,
     getLocalToken: () => localToken,
     getCredential: gatewayCredential,
+    getAppendSystemPrompt: () => settings.settings.appendSystemPrompt,
     getMeta: () => ({
       app: 'Droi',
       version: app.getVersion(),

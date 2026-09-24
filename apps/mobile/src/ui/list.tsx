@@ -1,8 +1,9 @@
 // Grouped rows in the style of iOS settings, drawn with Droi's tokens.
 import { Check, ChevronRight } from 'lucide-react-native'
-import { Children, Fragment, isValidElement, type ReactNode } from 'react'
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
+import { Children, Fragment, isValidElement, useState, type ReactNode } from 'react'
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
 import { Text } from './primitives'
+import { Sheet, SheetOption } from './sheet'
 import { radius, space } from './theme'
 import { useColors } from './use-colors'
 
@@ -98,10 +99,12 @@ export function ListSwitch({
   label,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string
   value: boolean
   onChange: (value: boolean) => void
+  disabled?: boolean
 }) {
   const colors = useColors()
   return (
@@ -111,9 +114,54 @@ export function ListSwitch({
         aria-label={label}
         value={value}
         onValueChange={onChange}
+        disabled={disabled}
         trackColor={{ true: colors.primary, false: colors.input }}
       />
     </View>
+  )
+}
+
+/**
+ * A row showing the current choice that opens a sheet of all of them: the
+ * phone's stand-in for the web Client's settings selects. Without `onChange`
+ * (a setting the organization manages) it only shows the value.
+ */
+export function ListPicker({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: ReadonlyArray<{ value: string; label: string }>
+  value: string
+  onChange?: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const current = options.find((o) => o.value === value)?.label ?? value
+  return (
+    <>
+      <ListRow
+        label={label}
+        value={current}
+        onPress={onChange && options.length > 0 ? () => setOpen(true) : undefined}
+      />
+      <Sheet visible={open} title={label} onClose={() => setOpen(false)}>
+        <ScrollView role="radiogroup" aria-label={label} style={styles.sheetList}>
+          {options.map((option) => (
+            <SheetOption
+              key={option.value}
+              label={option.label}
+              checked={option.value === value}
+              onPress={() => {
+                setOpen(false)
+                if (option.value !== value) onChange?.(option.value)
+              }}
+            />
+          ))}
+        </ScrollView>
+      </Sheet>
+    </>
   )
 }
 
@@ -171,5 +219,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   label: { flexShrink: 0 },
+  sheetList: { flexGrow: 0 },
   value: { flex: 1, textAlign: 'right' },
 })

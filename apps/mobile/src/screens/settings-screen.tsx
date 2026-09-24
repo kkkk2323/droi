@@ -7,7 +7,7 @@ import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import { ScrollView, StyleSheet } from 'react-native'
 import { alertSwitches } from '../alerts/alert-preferences'
-import { pairedComputers } from '../computers/store'
+import { pairedComputers, selectedComputer, selectedComputerId } from '../computers/store'
 import { daysLeft } from '../lib/signature'
 import { signatureExpiry } from '../platform/signature'
 import { ListChoices, ListRow, ListSection, ListSwitch } from '../ui/list'
@@ -25,6 +25,8 @@ export function SettingsScreen() {
   const colors = useColors()
   const router = useRouter()
   const [computers] = usePreference(pairedComputers)
+  const [selectedId] = usePreference(selectedComputerId)
+  const computer = selectedComputer(computers, selectedId)
   const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   const [alerts, setAlerts] = usePreference(alertSwitches)
   const [theme, setTheme] = usePreference(themeChoice)
@@ -54,6 +56,18 @@ export function SettingsScreen() {
           onPress={() => router.push('/computers')}
         />
       </ListSection>
+      {computer ? (
+        <ListSection
+          title="New sessions"
+          footer="Model, autonomy, spec mode, compaction and subagents for new Sessions on this computer."
+        >
+          <ListRow
+            label="Session defaults"
+            value={computer.name}
+            onPress={() => router.push('/session-defaults')}
+          />
+        </ListSection>
+      ) : null}
       <ListChoices title="Theme" options={THEMES} value={theme} onChange={setTheme} />
       <ListChoices title="Text size" options={TEXT_SIZE_OPTIONS} value={size} onChange={setSize} />
       <ListSection title="Sessions">

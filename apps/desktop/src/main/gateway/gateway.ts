@@ -1,6 +1,7 @@
 // Gateway: the part of the Desktop Shell that lets a Client reach the Daemon.
 // It checks the Pairing Token at the WebSocket upgrade, supplies the Factory
-// API key in `daemon.authenticate`, and otherwise forwards frames verbatim.
+// API key in `daemon.authenticate`, adds the Shell's system prompt text to
+// `daemon.initialize_session`, and otherwise forwards frames verbatim.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { timingSafeEqual } from 'node:crypto'
@@ -42,6 +43,11 @@ export interface GatewayOptions {
    * Null leaves the frame untouched (the Daemon then rejects it).
    */
   getCredential: () => Promise<GatewayCredential | null>
+  /**
+   * Text appended to Droid's own system prompt in every Session a Client
+   * starts, whichever Client it is; null or empty leaves the prompt alone.
+   */
+  getAppendSystemPrompt?: () => string | null
   getMeta: () => GatewayMeta
   client: ClientSource
 }
@@ -63,6 +69,7 @@ export interface Gateway {
 }
 
 const LOOPBACK = '127.0.0.1'
+const INITIALIZE_SESSION = 'daemon.initialize_session'
 
 /**
  * The Gateway keeps one listener on loopback for the Local Client and, only
@@ -99,7 +106,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         return
       }
       wss.handleUpgrade(request, socket, head, (client) => {
-        const upstream = bridge(client, daemonUrl, options.getCredential)
+        const upstream = bridge(client, daemonUrl, options)
         bridges.set(client, { upstream, kind })
         client.on('close', () => bridges.delete(client))
       })
@@ -222,7 +229,7 @@ function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
 function bridge(
   client: WebSocket,
   daemonUrl: string,
-  getCredential: () => Promise<GatewayCredential | null>,
+  { getCredential, getAppendSystemPrompt }: GatewayOptions,
 ): WebSocket {
   const upstream = new WebSocket(daemonUrl)
   const queue: Array<{ data: RawData | string; binary: boolean }> = []
@@ -240,14 +247,23 @@ function bridge(
   // credential; each forward chains on the previous one.
   let inOrder: Promise<void> = Promise.resolve()
   client.on('message', (data, isBinary) => {
-    if (isBinary || !data.toString().includes(GATEWAY_API_KEY_PLACEHOLDER)) {
+    const text = isBinary ? '' : data.toString()
+    const needsCredential = text.includes(GATEWAY_API_KEY_PLACEHOLDER)
+    const startsSession = text.includes(INITIALIZE_SESSION)
+    if (!needsCredential && !startsSession) {
       inOrder = inOrder.then(() => sendUpstream(data, isBinary))
       return
     }
     inOrder = inOrder
-      .then(() => getCredential())
+      .then(() => (needsCredential ? getCredential() : null))
       .catch(() => null)
-      .then((credential) => sendUpstream(injectCredential(data, credential), false))
+      .then((credential) => {
+        const withCredential = injectCredential(data, credential)
+        const frame = startsSession
+          ? injectSystemPrompt(withCredential, getAppendSystemPrompt?.() ?? null)
+          : withCredential
+        sendUpstream(frame, false)
+      })
   })
   upstream.on('message', (data, isBinary) => {
     if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary })
@@ -301,6 +317,35 @@ export function injectCredential(
     changed = true
   }
   return changed ? JSON.stringify({ ...message, params }) : data
+}
+
+/**
+ * Add the Shell's text after Droid's own system prompt in a
+ * `daemon.initialize_session`: the Daemon's `{type: "preset", preset:
+ * "droid", append}` form. A Client that chose a system prompt itself keeps it.
+ */
+export function injectSystemPrompt(
+  data: RawData | string,
+  append: string | null,
+): RawData | string {
+  if (!append?.trim()) return data
+  let message: unknown
+  try {
+    message = JSON.parse(data.toString())
+  } catch {
+    return data
+  }
+  if (!hasParams(message) || (message as { method?: unknown }).method !== INITIALIZE_SESSION) {
+    return data
+  }
+  const { params } = message
+  if (params['systemPrompt'] !== undefined || params['systemPromptOverride'] !== undefined) {
+    return data
+  }
+  return JSON.stringify({
+    ...message,
+    params: { ...params, systemPrompt: { type: 'preset', preset: 'droid', append } },
+  })
 }
 
 function hasParams(message: unknown): message is { params: Record<string, unknown> } {

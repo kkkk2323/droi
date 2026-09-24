@@ -140,6 +140,42 @@ describe('Gateway', () => {
     socket.close()
   })
 
+  test('appends the Shell’s system prompt text to initialize_session only', async () => {
+    await gateway.close()
+    let append: string | null = 'Answer in French.'
+    gateway = await startGateway({
+      port: 0,
+      remoteAccess: false,
+      getDaemonUrl: () => daemon.url,
+      getPairingToken: () => TOKEN,
+      getCredential: async () => ({ apiKey: API_KEY }),
+      getAppendSystemPrompt: () => append,
+      getMeta: () => ({ ...META, remoteAccess: false }),
+      client: { kind: 'none' },
+    })
+    const socket = await connectClient(gatewayDaemonUrl(gateway.url, TOKEN))
+    const send = async (method: string, params: Record<string, unknown>) => {
+      socket.send(JSON.stringify({ jsonrpc: '2.0', id: method, method, params }))
+      await nextMessage(socket)
+      return JSON.parse(daemon.received.at(-1)!).params
+    }
+    const initialize = { cwd: '/x', token: GATEWAY_API_KEY_PLACEHOLDER }
+
+    expect(await send('daemon.initialize_session', initialize)).toEqual({
+      cwd: '/x',
+      token: API_KEY,
+      systemPrompt: { type: 'preset', preset: 'droid', append: 'Answer in French.' },
+    })
+    expect(await send('daemon.load_session', initialize)).not.toHaveProperty('systemPrompt')
+    // A Client's own choice stands.
+    expect(
+      await send('daemon.initialize_session', { ...initialize, systemPrompt: 'Be terse.' }),
+    ).toMatchObject({ systemPrompt: 'Be terse.' })
+    append = '  '
+    expect(await send('daemon.initialize_session', initialize)).not.toHaveProperty('systemPrompt')
+    socket.close()
+  })
+
   test('a login token replaces apiKey with token and keeps frames in order', async () => {
     await gateway.close()
     let resolveToken: (t: { token: string }) => void = () => {}

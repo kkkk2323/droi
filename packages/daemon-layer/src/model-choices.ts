@@ -56,6 +56,7 @@ export const EFFORT_LABELS: Record<string, string> = {
   medium: 'Medium',
   high: 'High',
   xhigh: 'Extra high',
+  max: 'Max',
 }
 
 export const AUTONOMY_LABELS: Record<string, string> = {

@@ -34,6 +34,7 @@ describe('shell settings', () => {
       remoteAccess: true,
       droidPath: '/x/droid',
       factoryApiBaseUrl: 'http://127.0.0.1:37650',
+      appendSystemPrompt: 'Answer in French.',
     })
     store.setApiKey('fk-test')
     store.setLogin('{"access":"a"}')
@@ -43,6 +44,7 @@ describe('shell settings', () => {
       remoteAccess: true,
       droidPath: '/x/droid',
       factoryApiBaseUrl: 'http://127.0.0.1:37650',
+      appendSystemPrompt: 'Answer in French.',
       pairingToken: token,
     })
     expect(reloaded.getApiKey()).toBe('fk-test')

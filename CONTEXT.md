@@ -15,7 +15,7 @@ The installed desktop application. It starts the Daemon, opens a window for the 
 _Avoid_: main process, backend, app
 
 **Gateway**:
-The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Shell's Factory login token, or an API key as fallback) so it never leaves the computer.
+The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Shell's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Shell's System Prompt Addition to every Session a Client starts.
 _Avoid_: proxy, API server, Hono server, web server
 
 ### Clients
@@ -70,6 +70,14 @@ _Avoid_: pre-init session, placeholder session
 **Subagent**:
 A Session the Daemon starts for a Task tool call; the Daemon lists it with its calling Session and tool call (`callingSessionId`, `callingToolUseId`). Clients keep it out of the session list and reach it from the Session that called it: the Task call's card, the header's subagent menu, and the trail back.
 _Avoid_: child session, sub-session, task session
+
+**Session Defaults**:
+What every new Session on a computer starts with: model, reasoning, interaction mode, autonomy, spec mode, compaction and subagent models. The Daemon keeps them in `~/.factory/settings.json`, shared with the droid CLI and the Factory App; every Client edits them through the Daemon.
+_Avoid_: preferences, global settings, default settings (on their own)
+
+**System Prompt Addition**:
+Text the Desktop Shell keeps and the Gateway appends to Droid's own system prompt when a Session starts, whichever Client starts it. It never replaces Droid's prompt, and a Session keeps the one it started with.
+_Avoid_: system prompt override, custom instructions
 
 **Workspace**:
 The directory on the computer that a Session operates in.

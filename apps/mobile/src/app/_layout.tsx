@@ -64,6 +64,7 @@ function Root() {
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="session-defaults" options={{ title: 'Session defaults' }} />
           <Stack.Screen name="pair" options={{ title: 'Add a computer' }} />
           <Stack.Screen name="scan" options={{ title: 'Scan QR code' }} />
           <Stack.Screen name="computers" options={{ title: 'Paired computers' }} />

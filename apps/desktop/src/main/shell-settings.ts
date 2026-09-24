@@ -22,6 +22,11 @@ export interface ShellSettings {
    * local proxy such as droid-proxy; null keeps the Daemon's default.
    */
   factoryApiBaseUrl: string | null
+  /**
+   * Text the Gateway appends to Droid's own system prompt in every Session a
+   * Client starts; null leaves the prompt as Droid ships it.
+   */
+  appendSystemPrompt: string | null
 }
 
 export interface ShellSettingsStoreOptions {
@@ -50,6 +55,7 @@ interface StoredFile {
   remoteAccess: boolean
   droidPath: string | null
   factoryApiBaseUrl: string | null
+  appendSystemPrompt: string | null
   pairingToken: string
   computerId: string
   apiKey: string | null
@@ -68,6 +74,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     remoteAccess: loaded?.remoteAccess ?? false,
     droidPath: loaded?.droidPath ?? null,
     factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
+    appendSystemPrompt: loaded?.appendSystemPrompt ?? null,
     pairingToken: loaded?.pairingToken || generatePairingToken(),
     computerId: loaded?.computerId || randomUUID(),
     apiKey: loaded?.apiKey ?? null,
@@ -90,6 +97,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         remoteAccess: current.remoteAccess,
         droidPath: current.droidPath,
         factoryApiBaseUrl: current.factoryApiBaseUrl,
+        appendSystemPrompt: current.appendSystemPrompt,
         pairingToken: current.pairingToken,
         computerId: current.computerId,
       }
@@ -98,6 +106,9 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
       if (patch.remoteAccess !== undefined) current.remoteAccess = patch.remoteAccess
       if (patch.droidPath !== undefined) current.droidPath = patch.droidPath
       if (patch.factoryApiBaseUrl !== undefined) current.factoryApiBaseUrl = patch.factoryApiBaseUrl
+      if (patch.appendSystemPrompt !== undefined) {
+        current.appendSystemPrompt = patch.appendSystemPrompt
+      }
       save()
     },
     resetPairingToken() {
@@ -157,6 +168,7 @@ function load(
     remoteAccess: parsed['remoteAccess'] === true,
     droidPath: str('droidPath'),
     factoryApiBaseUrl: str('factoryApiBaseUrl'),
+    appendSystemPrompt: str('appendSystemPrompt'),
     pairingToken: str('pairingToken') ?? legacy('pairingTokenEncrypted') ?? undefined,
     computerId: str('computerId') ?? undefined,
     apiKey: str('apiKey') ?? legacy('apiKeyEncrypted'),

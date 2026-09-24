@@ -64,6 +64,8 @@ export interface ScenarioInput {
   skills?: Array<{ name: string; description?: string; userInvocable?: boolean }>
   /** Context tokens the breakdown reports for every Session; defaults to 1k per message. */
   contextUsedTokens?: number
+  /** Overrides for the Session defaults the Daemon reports (`management`, say). */
+  defaults?: Record<string, unknown>
 }
 
 export const CONTEXT_BUDGET = 200_000
@@ -80,6 +82,8 @@ export function createScenario(input: ScenarioInput): Scenario {
   // declare theirs at module level, shared by every test in the worker, so
   // each Fake Daemon works on its own copy.
   const sessions = structuredClone(input.sessions ?? [])
+  // Like ~/.factory/settings.json behind the real Daemon: one set per Fake Daemon.
+  let defaults: Record<string, unknown> = { ...sessionDefaults(), ...input.defaults }
   const handlers: Record<string, MethodHandler> = {
     'daemon.list_available_sessions': (params) => ({
       sessions: sessions
@@ -122,10 +126,18 @@ export function createScenario(input: ScenarioInput): Scenario {
       context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
       return { success: true, archivedAt: found.archivedAt }
     },
-    'daemon.get_default_settings': () => ({
-      ...sessionSettings(),
-      availableModels: AVAILABLE_MODELS,
-    }),
+    'daemon.get_default_settings': () => ({ ...defaults, availableModels: AVAILABLE_MODELS }),
+    // The real Daemon merges the patch, drops keys sent as null, and replaces
+    // subagentModelSettings as a whole.
+    'daemon.update_session_defaults': (params) => {
+      const next = { ...defaults }
+      for (const [key, value] of Object.entries(params)) {
+        if (value === null) delete next[key]
+        else next[key] = value
+      }
+      defaults = next
+      return { success: true, defaults: { ...defaults, availableModels: AVAILABLE_MODELS } }
+    },
     'daemon.get_context_breakdown': (params) => {
       const found = mustFind(sessions, params['sessionId'])
       const usedTokens = input.contextUsedTokens ?? found.messages.length * 1_000
@@ -370,6 +382,21 @@ export function sessionSettings(): Record<string, unknown> {
     enabledToolIds: [],
     disabledToolIds: [],
     restrictToolIds: [],
+  }
+}
+
+/** What `daemon.get_default_settings` reports before anything was changed. */
+export function sessionDefaults(): Record<string, unknown> {
+  return {
+    modelId: 'auto',
+    reasoningEffort: 'none',
+    interactionMode: 'auto',
+    autonomyLevel: 'low',
+    availableAutonomyLevels: ['off', 'low', 'medium', 'high'],
+    compactionModel: 'current-model',
+    compactionThresholdCheckEnabled: true,
+    subagentModelSettings: {},
+    specSavePresets: { userFactoryDir: '/Users/test/.factory' },
   }
 }
 

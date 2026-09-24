@@ -53,6 +53,8 @@ export interface ShellSettingsSnapshot {
   factoryApiBaseUrl: string | null
   /** True when FACTORY_API_BASE_URL is set in the Shell's environment. */
   factoryApiBaseUrlFromEnvironment: string | null
+  /** Text the Gateway appends to Droid's system prompt in every new Session; null for none. */
+  appendSystemPrompt: string | null
   /** Whether a Factory API key is stored or supplied by the environment. Never the key. */
   hasApiKey: boolean
   /** True when the Gateway has something to authenticate with (login or key). */
@@ -77,6 +79,7 @@ export interface ShellSettingsPatch {
   remoteAccess?: boolean
   droidPath?: string | null
   factoryApiBaseUrl?: string | null
+  appendSystemPrompt?: string | null
 }
 
 export interface ShellSettingsBridge {

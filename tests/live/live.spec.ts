@@ -73,6 +73,8 @@ test.beforeAll(async () => {
     getDaemonUrl: () => daemon.daemonUrl,
     getPairingToken: () => PAIRING_TOKEN,
     getCredential: async () => ({ apiKey: apiKey! }),
+    // Proves the Daemon takes the Shell's addition to its system prompt.
+    getAppendSystemPrompt: () => 'Always end every reply with the word "zebra".',
     getMeta: () => ({
       app: 'Droi',
       version: 'live',
@@ -110,7 +112,7 @@ test('pair, create a Session, send a prompt, get a reply', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Workspace path' }).fill(workspace)
   await page
     .getByRole('region', { name: 'New session' })
-    .getByRole('button', { name: 'Start' })
+    .getByRole('button', { name: 'Start', exact: true })
     .click()
   const input = page.getByRole('textbox', { name: 'Message' })
   await expect(input).toBeEnabled({ timeout: 60_000 })
@@ -121,9 +123,15 @@ test('pair, create a Session, send a prompt, get a reply', async ({ page }) => {
     .getByRole('listbox', { name: 'Models' })
     .locator(`[role="option"][data-value="${model}"]`)
   if ((await option.count()) > 0) {
-    const label = await option.textContent()
+    // The option also shows the brand and the usage multiplier after the name.
+    const row = (await option.textContent()) ?? ''
     await option.click()
-    await expect(modelSelect).toHaveText(label ?? model)
+    await expect
+      .poll(async () => {
+        const picked = (await modelSelect.textContent()) ?? ''
+        return picked !== '' && row.startsWith(picked)
+      })
+      .toBe(true)
   } else {
     await page.keyboard.press('Escape')
     console.warn(
@@ -135,12 +143,9 @@ test('pair, create a Session, send a prompt, get a reply', async ({ page }) => {
   await input.press('Enter')
   const transcript = page.getByRole('log', { name: 'Transcript' })
   await expect(transcript.getByRole('article', { name: 'You' }).last()).toContainText('pong')
-  await expect(transcript.getByRole('article', { name: 'Assistant' }).last()).toContainText(
-    /pong/i,
-    {
-      timeout: 120_000,
-    },
-  )
+  const reply = transcript.getByRole('article', { name: 'Assistant' }).last()
+  await expect(reply).toContainText(/pong/i, { timeout: 120_000 })
+  await expect(reply).toContainText(/zebra/i)
   await expect(page.getByRole('status', { name: 'Session activity' })).toHaveText('', {
     timeout: 60_000,
   })

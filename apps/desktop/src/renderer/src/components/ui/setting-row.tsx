@@ -20,14 +20,14 @@ export function SettingRow({
 }) {
   return (
     <div className={cn('rounded-xl bg-card px-4 py-3.5', className)}>
-      <div className="flex items-center gap-4">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="min-w-48 flex-1">
           <h3 className="text-sm font-medium">{title}</h3>
           {description ? (
             <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {control ? <div className="shrink-0">{control}</div> : null}
+        {control ? <div className="min-w-0 max-w-full">{control}</div> : null}
       </div>
       {children ? <div className="mt-3">{children}</div> : null}
     </div>
