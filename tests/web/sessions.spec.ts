@@ -5,6 +5,7 @@ import {
   session,
   thinkingBlock,
   toolCallMessage,
+  toolResultMessage,
   userMessage,
   type MessageFixture,
 } from '../fake-daemon/scenario'
@@ -534,14 +535,29 @@ test.describe('running tools', () => {
 })
 
 test.describe('switching Sessions', () => {
-  const history = (name: string) =>
-    Array.from({ length: 40 }, (_, i) =>
-      i % 2 === 0
-        ? userMessage(`${name} question ${i}`)
-        : assistantMessage(
-            `## ${name} answer ${i}\n\nSome **markdown**:\n\n- one\n- two\n\n\`\`\`ts\nconst v = ${i}\n\`\`\``,
-          ),
-    )
+  // Turns like a working Session's: a one-line question, then a tall block of
+  // reasoning and tool calls. Rows of such different heights are what make a
+  // list's estimated heights for unmeasured rows differ from mount to mount.
+  const history = (name: string): MessageFixture[] =>
+    Array.from({ length: 40 }, (_, turn) => [
+      userMessage(`${name} question ${turn}`),
+      ...Array.from({ length: 4 }, (_step, step): MessageFixture[] => {
+        const id = `${name}-${turn}-${step}`
+        return [
+          {
+            ...assistantMessage(''),
+            content: [
+              thinkingBlock(`Thinking about step ${step}. `.repeat(20), 4000),
+              { type: 'tool_use', id, name: 'Execute', input: { command: `echo ${turn} ${step}` } },
+            ],
+          },
+          toolResultMessage(id, `line\n`.repeat(5)),
+        ]
+      }).flat(),
+      assistantMessage(
+        `## ${name} answer ${turn}\n\nSome **markdown**:\n\n- one\n- two\n\n\`\`\`ts\nconst v = ${turn}\n\`\`\``,
+      ),
+    ]).flat()
   test.use({
     scenario: {
       sessions: [
@@ -550,6 +566,19 @@ test.describe('switching Sessions', () => {
       ],
     },
   })
+
+  /** The row at the top of the transcript's viewport: its text and where it sits. */
+  function topRow(page: Page) {
+    return page.getByRole('log', { name: 'Transcript' }).evaluate((el) => {
+      const top = el.getBoundingClientRect().top
+      const row = [...el.querySelectorAll('[data-index]')].find(
+        (r) => r.getBoundingClientRect().bottom > top,
+      )
+      return row
+        ? { text: row.textContent, offset: Math.round(top - row.getBoundingClientRect().top) }
+        : null
+    })
+  }
 
   /** Every frame, until `stop()`, the visible transcript's distance from its end. */
   async function watchFrames(page: Page) {
@@ -604,18 +633,20 @@ test.describe('switching Sessions', () => {
     await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
     // The list re-pins itself to the end shortly after opening; scroll up after that.
     await page.waitForTimeout(300)
-    await transcript.evaluate((el) => el.scrollTo({ top: el.scrollHeight / 2 }))
+    // Just above the end: the rows above were never measured.
+    await transcript.evaluate((el) =>
+      el.scrollTo({ top: el.scrollHeight - el.clientHeight - el.clientHeight * 1.5 }),
+    )
     await expect(transcript.getByText('Alpha answer 39')).not.toBeInViewport()
     await page.waitForTimeout(100)
-    const readingAt = await transcript.evaluate((el) => el.scrollTop)
+    const readingAt = await topRow(page)
 
     await pickSession(/Beta/)
     await expect(transcript.getByText('Beta answer 39')).toBeInViewport()
     await pickSession(/Alpha/)
-    await expect(transcript.getByText('Alpha answer 1', { exact: true })).toHaveCount(0)
-    await expect.poll(() => transcript.evaluate((el) => el.scrollTop)).toBeCloseTo(readingAt, -1)
+    await expect.poll(() => topRow(page)).toEqual(readingAt)
     await page.waitForTimeout(300)
-    expect(await transcript.evaluate((el) => el.scrollTop)).toBeCloseTo(readingAt, -1)
+    expect(await topRow(page)).toEqual(readingAt)
     await expect(page.getByRole('button', { name: 'Scroll to latest' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Scroll to latest' }).click()
@@ -625,6 +656,34 @@ test.describe('switching Sessions', () => {
     await pickSession(/Alpha/)
     await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
     await expect(page.getByRole('button', { name: 'Scroll to latest' })).toHaveCount(0)
+  })
+
+  test('"Scroll to latest" reaches the end in one click from far up', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Alpha/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
+    await page.waitForTimeout(300)
+    await transcript.evaluate((el) => el.scrollTo({ top: el.scrollHeight / 3 }))
+    await page.waitForTimeout(100)
+    // Coming back, the rows below the reading position have never been measured.
+    await pickSession(/Beta/)
+    await expect(transcript.getByText('Beta answer 39')).toBeInViewport()
+    await pickSession(/Alpha/)
+    await expect(transcript.getByText('Alpha answer 39')).not.toBeInViewport()
+
+    await page.getByRole('button', { name: 'Scroll to latest' }).click()
+    // Promptly, too: a glide that crawls after rows growing on the way does not count.
+    await expect
+      .poll(() => transcript.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight), {
+        timeout: 1500,
+      })
+      .toBeLessThanOrEqual(2)
+    await expect(transcript.getByText('Alpha answer 39')).toBeInViewport()
   })
 })
 

@@ -34,14 +34,33 @@ const USER_RESIZE_WINDOW_MS = 500
 /** How long a freshly opened list may take to land at the end before it is shown anyway. */
 const SETTLE_TIMEOUT_MS = 400
 
+/** How long "Scroll to latest" keeps going after rows below grow on the way. */
+const SEEK_TIMEOUT_MS = 3000
+
 const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
 
 /**
- * Each list's measured row heights and scroll position, by `stateKey`, for
- * as long as the Client runs. A list opened without them draws its rows at
- * estimated heights first and then jumps; with them it opens in place.
+ * Where each list was left, by `stateKey`, for as long as the Client runs.
+ * A list left at the end keeps its measured row heights: opened without them
+ * it draws its rows at estimated heights first and then jumps. A list left
+ * part way up keeps the row at the top of the viewport instead: rows above it
+ * that were never measured sit at estimated heights, which differ from one
+ * mount to the next, so a pixel offset would land somewhere else.
  */
-const savedLists = new Map<string, { state: StateSnapshot; scrollTop: number; atBottom: boolean }>()
+type SavedList =
+  | { atBottom: true; state: StateSnapshot; scrollTop: number }
+  | { atBottom: false; anchorId: string; offset: number }
+const savedLists = new Map<string, SavedList>()
+
+/** The first row showing at the top of the scroller, and how far it is scrolled past. */
+function topRow(scroller: HTMLElement): { index: number; offset: number } | null {
+  const top = scroller.getBoundingClientRect().top
+  for (const row of scroller.querySelectorAll<HTMLElement>('[data-index]')) {
+    const rect = row.getBoundingClientRect()
+    if (rect.bottom > top) return { index: Number(row.dataset['index']), offset: top - rect.top }
+  }
+  return null
+}
 
 function ListHeader({ context }: { context?: ListContext }) {
   return (
@@ -134,7 +153,20 @@ export function MessageList({
   stateKey?: string
 }) {
   const virtuoso = useRef<VirtuosoHandle>(null)
-  const [restored] = useState(() => (stateKey ? savedLists.get(stateKey) : undefined))
+  const parts = [...earlier, transcript]
+  const entries = parts.flat()
+  const earlierCount = entries.length - (parts[parts.length - 1]?.length ?? 0)
+  const latestEntries = useRef(entries)
+  useLayoutEffect(() => {
+    latestEntries.current = entries
+  })
+  const [restored] = useState(() => {
+    const saved = stateKey ? savedLists.get(stateKey) : undefined
+    if (!saved || saved.atBottom) return saved
+    const index = entries.findIndex((entry) => entry.id === saved.anchorId)
+    // The row is gone (rewound, say): open at the end.
+    return index < 0 ? undefined : { ...saved, index }
+  })
   const restoredMidway = restored !== undefined && !restored.atBottom
   const [atBottom, setAtBottom] = useState(!restoredMidway)
   // Virtuoso's followOutput fires on a count change only; a streaming reply
@@ -180,6 +212,54 @@ export function MessageList({
       el.scrollTop = el.scrollHeight
     })
   }
+  // Rows below the viewport that were never measured sit at estimated
+  // heights; a scroll aims at that estimated end and stops short once they
+  // take their real heights (and Virtuoso's height corrections cut a smooth
+  // scroll off). From far away jump rather than glide, then finish the trip
+  // once the scroll comes to rest, unless the reader takes the scroll over.
+  // Virtuoso moves scrollTop itself while it corrects heights, so only the
+  // reader's input, not the scroll position, says they did.
+  const seekFrame = useRef<number | null>(null)
+  const stopSeeking = () => {
+    if (seekFrame.current !== null) cancelAnimationFrame(seekFrame.current)
+    seekFrame.current = null
+  }
+  useEffect(
+    () => () => {
+      if (seekFrame.current !== null) cancelAnimationFrame(seekFrame.current)
+    },
+    [],
+  )
+  const readerActs = () => {
+    touched()
+    stopSeeking()
+  }
+  const seekEnd = () => {
+    stopSeeking()
+    const from = scroller.current
+    const far = from
+      ? from.scrollHeight - from.scrollTop - from.clientHeight > 2 * from.clientHeight
+      : false
+    scrollToEnd(virtuoso.current, far ? 'auto' : 'smooth')
+    const start = performance.now()
+    let last = -1
+    let still = 0
+    seekFrame.current = requestAnimationFrame(function check() {
+      seekFrame.current = null
+      const el = scroller.current
+      if (!el || performance.now() - start > SEEK_TIMEOUT_MS) return
+      still = el.scrollTop === last ? still + 1 : 0
+      last = el.scrollTop
+      // Arriving at the estimated end is not arriving: the rows there are
+      // measured on the next frames and push the end further down.
+      if (still >= 3) {
+        if (el.scrollHeight - el.scrollTop - el.clientHeight <= 2) return
+        scrollToEnd(virtuoso.current, 'auto')
+        still = 0
+      }
+      seekFrame.current = requestAnimationFrame(check)
+    })
+  }
   useEffect(() => {
     if (!scrollToEndKey) return
     // The sent message is appended a tick after the send; scroll once now and
@@ -212,9 +292,6 @@ export function MessageList({
     })
     return () => cancelAnimationFrame(frame)
   }, [settled])
-  const parts = [...earlier, transcript]
-  const entries = parts.flat()
-  const earlierCount = entries.length - (parts[parts.length - 1]?.length ?? 0)
   // Rows are saved by position, and earlier Sessions shown above shift every
   // position; the view that opens next starts without them, so such a list is
   // not saved.
@@ -226,11 +303,19 @@ export function MessageList({
         savedLists.delete(stateKey)
         return
       }
-      const atEnd = following.current
+      const el = scroller.current
+      if (!following.current) {
+        const row = el ? topRow(el) : null
+        const anchor = row ? latestEntries.current[row.index] : undefined
+        if (row && anchor) {
+          savedLists.set(stateKey, { atBottom: false, anchorId: anchor.id, offset: row.offset })
+          return
+        }
+      }
       // The snapshot's scrollTop leaves out the header; the scroller's own does not.
-      const scrollTop = scroller.current?.scrollTop ?? 0
+      const scrollTop = el?.scrollTop ?? 0
       handle.current?.getState((state) =>
-        savedLists.set(stateKey, { state, scrollTop, atBottom: atEnd }),
+        savedLists.set(stateKey, { atBottom: true, state, scrollTop }),
       )
     }
   }, [stateKey, earlierCount])
@@ -257,8 +342,10 @@ export function MessageList({
   return (
     <div
       className={cn('relative h-full', !settled && 'invisible')}
-      onPointerDownCapture={touched}
-      onKeyDownCapture={touched}
+      onPointerDownCapture={readerActs}
+      onKeyDownCapture={readerActs}
+      onWheelCapture={stopSeeking}
+      onTouchMoveCapture={stopSeeking}
     >
       <Virtuoso<TranscriptEntry, ListContext>
         ref={virtuoso}
@@ -269,9 +356,15 @@ export function MessageList({
         context={context}
         computeItemKey={(_, entry) => entry.id}
         firstItemIndex={INDEX_BASE - earlierCount}
-        initialTopMostItemIndex={restored ? undefined : entries.length - 1}
-        restoreStateFrom={restored?.state}
-        initialScrollTop={restored?.scrollTop}
+        initialTopMostItemIndex={
+          !restored
+            ? entries.length - 1
+            : restored.atBottom
+              ? undefined
+              : { index: restored.index, align: 'start', offset: restored.offset }
+        }
+        restoreStateFrom={restored?.atBottom ? restored.state : undefined}
+        initialScrollTop={restored?.atBottom ? restored.scrollTop : undefined}
         itemsRendered={(items) => {
           rowsRendered.current = items.length > 0
         }}
@@ -291,7 +384,7 @@ export function MessageList({
           size="icon-sm"
           variant="outline"
           aria-label="Scroll to latest"
-          onClick={() => scrollToEnd(virtuoso.current, 'smooth')}
+          onClick={seekEnd}
           className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-background shadow-composer"
         >
           <ArrowDown aria-hidden />

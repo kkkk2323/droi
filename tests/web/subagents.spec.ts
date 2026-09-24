@@ -2,7 +2,15 @@
 // them: a card per Task call in its transcript, a menu in its header, and a
 // trail back from the subagent.
 import { drawerGone, expect, test } from './fixtures'
-import { session } from '../fake-daemon/scenario'
+import {
+  assistantMessage,
+  session,
+  thinkingBlock,
+  toolCallMessage,
+  toolResultMessage,
+  userMessage,
+  type MessageFixture,
+} from '../fake-daemon/scenario'
 import { subagentScenario } from '../fake-daemon/subagents'
 
 const { main, explorer, reviewer, other, sessions } = subagentScenario()
@@ -154,5 +162,79 @@ test.describe('subagents', () => {
     await pickSession(/Fix the login bug/)
     const row = (await openSidebar()).getByRole('button', { name: /Plan the release/ })
     await expect(row.getByRole('status')).toHaveText('1 subagent running')
+  })
+})
+
+test.describe('back from a subagent', () => {
+  // A long Session whose Task call sits part way up, among tall tool turns.
+  const turns = (name: string, count: number): MessageFixture[] =>
+    Array.from({ length: count }, (_, turn) => {
+      const id = `${name}-${turn}`
+      return [
+        userMessage(`${name} question ${turn}`),
+        {
+          ...assistantMessage(''),
+          content: [
+            thinkingBlock('Thinking it over. '.repeat(40), 4000),
+            { type: 'tool_use', id, name: 'Execute', input: { command: `echo ${name} ${turn}` } },
+          ],
+        },
+        toolResultMessage(id, 'line\n'.repeat(5)),
+        assistantMessage(`## ${name} answer ${turn}\n\n- one\n- two\n- three`),
+      ]
+    }).flat()
+  const caller = session('Long release plan', '/Users/dev/acme-web', [
+    ...turns('Before', 20),
+    userMessage('Map the app'),
+    toolCallMessage('toolu_map', 'Task', {
+      subagent_type: 'explorer',
+      description: 'Map the app',
+      prompt: 'Explore the app.',
+    }),
+    toolResultMessage('toolu_map', 'Three screens.'),
+    ...turns('After', 10),
+  ])
+  const mapper = session(
+    'Explorer: Map the app',
+    '/Users/dev/acme-web',
+    [userMessage('Explore the app.')],
+    {
+      sessionId: '0c1d2e3f-0000-4000-8000-00000000e009',
+      subagent: {
+        callingSessionId: caller.sessionId,
+        callingToolUseId: 'toolu_map',
+        subagentType: 'explorer',
+        description: 'Map the app',
+        status: 'completed',
+      },
+    },
+  )
+  test.use({ scenario: { sessions: [caller, mapper] } })
+
+  test('lands on the card it was opened from', async ({ page, openClient, pickSession }) => {
+    await openClient()
+    await pickSession(/Long release plan/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('After answer 9')).toBeInViewport()
+    await page.waitForTimeout(300)
+    const card = transcript.getByRole('group', { name: 'Explorer: Map the app' })
+    // Scroll up until the card is rendered, the way a reader would.
+    await expect(async () => {
+      await transcript.evaluate((el) => el.scrollBy({ top: -500 }))
+      await expect(card).toBeInViewport({ timeout: 100 })
+    }).toPass()
+    await page.waitForTimeout(100)
+    const before = (await card.boundingBox())!.y
+
+    await card.getByRole('button', { name: 'Open subagent session' }).click()
+    await expect(page).toHaveURL(new RegExp(mapper.sessionId))
+    await page
+      .getByRole('navigation', { name: 'Session hierarchy' })
+      .getByRole('button', { name: 'Long release plan' })
+      .click()
+    await expect(page).toHaveURL(new RegExp(caller.sessionId))
+    await expect(card).toBeInViewport()
+    await page.waitForTimeout(300)
+    expect(Math.abs((await card.boundingBox())!.y - before)).toBeLessThanOrEqual(2)
   })
 })
