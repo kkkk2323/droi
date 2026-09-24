@@ -25,11 +25,10 @@ const light = {
   sidebarAccent: '#dfdfdf',
   sidebarBorder: '#dedede',
   codeBackground: '#f0f0f0',
-  // Inline code. React Native cannot pad or round a span inside text, so its
-  // fill is a bare box the height of the line: kept to a faint wash, with a
-  // warm ink that reads as code without the web Client's pill.
+  // Inline code. React Native cannot pad or round a span inside text, so a
+  // fill would be a bare box hugging the glyphs; mono type in a warm ink reads
+  // as code without the web Client's pill.
   codeInline: '#9a5528',
-  codeWash: 'rgba(28, 30, 34, 0.07)',
   // Status only, as the web Client uses them: emerald-600, amber-600, sky-600
   // for Working, and sky-500 for the unread dot.
   success: '#009966',
@@ -63,7 +62,6 @@ const dark: Colors = {
   sidebarBorder: '#242424',
   codeBackground: '#262626',
   codeInline: '#e0a882',
-  codeWash: 'rgba(227, 229, 232, 0.08)',
   // Tailwind's emerald-400, amber-400, sky-400 and sky-500.
   success: '#00d492',
   attention: '#ffb900',
