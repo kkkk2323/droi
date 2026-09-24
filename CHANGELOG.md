@@ -1,3 +1,12 @@
+## 1.7.1 - 2026-09-24
+
+### Fixed
+
+- Coming back to a Session you left part way up opens it where you were reading. In a long Session it could land far up the conversation, near the start. On the desktop and the web Client.
+- Going back from a subagent opens the calling Session at the Task you opened it from, not near the start.
+- "Scroll to latest" reaches the latest message in one click after switching Sessions, instead of stopping part way.
+- Tables in replies no longer show a white strip above their header row.
+
 ## 1.7.0 - 2026-09-24
 
 ### Added
