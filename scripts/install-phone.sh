@@ -7,6 +7,7 @@
 # APPLE_TEAM_ID overrides the team read from the certificate.
 # DROI_HTTP_DOMAINS lets the app use plain http to more domain suffixes
 # (comma separated, e.g. "myhome" for laptop.myhome reached through Surge).
+# Keep it in apps/mobile/.env.local (git-ignored); Expo reads that file itself.
 set -euo pipefail
 
 cd "$(dirname "$0")/../apps/mobile"

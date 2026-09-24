@@ -5,7 +5,8 @@ import desktopPackage from '../desktop/package.json'
 
 // Plain http is otherwise refused for names other than IPs, .local and ts.net.
 // DROI_HTTP_DOMAINS (comma separated, e.g. "myhome") adds the suffixes of a
-// private DNS such as Surge's, so a personal domain stays out of the repo.
+// private DNS such as Surge's. Set it in the git-ignored .env.local next to
+// this file, which Expo loads, so a personal domain stays out of the repo.
 const httpDomains = ['ts.net', ...(process.env['DROI_HTTP_DOMAINS'] ?? '').split(',')]
   .map((domain) => domain.trim().replace(/^\.+/, ''))
   .filter(Boolean)
