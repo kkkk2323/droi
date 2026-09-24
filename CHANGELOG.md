@@ -1,3 +1,18 @@
+## 1.8.0 - 2026-09-24
+
+### Added
+
+- Settings → Remote Access → Pairing address: a host name the pairing link and QR code use instead of this computer's network address, for a name that also reaches it away from home (Tailscale, or a Surge Ponte name such as `laptop.myhome`).
+- `DROI_HTTP_DOMAINS` when building the iPhone app (`DROI_HTTP_DOMAINS=myhome pnpm install:phone`) lets it reach more domains over plain http, next to IP addresses, `.local` and `ts.net`.
+
+### Changed
+
+- The sidebar lists the Workspaces with the most conversations first; Workspaces without any conversation come last. Before, loading an old Session could move its Workspace to the top.
+
+### Fixed
+
+- A pairing that fails on the iPhone says why, and points out a pairing link without its port.
+
 ## 1.7.1 - 2026-09-24
 
 ### Fixed
