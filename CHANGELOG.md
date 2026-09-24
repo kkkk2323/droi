@@ -1,3 +1,15 @@
+## 1.7.0 - 2026-09-24
+
+### Added
+
+- Settings → Session defaults: what every new Session starts with, as on the Factory App's page. Default model, reasoning level, interaction mode and autonomy; spec mode model, reasoning level and save folder; compaction (automatic, token limit, limits for specific models, compaction model); and subagent autonomy and the light, medium and heavy task models. They are kept by the Daemon in `~/.factory/settings.json`, shared with the droid CLI and the Factory App; settings your organization manages show but cannot be changed. On the desktop, the web Client and the iPhone app (Settings → Session defaults, for the selected computer).
+- Text to add to Droid's system prompt, under Session defaults on the desktop. It is appended to Droid's own prompt in every new Session, whichever device starts it; existing Sessions and subagents keep theirs.
+
+### Fixed
+
+- Spinners that appear at different moments, such as a column of running tools, now turn together. On the desktop, the web Client and the iPhone app.
+- The Settings page fits a phone-sized browser: its sections sit above the content.
+
 ## 1.6.3 - 2026-09-24
 
 ### Fixed
