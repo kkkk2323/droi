@@ -1,3 +1,13 @@
+## 1.6.1 - 2026-09-24
+
+### Changed
+
+- iPhone app: inline code in a reply is a faint wash with warm brown text, instead of a hard grey box that joined across wrapped lines.
+
+### Fixed
+
+- A long path or name in inline code wraps inside the reply instead of giving the transcript a sideways scrollbar. On the desktop and the web Client.
+
 ## 1.6.0 - 2026-09-23
 
 ### Changed
