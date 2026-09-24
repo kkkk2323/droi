@@ -1,9 +1,9 @@
 // Preload: the only bridge between the Desktop Shell and the Local Client. It
 // exposes the Gateway URL, this window's token, the platform, the Shell
-// settings calls, opening a Workspace in another app, and alert sounds and
-// notifications. Conversation data never crosses here; it goes through the
-// Gateway.
-import { contextBridge, ipcRenderer } from 'electron'
+// settings calls, opening a Workspace in another app, alert sounds and
+// notifications, and the path of a pasted or dropped file. Conversation data
+// never crosses here; it goes through the Gateway.
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { readShellArg, SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import { ALERTS_IPC, type AlertsBridge } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInBridge } from '../shared/open-in'
@@ -52,6 +52,8 @@ const droiShell = {
   settings,
   openIn,
   alerts,
+  /** The file's path on this computer; empty for a File not backed by one. */
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
 }
 
 export type DroiShell = typeof droiShell

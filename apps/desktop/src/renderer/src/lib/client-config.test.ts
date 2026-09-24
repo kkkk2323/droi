@@ -32,6 +32,7 @@ describe('resolveClientConfig', () => {
         platform: 'darwin',
         settings: {} as never,
         openIn: {} as never,
+        pathForFile: () => '',
         alerts: {} as never,
       },
       hash: '#pair=ignored',

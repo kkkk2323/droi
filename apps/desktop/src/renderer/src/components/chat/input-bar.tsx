@@ -17,7 +17,7 @@ import {
   type SlashItem,
 } from '@droi/daemon-layer/use-slash-items'
 import { attachmentUrl, type ImageAttachment } from '@droi/daemon-layer/attachments'
-import { imageFiles, readImageAttachment } from '@/lib/attachments'
+import { pathsAsText, readImageAttachment, transferFiles } from '@/lib/attachments'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { uuid } from '@droi/daemon-layer/uuid'
 import { cn } from '@/lib/utils'
@@ -161,17 +161,40 @@ export function InputBar({
       })
   }
 
+  const insertAtCaret = (insert: string) => {
+    const value = text.slice(prefix.length)
+    const start = textarea.current?.selectionStart ?? value.length
+    const end = textarea.current?.selectionEnd ?? value.length
+    const before = value.slice(0, start)
+    const after = value.slice(end)
+    const spaced =
+      (before === '' || /\s$/.test(before) ? '' : ' ') + insert + (/^\s/.test(after) ? '' : ' ')
+    pendingCaret.current = before.length + spaced.length
+    setText(prefix + before + spaced + after)
+    setCaret(prefix.length + pendingCaret.current)
+  }
+
+  /**
+   * Images become attachments; any other file goes in as its full path, which
+   * only the Local Client can read. Returns whether anything was taken.
+   */
+  const takeFiles = (transfer: DataTransfer | null): boolean => {
+    const files = transferFiles(transfer)
+    const pathFor = window.droiShell?.pathForFile
+    const paths = pathFor ? pathsAsText(files.others, pathFor) : ''
+    if (paths) insertAtCaret(paths)
+    addFiles(files.images)
+    return files.images.length > 0 || paths !== ''
+  }
+
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = imageFiles(event.clipboardData)
-    if (files.length === 0) return
-    event.preventDefault()
-    addFiles(files)
+    if (takeFiles(event.clipboardData)) event.preventDefault()
   }
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     setDragging(false)
-    addFiles(imageFiles(event.dataTransfer))
+    takeFiles(event.dataTransfer)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

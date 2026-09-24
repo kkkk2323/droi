@@ -10,20 +10,34 @@ import {
 } from '@droi/daemon-layer/attachments'
 
 /**
- * Image files in a paste or drop; other kinds are ignored. Some clipboards
- * (an image copied out of a browser, say) list the bitmap only under `items`,
- * with `files` empty, so both are read.
+ * Files in a paste or drop, split into images and everything else. Some
+ * clipboards (an image copied out of a browser, say) list the bitmap only
+ * under `items`, with `files` empty, so both are read.
  */
-export function imageFiles(transfer: DataTransfer | null): File[] {
-  if (!transfer) return []
-  const files = Array.from(transfer.files ?? [])
-  if (files.length === 0 && transfer.items) {
+export function transferFiles(transfer: DataTransfer | null): { images: File[]; others: File[] } {
+  const files = Array.from(transfer?.files ?? [])
+  if (files.length === 0 && transfer?.items) {
     for (const item of Array.from(transfer.items)) {
       const file = item.kind === 'file' ? item.getAsFile() : null
       if (file) files.push(file)
     }
   }
-  return files.filter((file) => isImageMediaType(file.type))
+  return {
+    images: files.filter((file) => isImageMediaType(file.type)),
+    others: files.filter((file) => !isImageMediaType(file.type)),
+  }
+}
+
+/**
+ * Files' full paths as prompt text, separated by spaces; a path containing
+ * whitespace is quoted so it stays one path. Files without a path are skipped.
+ */
+export function pathsAsText(files: File[], pathFor: (file: File) => string): string {
+  return files
+    .map(pathFor)
+    .filter((path) => path !== '')
+    .map((path) => (/\s/.test(path) ? `"${path}"` : path))
+    .join(' ')
 }
 
 /** Re-encode an oversized image as a JPEG that fits MAX_IMAGE_EDGE; small ones pass through. */
