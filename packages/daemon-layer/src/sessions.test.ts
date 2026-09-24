@@ -42,6 +42,17 @@ describe('groupByWorkspace', () => {
     expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['c', 'a'])
   })
 
+  test('workspaces with more conversations come first, empty ones last', () => {
+    const groups = groupByWorkspace([
+      summary({ cwd: '/w/busy', updatedAt: 10, messagesCount: 4 }),
+      summary({ cwd: '/w/busy', updatedAt: 11, messagesCount: 9 }),
+      summary({ cwd: '/w/once', updatedAt: 50, messagesCount: 800 }),
+      summary({ cwd: '/w/empty', updatedAt: 90, messagesCount: 0 }),
+      summary({ cwd: '/w/empty', updatedAt: 91, messagesCount: 0 }),
+    ])
+    expect(groups.map((g) => g.label)).toEqual(['busy', 'once', 'empty'])
+  })
+
   test('sessions without any path land in an unknown group', () => {
     const groups = groupByWorkspace([summary({ sessionId: 'x' })])
     expect(groups[0]!.label).toBe('Unknown workspace')

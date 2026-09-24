@@ -146,9 +146,9 @@ test.describe('sidebar', () => {
     await expect(acme.getByRole('listitem')).toHaveCount(2)
     await expect(billing.getByRole('button', { name: /Refactor billing/ })).toBeVisible()
 
-    // Newest Workspace first, newest Session first within it.
+    // The Workspace with more conversations first, newest Session first within it.
     const headings = await sidebar.getByRole('heading', { level: 2 }).allTextContents()
-    expect(headings).toEqual(['billing-service', 'acme-web'])
+    expect(headings).toEqual(['acme-web', 'billing-service'])
     const acmeTitles = await acme.getByRole('listitem').allTextContents()
     expect(acmeTitles[0]).toMatch(/Add dark mode/)
 
@@ -163,22 +163,22 @@ test.describe('sidebar', () => {
 
   test('is keyboard navigable', async ({ page, openClient, openSidebar }) => {
     await openClient()
-    const first = (await openSidebar()).getByRole('button', { name: /Refactor billing/ })
+    const first = (await openSidebar()).getByRole('button', { name: /Fix the login bug/ })
     await first.focus()
     await page.keyboard.press('Enter')
-    await expect(page.getByRole('region', { name: 'Refactor billing' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Fix the login bug' })).toBeVisible()
     // On narrow screens the drawer closed after the pick; open it again.
     await drawerGone(page)
-    const current = (await openSidebar()).getByRole('button', { name: /Refactor billing/ })
+    const current = (await openSidebar()).getByRole('button', { name: /Fix the login bug/ })
     await expect(current).toHaveAttribute('aria-current', 'page')
     await current.focus()
     // Next stops: the following Workspace's fold, its new-session button, its first Session.
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('button', { name: 'acme-web', exact: true })).toBeFocused()
+    await expect(page.getByRole('button', { name: 'billing-service', exact: true })).toBeFocused()
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('button', { name: 'New session in acme-web' })).toBeFocused()
+    await expect(page.getByRole('button', { name: 'New session in billing-service' })).toBeFocused()
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('button', { name: /Add dark mode/ })).toBeFocused()
+    await expect(page.getByRole('button', { name: /Refactor billing/ })).toBeFocused()
   })
 })
 
@@ -235,27 +235,30 @@ test.describe('sidebar memory', () => {
     await openClient()
     let sidebar = await openSidebar()
     expect(await sidebar.getByRole('heading', { level: 2 }).allTextContents()).toEqual([
-      'billing-service',
       'acme-web',
+      'billing-service',
     ])
-    await sidebar.getByRole('button', { name: 'acme-web', exact: true }).click({ button: 'right' })
+    await sidebar
+      .getByRole('button', { name: 'billing-service', exact: true })
+      .click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Pin workspace' }).click()
-    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('acme-web')
+    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('billing-service')
     await expect(sidebar.getByText('Pinned', { exact: true })).toBeVisible()
     await expect(sidebar.getByText('Workspaces', { exact: true })).toBeVisible()
 
-    const fold = sidebar.getByRole('button', { name: 'billing-service', exact: true })
+    const fold = sidebar.getByRole('button', { name: 'acme-web', exact: true })
     await fold.click()
     await expect(fold).toHaveAttribute('aria-expanded', 'false')
 
     await page.reload()
     sidebar = await openSidebar()
-    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('acme-web')
+    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('billing-service')
+    await expect(sidebar.getByRole('button', { name: 'acme-web', exact: true })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
     await expect(
-      sidebar.getByRole('button', { name: 'billing-service', exact: true }),
-    ).toHaveAttribute('aria-expanded', 'false')
-    await expect(
-      sidebar.getByRole('region', { name: 'billing-service' }).getByRole('listitem'),
+      sidebar.getByRole('region', { name: 'acme-web' }).getByRole('listitem'),
     ).toHaveCount(0)
   })
 

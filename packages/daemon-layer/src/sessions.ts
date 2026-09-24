@@ -153,9 +153,12 @@ export interface Pins {
 export const NO_PINS: Pins = { workspaces: new Set(), sessions: new Set() }
 
 /**
- * Newest Workspace first; within a Workspace, newest Session first. Pinned
- * Workspaces and Sessions come before the rest, in the same order among
- * themselves.
+ * The Workspace with the most conversations first, ties broken by the newest;
+ * within a Workspace, newest Session first. Pinned Workspaces and Sessions come
+ * before the rest, in the same order among themselves.
+ *
+ * Workspaces are not ranked by recency alone because the Daemon's `updatedAt`
+ * is the file's modified time, which moves when a Session is merely loaded.
  */
 export function groupByWorkspace(
   sessions: readonly SessionSummary[],
@@ -182,9 +185,12 @@ export function groupByWorkspace(
   }
   const newest = (group: WorkspaceGroup) =>
     Math.max(0, ...group.sessions.map((session) => session.updatedAt))
+  const conversations = (group: WorkspaceGroup) =>
+    group.sessions.filter((session) => (session.messagesCount ?? 1) > 0).length
   result.sort(
     (a, b) =>
       Number(pins.workspaces.has(b.key)) - Number(pins.workspaces.has(a.key)) ||
+      conversations(b) - conversations(a) ||
       newest(b) - newest(a),
   )
   return result
