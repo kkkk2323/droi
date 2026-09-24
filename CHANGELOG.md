@@ -1,3 +1,9 @@
+## 1.8.1 - 2026-09-24
+
+### Fixed
+
+- Tables in replies on the iPhone line their columns up: every cell of a column has the same width, sized to the column's widest text. Before, each row sized its cells on its own, so the columns drifted apart from row to row.
+
 ## 1.8.0 - 2026-09-24
 
 ### Added
