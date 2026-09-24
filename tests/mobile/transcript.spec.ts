@@ -165,6 +165,27 @@ test.describe('a streamed reply', () => {
     await expect(code.getByRole('button', { name: 'Copied' })).toBeVisible()
     expect((await standIns(page)).clipboard).toBe('pnpm install:phone')
   })
+
+  test('a table lines its columns up across rows', async ({ page, fakeDaemon }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Chat/)
+    playTurn(fakeDaemon, chat.sessionId, 'table', [
+      '| 状态 | 管理员邀请码 | Other codes |\n| - | - | - |\n' +
+        '| 平时 | 可用 | see the current setting |\n| 收紧模式（新增） | 可用 | 不可用 |\n',
+    ])
+    const table = page.getByRole('table').last()
+    await expect(table.getByRole('row')).toHaveCount(3)
+    const columns = await table.evaluate((el) =>
+      [...el.querySelectorAll('[role="row"]')].map((row) =>
+        [...row.children].map((cell) => {
+          const box = cell.getBoundingClientRect()
+          return [Math.round(box.left), Math.round(box.width)]
+        }),
+      ),
+    )
+    expect(columns[0]).toHaveLength(3)
+    for (const row of columns) expect(row).toEqual(columns[0])
+  })
 })
 
 function toolTurn(): MessageFixture[] {

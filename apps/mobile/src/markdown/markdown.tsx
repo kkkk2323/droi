@@ -11,6 +11,7 @@ import { useTextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space, type Colors } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 import { parseMarkdown } from './parse'
+import { columnWidths } from './table-layout'
 
 export function Markdown({
   text,
@@ -243,6 +244,10 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
 
 function MarkdownTable({ table, context }: { table: Table; context: Context }) {
   const { colors } = context
+  const widths = columnWidths(table, {
+    fontSize: fontSize.sm * context.scale,
+    padding: 2 * space.sm,
+  })
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View role="table" style={[styles.table, { borderColor: colors.border }]}>
@@ -261,7 +266,7 @@ function MarkdownTable({ table, context }: { table: Table; context: Context }) {
               <View
                 key={keyOf(cell, c)}
                 role={r === 0 ? 'columnheader' : 'cell'}
-                style={styles.tableCell}
+                style={[styles.tableCell, { width: widths[c] }]}
               >
                 <Text size="sm" weight={r === 0 ? 'semibold' : 'regular'}>
                   {inline(cell.children, context)}
@@ -295,10 +300,5 @@ const styles = StyleSheet.create({
   codeText: { padding: space.md, lineHeight: 18 },
   table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md },
   tableRow: { flexDirection: 'row' },
-  tableCell: {
-    minWidth: 80,
-    maxWidth: 240,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-  },
+  tableCell: { paddingHorizontal: space.sm, paddingVertical: space.xs },
 })
