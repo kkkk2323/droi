@@ -1,3 +1,9 @@
+## 1.6.2 - 2026-09-24
+
+### Fixed
+
+- Pasting or dropping a file that is not an image (an HTML page, say) into the message box inserts its full path where the caret is, instead of just the file name or nothing. A path with spaces is quoted; images are still attached. On the desktop.
+
 ## 1.6.1 - 2026-09-24
 
 ### Changed
