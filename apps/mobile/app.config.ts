@@ -3,6 +3,13 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config'
 import desktopPackage from '../desktop/package.json'
 
+// Plain http is otherwise refused for names other than IPs, .local and ts.net.
+// DROI_HTTP_DOMAINS (comma separated, e.g. "myhome") adds the suffixes of a
+// private DNS such as Surge's, so a personal domain stays out of the repo.
+const httpDomains = ['ts.net', ...(process.env['DROI_HTTP_DOMAINS'] ?? '').split(',')]
+  .map((domain) => domain.trim().replace(/^\.+/, ''))
+  .filter(Boolean)
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Droi',
@@ -25,11 +32,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         'Droi connects to the Droi app on your computers over your local network.',
       NSAppTransportSecurity: {
         // The Gateway speaks plain http on the LAN; ATS allows that for IP
-        // addresses and .local names here, and for Tailscale's MagicDNS below.
+        // addresses and .local names here, and for the domains below. Not
+        // NSAllowsArbitraryLoads: iOS ignores it while NSAllowsLocalNetworking is set.
         NSAllowsLocalNetworking: true,
-        NSExceptionDomains: {
-          'ts.net': { NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: true },
-        },
+        NSExceptionDomains: Object.fromEntries(
+          httpDomains.map((domain) => [
+            domain,
+            { NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: true },
+          ]),
+        ),
       },
       ITSAppUsesNonExemptEncryption: false,
     },

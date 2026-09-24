@@ -187,6 +187,12 @@ export function SettingsPage({
                 bridge={bridge}
                 onSaved={setSnapshot}
               />
+              <PairingHostRow
+                key={snapshot.pairingHost ?? ''}
+                snapshot={snapshot}
+                bridge={bridge}
+                onSaved={setSnapshot}
+              />
               <PairingRow
                 enabled={snapshot.remoteAccess}
                 pairing={pairing}
@@ -626,6 +632,41 @@ function RemoteAccessRow({ snapshot, bridge, onSaved }: RowProps) {
         />
       }
     />
+  )
+}
+
+function PairingHostRow({ snapshot, bridge, onSaved }: RowProps) {
+  const [value, setValue] = useState(snapshot.pairingHost ?? '')
+  return (
+    <SettingRow
+      title="Pairing address"
+      description={
+        snapshot.pairingHost
+          ? `The pairing link uses ${snapshot.pairingHost} instead of this computer’s network address.`
+          : 'Leave empty to use this computer’s network address. Set a host name that also reaches it away from home, such as a Tailscale or Surge Ponte name, and phones pair with that.'
+      }
+    >
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void bridge.update({ pairingHost: value.trim() || null }).then(onSaved)
+        }}
+      >
+        <input
+          aria-label="Pairing address"
+          placeholder="laptop.myhome"
+          value={value}
+          spellCheck={false}
+          autoCapitalize="off"
+          onChange={(event) => setValue(event.target.value)}
+          className={`${settingInputClass} font-mono`}
+        />
+        <Button type="submit" variant="outline">
+          Save address
+        </Button>
+      </form>
+    </SettingRow>
   )
 }
 

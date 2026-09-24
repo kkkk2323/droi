@@ -45,7 +45,11 @@ describe('resolvePairing', () => {
       throw new TypeError('Network request failed')
     }) as typeof fetch
     await expect(resolvePairing('http://10.0.0.2:1/#pair=t', down)).rejects.toThrow(
-      /Cannot reach http:\/\/10\.0\.0\.2:1.*Remote Access/,
+      /Cannot reach http:\/\/10\.0\.0\.2:1 \(Network request failed\)\. .*Remote Access/,
+    )
+    const redirect = fakeFetch('<html>', 302)
+    await expect(resolvePairing('http://laptop.myhome/#pair=t', redirect.impl)).rejects.toThrow(
+      /Cannot reach http:\/\/laptop\.myhome \(HTTP 302\)\. The address has no port/,
     )
     const old = fakeFetch({ app: 'Droi', version: '1.1.0', remoteAccess: true })
     await expect(resolvePairing('http://10.0.0.2:1/#pair=t', old.impl)).rejects.toThrow(

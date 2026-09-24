@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createShellSettingsStore } from './shell-settings'
+import { createShellSettingsStore, pairingHostOf } from './shell-settings'
 
 const dirs: string[] = []
 function tempFile(): string {
@@ -35,6 +35,7 @@ describe('shell settings', () => {
       droidPath: '/x/droid',
       factoryApiBaseUrl: 'http://127.0.0.1:37650',
       appendSystemPrompt: 'Answer in French.',
+      pairingHost: 'laptop.myhome',
     })
     store.setApiKey('fk-test')
     store.setLogin('{"access":"a"}')
@@ -45,6 +46,7 @@ describe('shell settings', () => {
       droidPath: '/x/droid',
       factoryApiBaseUrl: 'http://127.0.0.1:37650',
       appendSystemPrompt: 'Answer in French.',
+      pairingHost: 'laptop.myhome',
       pairingToken: token,
     })
     expect(reloaded.getApiKey()).toBe('fk-test')
@@ -127,6 +129,15 @@ describe('shell settings', () => {
     const before = store.settings.pairingToken
     store.resetPairingToken()
     expect(store.settings.pairingToken).not.toBe(before)
+  })
+
+  test('the pairing address keeps only the host name of what was typed', () => {
+    expect(pairingHostOf('laptop.myhome')).toBe('laptop.myhome')
+    expect(pairingHostOf(' laptop.myhome:41417 ')).toBe('laptop.myhome')
+    expect(pairingHostOf('http://laptop.myhome:41417/#pair=x')).toBe('laptop.myhome')
+    expect(pairingHostOf('')).toBeNull()
+    expect(pairingHostOf(null)).toBeNull()
+    expect(pairingHostOf('not a host')).toBeNull()
   })
 
   test('tolerates a corrupt file by starting over', () => {

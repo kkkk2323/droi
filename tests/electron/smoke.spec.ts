@@ -137,6 +137,14 @@ test('the pairing QR renders and resetting changes the link', async () => {
 
   await page.getByRole('button', { name: 'Reset pairing token' }).click()
   await expect(link).not.toHaveText(before!)
+
+  const host = page.getByRole('textbox', { name: 'Pairing address' })
+  await host.fill('laptop.example:1')
+  await page.getByRole('button', { name: 'Save address' }).click()
+  await expect(link).toHaveText(/^http:\/\/laptop\.example:\d+\/#pair=/)
+  await page.getByRole('textbox', { name: 'Pairing address' }).fill('')
+  await page.getByRole('button', { name: 'Save address' }).click()
+  await expect(link).toHaveText(/^http:\/\/\d+\.\d+\.\d+\.\d+:\d+\/#pair=/)
   await expect(page.getByRole('status', { name: 'Connection' })).toHaveText(/Connected/)
   await toggle.uncheck()
 })

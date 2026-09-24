@@ -55,6 +55,8 @@ export interface ShellSettingsSnapshot {
   factoryApiBaseUrlFromEnvironment: string | null
   /** Text the Gateway appends to Droid's system prompt in every new Session; null for none. */
   appendSystemPrompt: string | null
+  /** Host name the pairing link uses; null for the first LAN address. */
+  pairingHost: string | null
   /** Whether a Factory API key is stored or supplied by the environment. Never the key. */
   hasApiKey: boolean
   /** True when the Gateway has something to authenticate with (login or key). */
@@ -68,7 +70,7 @@ export interface ShellSettingsSnapshot {
 }
 
 export interface PairingInfo {
-  /** Full link a phone opens: http://<lan-ip>:<port>/#pair=<token> */
+  /** Full link a phone opens: http://<pairing host or lan-ip>:<port>/#pair=<token> */
   link: string | null
   /** LAN addresses the Gateway listens on; empty while Remote Access is off. */
   lanAddresses: string[]
@@ -80,6 +82,7 @@ export interface ShellSettingsPatch {
   droidPath?: string | null
   factoryApiBaseUrl?: string | null
   appendSystemPrompt?: string | null
+  pairingHost?: string | null
 }
 
 export interface ShellSettingsBridge {

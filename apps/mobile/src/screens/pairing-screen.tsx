@@ -33,8 +33,9 @@ export function PairingScreen({ firstLaunch }: { firstLaunch: boolean }) {
       </Text>
       <PairingForm onPaired={() => backToMain(router)} />
       <Text tone="muted" size="sm">
-        To reach the computer away from home too, change the address to its Tailscale name (for
-        example my-mac.tailnet.ts.net) after pairing; it works on the home network as well.
+        To reach the computer away from home too, use a name that reaches it from anywhere, such as
+        a Tailscale or Surge Ponte name: set it as the pairing address in Droi before scanning, or
+        change the computer’s address here after pairing.
       </Text>
       {firstLaunch ? (
         <View style={styles.footer}>

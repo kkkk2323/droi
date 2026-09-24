@@ -36,7 +36,7 @@ import {
 import { builtinSoundPath, readSoundAsDataUrl, SOUND_FILE_EXTENSIONS } from './alert-sounds'
 import { locateOpenInApps, type InstalledApp } from './open-in'
 import { computerName } from './computer-name'
-import { createShellSettingsStore, type ShellSettingsStore } from './shell-settings'
+import { createShellSettingsStore, pairingHostOf, type ShellSettingsStore } from './shell-settings'
 import { createUpdater, type Updater } from './updater'
 import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInApp } from '../shared/open-in'
@@ -234,6 +234,7 @@ async function snapshot(): Promise<ShellSettingsSnapshot> {
     factoryApiBaseUrl: settings.settings.factoryApiBaseUrl,
     factoryApiBaseUrlFromEnvironment: process.env['FACTORY_API_BASE_URL'] ?? null,
     appendSystemPrompt: settings.settings.appendSystemPrompt,
+    pairingHost: settings.settings.pairingHost,
     hasApiKey: settings.getApiKey() !== null,
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
@@ -246,8 +247,10 @@ function pairing(): PairingInfo {
   const lanAddresses = gateway?.lanAddresses ?? []
   const port = gateway?.port ?? 0
   const first = lanAddresses[0]
+  // A pairing host still needs the Gateway on a LAN address to answer it.
+  const host = first ? (settings.settings.pairingHost ?? first) : null
   return {
-    link: first ? `http://${first}:${port}/#pair=${settings.settings.pairingToken}` : null,
+    link: host ? `http://${host}:${port}/#pair=${settings.settings.pairingToken}` : null,
     lanAddresses,
     port,
   }
@@ -362,6 +365,7 @@ function registerIpc(): void {
       ...(patch.appendSystemPrompt !== undefined
         ? { appendSystemPrompt: patch.appendSystemPrompt?.trim() || null }
         : {}),
+      ...(patch.pairingHost !== undefined ? { pairingHost: pairingHostOf(patch.pairingHost) } : {}),
     })
     const after = settings.settings
     if (patch.remoteAccess !== undefined && after.remoteAccess !== before.remoteAccess) {

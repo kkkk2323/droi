@@ -5,6 +5,8 @@
 # seven days; run this again to renew it.
 # DROI_IPHONE picks a device (name or UDID) when several are connected;
 # APPLE_TEAM_ID overrides the team read from the certificate.
+# DROI_HTTP_DOMAINS lets the app use plain http to more domain suffixes
+# (comma separated, e.g. "myhome" for laptop.myhome reached through Surge).
 set -euo pipefail
 
 cd "$(dirname "$0")/../apps/mobile"

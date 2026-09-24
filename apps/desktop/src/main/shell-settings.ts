@@ -27,6 +27,11 @@ export interface ShellSettings {
    * Client starts; null leaves the prompt as Droid ships it.
    */
   appendSystemPrompt: string | null
+  /**
+   * Host name the pairing link uses instead of the first LAN address, for a
+   * name that also reaches this computer from elsewhere (Tailscale, Surge Ponte).
+   */
+  pairingHost: string | null
 }
 
 export interface ShellSettingsStoreOptions {
@@ -56,10 +61,29 @@ interface StoredFile {
   droidPath: string | null
   factoryApiBaseUrl: string | null
   appendSystemPrompt: string | null
+  pairingHost: string | null
   pairingToken: string
   computerId: string
   apiKey: string | null
   login: string | null
+}
+
+/**
+ * The host name in what the user typed for the pairing address: "laptop.myhome",
+ * "laptop.myhome:41417" or a full URL all give "laptop.myhome"; the port is
+ * always the Gateway's own. Null for empty or unusable input.
+ */
+export function pairingHostOf(text: string | null | undefined): string | null {
+  const trimmed = text?.trim()
+  if (!trimmed) return null
+  try {
+    const { hostname } = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`,
+    )
+    return /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)$/i.test(hostname) ? hostname : null
+  } catch {
+    return null
+  }
 }
 
 export function generatePairingToken(): string {
@@ -75,6 +99,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     droidPath: loaded?.droidPath ?? null,
     factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
     appendSystemPrompt: loaded?.appendSystemPrompt ?? null,
+    pairingHost: loaded?.pairingHost ?? null,
     pairingToken: loaded?.pairingToken || generatePairingToken(),
     computerId: loaded?.computerId || randomUUID(),
     apiKey: loaded?.apiKey ?? null,
@@ -98,6 +123,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         droidPath: current.droidPath,
         factoryApiBaseUrl: current.factoryApiBaseUrl,
         appendSystemPrompt: current.appendSystemPrompt,
+        pairingHost: current.pairingHost,
         pairingToken: current.pairingToken,
         computerId: current.computerId,
       }
@@ -109,6 +135,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
       if (patch.appendSystemPrompt !== undefined) {
         current.appendSystemPrompt = patch.appendSystemPrompt
       }
+      if (patch.pairingHost !== undefined) current.pairingHost = patch.pairingHost
       save()
     },
     resetPairingToken() {
@@ -169,6 +196,7 @@ function load(
     droidPath: str('droidPath'),
     factoryApiBaseUrl: str('factoryApiBaseUrl'),
     appendSystemPrompt: str('appendSystemPrompt'),
+    pairingHost: str('pairingHost'),
     pairingToken: str('pairingToken') ?? legacy('pairingTokenEncrypted') ?? undefined,
     computerId: str('computerId') ?? undefined,
     apiKey: str('apiKey') ?? legacy('apiKeyEncrypted'),

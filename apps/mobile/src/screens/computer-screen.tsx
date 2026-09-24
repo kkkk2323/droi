@@ -75,7 +75,8 @@ function ComputerForm({ id, name, address }: { id: string; name: string; address
           style={[inputStyle, { fontFamily: fonts.mono }]}
         />
         <Text tone="muted" size="sm">
-          A Tailscale name (my-mac.tailnet.ts.net:41417) reaches the computer at home and away.
+          A name that reaches the computer from anywhere (Tailscale, or a Surge Ponte name such as
+          laptop.myhome:41417) works at home and away.
         </Text>
         {error ? (
           <Text role="alert" size="sm" style={{ color: colors.destructiveForeground }}>

@@ -31,10 +31,13 @@ export async function resolvePairing(
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     meta = (await response.json()) as Partial<GatewayMeta>
-  } catch {
-    throw new PairingError(
-      `Cannot reach ${address}. Check that Remote Access is on in Droi on the computer and that the iPhone is on the same network or Tailscale.`,
-    )
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : String(cause)
+    // Without a port the request goes to :80, where something else may answer.
+    const hint = new URL(address).port
+      ? 'Check that Remote Access is on in Droi on the computer and that the iPhone can reach it: the same network, Tailscale, or a proxy such as Surge.'
+      : 'The address has no port; the pairing link Droi shows ends in one, such as :41417.'
+    throw new PairingError(`Cannot reach ${address} (${reason}). ${hint}`)
   }
   if (meta.app !== 'Droi' || !meta.computerId) {
     throw new PairingError(
