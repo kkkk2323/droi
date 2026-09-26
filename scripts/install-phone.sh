@@ -33,8 +33,12 @@ if [ -z "$device" ]; then
   xcrun devicectl list devices --json-output "$devices" >/dev/null
   device=$(node -e '
     const { result } = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+    // Since Xcode 27 the list also holds simulators, which count as paired.
     const phone = result.devices.find(
-      (d) => d.hardwareProperties?.deviceType === "iPhone" && d.connectionProperties?.pairingState === "paired",
+      (d) =>
+        d.hardwareProperties?.deviceType === "iPhone" &&
+        d.hardwareProperties?.reality !== "simulated" &&
+        d.connectionProperties?.pairingState === "paired",
     )
     if (phone) console.log(phone.hardwareProperties.udid)
   ' "$devices")
