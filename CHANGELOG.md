@@ -1,3 +1,9 @@
+## 1.10.1 - 2026-09-26
+
+### Changed
+
+- Sessions in the iPhone's session list are taller rows (44pt, Apple's minimum touch target) with larger titles, so they are easier to tap and read.
+
 ## 1.10.0 - 2026-09-26
 
 ### Added
