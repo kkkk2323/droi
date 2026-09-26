@@ -82,3 +82,11 @@ test('pins and folds are kept on the phone across a relaunch', async ({ page, fa
   ).toBeVisible()
   expect(fakeDaemon.requests.map((r) => r.method)).not.toContain('daemon.update_session_settings')
 })
+
+test('a Session row is a full-size touch target', async ({ page, fakeDaemon }) => {
+  await pairPhone(page, fakeDaemon)
+  const list = await openDrawer(page)
+  const row = list.getByRole('button', { name: /Deploy/ })
+  expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await expect(row.getByText('Deploy')).toHaveCSS('font-size', '15px')
+})

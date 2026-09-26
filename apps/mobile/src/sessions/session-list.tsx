@@ -406,7 +406,7 @@ function WorkspaceSection({
                 ]}
               >
                 <Text
-                  size="sm"
+                  size="base"
                   weight={isUnread ? 'medium' : 'regular'}
                   numberOfLines={1}
                   style={styles.title}
@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    minHeight: 36,
+    minHeight: 44,
     paddingHorizontal: space.sm,
     borderRadius: radius.lg,
   },
