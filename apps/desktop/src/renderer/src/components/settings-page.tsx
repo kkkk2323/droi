@@ -99,7 +99,7 @@ export function SettingsPage({
     >
       <nav
         aria-label="Settings sections"
-        className="app-drag flex shrink-0 gap-1 overflow-x-auto border-b px-3 pb-2 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:w-56 sm:flex-col sm:overflow-x-visible sm:border-r sm:border-b-0 sm:pb-3 sm:pt-[calc(env(safe-area-inset-top)+2.75rem)]"
+        className="app-drag flex shrink-0 gap-1 overflow-x-auto border-b px-2 pb-2 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:w-60 sm:flex-col sm:overflow-x-visible sm:border-r sm:border-b-0 sm:pb-3 sm:pt-[calc(env(safe-area-inset-top)+2.75rem)]"
       >
         <button
           type="button"
