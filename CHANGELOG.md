@@ -1,3 +1,9 @@
+## 1.10.2 - 2026-09-26
+
+### Fixed
+
+- Settings → Session defaults → Compaction model saves a model newer than Droi's copy of the droid SDK knows, such as DeepSeek V4.1 Flash. Before, the choice never reached the Daemon and the page went back to the stored model; a compaction model set that way elsewhere (for example in the droid CLI) kept the whole Session defaults page from loading.
+
 ## 1.10.1 - 2026-09-26
 
 ### Changed
