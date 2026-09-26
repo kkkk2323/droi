@@ -91,9 +91,12 @@ function FileRow({ file }: { file: ChangedFile }) {
       >
         {STATUS_LETTER[file.status] ?? file.status.charAt(0).toUpperCase()}
       </span>
+      {/* The folder only gets what the name leaves; a name too long for the row is cut too. */}
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5 font-mono">
-        <span className="shrink-0">{name}</span>
-        {dir ? <span className="truncate text-muted-foreground">{dir}</span> : null}
+        <span className="min-w-0 truncate">{name}</span>
+        {dir ? (
+          <span className="min-w-0 flex-1 basis-0 truncate text-muted-foreground">{dir}</span>
+        ) : null}
       </span>
       <Counts additions={file.additions} deletions={file.deletions} />
     </li>

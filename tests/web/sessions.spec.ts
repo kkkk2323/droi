@@ -365,6 +365,12 @@ test.describe('git changes in the header', () => {
         files: [
           { path: 'src/auth/login.ts', status: 'modified', additions: 12, deletions: 3 },
           { path: 'src/auth/login.test.ts', status: 'added', additions: 40, deletions: 0 },
+          {
+            path: 'docs/adr/0008-a-session-without-a-workspace-gets-a-scratch-workspace.md',
+            status: 'added',
+            additions: 25,
+            deletions: 0,
+          },
         ],
       },
     },
@@ -384,18 +390,43 @@ test.describe('git changes in the header', () => {
   }) => {
     await openClient()
     await pickSession(/Fix the login bug/)
-    const button = page.getByRole('button', { name: 'Branch fix/login, 2 changed files' })
+    const button = page.getByRole('button', { name: 'Branch fix/login, 3 changed files' })
     await expect(button).toContainText('fix/login')
-    await expect(button).toContainText('+52')
+    await expect(button).toContainText('+77')
     await expect(button).toContainText('−3')
     await button.click()
     const files = page.getByRole('list', { name: 'Changed files' })
-    await expect(files.getByRole('listitem')).toHaveCount(2)
+    await expect(files.getByRole('listitem')).toHaveCount(3)
     await expect(files.getByRole('listitem').first()).toContainText('login.ts')
     await expect(files.getByRole('listitem').first()).toContainText('src/auth/')
     await expect(files.getByRole('listitem').nth(1)).toContainText('+40')
     await page.keyboard.press('Escape')
     await expect(files).toHaveCount(0)
+  })
+
+  test('a long file name is cut short instead of running over the counts', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Fix the login bug/)
+    await page.getByRole('button', { name: /^Branch fix\/login/ }).click()
+    const files = page.getByRole('list', { name: 'Changed files' })
+    const long = files.getByRole('listitem').nth(2)
+    await expect(long).toContainText('+25')
+    // Nothing scrolls sideways, and each row's counts stay clear of its name.
+    expect(await files.evaluate((list) => list.scrollWidth - list.clientWidth)).toBe(0)
+    for (const row of await files.getByRole('listitem').all()) {
+      const [nameEnd, countsStart] = await row.evaluate((li) => {
+        const box = (el: Element | null | undefined) => el?.getBoundingClientRect()
+        return [
+          box(li.querySelector('.font-mono.flex-1'))?.right ?? 0,
+          box(li.lastElementChild)?.left ?? 0,
+        ]
+      })
+      expect(nameEnd).toBeLessThanOrEqual(countsStart)
+    }
   })
 
   test('the counts follow the edits while a turn runs', async ({
