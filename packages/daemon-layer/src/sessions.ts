@@ -74,7 +74,10 @@ export const RECENTS_GROUP_KEY = 'droi:recents'
 
 /** Drops Sessions that another listed Session continues; the chain shows as its latest link. */
 export function foldContinued(sessions: readonly SessionSummary[]): SessionSummary[] {
-  const parents = new Set(sessions.map((s) => s.parentId).filter((id): id is string => !!id))
+  // A Session compacted in place was once tagged with itself; that is no fold.
+  const parents = new Set(
+    sessions.flatMap((s) => (s.parentId && s.parentId !== s.sessionId ? [s.parentId] : [])),
+  )
   return sessions.filter((s) => !parents.has(s.sessionId))
 }
 

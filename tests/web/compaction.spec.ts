@@ -152,6 +152,56 @@ test.describe('compaction handoff', () => {
   })
 })
 
+test.describe('compaction in place', () => {
+  const other = session('Other chat', '/Users/dev/acme-web', [userMessage('elsewhere')])
+  test.use({ scenario: { sessions: [chat, other] } })
+
+  test('/compact that keeps the Session leaves it listed and untagged', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+    openSidebar,
+  }) => {
+    // Newer Daemons summarise into the same Session and answer with its own id.
+    fakeDaemon.scenario.on('daemon.compact_session', (params, { daemon }) => {
+      const sessionId = String(params['sessionId'])
+      daemon.notify(sessionId, {
+        type: 'session_compacted',
+        summaryId: 'summary_1',
+        removedCount: 2,
+        visibleBoundaryMessageId: chat.messages[2]!.id,
+      })
+      return { newSessionId: sessionId, removedCount: 2 }
+    })
+    await openClient()
+    await pickSession(/Long chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.fill('/compact')
+    await input.press('Enter')
+    await expect(page.getByRole('group', { name: 'Command compact' })).toBeVisible()
+    await input.press('Enter')
+    await fakeDaemon.waitForRequest('daemon.compact_session')
+    await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(chat.sessionId))
+
+    await pickSession(/Other chat/)
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('elsewhere')
+    await pickSession(/Long chat/)
+    await expect(page).toHaveURL(new RegExp(chat.sessionId))
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('second answer')
+    const sidebar = await openSidebar()
+    await expect(sidebar.getByRole('button', { name: /Long chat/ })).toHaveCount(1)
+    expect(
+      fakeDaemon.requests.filter(
+        (r) =>
+          r.method === 'daemon.update_session_settings' &&
+          JSON.stringify(r.params).includes('droi.continues'),
+      ),
+    ).toHaveLength(0)
+  })
+})
+
 test.describe('a chain of compactions', () => {
   const first = session('Plan v1', '/Users/dev/acme-web', [
     userMessage('first question'),

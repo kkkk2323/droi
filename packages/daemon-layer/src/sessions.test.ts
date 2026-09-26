@@ -166,6 +166,15 @@ describe('continuation chain', () => {
     ).toEqual(['new', 'other'])
   })
 
+  test('a Session that names itself as its parent stays listed', () => {
+    // Droi 1.10 and earlier tagged a Session compacted in place with itself.
+    const self = summary({ sessionId: 'same', parentId: 'same' })
+    expect(foldContinued([self, summary({ sessionId: 'other' })]).map((s) => s.sessionId)).toEqual([
+      'same',
+      'other',
+    ])
+  })
+
   test('continuationTags replaces an older link instead of stacking them', () => {
     const tags = continuationTags('b', continuationTags('a', []))
     expect(tags).toEqual([{ name: CONTINUES_TAG, metadata: { parent: 'b' } }])
