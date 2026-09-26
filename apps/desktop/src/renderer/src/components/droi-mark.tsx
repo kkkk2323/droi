@@ -1,31 +1,19 @@
 import { cn } from '@/lib/utils'
 
 /**
- * Droi's own mark, the "D" with a prompt from the app icon
- * (resources/icon.svg), without the dark tile and glow so it sits on the
- * page. The greens are the icon's; the darker one reads on the light theme.
+ * Droi's own mark, the geometric "D" with its green dot from the app icon
+ * (resources/icon.svg), without the tile so it sits on the page. The D
+ * takes the text colour, so it reads on both themes; the dot stays the icon's green.
  */
 export function DroiMark({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="120 90 340 340"
-      fill="none"
-      aria-hidden
-      className={cn('text-[#2b9e5e] dark:text-[#3DDC84]', className)}
-    >
+    <svg viewBox="302 292 440 440" aria-hidden className={cn('text-foreground', className)}>
+      <rect x="346" y="292" width="112" height="440" rx="36" fill="currentColor" />
       <path
-        d="M160 100H260C348.366 100 420 171.634 420 260C420 348.366 348.366 420 260 420H160V100Z"
-        stroke="currentColor"
-        strokeWidth="20"
+        d="M478 328Q478 292 514 294.97A220 220 0 0 1 514 729.03Q478 732 478 696Z"
+        fill="currentColor"
       />
-      <path
-        d="M220 220L260 260L220 300"
-        stroke="currentColor"
-        strokeWidth="20"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect x="280" y="285" width="50" height="15" rx="4" fill="currentColor" />
+      <circle cx="571" cy="512" r="54" fill="#34c77b" />
     </svg>
   )
 }
