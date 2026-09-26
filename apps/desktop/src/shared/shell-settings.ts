@@ -65,6 +65,12 @@ export interface ShellSettingsSnapshot {
   apiKeyFromEnvironment: boolean
   /** Whether the `droid` executable was found (override, PATH or ~/.local/bin). */
   droidFound: string | null
+  /**
+   * True when the `droid` executable changed on disk since the Daemon started
+   * (it updates itself). The Daemon keeps the old build and its model list
+   * until it is restarted.
+   */
+  droidUpdated: boolean
   version: string
   update: UpdateState
 }
@@ -89,6 +95,8 @@ export interface ShellSettingsBridge {
   get(): Promise<ShellSettingsSnapshot>
   update(patch: ShellSettingsPatch): Promise<ShellSettingsSnapshot>
   setApiKey(apiKey: string | null): Promise<ShellSettingsSnapshot>
+  /** Stops the Daemon and starts it again from the `droid` on disk; working Sessions are interrupted. */
+  restartDaemon(): Promise<ShellSettingsSnapshot>
   /** Starts the device flow and opens the browser; the snapshot turns `pending`. */
   signIn(): Promise<ShellSettingsSnapshot>
   cancelSignIn(): Promise<ShellSettingsSnapshot>
@@ -108,6 +116,7 @@ export const SHELL_IPC = {
   get: 'droi:settings:get',
   update: 'droi:settings:update',
   setApiKey: 'droi:settings:set-api-key',
+  restartDaemon: 'droi:daemon:restart',
   signIn: 'droi:settings:sign-in',
   cancelSignIn: 'droi:settings:cancel-sign-in',
   signOut: 'droi:settings:sign-out',

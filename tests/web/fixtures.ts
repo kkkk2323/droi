@@ -77,6 +77,12 @@ export interface ShellRecord {
   notifications: Array<{ title: string; body: string; sessionId: string }>
   /** The src of every sound played, in order. */
   sounds: string[]
+  daemonRestarts: number
+}
+
+export interface LocalClientOptions {
+  /** The Shell reports that `droid` changed on disk since the Daemon started. */
+  droidUpdated?: boolean
 }
 
 /**
@@ -86,10 +92,20 @@ export interface ShellRecord {
  * `data:audio/wav,<path>`. The window counts as focused until
  * setWindowFocused(page, false).
  */
-export async function openLocalClient(page: Page, daemon: FakeDaemon): Promise<void> {
+export async function openLocalClient(
+  page: Page,
+  daemon: FakeDaemon,
+  options: LocalClientOptions = {},
+): Promise<void> {
   await page.addInitScript(
-    ({ gatewayUrl, pairingToken }) => {
-      const record: ShellRecord = { opened: [], notifications: [], sounds: [] }
+    ({ gatewayUrl, pairingToken, droidUpdated }) => {
+      const record: ShellRecord = { opened: [], notifications: [], sounds: [], daemonRestarts: 0 }
+      let updated = droidUpdated
+      const snapshot = () => ({
+        hasCredential: true,
+        update: { status: 'idle' },
+        droidUpdated: updated,
+      })
       let focused = true
       let onClick: ((sessionId: string) => void) | null = null
       HTMLMediaElement.prototype.play = function () {
@@ -106,7 +122,12 @@ export async function openLocalClient(page: Page, daemon: FakeDaemon): Promise<v
           pairingToken,
           platform: 'darwin',
           settings: {
-            get: async () => ({ hasCredential: true, update: { status: 'idle' } }),
+            get: async () => snapshot(),
+            restartDaemon: async () => {
+              record.daemonRestarts += 1
+              updated = false
+              return snapshot()
+            },
             onChange: () => () => {},
           },
           openIn: {
@@ -130,7 +151,7 @@ export async function openLocalClient(page: Page, daemon: FakeDaemon): Promise<v
         },
       })
     },
-    { gatewayUrl: daemon.url, pairingToken: daemon.token },
+    { gatewayUrl: daemon.url, pairingToken: daemon.token, droidUpdated: !!options.droidUpdated },
   )
   await page.goto('/')
 }

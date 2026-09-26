@@ -146,6 +146,11 @@ export function SettingsPage({
             />
           ) : tab === 'defaults' ? (
             <SessionDefaultsTab
+              notice={
+                bridge && snapshot?.droidUpdated ? (
+                  <DroidUpdatedRow bridge={bridge} onSaved={setSnapshot} />
+                ) : null
+              }
               systemPrompt={
                 bridge && snapshot ? (
                   <SystemPromptRow
@@ -484,6 +489,30 @@ function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
           : 'No key set. The Daemon cannot authenticate without one.'}
       </p>
     </SettingRow>
+  )
+}
+
+function DroidUpdatedRow({ bridge, onSaved }: Omit<RowProps, 'snapshot'>) {
+  const [restarting, setRestarting] = useState(false)
+  const restart = async () => {
+    setRestarting(true)
+    try {
+      onSaved(await bridge.restartDaemon())
+    } finally {
+      setRestarting(false)
+    }
+  }
+  return (
+    <SettingRow
+      title="droid was updated"
+      description="The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working."
+      control={
+        <Button size="sm" disabled={restarting} onClick={() => void restart()}>
+          <RefreshCw aria-hidden />
+          Restart Daemon
+        </Button>
+      }
+    />
   )
 }
 

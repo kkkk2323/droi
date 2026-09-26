@@ -19,6 +19,7 @@ import {
   type SubagentTier,
 } from '@droi/daemon-layer/session-defaults'
 import { useSessionDefaultsEditor } from '@droi/daemon-layer/use-session-defaults'
+import { ModelPicker } from '@/components/chat/model-picker'
 import { Button } from '@/components/ui/button'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
@@ -38,10 +39,16 @@ type Update = (patch: SessionDefaultsPatch) => void
 /**
  * What every new Session starts with, after the Factory App's Session Defaults
  * page. The Daemon keeps them in ~/.factory/settings.json, which the droid CLI
- * and the Factory App read too; it works from any Client. `systemPrompt` is
- * the Desktop Shell's own row, present in the Local Client only.
+ * and the Factory App read too; it works from any Client. `systemPrompt` and
+ * `notice` are the Desktop Shell's own rows, present in the Local Client only.
  */
-export function SessionDefaultsTab({ systemPrompt }: { systemPrompt: ReactNode }) {
+export function SessionDefaultsTab({
+  systemPrompt,
+  notice,
+}: {
+  systemPrompt: ReactNode
+  notice?: ReactNode
+}) {
   const { defaults, update, error } = useSessionDefaultsEditor()
   const save: Update = (patch) => void update(patch)
   return (
@@ -50,6 +57,7 @@ export function SessionDefaultsTab({ systemPrompt }: { systemPrompt: ReactNode }
         Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their
         settings.
       </p>
+      {notice}
       {error ? (
         <p role="alert" className="text-sm text-destructive-foreground">
           Session defaults did not load or save: {error}
@@ -83,8 +91,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 type Props = { defaults: SessionDefaultsView; save: Update }
 
-function modelOptions(defaults: SessionDefaultsView, routers = true): SelectOption[] {
-  return pickableModels(defaults.models, { routers }).map((m) => ({ value: m.id, label: m.label }))
+function modelChoices(defaults: SessionDefaultsView, routers = true) {
+  return pickableModels(defaults.models, { routers })
 }
 
 function effortOptions(efforts: string[]): SelectOption[] {
@@ -100,9 +108,10 @@ function General({ defaults, save }: Props) {
         title="Default model"
         description={locked.has('modelId') ? ORG_MANAGED : undefined}
         control={
-          <Select
+          <ModelPicker
+            field
             label="Default model"
-            value={defaults.modelId ?? ''}
+            value={defaults.modelId}
             disabled={locked.has('modelId')}
             onChange={(modelId) => {
               // A level the new model lacks would be refused; start from its first.
@@ -113,7 +122,7 @@ function General({ defaults, save }: Props) {
                 ...(effort && supported.includes(effort) ? {} : { reasoningEffort: supported[0] }),
               })
             }}
-            options={modelOptions(defaults)}
+            models={modelChoices(defaults)}
           />
         }
       />
@@ -182,7 +191,8 @@ function SpecMode({ defaults, save }: Props) {
       <SettingRow
         title="Spec mode model"
         control={
-          <Select
+          <ModelPicker
+            field
             label="Spec mode model"
             value={defaults.specModeModelId ?? SAME_AS_MAIN}
             disabled={defaults.locked.has('specModeModelId')}
@@ -193,7 +203,8 @@ function SpecMode({ defaults, save }: Props) {
                   : { specModeModelId: value, specModeReasoningEffort: null },
               )
             }
-            options={[{ value: SAME_AS_MAIN, label: 'Same as main' }, ...modelOptions(defaults)]}
+            extras={[{ value: SAME_AS_MAIN, label: 'Same as main' }]}
+            models={modelChoices(defaults)}
           />
         }
       />
@@ -284,7 +295,7 @@ const limitOptions = (current: number | null): SelectOption[] =>
 function Compaction({ defaults, save }: Props) {
   const overrides = defaults.compactionTokenLimitPerModel
   const label = (id: string) => defaults.models.find((m) => m.id === id)?.label ?? id
-  const addable = modelOptions(defaults).filter((m) => !(m.value in overrides))
+  const addable = modelChoices(defaults).filter((m) => !(m.id in overrides))
   return (
     <Section title="Compaction">
       <SettingRow
@@ -349,9 +360,10 @@ function Compaction({ defaults, save }: Props) {
             </li>
           ))}
           <li>
-            <Select
+            <ModelPicker
+              field
               label="Add a model limit"
-              value=""
+              value={null}
               disabled={addable.length === 0 || defaults.locked.has('compactionTokenLimitPerModel')}
               onChange={(modelId) =>
                 save({
@@ -361,7 +373,7 @@ function Compaction({ defaults, save }: Props) {
                   },
                 })
               }
-              options={addable}
+              models={addable}
             />
           </li>
         </ul>
@@ -370,15 +382,14 @@ function Compaction({ defaults, save }: Props) {
         title="Compaction model"
         description="The model that writes the summary."
         control={
-          <Select
+          <ModelPicker
+            field
             label="Compaction model"
             value={defaults.compactionModel}
             disabled={defaults.locked.has('compactionModel')}
             onChange={(compactionModel) => save({ compactionModel })}
-            options={[
-              { value: CURRENT_MODEL, label: 'Current model' },
-              ...modelOptions(defaults, false),
-            ]}
+            extras={[{ value: CURRENT_MODEL, label: 'Current model' }]}
+            models={modelChoices(defaults, false)}
           />
         }
       />
@@ -419,7 +430,8 @@ function Subagents({ defaults, save }: Props) {
             return (
               <div key={tier} className="flex flex-wrap items-center gap-2">
                 <span className="w-28 shrink-0 text-sm">{TIER_LABELS[tier]}</span>
-                <Select
+                <ModelPicker
+                  field
                   label={`${TIER_LABELS[tier]} model`}
                   value={model ?? INHERIT}
                   disabled={defaults.locked.has(`subagent.${tier}Model`)}
@@ -431,10 +443,8 @@ function Subagents({ defaults, save }: Props) {
                       }),
                     })
                   }
-                  options={[
-                    { value: INHERIT, label: 'Inherit (calling session)' },
-                    ...modelOptions(defaults),
-                  ]}
+                  extras={[{ value: INHERIT, label: 'Inherit (calling session)' }]}
+                  models={modelChoices(defaults)}
                 />
                 {model !== null ? (
                   <Select

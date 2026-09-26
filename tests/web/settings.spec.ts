@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
-import { drawerGone, expect, test } from './fixtures'
+import { drawerGone, expect, openLocalClient, shellRecord, test } from './fixtures'
 import { session, userMessage } from '../fake-daemon/scenario'
 
 const first = session('First session', '/Users/dev/acme-web', [userMessage('hi')], {
@@ -222,6 +222,17 @@ test.describe('session defaults', () => {
     await expect(page.getByRole('listbox')).toHaveCount(0)
   }
 
+  /** The model settings use the chat's model picker. */
+  async function pickModel(page: Page, picker: string, option: string | RegExp) {
+    await page.getByRole('button', { name: picker, exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Choose a model' })
+    await dialog
+      .getByRole('listbox', { name: 'Models' })
+      .getByRole('option', { name: option })
+      .click()
+    await expect(dialog).toBeHidden()
+  }
+
   test('each change goes to the Daemon at once and outlasts a reload', async ({
     page,
     fakeDaemon,
@@ -234,12 +245,12 @@ test.describe('session defaults', () => {
       fakeDaemon.requests.filter((r) => r.method === 'daemon.update_session_defaults').at(-1)
         ?.params
 
-    const model = page.getByRole('combobox', { name: 'Default model' })
+    const model = page.getByRole('button', { name: 'Default model', exact: true })
     const effort = page.getByRole('combobox', { name: 'Default reasoning level' })
     await expect(model).toHaveText('Auto Model')
     await expect(effort).toHaveText('None')
     // GPT-5 has no "None"; its first level comes with it.
-    await pick(page, 'Default model', 'GPT-5')
+    await pickModel(page, 'Default model', 'GPT-5')
     await expect.poll(saved).toEqual({ modelId: 'gpt-5', reasoningEffort: 'low' })
     await expect(effort).toHaveText('Low')
     await effort.click()
@@ -256,19 +267,19 @@ test.describe('session defaults', () => {
     await pick(page, 'Default autonomy level', /^High/)
     await expect.poll(saved).toEqual({ autonomyLevel: 'high' })
 
-    await pick(page, 'Spec mode model', 'Claude Opus 4.1')
+    await pickModel(page, 'Spec mode model', 'Claude Opus 4.1')
     await expect.poll(saved).toEqual({
       specModeModelId: 'claude-opus-4-1',
       specModeReasoningEffort: null,
     })
-    await pick(page, 'Spec mode model', 'Same as main')
+    await pickModel(page, 'Spec mode model', 'Same as main')
     await expect.poll(saved).toEqual({ specModeModelId: null, specModeReasoningEffort: null })
     await pick(page, 'Spec save folder', 'Project')
     await expect.poll(saved).toEqual({ specSaveDir: '.factory/docs' })
 
     await pick(page, 'Compaction token limit', '500K')
     await expect.poll(saved).toEqual({ compactionTokenLimit: 500_000 })
-    await pick(page, 'Add a model limit', 'GPT-5')
+    await pickModel(page, 'Add a model limit', 'GPT-5')
     await expect.poll(saved).toEqual({ compactionTokenLimitPerModel: { 'gpt-5': 500_000 } })
     const limits = page.getByRole('list', { name: 'Model compaction limits' })
     await limits.getByRole('button', { name: 'Remove the GPT-5 limit' }).click()
@@ -277,13 +288,13 @@ test.describe('session defaults', () => {
     await expect.poll(saved).toEqual({ compactionThresholdCheckEnabled: false })
 
     // The Daemon replaces the tier settings whole, so every change sends all tiers.
-    await pick(page, 'Light task model', 'GPT-5')
+    await pickModel(page, 'Light task model', 'GPT-5')
     await expect.poll(saved).toEqual({ subagentModelSettings: { lightModel: 'gpt-5' } })
-    await pick(page, 'Heavy task model', 'Claude Opus 4.1')
+    await pickModel(page, 'Heavy task model', 'Claude Opus 4.1')
     await expect.poll(saved).toEqual({
       subagentModelSettings: { lightModel: 'gpt-5', heavyModel: 'claude-opus-4-1' },
     })
-    await pick(page, 'Light task model', 'Inherit (calling session)')
+    await pickModel(page, 'Light task model', 'Inherit (calling session)')
     await expect.poll(saved).toEqual({ subagentModelSettings: { heavyModel: 'claude-opus-4-1' } })
     await pick(page, 'Subagent autonomy level', 'Medium autonomy')
     await expect.poll(saved).toEqual({ subagentAutonomyLevel: 'medium' })
@@ -298,10 +309,75 @@ test.describe('session defaults', () => {
       'Spec',
     )
     await expect(page.getByRole('combobox', { name: 'Spec save folder' })).toHaveText('Project')
-    await expect(page.getByRole('combobox', { name: 'Heavy task model' })).toHaveText(
+    await expect(page.getByRole('button', { name: 'Heavy task model' })).toHaveText(
       'Claude Opus 4.1',
     )
     await expect(page.getByRole('switch', { name: 'Compact automatically' })).not.toBeChecked()
+  })
+
+  test('model settings use the chat model picker, with their own choice pinned on top', async ({
+    page,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await openDefaults(page, openSidebar)
+    const dialog = page.getByRole('dialog', { name: 'Choose a model' })
+    const options = dialog.getByRole('listbox', { name: 'Models' }).getByRole('option')
+
+    const spec = page.getByRole('button', { name: 'Spec mode model', exact: true })
+    await expect(spec).toHaveText('Same as main')
+    await spec.click()
+    await expect(dialog.getByRole('searchbox', { name: 'Search models' })).toBeFocused()
+    await expect(dialog.getByRole('toolbar', { name: 'Filter models' })).toBeVisible()
+    await expect(options).toHaveCount(4)
+    await expect(options.first()).toHaveText('Same as main')
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true')
+    // Pinned while a brand filters the models below it.
+    await dialog.getByRole('button', { name: 'OpenAI' }).click()
+    await expect(options).toHaveCount(2)
+    await expect(options.first()).toHaveText('Same as main')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+
+    // Compaction cannot use the Auto router.
+    await page.getByRole('button', { name: 'Compaction model', exact: true }).click()
+    await expect(options.first()).toHaveText('Current model')
+    await expect(options.filter({ hasText: 'Auto Model' })).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+
+    await expect(page.getByRole('button', { name: 'Light task model', exact: true })).toHaveText(
+      'Inherit (calling session)',
+    )
+    await expect(page.getByRole('button', { name: 'Add a model limit', exact: true })).toHaveText(
+      'Add a model limit',
+    )
+  })
+
+  test('after droid updates itself, the Local Client offers to restart the Daemon', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon, { droidUpdated: true })
+    await openDefaults(page, openSidebar)
+    await expect(page.getByText('droid was updated')).toBeVisible()
+    await page.getByRole('button', { name: 'Restart Daemon' }).click()
+    await expect.poll(async () => (await shellRecord(page)).daemonRestarts).toBe(1)
+    await expect(page.getByText('droid was updated')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Restart Daemon' })).toHaveCount(0)
+  })
+
+  test('the restart offer stays away while the Daemon runs the installed droid', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon)
+    await openDefaults(page, openSidebar)
+    await expect(page.getByRole('button', { name: 'Default model', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Restart Daemon' })).toHaveCount(0)
   })
 })
 
@@ -317,7 +393,7 @@ test.describe('session defaults the organization manages', () => {
     await openClient()
     await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
     await page.getByRole('button', { name: 'Session defaults' }).click()
-    await expect(page.getByRole('combobox', { name: 'Default model' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Default model', exact: true })).toBeDisabled()
     await expect(page.getByText('Set by your organization.')).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Default reasoning level' })).toBeEnabled()
   })

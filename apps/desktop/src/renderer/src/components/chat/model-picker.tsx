@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Popover } from '@base-ui/react/popover'
 import { ChevronDown, Search, Star } from 'lucide-react'
 import { BrandIcon } from './brand-icon'
@@ -13,14 +13,37 @@ import {
 import { cn } from '@/lib/utils'
 import type { ModelChoice } from '@droi/daemon-layer/use-session-settings'
 
+/** A choice that is not a model, such as "Same as main"; it stays at the top of the list. */
+export interface PickerExtra {
+  value: string
+  label: string
+}
+
+const NO_EXTRAS: PickerExtra[] = []
+
 export function ModelPicker({
   models,
   value,
   onChange,
+  label = 'Model',
+  extras = NO_EXTRAS,
+  placeholder,
+  disabled = false,
+  field = false,
+  className,
 }: {
   models: ModelChoice[]
   value: string | null
   onChange: (modelId: string) => void
+  /** The trigger's accessible name. */
+  label?: string
+  extras?: PickerExtra[]
+  /** Trigger text while the value names nothing; defaults to `label`. */
+  placeholder?: string
+  disabled?: boolean
+  /** Framed field that opens downwards, for settings rows, instead of the composer's text button. */
+  field?: boolean
+  className?: string
 }) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<PickerFilter>('all')
@@ -28,13 +51,22 @@ export function ModelPicker({
   const [highlight, setHighlight] = useState(0)
   const [favorites, setFavorites] = usePreference(favoriteModels)
   const searchRef = useRef<HTMLInputElement>(null)
+  // Several pickers can share a page, so their element ids must not collide.
+  const baseId = useId()
+  const listId = `${baseId}-list`
+  const optionId = (id: string) => `${baseId}-option-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`
 
-  const current = models.find((m) => m.id === value) ?? null
+  const extra = extras.find((e) => e.value === value) ?? null
+  const current = extra ? null : (models.find((m) => m.id === value) ?? null)
   const currentBrand = current ? brandOf(current.id, current.provider) : null
   const brands = brandsOf(models)
   const rows = visibleModels(models, favorites, filter, query)
+  const choices = [
+    ...extras.map((e) => ({ id: e.value, disabled: false })),
+    ...rows.map((row) => ({ id: row.id, disabled: row.disabled })),
+  ]
   const searching = query.trim().length > 0
-  const activeIndex = Math.min(highlight, Math.max(rows.length - 1, 0))
+  const activeIndex = Math.min(highlight, Math.max(choices.length - 1, 0))
 
   const pick = (id: string) => {
     if (id !== value) onChange(id)
@@ -52,15 +84,15 @@ export function ModelPicker({
   const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setHighlight(Math.min(activeIndex + 1, rows.length - 1))
+      setHighlight(Math.min(activeIndex + 1, choices.length - 1))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setHighlight(Math.max(activeIndex - 1, 0))
     } else if (event.key === 'Enter') {
-      const row = rows[activeIndex]
-      if (row && !row.disabled) {
+      const choice = choices[activeIndex]
+      if (choice && !choice.disabled) {
         event.preventDefault()
-        pick(row.id)
+        pick(choice.id)
       }
     }
   }
@@ -78,19 +110,29 @@ export function ModelPicker({
       }}
     >
       <Popover.Trigger
-        aria-label="Model"
-        disabled={models.length === 0}
+        aria-label={label}
+        disabled={disabled || models.length + extras.length === 0}
         className={cn(
-          'inline-flex h-7 max-w-52 select-none items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/75 outline-none transition-colors',
-          'hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:bg-muted data-[popup-open]:text-foreground data-[disabled]:opacity-50',
+          'inline-flex select-none items-center gap-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 data-[disabled]:opacity-50',
+          field
+            ? 'h-8 min-w-32 max-w-full rounded-lg border bg-background px-2.5 text-sm hover:bg-muted/60 data-[popup-open]:bg-muted/60'
+            : 'h-7 max-w-52 rounded-md px-2 text-[13px] text-foreground/75 hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground',
+          className,
         )}
       >
         {currentBrand ? <BrandIcon brand={currentBrand} className="size-3.5" /> : null}
-        <span className="truncate">{current?.label ?? value ?? 'Model'}</span>
+        <span className={cn('truncate', field && 'flex-1 text-left')}>
+          {extra?.label ?? current?.label ?? value ?? placeholder ?? label}
+        </span>
         <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
+        <Popover.Positioner
+          side={field ? 'bottom' : 'top'}
+          align={field ? 'end' : 'start'}
+          sideOffset={field ? 4 : 6}
+          className="z-50 outline-none"
+        >
           <Popover.Popup
             initialFocus={searchRef}
             aria-label="Choose a model"
@@ -133,9 +175,9 @@ export function ModelPicker({
                   ref={searchRef}
                   type="search"
                   aria-label="Search models"
-                  aria-controls="model-picker-list"
+                  aria-controls={listId}
                   aria-activedescendant={
-                    rows[activeIndex] ? optionId(rows[activeIndex].id) : undefined
+                    choices[activeIndex] ? optionId(choices[activeIndex].id) : undefined
                   }
                   placeholder="Search models…"
                   value={query}
@@ -148,13 +190,40 @@ export function ModelPicker({
                 />
               </div>
               <ul
-                id="model-picker-list"
+                id={listId}
                 role="listbox"
                 aria-label="Models"
                 className="flex-1 overflow-y-auto p-1.5"
               >
+                {extras.map((choice, index) => (
+                  <li
+                    key={choice.value}
+                    id={optionId(choice.value)}
+                    role="option"
+                    aria-selected={choice.value === value}
+                    data-value={choice.value}
+                    data-highlighted={index === activeIndex || undefined}
+                    onMouseMove={() => setHighlight(index)}
+                    onClick={() => pick(choice.value)}
+                    className={cn(
+                      'flex h-9 items-center rounded-lg px-2.5 text-[13px] font-medium outline-none',
+                      'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground',
+                      choice.value === value && 'bg-muted',
+                    )}
+                  >
+                    <span className="truncate">{choice.label}</span>
+                  </li>
+                ))}
+                {extras.length > 0 ? (
+                  <li role="presentation" aria-hidden className="mx-1 my-1 h-px bg-border" />
+                ) : null}
                 {rows.length === 0 ? (
-                  <li className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
+                  <li
+                    className={cn(
+                      'flex items-center justify-center px-4 text-center text-xs text-muted-foreground',
+                      extras.length > 0 ? 'py-6' : 'h-full',
+                    )}
+                  >
                     {searching
                       ? 'No models match.'
                       : filter === 'favorites'
@@ -162,7 +231,8 @@ export function ModelPicker({
                         : 'No models.'}
                   </li>
                 ) : null}
-                {rows.map((row, index) => {
+                {rows.map((row, rowIndex) => {
+                  const index = extras.length + rowIndex
                   const selected = row.id === value
                   const starred = favorites.includes(row.id)
                   return (
@@ -229,10 +299,6 @@ export function ModelPicker({
       </Popover.Portal>
     </Popover.Root>
   )
-}
-
-function optionId(modelId: string): string {
-  return `model-option-${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`
 }
 
 function RailButton({

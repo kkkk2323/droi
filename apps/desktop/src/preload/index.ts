@@ -13,6 +13,7 @@ const settings: ShellSettingsBridge = {
   get: () => ipcRenderer.invoke(SHELL_IPC.get),
   update: (patch) => ipcRenderer.invoke(SHELL_IPC.update, patch),
   setApiKey: (apiKey) => ipcRenderer.invoke(SHELL_IPC.setApiKey, apiKey),
+  restartDaemon: () => ipcRenderer.invoke(SHELL_IPC.restartDaemon),
   signIn: () => ipcRenderer.invoke(SHELL_IPC.signIn),
   cancelSignIn: () => ipcRenderer.invoke(SHELL_IPC.cancelSignIn),
   signOut: () => ipcRenderer.invoke(SHELL_IPC.signOut),

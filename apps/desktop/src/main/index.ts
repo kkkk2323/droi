@@ -23,6 +23,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
+import { droidBuildOf, isDroidReplaced, type DroidBuild } from './daemon/droid-build'
 import { locateDroid } from './daemon/locate-droid'
 import { createCliLoginReader, readRegistration, type CliLoginReader } from './cli-login'
 import { createFactoryAuth, type FactoryAuth } from './factory-auth'
@@ -61,6 +62,8 @@ let settings: ShellSettingsStore
 let auth: FactoryAuth
 let cliLogin: CliLoginReader
 let daemon: DaemonSupervisor
+/** The `droid` file the current Daemon was spawned from. */
+let daemonBuild: DroidBuild | null = null
 let gateway: Gateway | null = null
 let updater: Updater
 
@@ -133,6 +136,7 @@ function createDaemonSupervisor(): DaemonSupervisor {
       // URL routes the Daemon's Factory traffic through a proxy such as droid-proxy.
       const apiKey = auth.state.status === 'signed-in' ? null : settings.getApiKey()
       const baseUrl = settings.settings.factoryApiBaseUrl ?? process.env['FACTORY_API_BASE_URL']
+      daemonBuild = droidBuildOf(droidPath)
       return spawn(
         droidPath,
         [
@@ -238,6 +242,7 @@ async function snapshot(): Promise<ShellSettingsSnapshot> {
     hasApiKey: settings.getApiKey() !== null,
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
+    droidUpdated: isDroidReplaced(daemonBuild),
     version: app.getVersion(),
     update: updater.state,
   }
@@ -388,6 +393,11 @@ function registerIpc(): void {
     broadcastChange()
     return snapshot()
   })
+  ipcMain.handle(SHELL_IPC.restartDaemon, async () => {
+    await restartDaemon()
+    broadcastChange()
+    return snapshot()
+  })
   ipcMain.handle(SHELL_IPC.signIn, async () => {
     const pending = await auth.signIn()
     void shell.openExternal(pending.verificationUriComplete)
@@ -423,6 +433,8 @@ function registerIpc(): void {
 
 async function restartDaemon(): Promise<void> {
   await daemon.stop()
+  // The new Daemon records its own build once spawned, a moment after start().
+  daemonBuild = null
   daemon.start()
 }
 
