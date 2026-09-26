@@ -1,3 +1,9 @@
+## 1.11.1 - 2026-09-26
+
+### Fixed
+
+- The conversation is centred in the window, in line with the message box. Once a conversation was long enough to scroll, the hidden scrollbar took room on the right only, so the messages sat a little to the left, which showed most with the sidebar hidden. The column also no longer shifts sideways when the scrollbar appears.
+
 ## 1.11.0 - 2026-09-26
 
 ### Changed
