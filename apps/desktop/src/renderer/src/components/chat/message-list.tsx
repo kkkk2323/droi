@@ -351,7 +351,9 @@ export function MessageList({
         ref={virtuoso}
         role="log"
         aria-label="Transcript"
-        className="h-full"
+        // The thin scrollbar (global.css) takes room on the right; an equal
+        // gutter on the left keeps the column centred, in line with the composer.
+        className="h-full [scrollbar-gutter:stable_both-edges]"
         data={entries}
         context={context}
         computeItemKey={(_, entry) => entry.id}
