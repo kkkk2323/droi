@@ -1,3 +1,13 @@
+## 1.9.0 - 2026-09-26
+
+### Added
+
+- Settings → Session defaults says when droid has updated itself since the Daemon started, with a Restart Daemon button. Until the restart the Daemon keeps the earlier droid and its model list, so newly released models were missing from Session defaults and the New session page although the chat already offered them.
+
+### Changed
+
+- Every model setting in Session defaults (default model, spec mode, compaction, the per-model compaction limits and the subagent task models) uses the chat's model picker, with brand filters, search, favourites and usage multipliers. "Same as main", "Inherit" and "Current model" stay pinned at the top of the list.
+
 ## 1.8.2 - 2026-09-24
 
 ### Changed
