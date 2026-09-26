@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createShellSettingsStore, pairingHostOf } from './shell-settings'
+import { createShellSettingsStore, pairingHostOf, scratchFolderOf } from './shell-settings'
 
 const dirs: string[] = []
 function tempFile(): string {
@@ -36,6 +36,7 @@ describe('shell settings', () => {
       factoryApiBaseUrl: 'http://127.0.0.1:37650',
       appendSystemPrompt: 'Answer in French.',
       pairingHost: 'laptop.myhome',
+      scratchFolder: '/Users/me/Chats',
     })
     store.setApiKey('fk-test')
     store.setLogin('{"access":"a"}')
@@ -47,6 +48,7 @@ describe('shell settings', () => {
       factoryApiBaseUrl: 'http://127.0.0.1:37650',
       appendSystemPrompt: 'Answer in French.',
       pairingHost: 'laptop.myhome',
+      scratchFolder: '/Users/me/Chats',
       pairingToken: token,
     })
     expect(reloaded.getApiKey()).toBe('fk-test')
@@ -138,6 +140,15 @@ describe('shell settings', () => {
     expect(pairingHostOf('')).toBeNull()
     expect(pairingHostOf(null)).toBeNull()
     expect(pairingHostOf('not a host')).toBeNull()
+  })
+
+  test('the Scratch folder is an absolute path, ~ meaning the home directory', () => {
+    expect(scratchFolderOf(' ~/Chats/ ', '/Users/me')).toBe('/Users/me/Chats')
+    expect(scratchFolderOf('~', '/Users/me')).toBe('/Users/me')
+    expect(scratchFolderOf('/tmp/../Volumes/Work/chats', '/Users/me')).toBe('/Volumes/Work/chats')
+    expect(scratchFolderOf('chats', '/Users/me')).toBeNull()
+    expect(scratchFolderOf('', '/Users/me')).toBeNull()
+    expect(scratchFolderOf(null, '/Users/me')).toBeNull()
   })
 
   test('tolerates a corrupt file by starting over', () => {

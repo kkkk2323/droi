@@ -1,11 +1,12 @@
-// New session: pick a recent Workspace (or type a path), the model and
-// friends, and send the first message, or nothing. As soon as the Workspace is
+// New session: pick a recent Workspace, None (a fresh Scratch Workspace) or
+// type a path, the model and friends, and send the first message, or nothing. As soon as the Workspace is
 // known a Draft Session opens so "/" offers its commands and skills; the
 // first send takes it over, and leaving without sending closes it.
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { setPendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { closeDraftSession, useDraftSession } from '@droi/daemon-layer/use-draft-session'
 import { useNewSession, type RecentWorkspace } from '@droi/daemon-layer/use-new-session'
+import { useWorkspaceChoice, type WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
 import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { useSlashItems, type SlashItem } from '@droi/daemon-layer/use-slash-items'
 import { ChevronDown } from 'lucide-react-native'
@@ -30,17 +31,19 @@ import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
 const NO_BUILTINS: SlashItem[] = []
+const NO_RECENT: RecentWorkspace[] = []
 
 export function NewSessionScreen({
-  initialWorkspace = null,
-  recent,
+  initialPick = null,
+  recent: known,
   onCreated,
   drawerOpen,
   onOpenDrawer,
 }: {
-  /** Preselected Workspace (opened from a Workspace group's actions). */
-  initialWorkspace?: string | null
-  recent: RecentWorkspace[]
+  /** Preselected Workspace, or None (opened from a group's actions). */
+  initialPick?: WorkspacePick | null
+  /** Null while the session list is on its way. */
+  recent: RecentWorkspace[] | null
   onCreated: (sessionId: string) => void
   drawerOpen: boolean
   onOpenDrawer: () => void
@@ -49,12 +52,11 @@ export function NewSessionScreen({
   const insets = useSafeAreaInsets()
   const connection = useDaemonConnection()
   const { create, isCreating, error } = useNewSession()
-  const [choice, setChoice] = useState<{ kind: 'recent'; path: string } | { kind: 'other' } | null>(
-    initialWorkspace ? { kind: 'recent', path: initialWorkspace } : null,
-  )
-  const workspace =
-    choice === null ? (recent[0]?.path ?? null) : choice.kind === 'recent' ? choice.path : null
-  const typing = choice?.kind === 'other' || (choice === null && recent.length === 0)
+  const choice = useWorkspaceChoice(known, initialPick)
+  const recent = known ?? NO_RECENT
+  const workspace = choice.workspace
+  const scratch = choice.pick?.kind === 'scratch'
+  const typing = choice.pick?.kind === 'other'
   const [path, setPath] = useState('')
   const [picking, setPicking] = useState(false)
 
@@ -82,7 +84,7 @@ export function NewSessionScreen({
     })
   }
 
-  const draft = useDraftSession(workspace)
+  const draft = useDraftSession(workspace, choice.tags)
   const slashItems = useSlashItems(draft.sessionId, NO_BUILTINS)
 
   // Leaving without sending closes the draft; a send has taken it over already.
@@ -96,7 +98,8 @@ export function NewSessionScreen({
 
   const start = async (target: string, prompt?: Submission) => {
     taking.current = true
-    const sessionId = (await draft.take(target, settings)) ?? (await create(target, settings))
+    const sessionId =
+      (await draft.take(target, settings)) ?? (await create(target, settings, choice.tags))
     if (!sessionId) {
       taking.current = false
       return
@@ -107,9 +110,11 @@ export function NewSessionScreen({
     onCreated(sessionId)
   }
 
-  const label = workspace
-    ? (recent.find((w) => w.path === workspace)?.label ?? name(workspace))
+  const pickedPath = choice.pick?.kind === 'recent' ? choice.pick.path : null
+  const label = pickedPath
+    ? (recent.find((w) => w.path === pickedPath)?.label ?? name(pickedPath))
     : null
+  const failure = error ?? choice.error
 
   return (
     <KeyboardAvoidingView
@@ -122,9 +127,13 @@ export function NewSessionScreen({
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <View style={styles.question}>
           <Text role="heading" aria-level={2} size="xl" weight="medium" style={styles.center}>
-            {label ? 'What do you want to build in' : 'Where should Droid work?'}
+            {label
+              ? 'What do you want to build in'
+              : scratch
+                ? 'What’s on your mind?'
+                : 'Where should Droid work?'}
           </Text>
-          {label || recent.length > 0 ? (
+          {label || scratch || known ? (
             <Pressable
               role="button"
               aria-label="Workspace"
@@ -132,8 +141,12 @@ export function NewSessionScreen({
               onPress={() => setPicking(true)}
               style={[styles.workspace, { borderBottomColor: colors.mutedForeground }]}
             >
-              <Text size="xl" weight="medium">
-                {label ? `${label}?` : 'Choose a workspace'}
+              <Text
+                size={scratch ? 'base' : 'xl'}
+                weight="medium"
+                tone={scratch ? 'muted' : undefined}
+              >
+                {label ? `${label}?` : scratch ? 'Workspace: None' : 'Choose a workspace'}
               </Text>
               <ChevronDown size={16} color={colors.mutedForeground} />
             </Pressable>
@@ -167,13 +180,13 @@ export function NewSessionScreen({
             />
           </View>
         ) : null}
-        {error ? (
+        {failure ? (
           <Text
             role="alert"
             size="sm"
             style={[styles.center, { color: colors.destructiveForeground }]}
           >
-            {error}
+            {failure}
           </Text>
         ) : null}
       </ScrollView>
@@ -211,14 +224,22 @@ export function NewSessionScreen({
       </View>
       <Sheet visible={picking} title="Workspace" onClose={() => setPicking(false)}>
         <View role="radiogroup" aria-label="Recent workspaces">
+          <SheetOption
+            label="None"
+            checked={scratch}
+            onPress={() => {
+              setPicking(false)
+              choice.choose({ kind: 'scratch' })
+            }}
+          />
           {recent.map((w) => (
             <SheetOption
               key={w.path}
               label={w.label}
-              checked={w.path === workspace}
+              checked={w.path === pickedPath}
               onPress={() => {
                 setPicking(false)
-                setChoice({ kind: 'recent', path: w.path })
+                choice.choose({ kind: 'recent', path: w.path })
               }}
             />
           ))}
@@ -227,7 +248,7 @@ export function NewSessionScreen({
           role="button"
           onPress={() => {
             setPicking(false)
-            setChoice({ kind: 'other' })
+            choice.choose({ kind: 'other' })
           }}
           style={styles.other}
         >

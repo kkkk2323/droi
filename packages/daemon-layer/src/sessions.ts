@@ -59,6 +59,19 @@ export function isDraft(tags: readonly SessionTag[] | undefined): boolean {
   return tags?.some((t) => t.name === DRAFT_TAG) ?? false
 }
 
+/**
+ * Tag of a Session in a Scratch Workspace (ADR 0008). A compaction's child
+ * inherits it with the rest of the parent's tags.
+ */
+export const SCRATCH_TAG = 'droi.scratch'
+
+export function isScratch(tags: readonly SessionTag[] | undefined): boolean {
+  return tags?.some((t) => t.name === SCRATCH_TAG) ?? false
+}
+
+/** Group key of Recents, where every Scratch Session is listed. */
+export const RECENTS_GROUP_KEY = 'droi:recents'
+
 /** Drops Sessions that another listed Session continues; the chain shows as its latest link. */
 export function foldContinued(sessions: readonly SessionSummary[]): SessionSummary[] {
   const parents = new Set(sessions.map((s) => s.parentId).filter((id): id is string => !!id))
@@ -85,7 +98,10 @@ export function continuationChain(
 export interface WorkspaceGroup {
   key: string
   label: string
+  /** The Workspace; empty for Recents, whose Sessions each have their own. */
   path: string
+  /** Recents: the Sessions in Scratch Workspaces. */
+  scratch: boolean
   sessions: SessionSummary[]
 }
 
@@ -159,24 +175,37 @@ export const NO_PINS: Pins = { workspaces: new Set(), sessions: new Set() }
  *
  * Workspaces are not ranked by recency alone because the Daemon's `updatedAt`
  * is the file's modified time, which moves when a Session is merely loaded.
+ * Scratch Sessions share one Recents group, always last.
  */
 export function groupByWorkspace(
   sessions: readonly SessionSummary[],
   pins: Pins = NO_PINS,
 ): WorkspaceGroup[] {
   const groups = new Map<string, WorkspaceGroup>()
+  let recents: WorkspaceGroup | null = null
   for (const session of sessions) {
+    if (isScratch(session.tags)) {
+      recents ??= {
+        key: RECENTS_GROUP_KEY,
+        label: 'Recents',
+        path: '',
+        scratch: true,
+        sessions: [],
+      }
+      recents.sessions.push(session)
+      continue
+    }
     const path = session.repoRoot ?? session.cwd ?? ''
     const key = path || '(unknown)'
     let group = groups.get(key)
     if (!group) {
-      group = { key, label: workspaceLabel(path), path, sessions: [] }
+      group = { key, label: workspaceLabel(path), path, scratch: false, sessions: [] }
       groups.set(key, group)
     }
     group.sessions.push(session)
   }
   const result = [...groups.values()]
-  for (const group of result) {
+  for (const group of recents ? [...result, recents] : result) {
     group.sessions.sort(
       (a, b) =>
         Number(pins.sessions.has(b.sessionId)) - Number(pins.sessions.has(a.sessionId)) ||
@@ -193,7 +222,7 @@ export function groupByWorkspace(
       conversations(b) - conversations(a) ||
       newest(b) - newest(a),
   )
-  return result
+  return recents ? [...result, recents] : result
 }
 
 /** Sessions touched within this window always show; older ones sit behind "Show more". */

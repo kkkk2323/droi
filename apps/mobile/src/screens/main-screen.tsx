@@ -13,7 +13,9 @@ import {
   subagentsOf,
   useSubagentRuns,
 } from '@droi/daemon-layer/subagents'
+import { archiveConversation, unarchiveConversation } from '@droi/daemon-layer/archive'
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
+import type { WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
 import { useRouter } from 'expo-router'
 import { usePhoneAlerts } from '../alerts/use-phone-alerts'
 import { useState } from 'react'
@@ -31,10 +33,11 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
   const colors = useColors()
   const router = useRouter()
   const [computers] = usePreference(pairedComputers)
-  const { controller } = useDaemonConnection()
+  const connection = useDaemonConnection()
+  const { controller } = connection
   const [drawerOpen, setDrawerOpen] = useState(false)
-  // The New session page, preselected on a Workspace from its group's actions.
-  const [newIn, setNewIn] = useState<string | null>(null)
+  // The New session page, preselected on a Workspace (or None) from its group's actions.
+  const [newIn, setNewIn] = useState<WorkspacePick | null>(null)
   const [lastId, setLastId] = usePreference(lastSessionOf(computer.id))
   const sessions = useComputerSessions(computer.id)
   // The last Session reopens only while the list still has it.
@@ -74,16 +77,19 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
               select(null)
             }}
             onNewSessionIn={(workspace) => {
-              setNewIn(workspace)
+              setNewIn(
+                workspace === null ? { kind: 'scratch' } : { kind: 'recent', path: workspace },
+              )
               select(null)
             }}
             onArchiveToggle={(session) => {
               if (session.archivedAt) {
-                void controller.unarchiveSession(session.sessionId).catch(console.error)
+                void unarchiveConversation(connection, sessions.sessions, session).catch(
+                  console.error,
+                )
                 return
               }
-              void controller
-                .archiveSession(session.sessionId)
+              void archiveConversation(connection, sessions.sessions, session)
                 .then(() => {
                   if (session.sessionId === lastId) setLastId(null)
                 })
@@ -131,9 +137,11 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
             </SubagentLinksProvider>
           ) : (
             <NewSessionScreen
-              key={newIn ?? ''}
-              initialWorkspace={newIn}
-              recent={recentWorkspaces(sessions.sessions)}
+              key={newIn === null ? '' : newIn.kind === 'recent' ? newIn.path : newIn.kind}
+              initialPick={newIn}
+              recent={
+                sessions.live || !sessions.isPending ? recentWorkspaces(sessions.sessions) : null
+              }
               onCreated={(sessionId) => setLastId(sessionId)}
               drawerOpen={drawerOpen}
               onOpenDrawer={openDrawer}

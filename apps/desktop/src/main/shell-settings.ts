@@ -4,7 +4,7 @@
 // user's home directory is the trust boundary. The key is never handed to a
 // Client, only the Gateway reads it.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomBytes, randomUUID } from 'node:crypto'
 
 export interface ShellSettings {
@@ -32,6 +32,8 @@ export interface ShellSettings {
    * name that also reaches this computer from elsewhere (Tailscale, Surge Ponte).
    */
   pairingHost: string | null
+  /** Where Scratch Workspaces are made (ADR 0008); null for ~/.droi/chats. */
+  scratchFolder: string | null
 }
 
 export interface ShellSettingsStoreOptions {
@@ -62,6 +64,7 @@ interface StoredFile {
   factoryApiBaseUrl: string | null
   appendSystemPrompt: string | null
   pairingHost: string | null
+  scratchFolder: string | null
   pairingToken: string
   computerId: string
   apiKey: string | null
@@ -86,6 +89,15 @@ export function pairingHostOf(text: string | null | undefined): string | null {
   }
 }
 
+/** What the user typed for the Scratch folder as an absolute path; ~ is the home directory. */
+export function scratchFolderOf(text: string | null | undefined, home: string): string | null {
+  const trimmed = text?.trim()
+  if (!trimmed) return null
+  const expanded =
+    trimmed === '~' ? home : trimmed.startsWith('~/') ? join(home, trimmed.slice(2)) : trimmed
+  return isAbsolute(expanded) ? resolve(expanded) : null
+}
+
 export function generatePairingToken(): string {
   return randomBytes(24).toString('base64url')
 }
@@ -100,6 +112,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     factoryApiBaseUrl: loaded?.factoryApiBaseUrl ?? null,
     appendSystemPrompt: loaded?.appendSystemPrompt ?? null,
     pairingHost: loaded?.pairingHost ?? null,
+    scratchFolder: loaded?.scratchFolder ?? null,
     pairingToken: loaded?.pairingToken || generatePairingToken(),
     computerId: loaded?.computerId || randomUUID(),
     apiKey: loaded?.apiKey ?? null,
@@ -124,6 +137,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         factoryApiBaseUrl: current.factoryApiBaseUrl,
         appendSystemPrompt: current.appendSystemPrompt,
         pairingHost: current.pairingHost,
+        scratchFolder: current.scratchFolder,
         pairingToken: current.pairingToken,
         computerId: current.computerId,
       }
@@ -136,6 +150,7 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         current.appendSystemPrompt = patch.appendSystemPrompt
       }
       if (patch.pairingHost !== undefined) current.pairingHost = patch.pairingHost
+      if (patch.scratchFolder !== undefined) current.scratchFolder = patch.scratchFolder
       save()
     },
     resetPairingToken() {
@@ -197,6 +212,7 @@ function load(
     factoryApiBaseUrl: str('factoryApiBaseUrl'),
     appendSystemPrompt: str('appendSystemPrompt'),
     pairingHost: str('pairingHost'),
+    scratchFolder: str('scratchFolder'),
     pairingToken: str('pairingToken') ?? legacy('pairingTokenEncrypted') ?? undefined,
     computerId: str('computerId') ?? undefined,
     apiKey: str('apiKey') ?? legacy('apiKeyEncrypted'),

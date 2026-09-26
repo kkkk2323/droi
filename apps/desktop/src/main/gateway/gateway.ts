@@ -1,7 +1,8 @@
 // Gateway: the part of the Desktop Shell that lets a Client reach the Daemon.
 // It checks the Pairing Token at the WebSocket upgrade, supplies the Factory
 // API key in `daemon.authenticate`, adds the Shell's system prompt text to
-// `daemon.initialize_session`, and otherwise forwards frames verbatim.
+// `daemon.initialize_session`, and otherwise forwards frames verbatim. Beside
+// the Daemon socket it answers Droi's own Scratch Workspace requests.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { timingSafeEqual } from 'node:crypto'
@@ -12,11 +13,17 @@ import {
   GATEWAY_API_KEY_PLACEHOLDER,
   GATEWAY_DAEMON_PATH,
   GATEWAY_META_PATH,
+  GATEWAY_SCRATCH_PATH,
+  GATEWAY_SCRATCH_PATH_QUERY,
+  GATEWAY_SCRATCH_RESTORE_PATH,
+  GATEWAY_SCRATCH_TRASH_PATH,
   GATEWAY_TOKEN_QUERY,
   type GatewayMeta,
+  type ScratchWorkspaceCreated,
 } from '@droi/daemon-layer/gateway'
 import { serveStaticFile } from './static-files'
 import { proxyHttp, proxyUpgrade } from './dev-proxy'
+import { NotAScratchWorkspace, type ScratchFolders } from './scratch-workspaces'
 
 export type ClientSource =
   | { kind: 'none' }
@@ -49,6 +56,8 @@ export interface GatewayOptions {
    */
   getAppendSystemPrompt?: () => string | null
   getMeta: () => GatewayMeta
+  /** Scratch Workspaces for Sessions started without a Workspace; absent answers 404. */
+  scratch?: ScratchFolders
   client: ClientSource
 }
 
@@ -354,6 +363,39 @@ function hasParams(message: unknown): message is { params: Record<string, unknow
   return typeof params === 'object' && params !== null
 }
 
+const SCRATCH_ENDPOINTS = new Set([
+  GATEWAY_SCRATCH_PATH,
+  GATEWAY_SCRATCH_TRASH_PATH,
+  GATEWAY_SCRATCH_RESTORE_PATH,
+])
+
+async function answerScratch(
+  options: GatewayOptions,
+  request: IncomingMessage,
+  url: URL,
+): Promise<{ status: number; body?: ScratchWorkspaceCreated | { error: string } }> {
+  if (classifyToken(url.searchParams.get(GATEWAY_TOKEN_QUERY), options) === null) {
+    return { status: 401 }
+  }
+  if (request.method !== 'POST') return { status: 405 }
+  const scratch = options.scratch
+  if (!scratch) return { status: 404 }
+  try {
+    if (url.pathname === GATEWAY_SCRATCH_PATH) {
+      return { status: 201, body: { path: await scratch.create() } }
+    }
+    const path = url.searchParams.get(GATEWAY_SCRATCH_PATH_QUERY)
+    if (!path) return { status: 400, body: { error: 'No folder given' } }
+    await (url.pathname === GATEWAY_SCRATCH_TRASH_PATH
+      ? scratch.trash(path)
+      : scratch.restore(path))
+    return { status: 204 }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { status: error instanceof NotAScratchWorkspace ? 400 : 500, body: { error: message } }
+  }
+}
+
 function handleHttp(options: GatewayOptions, request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url ?? '/', 'http://gateway')
   if (url.pathname === GATEWAY_DAEMON_PATH) {
@@ -365,6 +407,17 @@ function handleHttp(options: GatewayOptions, request: IncomingMessage, response:
       'access-control-allow-origin': '*',
     })
     response.end()
+    return
+  }
+  if (SCRATCH_ENDPOINTS.has(url.pathname)) {
+    void answerScratch(options, request, url).then(({ status, body }) => {
+      response.writeHead(status, {
+        'cache-control': 'no-store',
+        'access-control-allow-origin': '*',
+        ...(body ? { 'content-type': 'application/json' } : {}),
+      })
+      response.end(body ? JSON.stringify(body) : undefined)
+    })
     return
   }
   if (url.pathname === GATEWAY_META_PATH) {

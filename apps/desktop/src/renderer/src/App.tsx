@@ -27,6 +27,7 @@ import {
 const NO_TAGS: SessionTag[] = []
 const NO_SESSIONS: SessionSummary[] = []
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
+import { archiveConversation, unarchiveConversation } from '@droi/daemon-layer/archive'
 import { useSessionActivity } from '@droi/daemon-layer/use-session-activity'
 import {
   ConnectionStatus,
@@ -69,7 +70,7 @@ export function App() {
 
 function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [route, navigate] = useHashRoute()
-  const { controller } = useDaemonConnection()
+  const connection = useDaemonConnection()
   const startingUp = isStartingUp(useConnectionState())
   const narrow = useMediaQuery(NARROW)
   const [drawerRequested, setDrawerOpen] = useState(false)
@@ -86,7 +87,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     workspaces: new Set(pinnedGroups),
     sessions: new Set(pinnedIds),
   })
-  const recent = recentWorkspaces(listed)
+  const recent = sessions.data ? recentWorkspaces(sessions.data) : null
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = listed.find((s) => s.sessionId === selectedId) ?? null
   const chain = selected ? continuationChain(listed, selected) : []
@@ -192,11 +193,10 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       onSelect={(sessionId) => go({ name: 'session', sessionId })}
       onArchiveToggle={(session) => {
         if (session.archivedAt) {
-          void controller.unarchiveSession(session.sessionId).catch(console.error)
+          void unarchiveConversation(connection, listed, session).catch(console.error)
           return
         }
-        void controller
-          .archiveSession(session.sessionId)
+        void archiveConversation(connection, listed, session)
           .then(() => {
             if (session.sessionId === selectedId) {
               lastSessionId.set(null)
@@ -208,7 +208,9 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
       onNewSession={() => go({ name: 'new' })}
-      onNewSessionIn={(workspace) => go({ name: 'new', workspace })}
+      onNewSessionIn={(workspace) =>
+        go(workspace === null ? { name: 'new', scratch: true } : { name: 'new', workspace })
+      }
       onSettings={() => go({ name: 'settings' })}
       // Traffic lights sit over the sidebar's top strip on macOS.
       insetTop={hasShellBridge && !narrow}
@@ -309,9 +311,17 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
         ) : (
           // Home is a new Session: there is nothing to pick until one exists.
           <NewSessionPage
-            key={route.name === 'new' ? (route.workspace ?? '') : ''}
+            key={route.name === 'new' ? (route.workspace ?? (route.scratch ? 'scratch' : '')) : ''}
             recent={recent}
-            initialWorkspace={route.name === 'new' ? (route.workspace ?? null) : null}
+            initialPick={
+              route.name !== 'new'
+                ? null
+                : route.workspace
+                  ? { kind: 'recent', path: route.workspace }
+                  : route.scratch
+                    ? { kind: 'scratch' }
+                    : null
+            }
             onCreated={(sessionId) => go({ name: 'session', sessionId })}
             header={<PageHeader leading={leading} title="New session" />}
           />

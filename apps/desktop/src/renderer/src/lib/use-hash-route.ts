@@ -6,16 +6,21 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 export type Route =
   | { name: 'home' }
-  /** `workspace` preselects where the Session will work (from a sidebar group). */
-  | { name: 'new'; workspace?: string }
+  /**
+   * `workspace` preselects where the Session will work, `scratch` None (from
+   * a sidebar group).
+   */
+  | { name: 'new'; workspace?: string; scratch?: boolean }
   | { name: 'settings' }
   | { name: 'session'; sessionId: string }
 
 export function parseRoute(hash: string): Route {
   if (hash === '#/new') return { name: 'new' }
   if (hash.startsWith('#/new?')) {
-    const workspace = new URLSearchParams(hash.slice('#/new?'.length)).get('ws')
-    return workspace ? { name: 'new', workspace } : { name: 'new' }
+    const query = new URLSearchParams(hash.slice('#/new?'.length))
+    const workspace = query.get('ws')
+    if (workspace) return { name: 'new', workspace }
+    return query.has('scratch') ? { name: 'new', scratch: true } : { name: 'new' }
   }
   if (hash === '#/settings') return { name: 'settings' }
   const match = /^#\/s\/([^/?#]+)/.exec(hash)
@@ -29,9 +34,8 @@ export function routeHash(route: Route): string {
     case 'session':
       return `#/s/${encodeURIComponent(route.sessionId)}`
     case 'new':
-      return route.workspace
-        ? `#/new?${new URLSearchParams({ ws: route.workspace }).toString()}`
-        : '#/new'
+      if (route.workspace) return `#/new?${new URLSearchParams({ ws: route.workspace }).toString()}`
+      return route.scratch ? '#/new?scratch' : '#/new'
     case 'settings':
       return '#/settings'
     case 'home':

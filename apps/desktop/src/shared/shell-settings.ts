@@ -57,6 +57,10 @@ export interface ShellSettingsSnapshot {
   appendSystemPrompt: string | null
   /** Host name the pairing link uses; null for the first LAN address. */
   pairingHost: string | null
+  /** Where Scratch Workspaces are made (ADR 0008). */
+  scratchFolder: string
+  /** True while scratchFolder is the default, ~/.droi/chats. */
+  scratchFolderIsDefault: boolean
   /** Whether a Factory API key is stored or supplied by the environment. Never the key. */
   hasApiKey: boolean
   /** True when the Gateway has something to authenticate with (login or key). */
@@ -89,6 +93,8 @@ export interface ShellSettingsPatch {
   factoryApiBaseUrl?: string | null
   appendSystemPrompt?: string | null
   pairingHost?: string | null
+  /** An absolute path, or ~/...; null or empty goes back to the default. */
+  scratchFolder?: string | null
 }
 
 export interface ShellSettingsBridge {

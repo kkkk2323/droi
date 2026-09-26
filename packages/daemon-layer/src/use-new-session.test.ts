@@ -30,4 +30,16 @@ describe('recentWorkspaces', () => {
       ['beta', 30],
     ])
   })
+
+  test('leaves Scratch Workspaces out: each is a conversation, not a place to go back to', () => {
+    const recent = recentWorkspaces([
+      summary({
+        cwd: '/u/.droi/chats/2026-09-26-aaaaaa',
+        tags: [{ name: 'droi.scratch' }],
+        updatedAt: 90,
+      }),
+      summary({ cwd: '/w/alpha', updatedAt: 10 }),
+    ])
+    expect(recent.map((w) => w.label)).toEqual(['alpha'])
+  })
 })

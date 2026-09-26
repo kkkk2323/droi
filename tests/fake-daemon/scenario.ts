@@ -204,9 +204,13 @@ export function createScenario(input: ScenarioInput): Scenario {
         enabled: true,
       })),
     }),
-    'daemon.validate_working_directory': (params) => {
+    'daemon.validate_working_directory': (params, context) => {
       const path = String(params['workingDirectory'])
-      const known = new Set([...(input.validDirectories ?? []), ...sessions.map((s) => s.cwd)])
+      const known = new Set([
+        ...(input.validDirectories ?? []),
+        ...sessions.map((s) => s.cwd),
+        ...context.daemon.scratchFolders,
+      ])
       return known.has(path)
         ? { isValid: true, resolvedPath: path }
         : { isValid: false, error: `Directory does not exist: ${path}` }

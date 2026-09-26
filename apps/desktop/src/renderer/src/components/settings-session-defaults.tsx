@@ -39,14 +39,17 @@ type Update = (patch: SessionDefaultsPatch) => void
 /**
  * What every new Session starts with, after the Factory App's Session Defaults
  * page. The Daemon keeps them in ~/.factory/settings.json, which the droid CLI
- * and the Factory App read too; it works from any Client. `systemPrompt` and
- * `notice` are the Desktop Shell's own rows, present in the Local Client only.
+ * and the Factory App read too; it works from any Client. `systemPrompt`,
+ * `scratchFolder` and `notice` are the Desktop Shell's own rows, present in
+ * the Local Client only.
  */
 export function SessionDefaultsTab({
   systemPrompt,
+  scratchFolder,
   notice,
 }: {
   systemPrompt: ReactNode
+  scratchFolder?: ReactNode
   notice?: ReactNode
 }) {
   const { defaults, update, error } = useSessionDefaultsEditor()
@@ -75,6 +78,7 @@ export function SessionDefaultsTab({
       )}
       {/* The Shell's own setting; it does not wait for the Daemon. */}
       <Section title="System prompt">{systemPrompt}</Section>
+      {scratchFolder ? <Section title="Without a workspace">{scratchFolder}</Section> : null}
     </>
   )
 }

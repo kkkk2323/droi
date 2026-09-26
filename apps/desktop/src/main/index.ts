@@ -34,10 +34,16 @@ import {
   type GatewayCredential,
   type GatewayOptions,
 } from './gateway/gateway'
+import { createScratchFolders } from './gateway/scratch-workspaces'
 import { builtinSoundPath, readSoundAsDataUrl, SOUND_FILE_EXTENSIONS } from './alert-sounds'
 import { locateOpenInApps, type InstalledApp } from './open-in'
 import { computerName } from './computer-name'
-import { createShellSettingsStore, pairingHostOf, type ShellSettingsStore } from './shell-settings'
+import {
+  createShellSettingsStore,
+  pairingHostOf,
+  scratchFolderOf,
+  type ShellSettingsStore,
+} from './shell-settings'
 import { createUpdater, type Updater } from './updater'
 import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInApp } from '../shared/open-in'
@@ -226,6 +232,11 @@ function buildMenu(): Menu {
   ])
 }
 
+/** Where Scratch Workspaces go (ADR 0008). */
+function scratchFolder(): string {
+  return settings.settings.scratchFolder ?? join(homedir(), '.droi', 'chats')
+}
+
 async function snapshot(): Promise<ShellSettingsSnapshot> {
   const fromEnv = Boolean(process.env['FACTORY_API_KEY'])
   const login = await loginState()
@@ -239,6 +250,8 @@ async function snapshot(): Promise<ShellSettingsSnapshot> {
     factoryApiBaseUrlFromEnvironment: process.env['FACTORY_API_BASE_URL'] ?? null,
     appendSystemPrompt: settings.settings.appendSystemPrompt,
     pairingHost: settings.settings.pairingHost,
+    scratchFolder: scratchFolder(),
+    scratchFolderIsDefault: settings.settings.scratchFolder === null,
     hasApiKey: settings.getApiKey() !== null,
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
@@ -371,6 +384,10 @@ function registerIpc(): void {
         ? { appendSystemPrompt: patch.appendSystemPrompt?.trim() || null }
         : {}),
       ...(patch.pairingHost !== undefined ? { pairingHost: pairingHostOf(patch.pairingHost) } : {}),
+      // Read at each new Scratch Workspace; existing folders stay where they are.
+      ...(patch.scratchFolder !== undefined
+        ? { scratchFolder: scratchFolderOf(patch.scratchFolder, homedir()) }
+        : {}),
     })
     const after = settings.settings
     if (patch.remoteAccess !== undefined && after.remoteAccess !== before.remoteAccess) {
@@ -480,6 +497,10 @@ void app.whenReady().then(async () => {
     getLocalToken: () => localToken,
     getCredential: gatewayCredential,
     getAppendSystemPrompt: () => settings.settings.appendSystemPrompt,
+    scratch: createScratchFolders({
+      root: scratchFolder,
+      moveToTrash: (path) => shell.trashItem(path),
+    }),
     getMeta: () => ({
       app: 'Droi',
       version: app.getVersion(),

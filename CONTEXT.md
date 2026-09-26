@@ -15,7 +15,7 @@ The installed desktop application. It starts the Daemon, opens a window for the 
 _Avoid_: main process, backend, app
 
 **Gateway**:
-The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Shell's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Shell's System Prompt Addition to every Session a Client starts.
+The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Shell's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Shell's System Prompt Addition to every Session a Client starts, and creates and trashes Scratch Workspaces.
 _Avoid_: proxy, API server, Hono server, web server
 
 ### Clients
@@ -82,6 +82,10 @@ _Avoid_: system prompt override, custom instructions
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo
+
+**Scratch Workspace**:
+A Workspace the Desktop Shell creates for a Session started without choosing one, for work that belongs to no project. The Sessions that continue it after a compaction share it; archiving the conversation moves it to the Trash. Clients list these Sessions together, under Recents.
+_Avoid_: chat, temp dir, draft (a Draft Session is something else)
 
 **Prompt**:
 A question the Daemon asks the human mid-turn: a permission request for a tool call, or an ask-user questionnaire. The Daemon sends it to every Client attached to the Session; the first answer wins and the Daemon then tells every Client the Prompt is resolved.

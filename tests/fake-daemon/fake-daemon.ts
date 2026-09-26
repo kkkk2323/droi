@@ -13,12 +13,25 @@ import { readFileSync } from 'node:fs'
 import {
   GATEWAY_DAEMON_PATH,
   GATEWAY_META_PATH,
+  GATEWAY_SCRATCH_PATH,
+  GATEWAY_SCRATCH_PATH_QUERY,
+  GATEWAY_SCRATCH_RESTORE_PATH,
+  GATEWAY_SCRATCH_TRASH_PATH,
   GATEWAY_TOKEN_QUERY,
   type GatewayMeta,
 } from '@droi/daemon-layer/gateway'
 import { validateOutbound, validateInboundEnvelope } from './schemas'
 import { createScenario, HOST_ID, type Scenario, type ScenarioInput } from './scenario'
 import type { JsonRpcRequest } from './protocol'
+
+/** A Scratch Workspace request the Client sent the Gateway (ADR 0008). */
+export interface ScratchRequest {
+  action: 'create' | 'trash' | 'restore'
+  path: string
+}
+
+/** Where the Fake Daemon's Gateway makes Scratch Workspaces. */
+export const SCRATCH_FOLDER = '/Users/test/.droi/chats'
 
 export interface RecordedRequest {
   connectionId: number
@@ -40,7 +53,11 @@ export class FakeDaemon {
   meta: GatewayMeta
   readonly url: string
   readonly requests: RecordedRequest[] = []
+  readonly scratchRequests: ScratchRequest[] = []
+  /** Scratch Workspaces that exist, so validate_working_directory accepts them. */
+  readonly scratchFolders = new Set<string>()
   readonly scenario: Scenario
+  #nextScratch = 1
   #server: Server
   #wss: WebSocketServer
   #connections = new Map<number, WebSocket>()
@@ -84,6 +101,15 @@ export class FakeDaemon {
           'access-control-allow-origin': '*',
         })
         response.end(JSON.stringify(daemon.meta))
+        return
+      }
+      if (url.pathname.startsWith(GATEWAY_SCRATCH_PATH)) {
+        const { status, body } = daemon.#answerScratch(request.method, url)
+        response.writeHead(status, {
+          'access-control-allow-origin': '*',
+          ...(body ? { 'content-type': 'application/json' } : {}),
+        })
+        response.end(body ? JSON.stringify(body) : undefined)
         return
       }
       response.writeHead(404)
@@ -141,6 +167,33 @@ export class FakeDaemon {
   resetToken(): string {
     this.token = `test-token-${randomUUID()}`
     return this.token
+  }
+
+  /** The Gateway's Scratch Workspace requests, answered as the real one does. */
+  #answerScratch(method: string | undefined, url: URL): { status: number; body?: unknown } {
+    if (!this.acceptsToken(url)) return { status: 401 }
+    if (method !== 'POST') return { status: 405 }
+    if (url.pathname === GATEWAY_SCRATCH_PATH) {
+      const path = `${SCRATCH_FOLDER}/2026-09-26-${String(this.#nextScratch++).padStart(6, '0')}`
+      this.scratchFolders.add(path)
+      this.scratchRequests.push({ action: 'create', path })
+      return { status: 201, body: { path } }
+    }
+    const path = url.searchParams.get(GATEWAY_SCRATCH_PATH_QUERY) ?? ''
+    if (!path.startsWith(`${SCRATCH_FOLDER}/`)) {
+      return { status: 400, body: { error: `${path} is not a Scratch Workspace` } }
+    }
+    if (url.pathname === GATEWAY_SCRATCH_TRASH_PATH) {
+      this.scratchFolders.delete(path)
+      this.scratchRequests.push({ action: 'trash', path })
+      return { status: 204 }
+    }
+    if (url.pathname === GATEWAY_SCRATCH_RESTORE_PATH) {
+      this.scratchFolders.add(path)
+      this.scratchRequests.push({ action: 'restore', path })
+      return { status: 204 }
+    }
+    return { status: 404 }
   }
 
   get connectionCount(): number {

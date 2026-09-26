@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
-import { Check, ChevronDown, Folder, FolderPlus } from 'lucide-react'
+import { Check, ChevronDown, Folder, FolderPlus, MessageSquareDashed } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { DroiMark } from '@/components/droi-mark'
 import { InputBar, type Submission } from '@/components/chat/input-bar'
@@ -8,6 +8,7 @@ import { COLUMN } from '@/components/chat/session-view'
 import { Button } from '@/components/ui/button'
 import { useDraftSession } from '@droi/daemon-layer/use-draft-session'
 import { useNewSession, type RecentWorkspace } from '@droi/daemon-layer/use-new-session'
+import { useWorkspaceChoice, type WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
 import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { useSlashItems, type SlashItem } from '@droi/daemon-layer/use-slash-items'
 import { SettingsControls } from '@/components/chat/session-toolbar'
@@ -15,6 +16,8 @@ import { setPendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { cn } from '@/lib/utils'
 
 const NO_BUILTINS: SlashItem[] = []
+const NO_RECENT: RecentWorkspace[] = []
+const SCRATCH = 'droi:scratch'
 
 /**
  * Waku-style start page: one question with the Workspace as a menu inside
@@ -22,28 +25,29 @@ const NO_BUILTINS: SlashItem[] = []
  * Session; sending nothing just opens it.
  */
 export function NewSessionPage({
-  recent,
-  initialWorkspace = null,
+  recent: known,
+  initialPick = null,
   onCreated,
   header,
 }: {
-  recent: RecentWorkspace[]
-  /** Preselected Workspace (the page was opened from a sidebar group). */
-  initialWorkspace?: string | null
+  /** Null while the session list is on its way. */
+  recent: RecentWorkspace[] | null
+  /** Preselected Workspace, or None (the page was opened from a sidebar group). */
+  initialPick?: WorkspacePick | null
   onCreated: (sessionId: string) => void
   header: ReactNode
 }) {
   const { create, isCreating, error } = useNewSession()
-  // Until the user picks, the most recent Workspace is the target; recents
-  // arrive with the session list, so the default is derived, not stored.
-  const [choice, setChoice] = useState<{ kind: 'recent'; path: string } | { kind: 'other' } | null>(
-    initialWorkspace ? { kind: 'recent', path: initialWorkspace } : null,
-  )
-  const workspace =
-    choice === null ? (recent[0]?.path ?? null) : choice.kind === 'recent' ? choice.path : null
-  const typing = choice?.kind === 'other' || (choice === null && recent.length === 0)
-  const setWorkspace = (path: string) => setChoice({ kind: 'recent', path })
-  const setOther = () => setChoice({ kind: 'other' })
+  // Until the user picks, the most recent Workspace is the target, or None
+  // when there is none; recents arrive with the session list.
+  const choice = useWorkspaceChoice(known, initialPick)
+  const recent = known ?? NO_RECENT
+  const workspace = choice.workspace
+  const scratch = choice.pick?.kind === 'scratch'
+  const typing = choice.pick?.kind === 'other'
+  const setWorkspace = (value: string) =>
+    choice.choose(value === SCRATCH ? { kind: 'scratch' } : { kind: 'recent', path: value })
+  const setOther = () => choice.choose({ kind: 'other' })
   const [path, setPath] = useState('')
 
   // The Daemon's defaults, with whatever the user changed on this page on top.
@@ -71,12 +75,13 @@ export function NewSessionPage({
     })
   }
 
-  const draft = useDraftSession(workspace)
+  const draft = useDraftSession(workspace, choice.tags)
   // `/compact` has nothing to summarise yet, so only the Workspace's own items.
   const slashItems = useSlashItems(draft.sessionId, NO_BUILTINS)
 
   const start = async (target: string, prompt?: Submission) => {
-    const sessionId = (await draft.take(target, settings)) ?? (await create(target, settings))
+    const sessionId =
+      (await draft.take(target, settings)) ?? (await create(target, settings, choice.tags))
     if (!sessionId) return
     if (prompt && (prompt.text.trim() || prompt.images.length > 0)) {
       setPendingPrompt(sessionId, { text: prompt.text, images: prompt.images })
@@ -84,9 +89,12 @@ export function NewSessionPage({
     onCreated(sessionId)
   }
 
-  const label = workspace
-    ? (recent.find((w) => w.path === workspace)?.label ?? name(workspace))
+  const pickedPath = choice.pick?.kind === 'recent' ? choice.pick.path : null
+  const label = pickedPath
+    ? (recent.find((w) => w.path === pickedPath)?.label ?? name(pickedPath))
     : null
+  const menuValue = scratch ? SCRATCH : pickedPath
+  const failure = error ?? choice.error
 
   return (
     <section aria-label="New session" className="flex h-full min-h-0 flex-col">
@@ -100,7 +108,7 @@ export function NewSessionPage({
               <span className="inline-flex items-baseline">
                 <WorkspaceMenu
                   recent={recent}
-                  value={workspace}
+                  value={menuValue}
                   onPick={setWorkspace}
                   onOther={setOther}
                 >
@@ -109,13 +117,27 @@ export function NewSessionPage({
                 ?
               </span>
             </>
+          ) : scratch ? (
+            <>
+              <span>What’s on your mind?</span>
+              <span className="basis-full text-sm font-normal text-muted-foreground">
+                <WorkspaceMenu
+                  recent={recent}
+                  value={menuValue}
+                  onPick={setWorkspace}
+                  onOther={setOther}
+                >
+                  Workspace: None
+                </WorkspaceMenu>
+              </span>
+            </>
           ) : (
             <>
               <span>Where should Droid work?</span>
-              {recent.length > 0 ? (
+              {known ? (
                 <WorkspaceMenu
                   recent={recent}
-                  value={workspace}
+                  value={menuValue}
                   onPick={setWorkspace}
                   onOther={setOther}
                 >
@@ -151,9 +173,9 @@ export function NewSessionPage({
             </Button>
           </form>
         ) : null}
-        {error ? (
+        {failure ? (
           <p role="alert" className="text-sm text-destructive-foreground">
-            {error}
+            {failure}
           </p>
         ) : null}
       </div>
@@ -185,7 +207,11 @@ export function NewSessionPage({
         <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">
           {workspace ? (
             <span className="flex min-w-0 items-center gap-1.5" title={workspace}>
-              <Folder aria-hidden className="size-3.5 shrink-0" />
+              {scratch ? (
+                <MessageSquareDashed aria-hidden className="size-3.5 shrink-0" />
+              ) : (
+                <Folder aria-hidden className="size-3.5 shrink-0" />
+              )}
               <span className="truncate">{workspace}</span>
             </span>
           ) : null}
@@ -221,6 +247,18 @@ function WorkspaceMenu({
         <Menu.Positioner side="bottom" align="start" sideOffset={6} className="z-50 outline-none">
           <Menu.Popup className="max-h-[min(22rem,var(--available-height))] min-w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-left text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none">
             <Menu.RadioGroup value={value} onValueChange={(next) => onPick(String(next))}>
+              <Menu.RadioItem
+                value={SCRATCH}
+                title="A new folder of its own, not in any project"
+                closeOnClick
+                className="flex items-center gap-3 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              >
+                <span className="min-w-0 flex-1 truncate">None</span>
+                <Menu.RadioItemIndicator className="flex size-4 items-center justify-center">
+                  <Check aria-hidden className="size-3.5" />
+                </Menu.RadioItemIndicator>
+              </Menu.RadioItem>
+              {recent.length > 0 ? <Menu.Separator className="my-1 h-px bg-border" /> : null}
               {recent.map((workspace) => (
                 <Menu.RadioItem
                   key={workspace.path}

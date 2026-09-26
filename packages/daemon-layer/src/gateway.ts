@@ -33,6 +33,33 @@ export interface GatewayMeta {
  */
 export const GATEWAY_API_KEY_PLACEHOLDER = 'droi-gateway'
 
+/**
+ * Scratch Workspaces (ADR 0008): the Gateway answers these itself, POST with
+ * the token in the query. Creating answers 201 with a ScratchWorkspaceCreated;
+ * trash and restore take the folder in the `path` query parameter and answer
+ * 204. No body and no custom header, so a browser sends them without a preflight.
+ */
+export const GATEWAY_SCRATCH_PATH = '/scratch-workspaces'
+export const GATEWAY_SCRATCH_TRASH_PATH = '/scratch-workspaces/trash'
+export const GATEWAY_SCRATCH_RESTORE_PATH = '/scratch-workspaces/restore'
+export const GATEWAY_SCRATCH_PATH_QUERY = 'path'
+
+export interface ScratchWorkspaceCreated {
+  path: string
+}
+
+export function gatewayScratchUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  endpoint: string,
+  path?: string,
+): string {
+  const url = new URL(endpoint, gatewayHttpUrl)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (path !== undefined) url.searchParams.set(GATEWAY_SCRATCH_PATH_QUERY, path)
+  return url.toString()
+}
+
 export function gatewayDaemonUrl(gatewayHttpUrl: string, pairingToken: string): string {
   const url = new URL(GATEWAY_DAEMON_PATH, gatewayHttpUrl)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

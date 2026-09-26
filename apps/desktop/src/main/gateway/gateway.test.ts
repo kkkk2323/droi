@@ -4,9 +4,14 @@ import { once } from 'node:events'
 import {
   gatewayDaemonUrl,
   gatewayPairingCheckUrl,
+  gatewayScratchUrl,
   GATEWAY_API_KEY_PLACEHOLDER,
+  GATEWAY_SCRATCH_PATH,
+  GATEWAY_SCRATCH_RESTORE_PATH,
+  GATEWAY_SCRATCH_TRASH_PATH,
 } from '@droi/daemon-layer/gateway'
 import { lanInterfaceAddresses, startGateway, type Gateway } from './gateway'
+import { NotAScratchWorkspace } from './scratch-workspaces'
 
 const TOKEN = 'correct-pairing-token'
 const LOCAL_TOKEN = 'local-window-token'
@@ -344,5 +349,81 @@ describe('Gateway with Remote Access on', () => {
     expect(gateway.lanAddresses).toEqual(lanInterfaceAddresses())
     await gateway.close()
     await daemon.close()
+  })
+})
+
+describe('Gateway Scratch Workspaces', () => {
+  let gateway: Gateway
+  let calls: string[]
+  let fail: Error | null
+
+  beforeEach(async () => {
+    calls = []
+    fail = null
+    gateway = await startGateway({
+      port: 0,
+      remoteAccess: false,
+      // No Daemon: these requests never reach it.
+      getDaemonUrl: () => null,
+      getPairingToken: () => TOKEN,
+      getLocalToken: () => LOCAL_TOKEN,
+      getCredential: async () => ({ apiKey: API_KEY }),
+      getMeta: () => ({ ...META, remoteAccess: false }),
+      scratch: {
+        create: async () => {
+          if (fail) throw fail
+          calls.push('create')
+          return '/Users/me/.droi/chats/2026-09-26-abcdef'
+        },
+        trash: async (path) => {
+          if (fail) throw fail
+          calls.push(`trash ${path}`)
+        },
+        restore: async (path) => {
+          if (fail) throw fail
+          calls.push(`restore ${path}`)
+        },
+      },
+      client: { kind: 'none' },
+    })
+  })
+
+  afterEach(() => gateway.close())
+
+  const post = (endpoint: string, token: string, path?: string) =>
+    fetch(gatewayScratchUrl(gateway.url, token, endpoint, path), { method: 'POST' })
+
+  test('creates a folder for either token and answers its path', async () => {
+    for (const token of [TOKEN, LOCAL_TOKEN]) {
+      const response = await post(GATEWAY_SCRATCH_PATH, token)
+      expect(response.status).toBe(201)
+      expect(response.headers.get('access-control-allow-origin')).toBe('*')
+      expect(await response.json()).toEqual({ path: '/Users/me/.droi/chats/2026-09-26-abcdef' })
+    }
+    expect(calls).toEqual(['create', 'create'])
+  })
+
+  test('trashes and restores the folder named in the query', async () => {
+    const path = '/Users/me/.droi/chats/2026-09-26-abcdef'
+    expect((await post(GATEWAY_SCRATCH_TRASH_PATH, TOKEN, path)).status).toBe(204)
+    expect((await post(GATEWAY_SCRATCH_RESTORE_PATH, TOKEN, path)).status).toBe(204)
+    expect(calls).toEqual([`trash ${path}`, `restore ${path}`])
+  })
+
+  test('refuses a wrong token, a GET and a missing path, touching nothing', async () => {
+    expect((await post(GATEWAY_SCRATCH_PATH, 'nope')).status).toBe(401)
+    const get = await fetch(gatewayScratchUrl(gateway.url, TOKEN, GATEWAY_SCRATCH_PATH))
+    expect(get.status).toBe(405)
+    expect((await post(GATEWAY_SCRATCH_TRASH_PATH, TOKEN)).status).toBe(400)
+    expect(calls).toEqual([])
+  })
+
+  test('a refused folder answers 400 with the reason, any other failure 500', async () => {
+    fail = new NotAScratchWorkspace('/etc')
+    const response = await post(GATEWAY_SCRATCH_TRASH_PATH, TOKEN, '/etc')
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: '/etc is not a Scratch Workspace' })
+    fail = new Error('EACCES')
+    expect((await post(GATEWAY_SCRATCH_PATH, TOKEN)).status).toBe(500)
   })
 })

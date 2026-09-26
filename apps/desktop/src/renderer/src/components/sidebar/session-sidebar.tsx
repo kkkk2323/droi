@@ -7,6 +7,7 @@ import {
   CircleAlert,
   Folder,
   MessageSquare,
+  MessagesSquare,
   Pin,
   PinOff,
   Plus,
@@ -65,8 +66,8 @@ export function SessionSidebar({
   isLoading: boolean
   error: string | null
   onNewSession: () => void
-  /** From a Workspace group's header: a new Session working in that Workspace. */
-  onNewSessionIn: (workspace: string) => void
+  /** From a group's header: a new Session in that Workspace, or with None from Recents. */
+  onNewSessionIn: (workspace: string | null) => void
   onSettings: () => void
   insetTop: boolean
 }) {
@@ -151,7 +152,7 @@ function WorkspaceSection({
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onArchiveToggle: (session: SessionSummary) => void
-  onNewSessionIn: (workspace: string) => void
+  onNewSessionIn: (workspace: string | null) => void
 }) {
   // Folds and pins are this Client's; they outlive a restart.
   const [folded] = usePreference(foldedWorkspaces)
@@ -167,6 +168,8 @@ function WorkspaceSection({
     new Set(pinnedIds),
   )
   const listId = `workspace-${group.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+  const GroupIcon = group.scratch ? MessagesSquare : Folder
+  const newHere = () => onNewSessionIn(group.scratch ? null : group.path)
   return (
     <section aria-label={group.label} className="mb-2">
       <ContextMenu.Root>
@@ -179,12 +182,12 @@ function WorkspaceSection({
             type="button"
             aria-expanded={open}
             aria-controls={listId}
-            title={group.path}
+            title={group.scratch ? 'Sessions without a workspace' : group.path}
             onClick={() => toggleListed(foldedWorkspaces, group.key)}
             className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           >
             <span className="relative size-4 shrink-0 text-muted-foreground">
-              <Folder
+              <GroupIcon
                 aria-hidden
                 className="absolute inset-0 size-4 transition-opacity group-hover/ws:opacity-0"
               />
@@ -206,7 +209,7 @@ function WorkspaceSection({
             type="button"
             aria-label={`New session in ${group.label}`}
             title={`New session in ${group.label}`}
-            onClick={() => onNewSessionIn(group.path)}
+            onClick={newHere}
             className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
           >
             <SquarePen aria-hidden className="size-3.5" />
@@ -215,23 +218,26 @@ function WorkspaceSection({
         <ContextMenu.Portal>
           <ContextMenu.Positioner className="z-50 outline-none">
             <ContextMenu.Popup aria-label={`Actions for ${group.label}`} className={MENU}>
-              <ContextMenu.Item
-                onClick={() => toggleListed(pinnedWorkspaces, group.key)}
-                className={MENU_ITEM}
-              >
-                {pinned ? (
-                  <>
-                    <PinOff aria-hidden className="size-4 text-muted-foreground" />
-                    Unpin workspace
-                  </>
-                ) : (
-                  <>
-                    <Pin aria-hidden className="size-4 text-muted-foreground" />
-                    Pin workspace
-                  </>
-                )}
-              </ContextMenu.Item>
-              <ContextMenu.Item onClick={() => onNewSessionIn(group.path)} className={MENU_ITEM}>
+              {/* Recents always sits at the bottom. */}
+              {group.scratch ? null : (
+                <ContextMenu.Item
+                  onClick={() => toggleListed(pinnedWorkspaces, group.key)}
+                  className={MENU_ITEM}
+                >
+                  {pinned ? (
+                    <>
+                      <PinOff aria-hidden className="size-4 text-muted-foreground" />
+                      Unpin workspace
+                    </>
+                  ) : (
+                    <>
+                      <Pin aria-hidden className="size-4 text-muted-foreground" />
+                      Pin workspace
+                    </>
+                  )}
+                </ContextMenu.Item>
+              )}
+              <ContextMenu.Item onClick={newHere} className={MENU_ITEM}>
                 <SquarePen aria-hidden className="size-4 text-muted-foreground" />
                 New session here
               </ContextMenu.Item>

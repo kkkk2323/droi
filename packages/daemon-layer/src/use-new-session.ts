@@ -9,6 +9,7 @@ import type { DaemonConnection } from './connection'
 import { useDaemonConnection } from './connection-context'
 import {
   SESSIONS_QUERY_KEY,
+  isScratch,
   workspaceLabel,
   type SessionSummary,
   type SessionTag,
@@ -20,10 +21,11 @@ export interface RecentWorkspace {
   lastUsedAt: number
 }
 
-/** Most recent first, one entry per Workspace path. */
+/** Most recent first, one entry per Workspace path; Scratch Workspaces are left out. */
 export function recentWorkspaces(sessions: readonly SessionSummary[]): RecentWorkspace[] {
   const byPath = new Map<string, RecentWorkspace>()
   for (const session of sessions) {
+    if (isScratch(session.tags)) continue
     const path = session.repoRoot ?? session.cwd
     if (!path) continue
     const existing = byPath.get(path)
@@ -41,7 +43,7 @@ export interface NewSessionSettings {
 }
 
 export interface NewSessionActions {
-  create(path: string, settings?: NewSessionSettings): Promise<string | null>
+  create(path: string, settings?: NewSessionSettings, tags?: SessionTag[]): Promise<string | null>
   isCreating: boolean
   error: string | null
 }
@@ -92,7 +94,11 @@ export function useNewSession(): NewSessionActions {
   const [error, setError] = useState<string | null>(null)
 
   const create = useCallback(
-    async (path: string, settings?: NewSessionSettings): Promise<string | null> => {
+    async (
+      path: string,
+      settings?: NewSessionSettings,
+      tags?: SessionTag[],
+    ): Promise<string | null> => {
       const trimmed = path.trim()
       if (!trimmed) {
         setError('Enter a directory path.')
@@ -101,7 +107,10 @@ export function useNewSession(): NewSessionActions {
       setCreating(true)
       setError(null)
       try {
-        const opened = await openSession(connection, trimmed, settings ? { settings } : {})
+        const opened = await openSession(connection, trimmed, {
+          ...(settings ? { settings } : {}),
+          ...(tags?.length ? { tags } : {}),
+        })
         if ('error' in opened) {
           setError(opened.error)
           return null

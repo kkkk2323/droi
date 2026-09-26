@@ -57,8 +57,8 @@ test.describe('new session', () => {
     )
     await form.getByRole('button', { name: 'Workspace' }).click()
     const items = page.getByRole('menu').getByRole('menuitemradio')
-    await expect(items).toHaveText(['acme-web', 'billing-service'])
-    await expect(items.nth(0)).toHaveAttribute('aria-checked', 'true')
+    await expect(items).toHaveText(['None', 'acme-web', 'billing-service'])
+    await expect(items.nth(1)).toHaveAttribute('aria-checked', 'true')
     await expect(
       page.getByRole('menu').getByRole('menuitem', { name: 'Other folder…' }),
     ).toBeVisible()

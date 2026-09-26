@@ -54,7 +54,8 @@ export function SessionList({
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onNewSession: () => void
-  onNewSessionIn: (workspace: string) => void
+  /** A new Session in that Workspace, or with None from Recents. */
+  onNewSessionIn: (workspace: string | null) => void
   onSettings: () => void
   onAddComputer: () => void
   onArchiveToggle: (session: SessionSummary) => void
@@ -193,20 +194,23 @@ export function SessionList({
       >
         {workspaceActions ? (
           <>
-            <SheetButton
-              label={
-                pinnedGroups.includes(workspaceActions.key) ? 'Unpin workspace' : 'Pin workspace'
-              }
-              onPress={() => {
-                toggleListed(pinnedWorkspaces, workspaceActions.key)
-                setWorkspaceActionsOpen(false)
-              }}
-            />
+            {/* Recents always sits at the bottom. */}
+            {workspaceActions.scratch ? null : (
+              <SheetButton
+                label={
+                  pinnedGroups.includes(workspaceActions.key) ? 'Unpin workspace' : 'Pin workspace'
+                }
+                onPress={() => {
+                  toggleListed(pinnedWorkspaces, workspaceActions.key)
+                  setWorkspaceActionsOpen(false)
+                }}
+              />
+            )}
             <SheetButton
               label="New session here"
               onPress={() => {
                 setWorkspaceActionsOpen(false)
-                onNewSessionIn(workspaceActions.path)
+                onNewSessionIn(workspaceActions.scratch ? null : workspaceActions.path)
               }}
             />
           </>

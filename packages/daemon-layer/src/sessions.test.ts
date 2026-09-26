@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   CONTINUES_TAG,
   RECENT_WINDOW_MS,
+  SCRATCH_TAG,
   continuationChain,
   continuationParent,
   continuationTags,
@@ -70,6 +71,51 @@ describe('groupByWorkspace', () => {
     )
     expect(groups.map((g) => g.label)).toEqual(['alpha', 'gamma', 'beta'])
     expect(groups[0]!.sessions.map((s) => s.sessionId)).toEqual(['a', 'c'])
+  })
+})
+
+describe('groupByWorkspace with Scratch Workspaces', () => {
+  const scratch = [{ name: SCRATCH_TAG }]
+
+  test('every Scratch Session sits in one Recents group, last, whatever its folder', () => {
+    const groups = groupByWorkspace([
+      summary({
+        sessionId: 's1',
+        cwd: '/u/.droi/chats/2026-09-25-aaaaaa',
+        tags: scratch,
+        updatedAt: 50,
+        messagesCount: 9,
+      }),
+      summary({ sessionId: 'p', cwd: '/w/alpha', updatedAt: 10 }),
+      summary({
+        sessionId: 's2',
+        cwd: '/u/.droi/chats/2026-09-26-bbbbbb',
+        tags: scratch,
+        updatedAt: 60,
+        messagesCount: 9,
+      }),
+    ])
+    expect(groups.map((g) => [g.label, g.scratch])).toEqual([
+      ['alpha', false],
+      ['Recents', true],
+    ])
+    expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['s2', 's1'])
+  })
+
+  test('Recents stays last even when pinned; its pinned Sessions still come first', () => {
+    const groups = groupByWorkspace(
+      [
+        summary({ sessionId: 's1', cwd: '/c/a', tags: scratch, updatedAt: 50 }),
+        summary({ sessionId: 's2', cwd: '/c/b', tags: scratch, updatedAt: 60 }),
+        summary({ sessionId: 'p', cwd: '/w/alpha', updatedAt: 10 }),
+      ],
+      {
+        workspaces: new Set([groupByWorkspace([summary({ tags: scratch })])[0]!.key]),
+        sessions: new Set(['s1']),
+      },
+    )
+    expect(groups.map((g) => g.label)).toEqual(['alpha', 'Recents'])
+    expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['s1', 's2'])
   })
 })
 

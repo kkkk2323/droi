@@ -161,6 +161,16 @@ export function SettingsPage({
                   />
                 ) : null
               }
+              scratchFolder={
+                bridge && snapshot ? (
+                  <ScratchFolderRow
+                    key={snapshot.scratchFolder}
+                    snapshot={snapshot}
+                    bridge={bridge}
+                    onSaved={setSnapshot}
+                  />
+                ) : null
+              }
             />
           ) : tab === 'notifications' && alerts ? (
             <NotificationsTab alerts={alerts} />
@@ -551,6 +561,37 @@ function SystemPromptRow({ snapshot, bridge, onSaved }: RowProps) {
             </Button>
           ) : null}
         </div>
+      </form>
+    </SettingRow>
+  )
+}
+
+function ScratchFolderRow({ snapshot, bridge, onSaved }: RowProps) {
+  const [value, setValue] = useState(snapshot.scratchFolderIsDefault ? '' : snapshot.scratchFolder)
+  return (
+    <SettingRow
+      title="Scratch folder"
+      description={`A session started with Workspace: None gets a new folder of its own in ${snapshot.scratchFolder}. Archiving it moves the folder to the Trash. A change applies to new sessions only.`}
+    >
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void bridge.update({ scratchFolder: value.trim() || null }).then(onSaved)
+        }}
+      >
+        <input
+          aria-label="Scratch folder"
+          placeholder="~/.droi/chats"
+          value={value}
+          spellCheck={false}
+          autoCapitalize="off"
+          onChange={(event) => setValue(event.target.value)}
+          className={`${settingInputClass} font-mono`}
+        />
+        <Button type="submit" variant="outline">
+          Save folder
+        </Button>
       </form>
     </SettingRow>
   )
