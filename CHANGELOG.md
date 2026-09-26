@@ -1,3 +1,9 @@
+## 1.10.3 - 2026-09-26
+
+### Fixed
+
+- A session compacted with `/compact` stays in the sidebar. droid 0.228 compacts in place, keeping the same session, and Droi marked that session as continuing itself, so it disappeared from the sidebar once you switched away and could not be opened again. Sessions already affected show up again after the update.
+
 ## 1.10.2 - 2026-09-26
 
 ### Fixed

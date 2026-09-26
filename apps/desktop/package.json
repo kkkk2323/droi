@@ -1,6 +1,6 @@
 {
   "name": "droi",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "private": true,
   "description": "The Desktop Shell and web Client: Droi's front end for the Droid Daemon",
   "license": "MIT",
