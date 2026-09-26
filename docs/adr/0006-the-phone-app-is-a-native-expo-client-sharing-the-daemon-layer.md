@@ -18,7 +18,7 @@ The repository becomes a pnpm workspace: `apps/phone` holds the Expo app, and th
 ## Consequences
 
 - The Phone App is for personal use: it is signed with a free Apple account, so it cannot receive push notifications and its signature lapses after seven days. `pnpm install:phone` rebuilds and installs it, and its settings show the days left. Alerts (haptics and two short sounds of Droi's own) fire only while the app is open.
-- The Phone App is pinned to Expo SDK 56 until this computer runs macOS 26: SDK 57 needs Xcode 27, and Xcode 26.3 cannot build its `expo-modules-jsi`.
+- The Phone App is pinned to Expo SDK 57, built with Xcode 27 on macOS 27. The iOS 27 SDK requires the scene-based life cycle, which SDK 57 only turns on through `expo-build-properties` (`ios.enableSceneSupport`); SDK 58 makes it the default.
 - The Phone App is connected to one Paired Computer at a time and keeps only a summary of each computer's Session list between launches; transcripts always come from the Daemon. To tell computers apart, the Gateway's `/meta` reports the computer's name and a stable id, so scanning a computer again updates its Paired Computer instead of adding one.
 - The Phone App's behaviour is tested the way the web Client's is (ADR 0002): its web build (react-native-web) runs under Playwright against the Fake Daemon, with web stand-ins for the camera, the keychain and haptics. That build exists only for tests and is never served to a phone. What only a device can show (scanning, the keychain, haptics, the silent switch, resuming from the background) is checked by hand against a checklist.
 - The Phone App carries the desktop version number and warns, without blocking, when `/meta` reports a different one.

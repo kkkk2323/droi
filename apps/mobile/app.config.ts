@@ -59,6 +59,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     reactCompiler: true,
   },
   plugins: [
+    // Built with the iOS 27 SDK, an app on the application-based life cycle
+    // does not launch correctly on iOS 27. SDK 58 makes scenes the default;
+    // drop this then.
+    ['expo-build-properties', { ios: { enableSceneSupport: true } }],
     'expo-router',
     'expo-font',
     'expo-secure-store',

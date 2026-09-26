@@ -17,7 +17,7 @@ apps/
 │   ├── src/renderer/  # web Client: React app, runs as Local Client and Remote Client
 │   ├── src/shared/    # Types and pure helpers shared by Desktop Shell and Client
 │   └── resources/     # App icons; electron-builder config lives in package.json
-└── mobile/     # Phone App: Expo SDK 56 iPhone Client (expo-router under src/app,
+└── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
                 # screens under src/screens, hardware behind src/platform with
                 # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md
 packages/
@@ -67,8 +67,8 @@ web Client, the shared daemon layer or the Fake Daemon changed, and
 Daemon changed. The PR workflow runs all of them. For what only an iPhone can
 show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
 
-The Phone App is pinned to Expo SDK 56 (ADR 0006). Expo changes its APIs every
-SDK: read the versioned docs (`https://docs.expo.dev/versions/v56.0.0/`) or the
+The Phone App is pinned to Expo SDK 57 (ADR 0006). Expo changes its APIs every
+SDK: read the versioned docs (`https://docs.expo.dev/versions/v57.0.0/`) or the
 installed types before using an Expo module, and add Expo packages with
 `npx expo install` from `apps/mobile` so the versions match the SDK.
 
