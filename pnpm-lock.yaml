@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@factory/droid-sdk@0.9.1':
+    hash: 00cd4c0abdc774af8c3b703a908ab80329efff35cee8acf34e46ab5dce621539
+    path: patches/@factory__droid-sdk@0.9.1.patch
+
 importers:
 
   .:
@@ -31,7 +36,7 @@ importers:
         version: 1.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@factory/droid-sdk':
         specifier: 0.9.1
-        version: 0.9.1
+        version: 0.9.1(patch_hash=00cd4c0abdc774af8c3b703a908ab80329efff35cee8acf34e46ab5dce621539)
       '@tanstack/react-query':
         specifier: ^5.103.1
         version: 5.103.1(react@19.3.0)
@@ -143,7 +148,7 @@ importers:
         version: 57.0.20(@babel/core@7.29.0)(@types/react-dom@19.3.0(@types/react@19.2.18))(@types/react@19.2.18)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@factory/droid-sdk':
         specifier: 0.9.1
-        version: 0.9.1
+        version: 0.9.1(patch_hash=00cd4c0abdc774af8c3b703a908ab80329efff35cee8acf34e46ab5dce621539)
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0
         version: 2.2.0(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))
@@ -267,7 +272,7 @@ importers:
     dependencies:
       '@factory/droid-sdk':
         specifier: 0.9.1
-        version: 0.9.1
+        version: 0.9.1(patch_hash=00cd4c0abdc774af8c3b703a908ab80329efff35cee8acf34e46ab5dce621539)
       '@tanstack/react-query':
         specifier: ^5.103.1
         version: 5.103.1(react@19.3.0)
@@ -286,7 +291,7 @@ importers:
         version: link:../packages/daemon-layer
       '@factory/droid-sdk':
         specifier: 0.9.1
-        version: 0.9.1
+        version: 0.9.1(patch_hash=00cd4c0abdc774af8c3b703a908ab80329efff35cee8acf34e46ab5dce621539)
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
@@ -7401,7 +7406,7 @@ snapshots:
       chalk: 4.1.2
       js-yaml: 4.1.1
 
-  '@factory/droid-sdk@0.9.1':
+  '@factory/droid-sdk@0.9.1(patch_hash=00cd4c0abdc774af8c3b703a908ab80329efff35cee8acf34e46ab5dce621539)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
       '@opentelemetry/api': 1.9.1

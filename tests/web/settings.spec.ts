@@ -398,3 +398,37 @@ test.describe('session defaults the organization manages', () => {
     await expect(page.getByRole('combobox', { name: 'Default reasoning level' })).toBeEnabled()
   })
 })
+
+// The Daemon ships newer models than the droid SDK's own model list knows.
+test.describe('a compaction model the droid SDK does not list', () => {
+  test.use({
+    scenario: { sessions: [first], defaults: { compactionModel: 'claude-opus-4-1' } },
+  })
+
+  test('loads, and another one still reaches the Daemon', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Session defaults' }).click()
+    const compaction = page.getByRole('button', { name: 'Compaction model', exact: true })
+    await expect(compaction).toHaveText('Claude Opus 4.1')
+
+    await compaction.click()
+    const dialog = page.getByRole('dialog', { name: 'Choose a model' })
+    await dialog.getByRole('option', { name: /GPT-5/ }).click()
+    await expect(dialog).toBeHidden()
+    await expect
+      .poll(
+        () =>
+          fakeDaemon.requests.filter((r) => r.method === 'daemon.update_session_defaults').at(-1)
+            ?.params,
+      )
+      .toEqual({ compactionModel: 'gpt-5' })
+    await expect(compaction).toHaveText('GPT-5')
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  })
+})

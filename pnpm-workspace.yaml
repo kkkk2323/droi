@@ -7,3 +7,6 @@ onlyBuiltDependencies:
   - electron
   - electron-winstaller
   - esbuild
+
+patchedDependencies:
+  '@factory/droid-sdk@0.9.1': patches/@factory__droid-sdk@0.9.1.patch

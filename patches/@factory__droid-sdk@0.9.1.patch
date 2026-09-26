@@ -1,0 +1,28 @@
+diff --git a/dist/chunk-TWSTJMV7.mjs b/dist/chunk-TWSTJMV7.mjs
+index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..5f099e3dfcc31df95177bc07709afe7fdee512b2 100644
+--- a/dist/chunk-TWSTJMV7.mjs
++++ b/dist/chunk-TWSTJMV7.mjs
+@@ -2868,7 +2868,8 @@ var CompactionModelIdValues = [
+ ];
+ var CompactionModelSchema = z10.union([
+   z10.literal(CURRENT_COMPACTION_MODEL),
+-  z10.enum(CompactionModelIdValues),
++  // Droi patch: the Daemon checks the id against its own, newer model catalog.
++  z10.string().min(1),
+   z10.string().regex(/^custom:.+$/, "Expected a custom model id")
+ ]);
+ var MCP_OAUTH_CLIENT_METADATA_DOT_SEGMENT_RE = /(?:^|\/)(?:\.\.|\.(?:%2e)?|%2e(?:\.|%2e)?)(?:\/|$|[?#])/i;
+diff --git a/dist/chunk-YSKO6SPT.js b/dist/chunk-YSKO6SPT.js
+index 394cbad810d8b6d1eadf491fb2bbd0423b213728..977a047bef011627eb62559f9a26dd2a344e4a7e 100644
+--- a/dist/chunk-YSKO6SPT.js
++++ b/dist/chunk-YSKO6SPT.js
+@@ -2868,7 +2868,8 @@ var CompactionModelIdValues = [
+ ];
+ var CompactionModelSchema = _zod.z.union([
+   _zod.z.literal(CURRENT_COMPACTION_MODEL),
+-  _zod.z.enum(CompactionModelIdValues),
++  // Droi patch: the Daemon checks the id against its own, newer model catalog.
++  _zod.z.string().min(1),
+   _zod.z.string().regex(/^custom:.+$/, "Expected a custom model id")
+ ]);
+ var MCP_OAUTH_CLIENT_METADATA_DOT_SEGMENT_RE = /(?:^|\/)(?:\.\.|\.(?:%2e)?|%2e(?:\.|%2e)?)(?:\/|$|[?#])/i;
