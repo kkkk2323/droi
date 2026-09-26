@@ -1,3 +1,9 @@
+## 1.11.2 - 2026-09-27
+
+### Fixed
+
+- The Settings page's left navigation is as wide as the session sidebar, so the content no longer jumps sideways when switching between Settings and a conversation.
+
 ## 1.11.1 - 2026-09-26
 
 ### Fixed
