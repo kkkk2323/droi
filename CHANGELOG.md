@@ -1,3 +1,19 @@
+## 1.10.0 - 2026-09-26
+
+### Added
+
+- New session → Workspace: None starts a session that is not next to any project, the way a ChatGPT conversation stands on its own. Droi makes it a folder of its own in `~/.droi/chats` (Settings → Session defaults → Scratch folder), and these sessions are listed together under Recents at the bottom of the sidebar and the iPhone's session list. With no recent workspace yet, None is the default. Archiving one moves its folder to the Trash; unarchiving brings the folder back.
+
+### Changed
+
+- Droi for iPhone is built on Expo SDK 57 (React Native 0.86) with Xcode 27 and the iOS 27 SDK, so it installs on this year's iPhones.
+
+### Fixed
+
+- The spinners on the iPhone keep turning. Each time one was replaced by another it swept a shorter arc, and after a few seconds of tool calls they stood still.
+- A long file name in the Git changes list is cut short instead of running over the line counts and pushing the list sideways.
+- `pnpm install:phone` picks the connected iPhone rather than a simulator, which Xcode 27 lists as paired too.
+
 ## 1.9.0 - 2026-09-26
 
 ### Added
