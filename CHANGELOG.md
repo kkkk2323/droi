@@ -1,3 +1,9 @@
+## 1.11.0 - 2026-09-26
+
+### Changed
+
+- A new icon: a warm off-white tile with a geometric D and one green dot, in place of the dark tile with the glowing green D. The Mac app, the browser tab and the iPhone app use it, and the New session page shows the same mark. On the iPhone the icon now fills the whole square and iOS rounds it, instead of a rounded tile with a margin. macOS may keep showing the old icon in the Dock for a while after updating.
+
 ## 1.10.3 - 2026-09-26
 
 ### Fixed
