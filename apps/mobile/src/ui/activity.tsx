@@ -12,37 +12,40 @@ function loop(animation: Animated.CompositeAnimation): () => void {
   return () => running.stop()
 }
 
-// Every Spinner turns on this one value, so ones that appear at different
-// moments (a column of tool rows) point the same way. It runs while any shows.
-const turn = new Animated.Value(0)
-const rotate = turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
-let spinners = 0
-let stopTurning: (() => void) | null = null
+const TURN_MS = 1000
 
-function useSharedTurn() {
-  useEffect(() => {
-    spinners += 1
-    stopTurning ??= loop(
-      Animated.timing(turn, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    )
-    return () => {
-      spinners -= 1
-      if (spinners > 0) return
-      stopTurning?.()
-      stopTurning = null
-    }
-  }, [])
-}
-
+// Each Spinner turns its own value, never stopped and restarted: a stopped
+// native loop leaves the value where it was, and one restarted from there
+// swept a shorter arc each time until it stood still. Starting from the
+// clock's phase keeps Spinners that appear at different moments (a column of
+// tool rows) pointing the same way.
 export function Spinner({ size, color }: { size: number; color: string }) {
-  useSharedTurn()
+  const [spin] = useState(() => {
+    const phase = (Date.now() % TURN_MS) / TURN_MS
+    const turn = new Animated.Value(phase)
+    return {
+      turn,
+      phase,
+      rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+    }
+  })
+  useEffect(
+    () =>
+      loop(
+        Animated.timing(spin.turn, {
+          toValue: spin.phase + 1,
+          duration: TURN_MS,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ),
+    [spin],
+  )
   return (
-    <Animated.View aria-hidden style={{ width: size, height: size, transform: [{ rotate }] }}>
+    <Animated.View
+      aria-hidden
+      style={{ width: size, height: size, transform: [{ rotate: spin.rotate }] }}
+    >
       <LoaderCircle size={size} color={color} strokeWidth={2} />
     </Animated.View>
   )
