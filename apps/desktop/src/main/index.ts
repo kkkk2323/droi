@@ -15,13 +15,14 @@ import {
 } from 'electron'
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { closeSync, existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 // Electron's fs treats .asar files as directories; original-fs sees the file.
 import * as originalFs from 'original-fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { openDaemonLog, readDaemonLogTail } from './daemon/daemon-log'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
 import { droidBuildOf, isDroidReplaced, type DroidBuild } from './daemon/droid-build'
 import { locateDroid } from './daemon/locate-droid'
@@ -131,6 +132,11 @@ async function loginState(): Promise<LoginState> {
   return cli ? { status: 'signed-in', account: cli.account, source: 'cli' } : auth.state
 }
 
+/** Where the Daemon's output goes; the Settings page reads its tail after a crash. */
+function daemonLogPath(): string {
+  return join(app.getPath('userData'), 'logs', 'daemon.log')
+}
+
 function createDaemonSupervisor(): DaemonSupervisor {
   const supervisor = new DaemonSupervisor({
     spawn: (port) => {
@@ -143,19 +149,19 @@ function createDaemonSupervisor(): DaemonSupervisor {
       const apiKey = auth.state.status === 'signed-in' ? null : settings.getApiKey()
       const baseUrl = settings.settings.factoryApiBaseUrl ?? process.env['FACTORY_API_BASE_URL']
       daemonBuild = droidBuildOf(droidPath)
-      return spawn(
+      const log = openDaemonLog(daemonLogPath())
+      // The Daemon exits when the Shell dies. A pipe on fd 3 tells it so the
+      // moment this process ends; PID polling, the only option on Windows, can
+      // be fooled by PID reuse.
+      const liveness =
+        process.platform === 'win32'
+          ? { args: ['--parent-pid', String(process.pid)], stdio: [] }
+          : { args: ['--liveness-fd', '3'], stdio: ['pipe' as const] }
+      const child = spawn(
         droidPath,
-        [
-          'daemon',
-          '--host',
-          '127.0.0.1',
-          '--port',
-          String(port),
-          '--parent-pid',
-          String(process.pid),
-        ],
+        ['daemon', '--host', '127.0.0.1', '--port', String(port), ...liveness.args],
         {
-          stdio: 'ignore',
+          stdio: ['ignore', log ?? 'ignore', log ?? 'ignore', ...liveness.stdio],
           env: {
             ...process.env,
             ...(apiKey ? { FACTORY_API_KEY: apiKey } : {}),
@@ -163,9 +169,15 @@ function createDaemonSupervisor(): DaemonSupervisor {
           },
         },
       )
+      // The child holds its own copy of the descriptor.
+      if (log !== null) closeSync(log)
+      return child
     },
   })
-  supervisor.on('state', (state) => console.log('[daemon]', JSON.stringify(state)))
+  supervisor.on('state', (state) => {
+    console.log('[daemon]', JSON.stringify(state))
+    broadcastChange()
+  })
   return supervisor
 }
 
@@ -256,6 +268,9 @@ async function snapshot(): Promise<ShellSettingsSnapshot> {
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
     droidUpdated: isDroidReplaced(daemonBuild),
+    daemon: daemon.state,
+    // What the Daemon last wrote explains a restart loop; while it runs the log is noise.
+    daemonLog: daemon.state.status === 'running' ? null : readDaemonLogTail(daemonLogPath()),
     version: app.getVersion(),
     update: updater.state,
   }
@@ -414,6 +429,10 @@ function registerIpc(): void {
     await restartDaemon()
     broadcastChange()
     return snapshot()
+  })
+  ipcMain.handle(SHELL_IPC.showDaemonLog, () => {
+    const path = daemonLogPath()
+    if (existsSync(path)) shell.showItemInFolder(path)
   })
   ipcMain.handle(SHELL_IPC.signIn, async () => {
     const pending = await auth.signIn()

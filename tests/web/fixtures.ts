@@ -1,6 +1,7 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { FakeDaemon } from '../fake-daemon/fake-daemon'
 import type { ScenarioInput } from '../fake-daemon/scenario'
+import type { DaemonState } from '../../apps/desktop/src/shared/shell-settings'
 
 export interface OpenClientOptions {
   /** Override the Pairing Token in the link; defaults to the Fake Daemon's. */
@@ -78,11 +79,16 @@ export interface ShellRecord {
   /** The src of every sound played, in order. */
   sounds: string[]
   daemonRestarts: number
+  daemonLogShown: number
 }
 
 export interface LocalClientOptions {
   /** The Shell reports that `droid` changed on disk since the Daemon started. */
   droidUpdated?: boolean
+  /** What the Shell says about its Daemon child; running by default. */
+  daemon?: DaemonState
+  /** The end of the Daemon's log the Shell hands over while the Daemon is not running. */
+  daemonLog?: string
 }
 
 /**
@@ -98,13 +104,39 @@ export async function openLocalClient(
   options: LocalClientOptions = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ gatewayUrl, pairingToken, droidUpdated }) => {
-      const record: ShellRecord = { opened: [], notifications: [], sounds: [], daemonRestarts: 0 }
+    ({ gatewayUrl, pairingToken, droidUpdated, daemonState, daemonLog }) => {
+      const record: ShellRecord = {
+        opened: [],
+        notifications: [],
+        sounds: [],
+        daemonRestarts: 0,
+        daemonLogShown: 0,
+      }
       let updated = droidUpdated
       const snapshot = () => ({
+        login: {
+          status: 'signed-in',
+          account: { userId: 'user_test', orgId: null, email: 'dev@example.com' },
+          source: 'cli',
+        },
+        daemonIdentity: null,
+        remoteAccess: false,
+        droidPath: null,
+        factoryApiBaseUrl: null,
+        factoryApiBaseUrlFromEnvironment: null,
+        appendSystemPrompt: null,
+        pairingHost: null,
+        scratchFolder: '/Users/dev/.droi/chats',
+        scratchFolderIsDefault: true,
+        hasApiKey: false,
         hasCredential: true,
-        update: { status: 'idle' },
+        apiKeyFromEnvironment: false,
+        droidFound: '/Users/dev/.local/bin/droid',
         droidUpdated: updated,
+        daemon: daemonState,
+        daemonLog,
+        version: '0.0.0-test',
+        update: { status: 'idle' },
       })
       let focused = true
       let onClick: ((sessionId: string) => void) | null = null
@@ -128,6 +160,8 @@ export async function openLocalClient(
               updated = false
               return snapshot()
             },
+            showDaemonLog: async () => void (record.daemonLogShown += 1),
+            getPairing: async () => ({ link: null, lanAddresses: [], port: 0 }),
             onChange: () => () => {},
           },
           openIn: {
@@ -151,7 +185,13 @@ export async function openLocalClient(
         },
       })
     },
-    { gatewayUrl: daemon.url, pairingToken: daemon.token, droidUpdated: !!options.droidUpdated },
+    {
+      gatewayUrl: daemon.url,
+      pairingToken: daemon.token,
+      droidUpdated: !!options.droidUpdated,
+      daemonState: options.daemon ?? { status: 'running', port: 4242, pid: 777 },
+      daemonLog: options.daemonLog ?? null,
+    },
   )
   await page.goto('/')
 }

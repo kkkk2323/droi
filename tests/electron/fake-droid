@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Stand-in for the `droid` binary used by the Desktop Shell smoke suite. Only
-// `daemon --port N` is understood: it opens a WebSocket server on loopback that
-// authenticates anyone and lists no Sessions, which is all the smoke cases need.
-// The Gateway does the Pairing Token check and key injection in front of it.
-import { writeFileSync } from 'node:fs'
+// `daemon --port N` is understood: it answers GET /health and opens a WebSocket
+// server on loopback that authenticates anyone and lists no Sessions, which is
+// all the smoke cases need. The Gateway does the Pairing Token check and key
+// injection in front of it.
+import { createReadStream, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
 const args = process.argv.slice(2)
@@ -12,7 +14,17 @@ if (args[0] !== 'daemon') {
   process.exit(2)
 }
 const port = Number(args[args.indexOf('--port') + 1])
-const wss = new WebSocketServer({ host: '127.0.0.1', port })
+const server = createServer((request, response) => {
+  if (request.url === '/health') {
+    response.writeHead(200, { 'content-type': 'text/plain' })
+    response.end('fake-droid ok')
+    return
+  }
+  response.writeHead(404)
+  response.end()
+})
+const wss = new WebSocketServer({ server })
+server.listen(port, '127.0.0.1')
 
 const envelope = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.217.0' }
 
@@ -57,6 +69,14 @@ if (parentPid) {
       process.exit(0)
     }
   }, 1000)
+}
+// Like the real Daemon: the inherited pipe closes when the Shell dies.
+const livenessFd = Number(args[args.indexOf('--liveness-fd') + 1])
+if (livenessFd) {
+  createReadStream(null, { fd: livenessFd })
+    .on('end', () => process.exit(0))
+    .on('error', () => process.exit(0))
+    .resume()
 }
 // Lets the smoke suite check what the Desktop Shell put in the Daemon's environment.
 if (process.env.FAKE_DROID_ENV_FILE) {

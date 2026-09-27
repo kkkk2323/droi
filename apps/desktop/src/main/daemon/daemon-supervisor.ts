@@ -1,21 +1,18 @@
 // Keeps exactly one Daemon child alive while the Desktop Shell runs: picks a
-// free loopback port, waits until the Daemon accepts connections, and restarts
-// it with backoff if it exits. `stop()` ends the child and disarms restarts.
+// free loopback port, waits until the Daemon answers its health check, and
+// restarts it with backoff if it exits. `stop()` ends the child and disarms restarts.
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
-import { connect, createServer } from 'node:net'
+import { createServer } from 'node:net'
+import type { DaemonState } from '../../shared/shell-settings'
 
-export type DaemonState =
-  | { status: 'stopped' }
-  | { status: 'starting'; port: number; attempt: number }
-  | { status: 'running'; port: number; pid: number }
-  | { status: 'restarting'; delayMs: number; attempt: number; reason: string }
+export type { DaemonState }
 
 export interface DaemonSupervisorOptions {
   spawn: (port: number) => ChildProcess
   /** Delays between restart attempts; the last value repeats. */
   backoffMs?: number[]
-  /** How long a spawned Daemon may take to accept TCP connections. */
+  /** How long a spawned Daemon may take to answer GET /health. */
   readyTimeoutMs?: number
   /** A Daemon that survived this long resets the backoff. */
   stableAfterMs?: number
@@ -107,12 +104,12 @@ export class DaemonSupervisor extends EventEmitter<{ state: [DaemonState] }> {
       if (this.#running) this.#scheduleRestart(error.message)
     })
 
-    const ready = await waitForPort(port, this.#options.readyTimeoutMs, () => exited)
+    const ready = await waitForHealth(port, this.#options.readyTimeoutMs, () => exited)
     if (this.#child !== child || !this.#running) return
     if (ready) {
       this.#setState({ status: 'running', port, pid: child.pid ?? -1 })
     } else if (!exited) {
-      // Spawned but never listened; kill it so the exit handler restarts it.
+      // Spawned but never became healthy; kill it so the exit handler restarts it.
       child.kill('SIGKILL')
     }
   }
@@ -149,26 +146,33 @@ export function pickFreePort(): Promise<number> {
   })
 }
 
-async function waitForPort(
+const HEALTH_POLL_MS = 200
+const HEALTH_TIMEOUT_MS = 2_000
+
+async function waitForHealth(
   port: number,
   timeoutMs: number,
   gaveUp: () => boolean,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline && !gaveUp()) {
-    if (await canConnect(port)) return true
-    await new Promise((r) => setTimeout(r, 100))
+    if (await isHealthy(port)) return true
+    await new Promise((r) => setTimeout(r, HEALTH_POLL_MS))
   }
   return false
 }
 
-function canConnect(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = connect(port, LOOPBACK)
-    socket.once('connect', () => {
-      socket.destroy()
-      resolve(true)
+/**
+ * The Daemon serves GET /health once its RPC server is up, which an open TCP
+ * port alone does not prove (the Factory App probes the same endpoint).
+ */
+export async function isHealthy(port: number): Promise<boolean> {
+  try {
+    const response = await fetch(`http://${LOOPBACK}:${port}/health`, {
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
     })
-    socket.once('error', () => resolve(false))
-  })
+    return response.ok
+  } catch {
+    return false
+  }
 }

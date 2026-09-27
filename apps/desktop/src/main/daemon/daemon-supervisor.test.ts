@@ -4,11 +4,21 @@ import { once } from 'node:events'
 import { connect } from 'node:net'
 import { DaemonSupervisor, type DaemonState } from './daemon-supervisor'
 
-// A stand-in for `droid daemon`: listens on the given port until killed.
+// A stand-in for `droid daemon`: answers GET /health on the given port until killed.
 const FAKE_DAEMON = `
-  const net = require('node:net');
-  const server = net.createServer();
+  const http = require('node:http');
+  const server = http.createServer((request, response) => {
+    response.writeHead(request.url === '/health' ? 200 : 404);
+    response.end();
+  });
   server.listen(Number(process.argv[1]), '127.0.0.1');
+  process.on('SIGTERM', () => process.exit(0));
+`
+
+// Accepts TCP connections but never answers HTTP, like a Daemon whose RPC server is stuck.
+const DEAF_DAEMON = `
+  const net = require('node:net');
+  net.createServer().listen(Number(process.argv[1]), '127.0.0.1');
   process.on('SIGTERM', () => process.exit(0));
 `
 
@@ -90,6 +100,28 @@ describe('DaemonSupervisor', () => {
     if (second.status !== 'running') throw new Error('unreachable')
     expect(second.pid).not.toBe(first.pid)
     expect(isAlive(first.pid)).toBe(false)
+  })
+
+  test('an open port without a healthy /health is not running; it is restarted', async () => {
+    let calls = 0
+    supervisor = new DaemonSupervisor({
+      spawn: (port) => {
+        calls += 1
+        return spawn(
+          process.execPath,
+          ['-e', calls === 1 ? DEAF_DAEMON : FAKE_DAEMON, String(port)],
+          { stdio: 'ignore' },
+        )
+      },
+      backoffMs: [10],
+      readyTimeoutMs: 600,
+    })
+    const states: DaemonState[] = []
+    supervisor.on('state', (state) => states.push(state))
+    supervisor.start()
+    await waitForStatus(supervisor, 'running')
+    expect(calls).toBe(2)
+    expect(states.some((s) => s.status === 'restarting')).toBe(true)
   })
 
   test('backoff grows on repeated failures and caps at the last step', async () => {

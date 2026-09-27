@@ -75,9 +75,20 @@ export interface ShellSettingsSnapshot {
    * until it is restarted.
    */
   droidUpdated: boolean
+  /** Where the Daemon child stands; `restarting` carries why the last one ended. */
+  daemon: DaemonState
+  /** The end of the Daemon's log while it is not running; null while it runs or before it ever wrote. */
+  daemonLog: string | null
   version: string
   update: UpdateState
 }
+
+/** Mirrors the Desktop Shell's DaemonSupervisor state. */
+export type DaemonState =
+  | { status: 'stopped' }
+  | { status: 'starting'; port: number; attempt: number }
+  | { status: 'running'; port: number; pid: number }
+  | { status: 'restarting'; delayMs: number; attempt: number; reason: string }
 
 export interface PairingInfo {
   /** Full link a phone opens: http://<pairing host or lan-ip>:<port>/#pair=<token> */
@@ -103,6 +114,8 @@ export interface ShellSettingsBridge {
   setApiKey(apiKey: string | null): Promise<ShellSettingsSnapshot>
   /** Stops the Daemon and starts it again from the `droid` on disk; working Sessions are interrupted. */
   restartDaemon(): Promise<ShellSettingsSnapshot>
+  /** Reveals the Daemon's log file in the file manager. */
+  showDaemonLog(): Promise<void>
   /** Starts the device flow and opens the browser; the snapshot turns `pending`. */
   signIn(): Promise<ShellSettingsSnapshot>
   cancelSignIn(): Promise<ShellSettingsSnapshot>
@@ -123,6 +136,7 @@ export const SHELL_IPC = {
   update: 'droi:settings:update',
   setApiKey: 'droi:settings:set-api-key',
   restartDaemon: 'droi:daemon:restart',
+  showDaemonLog: 'droi:daemon:show-log',
   signIn: 'droi:settings:sign-in',
   cancelSignIn: 'droi:settings:cancel-sign-in',
   signOut: 'droi:settings:sign-out',

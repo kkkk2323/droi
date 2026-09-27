@@ -381,6 +381,49 @@ test.describe('session defaults', () => {
   })
 })
 
+test.describe('the Daemon tab', () => {
+  test.use({ scenario: { sessions: [first] } })
+
+  async function openDaemonTab(page: Page, openSidebar: () => Promise<Locator>) {
+    await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Daemon' }).click()
+    await expect(page.getByRole('heading', { level: 2, name: 'Daemon' })).toBeVisible()
+  }
+
+  test('shows a running Daemon with its port, and no log', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon)
+    await openDaemonTab(page, openSidebar)
+    await expect(page.getByText('Running', { exact: true })).toBeVisible()
+    await expect(page.getByText('Listening on 127.0.0.1:4242 (pid 777).')).toBeVisible()
+    await expect(page.getByLabel('Daemon log')).toHaveCount(0)
+  })
+
+  test('a Daemon that keeps dying shows why, its last output, and a way to the log file', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon, {
+      daemon: { status: 'restarting', delayMs: 5_000, attempt: 3, reason: 'exited with 1' },
+      daemonLog: 'Error: FACTORY_API_KEY is invalid\n    at start (daemon.js:12)',
+    })
+    await openDaemonTab(page, openSidebar)
+    await expect(page.getByText('Not running', { exact: true })).toBeVisible()
+    await expect(
+      page.getByText('Last attempt: exited with 1. Starting again in 5s (attempt 3).'),
+    ).toBeVisible()
+    await expect(page.getByLabel('Daemon log')).toContainText('FACTORY_API_KEY is invalid')
+    await page.getByRole('button', { name: 'Show log file' }).click()
+    await expect.poll(async () => (await shellRecord(page)).daemonLogShown).toBe(1)
+    await page.getByRole('button', { name: 'Restart Daemon' }).click()
+    await expect.poll(async () => (await shellRecord(page)).daemonRestarts).toBe(1)
+  })
+})
+
 test.describe('session defaults the organization manages', () => {
   test.use({
     scenario: {

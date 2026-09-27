@@ -30,6 +30,7 @@ import { applyTextSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
 import type { AlertsBridge } from '@shared/alerts'
 import type {
+  DaemonState,
   PairingInfo,
   ShellSettingsBridge,
   ShellSettingsSnapshot,
@@ -180,6 +181,7 @@ export function SettingsPage({
             <AccountTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
           ) : tab === 'daemon' ? (
             <>
+              <DaemonStatusRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
               <ApiKeyRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
               <BaseUrlRow
                 key={snapshot.factoryApiBaseUrl ?? ''}
@@ -498,6 +500,81 @@ function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
           ? 'A key is set.'
           : 'No key set. The Daemon cannot authenticate without one.'}
       </p>
+    </SettingRow>
+  )
+}
+
+/** What the Daemon child is doing, and, when it is not running, what it last wrote. */
+function daemonStatusText(state: DaemonState): { ok: boolean; label: string; detail: string } {
+  switch (state.status) {
+    case 'running':
+      return {
+        ok: true,
+        label: 'Running',
+        detail: `Listening on 127.0.0.1:${state.port} (pid ${state.pid}).`,
+      }
+    case 'starting':
+      return {
+        ok: false,
+        label: 'Starting',
+        detail: `Waiting for the Daemon to answer on port ${state.port}${state.attempt > 1 ? ` (attempt ${state.attempt})` : ''}.`,
+      }
+    case 'restarting':
+      return {
+        ok: false,
+        label: 'Not running',
+        detail: `Last attempt: ${state.reason}. Starting again in ${Math.round(state.delayMs / 1000)}s (attempt ${state.attempt}).`,
+      }
+    case 'stopped':
+      return { ok: false, label: 'Stopped', detail: 'The Daemon is not running.' }
+  }
+}
+
+function DaemonStatusRow({ snapshot, bridge, onSaved }: RowProps) {
+  const [restarting, setRestarting] = useState(false)
+  const status = daemonStatusText(snapshot.daemon)
+  const restart = async () => {
+    setRestarting(true)
+    try {
+      onSaved(await bridge.restartDaemon())
+    } finally {
+      setRestarting(false)
+    }
+  }
+  return (
+    <SettingRow
+      title="Daemon"
+      description={status.detail}
+      control={
+        <div className="flex items-center gap-2">
+          <StatusPill ok={status.ok} label={status.label} />
+          <Button size="sm" variant="outline" disabled={restarting} onClick={() => void restart()}>
+            <RefreshCw aria-hidden />
+            Restart Daemon
+          </Button>
+        </div>
+      }
+    >
+      {snapshot.daemonLog ? (
+        <div className="flex flex-col gap-2">
+          <pre
+            aria-label="Daemon log"
+            className="max-h-40 overflow-auto rounded-lg border bg-background px-3 py-2 font-mono text-xs leading-5 whitespace-pre-wrap break-all text-muted-foreground"
+          >
+            {snapshot.daemonLog}
+          </pre>
+          <div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void bridge.showDaemonLog()}
+            >
+              Show log file
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </SettingRow>
   )
 }
