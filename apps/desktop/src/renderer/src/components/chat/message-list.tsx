@@ -185,6 +185,11 @@ export function MessageList({
   // content growing under a pinned viewport does not count as leaving).
   const scroller = useRef<HTMLElement | null>(null)
   const following = useRef(!restoredMidway)
+  // Virtuoso puts a list reopened part way up back in place over several
+  // frames, and on a slow machine passes the estimated end on the way. That is
+  // not the reader arriving there; such a list follows again only after the
+  // reader has scrolled it.
+  const restoring = useRef(restoredMidway)
   // Reading the geometry forces a layout; scroll events come several per
   // frame while Virtuoso is adding rows, so read once per frame.
   const scrollFrame = useRef<number | null>(null)
@@ -193,7 +198,7 @@ export function MessageList({
     scrollFrame.current = requestAnimationFrame(() => {
       scrollFrame.current = null
       const el = scroller.current
-      if (el)
+      if (el && !restoring.current)
         following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD
     })
   }).current
@@ -240,9 +245,13 @@ export function MessageList({
     },
     [],
   )
+  const readerScrolls = () => {
+    restoring.current = false
+    stopSeeking()
+  }
   const readerActs = () => {
     touched()
-    stopSeeking()
+    readerScrolls()
   }
   const seekEnd = () => {
     stopSeeking()
@@ -286,6 +295,25 @@ export function MessageList({
     const timer = setTimeout(() => scrollToEnd(virtuoso.current, 'auto'), 150)
     return () => clearTimeout(timer)
   }, [restoredMidway])
+  // Virtuoso scrolls to the initial row once, at estimated heights; when the
+  // rows take their real heights later than it waits (a busy machine), the
+  // row ends up elsewhere. Keep it where it was left until the reader scrolls.
+  useEffect(() => {
+    if (!restored || restored.atBottom) return
+    const { index, offset } = restored
+    const start = performance.now()
+    let frame = requestAnimationFrame(function hold() {
+      const el = scroller.current
+      if (!el || !restoring.current || performance.now() - start > SEEK_TIMEOUT_MS) return
+      const row = el.querySelector(`[data-index="${index}"]`)
+      const at = row ? el.getBoundingClientRect().top - row.getBoundingClientRect().top : null
+      if (at === null || Math.abs(at - offset) > 1) {
+        virtuoso.current?.scrollToIndex({ index, align: 'start', offset })
+      }
+      frame = requestAnimationFrame(hold)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [restored])
   // Until then the list shows rows at estimated heights, part way up the
   // conversation, and jumps; it stays hidden until it has landed at the end.
   const [settled, setSettled] = useState(restoredMidway)
@@ -354,8 +382,8 @@ export function MessageList({
       className={cn('relative h-full', !settled && 'invisible')}
       onPointerDownCapture={readerActs}
       onKeyDownCapture={readerActs}
-      onWheelCapture={stopSeeking}
-      onTouchMoveCapture={stopSeeking}
+      onWheelCapture={readerScrolls}
+      onTouchMoveCapture={readerScrolls}
     >
       <Virtuoso<TranscriptEntry, ListContext>
         ref={virtuoso}

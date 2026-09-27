@@ -836,6 +836,10 @@ test.describe('switching Sessions', () => {
     openClient,
     pickSession,
   }) => {
+    // On a slow machine (CI) the rows take their real heights only after
+    // Virtuoso's one scroll to the restored row; a slowed CPU shows it here.
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
     await openClient()
     await pickSession(/Alpha/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
