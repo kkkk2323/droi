@@ -1,3 +1,10 @@
+## 1.13.1 - 2026-09-27
+
+### Changed
+
+- Hovering a workspace header in the sidebar greys the whole row, the new-session button included, as Notion does; the button darkens a little more under the pointer. The Pinned, Workspaces and Recents headers do the same.
+- A pinned workspace no longer shows a pin after its name; it already sits under Pinned.
+
 ## 1.13.0 - 2026-09-27
 
 ### Added
