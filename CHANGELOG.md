@@ -1,3 +1,9 @@
+## 1.12.2 - 2026-09-27
+
+### Changed
+
+- A long conversation opens with its last 400 messages, and "Load previous messages" at the top brings in the ones before, 100 at a time, the way the Factory App does. The row being read stays where it is while they arrive. This replaces 1.12.1's fixed 2,000-message load.
+
 ## 1.12.1 - 2026-09-27
 
 ### Fixed
