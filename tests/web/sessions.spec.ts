@@ -249,10 +249,19 @@ test.describe('sidebar memory', () => {
     const fold = sidebar.getByRole('button', { name: 'acme-web', exact: true })
     await fold.click()
     await expect(fold).toHaveAttribute('aria-expanded', 'false')
+    // The Pinned section folds as a whole, taking its Workspaces with it.
+    const pinnedFold = sidebar.getByRole('button', { name: 'Pinned', exact: true })
+    await pinnedFold.click()
+    await expect(pinnedFold).toHaveAttribute('aria-expanded', 'false')
+    await expect(sidebar.getByRole('region', { name: 'billing-service' })).toBeHidden()
 
     await page.reload()
     sidebar = await openSidebar()
-    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('billing-service')
+    await expect(sidebar.getByRole('button', { name: 'Pinned', exact: true })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    await expect(sidebar.getByRole('region', { name: 'billing-service' })).toBeHidden()
     await expect(sidebar.getByRole('button', { name: 'acme-web', exact: true })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -260,6 +269,8 @@ test.describe('sidebar memory', () => {
     await expect(
       sidebar.getByRole('region', { name: 'acme-web' }).getByRole('listitem'),
     ).toHaveCount(0)
+    await sidebar.getByRole('button', { name: 'Pinned', exact: true }).click()
+    await expect(sidebar.getByRole('heading', { level: 2 }).first()).toHaveText('billing-service')
   })
 
   test('launching on the home route reopens the Session that was open last', async ({

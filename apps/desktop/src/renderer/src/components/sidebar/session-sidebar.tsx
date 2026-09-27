@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import {
   Archive,
@@ -7,7 +7,6 @@ import {
   CircleAlert,
   Folder,
   MessageSquare,
-  MessagesSquare,
   Pin,
   PinOff,
   Plus,
@@ -29,6 +28,9 @@ const MENU =
   'min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none'
 const MENU_ITEM =
   'flex items-center gap-2 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground'
+// Folded like a Workspace group, in the same preference; no Workspace key has this prefix.
+const PINNED_SECTION_KEY = 'droi:pinned'
+const WORKSPACES_SECTION_KEY = 'droi:workspaces'
 import type { SessionActivity } from '@droi/daemon-layer/use-session-activity'
 import {
   OLDER_BATCH,
@@ -72,6 +74,22 @@ export function SessionSidebar({
   insetTop: boolean
 }) {
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
+  const recents = groups.find((group) => group.scratch)
+  const pinned = groups.filter((group) => !group.scratch && pinnedGroups.includes(group.key))
+  const rest = groups.filter((group) => !group.scratch && !pinnedGroups.includes(group.key))
+  const section = (group: WorkspaceGroup) => (
+    <WorkspaceSection
+      key={group.key}
+      group={group}
+      selectedSessionId={selectedSessionId}
+      activity={activity}
+      subagentsRunning={subagentsRunning}
+      unread={unread}
+      onSelect={onSelect}
+      onArchiveToggle={onArchiveToggle}
+      onNewSessionIn={onNewSessionIn}
+    />
+  )
   return (
     <nav
       aria-label="Sessions"
@@ -101,29 +119,24 @@ export function SessionSidebar({
         {!isLoading && groups.length === 0 && !error ? (
           <p className="px-2 py-1 text-xs text-muted-foreground">No sessions yet.</p>
         ) : null}
-        {/* With a pin in place the list splits into Pinned and Workspaces. */}
-        {groups.map((group, index) => {
-          const isPinned = pinnedGroups.includes(group.key)
-          const firstPinned = index === 0 && isPinned
-          const firstRest =
-            !isPinned && (index === 0 ? false : pinnedGroups.includes(groups[index - 1]!.key))
-          return (
-            <Fragment key={group.key}>
-              {firstPinned ? <SectionLabel>Pinned</SectionLabel> : null}
-              {firstRest ? <SectionLabel>Workspaces</SectionLabel> : null}
-              <WorkspaceSection
-                group={group}
-                selectedSessionId={selectedSessionId}
-                activity={activity}
-                subagentsRunning={subagentsRunning}
-                unread={unread}
-                onSelect={onSelect}
-                onArchiveToggle={onArchiveToggle}
-                onNewSessionIn={onNewSessionIn}
-              />
-            </Fragment>
-          )
-        })}
+        {/* The Workspaces label only appears when there is another section to tell it from. */}
+        {pinned.length > 0 ? (
+          <FoldableSection label="Pinned" id="sidebar-pinned" foldKey={PINNED_SECTION_KEY}>
+            {pinned.map(section)}
+          </FoldableSection>
+        ) : null}
+        {rest.length > 0 && (pinned.length > 0 || recents) ? (
+          <FoldableSection
+            label="Workspaces"
+            id="sidebar-workspaces"
+            foldKey={WORKSPACES_SECTION_KEY}
+          >
+            {rest.map(section)}
+          </FoldableSection>
+        ) : (
+          rest.map(section)
+        )}
+        {recents ? section(recents) : null}
       </div>
 
       <div className="flex shrink-0 items-center px-2 pb-2 pt-1">
@@ -168,53 +181,70 @@ function WorkspaceSection({
     new Set(pinnedIds),
   )
   const listId = `workspace-${group.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
-  const GroupIcon = group.scratch ? MessagesSquare : Folder
   const newHere = () => onNewSessionIn(group.scratch ? null : group.path)
+  const toggle = () => toggleListed(foldedWorkspaces, group.key)
+  // Shows on hover and when focused, so the keyboard reaches it too.
+  const newButton = (
+    <button
+      type="button"
+      aria-label={`New session in ${group.label}`}
+      title={`New session in ${group.label}`}
+      onClick={newHere}
+      className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
+    >
+      <SquarePen aria-hidden className="size-3.5" />
+    </button>
+  )
   return (
     <section aria-label={group.label} className="mb-2">
       <ContextMenu.Root>
-        <ContextMenu.Trigger
-          render={
-            <h2 className="group/ws flex h-8 items-center text-[13px] font-medium text-foreground" />
-          }
-        >
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={listId}
-            title={group.scratch ? 'Sessions without a workspace' : group.path}
-            onClick={() => toggleListed(foldedWorkspaces, group.key)}
-            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        {group.scratch ? (
+          // Recents is a section of its own, like Pinned and Workspaces, not a folder.
+          <ContextMenu.Trigger render={<div />}>
+            <SectionHeader
+              label={group.label}
+              title="Sessions without a workspace"
+              open={open}
+              controls={listId}
+              onToggle={toggle}
+              action={newButton}
+            />
+          </ContextMenu.Trigger>
+        ) : (
+          <ContextMenu.Trigger
+            render={
+              <h2 className="group/ws flex h-8 items-center text-[13px] font-medium text-foreground" />
+            }
           >
-            <span className="relative size-4 shrink-0 text-muted-foreground">
-              <GroupIcon
-                aria-hidden
-                className="absolute inset-0 size-4 transition-opacity group-hover/ws:opacity-0"
-              />
-              <ChevronRight
-                aria-hidden
-                className={cn(
-                  'absolute inset-0 size-4 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
-                  open && 'rotate-90',
-                )}
-              />
-            </span>
-            <span className="truncate">{group.label}</span>
-            {pinned ? (
-              <Pin aria-label="Pinned" className="size-3 shrink-0 text-muted-foreground" />
-            ) : null}
-          </button>
-          {/* Shows on hover and when focused, so the keyboard reaches it too. */}
-          <button
-            type="button"
-            aria-label={`New session in ${group.label}`}
-            title={`New session in ${group.label}`}
-            onClick={newHere}
-            className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
-          >
-            <SquarePen aria-hidden className="size-3.5" />
-          </button>
-        </ContextMenu.Trigger>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={listId}
+              title={group.path}
+              onClick={toggle}
+              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <span className="relative size-4 shrink-0 text-muted-foreground">
+                <Folder
+                  aria-hidden
+                  className="absolute inset-0 size-4 transition-opacity group-hover/ws:opacity-0"
+                />
+                <ChevronRight
+                  aria-hidden
+                  className={cn(
+                    'absolute inset-0 size-4 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
+                    open && 'rotate-90',
+                  )}
+                />
+              </span>
+              <span className="truncate">{group.label}</span>
+              {pinned ? (
+                <Pin aria-label="Pinned" className="size-3 shrink-0 text-muted-foreground" />
+              ) : null}
+            </button>
+            {newButton}
+          </ContextMenu.Trigger>
+        )}
         <ContextMenu.Portal>
           <ContextMenu.Positioner className="z-50 outline-none">
             <ContextMenu.Popup aria-label={`Actions for ${group.label}`} className={MENU}>
@@ -262,7 +292,8 @@ function WorkspaceSection({
                     onClick={() => onSelect(session.sessionId)}
                     title={session.title}
                     className={cn(
-                      'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pl-8 pr-2 text-left outline-none transition-colors duration-150',
+                      'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pr-2 text-left outline-none transition-colors duration-150',
+                      group.scratch ? 'pl-2' : 'pl-8',
                       'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
                       selected && 'bg-sidebar-accent',
                     )}
@@ -378,7 +409,10 @@ function WorkspaceSection({
           <button
             type="button"
             onClick={() => setRevealed(revealed + OLDER_BATCH)}
-            className="flex h-7 w-full items-center rounded-lg pl-8 pr-2 text-left text-[11px] text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            className={cn(
+              'flex h-7 w-full items-center rounded-lg pr-2 text-left text-[11px] text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+              group.scratch ? 'pl-2' : 'pl-8',
+            )}
           >
             Show {hidden} older
           </button>
@@ -388,9 +422,72 @@ function WorkspaceSection({
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/** A section's label row: click folds the section; the chevron shows on hover and focus. */
+function SectionHeader({
+  label,
+  title,
+  open,
+  controls,
+  onToggle,
+  action,
+}: {
+  label: string
+  title?: string
+  open: boolean
+  controls: string
+  onToggle: () => void
+  action?: React.ReactNode
+}) {
   return (
-    <p className="mt-1 mb-1 px-2 text-[11px] font-medium text-muted-foreground/80">{children}</p>
+    <div className="group/ws mt-1 flex h-7 items-center">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={controls}
+        title={title}
+        onClick={onToggle}
+        className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-lg px-2 text-left text-[11px] font-medium text-muted-foreground/80 outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            'size-3 shrink-0 opacity-0 transition-[opacity,transform] duration-150 group-focus-within/ws:opacity-100 group-hover/ws:opacity-100',
+            open && 'rotate-90',
+          )}
+        />
+      </button>
+      {action}
+    </div>
+  )
+}
+
+/** Pinned and Workspaces: a foldable run of Workspace groups under one label. */
+function FoldableSection({
+  label,
+  id,
+  foldKey,
+  children,
+}: {
+  label: string
+  id: string
+  foldKey: string
+  children: React.ReactNode
+}) {
+  const [folded] = usePreference(foldedWorkspaces)
+  const open = !folded.includes(foldKey)
+  return (
+    <div>
+      <SectionHeader
+        label={label}
+        open={open}
+        controls={id}
+        onToggle={() => toggleListed(foldedWorkspaces, foldKey)}
+      />
+      <div id={id} hidden={!open}>
+        {children}
+      </div>
+    </div>
   )
 }
 

@@ -117,7 +117,7 @@ test.describe('next to Workspaces', () => {
   }) => {
     await openClient()
     const recents = (await openSidebar()).getByRole('region', { name: 'Recents' })
-    await recents.getByRole('heading').hover()
+    await recents.getByRole('button', { name: 'Recents', exact: true }).hover()
     await recents.getByRole('button', { name: 'New session in Recents' }).click()
     expect(new URL(page.url()).hash).toBe('#/new?scratch')
     const form = page.getByRole('region', { name: 'New session' })
