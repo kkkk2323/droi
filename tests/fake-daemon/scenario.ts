@@ -2,7 +2,7 @@
 // when to emit events. A Scenario starts from a list of Session fixtures and
 // default handlers for the read-only methods; tests override or add handlers.
 import { randomUUID } from 'node:crypto'
-import type { FakeDaemon } from './fake-daemon'
+import { RpcError, type FakeDaemon } from './fake-daemon'
 import type { JsonRpcRequest } from './protocol'
 
 export interface SessionFixture {
@@ -66,6 +66,8 @@ export interface ScenarioInput {
   contextUsedTokens?: number
   /** Overrides for the Session defaults the Daemon reports (`management`, say). */
   defaults?: Record<string, unknown>
+  /** Files on the computer, by absolute path, that get_workspace_file_content serves. */
+  files?: Record<string, { mimeType: string; base64: string }>
 }
 
 export const CONTEXT_BUDGET = 200_000
@@ -191,6 +193,20 @@ export function createScenario(input: ScenarioInput): Scenario {
           unstagedTotalAdditions: range.totalAdditions,
           unstagedTotalDeletions: range.totalDeletions,
         },
+      }
+    },
+    'daemon.get_workspace_file_content': (params) => {
+      const found = mustFind(sessions, params['sessionId'])
+      const requested = String(params['filePath'])
+      // The Daemon resolves a relative path against the Session's Workspace.
+      const path = requested.startsWith('/') ? requested : `${found.cwd}/${requested}`
+      const file = input.files?.[path]
+      if (!file) throw new RpcError(-32000, `ENOENT: no such file or directory, open '${path}'`)
+      return {
+        content: file.base64,
+        byteLength: Buffer.from(file.base64, 'base64').byteLength,
+        encoding: 'base64',
+        mimeType: file.mimeType,
       }
     },
     'daemon.list_commands': () => ({ commands: input.commands ?? [] }),

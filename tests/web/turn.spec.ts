@@ -303,3 +303,52 @@ test.describe('a reply with a long inline path', () => {
     expect(log.scroll).toBeLessThanOrEqual(log.client)
   })
 })
+
+test.describe('a reply with images on the computer', () => {
+  // A 1x1 red PNG.
+  const PNG =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+  test.use({
+    scenario: {
+      sessions: [
+        session('Shots', '/Users/dev/acme-web', [
+          userMessage('show me'),
+          assistantMessage(
+            [
+              'Before:',
+              '![sidebar before](/tmp/before.png)',
+              'After:',
+              '![sidebar after](</Users/dev/acme-web/docs/截图 after.png>)',
+              'Gone:',
+              '![missing](/tmp/missing.png)',
+            ].join('\n\n'),
+          ),
+        ]),
+      ],
+      files: {
+        '/tmp/before.png': { mimeType: 'image/png', base64: PNG },
+        '/Users/dev/acme-web/docs/截图 after.png': { mimeType: 'image/png', base64: PNG },
+      },
+    },
+  })
+
+  test('are read through the Daemon; a file that is not there says so', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Shots/)
+    const reply = page.getByRole('log', { name: 'Transcript' }).getByRole('article', {
+      name: 'Assistant',
+    })
+    const before = reply.getByRole('img', { name: 'sidebar before' })
+    await expect(before).toHaveAttribute('src', `data:image/png;base64,${PNG}`)
+    await expect(before).toHaveJSProperty('naturalWidth', 1)
+    await expect(reply.getByRole('img', { name: 'sidebar after' })).toHaveAttribute(
+      'src',
+      `data:image/png;base64,${PNG}`,
+    )
+    await expect(reply.getByText('Image not available: /tmp/missing.png')).toBeVisible()
+  })
+})

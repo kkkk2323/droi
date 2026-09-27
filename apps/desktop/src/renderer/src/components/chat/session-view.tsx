@@ -14,6 +14,7 @@ import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import { useListNewSubagents, type SessionRef } from '@droi/daemon-layer/subagents'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
+import { ImageSessionProvider } from '@droi/daemon-layer/local-image'
 import { cn } from '@/lib/utils'
 import { ComposerShelf, ContextMeter } from './composer-panels'
 import { GitChangesButton } from './git-changes'
@@ -150,16 +151,18 @@ export function SessionView({
             Loading session…
           </div>
         ) : (
-          <MessageList
-            transcript={session.transcript}
-            earlier={earlier}
-            workingState={
-              compaction.isCompacting ? 'compacting_conversation' : session.workingState
-            }
-            lead={lead}
-            scrollToEndKey={sentCount}
-            stateKey={sessionId}
-          />
+          <ImageSessionProvider value={sessionId}>
+            <MessageList
+              transcript={session.transcript}
+              earlier={earlier}
+              workingState={
+                compaction.isCompacting ? 'compacting_conversation' : session.workingState
+              }
+              lead={lead}
+              scrollToEndKey={sentCount}
+              stateKey={sessionId}
+            />
+          </ImageSessionProvider>
         )}
       </div>
 
