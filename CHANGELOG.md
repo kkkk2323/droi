@@ -1,3 +1,9 @@
+## 1.12.1 - 2026-09-27
+
+### Fixed
+
+- A long conversation opens whole again. The Daemon sends only the last 100 messages of a session unless asked for more, so after a restart, or on the phone, everything before that point was missing and the transcript could not be scrolled further up. Droi now asks for the last 2,000 messages and says so at the top when a session is longer still.
+
 ## 1.12.0 - 2026-09-27
 
 ### Added
