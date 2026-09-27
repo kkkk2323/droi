@@ -8,5 +8,16 @@ onlyBuiltDependencies:
   - electron-winstaller
   - esbuild
 
+# streamdown's types import 'react' without declaring @types/react, so they
+# took whichever of the two versions (the Phone App's 19.2, the web Client's
+# 19.3) pnpm hoisted, and typecheck:desktop failed when it was 19.2.
+packageExtensions:
+  streamdown:
+    peerDependencies:
+      '@types/react': '*'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
 patchedDependencies:
   '@factory/droid-sdk@0.9.1': patches/@factory__droid-sdk@0.9.1.patch
