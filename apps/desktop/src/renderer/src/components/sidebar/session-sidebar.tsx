@@ -223,7 +223,7 @@ function WorkspaceSection({
       aria-label={`New session in ${group.label}`}
       title={`New session in ${group.label}`}
       onClick={newHere}
-      className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color] hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
+      className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 outline-none transition-[opacity,color,background-color] hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-hover/ws:opacity-100"
     >
       <SquarePen aria-hidden className="size-3.5" />
     </button>
@@ -246,7 +246,7 @@ function WorkspaceSection({
         ) : (
           <ContextMenu.Trigger
             render={
-              <h2 className="group/ws flex h-8 items-center text-[13px] font-medium text-foreground" />
+              <h2 className="group/ws flex h-8 items-center rounded-lg text-[13px] font-medium text-foreground transition-colors hover:bg-sidebar-accent/60" />
             }
           >
             <button
@@ -255,7 +255,7 @@ function WorkspaceSection({
               aria-controls={listId}
               title={group.path}
               onClick={toggle}
-              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
               <span className="relative size-4 shrink-0 text-muted-foreground">
                 <Folder
@@ -271,9 +271,6 @@ function WorkspaceSection({
                 />
               </span>
               <span className="truncate">{group.label}</span>
-              {pinned ? (
-                <Pin aria-label="Pinned" className="size-3 shrink-0 text-muted-foreground" />
-              ) : null}
             </button>
             {newButton}
           </ContextMenu.Trigger>
@@ -472,14 +469,14 @@ function SectionHeader({
   action?: React.ReactNode
 }) {
   return (
-    <div className="group/ws mt-1 flex h-7 items-center">
+    <div className="group/ws mt-1 flex h-7 items-center rounded-lg transition-colors hover:bg-sidebar-accent/60">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={controls}
         title={title}
         onClick={onToggle}
-        className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-lg px-2 text-left text-[11px] font-medium text-muted-foreground/80 outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-lg px-2 text-left text-[11px] font-medium text-muted-foreground/80 outline-none transition-colors group-hover/ws:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       >
         <span className="truncate">{label}</span>
         <ChevronRight
