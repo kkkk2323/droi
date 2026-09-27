@@ -1,3 +1,24 @@
+## 1.13.0 - 2026-09-27
+
+### Added
+
+- A search box in the sidebar (and the phone's drawer) searches every session on the computer through the Daemon, two characters and up. The hits take the place of the workspace groups, each with the matching passage highlighted under its title.
+- The sidebar lists the newest 100 sessions and offers "Load older sessions" at the bottom for the next 100, instead of stopping at the first 100 for good.
+- A session working for another client, say one driven from the phone, shows as Working or Needs input in the sidebar on the computer too, without being opened there first.
+- Escape in a conversation interrupts the running turn, as in the Factory App.
+- Cancelling a turn keeps the messages that were queued behind it, marked Paused. A pencil puts one back into the composer to edit and send again; Remove drops it.
+- Settings → Daemon shows what the Daemon is doing: running with its port, starting, or not running with the reason, the next attempt and the end of its log. The Daemon's output now goes to `logs/daemon.log` next to Droi's settings, kept to a megabyte, and "Show log file" reveals it.
+
+### Fixed
+
+- A screenshot the agent retakes under the same name shows its new picture when the conversation is opened again; the old one stayed before.
+- A paused queued message could not be removed: Remove asked the Daemon, which no longer knew it.
+- The Daemon counts as running once it answers `GET /health`, not as soon as its port opens, so a Daemon whose RPC server never came up is restarted instead of being waited on.
+
+### Changed
+
+- On macOS and Linux the Daemon watches a pipe from Droi (`--liveness-fd`) and ends the moment Droi does, instead of polling Droi's process id.
+
 ## 1.12.2 - 2026-09-27
 
 ### Changed
