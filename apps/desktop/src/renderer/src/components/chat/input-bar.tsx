@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
@@ -7,6 +8,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from 'react'
 import { ArrowUp, Plus, Square, SquareSlash, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -32,6 +34,12 @@ export interface Submission {
   placement?: QueuePlacement
 }
 
+/** What the composer can be told to do from outside. */
+export interface InputBarHandle {
+  /** Puts content in front of whatever is being typed and focuses the composer. */
+  insert(content: { text: string; images: ImageAttachment[] }): void
+}
+
 /**
  * The composer card: attachments and text on top, per-Session controls and the
  * send button in the footer row. Enter sends, Shift+Enter breaks the line.
@@ -50,6 +58,7 @@ export function InputBar({
   sendLabel = 'Send',
   slashItems = NO_ITEMS,
   draftKey,
+  ref,
 }: {
   isRunning: boolean
   disabled: boolean
@@ -65,6 +74,7 @@ export function InputBar({
   slashItems?: SlashItem[]
   /** Keeps what is typed while the user is away from this Session. */
   draftKey?: string
+  ref?: Ref<InputBarHandle>
 }) {
   const [text, setText] = useState(() => (draftKey ? loadDraft(draftKey).text : ''))
   const [images, setImages] = useState<ImageAttachment[]>(() =>
@@ -83,6 +93,13 @@ export function InputBar({
   const heldSubmit = useRef<{ text: string; placement?: QueuePlacement } | null>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  useImperativeHandle(ref, () => ({
+    insert(content) {
+      setText((current) => (current.trim() ? `${content.text}\n${current}` : content.text))
+      setImages((current) => [...content.images, ...current])
+      textarea.current?.focus()
+    },
+  }))
   const hasContent = text.trim().length > 0 || images.length > 0
   const canSend = !disabled && (allowEmpty || hasContent || pendingFiles > 0)
 

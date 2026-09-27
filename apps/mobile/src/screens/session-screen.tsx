@@ -13,13 +13,15 @@ import { useSession, useSessions } from '@droi/daemon-layer/use-session'
 import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
 import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
+import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
+import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Spinner } from '../ui/activity'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Composer, type Submission } from '../composer/composer'
+import { Composer, type ComposerHandle, type Submission } from '../composer/composer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { SessionSettingsBar } from '../composer/session-settings'
@@ -71,6 +73,20 @@ export function SessionScreen({
   const gitChanges = useGitChanges(session.sessionId, { loaded, running: isRunning })
   const older = useOlderMessages(session.sessionId)
   const [sentCount, setSentCount] = useState(0)
+  // A paused queued message taken back goes into the composer; while a Prompt
+  // stands in for the composer it waits in the draft instead.
+  const composer = useRef<ComposerHandle>(null)
+  const takeBack = (content: QueuedContent) => {
+    if (composer.current) {
+      composer.current.insert(content)
+      return
+    }
+    const draft = loadDraft(session.sessionId)
+    saveDraft(session.sessionId, {
+      text: draft.text.trim() ? `${content.text}\n${draft.text}` : content.text,
+      images: [...content.images, ...draft.images],
+    })
+  }
   // A message typed on the New session page goes out once the Session can take it.
   const send = turn.send
   useEffect(() => {
@@ -191,7 +207,7 @@ export function SessionScreen({
           />
         )}
         <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
-          <ComposerShelf sessionId={session.sessionId} />
+          <ComposerShelf sessionId={session.sessionId} onTake={takeBack} />
           {hasPrompt(prompts) ? (
             // The Prompt stands in for the composer; the draft comes back after.
             <PromptArea sessionId={session.sessionId} />
@@ -205,6 +221,7 @@ export function SessionScreen({
               draftKey={session.sessionId}
               slashItems={slashItems}
               accessory={<SessionSettingsBar sessionId={session.sessionId} />}
+              ref={composer}
             />
           )}
           <ComposerFooter workspace={session.cwd} usage={contextUsage} />

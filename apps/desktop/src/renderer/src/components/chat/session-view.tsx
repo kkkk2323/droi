@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronUp, Folder } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { PageHeader } from '@/components/page-header'
@@ -16,11 +16,13 @@ import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { ImageSessionProvider } from '@droi/daemon-layer/local-image'
 import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
+import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
+import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { cn } from '@/lib/utils'
 import { ComposerShelf, ContextMeter } from './composer-panels'
 import { GitChangesButton } from './git-changes'
 import { OpenInButton } from './open-in'
-import { InputBar, type Submission } from './input-bar'
+import { InputBar, type InputBarHandle, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
 import { SessionSettingsBar, SessionTitle } from './session-toolbar'
@@ -125,6 +127,21 @@ export function SessionView({
       </div>
     ) : null
 
+  // A paused queued message taken back goes into the composer; while a Prompt
+  // stands in for the composer it waits in the draft instead.
+  const composer = useRef<InputBarHandle>(null)
+  const takeBack = (content: QueuedContent) => {
+    if (composer.current) {
+      composer.current.insert(content)
+      return
+    }
+    const draft = loadDraft(sessionId)
+    saveDraft(sessionId, {
+      text: draft.text.trim() ? `${content.text}\n${draft.text}` : content.text,
+      images: [...content.images, ...draft.images],
+    })
+  }
+
   const [sentCount, setSentCount] = useState(0)
   const submit = ({ text, images, placement }: Submission) => {
     setSentCount((n) => n + 1)
@@ -145,6 +162,22 @@ export function SessionView({
     const prompt = takePendingPrompt(sessionId)
     if (prompt) void send(prompt.text, { images: prompt.images })
   }, [loaded, sessionId, send])
+
+  // Escape interrupts the running turn, as in the Factory App, unless something
+  // on top (a dialog, a menu, the slash suggestions) is using the key itself.
+  const cancel = turn.cancel
+  const canInterrupt = isRunning && !hasPrompt
+  useEffect(() => {
+    if (!canInterrupt) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return
+      event.preventDefault()
+      void cancel()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canInterrupt, cancel])
 
   return (
     <section aria-label={title} className="flex h-full min-h-0 flex-col">
@@ -190,7 +223,7 @@ export function SessionView({
       </div>
 
       <div className={cn(COLUMN, 'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]')}>
-        <ComposerShelf sessionId={sessionId} />
+        <ComposerShelf sessionId={sessionId} onTake={takeBack} />
         {hasPrompt ? (
           // The question or permission takes the composer's place; the draft
           // is kept and comes back with the composer once answered.
@@ -205,6 +238,7 @@ export function SessionView({
             footer={<SessionSettingsBar sessionId={sessionId} />}
             slashItems={slashItems}
             draftKey={sessionId}
+            ref={composer}
           />
         )}
         <div className="flex h-7 items-center gap-3 px-2 text-xs text-muted-foreground">

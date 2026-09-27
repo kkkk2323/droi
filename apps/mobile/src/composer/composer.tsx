@@ -11,7 +11,7 @@ import {
 } from '@droi/daemon-layer/use-slash-items'
 import type { QueuePlacement } from '@droi/daemon-layer/use-turn'
 import { ArrowUp, ListPlus, Plus, Sparkles, Square, SquareSlash, X } from 'lucide-react-native'
-import { useState, type ReactNode } from 'react'
+import { useImperativeHandle, useState, type ReactNode, type Ref } from 'react'
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { ImageSourceError, pickImages, type ImageSource } from '../platform/images'
 import { IconButton } from '../ui/primitives'
@@ -31,6 +31,12 @@ export interface Submission {
   placement?: QueuePlacement
 }
 
+/** What the composer can be told to do from outside. */
+export interface ComposerHandle {
+  /** Puts content in front of whatever is being typed. */
+  insert(content: { text: string; images: ImageAttachment[] }): void
+}
+
 export function Composer({
   isRunning,
   disabled,
@@ -43,6 +49,7 @@ export function Composer({
   allowEmpty = false,
   slashItems = NO_ITEMS,
   accessory,
+  ref,
 }: {
   isRunning: boolean
   disabled: boolean
@@ -59,6 +66,7 @@ export function Composer({
   slashItems?: SlashItem[]
   /** Controls in the composer's bottom row, before the send button. */
   accessory?: ReactNode
+  ref?: Ref<ComposerHandle>
 }) {
   const colors = useColors()
   const scale = useTextScale()
@@ -74,6 +82,14 @@ export function Composer({
     setImages(nextImages)
     if (draftKey) saveDraft(draftKey, { text: nextText, images: nextImages })
   }
+
+  useImperativeHandle(ref, () => ({
+    insert(content) {
+      const nextText = text.trim() ? `${content.text}\n${text}` : content.text
+      update(nextText, [...content.images, ...images])
+      setCaret(nextText.length)
+    },
+  }))
 
   const addImages = async (source: ImageSource) => {
     setAdding(false)

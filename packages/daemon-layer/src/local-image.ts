@@ -40,6 +40,10 @@ export function useLocalImage(path: string): LocalImage {
     queryKey: ['local-image', sessionId, path],
     enabled: sessionId !== null,
     staleTime: Infinity,
+    // The agent overwrites a screenshot under the same name when it retakes
+    // it. Showing the cached one while the file is read again keeps the row
+    // steady and still ends on the current picture.
+    refetchOnMount: 'always',
     retry: false,
     queryFn: async () => {
       const file = await controller.getWorkspaceFileContent({

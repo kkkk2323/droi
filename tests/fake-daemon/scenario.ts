@@ -68,12 +68,16 @@ export interface ScenarioInput {
   defaults?: Record<string, unknown>
   /** Files on the computer, by absolute path, that get_workspace_file_content serves. */
   files?: Record<string, { mimeType: string; base64: string }>
+  /** Sessions open in the Daemon (by any Client) with their working state, for list_opened_sessions. */
+  opened?: Array<{ sessionId: string; workingState: string }>
 }
 
 export const CONTEXT_BUDGET = 200_000
 
 export interface Scenario {
   sessions: SessionFixture[]
+  /** Files get_workspace_file_content serves; a test rewrites one to stand for a retaken screenshot. */
+  files: Record<string, { mimeType: string; base64: string }>
   handlers: Record<string, MethodHandler>
   handle(request: JsonRpcRequest, context: HandlerContext): Promise<unknown>
   on(method: string, handler: MethodHandler): void
@@ -84,13 +88,23 @@ export function createScenario(input: ScenarioInput): Scenario {
   // declare theirs at module level, shared by every test in the worker, so
   // each Fake Daemon works on its own copy.
   const sessions = structuredClone(input.sessions ?? [])
+  const files = structuredClone(input.files ?? {})
   // Like ~/.factory/settings.json behind the real Daemon: one set per Fake Daemon.
   let defaults: Record<string, unknown> = { ...sessionDefaults(), ...input.defaults }
   const handlers: Record<string, MethodHandler> = {
-    'daemon.list_available_sessions': (params) => ({
-      sessions: sessions
+    // Newest first, `limit` at a time; `endBefore` (epoch seconds) is the cursor
+    // the Daemon hands back as `nextCursor` to fetch the page before it.
+    'daemon.list_available_sessions': (params) => {
+      const limit = typeof params['limit'] === 'number' ? params['limit'] : 50
+      const endBefore = typeof params['endBefore'] === 'number' ? params['endBefore'] : Infinity
+      const listed = sessions
         .filter((s) => params['includeArchived'] === true || !s.archivedAt)
-        .map((s) => ({
+        .filter((s) => s.updatedAt < endBefore)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      const page = listed.slice(0, limit)
+      const last = page[page.length - 1]
+      return {
+        sessions: page.map((s) => ({
           sessionId: s.sessionId,
           updatedAt: s.updatedAt,
           title: s.title,
@@ -105,7 +119,54 @@ export function createScenario(input: ScenarioInput): Scenario {
               }
             : {}),
         })),
-      hasMore: false,
+        hasMore: listed.length > page.length,
+        ...(listed.length > page.length && last ? { nextCursor: last.updatedAt } : {}),
+      }
+    },
+    // A plain substring search over titles and message text, with the Daemon's
+    // <mark> highlighting in one snippet per Session.
+    'daemon.search_sessions': (params) => {
+      const query = String(params['query']).toLowerCase()
+      const limit = typeof params['limitSessions'] === 'number' ? params['limitSessions'] : 20
+      const found = sessions
+        .filter((s) => !s.archivedAt)
+        .flatMap((s) => {
+          const texts = s.messages.flatMap((m) =>
+            (m.content ?? []).flatMap((block) =>
+              block['type'] === 'text' ? [String(block['text'])] : [],
+            ),
+          )
+          const hit = texts.find((text) => text.toLowerCase().includes(query))
+          if (!hit && !s.title.toLowerCase().includes(query)) return []
+          const at = hit ? hit.toLowerCase().indexOf(query) : -1
+          const snippet = hit
+            ? `${hit.slice(Math.max(0, at - 40), at)}<mark>${hit.slice(at, at + query.length)}</mark>${hit.slice(at + query.length, at + query.length + 40)}`
+            : null
+          return [
+            {
+              sessionId: s.sessionId,
+              title: s.title,
+              updatedAt: s.updatedAt * 1000,
+              hits: snippet
+                ? [{ docId: `${s.sessionId}:0`, kind: 'message_text', snippets: [snippet] }]
+                : [],
+            },
+          ]
+        })
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      return { query: params['query'], sessions: found.slice(0, limit) }
+    },
+    'daemon.list_opened_sessions': () => ({
+      sessions: (input.opened ?? []).map((open) => {
+        const found = mustFind(sessions, open.sessionId)
+        return {
+          sessionId: found.sessionId,
+          updatedAt: found.updatedAt,
+          workingState: open.workingState,
+          cwd: found.cwd,
+          messagesCount: found.messages.length,
+        }
+      }),
     }),
     'daemon.update_session_settings': (params, context) => {
       const found = mustFind(sessions, params['sessionId'])
@@ -200,7 +261,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       const requested = String(params['filePath'])
       // The Daemon resolves a relative path against the Session's Workspace.
       const path = requested.startsWith('/') ? requested : `${found.cwd}/${requested}`
-      const file = input.files?.[path]
+      const file = files[path]
       if (!file) throw new RpcError(-32000, `ENOENT: no such file or directory, open '${path}'`)
       return {
         content: file.base64,
@@ -331,6 +392,7 @@ export function createScenario(input: ScenarioInput): Scenario {
 
   return {
     sessions,
+    files,
     handlers,
     on(method, handler) {
       handlers[method] = handler

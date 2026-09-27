@@ -2,9 +2,12 @@
 // holds for a running turn. Under it: the Workspace and the context meter.
 import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
+  isPaused,
+  isSteering,
   queuedText,
   useQueuedMessageActions,
   useQueuedMessages,
+  type QueuedContent,
   type QueuedMessage,
 } from '@droi/daemon-layer/use-queued-messages'
 import { useTodos, type TodoItem } from '@droi/daemon-layer/use-todos'
@@ -16,6 +19,8 @@ import {
   CornerDownLeft,
   Folder,
   ListChecks,
+  Pause,
+  Pencil,
   X,
 } from 'lucide-react-native'
 import { useState } from 'react'
@@ -30,7 +35,14 @@ import { useColors } from '../ui/use-colors'
 /** Up to this many queued messages show as a list; more fold into one row. */
 const QUEUED_UNFOLDED = 2
 
-export function ComposerShelf({ sessionId }: { sessionId: string }) {
+export function ComposerShelf({
+  sessionId,
+  onTake,
+}: {
+  sessionId: string
+  /** A paused message taken back off the shelf, for the composer. */
+  onTake: (content: QueuedContent) => void
+}) {
   const colors = useColors()
   const todos = useTodos(sessionId)
   const queued = useQueuedMessages(sessionId)
@@ -50,7 +62,15 @@ export function ComposerShelf({ sessionId }: { sessionId: string }) {
         </Text>
       ) : null}
       {queued.length > 0 ? (
-        <QueuedMessages queued={queued} onRemove={(id) => void actions.remove(id)} />
+        <QueuedMessages
+          queued={queued}
+          onRemove={(id) => void actions.remove(id)}
+          onTake={(id) =>
+            void actions.take(id).then((content) => {
+              if (content) onTake(content)
+            })
+          }
+        />
       ) : null}
     </View>
   )
@@ -116,16 +136,14 @@ function StatusIcon({ status }: { status: TodoItem['status'] }) {
   return <Circle size={14} color={colors.mutedForeground} strokeWidth={1.5} />
 }
 
-function isSteer(message: QueuedMessage): boolean {
-  return message.kind !== 'daemon_queued_end_of_loop'
-}
-
 function QueuedMessages({
   queued,
   onRemove,
+  onTake,
 }: {
   queued: QueuedMessage[]
   onRemove: (requestId: string) => void
+  onTake: (requestId: string) => void
 }) {
   const colors = useColors()
   const [open, setOpen] = useState(false)
@@ -138,8 +156,19 @@ function QueuedMessages({
             {queuedText(message)}
           </Text>
           <Text tone="muted" size="xs">
-            {isSteer(message) ? 'Next' : 'Queued'}
+            {isPaused(message) ? 'Paused' : isSteering(message) ? 'Next' : 'Queued'}
           </Text>
+          {isPaused(message) ? (
+            <Pressable
+              role="button"
+              aria-label="Edit queued message"
+              hitSlop={8}
+              onPress={() => onTake(message.requestId)}
+              style={styles.remove}
+            >
+              <Pencil size={14} color={colors.mutedForeground} strokeWidth={1.75} />
+            </Pressable>
+          ) : null}
           <Pressable
             role="button"
             aria-label="Remove queued message"
@@ -154,7 +183,7 @@ function QueuedMessages({
     </View>
   )
   if (queued.length <= QUEUED_UNFOLDED) return list
-  const next = queued.find(isSteer) ?? queued[0]!
+  const next = queued.find(isSteering) ?? queued[0]!
   return (
     <View>
       <Pressable
@@ -191,7 +220,8 @@ function QueuedMessages({
 
 function QueuedIcon({ message }: { message: QueuedMessage }) {
   const colors = useColors()
-  return isSteer(message) ? (
+  if (isPaused(message)) return <Pause size={12} color={colors.mutedForeground} />
+  return isSteering(message) ? (
     <CornerDownLeft size={12} color={colors.mutedForeground} />
   ) : (
     <Clock size={12} color={colors.mutedForeground} />

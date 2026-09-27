@@ -10,15 +10,20 @@ import {
   Clock,
   CornerDownLeft,
   ListChecks,
+  Pause,
+  Pencil,
   X,
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
+  isPaused,
+  isSteering,
   queuedText,
   useQueuedMessageActions,
   useQueuedMessages,
+  type QueuedContent,
 } from '@droi/daemon-layer/use-queued-messages'
 import { useTodos, type TodoItem } from '@droi/daemon-layer/use-todos'
 import { cn } from '@/lib/utils'
@@ -28,7 +33,14 @@ import { cn } from '@/lib/utils'
  * composer's top edge (rounded top corners only, open bottom) so the two read
  * as one piece with it.
  */
-export function ComposerShelf({ sessionId }: { sessionId: string }) {
+export function ComposerShelf({
+  sessionId,
+  onTake,
+}: {
+  sessionId: string
+  /** A paused message taken back off the shelf, for the composer. */
+  onTake: (content: QueuedContent) => void
+}) {
   const todos = useTodos(sessionId)
   const queued = useQueuedMessages(sessionId)
   const actions = useQueuedMessageActions(sessionId)
@@ -45,6 +57,11 @@ export function ComposerShelf({ sessionId }: { sessionId: string }) {
             queued={queued}
             error={actions.error}
             onRemove={(id) => void actions.remove(id)}
+            onTake={(id) =>
+              void actions.take(id).then((content) => {
+                if (content) onTake(content)
+              })
+            }
           />
         ) : null}
       </div>
@@ -136,10 +153,12 @@ function QueuedMessages({
   queued,
   error,
   onRemove,
+  onTake,
 }: {
   queued: QueuedMessage[]
   error: string | null
   onRemove: (requestId: string) => void
+  onTake: (requestId: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const alert = error ? (
@@ -157,8 +176,19 @@ function QueuedMessages({
           <QueuedIcon message={message} />
           <span className="min-w-0 flex-1 truncate">{queuedText(message)}</span>
           <span className="shrink-0 text-[11px] text-muted-foreground">
-            {isSteer(message) ? 'Next' : 'Queued'}
+            {isPaused(message) ? 'Paused' : isSteering(message) ? 'Next' : 'Queued'}
           </span>
+          {isPaused(message) ? (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Edit queued message"
+              className="text-muted-foreground"
+              onClick={() => onTake(message.requestId)}
+            >
+              <Pencil aria-hidden />
+            </Button>
+          ) : null}
           <Button
             size="icon-xs"
             variant="ghost"
@@ -182,7 +212,7 @@ function QueuedMessages({
   }
 
   // Folded: the message that goes out first, with the count. Open: the count, then the list.
-  const next = queued.find(isSteer) ?? queued[0]!
+  const next = queued.find(isSteering) ?? queued[0]!
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="py-1">
       {alert}
@@ -216,13 +246,10 @@ function QueuedMessages({
   )
 }
 
-/** Handed to the running turn (⌘↩) rather than waiting for it to end. */
-function isSteer(message: QueuedMessage): boolean {
-  return message.kind !== 'daemon_queued_end_of_loop'
-}
-
 function QueuedIcon({ message }: { message: QueuedMessage }) {
-  return isSteer(message) ? (
+  if (isPaused(message))
+    return <Pause aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+  return isSteering(message) ? (
     <CornerDownLeft aria-hidden className="size-3 shrink-0 text-muted-foreground" />
   ) : (
     <Clock aria-hidden className="size-3 shrink-0 text-muted-foreground" />

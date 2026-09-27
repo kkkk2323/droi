@@ -254,8 +254,14 @@ test.describe('cancelling a turn', () => {
     // The sidebar marks the busy Session while the turn runs.
     const row = (await openSidebar()).getByRole('button', { name: /Chat/ })
     await expect(row.getByRole('status', { name: 'Working' })).toBeVisible()
+    // Escape interrupts the turn. On the phone the drawer is on top and takes
+    // the first one; the next reaches the turn.
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: 'Cancel' }).click()
+    if (test.info().project.name === 'phone') {
+      await expect(page.getByRole('dialog', { name: 'Sessions' })).toBeHidden()
+      await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+      await page.keyboard.press('Escape')
+    }
 
     await fakeDaemon.waitForRequest('daemon.interrupt_session')
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
@@ -324,6 +330,7 @@ test.describe('a reply with images on the computer', () => {
             ].join('\n\n'),
           ),
         ]),
+        session('Other', '/Users/dev/acme-web', [userMessage('hi')]),
       ],
       files: {
         '/tmp/before.png': { mimeType: 'image/png', base64: PNG },
@@ -350,5 +357,29 @@ test.describe('a reply with images on the computer', () => {
       `data:image/png;base64,${PNG}`,
     )
     await expect(reply.getByText('Image not available: /tmp/missing.png')).toBeVisible()
+  })
+
+  test('a screenshot retaken under the same name shows its new picture on return', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    // A 1x1 blue PNG.
+    const BLUE =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg=='
+    await openClient()
+    await pickSession(/Shots/)
+    const before = () =>
+      page
+        .getByRole('log', { name: 'Transcript' })
+        .getByRole('article', { name: 'Assistant' })
+        .getByRole('img', { name: 'sidebar before' })
+    await expect(before()).toHaveAttribute('src', `data:image/png;base64,${PNG}`)
+
+    fakeDaemon.scenario.files['/tmp/before.png'] = { mimeType: 'image/png', base64: BLUE }
+    await pickSession(/Other/)
+    await pickSession(/Shots/)
+    await expect(before()).toHaveAttribute('src', `data:image/png;base64,${BLUE}`)
   })
 })

@@ -128,13 +128,24 @@ function drainHeld(sessionId: string): void {
   void handler(next.params, next.context, next.request)
 }
 
-/** Handler for `daemon.interrupt_session`: ends the running turn as cancelled. */
+/**
+ * Handler for `daemon.interrupt_session`: ends the running turn as cancelled
+ * and, like the real Daemon, drops the messages it was holding for it.
+ */
 export const interruptHandler: MethodHandler = (params, context) => {
   const sessionId = String(params['sessionId'])
   const turn = activeTurns.get(sessionId)
   if (turn) {
     turn.cancel()
     finishTurn(context.daemon, sessionId, turn.turnId, 'cancelled')
+  }
+  const held = heldMessages.get(sessionId) ?? []
+  if (held.length > 0) {
+    heldMessages.set(sessionId, [])
+    context.daemon.notify(sessionId, {
+      type: 'queued_messages_discarded',
+      text: `Discarded ${held.length} queued message(s)`,
+    })
   }
   return {}
 }

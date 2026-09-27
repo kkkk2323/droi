@@ -146,6 +146,53 @@ test.describe('sending while a turn runs', () => {
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('log', { name: 'Transcript' })).not.toContainText('never mind')
   })
+
+  test('cancelling the turn keeps the queued messages here, paused, to edit or drop', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.fill('first')
+    await input.press('Enter')
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    for (const text of ['keep me', 'and me']) {
+      await input.fill(text)
+      await input.press('Enter')
+    }
+    await fakeDaemon.waitForRequest('daemon.add_user_message', 3)
+    const queued = page.getByRole('list', { name: 'Queued messages' })
+    await expect(queued.getByRole('listitem')).toHaveCount(2)
+
+    // The Daemon drops what it held; this Client keeps it as paused.
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await fakeDaemon.waitForRequest('daemon.interrupt_session')
+    await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
+    await expect(queued.getByRole('listitem')).toHaveText([/keep me.*Paused/, /and me.*Paused/])
+
+    // Edit puts the message back in the composer, in front of what is typed.
+    await input.fill('draft')
+    await queued.getByRole('button', { name: 'Edit queued message' }).first().click()
+    await expect(input).toHaveValue('keep me\ndraft')
+    await expect(queued.getByRole('listitem')).toHaveCount(1)
+
+    // Removing a paused message is local: the Daemon no longer knows it.
+    const before = fakeDaemon.requests.filter(
+      (r) => r.method === 'daemon.resolve_queued_user_message',
+    ).length
+    await queued.getByRole('button', { name: 'Remove queued message' }).click()
+    await expect(queued).toHaveCount(0)
+    expect(
+      fakeDaemon.requests.filter((r) => r.method === 'daemon.resolve_queued_user_message'),
+    ).toHaveLength(before)
+
+    await input.press('Enter')
+    const resent = await fakeDaemon.waitForRequest('daemon.add_user_message', 4)
+    expect(resent.params).toMatchObject({ text: 'keep me\ndraft' })
+  })
 })
 
 test.describe('images in the composer', () => {

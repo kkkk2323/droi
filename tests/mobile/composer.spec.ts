@@ -90,6 +90,29 @@ test.describe('a turn from the phone', () => {
     await expect(fold).toHaveCount(0)
   })
 
+  test('cancelling keeps a queued message here, paused, to put back in the composer', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Chat/)
+    await type(page, 'first')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    await type(page, 'keep me')
+    await page.getByRole('button', { name: 'Queue', exact: true }).click()
+    await fakeDaemon.waitForRequest('daemon.add_user_message', 2)
+    const queued = page.getByRole('list', { name: 'Queued messages' })
+    await expect(queued.getByRole('listitem')).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await fakeDaemon.waitForRequest('daemon.interrupt_session')
+    await expect(queued.getByRole('listitem')).toHaveText([/keep me.*Paused/])
+    await queued.getByRole('button', { name: 'Edit queued message' }).click()
+    await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('keep me')
+    await expect(queued).toHaveCount(0)
+  })
+
   test('a draft survives switching Sessions', async ({ page, fakeDaemon }) => {
     await pairPhone(page, fakeDaemon)
     await pickSession(page, /Chat/)
