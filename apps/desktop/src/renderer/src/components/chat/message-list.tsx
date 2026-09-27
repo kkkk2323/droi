@@ -156,6 +156,16 @@ export function MessageList({
   const parts = [...earlier, transcript]
   const entries = parts.flat()
   const earlierCount = entries.length - (parts[parts.length - 1]?.length ?? 0)
+  // Rows arrive at the front from earlier Sessions and from older pages of this
+  // one; both are counted from the row that was first when the list opened.
+  // A row that is gone (rewound, say) makes the current first row the mark.
+  const [firstOpened, setFirstOpened] = useState<string | null>(transcript[0]?.id ?? null)
+  let prepended = firstOpened === null ? -1 : entries.findIndex((e) => e.id === firstOpened)
+  if (prepended < 0) {
+    const next = transcript[0]?.id ?? null
+    if (next !== firstOpened) setFirstOpened(next)
+    prepended = earlierCount
+  }
   const latestEntries = useRef(entries)
   useLayoutEffect(() => {
     latestEntries.current = entries
@@ -292,14 +302,14 @@ export function MessageList({
     })
     return () => cancelAnimationFrame(frame)
   }, [settled])
-  // Rows are saved by position, and earlier Sessions shown above shift every
+  // Rows are saved by position, and rows brought in above shift every
   // position; the view that opens next starts without them, so such a list is
   // not saved.
   useLayoutEffect(() => {
     if (!stateKey) return
     const handle = virtuoso
     return () => {
-      if (earlierCount > 0) {
+      if (prepended > 0) {
         savedLists.delete(stateKey)
         return
       }
@@ -318,7 +328,7 @@ export function MessageList({
         savedLists.set(stateKey, { atBottom: true, state, scrollTop }),
       )
     }
-  }, [stateKey, earlierCount])
+  }, [stateKey, prepended])
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const isStreaming = workingState === 'streaming_assistant_message'
@@ -357,7 +367,7 @@ export function MessageList({
         data={entries}
         context={context}
         computeItemKey={(_, entry) => entry.id}
-        firstItemIndex={INDEX_BASE - earlierCount}
+        firstItemIndex={INDEX_BASE - prepended}
         initialTopMostItemIndex={
           !restored
             ? entries.length - 1

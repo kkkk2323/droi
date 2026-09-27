@@ -54,13 +54,12 @@ export interface DaemonConnection {
 const RECOVERY_POLL_MS = 2_000
 
 /**
- * How many of a Session's most recent messages a load brings. The Daemon's
- * own default is 100 (it ignores `loadAllMessages`), which cut long Sessions
- * short at the top on every reopen. The transcript is virtualised, so the
- * budget is the payload, not the rendering; a Session this long has been
- * compacted several times over.
+ * How many of a Session's most recent messages a load brings; the rest come
+ * page by page (use-older-messages.ts). The Daemon's own default is 100 (it
+ * ignores `loadAllMessages`), which cut long Sessions short at the top on
+ * every reopen. 400 is the Factory App's budget.
  */
-export const LOADED_MESSAGE_LIMIT = 2_000
+export const LOADED_MESSAGE_LIMIT = 400
 
 /**
  * The SDK's state manager as the Client wants it. Progressive UI rendering is

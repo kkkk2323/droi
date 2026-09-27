@@ -2,7 +2,6 @@ import type { Page } from '@playwright/test'
 import { drawerGone, expect, test } from './fixtures'
 import {
   assistantMessage,
-  loadSessionResult,
   session,
   thinkingBlock,
   toolCallMessage,
@@ -351,27 +350,8 @@ test.describe('session history', () => {
 
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
     // The Daemon's own default is the last 100 messages, which cut long Sessions short.
-    expect(load.params).toMatchObject({ sessionId: richSession.sessionId, messageLimit: 2000 })
+    expect(load.params).toMatchObject({ sessionId: richSession.sessionId, messageLimit: 400 })
     expect(new URL(page.url()).hash).toBe(`#/s/${richSession.sessionId}`)
-  })
-
-  test('a Session longer than the load says so at the top', async ({
-    page,
-    fakeDaemon,
-    openClient,
-    pickSession,
-  }) => {
-    fakeDaemon.scenario.on('daemon.load_session', () => ({
-      ...loadSessionResult(richSession),
-      hasOlderMessages: true,
-    }))
-    await openClient()
-    await pickSession(/Fix the login bug/)
-    await expect(
-      page
-        .getByRole('log', { name: 'Transcript' })
-        .getByText('Only the last 2,000 messages are shown.'),
-    ).toBeVisible()
   })
 
   test('a reload keeps the open Session', async ({ page, openClient, pickSession }) => {
@@ -557,6 +537,69 @@ test.describe('long history', () => {
     const rendered = await transcript.getByRole('article').count()
     expect(rendered).toBeLessThan(80)
     await expect(transcript.getByText('Question 0')).toHaveCount(0)
+  })
+})
+
+test.describe('a Session longer than one load', () => {
+  // 400 come with the load, the 150 before them a page at a time.
+  const many = Array.from({ length: 550 }, (_, i) =>
+    i % 2 === 0 ? userMessage(`Question ${i}`) : assistantMessage(`Answer ${i}`),
+  )
+  const longSession = session('Long chat', '/Users/dev/acme-web', many)
+  test.use({ scenario: { sessions: [longSession] } })
+
+  test('previous messages come in a page at a time, and the row being read stays put', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Long chat/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Answer 549')).toBeVisible()
+    const load = await fakeDaemon.waitForRequest('daemon.load_session')
+    expect(load.params).toMatchObject({ messageLimit: 400 })
+
+    // Up to the top: the first loaded message, and the way to the ones before it.
+    const scrollTop = async () => {
+      await transcript.evaluate((el) => {
+        el.scrollTop = 0
+      })
+      await page.waitForTimeout(150)
+    }
+    for (let i = 0; i < 12; i++) await scrollTop()
+    const first = transcript.getByText('Question 150', { exact: true })
+    await expect(first).toBeVisible()
+    await expect(transcript.getByText('Answer 149', { exact: true })).toHaveCount(0)
+    const load1 = transcript.getByRole('button', { name: 'Load previous messages' })
+    await expect(load1).toBeVisible()
+
+    const before = await first.evaluate((el) => el.getBoundingClientRect().top)
+    await load1.click()
+    const older = await fakeDaemon.waitForRequest('daemon.get_session_messages')
+    expect(older.params).toMatchObject({
+      sessionId: longSession.sessionId,
+      cursor: many[150]!.id,
+      limit: 100,
+    })
+    // The page is in above, the reader has not moved, and more remain.
+    await expect(transcript.getByText('Answer 149', { exact: true })).toBeAttached()
+    // Virtuoso corrects the scroll position over a frame or two after the prepend.
+    await expect
+      .poll(async () =>
+        Math.abs((await first.evaluate((el) => el.getBoundingClientRect().top)) - before),
+      )
+      .toBeLessThanOrEqual(2)
+    await expect(load1).toBeVisible()
+
+    // The last page brings the rest; the way up is gone.
+    await load1.click()
+    const older2 = await fakeDaemon.waitForRequest('daemon.get_session_messages', 2)
+    expect(older2.params).toMatchObject({ cursor: many[50]!.id, limit: 100 })
+    await expect(transcript.getByRole('button', { name: 'Load previous messages' })).toHaveCount(0)
+    for (let i = 0; i < 12; i++) await scrollTop()
+    await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
   })
 })
 

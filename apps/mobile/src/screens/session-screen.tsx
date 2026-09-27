@@ -1,7 +1,6 @@
 // An open Session: its transcript, and what came before a compaction when
 // the reader asks for it. Loading it subscribes this phone to its
 // notifications, which is also what makes its activity show in the list.
-import { LOADED_MESSAGE_LIMIT } from '@droi/daemon-layer/connection'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
@@ -13,6 +12,7 @@ import { usePrompts } from '@droi/daemon-layer/use-prompts'
 import { useSession, useSessions } from '@droi/daemon-layer/use-session'
 import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
 import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
+import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
 import { useTurn } from '@droi/daemon-layer/use-turn'
 import { ChevronUp } from 'lucide-react-native'
 import { useEffect, useMemo, useState } from 'react'
@@ -69,6 +69,7 @@ export function SessionScreen({
   const compaction = useCompact(session.sessionId, session.tags)
   const isRunning = view.workingState !== 'idle' || compaction.isCompacting
   const gitChanges = useGitChanges(session.sessionId, { loaded, running: isRunning })
+  const older = useOlderMessages(session.sessionId)
   const [sentCount, setSentCount] = useState(0)
   // A message typed on the New session page goes out once the Session can take it.
   const send = turn.send
@@ -97,9 +98,31 @@ export function SessionScreen({
   const earlierError = earlierViews.find((v) => v.loadError)?.loadError
 
   const lead = view.hasOlderMessages ? (
-    <Text tone="muted" size="xs" style={styles.leadRow}>
-      Only the last {LOADED_MESSAGE_LIMIT.toLocaleString()} messages are shown.
-    </Text>
+    older.error ? (
+      <Text
+        role="alert"
+        size="xs"
+        style={[styles.leadRow, { color: colors.destructiveForeground }]}
+      >
+        Previous messages did not load: {older.error}
+      </Text>
+    ) : (
+      <Pressable
+        role="button"
+        disabled={older.isLoading}
+        onPress={() => void older.load()}
+        style={styles.leadRow}
+      >
+        {older.isLoading ? (
+          <Spinner size={14} color={colors.mutedForeground} />
+        ) : (
+          <ChevronUp size={14} color={colors.mutedForeground} />
+        )}
+        <Text tone="muted" size="xs">
+          {older.isLoading ? 'Loading previous messages…' : 'Load previous messages'}
+        </Text>
+      </Pressable>
+    )
   ) : earlierError ? (
     <Text role="alert" size="xs" style={[styles.leadRow, { color: colors.destructiveForeground }]}>
       Earlier messages did not load: {earlierError}

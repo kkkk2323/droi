@@ -56,6 +56,38 @@ test.describe('opening a Session', () => {
   })
 })
 
+test.describe('a Session longer than one load', () => {
+  // 400 come with the load, the 50 before them on request.
+  const many = Array.from({ length: 450 }, (_, i) =>
+    i % 2 === 0 ? userMessage(`Question ${i}`) : assistantMessage(`Answer ${i}`),
+  )
+  const longer = session('Longer chat', '/Users/dev/acme-web', many)
+  test.use({ scenario: { sessions: [longer] } })
+
+  test('offers the previous messages at the top and brings them in', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Longer chat/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Answer 449')).toBeInViewport()
+    expect((await fakeDaemon.waitForRequest('daemon.load_session')).params).toMatchObject({
+      messageLimit: 400,
+    })
+    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await expect(transcript.getByText('Question 50', { exact: true })).toBeVisible()
+    await expect(transcript.getByText('Answer 49', { exact: true })).toHaveCount(0)
+
+    await transcript.getByRole('button', { name: 'Load previous messages' }).click()
+    const older = await fakeDaemon.waitForRequest('daemon.get_session_messages')
+    expect(older.params).toMatchObject({ cursor: many[50]!.id, limit: 100 })
+    await expect(transcript.getByRole('button', { name: 'Load previous messages' })).toHaveCount(0)
+    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
+  })
+})
+
 test.describe('a Session continued after two compactions', () => {
   const first = session('Plan v1', '/Users/dev/acme-web', [
     userMessage('first question'),

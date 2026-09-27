@@ -275,6 +275,24 @@ export function createScenario(input: ScenarioInput): Scenario {
       context.daemon.notifyArchiveState(found.sessionId, undefined)
       return { success: true }
     },
+    // The messages before the cursor (a message id), newest first, as the Daemon pages them.
+    'daemon.get_session_messages': (params) => {
+      const found = mustFind(sessions, params['sessionId'])
+      const limit = typeof params['limit'] === 'number' ? params['limit'] : 20
+      const cursor = params['cursor']
+      const end =
+        typeof cursor === 'string'
+          ? found.messages.findIndex((m) => m.id === cursor)
+          : found.messages.length
+      if (end < 0) throw new RpcError(-32602, `No message ${String(cursor)}`)
+      const start = Math.max(0, end - limit)
+      const page = found.messages.slice(start, end).reverse()
+      return {
+        messages: page,
+        hasMore: start > 0,
+        ...(start > 0 ? { nextCursor: page[page.length - 1]!.id } : {}),
+      }
+    },
     'daemon.load_session': (params) => {
       const found = sessions.find((s) => s.sessionId === params['sessionId'])
       if (!found) throw new Error(`Scenario has no session ${String(params['sessionId'])}`)
@@ -298,7 +316,7 @@ export function createScenario(input: ScenarioInput): Scenario {
           : [],
       )
       return {
-        ...loadSessionResult(found),
+        ...loadSessionResult(found, params['messageLimit']),
         ...(found.subagent
           ? {
               callingSessionId: found.subagent.callingSessionId,
@@ -337,10 +355,15 @@ function mustFind(sessions: SessionFixture[], sessionId: unknown): SessionFixtur
   return found
 }
 
-export function loadSessionResult(fixture: SessionFixture): Record<string, unknown> {
+/** Like the Daemon, a load brings the most recent `messageLimit` messages (all without one). */
+export function loadSessionResult(
+  fixture: SessionFixture,
+  messageLimit: unknown = undefined,
+): Record<string, unknown> {
+  const limit = typeof messageLimit === 'number' ? messageLimit : fixture.messages.length
   return {
-    session: { messages: fixture.messages, title: fixture.title },
-    hasOlderMessages: false,
+    session: { messages: fixture.messages.slice(-limit), title: fixture.title },
+    hasOlderMessages: fixture.messages.length > limit,
     hostId: HOST_ID,
     settings: { ...sessionSettings(), ...fixture.settings },
     isAgentLoopInProgress: false,

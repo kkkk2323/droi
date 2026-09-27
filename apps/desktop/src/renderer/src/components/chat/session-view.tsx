@@ -15,7 +15,7 @@ import { useListNewSubagents, type SessionRef } from '@droi/daemon-layer/subagen
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { ImageSessionProvider } from '@droi/daemon-layer/local-image'
-import { LOADED_MESSAGE_LIMIT } from '@droi/daemon-layer/connection'
+import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
 import { cn } from '@/lib/utils'
 import { ComposerShelf, ContextMeter } from './composer-panels'
 import { GitChangesButton } from './git-changes'
@@ -69,6 +69,7 @@ export function SessionView({
   const hasPrompt = prompts.permissions.length > 0 || prompts.askUser.length > 0
   const contextUsage = useContextUsage(sessionId, { loaded, modelId: settings.modelId })
   const gitChanges = useGitChanges(sessionId, { loaded, running: isRunning })
+  const older = useOlderMessages(sessionId)
 
   // Earlier Sessions load one per click, nearest first; each can be large.
   const [revealed, setRevealed] = useState(0)
@@ -82,9 +83,25 @@ export function SessionView({
     earlierError || loadingEarlier || nextEarlier || session.hasOlderMessages ? (
       <div className={cn(COLUMN, 'pb-2')}>
         {session.hasOlderMessages ? (
-          <p className="text-xs text-muted-foreground">
-            Only the last {LOADED_MESSAGE_LIMIT.toLocaleString()} messages are shown.
-          </p>
+          older.error ? (
+            <p role="alert" className="text-xs text-destructive-foreground">
+              Previous messages did not load: {older.error}
+            </p>
+          ) : (
+            <button
+              type="button"
+              disabled={older.isLoading}
+              onClick={() => void older.load()}
+              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              {older.isLoading ? (
+                <Spinner aria-hidden className="size-3.5" />
+              ) : (
+                <ChevronUp aria-hidden className="size-3.5" />
+              )}
+              {older.isLoading ? 'Loading previous messages…' : 'Load previous messages'}
+            </button>
+          )
         ) : null}
         {earlierError ? (
           <p role="alert" className="text-xs text-destructive-foreground">

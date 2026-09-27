@@ -154,6 +154,9 @@ export function TranscriptView({
         onContentSizeChange={onContentSizeChange}
         onLayout={onLayout}
         keyboardDismissMode="interactive"
+        // Rows brought in above (previous messages, earlier Sessions) keep
+        // the row being read where it is.
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         initialNumToRender={20}
         windowSize={11}
       />
