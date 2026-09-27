@@ -1,3 +1,13 @@
+## 1.12.0 - 2026-09-27
+
+### Added
+
+- Pinned, Workspaces and Recents in the desktop and browser sidebar are sections that fold as a whole, like a single workspace does. Recents has the same header as the other two, with its sessions listed straight under it, instead of a folder row.
+
+### Fixed
+
+- An image the agent writes into its reply as a path on the computer, such as a screenshot it took, is shown in the conversation. It read "Image not available" before. Droi reads the file through the Daemon, so it works on the desktop and on a phone or browser alike; a file that is not there shows its path instead.
+
 ## 1.11.2 - 2026-09-27
 
 ### Fixed
