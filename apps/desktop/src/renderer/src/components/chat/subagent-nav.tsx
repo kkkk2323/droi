@@ -8,7 +8,7 @@ import {
   type SessionRef,
   type SubagentRun,
 } from '@droi/daemon-layer/subagents'
-import { relativeTime } from '@/components/sidebar/session-sidebar'
+import { relativeTime } from '@/components/sidebar/relative-time'
 
 const POPUP =
   'max-h-[min(24rem,var(--available-height))] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none'

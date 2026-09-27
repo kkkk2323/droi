@@ -27,6 +27,7 @@ import { selectedComputerId, type PairedComputer } from '../computers/store'
 import type { ComputerSessions } from './use-computer-sessions'
 import { Button, IconButton, Text } from '../ui/primitives'
 import { Sheet } from '../ui/sheet'
+import { SessionSearchBox, SessionSearchResults } from './session-search'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
@@ -71,6 +72,7 @@ export function SessionList({
   const [workspaceActions, setWorkspaceActions] = useState<WorkspaceGroup | null>(null)
   const [workspaceActionsOpen, setWorkspaceActionsOpen] = useState(false)
   const activity = useSessionActivity()
+  const [query, setQuery] = useState('')
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
   const groups = groupByWorkspace(foldContinued(mainSessions(sessions.sessions)), {
@@ -145,40 +147,72 @@ export function SessionList({
         <SquarePen size={16} color={colors.mutedForeground} strokeWidth={1.75} />
         <Text size="sm">New session</Text>
       </Pressable>
+      <SessionSearchBox query={query} onChange={setQuery} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={{ paddingBottom: insets.bottom + space.md }}
+        keyboardShouldPersistTaps="handled"
       >
-        {sessions.error ? (
-          <Text role="alert" size="xs" style={{ color: colors.destructiveForeground }}>
-            {sessions.error.message}
-          </Text>
-        ) : null}
-        {!sessions.isPending && sessions.live && groups.length === 0 && !sessions.error ? (
-          <Text tone="muted" size="xs" style={styles.empty}>
-            No sessions yet.
-          </Text>
-        ) : null}
-        {groups.map((group) => (
-          <WorkspaceSection
-            key={group.key}
-            group={group}
-            // A subagent's row is the Session that called it.
+        {query.trim() ? (
+          <SessionSearchResults
+            query={query}
             selectedId={selectedId ? listedSessionOf(sessions.sessions, selectedId) : null}
-            unread={unread}
-            activity={activity}
-            subagentsRunning={subagentsRunning}
             onSelect={onSelect}
-            onSessionActions={(session) => {
-              setSessionActions(session)
-              setSessionActionsOpen(true)
-            }}
-            onWorkspaceActions={(picked) => {
-              setWorkspaceActions(picked)
-              setWorkspaceActionsOpen(true)
-            }}
           />
-        ))}
+        ) : (
+          <>
+            {sessions.error ? (
+              <Text role="alert" size="xs" style={{ color: colors.destructiveForeground }}>
+                {sessions.error.message}
+              </Text>
+            ) : null}
+            {!sessions.isPending && sessions.live && groups.length === 0 && !sessions.error ? (
+              <Text tone="muted" size="xs" style={styles.empty}>
+                No sessions yet.
+              </Text>
+            ) : null}
+            {groups.map((group) => (
+              <WorkspaceSection
+                key={group.key}
+                group={group}
+                // A subagent's row is the Session that called it.
+                selectedId={selectedId ? listedSessionOf(sessions.sessions, selectedId) : null}
+                unread={unread}
+                activity={activity}
+                subagentsRunning={subagentsRunning}
+                onSelect={onSelect}
+                onSessionActions={(session) => {
+                  setSessionActions(session)
+                  setSessionActionsOpen(true)
+                }}
+                onWorkspaceActions={(picked) => {
+                  setWorkspaceActions(picked)
+                  setWorkspaceActionsOpen(true)
+                }}
+              />
+            ))}
+            {sessions.older ? (
+              <Pressable
+                role="button"
+                disabled={sessions.older.loading}
+                onPress={sessions.older.load}
+                style={({ pressed }) => [
+                  styles.older,
+                  pressed ? { backgroundColor: colors.sidebarAccent } : null,
+                ]}
+              >
+                {sessions.older.loading ? (
+                  <Spinner size={12} color={colors.mutedForeground} />
+                ) : (
+                  <ChevronDown size={14} color={colors.mutedForeground} strokeWidth={1.75} />
+                )}
+                <Text tone="muted" size="xs">
+                  {sessions.older.loading ? 'Loading older sessions…' : 'Load older sessions'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </>
+        )}
       </ScrollView>
       <SessionActions
         session={sessionActions}
@@ -526,6 +560,15 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1, paddingHorizontal: space.sm },
   empty: { paddingHorizontal: space.sm, paddingVertical: space.xs },
+  older: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    marginTop: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.md,
+  },
   section: { marginTop: space.md },
   sectionHeader: {
     flexDirection: 'row',

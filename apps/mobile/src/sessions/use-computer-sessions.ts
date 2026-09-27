@@ -11,6 +11,8 @@ export interface ComputerSessions {
   live: boolean
   isPending: boolean
   error: Error | null
+  /** Sessions older than the ones listed wait on the Daemon; null when the list is complete. */
+  older: { loading: boolean; load: () => void } | null
 }
 
 export function useComputerSessions(computerId: string): ComputerSessions {
@@ -25,6 +27,7 @@ export function useComputerSessions(computerId: string): ComputerSessions {
     live: list.data !== undefined,
     isPending: list.isPending && cached.length === 0,
     error: list.error,
+    older: list.hasMore ? { loading: list.isLoadingMore, load: list.loadMore } : null,
   }
 }
 

@@ -66,3 +66,40 @@ test('a link without the address or an unreachable computer says so', async ({ p
   await expect(page.getByRole('alert')).toHaveText(/Cannot reach http:\/\/127\.0\.0\.1:9/)
   await expect(page.getByRole('heading', { name: 'Pair with a computer' })).toBeVisible()
 })
+
+test('typing in the search box asks the Daemon and lists the hits with their snippets', async ({
+  page,
+  fakeDaemon,
+}) => {
+  await pairPhone(page, fakeDaemon)
+  const list = await openDrawer(page)
+  await list.getByRole('searchbox', { name: 'Search sessions' }).fill('ship')
+  const results = list.getByRole('region', { name: 'Search results' })
+  await expect(results.getByRole('listitem')).toHaveCount(1)
+  const searched = await fakeDaemon.waitForRequest('daemon.search_sessions')
+  expect(searched.params).toMatchObject({ query: 'ship' })
+  await expect(results.getByRole('button', { name: /Deploy/ })).toContainText('ship it')
+  await expect(list.getByRole('group', { name: 'acme-web' })).toHaveCount(0)
+  await results.getByRole('button', { name: /Deploy/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Sessions' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
+})
+
+test.describe('with more Sessions than one page', () => {
+  const many = Array.from({ length: 105 }, (_, i) =>
+    session(`Task ${String(i + 1).padStart(3, '0')}`, '/Users/dev/acme-web', [userMessage('go')]),
+  )
+  test.use({ scenario: { sessions: many } })
+
+  test('"Load older sessions" brings the rest', async ({ page, fakeDaemon }) => {
+    await pairPhone(page, fakeDaemon)
+    const list = await openDrawer(page)
+    const web = list.getByRole('group', { name: 'acme-web' })
+    await expect(web.getByRole('button', { name: /Task 105/ })).toBeVisible()
+    await expect(web.getByRole('button', { name: /Task 001/ })).toHaveCount(0)
+    await list.getByRole('button', { name: 'Load older sessions' }).click()
+    await fakeDaemon.waitForRequest('daemon.list_available_sessions', 2)
+    await expect(web.getByRole('button', { name: /Task 001/ })).toBeAttached()
+    await expect(list.getByRole('button', { name: 'Load older sessions' })).toHaveCount(0)
+  })
+})

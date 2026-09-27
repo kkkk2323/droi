@@ -3,6 +3,7 @@ import { ContextMenu } from '@base-ui/react/context-menu'
 import {
   Archive,
   ArchiveRestore,
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   Folder,
@@ -14,6 +15,8 @@ import {
   SquarePen,
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
+import { relativeTime } from './relative-time'
+import { SessionSearchBox, SessionSearchResults } from './session-search'
 import { Button } from '@/components/ui/button'
 import {
   foldedWorkspaces,
@@ -49,6 +52,7 @@ export function SessionSidebar({
   onArchiveToggle,
   isLoading,
   error,
+  older,
   onNewSession,
   onNewSessionIn,
   onSettings,
@@ -67,6 +71,8 @@ export function SessionSidebar({
   onArchiveToggle: (session: SessionSummary) => void
   isLoading: boolean
   error: string | null
+  /** Sessions older than the ones listed wait on the Daemon; null when the list is complete. */
+  older: { loading: boolean; load: () => void } | null
   onNewSession: () => void
   /** From a group's header: a new Session in that Workspace, or with None from Recents. */
   onNewSessionIn: (workspace: string | null) => void
@@ -74,6 +80,7 @@ export function SessionSidebar({
   insetTop: boolean
 }) {
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
+  const [query, setQuery] = useState('')
   const recents = groups.find((group) => group.scratch)
   const pinned = groups.filter((group) => !group.scratch && pinnedGroups.includes(group.key))
   const rest = groups.filter((group) => !group.scratch && !pinnedGroups.includes(group.key))
@@ -103,40 +110,66 @@ export function SessionSidebar({
         )}
       />
 
-      <div className="flex flex-col gap-px px-2 pb-2">
+      <div className="flex flex-col gap-1 px-2 pb-2">
         <SidebarRow icon={<Plus aria-hidden />} onClick={onNewSession}>
           New session
         </SidebarRow>
+        <SessionSearchBox query={query} onChange={setQuery} />
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {error ? (
-          <p role="alert" className="px-2 py-1 text-xs text-destructive-foreground">
-            {error}
-          </p>
-        ) : null}
-        {isLoading && groups.length === 0 ? <SidebarSkeleton /> : null}
-        {!isLoading && groups.length === 0 && !error ? (
-          <p className="px-2 py-1 text-xs text-muted-foreground">No sessions yet.</p>
-        ) : null}
-        {/* The Workspaces label only appears when there is another section to tell it from. */}
-        {pinned.length > 0 ? (
-          <FoldableSection label="Pinned" id="sidebar-pinned" foldKey={PINNED_SECTION_KEY}>
-            {pinned.map(section)}
-          </FoldableSection>
-        ) : null}
-        {rest.length > 0 && (pinned.length > 0 || recents) ? (
-          <FoldableSection
-            label="Workspaces"
-            id="sidebar-workspaces"
-            foldKey={WORKSPACES_SECTION_KEY}
-          >
-            {rest.map(section)}
-          </FoldableSection>
+        {query.trim() ? (
+          <SessionSearchResults
+            query={query}
+            selectedSessionId={selectedSessionId}
+            onSelect={onSelect}
+          />
         ) : (
-          rest.map(section)
+          <>
+            {error ? (
+              <p role="alert" className="px-2 py-1 text-xs text-destructive-foreground">
+                {error}
+              </p>
+            ) : null}
+            {isLoading && groups.length === 0 ? <SidebarSkeleton /> : null}
+            {!isLoading && groups.length === 0 && !error ? (
+              <p className="px-2 py-1 text-xs text-muted-foreground">No sessions yet.</p>
+            ) : null}
+            {/* The Workspaces label only appears when there is another section to tell it from. */}
+            {pinned.length > 0 ? (
+              <FoldableSection label="Pinned" id="sidebar-pinned" foldKey={PINNED_SECTION_KEY}>
+                {pinned.map(section)}
+              </FoldableSection>
+            ) : null}
+            {rest.length > 0 && (pinned.length > 0 || recents) ? (
+              <FoldableSection
+                label="Workspaces"
+                id="sidebar-workspaces"
+                foldKey={WORKSPACES_SECTION_KEY}
+              >
+                {rest.map(section)}
+              </FoldableSection>
+            ) : (
+              rest.map(section)
+            )}
+            {recents ? section(recents) : null}
+            {older ? (
+              <button
+                type="button"
+                disabled={older.loading}
+                onClick={older.load}
+                className="mt-1 flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
+              >
+                {older.loading ? (
+                  <Spinner aria-hidden className="size-3" />
+                ) : (
+                  <ChevronDown aria-hidden className="size-3.5" />
+                )}
+                {older.loading ? 'Loading older sessions…' : 'Load older sessions'}
+              </button>
+            ) : null}
+          </>
         )}
-        {recents ? section(recents) : null}
       </div>
 
       <div className="flex shrink-0 items-center px-2 pb-2 pt-1">
@@ -524,16 +557,4 @@ function SidebarSkeleton() {
       ))}
     </div>
   )
-}
-
-export function relativeTime(ms: number, now = Date.now()): string {
-  const diff = Math.max(0, now - ms)
-  const minutes = Math.floor(diff / 60_000)
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d`
-  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

@@ -207,6 +207,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       }}
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
+      older={sessions.hasMore ? { loading: sessions.isLoadingMore, load: sessions.loadMore } : null}
       onNewSession={() => go({ name: 'new' })}
       onNewSessionIn={(workspace) =>
         go(workspace === null ? { name: 'new', scratch: true } : { name: 'new', workspace })

@@ -1,8 +1,9 @@
 // Session list and Workspace grouping. The list is a collection fetched from
 // the Daemon on demand, so it lives in TanStack Query; the open Session's
 // transcript lives in the SDK state manager (see use-session.ts).
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
+import type { DaemonSessionController } from '@factory/droid-sdk'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
 
@@ -110,7 +111,26 @@ export interface WorkspaceGroup {
 
 export const SESSIONS_QUERY_KEY = ['sessions'] as const
 
-export function useSessionList(options: { includeArchived?: boolean } = {}) {
+/** Sessions per page, the Daemon's maximum; the Factory App pages by 50. */
+export const SESSION_PAGE = 100
+
+export interface SessionList {
+  /** Every Session fetched so far, newest first; undefined before the first page. */
+  data: SessionSummary[] | undefined
+  isPending: boolean
+  error: Error | null
+  /** The Daemon has Sessions older than the last page. */
+  hasMore: boolean
+  isLoadingMore: boolean
+  loadMore(): void
+}
+
+/**
+ * The Daemon lists Sessions newest first, a page at a time, with an
+ * `endBefore` cursor (the last row's `updatedAt`). The first page comes with
+ * the connection; the rest on request, since a computer can hold thousands.
+ */
+export function useSessionList(options: { includeArchived?: boolean } = {}): SessionList {
   const includeArchived = options.includeArchived ?? false
   const connection = useDaemonConnection()
   // Read through the hook, not connection.getState(): the compiler memoizes
@@ -136,32 +156,55 @@ export function useSessionList(options: { includeArchived?: boolean } = {}) {
     }
   }, [connection, queryClient])
 
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: [...SESSIONS_QUERY_KEY, { includeArchived }],
-    queryFn: async (): Promise<SessionSummary[]> => {
+    initialPageParam: null as number | null,
+    queryFn: async ({ pageParam }) => {
       const result = await connection.controller.listAvailableSessions({
-        limit: 100,
+        limit: SESSION_PAGE,
         includeArchived,
+        ...(pageParam !== null ? { endBefore: pageParam } : {}),
       })
-      return result.sessions
-        .filter((s) => !isDraft(s.tags))
-        .map((s) => ({
-          sessionId: s.sessionId,
-          title: s.title?.trim() || 'Untitled session',
-          cwd: s.cwd ?? null,
-          repoRoot: s.repoRoot ?? null,
-          updatedAt: s.updatedAt,
-          messagesCount: s.messagesCount ?? null,
-          archivedAt: s.archivedAt ?? null,
-          tags: s.tags ?? [],
-          parentId: continuationParent(s.tags),
-          callingSessionId: s.callingSessionId ?? null,
-          callingToolUseId: s.callingToolUseId ?? null,
-        }))
+      return {
+        sessions: result.sessions.filter((s) => !isDraft(s.tags)).map(summaryOf),
+        nextCursor: result.hasMore ? (result.nextCursor ?? null) : null,
+      }
     },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: connected,
     staleTime: 10_000,
   })
+  const pages = query.data?.pages
+  const data = useMemo(() => pages?.flatMap((page) => page.sessions), [pages])
+  const { fetchNextPage } = query
+  return {
+    data,
+    isPending: query.isPending,
+    error: query.error,
+    hasMore: query.hasNextPage,
+    isLoadingMore: query.isFetchingNextPage,
+    loadMore: () => void fetchNextPage(),
+  }
+}
+
+type ListedSession = Awaited<
+  ReturnType<DaemonSessionController['listAvailableSessions']>
+>['sessions'][number]
+
+function summaryOf(s: ListedSession): SessionSummary {
+  return {
+    sessionId: s.sessionId,
+    title: s.title?.trim() || 'Untitled session',
+    cwd: s.cwd ?? null,
+    repoRoot: s.repoRoot ?? null,
+    updatedAt: s.updatedAt,
+    messagesCount: s.messagesCount ?? null,
+    archivedAt: s.archivedAt ?? null,
+    tags: s.tags ?? [],
+    parentId: continuationParent(s.tags),
+    callingSessionId: s.callingSessionId ?? null,
+    callingToolUseId: s.callingToolUseId ?? null,
+  }
 }
 
 export interface Pins {

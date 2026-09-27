@@ -224,6 +224,106 @@ test.describe('sidebar with old sessions', () => {
   })
 })
 
+test.describe('sidebar with more Sessions than one page', () => {
+  // 130 Sessions, so the Daemon's first page of 100 leaves 30 behind; all of
+  // them are recent so none hide behind "Show older".
+  const many = Array.from({ length: 130 }, (_, i) =>
+    session(`Task ${String(i + 1).padStart(3, '0')}`, '/Users/dev/acme-web', [userMessage('go')]),
+  )
+  test.use({ scenario: { sessions: many } })
+
+  test('the list ends with "Load older sessions" until the Daemon has no more', async ({
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    const acme = sidebar.getByRole('region', { name: 'acme-web' })
+    await expect(acme.getByRole('listitem')).toHaveCount(100)
+    // Newest first: the last one made leads, the oldest 30 are not here yet.
+    await expect(acme.getByRole('listitem').first()).toContainText('Task 130')
+    await expect(acme.getByRole('button', { name: /Task 030/ })).toHaveCount(0)
+
+    await sidebar.getByRole('button', { name: 'Load older sessions' }).click()
+    const second = await fakeDaemon.waitForRequest('daemon.list_available_sessions', 2)
+    expect(second.params).toMatchObject({ limit: 100, endBefore: many[30]!.updatedAt })
+    await expect(acme.getByRole('listitem')).toHaveCount(130)
+    await expect(acme.getByRole('listitem').last()).toContainText('Task 001')
+    await expect(sidebar.getByRole('button', { name: 'Load older sessions' })).toHaveCount(0)
+  })
+})
+
+test.describe('searching Sessions', () => {
+  test.use({ scenario: { sessions: [droiSession, anotherDroiSession, cliSession] } })
+
+  test('the Daemon searches every Session; a hit shows its snippet and opens on click', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    const box = sidebar.getByRole('searchbox', { name: 'Search sessions' })
+    await box.fill('invoice')
+    const results = sidebar.getByRole('region', { name: 'Search results' })
+    await expect(results.getByRole('listitem')).toHaveCount(1)
+    const searched = await fakeDaemon.waitForRequest('daemon.search_sessions')
+    expect(searched.params).toMatchObject({ query: 'invoice' })
+    const hit = results.getByRole('button', { name: /Refactor billing/ })
+    await expect(hit.locator('mark')).toHaveText('invoice')
+    // The Workspace groups step aside while searching.
+    await expect(sidebar.getByRole('region', { name: 'acme-web' })).toHaveCount(0)
+
+    await hit.click()
+    await expect(page.getByRole('region', { name: 'Refactor billing' })).toBeVisible()
+
+    await drawerGone(page)
+    const again = await openSidebar()
+    await again.getByRole('searchbox', { name: 'Search sessions' }).fill('nothing like this')
+    await expect(again.getByText('No sessions match.')).toBeVisible()
+    await again.getByRole('button', { name: 'Clear search' }).click()
+    await expect(again.getByRole('region', { name: 'acme-web' })).toBeVisible()
+  })
+})
+
+test.describe('activity of Sessions open elsewhere', () => {
+  test.use({
+    scenario: {
+      sessions: [droiSession, anotherDroiSession],
+      opened: [{ sessionId: anotherDroiSession.sessionId, workingState: 'executing_tool' }],
+    },
+  })
+
+  test('a Session working for another Client shows as busy without being opened here', async ({
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    const row = sidebar.getByRole('button', { name: /Add dark mode/ })
+    await expect(row.getByRole('status', { name: 'Working' })).toBeVisible()
+
+    // The Daemon tells every Client when it stops, and when another one starts.
+    fakeDaemon.notify(anotherDroiSession.sessionId, {
+      type: 'droid_working_state_changed',
+      newState: 'idle',
+    })
+    await expect(row.getByRole('status')).toHaveCount(0)
+    fakeDaemon.notify(droiSession.sessionId, {
+      type: 'droid_working_state_changed',
+      newState: 'waiting_for_tool_confirmation',
+    })
+    await expect(
+      sidebar
+        .getByRole('button', { name: /Fix the login bug/ })
+        .getByRole('status', { name: 'Needs input' }),
+    ).toBeVisible()
+  })
+})
+
 test.describe('sidebar memory', () => {
   test.use({ scenario: { sessions: [droiSession, anotherDroiSession, cliSession] } })
 
