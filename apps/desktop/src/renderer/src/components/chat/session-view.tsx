@@ -15,6 +15,7 @@ import { useListNewSubagents, type SessionRef } from '@droi/daemon-layer/subagen
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { ImageSessionProvider } from '@droi/daemon-layer/local-image'
+import { LOADED_MESSAGE_LIMIT } from '@droi/daemon-layer/connection'
 import { cn } from '@/lib/utils'
 import { ComposerShelf, ContextMeter } from './composer-panels'
 import { GitChangesButton } from './git-changes'
@@ -78,8 +79,13 @@ export function SessionView({
   const earlierError = earlierViews.find((v) => v.loadError)?.loadError
   const loadingEarlier = earlierViews.some((v) => v.loadState !== LOAD_STATE.loaded)
   const lead =
-    earlierError || loadingEarlier || nextEarlier ? (
+    earlierError || loadingEarlier || nextEarlier || session.hasOlderMessages ? (
       <div className={cn(COLUMN, 'pb-2')}>
+        {session.hasOlderMessages ? (
+          <p className="text-xs text-muted-foreground">
+            Only the last {LOADED_MESSAGE_LIMIT.toLocaleString()} messages are shown.
+          </p>
+        ) : null}
         {earlierError ? (
           <p role="alert" className="text-xs text-destructive-foreground">
             Earlier messages did not load: {earlierError}

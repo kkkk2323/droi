@@ -1,6 +1,7 @@
 // An open Session: its transcript, and what came before a compaction when
 // the reader asks for it. Loading it subscribes this phone to its
 // notifications, which is also what makes its activity show in the list.
+import { LOADED_MESSAGE_LIMIT } from '@droi/daemon-layer/connection'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
@@ -95,7 +96,11 @@ export function SessionScreen({
   const nextEarlier = chain[revealed]
   const earlierError = earlierViews.find((v) => v.loadError)?.loadError
 
-  const lead = earlierError ? (
+  const lead = view.hasOlderMessages ? (
+    <Text tone="muted" size="xs" style={styles.leadRow}>
+      Only the last {LOADED_MESSAGE_LIMIT.toLocaleString()} messages are shown.
+    </Text>
+  ) : earlierError ? (
     <Text role="alert" size="xs" style={[styles.leadRow, { color: colors.destructiveForeground }]}>
       Earlier messages did not load: {earlierError}
     </Text>

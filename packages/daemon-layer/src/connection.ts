@@ -54,6 +54,15 @@ export interface DaemonConnection {
 const RECOVERY_POLL_MS = 2_000
 
 /**
+ * How many of a Session's most recent messages a load brings. The Daemon's
+ * own default is 100 (it ignores `loadAllMessages`), which cut long Sessions
+ * short at the top on every reopen. The transcript is virtualised, so the
+ * budget is the payload, not the rendering; a Session this long has been
+ * compacted several times over.
+ */
+export const LOADED_MESSAGE_LIMIT = 2_000
+
+/**
  * The SDK's state manager as the Client wants it. Progressive UI rendering is
  * off: with it on, the SDK shows only the last 30 messages of a long Session
  * and deletes everything before the boundary when the Daemon compacts the
@@ -79,6 +88,7 @@ export function createDaemonConnection(
         getCredential: async () => ({ apiKey: GATEWAY_API_KEY_PLACEHOLDER }),
         connectionTimeoutMs: 5_000,
         requestTimeout: 30_000,
+        defaultMessageLimit: LOADED_MESSAGE_LIMIT,
         maxPollAttempts: 15,
         maxReconnectAttempts: 3,
         reconnectInterval: 1_000,

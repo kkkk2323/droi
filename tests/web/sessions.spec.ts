@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { drawerGone, expect, test } from './fixtures'
 import {
   assistantMessage,
+  loadSessionResult,
   session,
   thinkingBlock,
   toolCallMessage,
@@ -349,8 +350,28 @@ test.describe('session history', () => {
     )
 
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
-    expect(load.params).toMatchObject({ sessionId: richSession.sessionId })
+    // The Daemon's own default is the last 100 messages, which cut long Sessions short.
+    expect(load.params).toMatchObject({ sessionId: richSession.sessionId, messageLimit: 2000 })
     expect(new URL(page.url()).hash).toBe(`#/s/${richSession.sessionId}`)
+  })
+
+  test('a Session longer than the load says so at the top', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    fakeDaemon.scenario.on('daemon.load_session', () => ({
+      ...loadSessionResult(richSession),
+      hasOlderMessages: true,
+    }))
+    await openClient()
+    await pickSession(/Fix the login bug/)
+    await expect(
+      page
+        .getByRole('log', { name: 'Transcript' })
+        .getByText('Only the last 2,000 messages are shown.'),
+    ).toBeVisible()
   })
 
   test('a reload keeps the open Session', async ({ page, openClient, pickSession }) => {
