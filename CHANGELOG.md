@@ -1,3 +1,20 @@
+## 1.16.0 - 2026-09-28
+
+### Added
+
+- A sort menu beside the Session list's search box orders the workspaces by most sessions (as before), recent activity, name or by hand, and the sessions in each group, Recents too, newest first or by creation. By hand starts from the order on screen; a workspace is dragged into place or moved up and down from its context menu. The Daemon lists no creation time, so each device keeps the time it first saw a session, never later than its last change. The choices are kept per device. On the desktop and in the browser.
+- A folded workspace, Recents, Pinned or Workspaces section shows how many of its sessions are working and how many wait for an answer.
+
+### Changed
+
+- The reasoning effort is set in the model picker: the button reads "GPT-5 High", and the picker ends in a row naming every level of the chosen model. Changing it leaves the picker open; picking a model closes it. The separate effort dropdown is gone from the composer. On the desktop and in the browser.
+- The workspace folder icon in the Session list is smaller and lighter, and shows open when the group is.
+
+### Fixed
+
+- On macOS the window's traffic lights sit level with the sidebar toggle and the page headers instead of about 3pt higher.
+- Closing the skills and MCP dialog no longer collapses it to its header during the fade.
+
 ## 1.15.2 - 2026-09-28
 
 ### Changed
