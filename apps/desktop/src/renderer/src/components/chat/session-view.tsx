@@ -19,7 +19,7 @@ import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
 import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { cn } from '@/lib/utils'
-import { ComposerShelf, ContextMeter } from './composer-panels'
+import { CompactedNotice, ComposerShelf, ContextMeter } from './composer-panels'
 import { GitChangesButton } from './git-changes'
 import { OpenInButton } from './open-in'
 import { InputBar, type InputBarHandle, type Submission } from './input-bar'
@@ -254,6 +254,7 @@ export function SessionView({
               <span className="truncate">{workspaceName(workspace)}</span>
             </span>
           ) : null}
+          <CompactedNotice sessionId={sessionId} />
           <ContextMeter usage={contextUsage} />
         </div>
       </div>

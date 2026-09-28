@@ -164,8 +164,12 @@ test.describe('compaction in place', () => {
     openSidebar,
   }) => {
     // Newer Daemons summarise into the same Session and answer with its own id.
-    fakeDaemon.scenario.on('daemon.compact_session', (params, { daemon }) => {
+    // The Daemon reports no working state for a /compact; it just takes a while.
+    let finish!: () => void
+    const summarising = new Promise<void>((resolve) => (finish = resolve))
+    fakeDaemon.scenario.on('daemon.compact_session', async (params, { daemon }) => {
       const sessionId = String(params['sessionId'])
+      await summarising
       daemon.notify(sessionId, {
         type: 'session_compacted',
         summaryId: 'summary_1',
@@ -182,8 +186,20 @@ test.describe('compaction in place', () => {
     await expect(page.getByRole('group', { name: 'Command compact' })).toBeVisible()
     await input.press('Enter')
     await fakeDaemon.waitForRequest('daemon.compact_session')
+
+    // While it runs the Session's row says so; when it is done the footer says what it did.
+    const row = (await openSidebar()).getByRole('button', { name: /Long chat/ })
+    await expect(row.getByRole('status', { name: 'Compacting' })).toBeVisible()
+    if (await page.getByRole('dialog', { name: 'Sessions' }).isVisible()) {
+      await page.keyboard.press('Escape')
+    }
+    finish()
+    await expect(page.getByRole('status').filter({ hasText: 'Compacted' })).toHaveText(
+      'Compacted, 2 messages summarised',
+    )
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
     await expect(page).toHaveURL(new RegExp(chat.sessionId))
+    await expect(row.getByRole('status', { name: 'Compacting' })).toHaveCount(0)
 
     await pickSession(/Other chat/)
     await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('elsewhere')

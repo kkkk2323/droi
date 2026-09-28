@@ -1,8 +1,10 @@
 // Turns Session working states into alerts (see alerts.ts). Every Client
 // keeps unread marks for Sessions that finished or started waiting while
 // another one was open; what else an alert does is the Client's `onAlert`.
+// A `/compact` this Client ran counts as a completion when it finishes.
 import { useEffect, useRef, useState } from 'react'
 import { AlertTracker, type AlertEvent } from './alerts'
+import { compactions } from './compaction'
 import { useDaemonConnection } from './connection-context'
 import { LOAD_STATE, SESSION_EVENT } from './sdk-enums'
 
@@ -24,8 +26,15 @@ export function useSessionAlerts({
   })
 
   useEffect(() => {
+    const raise = (sessionId: string, alert: AlertEvent) => {
+      const now = latest.current
+      if (now.selectedId !== sessionId) {
+        setUnread((prev) => (prev.has(sessionId) ? prev : new Set(prev).add(sessionId)))
+      }
+      now.onAlert(sessionId, alert)
+    }
     const tracker = new AlertTracker()
-    return sessionState.subscribeToSessionEvents(
+    const unsubscribe = sessionState.subscribeToSessionEvents(
       [SESSION_EVENT.workingStateChanged, SESSION_EVENT.loadStateChanged],
       (event, payload) => {
         const sessionId = payload.sessionId
@@ -40,14 +49,14 @@ export function useSessionAlerts({
         if (manager?.getStore().getCallingSessionId()) return
         const state = manager?.getDroidWorkingState() ?? 'idle'
         const alert = tracker.update(sessionId, state)
-        if (!alert) return
-        const now = latest.current
-        if (now.selectedId !== sessionId) {
-          setUnread((prev) => (prev.has(sessionId) ? prev : new Set(prev).add(sessionId)))
-        }
-        now.onAlert(sessionId, alert)
+        if (alert) raise(sessionId, alert)
       },
     )
+    const offDone = compactions.onDone(({ sessionId }) => raise(sessionId, 'completion'))
+    return () => {
+      unsubscribe()
+      offDone()
+    }
   }, [sessionState])
 
   // Opening a Session reads it.

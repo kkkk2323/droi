@@ -1,5 +1,6 @@
 // Above the composer: the Session's task list and the messages the Daemon
 // holds for a running turn. Under it: the Workspace and the context meter.
+import { useCompactedNotice } from '@droi/daemon-layer/compaction'
 import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
   isPaused,
@@ -12,6 +13,7 @@ import {
 } from '@droi/daemon-layer/use-queued-messages'
 import { useTodos, type TodoItem } from '@droi/daemon-layer/use-todos'
 import {
+  Check,
   ChevronDown,
   Circle,
   CircleCheck,
@@ -241,13 +243,16 @@ function Chevron({ open }: { open: boolean }) {
 
 /** The Workspace's name and how full the context is, under the composer. */
 export function ComposerFooter({
+  sessionId,
   workspace,
   usage,
 }: {
+  sessionId: string
   workspace: string | null
   usage: ContextUsage | null
 }) {
   const colors = useColors()
+  const compacted = useCompactedNotice(sessionId)
   return (
     <View style={styles.footer}>
       {workspace ? (
@@ -255,6 +260,15 @@ export function ComposerFooter({
           <Folder size={12} color={colors.mutedForeground} strokeWidth={1.75} />
           <Text tone="muted" size="xs" numberOfLines={1}>
             {workspace.split('/').filter(Boolean).pop() ?? workspace}
+          </Text>
+        </View>
+      ) : null}
+      {compacted ? (
+        <View role="status" style={styles.workspace}>
+          <Check size={12} color={colors.success} strokeWidth={2} />
+          <Text size="xs" numberOfLines={1} style={{ color: colors.success }}>
+            Compacted, {compacted.removedCount}{' '}
+            {compacted.removedCount === 1 ? 'message' : 'messages'} summarised
           </Text>
         </View>
       ) : null}

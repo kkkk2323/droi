@@ -356,6 +356,15 @@ function WorkspaceSection({
                           <CircleAlert aria-hidden className="size-3 shrink-0" />
                           <span className="truncate">Needs input</span>
                         </span>
+                      ) : doing === 'compacting' ? (
+                        <span
+                          role="status"
+                          aria-label="Compacting"
+                          className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
+                        >
+                          <Spinner aria-hidden className="size-3" />
+                          <span className="truncate">Compacting</span>
+                        </span>
                       ) : subagents > 0 ? (
                         <span
                           role="status"

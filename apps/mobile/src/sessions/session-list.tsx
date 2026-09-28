@@ -495,6 +495,16 @@ function ActivityMark({
   subagents: number
 }) {
   const colors = useColors()
+  if (activity === 'compacting') {
+    return (
+      <View role="status" aria-label="Compacting" style={styles.mark}>
+        <Spinner size={12} color={colors.working} />
+        <Text size="xs" style={{ color: colors.working }}>
+          Compacting
+        </Text>
+      </View>
+    )
+  }
   if (activity !== 'needs-input' && subagents > 0) {
     return (
       <View role="status" style={styles.mark}>

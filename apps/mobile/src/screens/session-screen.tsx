@@ -226,7 +226,11 @@ export function SessionScreen({
               ref={composer}
             />
           )}
-          <ComposerFooter workspace={session.cwd} usage={contextUsage} />
+          <ComposerFooter
+            sessionId={session.sessionId}
+            workspace={session.cwd}
+            usage={contextUsage}
+          />
         </View>
       </TextScale>
     </KeyboardAvoidingView>

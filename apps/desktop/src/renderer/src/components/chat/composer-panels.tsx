@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import {
+  Check,
   ChevronDown,
   Circle,
   CircleCheck,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
+import { useCompactedNotice } from '@droi/daemon-layer/compaction'
 import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
   isPaused,
@@ -253,6 +255,23 @@ function QueuedIcon({ message }: { message: QueuedMessage }) {
     <CornerDownLeft aria-hidden className="size-3 shrink-0 text-muted-foreground" />
   ) : (
     <Clock aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+  )
+}
+
+/** Says, for a few seconds, that a `/compact` finished here and what it folded away. */
+export function CompactedNotice({ sessionId }: { sessionId: string }) {
+  const done = useCompactedNotice(sessionId)
+  if (!done) return null
+  return (
+    <span
+      role="status"
+      className="flex min-w-0 items-center gap-1 text-emerald-600 dark:text-emerald-400"
+    >
+      <Check aria-hidden className="size-3 shrink-0" />
+      <span className="truncate">
+        Compacted, {done.removedCount} {done.removedCount === 1 ? 'message' : 'messages'} summarised
+      </span>
+    </span>
   )
 }
 
