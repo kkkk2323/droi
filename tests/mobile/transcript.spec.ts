@@ -5,7 +5,16 @@ import {
   userMessage,
   type MessageFixture,
 } from '../fake-daemon/scenario'
-import { expect, pairPhone, pickSession, playTurn, standIns, test } from './fixtures'
+import {
+  expect,
+  inReadingOrder,
+  pairPhone,
+  pickSession,
+  playTurn,
+  scrollToOldest,
+  standIns,
+  test,
+} from './fixtures'
 
 const long = session(
   'Long chat',
@@ -51,7 +60,7 @@ test.describe('opening a Session', () => {
       },
     })
     await expect(transcript.getByText('Carrying on from the summary.')).toBeInViewport()
-    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await scrollToOldest(transcript)
     await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
   })
 
@@ -83,7 +92,7 @@ test.describe('opening a Session', () => {
     expect(firstRows.some((row) => row.startsWith('Answer 119'))).toBe(true)
     expect(firstRows).not.toContain('Question 0')
     // The earlier messages come in above.
-    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await scrollToOldest(transcript)
     await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
   })
 })
@@ -107,15 +116,20 @@ test.describe('a Session longer than one load', () => {
     expect((await fakeDaemon.waitForRequest('daemon.load_session')).params).toMatchObject({
       messageLimit: 400,
     })
-    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await scrollToOldest(transcript)
     await expect(transcript.getByText('Question 50', { exact: true })).toBeVisible()
     await expect(transcript.getByText('Answer 49', { exact: true })).toHaveCount(0)
 
+    const reading = transcript.getByText('Question 50', { exact: true })
+    const before = (await reading.boundingBox())!.y
     await transcript.getByRole('button', { name: 'Load previous messages' }).click()
     const older = await fakeDaemon.waitForRequest('daemon.get_session_messages')
     expect(older.params).toMatchObject({ cursor: many[50]!.id, limit: 100 })
     await expect(transcript.getByRole('button', { name: 'Load previous messages' })).toHaveCount(0)
-    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    // They come in above, out of sight; what was being read stays where it was.
+    await page.waitForTimeout(300)
+    expect(Math.abs((await reading.boundingBox())!.y - before)).toBeLessThan(2)
+    await scrollToOldest(transcript)
     await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
   })
 })
@@ -157,14 +171,16 @@ test.describe('a Session continued after two compactions', () => {
     )
 
     await transcript.getByRole('button', { name: /Continued from “Plan v1”/ }).click()
-    await expect(transcript.getByRole('article', { name: 'You' }).first()).toHaveText(
-      'first question',
-    )
+    await expect(transcript).toContainText('first question')
     await expect(transcript.getByRole('separator', { name: 'Context compacted here' })).toHaveCount(
       2,
     )
     await expect(transcript.getByRole('button', { name: /Continued from/ })).toHaveCount(0)
-    await expect(transcript.getByRole('article').last()).toHaveText('latest question')
+    expect(await inReadingOrder(transcript.getByRole('article', { name: 'You' }))).toEqual([
+      'first question',
+      'middle question',
+      'latest question',
+    ])
   })
 })
 
@@ -191,7 +207,9 @@ test.describe('a streamed reply', () => {
       ],
       400,
     )
-    const reply = transcript.getByRole('article', { name: 'Assistant' }).last()
+    const reply = transcript.getByRole('article', { name: 'Assistant' }).filter({
+      hasText: 'The plan',
+    })
     await expect(reply.getByRole('heading', { name: 'The plan' })).toBeVisible()
     // A fence still open while streaming already shows as code.
     await expect(reply.getByRole('group', { name: 'ts code' })).toContainText('const answer')
@@ -209,7 +227,7 @@ test.describe('a streamed reply', () => {
       300,
     )
     await expect(transcript.getByText(/Paragraph 0/)).toBeVisible()
-    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await scrollToOldest(transcript)
     await expect(transcript.getByText('hello', { exact: true })).toBeInViewport()
     await expect(transcript.getByText(/Paragraph 5/)).toBeVisible({ timeout: 5_000 })
     await expect(transcript.getByText('hello', { exact: true })).toBeInViewport()
@@ -249,6 +267,47 @@ test.describe('a streamed reply', () => {
     )
     expect(columns[0]).toHaveLength(3)
     for (const row of columns) expect(row).toEqual(columns[0])
+  })
+})
+
+test.describe('a turn that goes on', () => {
+  const work = session('Work', '/Users/dev/acme-web', [
+    userMessage('go'),
+    assistantMessage(Array.from({ length: 40 }, (_, i) => `Block A line ${i}`).join('\n\n')),
+  ])
+  test.use({ scenario: { sessions: [work] } })
+
+  test('an earlier part of the turn stays put while a later part streams below it', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Work/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Block A line 39')).toBeVisible()
+    // Up in the turn's first block; the list is inverted, so up is further from 0.
+    await transcript.evaluate((el) => (el.scrollTop = 600))
+    const line = transcript.getByText('Block A line 20', { exact: true })
+    await expect(line).toBeInViewport()
+    const before = (await line.boundingBox())!.y
+
+    // The same turn goes on with a second message.
+    fakeDaemon.notify(work.sessionId, {
+      type: 'droid_working_state_changed',
+      newState: 'streaming_assistant_message',
+    })
+    for (let i = 0; i < 20; i++) {
+      fakeDaemon.notify(work.sessionId, {
+        type: 'assistant_text_delta',
+        messageId: 'second_message',
+        blockIndex: 0,
+        textDelta: `Streamed paragraph ${i}. `.repeat(8) + '\n\n',
+      })
+      await page.waitForTimeout(50)
+    }
+    await expect(transcript.getByText(/Streamed paragraph 19/)).toHaveCount(1)
+    await page.waitForTimeout(300)
+    expect(Math.abs((await line.boundingBox())!.y - before)).toBeLessThan(2)
   })
 })
 

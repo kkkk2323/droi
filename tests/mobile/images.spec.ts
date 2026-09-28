@@ -55,7 +55,9 @@ test('a picked image is shown, can be removed, and goes out with the message', a
   })
   await expect(attachments).toHaveCount(0)
   const you = page.getByRole('log', { name: 'Transcript' }).getByRole('article', { name: 'You' })
-  await expect(you.last().getByRole('img', { name: 'Attached image' })).toBeVisible()
+  await expect(
+    you.filter({ hasText: 'What is this?' }).getByRole('img', { name: 'Attached image' }),
+  ).toBeVisible()
   expect((await standIns(page)).picked).toEqual(['library'])
 })
 

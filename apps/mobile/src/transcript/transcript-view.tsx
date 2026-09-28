@@ -1,7 +1,22 @@
 // The transcript: opens on the latest message, follows streamed output while
 // the reader is at the bottom, stays put once they scroll up, and offers the
-// way back down. Same rules as the web Client's list, on a FlatList.
-import { turnEndIds, workingLabel, type TranscriptEntry } from '@droi/daemon-layer/transcript'
+// way back down.
+//
+// The list is inverted: row 0 is the newest and scroll offset 0 is the bottom
+// of the screen. A chat has one fixed point, the latest message above the
+// composer, and an inverted list puts the scroll origin there. It opens on the
+// latest message with no scroll at all, the keyboard shrinking the viewport
+// leaves it where it is, and history coming in lands at the far end, out of
+// sight. Output that grows below the reader is kept from moving what they read
+// by maintainVisibleContentPosition (the browser's scroll anchoring on the
+// web), which holds the row they are on; that is why a turn is split into a
+// row per block.
+import {
+  turnEndIds,
+  workingLabel,
+  type TranscriptBlock,
+  type TranscriptEntry,
+} from '@droi/daemon-layer/transcript'
 import { ArrowDown } from 'lucide-react-native'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
@@ -9,7 +24,7 @@ import {
   Pressable,
   StyleSheet,
   View,
-  type LayoutChangeEvent,
+  type GestureResponderEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native'
@@ -17,16 +32,48 @@ import { BouncingDots } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
-import { MessageEntry } from './message-entry'
+import { AssistantBlock, UserMessage } from './message-entry'
 
 /** How far above the bottom, in points, still counts as reading the latest output. */
 const FOLLOW_THRESHOLD = 120
-/** A height change this soon after a touch in the list is the reader's own (a row opening). */
-const USER_RESIZE_WINDOW_MS = 500
-/** Rows rendered on opening, the latest ones. */
-const INITIAL_ROWS = 20
+/** A height change this soon after a tap in the list is the reader's own (a row opening). */
+const TAP_RESIZE_WINDOW_MS = 500
+/** A touch that moves less than this, in points, is a tap rather than a scroll. */
+const TAP_SLOP = 10
 
 const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
+
+interface Row {
+  key: string
+  entry: TranscriptEntry
+  /** An assistant turn's block; null for the user's message. */
+  block: TranscriptBlock | null
+  first: boolean
+  last: boolean
+}
+
+/** The rows newest first, as the inverted list takes them. */
+function rowsOf(entries: readonly TranscriptEntry[]): Row[] {
+  const rows: Row[] = []
+  for (let e = entries.length - 1; e >= 0; e--) {
+    const entry = entries[e]!
+    if (entry.role === 'user') {
+      rows.push({ key: entry.id, entry, block: null, first: true, last: true })
+      continue
+    }
+    for (let b = entry.blocks.length - 1; b >= 0; b--) {
+      const block = entry.blocks[b]!
+      rows.push({
+        key: block.id,
+        entry,
+        block,
+        first: b === 0,
+        last: b === entry.blocks.length - 1,
+      })
+    }
+  }
+  return rows
+}
 
 export function TranscriptView({
   transcript,
@@ -44,20 +91,16 @@ export function TranscriptView({
   scrollToEndKey?: number
 }) {
   const colors = useColors()
-  const list = useRef<FlatList<TranscriptEntry>>(null)
-  const following = useRef(true)
-  const geometry = useRef({ offset: 0, viewport: 0 })
-  const lastTouched = useRef(0)
-  const [atBottom, setAtBottom] = useState(true)
+  const list = useRef<FlatList<Row>>(null)
+  const offset = useRef(0)
+  const contentHeight = useRef(0)
+  const touchY = useRef(0)
+  const lastTap = useRef(0)
+  const [atLatest, setAtLatest] = useState(true)
 
   const parts = [...earlier, transcript]
   const entries = parts.flat()
-  // A list opened on every row renders from the top and scrolls to the end
-  // one batch of rows at a time, and the whole conversation flashes past on
-  // the way. Opened on the latest rows it lands at once; the rest come in
-  // above, where rows brought in keep the one being read in place.
-  const [opening, setOpening] = useState(true)
-  const rows = opening ? entries.slice(-INITIAL_ROWS) : entries
+  const rows = rowsOf(entries)
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const streamingId =
@@ -67,51 +110,31 @@ export function TranscriptView({
   const boundaryIds = new Set(parts.slice(1).flatMap((part) => (part[0] ? [part[0].id] : [])))
   const activity = workingLabel(workingState)
 
-  // Not FlatList.scrollToEnd: it measures the end from cell layouts that lag
-  // behind a streaming row's growth. The content height is always current;
-  // an offset past the end stops at the end.
-  const scrollToEnd = (animated: boolean) =>
-    list.current?.scrollToOffset({ offset: Number.MAX_SAFE_INTEGER / 2, animated })
+  const toLatest = (animated: boolean) => list.current?.scrollToOffset({ offset: 0, animated })
 
   useEffect(() => {
     if (!scrollToEndKey) return
-    following.current = true
-    const end = () =>
-      list.current?.scrollToOffset({ offset: Number.MAX_SAFE_INTEGER / 2, animated: true })
-    end()
+    const latest = () => list.current?.scrollToOffset({ offset: 0, animated: true })
+    latest()
     // The sent message lands a moment after the send.
-    const timer = setTimeout(end, 150)
+    const timer = setTimeout(latest, 150)
     return () => clearTimeout(timer)
   }, [scrollToEndKey])
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
-    const bottom =
-      contentSize.height - contentOffset.y - layoutMeasurement.height <= FOLLOW_THRESHOLD
-    // Only the reader moving up leaves the bottom. Content growing under the
-    // viewport also fires scroll events (the browser's scroll anchoring,
-    // rows rendering in), and those must not stop the following.
-    if (bottom) following.current = true
-    else if (contentOffset.y < geometry.current.offset - 1) following.current = false
-    geometry.current = { offset: contentOffset.y, viewport: layoutMeasurement.height }
-    setAtBottom(following.current)
+    offset.current = event.nativeEvent.contentOffset.y
+    setAtLatest(offset.current <= FOLLOW_THRESHOLD)
   }
 
+  // Nothing here follows the output: offset 0 is the bottom, so a reader
+  // there sees what arrives without a scroll.
   const onContentSizeChange = (_width: number, height: number) => {
-    // The latest rows have laid out and the end is reached below; the rest can come in.
-    if (opening) requestAnimationFrame(() => setOpening(false))
-    if (!following.current) return
-    if (Date.now() - lastTouched.current < USER_RESIZE_WINDOW_MS) {
-      // A row the reader opened grows in place; follow again only from the bottom.
-      const { offset, viewport } = geometry.current
-      following.current = height - offset - viewport <= FOLLOW_THRESHOLD
-      return
-    }
-    scrollToEnd(false)
-  }
-
-  const onLayout = (event: LayoutChangeEvent) => {
-    geometry.current.viewport = event.nativeEvent.layout.height
+    const grown = height - contentHeight.current
+    contentHeight.current = height
+    if (grown === 0 || Date.now() - lastTap.current >= TAP_RESIZE_WINDOW_MS) return
+    // A row the reader opened grows away from the bottom, up the screen;
+    // scrolling by as much keeps the row under their finger.
+    list.current?.scrollToOffset({ offset: Math.max(0, offset.current + grown), animated: false })
   }
 
   if (entries.length === 0 && !lead) {
@@ -125,28 +148,45 @@ export function TranscriptView({
   return (
     <View
       style={styles.fill}
-      onTouchStart={() => {
-        lastTouched.current = Date.now()
+      // Watches presses without taking them: a press that stays put is a tap
+      // (which may open a row), one that moves is a scroll.
+      onStartShouldSetResponderCapture={(event: GestureResponderEvent) => {
+        touchY.current = event.nativeEvent.pageY
+        lastTap.current = Date.now()
+        return false
+      }}
+      onMoveShouldSetResponderCapture={(event: GestureResponderEvent) => {
+        if (Math.abs(event.nativeEvent.pageY - touchY.current) >= TAP_SLOP) lastTap.current = 0
+        return false
       }}
     >
       <FlatList
         ref={list}
         role="log"
         aria-label="Transcript"
+        inverted
         data={rows}
-        keyExtractor={(entry) => entry.id}
+        keyExtractor={(row) => row.key}
         renderItem={({ item }) => (
           <>
-            {boundaryIds.has(item.id) ? <Boundary /> : null}
-            <MessageEntry
-              entry={item}
-              isStreaming={item.id === streamingId}
-              showTime={ends.has(item.id)}
-            />
+            {item.first && boundaryIds.has(item.entry.id) ? <Boundary /> : null}
+            {item.block ? (
+              <AssistantBlock
+                block={item.block}
+                turnStreaming={item.entry.id === streamingId}
+                first={item.first}
+                last={item.last}
+                isError={item.last && item.entry.isError}
+                time={item.last && ends.has(item.entry.id) ? item.entry.createdAt : 0}
+              />
+            ) : (
+              <UserMessage entry={item.entry} />
+            )}
           </>
         )}
-        ListHeaderComponent={<View style={styles.header}>{lead}</View>}
-        ListFooterComponent={
+        // Swapped: an inverted list draws its header at the bottom, after the
+        // latest row, and its footer at the top, before the oldest.
+        ListHeaderComponent={
           <View role="status" aria-label="Session activity" style={styles.activity}>
             {activity ? (
               <>
@@ -158,26 +198,38 @@ export function TranscriptView({
             ) : null}
           </View>
         }
+        ListFooterComponent={
+          <View
+            style={styles.lead}
+            // What is tapped here brings rows in at the far end, where they
+            // move nothing; no row opened.
+            onStartShouldSetResponderCapture={() => {
+              lastTap.current = 0
+              return false
+            }}
+          >
+            {lead}
+          </View>
+        }
         contentContainerStyle={styles.content}
         onScroll={onScroll}
         scrollEventThrottle={16}
         onContentSizeChange={onContentSizeChange}
-        onLayout={onLayout}
         keyboardDismissMode="interactive"
-        // Rows brought in above (previous messages, earlier Sessions) keep
-        // the row being read where it is.
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-        initialNumToRender={INITIAL_ROWS}
+        // Holds the row being read while rows below it grow or arrive, and
+        // carries a reader at the bottom along with them.
+        maintainVisibleContentPosition={{
+          minIndexForVisible: 0,
+          autoscrollToTopThreshold: FOLLOW_THRESHOLD,
+        }}
+        initialNumToRender={20}
         windowSize={11}
       />
-      {!atBottom ? (
+      {!atLatest ? (
         <Pressable
           role="button"
           aria-label="Scroll to latest"
-          onPress={() => {
-            following.current = true
-            scrollToEnd(true)
-          }}
+          onPress={() => toLatest(true)}
           style={[styles.down, { backgroundColor: colors.background, borderColor: colors.border }]}
         >
           <ArrowDown size={18} color={colors.foreground} strokeWidth={1.75} />
@@ -203,8 +255,10 @@ function Boundary() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: space.lg },
-  header: { paddingTop: space.md },
+  // A conversation shorter than the screen starts at the top, as it reads;
+  // inverted, the far end of the content is the top.
+  content: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: space.lg },
+  lead: { paddingTop: space.md },
   activity: {
     flexDirection: 'row',
     alignItems: 'center',

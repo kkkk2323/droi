@@ -34,6 +34,36 @@ export async function presetStandIns(page: Page, values: Partial<StandIns>): Pro
   }, values)
 }
 
+/**
+ * Scrolls the transcript to its oldest message. The list is inverted: the
+ * oldest message is at its far end, and the newest comes first in the page.
+ * The far end grows as rows on the way render, so it takes a few scrolls, as
+ * it would a reader.
+ */
+export async function scrollToOldest(transcript: Locator): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        transcript.evaluate((el) => {
+          const end = el.scrollHeight - el.clientHeight
+          const there = Math.abs(el.scrollTop - end) < 1
+          // Not el.scrollTo: React Native Web replaces it with its own, which takes { x, y }.
+          el.scrollTop = el.scrollHeight
+          return there
+        }),
+      { intervals: [50], timeout: 20_000 },
+    )
+    .toBe(true)
+}
+
+/** The texts of these elements in reading order, top of the screen first. */
+export async function inReadingOrder(elements: Locator): Promise<string[]> {
+  const boxes = await elements.evaluateAll((els) =>
+    els.map((el) => ({ y: el.getBoundingClientRect().top, text: el.textContent ?? '' })),
+  )
+  return boxes.sort((a, b) => a.y - b.y).map((box) => box.text)
+}
+
 /** The Desktop Shell's pairing link for this Fake Daemon, as Settings shows it. */
 export function pairingLink(daemon: FakeDaemon, token = daemon.token): string {
   return `${daemon.url}/#pair=${token}`

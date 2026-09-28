@@ -44,10 +44,12 @@ test.describe('a turn from the phone', () => {
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('')
 
     const transcript = page.getByRole('log', { name: 'Transcript' })
-    await expect(transcript.getByRole('article', { name: 'You' }).last()).toContainText(
-      'Tell me a story',
-    )
-    const reply = transcript.getByRole('article', { name: 'Assistant' }).last()
+    await expect(
+      transcript.getByRole('article', { name: 'You' }).filter({ hasText: 'Tell me a story' }),
+    ).toBeVisible()
+    const reply = transcript.getByRole('article', { name: 'Assistant' }).filter({
+      hasText: 'Part one.',
+    })
     await expect(reply).toContainText('Part one.')
     await page.getByRole('button', { name: 'Cancel' }).click()
     await fakeDaemon.waitForRequest('daemon.interrupt_session')

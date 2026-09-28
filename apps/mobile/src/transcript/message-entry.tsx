@@ -1,5 +1,7 @@
-// One transcript entry: the user's message as a bubble, or an assistant turn
-// as Markdown, images, folded reasoning and quiet tool rows.
+// The transcript's rows: the user's message as a bubble, and each block of an
+// assistant turn (Markdown, an image, folded reasoning, quiet tool rows) as a
+// row of its own. A turn is split so the list can keep a block the reader is
+// on in place while a later block of the same turn grows.
 import {
   formatTimestamp,
   type TranscriptBlock,
@@ -18,96 +20,108 @@ import { ToolCluster } from './tool-cluster'
 type TextBlock = Extract<TranscriptBlock, { kind: 'text' }>
 type ImageBlock = Extract<TranscriptBlock, { kind: 'image' }>
 
-export const MessageEntry = memo(function MessageEntry({
-  entry,
-  isStreaming,
-  showTime,
+export const UserMessage = memo(function UserMessage({ entry }: { entry: TranscriptEntry }) {
+  const colors = useColors()
+  const text = entry.blocks
+    .filter((b): b is TextBlock => b.kind === 'text')
+    .map((b) => b.text)
+    .join('\n')
+  const images = entry.blocks.filter((b): b is ImageBlock => b.kind === 'image')
+  return (
+    <View role="article" aria-label="You" style={styles.user}>
+      {images.map((image) => (
+        <Image
+          key={image.id}
+          source={{ uri: image.src }}
+          alt="Attached image"
+          accessibilityLabel="Attached image"
+          resizeMode="contain"
+          style={[styles.userImage, { borderColor: colors.border }]}
+        />
+      ))}
+      {text ? (
+        <View style={[styles.bubble, { backgroundColor: colors.secondary }]}>
+          <Text selectable style={styles.bubbleText}>
+            {text}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  )
+})
+
+export const AssistantBlock = memo(function AssistantBlock({
+  block,
+  turnStreaming,
+  first,
+  last,
+  isError,
+  time,
 }: {
-  entry: TranscriptEntry
-  isStreaming: boolean
-  showTime: boolean
+  block: TranscriptBlock
+  /** The turn this block belongs to is still being written. */
+  turnStreaming: boolean
+  first: boolean
+  /** The turn's last block, which carries how the turn ended. */
+  last: boolean
+  isError: boolean
+  /** When the turn ended, shown under its last block; 0 for none. */
+  time: number
 }) {
   const colors = useColors()
-  if (entry.role === 'user') {
-    const text = entry.blocks
-      .filter((b): b is TextBlock => b.kind === 'text')
-      .map((b) => b.text)
-      .join('\n')
-    const images = entry.blocks.filter((b): b is ImageBlock => b.kind === 'image')
-    return (
-      <View role="article" aria-label="You" style={styles.user}>
-        {images.map((image) => (
-          <Image
-            key={image.id}
-            source={{ uri: image.src }}
-            alt="Attached image"
-            accessibilityLabel="Attached image"
-            resizeMode="contain"
-            style={[styles.userImage, { borderColor: colors.border }]}
-          />
-        ))}
-        {text ? (
-          <View style={[styles.bubble, { backgroundColor: colors.secondary }]}>
-            <Text selectable style={styles.bubbleText}>
-              {text}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-    )
-  }
-
-  const lastIndex = entry.blocks.length - 1
   return (
-    <View role="article" aria-label="Assistant" style={styles.assistant}>
-      {entry.blocks.map((block, index) => {
-        switch (block.kind) {
-          case 'text':
-            return (
-              <Markdown
-                key={block.id}
-                text={block.text}
-                streaming={isStreaming && index === lastIndex}
-              />
-            )
-          case 'image':
-            return (
-              <Image
-                key={block.id}
-                source={{ uri: block.src }}
-                accessibilityLabel="Image from Droid"
-                resizeMode="contain"
-                style={[styles.assistantImage, { borderColor: colors.border }]}
-              />
-            )
-          case 'thinking':
-            return (
-              <ThinkingSection
-                key={block.id}
-                text={block.text}
-                durationMs={block.durationMs}
-                isStreaming={isStreaming}
-              />
-            )
-          case 'tools':
-            return <ToolCluster key={block.id} calls={block.calls} />
-          case 'subagent':
-            return <SubagentCard key={block.id} call={block.call} />
-        }
-      })}
-      {entry.isError ? (
+    <View
+      role="article"
+      aria-label="Assistant"
+      style={[styles.assistant, first ? styles.assistantFirst : null]}
+    >
+      {renderBlock(block, turnStreaming, last, colors.border)}
+      {last && isError ? (
         <Text size="sm" style={{ color: colors.destructiveForeground }}>
           The turn ended with an error.
         </Text>
       ) : null}
-      {showTime && entry.createdAt ? (
+      {last && time ? (
         <Text tone="muted" size="xs">
-          {formatTimestamp(entry.createdAt)}
+          {formatTimestamp(time)}
         </Text>
       ) : null}
     </View>
   )
 })
+
+function renderBlock(
+  block: TranscriptBlock,
+  turnStreaming: boolean,
+  last: boolean,
+  border: string,
+) {
+  switch (block.kind) {
+    case 'text':
+      return <Markdown text={block.text} streaming={turnStreaming && last} />
+    case 'image':
+      return (
+        <Image
+          source={{ uri: block.src }}
+          accessibilityLabel="Image from Droid"
+          resizeMode="contain"
+          style={[styles.assistantImage, { borderColor: border }]}
+        />
+      )
+    case 'thinking':
+      return (
+        <ThinkingSection
+          text={block.text}
+          durationMs={block.durationMs}
+          isStreaming={turnStreaming}
+        />
+      )
+    case 'tools':
+      return <ToolCluster calls={block.calls} />
+    case 'subagent':
+      return <SubagentCard call={block.call} />
+  }
+}
 
 const styles = StyleSheet.create({
   user: { alignItems: 'flex-end', gap: space.xs, paddingVertical: space.sm },
@@ -124,7 +138,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  assistant: { gap: space.sm, paddingVertical: space.sm },
+  // The turn's blocks sit space.sm apart, with space.sm above and below the turn.
+  assistant: { gap: space.sm, paddingBottom: space.sm },
+  assistantFirst: { paddingTop: space.sm },
   assistantImage: {
     width: '100%',
     height: 240,
