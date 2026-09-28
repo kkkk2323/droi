@@ -85,14 +85,14 @@ const dark: Colors = {
 // Solarized Light+ as the web Client draws it (global.css, [data-theme='solarized-light']).
 const solarizedLight: Colors = {
   background: '#fdf6e3',
-  foreground: '#333333',
+  foreground: '#657b83',
   card: '#eee8d5',
   popover: '#eee8d5',
   primary: '#ac9d57',
   primaryForeground: '#ffffff',
   secondary: '#eee8d5',
   muted: '#eee8d5',
-  mutedForeground: '#717171',
+  mutedForeground: '#93a1a1',
   accent: '#ddd6c1',
   destructive: '#dc322f',
   destructiveForeground: '#dc322f',

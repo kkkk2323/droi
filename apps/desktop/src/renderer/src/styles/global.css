@@ -122,24 +122,25 @@ html[data-font='system'] {
    workbench colours on Droi's surfaces: editor → the conversation, sideBar →
    the sidebar, list selection (unfocused, as it mostly is) → the selected row,
    dropdown and widgets → popovers, focusBorder → the ring. The conversation's
-   text is the theme's editor text (#333333). The theme sets no UI text, so
-   VS Code draws it in its light defaults, #616161 and #717171 for
-   descriptions; the sidebar does the same. */
+   text is what VS Code shows for code (the theme's `source` rule, #657b83),
+   secondary text its comments (#93a1a1). The theme sets no UI text, so VS
+   Code draws its sidebar in its light defaults, #616161 and #717171 for
+   descriptions; Droi's sidebar does the same. */
 [data-theme='solarized-light'] {
   --background: #fdf6e3;
-  --foreground: #333333;
+  --foreground: #657b83;
   --card: #eee8d5;
-  --card-foreground: #333333;
+  --card-foreground: #657b83;
   --popover: #eee8d5;
-  --popover-foreground: #333333;
+  --popover-foreground: #657b83;
   --primary: #ac9d57;
   --primary-foreground: #ffffff;
   --secondary: #eee8d5;
   --secondary-foreground: #586e75;
   --muted: #eee8d5;
-  --muted-foreground: #717171;
+  --muted-foreground: #93a1a1;
   --accent: #ddd6c1;
-  --accent-foreground: #333333;
+  --accent-foreground: #657b83;
   --destructive: #dc322f;
   --destructive-foreground: #dc322f;
   --border: #ddd6c1;
@@ -168,6 +169,7 @@ html[data-font='system'] {
 }
 [data-theme='solarized-light'] [data-surface='sidebar'] {
   --foreground: var(--sidebar-foreground);
+  --muted-foreground: #717171;
 }
 [data-theme='solarized-light'] ::selection {
   background-color: #ccc4b0;
