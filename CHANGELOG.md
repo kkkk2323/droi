@@ -1,3 +1,15 @@
+## 1.17.0 - 2026-09-28
+
+### Added
+
+- A Solarized Light+ theme (github.com/ryanolsonx/vscode-solarized-theme), chosen under Settings › Theme beside Light and Dark. It puts the theme's VS Code workbench colours on Droi's surfaces: the editor's cream behind the conversation, the sidebar's parchment behind the Session list, the unfocused list selection on the selected row, and VS Code's own light greys for the sidebar text. The conversation's text is Solarized's base01. On the desktop, in the browser and on the phone.
+- Code blocks are highlighted: github-light and github-dark under the Light and Dark themes, the theme's own colours under Solarized Light+. On the desktop and in the browser.
+
+### Changed
+
+- Status colours (success, attention, working, added, removed, highlight) come from the theme instead of fixed greens, ambers and reds, so every theme colours them its own way.
+- Text keeps the platform's font smoothing instead of the thinner antialiased rendering, matching VS Code and the rest of macOS. On the desktop and in the browser.
+
 ## 1.16.0 - 2026-09-28
 
 ### Added
