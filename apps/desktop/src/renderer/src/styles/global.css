@@ -121,8 +121,10 @@ html[data-font='system'] {
 /* Solarized Light+ (github.com/ryanolsonx/vscode-solarized-theme), its VS Code
    workbench colours on Droi's surfaces: editor → the conversation, sideBar →
    the sidebar, list selection (unfocused, as it mostly is) → the selected row,
-   dropdown and widgets → popovers, focusBorder → the ring. Text is the
-   theme's editor text (#333333) and its #586e75 chrome. */
+   dropdown and widgets → popovers, focusBorder → the ring. The conversation's
+   text is the theme's editor text (#333333). The theme sets no UI text, so
+   VS Code draws it in its light defaults, #616161 and #717171 for
+   descriptions; the sidebar does the same. */
 [data-theme='solarized-light'] {
   --background: #fdf6e3;
   --foreground: #333333;
@@ -135,7 +137,7 @@ html[data-font='system'] {
   --secondary: #eee8d5;
   --secondary-foreground: #586e75;
   --muted: #eee8d5;
-  --muted-foreground: #657b83;
+  --muted-foreground: #717171;
   --accent: #ddd6c1;
   --accent-foreground: #333333;
   --destructive: #dc322f;
@@ -144,11 +146,11 @@ html[data-font='system'] {
   --input: #ddd6c1;
   --ring: #d3af86;
   --sidebar: #eee8d5;
-  --sidebar-foreground: #586e75;
+  --sidebar-foreground: #616161;
   --sidebar-primary: #ac9d57;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #d1cbb8;
-  --sidebar-accent-foreground: #333333;
+  --sidebar-accent-foreground: #616161;
   --sidebar-border: #ddd6c1;
   --sidebar-ring: #d3af86;
   --code: #2aa198;
@@ -163,6 +165,9 @@ html[data-font='system'] {
   --removed: #dc322f;
   --removed-foreground: #dc322f;
   --highlight: #b5890040;
+}
+[data-theme='solarized-light'] [data-surface='sidebar'] {
+  --foreground: var(--sidebar-foreground);
 }
 [data-theme='solarized-light'] ::selection {
   background-color: #ccc4b0;

@@ -150,6 +150,7 @@ export function SessionSidebar({
   return (
     <nav
       aria-label="Sessions"
+      data-surface="sidebar"
       className="flex h-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
     >
       {/* Drag strip; on wide screens the pinned sidebar toggle sits over it. */}
