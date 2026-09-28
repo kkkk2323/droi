@@ -34,11 +34,13 @@ if [ -z "$device" ]; then
   device=$(node -e '
     const { result } = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
     // Since Xcode 27 the list also holds simulators, which count as paired.
+    // A phone paired once but out of reach stays listed with tunnelState "unavailable".
     const phone = result.devices.find(
       (d) =>
         d.hardwareProperties?.deviceType === "iPhone" &&
         d.hardwareProperties?.reality !== "simulated" &&
-        d.connectionProperties?.pairingState === "paired",
+        d.connectionProperties?.pairingState === "paired" &&
+        d.connectionProperties?.tunnelState !== "unavailable",
     )
     if (phone) console.log(phone.hardwareProperties.udid)
   ' "$devices")
