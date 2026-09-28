@@ -183,14 +183,25 @@ export function toolResultText(result: ToolResultBlock | null): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
     return content
-      .map((part: unknown) =>
-        typeof part === 'object' && part !== null && 'text' in part
-          ? String((part as { text: unknown }).text)
-          : '',
+      .filter(
+        (part: unknown): part is { text: unknown } =>
+          typeof part === 'object' && part !== null && 'text' in part,
       )
+      .map((part) => String(part.text))
       .join('\n')
   }
   return ''
+}
+
+/** The pictures a tool handed back (a Read of an image file, a screenshot), as data URLs. */
+export function toolResultImages(result: ToolResultBlock | null): string[] {
+  const content = result?.content
+  if (!Array.isArray(content)) return []
+  const images: string[] = []
+  for (const part of content) {
+    if (part.type === 'image' && part.source.type === 'base64') images.push(dataUrl(part.source))
+  }
+  return images
 }
 
 // Building a formatter is the slow part of toLocaleTimeString; a turn's

@@ -89,7 +89,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(false)
   const Icon = ICONS[call.use.name] ?? Wrench
   const summary = toolSummary(call)
-  const { text: result, pending, isError, diff, status } = readToolResult(call)
+  const { text: result, images, pending, isError, diff, status } = readToolResult(call)
 
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen}>
@@ -179,6 +179,14 @@ function ToolRow({ call }: { call: ToolCall }) {
             ) : null}
           </pre>
         )}
+        {images.map((src) => (
+          <img
+            key={src}
+            src={src}
+            alt={`Picture from ${call.use.name}`}
+            className="mx-2.5 mb-2.5 max-h-80 max-w-[calc(100%-1.25rem)] rounded-md border object-contain object-left"
+          />
+        ))}
       </Collapsible.Panel>
     </Collapsible.Root>
   )

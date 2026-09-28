@@ -1,7 +1,7 @@
 // What the transcript shows for a tool call, whichever Client draws it: a
 // one-line summary, the input, and the result read as a diff, a status or
-// plain text.
-import { toolResultText, type ToolCall } from './transcript'
+// plain text, with any pictures it handed back.
+import { toolResultImages, toolResultText, type ToolCall } from './transcript'
 
 export interface DiffLine {
   type: 'unchanged' | 'added' | 'removed'
@@ -150,6 +150,7 @@ export function readToolResult(call: ToolCall) {
   const diff = parseDiffResult(result) ?? (isError ? null : createdFileDiff(call))
   return {
     text: result,
+    images: toolResultImages(call.result),
     pending: call.result === null,
     isError,
     diff,

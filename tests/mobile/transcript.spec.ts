@@ -311,12 +311,19 @@ test.describe('a turn that goes on', () => {
   })
 })
 
+const PIXEL =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
 function toolTurn(): MessageFixture[] {
   const call = (id: string, name: string, input: Record<string, unknown>): MessageFixture => ({
     ...assistantMessage(''),
     content: [{ type: 'tool_use', id, name, input }],
   })
-  const result = (toolUseId: string, content: string, isError = false): MessageFixture => ({
+  const result = (
+    toolUseId: string,
+    content: string | Array<Record<string, unknown>>,
+    isError = false,
+  ): MessageFixture => ({
     ...assistantMessage(''),
     role: 'tool',
     content: [{ type: 'tool_result', toolUseId, content, ...(isError ? { isError } : {}) }],
@@ -331,6 +338,11 @@ function toolTurn(): MessageFixture[] {
       ],
     },
     result('read', 'export function login() {}'),
+    call('shot', 'Read', { file_path: '/tmp/shot.png' }),
+    result('shot', [
+      { type: 'text', text: 'Image file: shot.png (original size: 1.2 KB)' },
+      { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: PIXEL } },
+    ]),
     call('test', 'Execute', { command: 'npm test', summary: 'Run the tests' }),
     result('test', 'Error: 1 test failed', true),
     call('edit', 'Edit', {
@@ -392,6 +404,13 @@ test.describe('tool calls and reasoning', () => {
     const details = transcript.getByRole('region', { name: 'Execute details' })
     await expect(details).toContainText('$ npm test')
     await expect(details).toContainText('Error: 1 test failed')
+
+    // A picture a tool handed back shows in its detail, from the result itself.
+    await expect(transcript.getByRole('img', { name: 'Picture from Read' })).toHaveCount(0)
+    await transcript.getByRole('button', { name: 'Read: /tmp/shot.png' }).click()
+    const picture = transcript.getByRole('img', { name: 'Picture from Read' })
+    await expect(picture).toBeVisible()
+    await expect(transcript.getByText('Image file: shot.png (original size: 1.2 KB)')).toBeVisible()
   })
 
   test('an Edit shows a line diff and a Create the new file', async ({ page, fakeDaemon }) => {
@@ -450,9 +469,9 @@ test.describe('tool calls and reasoning', () => {
 
     // The whole cluster folds under its header the same way, given room to
     // scroll (at the very bottom nothing can move down to make up for it).
-    await transcript.evaluate((el) => (el.scrollTop = 150))
+    await transcript.evaluate((el) => (el.scrollTop = 250))
     await page.waitForTimeout(300)
-    const cluster = transcript.getByRole('button', { name: /Used 4 tools/ })
+    const cluster = transcript.getByRole('button', { name: /Used 5 tools/ })
     await expect(cluster).toBeInViewport()
     const clusterBefore = (await cluster.boundingBox())!.y
     await cluster.click()

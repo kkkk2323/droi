@@ -22,6 +22,9 @@ const cliSession = session('Refactor billing', '/Users/dev/billing-service', [
   userMessage('Refactor the invoice generator'),
 ])
 
+const PIXEL =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
 function richHistory(): MessageFixture[] {
   const toolUseId = 'call_read_1'
   const assistantWithTool: MessageFixture = {
@@ -100,6 +103,28 @@ function richHistory(): MessageFixture[] {
       },
     ],
   }
+  // A Read of an image answers with the picture itself next to the text.
+  const shotId = 'call_read_shot'
+  const assistantWithShot: MessageFixture = {
+    ...assistantMessage(''),
+    content: [
+      { type: 'tool_use', id: shotId, name: 'Read', input: { file_path: '/tmp/shot.png' } },
+    ],
+  }
+  const shotResult: MessageFixture = {
+    ...assistantMessage(''),
+    role: 'tool',
+    content: [
+      {
+        type: 'tool_result',
+        toolUseId: shotId,
+        content: [
+          { type: 'text', text: 'Image file: shot.png (original size: 1.2 KB)' },
+          { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: PIXEL } },
+        ],
+      },
+    ],
+  }
   return [
     userMessage('Why does login fail?'),
     assistantWithTool,
@@ -108,6 +133,8 @@ function richHistory(): MessageFixture[] {
     editResult,
     assistantWithCreate,
     createResult,
+    assistantWithShot,
+    shotResult,
     assistantMessage('The `login` function never awaits the token refresh. Here is the fix.'),
   ]
 }
@@ -415,6 +442,15 @@ test.describe('session history', () => {
     await expect(tool).toBeVisible()
     await tool.click()
     await expect(transcript.getByText('export function login() {}')).toBeVisible()
+
+    // A picture a tool handed back shows in its detail, from the result itself.
+    const shot = transcript.getByRole('button', { name: 'Read: /tmp/shot.png' })
+    await expect(transcript.getByRole('img', { name: 'Picture from Read' })).toHaveCount(0)
+    await shot.click()
+    const picture = transcript.getByRole('img', { name: 'Picture from Read' })
+    await expect(picture).toHaveAttribute('src', /^data:image\/png;base64,/)
+    await expect(transcript.getByText('Image file: shot.png (original size: 1.2 KB)')).toBeVisible()
+    await shot.click()
 
     // An Edit shows its counts on the row and its result as a coloured diff.
     const edit = transcript.getByRole('button', { name: 'Edit: src/auth.ts' })

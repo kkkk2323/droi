@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
-import { buildTranscript, reuseUnchanged, toolResultText } from './transcript'
+import { buildTranscript, reuseUnchanged, toolResultImages, toolResultText } from './transcript'
 
 const message = (
   role: 'user' | 'assistant' | 'tool',
@@ -119,6 +119,24 @@ describe('buildTranscript', () => {
         content: [{ type: 'text', text: 'hi' }],
       } as never),
     ).toBe('hi')
+  })
+
+  test('a tool result carries the pictures it handed back, the text without them', () => {
+    const result = {
+      type: 'tool_result',
+      toolUseId: 'x',
+      content: [
+        { type: 'text', text: 'Image file: shot.png' },
+        { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: 'AAAA' } },
+        { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
+      ],
+    } as never
+    expect(toolResultText(result)).toBe('Image file: shot.png')
+    expect(toolResultImages(result)).toEqual(['data:image/png;base64,AAAA'])
+    expect(
+      toolResultImages({ type: 'tool_result', toolUseId: 'x', content: 'x' } as never),
+    ).toEqual([])
+    expect(toolResultImages(null)).toEqual([])
   })
 })
 

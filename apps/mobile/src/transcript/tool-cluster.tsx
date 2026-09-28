@@ -23,7 +23,7 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react-native'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Spinner } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { fonts, radius, space } from '../ui/theme'
@@ -84,7 +84,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   const fold = useFold()
   const Icon = ICONS[call.use.name] ?? Wrench
   const summary = toolSummary(call)
-  const { text, pending, isError, diff, status } = readToolResult(call)
+  const { text, images, pending, isError, diff, status } = readToolResult(call)
   const tint = isError ? colors.destructiveForeground : colors.mutedForeground
   return (
     <View>
@@ -165,6 +165,17 @@ function ToolRow({ call }: { call: ToolCall }) {
               {truncateLines(text, RESULT_PREVIEW_LINES)}
             </Text>
           ) : null}
+          {images.map((src) => (
+            // A fixed height, so the fold's measured size holds once the picture decodes.
+            <Image
+              key={src}
+              source={{ uri: src }}
+              alt={`Picture from ${call.use.name}`}
+              accessibilityLabel={`Picture from ${call.use.name}`}
+              resizeMode="contain"
+              style={[styles.picture, { borderColor: colors.border }]}
+            />
+          ))}
         </View>
       </Folded>
     </View>
@@ -226,6 +237,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   detailText: { padding: space.sm, lineHeight: 18 },
+  picture: {
+    height: 220,
+    marginHorizontal: space.sm,
+    marginBottom: space.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+  },
   diff: { paddingBottom: space.xs },
   diffLine: { flexDirection: 'row', paddingRight: space.md },
   gutter: { paddingHorizontal: space.sm, opacity: 0.6 },
