@@ -230,7 +230,11 @@ html[data-font='system'] {
   }
   html,
   body {
-    @apply h-full bg-sidebar font-sans text-foreground antialiased;
+    /* Font smoothing stays the platform's: `antialiased` thins the strokes
+       (about 8% fewer solid glyph pixels on a Retina Mac), which reads as
+       lighter, paler text in a low-contrast palette. VS Code and native
+       macOS apps leave it alone too. */
+    @apply h-full bg-sidebar font-sans text-foreground;
     font-size: 14px;
     /* The app fills the viewport and scrolls inside; the document itself
        must not, or an iOS keyboard leaves it shifted once dismissed. */
