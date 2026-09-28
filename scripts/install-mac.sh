@@ -17,9 +17,15 @@ app="dist/mac-$arch/Droi.app"
 target="/Applications/Droi.app"
 [ -d "$app" ] || { echo "build output missing: $app" >&2; exit 1; }
 
-if pgrep -x Droi >/dev/null; then
-  osascript -e 'tell application "Droi" to quit' || true
-  for _ in $(seq 1 20); do pgrep -x Droi >/dev/null || break; sleep 0.5; done
+# pgrep does not see the app's process on every macOS; Launch Services does.
+running() { [ "$(osascript -e 'application id "com.droi.app" is running' 2>/dev/null)" = true ]; }
+if running; then
+  osascript -e 'tell application id "com.droi.app" to quit' || true
+  for _ in $(seq 1 20); do running || break; sleep 0.5; done
+  if running; then
+    echo "Droi did not quit (a Session may be running); quit it and run this again." >&2
+    exit 1
+  fi
 fi
 
 rm -rf "$target"
