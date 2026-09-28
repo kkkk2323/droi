@@ -1,17 +1,22 @@
-// The Session's MCP Servers on the phone: connection, switch, tools, and a
-// form to add one. A sign-in finishes at the Daemon's own callback on the
-// computer, which this phone's browser cannot reach, so the page's link is
-// offered to copy and open there.
+// The Session's MCP Servers on the phone: connection, switch, tools. Adding
+// one is a view of its own, as on the desktop: Factory's catalogue to search
+// and add from in one tap, and a form for a server by hand or for a catalogue
+// entry with a value to fill in first. A sign-in finishes at the Daemon's own
+// callback on the computer, which this phone's browser cannot reach, so the
+// page's link is offered to copy and open there.
 import {
   EMPTY_SERVER_FORM,
   STATUS_LABELS,
   canRemove,
+  filterRegistry,
   formFromRegistry,
   isReadOnly,
+  needsSetup,
   needsSignIn,
   parseServerForm,
   sortServers,
   type AddMcpServerInput,
+  type McpRegistryEntry,
   type McpServer,
   type McpTool,
   type ServerForm,
@@ -23,10 +28,11 @@ import {
   useMcpTools,
   type McpActions,
 } from '@droi/daemon-layer/use-mcp'
-import { ChevronRight } from 'lucide-react-native'
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Switch, TextInput, View } from 'react-native'
 import { copyText } from '../platform/clipboard'
+import { Spinner } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
@@ -36,10 +42,42 @@ export function McpList({ sessionId }: { sessionId: string }) {
   const view = useMcpServers(sessionId)
   const { tools } = useMcpTools(sessionId)
   const actions = useMcpActions(sessionId)
-  const [adding, setAdding] = useState(false)
+  const [showing, setShowing] = useState<View_>({ kind: 'list' })
   if (view.isLoading) return <Loading what="MCP servers" />
   if (view.error) return <Failure message={view.error} />
   const servers = sortServers(view.servers)
+  const taken = servers.map((s) => s.name)
+  const add = async (params: AddMcpServerInput) => {
+    const added = await actions.add(params)
+    if (added) setShowing({ kind: 'list' })
+    return added
+  }
+
+  if (showing.kind === 'catalogue') {
+    return (
+      <Catalogue
+        sessionId={sessionId}
+        taken={taken}
+        busy={actions.busy}
+        error={actions.error}
+        onAdd={add}
+        onSetUp={(entry) => setShowing({ kind: 'form', from: entry })}
+        onByHand={() => setShowing({ kind: 'form', from: null })}
+        onBack={() => setShowing({ kind: 'list' })}
+      />
+    )
+  }
+  if (showing.kind === 'form') {
+    return (
+      <AddServer
+        from={showing.from}
+        taken={taken}
+        error={actions.error}
+        onAdd={add}
+        onBack={() => setShowing({ kind: 'catalogue' })}
+      />
+    )
+  }
   return (
     <>
       {view.summary?.configError ? (
@@ -62,18 +100,129 @@ export function McpList({ sessionId }: { sessionId: string }) {
           ))}
         </View>
       )}
-      {adding ? (
-        <AddServer
-          sessionId={sessionId}
-          taken={servers.map((s) => s.name)}
-          onAdd={(params) => actions.add(params)}
-          onDone={() => setAdding(false)}
+      <View style={styles.actions}>
+        <SmallButton label="Add server" onPress={() => setShowing({ kind: 'catalogue' })} />
+      </View>
+    </>
+  )
+}
+
+type View_ =
+  | { kind: 'list' }
+  | { kind: 'catalogue' }
+  /** `from` is the catalogue entry being set up; null for a server by hand. */
+  | { kind: 'form'; from: McpRegistryEntry | null }
+
+function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  const colors = useColors()
+  return (
+    <View style={styles.subHeader}>
+      <Pressable role="button" aria-label="Back" onPress={onBack} hitSlop={8} style={styles.back}>
+        <ChevronLeft size={18} color={colors.mutedForeground} />
+      </Pressable>
+      <Text weight="medium">{title}</Text>
+    </View>
+  )
+}
+
+function Catalogue({
+  sessionId,
+  taken,
+  busy,
+  error,
+  onAdd,
+  onSetUp,
+  onByHand,
+  onBack,
+}: {
+  sessionId: string
+  taken: string[]
+  busy: string | null
+  error: string | null
+  onAdd: (params: AddMcpServerInput) => Promise<boolean>
+  onSetUp: (entry: McpRegistryEntry) => void
+  onByHand: () => void
+  onBack: () => void
+}) {
+  const colors = useColors()
+  const [query, setQuery] = useState('')
+  const registry = useMcpRegistry(sessionId)
+  const entries = filterRegistry(registry.entries, query, taken)
+  const addNow = (entry: McpRegistryEntry) => {
+    const parsed = parseServerForm(formFromRegistry(entry))
+    if (parsed.ok) void onAdd(parsed.params)
+    else onSetUp(entry)
+  }
+  return (
+    <>
+      <SubHeader title="Add MCP server" onBack={onBack} />
+      <View
+        style={[styles.search, { borderColor: colors.input, backgroundColor: colors.background }]}
+      >
+        <Search size={14} color={colors.mutedForeground} />
+        <TextInput
+          aria-label="Search the catalogue"
+          placeholder="Search Factory's catalogue"
+          placeholderTextColor={colors.mutedForeground}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={[styles.searchInput, { color: colors.foreground }]}
         />
+      </View>
+      {error ? <Failure message={error} /> : null}
+      {registry.isLoading ? (
+        <Loading what="the catalogue" />
+      ) : registry.error ? (
+        <Text tone="muted" size="sm">
+          The catalogue is not available.
+        </Text>
+      ) : entries.length === 0 ? (
+        <Text tone="muted" size="sm">
+          {query.trim()
+            ? `Nothing in the catalogue matches “${query.trim()}”.`
+            : 'Everything in the catalogue is added.'}
+        </Text>
       ) : (
-        <View style={styles.actions}>
-          <SmallButton label="Add server" onPress={() => setAdding(true)} />
+        <View role="list" aria-label="Catalogue" style={styles.list}>
+          {entries.map((entry) => {
+            const setup = needsSetup(entry)
+            return (
+              <View key={entry.name} role="listitem" aria-label={entry.name} style={styles.rowHead}>
+                <View style={styles.rowBody}>
+                  <View style={styles.titleRow}>
+                    <Text weight="medium">{entry.name}</Text>
+                    <Badge>{entry.type}</Badge>
+                  </View>
+                  <Text size="sm" tone="muted" numberOfLines={2}>
+                    {entry.description}
+                  </Text>
+                  {entry.note ? (
+                    <Text size="xs" tone="muted">
+                      {entry.note}
+                    </Text>
+                  ) : null}
+                </View>
+                <SmallButton
+                  label={setup ? 'Set up' : 'Add'}
+                  accessibilityLabel={`${setup ? 'Set up' : 'Add'} ${entry.name}`}
+                  busy={busy === entry.name}
+                  disabled={busy !== null}
+                  onPress={() => (setup ? onSetUp(entry) : addNow(entry))}
+                />
+              </View>
+            )
+          })}
         </View>
       )}
+      <View style={[styles.byHand, { borderTopColor: colors.border }]}>
+        <Text size="sm" tone="muted">
+          Not in the catalogue?
+        </Text>
+        <SmallButton label="Add a server by hand" onPress={onByHand} />
+      </View>
     </>
   )
 }
@@ -282,21 +431,24 @@ const TYPES: Array<{ value: ServerForm['type']; label: string }> = [
 ]
 
 function AddServer({
-  sessionId,
+  from,
   taken,
+  error,
   onAdd,
-  onDone,
+  onBack,
 }: {
-  sessionId: string
+  from: McpRegistryEntry | null
   taken: string[]
+  error: string | null
   onAdd: (params: AddMcpServerInput) => Promise<boolean>
-  onDone: () => void
+  onBack: () => void
 }) {
   const colors = useColors()
-  const [form, setForm] = useState<ServerForm>(EMPTY_SERVER_FORM)
+  const [form, setForm] = useState<ServerForm>(() =>
+    from ? formFromRegistry(from) : EMPTY_SERVER_FORM,
+  )
   const [problem, setProblem] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const registry = useMcpRegistry(sessionId)
   const set = (patch: Partial<ServerForm>) => setForm((f) => ({ ...f, ...patch }))
   const remote = form.type !== 'stdio'
   const inputStyle = [
@@ -316,40 +468,16 @@ function AddServer({
     }
     setProblem(null)
     setSaving(true)
-    const added = await onAdd(parsed.params)
+    await onAdd(parsed.params)
     setSaving(false)
-    if (added) onDone()
   }
 
   return (
-    <View
-      role="form"
-      aria-label="Add MCP server"
-      style={[styles.form, { backgroundColor: colors.card }]}
-    >
-      {registry.entries.filter((entry) => !taken.includes(entry.name)).length > 0 ? (
-        <View role="list" aria-label="Catalogue" style={styles.list}>
-          <Text size="xs" weight="medium" tone="muted">
-            From Factory's catalogue
-          </Text>
-          {registry.entries
-            .filter((entry) => !taken.includes(entry.name))
-            .map((entry) => (
-              <View key={entry.name} role="listitem" style={styles.rowHead}>
-                <View style={styles.rowBody}>
-                  <Text size="sm">{entry.name}</Text>
-                  <Text size="xs" tone="muted" numberOfLines={1}>
-                    {entry.description}
-                  </Text>
-                  {entry.note ? (
-                    <Text size="xs" tone="muted" numberOfLines={2}>
-                      {entry.note}
-                    </Text>
-                  ) : null}
-                </View>
-                <SmallButton label="Use" onPress={() => set(formFromRegistry(entry))} />
-              </View>
-            ))}
+    <View role="form" aria-label="Add MCP server" style={styles.form}>
+      <SubHeader title={from ? `Set up ${from.name}` : 'Add a server by hand'} onBack={onBack} />
+      {from?.note ? (
+        <View style={[styles.notice, { backgroundColor: colors.card }]}>
+          <Text size="sm">{from.note}</Text>
         </View>
       ) : null}
       <View role="radiogroup" aria-label="Server type" style={styles.actions}>
@@ -423,7 +551,7 @@ function AddServer({
           />
           <TextInput
             aria-label="Arguments"
-            placeholder="Arguments"
+            placeholder="Arguments, separated by spaces"
             placeholderTextColor={colors.mutedForeground}
             value={form.args}
             onChangeText={(args) => set({ args })}
@@ -433,9 +561,9 @@ function AddServer({
           />
         </>
       )}
-      {problem ? <Failure message={problem} /> : null}
+      {(problem ?? error) ? <Failure message={(problem ?? error)!} /> : null}
       <View style={[styles.actions, styles.formActions]}>
-        <SmallButton label="Cancel" onPress={onDone} />
+        <SmallButton label="Cancel" onPress={onBack} />
         <SmallButton label="Add server" primary disabled={saving} onPress={() => void submit()} />
       </View>
     </View>
@@ -445,12 +573,16 @@ function AddServer({
 function SmallButton({
   label,
   onPress,
+  accessibilityLabel,
+  busy = false,
   disabled = false,
   destructive = false,
   primary = false,
 }: {
   label: string
   onPress: () => void
+  accessibilityLabel?: string
+  busy?: boolean
   disabled?: boolean
   destructive?: boolean
   primary?: boolean
@@ -459,6 +591,7 @@ function SmallButton({
   return (
     <Pressable
       role="button"
+      aria-label={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
@@ -466,10 +599,11 @@ function SmallButton({
         {
           borderColor: primary ? colors.primary : colors.border,
           backgroundColor: primary ? colors.primary : pressed ? colors.accent : colors.background,
-          opacity: disabled ? 0.5 : 1,
+          opacity: disabled && !busy ? 0.5 : 1,
         },
       ]}
     >
+      {busy ? <Spinner size={12} color={colors.mutedForeground} /> : null}
       <Text
         size="xs"
         weight="medium"
@@ -512,11 +646,34 @@ const styles = StyleSheet.create({
   smallSwitch: { transform: [{ scale: 0.8 }] },
   notice: { borderRadius: radius.lg, padding: space.sm, gap: space.xs },
   smallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.md,
     paddingHorizontal: space.sm,
     height: 30,
     justifyContent: 'center',
+  },
+  subHeader: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  back: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.md,
+    height: 40,
+  },
+  searchInput: { flex: 1, fontSize: fontSize.sm, height: '100%' },
+  byHand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: space.sm,
   },
   typeButton: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -525,7 +682,7 @@ const styles = StyleSheet.create({
     height: 30,
     justifyContent: 'center',
   },
-  form: { borderRadius: radius.xl, padding: space.md, gap: space.sm },
+  form: { gap: space.sm },
   input: {
     borderWidth: 1,
     borderRadius: radius.lg,

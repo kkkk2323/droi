@@ -112,6 +112,29 @@ export function formFromRegistry(entry: McpRegistryEntry): ServerForm {
   }
 }
 
+// A catalogue entry's command may carry a value to fill in first, written as
+// an upper-case name (`--adyenApiKey=ADYEN_API_KEY`).
+const PLACEHOLDER = /(?:^|=)[A-Z][A-Z0-9]*_[A-Z0-9_]+$/
+
+/** Whether a catalogue entry has a value to fill in before it can be added as it is. */
+export function needsSetup(entry: McpRegistryEntry): boolean {
+  return [...(entry.args ?? []), entry.url ?? ''].some((part) => PLACEHOLDER.test(part))
+}
+
+/** The catalogue entries not added yet whose name or description matches the search. */
+export function filterRegistry(
+  entries: readonly McpRegistryEntry[],
+  query: string,
+  taken: readonly string[],
+): McpRegistryEntry[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return entries.filter((entry) => {
+    if (taken.includes(entry.name)) return false
+    const text = `${entry.name} ${entry.description}`.toLowerCase()
+    return words.every((word) => text.includes(word))
+  })
+}
+
 /** The servers sorted for a list: the user's and the project's first, by name; the organization's after. */
 export function sortServers(servers: readonly McpServer[]): McpServer[] {
   return [...servers].sort(

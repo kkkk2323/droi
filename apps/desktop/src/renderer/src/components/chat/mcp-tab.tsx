@@ -1,23 +1,29 @@
 // The Session's MCP Servers: each with its connection, its switch, its sign-in
-// and its tools; below them, the form and Factory's catalogue for adding one.
+// and its tools. Adding one is a view of its own: Factory's catalogue to
+// search and add from in one click, and a form for a server by hand or for a
+// catalogue entry with a value to fill in first.
 // A sign-in opens in the browser and finishes at the Daemon's own callback on
 // the computer, so from a Remote Client the page has to be opened there.
 import { useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
-import { ChevronRight, ExternalLink, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch, settingInputClass } from '@/components/ui/setting-row'
 import {
   EMPTY_SERVER_FORM,
   STATUS_LABELS,
   canRemove,
+  filterRegistry,
   formFromRegistry,
   isReadOnly,
+  needsSetup,
   needsSignIn,
   parseServerForm,
   sortServers,
   type AddMcpServerInput,
+  type McpRegistryEntry,
   type McpServer,
   type McpTool,
   type ServerForm,
@@ -32,14 +38,52 @@ import {
 import { cn } from '@/lib/utils'
 import { Badge, Failure, Loading } from './skills-tab'
 
+type View =
+  | { kind: 'list' }
+  | { kind: 'catalogue' }
+  /** `from` is the catalogue entry being set up; null for a server by hand. */
+  | { kind: 'form'; from: McpRegistryEntry | null }
+
 export function McpTab({ sessionId }: { sessionId: string }) {
   const view = useMcpServers(sessionId)
   const { tools } = useMcpTools(sessionId)
   const actions = useMcpActions(sessionId)
-  const [adding, setAdding] = useState(false)
+  const [showing, setShowing] = useState<View>({ kind: 'list' })
   if (view.isLoading) return <Loading what="MCP servers" />
   if (view.error) return <Failure message={view.error} />
   const servers = sortServers(view.servers)
+  const taken = servers.map((s) => s.name)
+  const add = async (params: AddMcpServerInput) => {
+    const added = await actions.add(params)
+    if (added) setShowing({ kind: 'list' })
+    return added
+  }
+
+  if (showing.kind === 'catalogue') {
+    return (
+      <Catalogue
+        sessionId={sessionId}
+        taken={taken}
+        busy={actions.busy}
+        error={actions.error}
+        onAdd={add}
+        onSetUp={(entry) => setShowing({ kind: 'form', from: entry })}
+        onByHand={() => setShowing({ kind: 'form', from: null })}
+        onBack={() => setShowing({ kind: 'list' })}
+      />
+    )
+  }
+  if (showing.kind === 'form') {
+    return (
+      <AddServer
+        from={showing.from}
+        taken={taken}
+        error={actions.error}
+        onAdd={add}
+        onBack={() => setShowing({ kind: 'catalogue' })}
+      />
+    )
+  }
   return (
     <div className="flex flex-col gap-3">
       {view.summary?.configError ? (
@@ -62,21 +106,29 @@ export function McpTab({ sessionId }: { sessionId: string }) {
           ))}
         </ul>
       )}
-      {adding ? (
-        <AddServer
-          sessionId={sessionId}
-          taken={servers.map((s) => s.name)}
-          onAdd={(params) => actions.add(params)}
-          onDone={() => setAdding(false)}
-        />
-      ) : (
-        <div className="px-2">
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-            <Plus aria-hidden data-icon="inline-start" />
-            Add server
-          </Button>
-        </div>
-      )}
+      <div className="px-2">
+        <Button size="sm" variant="outline" onClick={() => setShowing({ kind: 'catalogue' })}>
+          <Plus aria-hidden data-icon="inline-start" />
+          Add server
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        size="icon-xs"
+        variant="ghost"
+        aria-label="Back"
+        className="text-muted-foreground"
+        onClick={onBack}
+      >
+        <ChevronLeft aria-hidden />
+      </Button>
+      <h3 className="text-sm font-medium">{title}</h3>
     </div>
   )
 }
@@ -309,21 +361,133 @@ const TYPE_OPTIONS = [
   { value: 'sse', label: 'SSE' },
 ]
 
-function AddServer({
+function Catalogue({
   sessionId,
   taken,
+  busy,
+  error,
   onAdd,
-  onDone,
+  onSetUp,
+  onByHand,
+  onBack,
 }: {
   sessionId: string
   taken: string[]
+  busy: string | null
+  error: string | null
   onAdd: (params: AddMcpServerInput) => Promise<boolean>
-  onDone: () => void
+  onSetUp: (entry: McpRegistryEntry) => void
+  onByHand: () => void
+  onBack: () => void
 }) {
-  const [form, setForm] = useState<ServerForm>(EMPTY_SERVER_FORM)
+  const [query, setQuery] = useState('')
+  const registry = useMcpRegistry(sessionId)
+  const entries = filterRegistry(registry.entries, query, taken)
+  const addNow = (entry: McpRegistryEntry) => {
+    const parsed = parseServerForm(formFromRegistry(entry))
+    if (parsed.ok) void onAdd(parsed.params)
+    else onSetUp(entry)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="sticky -top-3 z-10 -mx-3 -mt-3 flex flex-col gap-2 bg-popover px-3 pt-3 pb-1">
+        <SubHeader title="Add MCP server" onBack={onBack} />
+        <label className="relative flex items-center">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground"
+          />
+          <input
+            type="search"
+            aria-label="Search the catalogue"
+            placeholder="Search Factory's catalogue"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            // oxlint-disable-next-line jsx-a11y/no-autofocus -- the view opens to search
+            autoFocus
+            className={cn(settingInputClass, 'w-full pl-8')}
+          />
+        </label>
+        {error ? <Failure message={error} /> : null}
+      </div>
+      {registry.isLoading ? (
+        <Loading what="the catalogue" />
+      ) : registry.error ? (
+        <p className="px-2 text-sm text-muted-foreground">The catalogue is not available.</p>
+      ) : entries.length === 0 ? (
+        <p className="px-2 text-sm text-muted-foreground">
+          {query.trim()
+            ? `Nothing in the catalogue matches “${query.trim()}”.`
+            : 'Everything in the catalogue is added.'}
+        </p>
+      ) : (
+        <ul aria-label="Catalogue" className="flex flex-col gap-0.5">
+          {entries.map((entry) => {
+            const setup = needsSetup(entry)
+            const adding = busy === entry.name
+            return (
+              <li
+                key={entry.name}
+                aria-label={entry.name}
+                className="flex items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium">{entry.name}</span>
+                    <Badge>{entry.type}</Badge>
+                  </div>
+                  <p className="line-clamp-2 text-[13px] leading-5 text-muted-foreground">
+                    {entry.description}
+                  </p>
+                  {entry.note ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground/80">{entry.note}</p>
+                  ) : null}
+                </div>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="mt-0.5 shrink-0"
+                  disabled={busy !== null}
+                  aria-label={`${setup ? 'Set up' : 'Add'} ${entry.name}`}
+                  onClick={() => (setup ? onSetUp(entry) : addNow(entry))}
+                >
+                  {adding ? <Spinner className="size-3" /> : null}
+                  {setup ? 'Set up' : 'Add'}
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <div className="flex items-center gap-1 border-t px-2 pt-2 text-[13px] text-muted-foreground">
+        Not in the catalogue?
+        <Button size="xs" variant="ghost" onClick={onByHand}>
+          Add a server by hand
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function AddServer({
+  from,
+  taken,
+  error,
+  onAdd,
+  onBack,
+}: {
+  from: McpRegistryEntry | null
+  taken: string[]
+  error: string | null
+  onAdd: (params: AddMcpServerInput) => Promise<boolean>
+  onBack: () => void
+}) {
+  const [form, setForm] = useState<ServerForm>(() =>
+    from ? formFromRegistry(from) : EMPTY_SERVER_FORM,
+  )
   const [problem, setProblem] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const registry = useMcpRegistry(sessionId)
   const set = (patch: Partial<ServerForm>) => setForm((f) => ({ ...f, ...patch }))
   const remote = form.type !== 'stdio'
 
@@ -339,48 +503,22 @@ function AddServer({
     }
     setProblem(null)
     setSaving(true)
-    const added = await onAdd(parsed.params)
+    await onAdd(parsed.params)
     setSaving(false)
-    if (added) onDone()
   }
 
   return (
     <form
       aria-label="Add MCP server"
-      className="flex flex-col gap-2 rounded-xl bg-card p-3"
+      className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault()
         void submit()
       }}
     >
-      {registry.entries.length > 0 ? (
-        <div>
-          <h3 className="pb-1 text-xs font-medium text-muted-foreground">
-            From Factory's catalogue
-          </h3>
-          <ul aria-label="Catalogue" className="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
-            {registry.entries
-              .filter((entry) => !taken.includes(entry.name))
-              .map((entry) => (
-                <li key={entry.name} className="flex items-center gap-2 py-0.5">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm">{entry.name}</span>
-                    <p className="line-clamp-1 text-xs text-muted-foreground">
-                      {entry.description}
-                    </p>
-                  </div>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    type="button"
-                    onClick={() => set(formFromRegistry(entry))}
-                  >
-                    Use
-                  </Button>
-                </li>
-              ))}
-          </ul>
-        </div>
+      <SubHeader title={from ? `Set up ${from.name}` : 'Add a server by hand'} onBack={onBack} />
+      {from?.note ? (
+        <p className="rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[13px]">{from.note}</p>
       ) : null}
       <div className="flex flex-wrap gap-2">
         <input
@@ -404,7 +542,7 @@ function AddServer({
             placeholder="https://…"
             value={form.url}
             onChange={(e) => set({ url: e.target.value })}
-            className={settingInputClass}
+            className={cn(settingInputClass, 'flex-none')}
           />
           <textarea
             aria-label="Headers"
@@ -412,30 +550,30 @@ function AddServer({
             value={form.headers}
             onChange={(e) => set({ headers: e.target.value })}
             rows={2}
-            className={cn(settingInputClass, 'h-auto py-2 font-mono text-xs')}
+            className={cn(settingInputClass, 'h-auto flex-none py-2 font-mono text-xs')}
           />
         </>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <>
           <input
             aria-label="Command"
             placeholder="Command, e.g. npx"
             value={form.command}
             onChange={(e) => set({ command: e.target.value })}
-            className={settingInputClass}
+            className={cn(settingInputClass, 'flex-none font-mono')}
           />
           <input
             aria-label="Arguments"
-            placeholder="Arguments"
+            placeholder="Arguments, separated by spaces"
             value={form.args}
             onChange={(e) => set({ args: e.target.value })}
-            className={cn(settingInputClass, 'font-mono')}
+            className={cn(settingInputClass, 'flex-none font-mono')}
           />
-        </div>
+        </>
       )}
-      {problem ? <Failure message={problem} /> : null}
+      {(problem ?? error) ? <Failure message={(problem ?? error)!} /> : null}
       <div className="flex items-center justify-end gap-1">
-        <Button size="sm" variant="ghost" type="button" onClick={onDone}>
+        <Button size="sm" variant="ghost" type="button" onClick={onBack}>
           Cancel
         </Button>
         <Button size="sm" type="submit" disabled={saving}>

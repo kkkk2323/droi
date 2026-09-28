@@ -2,14 +2,63 @@ import { describe, expect, test } from 'vitest'
 import {
   EMPTY_SERVER_FORM,
   canRemove,
+  filterRegistry,
   formFromRegistry,
   isReadOnly,
+  needsSetup,
   needsSignIn,
   parseServerForm,
   sortServers,
   type McpRegistryEntry,
   type McpServer,
 } from './mcp'
+
+const catalogueEntry = (overrides: Partial<McpRegistryEntry>): McpRegistryEntry => ({
+  name: 'linear',
+  description: 'Issue tracking',
+  type: 'http',
+  url: 'https://mcp.linear.app/mcp',
+  ...overrides,
+})
+
+describe('the catalogue', () => {
+  test('an entry with an upper-case placeholder in its command needs setting up first', () => {
+    expect(needsSetup(catalogueEntry({}))).toBe(false)
+    expect(
+      needsSetup(
+        catalogueEntry({
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', 'snyk@latest', 'mcp', '-t', 'stdio'],
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      needsSetup(
+        catalogueEntry({
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', '@adyen/mcp', '--adyenApiKey=ADYEN_API_KEY', '--env=TEST'],
+        }),
+      ),
+    ).toBe(true)
+    expect(needsSetup(catalogueEntry({ type: 'stdio', command: 'x', args: ['YOUR_TOKEN'] }))).toBe(
+      true,
+    )
+  })
+
+  test('search matches every word in the name or description, and skips what is added', () => {
+    const all = [
+      catalogueEntry({}),
+      catalogueEntry({ name: 'sentry', description: 'Error tracking and performance monitoring' }),
+      catalogueEntry({ name: 'notion', description: 'Notes and docs' }),
+    ]
+    expect(filterRegistry(all, '', []).map((e) => e.name)).toEqual(['linear', 'sentry', 'notion'])
+    expect(filterRegistry(all, 'TRACKING', []).map((e) => e.name)).toEqual(['linear', 'sentry'])
+    expect(filterRegistry(all, 'error track', []).map((e) => e.name)).toEqual(['sentry'])
+    expect(filterRegistry(all, 'tracking', ['linear']).map((e) => e.name)).toEqual(['sentry'])
+  })
+})
 
 const server = (overrides: Partial<McpServer>): McpServer =>
   ({

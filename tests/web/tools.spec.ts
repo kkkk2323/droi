@@ -24,10 +24,24 @@ test.describe('skills and MCP servers', () => {
       ],
       mcpRegistry: [
         {
+          name: 'adyen',
+          description: 'Payment processing for Adyen',
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', '@adyen/mcp', '--adyenApiKey=ADYEN_API_KEY'],
+          note: 'Replace ADYEN_API_KEY before use.',
+        },
+        {
           name: 'github',
           description: 'GitHub issues and pull requests',
           type: 'http',
           url: 'https://api.githubcopilot.com/mcp/',
+        },
+        {
+          name: 'linear',
+          description: 'Already added, so not offered',
+          type: 'http',
+          url: 'https://mcp.linear.app/mcp',
         },
       ],
     },
@@ -153,14 +167,20 @@ test.describe('skills and MCP servers', () => {
     await pickSession(/Chat/)
     await page.getByRole('button', { name: 'Skills and MCP servers' }).click()
     await page.getByRole('tab', { name: 'MCP servers' }).click()
+    // The catalogue is a view of its own: search, then one click adds.
     await page.getByRole('button', { name: 'Add server' }).click()
-    const form = page.getByRole('form', { name: 'Add MCP server' })
-    await form.getByRole('list', { name: 'Catalogue' }).getByRole('button', { name: 'Use' }).click()
-    await expect(form.getByRole('textbox', { name: 'Server name' })).toHaveValue('github')
-    await expect(form.getByRole('textbox', { name: 'Server URL' })).toHaveValue(
-      'https://api.githubcopilot.com/mcp/',
-    )
-    await form.getByRole('button', { name: 'Add server' }).click()
+    const catalogue = page.getByRole('list', { name: 'Catalogue' })
+    const search = page.getByRole('searchbox', { name: 'Search the catalogue' })
+    await expect(search).toBeFocused()
+    await expect(catalogue.getByRole('listitem')).toHaveText([/adyen/, /github/])
+    await search.fill('pull request')
+    await expect(catalogue.getByRole('listitem')).toHaveText([/github/])
+    await search.fill('nothing like it')
+    await expect(
+      page.getByText('Nothing in the catalogue matches “nothing like it”.'),
+    ).toBeVisible()
+    await search.fill('git')
+    await catalogue.getByRole('button', { name: 'Add github' }).click()
     const added = await fakeDaemon.waitForRequest('daemon.add_mcp_server')
     expect(added.params).toMatchObject({
       name: 'github',
@@ -169,9 +189,37 @@ test.describe('skills and MCP servers', () => {
     })
     const list = page.getByRole('list', { name: 'MCP servers' })
     await expect(list.getByRole('listitem', { name: 'github' })).toBeVisible()
-    await expect(form).toHaveCount(0)
+    await expect(catalogue).toHaveCount(0)
+
+    // An entry with a value to fill in opens the form, filled, with its note.
+    await page.getByRole('button', { name: 'Add server' }).click()
+    await catalogue.getByRole('button', { name: 'Set up adyen' }).click()
+    const form = page.getByRole('form', { name: 'Add MCP server' })
+    await expect(form).toContainText('Set up adyen')
+    await expect(form).toContainText('Replace ADYEN_API_KEY before use.')
+    const args = form.getByRole('textbox', { name: 'Arguments' })
+    await expect(args).toHaveValue('-y @adyen/mcp --adyenApiKey=ADYEN_API_KEY')
+    await args.fill('-y @adyen/mcp --adyenApiKey=test_key')
+    await form.getByRole('button', { name: 'Add server' }).click()
+    const setUp = await fakeDaemon.waitForRequest('daemon.add_mcp_server', 2)
+    expect(setUp.params).toMatchObject({
+      name: 'adyen',
+      command: 'npx',
+      args: ['-y', '@adyen/mcp', '--adyenApiKey=test_key'],
+    })
+    await expect(list.getByRole('listitem', { name: 'adyen' })).toBeVisible()
+
+    // Back leads from the form to the catalogue and from there to the list.
+    await page.getByRole('button', { name: 'Add server' }).click()
+    await page.getByRole('button', { name: 'Add a server by hand' }).click()
+    await expect(form).toContainText('Add a server by hand')
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(search).toBeVisible()
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(list).toBeVisible()
 
     await page.getByRole('button', { name: 'Add server' }).click()
+    await page.getByRole('button', { name: 'Add a server by hand' }).click()
     await form.getByRole('button', { name: 'Add server' }).click()
     await expect(form.getByRole('alert')).toContainText('name')
     await form.getByRole('textbox', { name: 'Server name' }).fill('fs')
@@ -180,7 +228,7 @@ test.describe('skills and MCP servers', () => {
       .getByRole('textbox', { name: 'Arguments' })
       .fill('-y @modelcontextprotocol/server-filesystem .')
     await form.getByRole('button', { name: 'Add server' }).click()
-    const byHand = await fakeDaemon.waitForRequest('daemon.add_mcp_server', 2)
+    const byHand = await fakeDaemon.waitForRequest('daemon.add_mcp_server', 3)
     expect(byHand.params).toMatchObject({
       name: 'fs',
       type: 'stdio',

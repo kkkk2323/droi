@@ -37,6 +37,7 @@ export interface McpRegistryFixture {
   command?: string
   args?: string[]
   url?: string
+  note?: string
 }
 
 export interface ToolsInput {

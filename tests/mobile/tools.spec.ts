@@ -19,6 +19,14 @@ test.describe('skills and MCP servers', () => {
       ],
       mcpRegistry: [
         {
+          name: 'adyen',
+          description: 'Payment processing for Adyen',
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', '@adyen/mcp', '--adyenApiKey=ADYEN_API_KEY'],
+          note: 'Replace ADYEN_API_KEY before use.',
+        },
+        {
           name: 'github',
           description: 'GitHub',
           type: 'http',
@@ -98,14 +106,28 @@ test.describe('skills and MCP servers', () => {
     await notice.getByRole('button', { name: 'Cancel' }).click()
     await expect(notice).toHaveCount(0)
 
+    // The catalogue is a view of its own: search, then one tap adds.
     await sheet.getByRole('button', { name: 'Add server' }).click()
-    const form = sheet.getByRole('form', { name: 'Add MCP server' })
-    await form.getByRole('list', { name: 'Catalogue' }).getByRole('button', { name: 'Use' }).click()
-    await expect(form.getByRole('textbox', { name: 'Server name' })).toHaveValue('github')
-    await form.getByRole('button', { name: 'Add server' }).click()
+    const catalogue = sheet.getByRole('list', { name: 'Catalogue' })
+    await sheet.getByRole('textbox', { name: 'Search the catalogue' }).fill('git')
+    await expect(catalogue.getByRole('listitem')).toHaveCount(1)
+    await catalogue.getByRole('button', { name: 'Add github' }).click()
     const added = await fakeDaemon.waitForRequest('daemon.add_mcp_server')
     expect(added.params).toMatchObject({ name: 'github', type: 'http' })
     await expect(list.getByRole('listitem', { name: 'github' })).toBeVisible()
-    await expect(form).toHaveCount(0)
+    await expect(catalogue).toHaveCount(0)
+
+    // An entry with a value to fill in opens the form, filled, with its note.
+    await sheet.getByRole('button', { name: 'Add server' }).click()
+    await catalogue.getByRole('button', { name: 'Set up adyen' }).click()
+    const form = sheet.getByRole('form', { name: 'Add MCP server' })
+    await expect(form).toContainText('Replace ADYEN_API_KEY before use.')
+    await expect(form.getByRole('textbox', { name: 'Arguments' })).toHaveValue(
+      '-y @adyen/mcp --adyenApiKey=ADYEN_API_KEY',
+    )
+    await form.getByRole('button', { name: 'Back' }).click()
+    await sheet.getByRole('button', { name: 'Add a server by hand' }).click()
+    await expect(form).toContainText('Add a server by hand')
+    await expect(form.getByRole('textbox', { name: 'Server name' })).toHaveValue('')
   })
 })
