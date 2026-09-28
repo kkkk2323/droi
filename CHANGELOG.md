@@ -1,3 +1,13 @@
+## 1.15.1 - 2026-09-28
+
+### Changed
+
+- Adding an MCP server opens a view of its own: a search box over Factory's catalogue, where one click adds an entry as it is. An entry whose command holds a value to fill in first (such as an API key) says "Set up" and opens the form filled in, with its note. A link at the foot opens the form for a server by hand, and Back leads from the form to the catalogue and on to the list. On the desktop, in the browser and on the phone.
+
+### Fixed
+
+- The command, arguments, URL and headers fields of the add-server form no longer collapse to a sliver on the desktop.
+
 ## 1.15.0 - 2026-09-28
 
 ### Added
