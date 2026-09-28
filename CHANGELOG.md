@@ -1,3 +1,15 @@
+## 1.15.0 - 2026-09-28
+
+### Added
+
+- A picture a tool handed back (a Read of an image file, a screenshot) shows in the tool row's detail when it is opened, from the result itself. On the desktop, in the browser and on the phone.
+- The Session list says "Compacting" while a conversation's context is being summarised, for an automatic compaction and for a `/compact` started here. When a `/compact` finishes it counts as a completion (sound, notification and unread mark as configured), and the footer under the composer says for a few seconds how many messages were summarised.
+
+### Changed
+
+- On the desktop, skills and MCP servers moved from the conversation's header to the composer's footer row, next to the model, reasoning and autonomy pickers: one button reading "Skills 96/98 · MCP 1" (skills on / total, a connection dot for the servers) whose hover text lists the servers and their state.
+- Each skill is a switch instead of an Enabled/Disabled menu: a project skill switches for its project, a built-in one across all projects. Personal skills still have none; one turned off by the organization, in its own file or at the other level shows locked with the reason. On the desktop, in the browser and on the phone.
+
 ## 1.14.0 - 2026-09-28
 
 ### Added
