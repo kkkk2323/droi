@@ -1,3 +1,15 @@
+## 1.14.0 - 2026-09-28
+
+### Added
+
+- A wrench in a conversation's header opens its skills and MCP servers. Skills are grouped by where they live, with the switches the Daemon allows: a project skill off for that project, a built-in one across all projects, one the organization turned off read-only. A skill switched off leaves the "/" menu at once.
+- MCP servers show their connection and their tools, switch on and off, tool by tool too, and can be removed; new ones come from Factory's catalogue or a form for a command, an HTTP or an SSE server. A server that needs signing in offers the page to open; from the phone or a remote browser the link is copied to open on the computer, where the Daemon takes the callback.
+- Changes are written where the droid CLI and the Factory App read them (`~/.factory/settings.json`, `~/.factory/mcp.json`, the workspace's `.factory/`), so they show up there and in the next conversation.
+
+### Fixed
+
+- On the phone, opening a tool row, a reasoning fold or a subagent's details no longer flickers: the row grew a frame before the scroll that kept its header in place. The same fix stops output streaming within half a second of a tap from being scrolled twice.
+
 ## 1.13.2 - 2026-09-28
 
 ### Changed
