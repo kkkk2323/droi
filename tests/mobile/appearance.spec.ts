@@ -45,8 +45,8 @@ test('Solarized Light+ draws the Settings in its colours', async ({ page, fakeDa
   const theme = page.getByRole('radiogroup', { name: 'Theme' })
   await theme.getByRole('radio', { name: 'Solarized Light+' }).click()
   await expect(theme.getByRole('radio', { name: 'Solarized Light+' })).toBeChecked()
-  // #657b83, the text VS Code shows for code in this theme, whatever the system's appearance.
-  await expect(theme.getByText('System')).toHaveCSS('color', 'rgb(101, 123, 131)')
+  // #586e75, Solarized's base01, whatever the system's appearance.
+  await expect(theme.getByText('System')).toHaveCSS('color', 'rgb(88, 110, 117)')
 })
 
 test('text size changes the transcript and persists', async ({ page, fakeDaemon }) => {
