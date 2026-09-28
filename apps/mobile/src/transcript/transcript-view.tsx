@@ -23,6 +23,8 @@ import { MessageEntry } from './message-entry'
 const FOLLOW_THRESHOLD = 120
 /** A height change this soon after a touch in the list is the reader's own (a row opening). */
 const USER_RESIZE_WINDOW_MS = 500
+/** Rows rendered on opening, the latest ones. */
+const INITIAL_ROWS = 20
 
 const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
 
@@ -50,6 +52,12 @@ export function TranscriptView({
 
   const parts = [...earlier, transcript]
   const entries = parts.flat()
+  // A list opened on every row renders from the top and scrolls to the end
+  // one batch of rows at a time, and the whole conversation flashes past on
+  // the way. Opened on the latest rows it lands at once; the rest come in
+  // above, where rows brought in keep the one being read in place.
+  const [opening, setOpening] = useState(true)
+  const rows = opening ? entries.slice(-INITIAL_ROWS) : entries
   const last = entries[entries.length - 1]
   const running = workingState !== 'idle'
   const streamingId =
@@ -90,6 +98,8 @@ export function TranscriptView({
   }
 
   const onContentSizeChange = (_width: number, height: number) => {
+    // The latest rows have laid out and the end is reached below; the rest can come in.
+    if (opening) requestAnimationFrame(() => setOpening(false))
     if (!following.current) return
     if (Date.now() - lastTouched.current < USER_RESIZE_WINDOW_MS) {
       // A row the reader opened grows in place; follow again only from the bottom.
@@ -123,7 +133,7 @@ export function TranscriptView({
         ref={list}
         role="log"
         aria-label="Transcript"
-        data={entries}
+        data={rows}
         keyExtractor={(entry) => entry.id}
         renderItem={({ item }) => (
           <>
@@ -157,7 +167,7 @@ export function TranscriptView({
         // Rows brought in above (previous messages, earlier Sessions) keep
         // the row being read where it is.
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-        initialNumToRender={20}
+        initialNumToRender={INITIAL_ROWS}
         windowSize={11}
       />
       {!atBottom ? (

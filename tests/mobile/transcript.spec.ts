@@ -54,6 +54,38 @@ test.describe('opening a Session', () => {
     await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
     await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
   })
+
+  test('opens on the latest messages, not scrolling down past all the others', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    // The rows of the first frame the transcript draws any.
+    await page.evaluate(() => {
+      const tick = () => {
+        const rows = [...document.querySelectorAll('[role="log"] [role="article"]')]
+        if (rows.length === 0) {
+          requestAnimationFrame(tick)
+          return
+        }
+        ;(window as unknown as { firstRows: string[] }).firstRows = rows.map(
+          (row) => row.textContent ?? '',
+        )
+      }
+      requestAnimationFrame(tick)
+    })
+    await pickSession(page, /Long chat/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Answer 119')).toBeInViewport()
+    const firstRows = await page.evaluate(
+      () => (window as unknown as { firstRows: string[] }).firstRows,
+    )
+    expect(firstRows.some((row) => row.startsWith('Answer 119'))).toBe(true)
+    expect(firstRows).not.toContain('Question 0')
+    // The earlier messages come in above.
+    await transcript.evaluate((el) => el.scrollTo({ top: 0 }))
+    await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
+  })
 })
 
 test.describe('a Session longer than one load', () => {
