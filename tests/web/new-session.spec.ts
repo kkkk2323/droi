@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures'
+import { expect, openLocalClient, shellRecord, test } from './fixtures'
 import type { RecordedRequest } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
 import { streamedReply } from '../fake-daemon/turns'
@@ -194,6 +194,50 @@ test.describe('new session', () => {
       autonomyLevel: 'high',
       tags: [],
     })
+  })
+
+  test('on the computer, another folder is chosen in the folder dialog', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon, { pickedFolder: '/Users/dev/fresh-project' })
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    await form.getByRole('button', { name: 'Workspace' }).click()
+    await page.getByRole('menuitem', { name: 'Other folder…' }).click()
+    expect((await shellRecord(page)).folderDialogs).toBe(1)
+    // The chosen folder is the Workspace, as a recent one would be; nothing to type.
+    await expect(form.getByRole('heading', { level: 2 })).toContainText(
+      /build in\s*fresh-project\?/,
+    )
+    await expect(page.getByRole('textbox', { name: 'Workspace path' })).toHaveCount(0)
+    await form.getByRole('textbox', { name: 'Message' }).fill('hello')
+    await form.getByRole('button', { name: 'Start session' }).click()
+    await expect
+      .poll(() =>
+        fakeDaemon.requests
+          .filter((r) => r.method === 'daemon.initialize_session')
+          .map((r) => (r.params as Record<string, unknown>)['cwd']),
+      )
+      .toContain('/Users/dev/fresh-project')
+  })
+
+  test('cancelling the folder dialog keeps the Workspace', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon, { pickedFolder: null })
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    const heading = form.getByRole('heading', { level: 2 })
+    await expect(heading).toContainText('acme-web')
+    await form.getByRole('button', { name: 'Workspace' }).click()
+    await page.getByRole('menuitem', { name: 'Other folder…' }).click()
+    await expect.poll(async () => (await shellRecord(page)).folderDialogs).toBe(1)
+    await expect(heading).toContainText('acme-web')
+    await expect(page.getByRole('textbox', { name: 'Workspace path' })).toHaveCount(0)
   })
 
   test('a typed path is validated by the Daemon', async ({

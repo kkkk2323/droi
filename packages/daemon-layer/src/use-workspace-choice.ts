@@ -10,9 +10,8 @@ import { scratchDraftFolder } from './use-draft-session'
 import { uuid } from './uuid'
 
 export type WorkspacePick =
-  | { kind: 'recent'; path: string }
-  | { kind: 'scratch' }
-  | { kind: 'other' }
+  /** A folder by path: a recent Workspace, or one chosen in the Desktop Shell's folder dialog. */
+  { kind: 'recent'; path: string } | { kind: 'scratch' } | { kind: 'other' }
 
 /**
  * Until the user picks: the most recent Workspace, or None when there is none

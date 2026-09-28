@@ -48,6 +48,7 @@ import {
 import { createUpdater, type Updater } from './updater'
 import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInApp } from '../shared/open-in'
+import { PICK_FOLDER_IPC } from '../shared/pick-folder'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
@@ -369,6 +370,19 @@ function registerIpc(): void {
     const options = {
       properties: ['openFile' as const],
       filters: [{ name: 'Audio', extensions: SOUND_FILE_EXTENSIONS }],
+    }
+    const picked = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options)
+    return picked.canceled ? null : (picked.filePaths[0] ?? null)
+  })
+  ipcMain.handle(PICK_FOLDER_IPC, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      title: 'Choose a workspace',
+      buttonLabel: 'Choose',
+      defaultPath: homedir(),
+      properties: ['openDirectory' as const, 'createDirectory' as const],
     }
     const picked = window
       ? await dialog.showOpenDialog(window, options)

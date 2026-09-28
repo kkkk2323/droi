@@ -47,7 +47,18 @@ export function NewSessionPage({
   const typing = choice.pick?.kind === 'other'
   const setWorkspace = (value: string) =>
     choice.choose(value === SCRATCH ? { kind: 'scratch' } : { kind: 'recent', path: value })
-  const setOther = () => choice.choose({ kind: 'other' })
+  // The Local Client asks the Desktop Shell's folder dialog; a Remote Client
+  // is on another device, so the path of a folder on the computer is typed.
+  const pickFolder = window.droiShell?.pickFolder
+  const setOther = () => {
+    if (!pickFolder) {
+      choice.choose({ kind: 'other' })
+      return
+    }
+    void pickFolder().then((picked) => {
+      if (picked) choice.choose({ kind: 'recent', path: picked })
+    })
+  }
   const [path, setPath] = useState('')
 
   // The Daemon's defaults, with whatever the user changed on this page on top.

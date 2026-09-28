@@ -32,6 +32,7 @@ describe('resolveClientConfig', () => {
         platform: 'darwin',
         settings: {} as never,
         openIn: {} as never,
+        pickFolder: async () => null,
         pathForFile: () => '',
         alerts: {} as never,
       },

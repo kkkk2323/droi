@@ -80,6 +80,7 @@ export interface ShellRecord {
   sounds: string[]
   daemonRestarts: number
   daemonLogShown: number
+  folderDialogs: number
 }
 
 export interface LocalClientOptions {
@@ -89,6 +90,8 @@ export interface LocalClientOptions {
   daemon?: DaemonState
   /** The end of the Daemon's log the Shell hands over while the Daemon is not running. */
   daemonLog?: string
+  /** What the folder dialog answers; null (the default) is a cancel. */
+  pickedFolder?: string | null
 }
 
 /**
@@ -104,13 +107,14 @@ export async function openLocalClient(
   options: LocalClientOptions = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ gatewayUrl, pairingToken, droidUpdated, daemonState, daemonLog }) => {
+    ({ gatewayUrl, pairingToken, droidUpdated, daemonState, daemonLog, pickedFolder }) => {
       const record: ShellRecord = {
         opened: [],
         notifications: [],
         sounds: [],
         daemonRestarts: 0,
         daemonLogShown: 0,
+        folderDialogs: 0,
       }
       let updated = droidUpdated
       const snapshot = () => ({
@@ -171,6 +175,10 @@ export async function openLocalClient(
             ],
             open: async (path: string, appId: string) => void record.opened.push([path, appId]),
           },
+          pickFolder: async () => {
+            record.folderDialogs += 1
+            return pickedFolder
+          },
           alerts: {
             builtinSound: async (name: string) => `data:audio/wav,${name}`,
             pickSoundFile: async () => '/Users/dev/sounds/ding.wav',
@@ -191,6 +199,7 @@ export async function openLocalClient(
       droidUpdated: !!options.droidUpdated,
       daemonState: options.daemon ?? { status: 'running', port: 4242, pid: 777 },
       daemonLog: options.daemonLog ?? null,
+      pickedFolder: options.pickedFolder ?? null,
     },
   )
   await page.goto('/')
