@@ -493,7 +493,7 @@ function WorkspaceSection({
                         <span
                           role="img"
                           aria-label="Unread"
-                          className="size-1.5 shrink-0 rounded-full bg-sky-500"
+                          className="size-1.5 shrink-0 rounded-full bg-info"
                         />
                       ) : null}
                       {sessionPinned ? (
@@ -508,7 +508,7 @@ function WorkspaceSection({
                         <span
                           role="status"
                           aria-label="Needs input"
-                          className="flex min-w-0 items-center gap-1 text-amber-600 dark:text-amber-400"
+                          className="flex min-w-0 items-center gap-1 text-attention"
                         >
                           <CircleAlert aria-hidden className="size-3 shrink-0" />
                           <span className="truncate">Needs input</span>
@@ -517,16 +517,13 @@ function WorkspaceSection({
                         <span
                           role="status"
                           aria-label="Compacting"
-                          className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
+                          className="flex min-w-0 items-center gap-1 text-info"
                         >
                           <Spinner aria-hidden className="size-3" />
                           <span className="truncate">Compacting</span>
                         </span>
                       ) : subagents > 0 ? (
-                        <span
-                          role="status"
-                          className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
-                        >
+                        <span role="status" className="flex min-w-0 items-center gap-1 text-info">
                           <Spinner aria-hidden className="size-3" />
                           <span className="truncate">
                             {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
@@ -536,7 +533,7 @@ function WorkspaceSection({
                         <span
                           role="status"
                           aria-label="Working"
-                          className="flex min-w-0 items-center gap-1 text-sky-600 dark:text-sky-400"
+                          className="flex min-w-0 items-center gap-1 text-info"
                         >
                           <Spinner aria-hidden className="size-3" />
                           <span className="truncate">Working</span>
@@ -707,13 +704,13 @@ function BusyMark({ busy }: { busy: Busy }) {
       className="ml-auto flex shrink-0 items-center gap-2 pl-1 text-[11px] font-normal tabular-nums"
     >
       {busy.needsInput > 0 ? (
-        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+        <span className="flex items-center gap-1 text-attention">
           <CircleAlert aria-hidden className="size-3" />
           {busy.needsInput}
         </span>
       ) : null}
       {busy.working > 0 ? (
-        <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400">
+        <span className="flex items-center gap-1 text-info">
           <Spinner aria-hidden className="size-3" />
           {busy.working}
         </span>

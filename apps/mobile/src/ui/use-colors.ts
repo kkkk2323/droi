@@ -1,10 +1,10 @@
 import { createPreference, usePreference } from '@droi/daemon-layer/local-preference'
 import { useSyncExternalStore } from 'react'
 import { Appearance } from 'react-native'
-import { COLORS, type ColorScheme, type Colors } from './theme'
+import { COLORS, schemeOf, type ColorScheme, type Colors, type ThemeName } from './theme'
 
-export type ThemeChoice = 'system' | ColorScheme
-export const THEME_CHOICES: ThemeChoice[] = ['system', 'light', 'dark']
+export type ThemeChoice = 'system' | ThemeName
+export const THEME_CHOICES: ThemeChoice[] = ['system', 'light', 'dark', 'solarized-light']
 
 /** The phone's theme: the system's light or dark appearance, or one picked in Settings. */
 export const themeChoice = createPreference<ThemeChoice>('droi.phoneTheme', 'system', {
@@ -18,7 +18,7 @@ export const themeChoice = createPreference<ThemeChoice>('droi.phoneTheme', 'sys
  */
 export function applyThemeChoice(choice: ThemeChoice = themeChoice.get()): void {
   if (typeof Appearance.setColorScheme !== 'function') return
-  Appearance.setColorScheme(choice === 'system' ? 'unspecified' : choice)
+  Appearance.setColorScheme(choice === 'system' ? 'unspecified' : schemeOf(choice))
 }
 
 // Not react-native's useColorScheme: on the web it subscribes again on every
@@ -33,12 +33,16 @@ function systemScheme(): ColorScheme {
   return Appearance.getColorScheme() === 'dark' ? 'dark' : 'light'
 }
 
-export function useColorSchemeName(): ColorScheme {
+function useThemeName(): ThemeName {
   const [choice] = usePreference(themeChoice)
   const system = useSyncExternalStore(subscribeToSystem, systemScheme, systemScheme)
   return choice === 'system' ? system : choice
 }
 
+export function useColorSchemeName(): ColorScheme {
+  return schemeOf(useThemeName())
+}
+
 export function useColors(): Colors {
-  return COLORS[useColorSchemeName()]
+  return COLORS[useThemeName()]
 }

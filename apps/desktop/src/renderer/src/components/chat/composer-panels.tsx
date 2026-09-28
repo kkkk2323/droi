@@ -129,20 +129,9 @@ function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
 
 function StatusIcon({ status }: { status: TodoItem['status'] }) {
   if (status === 'completed')
-    return (
-      <CircleCheck
-        aria-label="Done"
-        className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400"
-      />
-    )
+    return <CircleCheck aria-label="Done" className="size-3 shrink-0 text-success" />
   if (status === 'in_progress')
-    return (
-      <Spinner
-        role="img"
-        aria-label="In progress"
-        className="size-3 text-sky-600 dark:text-sky-400"
-      />
-    )
+    return <Spinner role="img" aria-label="In progress" className="size-3 text-info" />
   return <Circle aria-label="Pending" className="size-3 shrink-0 text-muted-foreground/50" />
 }
 
@@ -263,10 +252,7 @@ export function CompactedNotice({ sessionId }: { sessionId: string }) {
   const done = useCompactedNotice(sessionId)
   if (!done) return null
   return (
-    <span
-      role="status"
-      className="flex min-w-0 items-center gap-1 text-emerald-600 dark:text-emerald-400"
-    >
+    <span role="status" className="flex min-w-0 items-center gap-1 text-success">
       <Check aria-hidden className="size-3 shrink-0" />
       <span className="truncate">
         Compacted, {done.removedCount} {done.removedCount === 1 ? 'message' : 'messages'} summarised
@@ -307,7 +293,7 @@ export function ContextMeter({ usage }: { usage: ContextUsage | null }) {
             usage.ratio > 0.9
               ? 'stroke-destructive'
               : usage.ratio > 0.7
-                ? 'stroke-amber-500'
+                ? 'stroke-attention'
                 : 'stroke-foreground/60',
           )}
         />

@@ -469,7 +469,7 @@ function SlashTag({ item, onRemove }: { item: SlashItem; onRemove: () => void })
       role="group"
       aria-label={`${kind} ${item.name}`}
       title={item.description || undefined}
-      className="mt-3.5 ml-3 inline-flex h-6 max-w-[45%] shrink-0 items-center gap-1 rounded-md bg-sky-500/10 pr-0.5 pl-1.5 text-[13px] font-medium text-sky-700 dark:text-sky-300"
+      className="mt-3.5 ml-3 inline-flex h-6 max-w-[45%] shrink-0 items-center gap-1 rounded-md bg-info/10 pr-0.5 pl-1.5 text-[13px] font-medium text-info-foreground"
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />
       <span className="truncate">{item.name}</span>

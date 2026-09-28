@@ -18,6 +18,7 @@ const THEMES: Array<{ value: ThemeChoice; label: string }> = [
   { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
+  { value: 'solarized-light', label: 'Solarized Light+' },
 ]
 const TEXT_SIZE_OPTIONS = TEXT_SIZES.map((value) => ({ value, label: TEXT_SIZE_LABELS[value] }))
 

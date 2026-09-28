@@ -24,7 +24,7 @@ test('picking light, dark and system changes the theme', async ({ page, fakeDaem
   await expect(theme.getByRole('radio', { name: 'System' })).toBeChecked()
   await expect(label).toHaveCSS('color', DARK_TEXT)
 
-  await theme.getByRole('radio', { name: 'Light' }).click()
+  await theme.getByRole('radio', { name: 'Light', exact: true }).click()
   await expect(label).toHaveCSS('color', LIGHT_TEXT)
   await theme.getByRole('radio', { name: 'Dark' }).click()
   await expect(label).toHaveCSS('color', DARK_TEXT)
@@ -36,6 +36,17 @@ test('picking light, dark and system changes the theme', async ({ page, fakeDaem
   await expect(label).toHaveCSS('color', LIGHT_TEXT)
   await page.emulateMedia({ colorScheme: 'dark' })
   await expect(label).toHaveCSS('color', DARK_TEXT)
+})
+
+test('Solarized Light+ draws the Settings in its colours', async ({ page, fakeDaemon }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await pairPhone(page, fakeDaemon)
+  await openSettings(page)
+  const theme = page.getByRole('radiogroup', { name: 'Theme' })
+  await theme.getByRole('radio', { name: 'Solarized Light+' }).click()
+  await expect(theme.getByRole('radio', { name: 'Solarized Light+' })).toBeChecked()
+  // #333333, the theme's editor text, whatever the system's appearance.
+  await expect(theme.getByText('System')).toHaveCSS('color', 'rgb(51, 51, 51)')
 })
 
 test('text size changes the transcript and persists', async ({ page, fakeDaemon }) => {

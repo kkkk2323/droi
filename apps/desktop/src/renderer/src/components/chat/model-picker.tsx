@@ -306,7 +306,7 @@ export function ModelPicker({
                         className={cn(
                           'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-background/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
                           starred
-                            ? 'text-amber-500 hover:text-amber-500'
+                            ? 'text-attention hover:text-attention'
                             : 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 group-data-[highlighted]/row:opacity-100 [@media(hover:none)]:opacity-100',
                         )}
                       >

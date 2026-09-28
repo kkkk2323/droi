@@ -30,11 +30,11 @@ export function ToolsButton({ sessionId }: { sessionId: string }) {
   const disabledSkills = skills.filter((skill) => skill.enabled === false).length
   const statuses = servers.map((server) => String(server.status))
   const dot = statuses.includes('failed')
-    ? 'bg-rose-500'
+    ? 'bg-destructive-foreground'
     : statuses.includes('connected')
-      ? 'bg-emerald-500'
+      ? 'bg-success'
       : statuses.includes('connecting')
-        ? 'bg-amber-500'
+        ? 'bg-attention'
         : 'bg-muted-foreground/40'
   const summary = [
     skills.length === 0

@@ -1,14 +1,20 @@
 import type { ComponentProps } from 'react'
+import { code, type ThemeInput } from '@streamdown/code'
 import { Streamdown, type Components } from 'streamdown'
 import { localImagePath, useLocalImage } from '@droi/daemon-layer/local-image'
+import { solarizedLightPlus } from '@/lib/solarized-light-plus'
+import { useTheme, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 /** Assistant prose. Streamdown tolerates the unterminated markdown of a live stream. */
 export function Markdown({ text, className }: { text: string; className?: string }) {
+  const [theme] = useTheme()
   return (
     <Streamdown
       className={cn('prose-droi max-w-none text-[15px] leading-7', className)}
       components={COMPONENTS}
+      plugins={PLUGINS}
+      shikiTheme={CODE_THEMES[theme]}
     >
       {text}
     </Streamdown>
@@ -16,6 +22,15 @@ export function Markdown({ text, className }: { text: string; className?: string
 }
 
 const COMPONENTS: Components = { img: MarkdownImage }
+
+const PLUGINS = { code }
+
+// Streamdown paints code in the first theme and in the second under `.dark`.
+const CODE_THEMES: Record<Theme, [ThemeInput, ThemeInput]> = {
+  light: ['github-light', 'github-dark'],
+  dark: ['github-light', 'github-dark'],
+  'solarized-light': [solarizedLightPlus, 'github-dark'],
+}
 
 const IMAGE = 'my-4 max-w-full rounded-lg'
 

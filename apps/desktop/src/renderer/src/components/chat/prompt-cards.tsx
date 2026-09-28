@@ -55,7 +55,7 @@ export function PermissionCard({
       aria-label={`Permission request: ${title}`}
       className="rounded-2xl border bg-background px-3.5 pt-3 pb-2.5"
     >
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-attention">
         <ShieldAlert aria-hidden className="size-3" />
         Permission
       </span>

@@ -485,3 +485,34 @@ test.describe('a compaction model the droid SDK does not list', () => {
     await expect(page.getByRole('alert')).toHaveCount(0)
   })
 })
+
+test.describe('theme', () => {
+  test.use({ scenario: { sessions: [first] } })
+
+  test('Solarized Light+ is a light theme of its own and outlasts a reload', async ({
+    page,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
+    const html = page.locator('html')
+    const theme = page.getByRole('combobox', { name: 'Theme' })
+
+    await theme.click()
+    await page.getByRole('option', { name: 'Solarized Light+' }).click()
+    await expect(html).toHaveAttribute('data-theme', 'solarized-light')
+    await expect(html).not.toHaveClass(/\bdark\b/)
+    // The sidebar is the theme's sideBar.background, #eee8d5.
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(238, 232, 213)')
+
+    await page.reload()
+    await expect(html).toHaveAttribute('data-theme', 'solarized-light')
+    await expect(theme).toHaveText('Solarized Light+')
+
+    await theme.click()
+    await page.getByRole('option', { name: 'Dark' }).click()
+    await expect(html).toHaveAttribute('data-theme', 'dark')
+    await expect(html).toHaveClass(/\bdark\b/)
+  })
+})

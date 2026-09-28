@@ -183,6 +183,7 @@ function ToolRow({ call }: { call: ToolCall }) {
 }
 
 function DiffView({ lines }: { lines: DiffLine[] }) {
+  const colors = useColors()
   const width = String(Math.max(1, ...lines.map((l) => Math.max(l.old ?? 0, l.new ?? 0)))).length
   const pad = (n: number | null) => String(n ?? '').padStart(width, ' ')
   return (
@@ -196,9 +197,9 @@ function DiffView({ lines }: { lines: DiffLine[] }) {
             style={[
               styles.diffLine,
               line.type === 'added'
-                ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' }
+                ? { backgroundColor: colors.addedBackground }
                 : line.type === 'removed'
-                  ? { backgroundColor: 'rgba(244, 63, 94, 0.12)' }
+                  ? { backgroundColor: colors.removedBackground }
                   : null,
             ]}
           >

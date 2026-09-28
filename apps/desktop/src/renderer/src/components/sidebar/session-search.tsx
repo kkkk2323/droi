@@ -136,10 +136,7 @@ function SearchHitRow({
         <span className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
           {hit.snippet.map((run) =>
             run.match ? (
-              <mark
-                key={run.offset}
-                className="rounded-sm bg-amber-200/70 text-foreground dark:bg-amber-500/30"
-              >
+              <mark key={run.offset} className="rounded-sm bg-highlight text-foreground">
                 {run.text}
               </mark>
             ) : (

@@ -124,8 +124,8 @@ function StateMark({ state }: { state: TaskState }) {
       role={running ? 'status' : undefined}
       className={cn(
         'flex items-center gap-1',
-        running && 'text-sky-600 dark:text-sky-400',
-        state === 'completed' && 'text-emerald-600 dark:text-emerald-400',
+        running && 'text-info',
+        state === 'completed' && 'text-success',
         state === 'failed' && 'text-destructive-foreground',
       )}
     >

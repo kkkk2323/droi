@@ -24,7 +24,7 @@ import { SessionDefaultsTab } from '@/components/settings-session-defaults'
 import { UpdateControl } from '@/components/update-control'
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { FONTS, FONT_LABELS, applyFont, font } from '@/lib/font'
-import { useTheme } from '@/lib/theme'
+import { THEMES, THEME_LABELS, useTheme } from '@/lib/theme'
 import { TEXT_SIZES, TEXT_SIZE_LABELS, textSize } from '@droi/daemon-layer/text-size'
 import { applyTextSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
@@ -238,11 +238,8 @@ function GeneralTab({ version, update }: { version: string | null; update: React
           <Select
             label="Theme"
             value={theme}
-            onChange={(next) => setTheme(next === 'dark' ? 'dark' : 'light')}
-            options={[
-              { value: 'light', label: 'Light' },
-              { value: 'dark', label: 'Dark' },
-            ]}
+            onChange={(next) => setTheme(THEMES.find((t) => t === next) ?? 'light')}
+            options={THEMES.map((value) => ({ value, label: THEME_LABELS[value] }))}
           />
         }
       />
@@ -424,7 +421,7 @@ function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
       )}
       {mismatch ? (
         <SettingRow
-          className="border border-amber-500/40"
+          className="border border-attention/40"
           title="The droid CLI is logged in as someone else"
           description={`The Daemon runs as ${snapshot.daemonIdentity!.userId} (from droid login) while Droi is signed in as ${login.status === 'signed-in' ? login.account.userId : ''}. Sessions belong to the CLI's user, so run \`droid login\` with the same account or sign in here with that one.`}
         />
@@ -904,7 +901,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: ReactNode }) {
     >
       <span
         aria-hidden
-        className={cn('size-1.5 rounded-full', ok ? 'bg-emerald-500' : 'bg-muted-foreground')}
+        className={cn('size-1.5 rounded-full', ok ? 'bg-success' : 'bg-muted-foreground')}
       />
       {label}
     </span>

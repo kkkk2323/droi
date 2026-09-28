@@ -22,8 +22,8 @@ const LABELS: Record<ConnectionState['status'], string> = {
 
 const DOT_CLASS: Record<ConnectionState['status'], string> = {
   connecting: 'bg-muted-foreground animate-pulse',
-  connected: 'bg-emerald-500',
-  reconnecting: 'bg-amber-500 animate-pulse',
+  connected: 'bg-success',
+  reconnecting: 'bg-attention animate-pulse',
   unpaired: 'bg-destructive-foreground',
   unreachable: 'bg-destructive-foreground',
 }
@@ -89,9 +89,9 @@ export function ReconnectingBanner() {
   return (
     <div
       role="alert"
-      className="flex items-center justify-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-200"
+      className="flex items-center justify-center gap-2 border-b border-attention/30 bg-attention/10 px-3 py-1.5 text-xs text-attention-foreground"
     >
-      <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+      <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-attention" />
       {state.status === 'reconnecting'
         ? 'Connection to the Daemon was lost. Reconnecting…'
         : `Cannot reach the Daemon (${state.detail}). Retrying…`}

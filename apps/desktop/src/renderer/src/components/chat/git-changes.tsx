@@ -58,8 +58,8 @@ export function GitChangesButton({ changes }: { changes: GitChanges | null }) {
 function Counts({ additions, deletions }: { additions: number; deletions: number }) {
   return (
     <span className="flex items-center gap-1 font-mono tabular-nums">
-      <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>
-      <span className="text-rose-600 dark:text-rose-400">−{deletions}</span>
+      <span className="text-added">+{additions}</span>
+      <span className="text-removed">−{deletions}</span>
     </span>
   )
 }
@@ -86,7 +86,7 @@ function FileRow({ file }: { file: ChangedFile }) {
         aria-label={file.status}
         className={cn(
           'w-3 shrink-0 text-center font-mono',
-          file.status === 'deleted' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground',
+          file.status === 'deleted' ? 'text-removed' : 'text-muted-foreground',
         )}
       >
         {STATUS_LETTER[file.status] ?? file.status.charAt(0).toUpperCase()}

@@ -4,6 +4,13 @@
 
 export type ColorScheme = 'light' | 'dark'
 
+export type ThemeName = 'light' | 'dark' | 'solarized-light'
+
+/** Whether a theme is drawn light or dark: the status bar and iOS follow it. */
+export function schemeOf(theme: ThemeName): ColorScheme {
+  return theme === 'dark' ? 'dark' : 'light'
+}
+
 const light = {
   background: '#ffffff',
   foreground: '#161616',
@@ -35,6 +42,9 @@ const light = {
   attention: '#dd7400',
   working: '#0084d1',
   unread: '#00a6f4',
+  // Diff lines: emerald-500 and rose-500 at 12%.
+  addedBackground: 'rgba(16, 185, 129, 0.12)',
+  removedBackground: 'rgba(244, 63, 94, 0.12)',
   backdrop: 'rgba(0, 0, 0, 0.3)',
 }
 
@@ -67,10 +77,48 @@ const dark: Colors = {
   attention: '#ffb900',
   working: '#00bcff',
   unread: '#00a6f4',
+  addedBackground: 'rgba(16, 185, 129, 0.12)',
+  removedBackground: 'rgba(244, 63, 94, 0.12)',
   backdrop: 'rgba(0, 0, 0, 0.5)',
 }
 
-export const COLORS: Record<ColorScheme, Colors> = { light, dark }
+// Solarized Light+ as the web Client draws it (global.css, [data-theme='solarized-light']).
+const solarizedLight: Colors = {
+  background: '#fdf6e3',
+  foreground: '#333333',
+  card: '#eee8d5',
+  popover: '#eee8d5',
+  primary: '#ac9d57',
+  primaryForeground: '#ffffff',
+  secondary: '#eee8d5',
+  muted: '#eee8d5',
+  mutedForeground: '#657b83',
+  accent: '#ddd6c1',
+  destructive: '#dc322f',
+  destructiveForeground: '#dc322f',
+  border: '#ddd6c1',
+  input: '#ddd6c1',
+  ring: '#d3af86',
+  sidebar: '#eee8d5',
+  sidebarForeground: '#586e75',
+  sidebarAccent: '#d1cbb8',
+  sidebarBorder: '#ddd6c1',
+  codeBackground: '#eee8d5',
+  codeInline: '#2aa198',
+  success: '#859900',
+  attention: '#b58900',
+  working: '#268bd2',
+  unread: '#268bd2',
+  addedBackground: 'rgba(133, 153, 0, 0.12)',
+  removedBackground: 'rgba(220, 50, 47, 0.12)',
+  backdrop: 'rgba(0, 0, 0, 0.3)',
+}
+
+export const COLORS: Record<ThemeName, Colors> = {
+  light,
+  dark,
+  'solarized-light': solarizedLight,
+}
 
 /** --radius is 0.625rem at the web Client's 16px root. */
 export const radius = { sm: 6, md: 8, lg: 10, xl: 14, full: 999 } as const

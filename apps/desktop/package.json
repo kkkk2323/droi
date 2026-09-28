@@ -20,6 +20,7 @@
   "dependencies": {
     "@base-ui/react": "^1.8.0",
     "@factory/droid-sdk": "0.9.1",
+    "@streamdown/code": "^1.1.1",
     "@tanstack/react-query": "^5.103.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

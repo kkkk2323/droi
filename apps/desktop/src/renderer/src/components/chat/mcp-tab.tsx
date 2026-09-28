@@ -134,9 +134,9 @@ function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
 }
 
 const DOT: Record<string, string> = {
-  connected: 'bg-emerald-500',
-  connecting: 'bg-amber-500 animate-pulse',
-  failed: 'bg-rose-500',
+  connected: 'bg-success',
+  connecting: 'bg-attention animate-pulse',
+  failed: 'bg-destructive-foreground',
   disconnected: 'bg-muted-foreground/40',
   disabled: 'bg-muted-foreground/40',
 }
@@ -329,7 +329,7 @@ function SignInNotice({
     <div
       role="status"
       aria-label={`Sign in to ${serverName}`}
-      className="mt-1 flex flex-wrap items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-[13px]"
+      className="mt-1 flex flex-wrap items-center gap-2 rounded-md bg-attention/10 px-2 py-1.5 text-[13px]"
     >
       <span className="min-w-0 flex-1">
         {message}
@@ -518,7 +518,7 @@ function AddServer({
     >
       <SubHeader title={from ? `Set up ${from.name}` : 'Add a server by hand'} onBack={onBack} />
       {from?.note ? (
-        <p className="rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[13px]">{from.note}</p>
+        <p className="rounded-md bg-attention/10 px-2.5 py-1.5 text-[13px]">{from.note}</p>
       ) : null}
       <div className="flex flex-wrap gap-2">
         <input

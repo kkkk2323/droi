@@ -112,8 +112,8 @@ function ToolRow({ call }: { call: ToolCall }) {
         </span>
         {diff ? (
           <span className="shrink-0 font-mono text-[11px] tabular-nums">
-            <span className="text-emerald-600 dark:text-emerald-400">+{diff.added}</span>{' '}
-            <span className="text-rose-600 dark:text-rose-400">−{diff.removed}</span>
+            <span className="text-added">+{diff.added}</span>{' '}
+            <span className="text-removed">−{diff.removed}</span>
           </span>
         ) : null}
         {pending ? (
@@ -127,11 +127,7 @@ function ToolRow({ call }: { call: ToolCall }) {
                 className="size-3.5 shrink-0 text-destructive-foreground"
               />
             ) : (
-              <Check
-                role="img"
-                aria-label="Succeeded"
-                className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
-              />
+              <Check role="img" aria-label="Succeeded" className="size-3.5 shrink-0 text-success" />
             )}
             <ChevronRight
               aria-hidden
@@ -155,9 +151,7 @@ function ToolRow({ call }: { call: ToolCall }) {
               <span
                 className={cn(
                   'mt-1 flex items-center gap-1.5',
-                  status.success
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-destructive-foreground',
+                  status.success ? 'text-success' : 'text-destructive-foreground',
                 )}
               >
                 {status.success ? (
@@ -200,8 +194,8 @@ function ToolInput({ call }: { call: ToolCall }) {
 // background: the panel's own (card at 60% over the page) with the line's tint on top.
 const PANEL_BACKGROUND = 'color-mix(in oklab, var(--card) 60%, var(--background))'
 const LINE_TINT: Partial<Record<DiffLine['type'], string>> = {
-  added: 'color-mix(in oklab, var(--color-emerald-500) 10%, transparent)',
-  removed: 'color-mix(in oklab, var(--color-rose-500) 10%, transparent)',
+  added: 'color-mix(in oklab, var(--added) 10%, transparent)',
+  removed: 'color-mix(in oklab, var(--removed) 10%, transparent)',
 }
 
 function gutterBackground(type: DiffLine['type']): string {
@@ -222,8 +216,8 @@ function DiffView({ lines }: { lines: DiffLine[] }) {
           data-type={line.type}
           className={cn(
             'flex min-w-max',
-            line.type === 'added' && 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
-            line.type === 'removed' && 'bg-rose-500/10 text-rose-800 dark:text-rose-200',
+            line.type === 'added' && 'bg-added/10 text-added-foreground',
+            line.type === 'removed' && 'bg-removed/10 text-removed-foreground',
           )}
         >
           <span

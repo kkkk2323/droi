@@ -63,6 +63,17 @@ html[data-font='system'] {
   --sidebar-ring: oklch(0.6 0 0);
   --code: oklch(0.5 0.17 20);
   --code-bg: oklch(0.955 0 0);
+  /* Status. Each role's -foreground is its text on its own 10% tint. */
+  --success: oklch(59.6% 0.145 163.225);
+  --attention: oklch(66.6% 0.179 58.318);
+  --attention-foreground: oklch(55.5% 0.163 48.998);
+  --info: oklch(58.8% 0.158 241.966);
+  --info-foreground: oklch(50% 0.134 242.749);
+  --added: oklch(59.6% 0.145 163.225);
+  --added-foreground: oklch(43.2% 0.095 166.913);
+  --removed: oklch(58.6% 0.253 17.585);
+  --removed-foreground: oklch(45.5% 0.188 13.697);
+  --highlight: oklch(92.4% 0.12 95.746 / 0.7);
 }
 
 .dark {
@@ -95,6 +106,66 @@ html[data-font='system'] {
   --sidebar-ring: oklch(0.5 0 0);
   --code: oklch(0.78 0.12 20);
   --code-bg: oklch(0.27 0 0);
+  --success: oklch(76.5% 0.177 163.223);
+  --attention: oklch(82.8% 0.189 84.429);
+  --attention-foreground: oklch(92.4% 0.12 95.746);
+  --info: oklch(74.6% 0.16 232.661);
+  --info-foreground: oklch(82.8% 0.111 230.318);
+  --added: oklch(76.5% 0.177 163.223);
+  --added-foreground: oklch(90.5% 0.093 164.15);
+  --removed: oklch(71.2% 0.194 13.428);
+  --removed-foreground: oklch(89.2% 0.058 10.001);
+  --highlight: oklch(76.9% 0.188 70.08 / 0.3);
+}
+
+/* Solarized Light+ (github.com/ryanolsonx/vscode-solarized-theme), its VS Code
+   workbench colours on Droi's surfaces: editor → the conversation, sideBar →
+   the sidebar, list selection (unfocused, as it mostly is) → the selected row,
+   dropdown and widgets → popovers, focusBorder → the ring. Text is the
+   theme's editor text (#333333) and its #586e75 chrome. */
+[data-theme='solarized-light'] {
+  --background: #fdf6e3;
+  --foreground: #333333;
+  --card: #eee8d5;
+  --card-foreground: #333333;
+  --popover: #eee8d5;
+  --popover-foreground: #333333;
+  --primary: #ac9d57;
+  --primary-foreground: #ffffff;
+  --secondary: #eee8d5;
+  --secondary-foreground: #586e75;
+  --muted: #eee8d5;
+  --muted-foreground: #657b83;
+  --accent: #ddd6c1;
+  --accent-foreground: #333333;
+  --destructive: #dc322f;
+  --destructive-foreground: #dc322f;
+  --border: #ddd6c1;
+  --input: #ddd6c1;
+  --ring: #d3af86;
+  --sidebar: #eee8d5;
+  --sidebar-foreground: #586e75;
+  --sidebar-primary: #ac9d57;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d1cbb8;
+  --sidebar-accent-foreground: #333333;
+  --sidebar-border: #ddd6c1;
+  --sidebar-ring: #d3af86;
+  --code: #2aa198;
+  --code-bg: #eee8d5;
+  --success: #859900;
+  --attention: #b58900;
+  --attention-foreground: #b58900;
+  --info: #268bd2;
+  --info-foreground: #268bd2;
+  --added: #859900;
+  --added-foreground: #219186;
+  --removed: #dc322f;
+  --removed-foreground: #dc322f;
+  --highlight: #b5890040;
+}
+[data-theme='solarized-light'] ::selection {
+  background-color: #ccc4b0;
 }
 
 @theme inline {
@@ -133,6 +204,16 @@ html[data-font='system'] {
   --color-sidebar-ring: var(--sidebar-ring);
   --color-code: var(--code);
   --color-code-bg: var(--code-bg);
+  --color-success: var(--success);
+  --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-added: var(--added);
+  --color-added-foreground: var(--added-foreground);
+  --color-removed: var(--removed);
+  --color-removed-foreground: var(--removed-foreground);
+  --color-highlight: var(--highlight);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 16px oklch(0 0 0 / 0.06);
 }
 

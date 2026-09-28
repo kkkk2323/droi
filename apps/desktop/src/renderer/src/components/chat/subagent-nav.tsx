@@ -28,7 +28,7 @@ export function SubagentMenu({ subagents }: { subagents: readonly SessionSummary
         className="app-no-drag flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:bg-accent"
       >
         {running > 0 ? (
-          <Spinner aria-hidden className="size-3.5 text-sky-600 dark:text-sky-400" />
+          <Spinner aria-hidden className="size-3.5 text-info" />
         ) : (
           <Bot aria-hidden className="size-3.5" />
         )}
@@ -118,17 +118,9 @@ function SubagentRow({ session, run }: { session: SessionSummary; run: SubagentR
   return (
     <>
       {running ? (
-        <Spinner
-          role="img"
-          aria-label="Running"
-          className="size-3.5 text-sky-600 dark:text-sky-400"
-        />
+        <Spinner role="img" aria-label="Running" className="size-3.5 text-info" />
       ) : run?.status === 'completed' ? (
-        <Check
-          role="img"
-          aria-label="Completed"
-          className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
-        />
+        <Check role="img" aria-label="Completed" className="size-3.5 shrink-0 text-success" />
       ) : (
         <CircleDashed aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       )}
