@@ -99,14 +99,14 @@ export function ToolsButton({ sessionId }: { sessionId: string }) {
               <X aria-hidden />
             </Dialog.Close>
           </div>
+          {/* The portal mounts this only while the dialog is open or closing, so the
+              content stays in place through the closing animation. */}
           <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-3">
-            {open ? (
-              tab === 'skills' ? (
-                <SkillsTab sessionId={sessionId} />
-              ) : (
-                <McpTab sessionId={sessionId} />
-              )
-            ) : null}
+            {tab === 'skills' ? (
+              <SkillsTab sessionId={sessionId} />
+            ) : (
+              <McpTab sessionId={sessionId} />
+            )}
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
