@@ -28,6 +28,8 @@ export const BUILTIN_SLASH_ITEMS: SlashItem[] = [
  * win over a Workspace command of the same name. Without a Session only they
  * are offered.
  */
+export const SLASH_ITEMS_QUERY_KEY = ['slash-items'] as const
+
 export function useSlashItems(
   sessionId: string | null,
   builtins: SlashItem[] = BUILTIN_SLASH_ITEMS,
@@ -35,7 +37,7 @@ export function useSlashItems(
   const { controller } = useDaemonConnection()
   const connected = useConnectionState().status === 'connected'
   const query = useQuery({
-    queryKey: ['slash-items', sessionId],
+    queryKey: [...SLASH_ITEMS_QUERY_KEY, sessionId],
     enabled: connected && sessionId !== null,
     staleTime: 60_000,
     queryFn: async (): Promise<SlashItem[]> => {

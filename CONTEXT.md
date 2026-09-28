@@ -79,6 +79,14 @@ _Avoid_: preferences, global settings, default settings (on their own)
 Text the Desktop Shell keeps and the Gateway appends to Droid's own system prompt when a Session starts, whichever Client starts it. It never replaces Droid's prompt, and a Session keeps the one it started with.
 _Avoid_: system prompt override, custom instructions
 
+**Skill**:
+A `SKILL.md` folder the Daemon offers Droid, and the user through "/": built into the droid CLI, personal (`~/.factory/skills`), or the Workspace's (`.factory/skills`). The Daemon lists a Session's skills and writes the switches: off across all projects (`~/.factory/settings.json`) or off for one Workspace (`.factory/settings.json`); the organization's switches are read-only. A personal skill is managed by its files.
+_Avoid_: plugin, extension, prompt template
+
+**MCP Server**:
+A tool server the Daemon connects a Session to, from the user's `~/.factory/mcp.json`, the Workspace's `.factory/mcp.json` or the organization's policy. The Daemon reports each one's connection and tools, switches them, adds and removes the user's own, and runs a sign-in whose page a Client opens and whose callback the Daemon takes on the computer.
+_Avoid_: connector (Factory's hosted integrations are something else), tool, integration
+
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo

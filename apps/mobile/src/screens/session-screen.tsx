@@ -26,6 +26,7 @@ import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { SessionSettingsBar } from '../composer/session-settings'
 import { SubagentsButton, SubagentTitle } from '../sessions/subagent-nav'
+import { ToolsButton } from '../tools/tools-sheet'
 import { GitChangesButton } from '../transcript/git-changes'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
@@ -182,6 +183,7 @@ export function SessionScreen({
           <>
             <SubagentsButton subagents={subagents} />
             <GitChangesButton changes={gitChanges} />
+            <ToolsButton sessionId={session.sessionId} />
           </>
         }
       />

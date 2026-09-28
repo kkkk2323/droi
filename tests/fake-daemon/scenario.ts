@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { RpcError, type FakeDaemon } from './fake-daemon'
 import type { JsonRpcRequest } from './protocol'
+import { toolHandlers, type ToolsInput } from './tools'
 
 export interface SessionFixture {
   sessionId: string
@@ -61,7 +62,12 @@ export interface ScenarioInput {
   /** Custom commands (`.factory/commands`) the Daemon lists for every Session. */
   commands?: Array<{ name: string; description: string; argumentHint?: string }>
   /** Skills the Daemon lists; `userInvocable` defaults to true. */
-  skills?: Array<{ name: string; description?: string; userInvocable?: boolean }>
+  skills?: ToolsInput['skills']
+  /** Whether the Sessions' Workspaces take project-level skill switches. */
+  projectAvailable?: boolean
+  /** MCP Servers the Daemon has, and Factory's registry of ones to add. */
+  mcpServers?: ToolsInput['mcpServers']
+  mcpRegistry?: ToolsInput['mcpRegistry']
   /** Context tokens the breakdown reports for every Session; defaults to 1k per message. */
   contextUsedTokens?: number
   /** Overrides for the Session defaults the Daemon reports (`management`, say). */
@@ -271,16 +277,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       }
     },
     'daemon.list_commands': () => ({ commands: input.commands ?? [] }),
-    'daemon.list_skills': () => ({
-      skills: (input.skills ?? []).map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        filePath: `/Users/dev/.factory/skills/${skill.name}/SKILL.md`,
-        location: 'personal',
-        userInvocable: skill.userInvocable ?? true,
-        enabled: true,
-      })),
-    }),
+    ...toolHandlers(input),
     'daemon.validate_working_directory': (params, context) => {
       const path = String(params['workingDirectory'])
       const known = new Set([

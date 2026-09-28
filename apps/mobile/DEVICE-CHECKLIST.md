@@ -37,6 +37,15 @@ Droi on the computer must be a build with the computer name and id in its
       out as JPEG); Take photo asks for the camera once; Paste image attaches an
       image copied in another app.
 
+## Skills and MCP servers
+
+- [ ] The wrench in a Session's header opens the sheet; switching a skill off
+      shows in the droid CLI's `/skills` on the computer, and the "/" menu here.
+- [ ] Adding a server: the keyboard does not cover the form's fields, and the
+      new server shows in `~/.factory/mcp.json` on the computer.
+- [ ] Sign in on a server that needs it: Copy sign-in link puts the page's URL
+      on the clipboard; opened in the computer's browser it connects the server.
+
 ## Alerts
 
 - [ ] With another Session open, a Session finishing plays the finished sound

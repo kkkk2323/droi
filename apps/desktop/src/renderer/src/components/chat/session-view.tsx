@@ -26,6 +26,7 @@ import { InputBar, type InputBarHandle, type Submission } from './input-bar'
 import { MessageList } from './message-list'
 import { PromptArea } from './prompt-cards'
 import { SessionSettingsBar, SessionTitle } from './session-toolbar'
+import { ToolsButton } from './tools-panel'
 import { SessionTrail, SubagentMenu } from './subagent-nav'
 import { COLUMN } from './column'
 
@@ -193,6 +194,7 @@ export function SessionView({
       >
         <SubagentMenu subagents={subagents} />
         <GitChangesButton changes={gitChanges} />
+        <ToolsButton sessionId={sessionId} />
         <OpenInButton path={workspace} bridge={window.droiShell?.openIn ?? null} />
       </PageHeader>
 

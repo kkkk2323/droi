@@ -40,7 +40,7 @@ export function Switch(props: SwitchPrimitive.Root.Props) {
       {...props}
       className={cn(
         'relative inline-flex h-[22px] w-9 shrink-0 cursor-pointer items-center rounded-full bg-input transition-colors duration-150 outline-none',
-        'data-[checked]:bg-primary focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
+        'data-[checked]:bg-primary focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
         props.className,
       )}
     >
