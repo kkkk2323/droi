@@ -1,3 +1,9 @@
+## 1.15.2 - 2026-09-28
+
+### Changed
+
+- On the desktop, "Other folder…" on the New session page opens the system's folder dialog instead of asking for a typed path. The folder picked becomes the workspace, ready for the first message; cancelling keeps the one that was there. In a browser or on the phone, which cannot open the computer's folders, the path is still typed.
+
 ## 1.15.1 - 2026-09-28
 
 ### Changed
