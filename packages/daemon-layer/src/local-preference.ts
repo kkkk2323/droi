@@ -125,3 +125,25 @@ export const foldedWorkspaces = createStringListPreference('droi.foldedWorkspace
 /** Workspace groups and Sessions kept at the top of the Session list. */
 export const pinnedWorkspaces = createStringListPreference('droi.pinnedWorkspaces')
 export const pinnedSessions = createStringListPreference('droi.pinnedSessions')
+/** How the Session list orders Workspaces and the Sessions in them (see sessions.ts). */
+export const workspaceSort = createStringPreference('droi.workspaceSort')
+export const sessionSort = createStringPreference('droi.sessionSort')
+/** Workspace keys in the order the user dragged them into. */
+export const manualWorkspaceOrder = createStringListPreference('droi.workspaceOrder')
+/** When this Client first saw each Session, in ms; the Daemon lists no creation time. */
+export const sessionsFirstSeen = createPreference<Record<string, number>>(
+  'droi.sessionsFirstSeen',
+  {},
+  {
+    parse: (raw) => {
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+      return Object.fromEntries(
+        Object.entries(parsed).filter(
+          (entry): entry is [string, number] => typeof entry[1] === 'number',
+        ),
+      )
+    },
+    serialize: JSON.stringify,
+  },
+)

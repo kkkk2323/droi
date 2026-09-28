@@ -214,18 +214,76 @@ export interface Pins {
 
 export const NO_PINS: Pins = { workspaces: new Set(), sessions: new Set() }
 
+/** How the Workspace groups are ordered. */
+export type WorkspaceSort = 'sessions' | 'recent' | 'name' | 'manual'
+/** How the Sessions inside a group (Recents too) are ordered. */
+export type SessionSort = 'recent' | 'created'
+
+export const WORKSPACE_SORT_LABELS: Record<WorkspaceSort, string> = {
+  sessions: 'Most sessions',
+  recent: 'Recently active',
+  name: 'Name',
+  manual: 'Manual',
+}
+export const SESSION_SORT_LABELS: Record<SessionSort, string> = {
+  recent: 'Recently active',
+  created: 'Created',
+}
+
+export interface SortOrder {
+  workspaces: WorkspaceSort
+  sessions: SessionSort
+  /** Workspace keys in the order the user dragged them into; for `manual`. */
+  manual: readonly string[]
+  /**
+   * When each Session was first seen, in ms; for `created`. The Daemon lists no
+   * creation time, so the Client keeps its own (see noteFirstSeen).
+   */
+  firstSeen: Readonly<Record<string, number>>
+}
+
+export const DEFAULT_SORT: SortOrder = {
+  workspaces: 'sessions',
+  sessions: 'recent',
+  manual: [],
+  firstSeen: {},
+}
+
 /**
- * The Workspace with the most conversations first, ties broken by the newest;
- * within a Workspace, newest Session first. Pinned Workspaces and Sessions come
- * before the rest, in the same order among themselves.
+ * The first-seen times with any Session not seen before added. A Session is
+ * never made after its last change, so its time is the earlier of now and
+ * that change: a new one lands at about its creation, and an old one the
+ * Client meets for the first time keeps its place among the others. Returns
+ * the same object when nothing was new.
+ */
+export function noteFirstSeen(
+  firstSeen: Readonly<Record<string, number>>,
+  sessions: readonly SessionSummary[],
+  now = Date.now(),
+): Readonly<Record<string, number>> {
+  let next: Record<string, number> | null = null
+  for (const session of sessions) {
+    if (firstSeen[session.sessionId] !== undefined) continue
+    next ??= { ...firstSeen }
+    next[session.sessionId] = Math.min(now, session.updatedAt * 1000)
+  }
+  return next ?? firstSeen
+}
+
+/**
+ * The Workspace groups in the chosen order (by default the one with the most
+ * conversations first, ties broken by the newest), and inside each the
+ * Sessions newest first or by when they were first seen. Pinned Workspaces and
+ * Sessions come before the rest, in the same order among themselves.
  *
- * Workspaces are not ranked by recency alone because the Daemon's `updatedAt`
- * is the file's modified time, which moves when a Session is merely loaded.
- * Scratch Sessions share one Recents group, always last.
+ * The default does not rank Workspaces by recency alone because the Daemon's
+ * `updatedAt` is the file's modified time, which moves when a Session is
+ * merely loaded. Scratch Sessions share one Recents group, always last.
  */
 export function groupByWorkspace(
   sessions: readonly SessionSummary[],
   pins: Pins = NO_PINS,
+  order: SortOrder = DEFAULT_SORT,
 ): WorkspaceGroup[] {
   const groups = new Map<string, WorkspaceGroup>()
   let recents: WorkspaceGroup | null = null
@@ -251,10 +309,13 @@ export function groupByWorkspace(
     group.sessions.push(session)
   }
   const result = [...groups.values()]
+  const created = (session: SessionSummary) =>
+    order.firstSeen[session.sessionId] ?? session.updatedAt * 1000
   for (const group of recents ? [...result, recents] : result) {
     group.sessions.sort(
       (a, b) =>
         Number(pins.sessions.has(b.sessionId)) - Number(pins.sessions.has(a.sessionId)) ||
+        (order.sessions === 'created' ? created(b) - created(a) : 0) ||
         b.updatedAt - a.updatedAt,
     )
   }
@@ -262,13 +323,44 @@ export function groupByWorkspace(
     Math.max(0, ...group.sessions.map((session) => session.updatedAt))
   const conversations = (group: WorkspaceGroup) =>
     group.sessions.filter((session) => (session.messagesCount ?? 1) > 0).length
+  const byDefault = (a: WorkspaceGroup, b: WorkspaceGroup) =>
+    conversations(b) - conversations(a) || newest(b) - newest(a)
+  // A Workspace not placed by hand yet goes after the placed ones, in the default order.
+  const place = (group: WorkspaceGroup) => {
+    const index = order.manual.indexOf(group.key)
+    return index === -1 ? order.manual.length : index
+  }
+  const chosen: Record<WorkspaceSort, (a: WorkspaceGroup, b: WorkspaceGroup) => number> = {
+    sessions: byDefault,
+    recent: (a, b) => newest(b) - newest(a) || byDefault(a, b),
+    name: (a, b) => a.label.localeCompare(b.label) || byDefault(a, b),
+    manual: (a, b) => place(a) - place(b) || byDefault(a, b),
+  }
   result.sort(
     (a, b) =>
       Number(pins.workspaces.has(b.key)) - Number(pins.workspaces.has(a.key)) ||
-      conversations(b) - conversations(a) ||
-      newest(b) - newest(a),
+      chosen[order.workspaces](a, b),
   )
   return recents ? [...result, recents] : result
+}
+
+/**
+ * The manual order after moving one Workspace next to another, as shown now
+ * (`shown` is the current order of every group's key). Starts from what is
+ * shown, so the first drag keeps everything else where it was.
+ */
+export function moveWorkspace(
+  shown: readonly string[],
+  key: string,
+  target: string,
+  place: 'before' | 'after',
+): string[] {
+  if (key === target) return [...shown]
+  const rest = shown.filter((k) => k !== key)
+  const at = rest.indexOf(target)
+  if (at === -1) return [...shown]
+  rest.splice(place === 'before' ? at : at + 1, 0, key)
+  return rest
 }
 
 /** Sessions touched within this window always show; older ones sit behind "Show more". */

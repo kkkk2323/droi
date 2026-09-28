@@ -198,6 +198,10 @@ function createWindow(gatewayUrl: string): void {
     autoHideMenuBar: true,
     backgroundColor: '#f3f3f3',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // Centres the traffic lights (about 14pt tall) in the Client's 44pt top
+    // strip, where the sidebar toggle and the page headers are centred; the
+    // default sits them about 3pt higher.
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 13, y: 15 } } : {}),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,

@@ -7,7 +7,12 @@ import {
   continuationParent,
   continuationTags,
   foldContinued,
+  DEFAULT_SORT,
+  NO_PINS,
   groupByWorkspace,
+  moveWorkspace,
+  noteFirstSeen,
+  type SortOrder,
   visibleSessions,
   workspaceLabel,
   type SessionSummary,
@@ -71,6 +76,67 @@ describe('groupByWorkspace', () => {
     )
     expect(groups.map((g) => g.label)).toEqual(['alpha', 'gamma', 'beta'])
     expect(groups[0]!.sessions.map((s) => s.sessionId)).toEqual(['a', 'c'])
+  })
+})
+
+describe('sorting the groups', () => {
+  const sessions = [
+    summary({ sessionId: 'b1', cwd: '/w/beta', updatedAt: 100 }),
+    summary({ sessionId: 'b2', cwd: '/w/beta', updatedAt: 200 }),
+    summary({ sessionId: 'a1', cwd: '/w/alpha', updatedAt: 900 }),
+    summary({ sessionId: 'c1', cwd: '/w/gamma', updatedAt: 500 }),
+  ]
+  const keys = (order: Partial<SortOrder>) =>
+    groupByWorkspace(sessions, NO_PINS, { ...DEFAULT_SORT, ...order }).map((g) => g.label)
+
+  test('by most sessions, recently active, name, or by hand', () => {
+    expect(keys({})).toEqual(['beta', 'alpha', 'gamma'])
+    expect(keys({ workspaces: 'recent' })).toEqual(['alpha', 'gamma', 'beta'])
+    expect(keys({ workspaces: 'name' })).toEqual(['alpha', 'beta', 'gamma'])
+    // A Workspace not placed yet follows the placed ones, in the default order.
+    expect(keys({ workspaces: 'manual', manual: ['/w/gamma'] })).toEqual(['gamma', 'beta', 'alpha'])
+  })
+
+  test('pinned Workspaces stay first whatever the order', () => {
+    const pinned = groupByWorkspace(
+      sessions,
+      { workspaces: new Set(['/w/gamma']), sessions: new Set() },
+      { ...DEFAULT_SORT, workspaces: 'name' },
+    )
+    expect(pinned.map((g) => g.label)).toEqual(['gamma', 'alpha', 'beta'])
+  })
+
+  test('Sessions newest first, or by when they were first seen', () => {
+    const beta = (order: Partial<SortOrder>) =>
+      groupByWorkspace(sessions, NO_PINS, { ...DEFAULT_SORT, ...order })
+        .find((g) => g.label === 'beta')!
+        .sessions.map((s) => s.sessionId)
+    expect(beta({})).toEqual(['b2', 'b1'])
+    expect(beta({ sessions: 'created', firstSeen: { b1: 5_000, b2: 1_000 } })).toEqual(['b1', 'b2'])
+  })
+
+  test('a move places one Workspace before or after another, from the order shown', () => {
+    const shown = ['/w/a', '/w/b', '/w/c']
+    expect(moveWorkspace(shown, '/w/c', '/w/a', 'before')).toEqual(['/w/c', '/w/a', '/w/b'])
+    expect(moveWorkspace(shown, '/w/a', '/w/b', 'after')).toEqual(['/w/b', '/w/a', '/w/c'])
+    expect(moveWorkspace(shown, '/w/a', '/w/a', 'after')).toEqual(shown)
+  })
+})
+
+describe('noteFirstSeen', () => {
+  test('adds only new Sessions, at the earlier of now and their last change', () => {
+    const known = { old: 1 }
+    expect(noteFirstSeen(known, [summary({ sessionId: 'old' })], 10_000)).toBe(known)
+    expect(
+      noteFirstSeen(
+        known,
+        [
+          summary({ sessionId: 'fresh', updatedAt: 50 }),
+          summary({ sessionId: 'later', updatedAt: 99 }),
+        ],
+        60_000,
+      ),
+    ).toEqual({ old: 1, fresh: 50_000, later: 60_000 })
   })
 })
 

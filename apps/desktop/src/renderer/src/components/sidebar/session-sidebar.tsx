@@ -1,12 +1,18 @@
-import { useState } from 'react'
+import { useState, type DragEvent } from 'react'
 import { ContextMenu } from '@base-ui/react/context-menu'
+import { Menu } from '@base-ui/react/menu'
 import {
   Archive,
   ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
+  Check,
   ChevronDown,
   ChevronRight,
   CircleAlert,
   Folder,
+  FolderOpen,
+  ListFilter,
   MessageSquare,
   Pin,
   PinOff,
@@ -34,16 +40,33 @@ const MENU_ITEM =
 // Folded like a Workspace group, in the same preference; no Workspace key has this prefix.
 const PINNED_SECTION_KEY = 'droi:pinned'
 const WORKSPACES_SECTION_KEY = 'droi:workspaces'
-import type { SessionActivity } from '@droi/daemon-layer/use-session-activity'
+import { countBusy, type Busy, type SessionActivity } from '@droi/daemon-layer/use-session-activity'
+import type { SessionSortControls } from '@droi/daemon-layer/use-session-sort'
 import {
   OLDER_BATCH,
+  SESSION_SORT_LABELS,
+  WORKSPACE_SORT_LABELS,
+  moveWorkspace,
   visibleSessions,
+  type SessionSort,
   type SessionSummary,
   type WorkspaceGroup,
+  type WorkspaceSort,
 } from '@droi/daemon-layer/sessions'
+
+const WORKSPACE_DRAG_TYPE = 'application/x-droi-workspace'
+
+/** Moving Workspaces by hand: the order shown, and where a drag would land. */
+interface Reorder {
+  shown: string[]
+  move: (key: string, target: string, place: 'before' | 'after') => void
+  over: { key: string; place: 'before' | 'after' } | null
+  setOver: (over: { key: string; place: 'before' | 'after' } | null) => void
+}
 
 export function SessionSidebar({
   groups,
+  sort,
   selectedSessionId,
   activity,
   subagentsRunning,
@@ -59,6 +82,7 @@ export function SessionSidebar({
   insetTop,
 }: {
   groups: WorkspaceGroup[]
+  sort: SessionSortControls
   selectedSessionId: string | null
   /** What the Daemon is doing in each busy Session: a spinner, or a call for an answer. */
   activity: ReadonlyMap<string, SessionActivity>
@@ -84,10 +108,36 @@ export function SessionSidebar({
   const recents = groups.find((group) => group.scratch)
   const pinned = groups.filter((group) => !group.scratch && pinnedGroups.includes(group.key))
   const rest = groups.filter((group) => !group.scratch && !pinnedGroups.includes(group.key))
+  const [over, setOver] = useState<Reorder['over']>(null)
+  const reorder: Reorder | null =
+    sort.order.workspaces === 'manual'
+      ? {
+          shown: groups.filter((g) => !g.scratch).map((g) => g.key),
+          move: (key, target, place) => {
+            sort.setManual(
+              moveWorkspace(
+                groups.filter((g) => !g.scratch).map((g) => g.key),
+                key,
+                target,
+                place,
+              ),
+            )
+          },
+          over,
+          setOver,
+        }
+      : null
+  const busy = (list: readonly WorkspaceGroup[]) =>
+    countBusy(
+      list.flatMap((g) => g.sessions),
+      activity,
+      subagentsRunning,
+    )
   const section = (group: WorkspaceGroup) => (
     <WorkspaceSection
       key={group.key}
       group={group}
+      reorder={group.scratch ? null : reorder}
       selectedSessionId={selectedSessionId}
       activity={activity}
       subagentsRunning={subagentsRunning}
@@ -114,7 +164,21 @@ export function SessionSidebar({
         <SidebarRow icon={<Plus aria-hidden />} onClick={onNewSession}>
           New session
         </SidebarRow>
-        <SessionSearchBox query={query} onChange={setQuery} />
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <SessionSearchBox query={query} onChange={setQuery} />
+          </div>
+          <SortMenu
+            sort={sort}
+            // Manual starts from what is on screen, unless the user already placed some.
+            onWorkspaces={(value) => {
+              if (value === 'manual' && sort.order.manual.length === 0) {
+                sort.setManual(groups.filter((g) => !g.scratch).map((g) => g.key))
+              }
+              sort.setWorkspaces(value)
+            }}
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 pb-2">
@@ -137,7 +201,12 @@ export function SessionSidebar({
             ) : null}
             {/* The Workspaces label only appears when there is another section to tell it from. */}
             {pinned.length > 0 ? (
-              <FoldableSection label="Pinned" id="sidebar-pinned" foldKey={PINNED_SECTION_KEY}>
+              <FoldableSection
+                label="Pinned"
+                id="sidebar-pinned"
+                foldKey={PINNED_SECTION_KEY}
+                busy={busy(pinned)}
+              >
                 {pinned.map(section)}
               </FoldableSection>
             ) : null}
@@ -146,6 +215,7 @@ export function SessionSidebar({
                 label="Workspaces"
                 id="sidebar-workspaces"
                 foldKey={WORKSPACES_SECTION_KEY}
+                busy={busy(rest)}
               >
                 {rest.map(section)}
               </FoldableSection>
@@ -183,6 +253,7 @@ export function SessionSidebar({
 
 function WorkspaceSection({
   group,
+  reorder,
   selectedSessionId,
   activity,
   subagentsRunning,
@@ -192,6 +263,8 @@ function WorkspaceSection({
   onNewSessionIn,
 }: {
   group: WorkspaceGroup
+  /** Set while the Workspaces are in the manual order. */
+  reorder: Reorder | null
   selectedSessionId: string | null
   activity: ReadonlyMap<string, SessionActivity>
   subagentsRunning: ReadonlyMap<string, number>
@@ -228,8 +301,62 @@ function WorkspaceSection({
       <SquarePen aria-hidden className="size-3.5" />
     </button>
   )
+  // A folded group still says what its Sessions are doing.
+  const foldedBusy = open ? null : countBusy(group.sessions, activity, subagentsRunning)
+  const FolderIcon = open ? FolderOpen : Folder
+  const at = reorder ? reorder.shown.indexOf(group.key) : -1
+  const above = reorder && at > 0 ? reorder.shown[at - 1] : undefined
+  const below = reorder && at >= 0 ? reorder.shown[at + 1] : undefined
+  const dropping = reorder?.over?.key === group.key ? reorder.over.place : null
+  const dragProps = reorder
+    ? {
+        draggable: true,
+        onDragStart: (event: DragEvent) => {
+          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.setData(WORKSPACE_DRAG_TYPE, group.key)
+        },
+        onDragEnd: () => reorder.setOver(null),
+      }
+    : {}
+  const dropProps = reorder
+    ? {
+        onDragOver: (event: DragEvent) => {
+          if (!event.dataTransfer.types.includes(WORKSPACE_DRAG_TYPE)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          const box = event.currentTarget.getBoundingClientRect()
+          const place = event.clientY < box.top + box.height / 2 ? 'before' : 'after'
+          if (reorder.over?.key !== group.key || reorder.over.place !== place) {
+            reorder.setOver({ key: group.key, place })
+          }
+        },
+        onDragLeave: (event: DragEvent) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            reorder.setOver(null)
+          }
+        },
+        onDrop: (event: DragEvent) => {
+          const key = event.dataTransfer.getData(WORKSPACE_DRAG_TYPE)
+          event.preventDefault()
+          const place = reorder.over?.key === group.key ? reorder.over.place : 'before'
+          reorder.setOver(null)
+          if (key) reorder.move(key, group.key, place)
+        },
+      }
+    : {}
   return (
-    <section aria-label={group.label} className="mb-2">
+    <section
+      aria-label={group.label}
+      className={cn(
+        'relative mb-2',
+        // Where a dragged Workspace would land.
+        dropping === 'before' &&
+          'before:absolute before:inset-x-2 before:-top-1 before:h-0.5 before:rounded-full before:bg-primary',
+        dropping === 'after' &&
+          'after:absolute after:inset-x-2 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-primary',
+      )}
+      {...dropProps}
+    >
       <ContextMenu.Root>
         {group.scratch ? (
           // Recents is a section of its own, like Pinned and Workspaces, not a folder.
@@ -241,12 +368,19 @@ function WorkspaceSection({
               controls={listId}
               onToggle={toggle}
               action={newButton}
+              busy={foldedBusy}
             />
           </ContextMenu.Trigger>
         ) : (
           <ContextMenu.Trigger
             render={
-              <h2 className="group/ws flex h-8 items-center rounded-lg text-[13px] font-medium text-foreground transition-colors hover:bg-sidebar-accent/60" />
+              <h2
+                className={cn(
+                  'group/ws flex h-8 items-center rounded-lg text-[13px] font-medium text-foreground transition-colors hover:bg-sidebar-accent/60',
+                  reorder && 'cursor-grab active:cursor-grabbing',
+                )}
+                {...dragProps}
+              />
             }
           >
             <button
@@ -257,20 +391,22 @@ function WorkspaceSection({
               onClick={toggle}
               className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
-              <span className="relative size-4 shrink-0 text-muted-foreground">
-                <Folder
+              <span className="relative grid size-4 shrink-0 place-items-center text-muted-foreground">
+                <FolderIcon
                   aria-hidden
-                  className="absolute inset-0 size-4 transition-opacity group-hover/ws:opacity-0"
+                  strokeWidth={1.75}
+                  className="size-3.5 transition-opacity group-hover/ws:opacity-0"
                 />
                 <ChevronRight
                   aria-hidden
                   className={cn(
-                    'absolute inset-0 size-4 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
+                    'absolute size-3.5 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
                     open && 'rotate-90',
                   )}
                 />
               </span>
               <span className="truncate">{group.label}</span>
+              {foldedBusy ? <BusyMark busy={foldedBusy} /> : null}
             </button>
             {newButton}
           </ContextMenu.Trigger>
@@ -278,6 +414,27 @@ function WorkspaceSection({
         <ContextMenu.Portal>
           <ContextMenu.Positioner className="z-50 outline-none">
             <ContextMenu.Popup aria-label={`Actions for ${group.label}`} className={MENU}>
+              {reorder && (above || below) ? (
+                <>
+                  <ContextMenu.Item
+                    disabled={!above}
+                    onClick={() => above && reorder.move(group.key, above, 'before')}
+                    className={cn(MENU_ITEM, 'data-[disabled]:opacity-50')}
+                  >
+                    <ArrowUp aria-hidden className="size-4 text-muted-foreground" />
+                    Move up
+                  </ContextMenu.Item>
+                  <ContextMenu.Item
+                    disabled={!below}
+                    onClick={() => below && reorder.move(group.key, below, 'after')}
+                    className={cn(MENU_ITEM, 'data-[disabled]:opacity-50')}
+                  >
+                    <ArrowDown aria-hidden className="size-4 text-muted-foreground" />
+                    Move down
+                  </ContextMenu.Item>
+                  <ContextMenu.Separator className="my-1 h-px bg-border" />
+                </>
+              ) : null}
               {/* Recents always sits at the bottom. */}
               {group.scratch ? null : (
                 <ContextMenu.Item
@@ -469,6 +626,7 @@ function SectionHeader({
   controls,
   onToggle,
   action,
+  busy = null,
 }: {
   label: string
   title?: string
@@ -476,6 +634,8 @@ function SectionHeader({
   controls: string
   onToggle: () => void
   action?: React.ReactNode
+  /** What the folded section's Sessions are doing; null when open or idle. */
+  busy?: Busy | null
 }) {
   return (
     <div className="group/ws mt-1 flex h-7 items-center rounded-lg transition-colors hover:bg-sidebar-accent/60">
@@ -495,6 +655,7 @@ function SectionHeader({
             open && 'rotate-90',
           )}
         />
+        {busy && !open ? <BusyMark busy={busy} /> : null}
       </button>
       {action}
     </div>
@@ -506,11 +667,13 @@ function FoldableSection({
   label,
   id,
   foldKey,
+  busy,
   children,
 }: {
   label: string
   id: string
   foldKey: string
+  busy: Busy | null
   children: React.ReactNode
 }) {
   const [folded] = usePreference(foldedWorkspaces)
@@ -522,11 +685,107 @@ function FoldableSection({
         open={open}
         controls={id}
         onToggle={() => toggleListed(foldedWorkspaces, foldKey)}
+        busy={busy}
       />
       <div id={id} hidden={!open}>
         {children}
       </div>
     </div>
+  )
+}
+
+/** A folded group's summary: how many of its Sessions work or wait for an answer. */
+function BusyMark({ busy }: { busy: Busy }) {
+  const parts = [
+    busy.needsInput > 0 ? `${busy.needsInput} needs input` : null,
+    busy.working > 0 ? `${busy.working} working` : null,
+  ].filter(Boolean)
+  return (
+    <span
+      role="status"
+      aria-label={parts.join(', ')}
+      className="ml-auto flex shrink-0 items-center gap-2 pl-1 text-[11px] font-normal tabular-nums"
+    >
+      {busy.needsInput > 0 ? (
+        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+          <CircleAlert aria-hidden className="size-3" />
+          {busy.needsInput}
+        </span>
+      ) : null}
+      {busy.working > 0 ? (
+        <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400">
+          <Spinner aria-hidden className="size-3" />
+          {busy.working}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+const SORT_ITEM =
+  'grid grid-cols-[1fr_1rem] items-center gap-3 rounded-md py-1.5 pl-2.5 pr-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground'
+
+/** How Workspaces and the Sessions in them (Recents too) are ordered. */
+function SortMenu({
+  sort,
+  onWorkspaces,
+}: {
+  sort: SessionSortControls
+  onWorkspaces: (sort: WorkspaceSort) => void
+}) {
+  return (
+    <Menu.Root>
+      <Menu.Trigger
+        aria-label="Sort"
+        title="Sort"
+        className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-foreground"
+      >
+        <ListFilter aria-hidden className="size-4" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50 outline-none">
+          <Menu.Popup className={MENU}>
+            <Menu.Group>
+              <Menu.GroupLabel className="px-2.5 pb-1 pt-1 text-xs text-muted-foreground">
+                Sort workspaces
+              </Menu.GroupLabel>
+              <Menu.RadioGroup
+                value={sort.order.workspaces}
+                onValueChange={(value) => onWorkspaces(value as WorkspaceSort)}
+              >
+                {(Object.keys(WORKSPACE_SORT_LABELS) as WorkspaceSort[]).map((value) => (
+                  <Menu.RadioItem key={value} value={value} closeOnClick className={SORT_ITEM}>
+                    {WORKSPACE_SORT_LABELS[value]}
+                    <Menu.RadioItemIndicator className="flex items-center justify-center">
+                      <Check aria-hidden className="size-3.5" />
+                    </Menu.RadioItemIndicator>
+                  </Menu.RadioItem>
+                ))}
+              </Menu.RadioGroup>
+            </Menu.Group>
+            <Menu.Separator className="my-1 h-px bg-border" />
+            <Menu.Group>
+              <Menu.GroupLabel className="px-2.5 pb-1 pt-1 text-xs text-muted-foreground">
+                Sort sessions
+              </Menu.GroupLabel>
+              <Menu.RadioGroup
+                value={sort.order.sessions}
+                onValueChange={(value) => sort.setSessions(value as SessionSort)}
+              >
+                {(Object.keys(SESSION_SORT_LABELS) as SessionSort[]).map((value) => (
+                  <Menu.RadioItem key={value} value={value} closeOnClick className={SORT_ITEM}>
+                    {SESSION_SORT_LABELS[value]}
+                    <Menu.RadioItemIndicator className="flex items-center justify-center">
+                      <Check aria-hidden className="size-3.5" />
+                    </Menu.RadioItemIndicator>
+                  </Menu.RadioItem>
+                ))}
+              </Menu.RadioGroup>
+            </Menu.Group>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   )
 }
 

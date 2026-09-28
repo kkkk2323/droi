@@ -23,6 +23,31 @@ export function activityOf(workingState: string | null | undefined): SessionActi
   return 'working'
 }
 
+/** How many of some Sessions are busy, for a folded group's header. */
+export interface Busy {
+  working: number
+  needsInput: number
+}
+
+/**
+ * Counts the Sessions working (subagents running count as working) and the
+ * ones waiting for an answer; null when none is doing anything.
+ */
+export function countBusy(
+  sessions: readonly { sessionId: string }[],
+  activity: ReadonlyMap<string, SessionActivity>,
+  subagentsRunning: ReadonlyMap<string, number> = new Map(),
+): Busy | null {
+  let working = 0
+  let needsInput = 0
+  for (const { sessionId } of sessions) {
+    const doing = activity.get(sessionId)
+    if (doing === 'needs-input') needsInput += 1
+    else if (doing || (subagentsRunning.get(sessionId) ?? 0) > 0) working += 1
+  }
+  return working + needsInput > 0 ? { working, needsInput } : null
+}
+
 interface ActivityStore {
   subscribe(listener: () => void): () => void
   getSnapshot(): ReadonlyMap<string, SessionActivity>

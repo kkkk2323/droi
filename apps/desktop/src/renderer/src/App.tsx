@@ -29,6 +29,7 @@ const NO_SESSIONS: SessionSummary[] = []
 import { recentWorkspaces } from '@droi/daemon-layer/use-new-session'
 import { archiveConversation, unarchiveConversation } from '@droi/daemon-layer/archive'
 import { useSessionActivity } from '@droi/daemon-layer/use-session-activity'
+import { useSessionSort } from '@droi/daemon-layer/use-session-sort'
 import {
   ConnectionStatus,
   PairingFailed,
@@ -83,10 +84,12 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
   const listed = sessions.data ?? NO_SESSIONS
-  const groups = groupByWorkspace(foldContinued(mainSessions(listed)), {
-    workspaces: new Set(pinnedGroups),
-    sessions: new Set(pinnedIds),
-  })
+  const sort = useSessionSort(listed)
+  const groups = groupByWorkspace(
+    foldContinued(mainSessions(listed)),
+    { workspaces: new Set(pinnedGroups), sessions: new Set(pinnedIds) },
+    sort.order,
+  )
   const recent = sessions.data ? recentWorkspaces(sessions.data) : null
   const selectedId = route.name === 'session' ? route.sessionId : null
   const selected = listed.find((s) => s.sessionId === selectedId) ?? null
@@ -185,6 +188,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const sidebar = (
     <SessionSidebar
       groups={groups}
+      sort={sort}
       // A subagent's row is the Session that called it.
       selectedSessionId={selectedId ? listedSessionOf(listed, selectedId) : null}
       activity={activity}
