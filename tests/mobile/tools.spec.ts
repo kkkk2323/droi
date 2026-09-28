@@ -34,11 +34,12 @@ test.describe('skills and MCP servers', () => {
     await page.getByRole('button', { name: 'Skills and MCP servers' }).click()
     const sheet = page.getByRole('dialog', { name: 'Skills and MCP servers' })
     const review = sheet.getByRole('listitem', { name: 'review' })
-    await expect(sheet.getByRole('listitem', { name: 'mine' }).getByRole('button')).toHaveCount(0)
-    await expect(sheet.getByRole('listitem', { name: 'locked' })).toContainText(
-      'Disabled by organization',
-    )
-    await review.getByRole('button', { name: 'Disable across all projects' }).click()
+    await expect(sheet.getByRole('listitem', { name: 'mine' }).getByRole('switch')).toHaveCount(0)
+    const locked = sheet.getByRole('listitem', { name: 'locked' })
+    await expect(locked).toContainText('Disabled by organization')
+    await expect(locked.getByRole('switch')).toBeDisabled()
+    const toggle = review.getByRole('switch', { name: 'review enabled' })
+    await toggle.click()
     const request = await fakeDaemon.waitForRequest('daemon.set_skill_disabled')
     expect(request.params).toMatchObject({
       skillName: 'review',
@@ -46,9 +47,11 @@ test.describe('skills and MCP servers', () => {
       settingsLevel: 'user',
     })
     await expect(review).toContainText('Disabled')
-    await review.getByRole('button', { name: 'Enable' }).click()
+    await expect(toggle).not.toBeChecked()
+    await toggle.click()
     await fakeDaemon.waitForRequest('daemon.set_skill_disabled', 2)
     await expect(review).not.toContainText('Disabled')
+    await expect(toggle).toBeChecked()
   })
 
   test('servers switch, show tools, ask to sign in on the computer, and are added', async ({

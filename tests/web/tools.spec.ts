@@ -33,7 +33,7 @@ test.describe('skills and MCP servers', () => {
     },
   })
 
-  test('a skill goes off for the project or everywhere and leaves the "/" menu', async ({
+  test('a skill goes off from the composer and leaves the "/" menu', async ({
     page,
     fakeDaemon,
     openClient,
@@ -41,23 +41,25 @@ test.describe('skills and MCP servers', () => {
   }) => {
     await openClient()
     await pickSession(/Chat/)
-    await page.getByRole('button', { name: 'Skills and MCP servers' }).click()
+    // The button in the composer's footer counts what the Session has; the
+    // organization's switch already shows one skill off.
+    const entry = page.getByRole('button', { name: 'Skills and MCP servers' })
+    await expect(entry).toHaveText(/Skills 3\/4.*MCP 3/)
+    await expect(entry).toHaveAttribute('title', /4 skills, 1 disabled[\s\S]*files · Connected/)
+    await entry.click()
     const skills = page.getByRole('tabpanel')
     const review = skills.getByRole('listitem', { name: 'review' })
     await expect(skills.getByRole('region', { name: 'Built-in' })).toContainText('review')
     await expect(skills.getByRole('region', { name: 'Project' })).toContainText('deploy')
     // A personal skill is managed by its files; one the organization turned off is read-only.
-    await expect(skills.getByRole('listitem', { name: 'mine' }).getByRole('button')).toHaveCount(0)
+    await expect(skills.getByRole('listitem', { name: 'mine' }).getByRole('switch')).toHaveCount(0)
     const locked = skills.getByRole('listitem', { name: 'locked' })
     await expect(locked).toContainText('Disabled by organization')
-    await expect(locked.getByRole('button')).toHaveCount(0)
+    await expect(locked.getByRole('switch')).toBeDisabled()
+    await expect(locked.getByRole('switch')).not.toBeChecked()
 
-    await review.getByRole('button', { name: 'Manage review' }).click()
-    await expect(page.getByRole('menuitem')).toHaveText([
-      'Disable for this project',
-      'Disable across all projects',
-    ])
-    await page.getByRole('menuitem', { name: 'Disable across all projects' }).click()
+    // A built-in skill is switched for the user, a project skill for its project.
+    await review.getByRole('switch', { name: 'review enabled' }).click()
     const request = await fakeDaemon.waitForRequest('daemon.set_skill_disabled')
     expect(request.params).toMatchObject({
       skillName: 'review',
@@ -65,14 +67,23 @@ test.describe('skills and MCP servers', () => {
       settingsLevel: 'user',
     })
     await expect(review).toContainText('Disabled')
-    await review.getByRole('button', { name: 'Manage review' }).click()
-    await expect(page.getByRole('menuitem')).toHaveText(['Enable'])
-    await page.keyboard.press('Escape')
+    await expect(review.getByRole('switch')).not.toBeChecked()
+    await skills
+      .getByRole('listitem', { name: 'deploy' })
+      .getByRole('switch', { name: 'deploy enabled' })
+      .click()
+    const project = await fakeDaemon.waitForRequest('daemon.set_skill_disabled', 2)
+    expect(project.params).toMatchObject({
+      skillName: 'deploy',
+      disabled: true,
+      settingsLevel: 'project',
+    })
     await page.getByRole('button', { name: 'Close' }).click()
+    await expect(entry).toHaveText(/Skills 1\/4/)
 
     await page.getByRole('textbox', { name: 'Message' }).fill('/')
     const list = page.getByRole('listbox', { name: 'Commands and skills' })
-    await expect(list.getByRole('option')).toHaveText([/compact/, /deploy/, /mine/])
+    await expect(list.getByRole('option')).toHaveText([/compact/, /mine/])
   })
 
   test('servers switch off and on, sign in, show their tools, and can be removed', async ({

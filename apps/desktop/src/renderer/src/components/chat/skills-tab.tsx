@@ -1,14 +1,12 @@
 // The skills the Session can use, grouped by where they live, each with the
-// switches the Daemon allows (skills.ts has the rules).
-import { Menu } from '@base-ui/react/menu'
-import { ChevronDown } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+// switch the Daemon allows (skills.ts has the rules).
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/setting-row'
 import {
   LOCATION_LABELS,
+  disabledLabel,
   groupSkills,
-  isDisabledByOrg,
-  skillSwitches,
+  skillSwitch,
   type Skill,
   type SkillLevel,
 } from '@droi/daemon-layer/skills'
@@ -65,7 +63,10 @@ function SkillRow({
   onSwitch: (disabled: boolean, level: SkillLevel) => void
 }) {
   const off = skill.enabled === false
-  const switches = skillSwitches(skill, projectAvailable)
+  const toggle = skillSwitch(skill, projectAvailable)
+  // Personal skills have no switch at all; the rest show one, locked when
+  // something other than this switch turned the skill off.
+  const personal = String(skill.location) === 'personal'
   return (
     <li
       aria-label={skill.name}
@@ -74,10 +75,9 @@ function SkillRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-sm font-medium">{skill.name}</span>
-          {off ? (
-            <Badge>{isDisabledByOrg(skill) ? 'Disabled by organization' : 'Disabled'}</Badge>
-          ) : null}
+          {off ? <Badge>{disabledLabel(skill)}</Badge> : null}
           {skill.userInvocable === false ? <Badge>Model only</Badge> : null}
+          {saving ? <Spinner className="size-3 text-muted-foreground" /> : null}
         </div>
         {skill.description ? (
           <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
@@ -85,34 +85,17 @@ function SkillRow({
           </p>
         ) : null}
       </div>
-      {switches.length > 0 ? (
-        <Menu.Root>
-          <Menu.Trigger
-            aria-label={`Manage ${skill.name}`}
-            disabled={saving}
-            render={<Button size="xs" variant="outline" />}
-          >
-            {saving ? <Spinner className="size-3" /> : null}
-            {off ? 'Disabled' : 'Enabled'}
-            <ChevronDown aria-hidden data-icon="inline-end" />
-          </Menu.Trigger>
-          <Menu.Portal>
-            <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50 outline-none">
-              <Menu.Popup className="min-w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none">
-                {switches.map((s) => (
-                  <Menu.Item
-                    key={s.level}
-                    onClick={() => onSwitch(s.disabled, s.level)}
-                    className="rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                  >
-                    {s.label}
-                  </Menu.Item>
-                ))}
-              </Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
-      ) : null}
+      {personal ? null : (
+        <Switch
+          aria-label={`${skill.name} enabled`}
+          checked={!off}
+          disabled={!toggle || saving}
+          onCheckedChange={(checked) => {
+            if (toggle) onSwitch(!checked, toggle.level)
+          }}
+          className="mt-0.5"
+        />
+      )}
     </li>
   )
 }

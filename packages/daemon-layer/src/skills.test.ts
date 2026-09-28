@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { groupSkills, isDisabledByOrg, skillSwitches, type Skill } from './skills'
+import { disabledLabel, groupSkills, skillSwitch, type Skill } from './skills'
 
 const skill = (overrides: Partial<Skill>): Skill =>
   ({
@@ -10,40 +10,61 @@ const skill = (overrides: Partial<Skill>): Skill =>
     ...overrides,
   }) as Skill
 
-describe('skillSwitches', () => {
-  test('a built-in skill in a project can go off for the project or everywhere', () => {
-    expect(skillSwitches(skill({}), true).map((s) => [s.level, s.disabled, s.label])).toEqual([
-      ['project', true, 'Disable for this project'],
-      ['user', true, 'Disable across all projects'],
-    ])
+const off = (levels: string[], overrides: Partial<Skill> = {}): Skill =>
+  skill({
+    enabled: false,
+    disabledBy: { kind: 'ledger', sources: levels.map((level) => ({ level })) },
+    ...overrides,
+  } as Partial<Skill>)
+
+describe('skillSwitch', () => {
+  test('a built-in skill switches for the user, with or without a project', () => {
+    expect(skillSwitch(skill({}), true)).toEqual({ on: true, level: 'user' })
+    expect(skillSwitch(skill({}), false)).toEqual({ on: true, level: 'user' })
   })
 
-  test('outside a project a built-in skill has one switch, worded plainly', () => {
-    expect(skillSwitches(skill({}), false).map((s) => s.label)).toEqual(['Disable'])
+  test('a project skill switches for its project, and not without one', () => {
+    const project = skill({ location: 'project' } as Partial<Skill>)
+    expect(skillSwitch(project, true)).toEqual({ on: true, level: 'project' })
+    expect(skillSwitch(project, false)).toBeNull()
   })
 
-  test('a project skill only goes off for its project', () => {
-    expect(skillSwitches(skill({ location: 'project' } as Partial<Skill>), true)).toEqual([
-      { disabled: true, level: 'project', label: 'Disable for this project' },
-    ])
+  test('a skill turned off at the level the switch writes comes back from it', () => {
+    expect(skillSwitch(off(['user']), true)).toEqual({ on: false, level: 'user' })
+    expect(skillSwitch(off(['project'], { location: 'project' } as Partial<Skill>), true)).toEqual({
+      on: false,
+      level: 'project',
+    })
   })
 
-  test('a disabled skill offers to come back only at the level that turned it off', () => {
-    const off = skill({
-      enabled: false,
-      disabledBy: { kind: 'ledger', sources: [{ level: 'user' }] },
-    } as Partial<Skill>)
-    expect(skillSwitches(off, true)).toEqual([{ disabled: false, level: 'user', label: 'Enable' }])
+  test('a skill turned off elsewhere is read-only', () => {
+    expect(skillSwitch(off(['project']), true)).toBeNull()
+    expect(skillSwitch(off(['user', 'project']), true)).toBeNull()
+    expect(skillSwitch(off(['org']), true)).toBeNull()
+    expect(
+      skillSwitch(
+        skill({ enabled: false, disabledBy: { kind: 'frontmatter' } } as Partial<Skill>),
+        true,
+      ),
+    ).toBeNull()
   })
 
-  test('personal skills and ones the organization turned off have no switch', () => {
-    expect(skillSwitches(skill({ location: 'personal' } as Partial<Skill>), true)).toEqual([])
-    const byOrg = skill({
-      enabled: false,
-      disabledBy: { kind: 'ledger', sources: [{ level: 'org' }] },
-    } as Partial<Skill>)
-    expect(skillSwitches(byOrg, true)).toEqual([])
-    expect(isDisabledByOrg(byOrg)).toBe(true)
+  test('personal skills have no switch', () => {
+    expect(skillSwitch(skill({ location: 'personal' } as Partial<Skill>), true)).toBeNull()
+  })
+})
+
+describe('disabledLabel', () => {
+  test('names who turned the skill off', () => {
+    expect(disabledLabel(off(['org']))).toBe('Disabled by organization')
+    expect(disabledLabel(off(['project']))).toBe('Disabled for this project')
+    expect(disabledLabel(off(['user']))).toBe('Disabled')
+    expect(disabledLabel(off(['user', 'project']))).toBe('Disabled')
+    expect(
+      disabledLabel(
+        skill({ enabled: false, disabledBy: { kind: 'frontmatter' } } as Partial<Skill>),
+      ),
+    ).toBe('Disabled in its file')
   })
 })
 

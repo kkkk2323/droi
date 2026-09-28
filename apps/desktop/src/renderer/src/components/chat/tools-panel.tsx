@@ -1,11 +1,15 @@
-// The Session's skills and MCP Servers, behind a wrench in the header. Both
-// are the Daemon's: it lists them for the Session and writes the switches to
-// the same files the droid CLI and the Factory App use, so a change here shows
-// up there and in the next Session too.
+// The Session's skills and MCP Servers, behind a button in the composer's
+// footer row that counts them (hovering lists the servers). Both are the
+// Daemon's: it lists them for the Session and writes the switches to the same
+// files the droid CLI and the Factory App use, so a change here shows up there
+// and in the next Session too.
 import { useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { Wrench, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { STATUS_LABELS, sortServers } from '@droi/daemon-layer/mcp'
+import { useMcpServers } from '@droi/daemon-layer/use-mcp'
+import { useSkills } from '@droi/daemon-layer/use-skills'
 import { cn } from '@/lib/utils'
 import { McpTab } from './mcp-tab'
 import { SkillsTab } from './skills-tab'
@@ -20,13 +24,50 @@ const TABS: Array<{ id: Tab; label: string }> = [
 export function ToolsButton({ sessionId }: { sessionId: string }) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('skills')
+  const { skills } = useSkills(sessionId)
+  const { servers } = useMcpServers(sessionId)
+
+  const disabledSkills = skills.filter((skill) => skill.enabled === false).length
+  const statuses = servers.map((server) => String(server.status))
+  const dot = statuses.includes('failed')
+    ? 'bg-rose-500'
+    : statuses.includes('connected')
+      ? 'bg-emerald-500'
+      : statuses.includes('connecting')
+        ? 'bg-amber-500'
+        : 'bg-muted-foreground/40'
+  const summary = [
+    skills.length === 0
+      ? 'No skills'
+      : `${skills.length} skills${disabledSkills ? `, ${disabledSkills} disabled` : ''}`,
+    servers.length === 0
+      ? 'No MCP servers'
+      : sortServers(servers)
+          .map(
+            (server) => `${server.name} · ${STATUS_LABELS[String(server.status)] ?? server.status}`,
+          )
+          .join('\n'),
+  ].join('\n\n')
+
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger
         aria-label="Skills and MCP servers"
-        className="app-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:bg-accent data-[popup-open]:text-foreground"
+        title={summary}
+        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/75 transition-colors select-none hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[popup-open]:bg-muted data-[popup-open]:text-foreground"
       >
         <Wrench aria-hidden className="size-3.5" />
+        <span>
+          Skills
+          {skills.length > 0
+            ? ` ${disabledSkills ? `${skills.length - disabledSkills}/` : ''}${skills.length}`
+            : ''}
+        </span>
+        <span aria-hidden className="text-foreground/30">
+          ·
+        </span>
+        <span aria-hidden className={cn('size-1.5 rounded-full', dot)} />
+        <span>MCP{servers.length > 0 ? ` ${servers.length}` : ''}</span>
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/30 transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />

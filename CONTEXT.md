@@ -80,7 +80,7 @@ Text the Desktop Shell keeps and the Gateway appends to Droid's own system promp
 _Avoid_: system prompt override, custom instructions
 
 **Skill**:
-A `SKILL.md` folder the Daemon offers Droid, and the user through "/": built into the droid CLI, personal (`~/.factory/skills`), or the Workspace's (`.factory/skills`). The Daemon lists a Session's skills and writes the switches: off across all projects (`~/.factory/settings.json`) or off for one Workspace (`.factory/settings.json`); the organization's switches are read-only. A personal skill is managed by its files.
+A `SKILL.md` folder the Daemon offers Droid, and the user through "/": built into the droid CLI, personal (`~/.factory/skills`), or the Workspace's (`.factory/skills`). The Daemon lists a Session's skills and writes the switches: off across all projects (`~/.factory/settings.json`) or off for one Workspace (`.factory/settings.json`); the organization's switches are read-only. A personal skill is managed by its files. Droi gives each skill one switch: a built-in one writes across all projects, the Workspace's writes for that Workspace.
 _Avoid_: plugin, extension, prompt template
 
 **MCP Server**:

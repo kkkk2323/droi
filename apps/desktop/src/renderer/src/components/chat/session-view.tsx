@@ -194,7 +194,6 @@ export function SessionView({
       >
         <SubagentMenu subagents={subagents} />
         <GitChangesButton changes={gitChanges} />
-        <ToolsButton sessionId={sessionId} />
         <OpenInButton path={workspace} bridge={window.droiShell?.openIn ?? null} />
       </PageHeader>
 
@@ -237,7 +236,12 @@ export function SessionView({
             onSend={submit}
             onCancel={() => void turn.cancel()}
             error={turn.sendError ?? compaction.error}
-            footer={<SessionSettingsBar sessionId={sessionId} />}
+            footer={
+              <>
+                <SessionSettingsBar sessionId={sessionId} />
+                <ToolsButton sessionId={sessionId} />
+              </>
+            }
             slashItems={slashItems}
             draftKey={sessionId}
             ref={composer}
