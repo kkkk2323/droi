@@ -1,3 +1,15 @@
+## 1.13.2 - 2026-09-28
+
+### Changed
+
+- On the phone, a conversation opens on its latest message at once. Before, it drew from the first message and scrolled down through all of them, which flashed the whole conversation past on the way.
+- On the phone, the transcript keeps what you are reading where it is while the reply goes on below, including an earlier part of the same turn, and the keyboard no longer moves it. Older messages come in above as you scroll up.
+- On the phone, a long reply stays smooth while it streams: only its unfinished end is parsed again on each update, instead of the whole reply.
+
+### Fixed
+
+- A conversation reopened part way up could land at the end instead of where it was left, on a slow machine.
+
 ## 1.13.1 - 2026-09-27
 
 ### Changed
