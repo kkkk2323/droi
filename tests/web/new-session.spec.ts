@@ -166,7 +166,7 @@ test.describe('new session', () => {
     await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
     const form = page.getByRole('region', { name: 'New session' })
     // Defaults come from the Daemon.
-    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('Auto Model')
+    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('Auto ModelNone')
     await expect(form.getByRole('combobox', { name: 'Autonomy' })).toHaveText('Low autonomy')
 
     await form.getByRole('button', { name: 'Model' }).click()
@@ -174,11 +174,15 @@ test.describe('new session', () => {
       .getByRole('listbox', { name: 'Models' })
       .getByRole('option', { name: /GPT-5/ })
       .click()
-    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('GPT-5')
-    // The effort list follows the model; "none" is not on GPT-5's list.
-    await expect(form.getByRole('combobox', { name: 'Reasoning effort' })).toHaveText('Low')
-    await form.getByRole('combobox', { name: 'Reasoning effort' }).click()
-    await page.getByRole('listbox').getByRole('option', { name: 'Extra high' }).click()
+    // The effort follows the model; "none" is not on GPT-5's list.
+    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('GPT-5Low')
+    await form.getByRole('button', { name: 'Model' }).click()
+    await page
+      .getByRole('radiogroup', { name: 'Reasoning effort' })
+      .getByRole('radio', { name: 'Extra high' })
+      .click()
+    await page.keyboard.press('Escape')
+    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('GPT-5Extra high')
     await form.getByRole('combobox', { name: 'Autonomy' }).click()
     await page.getByRole('listbox').getByRole('option', { name: 'High autonomy' }).click()
 

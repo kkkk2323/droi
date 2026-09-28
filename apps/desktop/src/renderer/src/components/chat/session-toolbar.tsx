@@ -8,7 +8,7 @@ import {
   useSessionSettingsActions,
   type SessionSettingsView,
 } from '@droi/daemon-layer/use-session-settings'
-import { AUTONOMY_LABELS, EFFORT_LABELS } from '@droi/daemon-layer/model-choices'
+import { AUTONOMY_LABELS } from '@droi/daemon-layer/model-choices'
 import { ModelPicker } from './model-picker'
 
 /** Editable title for the page header. */
@@ -38,7 +38,7 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
   )
 }
 
-/** The three pickers, driven by whoever owns the values (a Session or a draft). */
+/** The model (with its reasoning effort) and autonomy pickers, driven by whoever owns the values (a Session or a draft). */
 export function SettingsControls({
   settings,
   onModel,
@@ -58,13 +58,16 @@ export function SettingsControls({
 
   return (
     <div className="relative flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-      <ModelPicker models={settings.models} value={settings.modelId} onChange={onModel} />
-      <Select
-        quiet
-        label="Reasoning effort"
-        value={settings.reasoningEffort ?? ''}
-        onChange={onReasoningEffort}
-        options={efforts.map((e) => ({ value: e, label: EFFORT_LABELS[e] ?? e }))}
+      <ModelPicker
+        label="Model and reasoning effort"
+        models={settings.models}
+        value={settings.modelId}
+        onChange={onModel}
+        effort={{
+          value: settings.reasoningEffort ?? null,
+          options: efforts,
+          onChange: onReasoningEffort,
+        }}
       />
       <Select
         quiet

@@ -19,11 +19,11 @@ test.describe('session settings', () => {
     await openClient()
     await pickSession(/First session/)
 
-    const model = page.getByRole('button', { name: 'Model' })
-    const effort = page.getByRole('combobox', { name: 'Reasoning effort' })
+    // The reasoning effort belongs to the model: one button shows both.
+    const model = page.getByRole('button', { name: 'Model and reasoning effort' })
     const autonomy = page.getByRole('combobox', { name: 'Autonomy' })
-    await expect(model).toHaveText('Claude Opus 4.1')
-    await expect(effort).toHaveText('Medium')
+    await expect(model).toHaveText('Claude Opus 4.1Medium')
+    await expect(page.getByRole('combobox', { name: 'Reasoning effort' })).toHaveCount(0)
     await expect(autonomy).toHaveText('Low autonomy')
 
     // Models come from the Daemon's list for this Session; the picker opens on all of them.
@@ -70,13 +70,14 @@ test.describe('session settings', () => {
         sessionId: first.sessionId,
         modelId: 'gpt-5',
       })
-    await expect(model).toHaveText('GPT-5')
+    await expect(model).toHaveText(/^GPT-5/)
 
-    // GPT-5 offers different efforts; the list follows the model.
-    await effort.click()
-    const listbox = page.getByRole('listbox')
-    await expect(listbox.getByRole('option')).toHaveText(['Low', 'Medium', 'High', 'Extra high'])
-    await listbox.getByRole('option', { name: 'Extra high' }).click()
+    // GPT-5 offers different efforts; the picker's footer names each of them,
+    // and changing it leaves the picker open.
+    await model.click()
+    const effort = picker.getByRole('radiogroup', { name: 'Reasoning effort' })
+    await expect(effort.getByRole('radio')).toHaveText(['Low', 'Medium', 'High', 'Extra high'])
+    await effort.getByRole('radio', { name: 'Extra high' }).click()
     await expect
       .poll(
         () =>
@@ -86,8 +87,17 @@ test.describe('session settings', () => {
       .toMatchObject({
         reasoningEffort: 'xhigh',
       })
-    await expect(effort).toHaveText('Extra high')
+    await expect(effort.getByRole('radio', { name: 'Extra high' })).toBeChecked()
+    await expect(picker).toBeVisible()
+    // The arrow keys step through the levels.
+    await effort.getByRole('radio', { name: 'Extra high' }).press('ArrowLeft')
+    await expect(effort.getByRole('radio', { name: 'High', exact: true })).toBeChecked()
+    await expect(effort.getByRole('radio', { name: 'High', exact: true })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+    await expect(model).toHaveText('GPT-5High')
 
+    const listbox = page.getByRole('listbox')
     await autonomy.click()
     await listbox.getByRole('option', { name: 'High autonomy' }).click()
     await expect

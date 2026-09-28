@@ -5,6 +5,7 @@ import { BrandIcon } from './brand-icon'
 import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
 import { BRAND_LABELS, brandOf } from '@droi/daemon-layer/model-brand'
 import {
+  EFFORT_LABELS,
   brandsOf,
   formatMultiplier,
   visibleModels,
@@ -19,6 +20,17 @@ export interface PickerExtra {
   label: string
 }
 
+/**
+ * The reasoning effort of the chosen model, set in the picker's footer. It
+ * belongs with the model: each model offers its own levels.
+ */
+export interface PickerEffort {
+  value: string | null
+  /** The chosen model's levels; the footer is left out when there are none. */
+  options: readonly string[]
+  onChange: (effort: string) => void
+}
+
 const NO_EXTRAS: PickerExtra[] = []
 
 export function ModelPicker({
@@ -30,6 +42,7 @@ export function ModelPicker({
   placeholder,
   disabled = false,
   field = false,
+  effort,
   className,
 }: {
   models: ModelChoice[]
@@ -43,6 +56,7 @@ export function ModelPicker({
   disabled?: boolean
   /** Framed field that opens downwards, for settings rows, instead of the composer's text button. */
   field?: boolean
+  effort?: PickerEffort
   className?: string
 }) {
   const [open, setOpen] = useState(false)
@@ -67,6 +81,12 @@ export function ModelPicker({
   ]
   const searching = query.trim().length > 0
   const activeIndex = Math.min(highlight, Math.max(choices.length - 1, 0))
+  // The Daemon may hold a level the model no longer lists; still show it.
+  const levels =
+    effort && effort.value && !effort.options.includes(effort.value)
+      ? [effort.value, ...effort.options]
+      : (effort?.options ?? [])
+  const effortLabel = effort?.value ? (EFFORT_LABELS[effort.value] ?? effort.value) : null
 
   const pick = (id: string) => {
     if (id !== value) onChange(id)
@@ -116,7 +136,7 @@ export function ModelPicker({
           'inline-flex select-none items-center gap-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 data-[disabled]:opacity-50',
           field
             ? 'h-8 min-w-32 max-w-full rounded-lg border bg-background px-2.5 text-sm hover:bg-muted/60 data-[popup-open]:bg-muted/60'
-            : 'h-7 max-w-52 rounded-md px-2 text-[13px] text-foreground/75 hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground',
+            : 'h-7 max-w-64 rounded-md px-2 text-[13px] text-foreground/75 hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted data-[popup-open]:text-foreground',
           className,
         )}
       >
@@ -124,6 +144,9 @@ export function ModelPicker({
         <span className={cn('truncate', field && 'flex-1 text-left')}>
           {extra?.label ?? current?.label ?? value ?? placeholder ?? label}
         </span>
+        {effortLabel && levels.length > 0 ? (
+          <span className="shrink-0 text-muted-foreground">{effortLabel}</span>
+        ) : null}
         <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
       </Popover.Trigger>
       <Popover.Portal>
@@ -293,11 +316,83 @@ export function ModelPicker({
                   )
                 })}
               </ul>
+              {effort && levels.length > 0 ? (
+                <EffortLevels levels={levels} value={effort.value} onChange={effort.onChange} />
+              ) : null}
             </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
+  )
+}
+
+/**
+ * Every level named at once, one click each. Changing it leaves the picker
+ * open; picking a model is what closes it.
+ */
+function EffortLevels({
+  levels,
+  value,
+  onChange,
+}: {
+  levels: readonly string[]
+  value: string | null
+  onChange: (effort: string) => void
+}) {
+  const buttons = useRef<Array<HTMLButtonElement | null>>([])
+  const current = Math.max(levels.indexOf(value ?? ''), 0)
+  const move = (index: number) => {
+    const next = levels[index]
+    if (next === undefined) return
+    buttons.current[index]?.focus()
+    if (next !== value) onChange(next)
+  }
+  return (
+    <div className="flex items-center gap-3 border-t px-3 py-2">
+      <span aria-hidden className="shrink-0 text-xs text-muted-foreground">
+        Reasoning
+      </span>
+      <div
+        role="radiogroup"
+        aria-label="Reasoning effort"
+        className="flex min-w-0 flex-1 gap-0.5 rounded-lg bg-muted p-0.5"
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+            event.preventDefault()
+            move(Math.min(current + 1, levels.length - 1))
+          } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            move(Math.max(current - 1, 0))
+          }
+        }}
+      >
+        {levels.map((level, index) => {
+          const checked = level === value
+          return (
+            <button
+              key={level}
+              ref={(element) => {
+                buttons.current[index] = element
+              }}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              tabIndex={index === current ? 0 : -1}
+              onClick={() => {
+                if (!checked) onChange(level)
+              }}
+              className={cn(
+                'h-6 min-w-0 flex-1 truncate rounded-md px-1.5 text-[12px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
+                checked && 'bg-background font-medium text-foreground shadow-sm',
+              )}
+            >
+              {EFFORT_LABELS[level] ?? level}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
