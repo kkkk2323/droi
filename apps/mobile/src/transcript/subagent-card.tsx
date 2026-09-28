@@ -18,13 +18,14 @@ import {
   CircleSlash,
   CircleX,
 } from 'lucide-react-native'
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Markdown } from '../markdown/markdown'
 import { Spinner } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { Folded, useFold } from './fold'
 
 const STATE_LABELS: Record<TaskState, string> = {
   pending: 'Starting',
@@ -37,7 +38,7 @@ const STATE_LABELS: Record<TaskState, string> = {
 
 export function SubagentCard({ call }: { call: ToolCall }) {
   const colors = useColors()
-  const [open, setOpen] = useState(false)
+  const fold = useFold()
   const link = useSubagentLink(call)
   const name = subagentName(link.request.subagentType)
   const facts = [
@@ -97,15 +98,15 @@ export function SubagentCard({ call }: { call: ToolCall }) {
       <Pressable
         role="button"
         aria-label="Details"
-        aria-expanded={open}
-        onPress={() => setOpen(!open)}
+        aria-expanded={fold.open}
+        onPress={fold.toggle}
         style={({ pressed }) => [
           styles.toggle,
           { borderTopColor: colors.border },
           pressed ? { backgroundColor: colors.accent } : null,
         ]}
       >
-        {open ? (
+        {fold.open ? (
           <ChevronDown size={12} color={colors.mutedForeground} />
         ) : (
           <ChevronRight size={12} color={colors.mutedForeground} />
@@ -114,7 +115,7 @@ export function SubagentCard({ call }: { call: ToolCall }) {
           Details
         </Text>
       </Pressable>
-      {open ? (
+      <Folded fold={fold}>
         <View style={[styles.details, { borderTopColor: colors.border }]}>
           <Section title="Prompt">
             <Text selectable size="sm" style={styles.prompt}>
@@ -127,7 +128,7 @@ export function SubagentCard({ call }: { call: ToolCall }) {
             </Section>
           ) : null}
         </View>
-      ) : null}
+      </Folded>
     </View>
   )
 }

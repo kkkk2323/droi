@@ -23,12 +23,12 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react-native'
-import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Spinner } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { Folded, useFold } from './fold'
 
 const ICONS: Record<string, LucideIcon> = {
   Execute: Terminal,
@@ -47,15 +47,15 @@ const RESULT_PREVIEW_LINES = 40
 
 export function ToolCluster({ calls }: { calls: ToolCall[] }) {
   const colors = useColors()
-  const [open, setOpen] = useState(true)
+  const fold = useFold(true)
   const pending = calls.filter((c) => c.result === null).length
   const what = calls.length === 1 ? (calls[0]?.use.name ?? 'a tool') : `${calls.length} tools`
   return (
     <View>
       <Pressable
         role="button"
-        aria-expanded={open}
-        onPress={() => setOpen(!open)}
+        aria-expanded={fold.open}
+        onPress={fold.toggle}
         style={styles.clusterHeader}
       >
         {pending > 0 ? <Spinner size={12} color={colors.mutedForeground} /> : null}
@@ -65,23 +65,23 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
         <ChevronRight
           size={12}
           color={colors.mutedForeground}
-          style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
+          style={{ transform: [{ rotate: fold.open ? '90deg' : '0deg' }] }}
         />
       </Pressable>
-      {open ? (
+      <Folded fold={fold}>
         <View style={[styles.rows, { borderLeftColor: colors.border }]}>
           {calls.map((call) => (
             <ToolRow key={call.use.id} call={call} />
           ))}
         </View>
-      ) : null}
+      </Folded>
     </View>
   )
 }
 
 function ToolRow({ call }: { call: ToolCall }) {
   const colors = useColors()
-  const [open, setOpen] = useState(false)
+  const fold = useFold()
   const Icon = ICONS[call.use.name] ?? Wrench
   const summary = toolSummary(call)
   const { text, pending, isError, diff, status } = readToolResult(call)
@@ -91,8 +91,8 @@ function ToolRow({ call }: { call: ToolCall }) {
       <Pressable
         role="button"
         aria-label={`${call.use.name}: ${summary}`}
-        aria-expanded={open}
-        onPress={() => setOpen(!open)}
+        aria-expanded={fold.open}
+        onPress={fold.toggle}
         style={({ pressed }) => [styles.row, pressed ? { backgroundColor: colors.muted } : null]}
       >
         <Icon size={14} color={tint} strokeWidth={1.75} />
@@ -130,7 +130,7 @@ function ToolRow({ call }: { call: ToolCall }) {
           </View>
         )}
       </Pressable>
-      {open ? (
+      <Folded fold={fold}>
         <View
           role="region"
           aria-label={`${call.use.name} details`}
@@ -166,7 +166,7 @@ function ToolRow({ call }: { call: ToolCall }) {
             </Text>
           ) : null}
         </View>
-      ) : null}
+      </Folded>
     </View>
   )
 }

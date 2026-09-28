@@ -11,6 +11,12 @@
 // by maintainVisibleContentPosition (the browser's scroll anchoring on the
 // web), which holds the row they are on; that is why a turn is split into a
 // row per block.
+//
+// A row the reader opens grows the other way, up the screen, and the list
+// scrolls by as much to keep the tapped header in place. The scroll is the
+// contentOffset prop rather than a command: the prop lands in the same native
+// update as the row's new size, while a command from JS would arrive a frame
+// or more after the row had already moved. (Fold measures the growth first.)
 import {
   turnEndIds,
   workingLabel,
@@ -18,13 +24,14 @@ import {
   type TranscriptEntry,
 } from '@droi/daemon-layer/transcript'
 import { ArrowDown } from 'lucide-react-native'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   View,
-  type GestureResponderEvent,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native'
@@ -32,14 +39,11 @@ import { BouncingDots } from '../ui/activity'
 import { Text } from '../ui/primitives'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { OnGrow } from './fold'
 import { AssistantBlock, UserMessage } from './message-entry'
 
 /** How far above the bottom, in points, still counts as reading the latest output. */
 const FOLLOW_THRESHOLD = 120
-/** A height change this soon after a tap in the list is the reader's own (a row opening). */
-const TAP_RESIZE_WINDOW_MS = 500
-/** A touch that moves less than this, in points, is a tap rather than a scroll. */
-const TAP_SLOP = 10
 
 const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
 
@@ -93,9 +97,13 @@ export function TranscriptView({
   const colors = useColors()
   const list = useRef<FlatList<Row>>(null)
   const offset = useRef(0)
+  const viewport = useRef(0)
+  /** The content's height, or the viewport's when the conversation is shorter. */
   const contentHeight = useRef(0)
-  const touchY = useRef(0)
-  const lastTap = useRef(0)
+  /** What a conversation shorter than the screen leaves empty below it. */
+  const slack = useRef(0)
+  const [pin, setPin] = useState<{ x: number; y: number }>()
+  const lastPin = useRef(0)
   const [atLatest, setAtLatest] = useState(true)
 
   const parts = [...earlier, transcript]
@@ -126,16 +134,40 @@ export function TranscriptView({
     setAtLatest(offset.current <= FOLLOW_THRESHOLD)
   }
 
-  // Nothing here follows the output: offset 0 is the bottom, so a reader
-  // there sees what arrives without a scroll.
+  // Nothing follows the output: offset 0 is the bottom, so a reader there
+  // sees what arrives without a scroll. The sizes are kept for grow.
   const onContentSizeChange = (_width: number, height: number) => {
-    const grown = height - contentHeight.current
     contentHeight.current = height
-    if (grown === 0 || Date.now() - lastTap.current >= TAP_RESIZE_WINDOW_MS) return
-    // A row the reader opened grows away from the bottom, up the screen;
-    // scrolling by as much keeps the row under their finger.
-    list.current?.scrollToOffset({ offset: Math.max(0, offset.current + grown), animated: false })
   }
+  const onLayout = (event: LayoutChangeEvent) => {
+    viewport.current = event.nativeEvent.layout.height
+  }
+
+  // A fold in a row opened or closed: scroll by as much, in the same commit.
+  const grow = useCallback((by: number) => {
+    let y = Math.max(0, offset.current + by)
+    if (Platform.OS !== 'web') {
+      // A UIScrollView takes an offset past its end as given, where the
+      // browser clamps; a conversation short of the screen has no room to
+      // scroll until it outgrows the screen.
+      const content = contentHeight.current - slack.current + by
+      y = Math.min(y, Math.max(0, content - viewport.current))
+    }
+    if (y === offset.current) return
+    // The prop reaches native only when it changes.
+    if (y === lastPin.current) y += 1
+    offset.current = y
+    lastPin.current = y
+    setPin({ x: 0, y })
+  }, [])
+
+  // The web build ignores contentOffset; scrolling here, before the browser
+  // paints the commit, is as seamless.
+  useLayoutEffect(() => {
+    if (Platform.OS === 'web' && pin) {
+      list.current?.scrollToOffset({ offset: pin.y, animated: false })
+    }
+  }, [pin])
 
   if (entries.length === 0 && !lead) {
     return (
@@ -146,96 +178,90 @@ export function TranscriptView({
   }
 
   return (
-    <View
-      style={styles.fill}
-      // Watches presses without taking them: a press that stays put is a tap
-      // (which may open a row), one that moves is a scroll.
-      onStartShouldSetResponderCapture={(event: GestureResponderEvent) => {
-        touchY.current = event.nativeEvent.pageY
-        lastTap.current = Date.now()
-        return false
-      }}
-      onMoveShouldSetResponderCapture={(event: GestureResponderEvent) => {
-        if (Math.abs(event.nativeEvent.pageY - touchY.current) >= TAP_SLOP) lastTap.current = 0
-        return false
-      }}
-    >
-      <FlatList
-        ref={list}
-        role="log"
-        aria-label="Transcript"
-        inverted
-        data={rows}
-        keyExtractor={(row) => row.key}
-        renderItem={({ item }) => (
-          <>
-            {item.first && boundaryIds.has(item.entry.id) ? <Boundary /> : null}
-            {item.block ? (
-              <AssistantBlock
-                block={item.block}
-                turnStreaming={item.entry.id === streamingId}
-                first={item.first}
-                last={item.last}
-                isError={item.last && item.entry.isError}
-                time={item.last && ends.has(item.entry.id) ? item.entry.createdAt : 0}
-              />
-            ) : (
-              <UserMessage entry={item.entry} />
-            )}
-          </>
-        )}
-        // Swapped: an inverted list draws its header at the bottom, after the
-        // latest row, and its footer at the top, before the oldest.
-        ListHeaderComponent={
-          <View role="status" aria-label="Session activity" style={styles.activity}>
-            {activity ? (
-              <>
-                <BouncingDots color={colors.mutedForeground} />
-                <Text tone="muted" size="sm">
-                  {activity}
-                </Text>
-              </>
-            ) : null}
-          </View>
-        }
-        ListFooterComponent={
-          <View
-            style={styles.lead}
-            // What is tapped here brings rows in at the far end, where they
-            // move nothing; no row opened.
-            onStartShouldSetResponderCapture={() => {
-              lastTap.current = 0
-              return false
-            }}
+    <OnGrow.Provider value={grow}>
+      <View style={styles.fill}>
+        <FlatList
+          ref={list}
+          role="log"
+          aria-label="Transcript"
+          inverted
+          data={rows}
+          keyExtractor={(row) => row.key}
+          renderItem={({ item }) => (
+            <>
+              {item.first && boundaryIds.has(item.entry.id) ? <Boundary /> : null}
+              {item.block ? (
+                <AssistantBlock
+                  block={item.block}
+                  turnStreaming={item.entry.id === streamingId}
+                  first={item.first}
+                  last={item.last}
+                  isError={item.last && item.entry.isError}
+                  time={item.last && ends.has(item.entry.id) ? item.entry.createdAt : 0}
+                />
+              ) : (
+                <UserMessage entry={item.entry} />
+              )}
+            </>
+          )}
+          // Swapped: an inverted list draws its header at the bottom, after the
+          // latest row, and its footer at the top, before the oldest.
+          ListHeaderComponent={
+            <View
+              role="status"
+              aria-label="Session activity"
+              style={styles.activity}
+              // Sits at the far end of the header, so its position in it is
+              // the room a short conversation leaves; 0 once it fills the screen.
+              onLayout={(event) => {
+                slack.current = event.nativeEvent.layout.y
+              }}
+            >
+              {activity ? (
+                <>
+                  <BouncingDots color={colors.mutedForeground} />
+                  <Text tone="muted" size="sm">
+                    {activity}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          }
+          // A conversation shorter than the screen starts at the top, as it
+          // reads: the header, at the inverted list's bottom, takes up the rest.
+          ListHeaderComponentStyle={styles.header}
+          ListFooterComponent={<View style={styles.lead}>{lead}</View>}
+          contentContainerStyle={styles.content}
+          contentOffset={pin}
+          onLayout={onLayout}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={onContentSizeChange}
+          keyboardDismissMode="interactive"
+          // Holds the row being read while rows below it grow or arrive, and
+          // carries a reader at the bottom along with them.
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: FOLLOW_THRESHOLD,
+          }}
+          initialNumToRender={20}
+          windowSize={11}
+        />
+        {!atLatest ? (
+          <Pressable
+            role="button"
+            aria-label="Scroll to latest"
+            onPress={() => toLatest(true)}
+            style={[
+              styles.down,
+              { backgroundColor: colors.background, borderColor: colors.border },
+            ]}
           >
-            {lead}
-          </View>
-        }
-        contentContainerStyle={styles.content}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        onContentSizeChange={onContentSizeChange}
-        keyboardDismissMode="interactive"
-        // Holds the row being read while rows below it grow or arrive, and
-        // carries a reader at the bottom along with them.
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-          autoscrollToTopThreshold: FOLLOW_THRESHOLD,
-        }}
-        initialNumToRender={20}
-        windowSize={11}
-      />
-      {!atLatest ? (
-        <Pressable
-          role="button"
-          aria-label="Scroll to latest"
-          onPress={() => toLatest(true)}
-          style={[styles.down, { backgroundColor: colors.background, borderColor: colors.border }]}
-        >
-          <ArrowDown size={18} color={colors.foreground} strokeWidth={1.75} />
-        </Pressable>
-      ) : null}
-    </View>
+            <ArrowDown size={18} color={colors.foreground} strokeWidth={1.75} />
+          </Pressable>
+        ) : null}
+      </View>
+    </OnGrow.Provider>
   )
 }
 
@@ -255,9 +281,8 @@ function Boundary() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  // A conversation shorter than the screen starts at the top, as it reads;
-  // inverted, the far end of the content is the top.
-  content: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: space.lg },
+  content: { flexGrow: 1, paddingHorizontal: space.lg },
+  header: { flexGrow: 1, justifyContent: 'flex-end' },
   lead: { paddingTop: space.md },
   activity: {
     flexDirection: 'row',

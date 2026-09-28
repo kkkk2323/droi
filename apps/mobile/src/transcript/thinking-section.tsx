@@ -1,11 +1,11 @@
 // Reasoning, folded away by default like the web Client's.
 import { ChevronRight } from 'lucide-react-native'
-import { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Markdown } from '../markdown/markdown'
 import { Text } from '../ui/primitives'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { Folded, useFold } from './fold'
 
 export function ThinkingSection({
   text,
@@ -17,7 +17,7 @@ export function ThinkingSection({
   isStreaming: boolean
 }) {
   const colors = useColors()
-  const [open, setOpen] = useState(false)
+  const fold = useFold()
   const label = durationMs
     ? `Reasoned for ${formatDuration(durationMs)}`
     : isStreaming
@@ -27,8 +27,8 @@ export function ThinkingSection({
     <View>
       <Pressable
         role="button"
-        aria-expanded={open}
-        onPress={() => setOpen(!open)}
+        aria-expanded={fold.open}
+        onPress={fold.toggle}
         style={styles.trigger}
       >
         <Text tone="muted" size="sm">
@@ -37,14 +37,14 @@ export function ThinkingSection({
         <ChevronRight
           size={14}
           color={colors.mutedForeground}
-          style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
+          style={{ transform: [{ rotate: fold.open ? '90deg' : '0deg' }] }}
         />
       </Pressable>
-      {open ? (
+      <Folded fold={fold}>
         <View style={[styles.panel, { borderLeftColor: colors.border }]}>
           <Markdown text={text} muted />
         </View>
-      ) : null}
+      </Folded>
     </View>
   )
 }

@@ -369,7 +369,15 @@ test.describe('tool calls and reasoning', () => {
   const link = session('Links', '/Users/dev/acme-web', [
     userMessage(`see https://example.com/${'a-very-long-path-segment/'.repeat(12)}index.html`),
   ])
-  test.use({ scenario: { sessions: [work, link] } })
+  // The same work after enough conversation to fill the screen.
+  const longWork = session('A long chat, then the fix', '/Users/dev/acme-web', [
+    ...Array.from({ length: 6 }, (_, i) => [
+      userMessage(`Question ${i}`),
+      assistantMessage(`Answer ${i}. `.repeat(30)),
+    ]).flat(),
+    ...toolTurn(),
+  ])
+  test.use({ scenario: { sessions: [work, link, longWork] } })
 
   test('rows show success and failure and open to their details', async ({ page, fakeDaemon }) => {
     await pairPhone(page, fakeDaemon)
@@ -418,21 +426,38 @@ test.describe('tool calls and reasoning', () => {
     await expect(transcript.getByText('I should read the file before changing it.')).toBeVisible()
   })
 
-  test('opening a tool row near the bottom keeps it where it was tapped', async ({
+  test('opening and closing a fold keeps its header where it was tapped', async ({
     page,
     fakeDaemon,
   }) => {
     await pairPhone(page, fakeDaemon)
-    await pickSession(page, /Login fix/)
+    await pickSession(page, /A long chat, then the fix/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
     const create = transcript.getByRole('button', { name: 'Create: src/auth.test.ts' })
+    const details = transcript.getByRole('region', { name: 'Create details' })
     await expect(create).toBeInViewport()
     await page.waitForTimeout(300)
     const before = (await create.boundingBox())!.y
+
     await create.click()
-    await expect(transcript.getByRole('region', { name: 'Create details' })).toBeVisible()
-    await page.waitForTimeout(300)
+    await expect(details).toBeVisible()
     expect(Math.abs((await create.boundingBox())!.y - before)).toBeLessThan(2)
+    // It stayed by scrolling, not because the row happened to grow the other way.
+    expect(await transcript.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    await create.click()
+    await expect(details).toHaveCount(0)
+    expect(Math.abs((await create.boundingBox())!.y - before)).toBeLessThan(2)
+
+    // The whole cluster folds under its header the same way, given room to
+    // scroll (at the very bottom nothing can move down to make up for it).
+    await transcript.evaluate((el) => (el.scrollTop = 150))
+    await page.waitForTimeout(300)
+    const cluster = transcript.getByRole('button', { name: /Used 4 tools/ })
+    await expect(cluster).toBeInViewport()
+    const clusterBefore = (await cluster.boundingBox())!.y
+    await cluster.click()
+    await expect(create).toHaveCount(0)
+    expect(Math.abs((await cluster.boundingBox())!.y - clusterBefore)).toBeLessThan(2)
   })
 
   test('a long link in a sent message wraps inside the bubble', async ({ page, fakeDaemon }) => {
