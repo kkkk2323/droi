@@ -190,8 +190,11 @@ test.describe('compaction in place', () => {
     // While it runs the Session's row says so; when it is done the footer says what it did.
     const row = (await openSidebar()).getByRole('button', { name: /Long chat/ })
     await expect(row.getByRole('status', { name: 'Compacting' })).toBeVisible()
-    if (await page.getByRole('dialog', { name: 'Sessions' }).isVisible()) {
+    const drawer = page.getByRole('dialog', { name: 'Sessions' })
+    if (await drawer.isVisible()) {
       await page.keyboard.press('Escape')
+      // Opening it again while it is still closing would click a leaving button.
+      await expect(drawer).toBeHidden()
     }
     finish()
     await expect(page.getByRole('status').filter({ hasText: 'Compacted' })).toHaveText(
@@ -199,7 +202,12 @@ test.describe('compaction in place', () => {
     )
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
     await expect(page).toHaveURL(new RegExp(chat.sessionId))
-    await expect(row.getByRole('status', { name: 'Compacting' })).toHaveCount(0)
+    const reopened = await openSidebar()
+    await expect(
+      reopened
+        .getByRole('button', { name: /Long chat/ })
+        .getByRole('status', { name: 'Compacting' }),
+    ).toHaveCount(0)
 
     await pickSession(/Other chat/)
     await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('elsewhere')
