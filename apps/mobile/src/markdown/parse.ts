@@ -2,7 +2,7 @@
 // GitHub's tables, task lists, strikethrough and autolinks. A reply that is
 // still streaming may end inside a code fence or a span; it is closed first
 // so the half-written part renders as what it will become.
-import type { Root } from 'mdast'
+import type { Nodes, Root } from 'mdast'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
@@ -13,7 +13,7 @@ const CACHE_SIZE = 200
 const parsed = new Map<string, Root>()
 
 export function parseMarkdown(text: string, { streaming = false } = {}): Root {
-  if (streaming) return parse(repairStreaming(text))
+  if (streaming) return parseStreaming(text)
   let tree = parsed.get(text)
   if (tree) {
     parsed.delete(text)
@@ -27,6 +27,61 @@ export function parseMarkdown(text: string, { streaming = false } = {}): Root {
 
 function parse(text: string): Root {
   return fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] })
+}
+
+// A streaming reply only grows at its end. Markdown settles its blocks line by
+// line, so a block that began on a finished line ends every block before it
+// for good; only the line still being written can turn out to continue the
+// block above it (`1` becoming `1.` joins a list). The blocks before the last
+// one that began on a finished line are kept, and only the text from that
+// block's line on is parsed again, so an update to a long reply costs what one
+// to a short reply does.
+let streamed: {
+  text: string
+  tree: Root
+  kept: number
+  tailStart: number
+  /** Lines before `tailStart`, to move the tail's positions into the whole text. */
+  tailLine: number
+} | null = null
+
+// A link or footnote definition resolves references anywhere in the document,
+// so a reply with one is parsed whole.
+const DEFINITION = /^ {0,3}\[[^\]\n]+\]:/m
+
+function parseStreaming(text: string): Root {
+  const last = streamed
+  if (last?.text === text) return last.tree
+  const reuse = last !== null && text.startsWith(last.text) && !DEFINITION.test(text)
+  const kept = reuse ? last.tree.children.slice(0, last.kept) : []
+  const base = reuse ? last.tailStart : 0
+  const lines = reuse ? last.tailLine : 0
+  const tail = parse(repairStreaming(text.slice(base))).children
+  if (base > 0) for (const node of tail) shift(node, base, lines)
+  const lastLine = text.lastIndexOf('\n') + 1
+  let next = { kept: kept.length, tailStart: base, tailLine: lines }
+  for (let i = tail.length - 1; i >= 0; i--) {
+    const start = tail[i]?.position?.start
+    if (start?.offset !== undefined && start.offset < lastLine) {
+      const tailStart = text.lastIndexOf('\n', start.offset - 1) + 1
+      next = { kept: kept.length + i, tailStart, tailLine: start.line - 1 }
+      break
+    }
+  }
+  const tree: Root = { type: 'root', children: [...kept, ...tail] }
+  streamed = { text, tree, ...next }
+  return tree
+}
+
+/** Moves a node parsed from a slice that starts at a line's start to its place in the whole text. */
+function shift(node: Nodes, offset: number, lines: number): void {
+  if (node.position) {
+    for (const point of [node.position.start, node.position.end]) {
+      if (point.offset !== undefined) point.offset += offset
+      point.line += lines
+    }
+  }
+  if ('children' in node) for (const child of node.children) shift(child, offset, lines)
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/

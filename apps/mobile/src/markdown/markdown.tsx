@@ -3,7 +3,7 @@
 // inside one Text so lines wrap as prose; blocks stack as Views.
 import type { Nodes, Parents, PhrasingContent, RootContent, Table } from 'mdast'
 import { Check, Copy } from 'lucide-react-native'
-import { useState, type ReactNode } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text as RNText, View } from 'react-native'
 import { copyText } from '../platform/clipboard'
 import { Text } from '../ui/primitives'
@@ -25,11 +25,21 @@ export function Markdown({
   const colors = useColors()
   const scale = useTextScale()
   const tree = parseMarkdown(text, { streaming })
-  const context: Context = { colors, muted, scale }
   return (
-    <View style={styles.blocks}>{tree.children.map((node, i) => block(node, i, context))}</View>
+    <View style={styles.blocks}>
+      {tree.children.map((node, i) => (
+        <Block key={keyOf(node, i)} node={node} colors={colors} muted={muted} scale={scale} />
+      ))}
+    </View>
   )
 }
+
+// The parser hands back the same node for a block that did not change (all
+// but the last of a streaming reply, every block of a cached text), and such
+// a block is not rendered again.
+const Block = memo(function Block({ node, ...context }: { node: RootContent } & Context) {
+  return block(node, 0, context)
+})
 
 interface Context {
   colors: Colors
