@@ -1,3 +1,10 @@
+## 1.20.1 - 2026-09-29
+
+### Fixed
+
+- A turn's time sits under its reply and says how long the turn took, counted from the prompt that started it (`23:13 · took 4m 12s`). A message sent while the turn ran no longer puts a time under the tool calls before it. On the desktop, in the browser and on the phone.
+- The Daemon's record of a hook run (a user message with no content, one per prompt once Memory is on) was drawn as an empty bubble and split the reply around it; it is skipped now. On the desktop, in the browser and on the phone.
+
 ## 1.20.0 - 2026-09-29
 
 ### Changed
