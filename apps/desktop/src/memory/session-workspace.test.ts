@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { findSessionCwd, sessionsDir } from './session-workspace'
+import { findSessionWorkspace, sessionsDir } from './session-workspace'
 
 let dir: string
 
@@ -17,22 +17,22 @@ function sessionFile(folder: string, id: string, lines: unknown[]) {
   writeFileSync(join(dir, folder, `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n'))
 }
 
-describe('findSessionCwd', () => {
+describe('findSessionWorkspace', () => {
   it('reads the cwd from the session_start line of the Session’s file', () => {
     sessionFile('-Users-dev-other', 'aaa', [{ type: 'session_start', cwd: '/Users/dev/other' }])
     sessionFile('-Users-dev-app', 'bbb', [
       { type: 'session_start', id: 'bbb', cwd: '/Users/dev/app' },
       { type: 'message', message: { role: 'user', content: [] } },
     ])
-    expect(findSessionCwd(dir, 'bbb')).toBe('/Users/dev/app')
+    expect(findSessionWorkspace(dir, 'bbb')).toBe('/Users/dev/app')
   })
 
   it('answers null for an unknown Session, a strange id or a file without a start line', () => {
     sessionFile('-x', 'ccc', [{ type: 'message' }])
-    expect(findSessionCwd(dir, 'missing')).toBeNull()
-    expect(findSessionCwd(dir, '../etc/passwd')).toBeNull()
-    expect(findSessionCwd(dir, 'ccc')).toBeNull()
-    expect(findSessionCwd(join(dir, 'nope'), 'ccc')).toBeNull()
+    expect(findSessionWorkspace(dir, 'missing')).toBeNull()
+    expect(findSessionWorkspace(dir, '../etc/passwd')).toBeNull()
+    expect(findSessionWorkspace(dir, 'ccc')).toBeNull()
+    expect(findSessionWorkspace(join(dir, 'nope'), 'ccc')).toBeNull()
   })
 
   it('follows FACTORY_HOME_OVERRIDE', () => {

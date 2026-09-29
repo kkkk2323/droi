@@ -205,11 +205,7 @@ export async function openLocalClient(
             },
           },
           memory: {
-            overview: async () =>
-              (await memoryCall('overview')) ?? {
-                folder: '/Users/dev/Library/Application Support/Droi/memory',
-                rows: [],
-              },
+            overview: async () => (await memoryCall('overview')) ?? { rows: [] },
             consolidate: async (workspace: string | null) => memoryCall('consolidate', workspace),
             openFolder: async () => void (record.memoryFolderOpened += 1),
             resetPrompts: async () => void (record.memoryPromptResets += 1),

@@ -119,6 +119,13 @@ export function projectSlot(workspace: string): { scope: 'project'; workspace: s
   return { scope: 'project', workspace: path }
 }
 
+/** The Memory an entry belongs to. */
+export function slotOfEntry(entry: MemoryEntry): MemorySlot {
+  return entry.scope === 'global'
+    ? { scope: 'global' }
+    : { scope: 'project', workspace: entry.workspace ?? '' }
+}
+
 export function workspaceKey(path: string): string {
   return createHash('sha256').update(path).digest('hex').slice(0, 16)
 }
@@ -238,11 +245,6 @@ export function openMemoryStore(dir: string): MemoryStore {
 
   const get = (id: string): MemoryEntry | null => rows(`${SELECT} WHERE e.id = ?`, id)[0] ?? null
 
-  const slotOf = (entry: MemoryEntry): MemorySlot =>
-    entry.scope === 'global'
-      ? { scope: 'global' }
-      : { scope: 'project', workspace: entry.workspace ?? '' }
-
   const checkText = (text: string): string | null => {
     if (!text.trim()) return 'The text is empty.'
     return findSecret(text)
@@ -294,7 +296,7 @@ export function openMemoryStore(dir: string): MemoryStore {
         const found = get(id)
         if (!found) return { ok: false, reason: `No Memory entry has the id ${id}.` }
         db.prepare('UPDATE entries SET text = ?, day = ? WHERE id = ?').run(text, today(), id)
-        const slot = slotOf(found)
+        const slot = slotOfEntry(found)
         return {
           ok: true,
           entry: get(id)!,
@@ -318,11 +320,10 @@ export function openMemoryStore(dir: string): MemoryStore {
       if (!trimmed) return []
       const byCategory = category ? ' AND e.category = ?' : ''
       const extra = category ? [category] : []
-      const terms = trimmed.split(/\s+/).filter((term) => term.length >= 3)
+      const words = trimmed.split(/\s+/)
       // The trigram tokenizer cannot match fewer than three characters; two-character
-      // words are common in Chinese, so those fall back to a substring scan.
-      if (terms.length === 0) {
-        const words = trimmed.split(/\s+/)
+      // words are common in Chinese, so a query with one falls back to a substring scan.
+      if (words.some((word) => word.length < 3)) {
         const like = words.map(() => "e.text LIKE ? ESCAPE '\\'").join(' OR ')
         return rows(
           `${SELECT} WHERE e.slot = ?${byCategory} AND (${like}) ORDER BY e.rowid DESC LIMIT ?`,
@@ -332,7 +333,7 @@ export function openMemoryStore(dir: string): MemoryStore {
           limit,
         )
       }
-      const match = terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' OR ')
+      const match = words.map((term) => `"${term.replace(/"/g, '""')}"`).join(' OR ')
       return rows(
         `${SELECT} JOIN entries_fts f ON f.rowid = e.rowid
           WHERE entries_fts MATCH ? AND e.slot = ?${byCategory}
@@ -419,7 +420,7 @@ export function openMemoryStore(dir: string): MemoryStore {
       }
       const first = sent[0]
       if (!first) return { ok: true }
-      const key = slotKey(slotOf(first))
+      const key = slotKey(slotOfEntry(first))
       return transaction(() => {
         // Another Session may have changed the slice while the model worked on it.
         for (const entry of sent) {

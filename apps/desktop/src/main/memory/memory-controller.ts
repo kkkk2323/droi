@@ -111,7 +111,6 @@ export function createMemoryController(options: MemoryControllerOptions): Memory
   return {
     overview() {
       return {
-        folder: options.memoryDir,
         rows: open()
           .summaries()
           .map((summary) => ({

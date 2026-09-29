@@ -81,7 +81,6 @@ describe('Memory controller', () => {
   it('lists every Project Memory and the Global Memory with its limits', () => {
     seed('/Users/dev/app', 3)
     expect(controller.overview()).toEqual({
-      folder: memoryDir,
       rows: [
         {
           workspace: '/Users/dev/app',

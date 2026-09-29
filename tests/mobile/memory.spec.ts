@@ -3,7 +3,7 @@ import { expect, openDrawer, pairPhone, test } from './fixtures'
 
 const work = session('Invoice export', '/Users/dev/billing-service', [userMessage('a')])
 // The Desktop Shell's own model work (ADR 0011); no Client lists it.
-const hidden = session(
+const memorySession = session(
   'Memory: extract from 0427515a',
   '/Users/dev/billing-service',
   [userMessage('{}')],
@@ -12,7 +12,7 @@ const hidden = session(
   },
 )
 
-test.use({ scenario: { sessions: [work, hidden] } })
+test.use({ scenario: { sessions: [work, memorySession] } })
 
 test('Memory Sessions are not listed', async ({ page, fakeDaemon }) => {
   await pairPhone(page, fakeDaemon)

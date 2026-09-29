@@ -17,8 +17,6 @@ export interface MemoryRow {
 }
 
 export interface MemoryOverview {
-  /** Where the database, the Markdown export and the prompts live. */
-  folder: string
   rows: MemoryRow[]
 }
 

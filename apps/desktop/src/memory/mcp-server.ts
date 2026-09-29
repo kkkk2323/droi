@@ -9,6 +9,7 @@ import {
   LIMITS,
   isCategory,
   projectSlot,
+  slotOfEntry,
   type Category,
   type MemoryEntry,
   type MemorySlot,
@@ -117,11 +118,6 @@ function describeEntries(entries: MemoryEntry[], what: string): string {
   const lines = entries.map((e) => `- ${e.id} [${e.scope}/${e.category}, ${e.day}] ${e.text}`)
   return `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} ${what}:\n${lines.join('\n')}`
 }
-
-const slotOfEntry = (entry: MemoryEntry): MemorySlot =>
-  entry.scope === 'global'
-    ? { scope: 'global' }
-    : { scope: 'project', workspace: entry.workspace ?? '' }
 
 /**
  * One tool call. `sessionId` is the calling Session, which the Daemon puts in

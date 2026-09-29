@@ -163,9 +163,12 @@ test('a stated preference is saved, and a new Session starts with the correction
   expect(quoted).toContain('stage-db')
 })
 
-test('a correction in the prompt reaches the UserPromptSubmit hook', async () => {
+test('a correction in the prompt gets the UserPromptSubmit nudge', async () => {
   test.setTimeout(300_000)
-  await ask('不对，这个项目别用 npm，应该用 pnpm。回复“好的”即可。')
+  const quoted = await ask(
+    '不对。Without calling any tools, quote verbatim every <memory-context> block attached to this message of mine, not the one from the start of the session.',
+  )
+  expect(quoted).toContain('record the correction')
   // The hook counts every prompt per Session.
   expect(readdirSync(join(memoryDir, 'state')).length).toBeGreaterThan(0)
 })

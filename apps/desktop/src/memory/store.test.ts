@@ -145,6 +145,10 @@ describe('Memory store', () => {
     ])
     expect(store.search({ query: '部署', slot: project, category: 'failure' })).toEqual([])
     expect(store.search({ query: '部署前先跑', slot: project })).toHaveLength(1)
+    // A short word beside a long one is not dropped.
+    expect(store.search({ query: 'pnpm 日志', slot: project }).map((e) => e.text)).toEqual([
+      '查日志要用 anlan 命令',
+    ])
   })
 
   it('treats search syntax as plain text', () => {

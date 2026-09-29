@@ -115,6 +115,8 @@ describe('consolidation', () => {
     )
     expect(outcomes.map((o) => o.ok)).toEqual([false, false])
     expect(store.list(project())).toHaveLength(4)
+    // Nothing held up, so the Memory does not count as consolidated.
+    expect(store.summaries()[0]?.lastConsolidated).toBeNull()
   })
 
   it('keeps going when one Memory Session fails', async () => {
@@ -213,6 +215,8 @@ describe('extraction', () => {
     expect(store.list(project(), 'correction').map((e) => e.text)).toEqual(['Use pnpm, not npm'])
     expect(store.list({ scope: 'global' }).map((e) => e.text)).toEqual(['Likes short answers'])
     expect(existsSync(join(store.dir, 'global.md'))).toBe(true)
+    // A later request for the same Session is skipped by the hook.
+    expect(store.hasWrite('0427515a-a1da-4056-9e5e-c4d2e1780ed1')).toBe(true)
   })
 
   it('does nothing for a transcript that is gone', async () => {

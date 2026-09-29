@@ -3,7 +3,7 @@
 import { openMemoryStore } from '../memory/store'
 import { exportMarkdown } from '../memory/markdown'
 import { serveMemory } from '../memory/mcp-server'
-import { findSessionCwd, sessionsDir } from '../memory/session-workspace'
+import { findSessionWorkspace, sessionsDir } from '../memory/session-workspace'
 
 const dir = process.env['DROI_MEMORY_DIR']
 if (!dir) {
@@ -18,7 +18,7 @@ await serveMemory(process.stdin, process.stdout, {
   store,
   workspaceOf(sessionId) {
     // A miss is not cached: the Daemon may not have written the file yet.
-    const known = workspaces.get(sessionId) ?? findSessionCwd(sessions, sessionId)
+    const known = workspaces.get(sessionId) ?? findSessionWorkspace(sessions, sessionId)
     if (known) workspaces.set(sessionId, known)
     return known
   },

@@ -111,7 +111,7 @@ export function parseSliceChanges(value: unknown): SliceChanges | null {
 }
 
 /** Where a Memory Session for this Memory runs: its Workspace while it exists. */
-function sessionCwd(slot: MemorySlot): string {
+function memorySessionWorkspace(slot: MemorySlot): string {
   return slot.scope === 'project' && existsSync(slot.workspace) ? slot.workspace : homedir()
 }
 
@@ -149,7 +149,7 @@ export async function consolidate(
       try {
         const reply = await options.run({
           title: `Memory: consolidate ${memoryName(slot)} / ${category}`,
-          cwd: sessionCwd(slot),
+          cwd: memorySessionWorkspace(slot),
           modelId: options.modelId,
           prompt: options.prompt,
           input: JSON.stringify({
@@ -173,7 +173,8 @@ export async function consolidate(
       }
     }
   }
-  options.store.markConsolidated(slot)
+  // A run whose every answer was rejected changed nothing, so it does not count.
+  if (outcomes.length === 0 || outcomes.some((o) => o.ok)) options.store.markConsolidated(slot)
   exportMarkdown(options.store, slot)
   return outcomes
 }
@@ -195,7 +196,7 @@ export async function extract(
   const project = projectSlot(request.cwd)
   const reply = await options.run({
     title: `Memory: extract from ${request.sessionId.slice(0, 8)}`,
-    cwd: sessionCwd(project),
+    cwd: memorySessionWorkspace(project),
     modelId: options.modelId,
     prompt: options.prompt,
     input: JSON.stringify({
@@ -205,6 +206,8 @@ export async function extract(
     }),
     schema: EXTRACTION_SCHEMA,
   })
+  // PreCompact and SessionEnd may both ask about the same Session; the hook skips one that wrote.
+  options.store.recordWrite(request.sessionId)
   const entries =
     typeof reply === 'object' &&
     reply !== null &&

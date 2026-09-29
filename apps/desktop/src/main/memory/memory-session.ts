@@ -1,5 +1,5 @@
-// A Memory Session (ADR 0011): Droi's own model work, done in a hidden Session
-// on its own Daemon. The Shell connects through its Gateway like any Client,
+// A Memory Session (ADR 0011): Droi's own model work, done in a Session on
+// its own Daemon that no Client lists. The Shell connects through its Gateway like any Client,
 // so the Gateway supplies the credential; the Session is tagged so no Client
 // lists it, told never to wait on a permission prompt, answers in JSON the
 // caller validates, and is archived once its one turn has ended.

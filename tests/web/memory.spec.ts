@@ -94,7 +94,7 @@ test.describe('Settings → Memory', () => {
 })
 
 test.describe('Memory Sessions', () => {
-  const hidden = session(
+  const memorySession = session(
     'Memory: consolidate app / convention',
     '/Users/dev/app',
     [userMessage('{}')],
@@ -104,7 +104,7 @@ test.describe('Memory Sessions', () => {
   )
   test.use({
     scenario: {
-      sessions: [first, hidden],
+      sessions: [first, memorySession],
       // The Memory Session keeps every entry it was sent.
       handlers: {
         'daemon.add_user_message': structuredTurn((text) => {
@@ -174,7 +174,8 @@ test.describe('Memory Sessions', () => {
         structuredOutputFormat: { type: 'json_schema', schema: expect.any(Object) },
       })
       const created = fakeDaemon.scenario.sessions.find(
-        (s) => s.sessionId !== hidden.sessionId && s.tags?.some((t) => t.name === 'droi.memory'),
+        (s) =>
+          s.sessionId !== memorySession.sessionId && s.tags?.some((t) => t.name === 'droi.memory'),
       )
       const archived = await fakeDaemon.waitForRequest('daemon.archive_session')
       expect(archived.params).toMatchObject({ sessionId: created?.sessionId })

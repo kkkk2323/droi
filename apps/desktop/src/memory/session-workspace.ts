@@ -13,7 +13,7 @@ export function sessionsDir(env: NodeJS.ProcessEnv = process.env): string {
 
 const FIRST_LINE_BYTES = 64 * 1024
 
-export function readSessionCwd(file: string): string | null {
+export function readSessionWorkspace(file: string): string | null {
   let fd: number
   try {
     fd = openSync(file, 'r')
@@ -34,7 +34,7 @@ export function readSessionCwd(file: string): string | null {
 }
 
 /** Looks the Session's file up in every Workspace folder the Daemon keeps; null when absent. */
-export function findSessionCwd(dir: string, sessionId: string): string | null {
+export function findSessionWorkspace(dir: string, sessionId: string): string | null {
   if (!/^[A-Za-z0-9-]+$/.test(sessionId)) return null
   let folders: string[]
   try {
@@ -44,7 +44,7 @@ export function findSessionCwd(dir: string, sessionId: string): string | null {
   }
   for (const folder of folders) {
     const file = join(dir, folder, `${sessionId}.jsonl`)
-    if (existsSync(file)) return readSessionCwd(file)
+    if (existsSync(file)) return readSessionWorkspace(file)
   }
   return null
 }
