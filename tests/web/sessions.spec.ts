@@ -177,6 +177,26 @@ function mcpHistory(): MessageFixture[] {
 }
 const mcpSession = session('Remember how we test', '/Users/dev/acme-web', mcpHistory())
 
+// A turn the user steered while it ran: the tool calls, then the follow-up, then the reply.
+function steeredHistory(): MessageFixture[] {
+  const id = 'call_steered'
+  return [
+    userMessage('Check the login flow'),
+    {
+      ...assistantMessage(''),
+      content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'src/auth.ts' } }],
+    },
+    {
+      ...assistantMessage(''),
+      role: 'tool',
+      content: [{ type: 'tool_result', toolUseId: id, content: 'ok' }],
+    },
+    userMessage('Also look at the token refresh'),
+    assistantMessage('Both are fine.'),
+  ]
+}
+const steeredSession = session('Steered turn', '/Users/dev/acme-web', steeredHistory())
+
 const DAY = 24 * 60 * 60
 const staleSession = session('Old spike', '/Users/dev/acme-web', [userMessage('spike')], {
   updatedAt: Math.floor(Date.now() / 1000) - 10 * DAY,
@@ -452,7 +472,22 @@ test.describe('sidebar memory', () => {
 })
 
 test.describe('session history', () => {
-  test.use({ scenario: { sessions: [richSession, mcpSession] } })
+  test.use({ scenario: { sessions: [richSession, mcpSession, steeredSession] } })
+
+  test('a message that steered a running turn leaves no time behind it', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Steered turn/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByText('Both are fine.')).toBeVisible()
+    // Only the reply closes the turn, and it counts from the first prompt:
+    // the fixtures are a second apart, so four seconds.
+    await expect(transcript.locator('time')).toHaveCount(1)
+    await expect(transcript.locator('time')).toHaveText(/· took 4s$/)
+  })
 
   test('an MCP tool shows its server apart from its name, and its inputs as key: value', async ({
     page,
@@ -545,6 +580,11 @@ test.describe('session history', () => {
     expect(await addedGutter.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
       'gradient',
     )
+
+    // Only the reply closes the turn, and its time says how long the turn
+    // took; the tool-only messages in between carry no time of their own.
+    await expect(transcript.locator('time')).toHaveCount(1)
+    await expect(transcript.locator('time')).toHaveText(/· took \d+s$/)
 
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
     // The Daemon's own default is the last 100 messages, which cut long Sessions short.

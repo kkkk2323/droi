@@ -3,9 +3,10 @@
 // row of its own. A turn is split so the list can keep a block the reader is
 // on in place while a later block of the same turn grows.
 import {
-  formatTimestamp,
+  formatTurnEnd,
   type TranscriptBlock,
   type TranscriptEntry,
+  type TurnEnd,
 } from '@droi/daemon-layer/transcript'
 import { memo } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
@@ -56,7 +57,7 @@ export const AssistantBlock = memo(function AssistantBlock({
   first,
   last,
   isError,
-  time,
+  turnEnd,
 }: {
   block: TranscriptBlock
   /** The turn this block belongs to is still being written. */
@@ -65,8 +66,8 @@ export const AssistantBlock = memo(function AssistantBlock({
   /** The turn's last block, which carries how the turn ended. */
   last: boolean
   isError: boolean
-  /** When the turn ended, shown under its last block; 0 for none. */
-  time: number
+  /** When the turn ended and how long it took, shown under its last block. */
+  turnEnd: TurnEnd | null
 }) {
   const colors = useColors()
   return (
@@ -81,9 +82,9 @@ export const AssistantBlock = memo(function AssistantBlock({
           The turn ended with an error.
         </Text>
       ) : null}
-      {last && time ? (
+      {last && turnEnd && turnEnd.endedAt ? (
         <Text tone="muted" size="xs">
-          {formatTimestamp(time)}
+          {formatTurnEnd(turnEnd)}
         </Text>
       ) : null}
     </View>

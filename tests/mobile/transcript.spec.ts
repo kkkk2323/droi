@@ -454,6 +454,11 @@ test.describe('tool calls and reasoning', () => {
     const picture = transcript.getByRole('img', { name: 'Picture from Read' })
     await expect(picture).toBeVisible()
     await expect(transcript.getByText('Image file: shot.png (original size: 1.2 KB)')).toBeVisible()
+
+    // The reply closes the turn; its time says how long the turn took
+    // (the fixtures are a second apart: prompt to reply is 11 seconds).
+    await expect(transcript.getByText(/· took 11s$/)).toBeVisible()
+    await expect(transcript.getByText(/· took/)).toHaveCount(1)
   })
 
   test('an Edit shows a line diff and a Create the new file', async ({ page, fakeDaemon }) => {

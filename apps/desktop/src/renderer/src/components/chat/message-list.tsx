@@ -3,7 +3,12 @@ import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuos
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
-import { turnEndIds, workingLabel, type TranscriptEntry } from '@droi/daemon-layer/transcript'
+import {
+  turnEnds,
+  workingLabel,
+  type TranscriptEntry,
+  type TurnEnd,
+} from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
 import { prefersReducedMotion } from '@/lib/use-media-query'
 import { cn } from '@/lib/utils'
@@ -11,8 +16,8 @@ import { cn } from '@/lib/utils'
 interface ListContext {
   /** Id of the entry that is still being streamed by the Daemon, if any. */
   streamingEntryId: string | null
-  /** Ids of the entries that close a turn; they carry the timestamp. */
-  turnEndIds: ReadonlySet<string>
+  /** The entries that close a turn, by id; they carry the time and how long it took. */
+  turnEnds: ReadonlyMap<string, TurnEnd>
   /** What the Daemon is doing; shown under the last entry while not idle. */
   activity: string
   /** Rendered above the first entry (a "continued from" link, say). */
@@ -115,7 +120,7 @@ function renderEntry(_index: number, entry: TranscriptEntry, context: ListContex
       <MessageEntry
         entry={entry}
         isStreaming={entry.id === context.streamingEntryId}
-        showTime={context.turnEndIds.has(entry.id)}
+        turnEnd={context.turnEnds.get(entry.id) ?? null}
       />
     </>
   )
@@ -363,7 +368,7 @@ export function MessageList({
   const streamingEntryId = isStreaming && last?.role === 'assistant' ? last.id : null
   const context: ListContext = {
     streamingEntryId,
-    turnEndIds: turnEndIds(entries, running),
+    turnEnds: turnEnds(entries, running),
     activity: workingLabel(workingState),
     lead,
     boundaryIds: new Set(parts.slice(1).flatMap((part) => (part[0] ? [part[0].id] : []))),

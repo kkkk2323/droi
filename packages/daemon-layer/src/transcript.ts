@@ -81,7 +81,10 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
           break
       }
     })
-    if (blocks.length === 0 && message.role === 'assistant') continue
+    // A user message with nothing to show is a record, not a turn: the
+    // Daemon persists each hook run as one (`hookEventName`, no content), and
+    // a message that was only a system reminder loses its text on the way.
+    if (blocks.length === 0) continue
     const previous = entries[entries.length - 1]
     // One turn arrives as several assistant messages (reasoning, tool calls,
     // text); shown as one entry so nothing splits it. Tool runs join up too.
@@ -217,15 +220,56 @@ export function formatTimestamp(ms: number, now = new Date()): string {
   return `${DAY.format(date)} ${time}`
 }
 
-/** Assistant entries followed by a user turn, plus the last one once the Daemon rests. */
-export function turnEndIds(entries: readonly TranscriptEntry[], running: boolean): Set<string> {
-  const ids = new Set<string>()
+/** When a turn ended, and when the user's message that started it was sent. */
+export interface TurnEnd {
+  endedAt: number
+  startedAt: number | null
+}
+
+/**
+ * The assistant entries that close a turn, by id. A turn closes with a reply:
+ * an assistant entry whose last block is text, followed by a user message.
+ * One that stops on tool calls and is followed by a user message was steered
+ * mid-turn, not closed; the turn goes on in the next entry. The last entry
+ * closes once the Daemon rests, however it ends (cancelled, say).
+ */
+export function turnEnds(
+  entries: readonly TranscriptEntry[],
+  running: boolean,
+): Map<string, TurnEnd> {
+  const ends = new Map<string, TurnEnd>()
+  let startedAt: number | null = null
   entries.forEach((entry, index) => {
-    if (entry.role !== 'assistant') return
+    if (entry.role === 'user') {
+      startedAt ??= entry.createdAt
+      return
+    }
     const next = entries[index + 1]
-    if (next ? next.role === 'user' : !running) ids.add(entry.id)
+    const replied = entry.blocks[entry.blocks.length - 1]?.kind === 'text'
+    const closes = next ? next.role === 'user' && replied : !running
+    if (!closes) return
+    ends.set(entry.id, { endedAt: entry.createdAt, startedAt })
+    startedAt = null
   })
-  return ids
+  return ends
+}
+
+/** `23:13`, or `23:13 · took 4m 12s` when the turn's start is known. */
+export function formatTurnEnd(end: TurnEnd, now = new Date()): string {
+  const time = formatTimestamp(end.endedAt, now)
+  if (end.startedAt === null) return time
+  const took = end.endedAt - end.startedAt
+  return took >= 1_000 ? `${time} · took ${formatDuration(took)}` : time
+}
+
+/** `640 ms`, `12s`, `4m 12s`, `1h 03m`. */
+export function formatDuration(ms: number): string {
+  if (ms < 1_000) return `${Math.round(ms)} ms`
+  const seconds = Math.round(ms / 1_000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
 }
 
 const WORKING_LABELS: Record<string, string> = {

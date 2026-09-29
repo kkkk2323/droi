@@ -18,7 +18,7 @@
 // update as the row's new size, while a command from JS would arrive a frame
 // or more after the row had already moved. (Fold measures the growth first.)
 import {
-  turnEndIds,
+  turnEnds,
   workingLabel,
   type TranscriptBlock,
   type TranscriptEntry,
@@ -113,7 +113,7 @@ export function TranscriptView({
   const running = workingState !== 'idle'
   const streamingId =
     workingState === 'streaming_assistant_message' && last?.role === 'assistant' ? last.id : null
-  const ends = turnEndIds(entries, running)
+  const ends = turnEnds(entries, running)
   // Where each continued Session starts, below the one it continues.
   const boundaryIds = new Set(parts.slice(1).flatMap((part) => (part[0] ? [part[0].id] : [])))
   const activity = workingLabel(workingState)
@@ -197,7 +197,7 @@ export function TranscriptView({
                   first={item.first}
                   last={item.last}
                   isError={item.last && item.entry.isError}
-                  time={item.last && ends.has(item.entry.id) ? item.entry.createdAt : 0}
+                  turnEnd={item.last ? (ends.get(item.entry.id) ?? null) : null}
                 />
               ) : (
                 <UserMessage entry={item.entry} />

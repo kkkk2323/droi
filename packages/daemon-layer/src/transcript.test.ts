@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
-import { buildTranscript, reuseUnchanged, toolResultImages, toolResultText } from './transcript'
+import {
+  buildTranscript,
+  formatDuration,
+  formatTurnEnd,
+  reuseUnchanged,
+  toolResultImages,
+  toolResultText,
+  turnEnds,
+} from './transcript'
 
 const message = (
   role: 'user' | 'assistant' | 'tool',
@@ -102,13 +110,24 @@ describe('buildTranscript', () => {
     expect(first.createdAt).toBe(3)
   })
 
-  test('skips empty assistant messages and hidden messages', () => {
+  test('skips empty messages and hidden messages', () => {
     const entries = buildTranscript([
       message('assistant', []),
       message('user', [{ type: 'text', text: 'hidden' }], { isUserVisible: false }),
       message('assistant', [{ type: 'text', text: '' }]),
+      // The Daemon's record of a hook run: a user message with nothing in it.
+      message('user', [], { hookEventName: 'UserPromptSubmit', hookStatus: 'completed' } as never),
     ])
     expect(entries).toEqual([])
+  })
+
+  test("a hook record between two assistant messages does not split the assistant's entry", () => {
+    const entries = buildTranscript([
+      message('assistant', [{ type: 'tool_use', id: 'a', name: 'Read', input: {} }]),
+      message('user', [], { hookEventName: 'UserPromptSubmit' } as never),
+      message('assistant', [{ type: 'text', text: 'done' }]),
+    ])
+    expect(entries.map((e) => e.role)).toEqual(['assistant'])
   })
 
   test('tool results may be block arrays', () => {
@@ -137,6 +156,91 @@ describe('buildTranscript', () => {
       toolResultImages({ type: 'tool_result', toolUseId: 'x', content: 'x' } as never),
     ).toEqual([])
     expect(toolResultImages(null)).toEqual([])
+  })
+})
+
+describe('turnEnds', () => {
+  const at = (role: 'user' | 'assistant', createdAt: number, content: unknown[]) =>
+    message(role, content, { createdAt, updatedAt: createdAt })
+  const text = (t: string) => [{ type: 'text', text: t }]
+  const tool = (id: string) => [{ type: 'tool_use', id, name: 'Read', input: {} }]
+
+  test('a reply followed by a user message closes the turn, with the time since the prompt', () => {
+    const entries = buildTranscript([
+      at('user', 1_000, text('go')),
+      at('assistant', 5_000, text('done')),
+      at('user', 9_000, text('thanks')),
+      at('assistant', 9_500, text('welcome')),
+    ])
+    const ends = turnEnds(entries, true)
+    expect(ends.get(entries[1]!.id)).toEqual({ endedAt: 5_000, startedAt: 1_000 })
+    // The last entry is still being written.
+    expect(ends.has(entries[3]!.id)).toBe(false)
+    expect(turnEnds(entries, false).get(entries[3]!.id)).toEqual({
+      endedAt: 9_500,
+      startedAt: 9_000,
+    })
+  })
+
+  test('a user message that steers a turn in progress does not close it', () => {
+    const entries = buildTranscript([
+      at('user', 1_000, text('go')),
+      at('assistant', 2_000, tool('a')),
+      at('user', 3_000, text('also check b')),
+      at('assistant', 8_000, [...tool('b'), ...text('both done')]),
+    ])
+    const ends = turnEnds(entries, false)
+    expect(ends.has(entries[1]!.id)).toBe(false)
+    // The turn's duration counts from the prompt that started it.
+    expect(ends.get(entries[3]!.id)).toEqual({ endedAt: 8_000, startedAt: 1_000 })
+  })
+
+  test('the last entry closes once the Daemon rests, even on tool calls', () => {
+    const entries = buildTranscript([
+      at('user', 1_000, text('go')),
+      at('assistant', 2_000, tool('a')),
+    ])
+    expect(turnEnds(entries, true).size).toBe(0)
+    expect(turnEnds(entries, false).get(entries[1]!.id)).toEqual({
+      endedAt: 2_000,
+      startedAt: 1_000,
+    })
+  })
+
+  test('a turn with no prompt before it has a time but no duration', () => {
+    const entries = buildTranscript([at('assistant', 2_000, text('hi'))])
+    expect(turnEnds(entries, false).get(entries[0]!.id)).toEqual({
+      endedAt: 2_000,
+      startedAt: null,
+    })
+  })
+})
+
+describe('formatTurnEnd', () => {
+  const now = new Date(2026, 8, 29, 23, 30)
+  const endedAt = new Date(2026, 8, 29, 23, 13).getTime()
+
+  // The clock time follows the locale (23:13 or 11:13 PM).
+  const time = String.raw`^\d{1,2}:13(?: PM)?`
+
+  test('the time alone without a start, or when the turn took under a second', () => {
+    expect(formatTurnEnd({ endedAt, startedAt: null }, now)).toMatch(new RegExp(`${time}$`))
+    expect(formatTurnEnd({ endedAt, startedAt: endedAt - 400 }, now)).not.toContain('took')
+  })
+
+  test('the time and the duration', () => {
+    expect(formatTurnEnd({ endedAt, startedAt: endedAt - 252_000 }, now)).toMatch(
+      new RegExp(`${time} · took 4m 12s$`),
+    )
+  })
+})
+
+describe('formatDuration', () => {
+  test('picks the unit for the size', () => {
+    expect(formatDuration(640)).toBe('640 ms')
+    expect(formatDuration(12_400)).toBe('12s')
+    expect(formatDuration(252_000)).toBe('4m 12s')
+    expect(formatDuration(3_780_000)).toBe('1h 03m')
   })
 })
 

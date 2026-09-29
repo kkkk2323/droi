@@ -6,21 +6,23 @@ import { Markdown } from './markdown'
 import { SubagentCard } from './subagent-card'
 import { ToolCluster } from './tool-activity'
 import {
-  formatTimestamp,
+  formatDuration,
+  formatTurnEnd,
   type TranscriptBlock,
   type TranscriptEntry,
+  type TurnEnd,
 } from '@droi/daemon-layer/transcript'
 import { COLUMN } from './column'
 
 export const MessageEntry = memo(function MessageEntry({
   entry,
   isStreaming,
-  showTime,
+  turnEnd,
 }: {
   entry: TranscriptEntry
   isStreaming: boolean
-  /** Only the entry that closes a turn carries a timestamp. */
-  showTime: boolean
+  /** Set on the entry that closes a turn: it carries the time and how long the turn took. */
+  turnEnd: TurnEnd | null
 }) {
   if (entry.role === 'user') {
     const text = entry.blocks
@@ -94,12 +96,12 @@ export const MessageEntry = memo(function MessageEntry({
           className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-foreground/60 align-middle"
         />
       ) : null}
-      {showTime && entry.createdAt ? (
+      {turnEnd && turnEnd.endedAt ? (
         <time
-          dateTime={new Date(entry.createdAt).toISOString()}
+          dateTime={new Date(turnEnd.endedAt).toISOString()}
           className="mt-2 block text-xs text-muted-foreground"
         >
-          {formatTimestamp(entry.createdAt)}
+          {formatTurnEnd(turnEnd)}
         </time>
       ) : null}
     </article>
@@ -135,11 +137,4 @@ function ThinkingSection({
       </Collapsible.Panel>
     </Collapsible.Root>
   )
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${ms} ms`
-  const seconds = Math.round(ms / 1_000)
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }

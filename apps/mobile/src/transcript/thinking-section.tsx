@@ -1,4 +1,5 @@
 // Reasoning, folded away by default like the web Client's.
+import { formatDuration } from '@droi/daemon-layer/transcript'
 import { ChevronRight } from 'lucide-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Markdown } from '../markdown/markdown'
@@ -47,13 +48,6 @@ export function ThinkingSection({
       </Folded>
     </View>
   )
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${ms} ms`
-  const seconds = Math.round(ms / 1_000)
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
 
 const styles = StyleSheet.create({
