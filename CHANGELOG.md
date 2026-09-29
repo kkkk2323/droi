@@ -1,3 +1,12 @@
+## 1.19.0 - 2026-09-29
+
+### Added
+
+- Memory (Beta): Droid can remember across Sessions on Droi's own Daemon. It is off until switched on under Settings › Memory, which restarts the Daemon after a warning. Each Workspace has a Project Memory and there is one Global Memory, kept in a SQLite database under Droi's user data. Droid searches and saves them through Droi's own `droi-memory` MCP server, and a new Session starts with the Workspace's and Global Memory's corrections. Writes that look like secrets are refused. Beside the database, each Memory has a read-only Markdown copy. On the desktop.
+- When a long Session saved nothing, Droi extracts what is worth keeping once it compacts or ends, in a hidden Session on the model chosen under Settings › Memory. From the same page you can consolidate a Memory, open the Memory folder and reset the prompts to their defaults. The page lists every Memory with its entries, size and last consolidation, and a corner card says when a Project Memory grows past its soft limit. On the desktop.
+- The MCP panel shows `droi-memory` as Droi's own server, without a switch, and says where Memory is switched on. On the desktop, in the browser and on the phone.
+- A Session can be renamed from its context menu in the Session list. The row turns into a title field; Enter or leaving the field saves the title, and Escape keeps the old one. On the desktop and in the browser.
+
 ## 1.18.1 - 2026-09-29
 
 ### Fixed
