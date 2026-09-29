@@ -1,6 +1,7 @@
 // Memory Server entry (ADR 0010): the stdio MCP Server the Runtime Overlay
 // registers as `droi-memory`, run by Electron's own Node (ELECTRON_RUN_AS_NODE).
 import { openMemoryStore } from '../memory/store'
+import { exportMarkdown } from '../memory/markdown'
 import { serveMemory } from '../memory/mcp-server'
 import { findSessionCwd, sessionsDir } from '../memory/session-workspace'
 
@@ -20,6 +21,14 @@ await serveMemory(process.stdin, process.stdout, {
     const known = workspaces.get(sessionId) ?? findSessionCwd(sessions, sessionId)
     if (known) workspaces.set(sessionId, known)
     return known
+  },
+  onWrite(slot) {
+    try {
+      exportMarkdown(store, slot)
+    } catch (error) {
+      // The database has the write; a stale export is only cosmetic.
+      process.stderr.write(`droi-memory: export failed: ${String(error)}\n`)
+    }
   },
 })
 store.close()

@@ -11,13 +11,33 @@ export interface MemoryAttachment {
   /** Electron's binary, run as plain Node for the Memory Server and the hook. */
   nodeBinary: string
   serverEntry: string
+  hookEntry: string
   memoryDir: string
   /** The permission record's timestamp, as the Daemon writes one when a user approves. */
   approvedAt: string
 }
 
+export const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreCompact', 'SessionEnd'] as const
+
+const HOOK_TIMEOUT_SECONDS = 10
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`
+}
+
 export function buildRuntimeOverlay(memory: MemoryAttachment): Record<string, unknown> {
   const env = { DROI_MEMORY_DIR: memory.memoryDir }
+  // Hooks run through the shell; the environment rides on the command line so
+  // it does not depend on the Daemon passing the overlay's env to them.
+  const hookCommand = [
+    'ELECTRON_RUN_AS_NODE=1',
+    `DROI_MEMORY_DIR=${shellQuote(memory.memoryDir)}`,
+    shellQuote(memory.nodeBinary),
+    shellQuote(memory.hookEntry),
+  ].join(' ')
+  const hook = [
+    { hooks: [{ type: 'command', command: hookCommand, timeout: HOOK_TIMEOUT_SECONDS }] },
+  ]
   return {
     env,
     // Otherwise a Session's first turn can start before the Memory Server is connected.
@@ -38,6 +58,7 @@ export function buildRuntimeOverlay(memory: MemoryAttachment): Record<string, un
       },
     },
     mcpAutonomyOverrides: { [SERVER_NAME]: { defaultLevel: 'low' } },
+    hooks: Object.fromEntries(HOOK_EVENTS.map((event) => [event, hook])),
   }
 }
 

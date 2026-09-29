@@ -154,6 +154,7 @@ function runtimeOverlay(): string | null {
     buildRuntimeOverlay({
       nodeBinary: process.execPath,
       serverEntry: join(import.meta.dirname, 'memory-server.js'),
+      hookEntry: join(import.meta.dirname, 'memory-hook.js'),
       memoryDir: memoryDir(),
       approvedAt: new Date().toISOString(),
     }),

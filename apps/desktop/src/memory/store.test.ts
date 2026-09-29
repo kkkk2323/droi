@@ -166,13 +166,18 @@ describe('Memory store', () => {
   it('gives the corrections newest first, within both caps', () => {
     for (let i = 0; i < 25; i++) add(project, `correction ${i}`, 'correction')
     add(project, 'not a correction', 'insight')
-    const found = store.corrections(project, { entries: 20, chars: 2_000 })
+    const found = store.corrections([project], { entries: 20, chars: 2_000 })
     expect(found).toHaveLength(20)
     expect(found[0]?.text).toBe('correction 24')
-    expect(store.corrections(project, { entries: 20, chars: 30 }).map((e) => e.text)).toEqual([
+    expect(store.corrections([project], { entries: 20, chars: 30 }).map((e) => e.text)).toEqual([
       'correction 24',
       'correction 23',
     ])
+    add(global, 'global correction', 'correction')
+    add(other, 'elsewhere', 'correction')
+    expect(
+      store.corrections([project, global], { entries: 2, chars: 2_000 }).map((e) => e.text),
+    ).toEqual(['global correction', 'correction 24'])
   })
 
   it('summarises every Project Memory and the Global Memory', () => {

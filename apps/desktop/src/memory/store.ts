@@ -81,8 +81,8 @@ export interface MemoryStore {
   get(id: string): MemoryEntry | null
   list(slot: MemorySlot, category?: Category): MemoryEntry[]
   search(options: SearchOptions): MemoryEntry[]
-  /** Correction entries of the slot, newest first, within both caps. */
-  corrections(slot: MemorySlot, caps: { entries: number; chars: number }): MemoryEntry[]
+  /** Correction entries of these Memories together, newest first, within both caps. */
+  corrections(slots: readonly MemorySlot[], caps: { entries: number; chars: number }): MemoryEntry[]
   size(slot: MemorySlot): number
   /** Every Project Memory with entries, then the Global Memory. */
   summaries(): SlotSummary[]
@@ -343,10 +343,12 @@ export function openMemoryStore(dir: string): MemoryStore {
         limit,
       )
     },
-    corrections(slot, caps) {
+    corrections(slots, caps) {
+      if (slots.length === 0) return []
       const found = rows(
-        `${SELECT} WHERE e.slot = ? AND e.category = 'correction' ORDER BY e.day DESC, e.rowid DESC LIMIT ?`,
-        slotKey(slot),
+        `${SELECT} WHERE e.slot IN (${slots.map(() => '?').join(', ')}) AND e.category = 'correction'
+          ORDER BY e.day DESC, e.rowid DESC LIMIT ?`,
+        ...slots.map(slotKey),
         caps.entries,
       )
       const kept: MemoryEntry[] = []
