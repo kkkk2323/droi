@@ -66,8 +66,8 @@ function MemoriesSection({
   const [reset, setReset] = useState(false)
   const rows = overview.data?.rows ?? []
   return (
-    <section aria-label="Memories" className="flex flex-col gap-3">
-      <h3 className="mt-3 px-1 text-xs font-medium text-muted-foreground">
+    <section aria-labelledby="memories-heading" className="flex flex-col gap-3">
+      <h3 id="memories-heading" className="mt-3 px-1 text-xs font-medium text-muted-foreground">
         Memories on this computer
       </h3>
       {overview.error ? (
@@ -210,9 +210,11 @@ function MemorySwitchRow({ snapshot, bridge, onSaved }: Props) {
           : 'Off: Droid starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past mistakes on this computer.'
       }
       control={
+        // The switch keeps reporting the setting as it is until the restart is
+        // confirmed; the question below carries the requested state.
         <Switch
           aria-label="Memory"
-          checked={pending ?? snapshot.memoryEnabled}
+          checked={snapshot.memoryEnabled}
           disabled={saving}
           onCheckedChange={(next) => setPending(next === snapshot.memoryEnabled ? null : next)}
         />
@@ -220,13 +222,14 @@ function MemorySwitchRow({ snapshot, bridge, onSaved }: Props) {
     >
       {pending !== null ? (
         <div
-          role="alertdialog"
+          role="group"
           aria-label={pending ? 'Turn Memory on' : 'Turn Memory off'}
+          aria-live="polite"
           className="flex flex-wrap items-center gap-2"
         >
           <p className="min-w-48 flex-1 text-[13px] text-muted-foreground">
-            The Daemon restarts to {pending ? 'attach' : 'detach'} Memory. Sessions that are working
-            stop.
+            Turn Memory {pending ? 'on' : 'off'}? The Daemon restarts to{' '}
+            {pending ? 'attach' : 'detach'} it. Sessions that are working stop.
           </p>
           <Button size="sm" disabled={saving} onClick={() => void apply(pending)}>
             Restart Daemon

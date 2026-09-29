@@ -30,6 +30,6 @@ Memory is stored in SQLite under the Shell's user data, one Project Memory per W
 - The Phone App gets Memory for free: it talks to the same Daemon. Only the Local Client can edit the Memory settings, like every other Shell setting.
 - The Memory Server appears in the MCP panel beside the user's servers, marked as Droi's and without a switch; the Memory setting is its only switch.
 - `blockOnMcpLoad` is on for Droi's Daemon so the first turn cannot start before the Memory Server is connected.
-- Subagents see the same tools and hooks and may write; nothing tells the Memory Server which Session called it.
+- The Memory Server learns the calling Session only from the id the Daemon puts in each call's `_meta` (`assemblySessionId`, the Session id itself) and reads that Session's Workspace and tags from the files the Daemon keeps under `~/.factory/sessions`. Subagents see the same tools and hooks and may write. A Memory Session (ADR 0011) runs on the same Daemon, so the hooks stay silent for it and the server refuses its calls.
 - A Workspace moved or renamed leaves its Project Memory behind under the old path.
 - Consolidation is manual, from Settings → Memory, and runs in a hidden Session (ADR 0011).

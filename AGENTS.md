@@ -12,11 +12,15 @@ comments, commits and issues.
 apps/
 ├── desktop/    # Desktop Shell and web Client (package "droi"; its version is the
 │   │           # release version, which the Phone App reads too)
-│   ├── src/main/      # Desktop Shell: Electron main process (Daemon lifecycle, Gateway, window)
+│   ├── src/main/      # Desktop Shell: Electron main process (Daemon lifecycle, Gateway, window;
+│   │   │              # main/memory: Runtime Overlay, Memory Sessions, Settings → Memory)
+│   ├── src/memory/    # Memory's store (node:sqlite), tools, hooks and export: plain Node, no Electron
+│   ├── src/memory-server/  # Entry of the Memory Server, the stdio MCP Server the Runtime Overlay attaches
+│   ├── src/memory-hook/    # Entry of Memory's hook, run by the Daemon at Session events
 │   ├── src/preload/   # Minimal bridge; conversation data never crosses it
 │   ├── src/renderer/  # web Client: React app, runs as Local Client and Remote Client
 │   ├── src/shared/    # Types and pure helpers shared by Desktop Shell and Client
-│   └── resources/     # App icons; electron-builder config lives in package.json
+│   └── resources/     # App icons and Memory's default prompts; electron-builder config lives in package.json
 └── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
                 # screens under src/screens, hardware behind src/platform with
                 # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md
@@ -29,7 +33,7 @@ tests/          # @droi/tests: the Playwright suites, one config per folder
 ├── web/           # Client in a browser against the Fake Daemon
 ├── mobile/        # The Phone App's web build against the Fake Daemon
 ├── electron/      # Smoke suite against the built Desktop Shell
-└── live/          # One case against a real Daemon
+└── live/          # A few cases against a real Daemon (a reply, and Memory)
 scripts/        # install:mac and install:phone
 docs/           # ADRs, agent docs, the README screenshot
 ```

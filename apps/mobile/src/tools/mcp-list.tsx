@@ -272,6 +272,11 @@ function ServerRow({
             {toolCount && on ? ` · ${plural(toolCount, 'tool')}` : ''}
             {server.error ? ` · ${server.error}` : ''}
           </Text>
+          {isDroiMemory(server) ? (
+            <Text size="sm" tone="muted">
+              Droi’s Memory. Turn it on or off on the computer in Settings → Memory.
+            </Text>
+          ) : null}
         </View>
         {isDroiMemory(server) ? null : (
           <Switch

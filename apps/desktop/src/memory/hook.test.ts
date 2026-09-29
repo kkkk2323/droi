@@ -223,23 +223,72 @@ describe('the hook entry', () => {
 describe('soundsLikeCorrection', () => {
   it.each([
     '不对，这里应该用 vitest',
-    '不是这个文件',
+    '不是这个文件，是 store.ts',
     '别用 npm',
-    '不要加注释',
+    '不要用 any',
+    '不应该改这个',
     '应该是 main 分支',
+    '不是 jest 而是 vitest',
     'No, the other one',
-    "don't touch the lockfile",
+    "don't use npm here",
+    'never run the migrations locally',
     'Use pnpm not npm',
     'use vitest instead of jest',
     'that is wrong',
+    "that's the wrong file",
   ])('hears a correction in %j', (prompt) => {
     expect(soundsLikeCorrection(prompt)).toBe(true)
   })
 
-  it.each(['Add a login page', 'Refactor the store', 'Know the answer?', '看看这个日志'])(
-    'hears none in %j',
-    (prompt) => {
-      expect(soundsLikeCorrection(prompt)).toBe(false)
-    },
-  )
+  it.each([
+    'Add a login page',
+    'Refactor the store',
+    'Know the answer?',
+    '看看这个日志',
+    '不是很急，明天再说',
+    "don't forget the tests",
+    'what went wrong in CI?',
+    'Do not merge yet',
+  ])('hears none in %j', (prompt) => {
+    expect(soundsLikeCorrection(prompt)).toBe(false)
+  })
+})
+
+describe('a Memory Session', () => {
+  function memorySessionTranscript(): string {
+    const path = transcript(8)
+    writeFileSync(
+      path.replace(/\.jsonl$/, '.settings.json'),
+      JSON.stringify({ tags: [{ name: 'droi.memory' }], model: 'glm-5.3-flash' }),
+    )
+    return path
+  }
+
+  it('gets no context, no nudge and no extraction', async () => {
+    store.add({ scope: 'project', workspace }, 'correction', 'Use pnpm, not npm')
+    const path = memorySessionTranscript()
+    const input = { session_id: 'mem', transcript_path: path, cwd: workspace }
+    expect((await hook({ ...input, hook_event_name: 'SessionStart' })).stdout).toBe('')
+    expect(
+      (await hook({ ...input, hook_event_name: 'UserPromptSubmit', prompt: '不对，用 pnpm' }))
+        .stdout,
+    ).toBe('')
+    await hook({ ...input, hook_event_name: 'SessionEnd' })
+    expect(existsSync(join(memoryDir, 'requests', 'mem.json'))).toBe(false)
+  })
+})
+
+describe('the prompt count', () => {
+  it('is forgotten when the Session ends', async () => {
+    const stateFile = join(memoryDir, 'state', 'gone.json')
+    await hook({ hook_event_name: 'UserPromptSubmit', session_id: 'gone', prompt: 'next' })
+    expect(existsSync(stateFile)).toBe(true)
+    await hook({
+      hook_event_name: 'SessionEnd',
+      session_id: 'gone',
+      transcript_path: transcript(1),
+      cwd: workspace,
+    })
+    expect(existsSync(stateFile)).toBe(false)
+  })
 })

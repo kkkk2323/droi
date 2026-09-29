@@ -102,9 +102,14 @@ export interface MemoryServerOptions {
   store: MemoryStore
   /** The Workspace a Session runs in, whose Project Memory is its `project` scope. */
   workspaceOf: (sessionId: string) => string | null
+  /** Whether the calling Session is a Memory Session, which gets no Memory of its own. */
+  isMemorySession?: (sessionId: string) => boolean
   /** After every successful write, with the Memory it changed. */
   onWrite?: (slot: MemorySlot) => void
 }
+
+const MEMORY_SESSION_REFUSAL =
+  'Memory tools are not available in a Memory Session. Answer from the material you were given.'
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean }
 
@@ -130,6 +135,9 @@ export function handleToolCall(
   sessionId: string | null,
 ): ToolResult {
   const { store } = options
+  // A Memory Session runs on the same Daemon, so it sees these tools too; a
+  // consolidation that wrote to Memory while rewriting it would race itself.
+  if (sessionId && options.isMemorySession?.(sessionId)) return text(MEMORY_SESSION_REFUSAL, true)
   const scopeOf = (value: unknown): Scope | null =>
     value === undefined || value === 'project' ? 'project' : value === 'global' ? 'global' : null
   const slotFor = (scope: Scope): MemorySlot | ToolResult => {

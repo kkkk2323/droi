@@ -1,6 +1,6 @@
 // Memory Sessions are the Desktop Shell's own model work on the Daemon (ADR
 // 0011). The Shell tags them and every Client leaves them unlisted, as it does
-// a Draft Session. No dependencies: the Shell's main process imports it too.
+// a Draft Session. No dependencies: the Desktop Shell imports it too.
 
 export const MEMORY_SESSION_TAG = 'droi.memory'
 

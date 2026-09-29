@@ -174,6 +174,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       <>
         {status}
         <SettingsPage
+          // The page reads initialTab once; a link to another tab remounts it.
           key={route.tab ?? ''}
           bridge={window.droiShell?.settings ?? null}
           memory={window.droiShell?.memory ?? null}

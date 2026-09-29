@@ -39,7 +39,8 @@ export interface MemoryController {
   stop(): void
 }
 
-const slotKey = (workspace: string | null) => workspace ?? ''
+/** What the consolidating set is keyed by: the Workspace path, or the empty string for Global Memory. */
+const busyKey = (workspace: string | null) => workspace ?? ''
 
 export function createMemoryController(options: MemoryControllerOptions): MemoryController {
   const log = options.log ?? (() => {})
@@ -120,14 +121,14 @@ export function createMemoryController(options: MemoryControllerOptions): Memory
             softLimit: LIMITS[summary.scope].soft,
             overSoftLimit: summary.overSoftLimit,
             lastConsolidated: summary.lastConsolidated,
-            consolidating: consolidating.has(slotKey(summary.workspace)),
+            consolidating: consolidating.has(busyKey(summary.workspace)),
           })),
       }
     },
     async consolidate(workspace) {
       const run = options.runner()
       if (!run) throw new Error('The Daemon is not running.')
-      const key = slotKey(workspace)
+      const key = busyKey(workspace)
       if (consolidating.has(key)) throw new Error('This Memory is already being consolidated.')
       const slot: MemorySlot = workspace === null ? { scope: 'global' } : projectSlot(workspace)
       consolidating.add(key)

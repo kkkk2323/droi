@@ -3,7 +3,12 @@
 import { openMemoryStore } from '../memory/store'
 import { exportMarkdown } from '../memory/markdown'
 import { serveMemory } from '../memory/mcp-server'
-import { findSessionWorkspace, sessionsDir } from '../memory/session-workspace'
+import {
+  findSessionTranscript,
+  isMemorySessionTranscript,
+  readSessionWorkspace,
+  sessionsDir,
+} from '../memory/session-workspace'
 
 const dir = process.env['DROI_MEMORY_DIR']
 if (!dir) {
@@ -12,15 +17,23 @@ if (!dir) {
 }
 
 const sessions = sessionsDir()
-const workspaces = new Map<string, string | null>()
+const transcripts = new Map<string, string>()
+// A miss is not cached: the Daemon may not have written the file yet.
+const transcriptOf = (sessionId: string): string | null => {
+  const known = transcripts.get(sessionId) ?? findSessionTranscript(sessions, sessionId)
+  if (known) transcripts.set(sessionId, known)
+  return known
+}
 const store = openMemoryStore(dir)
 await serveMemory(process.stdin, process.stdout, {
   store,
   workspaceOf(sessionId) {
-    // A miss is not cached: the Daemon may not have written the file yet.
-    const known = workspaces.get(sessionId) ?? findSessionWorkspace(sessions, sessionId)
-    if (known) workspaces.set(sessionId, known)
-    return known
+    const transcript = transcriptOf(sessionId)
+    return transcript ? readSessionWorkspace(transcript) : null
+  },
+  isMemorySession(sessionId) {
+    const transcript = transcriptOf(sessionId)
+    return transcript ? isMemorySessionTranscript(transcript) : false
   },
   onWrite(slot) {
     try {

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { findSessionWorkspace, sessionsDir } from './session-workspace'
+import {
+  findSessionTranscript,
+  findSessionWorkspace,
+  isMemorySessionTranscript,
+  sessionSettingsFile,
+  sessionsDir,
+} from './session-workspace'
 
 let dir: string
 
@@ -37,5 +43,24 @@ describe('findSessionWorkspace', () => {
 
   it('follows FACTORY_HOME_OVERRIDE', () => {
     expect(sessionsDir({ FACTORY_HOME_OVERRIDE: '/tmp/f' })).toBe('/tmp/f/sessions')
+  })
+})
+
+describe('isMemorySessionTranscript', () => {
+  it('reads the droi.memory tag from the settings file beside the transcript', () => {
+    sessionFile('-w', 'mem', [{ type: 'session_start', cwd: '/w' }])
+    const transcript = findSessionTranscript(dir, 'mem')!
+    expect(sessionSettingsFile(transcript)).toBe(join(dir, '-w', 'mem.settings.json'))
+    expect(isMemorySessionTranscript(transcript)).toBe(false)
+    writeFileSync(
+      sessionSettingsFile(transcript),
+      JSON.stringify({ tags: [{ name: 'droi.draft' }] }),
+    )
+    expect(isMemorySessionTranscript(transcript)).toBe(false)
+    writeFileSync(
+      sessionSettingsFile(transcript),
+      JSON.stringify({ tags: [{ name: 'droi.memory' }] }),
+    )
+    expect(isMemorySessionTranscript(transcript)).toBe(true)
   })
 })

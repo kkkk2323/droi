@@ -1,10 +1,12 @@
-// Which Workspace a Session runs in, from its session file. The Daemon starts
+// What a Session is, from the files the Daemon keeps for it. The Daemon starts
 // the Memory Server in its own directory, not the Session's, and tells it only
-// the Session id (in each tool call's `_meta`); the file the Daemon keeps for
-// that Session opens with a session_start line that carries the cwd.
-import { closeSync, existsSync, openSync, readdirSync, readSync } from 'node:fs'
+// the Session id (in each tool call's `_meta`); the Session's transcript opens
+// with a session_start line that carries the cwd, and its tags sit in the
+// settings file beside it.
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { isMemorySession } from '@droi/daemon-layer/memory-session'
 
 /** ~/.factory/sessions, or under FACTORY_HOME_OVERRIDE as the Shell and the Daemon honour it. */
 export function sessionsDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -33,8 +35,25 @@ export function readSessionWorkspace(file: string): string | null {
   }
 }
 
-/** Looks the Session's file up in every Workspace folder the Daemon keeps; null when absent. */
-export function findSessionWorkspace(dir: string, sessionId: string): string | null {
+/** The Session's settings file, which the Daemon keeps beside its transcript. */
+export function sessionSettingsFile(transcriptFile: string): string {
+  return transcriptFile.replace(/\.jsonl$/, '.settings.json')
+}
+
+/** Whether the transcript belongs to a Memory Session, from the tags in its settings file. */
+export function isMemorySessionTranscript(transcriptFile: string): boolean {
+  try {
+    const parsed = JSON.parse(readFileSync(sessionSettingsFile(transcriptFile), 'utf8')) as {
+      tags?: unknown
+    }
+    return Array.isArray(parsed.tags) && isMemorySession(parsed.tags as Array<{ name: string }>)
+  } catch {
+    return false
+  }
+}
+
+/** Looks the Session's transcript up in every Workspace folder the Daemon keeps; null when absent. */
+export function findSessionTranscript(dir: string, sessionId: string): string | null {
   if (!/^[A-Za-z0-9-]+$/.test(sessionId)) return null
   let folders: string[]
   try {
@@ -44,7 +63,12 @@ export function findSessionWorkspace(dir: string, sessionId: string): string | n
   }
   for (const folder of folders) {
     const file = join(dir, folder, `${sessionId}.jsonl`)
-    if (existsSync(file)) return readSessionWorkspace(file)
+    if (existsSync(file)) return file
   }
   return null
+}
+
+export function findSessionWorkspace(dir: string, sessionId: string): string | null {
+  const file = findSessionTranscript(dir, sessionId)
+  return file ? readSessionWorkspace(file) : null
 }

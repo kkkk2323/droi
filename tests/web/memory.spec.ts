@@ -36,7 +36,7 @@ test.describe('Settings → Memory', () => {
     await expect(memory).not.toBeChecked()
 
     await memory.click()
-    const confirm = page.getByRole('alertdialog', { name: 'Turn Memory on' })
+    const confirm = page.getByRole('group', { name: 'Turn Memory on' })
     await expect(confirm).toContainText('Sessions that are working stop')
     await confirm.getByRole('button', { name: 'Cancel' }).click()
     await expect(confirm).toHaveCount(0)
@@ -45,18 +45,18 @@ test.describe('Settings → Memory', () => {
 
     await memory.click()
     await page
-      .getByRole('alertdialog', { name: 'Turn Memory on' })
+      .getByRole('group', { name: 'Turn Memory on' })
       .getByRole('button', { name: 'Restart Daemon' })
       .click()
     await expect(memory).toBeChecked()
-    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    await expect(page.getByRole('group', { name: /Turn Memory/ })).toHaveCount(0)
     const record = await shellRecord(page)
     expect(record.settingsUpdates).toEqual([{ memoryEnabled: true }])
     expect(record.daemonRestarts).toBe(1)
 
     await memory.click()
     await page
-      .getByRole('alertdialog', { name: 'Turn Memory off' })
+      .getByRole('group', { name: 'Turn Memory off' })
       .getByRole('button', { name: 'Restart Daemon' })
       .click()
     await expect(memory).not.toBeChecked()

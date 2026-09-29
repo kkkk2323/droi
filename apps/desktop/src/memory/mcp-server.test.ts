@@ -174,6 +174,29 @@ describe('Memory Server over stdio', () => {
     ).toMatchObject({ isError: false })
   })
 
+  it('gives a Memory Session no Memory of its own', async () => {
+    const memorySession = '9b1f2c3d-0000-4000-8000-000000000001'
+    const folder = join(factoryHome, 'sessions', workspace.replaceAll('/', '-'))
+    writeFileSync(
+      join(folder, `${memorySession}.jsonl`),
+      `${JSON.stringify({ type: 'session_start', id: memorySession, cwd: workspace })}\n`,
+    )
+    writeFileSync(
+      join(folder, `${memorySession}.settings.json`),
+      JSON.stringify({ tags: [{ name: 'droi.memory' }] }),
+    )
+    for (const [name, args] of [
+      ['memory_add', { scope: 'global', category: 'insight', text: 'x' }],
+      ['memory_search', { query: 'anything' }],
+    ] as const) {
+      expect(await call(name, { ...args }, memorySession)).toMatchObject({
+        isError: true,
+        text: expect.stringMatching(/Memory Session/),
+      })
+    }
+    expect((await call('memory_list', { scope: 'global' })).text).toMatch(/^No entries/)
+  })
+
   it('reports refusals as tool errors', async () => {
     expect(
       await call('memory_add', { scope: 'project', category: 'insight', text: 'password=hunter2' }),
