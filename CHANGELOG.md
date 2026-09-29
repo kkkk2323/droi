@@ -1,3 +1,9 @@
+## 1.18.1 - 2026-09-29
+
+### Fixed
+
+- A `/compact` that finishes while you are reading another Session no longer switches the view back to the compacted one. After a handoff from an older Daemon the view still moves to the new Session, but only if you are still on the one being compacted. On the desktop, in the browser and on the phone.
+
 ## 1.18.0 - 2026-09-29
 
 ### Added
