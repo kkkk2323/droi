@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react'
+import { useRef, useState, type DragEvent, type RefObject } from 'react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { Menu } from '@base-ui/react/menu'
 import {
@@ -14,6 +14,7 @@ import {
   FolderOpen,
   ListFilter,
   MessageSquare,
+  Pencil,
   Pin,
   PinOff,
   Plus,
@@ -73,6 +74,7 @@ export function SessionSidebar({
   unread,
   onSelect,
   onArchiveToggle,
+  onRename,
   isLoading,
   error,
   older,
@@ -93,6 +95,8 @@ export function SessionSidebar({
   onSelect: (sessionId: string) => void
   /** From the row's context menu: archive, or unarchive when already archived. */
   onArchiveToggle: (session: SessionSummary) => void
+  /** From the row's context menu, once the new title is entered in the row. */
+  onRename: (session: SessionSummary, title: string) => void
   isLoading: boolean
   error: string | null
   /** Sessions older than the ones listed wait on the Daemon; null when the list is complete. */
@@ -144,6 +148,7 @@ export function SessionSidebar({
       unread={unread}
       onSelect={onSelect}
       onArchiveToggle={onArchiveToggle}
+      onRename={onRename}
       onNewSessionIn={onNewSessionIn}
     />
   )
@@ -261,6 +266,7 @@ function WorkspaceSection({
   unread,
   onSelect,
   onArchiveToggle,
+  onRename,
   onNewSessionIn,
 }: {
   group: WorkspaceGroup
@@ -272,8 +278,11 @@ function WorkspaceSection({
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   onArchiveToggle: (session: SessionSummary) => void
+  onRename: (session: SessionSummary, title: string) => void
   onNewSessionIn: (workspace: string | null) => void
 }) {
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const renameInput = useRef<HTMLInputElement>(null)
   // Folds and pins are this Client's; they outlive a restart.
   const [folded] = usePreference(foldedWorkspaces)
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
@@ -474,92 +483,116 @@ function WorkspaceSection({
             return (
               <ContextMenu.Root key={session.sessionId}>
                 <ContextMenu.Trigger render={<li />}>
-                  <button
-                    type="button"
-                    aria-current={selected ? 'page' : undefined}
-                    onClick={() => onSelect(session.sessionId)}
-                    title={session.title}
-                    className={cn(
-                      'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pr-2 text-left outline-none transition-colors duration-150',
-                      group.scratch ? 'pl-2' : 'pl-8',
-                      'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
-                      selected && 'bg-sidebar-accent',
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5 text-[13px] text-foreground">
-                      <span className={cn('flex-1 truncate', isUnread && 'font-medium')}>
-                        {session.title}
+                  {renaming === session.sessionId ? (
+                    <RenameField
+                      title={session.title}
+                      inputRef={renameInput}
+                      className={group.scratch ? 'pl-2' : 'pl-8'}
+                      onDone={(title) => {
+                        setRenaming(null)
+                        if (title) onRename(session, title)
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      aria-current={selected ? 'page' : undefined}
+                      onClick={() => onSelect(session.sessionId)}
+                      title={session.title}
+                      className={cn(
+                        'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pr-2 text-left outline-none transition-colors duration-150',
+                        group.scratch ? 'pl-2' : 'pl-8',
+                        'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                        selected && 'bg-sidebar-accent',
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5 text-[13px] text-foreground">
+                        <span className={cn('flex-1 truncate', isUnread && 'font-medium')}>
+                          {session.title}
+                        </span>
+                        {isUnread ? (
+                          <span
+                            role="img"
+                            aria-label="Unread"
+                            className="size-1.5 shrink-0 rounded-full bg-info"
+                          />
+                        ) : null}
+                        {sessionPinned ? (
+                          <Pin aria-label="Pinned" className="size-3 shrink-0 opacity-70" />
+                        ) : null}
+                        {session.archivedAt ? (
+                          <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
+                        ) : null}
                       </span>
-                      {isUnread ? (
-                        <span
-                          role="img"
-                          aria-label="Unread"
-                          className="size-1.5 shrink-0 rounded-full bg-info"
-                        />
-                      ) : null}
-                      {sessionPinned ? (
-                        <Pin aria-label="Pinned" className="size-3 shrink-0 opacity-70" />
-                      ) : null}
-                      {session.archivedAt ? (
-                        <Archive aria-label="Archived" className="size-3 shrink-0 opacity-70" />
-                      ) : null}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      {doing === 'needs-input' ? (
-                        <span
-                          role="status"
-                          aria-label="Needs input"
-                          className="flex min-w-0 items-center gap-1 text-attention"
-                        >
-                          <CircleAlert aria-hidden className="size-3 shrink-0" />
-                          <span className="truncate">Needs input</span>
-                        </span>
-                      ) : doing === 'compacting' ? (
-                        <span
-                          role="status"
-                          aria-label="Compacting"
-                          className="flex min-w-0 items-center gap-1 text-info"
-                        >
-                          <Spinner aria-hidden className="size-3" />
-                          <span className="truncate">Compacting</span>
-                        </span>
-                      ) : subagents > 0 ? (
-                        <span role="status" className="flex min-w-0 items-center gap-1 text-info">
-                          <Spinner aria-hidden className="size-3" />
-                          <span className="truncate">
-                            {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
+                      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        {doing === 'needs-input' ? (
+                          <span
+                            role="status"
+                            aria-label="Needs input"
+                            className="flex min-w-0 items-center gap-1 text-attention"
+                          >
+                            <CircleAlert aria-hidden className="size-3 shrink-0" />
+                            <span className="truncate">Needs input</span>
                           </span>
-                        </span>
-                      ) : doing === 'working' ? (
-                        <span
-                          role="status"
-                          aria-label="Working"
-                          className="flex min-w-0 items-center gap-1 text-info"
-                        >
-                          <Spinner aria-hidden className="size-3" />
-                          <span className="truncate">Working</span>
-                        </span>
-                      ) : session.messagesCount !== null ? (
-                        <span className="flex min-w-0 items-center gap-1">
-                          <MessageSquare aria-hidden className="size-3 shrink-0" />
-                          <span className="truncate">
-                            {session.messagesCount}{' '}
-                            {session.messagesCount === 1 ? 'message' : 'messages'}
+                        ) : doing === 'compacting' ? (
+                          <span
+                            role="status"
+                            aria-label="Compacting"
+                            className="flex min-w-0 items-center gap-1 text-info"
+                          >
+                            <Spinner aria-hidden className="size-3" />
+                            <span className="truncate">Compacting</span>
                           </span>
-                        </span>
-                      ) : null}
-                      <time
-                        dateTime={new Date(session.updatedAt * 1000).toISOString()}
-                        className="ml-auto shrink-0 tabular-nums"
-                      >
-                        {relativeTime(session.updatedAt * 1000)}
-                      </time>
-                    </span>
-                  </button>
+                        ) : subagents > 0 ? (
+                          <span role="status" className="flex min-w-0 items-center gap-1 text-info">
+                            <Spinner aria-hidden className="size-3" />
+                            <span className="truncate">
+                              {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
+                            </span>
+                          </span>
+                        ) : doing === 'working' ? (
+                          <span
+                            role="status"
+                            aria-label="Working"
+                            className="flex min-w-0 items-center gap-1 text-info"
+                          >
+                            <Spinner aria-hidden className="size-3" />
+                            <span className="truncate">Working</span>
+                          </span>
+                        ) : session.messagesCount !== null ? (
+                          <span className="flex min-w-0 items-center gap-1">
+                            <MessageSquare aria-hidden className="size-3 shrink-0" />
+                            <span className="truncate">
+                              {session.messagesCount}{' '}
+                              {session.messagesCount === 1 ? 'message' : 'messages'}
+                            </span>
+                          </span>
+                        ) : null}
+                        <time
+                          dateTime={new Date(session.updatedAt * 1000).toISOString()}
+                          className="ml-auto shrink-0 tabular-nums"
+                        >
+                          {relativeTime(session.updatedAt * 1000)}
+                        </time>
+                      </span>
+                    </button>
+                  )}
                 </ContextMenu.Trigger>
                 <ContextMenu.Portal>
                   <ContextMenu.Positioner className="z-50 outline-none">
-                    <ContextMenu.Popup aria-label={`Actions for ${session.title}`} className={MENU}>
+                    <ContextMenu.Popup
+                      aria-label={`Actions for ${session.title}`}
+                      // Closing the menu would otherwise take the focus back from the rename field.
+                      finalFocus={() => renameInput.current ?? true}
+                      className={MENU}
+                    >
+                      <ContextMenu.Item
+                        onClick={() => setRenaming(session.sessionId)}
+                        className={MENU_ITEM}
+                      >
+                        <Pencil aria-hidden className="size-4 text-muted-foreground" />
+                        Rename
+                      </ContextMenu.Item>
                       <ContextMenu.Item
                         onClick={() => toggleListed(pinnedSessions, session.sessionId)}
                         className={MENU_ITEM}
@@ -613,6 +646,57 @@ function WorkspaceSection({
         ) : null}
       </div>
     </section>
+  )
+}
+
+/** A row's title as a field: Enter or clicking away saves, Escape keeps the title. */
+function RenameField({
+  title,
+  inputRef,
+  className,
+  onDone,
+}: {
+  title: string
+  inputRef: RefObject<HTMLInputElement | null>
+  className: string
+  /** The new title, or null when it is unchanged or the rename was abandoned. */
+  onDone: (title: string | null) => void
+}) {
+  const [draft, setDraft] = useState(title)
+  // Escape and Enter unmount the field, which may blur it once more.
+  const done = useRef(false)
+  const finish = (next: string | null) => {
+    if (done.current) return
+    done.current = true
+    const trimmed = next?.trim()
+    onDone(trimmed && trimmed !== title ? trimmed : null)
+  }
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        finish(draft)
+      }}
+      className={cn('flex rounded-lg bg-sidebar-accent py-1.5 pr-2', className)}
+    >
+      <input
+        ref={inputRef}
+        aria-label="Session title"
+        autoFocus
+        value={draft}
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return
+          // Only the rename is abandoned, not the drawer the sidebar sits in on a phone.
+          event.preventDefault()
+          event.stopPropagation()
+          finish(null)
+        }}
+        onBlur={() => finish(draft)}
+        className="h-8 min-w-0 flex-1 rounded-md border bg-background px-1.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      />
+    </form>
   )
 }
 

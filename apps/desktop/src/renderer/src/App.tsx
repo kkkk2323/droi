@@ -210,6 +210,9 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           })
           .catch(console.error)
       }}
+      onRename={(session, title) =>
+        void connection.controller.renameSession(session.sessionId, title).catch(console.error)
+      }
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
       older={sessions.hasMore ? { loading: sessions.isLoadingMore, load: sessions.loadMore } : null}

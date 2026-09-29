@@ -215,6 +215,53 @@ test.describe('session settings', () => {
     await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
     await expect(sidebar.getByRole('button', { name: /First session/ })).toBeVisible()
   })
+
+  test('a Session can be renamed from the sidebar without opening it', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    const rename = async (title = 'Second session') => {
+      await sidebar.getByRole('button', { name: new RegExp(title) }).click({ button: 'right' })
+      await page
+        .getByRole('menu', { name: `Actions for ${title}` })
+        .getByRole('menuitem', { name: 'Rename' })
+        .click()
+      const field = sidebar.getByRole('textbox', { name: 'Session title' })
+      await expect(field).toBeFocused()
+      await expect(field).toHaveValue(title)
+      return field
+    }
+
+    // Escape keeps the title.
+    let field = await rename()
+    await field.fill('Never mind')
+    await field.press('Escape')
+    await expect(field).toHaveCount(0)
+    await expect(sidebar.getByRole('button', { name: /Second session/ })).toBeVisible()
+
+    field = await rename()
+    await field.fill('  Release notes  ')
+    await field.press('Enter')
+    const renamed = await fakeDaemon.waitForRequest('daemon.rename_session')
+    expect(renamed.params).toMatchObject({ sessionId: second.sessionId, title: 'Release notes' })
+    await expect(sidebar.getByRole('button', { name: /Release notes/ })).toBeVisible()
+    await expect(sidebar.getByRole('button', { name: /Second session/ })).toHaveCount(0)
+    expect(fakeDaemon.requests.filter((r) => r.method === 'daemon.rename_session')).toHaveLength(1)
+    // Renaming does not open the Session.
+    await expect(page.getByRole('heading', { level: 2, name: 'Release notes' })).toHaveCount(0)
+
+    // Leaving the field saves too.
+    field = await rename('Release notes')
+    await field.fill('Release notes v2')
+    await field.blur()
+    await fakeDaemon.waitForRequest('daemon.rename_session', 2)
+    await expect(sidebar.getByRole('button', { name: /Release notes v2/ })).toBeVisible()
+    expect(fakeDaemon.requests.filter((r) => r.method === 'daemon.rename_session')).toHaveLength(2)
+  })
 })
 
 test.describe('session defaults', () => {
