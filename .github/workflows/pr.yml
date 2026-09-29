@@ -5,8 +5,9 @@ on:
   push:
     branches: [main]
 
+# The suites run side by side; the web Client's, the longest, is split three ways.
 jobs:
-  verify:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,12 +26,80 @@ jobs:
 
       - run: pnpm test
 
+  web-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/3, 2/3, 3/3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
       - run: pnpm -C tests exec playwright install --with-deps chromium
 
-      - run: pnpm test:e2e
+      - run: pnpm test:e2e --shard=${{ matrix.shard }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-web-${{ strategy.job-index }}
+          path: tests/test-results
+          retention-days: 7
+
+  phone-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -C tests exec playwright install --with-deps chromium
 
       - name: Phone App web build against the Fake Daemon
         run: pnpm test:e2e:phone
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-phone
+          path: tests/test-results
+          retention-days: 7
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Electron brings its own Chromium; it only needs the system libraries.
+      - run: pnpm -C tests exec playwright install-deps chromium
 
       - run: pnpm build
 
@@ -40,6 +109,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-smoke
           path: tests/test-results
           retention-days: 7

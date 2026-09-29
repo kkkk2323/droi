@@ -34,8 +34,8 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
+  # The builds run beside validate; only the publishing jobs wait for it.
   build-asar:
-    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +76,6 @@ jobs:
             apps/desktop/dist/latest.json
 
   build-arm64:
-    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,8 +92,10 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Naming the dmg target replaces the configured universal one, which
+      # `--arm64` alone would build too, along with a zip, and throw away.
       - name: Build arm64 DMG
-        run: pnpm -C apps/desktop exec electron-builder --mac --arm64 --publish never
+        run: pnpm -C apps/desktop exec electron-builder --mac dmg --arm64 --publish never
 
       - uses: actions/upload-artifact@v4
         with:
@@ -102,7 +103,6 @@ jobs:
           path: apps/desktop/dist/*arm64*.dmg
 
   build-x64:
-    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
         run: pnpm build
 
       - name: Build x64 DMG
-        run: pnpm -C apps/desktop exec electron-builder --mac --x64 --publish never
+        run: pnpm -C apps/desktop exec electron-builder --mac dmg --x64 --publish never
 
       - uses: actions/upload-artifact@v4
         with:
@@ -128,7 +128,7 @@ jobs:
           path: apps/desktop/dist/*x64*.dmg
 
   release-asar:
-    needs: build-asar
+    needs: [validate, build-asar]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -143,7 +143,7 @@ jobs:
             dist/latest.json
 
   release:
-    needs: [build-arm64, build-x64]
+    needs: [validate, build-arm64, build-x64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
