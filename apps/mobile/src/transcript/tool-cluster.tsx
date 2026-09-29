@@ -3,13 +3,16 @@
 // the input and the result (a line diff for Edit and Create).
 import {
   readToolResult,
+  toolDisplayName,
   toolInputText,
   toolSummary,
+  toolSummaryParts,
   truncateLines,
 } from '@droi/daemon-layer/tool-calls'
 import type { ToolCall } from '@droi/daemon-layer/transcript'
 import type { DiffLine } from '@droi/daemon-layer/tool-calls'
 import {
+  BookOpen,
   Check,
   ChevronRight,
   CircleX,
@@ -18,6 +21,7 @@ import {
   FileText,
   FolderSearch,
   Globe,
+  Plug,
   Search,
   Terminal,
   Wrench,
@@ -41,6 +45,7 @@ const ICONS: Record<string, LucideIcon> = {
   LS: FolderSearch,
   FetchUrl: Globe,
   WebSearch: Globe,
+  Skill: BookOpen,
 }
 
 const RESULT_PREVIEW_LINES = 40
@@ -49,7 +54,12 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
   const colors = useColors()
   const fold = useFold(true)
   const pending = calls.filter((c) => c.result === null).length
-  const what = calls.length === 1 ? (calls[0]?.use.name ?? 'a tool') : `${calls.length} tools`
+  const what =
+    calls.length === 1
+      ? calls[0]
+        ? toolDisplayName(calls[0].use.name).tool
+        : 'a tool'
+      : `${calls.length} tools`
   return (
     <View>
       <Pressable
@@ -82,8 +92,10 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
 function ToolRow({ call }: { call: ToolCall }) {
   const colors = useColors()
   const fold = useFold()
-  const Icon = ICONS[call.use.name] ?? Wrench
+  const name = toolDisplayName(call.use.name)
+  const Icon = ICONS[call.use.name] ?? (name.server ? Plug : Wrench)
   const summary = toolSummary(call)
+  const parts = toolSummaryParts(call)
   const { text, images, pending, isError, diff, status } = readToolResult(call)
   const tint = isError ? colors.destructiveForeground : colors.mutedForeground
   return (
@@ -96,15 +108,31 @@ function ToolRow({ call }: { call: ToolCall }) {
         style={({ pressed }) => [styles.row, pressed ? { backgroundColor: colors.muted } : null]}
       >
         <Icon size={14} color={tint} strokeWidth={1.75} />
+        {name.server ? (
+          <Text tone="muted" size="xs">
+            {name.server}
+          </Text>
+        ) : null}
         <Text
           size="sm"
           weight="medium"
           style={isError ? { color: colors.destructiveForeground } : null}
         >
-          {call.use.name}
+          {name.tool}
         </Text>
+        {/* A key reads in the UI face, its value in mono, so the two tell apart in one colour. */}
         <Text tone="muted" size="xs" mono numberOfLines={1} style={styles.summary}>
-          {summary}
+          {parts.map((part, index) => (
+            <Text key={part.key ?? index} tone="muted" size="xs" mono>
+              {index > 0 ? ' · ' : ''}
+              {part.key ? (
+                <Text tone="muted" size="xs">
+                  {part.key}:{' '}
+                </Text>
+              ) : null}
+              {part.value}
+            </Text>
+          ))}
         </Text>
         {diff ? (
           <Text size="xs" mono>

@@ -1,6 +1,90 @@
 import { describe, expect, test } from 'vitest'
-import { createdFileDiff, parseDiffResult, parseStatusResult, permissionDetail } from './tool-calls'
+import {
+  createdFileDiff,
+  parseDiffResult,
+  parseStatusResult,
+  permissionDetail,
+  toolDisplayName,
+  toolSummary,
+  toolSummaryParts,
+} from './tool-calls'
 import type { ToolCall } from './transcript'
+
+const call = (name: string, input: Record<string, unknown>): ToolCall =>
+  ({ use: { type: 'tool_use', id: 'c1', name, input }, result: null }) as unknown as ToolCall
+
+describe('toolDisplayName', () => {
+  test('splits an MCP tool into its server and tool', () => {
+    expect(toolDisplayName('droi-memory___memory_list')).toEqual({
+      server: 'droi-memory',
+      tool: 'memory_list',
+    })
+    expect(toolDisplayName('exa___web_search_exa')).toEqual({
+      server: 'exa',
+      tool: 'web_search_exa',
+    })
+  })
+
+  test("leaves the Daemon's own tools whole", () => {
+    expect(toolDisplayName('Execute')).toEqual({ server: null, tool: 'Execute' })
+    expect(toolDisplayName('___odd')).toEqual({ server: null, tool: '___odd' })
+    expect(toolDisplayName('odd___')).toEqual({ server: null, tool: 'odd___' })
+  })
+})
+
+describe('toolSummaryParts', () => {
+  test('a headline input stands alone', () => {
+    expect(toolSummaryParts(call('Execute', { command: 'ls -la\npwd', summary: 'List' }))).toEqual([
+      { key: null, value: 'List' },
+    ])
+    expect(toolSummaryParts(call('Read', { file_path: '/w/a.ts', limit: 40 }))).toEqual([
+      { key: null, value: '/w/a.ts' },
+    ])
+    expect(toolSummaryParts(call('Skill', { skill: 'grilling' }))).toEqual([
+      { key: null, value: 'grilling' },
+    ])
+  })
+
+  test('any other tool shows its first short inputs as key: value', () => {
+    expect(toolSummaryParts(call('droi-memory___memory_list', { scope: 'project' }))).toEqual([
+      { key: 'scope', value: 'project' },
+    ])
+    expect(
+      toolSummaryParts(
+        call('droi-memory___memory_add', {
+          scope: 'project',
+          category: 'insight',
+          text: `${'x'.repeat(70)}\nsecond line`,
+          extra: 'not shown',
+        }),
+      ),
+    ).toEqual([
+      { key: 'scope', value: 'project' },
+      { key: 'category', value: 'insight' },
+      { key: 'text', value: `${'x'.repeat(57)}…` },
+    ])
+  })
+
+  test('skips blanks and nested values, keeps numbers and booleans', () => {
+    expect(
+      toolSummaryParts(call('t', { a: '  ', b: { c: 1 }, d: [1], limit: 10, block: false })),
+    ).toEqual([
+      { key: 'limit', value: '10' },
+      { key: 'block', value: 'false' },
+    ])
+    expect(toolSummaryParts(call('t', {}))).toEqual([])
+  })
+})
+
+describe('toolSummary', () => {
+  test('joins the parts into one line for labels and the Phone App', () => {
+    expect(toolSummary(call('Execute', { command: 'ls' }))).toBe('ls')
+    expect(
+      toolSummary(call('droi-memory___memory_list', { scope: 'project', category: 'insight' })),
+    ).toBe('scope: project · category: insight')
+    expect(toolSummary(call('t', {}))).toBe('')
+  })
+})
 
 describe('parseStatusResult', () => {
   test("reads Create's bare success object", () => {
@@ -56,9 +140,6 @@ describe('parseDiffResult', () => {
 })
 
 describe('createdFileDiff', () => {
-  const call = (name: string, input: Record<string, unknown>): ToolCall =>
-    ({ use: { type: 'tool_use', id: 'c1', name, input }, result: null }) as unknown as ToolCall
-
   test("shows a Create's content as numbered added lines, ignoring the final newline", () => {
     expect(createdFileDiff(call('Create', { file_path: 'a.ts', content: 'one\ntwo\n' }))).toEqual({
       lines: [

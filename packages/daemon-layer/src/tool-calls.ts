@@ -97,18 +97,72 @@ export function createdFileDiff(call: ToolCall): DiffResult | null {
   return { lines, added: lines.length, removed: 0 }
 }
 
-export function toolSummary(call: ToolCall): string {
-  const input = call.use.input
-  for (const key of ['summary', 'command', 'file_path', 'path', 'pattern', 'url', 'query']) {
-    const value = input[key]
-    if (typeof value === 'string' && value.trim()) return firstLine(value)
-  }
-  return ''
+export interface ToolName {
+  /** The MCP Server the tool belongs to; null for the Daemon's own tools. */
+  server: string | null
+  tool: string
 }
 
-function firstLine(text: string): string {
+/** The Daemon names an MCP tool `<server>___<tool>`; the row shows the two apart. */
+export function toolDisplayName(name: string): ToolName {
+  const at = name.indexOf('___')
+  if (at <= 0 || at + 3 >= name.length) return { server: null, tool: name }
+  return { server: name.slice(0, at), tool: name.slice(at + 3) }
+}
+
+/** One piece of a row's summary: a bare value for a well-known input, else `key: value`. */
+export interface SummaryPart {
+  key: string | null
+  value: string
+}
+
+// One input that says what the call is about, shown on its own without its name.
+const HEADLINE_KEYS = [
+  'summary',
+  'command',
+  'file_path',
+  'path',
+  'pattern',
+  'url',
+  'query',
+  'skill',
+]
+const FALLBACK_PARTS = 3
+const FALLBACK_VALUE_LENGTH = 60
+
+/**
+ * What the row says after the tool's name. A headline input (the command,
+ * the file, the search) stands alone; any other tool, MCP tools above all,
+ * shows its first few short inputs as `key: value` pairs so a call to
+ * `memory_list` reads `scope: project` rather than nothing.
+ */
+export function toolSummaryParts(call: ToolCall): SummaryPart[] {
+  const input = call.use.input
+  for (const key of HEADLINE_KEYS) {
+    const value = input[key]
+    if (typeof value === 'string' && value.trim()) return [{ key: null, value: firstLine(value) }]
+  }
+  const parts: SummaryPart[] = []
+  for (const [key, value] of Object.entries(input)) {
+    if (parts.length === FALLBACK_PARTS) break
+    if (typeof value === 'string') {
+      if (value.trim()) parts.push({ key, value: firstLine(value, FALLBACK_VALUE_LENGTH) })
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      parts.push({ key, value: String(value) })
+    }
+  }
+  return parts
+}
+
+export function toolSummary(call: ToolCall): string {
+  return toolSummaryParts(call)
+    .map((part) => (part.key ? `${part.key}: ${part.value}` : part.value))
+    .join(' · ')
+}
+
+function firstLine(text: string, max = 120): string {
   const line = text.split('\n')[0] ?? ''
-  return line.length > 120 ? `${line.slice(0, 117)}…` : line
+  return line.length > max ? `${line.slice(0, max - 3)}…` : line
 }
 
 export function truncateLines(text: string, max: number): string {

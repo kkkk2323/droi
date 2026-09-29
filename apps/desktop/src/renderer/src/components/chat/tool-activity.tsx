@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import {
+  BookOpen,
   Check,
   ChevronRight,
   CircleX,
@@ -9,6 +10,7 @@ import {
   FileText,
   FolderSearch,
   Globe,
+  Plug,
   Search,
   Terminal,
   Wrench,
@@ -18,8 +20,10 @@ import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import {
   readToolResult,
+  toolDisplayName,
   toolInputText,
   toolSummary,
+  toolSummaryParts,
   truncateLines,
   type DiffLine,
 } from '@droi/daemon-layer/tool-calls'
@@ -36,6 +40,7 @@ const ICONS: Record<string, LucideIcon> = {
   LS: FolderSearch,
   FetchUrl: Globe,
   WebSearch: Globe,
+  Skill: BookOpen,
 }
 
 const RESULT_PREVIEW_LINES = 40
@@ -49,10 +54,13 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
   const [open, setOpen] = useState(true)
   const panelId = useId()
   const pending = calls.filter((c) => c.result === null).length
-  const label =
-    pending > 0
-      ? `Running ${calls.length === 1 ? (calls[0]?.use.name ?? 'a tool') : `${calls.length} tools`}`
-      : `Used ${calls.length === 1 ? (calls[0]?.use.name ?? 'a tool') : `${calls.length} tools`}`
+  const what =
+    calls.length === 1
+      ? calls[0]
+        ? toolDisplayName(calls[0].use.name).tool
+        : 'a tool'
+      : `${calls.length} tools`
+  const label = pending > 0 ? `Running ${what}` : `Used ${what}`
 
   // A plain disclosure, not Collapsible: it opens without motion, and every
   // cluster mounts open, where Collapsible reads computed styles, forcing a
@@ -87,8 +95,10 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
 
 function ToolRow({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(false)
-  const Icon = ICONS[call.use.name] ?? Wrench
+  const name = toolDisplayName(call.use.name)
+  const Icon = ICONS[call.use.name] ?? (name.server ? Plug : Wrench)
   const summary = toolSummary(call)
+  const parts = toolSummaryParts(call)
   const { text: result, images, pending, isError, diff, status } = readToolResult(call)
 
   return (
@@ -104,11 +114,20 @@ function ToolRow({ call }: { call: ToolCall }) {
             isError && 'text-destructive-foreground',
           )}
         />
+        {name.server ? (
+          <span className="shrink-0 text-[11.5px] text-muted-foreground/70">{name.server}</span>
+        ) : null}
         <span className={cn('shrink-0 font-medium', isError && 'text-destructive-foreground')}>
-          {call.use.name}
+          {name.tool}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-muted-foreground">
-          {summary}
+          {parts.map((part, index) => (
+            <span key={part.key ?? index}>
+              {index > 0 ? <span className="text-muted-foreground/50"> · </span> : null}
+              {part.key ? <span className="text-muted-foreground/60">{part.key}: </span> : null}
+              {part.value}
+            </span>
+          ))}
         </span>
         {diff ? (
           <span className="shrink-0 font-mono text-[11px] tabular-nums">

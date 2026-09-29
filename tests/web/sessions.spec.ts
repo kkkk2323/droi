@@ -141,6 +141,42 @@ function richHistory(): MessageFixture[] {
 
 const richSession = session('Fix the login bug', '/Users/dev/acme-web', richHistory())
 
+// A turn of tools with no file or command to show: an MCP Server's and a Skill load.
+function mcpHistory(): MessageFixture[] {
+  const listId = 'call_mcp_list'
+  const addId = 'call_mcp_add'
+  const skillId = 'call_skill'
+  const calls: MessageFixture = {
+    ...assistantMessage(''),
+    content: [
+      { type: 'tool_use', id: skillId, name: 'Skill', input: { skill: 'grilling' } },
+      {
+        type: 'tool_use',
+        id: listId,
+        name: 'droi-memory___memory_list',
+        input: { scope: 'project', category: 'insight' },
+      },
+      {
+        type: 'tool_use',
+        id: addId,
+        name: 'droi-memory___memory_add',
+        input: { scope: 'project', category: 'convention', text: 'Tests select by role.' },
+      },
+    ],
+  }
+  const results: MessageFixture = {
+    ...assistantMessage(''),
+    role: 'tool',
+    content: [
+      { type: 'tool_result', toolUseId: skillId, content: 'Loaded skill grilling' },
+      { type: 'tool_result', toolUseId: listId, content: 'No entries in project Memory.' },
+      { type: 'tool_result', toolUseId: addId, content: 'Saved 1a2b3c4d in Project Memory.' },
+    ],
+  }
+  return [userMessage('Remember how we test'), calls, results, assistantMessage('Noted.')]
+}
+const mcpSession = session('Remember how we test', '/Users/dev/acme-web', mcpHistory())
+
 const DAY = 24 * 60 * 60
 const staleSession = session('Old spike', '/Users/dev/acme-web', [userMessage('spike')], {
   updatedAt: Math.floor(Date.now() / 1000) - 10 * DAY,
@@ -416,7 +452,33 @@ test.describe('sidebar memory', () => {
 })
 
 test.describe('session history', () => {
-  test.use({ scenario: { sessions: [richSession] } })
+  test.use({ scenario: { sessions: [richSession, mcpSession] } })
+
+  test('an MCP tool shows its server apart from its name, and its inputs as key: value', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Remember how we test/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+
+    // The label keeps the Daemon's full name; the row splits it and never shows the `___`.
+    const list = transcript.getByRole('button', {
+      name: 'droi-memory___memory_list: scope: project · category: insight',
+    })
+    await expect(list).toBeVisible()
+    await expect(list).not.toContainText('___')
+    await expect(list.locator('span').filter({ hasText: /^droi-memory$/ })).toBeVisible()
+    await expect(list.locator('span').filter({ hasText: /^memory_list$/ })).toBeVisible()
+    await expect(list).toContainText('scope: project · category: insight')
+
+    const add = transcript.getByRole('button', { name: /^droi-memory___memory_add: / })
+    await expect(add).toContainText('text: Tests select by role.')
+
+    // A Skill load names the skill, like Read names its file.
+    await expect(transcript.getByRole('button', { name: 'Skill: grilling' })).toBeVisible()
+  })
 
   test('opening a Session renders text, a tool call with its result, and reasoning', async ({
     page,

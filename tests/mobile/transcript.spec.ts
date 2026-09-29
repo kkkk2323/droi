@@ -389,7 +389,50 @@ test.describe('tool calls and reasoning', () => {
     ]).flat(),
     ...toolTurn(),
   ])
-  test.use({ scenario: { sessions: [work, link, longWork] } })
+  // Tools with no file or command to show: an MCP Server's and a Skill load.
+  const mcpWork = session('Remember how we test', '/Users/dev/acme-web', [
+    userMessage('Remember how we test'),
+    {
+      ...assistantMessage(''),
+      content: [
+        { type: 'tool_use', id: 'skill', name: 'Skill', input: { skill: 'grilling' } },
+        {
+          type: 'tool_use',
+          id: 'list',
+          name: 'droi-memory___memory_list',
+          input: { scope: 'project', category: 'insight' },
+        },
+      ],
+    },
+    {
+      ...assistantMessage(''),
+      role: 'tool',
+      content: [
+        { type: 'tool_result', toolUseId: 'skill', content: 'Loaded skill grilling' },
+        { type: 'tool_result', toolUseId: 'list', content: 'No entries in project Memory.' },
+      ],
+    },
+    assistantMessage('Noted.'),
+  ])
+  test.use({ scenario: { sessions: [work, link, longWork, mcpWork] } })
+
+  test('an MCP tool shows its server apart from its name, and its inputs as key: value', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Remember how we test/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const list = transcript.getByRole('button', {
+      name: 'droi-memory___memory_list: scope: project · category: insight',
+    })
+    await expect(list).toBeVisible()
+    await expect(list).not.toContainText('___')
+    await expect(list.getByText('droi-memory', { exact: true })).toBeVisible()
+    await expect(list.getByText('memory_list', { exact: true })).toBeVisible()
+    await expect(list).toContainText('scope: project · category: insight')
+    await expect(transcript.getByRole('button', { name: 'Skill: grilling' })).toBeVisible()
+  })
 
   test('rows show success and failure and open to their details', async ({ page, fakeDaemon }) => {
     await pairPhone(page, fakeDaemon)
