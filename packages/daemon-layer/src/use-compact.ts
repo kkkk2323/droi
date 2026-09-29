@@ -7,7 +7,7 @@
 // Either way the run is logged in compaction.ts, which is where the sidebar's
 // mark and the finished alert come from.
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { compactions, useCompactions } from './compaction'
 import { useDaemonConnection } from './connection-context'
 import { SESSIONS_QUERY_KEY, continuationTags, type SessionTag } from './sessions'
@@ -15,7 +15,11 @@ import { SESSIONS_QUERY_KEY, continuationTags, type SessionTag } from './session
 export const COMPACT_COMMAND = /^\/compact(?:\s+([\s\S]*))?$/
 
 export interface CompactActions {
-  /** Resolves to the Session to show (the child after a handoff), or null when the Daemon refused. */
+  /**
+   * Resolves to the child of a handoff while this Session is still on screen,
+   * the one case where the view should move; null when it compacted in place,
+   * the Daemon refused, or the user has gone elsewhere since.
+   */
   compact(instructions?: string): Promise<string | null>
   isCompacting: boolean
   error: string | null
@@ -26,6 +30,14 @@ export function useCompact(sessionId: string, tags: readonly SessionTag[]): Comp
   const queryClient = useQueryClient()
   const isCompacting = useCompactions().pending.has(sessionId)
   const [error, setError] = useState<string | null>(null)
+  // A `/compact` can take minutes; by then the user may be reading another Session.
+  const shown = useRef(false)
+  useEffect(() => {
+    shown.current = true
+    return () => {
+      shown.current = false
+    }
+  }, [])
 
   const compact = useCallback(
     async (instructions?: string) => {
@@ -46,7 +58,7 @@ export function useCompact(sessionId: string, tags: readonly SessionTag[]): Comp
           await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
         }
         compactions.finish(sessionId, result.newSessionId, result.removedCount)
-        return result.newSessionId
+        return result.newSessionId !== sessionId && shown.current ? result.newSessionId : null
       } catch (cause) {
         compactions.fail(sessionId)
         setError(cause instanceof Error ? cause.message : String(cause))

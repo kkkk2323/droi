@@ -224,6 +224,40 @@ test.describe('compaction in place', () => {
       ),
     ).toHaveLength(0)
   })
+
+  test('finishing after the user moved on leaves them where they went', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+    openSidebar,
+  }) => {
+    let finish!: () => void
+    const summarising = new Promise<void>((resolve) => (finish = resolve))
+    fakeDaemon.scenario.on('daemon.compact_session', async (params) => {
+      await summarising
+      return { newSessionId: String(params['sessionId']), removedCount: 2 }
+    })
+    await openClient()
+    await pickSession(/Long chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await input.fill('/compact')
+    await input.press('Enter')
+    await expect(page.getByRole('group', { name: 'Command compact' })).toBeVisible()
+    await input.press('Enter')
+    await fakeDaemon.waitForRequest('daemon.compact_session')
+
+    await pickSession(/Other chat/)
+    await expect(page).toHaveURL(new RegExp(other.sessionId))
+    finish()
+    const row = (await openSidebar()).getByRole('button', { name: /Long chat/ })
+    await expect(row.getByRole('status', { name: 'Compacting' })).toHaveCount(0)
+    await expect(page).toHaveURL(new RegExp(other.sessionId))
+    if (await page.getByRole('dialog', { name: 'Sessions' }).isVisible()) {
+      await page.keyboard.press('Escape')
+    }
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('elsewhere')
+  })
 })
 
 test.describe('a chain of compactions', () => {
