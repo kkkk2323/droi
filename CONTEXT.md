@@ -47,6 +47,36 @@ _Avoid_: host, daemon profile, server, device
 The Desktop Shell setting that decides whether the Gateway accepts Remote Clients at all. Off by default.
 _Avoid_: LAN mode, web mode, mobile mode, `DROID_WEB_ENABLED`
 
+**Runtime Overlay**:
+The settings the Desktop Shell hands its Daemon at start, which apply to that Daemon alone and never reach the droid CLI's own files.
+_Avoid_: settings override, daemon config, `--settings` file
+
+### Memory
+
+**Memory**:
+The durable facts Droi keeps on a computer for Droid to recall in later Sessions: what the user prefers, what a Workspace's conventions are, what went wrong before. The Daemon knows nothing of it; Droi supplies it.
+_Avoid_: context, notes, knowledge base, history
+
+**Memory Entry**:
+One fact in Memory, with a category (failure, correction, insight, preference, convention or tool-quirk) and the day it was recorded.
+_Avoid_: observation, note, record
+
+**Project Memory**:
+The Memory that belongs to one Workspace.
+_Avoid_: project notes, repo memory
+
+**Global Memory**:
+The Memory that applies in every Workspace on the computer, such as how the user likes to be answered.
+_Avoid_: user profile, USER.md, preferences
+
+**Memory Server**:
+The MCP Server Droi carries and attaches only to its own Daemon, through which Droid reads and writes Memory. It is not one of the user's MCP Servers: the Memory setting is its only switch.
+_Avoid_: memory MCP, memory plugin, memory tool (a tool is one of the things it offers)
+
+**Memory Session**:
+A Session the Desktop Shell opens on the Daemon for Memory work of its own, consolidating a Project Memory or extracting entries from a finished Session, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
+_Avoid_: hidden session, background session, consolidation job
+
 ### Testing
 
 **Fake Daemon**:
