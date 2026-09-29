@@ -1,3 +1,13 @@
+## 1.18.0 - 2026-09-29
+
+### Added
+
+- When the droid CLI updates itself, a card in the bottom-left corner says so and offers to restart the Daemon, which still runs the earlier version. Restarting from the card or from Settings › Session defaults clears it; closing it hides it until droid updates again. The Desktop Shell notices the new droid within about 10 seconds while it runs. On the desktop.
+
+### Fixed
+
+- The corner cards sit above the sidebar footer instead of covering its Settings button.
+
 ## 1.17.0 - 2026-09-28
 
 ### Added
