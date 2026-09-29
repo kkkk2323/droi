@@ -43,6 +43,7 @@ import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
+import { DroidUpdatedToast } from './components/droid-updated-toast'
 import { UpdateToast } from './components/update-control'
 import { Button } from './components/ui/button'
 import {
@@ -281,10 +282,14 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
               bridge={window.droiShell.settings}
               onOpenSettings={() => go({ name: 'settings' })}
             />
-            <UpdateToast
-              bridge={window.droiShell.settings}
-              onOpenSettings={() => go({ name: 'settings' })}
-            />
+            {/* Above the sidebar footer, whose Settings button a card would cover. */}
+            <div className="fixed bottom-12 left-4 z-50 flex flex-col gap-2">
+              <DroidUpdatedToast bridge={window.droiShell.settings} />
+              <UpdateToast
+                bridge={window.droiShell.settings}
+                onOpenSettings={() => go({ name: 'settings' })}
+              />
+            </div>
           </>
         ) : null}
         <ReconnectingBanner />

@@ -15,7 +15,7 @@ import {
 } from 'electron'
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, existsSync } from 'node:fs'
+import { closeSync, existsSync, unwatchFile, watchFile } from 'node:fs'
 import { stat } from 'node:fs/promises'
 // Electron's fs treats .asar files as directories; original-fs sees the file.
 import * as originalFs from 'original-fs'
@@ -80,6 +80,8 @@ const PREFERRED_GATEWAY_PORT = 41_417
 const UPDATE_REPOSITORY = 'kkkk2323/droi'
 /** A launch checks for a Release after settling; only a packaged app can swap its archive. */
 const UPDATE_CHECK_DELAY_MS = 15_000
+/** How often the Daemon's `droid` file is stat'ed to notice the CLI updating itself. */
+const DROID_WATCH_INTERVAL_MS = 10_000
 
 function createShellUpdater(): Updater {
   return createUpdater({
@@ -150,6 +152,7 @@ function createDaemonSupervisor(): DaemonSupervisor {
       const apiKey = auth.state.status === 'signed-in' ? null : settings.getApiKey()
       const baseUrl = settings.settings.factoryApiBaseUrl ?? process.env['FACTORY_API_BASE_URL']
       daemonBuild = droidBuildOf(droidPath)
+      watchDroid(droidPath)
       const log = openDaemonLog(daemonLogPath())
       // The Daemon exits when the Shell dies. A pipe on fd 3 tells it so the
       // moment this process ends; PID polling, the only option on Windows, can
@@ -180,6 +183,20 @@ function createDaemonSupervisor(): DaemonSupervisor {
     broadcastChange()
   })
   return supervisor
+}
+
+let watchedDroid: string | null = null
+
+/**
+ * Nothing else tells the Shell that `droid` replaced itself, so the Clients
+ * re-read the snapshot (and its droidUpdated) whenever the file changes.
+ * Polling stat follows the path through a replacement, which fs.watch does not.
+ */
+function watchDroid(path: string): void {
+  if (watchedDroid === path) return
+  if (watchedDroid) unwatchFile(watchedDroid)
+  watchFile(path, { interval: DROID_WATCH_INTERVAL_MS, persistent: false }, () => broadcastChange())
+  watchedDroid = path
 }
 
 function clientSource(): ClientSource {

@@ -115,7 +115,7 @@ export function UpdateToast({
     <div
       role="status"
       aria-label="Update"
-      className="animate-toast-in fixed bottom-4 left-4 z-50 w-72 rounded-lg border bg-popover p-3 text-sm shadow-lg"
+      className="animate-toast-in w-72 rounded-lg border bg-popover p-3 text-sm shadow-lg"
     >
       <div className="flex items-start gap-2.5">
         {update.status === 'ready' ? (

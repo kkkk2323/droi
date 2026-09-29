@@ -379,6 +379,42 @@ test.describe('session defaults', () => {
     await expect(page.getByRole('button', { name: 'Restart Daemon' })).toHaveCount(0)
   })
 
+  test('after droid updates itself, a corner card offers the same restart', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon, { droidUpdated: true })
+    const toast = page.getByRole('status', { name: 'droid update' })
+    await expect(toast).toContainText('droid was updated')
+
+    await toast.getByRole('button', { name: 'Dismiss' }).click()
+    await expect(toast).toHaveCount(0)
+    await page.reload()
+    await expect(toast).toBeVisible()
+
+    await toast.getByRole('button', { name: 'Restart Daemon' }).click()
+    await expect.poll(async () => (await shellRecord(page)).daemonRestarts).toBe(1)
+    await expect(toast).toHaveCount(0)
+    await openDefaults(page, openSidebar)
+    await expect(page.getByText('droid was updated')).toHaveCount(0)
+  })
+
+  test('restarting from Settings clears the corner card too', async ({
+    page,
+    fakeDaemon,
+    openSidebar,
+  }) => {
+    await openLocalClient(page, fakeDaemon, { droidUpdated: true })
+    await expect(page.getByRole('status', { name: 'droid update' })).toBeVisible()
+    await openDefaults(page, openSidebar)
+    await page.getByRole('button', { name: 'Restart Daemon' }).click()
+    await expect(page.getByText('droid was updated')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page.getByRole('region', { name: 'Settings' })).toHaveCount(0)
+    await expect(page.getByRole('status', { name: 'droid update' })).toHaveCount(0)
+  })
+
   test('the restart offer stays away while the Daemon runs the installed droid', async ({
     page,
     fakeDaemon,

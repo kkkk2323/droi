@@ -144,6 +144,7 @@ export async function openLocalClient(
       })
       let focused = true
       let onClick: ((sessionId: string) => void) | null = null
+      const changeListeners = new Set<() => void>()
       HTMLMediaElement.prototype.play = function () {
         record.sounds.push(this.src)
         return Promise.resolve()
@@ -162,11 +163,15 @@ export async function openLocalClient(
             restartDaemon: async () => {
               record.daemonRestarts += 1
               updated = false
+              for (const listener of changeListeners) listener()
               return snapshot()
             },
             showDaemonLog: async () => void (record.daemonLogShown += 1),
             getPairing: async () => ({ link: null, lanAddresses: [], port: 0 }),
-            onChange: () => () => {},
+            onChange: (listener: () => void) => {
+              changeListeners.add(listener)
+              return () => void changeListeners.delete(listener)
+            },
           },
           openIn: {
             list: async () => [
