@@ -1,3 +1,9 @@
+## 1.20.0 - 2026-09-29
+
+### Changed
+
+- A tool call from an MCP server shows the server as a muted prefix and the tool by its own name, instead of the Daemon's `server___tool` string, with a plug icon. A call with no command, file or query to show lists its first few inputs as `key: value` (`scope: project · category: insight`) rather than nothing; a Skill load names the skill. On the desktop, in the browser and on the phone.
+
 ## 1.19.0 - 2026-09-29
 
 ### Added
