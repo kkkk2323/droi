@@ -4,6 +4,7 @@ import {
   canRemove,
   filterRegistry,
   formFromRegistry,
+  isDroiMemory,
   isReadOnly,
   needsSetup,
   needsSignIn,
@@ -146,6 +147,14 @@ test('the organization’s servers are read-only and last; only the user’s can
   expect(isReadOnly(org)).toBe(true)
   expect(canRemove(project)).toBe(false)
   expect(canRemove(mine)).toBe(true)
+})
+
+test('Droi’s Memory Server is the Shell’s: read-only and never removed from here', () => {
+  const memory = server({ name: 'droi-memory', source: 'user' } as Partial<McpServer>)
+  expect(isDroiMemory(memory)).toBe(true)
+  expect(isReadOnly(memory)).toBe(true)
+  expect(canRemove(memory)).toBe(false)
+  expect(isDroiMemory(server({ name: 'memory' }))).toBe(false)
 })
 
 test('a server wants signing in when it needs auth and has no tokens', () => {

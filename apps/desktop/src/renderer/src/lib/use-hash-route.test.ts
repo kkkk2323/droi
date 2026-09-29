@@ -8,6 +8,7 @@ describe('hash routes', () => {
       { name: 'new' } as const,
       { name: 'new', workspace: '/Users/dev/acme web?&x' } as const,
       { name: 'settings' } as const,
+      { name: 'settings', tab: 'memory' } as const,
       { name: 'session', sessionId: 'abc/def' } as const,
     ]) {
       expect(parseRoute(routeHash(route))).toEqual(route)

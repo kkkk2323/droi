@@ -31,6 +31,7 @@ describe('resolveClientConfig', () => {
         pairingToken: 'local-token',
         platform: 'darwin',
         settings: {} as never,
+        memory: {} as never,
         openIn: {} as never,
         pickFolder: async () => null,
         pathForFile: () => '',

@@ -83,6 +83,8 @@ export interface ShellRecord {
   folderDialogs: number
   /** Every settings update, in order. */
   settingsUpdates: ShellSettingsPatch[]
+  memoryFolderOpened: number
+  memoryPromptResets: number
 }
 
 export interface LocalClientOptions {
@@ -120,6 +122,15 @@ export async function openLocalClient(
         daemonLogShown: 0,
         folderDialogs: 0,
         settingsUpdates: [],
+        memoryFolderOpened: 0,
+        memoryPromptResets: 0,
+      }
+      // The real Memory controller when a test exposed one (exposeShellMemory), else empty.
+      const memoryCall = (method: string, arg?: unknown): Promise<unknown> | null => {
+        const exposed = (
+          window as unknown as { droiShellMemory?: (m: string, a?: unknown) => Promise<unknown> }
+        ).droiShellMemory
+        return exposed ? exposed(method, arg) : null
       }
       let updated = droidUpdated
       let memoryEnabled = memory
@@ -192,6 +203,16 @@ export async function openLocalClient(
               changeListeners.add(listener)
               return () => void changeListeners.delete(listener)
             },
+          },
+          memory: {
+            overview: async () =>
+              (await memoryCall('overview')) ?? {
+                folder: '/Users/dev/Library/Application Support/Droi/memory',
+                rows: [],
+              },
+            consolidate: async (workspace: string | null) => memoryCall('consolidate', workspace),
+            openFolder: async () => void (record.memoryFolderOpened += 1),
+            resetPrompts: async () => void (record.memoryPromptResets += 1),
           },
           openIn: {
             list: async () => [

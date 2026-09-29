@@ -31,6 +31,7 @@ import { TEXT_SIZES, TEXT_SIZE_LABELS, textSize } from '@droi/daemon-layer/text-
 import { applyTextSize } from '@/lib/text-size'
 import { cn } from '@/lib/utils'
 import type { AlertsBridge } from '@shared/alerts'
+import type { MemoryBridge } from '@shared/memory'
 import type {
   DaemonState,
   PairingInfo,
@@ -45,7 +46,14 @@ import type {
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
-type Tab = 'account' | 'general' | 'defaults' | 'memory' | 'notifications' | 'daemon' | 'remote'
+export type Tab =
+  | 'account'
+  | 'general'
+  | 'defaults'
+  | 'memory'
+  | 'notifications'
+  | 'daemon'
+  | 'remote'
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolean }> = [
   { id: 'account', label: 'Account', icon: UserRound, needsShell: true },
@@ -59,16 +67,20 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolea
 
 export function SettingsPage({
   bridge,
+  memory,
   alerts,
   onBack,
+  initialTab,
 }: {
   bridge: ShellSettingsBridge | null
+  memory: MemoryBridge | null
   alerts: AlertsBridge | null
   onBack: () => void
+  initialTab?: Tab
 }) {
   const queryClient = useQueryClient()
   const tabs = TABS.filter((t) => bridge || !t.needsShell)
-  const [tab, setTab] = useState<Tab>(bridge ? 'account' : 'general')
+  const [tab, setTab] = useState<Tab>(initialTab ?? (bridge ? 'account' : 'general'))
   const settingsQuery = useQuery({
     queryKey: SETTINGS_KEY,
     queryFn: () => bridge!.get(),
@@ -182,8 +194,8 @@ export function SettingsPage({
             <p className="text-sm text-muted-foreground">Loading settings…</p>
           ) : tab === 'account' ? (
             <AccountTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
-          ) : tab === 'memory' ? (
-            <MemoryTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
+          ) : tab === 'memory' && memory ? (
+            <MemoryTab snapshot={snapshot} bridge={bridge} memory={memory} onSaved={setSnapshot} />
           ) : tab === 'daemon' ? (
             <>
               <DaemonStatusRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />

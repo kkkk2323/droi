@@ -11,7 +11,8 @@ export type Route =
    * a sidebar group).
    */
   | { name: 'new'; workspace?: string; scratch?: boolean }
-  | { name: 'settings' }
+  /** `tab` opens one Settings section, such as `memory`. */
+  | { name: 'settings'; tab?: string }
   | { name: 'session'; sessionId: string }
 
 export function parseRoute(hash: string): Route {
@@ -23,6 +24,8 @@ export function parseRoute(hash: string): Route {
     return query.has('scratch') ? { name: 'new', scratch: true } : { name: 'new' }
   }
   if (hash === '#/settings') return { name: 'settings' }
+  if (hash.startsWith('#/settings/'))
+    return { name: 'settings', tab: hash.slice('#/settings/'.length) }
   const match = /^#\/s\/([^/?#]+)/.exec(hash)
   return match?.[1]
     ? { name: 'session', sessionId: decodeURIComponent(match[1]) }
@@ -37,7 +40,7 @@ export function routeHash(route: Route): string {
       if (route.workspace) return `#/new?${new URLSearchParams({ ws: route.workspace }).toString()}`
       return route.scratch ? '#/new?scratch' : '#/new'
     case 'settings':
-      return '#/settings'
+      return route.tab ? `#/settings/${route.tab}` : '#/settings'
     case 'home':
       return '#/'
   }

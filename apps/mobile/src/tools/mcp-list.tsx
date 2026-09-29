@@ -10,6 +10,7 @@ import {
   canRemove,
   filterRegistry,
   formFromRegistry,
+  isDroiMemory,
   isReadOnly,
   needsSetup,
   needsSignIn,
@@ -264,6 +265,7 @@ function ServerRow({
             <Badge>{String(server.serverType)}</Badge>
             {String(server.source) === 'org' ? <Badge>Organization</Badge> : null}
             {String(server.source) === 'project' ? <Badge>Project</Badge> : null}
+            {isDroiMemory(server) ? <Badge>Droi</Badge> : null}
           </View>
           <Text size="sm" tone="muted">
             {STATUS_LABELS[status] ?? status}
@@ -271,13 +273,15 @@ function ServerRow({
             {server.error ? ` · ${server.error}` : ''}
           </Text>
         </View>
-        <Switch
-          aria-label={`${server.name} enabled`}
-          value={on}
-          disabled={readOnly || busy}
-          onValueChange={(checked) => void actions.setEnabled(server.name, checked)}
-          trackColor={{ true: colors.primary }}
-        />
+        {isDroiMemory(server) ? null : (
+          <Switch
+            aria-label={`${server.name} enabled`}
+            value={on}
+            disabled={readOnly || busy}
+            onValueChange={(checked) => void actions.setEnabled(server.name, checked)}
+            trackColor={{ true: colors.primary }}
+          />
+        )}
       </View>
       {server.pendingAuthUrl ? (
         <SignInNotice

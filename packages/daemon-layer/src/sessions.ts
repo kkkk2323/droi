@@ -6,6 +6,7 @@ import { useEffect, useMemo } from 'react'
 import type { DaemonSessionController } from '@factory/droid-sdk'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
+import { isMemorySession } from './memory-session'
 
 export interface SessionSummary {
   sessionId: string
@@ -166,7 +167,9 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
         ...(pageParam !== null ? { endBefore: pageParam } : {}),
       })
       return {
-        sessions: result.sessions.filter((s) => !isDraft(s.tags)).map(summaryOf),
+        sessions: result.sessions
+          .filter((s) => !isDraft(s.tags) && !isMemorySession(s.tags))
+          .map(summaryOf),
         nextCursor: result.hasMore ? (result.nextCursor ?? null) : null,
       }
     },

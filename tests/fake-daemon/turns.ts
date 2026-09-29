@@ -516,3 +516,39 @@ export function todoTurn(options: TodoTurnOptions): MethodHandler {
     return {}
   }
 }
+
+/**
+ * Handler for `daemon.add_user_message` in a Session started with
+ * `structuredOutputFormat`, such as a Memory Session (ADR 0011): the turn ends
+ * with a `structured_output` notification carrying `reply(text)`.
+ */
+export function structuredTurn(reply: (text: string) => Record<string, unknown>): MethodHandler {
+  return (params, context, request) => {
+    const sessionId = String(params['sessionId'])
+    const daemon = context.daemon
+    const text = String(params['text'])
+    const userMessageId =
+      typeof params['messageId'] === 'string' ? params['messageId'] : randomUUID()
+    void (async () => {
+      startTurn(daemon, sessionId, userMessageId, text, String(request.id))
+      await sleep(50)
+      const structuredOutput = reply(text)
+      const messageId = randomUUID()
+      const now = Date.now()
+      daemon.notify(sessionId, {
+        type: 'create_message',
+        message: {
+          id: messageId,
+          role: 'assistant',
+          content: [{ type: 'text', text: JSON.stringify(structuredOutput) }],
+          createdAt: now,
+          updatedAt: now,
+        },
+        parentId: userMessageId,
+      })
+      daemon.notify(sessionId, { type: 'structured_output', messageId, structuredOutput })
+      finishTurn(daemon, sessionId, userMessageId, 'completed')
+    })()
+    return {}
+  }
+}

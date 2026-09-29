@@ -15,7 +15,7 @@ import {
 } from 'electron'
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, existsSync, unwatchFile, watchFile } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, unwatchFile, watchFile } from 'node:fs'
 import { stat } from 'node:fs/promises'
 // Electron's fs treats .asar files as directories; original-fs sees the file.
 import * as originalFs from 'original-fs'
@@ -48,9 +48,12 @@ import {
 } from './shell-settings'
 import { createUpdater, type Updater } from './updater'
 import { buildRuntimeOverlay, writeRuntimeOverlay } from './memory/runtime-overlay'
+import { createMemoryController, type MemoryController } from './memory/memory-controller'
+import { createMemorySessionRunner } from './memory/memory-session'
 import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInApp } from '../shared/open-in'
 import { PICK_FOLDER_IPC } from '../shared/pick-folder'
+import { MEMORY_IPC } from '../shared/memory'
 import { SHELL_ARG_GATEWAY_URL, SHELL_ARG_PAIRING_TOKEN } from '../shared/shell-args'
 import {
   SHELL_IPC,
@@ -76,6 +79,7 @@ let daemon: DaemonSupervisor
 let daemonBuild: DroidBuild | null = null
 let gateway: Gateway | null = null
 let updater: Updater
+let memory: MemoryController
 
 const DEFAULT_FACTORY_API_BASE_URL = 'https://api.factory.ai'
 const PREFERRED_GATEWAY_PORT = 41_417
@@ -140,6 +144,31 @@ async function loginState(): Promise<LoginState> {
 /** Memory's database, Markdown export and prompts (ADR 0010). */
 function memoryDir(): string {
   return join(app.getPath('userData'), 'memory')
+}
+
+function createShellMemory(): MemoryController {
+  return createMemoryController({
+    memoryDir: memoryDir(),
+    defaultsDir: join(app.getAppPath(), 'resources', 'memory'),
+    // Memory Sessions go through the Gateway like any Client, with this window's token.
+    runner: () =>
+      gateway && daemon.daemonUrl
+        ? createMemorySessionRunner({ url: gateway.url, token: localToken })
+        : null,
+    modelId: () => settings.settings.memoryModel,
+    onChange: broadcastChange,
+    log: (message) => console.log('[memory]', message),
+  })
+}
+
+/** Extraction requests are handled only while Memory is on. */
+function syncMemoryWork(): void {
+  if (!settings.settings.memoryEnabled) {
+    memory.stop()
+    return
+  }
+  memory.watchRequests()
+  if (daemon.state.status === 'running') void memory.processRequests()
 }
 
 /**
@@ -207,6 +236,10 @@ function createDaemonSupervisor(): DaemonSupervisor {
   })
   supervisor.on('state', (state) => {
     console.log('[daemon]', JSON.stringify(state))
+    // Requests left while the Daemon was away wait for it.
+    if (state.status === 'running' && settings.settings.memoryEnabled) {
+      void memory.processRequests()
+    }
     broadcastChange()
   })
   return supervisor
@@ -448,6 +481,15 @@ function registerIpc(): void {
   ipcMain.handle(OPEN_IN_IPC.open, (_event, path: unknown, appId: unknown) =>
     openInApp(path, appId),
   )
+  ipcMain.handle(MEMORY_IPC.overview, () => memory.overview())
+  ipcMain.handle(MEMORY_IPC.consolidate, (_event, workspace: unknown) =>
+    memory.consolidate(typeof workspace === 'string' ? workspace : null),
+  )
+  ipcMain.handle(MEMORY_IPC.openFolder, async () => {
+    mkdirSync(memoryDir(), { recursive: true })
+    await shell.openPath(memoryDir())
+  })
+  ipcMain.handle(MEMORY_IPC.resetPrompts, () => memory.resetPrompts())
   ipcMain.handle(SHELL_IPC.get, () => snapshot())
   ipcMain.handle(SHELL_IPC.getPairing, () => pairing())
   ipcMain.handle(SHELL_IPC.update, async (_event, patch: ShellSettingsPatch) => {
@@ -483,6 +525,7 @@ function registerIpc(): void {
     ) {
       await restartDaemon()
     }
+    if (after.memoryEnabled !== before.memoryEnabled) syncMemoryWork()
     broadcastChange()
     return snapshot()
   })
@@ -556,6 +599,7 @@ void app.whenReady().then(async () => {
     factoryApiBaseUrl: factoryApiBaseUrl(),
   })
   cliLogin = createCliLoginReader({ factoryHome: factoryHome() })
+  memory = createShellMemory()
   daemon = createDaemonSupervisor()
   updater = createShellUpdater()
   updater.on('change', broadcastChange)
@@ -572,6 +616,7 @@ void app.whenReady().then(async () => {
   })
   registerIpc()
   daemon.start()
+  syncMemoryWork()
   // The Local Client's origin is this port, and its localStorage (theme,
   // favourites, sidebar) lives under that origin; a fresh port every launch
   // would wipe it. Fall back to an ephemeral port only when ours is taken.
@@ -617,6 +662,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   quitting = true
   event.preventDefault()
+  memory?.stop()
   void Promise.allSettled([daemon?.stop(), gateway?.close()]).then(() => app.quit())
 })
 

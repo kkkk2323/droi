@@ -9,7 +9,8 @@
     "src/memory-hook/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "../../packages/daemon-layer/src/gateway.ts"
+    "../../packages/daemon-layer/src/gateway.ts",
+    "../../packages/daemon-layer/src/memory-session.ts"
   ],
   "compilerOptions": {
     "composite": true,

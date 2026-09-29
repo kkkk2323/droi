@@ -44,6 +44,7 @@ import { NewSessionPage } from './components/new-session-page'
 import { SettingsPage } from './components/settings-page'
 import { SetupBanner } from './components/setup-banner'
 import { DroidUpdatedToast } from './components/droid-updated-toast'
+import { MemoryFullToast } from './components/memory-full-toast'
 import { UpdateToast } from './components/update-control'
 import { Button } from './components/ui/button'
 import {
@@ -173,8 +174,11 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       <>
         {status}
         <SettingsPage
+          key={route.tab ?? ''}
           bridge={window.droiShell?.settings ?? null}
+          memory={window.droiShell?.memory ?? null}
           alerts={window.droiShell?.alerts ?? null}
+          initialTab={route.tab === 'memory' ? 'memory' : undefined}
           onBack={() =>
             go(
               settingsReturn ??
@@ -288,6 +292,13 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
             {/* Above the sidebar footer, whose Settings button a card would cover. */}
             <div className="fixed bottom-12 left-4 z-50 flex flex-col gap-2">
               <DroidUpdatedToast bridge={window.droiShell.settings} />
+              {window.droiShell.memory ? (
+                <MemoryFullToast
+                  memory={window.droiShell.memory}
+                  settings={window.droiShell.settings}
+                  onOpenSettings={() => go({ name: 'settings', tab: 'memory' })}
+                />
+              ) : null}
               <UpdateToast
                 bridge={window.droiShell.settings}
                 onOpenSettings={() => go({ name: 'settings' })}

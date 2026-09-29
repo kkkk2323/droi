@@ -290,7 +290,8 @@ export function createScenario(input: ScenarioInput): Scenario {
         : { isValid: false, error: `Directory does not exist: ${path}` }
     },
     'daemon.initialize_session': (params) => {
-      const created = session('New session', String(params['cwd']), [], {
+      const title = typeof params['title'] === 'string' ? params['title'] : 'New session'
+      const created = session(title, String(params['cwd']), [], {
         ...(typeof params['sessionId'] === 'string' ? { sessionId: params['sessionId'] } : {}),
         ...(Array.isArray(params['tags'])
           ? { tags: params['tags'] as SessionFixture['tags'] }

@@ -1,6 +1,6 @@
 // Preload: the only bridge between the Desktop Shell and the Local Client. It
 // exposes the Gateway URL, this window's token, the platform, the Shell
-// settings calls, opening a Workspace in another app, choosing a Workspace in
+// settings calls, Memory's sizes and upkeep, opening a Workspace in another app, choosing a Workspace in
 // the folder dialog, alert sounds and notifications, and the path of a pasted
 // or dropped file. Conversation data never crosses here; it goes through the
 // Gateway.
@@ -10,6 +10,7 @@ import { ALERTS_IPC, type AlertsBridge } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInBridge } from '../shared/open-in'
 import { PICK_FOLDER_IPC, type PickFolder } from '../shared/pick-folder'
 import { SHELL_IPC, type ShellSettingsBridge } from '../shared/shell-settings'
+import { MEMORY_IPC, type MemoryBridge } from '../shared/memory'
 
 const settings: ShellSettingsBridge = {
   get: () => ipcRenderer.invoke(SHELL_IPC.get),
@@ -30,6 +31,13 @@ const settings: ShellSettingsBridge = {
     ipcRenderer.on(SHELL_IPC.changed, handler)
     return () => ipcRenderer.off(SHELL_IPC.changed, handler)
   },
+}
+
+const memory: MemoryBridge = {
+  overview: () => ipcRenderer.invoke(MEMORY_IPC.overview),
+  consolidate: (workspace) => ipcRenderer.invoke(MEMORY_IPC.consolidate, workspace),
+  openFolder: () => ipcRenderer.invoke(MEMORY_IPC.openFolder),
+  resetPrompts: () => ipcRenderer.invoke(MEMORY_IPC.resetPrompts),
 }
 
 const openIn: OpenInBridge = {
@@ -54,6 +62,7 @@ const droiShell = {
   pairingToken: readShellArg(process.argv, SHELL_ARG_PAIRING_TOKEN) ?? '',
   platform: process.platform,
   settings,
+  memory,
   openIn,
   pickFolder: (() => ipcRenderer.invoke(PICK_FOLDER_IPC)) as PickFolder,
   alerts,

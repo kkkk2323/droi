@@ -17,6 +17,7 @@ import {
   canRemove,
   filterRegistry,
   formFromRegistry,
+  isDroiMemory,
   isReadOnly,
   needsSetup,
   needsSignIn,
@@ -154,6 +155,7 @@ function ServerRow({
   const [confirmRemove, setConfirmRemove] = useState(false)
   const status = String(server.status)
   const readOnly = isReadOnly(server)
+  const droi = isDroiMemory(server)
   const busy = actions.busy === server.name
   const on = status !== 'disabled'
   // The Daemon does not always count the tools in the server list.
@@ -176,12 +178,18 @@ function ServerRow({
             <Badge>{String(server.serverType)}</Badge>
             {String(server.source) === 'org' ? <Badge>Organization</Badge> : null}
             {String(server.source) === 'project' ? <Badge>Project</Badge> : null}
+            {droi ? <Badge>Droi</Badge> : null}
           </div>
           <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
             {STATUS_LABELS[status] ?? status}
             {toolCount && on ? ` · ${plural(toolCount, 'tool')}` : ''}
             {server.error ? ` · ${server.error}` : ''}
           </p>
+          {droi ? (
+            <p className="text-[13px] leading-5 text-muted-foreground">
+              Droi’s Memory. Turn it on or off on the computer in Settings → Memory.
+            </p>
+          ) : null}
           {server.pendingAuthUrl ? (
             <SignInNotice
               serverName={server.name}
@@ -267,12 +275,14 @@ function ServerRow({
             ) : null}
           </Collapsible.Root>
         </div>
-        <Switch
-          aria-label={`${server.name} enabled`}
-          checked={on}
-          disabled={readOnly || busy}
-          onCheckedChange={(checked) => void actions.setEnabled(server.name, checked)}
-        />
+        {droi ? null : (
+          <Switch
+            aria-label={`${server.name} enabled`}
+            checked={on}
+            disabled={readOnly || busy}
+            onCheckedChange={(checked) => void actions.setEnabled(server.name, checked)}
+          />
+        )}
       </div>
     </li>
   )

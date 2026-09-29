@@ -26,14 +26,25 @@ export const STATUS_LABELS: Record<string, string> = {
   disabled: 'Disabled',
 }
 
-/** The organization's servers are policy; nothing here changes them. */
+/**
+ * Droi's Memory Server (ADR 0010), which the Desktop Shell attaches through
+ * the Runtime Overlay. The name is the one the Shell registers it under.
+ */
+export const DROI_MEMORY_SERVER = 'droi-memory'
+
+/** Its only switch is the Memory setting in the Desktop Shell. */
+export function isDroiMemory(server: McpServer): boolean {
+  return server.name === DROI_MEMORY_SERVER
+}
+
+/** The organization's servers are policy and Droi's Memory is the Shell's; nothing here changes them. */
 export function isReadOnly(server: McpServer): boolean {
-  return String(server.source) === 'org'
+  return String(server.source) === 'org' || isDroiMemory(server)
 }
 
 /** Only a server in the user's own `mcp.json` can be removed from here. */
 export function canRemove(server: McpServer): boolean {
-  return String(server.source) === 'user'
+  return String(server.source) === 'user' && !isDroiMemory(server)
 }
 
 export function needsSignIn(server: McpServer): boolean {
