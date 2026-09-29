@@ -34,7 +34,13 @@ export interface ShellSettings {
   pairingHost: string | null
   /** Where Scratch Workspaces are made (ADR 0008); null for ~/.droi/chats. */
   scratchFolder: string | null
+  /** Whether the Daemon starts with the Runtime Overlay that attaches Memory (ADR 0010). */
+  memoryEnabled: boolean
+  /** The model Memory Sessions run on (ADR 0011). */
+  memoryModel: string
 }
+
+export const DEFAULT_MEMORY_MODEL = 'glm-5.3-flash'
 
 export interface ShellSettingsStoreOptions {
   file: string
@@ -65,6 +71,8 @@ interface StoredFile {
   appendSystemPrompt: string | null
   pairingHost: string | null
   scratchFolder: string | null
+  memoryEnabled: boolean
+  memoryModel: string | null
   pairingToken: string
   computerId: string
   apiKey: string | null
@@ -113,6 +121,8 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
     appendSystemPrompt: loaded?.appendSystemPrompt ?? null,
     pairingHost: loaded?.pairingHost ?? null,
     scratchFolder: loaded?.scratchFolder ?? null,
+    memoryEnabled: loaded?.memoryEnabled ?? false,
+    memoryModel: loaded?.memoryModel ?? null,
     pairingToken: loaded?.pairingToken || generatePairingToken(),
     computerId: loaded?.computerId || randomUUID(),
     apiKey: loaded?.apiKey ?? null,
@@ -138,6 +148,8 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
         appendSystemPrompt: current.appendSystemPrompt,
         pairingHost: current.pairingHost,
         scratchFolder: current.scratchFolder,
+        memoryEnabled: current.memoryEnabled,
+        memoryModel: current.memoryModel ?? DEFAULT_MEMORY_MODEL,
         pairingToken: current.pairingToken,
         computerId: current.computerId,
       }
@@ -151,6 +163,8 @@ export function createShellSettingsStore(options: ShellSettingsStoreOptions): Sh
       }
       if (patch.pairingHost !== undefined) current.pairingHost = patch.pairingHost
       if (patch.scratchFolder !== undefined) current.scratchFolder = patch.scratchFolder
+      if (patch.memoryEnabled !== undefined) current.memoryEnabled = patch.memoryEnabled
+      if (patch.memoryModel !== undefined) current.memoryModel = patch.memoryModel
       save()
     },
     resetPairingToken() {
@@ -213,6 +227,8 @@ function load(
     appendSystemPrompt: str('appendSystemPrompt'),
     pairingHost: str('pairingHost'),
     scratchFolder: str('scratchFolder'),
+    memoryEnabled: parsed['memoryEnabled'] === true,
+    memoryModel: str('memoryModel'),
     pairingToken: str('pairingToken') ?? legacy('pairingTokenEncrypted') ?? undefined,
     computerId: str('computerId') ?? undefined,
     apiKey: str('apiKey') ?? legacy('apiKeyEncrypted'),

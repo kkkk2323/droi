@@ -1,7 +1,7 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { FakeDaemon } from '../fake-daemon/fake-daemon'
 import type { ScenarioInput } from '../fake-daemon/scenario'
-import type { DaemonState } from '../../apps/desktop/src/shared/shell-settings'
+import type { DaemonState, ShellSettingsPatch } from '../../apps/desktop/src/shared/shell-settings'
 
 export interface OpenClientOptions {
   /** Override the Pairing Token in the link; defaults to the Fake Daemon's. */
@@ -81,6 +81,8 @@ export interface ShellRecord {
   daemonRestarts: number
   daemonLogShown: number
   folderDialogs: number
+  /** Every settings update, in order. */
+  settingsUpdates: ShellSettingsPatch[]
 }
 
 export interface LocalClientOptions {
@@ -92,6 +94,8 @@ export interface LocalClientOptions {
   daemonLog?: string
   /** What the folder dialog answers; null (the default) is a cancel. */
   pickedFolder?: string | null
+  /** Whether the Shell starts with Memory on. */
+  memoryEnabled?: boolean
 }
 
 /**
@@ -107,7 +111,7 @@ export async function openLocalClient(
   options: LocalClientOptions = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ gatewayUrl, pairingToken, droidUpdated, daemonState, daemonLog, pickedFolder }) => {
+    ({ gatewayUrl, pairingToken, droidUpdated, daemonState, daemonLog, pickedFolder, memory }) => {
       const record: ShellRecord = {
         opened: [],
         notifications: [],
@@ -115,8 +119,11 @@ export async function openLocalClient(
         daemonRestarts: 0,
         daemonLogShown: 0,
         folderDialogs: 0,
+        settingsUpdates: [],
       }
       let updated = droidUpdated
+      let memoryEnabled = memory
+      let memoryModel = 'glm-5.3-flash'
       const snapshot = () => ({
         login: {
           status: 'signed-in',
@@ -132,6 +139,8 @@ export async function openLocalClient(
         pairingHost: null,
         scratchFolder: '/Users/dev/.droi/chats',
         scratchFolderIsDefault: true,
+        memoryEnabled,
+        memoryModel,
         hasApiKey: false,
         hasCredential: true,
         apiKeyFromEnvironment: false,
@@ -160,6 +169,17 @@ export async function openLocalClient(
           platform: 'darwin',
           settings: {
             get: async () => snapshot(),
+            update: async (patch: ShellSettingsPatch) => {
+              record.settingsUpdates.push(patch)
+              if (patch.memoryModel) memoryModel = patch.memoryModel
+              // Like the Shell: turning Memory either way restarts the Daemon.
+              if (patch.memoryEnabled !== undefined && patch.memoryEnabled !== memoryEnabled) {
+                memoryEnabled = patch.memoryEnabled
+                record.daemonRestarts += 1
+              }
+              for (const listener of changeListeners) listener()
+              return snapshot()
+            },
             restartDaemon: async () => {
               record.daemonRestarts += 1
               updated = false
@@ -205,6 +225,7 @@ export async function openLocalClient(
       daemonState: options.daemon ?? { status: 'running', port: 4242, pid: 777 },
       daemonLog: options.daemonLog ?? null,
       pickedFolder: options.pickedFolder ?? null,
+      memory: options.memoryEnabled ?? false,
     },
   )
   await page.goto('/')

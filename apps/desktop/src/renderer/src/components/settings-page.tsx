@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import {
   ArrowLeft,
   Bell,
+  Brain,
   Check,
   Copy,
   ExternalLink,
@@ -21,6 +22,7 @@ import { Select } from '@/components/ui/select'
 import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
 import { NotificationsTab } from '@/components/settings-notifications'
 import { SessionDefaultsTab } from '@/components/settings-session-defaults'
+import { MemoryTab } from '@/components/settings-memory'
 import { UpdateControl } from '@/components/update-control'
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { FONTS, FONT_LABELS, applyFont, font } from '@/lib/font'
@@ -43,12 +45,13 @@ import type {
 const SETTINGS_KEY = ['shell-settings'] as const
 const PAIRING_KEY = ['shell-pairing'] as const
 
-type Tab = 'account' | 'general' | 'defaults' | 'notifications' | 'daemon' | 'remote'
+type Tab = 'account' | 'general' | 'defaults' | 'memory' | 'notifications' | 'daemon' | 'remote'
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolean }> = [
   { id: 'account', label: 'Account', icon: UserRound, needsShell: true },
   { id: 'general', label: 'General', icon: Settings2, needsShell: false },
   { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal, needsShell: false },
+  { id: 'memory', label: 'Memory', icon: Brain, needsShell: true },
   { id: 'notifications', label: 'Notifications', icon: Bell, needsShell: true },
   { id: 'daemon', label: 'Daemon', icon: Server, needsShell: true },
   { id: 'remote', label: 'Remote Access', icon: Smartphone, needsShell: true },
@@ -179,6 +182,8 @@ export function SettingsPage({
             <p className="text-sm text-muted-foreground">Loading settings…</p>
           ) : tab === 'account' ? (
             <AccountTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
+          ) : tab === 'memory' ? (
+            <MemoryTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
           ) : tab === 'daemon' ? (
             <>
               <DaemonStatusRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />

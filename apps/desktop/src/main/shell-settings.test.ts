@@ -55,6 +55,17 @@ describe('shell settings', () => {
     expect(reloaded.getLogin()).toBe('{"access":"a"}')
   })
 
+  test('Memory is off by default with the cheap model, and both persist', () => {
+    const file = tempFile()
+    const store = createShellSettingsStore({ file, env: {} })
+    expect(store.settings).toMatchObject({ memoryEnabled: false, memoryModel: 'glm-5.3-flash' })
+    store.update({ memoryEnabled: true, memoryModel: 'gpt-5' })
+    expect(createShellSettingsStore({ file, env: {} }).settings).toMatchObject({
+      memoryEnabled: true,
+      memoryModel: 'gpt-5',
+    })
+  })
+
   test('the computer id is made once and survives reloads and Pairing Token resets', () => {
     const file = tempFile()
     const store = createShellSettingsStore({ file, env: {} })

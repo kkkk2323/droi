@@ -61,6 +61,10 @@ export interface ShellSettingsSnapshot {
   scratchFolder: string
   /** True while scratchFolder is the default, ~/.droi/chats. */
   scratchFolderIsDefault: boolean
+  /** Whether the Daemon runs with Memory attached (ADR 0010); a change restarts it. */
+  memoryEnabled: boolean
+  /** The model Memory Sessions run on (ADR 0011). */
+  memoryModel: string
   /** Whether a Factory API key is stored or supplied by the environment. Never the key. */
   hasApiKey: boolean
   /** True when the Gateway has something to authenticate with (login or key). */
@@ -106,6 +110,9 @@ export interface ShellSettingsPatch {
   pairingHost?: string | null
   /** An absolute path, or ~/...; null or empty goes back to the default. */
   scratchFolder?: string | null
+  /** Restarts the Daemon, which stops the turns that are running. */
+  memoryEnabled?: boolean
+  memoryModel?: string
 }
 
 export interface ShellSettingsBridge {

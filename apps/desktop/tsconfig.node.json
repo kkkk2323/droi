@@ -4,6 +4,8 @@
     "electron.vite.config.ts",
     "vite.config.ts",
     "src/main/**/*",
+    "src/memory/**/*",
+    "src/memory-server/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
     "../../packages/daemon-layer/src/gateway.ts"

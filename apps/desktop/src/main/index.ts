@@ -24,6 +24,7 @@ import { dirname, isAbsolute, join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { openDaemonLog, readDaemonLogTail } from './daemon/daemon-log'
 import { DaemonSupervisor } from './daemon/daemon-supervisor'
+import { daemonArgs } from './daemon/daemon-args'
 import { droidBuildOf, isDroidReplaced, type DroidBuild } from './daemon/droid-build'
 import { locateDroid } from './daemon/locate-droid'
 import { createCliLoginReader, readRegistration, type CliLoginReader } from './cli-login'
@@ -46,6 +47,7 @@ import {
   type ShellSettingsStore,
 } from './shell-settings'
 import { createUpdater, type Updater } from './updater'
+import { buildRuntimeOverlay, writeRuntimeOverlay } from './memory/runtime-overlay'
 import { ALERTS_IPC, type AlertNotification } from '../shared/alerts'
 import { OPEN_IN_IPC, type OpenInApp } from '../shared/open-in'
 import { PICK_FOLDER_IPC } from '../shared/pick-folder'
@@ -135,6 +137,30 @@ async function loginState(): Promise<LoginState> {
   return cli ? { status: 'signed-in', account: cli.account, source: 'cli' } : auth.state
 }
 
+/** Memory's database, Markdown export and prompts (ADR 0010). */
+function memoryDir(): string {
+  return join(app.getPath('userData'), 'memory')
+}
+
+/**
+ * Writes the Runtime Overlay when Memory is on and answers its path; null
+ * starts the Daemon without one, and so without Memory.
+ */
+function runtimeOverlay(): string | null {
+  if (!settings.settings.memoryEnabled) return null
+  const path = join(app.getPath('userData'), 'runtime-overlay.json')
+  writeRuntimeOverlay(
+    path,
+    buildRuntimeOverlay({
+      nodeBinary: process.execPath,
+      serverEntry: join(import.meta.dirname, 'memory-server.js'),
+      memoryDir: memoryDir(),
+      approvedAt: new Date().toISOString(),
+    }),
+  )
+  return path
+}
+
 /** Where the Daemon's output goes; the Settings page reads its tail after a crash. */
 function daemonLogPath(): string {
   return join(app.getPath('userData'), 'logs', 'daemon.log')
@@ -163,7 +189,7 @@ function createDaemonSupervisor(): DaemonSupervisor {
           : { args: ['--liveness-fd', '3'], stdio: ['pipe' as const] }
       const child = spawn(
         droidPath,
-        ['daemon', '--host', '127.0.0.1', '--port', String(port), ...liveness.args],
+        daemonArgs({ port, liveness: liveness.args, runtimeOverlay: runtimeOverlay() }),
         {
           stdio: ['ignore', log ?? 'ignore', log ?? 'ignore', ...liveness.stdio],
           env: {
@@ -286,6 +312,8 @@ async function snapshot(): Promise<ShellSettingsSnapshot> {
     pairingHost: settings.settings.pairingHost,
     scratchFolder: scratchFolder(),
     scratchFolderIsDefault: settings.settings.scratchFolder === null,
+    memoryEnabled: settings.settings.memoryEnabled,
+    memoryModel: settings.settings.memoryModel,
     hasApiKey: settings.getApiKey() !== null,
     apiKeyFromEnvironment: fromEnv,
     droidFound: locateDroid({ override: settings.settings.droidPath }),
@@ -438,15 +466,19 @@ function registerIpc(): void {
       ...(patch.scratchFolder !== undefined
         ? { scratchFolder: scratchFolderOf(patch.scratchFolder, homedir()) }
         : {}),
+      ...(patch.memoryEnabled !== undefined ? { memoryEnabled: patch.memoryEnabled } : {}),
+      // Read by the Shell at each Memory Session; the Daemon needs no restart.
+      ...(patch.memoryModel ? { memoryModel: patch.memoryModel } : {}),
     })
     const after = settings.settings
     if (patch.remoteAccess !== undefined && after.remoteAccess !== before.remoteAccess) {
       await gateway?.setRemoteAccess(after.remoteAccess)
     }
-    // The Daemon reads its path and environment at spawn only.
+    // The Daemon reads its path, environment and Runtime Overlay at spawn only.
     if (
       after.droidPath !== before.droidPath ||
-      after.factoryApiBaseUrl !== before.factoryApiBaseUrl
+      after.factoryApiBaseUrl !== before.factoryApiBaseUrl ||
+      after.memoryEnabled !== before.memoryEnabled
     ) {
       await restartDaemon()
     }
