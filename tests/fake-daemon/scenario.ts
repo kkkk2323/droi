@@ -17,6 +17,8 @@ export interface SessionFixture {
   tags?: Array<{ name: string; metadata?: Record<string, string> }>
   /** Exists on disk but is not loaded in the Daemon; per-Session RPCs fail until load_session. */
   inactive?: boolean
+  /** Opened by initialize_session and not written to yet; the Daemon lists only written Sessions. */
+  unwritten?: boolean
   /** Branch and uncommitted changes get_git_diff reports; absent means not a Git repository. */
   git?: {
     branch: string
@@ -104,6 +106,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       const limit = typeof params['limit'] === 'number' ? params['limit'] : 50
       const endBefore = typeof params['endBefore'] === 'number' ? params['endBefore'] : Infinity
       const listed = sessions
+        .filter((s) => !s.unwritten)
         .filter((s) => params['includeArchived'] === true || !s.archivedAt)
         .filter((s) => s.updatedAt < endBefore)
         .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -297,6 +300,7 @@ export function createScenario(input: ScenarioInput): Scenario {
           ? { tags: params['tags'] as SessionFixture['tags'] }
           : {}),
       })
+      created.unwritten = true
       sessions.unshift(created)
       return {
         sessionId: created.sessionId,
@@ -402,7 +406,18 @@ export function createScenario(input: ScenarioInput): Scenario {
           `Scenario has no handler for ${request.method}. Params: ${JSON.stringify(request.params).slice(0, 300)}`,
         )
       }
-      return handler(request.params, context, request)
+      const result = await handler(request.params, context, request)
+      // The real Daemon writes a Session on its first message and then names
+      // it; the title notification is how Clients learn it is listed now.
+      const written = sessions.find((s) => s.sessionId === request.params['sessionId'])
+      if (request.method === 'daemon.add_user_message' && written?.unwritten) {
+        delete written.unwritten
+        context.daemon.notify(written.sessionId, {
+          type: 'session_title_updated',
+          title: written.title,
+        })
+      }
+      return result
     },
   }
 }

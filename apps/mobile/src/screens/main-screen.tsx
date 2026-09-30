@@ -3,7 +3,7 @@
 // Paired Computer, so the app reopens where it was.
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { usePreference } from '@droi/daemon-layer/local-preference'
-import { continuationChain } from '@droi/daemon-layer/sessions'
+import { continuationChain, type SessionSummary } from '@droi/daemon-layer/sessions'
 import {
   callerTrail,
   runningSubagents,
@@ -40,8 +40,12 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
   const [newIn, setNewIn] = useState<WorkspacePick | null>(null)
   const [lastId, setLastId] = usePreference(lastSessionOf(computer.id))
   const sessions = useComputerSessions(computer.id)
+  // The Session just started here: the Daemon lists it only after its first message.
+  const [created, setCreated] = useState<SessionSummary | null>(null)
   // The last Session reopens only while the list still has it.
-  const selected = sessions.sessions.find((s) => s.sessionId === lastId) ?? null
+  const selected =
+    sessions.sessions.find((s) => s.sessionId === lastId) ??
+    (created && created.sessionId === lastId ? created : null)
   const unread = usePhoneAlerts(selected?.sessionId ?? null)
   const runs = useSubagentRuns(
     sessions.sessions.filter((s) => s.callingSessionId).map((s) => s.sessionId),
@@ -142,7 +146,10 @@ export function MainScreen({ computer }: { computer: PairedComputer }) {
               recent={
                 sessions.live || !sessions.isPending ? recentWorkspaces(sessions.sessions) : null
               }
-              onCreated={(sessionId) => setLastId(sessionId)}
+              onCreated={(session) => {
+                setCreated(session)
+                setLastId(session.sessionId)
+              }}
               drawerOpen={drawerOpen}
               onOpenDrawer={openDrawer}
             />

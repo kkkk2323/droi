@@ -276,8 +276,13 @@ test.describe('new session', () => {
 
     await path.fill('/Users/dev/fresh-project')
     await start.click()
-    await expect(page.getByRole('textbox', { name: 'Message' })).toBeEnabled()
+    const message = page.getByRole('textbox', { name: 'Message' })
+    await expect(message).toBeEnabled()
     expect(initialized()).toContain('/Users/dev/fresh-project')
+    // The Daemon lists a Session once it has its first message.
+    await message.fill('Hello')
+    await message.press('Enter')
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('On it.')
     await expect((await openSidebar()).getByRole('region', { name: 'fresh-project' })).toBeVisible()
   })
 })

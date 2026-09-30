@@ -4,6 +4,7 @@
 // first send takes it over, and leaving without sending closes it.
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { setPendingPrompt } from '@droi/daemon-layer/pending-prompt'
+import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import { closeDraftSession, useDraftSession } from '@droi/daemon-layer/use-draft-session'
 import { useNewSession, type RecentWorkspace } from '@droi/daemon-layer/use-new-session'
 import { useWorkspaceChoice, type WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
@@ -44,7 +45,8 @@ export function NewSessionScreen({
   initialPick?: WorkspacePick | null
   /** Null while the session list is on its way. */
   recent: RecentWorkspace[] | null
-  onCreated: (sessionId: string) => void
+  /** The Session as it stands before the Daemon lists it, which it does only once written to. */
+  onCreated: (session: SessionSummary) => void
   drawerOpen: boolean
   onOpenDrawer: () => void
 }) {
@@ -107,7 +109,19 @@ export function NewSessionScreen({
     if (prompt && (prompt.text.trim() || prompt.images.length > 0)) {
       setPendingPrompt(sessionId, { text: prompt.text, images: prompt.images })
     }
-    onCreated(sessionId)
+    onCreated({
+      sessionId,
+      title: 'Untitled session',
+      cwd: target.trim(),
+      repoRoot: null,
+      updatedAt: Math.floor(Date.now() / 1000),
+      messagesCount: 0,
+      archivedAt: null,
+      tags: choice.tags,
+      parentId: null,
+      callingSessionId: null,
+      callingToolUseId: null,
+    })
   }
 
   const pickedPath = choice.pick?.kind === 'recent' ? choice.pick.path : null

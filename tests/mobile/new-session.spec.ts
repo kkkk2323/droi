@@ -91,10 +91,12 @@ test('a typed path is checked by the Daemon and starts a Session there', async (
 
   await path.fill('/Users/dev/fresh-project')
   await form.getByRole('button', { name: 'Start', exact: true }).click()
-  await expect(page.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
-    'placeholder',
-    'Ask anything',
-  )
+  const message = page.getByRole('textbox', { name: 'Message' })
+  await expect(message).toHaveAttribute('placeholder', 'Ask anything')
+  // The Daemon lists a Session once it has its first message.
+  await message.fill('Hello')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('On it.')
   const list = await openDrawer(page)
   await expect(list.getByRole('group', { name: 'fresh-project' })).toBeVisible()
   // The draft opened for the recent Workspace is not left behind.
