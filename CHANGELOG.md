@@ -1,3 +1,15 @@
+## 1.21.0 - 2026-09-30
+
+### Changed
+
+- Settings are grouped by what they are for, each group one card. The Factory API key sits with the sign-in under Account, and it reads "Not needed" while you are signed in. The Daemon tab is now Advanced: Daemon status and the droid executable, the Factory API base URL, and the system prompt addition and Scratch folder, which apply only to Droi and so left Session defaults. Version and updates have their own About tab, which the update card's Details opens. Notifications are grouped by event (finished, needs input), Remote Access shows pairing before the pairing address, Memory says when nothing is remembered yet, and every field's button reads Save. On the desktop.
+- The phone's Settings follow the desktop's order: computers, appearance, the Session list, Session defaults, alerts, About. On the phone.
+
+### Fixed
+
+- After the Daemon tab, the Remote Access tab no longer shows a leftover "Factory API base URL" row. On the desktop.
+- Account no longer says the droid CLI is not logged in while it shows you signed in with that login, and About no longer claims nothing leaves the computer. On the desktop.
+
 ## 1.20.2 - 2026-09-30
 
 ### Fixed
