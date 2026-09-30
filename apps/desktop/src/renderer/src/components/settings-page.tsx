@@ -7,19 +7,21 @@ import {
   Brain,
   Check,
   Copy,
+  CircleAlert,
   ExternalLink,
+  Info,
   LogOut,
   UserRound,
   RefreshCw,
-  Server,
   Settings2,
   SlidersHorizontal,
   Smartphone,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
+import { SettingGroup, SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
 import { NotificationsTab } from '@/components/settings-notifications'
 import { SessionDefaultsTab } from '@/components/settings-session-defaults'
 import { MemoryTab } from '@/components/settings-memory'
@@ -52,8 +54,9 @@ export type Tab =
   | 'defaults'
   | 'memory'
   | 'notifications'
-  | 'daemon'
   | 'remote'
+  | 'advanced'
+  | 'about'
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolean }> = [
   { id: 'account', label: 'Account', icon: UserRound, needsShell: true },
@@ -61,8 +64,9 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; needsShell: boolea
   { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal, needsShell: false },
   { id: 'memory', label: 'Memory', icon: Brain, needsShell: true },
   { id: 'notifications', label: 'Notifications', icon: Bell, needsShell: true },
-  { id: 'daemon', label: 'Daemon', icon: Server, needsShell: true },
   { id: 'remote', label: 'Remote Access', icon: Smartphone, needsShell: true },
+  { id: 'advanced', label: 'Advanced', icon: Wrench, needsShell: true },
+  { id: 'about', label: 'About', icon: Info, needsShell: true },
 ]
 
 export function SettingsPage({
@@ -144,47 +148,21 @@ export function SettingsPage({
 
       <div className="min-w-0 flex-1 overflow-y-auto bg-background">
         <div className="app-drag h-4 sm:h-[calc(env(safe-area-inset-top)+2.75rem)]" />
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 pb-12 sm:px-8">
-          <h2 className="mb-2 text-lg font-semibold tracking-tight">{current.label}</h2>
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pb-12 sm:px-8">
+          <h2 className="text-lg font-semibold tracking-tight">{current.label}</h2>
           {error ? (
             <p role="alert" className="text-sm text-destructive-foreground">
               {error}
             </p>
           ) : null}
+          {/* One component per tab, so switching never reuses another tab's rows. */}
           {tab === 'general' ? (
-            <GeneralTab
-              version={snapshot?.version ?? null}
-              update={
-                bridge && snapshot ? (
-                  <UpdateControl update={snapshot.update} bridge={bridge} onSaved={setSnapshot} />
-                ) : null
-              }
-            />
+            <GeneralTab />
           ) : tab === 'defaults' ? (
             <SessionDefaultsTab
               notice={
                 bridge && snapshot?.droidUpdated ? (
                   <DroidUpdatedRow bridge={bridge} onSaved={setSnapshot} />
-                ) : null
-              }
-              systemPrompt={
-                bridge && snapshot ? (
-                  <SystemPromptRow
-                    key={snapshot.appendSystemPrompt ?? ''}
-                    snapshot={snapshot}
-                    bridge={bridge}
-                    onSaved={setSnapshot}
-                  />
-                ) : null
-              }
-              scratchFolder={
-                bridge && snapshot ? (
-                  <ScratchFolderRow
-                    key={snapshot.scratchFolder}
-                    snapshot={snapshot}
-                    bridge={bridge}
-                    onSaved={setSnapshot}
-                  />
                 ) : null
               }
             />
@@ -196,44 +174,18 @@ export function SettingsPage({
             <AccountTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
           ) : tab === 'memory' && memory ? (
             <MemoryTab snapshot={snapshot} bridge={bridge} memory={memory} onSaved={setSnapshot} />
-          ) : tab === 'daemon' ? (
-            <>
-              <DaemonStatusRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
-              <ApiKeyRow snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
-              <BaseUrlRow
-                key={snapshot.factoryApiBaseUrl ?? ''}
-                snapshot={snapshot}
-                bridge={bridge}
-                onSaved={setSnapshot}
-              />
-              <DroidPathRow
-                key={snapshot.droidPath ?? ''}
-                snapshot={snapshot}
-                bridge={bridge}
-                onSaved={setSnapshot}
-              />
-            </>
+          ) : tab === 'advanced' ? (
+            <AdvancedTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
+          ) : tab === 'about' ? (
+            <AboutTab snapshot={snapshot} bridge={bridge} onSaved={setSnapshot} />
           ) : (
-            <>
-              <RemoteAccessRow
-                key={String(snapshot.remoteAccess)}
-                snapshot={snapshot}
-                bridge={bridge}
-                onSaved={setSnapshot}
-              />
-              <PairingHostRow
-                key={snapshot.pairingHost ?? ''}
-                snapshot={snapshot}
-                bridge={bridge}
-                onSaved={setSnapshot}
-              />
-              <PairingRow
-                enabled={snapshot.remoteAccess}
-                pairing={pairing}
-                bridge={bridge}
-                onReset={setPairing}
-              />
-            </>
+            <RemoteAccessTab
+              snapshot={snapshot}
+              bridge={bridge}
+              onSaved={setSnapshot}
+              pairing={pairing}
+              onReset={setPairing}
+            />
           )}
         </div>
       </div>
@@ -241,78 +193,88 @@ export function SettingsPage({
   )
 }
 
-function GeneralTab({ version, update }: { version: string | null; update: ReactNode }) {
+function GeneralTab() {
   const [theme, setTheme] = useTheme()
   const [size, setSize] = usePreference(textSize)
   const [fontChoice, setFontChoice] = usePreference(font)
   const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   return (
     <>
-      <SettingRow
-        title="Theme"
-        description="Light is the default. The choice is stored per browser."
-        control={
-          <Select
-            label="Theme"
-            value={theme}
-            onChange={(next) => setTheme(THEMES.find((t) => t === next) ?? 'light')}
-            options={THEMES.map((value) => ({ value, label: THEME_LABELS[value] }))}
-          />
-        }
-      />
-      <SettingRow
-        title="Font"
-        description="Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."
-        control={
-          <Select
-            label="Font"
-            value={fontChoice}
-            onChange={(next) => {
-              const picked = FONTS.find((f) => f === next) ?? 'geist'
-              setFontChoice(picked)
-              applyFont(picked)
-            }}
-            options={FONTS.map((value) => ({ value, label: FONT_LABELS[value] }))}
-          />
-        }
-      />
-      <SettingRow
-        title="Text size"
-        description="Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."
-        control={
-          <Select
-            label="Text size"
-            value={size}
-            onChange={(next) => {
-              const picked = TEXT_SIZES.find((s) => s === next) ?? 'default'
-              setSize(picked)
-              applyTextSize(picked)
-            }}
-            options={TEXT_SIZES.map((value) => ({ value, label: TEXT_SIZE_LABELS[value] }))}
-          />
-        }
-      />
-      <SettingRow
-        title="Show archived sessions"
-        description="List archived sessions in the sidebar alongside the active ones."
-        control={
-          <Switch
-            aria-label="Show archived sessions"
-            checked={showArchived}
-            onCheckedChange={setShowArchived}
-          />
-        }
-      />
-      {version ? (
-        <>
-          <SettingRow
-            title="Everything stays on this computer"
-            description="Sessions, settings and the Factory API key live here. Phones connect to this computer through the Gateway; nothing is sent elsewhere."
-          />
-          <SettingRow title="About" description={`Droi ${version}`} control={update} />
-        </>
-      ) : null}
+      <SettingGroup title="Appearance">
+        <SettingRow
+          title="Theme"
+          description="Light is the default. The choice is stored per browser."
+          control={
+            <Select
+              label="Theme"
+              value={theme}
+              onChange={(next) => setTheme(THEMES.find((t) => t === next) ?? 'light')}
+              options={THEMES.map((value) => ({ value, label: THEME_LABELS[value] }))}
+            />
+          }
+        />
+        <SettingRow
+          title="Font"
+          description="Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."
+          control={
+            <Select
+              label="Font"
+              value={fontChoice}
+              onChange={(next) => {
+                const picked = FONTS.find((f) => f === next) ?? 'geist'
+                setFontChoice(picked)
+                applyFont(picked)
+              }}
+              options={FONTS.map((value) => ({ value, label: FONT_LABELS[value] }))}
+            />
+          }
+        />
+        <SettingRow
+          title="Text size"
+          description="Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."
+          control={
+            <Select
+              label="Text size"
+              value={size}
+              onChange={(next) => {
+                const picked = TEXT_SIZES.find((s) => s === next) ?? 'default'
+                setSize(picked)
+                applyTextSize(picked)
+              }}
+              options={TEXT_SIZES.map((value) => ({ value, label: TEXT_SIZE_LABELS[value] }))}
+            />
+          }
+        />
+      </SettingGroup>
+      <SettingGroup title="Sidebar">
+        <SettingRow
+          title="Show archived sessions"
+          description="List archived sessions in the sidebar alongside the active ones."
+          control={
+            <Switch
+              aria-label="Show archived sessions"
+              checked={showArchived}
+              onCheckedChange={setShowArchived}
+            />
+          }
+        />
+      </SettingGroup>
     </>
+  )
+}
+
+function AboutTab({ snapshot, bridge, onSaved }: RowProps) {
+  return (
+    <SettingGroup>
+      <SettingRow
+        title={`Droi ${snapshot.version}`}
+        control={<UpdateControl update={snapshot.update} bridge={bridge} onSaved={onSaved} />}
+      />
+      <SettingRow
+        title="Where your data lives"
+        description="Sessions, settings and the Factory API key stay on this computer; phones reach it through the Gateway. What Droid works on goes to Factory, which runs the models."
+      />
+    </SettingGroup>
   )
 }
 
@@ -332,7 +294,58 @@ function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
     login.source === 'droi' &&
     snapshot.daemonIdentity !== null &&
     snapshot.daemonIdentity.userId !== login.account.userId
+  // Reading the CLI's login proves it is logged in, whatever host.json says.
+  const cliLoggedOut =
+    snapshot.daemonIdentity === null && !(login.status === 'signed-in' && login.source === 'cli')
 
+  return (
+    <>
+      {mismatch || cliLoggedOut ? (
+        <SettingGroup>
+          {mismatch ? (
+            <SettingRow
+              className="bg-attention/10"
+              title={<Warning>The droid CLI is logged in as someone else</Warning>}
+              description={`The Daemon runs as ${snapshot.daemonIdentity!.userId} (from droid login) while Droi is signed in as ${login.status === 'signed-in' ? login.account.userId : ''}. Sessions belong to the CLI's user, so run \`droid login\` with the same account or sign in here with that one.`}
+            />
+          ) : null}
+          {cliLoggedOut ? (
+            <SettingRow
+              className="bg-attention/10"
+              title={<Warning>The droid CLI is not logged in</Warning>}
+              description="The Daemon signs in with the droid CLI's login on this computer. Run `droid login` in a terminal, or add a Factory API key below."
+            />
+          ) : null}
+        </SettingGroup>
+      ) : null}
+      <SettingGroup title="Sign-in">
+        <LoginRow login={login} busy={busy} run={run} bridge={bridge} />
+        <ApiKeyRow snapshot={snapshot} bridge={bridge} onSaved={onSaved} />
+      </SettingGroup>
+    </>
+  )
+}
+
+function Warning({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <CircleAlert aria-hidden className="size-4 shrink-0 text-attention" />
+      {children}
+    </span>
+  )
+}
+
+function LoginRow({
+  login,
+  busy,
+  run,
+  bridge,
+}: {
+  login: ShellSettingsSnapshot['login']
+  busy: boolean
+  run: (action: () => Promise<ShellSettingsSnapshot>) => Promise<void>
+  bridge: ShellSettingsBridge
+}) {
   return (
     <>
       {login.status === 'signed-in' ? (
@@ -436,19 +449,6 @@ function AccountTab({ snapshot, bridge, onSaved }: RowProps) {
           ) : null}
         </SettingRow>
       )}
-      {mismatch ? (
-        <SettingRow
-          className="border border-attention/40"
-          title="The droid CLI is logged in as someone else"
-          description={`The Daemon runs as ${snapshot.daemonIdentity!.userId} (from droid login) while Droi is signed in as ${login.status === 'signed-in' ? login.account.userId : ''}. Sessions belong to the CLI's user, so run \`droid login\` with the same account or sign in here with that one.`}
-        />
-      ) : null}
-      {snapshot.daemonIdentity === null ? (
-        <SettingRow
-          title="The droid CLI is not logged in"
-          description="The Daemon signs in with the droid CLI's login on this computer. Run `droid login` in a terminal, or add a Factory API key under Daemon."
-        />
-      ) : null}
     </>
   )
 }
@@ -457,6 +457,54 @@ type RowProps = {
   snapshot: ShellSettingsSnapshot
   bridge: ShellSettingsBridge
   onSaved: (s: ShellSettingsSnapshot) => void
+}
+
+// The rows keyed on a stored value start over when it changes elsewhere; the
+// prefixes keep two empty values from sharing a key.
+function AdvancedTab({ snapshot, bridge, onSaved }: RowProps) {
+  const props = { snapshot, bridge, onSaved }
+  return (
+    <>
+      <SettingGroup title="Daemon">
+        <DaemonStatusRow {...props} />
+        <DroidPathRow key={`droid-path:${snapshot.droidPath ?? ''}`} {...props} />
+      </SettingGroup>
+      <SettingGroup title="Factory API">
+        <BaseUrlRow key={`base-url:${snapshot.factoryApiBaseUrl ?? ''}`} {...props} />
+      </SettingGroup>
+      <SettingGroup
+        title="New Sessions in Droi"
+        footer="Droi’s own settings. They apply to new Sessions from every Client of this computer, not to the droid CLI or the Factory App."
+      >
+        <SystemPromptRow key={`system-prompt:${snapshot.appendSystemPrompt ?? ''}`} {...props} />
+        <ScratchFolderRow key={`scratch-folder:${snapshot.scratchFolder}`} {...props} />
+      </SettingGroup>
+    </>
+  )
+}
+
+function RemoteAccessTab({
+  pairing,
+  onReset,
+  ...props
+}: RowProps & { pairing: PairingInfo; onReset: (p: PairingInfo) => void }) {
+  const { snapshot, bridge } = props
+  return (
+    <>
+      <SettingGroup>
+        <RemoteAccessRow key={`remote-access:${snapshot.remoteAccess}`} {...props} />
+        <PairingRow
+          enabled={snapshot.remoteAccess}
+          pairing={pairing}
+          bridge={bridge}
+          onReset={onReset}
+        />
+      </SettingGroup>
+      <SettingGroup title="Away from this network">
+        <PairingHostRow key={`pairing-host:${snapshot.pairingHost ?? ''}`} {...props} />
+      </SettingGroup>
+    </>
+  )
 }
 
 function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
@@ -471,16 +519,21 @@ function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
       setSaving(false)
     }
   }
+  // Any login, Droi's or the CLI's, comes before the key (the Shell's gatewayCredential).
+  const signedIn = snapshot.login.status === 'signed-in'
   return (
     <SettingRow
       title="Factory API key"
       description={
         snapshot.apiKeyFromEnvironment
           ? 'Supplied by FACTORY_API_KEY in the environment; the stored key is ignored.'
-          : 'Stored encrypted on this computer and used by the Gateway. Phones never see it.'
+          : 'Only used when neither Droi nor the droid CLI is signed in. Stored encrypted on this computer and used by the Gateway; phones never see it.'
       }
       control={
-        <StatusPill ok={snapshot.hasApiKey} label={snapshot.hasApiKey ? 'Set' : 'Missing'} />
+        <StatusPill
+          ok={snapshot.hasApiKey}
+          label={snapshot.hasApiKey ? 'Set' : signedIn ? 'Not needed' : 'Missing'}
+        />
       }
     >
       <form
@@ -500,8 +553,13 @@ function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
           onChange={(event) => setValue(event.target.value)}
           className={settingInputClass}
         />
-        <Button type="submit" disabled={saving || !value.trim() || snapshot.apiKeyFromEnvironment}>
-          Save key
+        <Button
+          type="submit"
+          variant="outline"
+          aria-label="Save key"
+          disabled={saving || !value.trim() || snapshot.apiKeyFromEnvironment}
+        >
+          Save
         </Button>
         {snapshot.hasApiKey && !snapshot.apiKeyFromEnvironment ? (
           <Button type="button" variant="outline" disabled={saving} onClick={() => void save(null)}>
@@ -512,7 +570,9 @@ function ApiKeyRow({ snapshot, bridge, onSaved }: RowProps) {
       <p role="status" aria-label="API key status" className="mt-2 text-xs text-muted-foreground">
         {snapshot.hasApiKey
           ? 'A key is set.'
-          : 'No key set. The Daemon cannot authenticate without one.'}
+          : signedIn
+            ? 'No key set. None is needed while signed in.'
+            : 'No key set. The Daemon cannot authenticate without one.'}
       </p>
     </SettingRow>
   )
@@ -557,7 +617,7 @@ function DaemonStatusRow({ snapshot, bridge, onSaved }: RowProps) {
   }
   return (
     <SettingRow
-      title="Daemon"
+      title="Status"
       description={status.detail}
       control={
         <div className="flex items-center gap-2">
@@ -643,7 +703,12 @@ function SystemPromptRow({ snapshot, bridge, onSaved }: RowProps) {
           className={cn(settingInputClass, 'h-auto min-h-24 resize-y py-2 leading-5')}
         />
         <div className="flex gap-2">
-          <Button type="submit" variant="outline" disabled={value.trim() === stored}>
+          <Button
+            type="submit"
+            variant="outline"
+            aria-label="Save system prompt"
+            disabled={value.trim() === stored}
+          >
             Save
           </Button>
           {stored ? (
@@ -680,8 +745,8 @@ function ScratchFolderRow({ snapshot, bridge, onSaved }: RowProps) {
           onChange={(event) => setValue(event.target.value)}
           className={`${settingInputClass} font-mono`}
         />
-        <Button type="submit" variant="outline">
-          Save folder
+        <Button type="submit" variant="outline" aria-label="Save folder">
+          Save
         </Button>
       </form>
     </SettingRow>
@@ -720,8 +785,8 @@ function DroidPathRow({ snapshot, bridge, onSaved }: RowProps) {
           onChange={(event) => setValue(event.target.value)}
           className={`${settingInputClass} font-mono`}
         />
-        <Button type="submit" variant="outline">
-          Save path
+        <Button type="submit" variant="outline" aria-label="Save path">
+          Save
         </Button>
       </form>
     </SettingRow>
@@ -758,8 +823,8 @@ function BaseUrlRow({ snapshot, bridge, onSaved }: RowProps) {
           onChange={(event) => setValue(event.target.value)}
           className={`${settingInputClass} font-mono`}
         />
-        <Button type="submit" variant="outline">
-          Save URL
+        <Button type="submit" variant="outline" aria-label="Save URL">
+          Save
         </Button>
       </form>
     </SettingRow>
@@ -823,8 +888,8 @@ function PairingHostRow({ snapshot, bridge, onSaved }: RowProps) {
           onChange={(event) => setValue(event.target.value)}
           className={`${settingInputClass} font-mono`}
         />
-        <Button type="submit" variant="outline">
-          Save address
+        <Button type="submit" variant="outline" aria-label="Save address">
+          Save
         </Button>
       </form>
     </SettingRow>

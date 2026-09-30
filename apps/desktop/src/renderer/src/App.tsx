@@ -179,7 +179,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
           bridge={window.droiShell?.settings ?? null}
           memory={window.droiShell?.memory ?? null}
           alerts={window.droiShell?.alerts ?? null}
-          initialTab={route.tab === 'memory' ? 'memory' : undefined}
+          initialTab={route.tab === 'memory' || route.tab === 'about' ? route.tab : undefined}
           onBack={() =>
             go(
               settingsReturn ??
@@ -302,7 +302,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
               ) : null}
               <UpdateToast
                 bridge={window.droiShell.settings}
-                onOpenSettings={() => go({ name: 'settings' })}
+                onOpenSettings={() => go({ name: 'settings', tab: 'about' })}
               />
             </div>
           </>

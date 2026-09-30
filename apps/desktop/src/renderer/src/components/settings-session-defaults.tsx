@@ -22,7 +22,7 @@ import { useSessionDefaultsEditor } from '@droi/daemon-layer/use-session-default
 import { ModelPicker } from '@/components/chat/model-picker'
 import { Button } from '@/components/ui/button'
 import { Select, type SelectOption } from '@/components/ui/select'
-import { SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
+import { SettingGroup, SettingRow, Switch, settingInputClass } from '@/components/ui/setting-row'
 
 const SAME_AS_MAIN = '__same_as_main__'
 const MODEL_DEFAULT = '__model_default__'
@@ -39,28 +39,19 @@ type Update = (patch: SessionDefaultsPatch) => void
 /**
  * What every new Session starts with, after the Factory App's Session Defaults
  * page. The Daemon keeps them in ~/.factory/settings.json, which the droid CLI
- * and the Factory App read too; it works from any Client. `systemPrompt`,
- * `scratchFolder` and `notice` are the Desktop Shell's own rows, present in
- * the Local Client only.
+ * and the Factory App read too; it works from any Client. `notice` is the
+ * Desktop Shell's own row, present in the Local Client only.
  */
-export function SessionDefaultsTab({
-  systemPrompt,
-  scratchFolder,
-  notice,
-}: {
-  systemPrompt: ReactNode
-  scratchFolder?: ReactNode
-  notice?: ReactNode
-}) {
+export function SessionDefaultsTab({ notice }: { notice?: ReactNode }) {
   const { defaults, update, error } = useSessionDefaultsEditor()
   const save: Update = (patch) => void update(patch)
   return (
     <>
-      <p className="-mt-2 mb-1 text-[13px] text-muted-foreground">
+      <p className="-mt-4 text-[13px] text-muted-foreground">
         Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their
         settings.
       </p>
-      {notice}
+      {notice ? <SettingGroup>{notice}</SettingGroup> : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive-foreground">
           Session defaults did not load or save: {error}
@@ -76,20 +67,7 @@ export function SessionDefaultsTab({
           <Subagents defaults={defaults} save={save} />
         </>
       )}
-      {/* The Shell's own setting; it does not wait for the Daemon. */}
-      <Section title="System prompt">{systemPrompt}</Section>
-      {scratchFolder ? <Section title="Without a workspace">{scratchFolder}</Section> : null}
     </>
-  )
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  if (!children) return null
-  return (
-    <section aria-label={title} className="flex flex-col gap-3">
-      <h3 className="mt-3 px-1 text-xs font-medium text-muted-foreground">{title}</h3>
-      {children}
-    </section>
   )
 }
 
@@ -107,9 +85,9 @@ function General({ defaults, save }: Props) {
   const { locked } = defaults
   const efforts = reasoningChoices(defaults.models, defaults.modelId, defaults.reasoningEffort)
   return (
-    <Section title="General">
+    <SettingGroup title="Model and autonomy">
       <SettingRow
-        title="Default model"
+        title="Model"
         description={locked.has('modelId') ? ORG_MANAGED : undefined}
         control={
           <ModelPicker
@@ -131,7 +109,7 @@ function General({ defaults, save }: Props) {
         }
       />
       <SettingRow
-        title="Default reasoning level"
+        title="Reasoning level"
         description={locked.has('reasoningEffort') ? ORG_MANAGED : undefined}
         control={
           <Select
@@ -144,8 +122,8 @@ function General({ defaults, save }: Props) {
         }
       />
       <SettingRow
-        title="Default interaction mode"
-        description="Spec plans with you before it changes anything."
+        title="Interaction mode"
+        description="Auto starts working right away; Spec plans with you before it changes anything."
         control={
           <Select
             label="Default interaction mode"
@@ -157,7 +135,7 @@ function General({ defaults, save }: Props) {
         }
       />
       <SettingRow
-        title="Default autonomy level"
+        title="Autonomy level"
         description={
           AUTONOMY_DESCRIPTIONS[defaults.autonomyLevel ?? 'off'] ??
           'How much Droid may do without asking for approval.'
@@ -175,7 +153,7 @@ function General({ defaults, save }: Props) {
           />
         }
       />
-    </Section>
+    </SettingGroup>
   )
 }
 
@@ -191,9 +169,9 @@ function SpecMode({ defaults, save }: Props) {
   const [custom, setCustom] = useState(choice === 'custom')
   const shown = custom ? 'custom' : choice
   return (
-    <Section title="Spec mode">
+    <SettingGroup title="Spec mode">
       <SettingRow
-        title="Spec mode model"
+        title="Model"
         control={
           <ModelPicker
             field
@@ -213,7 +191,7 @@ function SpecMode({ defaults, save }: Props) {
         }
       />
       <SettingRow
-        title="Spec mode reasoning level"
+        title="Reasoning level"
         control={
           <Select
             label="Spec mode reasoning level"
@@ -227,7 +205,7 @@ function SpecMode({ defaults, save }: Props) {
         }
       />
       <SettingRow
-        title="Spec save folder"
+        title="Save folder"
         description={
           shown === 'user'
             ? `Specs go to ${paths.user}.`
@@ -261,7 +239,7 @@ function SpecMode({ defaults, save }: Props) {
           />
         ) : null}
       </SettingRow>
-    </Section>
+    </SettingGroup>
   )
 }
 
@@ -284,8 +262,13 @@ function CustomFolder({ stored, onSave }: { stored: string; onSave: (path: strin
         onChange={(event) => setValue(event.target.value)}
         className={`${settingInputClass} font-mono`}
       />
-      <Button type="submit" variant="outline" disabled={!value.trim() || value.trim() === stored}>
-        Save folder
+      <Button
+        type="submit"
+        variant="outline"
+        aria-label="Save folder"
+        disabled={!value.trim() || value.trim() === stored}
+      >
+        Save
       </Button>
     </form>
   )
@@ -301,7 +284,7 @@ function Compaction({ defaults, save }: Props) {
   const label = (id: string) => defaults.models.find((m) => m.id === id)?.label ?? id
   const addable = modelChoices(defaults).filter((m) => !(m.id in overrides))
   return (
-    <Section title="Compaction">
+    <SettingGroup title="Compaction">
       <SettingRow
         title="Compact automatically"
         description="New Sessions compact their history once it passes the token limit."
@@ -317,7 +300,7 @@ function Compaction({ defaults, save }: Props) {
         }
       />
       <SettingRow
-        title="Compaction token limit"
+        title="Token limit"
         control={
           <Select
             label="Compaction token limit"
@@ -383,7 +366,7 @@ function Compaction({ defaults, save }: Props) {
         </ul>
       </SettingRow>
       <SettingRow
-        title="Compaction model"
+        title="Summary model"
         description="The model that writes the summary."
         control={
           <ModelPicker
@@ -397,16 +380,16 @@ function Compaction({ defaults, save }: Props) {
           />
         }
       />
-    </Section>
+    </SettingGroup>
   )
 }
 
 function Subagents({ defaults, save }: Props) {
   const settings = defaults.subagentModelSettings
   return (
-    <Section title="Subagents">
+    <SettingGroup title="Subagents">
       <SettingRow
-        title="Subagent autonomy level"
+        title="Autonomy level"
         control={
           <Select
             label="Subagent autonomy level"
@@ -473,6 +456,6 @@ function Subagents({ defaults, save }: Props) {
           })}
         </div>
       </SettingRow>
-    </Section>
+    </SettingGroup>
   )
 }

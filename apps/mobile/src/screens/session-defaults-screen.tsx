@@ -104,7 +104,7 @@ function Sections({ defaults, save }: { defaults: SessionDefaultsView; save: Sav
   return (
     <>
       <ListSection
-        title="General"
+        title="Model and autonomy"
         footer={
           locked.size > 0
             ? 'Settings your organization manages cannot be changed here.'

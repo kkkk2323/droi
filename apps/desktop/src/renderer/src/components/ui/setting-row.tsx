@@ -2,7 +2,34 @@ import type { ReactNode } from 'react'
 import { Switch as SwitchPrimitive } from '@base-ui/react/switch'
 import { cn } from '@/lib/utils'
 
-/** One card in a settings list: title and explanation left, control right. */
+/**
+ * One card of related settings, a divider between its rows. The title names
+ * the group for screen readers too; a group without one is a plain card.
+ */
+export function SettingGroup({
+  title,
+  footer,
+  children,
+}: {
+  title?: string
+  /** A note under the card that applies to every row in it. */
+  footer?: ReactNode
+  children: ReactNode
+}) {
+  const card = (
+    <div className="divide-y divide-border/70 overflow-hidden rounded-xl bg-card">{children}</div>
+  )
+  if (!title && !footer) return card
+  return (
+    <section aria-label={title} className="flex flex-col gap-1.5">
+      {title ? <h3 className="px-1 text-xs font-medium text-muted-foreground">{title}</h3> : null}
+      {card}
+      {footer ? <p className="px-1 text-xs leading-5 text-muted-foreground">{footer}</p> : null}
+    </section>
+  )
+}
+
+/** One setting in a SettingGroup: title and explanation left, control right. */
 export function SettingRow({
   title,
   description,
@@ -19,10 +46,10 @@ export function SettingRow({
   className?: string
 }) {
   return (
-    <div className={cn('rounded-xl bg-card px-4 py-3.5', className)}>
+    <div className={cn('px-4 py-3', className)}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-48 flex-1">
-          <h3 className="text-sm font-medium">{title}</h3>
+          <h4 className="text-sm font-medium">{title}</h4>
           {description ? (
             <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{description}</p>
           ) : null}

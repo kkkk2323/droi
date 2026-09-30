@@ -474,14 +474,24 @@ test.describe('session defaults', () => {
   })
 })
 
-test.describe('the Daemon tab', () => {
+test.describe('the Advanced tab', () => {
   test.use({ scenario: { sessions: [first] } })
 
   async function openDaemonTab(page: Page, openSidebar: () => Promise<Locator>) {
     await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
-    await page.getByRole('button', { name: 'Daemon' }).click()
-    await expect(page.getByRole('heading', { level: 2, name: 'Daemon' })).toBeVisible()
+    await page.getByRole('button', { name: 'Advanced' }).click()
+    await expect(page.getByRole('heading', { level: 2, name: 'Advanced' })).toBeVisible()
   }
+
+  test('its rows stay behind when another tab opens', async ({ page, fakeDaemon, openSidebar }) => {
+    await openLocalClient(page, fakeDaemon)
+    await openDaemonTab(page, openSidebar)
+    await expect(page.getByRole('textbox', { name: 'Factory API base URL' })).toBeVisible()
+    await page.getByRole('button', { name: 'Remote Access' }).click()
+    await expect(page.getByRole('switch', { name: 'Remote Access' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Factory API base URL' })).toHaveCount(0)
+    await expect(page.getByRole('textbox', { name: 'droid path override' })).toHaveCount(0)
+  })
 
   test('shows a running Daemon with its port, and no log', async ({
     page,

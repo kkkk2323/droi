@@ -55,7 +55,7 @@ pnpm dev            # opens the Desktop Shell
 
 Open **Settings** (gear icon) → **Account** → **Sign in** (the same device-code login as `droid login`). Optionally set a Factory API base URL under **Daemon** (for example a local `droid-proxy`, which then rotates keys for the LLM calls), and turn on **Remote Access** to pair a phone.
 
-A Factory API key (Settings → Daemon, or `FACTORY_API_KEY`) works as a fallback when you are not signed in; `FACTORY_API_BASE_URL` in the environment is honoured too.
+A Factory API key (Settings → Account, or `FACTORY_API_KEY`) works as a fallback when you are not signed in; `FACTORY_API_BASE_URL` in the environment is honoured too.
 
 ### Installing a build
 

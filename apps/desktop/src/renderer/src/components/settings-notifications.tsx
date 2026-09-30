@@ -3,7 +3,7 @@ import { usePreference } from '@droi/daemon-layer/local-preference'
 import type { AlertsBridge } from '@shared/alerts'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { SettingRow, Switch } from '@/components/ui/setting-row'
+import { SettingGroup, SettingRow, Switch } from '@/components/ui/setting-row'
 import {
   alertPreferences,
   FOCUS_MODES,
@@ -60,43 +60,54 @@ export function NotificationsTab({ alerts }: { alerts: AlertsBridge }) {
   const update = (patch: Partial<AlertPreferences>) => setPreferences({ ...preferences, ...patch })
   return (
     <>
-      <SoundRow event="completion" alerts={alerts} preferences={preferences} update={update} />
-      <SoundRow event="awaiting-input" alerts={alerts} preferences={preferences} update={update} />
-      <SettingRow
-        title="When to play sounds"
-        control={
-          <Select
-            label="When to play sounds"
-            value={preferences.focusMode}
-            onChange={(next) =>
-              update({ focusMode: FOCUS_MODES.find((mode) => mode === next) ?? 'always' })
-            }
-            options={FOCUS_MODES.map((value) => ({ value, label: FOCUS_LABELS[value] }))}
-          />
-        }
-      />
-      <SettingRow
-        title="Notify when Droid finishes"
-        description="A desktop notification, unless you are looking at that Session."
-        control={
-          <Switch
-            aria-label="Notify when Droid finishes"
-            checked={preferences.notifyOnComplete}
-            onCheckedChange={(checked) => update({ notifyOnComplete: checked })}
-          />
-        }
-      />
-      <SettingRow
-        title="Notify when Droid needs input"
-        description="A desktop notification when a Session waits for a permission or an answer."
-        control={
-          <Switch
-            aria-label="Notify when Droid needs input"
-            checked={preferences.notifyOnWaitingForInput}
-            onCheckedChange={(checked) => update({ notifyOnWaitingForInput: checked })}
-          />
-        }
-      />
+      <SettingGroup title="When Droid finishes">
+        <SoundRow event="completion" alerts={alerts} preferences={preferences} update={update} />
+        <SettingRow
+          title="Desktop notification"
+          description="Unless you are looking at that Session."
+          control={
+            <Switch
+              aria-label="Notify when Droid finishes"
+              checked={preferences.notifyOnComplete}
+              onCheckedChange={(checked) => update({ notifyOnComplete: checked })}
+            />
+          }
+        />
+      </SettingGroup>
+      <SettingGroup title="When Droid needs input">
+        <SoundRow
+          event="awaiting-input"
+          alerts={alerts}
+          preferences={preferences}
+          update={update}
+        />
+        <SettingRow
+          title="Desktop notification"
+          description="When a Session waits for a permission or an answer."
+          control={
+            <Switch
+              aria-label="Notify when Droid needs input"
+              checked={preferences.notifyOnWaitingForInput}
+              onCheckedChange={(checked) => update({ notifyOnWaitingForInput: checked })}
+            />
+          }
+        />
+      </SettingGroup>
+      <SettingGroup title="Sounds">
+        <SettingRow
+          title="When to play sounds"
+          control={
+            <Select
+              label="When to play sounds"
+              value={preferences.focusMode}
+              onChange={(next) =>
+                update({ focusMode: FOCUS_MODES.find((mode) => mode === next) ?? 'always' })
+              }
+              options={FOCUS_MODES.map((value) => ({ value, label: FOCUS_LABELS[value] }))}
+            />
+          }
+        />
+      </SettingGroup>
     </>
   )
 }
@@ -120,7 +131,7 @@ function SoundRow({
   }
   return (
     <SettingRow
-      title={slot.title}
+      title="Sound"
       description={slot.description}
       control={
         <div className="flex items-center gap-2">

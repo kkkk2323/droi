@@ -5,7 +5,7 @@ import { pickableModels } from '@droi/daemon-layer/session-defaults'
 import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { ModelPicker } from '@/components/chat/model-picker'
 import { Button } from '@/components/ui/button'
-import { SettingRow, Switch } from '@/components/ui/setting-row'
+import { SettingGroup, SettingRow, Switch } from '@/components/ui/setting-row'
 import { Spinner } from '@/components/ui/spinner'
 import type { MemoryBridge, MemoryRow } from '@shared/memory'
 import type { ShellSettingsBridge, ShellSettingsSnapshot } from '@shared/shell-settings'
@@ -25,8 +25,10 @@ type Props = {
 export function MemoryTab({ memory, ...props }: Props & { memory: MemoryBridge }) {
   return (
     <>
-      <MemorySwitchRow {...props} />
-      <MemoryModelRow {...props} />
+      <SettingGroup>
+        <MemorySwitchRow {...props} />
+        <MemoryModelRow {...props} />
+      </SettingGroup>
       <MemoriesSection memory={memory} settings={props.bridge} />
     </>
   )
@@ -66,44 +68,63 @@ function MemoriesSection({
   const [reset, setReset] = useState(false)
   const rows = overview.data?.rows ?? []
   return (
-    <section aria-labelledby="memories-heading" className="flex flex-col gap-3">
-      <h3 id="memories-heading" className="mt-3 px-1 text-xs font-medium text-muted-foreground">
-        Memories on this computer
-      </h3>
+    <SettingGroup title="Memories on this computer">
       {overview.error ? (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          Memory did not load: {overview.error.message}
-        </p>
+        <SettingRow
+          title="Memory did not load"
+          description={
+            <span role="alert" className="text-destructive-foreground">
+              {overview.error.message}
+            </span>
+          }
+        />
       ) : !overview.data ? (
-        <p className="text-sm text-muted-foreground">Loading Memory…</p>
+        <SettingRow title="Loading Memory…" />
+      ) : rows.length === 0 ? (
+        <SettingRow
+          title="Nothing remembered yet"
+          description="Entries show up here once Droid saves something about you or a Workspace."
+        />
       ) : (
-        <ul aria-label="Memories" className="flex flex-col gap-3">
+        <ul aria-label="Memories" className="divide-y divide-border/70">
           {rows.map((row) => (
             <MemoryRowItem key={row.workspace ?? ''} row={row} memory={memory} />
           ))}
         </ul>
       )}
-      <div className="flex flex-wrap gap-2 px-1">
-        <Button type="button" variant="outline" size="sm" onClick={() => void memory.openFolder()}>
-          <FolderOpen aria-hidden />
-          Open memory folder
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void memory.resetPrompts().then(() => setReset(true))}
-        >
-          <RotateCcw aria-hidden />
-          Reset prompts to default
-        </Button>
+      <SettingRow
+        title="Files and prompts"
+        description="A read-only Markdown copy of each Memory, and the prompts Droi uses to extract and consolidate entries."
+        control={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void memory.openFolder()}
+            >
+              <FolderOpen aria-hidden />
+              Open memory folder
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void memory.resetPrompts().then(() => setReset(true))}
+            >
+              <RotateCcw aria-hidden />
+              Reset prompts to default
+            </Button>
+          </div>
+        }
+      >
         {reset ? (
-          <p role="status" className="self-center text-xs text-muted-foreground">
+          <p role="status" className="text-xs text-muted-foreground">
             The consolidation and extraction prompts are back to Droi’s.
           </p>
         ) : null}
-      </div>
-    </section>
+      </SettingRow>
+    </SettingGroup>
   )
 }
 

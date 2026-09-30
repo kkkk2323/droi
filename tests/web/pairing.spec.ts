@@ -88,7 +88,7 @@ test.describe('remote client surface', () => {
     const sections = page.getByRole('navigation', { name: 'Settings sections' })
     await expect(sections.getByRole('button', { name: 'General' })).toBeVisible()
     await expect(
-      sections.getByRole('button', { name: /Account|Daemon|Remote Access/ }),
+      sections.getByRole('button', { name: /Account|Remote Access|Advanced|About/ }),
     ).toHaveCount(0)
     await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible()
     await page.getByRole('combobox', { name: 'Text size' }).click()

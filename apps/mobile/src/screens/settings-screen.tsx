@@ -1,5 +1,5 @@
-// Settings: the Paired Computers, appearance, Session list and alert
-// preferences, and the app's version and signature.
+// Settings, in the desktop's order: the Paired Computers, appearance, the
+// Session list, Session defaults, alerts, and the app's version and signature.
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { TEXT_SIZE_LABELS, TEXT_SIZES, textSize } from '@droi/daemon-layer/text-size'
 import { useQuery } from '@tanstack/react-query'
@@ -57,6 +57,15 @@ export function SettingsScreen() {
           onPress={() => router.push('/computers')}
         />
       </ListSection>
+      <ListChoices title="Theme" options={THEMES} value={theme} onChange={setTheme} />
+      <ListChoices title="Text size" options={TEXT_SIZE_OPTIONS} value={size} onChange={setSize} />
+      <ListSection title="Sessions">
+        <ListSwitch
+          label="Show archived sessions"
+          value={showArchived}
+          onChange={setShowArchived}
+        />
+      </ListSection>
       {computer ? (
         <ListSection
           title="New sessions"
@@ -69,15 +78,6 @@ export function SettingsScreen() {
           />
         </ListSection>
       ) : null}
-      <ListChoices title="Theme" options={THEMES} value={theme} onChange={setTheme} />
-      <ListChoices title="Text size" options={TEXT_SIZE_OPTIONS} value={size} onChange={setSize} />
-      <ListSection title="Sessions">
-        <ListSwitch
-          label="Show archived sessions"
-          value={showArchived}
-          onChange={setShowArchived}
-        />
-      </ListSection>
       <ListSection
         title="Alerts"
         footer="While the app is open, for Sessions other than the one on screen. Sounds follow the silent switch."
