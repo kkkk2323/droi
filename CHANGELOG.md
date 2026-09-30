@@ -1,3 +1,9 @@
+## 1.20.2 - 2026-09-30
+
+### Fixed
+
+- Sending from New session on the phone opens the new Session and sends the first message again. Before, the page stayed where it was with a read-only composer, because the Daemon lists a Session only after its first message and the phone waited for it to be listed. On the phone.
+
 ## 1.20.1 - 2026-09-29
 
 ### Fixed
