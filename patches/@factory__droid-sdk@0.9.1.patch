@@ -1,8 +1,19 @@
 diff --git a/dist/chunk-TWSTJMV7.mjs b/dist/chunk-TWSTJMV7.mjs
-index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..5f099e3dfcc31df95177bc07709afe7fdee512b2 100644
+index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..12a12c71ddb6b1cfc907a8044927334f21fec11f 100644
 --- a/dist/chunk-TWSTJMV7.mjs
 +++ b/dist/chunk-TWSTJMV7.mjs
-@@ -2868,7 +2868,8 @@ var CompactionModelIdValues = [
+@@ -2399,7 +2399,9 @@ var FactoryDroidMessageSchema = z2.object({
+    * the org behind the route that issued it, so a blob is only replayable to
+    * the same `apiProvider`.
+    */
+-  apiProvider: z2.nativeEnum(ApiProvider).optional(),
++  // Droi patch: the Daemon names providers this SDK does not know yet (azure_anthropic),
++  // and one unknown name made every live create_message fail to parse.
++  apiProvider: z2.string().optional(),
+   /**
+    * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
+    * active slot was router-configured. Unset for non-router turns.
+@@ -2868,7 +2870,8 @@ var CompactionModelIdValues = [
  ];
  var CompactionModelSchema = z10.union([
    z10.literal(CURRENT_COMPACTION_MODEL),
@@ -13,10 +24,21 @@ index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..5f099e3dfcc31df95177bc07709afe7f
  ]);
  var MCP_OAUTH_CLIENT_METADATA_DOT_SEGMENT_RE = /(?:^|\/)(?:\.\.|\.(?:%2e)?|%2e(?:\.|%2e)?)(?:\/|$|[?#])/i;
 diff --git a/dist/chunk-YSKO6SPT.js b/dist/chunk-YSKO6SPT.js
-index 394cbad810d8b6d1eadf491fb2bbd0423b213728..977a047bef011627eb62559f9a26dd2a344e4a7e 100644
+index 394cbad810d8b6d1eadf491fb2bbd0423b213728..cf9351b4fa45caf9ad061101ff7252e2bbcb273f 100644
 --- a/dist/chunk-YSKO6SPT.js
 +++ b/dist/chunk-YSKO6SPT.js
-@@ -2868,7 +2868,8 @@ var CompactionModelIdValues = [
+@@ -2399,7 +2399,9 @@ var FactoryDroidMessageSchema = _zod2.default.object({
+    * the org behind the route that issued it, so a blob is only replayable to
+    * the same `apiProvider`.
+    */
+-  apiProvider: _zod2.default.nativeEnum(ApiProvider).optional(),
++  // Droi patch: the Daemon names providers this SDK does not know yet (azure_anthropic),
++  // and one unknown name made every live create_message fail to parse.
++  apiProvider: _zod2.default.string().optional(),
+   /**
+    * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
+    * active slot was router-configured. Unset for non-router turns.
+@@ -2868,7 +2870,8 @@ var CompactionModelIdValues = [
  ];
  var CompactionModelSchema = _zod.z.union([
    _zod.z.literal(CURRENT_COMPACTION_MODEL),

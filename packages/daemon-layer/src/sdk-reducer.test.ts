@@ -2,7 +2,7 @@
 // from Daemon notifications (ADR 0004). These cases pin the behaviour the
 // transcript relies on so an SDK upgrade that changes it fails here first.
 import { describe, expect, test } from 'vitest'
-import { LOCAL_MACHINE_ID } from '@factory/droid-sdk'
+import { LOCAL_MACHINE_ID, SessionNotificationPayloadSchema } from '@factory/droid-sdk'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { createSessionState } from './connection'
 
@@ -79,6 +79,25 @@ describe('SDK state manager as the turn reducer', () => {
     const toolResult = all.flatMap((msg) => msg.content).find((b) => b.type === 'tool_result')
     expect(toolUse).toMatchObject({ id: 'call-1', name: 'Execute' })
     expect(toolResult).toMatchObject({ toolUseId: 'call-1', content: 'file.txt' })
+  })
+
+  // The SDK drops a notification that fails its schema. An assistant message
+  // it cannot parse never replaces the placeholder its tool_call made, so every
+  // later tool call of the turn piles into that placeholder, away from its reasoning.
+  test('an assistant message from a provider the SDK does not list still parses', () => {
+    const parsed = SessionNotificationPayloadSchema.safeParse({
+      type: 'create_message',
+      message: {
+        id: 'a5',
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call-2', name: 'Execute', input: { command: 'ls' } }],
+        createdAt: 1,
+        updatedAt: 1,
+        modelId: 'claude-opus-5-5',
+        apiProvider: 'azure_anthropic',
+      },
+    })
+    expect(parsed.success).toBe(true)
   })
 
   test('a retracted assistant message disappears', () => {
