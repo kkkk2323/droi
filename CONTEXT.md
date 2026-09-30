@@ -10,12 +10,20 @@ Droi is a desktop, iPhone and mobile-web front end for the Factory Droid coding 
 The `droid daemon` process that owns every Session, its transcript, and all filesystem and Git operations. Droi never re-implements what the Daemon already does.
 _Avoid_: backend, server, engine, exec runner
 
+**Host**:
+The process on a computer that starts and watches over the Daemon, runs the Gateway, supplies the Factory credential (normally the droid CLI's own login on that computer, an API key as fallback) and keeps that computer's Memory. The Desktop Shell embeds one; on a computer without a Desktop Shell (a headless Linux box) it runs on its own, installed from npm and kept alive by the system's service manager. Every computer a Client can reach has exactly one Host.
+_Avoid_: server, node, station, backend, agent runner
+
+**Pinned Droid**:
+The one `droid` build a Droi release is made for. The Host fetches it and starts the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid cannot be fetched the Host falls back to the computer's own `droid` and says so.
+_Avoid_: bundled droid, vendored CLI, droid version (on its own)
+
 **Desktop Shell**:
-The installed desktop application. It starts the Daemon, opens a window for the Local Client, and hosts the Gateway. It holds no conversation state.
+The installed desktop application. It embeds a Host and opens a window for the Local Client. It holds no conversation state.
 _Avoid_: main process, backend, app
 
 **Gateway**:
-The part of the Desktop Shell that lets a Remote Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Shell's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Shell's System Prompt Addition to every Session a Client starts, and creates and trashes Scratch Workspaces.
+The part of the Host that lets a Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Host's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Host's System Prompt Addition to every Session a Client starts, creates and trashes Scratch Workspaces, and answers a Client's requests to restart the Daemon or update the Host.
 _Avoid_: proxy, API server, Hono server, web server
 
 ### Clients
@@ -25,10 +33,10 @@ A Droi user interface. Every Client speaks only the Daemon protocol and keeps no
 _Avoid_: renderer, frontend, web UI
 
 **Local Client**:
-The web Client running inside the Desktop Shell window on the same computer as the Daemon.
+The web Client running inside the Desktop Shell window, whichever Paired Computer it is connected to. It alone can reach the Desktop Shell itself (settings, system notifications, opening folders in other apps); it reaches its own Host with a per-launch token and any other Host with that Host's Pairing Token.
 
 **Remote Client**:
-A Client on another device that reaches the Daemon through the Gateway: the Phone App on an iPhone, or the web Client in a browser anywhere else.
+A Client that is not the Desktop Shell window of the Host it is connected to: the Phone App on an iPhone, or the web Client in a browser anywhere else. It reaches the Host through the Gateway with the Pairing Token.
 _Avoid_: mobile, web mode, browser mode, LAN mode
 
 **Phone App**:
@@ -36,25 +44,25 @@ The native iPhone Client. It is the Remote Client on iOS and takes the browser's
 _Avoid_: mobile app, iOS app, iOS Client
 
 **Pairing Token**:
-The secret a Remote Client presents to the Gateway to prove it was authorised from the Desktop Shell. There is one token, shown as a QR code and link in the Desktop Shell settings; resetting it revokes every Remote Client at once. The Local Client presents a separate per-launch token instead, so a reset never touches the desktop window.
+The secret a Remote Client presents to the Gateway to prove it was authorised on the Host's computer. There is one token per Host, shown as a QR code and link in the Desktop Shell settings or printed by the Host's command line; resetting it revokes every Remote Client at once. The Local Client presents a separate per-launch token to its own Host instead, so a reset never touches the desktop window.
 _Avoid_: API key or login token (those are Factory credentials, which Clients never hold), device token
 
 **Paired Computer**:
-A Desktop Shell the Phone App has been paired with: one Gateway address, the Pairing Token, and the computer's name and id as the Gateway reports them. Scanning the same computer again updates it rather than adding another. The Phone App is connected to one Paired Computer at a time.
-_Avoid_: host, daemon profile, server, device
+A Host a Client has been paired with and remembers: one Gateway address, the Pairing Token, and the computer's name and id as the Gateway reports them. Pairing the same computer again updates it rather than adding another. A Client is connected to one Paired Computer at a time. The Desktop Shell's own Host is the first Paired Computer of its Local Client and cannot be forgotten.
+_Avoid_: host (that is the process; this is a Client's record of one), daemon profile, server, device
 
 **Remote Access**:
-The Desktop Shell setting that decides whether the Gateway accepts Remote Clients at all. Off by default.
+The Host setting that decides whether the Gateway accepts Remote Clients at all. Off by default in a Desktop Shell; always on in a Host running on its own, which has no Local Client.
 _Avoid_: LAN mode, web mode, mobile mode, `DROID_WEB_ENABLED`
 
 **Runtime Overlay**:
-The settings the Desktop Shell hands its Daemon at start, which apply to that Daemon alone and never reach the droid CLI's own files.
+The settings the Host hands its Daemon at start, which apply to that Daemon alone and never reach the droid CLI's own files.
 _Avoid_: settings override, daemon config, `--settings` file
 
 ### Memory
 
 **Memory**:
-The durable facts Droi keeps on a computer for Droid to recall in later Sessions: what the user prefers, what a Workspace's conventions are, what went wrong before. The Daemon knows nothing of it; Droi supplies it.
+The durable facts Droi keeps on a computer for Droid to recall in later Sessions: what the user prefers, what a Workspace's conventions are, what went wrong before. The Daemon knows nothing of it; the Host supplies it, and each Host keeps its own.
 _Avoid_: context, notes, knowledge base, history
 
 **Memory Entry**:
@@ -74,7 +82,7 @@ The MCP Server Droi carries and attaches only to its own Daemon, through which D
 _Avoid_: memory MCP, memory plugin, memory tool (a tool is one of the things it offers)
 
 **Memory Session**:
-A Session the Desktop Shell opens on the Daemon for Memory work of its own, consolidating a Project Memory or extracting entries from a finished Session, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
+A Session the Host opens on the Daemon for Memory work of its own, consolidating a Project Memory or extracting entries from a finished Session, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
 _Avoid_: hidden session, background session, consolidation job
 
 ### Testing
@@ -106,7 +114,7 @@ What every new Session on a computer starts with: model, reasoning, interaction 
 _Avoid_: preferences, global settings, default settings (on their own)
 
 **System Prompt Addition**:
-Text the Desktop Shell keeps and the Gateway appends to Droid's own system prompt when a Session starts, whichever Client starts it. It never replaces Droid's prompt, and a Session keeps the one it started with.
+Text the Host keeps and the Gateway appends to Droid's own system prompt when a Session starts, whichever Client starts it. It never replaces Droid's prompt, and a Session keeps the one it started with.
 _Avoid_: system prompt override, custom instructions
 
 **Skill**:
@@ -122,7 +130,7 @@ The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo
 
 **Scratch Workspace**:
-A Workspace the Desktop Shell creates for a Session started without choosing one, for work that belongs to no project. The Sessions that continue it after a compaction share it; archiving the conversation moves it to the Trash. Clients list these Sessions together, under Recents.
+A Workspace the Host creates for a Session started without choosing one, for work that belongs to no project. The Sessions that continue it after a compaction share it; archiving the conversation moves it to the Trash. Clients list these Sessions together, under Recents.
 _Avoid_: chat, temp dir, draft (a Draft Session is something else)
 
 **Prompt**:
