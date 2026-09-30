@@ -1,3 +1,9 @@
+## 1.21.1 - 2026-09-30
+
+### Fixed
+
+- While a turn runs, its tool calls show again. A Session whose model runs through a provider Droi did not know yet (Azure Anthropic) showed only a column of reasoning, and its tool calls appeared only after reopening the Session. On the desktop and the phone.
+
 ## 1.21.0 - 2026-09-30
 
 ### Changed
