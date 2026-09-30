@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- A chat without a project (a Scratch Session) keeps no Project Memory. Its folder is made for the Session and trashed with it, so a fact saved there was never found again. Droid is told at the start that only Global Memory applies, a `project` save is refused with a pointer to `global` for facts about you or your computer, and the extraction from a long chat keeps only its Global entries. On the desktop, in the browser and on the phone.
+
 ## 1.21.1 - 2026-09-30
 
 ### Fixed

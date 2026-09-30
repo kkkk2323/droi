@@ -104,12 +104,18 @@ export interface MemoryServerOptions {
   workspaceOf: (sessionId: string) => string | null
   /** Whether the calling Session is a Memory Session, which gets no Memory of its own. */
   isMemorySession?: (sessionId: string) => boolean
+  /** Whether the calling Session runs in a Scratch Workspace, which has no Project Memory. */
+  isScratchSession?: (sessionId: string) => boolean
   /** After every successful write, with the Memory it changed. */
   onWrite?: (slot: MemorySlot) => void
 }
 
 const MEMORY_SESSION_REFUSAL =
   'Memory tools are not available in a Memory Session. Answer from the material you were given.'
+const NO_PROJECT_MEMORY =
+  'This Session is a chat without a project, so it has no Project Memory. Only scope "global" applies here'
+const SCRATCH_READ = `${NO_PROJECT_MEMORY}: search or list Global Memory instead.`
+const SCRATCH_WRITE = `${NO_PROJECT_MEMORY}: save a fact about the user or their environment with scope "global"; do not save anything else.`
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean }
 
@@ -140,8 +146,12 @@ export function handleToolCall(
   if (sessionId && options.isMemorySession?.(sessionId)) return text(MEMORY_SESSION_REFUSAL, true)
   const scopeOf = (value: unknown): Scope | null =>
     value === undefined || value === 'project' ? 'project' : value === 'global' ? 'global' : null
-  const slotFor = (scope: Scope): MemorySlot | ToolResult => {
+  const slotFor = (scope: Scope, write = false): MemorySlot | ToolResult => {
     if (scope === 'global') return { scope: 'global' }
+    if (sessionId && options.isScratchSession?.(sessionId)) {
+      // A read finds nothing there, so it is an answer; a write is a refusal.
+      return write ? text(SCRATCH_WRITE, true) : text(SCRATCH_READ)
+    }
     const workspace = sessionId ? options.workspaceOf(sessionId) : null
     if (!workspace) {
       return text(
@@ -199,7 +209,7 @@ export function handleToolCall(
           true,
         )
       }
-      const slot = slotFor(scope)
+      const slot = slotFor(scope, true)
       if ('content' in slot) return slot
       return written(store.add(slot, args['category'], args['text']), 'Saved')
     }

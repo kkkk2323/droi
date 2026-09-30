@@ -185,6 +185,7 @@ describe('PreCompact and SessionEnd', () => {
       sessionId: 'long',
       transcriptPath: path,
       cwd: workspace,
+      scratch: false,
       event: 'SessionEnd',
       requestedAt: expect.any(String),
     })
@@ -275,6 +276,44 @@ describe('a Memory Session', () => {
     ).toBe('')
     await hook({ ...input, hook_event_name: 'SessionEnd' })
     expect(existsSync(join(memoryDir, 'requests', 'mem.json'))).toBe(false)
+  })
+})
+
+describe('a Scratch Session', () => {
+  function scratchTranscript(prompts: number): string {
+    const path = transcript(prompts)
+    writeFileSync(
+      path.replace(/\.jsonl$/, '.settings.json'),
+      JSON.stringify({ tags: [{ name: 'droi.scratch' }] }),
+    )
+    return path
+  }
+
+  it('is told it has no Project Memory and sees only Global corrections', async () => {
+    store.add({ scope: 'project', workspace }, 'correction', 'Use pnpm, not npm')
+    store.add({ scope: 'global' }, 'correction', 'Do not add emojis')
+    const run = await hook({
+      hook_event_name: 'SessionStart',
+      session_id: 'chat',
+      transcript_path: scratchTranscript(0),
+      cwd: workspace,
+    })
+    expect(run.stdout).toContain('no Project Memory')
+    expect(run.stdout).toContain('- Do not add emojis (global,')
+    expect(run.stdout).not.toContain('Use pnpm, not npm')
+  })
+
+  it('asks for a Global-only extraction', async () => {
+    const path = scratchTranscript(6)
+    await hook({
+      hook_event_name: 'SessionEnd',
+      session_id: 'chat',
+      transcript_path: path,
+      cwd: workspace,
+    })
+    expect(
+      JSON.parse(readFileSync(join(memoryDir, 'requests', 'chat.json'), 'utf8')),
+    ).toMatchObject({ sessionId: 'chat', cwd: workspace, scratch: true })
   })
 })
 

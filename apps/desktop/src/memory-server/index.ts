@@ -6,6 +6,7 @@ import { serveMemory } from '../memory/mcp-server'
 import {
   findSessionTranscript,
   isMemorySessionTranscript,
+  isScratchSessionTranscript,
   readSessionWorkspace,
   sessionsDir,
 } from '../memory/session-workspace'
@@ -34,6 +35,10 @@ await serveMemory(process.stdin, process.stdout, {
   isMemorySession(sessionId) {
     const transcript = transcriptOf(sessionId)
     return transcript ? isMemorySessionTranscript(transcript) : false
+  },
+  isScratchSession(sessionId) {
+    const transcript = transcriptOf(sessionId)
+    return transcript ? isScratchSessionTranscript(transcript) : false
   },
   onWrite(slot) {
     try {

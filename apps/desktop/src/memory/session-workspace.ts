@@ -40,16 +40,34 @@ export function sessionSettingsFile(transcriptFile: string): string {
   return transcriptFile.replace(/\.jsonl$/, '.settings.json')
 }
 
-/** Whether the transcript belongs to a Memory Session, from the tags in its settings file. */
-export function isMemorySessionTranscript(transcriptFile: string): boolean {
+// The Scratch Workspace tag (ADR 0008) as packages/daemon-layer/src/sessions.ts
+// names it; that module pulls in React, which neither Memory entry bundles.
+const SCRATCH_TAG = 'droi.scratch'
+
+/** The Session's tags from its settings file; none when the file is absent or unreadable. */
+function sessionTags(transcriptFile: string): Array<{ name: string }> {
   try {
     const parsed = JSON.parse(readFileSync(sessionSettingsFile(transcriptFile), 'utf8')) as {
       tags?: unknown
     }
-    return Array.isArray(parsed.tags) && isMemorySession(parsed.tags as Array<{ name: string }>)
+    return Array.isArray(parsed.tags) ? (parsed.tags as Array<{ name: string }>) : []
   } catch {
-    return false
+    return []
   }
+}
+
+/** Whether the transcript belongs to a Memory Session, from the tags in its settings file. */
+export function isMemorySessionTranscript(transcriptFile: string): boolean {
+  return isMemorySession(sessionTags(transcriptFile))
+}
+
+/**
+ * Whether the transcript belongs to a Session in a Scratch Workspace. Such a
+ * Session has no Project Memory: its folder is made for it and trashed with it,
+ * so nothing saved under that path would be found again.
+ */
+export function isScratchSessionTranscript(transcriptFile: string): boolean {
+  return sessionTags(transcriptFile).some((t) => t.name === SCRATCH_TAG)
 }
 
 /** Looks the Session's transcript up in every Workspace folder the Daemon keeps; null when absent. */

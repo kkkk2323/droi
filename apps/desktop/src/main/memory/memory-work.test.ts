@@ -199,6 +199,7 @@ describe('extraction', () => {
         sessionId: '0427515a-a1da-4056-9e5e-c4d2e1780ed1',
         transcriptPath: transcript(),
         cwd: workspace,
+        scratch: false,
         event: 'SessionEnd',
         requestedAt: new Date().toISOString(),
       },
@@ -219,6 +220,37 @@ describe('extraction', () => {
     expect(store.hasWrite('0427515a-a1da-4056-9e5e-c4d2e1780ed1')).toBe(true)
   })
 
+  it('takes only Global entries from a Scratch Session, which has no Project Memory', async () => {
+    add('project rule')
+    store.add({ scope: 'global' }, 'preference', 'terse')
+    const fake = runner(() => ({
+      entries: [
+        { scope: 'project', category: 'convention', text: 'this chat folder uses pnpm' },
+        { scope: 'global', category: 'insight', text: 'win.myhome runs WSL2 with systemd' },
+      ],
+    }))
+    const result = await extract(
+      { store, run: fake.run, modelId: 'm', prompt: 'E' },
+      {
+        sessionId: 'chat',
+        transcriptPath: transcript(),
+        cwd: workspace,
+        scratch: true,
+        event: 'SessionEnd',
+        requestedAt: '',
+      },
+    )
+    expect(result).toEqual({ added: 1, refused: 1 })
+    const input = JSON.parse(fake.requests[0]!.input) as { workspace: unknown; existing: unknown[] }
+    expect(input.workspace).toBeNull()
+    expect(input.existing).toEqual([{ category: 'preference', text: 'terse' }])
+    expect(store.list(project()).map((e) => e.text)).toEqual(['project rule'])
+    expect(store.list({ scope: 'global' }).map((e) => e.text)).toEqual([
+      'win.myhome runs WSL2 with systemd',
+      'terse',
+    ])
+  })
+
   it('does nothing for a transcript that is gone', async () => {
     const fake = runner(() => ({ entries: [] }))
     const result = await extract(
@@ -227,6 +259,7 @@ describe('extraction', () => {
         sessionId: 's',
         transcriptPath: join(root, 'missing.jsonl'),
         cwd: workspace,
+        scratch: false,
         event: 'PreCompact',
         requestedAt: '',
       },

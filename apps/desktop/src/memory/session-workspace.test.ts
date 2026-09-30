@@ -6,6 +6,7 @@ import {
   findSessionTranscript,
   findSessionWorkspace,
   isMemorySessionTranscript,
+  isScratchSessionTranscript,
   sessionSettingsFile,
   sessionsDir,
 } from './session-workspace'
@@ -62,5 +63,23 @@ describe('isMemorySessionTranscript', () => {
       JSON.stringify({ tags: [{ name: 'droi.memory' }] }),
     )
     expect(isMemorySessionTranscript(transcript)).toBe(true)
+  })
+})
+
+describe('isScratchSessionTranscript', () => {
+  it('reads the droi.scratch tag, which a compaction’s child inherits', () => {
+    sessionFile('-Users-me--droi-chats-2026-09-30-25e965', 'chat', [
+      { type: 'session_start', cwd: '/Users/me/.droi/chats/2026-09-30-25e965' },
+    ])
+    const transcript = findSessionTranscript(dir, 'chat')!
+    expect(isScratchSessionTranscript(transcript)).toBe(false)
+    writeFileSync(
+      sessionSettingsFile(transcript),
+      JSON.stringify({
+        tags: [{ name: 'droi.scratch' }, { name: 'droi.continues', metadata: { parent: 'p' } }],
+      }),
+    )
+    expect(isScratchSessionTranscript(transcript)).toBe(true)
+    expect(isMemorySessionTranscript(transcript)).toBe(false)
   })
 })

@@ -193,14 +193,16 @@ export async function extract(
 ): Promise<{ added: number; refused: number }> {
   const turns = readTranscript(request.transcriptPath)
   if (turns.length === 0) return { added: 0, refused: 0 }
-  const project = projectSlot(request.cwd)
+  // A Scratch Session's folder is made for it and trashed with it, so it has no
+  // Project Memory (ADR 0011): only Global entries come out of it.
+  const project: MemorySlot = request.scratch ? { scope: 'global' } : projectSlot(request.cwd)
   const reply = await options.run({
     title: `Memory: extract from ${request.sessionId.slice(0, 8)}`,
     cwd: memorySessionWorkspace(project),
     modelId: options.modelId,
     prompt: options.prompt,
     input: JSON.stringify({
-      workspace: request.cwd,
+      workspace: request.scratch ? null : request.cwd,
       existing: options.store.list(project).map(({ category, text }) => ({ category, text })),
       transcript: transcriptText(turns),
     }),
@@ -219,7 +221,11 @@ export async function extract(
   const touched = new Set<'project' | 'global'>()
   for (const entry of entries) {
     const scope = entry['scope'] === 'global' ? 'global' : 'project'
-    if (!isCategory(entry['category']) || typeof entry['text'] !== 'string') {
+    if (
+      !isCategory(entry['category']) ||
+      typeof entry['text'] !== 'string' ||
+      (scope === 'project' && project.scope === 'global')
+    ) {
       refused += 1
       continue
     }

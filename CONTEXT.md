@@ -70,7 +70,7 @@ One fact in Memory, with a category (failure, correction, insight, preference, c
 _Avoid_: observation, note, record
 
 **Project Memory**:
-The Memory that belongs to one Workspace.
+The Memory that belongs to one Workspace. A Scratch Workspace has none: only Global Memory applies in a Scratch Session.
 _Avoid_: project notes, repo memory
 
 **Global Memory**:

@@ -197,6 +197,44 @@ describe('Memory Server over stdio', () => {
     expect((await call('memory_list', { scope: 'global' })).text).toMatch(/^No entries/)
   })
 
+  it('gives a Scratch Session no Project Memory, only Global', async () => {
+    const scratchSession = '9b1f2c3d-0000-4000-8000-000000000002'
+    const folder = join(factoryHome, 'sessions', workspace.replaceAll('/', '-'))
+    writeFileSync(
+      join(folder, `${scratchSession}.jsonl`),
+      `${JSON.stringify({ type: 'session_start', id: scratchSession, cwd: workspace })}\n`,
+    )
+    writeFileSync(
+      join(folder, `${scratchSession}.settings.json`),
+      JSON.stringify({ tags: [{ name: 'droi.scratch' }] }),
+    )
+    expect(
+      await call(
+        'memory_add',
+        { scope: 'project', category: 'convention', text: 'x' },
+        scratchSession,
+      ),
+    ).toMatchObject({ isError: true, text: expect.stringMatching(/no Project Memory.*"global"/) })
+    expect(await call('memory_search', { query: 'x' }, scratchSession)).toMatchObject({
+      isError: false,
+      text: expect.stringMatching(/no Project Memory/),
+    })
+    expect(await call('memory_list', { scope: 'project' }, scratchSession)).toMatchObject({
+      isError: false,
+      text: expect.stringMatching(/no Project Memory/),
+    })
+    expect(
+      await call(
+        'memory_add',
+        { scope: 'global', category: 'insight', text: 'win.myhome runs WSL2' },
+        scratchSession,
+      ),
+    ).toMatchObject({ isError: false, text: expect.stringMatching(/in Global Memory/) })
+    const store = openMemoryStore(memoryDir)
+    expect(store.list({ scope: 'project', workspace })).toEqual([])
+    store.close()
+  })
+
   it('reports refusals as tool errors', async () => {
     expect(
       await call('memory_add', { scope: 'project', category: 'insight', text: 'password=hunter2' }),

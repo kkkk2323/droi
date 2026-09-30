@@ -13,4 +13,6 @@ Record only facts that will still matter in a later Session:
 
 Each entry is one fact that stands on its own, in one or two sentences, in the language the user writes in. Leave out one-off task details, anything already in the existing entries, guesses, and every secret, credential or personal data. Use scope `global` only for facts about the user that hold in every Workspace.
 
+When the Workspace is `null`, the Session was a chat without a project: it has no Project Memory, and the existing entries are Global Memory. Record only facts about the user or their environment, all with scope `global`.
+
 An empty list is a good answer when nothing qualifies. Answer only with the JSON object the schema describes. Do not call any tools.
