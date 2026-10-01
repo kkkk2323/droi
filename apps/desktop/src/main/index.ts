@@ -46,7 +46,7 @@ import {
   scratchFolderOf,
   type ShellSettingsStore,
 } from './shell-settings'
-import { createUpdater, type Updater } from './updater'
+import { createUpdater, shouldRecheck, type Updater } from './updater'
 import { buildRuntimeOverlay, writeRuntimeOverlay } from './memory/runtime-overlay'
 import { createMemoryController, type MemoryController } from './memory/memory-controller'
 import { createMemorySessionRunner } from './memory/memory-session'
@@ -84,8 +84,12 @@ let memory: MemoryController
 const DEFAULT_FACTORY_API_BASE_URL = 'https://api.factory.ai'
 const PREFERRED_GATEWAY_PORT = 41_417
 const UPDATE_REPOSITORY = 'kkkk2323/droi'
-/** A launch checks for a Release after settling; only a packaged app can swap its archive. */
+/**
+ * A launch checks for a Release after settling, then again every hour; only a
+ * packaged app can swap its archive.
+ */
 const UPDATE_CHECK_DELAY_MS = 15_000
+const UPDATE_RECHECK_INTERVAL_MS = 60 * 60_000
 /** How often the Daemon's `droid` file is stat'ed to notice the CLI updating itself. */
 const DROID_WATCH_INTERVAL_MS = 10_000
 
@@ -605,6 +609,9 @@ void app.whenReady().then(async () => {
   updater.on('change', broadcastChange)
   if (app.isPackaged && !process.env['DROI_NO_UPDATE_CHECK']) {
     setTimeout(() => void updater.check(), UPDATE_CHECK_DELAY_MS).unref()
+    setInterval(() => {
+      if (shouldRecheck(updater.state)) void updater.check()
+    }, UPDATE_RECHECK_INTERVAL_MS).unref()
   }
   let wasSignedIn = auth.state.status === 'signed-in'
   auth.on('change', (state) => {

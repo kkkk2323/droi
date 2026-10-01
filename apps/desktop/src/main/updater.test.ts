@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createUpdater, isNewerVersion, parseManifest, type UpdaterFs } from './updater'
+import {
+  createUpdater,
+  isNewerVersion,
+  parseManifest,
+  shouldRecheck,
+  type UpdaterFs,
+} from './updater'
 
 const nodeFs: UpdaterFs = {
   createWriteStream: (p) => fs.createWriteStream(p),
@@ -36,6 +42,18 @@ describe('parseManifest', () => {
     expect(parseManifest({ version: 'latest', sha256: sha })).toBeNull()
     expect(parseManifest({ version: '1.2.3', sha256: 'nope' })).toBeNull()
     expect(parseManifest('1.2.3')).toBeNull()
+  })
+})
+
+describe('shouldRecheck', () => {
+  it('rechecks a settled state and leaves a pending update alone', () => {
+    expect(shouldRecheck({ status: 'idle' })).toBe(true)
+    expect(shouldRecheck({ status: 'up-to-date', version: '1.0.0' })).toBe(true)
+    expect(shouldRecheck({ status: 'error', message: 'offline' })).toBe(true)
+    expect(shouldRecheck({ status: 'checking' })).toBe(false)
+    expect(shouldRecheck({ status: 'available', version: '1.1.0' })).toBe(false)
+    expect(shouldRecheck({ status: 'downloading', version: '1.1.0', percent: 40 })).toBe(false)
+    expect(shouldRecheck({ status: 'ready', version: '1.1.0' })).toBe(false)
   })
 })
 

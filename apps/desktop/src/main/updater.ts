@@ -61,6 +61,15 @@ export function isNewerVersion(remote: string, local: string): boolean {
   return false
 }
 
+/**
+ * Whether a periodic check may run. Checking passes through `checking`, which
+ * would hide the update card, and from `ready` it would fall back to
+ * `available` because the running version is still the old one.
+ */
+export function shouldRecheck(state: UpdateState): boolean {
+  return state.status === 'idle' || state.status === 'up-to-date' || state.status === 'error'
+}
+
 export function parseManifest(data: unknown): Manifest | null {
   if (typeof data !== 'object' || data === null) return null
   const { version, sha256 } = data as { version?: unknown; sha256?: unknown }
