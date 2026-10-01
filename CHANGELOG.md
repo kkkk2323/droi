@@ -1,3 +1,9 @@
+## 1.25.0 - 2026-10-01
+
+### Changed
+
+- The desktop app checks for a new release every hour, not only once after launch, so a release published while Droi stays open shows its card in the bottom-left corner within the hour. A check waits while an update is offered, downloading or waiting for a restart. On the desktop.
+
 ## 1.24.0 - 2026-10-01
 
 ### Changed
