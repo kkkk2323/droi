@@ -136,6 +136,20 @@ function slotKey(slot: MemorySlot): string {
   return slot.scope === 'global' ? GLOBAL_KEY : workspaceKey(slot.workspace)
 }
 
+/**
+ * The terms of a search: words, or quoted phrases kept whole. A one-character
+ * term beside others is dropped: "用" or "a" would match almost every entry.
+ */
+export function searchTerms(query: string): string[] {
+  const terms: string[] = []
+  for (const match of query.matchAll(/"([^"]*)"|(\S+)/g)) {
+    const term = (match[1] ?? match[2] ?? '').trim()
+    if (term) terms.push(term)
+  }
+  const longer = terms.filter((t) => [...t].length > 1)
+  return longer.length > 0 ? longer : terms
+}
+
 export function isCategory(value: unknown): value is Category {
   return typeof value === 'string' && (CATEGORIES as readonly string[]).includes(value)
 }
@@ -316,33 +330,47 @@ export function openMemoryStore(dir: string): MemoryStore {
     },
     search({ query, slot, category, limit = 10 }) {
       const key = slotKey(slot)
-      const trimmed = query.trim()
-      if (!trimmed) return []
       const byCategory = category ? ' AND e.category = ?' : ''
       const extra = category ? [category] : []
-      const words = trimmed.split(/\s+/)
-      // The trigram tokenizer cannot match fewer than three characters; two-character
-      // words are common in Chinese, so a query with one falls back to a substring scan.
-      if (words.some((word) => word.length < 3)) {
-        const like = words.map(() => "e.text LIKE ? ESCAPE '\\'").join(' OR ')
-        return rows(
-          `${SELECT} WHERE e.slot = ?${byCategory} AND (${like}) ORDER BY e.rowid DESC LIMIT ?`,
+      const terms = searchTerms(query)
+      if (terms.length === 0) return []
+      // The trigram tokenizer matches nothing shorter than three characters, so a
+      // short term (a two-character Chinese word, say) is matched as a substring.
+      const long = terms.filter((t) => [...t].length >= 3)
+      const short = terms.filter((t) => [...t].length < 3)
+      const likeClause = (count: number, operator: 'AND' | 'OR') =>
+        count === 0
+          ? ''
+          : ` AND (${Array(count).fill("e.text LIKE ? ESCAPE '\\'").join(` ${operator} `)})`
+      const likeParams = short.map((t) => `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+      const matched = (operator: 'AND' | 'OR', withShort: boolean) =>
+        rows(
+          `${SELECT} JOIN entries_fts f ON f.rowid = e.rowid
+            WHERE entries_fts MATCH ? AND e.slot = ?${byCategory}${withShort ? likeClause(short.length, operator) : ''}
+            ORDER BY bm25(entries_fts) LIMIT ?`,
+          long.map((t) => `"${t.replace(/"/g, '""')}"`).join(` ${operator} `),
           key,
           ...extra,
-          ...words.map((word) => `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`),
+          ...(withShort ? likeParams : []),
           limit,
         )
-      }
-      const match = words.map((term) => `"${term.replace(/"/g, '""')}"`).join(' OR ')
-      return rows(
-        `${SELECT} JOIN entries_fts f ON f.rowid = e.rowid
-          WHERE entries_fts MATCH ? AND e.slot = ?${byCategory}
-          ORDER BY bm25(entries_fts) LIMIT ?`,
-        match,
-        key,
-        ...extra,
-        limit,
-      )
+      const substrings = (operator: 'AND' | 'OR') =>
+        rows(
+          `${SELECT} WHERE e.slot = ?${byCategory}${likeClause(short.length, operator)} ORDER BY e.rowid DESC LIMIT ?`,
+          key,
+          ...extra,
+          ...likeParams,
+          limit,
+        )
+      if (long.length === 0) return substrings('OR')
+      // Every term first, which is the precise answer; any term only when nothing
+      // holds them all, with the best-matched entries first.
+      const all = matched('AND', true)
+      if (all.length > 0) return all
+      const any = matched('OR', false)
+      if (short.length === 0 || any.length >= limit) return any
+      const seen = new Set(any.map((e) => e.id))
+      return [...any, ...substrings('OR').filter((e) => !seen.has(e.id))].slice(0, limit)
     },
     corrections(slots, caps) {
       if (slots.length === 0) return []

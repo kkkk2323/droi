@@ -37,7 +37,11 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Words to look for; any of them may match.' },
+        query: {
+          type: 'string',
+          description:
+            'One to three specific words; entries holding all of them come first, and any of them only when none holds all. Quote a phrase to keep it whole.',
+        },
         scope: scopeProperty,
         category: categoryProperty,
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Default 10.' },

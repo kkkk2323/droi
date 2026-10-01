@@ -131,24 +131,53 @@ describe('Memory store', () => {
       'Run the E2E suite with pnpm test:e2e',
     ])
     expect(store.search({ query: 'pnpm', slot: project })).toHaveLength(2)
-    expect(store.search({ query: 'typecheck missing', slot: project }).map((e) => e.text)).toEqual([
-      'Typecheck with pnpm typecheck',
-    ])
     expect(store.search({ query: 'pnpm', slot: project, limit: 1 })).toHaveLength(1)
   })
 
-  it('finds two-character Chinese words through the LIKE fallback', () => {
+  it('wants every term, and settles for any term only when nothing has them all', () => {
+    add(project, 'Release: bump the version, tag, push; the workflow builds the DMG')
+    add(project, 'The phone reads the desktop version at startup')
+    add(project, 'Typecheck with pnpm typecheck')
+    const texts = (query: string) => store.search({ query, slot: project }).map((e) => e.text)
+    expect(texts('version release')).toEqual([
+      'Release: bump the version, tag, push; the workflow builds the DMG',
+    ])
+    expect(texts('version')).toHaveLength(2)
+    expect(texts('typecheck missing')).toEqual(['Typecheck with pnpm typecheck'])
+    expect(texts('phone release').sort()).toEqual([
+      'Release: bump the version, tag, push; the workflow builds the DMG',
+      'The phone reads the desktop version at startup',
+    ])
+    expect(texts('nothing here')).toEqual([])
+  })
+
+  it('keeps a quoted phrase whole', () => {
+    add(project, 'memory search is keyword based')
+    add(project, 'search the memory before acting')
+    expect(store.search({ query: '"memory search"', slot: project }).map((e) => e.text)).toEqual([
+      'memory search is keyword based',
+    ])
+    expect(store.search({ query: 'memory search', slot: project })).toHaveLength(2)
+  })
+
+  it('matches two-character words as substrings and drops one-character ones', () => {
     add(project, '查日志要用 anlan 命令', 'tool-quirk')
     add(project, '部署前先跑测试', 'convention')
-    expect(store.search({ query: '日志', slot: project }).map((e) => e.text)).toEqual([
-      '查日志要用 anlan 命令',
-    ])
+    add(project, 'pnpm 发版要先用 CHANGELOG 记一笔', 'convention')
+    const texts = (query: string) => store.search({ query, slot: project }).map((e) => e.text)
+    expect(texts('日志')).toEqual(['查日志要用 anlan 命令'])
     expect(store.search({ query: '部署', slot: project, category: 'failure' })).toEqual([])
-    expect(store.search({ query: '部署前先跑', slot: project })).toHaveLength(1)
-    // A short word beside a long one is not dropped.
-    expect(store.search({ query: 'pnpm 日志', slot: project }).map((e) => e.text)).toEqual([
+    expect(texts('部署前先跑')).toHaveLength(1)
+    // Both terms must hold while one entry has them all.
+    expect(texts('pnpm 发版')).toEqual(['pnpm 发版要先用 CHANGELOG 记一笔'])
+    // The short term still counts when no entry has both.
+    expect(texts('pnpm 日志')).toEqual([
+      'pnpm 发版要先用 CHANGELOG 记一笔',
       '查日志要用 anlan 命令',
     ])
+    // "用" alone would match two of the three entries; beside another term it is ignored.
+    expect(texts('用 anlan')).toEqual(['查日志要用 anlan 命令'])
+    expect(texts('用')).toHaveLength(2)
   })
 
   it('treats search syntax as plain text', () => {

@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- Memory search answers with the entries that hold every word first, and falls back to any word only when no entry holds them all; a quoted phrase is kept whole. Before, any word matched from the start, so a long query filled its ten results with entries sharing one common word. A one-character word (用, a) beside others is ignored instead of pulling in nearly every entry. On the desktop, in the browser and on the phone.
+
 ## 1.22.0 - 2026-10-01
 
 ### Changed
