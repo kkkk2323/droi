@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, openDrawer, pairPhone, pickSession, test } from './fixtures'
+import { expect, openSessionList, pairPhone, pickSession, relaunch, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
 
@@ -11,8 +11,8 @@ const LIGHT_TEXT = 'rgb(22, 22, 22)'
 const DARK_TEXT = 'rgb(238, 238, 238)'
 
 async function openSettings(page: Page) {
-  const list = await openDrawer(page)
-  await list.getByRole('button', { name: 'Settings' }).click()
+  await openSessionList(page)
+  await page.getByRole('button', { name: 'Settings' }).click()
 }
 
 test('picking light, dark and system changes the theme', async ({ page, fakeDaemon }) => {
@@ -65,10 +65,12 @@ test('text size changes the transcript and persists', async ({ page, fakeDaemon 
     'font-size',
     '15px',
   )
+  // Settings opens from the list; go back there and into the Session.
   await page.goBack()
+  await pickSession(page, /Deploy/)
   await expect(message).toHaveCSS('font-size', '17.8125px')
   await expect(page.getByRole('textbox', { name: 'Message' })).toHaveCSS('font-size', '17.8125px')
 
-  await page.reload()
+  await relaunch(page)
   await expect(message).toHaveCSS('font-size', '17.8125px')
 })

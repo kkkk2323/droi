@@ -92,7 +92,7 @@ export async function removeComputer(id: string, keychain: Keychain): Promise<vo
 
 /**
  * What was last seen of a computer's Session list, so switching to it or a
- * cold start is not a blank drawer. Transcripts are never kept.
+ * cold start is not a blank list. Transcripts are never kept.
  */
 export interface SessionSummaryCache {
   sessionId: string

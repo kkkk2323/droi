@@ -3,7 +3,7 @@
 import { SCRATCH_FOLDER, type FakeDaemon, type RecordedRequest } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
 import { streamedReply } from '../fake-daemon/turns'
-import { expect, openDrawer, pairPhone, pickSession, test } from './fixtures'
+import { expect, openNewSession, openSessionList, pairPhone, pickSession, test } from './fixtures'
 
 const SCRATCH = { name: 'droi.scratch' }
 
@@ -23,7 +23,7 @@ test.describe('with no Workspace yet', () => {
 
   test('None is preselected and the Session lands under Recents', async ({ page, fakeDaemon }) => {
     await pairPhone(page, fakeDaemon)
-    const form = page.getByRole('region', { name: 'New session' })
+    const form = await openNewSession(page)
     await expect(form.getByRole('heading', { name: 'What’s on your mind?' })).toBeVisible()
     await expect(form.getByRole('button', { name: 'Workspace' })).toHaveText(/Workspace: None/)
     const folder = await createdFolder(fakeDaemon)
@@ -36,7 +36,7 @@ test.describe('with no Workspace yet', () => {
     expect(paramsOf(takeover)).toMatchObject({ tags: [SCRATCH] })
     await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Sure.')
 
-    const list = await openDrawer(page)
+    const list = await openSessionList(page)
     await expect(list.getByRole('group', { name: 'Recents' })).toBeVisible()
   })
 })
@@ -53,7 +53,7 @@ test.describe('next to Workspaces', () => {
     fakeDaemon,
   }) => {
     await pairPhone(page, fakeDaemon)
-    const form = page.getByRole('region', { name: 'New session' })
+    const form = await openNewSession(page)
     await expect(form.getByRole('button', { name: 'Workspace' })).toHaveText(/acme-web\?/)
     await form.getByRole('button', { name: 'Workspace' }).click()
     const sheet = page.getByRole('dialog', { name: 'Workspace' })
@@ -63,7 +63,7 @@ test.describe('next to Workspaces', () => {
     const folder = await createdFolder(fakeDaemon)
     await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
 
-    const list = await openDrawer(page)
+    const list = await openSessionList(page)
     await expect(list.getByRole('group')).toHaveCount(2)
     await expect(list.getByRole('group').last()).toHaveAccessibleName('Recents')
     await pickSession(page, /Fix the build/)
@@ -77,7 +77,7 @@ test.describe('next to Workspaces', () => {
     fakeDaemon,
   }) => {
     await pairPhone(page, fakeDaemon)
-    const list = await openDrawer(page)
+    const list = await openSessionList(page)
     await list.getByRole('button', { name: /Pasta recipe/ }).click({ delay: 800 })
     await page
       .getByRole('dialog', { name: /^Actions for / })

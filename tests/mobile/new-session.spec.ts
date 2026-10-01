@@ -1,7 +1,7 @@
 import type { RecordedRequest } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
 import { streamedReply } from '../fake-daemon/turns'
-import { expect, openDrawer, pairPhone, pickSession, test } from './fixtures'
+import { expect, openNewSession, openSessionList, pairPhone, test } from './fixtures'
 
 function sessionIdOf(request: RecordedRequest): string {
   return String((request.params as Record<string, unknown>)['sessionId'])
@@ -24,7 +24,7 @@ test('starts a Session in a recent Workspace with the chosen model', async ({
   fakeDaemon,
 }) => {
   await pairPhone(page, fakeDaemon)
-  const form = page.getByRole('region', { name: 'New session' })
+  const form = await openNewSession(page)
   await expect(form.getByRole('button', { name: 'Workspace' })).toHaveText(/acme-web\?/)
   const firstDraft = await fakeDaemon.waitForRequest('daemon.initialize_session')
   expect(firstDraft.params).toMatchObject({
@@ -79,7 +79,7 @@ test('a typed path is checked by the Daemon and starts a Session there', async (
   fakeDaemon,
 }) => {
   await pairPhone(page, fakeDaemon)
-  const form = page.getByRole('region', { name: 'New session' })
+  const form = await openNewSession(page)
   const abandoned = await fakeDaemon.waitForRequest('daemon.initialize_session')
   await form.getByRole('button', { name: 'Workspace' }).click()
   await page.getByRole('button', { name: 'Other folder…' }).click()
@@ -97,7 +97,7 @@ test('a typed path is checked by the Daemon and starts a Session there', async (
   await message.fill('Hello')
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('On it.')
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await expect(list.getByRole('group', { name: 'fresh-project' })).toBeVisible()
   // The draft opened for the recent Workspace is not left behind.
   const closed = await fakeDaemon.waitForRequest('daemon.close_session')
@@ -106,7 +106,7 @@ test('a typed path is checked by the Daemon and starts a Session there', async (
 
 test('"/" lists the Workspace’s skills before the first send', async ({ page, fakeDaemon }) => {
   await pairPhone(page, fakeDaemon)
-  const form = page.getByRole('region', { name: 'New session' })
+  const form = await openNewSession(page)
   await fakeDaemon.waitForRequest('daemon.initialize_session')
   await form.getByRole('textbox', { name: 'Message' }).fill('/')
   const menu = page.getByRole('menu', { name: 'Commands and skills' })
@@ -118,14 +118,14 @@ test('leaving the page closes the draft, which never shows in the list', async (
   fakeDaemon,
 }) => {
   await pairPhone(page, fakeDaemon)
+  await openNewSession(page)
   const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Recent work/ })).toBeVisible()
   await expect(list.getByRole('button', { name: /Old work/ })).toBeVisible()
   await expect(list.getByRole('group')).toHaveCount(2)
-  await pickSession(page, /Recent work/)
   const closed = await fakeDaemon.waitForRequest('daemon.close_session')
   expect(closed.params).toMatchObject({ sessionId: sessionIdOf(draft) })
-  const again = await openDrawer(page)
+  const again = await openSessionList(page)
   await expect(again.getByRole('group')).toHaveCount(2)
 })

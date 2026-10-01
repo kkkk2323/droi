@@ -1,4 +1,4 @@
-// Search across every Session on the computer, from the drawer. The Daemon
+// Search across every Session on the computer, from the Session list. The Daemon
 // does the searching (use-session-search.ts); while a query is typed the
 // results take the place of the Workspace groups.
 import { useSessionSearch, type SessionSearchHit } from '@droi/daemon-layer/use-session-search'
@@ -50,11 +50,9 @@ export function SessionSearchBox({
 
 export function SessionSearchResults({
   query,
-  selectedId,
   onSelect,
 }: {
   query: string
-  selectedId: string | null
   onSelect: (sessionId: string) => void
 }) {
   const colors = useColors()
@@ -95,11 +93,7 @@ export function SessionSearchResults({
       <View role="list">
         {search.hits.map((hit) => (
           <View key={hit.sessionId} role="listitem">
-            <SearchHitRow
-              hit={hit}
-              selected={hit.sessionId === selectedId}
-              onSelect={() => onSelect(hit.sessionId)}
-            />
+            <SearchHitRow hit={hit} onSelect={() => onSelect(hit.sessionId)} />
           </View>
         ))}
       </View>
@@ -107,25 +101,13 @@ export function SessionSearchResults({
   )
 }
 
-function SearchHitRow({
-  hit,
-  selected,
-  onSelect,
-}: {
-  hit: SessionSearchHit
-  selected: boolean
-  onSelect: () => void
-}) {
+function SearchHitRow({ hit, onSelect }: { hit: SessionSearchHit; onSelect: () => void }) {
   const colors = useColors()
   return (
     <Pressable
       role="button"
-      aria-current={selected ? 'page' : undefined}
       onPress={onSelect}
-      style={({ pressed }) => [
-        styles.hit,
-        selected || pressed ? { backgroundColor: colors.sidebarAccent } : null,
-      ]}
+      style={({ pressed }) => [styles.hit, pressed ? { backgroundColor: colors.accent } : null]}
     >
       <Text size="sm" numberOfLines={1}>
         {hit.title}

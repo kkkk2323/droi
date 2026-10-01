@@ -1,4 +1,4 @@
-// What the main screen shows when the connection is not simply up: the
+// What a page of the connected computer shows when the connection is not simply up: the
 // computer is no longer paired, it cannot be reached, it is reconnecting, or
 // it runs another Droi version than the one this app was built from.
 import { useConnectionState } from '@droi/daemon-layer/connection-context'
@@ -8,35 +8,37 @@ import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
 import { X } from 'lucide-react-native'
 import type { ReactNode } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { PulsingDot, Spinner } from '../ui/activity'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { PairingForm } from '../computers/pairing-form'
 import type { PairedComputer } from '../computers/store'
 import { versionMismatch } from '../lib/version'
 import { Heading, IconButton, Text } from '../ui/primitives'
-import { ScreenHeader } from '../ui/screen-header'
 import { radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
-const HEADER_HEIGHT = 44
-
 export function ConnectionGate({
   computer,
-  drawerOpen,
-  onOpenDrawer,
+  keepWhenUnreachable = false,
   children,
 }: {
   computer: PairedComputer
-  drawerOpen: boolean
-  onOpenDrawer: () => void
+  /** Shows what is known below the notice while the computer cannot be reached (the Session list). */
+  keepWhenUnreachable?: boolean
   children: ReactNode
 }) {
   const state = useConnectionState()
+  if (state.status === 'unreachable' && keepWhenUnreachable) {
+    return (
+      <View style={styles.fill}>
+        <Unreachable computer={computer} style={styles.top} />
+        {children}
+      </View>
+    )
+  }
   if (state.status === 'unpaired' || state.status === 'unreachable') {
     return (
       <View style={styles.fill}>
-        <ScreenHeader title={computer.name} drawerOpen={drawerOpen} onOpenDrawer={onOpenDrawer} />
         {state.status === 'unpaired' ? (
           <NoLongerPaired computer={computer} />
         ) : (
@@ -66,10 +68,16 @@ function NoLongerPaired({ computer }: { computer: PairedComputer }) {
   )
 }
 
-function Unreachable({ computer }: { computer: PairedComputer }) {
+function Unreachable({
+  computer,
+  style,
+}: {
+  computer: PairedComputer
+  style?: StyleProp<ViewStyle>
+}) {
   const colors = useColors()
   return (
-    <ScrollView contentContainerStyle={styles.panel}>
+    <ScrollView style={style} contentContainerStyle={styles.panel}>
       <Heading>Can’t reach {computer.name}</Heading>
       <Text tone="muted">The phone is trying</Text>
       <Text mono size="sm" style={[styles.address, { backgroundColor: colors.muted }]}>
@@ -108,7 +116,6 @@ const dismissedVersionNotice = createStringPreference('droi.versionNoticeDismiss
 
 function Notices({ computer, reconnecting }: { computer: PairedComputer; reconnecting: boolean }) {
   const colors = useColors()
-  const insets = useSafeAreaInsets()
   const appVersion = Constants.expoConfig?.version ?? ''
   const meta = useQuery({
     queryKey: ['meta', computer.address],
@@ -125,7 +132,7 @@ function Notices({ computer, reconnecting }: { computer: PairedComputer; reconne
 
   if (!reconnecting && !showVersion) return null
   return (
-    <View pointerEvents="box-none" style={[styles.notices, { top: insets.top + HEADER_HEIGHT }]}>
+    <View pointerEvents="box-none" style={styles.notices}>
       {reconnecting ? (
         <View
           role="status"
@@ -154,6 +161,7 @@ function Notices({ computer, reconnecting }: { computer: PairedComputer; reconne
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  top: { flexGrow: 0 },
   panel: { padding: space.xl, gap: space.md },
   address: {
     alignSelf: 'flex-start',
@@ -164,7 +172,7 @@ const styles = StyleSheet.create({
   checks: { gap: space.sm, marginTop: space.sm },
   check: { flexDirection: 'row', gap: space.sm },
   retrying: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md },
-  notices: { position: 'absolute', left: space.md, right: space.md, gap: space.sm },
+  notices: { position: 'absolute', top: space.sm, left: space.md, right: space.md, gap: space.sm },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',

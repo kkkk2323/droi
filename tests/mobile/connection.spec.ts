@@ -2,12 +2,15 @@ import type { Page } from '@playwright/test'
 import { session, userMessage } from '../fake-daemon/scenario'
 import {
   expect,
-  openDrawer,
+  openNewSession,
+  openSessionList,
   pairingLink,
   pairPhone,
   pasteLink,
   pickSession,
   playTurn,
+  relaunch,
+  sessionList,
   test,
 } from './fixtures'
 
@@ -32,14 +35,14 @@ test('a reset Pairing Token says the computer is no longer paired; pairing again
 }) => {
   await pairPhone(page, fakeDaemon)
   fakeDaemon.resetToken()
-  await page.reload()
+  await relaunch(page)
   await expect(page.getByRole('heading', { name: 'Test Mac is no longer paired' })).toBeVisible()
 
   await pasteLink(page, pairingLink(fakeDaemon))
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
-  const list = await openDrawer(page)
-  await expect(list.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
-  await list.getByRole('button', { name: 'Settings' }).click()
+  await expect(sessionList(page)).toBeVisible()
+  await openSessionList(page)
+  await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
+  await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('button', { name: 'Paired computers: 1' })).toBeVisible()
 })
 
@@ -49,7 +52,7 @@ test('an unreachable computer shows its address and what to check, then connects
 }) => {
   await pairPhone(page, fakeDaemon)
   fakeDaemon.goDown()
-  await page.reload()
+  await relaunch(page)
   await expect(page.getByRole('heading', { name: 'Can’t reach Test Mac' })).toBeVisible()
   await expect(page.getByText(fakeDaemon.url, { exact: true })).toBeVisible()
   const checks = page.getByRole('list', { name: 'What to check' }).getByRole('listitem')
@@ -57,7 +60,7 @@ test('an unreachable computer shows its address and what to check, then connects
   await expect(checks).toHaveCount(3)
 
   fakeDaemon.comeBack()
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible({
+  await expect(sessionList(page)).toBeVisible({
     timeout: 10_000,
   })
   await expect(page.getByRole('heading', { name: /Can’t reach/ })).toHaveCount(0)
@@ -73,11 +76,11 @@ test('another Droi version on the computer shows a notice that can be dismissed'
   await expect(notice).toBeVisible()
   await notice.getByRole('button', { name: 'Dismiss' }).click()
   await expect(notice).toHaveCount(0)
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Deploy/ })).toBeVisible()
 
-  await page.reload()
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
+  await relaunch(page)
+  await expect(sessionList(page)).toBeVisible()
   await expect(page.getByRole('alert').filter({ hasText: 'runs Droi' })).toHaveCount(0)
 })
 
@@ -116,8 +119,8 @@ test('the background lets the socket go; the foreground reconnects to the same s
   // Notifications flow again on the new socket.
   playTurn(fakeDaemon, deploy.sessionId, 'status?', ['All ', 'green.'])
   await expect(transcript).toContainText('All green.')
-  const list = await openDrawer(page)
-  await expect(list.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
+  await openSessionList(page)
+  await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
 })
 
 test('the New session page comes back with its Draft Session and its text', async ({
@@ -127,6 +130,7 @@ test('the New session page comes back with its Draft Session and its text', asyn
   const drafts = () =>
     fakeDaemon.requests.filter((r) => r.method === 'daemon.initialize_session').length
   await pairPhone(page, fakeDaemon)
+  await openNewSession(page)
   await expect.poll(drafts).toBe(1)
   const composer = page.getByRole('textbox', { name: 'Message' })
   await composer.fill('build a thing')
@@ -135,7 +139,7 @@ test('the New session page comes back with its Draft Session and its text', asyn
   await expect.poll(() => fakeDaemon.connectionCount).toBe(0)
   await setAppVisible(page, true)
   await expect.poll(drafts).toBe(2)
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'New session' })).toBeVisible()
   await expect(composer).toHaveValue('build a thing')
   await expect(page.getByRole('button', { name: 'Start session' })).toBeEnabled()
 })

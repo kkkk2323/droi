@@ -1,6 +1,7 @@
 // The Phone App's root: loads fonts and app storage before the first screen,
-// then a stack whose main screen is the Session (or pairing) and whose
-// settings and pairing pages are pushed on top.
+// then a stack whose first page is the connected computer's own stack (its
+// Session list, Sessions and New session) and whose settings and pairing
+// pages are pushed on top.
 import '../polyfills'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { setPreferenceStorage } from '@droi/daemon-layer/local-preference'
@@ -15,8 +16,10 @@ import { Suspense, use } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { hydrateStorage } from '../lib/app-storage'
 import { appQueryClient } from '../query-client'
-import { fonts } from '../ui/theme'
-import { applyThemeChoice, themeChoice, useColorSchemeName, useColors } from '../ui/use-colors'
+import { useStackScreenOptions } from '../ui/stack-options'
+import { applyThemeChoice, themeChoice, useColorSchemeName } from '../ui/use-colors'
+
+export const unstable_settings = { initialRouteName: '(connected)' }
 
 void SplashScreen.preventAutoHideAsync()
 
@@ -43,7 +46,7 @@ function Root() {
     GeistMono_400Regular,
     GeistMono_500Medium,
   })
-  const colors = useColors()
+  const screenOptions = useStackScreenOptions()
   const scheme = useColorSchemeName()
 
   if (!fontsLoaded && !fontError) return null
@@ -53,16 +56,8 @@ function Root() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={appQueryClient}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.foreground,
-            headerTitleStyle: { fontFamily: fonts.sansSemiBold, fontSize: 17 },
-            headerShadowVisible: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack screenOptions={screenOptions}>
+          <Stack.Screen name="(connected)" options={{ headerShown: false, title: 'Sessions' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
           <Stack.Screen name="session-defaults" options={{ title: 'Session defaults' }} />
           <Stack.Screen name="pair" options={{ title: 'Add a computer' }} />

@@ -6,10 +6,16 @@ import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { setPendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
 import { closeDraftSession, useDraftSession } from '@droi/daemon-layer/use-draft-session'
-import { useNewSession, type RecentWorkspace } from '@droi/daemon-layer/use-new-session'
+import {
+  recentWorkspaces,
+  useNewSession,
+  type RecentWorkspace,
+} from '@droi/daemon-layer/use-new-session'
 import { useWorkspaceChoice, type WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
 import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { useSlashItems, type SlashItem } from '@droi/daemon-layer/use-slash-items'
+import { useRouter } from 'expo-router'
+import { useHeaderHeight } from 'expo-router/react-navigation'
 import { ChevronDown } from 'lucide-react-native'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -23,9 +29,14 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Composer, type Submission } from '../composer/composer'
+import { ConnectionGate } from '../connection/connection-notices'
+import {
+  sessionPath,
+  useConnectedComputer,
+  type ConnectedComputer,
+} from '../sessions/connected-computer'
 import { SettingsControls } from '../composer/session-settings'
 import { Button, Text } from '../ui/primitives'
-import { ScreenHeader } from '../ui/screen-header'
 import { Sheet, SheetOption } from '../ui/sheet'
 import { TextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space } from '../ui/theme'
@@ -36,22 +47,38 @@ const NO_RECENT: RecentWorkspace[] = []
 
 export function NewSessionScreen({
   initialPick = null,
-  recent: known,
-  onCreated,
-  drawerOpen,
-  onOpenDrawer,
 }: {
   /** Preselected Workspace, or None (opened from a group's actions). */
   initialPick?: WorkspacePick | null
-  /** Null while the session list is on its way. */
-  recent: RecentWorkspace[] | null
-  /** The Session as it stands before the Daemon lists it, which it does only once written to. */
-  onCreated: (session: SessionSummary) => void
-  drawerOpen: boolean
-  onOpenDrawer: () => void
+}) {
+  const connected = useConnectedComputer()
+  if (!connected) return null
+  return (
+    <ConnectionGate computer={connected.computer}>
+      <NewSession initialPick={initialPick} connected={connected} />
+    </ConnectionGate>
+  )
+}
+
+function NewSession({
+  initialPick,
+  connected,
+}: {
+  initialPick: WorkspacePick | null
+  connected: ConnectedComputer
 }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderHeight()
+  const router = useRouter()
+  const { sessions } = connected
+  // Null while the Session list is on its way.
+  const known = sessions.live || !sessions.isPending ? recentWorkspaces(sessions.sessions) : null
+  // The Session as it stands before the Daemon lists it, which it does only once written to.
+  const onCreated = (session: SessionSummary) => {
+    connected.started(session)
+    router.replace(sessionPath(session.sessionId))
+  }
   const connection = useDaemonConnection()
   const { create, isCreating, error } = useNewSession()
   const choice = useWorkspaceChoice(known, initialPick)
@@ -136,8 +163,8 @@ export function NewSessionScreen({
       aria-label="New session"
       style={styles.fill}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
     >
-      <ScreenHeader title="New session" drawerOpen={drawerOpen} onOpenDrawer={onOpenDrawer} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <View style={styles.question}>
           <Text role="heading" aria-level={2} size="xl" weight="medium" style={styles.center}>

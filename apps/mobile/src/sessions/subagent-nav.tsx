@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.sm,
     borderRadius: radius.md,
   },
-  title: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  title: { maxWidth: 240, justifyContent: 'center' },
   caller: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
   current: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
   shrink: { flexShrink: 1 },

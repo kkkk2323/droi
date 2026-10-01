@@ -7,7 +7,7 @@ import {
   todoTurn,
   withQueue,
 } from '../fake-daemon/turns'
-import { expect, pairPhone, pickSession, test } from './fixtures'
+import { expect, pairPhone, pickSession, relaunch, test } from './fixtures'
 
 const chat = session('Chat', '/Users/dev/acme-web', [
   userMessage('hello'),
@@ -123,7 +123,7 @@ test.describe('a turn from the phone', () => {
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('')
     await pickSession(page, /Chat/)
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('half a thought')
-    await page.reload()
+    await relaunch(page)
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('half a thought')
   })
 })

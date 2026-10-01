@@ -2,7 +2,7 @@
 // for it, so the Phone App marks the Session from its own log while it runs
 // and says what it did when it is done.
 import { assistantMessage, session, userMessage } from '../fake-daemon/scenario'
-import { expect, openDrawer, pairPhone, pickSession, test } from './fixtures'
+import { expect, openSessionList, pairPhone, pickSession, test } from './fixtures'
 
 const chat = session('Long chat', '/Users/dev/acme-web', [
   userMessage('first question'),
@@ -39,16 +39,18 @@ test('/compact marks the Session while it runs and reports what it folded away',
   await page.getByRole('button', { name: 'Send' }).click()
   await fakeDaemon.waitForRequest('daemon.compact_session')
 
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   const row = list.getByRole('button', { name: /Long chat/ })
   await expect(row.getByRole('status', { name: 'Compacting' })).toBeVisible()
-  await page.getByLabel('Close sessions').click()
-  await expect(page.getByRole('dialog', { name: 'Sessions' })).toBeHidden()
+  await row.click()
+  await expect(list).toBeHidden()
 
   finish()
   await expect(page.getByRole('status').filter({ hasText: 'Compacted' })).toHaveText(
     'Compacted, 2 messages summarised',
   )
   await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
-  await expect((await openDrawer(page)).getByRole('status', { name: 'Compacting' })).toHaveCount(0)
+  await expect(
+    (await openSessionList(page)).getByRole('status', { name: 'Compacting' }),
+  ).toHaveCount(0)
 })

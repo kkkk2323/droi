@@ -3,11 +3,13 @@ import { FakeDaemon } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
 import {
   expect,
-  openDrawer,
+  openSessionList,
   pairingLink,
   pairPhone,
   pasteLink,
   pickSession,
+  relaunch,
+  sessionList,
   test,
 } from './fixtures'
 
@@ -27,25 +29,27 @@ async function withOffice(run: (office: FakeDaemon) => Promise<void>) {
 }
 
 async function addComputer(page: Page, link: string) {
-  const list = await openDrawer(page)
-  await list.getByRole('button', { name: /Switch computer/ }).click()
-  await list.getByRole('menuitem', { name: 'Add a computer' }).click()
+  await openSessionList(page)
+  await page.getByRole('button', { name: /Switch computer/ }).click()
+  await page.getByRole('menuitem', { name: 'Add a computer' }).click()
+  // A computer that lost its pairing shows a pairing form of its own on the list.
+  await expect(page.getByRole('heading', { name: 'Pair with a computer' })).toBeVisible()
   await pasteLink(page, link)
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
+  await expect(sessionList(page)).toBeVisible()
 }
 
 async function switchTo(page: Page, name: string) {
-  const list = await openDrawer(page)
-  await list.getByRole('button', { name: /Switch computer/ }).click()
-  await list.getByRole('menuitem', { name }).click()
-  // The switch rebuilds the connection and the main screen, drawer closed.
-  const next = await openDrawer(page)
-  await expect(next.getByRole('button', { name: `Switch computer, ${name}` })).toBeVisible()
+  await openSessionList(page)
+  await page.getByRole('button', { name: /Switch computer/ }).click()
+  await page.getByRole('menuitem', { name }).click()
+  // The switch rebuilds the connection and starts again from that computer's list.
+  await openSessionList(page)
+  await expect(page.getByRole('button', { name: `Switch computer, ${name}` })).toBeVisible()
 }
 
 async function openComputers(page: Page) {
-  const list = await openDrawer(page)
-  await list.getByRole('button', { name: 'Settings' }).click()
+  await openSessionList(page)
+  await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: /Paired computers/ }).click()
 }
 
@@ -60,8 +64,8 @@ test('scanning the pairing QR code pairs like the link', async ({ page, fakeDaem
       ),
     pairingLink(fakeDaemon),
   )
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
-  const list = await openDrawer(page)
+  await expect(sessionList(page)).toBeVisible()
+  const list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Deploy/ })).toBeVisible()
 })
 
@@ -73,8 +77,8 @@ test('pairing the same computer again updates it instead of adding one', async (
   const token = fakeDaemon.resetToken()
   const moved = `${fakeDaemon.url.replace('127.0.0.1', 'localhost')}/#pair=${token}`
   await addComputer(page, moved)
-  const list = await openDrawer(page)
-  await expect(list.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
+  await openSessionList(page)
+  await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
   await openComputers(page)
   const rows = page.getByRole('button', { name: /Test Mac/ })
   await expect(rows).toHaveCount(1)
@@ -88,19 +92,19 @@ test('two computers switch, and the other one shows its last known list first', 
   await withOffice(async (office) => {
     await pairPhone(page, fakeDaemon)
     await addComputer(page, pairingLink(office))
-    let list = await openDrawer(page)
+    let list = await openSessionList(page)
     await expect(list.getByRole('button', { name: /Budget/ })).toBeVisible()
 
     await switchTo(page, 'Test Mac')
-    list = await openDrawer(page)
+    list = await openSessionList(page)
     await expect(list.getByRole('button', { name: /Deploy/ })).toBeVisible()
     await expect(list.getByRole('button', { name: /Budget/ })).toHaveCount(0)
 
     office.goDown()
     await switchTo(page, 'Office Mac')
-    list = await openDrawer(page)
+    list = await openSessionList(page)
     await expect(list.getByRole('button', { name: /Budget/ })).toBeVisible()
-    await expect(list.getByRole('status', { name: 'Connection' })).not.toHaveText('Connected')
+    await expect(page.getByRole('status', { name: 'Connection' })).not.toHaveText('Connected')
   })
 })
 
@@ -133,9 +137,9 @@ test('relaunching reopens the last computer and Session', async ({ page, fakeDae
     await pickSession(page, /Deploy/)
     await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
 
-    await page.reload()
+    await relaunch(page)
     await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
-    const list = await openDrawer(page)
-    await expect(list.getByRole('button', { name: 'Switch computer, Test Mac' })).toBeVisible()
+    await openSessionList(page)
+    await expect(page.getByRole('button', { name: 'Switch computer, Test Mac' })).toBeVisible()
   })
 })

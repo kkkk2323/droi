@@ -73,7 +73,7 @@ export function pairingLink(daemon: FakeDaemon, token = daemon.token): string {
 export async function pairPhone(page: Page, daemon: FakeDaemon): Promise<void> {
   await page.goto('/')
   await pasteLink(page, pairingLink(daemon))
-  await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible()
+  await expect(sessionList(page)).toBeVisible()
 }
 
 export async function pasteLink(page: Page, link: string): Promise<void> {
@@ -89,21 +89,50 @@ export async function sheetsClosed(page: Page): Promise<void> {
   await expect(page.locator('[data-vaul-drawer]')).toHaveCount(0)
 }
 
-/** The Session list in the drawer, opening the drawer first. */
-export async function openDrawer(page: Page): Promise<Locator> {
+/**
+ * Quits and launches the app again. A phone always launches at the app's
+ * root, whatever page it showed; the app reopens that page itself. (A reload
+ * would ask the static test server for a Session's address, which it lacks.)
+ */
+export async function relaunch(page: Page): Promise<void> {
+  await page.goto('/')
+}
+
+/** The Session list, the connected computer's first page. */
+export function sessionList(page: Page): Locator {
+  return page.getByRole('navigation', { name: 'Sessions' })
+}
+
+/** Goes back to the Session list from whatever was pushed over it. */
+export async function openSessionList(page: Page): Promise<Locator> {
   await sheetsClosed(page)
-  const drawer = page.getByRole('dialog', { name: 'Sessions' })
-  if (!(await drawer.isVisible())) {
-    await page.getByRole('button', { name: 'Open sessions' }).click()
-  }
-  await expect(drawer).toBeVisible()
-  return drawer.getByRole('navigation', { name: 'Sessions' })
+  const list = sessionList(page)
+  // react-navigation's web header draws its back button as a link.
+  const back = page
+    .getByRole('link', { name: /back$/i })
+    .or(page.getByRole('button', { name: /back$/i }))
+    .first()
+  await expect(async () => {
+    // Right after a launch neither the list nor a back button is there yet.
+    if (!(await list.isVisible()) && (await back.isVisible())) await back.click()
+    await expect(list).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 10_000 })
+  return list
 }
 
 export async function pickSession(page: Page, title: RegExp | string): Promise<void> {
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await list.getByRole('button', { name: title }).click()
-  await expect(page.getByRole('dialog', { name: 'Sessions' })).toBeHidden()
+  await expect(list).toBeHidden()
+}
+
+/** Opens the New session page from the Session list. */
+export async function openNewSession(page: Page): Promise<Locator> {
+  await openSessionList(page)
+  await page.getByRole('button', { name: 'New session' }).click()
+  const form = page.getByRole('region', { name: 'New session' })
+  await expect(form).toBeVisible()
+  return form
 }
 
 export { test, expect }

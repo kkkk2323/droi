@@ -3,8 +3,14 @@
 // notifications, which is also what makes its activity show in the list.
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
-import type { SessionSummary } from '@droi/daemon-layer/sessions'
-import { useListNewSubagents, type SessionRef } from '@droi/daemon-layer/subagents'
+import { continuationChain, type SessionSummary } from '@droi/daemon-layer/sessions'
+import {
+  callerTrail,
+  subagentSiblings,
+  subagentsOf,
+  useListNewSubagents,
+  type SessionRef,
+} from '@droi/daemon-layer/subagents'
 import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
 import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
 import { useGitChanges } from '@droi/daemon-layer/use-git-changes'
@@ -16,12 +22,17 @@ import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
 import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { useTurn } from '@droi/daemon-layer/use-turn'
+import { Stack, useFocusEffect, useRouter } from 'expo-router'
+import { useHeaderHeight } from 'expo-router/react-navigation'
 import { ChevronUp } from 'lucide-react-native'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Spinner } from '../ui/activity'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Composer, type ComposerHandle, type Submission } from '../composer/composer'
+import { lastSessionOf } from '../computers/store'
+import { ConnectionGate } from '../connection/connection-notices'
+import { sessionPath, useConnectedComputer } from '../sessions/connected-computer'
 import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { SessionSettingsBar } from '../composer/session-settings'
@@ -30,10 +41,53 @@ import { ToolsButton } from '../tools/tools-sheet'
 import { GitChangesButton } from '../transcript/git-changes'
 import { TranscriptView } from '../transcript/transcript-view'
 import { Text } from '../ui/primitives'
-import { ScreenHeader } from '../ui/screen-header'
 import { TextScale } from '../ui/text-scale'
 import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+
+/** The Session a route names, on the connected computer, behind its connection notices. */
+export function OpenSessionScreen({ sessionId }: { sessionId: string }) {
+  const colors = useColors()
+  const router = useRouter()
+  const connected = useConnectedComputer()
+  const computerId = connected?.computer.id
+  // The Session on screen is the one a launch reopens.
+  useFocusEffect(
+    useCallback(() => {
+      if (computerId) lastSessionOf(computerId).set(sessionId)
+    }, [computerId, sessionId]),
+  )
+  if (!connected) return null
+  const all = connected.sessions.sessions
+  const session = connected.find(sessionId)
+  const chain = session ? continuationChain(all, session) : []
+  return (
+    <ConnectionGate computer={connected.computer}>
+      {session ? (
+        <SessionScreen
+          key={session.sessionId}
+          session={session}
+          chain={chain}
+          trail={callerTrail(all, session)}
+          siblings={subagentSiblings(all, session)}
+          subagents={subagentsOf(all, [session.sessionId, ...chain.map((s) => s.sessionId)])}
+          onContinued={(next) => router.replace(sessionPath(next))}
+        />
+      ) : !connected.sessions.live ? (
+        <View style={styles.loading}>
+          <Spinner size={16} color={colors.mutedForeground} />
+          <Text tone="muted" size="sm">
+            Loading session…
+          </Text>
+        </View>
+      ) : (
+        <Text role="alert" style={styles.message}>
+          This session is not on {connected.computer.name}’s list.
+        </Text>
+      )}
+    </ConnectionGate>
+  )
+}
 
 export function SessionScreen({
   session,
@@ -42,8 +96,6 @@ export function SessionScreen({
   siblings,
   subagents,
   onContinued,
-  drawerOpen,
-  onOpenDrawer,
 }: {
   session: SessionSummary
   /** `/compact` moved the conversation to a new Session; show that one. */
@@ -56,11 +108,10 @@ export function SessionScreen({
   siblings: readonly SessionSummary[]
   /** The subagents this Session (or an earlier link of its chain) called. */
   subagents: readonly SessionSummary[]
-  drawerOpen: boolean
-  onOpenDrawer: () => void
 }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderHeight()
   const view = useSession(session.sessionId)
   useListNewSubagents(view.transcript)
   const loaded = view.loadState === LOAD_STATE.loaded
@@ -160,32 +211,35 @@ export function SessionScreen({
     </Pressable>
   ) : null
 
+  const subagentTitle =
+    trail.length > 0 ? (
+      <SubagentTitle
+        sessionId={session.sessionId}
+        title={session.title}
+        trail={trail}
+        siblings={siblings}
+      />
+    ) : null
+  const actions = (
+    <View style={styles.actions}>
+      <SubagentsButton subagents={subagents} />
+      <GitChangesButton changes={gitChanges} />
+      <ToolsButton sessionId={session.sessionId} />
+    </View>
+  )
+
   return (
     <KeyboardAvoidingView
       style={styles.fill}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
     >
-      <ScreenHeader
-        title={session.title}
-        drawerOpen={drawerOpen}
-        onOpenDrawer={onOpenDrawer}
-        titleContent={
-          trail.length > 0 ? (
-            <SubagentTitle
-              sessionId={session.sessionId}
-              title={session.title}
-              trail={trail}
-              siblings={siblings}
-            />
-          ) : undefined
-        }
-        trailing={
-          <>
-            <SubagentsButton subagents={subagents} />
-            <GitChangesButton changes={gitChanges} />
-            <ToolsButton sessionId={session.sessionId} />
-          </>
-        }
+      <Stack.Screen
+        options={{
+          title: session.title,
+          headerTitle: subagentTitle ? () => subagentTitle : undefined,
+          headerRight: () => actions,
+        }}
       />
       <TextScale>
         {view.loadError ? (
@@ -239,6 +293,7 @@ export function SessionScreen({
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  actions: { flexDirection: 'row', alignItems: 'center' },
   message: { padding: space.lg },
   loading: {
     flex: 1,

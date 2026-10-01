@@ -1,8 +1,8 @@
-// Subagents stay out of the drawer's list. They hang off the Session that
+// Subagents stay out of the Session list. They hang off the Session that
 // called them: a card per Task call, a sheet from the header, and a way back
 // from the subagent to its caller.
 import { subagentScenario } from '../fake-daemon/subagents'
-import { expect, openDrawer, pairPhone, pickSession, test } from './fixtures'
+import { expect, openSessionList, pairPhone, pickSession, test } from './fixtures'
 
 const { main, explorer, reviewer, sessions } = subagentScenario()
 
@@ -13,7 +13,7 @@ test('subagents are not listed; the calling Session shows each as a card', async
   fakeDaemon,
 }) => {
   await pairPhone(page, fakeDaemon)
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Plan the release/ })).toBeVisible()
   await expect(list.getByRole('button', { name: /Explorer:/ })).toHaveCount(0)
   await expect(list.getByRole('button', { name: /Reviewer:/ })).toHaveCount(0)
@@ -66,12 +66,10 @@ test('the header leads to each subagent and back to the calling Session', async 
   await expect(page.getByRole('navigation', { name: 'Session hierarchy' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: main.title })).toBeVisible()
 
-  // Inside a subagent the calling Session stays the selected row.
+  // A subagent opened from its card is pushed; going back returns to its caller.
   await explorerCardOpen(page)
-  const list = await openDrawer(page)
-  const row = list.getByRole('button', { name: /Plan the release/ })
-  await expect(row).toHaveAttribute('aria-current', 'page')
-  await row.click()
+  await page.getByRole('link', { name: /back$/i }).click()
+  await expect(page.getByRole('navigation', { name: 'Session hierarchy' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: main.title })).toBeVisible()
 })
 
@@ -90,7 +88,7 @@ test('the calling Session’s row says how many subagents are running', async ({
   await pairPhone(page, fakeDaemon)
   await pickSession(page, /Plan the release/)
   await expect(page.getByRole('button', { name: '2 subagents, 1 running' })).toBeVisible()
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await expect(
     list.getByRole('button', { name: /Plan the release/ }).getByRole('status'),
   ).toContainText('1 subagent running')

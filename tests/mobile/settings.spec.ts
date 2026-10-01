@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import type { FakeDaemon } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, pairPhone, pickSession, test } from './fixtures'
+import { expect, pairPhone, pickSession, relaunch, test } from './fixtures'
 
 const first = session('First session', '/Users/dev/acme-web', [userMessage('hi')], {
   settings: { modelId: 'claude-opus-4-1', reasoningEffort: 'medium', autonomyLevel: 'low' },
@@ -74,7 +74,7 @@ test('favourite models are kept on the phone', async ({ page, fakeDaemon }) => {
     /GPT-5/,
   ])
 
-  await page.reload()
+  await relaunch(page)
   await page.getByRole('button', { name: 'Model', exact: true }).click()
   picker = page.getByRole('dialog', { name: 'Choose a model' })
   await expect(picker.getByRole('button', { name: 'Unstar GPT-5' })).toBeVisible()

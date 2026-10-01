@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, openDrawer, pairPhone, test } from './fixtures'
+import { expect, openSessionList, pairPhone, relaunch, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
 const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
@@ -11,7 +11,7 @@ test.use({ scenario: { sessions: [deploy, notes, budget] } })
 /** A long press opens a row's actions, as on the phone. */
 async function actionsFor(page: Page, name: RegExp | string) {
   const actions = page.getByRole('dialog', { name: /^Actions for / })
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await list.getByRole('button', { name, exact: typeof name === 'string' }).click({ delay: 800 })
   await expect(actions).toBeVisible()
   return actions
@@ -22,13 +22,13 @@ test('archive, unarchive and rename go to the Daemon', async ({ page, fakeDaemon
   let actions = await actionsFor(page, /Deploy/)
   await actions.getByRole('button', { name: 'Archive' }).click()
   await fakeDaemon.waitForRequest('daemon.archive_session')
-  let list = await openDrawer(page)
+  let list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Deploy/ })).toHaveCount(0)
 
-  await list.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('switch', { name: 'Show archived sessions' }).click()
   await page.goBack()
-  list = await openDrawer(page)
+  list = await openSessionList(page)
   const archived = list.getByRole('button', { name: /Deploy/ })
   await expect(archived).toContainText('Archived')
   actions = await actionsFor(page, /Deploy/)
@@ -42,7 +42,7 @@ test('archive, unarchive and rename go to the Daemon', async ({ page, fakeDaemon
   await actions.getByRole('button', { name: 'Save' }).click()
   const renamed = await fakeDaemon.waitForRequest('daemon.rename_session')
   expect(renamed.params).toMatchObject({ sessionId: notes.sessionId, title: 'Release notes' })
-  list = await openDrawer(page)
+  list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Release notes/ })).toBeVisible()
 })
 
@@ -50,7 +50,7 @@ test('pins and folds are kept on the phone across a relaunch', async ({ page, fa
   await pairPhone(page, fakeDaemon)
   let actions = await actionsFor(page, /Deploy/)
   await actions.getByRole('button', { name: 'Pin', exact: true }).click()
-  let list = await openDrawer(page)
+  let list = await openSessionList(page)
   const web = list.getByRole('group', { name: 'acme-web' })
   await expect(
     web.getByRole('button', { name: /Deploy/ }).getByRole('img', { name: 'Pinned' }),
@@ -59,7 +59,7 @@ test('pins and folds are kept on the phone across a relaunch', async ({ page, fa
   actions = await actionsFor(page, 'finance')
   await expect(actions).toHaveAccessibleName('Actions for finance')
   await actions.getByRole('button', { name: 'Pin workspace' }).click()
-  list = await openDrawer(page)
+  list = await openSessionList(page)
   await expect(list.getByRole('group').first()).toHaveAccessibleName('finance')
 
   await list.getByRole('button', { name: 'acme-web', exact: true }).click()
@@ -69,8 +69,8 @@ test('pins and folds are kept on the phone across a relaunch', async ({ page, fa
   )
   await expect(list.getByRole('button', { name: /Deploy/ })).toHaveCount(0)
 
-  await page.reload()
-  list = await openDrawer(page)
+  await relaunch(page)
+  list = await openSessionList(page)
   await expect(list.getByRole('group').first()).toHaveAccessibleName('finance')
   await expect(list.getByRole('button', { name: 'acme-web', exact: true })).toHaveAttribute(
     'aria-expanded',
@@ -85,7 +85,7 @@ test('pins and folds are kept on the phone across a relaunch', async ({ page, fa
 
 test('a Session row is a full-size touch target', async ({ page, fakeDaemon }) => {
   await pairPhone(page, fakeDaemon)
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   const row = list.getByRole('button', { name: /Deploy/ })
   expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
   await expect(row.getByText('Deploy')).toHaveCSS('font-size', '15px')

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import type { FakeDaemon } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, openDrawer, pairPhone, test } from './fixtures'
+import { expect, openSessionList, pairPhone, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
 
@@ -10,8 +10,8 @@ function saved(daemon: FakeDaemon) {
 }
 
 async function openDefaults(page: Page) {
-  const list = await openDrawer(page)
-  await list.getByRole('button', { name: 'Settings' }).click()
+  await openSessionList(page)
+  await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'Session defaults: Test Mac' }).click()
 }
 

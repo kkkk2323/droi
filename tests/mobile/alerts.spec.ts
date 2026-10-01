@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import type { FakeDaemon } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, openDrawer, pairPhone, pickSession, standIns, test } from './fixtures'
+import { expect, openSessionList, pairPhone, pickSession, standIns, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
 const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
@@ -55,7 +55,7 @@ test('the Session on screen stays quiet; another is unread until opened', async 
   workingState(fakeDaemon, deploy.sessionId, 'idle')
   await expect.poll(() => played(page)).toEqual({ sounds: ['finished'], haptics: ['finished'] })
 
-  let list = await openDrawer(page)
+  let list = await openSessionList(page)
   await expect(
     list.getByRole('button', { name: /Deploy/ }).getByRole('img', { name: 'Unread' }),
   ).toBeVisible()
@@ -64,14 +64,14 @@ test('the Session on screen stays quiet; another is unread until opened', async 
   ).toHaveCount(0)
 
   await pickSession(page, /Deploy/)
-  list = await openDrawer(page)
+  list = await openSessionList(page)
   await expect(list.getByRole('img', { name: 'Unread' })).toHaveCount(0)
 })
 
 test('per-event switches turn the sound and the haptic off', async ({ page, fakeDaemon }) => {
   await pairPhone(page, fakeDaemon)
-  const list = await openDrawer(page)
-  await list.getByRole('button', { name: 'Settings' }).click()
+  await openSessionList(page)
+  await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('switch', { name: 'Sound when finished' }).click()
   await page.getByRole('switch', { name: 'Haptic when it needs input' }).click()
   await page.goBack()

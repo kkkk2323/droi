@@ -21,7 +21,16 @@ Droi on the computer must be a build with the computer name and id in its
 
 - [ ] Pasting the pairing link from Droi → Settings → Remote Access asks for
       local network access once, with Droi's explanation, then connects.
-- [ ] The drawer shows the computer's name and its Sessions by Workspace.
+- [ ] The app opens on the Session list: the computer's name and connection in
+      the navigation bar, its Sessions by Workspace below.
+- [ ] Opening a Session pushes it; a swipe from the left edge goes back to the
+      list, and so does the back button.
+- [ ] The New session, Settings, Git changes, Tools and subagent buttons sit in
+      the navigation bar and respond to a tap.
+- [ ] With the keyboard up, the composer sits right above it on a Session and on
+      New session (no gap, nothing hidden under the navigation bar).
+- [ ] Quitting the app on a Session and launching it again shows that Session,
+      with the list one swipe back.
 - [ ] Scan QR code asks for the camera once and pairs from the code in
       Droi → Settings → Remote Access.
 - [ ] After `pnpm install:phone` again, the Paired Computers are still there

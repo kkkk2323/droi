@@ -1,5 +1,5 @@
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, openDrawer, pairPhone, pasteLink, pickSession, test } from './fixtures'
+import { expect, openSessionList, pairPhone, pasteLink, pickSession, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
 const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
@@ -12,9 +12,9 @@ test('pasting a pairing link connects and lists the Sessions grouped by Workspac
   fakeDaemon,
 }) => {
   await pairPhone(page, fakeDaemon)
-  const list = await openDrawer(page)
-  await expect(list.getByText('Test Mac')).toBeVisible()
-  await expect(list.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
+  const list = await openSessionList(page)
+  await expect(page.getByRole('button', { name: 'Switch computer, Test Mac' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
   const web = list.getByRole('group', { name: 'acme-web' })
   await expect(web.getByRole('button', { name: /Deploy/ })).toBeVisible()
   await expect(web.getByRole('button', { name: /Notes/ })).toBeVisible()
@@ -50,7 +50,7 @@ test('a working Session and a Session waiting on a Prompt show different states'
     type: 'droid_working_state_changed',
     newState: 'waiting_for_tool_confirmation',
   })
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   const deployRow = list.getByRole('button', { name: /Deploy/ })
   const notesRow = list.getByRole('button', { name: /Notes/ })
   await expect(deployRow.getByRole('status', { name: 'Working' })).toBeVisible()
@@ -72,7 +72,7 @@ test('typing in the search box asks the Daemon and lists the hits with their sni
   fakeDaemon,
 }) => {
   await pairPhone(page, fakeDaemon)
-  const list = await openDrawer(page)
+  const list = await openSessionList(page)
   await list.getByRole('searchbox', { name: 'Search sessions' }).fill('ship')
   const results = list.getByRole('region', { name: 'Search results' })
   await expect(results.getByRole('listitem')).toHaveCount(1)
@@ -93,7 +93,7 @@ test.describe('with more Sessions than one page', () => {
 
   test('"Load older sessions" brings the rest', async ({ page, fakeDaemon }) => {
     await pairPhone(page, fakeDaemon)
-    const list = await openDrawer(page)
+    const list = await openSessionList(page)
     const web = list.getByRole('group', { name: 'acme-web' })
     await expect(web.getByRole('button', { name: /Task 105/ })).toBeVisible()
     await expect(web.getByRole('button', { name: /Task 001/ })).toHaveCount(0)
