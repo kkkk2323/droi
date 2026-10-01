@@ -1,3 +1,9 @@
+## 1.24.0 - 2026-10-01
+
+### Changed
+
+- The phone opens on the Session list instead of the last Session with the list in a drawer. Tapping a Session opens it on top, and a swipe from the left edge or the back button returns to the list, as in other iPhone apps. The list's title shows the computer and its connection and switches computers; New session and Settings sit at the top right. A subagent opens on top of its calling Session, so going back returns to the caller. The app still reopens the Session it last showed, with the list one swipe back, and a computer that cannot be reached keeps its last known list below the notice. On the phone.
+
 ## 1.23.0 - 2026-10-01
 
 ### Changed
