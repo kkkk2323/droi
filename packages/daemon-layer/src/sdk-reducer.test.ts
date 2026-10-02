@@ -2,7 +2,11 @@
 // from Daemon notifications (ADR 0004). These cases pin the behaviour the
 // transcript relies on so an SDK upgrade that changes it fails here first.
 import { describe, expect, test } from 'vitest'
-import { LOCAL_MACHINE_ID, SessionNotificationPayloadSchema } from '@factory/droid-sdk'
+import {
+  DaemonRequestPermissionSchema,
+  LOCAL_MACHINE_ID,
+  SessionNotificationPayloadSchema,
+} from '@factory/droid-sdk'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
 import { createSessionState } from './connection'
 
@@ -98,6 +102,83 @@ describe('SDK state manager as the turn reducer', () => {
       },
     })
     expect(parsed.success).toBe(true)
+  })
+
+  // droid-sdk 0.9.1 had no `script` confirmation; the Daemon's one request
+  // for a whole Script run was dropped and the Session waited forever.
+  test("a Script's one-time permission request parses", () => {
+    const parsed = DaemonRequestPermissionSchema.safeParse({
+      type: 'request',
+      jsonrpc: '2.0',
+      factoryApiVersion: '1.0.0',
+      id: 'r1',
+      method: 'daemon.request_permission',
+      params: {
+        sessionId: SESSION,
+        toolUses: [
+          {
+            toolUse: { type: 'tool_use', id: 'run', name: 'Script', input: { script: 'x' } },
+            confirmationType: 'script',
+            details: {
+              type: 'script',
+              impactLevel: 'medium',
+              calls: [
+                {
+                  toolName: 'Execute',
+                  line: 5,
+                  column: 26,
+                  toolInput: { command: 'touch probe.txt', riskLevel: 'medium' },
+                  confirmation: {
+                    type: 'exec',
+                    fullCommand: 'touch probe.txt',
+                    impactLevel: 'medium',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        options: [{ label: 'Yes, allow all', value: 'proceed_once' }],
+      },
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  test("a Script's calls arrive after it, tagged with the run", () => {
+    const m = manager()
+    const script = { type: 'tool_use', id: 'run', name: 'Script', input: { script: 'x' } }
+    m.notify({ type: 'tool_call', toolUse: script })
+    m.notify({
+      type: 'create_message',
+      message: { id: 'a6', role: 'assistant', content: [script], createdAt: 1, updatedAt: 1 },
+    })
+    m.notify({
+      type: 'create_message',
+      message: {
+        id: 'repl-tool-call:run-1',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'run-1',
+            name: 'Read',
+            input: { file_path: 'README.md' },
+            scriptExecution: { runId: 'run', outerToolUseId: 'run' },
+          },
+        ],
+        createdAt: 2,
+        updatedAt: 2,
+        visibility: 'user_only',
+      },
+    })
+    const uses = m
+      .messages()
+      .flatMap((msg) => msg.content)
+      .filter((b) => b.type === 'tool_use')
+    expect(uses).toMatchObject([
+      { id: 'run', name: 'Script' },
+      { id: 'run-1', scriptExecution: { runId: 'run', outerToolUseId: 'run' } },
+    ])
   })
 
   test('a retracted assistant message disappears', () => {

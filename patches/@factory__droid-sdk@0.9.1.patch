@@ -1,8 +1,17 @@
 diff --git a/dist/chunk-TWSTJMV7.mjs b/dist/chunk-TWSTJMV7.mjs
-index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..12a12c71ddb6b1cfc907a8044927334f21fec11f 100644
+index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..f82b7f6abb5a0418cfe75211f06b1e85c15d4d8b 100644
 --- a/dist/chunk-TWSTJMV7.mjs
 +++ b/dist/chunk-TWSTJMV7.mjs
-@@ -2399,7 +2399,9 @@ var FactoryDroidMessageSchema = z2.object({
+@@ -1481,6 +1481,8 @@ var ToolConfirmationType = /* @__PURE__ */ ((ToolConfirmationType2) => {
+   ToolConfirmationType2["McpTool"] = "mcp_tool";
+   ToolConfirmationType2["SandboxViolation"] = "sandbox_violation";
+   ToolConfirmationType2["DroidShieldViolation"] = "droid_shield_violation";
++  // Droi patch: the Daemon asks once for a whole Script run; without this the request failed to parse.
++  ToolConfirmationType2["Script"] = "script";
+   return ToolConfirmationType2;
+ })(ToolConfirmationType || {});
+ var SandboxViolationType = /* @__PURE__ */ ((SandboxViolationType2) => {
+@@ -2399,7 +2401,9 @@ var FactoryDroidMessageSchema = z2.object({
     * the org behind the route that issued it, so a blob is only replayable to
     * the same `apiProvider`.
     */
@@ -13,7 +22,7 @@ index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..12a12c71ddb6b1cfc907a8044927334f
    /**
     * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
     * active slot was router-configured. Unset for non-router turns.
-@@ -2868,7 +2870,8 @@ var CompactionModelIdValues = [
+@@ -2868,7 +2872,8 @@ var CompactionModelIdValues = [
  ];
  var CompactionModelSchema = z10.union([
    z10.literal(CURRENT_COMPACTION_MODEL),
@@ -23,11 +32,50 @@ index 3b8d60bbbbe7c71849d13f74b42da31266ae03eb..12a12c71ddb6b1cfc907a8044927334f
    z10.string().regex(/^custom:.+$/, "Expected a custom model id")
  ]);
  var MCP_OAUTH_CLIENT_METADATA_DOT_SEGMENT_RE = /(?:^|\/)(?:\.\.|\.(?:%2e)?|%2e(?:\.|%2e)?)(?:\/|$|[?#])/i;
+@@ -3461,6 +3466,19 @@ var DroidShieldViolationConfirmationDetailsSchema = z11.object({
+   command: z11.string(),
+   reason: z11.string()
+ });
++// Droi patch: a Script's one-time request lists the calls it found in the source.
++var ScriptToolConfirmationDetailsSchema = z11.object({
++  type: z11.literal("script"),
++  impactLevel: z11.string(),
++  calls: z11.array(z11.object({
++    toolName: z11.string(),
++    line: z11.number(),
++    column: z11.number(),
++    toolInput: z11.record(z11.unknown()),
++    confirmation: z11.object({ type: z11.string() }).passthrough(),
++    alwaysAsk: z11.boolean().optional()
++  }))
++});
+ var ToolConfirmationDetailsSchema = z11.discriminatedUnion("type", [
+   EditToolConfirmationDetailsSchema,
+   ExecuteToolConfirmationDetailsSchema,
+@@ -3472,7 +3490,8 @@ var ToolConfirmationDetailsSchema = z11.discriminatedUnion("type", [
+   ApplyPatchToolConfirmationDetailsSchema,
+   McpToolConfirmationDetailsSchema,
+   SandboxViolationConfirmationDetailsSchema,
+-  DroidShieldViolationConfirmationDetailsSchema
++  DroidShieldViolationConfirmationDetailsSchema,
++  ScriptToolConfirmationDetailsSchema
+ ]);
+ var ToolConfirmationInfoSchema = z11.object({
+   toolUse: ToolUseSchema,
 diff --git a/dist/chunk-YSKO6SPT.js b/dist/chunk-YSKO6SPT.js
-index 394cbad810d8b6d1eadf491fb2bbd0423b213728..cf9351b4fa45caf9ad061101ff7252e2bbcb273f 100644
+index 394cbad810d8b6d1eadf491fb2bbd0423b213728..e7f8dc9d8cc449f6ab8f9dba17913a9c1451c569 100644
 --- a/dist/chunk-YSKO6SPT.js
 +++ b/dist/chunk-YSKO6SPT.js
-@@ -2399,7 +2399,9 @@ var FactoryDroidMessageSchema = _zod2.default.object({
+@@ -1481,6 +1481,8 @@ var ToolConfirmationType = /* @__PURE__ */ ((ToolConfirmationType2) => {
+   ToolConfirmationType2["McpTool"] = "mcp_tool";
+   ToolConfirmationType2["SandboxViolation"] = "sandbox_violation";
+   ToolConfirmationType2["DroidShieldViolation"] = "droid_shield_violation";
++  // Droi patch: the Daemon asks once for a whole Script run; without this the request failed to parse.
++  ToolConfirmationType2["Script"] = "script";
+   return ToolConfirmationType2;
+ })(ToolConfirmationType || {});
+ var SandboxViolationType = /* @__PURE__ */ ((SandboxViolationType2) => {
+@@ -2399,7 +2401,9 @@ var FactoryDroidMessageSchema = _zod2.default.object({
     * the org behind the route that issued it, so a blob is only replayable to
     * the same `apiProvider`.
     */
@@ -38,7 +86,7 @@ index 394cbad810d8b6d1eadf491fb2bbd0423b213728..cf9351b4fa45caf9ad061101ff7252e2
    /**
     * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
     * active slot was router-configured. Unset for non-router turns.
-@@ -2868,7 +2870,8 @@ var CompactionModelIdValues = [
+@@ -2868,7 +2872,8 @@ var CompactionModelIdValues = [
  ];
  var CompactionModelSchema = _zod.z.union([
    _zod.z.literal(CURRENT_COMPACTION_MODEL),
@@ -48,3 +96,33 @@ index 394cbad810d8b6d1eadf491fb2bbd0423b213728..cf9351b4fa45caf9ad061101ff7252e2
    _zod.z.string().regex(/^custom:.+$/, "Expected a custom model id")
  ]);
  var MCP_OAUTH_CLIENT_METADATA_DOT_SEGMENT_RE = /(?:^|\/)(?:\.\.|\.(?:%2e)?|%2e(?:\.|%2e)?)(?:\/|$|[?#])/i;
+@@ -3461,6 +3466,19 @@ var DroidShieldViolationConfirmationDetailsSchema = _zod2.default.object({
+   command: _zod2.default.string(),
+   reason: _zod2.default.string()
+ });
++// Droi patch: a Script's one-time request lists the calls it found in the source.
++var ScriptToolConfirmationDetailsSchema = _zod2.default.object({
++  type: _zod2.default.literal("script"),
++  impactLevel: _zod2.default.string(),
++  calls: _zod2.default.array(_zod2.default.object({
++    toolName: _zod2.default.string(),
++    line: _zod2.default.number(),
++    column: _zod2.default.number(),
++    toolInput: _zod2.default.record(_zod2.default.unknown()),
++    confirmation: _zod2.default.object({ type: _zod2.default.string() }).passthrough(),
++    alwaysAsk: _zod2.default.boolean().optional()
++  }))
++});
+ var ToolConfirmationDetailsSchema = _zod2.default.discriminatedUnion("type", [
+   EditToolConfirmationDetailsSchema,
+   ExecuteToolConfirmationDetailsSchema,
+@@ -3472,7 +3490,8 @@ var ToolConfirmationDetailsSchema = _zod2.default.discriminatedUnion("type", [
+   ApplyPatchToolConfirmationDetailsSchema,
+   McpToolConfirmationDetailsSchema,
+   SandboxViolationConfirmationDetailsSchema,
+-  DroidShieldViolationConfirmationDetailsSchema
++  DroidShieldViolationConfirmationDetailsSchema,
++  ScriptToolConfirmationDetailsSchema
+ ]);
+ var ToolConfirmationInfoSchema = _zod2.default.object({
+   toolUse: ToolUseSchema,
