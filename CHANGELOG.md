@@ -1,3 +1,9 @@
+## 1.28.0 - 2026-10-02
+
+### Added
+
+- A Session's id, or its details for another Session to read, can be copied from the Session's context menu in the sidebar and from a button in the Session header. The details list the title, the Session id, the Workspace and the path of the transcript file on the computer. On the desktop and in the browser.
+
 ## 1.27.0 - 2026-10-02
 
 ### Added
