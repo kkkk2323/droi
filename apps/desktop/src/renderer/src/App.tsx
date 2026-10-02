@@ -38,6 +38,7 @@ import {
 } from './components/connection-status'
 import { PageHeader } from './components/page-header'
 import { SessionSidebar } from './components/sidebar/session-sidebar'
+import { useCopySession } from './lib/copy-session'
 import { SidebarToggle } from './components/sidebar-toggle'
 import { SessionView } from './components/chat/session-view'
 import { NewSessionPage } from './components/new-session-page'
@@ -74,6 +75,7 @@ export function App() {
 function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
   const [route, navigate] = useHashRoute()
   const connection = useDaemonConnection()
+  const copySession = useCopySession()
   const startingUp = isStartingUp(useConnectionState())
   const narrow = useMediaQuery(NARROW)
   const [drawerRequested, setDrawerOpen] = useState(false)
@@ -218,6 +220,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
       onRename={(session, title) =>
         void connection.controller.renameSession(session.sessionId, title).catch(console.error)
       }
+      onCopy={(session, what) => void copySession(session, what).catch(console.error)}
       isLoading={sessions.isPending}
       error={sessions.error ? sessions.error.message : null}
       older={sessions.hasMore ? { loading: sessions.isLoadingMore, load: sessions.loadMore } : null}

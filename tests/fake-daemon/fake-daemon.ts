@@ -17,6 +17,8 @@ import {
   GATEWAY_SCRATCH_PATH_QUERY,
   GATEWAY_SCRATCH_RESTORE_PATH,
   GATEWAY_SCRATCH_TRASH_PATH,
+  GATEWAY_SESSION_FILE_PATH,
+  GATEWAY_SESSION_ID_QUERY,
   GATEWAY_TOKEN_QUERY,
   type GatewayMeta,
 } from '@droi/daemon-layer/gateway'
@@ -32,6 +34,9 @@ export interface ScratchRequest {
 
 /** Where the Fake Daemon's Gateway makes Scratch Workspaces. */
 export const SCRATCH_FOLDER = '/Users/test/.droi/chats'
+
+/** Where the Fake Daemon's computer keeps Session transcripts. */
+export const SESSIONS_FOLDER = '/Users/test/.factory/sessions'
 
 export interface RecordedRequest {
   connectionId: number
@@ -103,6 +108,17 @@ export class FakeDaemon {
         response.end(JSON.stringify(daemon.meta))
         return
       }
+      if (url.pathname === GATEWAY_SESSION_FILE_PATH) {
+        const path = daemon.acceptsToken(url)
+          ? daemon.sessionFile(url.searchParams.get(GATEWAY_SESSION_ID_QUERY) ?? '')
+          : null
+        response.writeHead(path ? 200 : daemon.acceptsToken(url) ? 404 : 401, {
+          'access-control-allow-origin': '*',
+          ...(path ? { 'content-type': 'application/json' } : {}),
+        })
+        response.end(path ? JSON.stringify({ path }) : undefined)
+        return
+      }
       if (url.pathname.startsWith(GATEWAY_SCRATCH_PATH)) {
         const { status, body } = daemon.#answerScratch(request.method, url)
         response.writeHead(status, {
@@ -167,6 +183,13 @@ export class FakeDaemon {
   resetToken(): string {
     this.token = `test-token-${randomUUID()}`
     return this.token
+  }
+
+  /** Where the Daemon would keep the Session's transcript, laid out as the real one does. */
+  sessionFile(sessionId: string): string | null {
+    const found = this.scenario.sessions.find((s) => s.sessionId === sessionId)
+    if (!found) return null
+    return `${SESSIONS_FOLDER}/${found.cwd.replaceAll('/', '-')}/${sessionId}.jsonl`
   }
 
   /** The Gateway's Scratch Workspace requests, answered as the real one does. */

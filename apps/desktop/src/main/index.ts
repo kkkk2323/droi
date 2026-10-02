@@ -37,6 +37,7 @@ import {
   type GatewayOptions,
 } from './gateway/gateway'
 import { createScratchFolders } from './gateway/scratch-workspaces'
+import { findSessionTranscript } from '../memory/session-workspace'
 import { builtinSoundPath, readSoundAsDataUrl, SOUND_FILE_EXTENSIONS } from './alert-sounds'
 import { locateOpenInApps, type InstalledApp } from './open-in'
 import { computerName } from './computer-name'
@@ -640,6 +641,8 @@ void app.whenReady().then(async () => {
       root: scratchFolder,
       moveToTrash: (path) => shell.trashItem(path),
     }),
+    findSessionFile: (sessionId) =>
+      findSessionTranscript(join(factoryHome(), 'sessions'), sessionId),
     getMeta: () => ({
       app: 'Droi',
       version: app.getVersion(),

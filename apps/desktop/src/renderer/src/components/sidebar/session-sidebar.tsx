@@ -10,6 +10,8 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  Copy,
+  Fingerprint,
   Folder,
   FolderOpen,
   ListFilter,
@@ -33,6 +35,7 @@ import {
   usePreference,
 } from '@droi/daemon-layer/local-preference'
 import { cn } from '@/lib/utils'
+import type { CopyWhat } from '@/lib/copy-session'
 
 const MENU =
   'min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 motion-reduce:transition-none'
@@ -75,6 +78,7 @@ export function SessionSidebar({
   onSelect,
   onArchiveToggle,
   onRename,
+  onCopy,
   isLoading,
   error,
   older,
@@ -97,6 +101,8 @@ export function SessionSidebar({
   onArchiveToggle: (session: SessionSummary) => void
   /** From the row's context menu, once the new title is entered in the row. */
   onRename: (session: SessionSummary, title: string) => void
+  /** From the row's context menu: the Session's id, or its details for another Session to read. */
+  onCopy: (session: SessionSummary, what: CopyWhat) => void
   isLoading: boolean
   error: string | null
   /** Sessions older than the ones listed wait on the Daemon; null when the list is complete. */
@@ -149,6 +155,7 @@ export function SessionSidebar({
       onSelect={onSelect}
       onArchiveToggle={onArchiveToggle}
       onRename={onRename}
+      onCopy={onCopy}
       onNewSessionIn={onNewSessionIn}
     />
   )
@@ -267,6 +274,7 @@ function WorkspaceSection({
   onSelect,
   onArchiveToggle,
   onRename,
+  onCopy,
   onNewSessionIn,
 }: {
   group: WorkspaceGroup
@@ -279,6 +287,7 @@ function WorkspaceSection({
   onSelect: (sessionId: string) => void
   onArchiveToggle: (session: SessionSummary) => void
   onRename: (session: SessionSummary, title: string) => void
+  onCopy: (session: SessionSummary, what: CopyWhat) => void
   onNewSessionIn: (workspace: string | null) => void
 }) {
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -609,6 +618,19 @@ function WorkspaceSection({
                           </>
                         )}
                       </ContextMenu.Item>
+                      <ContextMenu.Separator className="my-1 h-px bg-border" />
+                      <ContextMenu.Item onClick={() => onCopy(session, 'id')} className={MENU_ITEM}>
+                        <Fingerprint aria-hidden className="size-4 text-muted-foreground" />
+                        Copy session ID
+                      </ContextMenu.Item>
+                      <ContextMenu.Item
+                        onClick={() => onCopy(session, 'details')}
+                        className={MENU_ITEM}
+                      >
+                        <Copy aria-hidden className="size-4 text-muted-foreground" />
+                        Copy session details
+                      </ContextMenu.Item>
+                      <ContextMenu.Separator className="my-1 h-px bg-border" />
                       <ContextMenu.Item
                         onClick={() => onArchiveToggle(session)}
                         className={MENU_ITEM}

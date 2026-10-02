@@ -60,6 +60,29 @@ export function gatewayScratchUrl(
   return url.toString()
 }
 
+/**
+ * Where the Daemon keeps a Session's transcript on the computer, for pasting
+ * into another Session. GET with the token and the Session id in the query;
+ * answers 200 with a SessionFileFound, or 404 when there is no such file.
+ */
+export const GATEWAY_SESSION_FILE_PATH = '/session-file'
+export const GATEWAY_SESSION_ID_QUERY = 'sessionId'
+
+export interface SessionFileFound {
+  path: string
+}
+
+export function gatewaySessionFileUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  const url = new URL(GATEWAY_SESSION_FILE_PATH, gatewayHttpUrl)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
+  return url.toString()
+}
+
 export function gatewayDaemonUrl(gatewayHttpUrl: string, pairingToken: string): string {
   const url = new URL(GATEWAY_DAEMON_PATH, gatewayHttpUrl)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

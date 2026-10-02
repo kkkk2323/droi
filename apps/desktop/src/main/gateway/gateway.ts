@@ -2,7 +2,8 @@
 // It checks the Pairing Token at the WebSocket upgrade, supplies the Factory
 // API key in `daemon.authenticate`, adds the Shell's system prompt text to
 // `daemon.initialize_session`, and otherwise forwards frames verbatim. Beside
-// the Daemon socket it answers Droi's own Scratch Workspace requests.
+// the Daemon socket it answers Droi's own Scratch Workspace requests and
+// tells a Client where a Session's transcript is.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { timingSafeEqual } from 'node:crypto'
@@ -17,9 +18,12 @@ import {
   GATEWAY_SCRATCH_PATH_QUERY,
   GATEWAY_SCRATCH_RESTORE_PATH,
   GATEWAY_SCRATCH_TRASH_PATH,
+  GATEWAY_SESSION_FILE_PATH,
+  GATEWAY_SESSION_ID_QUERY,
   GATEWAY_TOKEN_QUERY,
   type GatewayMeta,
   type ScratchWorkspaceCreated,
+  type SessionFileFound,
 } from '@droi/daemon-layer/gateway'
 import { serveStaticFile } from './static-files'
 import { proxyHttp, proxyUpgrade } from './dev-proxy'
@@ -58,6 +62,8 @@ export interface GatewayOptions {
   getMeta: () => GatewayMeta
   /** Scratch Workspaces for Sessions started without a Workspace; absent answers 404. */
   scratch?: ScratchFolders
+  /** Where the Daemon keeps a Session's transcript; null when it has none. Absent answers 404. */
+  findSessionFile?: (sessionId: string) => string | null
   client: ClientSource
 }
 
@@ -396,6 +402,21 @@ async function answerScratch(
   }
 }
 
+function answerSessionFile(
+  options: GatewayOptions,
+  request: IncomingMessage,
+  url: URL,
+): { status: number; body?: SessionFileFound } {
+  if (classifyToken(url.searchParams.get(GATEWAY_TOKEN_QUERY), options) === null) {
+    return { status: 401 }
+  }
+  if (request.method !== 'GET') return { status: 405 }
+  const sessionId = url.searchParams.get(GATEWAY_SESSION_ID_QUERY)
+  if (!sessionId) return { status: 400 }
+  const path = options.findSessionFile?.(sessionId) ?? null
+  return path ? { status: 200, body: { path } } : { status: 404 }
+}
+
 function handleHttp(options: GatewayOptions, request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url ?? '/', 'http://gateway')
   if (url.pathname === GATEWAY_DAEMON_PATH) {
@@ -418,6 +439,16 @@ function handleHttp(options: GatewayOptions, request: IncomingMessage, response:
       })
       response.end(body ? JSON.stringify(body) : undefined)
     })
+    return
+  }
+  if (url.pathname === GATEWAY_SESSION_FILE_PATH) {
+    const { status, body } = answerSessionFile(options, request, url)
+    response.writeHead(status, {
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    })
+    response.end(body ? JSON.stringify(body) : undefined)
     return
   }
   if (url.pathname === GATEWAY_META_PATH) {

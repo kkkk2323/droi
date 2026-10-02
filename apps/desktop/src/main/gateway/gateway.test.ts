@@ -5,6 +5,7 @@ import {
   gatewayDaemonUrl,
   gatewayPairingCheckUrl,
   gatewayScratchUrl,
+  gatewaySessionFileUrl,
   GATEWAY_API_KEY_PLACEHOLDER,
   GATEWAY_SCRATCH_PATH,
   GATEWAY_SCRATCH_RESTORE_PATH,
@@ -425,5 +426,56 @@ describe('Gateway Scratch Workspaces', () => {
     expect(await response.json()).toEqual({ error: '/etc is not a Scratch Workspace' })
     fail = new Error('EACCES')
     expect((await post(GATEWAY_SCRATCH_PATH, TOKEN)).status).toBe(500)
+  })
+})
+
+describe('Gateway session files', () => {
+  let gateway: Gateway
+  let asked: string[]
+
+  beforeEach(async () => {
+    asked = []
+    gateway = await startGateway({
+      port: 0,
+      remoteAccess: false,
+      getDaemonUrl: () => null,
+      getPairingToken: () => TOKEN,
+      getLocalToken: () => LOCAL_TOKEN,
+      getCredential: async () => ({ apiKey: API_KEY }),
+      getMeta: () => ({ ...META, remoteAccess: false }),
+      findSessionFile: (sessionId) => {
+        asked.push(sessionId)
+        return sessionId === 'known'
+          ? '/Users/me/.factory/sessions/-Users-me-app/known.jsonl'
+          : null
+      },
+      client: { kind: 'none' },
+    })
+  })
+
+  afterEach(() => gateway.close())
+
+  test('answers the transcript path for either token', async () => {
+    for (const token of [TOKEN, LOCAL_TOKEN]) {
+      const response = await fetch(gatewaySessionFileUrl(gateway.url, token, 'known'))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('access-control-allow-origin')).toBe('*')
+      expect(await response.json()).toEqual({
+        path: '/Users/me/.factory/sessions/-Users-me-app/known.jsonl',
+      })
+    }
+  })
+
+  test('a Session without a file is 404', async () => {
+    expect((await fetch(gatewaySessionFileUrl(gateway.url, TOKEN, 'gone'))).status).toBe(404)
+  })
+
+  test('refuses a wrong token and a POST without looking', async () => {
+    expect((await fetch(gatewaySessionFileUrl(gateway.url, 'nope', 'known'))).status).toBe(401)
+    const post = await fetch(gatewaySessionFileUrl(gateway.url, TOKEN, 'known'), {
+      method: 'POST',
+    })
+    expect(post.status).toBe(405)
+    expect(asked).toEqual([])
   })
 })

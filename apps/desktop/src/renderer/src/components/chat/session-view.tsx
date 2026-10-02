@@ -20,6 +20,7 @@ import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { cn } from '@/lib/utils'
 import { CompactedNotice, ComposerShelf, ContextMeter } from './composer-panels'
+import { CopySessionMenu } from './copy-session-menu'
 import { GitChangesButton } from './git-changes'
 import { OpenInButton } from './open-in'
 import { InputBar, type InputBarHandle, type Submission } from './input-bar'
@@ -194,6 +195,7 @@ export function SessionView({
       >
         <SubagentMenu subagents={subagents} />
         <GitChangesButton changes={gitChanges} />
+        <CopySessionMenu sessionId={sessionId} title={title} workspace={workspace} />
         <OpenInButton path={workspace} bridge={window.droiShell?.openIn ?? null} />
       </PageHeader>
 
