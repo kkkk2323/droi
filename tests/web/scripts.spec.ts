@@ -79,6 +79,17 @@ test.describe('Script runs', () => {
       0,
     )
   })
+
+  test('a reply typesets its TeX', async ({ page, openClient, pickSession }) => {
+    await openClient()
+    await pickSession(/Release report/)
+    const reply = page
+      .getByRole('log', { name: 'Transcript' })
+      .getByRole('article', { name: 'Assistant' })
+    await expect(reply.locator('.katex')).toHaveCount(2)
+    await expect(reply.locator('.katex-display')).toHaveCount(1)
+    await expect(reply).not.toContainText('$$')
+  })
 })
 
 test.describe('Script permission', () => {

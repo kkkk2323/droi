@@ -1,14 +1,16 @@
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
+import { mathFromMarkdown } from 'mdast-util-math'
 import { gfm } from 'micromark-extension-gfm'
+import { math } from 'micromark-extension-math'
 import { describe, expect, test } from 'vitest'
 import { parseMarkdown, repairStreaming } from './parse'
 
 /** The tree a streaming text gets when it is parsed whole. */
 function wholeParse(text: string) {
   return fromMarkdown(repairStreaming(text), {
-    extensions: [gfm()],
-    mdastExtensions: [gfmFromMarkdown()],
+    extensions: [gfm(), math()],
+    mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
   })
 }
 
@@ -72,6 +74,7 @@ const REPLIES = [
     '[^1]: The note.',
   ].join('\n'),
   'Before\n\n* item\n* **bold item\n\nAfter the list `x` and *more',
+  'The rule:\n\n$$\n\\frac{p_r}{p_o} > \\frac{N}{C}\n$$\n\nwhere $N$ is the count and $C$ the size.\n',
 ]
 
 describe('parseMarkdown while streaming', () => {
@@ -115,6 +118,16 @@ describe('parseMarkdown', () => {
     ])
     const code = tree.children[3]
     expect(code?.type === 'code' && [code.lang, code.value]).toEqual(['ts', 'const x = 1'])
+  })
+
+  test('reads TeX between $$ as a block and between $ inline', () => {
+    const tree = parseMarkdown('$$\n\\frac{a}{b}\n$$\n\nwhere $N$ counts')
+    const [block, paragraph] = tree.children
+    expect(block?.type === 'math' && block.value).toBe('\\frac{a}{b}')
+    expect(
+      paragraph?.type === 'paragraph' &&
+        paragraph.children.map((node) => (node.type === 'inlineMath' ? node.value : node.type)),
+    ).toEqual(['text', 'N', 'text'])
   })
 
   test('a streaming reply cut inside a fence renders as a code block', () => {

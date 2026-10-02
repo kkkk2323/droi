@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react'
 import { code, type ThemeInput } from '@streamdown/code'
+import { createMathPlugin } from '@streamdown/math'
 import { Streamdown, type Components } from 'streamdown'
 import { localImagePath, useLocalImage } from '@droi/daemon-layer/local-image'
 import { solarizedLightPlus } from '@/lib/solarized-light-plus'
@@ -23,7 +24,8 @@ export function Markdown({ text, className }: { text: string; className?: string
 
 const COMPONENTS: Components = { img: MarkdownImage }
 
-const PLUGINS = { code }
+// Droid is told to write inline math between single dollars.
+const PLUGINS = { code, math: createMathPlugin({ singleDollarTextMath: true }) }
 
 // Streamdown paints code in the first theme and in the second under `.dark`.
 const CODE_THEMES: Record<Theme, [ThemeInput, ThemeInput]> = {

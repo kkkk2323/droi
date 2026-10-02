@@ -440,6 +440,11 @@ html[data-font='system'] {
 .prose-droi [data-streamdown='table'] {
   margin-block: 0;
 }
+/* A formula wider than the column scrolls on its own instead of the page. */
+.prose-droi .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 .prose-droi [data-streamdown='inline-code'] {
   color: var(--code);
   background: var(--code-bg);

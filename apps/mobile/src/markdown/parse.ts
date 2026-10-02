@@ -1,11 +1,14 @@
 // Markdown as a syntax tree for the Phone App's renderer: CommonMark plus
-// GitHub's tables, task lists, strikethrough and autolinks. A reply that is
+// GitHub's tables, task lists, strikethrough and autolinks, and TeX math
+// between $ and $$. A reply that is
 // still streaming may end inside a code fence or a span; it is closed first
 // so the half-written part renders as what it will become.
 import type { Nodes, Root } from 'mdast'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
+import { mathFromMarkdown } from 'mdast-util-math'
 import { gfm } from 'micromark-extension-gfm'
+import { math } from 'micromark-extension-math'
 
 // A settled text parses the same every time; rows mount again as they scroll
 // back into view. The newest texts stay cached, a streaming one never.
@@ -26,7 +29,10 @@ export function parseMarkdown(text: string, { streaming = false } = {}): Root {
 }
 
 function parse(text: string): Root {
-  return fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] })
+  return fromMarkdown(text, {
+    extensions: [gfm(), math()],
+    mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
+  })
 }
 
 // A streaming reply only grows at its end. Markdown settles its blocks line by

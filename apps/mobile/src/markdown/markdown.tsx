@@ -5,11 +5,13 @@ import type { Nodes, Parents, PhrasingContent, RootContent, Table } from 'mdast'
 import { Check, Copy } from 'lucide-react-native'
 import { memo, useState, type ReactNode } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text as RNText, View } from 'react-native'
+import { SvgXml } from 'react-native-svg'
 import { copyText } from '../platform/clipboard'
 import { Text } from '../ui/primitives'
 import { useTextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space, type Colors } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { typeset } from './math'
 import { parseMarkdown } from './parse'
 import { columnWidths } from './table-layout'
 
@@ -75,6 +77,8 @@ function block(node: RootContent, key: number, context: Context): ReactNode {
       )
     case 'code':
       return <CodeBlock key={key} code={node.value} lang={node.lang ?? null} />
+    case 'math':
+      return <MathBlock key={key} tex={node.value} context={context} />
     case 'blockquote':
       return (
         <View key={key} style={[styles.quote, { borderLeftColor: colors.border }]}>
@@ -169,6 +173,8 @@ function inline(nodes: readonly PhrasingContent[], context: Context): ReactNode[
             {inline(node.children, context)}
           </RNText>
         )
+      case 'inlineMath':
+        return <InlineMath key={keyOf(node, i)} tex={node.value} context={context} />
       case 'break':
         return '\n'
       case 'image':
@@ -251,6 +257,61 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
   )
 }
 
+function MathBlock({ tex, context }: { tex: string; context: Context }) {
+  const formula = typeset(tex, true)
+  if (!formula) return <CodeBlock code={tex} lang="latex" />
+  const em = fontSize.base * context.scale
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.mathBlock}
+    >
+      <View role="img" aria-label={tex}>
+        <SvgXml
+          xml={formula.svg}
+          width={formula.width * em}
+          height={formula.height * em}
+          color={inkOf(context)}
+        />
+      </View>
+    </ScrollView>
+  )
+}
+
+function InlineMath({ tex, context }: { tex: string; context: Context }) {
+  const formula = typeset(tex, false)
+  if (!formula) {
+    return (
+      <RNText
+        style={{
+          fontFamily: fonts.mono,
+          fontSize: fontSize.sm * context.scale,
+          color: context.colors.codeInline,
+        }}
+      >
+        {tex}
+      </RNText>
+    )
+  }
+  const em = fontSize.base * context.scale
+  // A view inside text stands on the baseline; the formula's depth hangs below it.
+  return (
+    <View role="img" aria-label={tex} style={{ transform: [{ translateY: formula.depth * em }] }}>
+      <SvgXml
+        xml={formula.svg}
+        width={formula.width * em}
+        height={formula.height * em}
+        color={inkOf(context)}
+      />
+    </View>
+  )
+}
+
+function inkOf({ colors, muted }: Context): string {
+  return muted ? colors.mutedForeground : colors.foreground
+}
+
 function MarkdownTable({ table, context }: { table: Table; context: Context }) {
   const { colors } = context
   const widths = columnWidths(table, {
@@ -307,6 +368,7 @@ const styles = StyleSheet.create({
     paddingTop: space.sm,
   },
   codeText: { padding: space.md, lineHeight: 18 },
+  mathBlock: { flexGrow: 1, justifyContent: 'center', paddingVertical: space.xs },
   table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md },
   tableRow: { flexDirection: 'row' },
   tableCell: { paddingHorizontal: space.sm, paddingVertical: space.xs },

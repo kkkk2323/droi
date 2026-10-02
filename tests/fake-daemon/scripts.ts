@@ -92,11 +92,17 @@ export function scriptScenario() {
     userMessage('Summarize the release'),
     assistantMessage(
       [
-        'Here is where the release stands.',
+        'Here is where the release stands, drawn from a `<json-render>` tag.',
         '',
         `<json-render>${JSON.stringify(RELEASE_REPORT)}</json-render>`,
         '',
         'Ship once the last check is green.',
+        '',
+        'Rollout is $r = n / N$ of the devices:',
+        '',
+        '$$',
+        'r = \\frac{n}{N}',
+        '$$',
         '',
         '```html',
         '<json-render>{"root":"quoted"}</json-render>',

@@ -13,6 +13,7 @@ import { applyStoredTheme } from './lib/theme'
 import { applyTextSize } from './lib/text-size'
 import { applyFont } from './lib/font'
 import 'streamdown/styles.css'
+import 'katex/dist/katex.min.css'
 import './styles/global.css'
 
 try {

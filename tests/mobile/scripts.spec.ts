@@ -62,6 +62,15 @@ test.describe('Script runs', () => {
     await expect(transcript).toContainText('Ship once the last check is green.')
     await expect(transcript).not.toContainText('"elements"')
   })
+
+  test('a reply typesets its TeX', async ({ page, fakeDaemon }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /Release report/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript.getByRole('img', { name: 'r = n / N' })).toBeVisible()
+    await expect(transcript.getByRole('img', { name: 'r = \\frac{n}{N}' })).toBeVisible()
+    await expect(transcript).not.toContainText('$$')
+  })
 })
 
 test.describe('Script permission', () => {
