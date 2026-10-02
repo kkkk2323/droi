@@ -1,3 +1,13 @@
+## 1.27.0 - 2026-10-02
+
+### Added
+
+- Math in a reply is drawn as a formula instead of shown as TeX: a block between `$$` and inline math between single `$`. TeX that cannot be read is shown as its source, and a formula wider than the column scrolls on its own. On the desktop, in the browser and on the phone.
+
+### Fixed
+
+- A reply that mentions `<json-render>` in inline code no longer shows everything after it as a JSON code block. On the desktop, in the browser and on the phone.
+
 ## 1.26.0 - 2026-10-02
 
 ### Added
