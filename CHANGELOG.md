@@ -1,3 +1,14 @@
+## 1.26.0 - 2026-10-02
+
+### Added
+
+- A Script, the Daemon's tool that runs a small program calling other tools, shows as one row with the calls it made listed under it, instead of a row of escaped JavaScript beside them. It opens to the program with line numbers, its inputs, and what Droid read back, with the run's figures and its log file below. A run that takes longer than a minute says it is still running, and where Droid waits for it the calls it made meanwhile appear. A Script's permission card lists each call it will make by line, with the command and its impact, and shows the program on request. On the desktop, in the browser and on the phone.
+- Rich output in a reply (`<json-render>`: tables, status lines, progress bars, charts, cards, timelines) is drawn in place instead of showing as raw JSON. On the desktop, in the browser and on the phone.
+
+### Fixed
+
+- A Session no longer waits forever when a Script asks for permission. The request never reached Droi, so the Session showed "Needs input" with no card to answer. On the desktop, in the browser and on the phone.
+
 ## 1.25.0 - 2026-10-01
 
 ### Changed
