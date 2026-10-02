@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
-import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react'
+import { Check, ChevronRight, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { permissionDetail } from '@droi/daemon-layer/tool-calls'
+import {
+  permissionDetail,
+  scriptPermission,
+  type ScriptPermission,
+} from '@droi/daemon-layer/tool-calls'
+import { SourceView } from './script-run'
 import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
 import { cn } from '@/lib/utils'
 
@@ -61,14 +66,21 @@ export function PermissionCard({
       </span>
       <p className="mt-1.5 text-[13px] leading-[18px] font-medium">Droid wants to run {title}</p>
       <ul className="mt-2 flex flex-col gap-1">
-        {permission.toolUses.map((use) => (
-          <li
-            key={use.toolUse.id}
-            className="rounded-lg bg-card px-2.5 py-1.5 font-mono text-xs leading-5 break-all"
-          >
-            {permissionDetail(use.details, use.toolUse.input)}
-          </li>
-        ))}
+        {permission.toolUses.map((use) => {
+          const script = scriptPermission(use.details)
+          return script ? (
+            <li key={use.toolUse.id}>
+              <ScriptPermissionDetail permission={script} input={use.toolUse.input} />
+            </li>
+          ) : (
+            <li
+              key={use.toolUse.id}
+              className="rounded-lg bg-card px-2.5 py-1.5 font-mono text-xs leading-5 break-all"
+            >
+              {permissionDetail(use.details, use.toolUse.input)}
+            </li>
+          )
+        })}
       </ul>
       {/* One row per answer, like the question card's options; a click answers. */}
       <div className="mt-2.5 grid gap-1">
@@ -96,6 +108,75 @@ export function PermissionCard({
         })}
       </div>
     </section>
+  )
+}
+
+const IMPACT_TONE: Record<string, string> = {
+  low: 'text-muted-foreground',
+  medium: 'text-attention-foreground',
+  high: 'text-destructive-foreground',
+}
+
+/**
+ * A Script asks once for the calls it can see in its source: each by line,
+ * as its own Prompt would show it, with the program a click away.
+ */
+function ScriptPermissionDetail({
+  permission,
+  input,
+}: {
+  permission: ScriptPermission
+  input: Record<string, unknown>
+}) {
+  const script = typeof input['script'] === 'string' ? input['script'] : ''
+  const [open, setOpen] = useState(permission.calls.length === 0)
+  const lines = new Set(permission.calls.map((c) => c.line))
+  return (
+    <div className="overflow-hidden rounded-lg bg-card">
+      {permission.calls.length > 0 ? (
+        <ol aria-label="Calls in the Script" className="flex flex-col py-1">
+          {permission.calls.map((call) => (
+            <li
+              key={`${call.line}:${call.tool}:${call.detail}`}
+              className="flex items-baseline gap-2 px-2.5 py-0.5 text-xs leading-5"
+            >
+              <span className="w-8 shrink-0 font-mono text-[11px] text-muted-foreground/70 tabular-nums">
+                L{call.line}
+              </span>
+              <span className="shrink-0 font-medium">{call.tool}</span>
+              <span className="min-w-0 flex-1 font-mono break-all">{call.detail}</span>
+              {call.impact ? (
+                <span
+                  className={cn(
+                    'shrink-0 text-[11px]',
+                    IMPACT_TONE[call.impact] ?? 'text-muted-foreground',
+                  )}
+                >
+                  {call.impact}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {script ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="flex h-6 w-full items-center gap-1 border-t px-2.5 text-left text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <ChevronRight
+              aria-hidden
+              className={cn('size-3 transition-transform duration-150', open && 'rotate-90')}
+            />
+            {open ? 'Hide source' : 'Show source'}
+          </button>
+          {open ? <SourceView script={script} highlight={lines} className="max-h-60" /> : null}
+        </>
+      ) : null}
+    </div>
   )
 }
 

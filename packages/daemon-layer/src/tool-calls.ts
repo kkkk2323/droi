@@ -1,6 +1,7 @@
 // What the transcript shows for a tool call, whichever Client draws it: a
 // one-line summary, the input, and the result read as a diff, a status or
 // plain text, with any pictures it handed back.
+import { leafCalls } from './script-runs'
 import { toolResultImages, toolResultText, type ToolCall } from './transcript'
 
 export interface DiffLine {
@@ -195,6 +196,65 @@ export function permissionDetail(details: unknown, input: Record<string, unknown
   if (typeof d['filePath'] === 'string') return d['filePath']
   if (typeof input['command'] === 'string') return `$ ${input['command']}`
   return JSON.stringify(input)
+}
+
+export interface ScriptPermissionCall {
+  /** Where the call sits in the program, 1-based. */
+  line: number
+  tool: string
+  detail: string
+  /** The Daemon's impact level for this one call, when it gave one (`low`, `medium`, `high`). */
+  impact: string | null
+}
+
+export interface ScriptPermission {
+  /** The highest impact among the calls. */
+  impact: string | null
+  calls: ScriptPermissionCall[]
+}
+
+/**
+ * A Script asks once for the calls it can see in its own source, each with
+ * the details its direct call would have asked with. Calls whose input is
+ * only known at run time are asked about one by one as they come.
+ */
+export function scriptPermission(details: unknown): ScriptPermission | null {
+  const d = (details ?? {}) as Record<string, unknown>
+  if (d['type'] !== 'script' || !Array.isArray(d['calls'])) return null
+  const calls: ScriptPermissionCall[] = []
+  for (const raw of d['calls'] as unknown[]) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const entry = raw as Record<string, unknown>
+    const confirmation = (entry['confirmation'] ?? {}) as Record<string, unknown>
+    const input = (entry['toolInput'] ?? {}) as Record<string, unknown>
+    calls.push({
+      line: typeof entry['line'] === 'number' ? entry['line'] : 0,
+      tool: toolDisplayName(String(entry['toolName'] ?? '')).tool,
+      detail: permissionDetail(confirmation, input),
+      impact: typeof confirmation['impactLevel'] === 'string' ? confirmation['impactLevel'] : null,
+    })
+  }
+  return {
+    impact: typeof d['impactLevel'] === 'string' ? d['impactLevel'] : null,
+    calls,
+  }
+}
+
+/**
+ * What a tool cluster's header says: the one tool's name or how many ran,
+ * with a Script counted as the calls it made. Pending while any call, or any
+ * call a Script made, is still to answer.
+ */
+export function clusterLabel(calls: readonly ToolCall[]): { label: string; pending: boolean } {
+  const leaves = leafCalls(calls)
+  const pending = calls.some((c) => c.result === null) || leaves.some((c) => c.result === null)
+  const only = leaves.length === 1 ? leaves[0] : leaves.length === 0 ? calls[0] : undefined
+  const what = only
+    ? toolDisplayName(only.use.name).tool
+    : leaves.length === 0
+      ? 'a tool'
+      : `${leaves.length} tools`
+  return { label: pending ? `Running ${what}` : `Used ${what}`, pending }
 }
 
 /** The result's text and how it reads, for the row and its detail. */

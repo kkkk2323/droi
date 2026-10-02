@@ -10,7 +10,7 @@ import {
 } from '@droi/daemon-layer/transcript'
 import { memo } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
-import { Markdown } from '../markdown/markdown'
+import { Reply } from '../markdown/json-render'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
@@ -99,7 +99,7 @@ function renderBlock(
 ) {
   switch (block.kind) {
     case 'text':
-      return <Markdown text={block.text} streaming={turnStreaming && last} />
+      return <Reply text={block.text} streaming={turnStreaming && last} />
     case 'image':
       return (
         <Image

@@ -11,6 +11,11 @@ export type ThinkingBlock = Extract<ContentBlock, { type: 'thinking' }>
 export interface ToolCall {
   use: ToolUseBlock
   result: ToolResultBlock | null
+  /**
+   * Set on a Script or WaitForScript call: the calls its run made while this
+   * call was the latest one watching it (see script-runs.ts).
+   */
+  nested?: ToolCall[]
 }
 
 export type TranscriptBlock =
@@ -24,6 +29,19 @@ export type TranscriptBlock =
 
 /** The tool that starts a subagent. */
 export const TASK_TOOL = 'Task'
+
+/** The tool that runs a program calling other tools, and the one that waits on a run past its first minute. */
+export const SCRIPT_TOOL = 'Script'
+export const WAIT_FOR_SCRIPT_TOOL = 'WaitForScript'
+
+/** The run a Script or WaitForScript call is about: the Script's own tool use id. */
+export function scriptRunOf(use: ToolUseBlock): string | null {
+  if (use.scriptExecution) return null
+  if (use.name === SCRIPT_TOOL) return use.id
+  const watched = use.input['toolCallId']
+  if (use.name === WAIT_FOR_SCRIPT_TOOL && typeof watched === 'string') return watched
+  return null
+}
 
 export interface TranscriptEntry {
   id: string
@@ -42,6 +60,9 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
     }
   }
 
+  // A call a Script made goes under the latest call watching its run, so the
+  // calls a WaitForScript saw show where that wait sits in the turn.
+  const watching = new Map<string, ToolCall>()
   const entries: TranscriptEntry[] = []
   for (const message of messages) {
     if (message.role !== 'user' && message.role !== 'assistant') continue
@@ -67,7 +88,19 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
             })
           break
         case 'tool_use': {
-          const call = { use: block, result: results.get(block.id) ?? null }
+          const call: ToolCall = { use: block, result: results.get(block.id) ?? null }
+          const owner = block.scriptExecution
+            ? watching.get(block.scriptExecution.outerToolUseId)
+            : undefined
+          if (owner) {
+            owner.nested!.push(call)
+            break
+          }
+          const run = scriptRunOf(block)
+          if (run) {
+            call.nested = []
+            watching.set(run, call)
+          }
           if (block.name === TASK_TOOL) {
             blocks.push({ kind: 'subagent', id, call })
             break
@@ -127,7 +160,9 @@ function sameCalls(a: readonly ToolCall[], b: readonly ToolCall[]): boolean {
 }
 
 function sameCall(a: ToolCall, b: ToolCall): boolean {
-  return a.use === b.use && a.result === b.result
+  if (a.use !== b.use || a.result !== b.result) return false
+  if (!a.nested || !b.nested) return a.nested === b.nested
+  return sameCalls(a.nested, b.nested)
 }
 
 function sameBlock(a: TranscriptBlock, b: TranscriptBlock): boolean {

@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import {
+  clusterLabel,
   createdFileDiff,
   parseDiffResult,
   parseStatusResult,
   permissionDetail,
+  scriptPermission,
   toolDisplayName,
   toolSummary,
   toolSummaryParts,
@@ -171,5 +173,74 @@ describe('permissionDetail', () => {
   test('falls back to the input: its command, else all of it', () => {
     expect(permissionDetail(undefined, { command: 'ls' })).toBe('$ ls')
     expect(permissionDetail(null, { url: 'https://x' })).toBe('{"url":"https://x"}')
+  })
+})
+
+describe('scriptPermission', () => {
+  // As the Daemon sent it for a Script with two literal Execute calls.
+  const details = {
+    type: 'script',
+    impactLevel: 'medium',
+    calls: [
+      {
+        toolName: 'Execute',
+        line: 3,
+        column: 26,
+        toolInput: { command: 'sleep 70 && echo slept', riskLevel: 'low' },
+        confirmation: {
+          type: 'exec',
+          fullCommand: 'sleep 70 && echo slept',
+          command: 'sleep, echo',
+          impactLevel: 'low',
+        },
+      },
+      {
+        toolName: 'droi-memory___memory_add',
+        line: 5,
+        column: 1,
+        toolInput: { text: 'x' },
+        confirmation: { type: 'mcp_tool', toolName: 'memory_add' },
+      },
+    ],
+  }
+
+  test('lists each call by line with what its own Prompt would show', () => {
+    expect(scriptPermission(details)).toEqual({
+      impact: 'medium',
+      calls: [
+        { line: 3, tool: 'Execute', detail: '$ sleep 70 && echo slept', impact: 'low' },
+        { line: 5, tool: 'memory_add', detail: '{"text":"x"}', impact: null },
+      ],
+    })
+  })
+
+  test('anything else is not a Script request', () => {
+    expect(scriptPermission({ type: 'exec', fullCommand: 'ls' })).toBeNull()
+    expect(scriptPermission(undefined)).toBeNull()
+  })
+})
+
+describe('clusterLabel', () => {
+  const done = (name: string, nested?: ToolCall[]): ToolCall =>
+    ({
+      use: { type: 'tool_use', id: name, name, input: {} },
+      result: { type: 'tool_result', toolUseId: name, content: 'ok' },
+      ...(nested ? { nested } : {}),
+    }) as unknown as ToolCall
+
+  test('a Script counts as the calls it made', () => {
+    expect(clusterLabel([done('Script', [done('Read'), done('Grep')]), done('LS')])).toEqual({
+      label: 'Used 3 tools',
+      pending: false,
+    })
+    expect(clusterLabel([done('Script', [done('Read')])]).label).toBe('Used Read')
+    expect(clusterLabel([done('Script', [])]).label).toBe('Used Script')
+  })
+
+  test("pending while a Script's call is still running", () => {
+    expect(clusterLabel([done('Script', [call('Execute', {})])])).toEqual({
+      label: 'Running Execute',
+      pending: true,
+    })
   })
 })

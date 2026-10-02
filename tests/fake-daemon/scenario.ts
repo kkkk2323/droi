@@ -42,7 +42,8 @@ export interface MessageFixture {
   content: Array<Record<string, unknown>>
   createdAt: number
   updatedAt: number
-  visibility: 'both'
+  /** `user_only` for what the model never sees, such as the calls a Script made. */
+  visibility: 'both' | 'user_only'
 }
 
 export interface HandlerContext {

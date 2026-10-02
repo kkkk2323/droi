@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import { Collapsible } from '@base-ui/react/collapsible'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Reply } from './json-render'
 import { Markdown } from './markdown'
 import { SubagentCard } from './subagent-card'
 import { ToolCluster } from './tool-activity'
@@ -60,10 +61,16 @@ export const MessageEntry = memo(function MessageEntry({
       aria-label="Assistant"
       className={cn(COLUMN, 'py-3', entry.isError && 'text-destructive-foreground')}
     >
-      {entry.blocks.map((block) => {
+      {entry.blocks.map((block, index) => {
         switch (block.kind) {
           case 'text':
-            return <Markdown key={block.id} text={block.text} />
+            return (
+              <Reply
+                key={block.id}
+                text={block.text}
+                streaming={isStreaming && index === entry.blocks.length - 1}
+              />
+            )
           case 'image':
             return (
               <img

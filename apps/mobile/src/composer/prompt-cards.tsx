@@ -3,7 +3,11 @@
 // line for an answer of one's own, or cancelled. Whichever Client answers
 // first wins, and the card goes everywhere.
 import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
-import { permissionDetail } from '@droi/daemon-layer/tool-calls'
+import {
+  permissionDetail,
+  scriptPermission,
+  type ScriptPermission,
+} from '@droi/daemon-layer/tool-calls'
 import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
 import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react-native'
 import { useState } from 'react'
@@ -12,6 +16,7 @@ import { Button, Text } from '../ui/primitives'
 import { useTextScale } from '../ui/text-scale'
 import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
+import { SourceView } from '../transcript/script-run'
 
 export function hasPrompt(prompts: ReturnType<typeof usePrompts>): boolean {
   return prompts.permissions.length > 0 || prompts.askUser.length > 0
@@ -72,17 +77,26 @@ function PermissionCard({
       <Text size="sm" weight="medium">
         Droid wants to run {title}
       </Text>
-      {permission.toolUses.map((use) => (
-        <Text
-          key={use.toolUse.id}
-          selectable
-          size="xs"
-          mono
-          style={[styles.detail, { backgroundColor: colors.card }]}
-        >
-          {permissionDetail(use.details, use.toolUse.input)}
-        </Text>
-      ))}
+      {permission.toolUses.map((use) => {
+        const script = scriptPermission(use.details)
+        return script ? (
+          <ScriptPermissionDetail
+            key={use.toolUse.id}
+            permission={script}
+            input={use.toolUse.input}
+          />
+        ) : (
+          <Text
+            key={use.toolUse.id}
+            selectable
+            size="xs"
+            mono
+            style={[styles.detail, { backgroundColor: colors.card }]}
+          >
+            {permissionDetail(use.details, use.toolUse.input)}
+          </Text>
+        )
+      })}
       <View style={styles.options}>
         {permission.options.map((option) => {
           const cancel = option.value === 'cancel'
@@ -114,6 +128,76 @@ function PermissionCard({
           )
         })}
       </View>
+    </View>
+  )
+}
+
+/**
+ * A Script asks once for the calls it can see in its source: each by line,
+ * as its own Prompt would show it, with the program a tap away.
+ */
+function ScriptPermissionDetail({
+  permission,
+  input,
+}: {
+  permission: ScriptPermission
+  input: Record<string, unknown>
+}) {
+  const colors = useColors()
+  const script = typeof input['script'] === 'string' ? input['script'] : ''
+  const [open, setOpen] = useState(permission.calls.length === 0)
+  const impactColor = (impact: string | null) =>
+    impact === 'high'
+      ? colors.destructiveForeground
+      : impact === 'medium'
+        ? colors.attention
+        : colors.mutedForeground
+  return (
+    <View style={[styles.script, { backgroundColor: colors.card }]}>
+      {permission.calls.length > 0 ? (
+        <View role="list" aria-label="Calls in the Script" style={styles.scriptCalls}>
+          {permission.calls.map((call) => (
+            <View
+              key={`${call.line}:${call.tool}:${call.detail}`}
+              role="listitem"
+              aria-label={`Line ${call.line}, ${call.tool}: ${call.detail}${call.impact ? `, ${call.impact}` : ''}`}
+              style={styles.scriptCall}
+            >
+              <Text tone="muted" size="xs" mono style={styles.scriptLine}>
+                L{call.line}
+              </Text>
+              <Text size="xs" weight="medium">
+                {call.tool}
+              </Text>
+              <Text selectable size="xs" mono style={styles.fill}>
+                {call.detail}
+              </Text>
+              {call.impact ? (
+                <Text size="xs" style={{ color: impactColor(call.impact) }}>
+                  {call.impact}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {script ? (
+        <>
+          <Pressable
+            role="button"
+            aria-expanded={open}
+            onPress={() => setOpen(!open)}
+            style={[styles.sourceToggle, { borderTopColor: colors.border }]}
+          >
+            <Text tone="muted" size="xs">
+              {open ? 'Hide source' : 'Show source'}
+            </Text>
+          </Pressable>
+          {open ? (
+            <SourceView script={script} highlight={new Set(permission.calls.map((c) => c.line))} />
+          ) : null}
+        </>
+      ) : null}
     </View>
   )
 }
@@ -269,6 +353,21 @@ const styles = StyleSheet.create({
   kicker: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   progress: { paddingHorizontal: 6, borderRadius: 5, overflow: 'hidden' },
   detail: { borderRadius: radius.md, paddingHorizontal: space.sm, paddingVertical: 6 },
+  script: { borderRadius: radius.md, overflow: 'hidden' },
+  scriptCalls: { paddingVertical: space.xs },
+  scriptCall: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: space.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+  },
+  scriptLine: { width: 28 },
+  sourceToggle: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: space.sm,
+    paddingVertical: 6,
+  },
   options: { gap: space.xs },
   option: {
     flexDirection: 'row',

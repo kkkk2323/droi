@@ -2,6 +2,7 @@
 // that folds the list, and rows with a success or failure mark that open to
 // the input and the result (a line diff for Edit and Create).
 import {
+  clusterLabel,
   readToolResult,
   toolDisplayName,
   toolInputText,
@@ -33,6 +34,7 @@ import { Text } from '../ui/primitives'
 import { fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 import { Folded, useFold } from './fold'
+import { ScriptGroup } from './script-run'
 
 const ICONS: Record<string, LucideIcon> = {
   Execute: Terminal,
@@ -53,13 +55,7 @@ const RESULT_PREVIEW_LINES = 40
 export function ToolCluster({ calls }: { calls: ToolCall[] }) {
   const colors = useColors()
   const fold = useFold(true)
-  const pending = calls.filter((c) => c.result === null).length
-  const what =
-    calls.length === 1
-      ? calls[0]
-        ? toolDisplayName(calls[0].use.name).tool
-        : 'a tool'
-      : `${calls.length} tools`
+  const { label, pending } = clusterLabel(calls)
   return (
     <View>
       <Pressable
@@ -68,9 +64,9 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
         onPress={fold.toggle}
         style={styles.clusterHeader}
       >
-        {pending > 0 ? <Spinner size={12} color={colors.mutedForeground} /> : null}
+        {pending ? <Spinner size={12} color={colors.mutedForeground} /> : null}
         <Text tone="muted" size="xs" weight="medium">
-          {pending > 0 ? `Running ${what}` : `Used ${what}`}
+          {label}
         </Text>
         <ChevronRight
           size={12}
@@ -80,9 +76,17 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
       </Pressable>
       <Folded fold={fold}>
         <View style={[styles.rows, { borderLeftColor: colors.border }]}>
-          {calls.map((call) => (
-            <ToolRow key={call.use.id} call={call} />
-          ))}
+          {calls.map((call) =>
+            call.nested ? (
+              <ScriptGroup key={call.use.id} call={call}>
+                {call.nested.map((inner) => (
+                  <ToolRow key={inner.use.id} call={inner} />
+                ))}
+              </ScriptGroup>
+            ) : (
+              <ToolRow key={call.use.id} call={call} />
+            ),
+          )}
         </View>
       </Folded>
     </View>

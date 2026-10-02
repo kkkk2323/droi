@@ -552,3 +552,173 @@ export function structuredTurn(reply: (text: string) => Record<string, unknown>)
     return {}
   }
 }
+
+export interface ScriptTurnOptions {
+  /** Reply streamed after the run finished. */
+  reply: string
+}
+
+/**
+ * Handler for `daemon.add_user_message` where the agent writes one Script
+ * that runs two commands. The Daemon reads the calls out of the source and
+ * asks for all of them at once; once allowed, each call arrives as a
+ * user-only message tagged with the run, as droid 0.231 sends them.
+ */
+export function scriptTurn(options: ScriptTurnOptions): MethodHandler {
+  return (params, context, request) => {
+    const sessionId = String(params['sessionId'])
+    const daemon = context.daemon
+    const userMessageId =
+      typeof params['messageId'] === 'string' ? params['messageId'] : randomUUID()
+    void (async () => {
+      startTurn(daemon, sessionId, userMessageId, String(params['text']), String(request.id))
+      const runId = `call_${randomUUID().slice(0, 8)}`
+      const script = [
+        "const tests = await tools.Execute({ summary: 'Run the tests', command: 'pnpm test', riskLevel: 'low' })",
+        'text(tests)',
+        "const lint = await tools.Execute({ summary: 'Lint', command: 'pnpm lint', riskLevel: 'medium' })",
+        'text(lint)',
+      ].join('\n')
+      const toolUse = { type: 'tool_use', id: runId, name: 'Script', input: { script } }
+      daemon.notify(sessionId, { type: 'tool_call', toolUse })
+      // The real Daemon commits the Script's message before it asks, so the
+      // calls the run makes have their Script to hang under.
+      const committed = Date.now()
+      daemon.notify(sessionId, {
+        type: 'create_message',
+        message: {
+          id: randomUUID(),
+          role: 'assistant',
+          content: [toolUse],
+          createdAt: committed,
+          updatedAt: committed,
+        },
+        parentId: userMessageId,
+      })
+      daemon.notify(sessionId, {
+        type: 'droid_working_state_changed',
+        newState: 'waiting_for_tool_confirmation',
+      })
+      const exec = (command: string, impactLevel: string) => ({
+        type: 'exec',
+        fullCommand: command,
+        command: command.split(' ')[0],
+        extractedCommands: [command.split(' ')[0]],
+        impactLevel,
+      })
+      const { id, answer } = daemon.request('daemon.request_permission', {
+        sessionId,
+        toolUses: [
+          {
+            toolUse,
+            confirmationType: 'script',
+            details: {
+              type: 'script',
+              impactLevel: 'medium',
+              calls: [
+                {
+                  toolName: 'Execute',
+                  line: 1,
+                  column: 21,
+                  toolInput: { summary: 'Run the tests', command: 'pnpm test', riskLevel: 'low' },
+                  confirmation: exec('pnpm test', 'low'),
+                },
+                {
+                  toolName: 'Execute',
+                  line: 3,
+                  column: 20,
+                  toolInput: { summary: 'Lint', command: 'pnpm lint', riskLevel: 'medium' },
+                  confirmation: exec('pnpm lint', 'medium'),
+                },
+              ],
+            },
+          },
+        ],
+        options: [
+          { label: 'Yes, allow all', value: 'proceed_once' },
+          { label: 'Yes, and always allow medium impact commands', value: 'proceed_always' },
+          { label: 'No, cancel all', value: 'cancel' },
+        ],
+      })
+      const response = await answer
+      const selectedOption = String(
+        (response['result'] as Record<string, unknown> | undefined)?.['selectedOption'] ?? 'cancel',
+      )
+      daemon.notify(sessionId, {
+        type: 'permission_resolved',
+        requestId: id,
+        toolUseIds: [runId],
+        selectedOption,
+      })
+      if (selectedOption === 'cancel') {
+        daemon.notify(sessionId, {
+          type: 'tool_result',
+          toolUseId: runId,
+          content: 'Script cancelled by user.',
+          isError: true,
+          messageId: randomUUID(),
+        })
+        finishTurn(daemon, sessionId, userMessageId, 'permission_rejected')
+        return
+      }
+      daemon.notify(sessionId, { type: 'droid_working_state_changed', newState: 'executing_tool' })
+      const outputs: string[] = []
+      for (const [n, summary, command] of [
+        [1, 'Run the tests', 'pnpm test'],
+        [3, 'Lint', 'pnpm lint'],
+      ] as const) {
+        const callId = `${runId}-${n}`
+        const now = Date.now()
+        daemon.notify(sessionId, {
+          type: 'create_message',
+          message: {
+            id: `repl-tool-call:${callId}`,
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: callId,
+                name: 'Execute',
+                input: { summary, command, riskLevel: 'low' },
+                scriptExecution: { runId, outerToolUseId: runId },
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+            visibility: 'user_only',
+          },
+        })
+        await sleep(150)
+        const output = `${command} ok`
+        outputs.push(output)
+        daemon.notify(sessionId, {
+          type: 'tool_result',
+          toolUseId: callId,
+          content: `${output}\n\n[Process exited with code 0]`,
+          isError: false,
+          messageId: `repl-tool-result:${callId}`,
+        })
+      }
+      daemon.notify(sessionId, {
+        type: 'tool_result',
+        toolUseId: runId,
+        content: [
+          { type: 'text', text: outputs.join('\n') },
+          {
+            type: 'text',
+            text: `[Script completed · 2 calls · 40 B in sandbox · 26 B emitted (65%) · log: /tmp/${runId}.log]`,
+          },
+          {
+            type: 'text',
+            text: JSON.stringify({ toolCallId: runId, status: 'completed', result: null }),
+          },
+        ],
+        isError: false,
+        messageId: randomUUID(),
+      })
+      await streamText(daemon, sessionId, options.reply)
+      finishTurn(daemon, sessionId, userMessageId, 'completed')
+    })()
+    return {}
+  }
+}

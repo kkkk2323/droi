@@ -18,7 +18,9 @@ import {
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
+import { ScriptGroup } from './script-run'
 import {
+  clusterLabel,
   readToolResult,
   toolDisplayName,
   toolInputText,
@@ -53,14 +55,7 @@ const RESULT_PREVIEW_LINES = 40
 export function ToolCluster({ calls }: { calls: ToolCall[] }) {
   const [open, setOpen] = useState(true)
   const panelId = useId()
-  const pending = calls.filter((c) => c.result === null).length
-  const what =
-    calls.length === 1
-      ? calls[0]
-        ? toolDisplayName(calls[0].use.name).tool
-        : 'a tool'
-      : `${calls.length} tools`
-  const label = pending > 0 ? `Running ${what}` : `Used ${what}`
+  const { label, pending } = clusterLabel(calls)
 
   // A plain disclosure, not Collapsible: it opens without motion, and every
   // cluster mounts open, where Collapsible reads computed styles, forcing a
@@ -75,7 +70,7 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
         onClick={() => setOpen(!open)}
         className="group -ml-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        {pending > 0 ? <Spinner aria-hidden className="size-3" /> : null}
+        {pending ? <Spinner aria-hidden className="size-3" /> : null}
         <span>{label}</span>
         <ChevronRight
           aria-hidden
@@ -84,9 +79,17 @@ export function ToolCluster({ calls }: { calls: ToolCall[] }) {
       </button>
       {open ? (
         <div id={panelId} className="ml-1.5 mt-1 flex flex-col gap-0.5 border-l pl-3">
-          {calls.map((call) => (
-            <ToolRow key={call.use.id} call={call} />
-          ))}
+          {calls.map((call) =>
+            call.nested ? (
+              <ScriptGroup key={call.use.id} call={call}>
+                {call.nested.map((inner) => (
+                  <ToolRow key={inner.use.id} call={inner} />
+                ))}
+              </ScriptGroup>
+            ) : (
+              <ToolRow key={call.use.id} call={call} />
+            ),
+          )}
         </div>
       ) : null}
     </div>

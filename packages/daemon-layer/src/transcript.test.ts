@@ -72,6 +72,69 @@ describe('buildTranscript', () => {
     expect(toolResultText(task.call.result)).toBe('report')
   })
 
+  test("a Script's calls go under the latest call watching its run, in order", () => {
+    const nested = (id: string, name: string) =>
+      message('assistant', [
+        {
+          type: 'tool_use',
+          id,
+          name,
+          input: {},
+          scriptExecution: { runId: 'run', outerToolUseId: 'run' },
+        },
+      ])
+    const entries = buildTranscript([
+      message('user', [{ type: 'text', text: 'go' }]),
+      message('assistant', [
+        { type: 'tool_use', id: 'run', name: 'Script', input: { script: '' } },
+        { type: 'tool_use', id: 'other', name: 'ToolSearch', input: {} },
+      ]),
+      nested('run-1', 'Read'),
+      message('tool', [{ type: 'tool_result', toolUseId: 'run-1', content: 'text' }]),
+      nested('run-3', 'Execute'),
+      message('tool', [
+        {
+          type: 'tool_result',
+          toolUseId: 'run',
+          content: '{"toolCallId":"run","status":"running"}',
+        },
+      ]),
+      message('assistant', [{ type: 'text', text: 'Still going; waiting.' }]),
+      message('assistant', [
+        { type: 'tool_use', id: 'wait', name: 'WaitForScript', input: { toolCallId: 'run' } },
+      ]),
+      nested('run-5', 'Execute'),
+    ])
+    expect(entries.map((e) => e.role)).toEqual(['user', 'assistant'])
+    const blocks = entries[1]!.blocks
+    expect(blocks.map((b) => b.kind)).toEqual(['tools', 'text', 'tools'])
+    const [first, , second] = blocks
+    if (first?.kind !== 'tools' || second?.kind !== 'tools') throw new Error('expected tools')
+    expect(first.calls.map((c) => c.use.id)).toEqual(['run', 'other'])
+    expect(first.calls[0]!.nested!.map((c) => c.use.id)).toEqual(['run-1', 'run-3'])
+    expect(toolResultText(first.calls[0]!.nested![0]!.result)).toBe('text')
+    expect(first.calls[1]!.nested).toBeUndefined()
+    expect(second.calls.map((c) => c.use.id)).toEqual(['wait'])
+    expect(second.calls[0]!.nested!.map((c) => c.use.id)).toEqual(['run-5'])
+  })
+
+  test("a Script's call whose run is not in the transcript stays a call of its own", () => {
+    const entries = buildTranscript([
+      message('assistant', [
+        {
+          type: 'tool_use',
+          id: 'n',
+          name: 'Read',
+          input: {},
+          scriptExecution: { runId: 'gone', outerToolUseId: 'gone' },
+        },
+      ]),
+    ])
+    const tools = entries[0]!.blocks[0]
+    if (tools?.kind !== 'tools') throw new Error('expected tools')
+    expect(tools.calls.map((c) => c.use.id)).toEqual(['n'])
+  })
+
   test('consecutive tool calls form one cluster; text splits clusters', () => {
     const entries = buildTranscript([
       message('assistant', [
