@@ -77,7 +77,7 @@ export function splitReply(text: string): ReplySegment[] {
       continue
     }
     for (;;) {
-      const start = line.indexOf(OPEN)
+      const start = openTag(line)
       if (start < 0) {
         if (line.trim() || line === whole) markdown.push(line)
         break
@@ -101,6 +101,29 @@ export function splitReply(text: string): ReplySegment[] {
   }
   flush()
   return segments
+}
+
+/** Where the line's first tag opens; one inside an inline code span is text. */
+function openTag(line: string): number {
+  const spans = codeSpans(line)
+  for (let at = line.indexOf(OPEN); at >= 0; at = line.indexOf(OPEN, at + 1)) {
+    if (!spans.some(([start, end]) => at > start && at < end)) return at
+  }
+  return -1
+}
+
+/** The line's code spans: a backtick run up to the next run of the same length. */
+function codeSpans(line: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = []
+  let open: { at: number; length: number } | null = null
+  for (const run of line.matchAll(/`+/g)) {
+    if (open === null) open = { at: run.index, length: run[0].length }
+    else if (run[0].length === open.length) {
+      spans.push([open.at, run.index])
+      open = null
+    }
+  }
+  return spans
 }
 
 export function parseRenderSpec(raw: string): RenderSpec | null {

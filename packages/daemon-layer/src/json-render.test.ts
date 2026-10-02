@@ -36,6 +36,16 @@ describe('splitReply', () => {
     expect(splitReply(text)).toEqual([{ kind: 'markdown', text }])
   })
 
+  test('a tag inside an inline code span is text about the format', () => {
+    const text = 'Script 显示和 `<json-render>` 渲染都做完了。\n\nMore'
+    expect(splitReply(text)).toEqual([{ kind: 'markdown', text }])
+    expect(
+      splitReply(`\`\`<json-render>\`\` then <json-render>${TABLE}</json-render>`).map(
+        (s) => s.kind,
+      ),
+    ).toEqual(['markdown', 'render'])
+  })
+
   test('a tag still open is pending; JSON that does not parse is shown as code', () => {
     expect(splitReply('Here:\n<json-render>{"root":').at(-1)).toEqual({
       kind: 'pending',
