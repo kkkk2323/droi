@@ -1,3 +1,10 @@
+## 1.32.0 - 2026-10-03
+
+### Added
+
+- When Droid saves a Memory Entry, the answer lists up to three entries that may already say the same thing, from the same Memory and from the other scope (Global Memory for a Project write, the Workspace's Project Memory for a Global one), so Droid can merge or replace the old entry instead of keeping both. On the desktop, in the browser and on the phone.
+- Memory keeps a log of every Memory Server call: the tool, the query, and the entries it found, wrote or showed as similar. Settings → Memory shows, for each Memory, its searches since the log began, how many found nothing, and how many entries no search has returned yet. On the desktop.
+
 ## 1.31.1 - 2026-10-03
 
 ### Fixed
