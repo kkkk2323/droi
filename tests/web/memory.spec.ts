@@ -4,6 +4,7 @@ import { exposeShellMemory } from './memory-fixture'
 import { session, userMessage } from '../fake-daemon/scenario'
 import { structuredTurn } from '../fake-daemon/turns'
 import type { RecordedRequest } from '../fake-daemon/fake-daemon'
+import { openMemoryStore, type MemorySlot } from '../../apps/desktop/src/memory/store'
 
 const first = session('First session', '/Users/dev/app', [userMessage('hello')])
 
@@ -185,6 +186,45 @@ test.describe('Memory Sessions', () => {
       const sidebar = await openSidebar()
       await expect(sidebar.getByRole('button', { name: /First session/ })).toBeVisible()
       await expect(sidebar.getByRole('button', { name: /Memory: consolidate/ })).toHaveCount(0)
+    } finally {
+      memory.dispose()
+    }
+  })
+
+  test('each Memory says how its searches went', async ({ page, fakeDaemon, openSidebar }) => {
+    const app: MemorySlot = { scope: 'project', workspace: '/Users/dev/app' }
+    const memory = await exposeShellMemory(page, fakeDaemon, [
+      { slot: app, category: 'convention', text: 'uses pnpm' },
+      { slot: app, category: 'convention', text: 'tests beside code' },
+    ])
+    try {
+      await openLocalClient(page, fakeDaemon, { memoryEnabled: true })
+      await openMemory(page, openSidebar)
+      const row = page
+        .getByRole('list', { name: 'Memories' })
+        .getByRole('listitem', { name: '/Users/dev/app' })
+      await expect(row).toContainText('never consolidated')
+      await expect(row).not.toContainText('searches since')
+
+      const store = openMemoryStore(memory.memoryDir)
+      const [pnpm] = store.list(app)
+      for (const found of [[pnpm!.id], []]) {
+        store.logCall({
+          sessionId: 's',
+          tool: 'memory_search',
+          slot: app,
+          query: 'q',
+          ok: true,
+          found,
+        })
+      }
+      store.close()
+      // Coming back to the tab reads the overview again.
+      await page.getByRole('button', { name: 'General' }).click()
+      await page.getByRole('button', { name: 'Memory' }).click()
+      await expect(row).toContainText('2 searches since')
+      await expect(row).toContainText('1 found nothing')
+      await expect(row).toContainText('1 entry never found')
     } finally {
       memory.dispose()
     }

@@ -14,10 +14,18 @@ export interface MemoryRow {
   lastConsolidated: string | null
   /** A consolidation of this Memory is running. */
   consolidating: boolean
+  /** Searches of this Memory since calls were first logged. */
+  searches: number
+  /** Searches that returned nothing. */
+  emptySearches: number
+  /** Entries no search has returned, corrections left out. */
+  neverFound: number
 }
 
 export interface MemoryOverview {
   rows: MemoryRow[]
+  /** ISO timestamp of the first logged Memory Server call; null before any. */
+  loggedSince: string | null
 }
 
 export interface ConsolidationResult {

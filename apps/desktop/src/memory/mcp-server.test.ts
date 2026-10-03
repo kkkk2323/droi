@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createInterface } from 'node:readline'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { DatabaseSync } from 'node:sqlite'
 import { openMemoryStore } from './store'
 import { startTs } from './test-support/processes'
 
@@ -233,6 +234,105 @@ describe('Memory Server over stdio', () => {
     const store = openMemoryStore(memoryDir)
     expect(store.list({ scope: 'project', workspace })).toEqual([])
     store.close()
+  })
+
+  it('logs every call with the Memory it reached and the entries it found or wrote', async () => {
+    const added = await call('memory_add', {
+      scope: 'project',
+      category: 'convention',
+      text: 'Run pnpm check before committing',
+    })
+    const id = /Saved ([0-9a-f]{8})/.exec(added.text)![1]!
+    await call('memory_search', { query: 'pnpm' })
+    await call('memory_search', { query: 'docker' })
+    await call('memory_search', { query: 'x', scope: 'nowhere' })
+    await call('memory_remove', { id })
+
+    const db = new DatabaseSync(join(memoryDir, 'memory.sqlite'))
+    const calls = db
+      .prepare(
+        `SELECT c.session_id AS sessionId, c.tool, c.slot IS NOT NULL AS reached, c.query, c.ok,
+           (SELECT group_concat(h.role || ':' || h.entry) FROM call_entries h WHERE h.call = c.rowid) AS entries
+         FROM calls c ORDER BY c.rowid`,
+      )
+      .all()
+    db.close()
+    expect(calls).toEqual([
+      {
+        sessionId: SESSION,
+        tool: 'memory_add',
+        reached: 1,
+        query: null,
+        ok: 1,
+        entries: `written:${id}`,
+      },
+      {
+        sessionId: SESSION,
+        tool: 'memory_search',
+        reached: 1,
+        query: 'pnpm',
+        ok: 1,
+        entries: `found:${id}`,
+      },
+      {
+        sessionId: SESSION,
+        tool: 'memory_search',
+        reached: 1,
+        query: 'docker',
+        ok: 1,
+        entries: null,
+      },
+      { sessionId: SESSION, tool: 'memory_search', reached: 0, query: null, ok: 0, entries: null },
+      {
+        sessionId: SESSION,
+        tool: 'memory_remove',
+        reached: 1,
+        query: null,
+        ok: 1,
+        entries: `written:${id}`,
+      },
+    ])
+    const store = openMemoryStore(memoryDir)
+    expect(store.usage({ scope: 'project', workspace })).toEqual({
+      searches: 2,
+      emptySearches: 1,
+      neverFound: 0,
+    })
+    store.close()
+  })
+
+  it('answers an add with the entries of either scope that may say the same thing', async () => {
+    const old = await call('memory_add', {
+      scope: 'global',
+      category: 'tool-quirk',
+      text: 'droid 0.231 gates Script behind the script_tools feature flag; set FACTORY_FEATURE_FLAGS_SNAPSHOT_PATH to turn it on.',
+    })
+    const oldId = /Saved ([0-9a-f]{8})/.exec(old.text)![1]!
+    expect(old.text).not.toContain('may say the same thing')
+
+    const added = await call('memory_add', {
+      scope: 'project',
+      category: 'insight',
+      text: 'Since droid 0.233 the script_tools feature flag is gone, so FACTORY_FEATURE_FLAGS_SNAPSHOT_PATH is no longer needed for Script.',
+    })
+    const newId = /Saved ([0-9a-f]{8}) in Project Memory\./.exec(added.text)![1]!
+    expect(added.isError).toBe(false)
+    expect(added.text).toContain('1 entry already in Memory may say the same thing')
+    expect(added.text).toContain(`- ${oldId} [global/tool-quirk`)
+    expect(added.text).toContain(`remove ${newId}`)
+
+    const unrelated = await call('memory_add', {
+      scope: 'project',
+      category: 'convention',
+      text: 'The Phone App is pinned to Expo SDK 57.',
+    })
+    expect(unrelated.text).toMatch(/^Saved [0-9a-f]{8} in Project Memory\.$/)
+
+    const db = new DatabaseSync(join(memoryDir, 'memory.sqlite'))
+    expect(db.prepare(`SELECT entry FROM call_entries WHERE role = 'similar'`).all()).toEqual([
+      { entry: oldId },
+    ])
+    db.close()
   })
 
   it('reports refusals as tool errors', async () => {

@@ -237,6 +237,36 @@ describe('Memory store', () => {
     })
   })
 
+  it('logs calls and says how the searches of each Memory went', () => {
+    expect(store.loggedSince()).toBeNull()
+    const pnpm = add(project, 'uses pnpm', 'convention')
+    add(project, 'tests beside code', 'convention')
+    add(project, 'never push to main', 'correction')
+    add(global, 'terse answers', 'preference')
+    const search = (slot: MemorySlot, found: string[]) =>
+      store.logCall({ sessionId: 's1', tool: 'memory_search', slot, query: 'q', ok: true, found })
+    search(project, [pnpm.id])
+    search(project, [pnpm.id])
+    search(project, [])
+    store.logCall({ sessionId: 's1', tool: 'memory_search', slot: project, query: 'q', ok: false })
+    store.logCall({
+      sessionId: 's1',
+      tool: 'memory_add',
+      slot: project,
+      query: null,
+      ok: true,
+      written: pnpm.id,
+      similar: [pnpm.id],
+    })
+    store.logCall({ sessionId: null, tool: 'memory_list', slot: null, query: null, ok: false })
+
+    expect(store.loggedSince()).toMatch(/^\d{4}-\d\d-\d\dT/)
+    // The correction is left out: the hook puts it in front of every Session.
+    expect(store.usage(project)).toEqual({ searches: 3, emptySearches: 1, neverFound: 1 })
+    expect(store.usage(global)).toEqual({ searches: 0, emptySearches: 0, neverFound: 1 })
+    expect(store.usage(other)).toEqual({ searches: 0, emptySearches: 0, neverFound: 0 })
+  })
+
   it('lets two processes write at once', async () => {
     const writer = fileURLToPath(new URL('./test-support/writer.ts', import.meta.url))
     const [a, b] = await Promise.all([

@@ -88,7 +88,12 @@ function MemoriesSection({
       ) : (
         <ul aria-label="Memories" className="divide-y divide-border/70">
           {rows.map((row) => (
-            <MemoryRowItem key={row.workspace ?? ''} row={row} memory={memory} />
+            <MemoryRowItem
+              key={row.workspace ?? ''}
+              row={row}
+              loggedSince={overview.data.loggedSince}
+              memory={memory}
+            />
           ))}
         </ul>
       )}
@@ -132,7 +137,15 @@ function formatChars(chars: number): string {
   return chars < 1_000 ? String(chars) : `${Math.round(chars / 1_000)}k`
 }
 
-function MemoryRowItem({ row, memory }: { row: MemoryRow; memory: MemoryBridge }) {
+function MemoryRowItem({
+  row,
+  loggedSince,
+  memory,
+}: {
+  row: MemoryRow
+  loggedSince: string | null
+  memory: MemoryBridge
+}) {
   const queryClient = useQueryClient()
   const [result, setResult] = useState<string | null>(null)
   const name = row.workspace ?? 'Global Memory'
@@ -170,6 +183,14 @@ function MemoryRowItem({ row, memory }: { row: MemoryRow; memory: MemoryBridge }
             {row.lastConsolidated
               ? `consolidated ${new Date(row.lastConsolidated).toLocaleDateString()}`
               : 'never consolidated'}
+            {loggedSince ? (
+              <span className="mt-1 block">
+                {row.searches} {row.searches === 1 ? 'search' : 'searches'} since{' '}
+                {new Date(loggedSince).toLocaleDateString()}
+                {row.searches > 0 ? `, ${row.emptySearches} found nothing` : ''} · {row.neverFound}{' '}
+                {row.neverFound === 1 ? 'entry' : 'entries'} never found
+              </span>
+            ) : null}
             {row.overSoftLimit ? (
               <span className="mt-1 flex items-center gap-1 text-attention">
                 <CircleAlert aria-hidden className="size-3.5" />

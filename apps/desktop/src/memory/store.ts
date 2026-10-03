@@ -73,6 +73,30 @@ export interface SliceChanges {
   merge: Array<{ ids: string[]; text: string }>
 }
 
+/** One Memory Server call as the call log keeps it. */
+export interface MemoryCall {
+  sessionId: string | null
+  tool: string
+  /** The Memory the call reached; null when it reached none. */
+  slot: MemorySlot | null
+  query: string | null
+  ok: boolean
+  /** Entries a search returned. */
+  found?: readonly string[]
+  /** The entry an add, replace or remove changed. */
+  written?: string | null
+  /** Entries an add was shown as possibly saying the same thing. */
+  similar?: readonly string[]
+}
+
+export interface SlotUsage {
+  searches: number
+  /** Searches that returned nothing. */
+  emptySearches: number
+  /** Entries no search has returned; corrections are left out, the hook injects them. */
+  neverFound: number
+}
+
 export interface MemoryStore {
   readonly dir: string
   add(slot: MemorySlot, category: Category, text: string): WriteResult
@@ -96,6 +120,12 @@ export interface MemoryStore {
     changes: SliceChanges,
   ): { ok: true } | { ok: false; reason: string }
   markConsolidated(slot: MemorySlot): void
+  /** Records one Memory Server call, so Settings can say how Memory is used. */
+  logCall(call: MemoryCall): void
+  /** How the searches of one Memory went since calls were first logged. */
+  usage(slot: MemorySlot): SlotUsage
+  /** ISO timestamp of the first logged call; null before any. */
+  loggedSince(): string | null
   /** Notes that a Session wrote to Memory, so the fallback extraction leaves it alone. */
   recordWrite(sessionId: string): void
   hasWrite(sessionId: string): boolean
@@ -190,6 +220,22 @@ export function openMemoryStore(dir: string): MemoryStore {
       session_id TEXT PRIMARY KEY,
       at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS calls (
+      rowid INTEGER PRIMARY KEY,
+      at TEXT NOT NULL,
+      session_id TEXT,
+      tool TEXT NOT NULL,
+      slot TEXT,
+      query TEXT,
+      ok INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS calls_slot ON calls(slot, tool);
+    CREATE TABLE IF NOT EXISTS call_entries (
+      call INTEGER NOT NULL REFERENCES calls(rowid),
+      entry TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('found', 'written', 'similar'))
+    );
+    CREATE INDEX IF NOT EXISTS call_entries_entry ON call_entries(entry, role);
     CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts
       USING fts5(text, content='entries', content_rowid='rowid', tokenize='trigram');
     CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
@@ -477,6 +523,55 @@ export function openMemoryStore(dir: string): MemoryStore {
         new Date().toISOString(),
         slotKey(slot),
       )
+    },
+    logCall(call) {
+      transaction(() => {
+        const { lastInsertRowid } = db
+          .prepare(
+            'INSERT INTO calls (at, session_id, tool, slot, query, ok) VALUES (?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            new Date().toISOString(),
+            call.sessionId,
+            call.tool,
+            call.slot ? slotKey(call.slot) : null,
+            call.query,
+            call.ok ? 1 : 0,
+          )
+        const link = db.prepare('INSERT INTO call_entries (call, entry, role) VALUES (?, ?, ?)')
+        for (const id of call.found ?? []) link.run(lastInsertRowid, id, 'found')
+        if (call.written) link.run(lastInsertRowid, call.written, 'written')
+        for (const id of call.similar ?? []) link.run(lastInsertRowid, id, 'similar')
+      })
+    },
+    usage(slot) {
+      const key = slotKey(slot)
+      const searches = db
+        .prepare(
+          `SELECT COUNT(*) AS searches,
+             COALESCE(SUM(NOT EXISTS (
+               SELECT 1 FROM call_entries h WHERE h.call = c.rowid AND h.role = 'found'
+             )), 0) AS empty
+           FROM calls c WHERE c.slot = ? AND c.tool = 'memory_search' AND c.ok = 1`,
+        )
+        .get(key) as { searches: number; empty: number }
+      const never = db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM entries e
+           WHERE e.slot = ? AND e.category != 'correction' AND NOT EXISTS (
+             SELECT 1 FROM call_entries h WHERE h.entry = e.id AND h.role = 'found'
+           )`,
+        )
+        .get(key) as { n: number }
+      return {
+        searches: Number(searches.searches),
+        emptySearches: Number(searches.empty),
+        neverFound: Number(never.n),
+      }
+    },
+    loggedSince() {
+      const row = db.prepare('SELECT MIN(at) AS at FROM calls').get() as { at: string | null }
+      return row.at ?? null
     },
     recordWrite(sessionId) {
       db.prepare('INSERT OR REPLACE INTO session_writes (session_id, at) VALUES (?, ?)').run(

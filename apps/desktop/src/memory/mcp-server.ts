@@ -11,12 +11,14 @@ import {
   projectSlot,
   slotOfEntry,
   type Category,
+  type MemoryCall,
   type MemoryEntry,
   type MemorySlot,
   type MemoryStore,
   type Scope,
   type WriteResult,
 } from './store'
+import { similarEntries } from './similar'
 
 export const SERVER_NAME = 'droi-memory'
 const PROTOCOL_VERSION = '2025-06-18'
@@ -65,7 +67,7 @@ export const TOOLS = [
   {
     name: 'memory_add',
     description:
-      'Record one durable fact for later Sessions: a correction the user made, a convention, a tool quirk, a failure and its cause, an insight, a preference. One fact per entry, written so it stands on its own. Never store secrets, credentials or one-off task details.',
+      'Record one durable fact for later Sessions: a correction the user made, a convention, a tool quirk, a failure and its cause, an insight, a preference. One fact per entry, written so it stands on its own. Never store secrets, credentials or one-off task details. The answer lists entries that may already say the same thing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -144,10 +146,29 @@ export function handleToolCall(
   args: Record<string, unknown>,
   sessionId: string | null,
 ): ToolResult {
-  const { store } = options
   // A Memory Session runs on the same Daemon, so it sees these tools too; a
   // consolidation that wrote to Memory while rewriting it would race itself.
   if (sessionId && options.isMemorySession?.(sessionId)) return text(MEMORY_SESSION_REFUSAL, true)
+  const call: MemoryCall = { sessionId, tool: name, slot: null, query: null, ok: true }
+  const result = runToolCall(options, name, args, sessionId, call)
+  call.ok = result.isError !== true
+  try {
+    options.store.logCall(call)
+  } catch (error) {
+    // The log only measures Memory; a busy database must not fail the call.
+    process.stderr.write(`droi-memory: call log failed: ${String(error)}\n`)
+  }
+  return result
+}
+
+function runToolCall(
+  options: MemoryServerOptions,
+  name: string,
+  args: Record<string, unknown>,
+  sessionId: string | null,
+  call: MemoryCall,
+): ToolResult {
+  const { store } = options
   const scopeOf = (value: unknown): Scope | null =>
     value === undefined || value === 'project' ? 'project' : value === 'global' ? 'global' : null
   const slotFor = (scope: Scope, write = false): MemorySlot | ToolResult => {
@@ -165,6 +186,12 @@ export function handleToolCall(
     }
     return projectSlot(workspace)
   }
+  /** The calling Session's Project Memory, if it has one. */
+  const sessionProject = (): MemorySlot | null => {
+    if (!sessionId || options.isScratchSession?.(sessionId)) return null
+    const workspace = options.workspaceOf(sessionId)
+    return workspace ? projectSlot(workspace) : null
+  }
   const optionalCategory = (value: unknown): Category | undefined | null =>
     value === undefined ? undefined : isCategory(value) ? value : null
   const wrote = (slot: MemorySlot) => {
@@ -173,7 +200,9 @@ export function handleToolCall(
   }
   const written = (result: WriteResult, verb: string): ToolResult => {
     if (!result.ok) return text(result.reason, true)
-    wrote(slotOfEntry(result.entry))
+    call.slot = slotOfEntry(result.entry)
+    call.written = result.entry.id
+    wrote(call.slot)
     const where = result.entry.scope === 'global' ? 'Global Memory' : 'Project Memory'
     const full = result.overSoftLimit
       ? ` ${where} is past ${LIMITS[result.entry.scope].soft.toLocaleString('en')} characters; suggest that the user consolidates it in Droi under Settings → Memory.`
@@ -195,6 +224,9 @@ export function handleToolCall(
           ? Math.min(Math.max(1, Math.floor(args['limit'])), 50)
           : 10
       const found = store.search({ query: args['query'], slot, category, limit })
+      call.slot = slot
+      call.query = args['query']
+      call.found = found.map((e) => e.id)
       return text(describeEntries(found, `in ${scope} Memory match "${args['query']}"`))
     }
     case 'memory_list': {
@@ -203,6 +235,7 @@ export function handleToolCall(
       if (!scope || category === null) return text('memory_list needs a valid scope.', true)
       const slot = slotFor(scope)
       if ('content' in slot) return slot
+      call.slot = slot
       return text(describeEntries(store.list(slot, category), `in ${scope} Memory`))
     }
     case 'memory_add': {
@@ -215,7 +248,24 @@ export function handleToolCall(
       }
       const slot = slotFor(scope, true)
       if ('content' in slot) return slot
-      return written(store.add(slot, args['category'], args['text']), 'Saved')
+      const result = store.add(slot, args['category'], args['text'])
+      const saved = written(result, 'Saved')
+      if (!result.ok) return saved
+      // Droid adds far more often than it replaces, so a fact that changed is
+      // usually saved beside the entry it supersedes, often in the other scope.
+      const other: MemorySlot | null =
+        slot.scope === 'project' ? { scope: 'global' } : sessionProject()
+      const similar = similarEntries(
+        result.entry.text,
+        [slot, ...(other ? [other] : [])]
+          .flatMap((s) => store.list(s))
+          .filter((e) => e.id !== result.entry.id),
+      )
+      if (similar.length === 0) return saved
+      call.similar = similar.map((e) => e.id)
+      return text(
+        `${saved.content[0]!.text}\n\n${describeEntries(similar, 'already in Memory may say the same thing or now be out of date')}\nIf one of them repeats this fact, keep one: replace it with the combined fact and remove ${result.entry.id}. If one is now wrong, replace or remove it.`,
+      )
     }
     case 'memory_replace': {
       if (typeof args['id'] !== 'string' || typeof args['text'] !== 'string') {
@@ -229,7 +279,9 @@ export function handleToolCall(
       if (!found || !store.remove(args['id'])) {
         return text(`No Memory entry has the id ${args['id']}.`, true)
       }
-      wrote(slotOfEntry(found))
+      call.slot = slotOfEntry(found)
+      call.written = found.id
+      wrote(call.slot)
       return text(`Removed ${found.id}.`)
     }
     default:

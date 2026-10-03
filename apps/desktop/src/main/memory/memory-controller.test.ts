@@ -90,9 +90,13 @@ describe('Memory controller', () => {
           overSoftLimit: false,
           lastConsolidated: null,
           consolidating: false,
+          searches: 0,
+          emptySearches: 0,
+          neverFound: 3,
         },
         expect.objectContaining({ workspace: null, softLimit: 40_000, entries: 0 }),
       ],
+      loggedSince: null,
     })
   })
 

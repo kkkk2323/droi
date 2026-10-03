@@ -111,18 +111,23 @@ export function createMemoryController(options: MemoryControllerOptions): Memory
 
   return {
     overview() {
+      const opened = open()
       return {
-        rows: open()
-          .summaries()
-          .map((summary) => ({
-            workspace: summary.workspace,
-            entries: summary.entries,
-            chars: summary.chars,
-            softLimit: LIMITS[summary.scope].soft,
-            overSoftLimit: summary.overSoftLimit,
-            lastConsolidated: summary.lastConsolidated,
-            consolidating: consolidating.has(busyKey(summary.workspace)),
-          })),
+        rows: opened.summaries().map((summary) => ({
+          workspace: summary.workspace,
+          entries: summary.entries,
+          chars: summary.chars,
+          softLimit: LIMITS[summary.scope].soft,
+          overSoftLimit: summary.overSoftLimit,
+          lastConsolidated: summary.lastConsolidated,
+          consolidating: consolidating.has(busyKey(summary.workspace)),
+          ...opened.usage(
+            summary.workspace === null
+              ? { scope: 'global' }
+              : { scope: 'project', workspace: summary.workspace },
+          ),
+        })),
+        loggedSince: opened.loggedSince(),
       }
     },
     async consolidate(workspace) {
