@@ -1,3 +1,9 @@
+## 1.30.0 - 2026-10-03
+
+### Added
+
+- A new Session can call tools directly or through Script: the choice sits under the reasoning effort in the model picker (on the phone, a Tool calls button next to it). Settings → Session defaults → Tool calls sets what new Sessions start with on this device: Follow droid settings, Direct or Script. A Session keeps the mode it starts with, since the Daemon cannot change it later. On the desktop, in the browser and on the phone.
+
 ## 1.29.0 - 2026-10-03
 
 ### Changed
