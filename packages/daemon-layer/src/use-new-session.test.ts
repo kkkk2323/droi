@@ -42,4 +42,12 @@ describe('recentWorkspaces', () => {
     ])
     expect(recent.map((w) => w.label)).toEqual(['alpha'])
   })
+
+  test('leaves out a Scratch folder whose Session lost its tag', () => {
+    const recent = recentWorkspaces([
+      summary({ cwd: '/u/.droi/chats/2026-10-02-5c4802', updatedAt: 90 }),
+      summary({ cwd: '/w/alpha', updatedAt: 10 }),
+    ])
+    expect(recent.map((w) => w.label)).toEqual(['alpha'])
+  })
 })

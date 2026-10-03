@@ -71,6 +71,18 @@ export function isScratch(tags: readonly SessionTag[] | undefined): boolean {
   return tags?.some((t) => t.name === SCRATCH_TAG) ?? false
 }
 
+/** The name the Gateway gives a Scratch Workspace's folder. */
+const SCRATCH_FOLDER = /\/\d{4}-\d{2}-\d{2}-[0-9a-f]{6}\/?$/
+
+/**
+ * A Session in a Scratch Workspace. The Daemon lists a Session's tags from a
+ * file beside its transcript, and some Sessions there come without it, so the
+ * folder's name counts too.
+ */
+export function isScratchSession(session: Pick<SessionSummary, 'tags' | 'cwd'>): boolean {
+  return isScratch(session.tags) || (session.cwd !== null && SCRATCH_FOLDER.test(session.cwd))
+}
+
 /** Group key of Recents, where every Scratch Session is listed. */
 export const RECENTS_GROUP_KEY = 'droi:recents'
 /** Group key of the pinned Sessions, taken out of their own groups. */
@@ -341,7 +353,7 @@ export function groupByWorkspace(
       pinned.sessions.push(session)
       continue
     }
-    if (isScratch(session.tags)) {
+    if (isScratchSession(session)) {
       recents ??= {
         key: RECENTS_GROUP_KEY,
         label: 'Recents',

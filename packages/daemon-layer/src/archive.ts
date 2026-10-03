@@ -4,7 +4,7 @@
 // brings the folder back first, so the Sessions open again.
 import type { DaemonSessionController } from '@factory/droid-sdk'
 import type { ScratchWorkspaces } from './scratch-workspaces'
-import { continuationChain, isScratch, type SessionSummary } from './sessions'
+import { continuationChain, isScratchSession, type SessionSummary } from './sessions'
 
 interface Connection {
   controller: Pick<DaemonSessionController, 'archiveSession' | 'unarchiveSession'>
@@ -16,7 +16,7 @@ export async function archiveConversation(
   listed: readonly SessionSummary[],
   session: SessionSummary,
 ): Promise<void> {
-  if (!isScratch(session.tags)) {
+  if (!isScratchSession(session)) {
     await controller.archiveSession(session.sessionId)
     return
   }
@@ -31,7 +31,7 @@ export async function unarchiveConversation(
   listed: readonly SessionSummary[],
   session: SessionSummary,
 ): Promise<void> {
-  if (!isScratch(session.tags)) {
+  if (!isScratchSession(session)) {
     await controller.unarchiveSession(session.sessionId)
     return
   }

@@ -10,7 +10,7 @@ import type { DaemonConnection } from './connection'
 import { useDaemonConnection } from './connection-context'
 import {
   SESSIONS_QUERY_KEY,
-  isScratch,
+  isScratchSession,
   workspaceLabel,
   type SessionSummary,
   type SessionTag,
@@ -26,7 +26,7 @@ export interface RecentWorkspace {
 export function recentWorkspaces(sessions: readonly SessionSummary[]): RecentWorkspace[] {
   const byPath = new Map<string, RecentWorkspace>()
   for (const session of sessions) {
-    if (isScratch(session.tags)) continue
+    if (isScratchSession(session)) continue
     const path = session.repoRoot ?? session.cwd
     if (!path) continue
     const existing = byPath.get(path)

@@ -188,6 +188,19 @@ describe('groupByWorkspace with Scratch Workspaces', () => {
     expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['s2', 's1'])
   })
 
+  test('a Session in a Scratch folder without the tag still goes to Recents', () => {
+    const groups = groupByWorkspace([
+      summary({ sessionId: 'lost', cwd: '/u/.droi/chats/2026-10-02-5c4802', updatedAt: 70 }),
+      summary({ sessionId: 'p', cwd: '/w/alpha', updatedAt: 10 }),
+      summary({ sessionId: 'dated', cwd: '/w/2026-10-02-notes', updatedAt: 5 }),
+    ])
+    expect(groups.map((g) => [g.label, g.sessions.map((s) => s.sessionId)])).toEqual([
+      ['alpha', ['p']],
+      ['2026-10-02-notes', ['dated']],
+      ['Recents', ['lost']],
+    ])
+  })
+
   test('Recents stays last even when pinned; its pinned Sessions, apart, go to the pinned group', () => {
     const groups = groupByWorkspace(
       [
