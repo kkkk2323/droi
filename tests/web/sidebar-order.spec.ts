@@ -110,3 +110,36 @@ test('Sessions sort newest first or by when this Client first saw them', async (
   await page.getByRole('menuitemradio', { name: 'Created' }).click()
   await expect.poll(async () => (await titles())[0]).toContain('Beta old')
 })
+
+test.describe('a Session that starts working', () => {
+  const fresh = session('Fresh talk', '/Users/dev/delta', [userMessage('d')], {
+    updatedAt: NOW - 60,
+  })
+  const old = session('Old talk', '/Users/dev/delta', [userMessage('d')], {
+    updatedAt: NOW - 12 * 60 * 60,
+  })
+  test.use({ scenario: { sessions: [fresh, old] } })
+
+  test('moves to the top of its Workspace, and stays there once it is done', async ({
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    const rows = sidebar.getByRole('region', { name: 'delta' }).getByRole('listitem')
+    await expect(rows.first()).toContainText('Fresh talk')
+
+    // Driven from another Client: this one has not loaded it.
+    fakeDaemon.notify(old.sessionId, {
+      type: 'droid_working_state_changed',
+      newState: 'executing_tool',
+    })
+    await expect(rows.first()).toContainText('Old talk')
+    await expect(rows.first().getByRole('status', { name: 'Working' })).toBeVisible()
+
+    fakeDaemon.notify(old.sessionId, { type: 'droid_working_state_changed', newState: 'idle' })
+    await expect(rows.first().getByRole('status', { name: 'Working' })).toHaveCount(0)
+    await expect(rows.first()).toContainText('Old talk')
+  })
+})

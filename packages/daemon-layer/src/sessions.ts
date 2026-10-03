@@ -2,7 +2,7 @@
 // the Daemon on demand, so it lives in TanStack Query; the open Session's
 // transcript lives in the SDK state manager (see use-session.ts).
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DaemonSessionController } from '@factory/droid-sdk'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
@@ -157,6 +157,30 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
     }
   }, [connection, queryClient])
 
+  // The list is read now and then, so a Session that starts working after a
+  // read would keep its old time (and its place far down) until the next one.
+  // Its working-state notifications say it is active: they count as a change
+  // now. Only a Session's work does, not an idle report alone, which loading
+  // an old Session could bring.
+  const [activeAt, setActiveAt] = useState<ReadonlyMap<string, number>>(() => new Map())
+  useEffect(() => {
+    const working = new Set<string>()
+    const onWorkingState = ({ sessionId, newState }: { sessionId: string; newState: string }) => {
+      const busy = newState !== 'idle'
+      if (!busy && !working.has(sessionId)) return
+      if (busy) working.add(sessionId)
+      else working.delete(sessionId)
+      const now = Math.floor(Date.now() / 1000)
+      setActiveAt((prev) =>
+        prev.get(sessionId) === now ? prev : new Map(prev).set(sessionId, now),
+      )
+    }
+    connection.controller.on('droidWorkingStateChanged', onWorkingState)
+    return () => {
+      connection.controller.off('droidWorkingStateChanged', onWorkingState)
+    }
+  }, [connection])
+
   const query = useInfiniteQuery({
     queryKey: [...SESSIONS_QUERY_KEY, { includeArchived }],
     initialPageParam: null as number | null,
@@ -178,7 +202,16 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
     staleTime: 10_000,
   })
   const pages = query.data?.pages
-  const data = useMemo(() => pages?.flatMap((page) => page.sessions), [pages])
+  const data = useMemo(
+    () =>
+      pages?.flatMap((page) =>
+        page.sessions.map((session) => {
+          const at = activeAt.get(session.sessionId) ?? 0
+          return at > session.updatedAt ? { ...session, updatedAt: at } : session
+        }),
+      ),
+    [pages, activeAt],
+  )
   const { fetchNextPage } = query
   return {
     data,
