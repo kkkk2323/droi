@@ -13,6 +13,8 @@ import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { useSlashItems, type SlashItem } from '@droi/daemon-layer/use-slash-items'
 import { SettingsControls } from '@/components/chat/session-toolbar'
 import { setPendingPrompt } from '@droi/daemon-layer/pending-prompt'
+import { usePreference } from '@droi/daemon-layer/local-preference'
+import { defaultToolMode, newSessionToolMode, type ToolMode } from '@droi/daemon-layer/tool-mode'
 import { cn } from '@/lib/utils'
 
 const NO_BUILTINS: SlashItem[] = []
@@ -67,13 +69,9 @@ export function NewSessionPage({
     modelId?: string
     reasoningEffort?: string
     autonomyLevel?: string
+    toolMode?: ToolMode
   }>({})
-  const settings = {
-    models: defaults.models,
-    modelId: overrides.modelId ?? defaults.modelId,
-    reasoningEffort: overrides.reasoningEffort ?? defaults.reasoningEffort,
-    autonomyLevel: overrides.autonomyLevel ?? defaults.autonomyLevel,
-  }
+  const [toolModeDefault] = usePreference(defaultToolMode)
   const pickModel = (modelId: string) => {
     // A new model may not offer the current effort; fall back to its list.
     const model = defaults.models.find((m) => m.id === modelId)
@@ -87,6 +85,14 @@ export function NewSessionPage({
   }
 
   const draft = useDraftSession(workspace, choice.tags)
+  const toolMode = newSessionToolMode(overrides.toolMode, toolModeDefault, draft.toolMode)
+  const settings = {
+    models: defaults.models,
+    modelId: overrides.modelId ?? defaults.modelId,
+    reasoningEffort: overrides.reasoningEffort ?? defaults.reasoningEffort,
+    autonomyLevel: overrides.autonomyLevel ?? defaults.autonomyLevel,
+    toolExecutionMode: toolMode.requested,
+  }
   // `/compact` has nothing to summarise yet, so only the Workspace's own items.
   const slashItems = useSlashItems(draft.sessionId, NO_BUILTINS)
 
@@ -212,6 +218,10 @@ export function NewSessionPage({
                 setOverrides({ ...overrides, reasoningEffort })
               }
               onAutonomyLevel={(autonomyLevel) => setOverrides({ ...overrides, autonomyLevel })}
+              toolMode={{
+                value: toolMode.shown,
+                onChange: (mode) => setOverrides({ ...overrides, toolMode: mode }),
+              }}
             />
           }
         />

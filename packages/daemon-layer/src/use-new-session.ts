@@ -4,6 +4,7 @@ import { LOCAL_MACHINE_ID } from '@factory/droid-sdk'
 import { GATEWAY_API_KEY_PLACEHOLDER } from './gateway'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
+import { isToolMode, type ToolMode } from './tool-mode'
 import { uuid } from './uuid'
 import type { DaemonConnection } from './connection'
 import { useDaemonConnection } from './connection-context'
@@ -40,6 +41,8 @@ export interface NewSessionSettings {
   modelId: string | null
   reasoningEffort: string | null
   autonomyLevel: string | null
+  /** Fixed for the Session's lifetime; null or absent leaves it to droid. */
+  toolExecutionMode?: ToolMode | null
 }
 
 export interface NewSessionActions {
@@ -52,13 +55,14 @@ type Connection = Pick<DaemonConnection, 'controller' | 'sessionState'>
 
 /**
  * Validates the directory and asks the Daemon for a Session there. Resolves
- * to the Session id, or to the message to show when the directory is unusable.
+ * to the Session id and the tool mode the Daemon gave it, or to the message
+ * to show when the directory is unusable.
  */
 export async function openSession(
   { controller, sessionState }: Connection,
   path: string,
   options: { settings?: NewSessionSettings; tags?: SessionTag[] } = {},
-): Promise<{ sessionId: string } | { error: string }> {
+): Promise<{ sessionId: string; toolExecutionMode: ToolMode | null } | { error: string }> {
   const check = await controller.validateWorkingDirectory(path)
   if (!check.isValid) return { error: check.error ?? `${path} is not a usable directory.` }
   const { settings, tags } = options
@@ -78,9 +82,13 @@ export async function openSession(
       ...(settings?.modelId ? { modelId: settings.modelId } : {}),
       ...(settings?.reasoningEffort ? { reasoningEffort: settings.reasoningEffort as never } : {}),
       ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
+      ...(settings?.toolExecutionMode
+        ? { toolExecutionMode: settings.toolExecutionMode as never }
+        : {}),
       ...(tags ? { tags } : {}),
     })
-    return { sessionId: result.sessionId }
+    const mode: unknown = result.settings?.toolExecutionMode
+    return { sessionId: result.sessionId, toolExecutionMode: isToolMode(mode) ? mode : null }
   } catch (cause) {
     sessionState.removeSession(sessionId)
     throw cause

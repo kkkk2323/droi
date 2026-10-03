@@ -19,6 +19,13 @@ import {
   type SubagentTier,
 } from '@droi/daemon-layer/session-defaults'
 import { useSessionDefaultsEditor } from '@droi/daemon-layer/use-session-defaults'
+import { usePreference } from '@droi/daemon-layer/local-preference'
+import {
+  TOOL_MODES,
+  TOOL_MODE_LABELS,
+  defaultToolMode,
+  isToolMode,
+} from '@droi/daemon-layer/tool-mode'
 import { ModelPicker } from '@/components/chat/model-picker'
 import { Button } from '@/components/ui/button'
 import { Select, type SelectOption } from '@/components/ui/select'
@@ -33,6 +40,7 @@ const TIER_LABELS: Record<SubagentTier, string> = {
   heavy: 'Heavy task',
 }
 const ORG_MANAGED = 'Set by your organization.'
+const FOLLOW_DROID = 'droid'
 
 type Update = (patch: SessionDefaultsPatch) => void
 
@@ -62,6 +70,7 @@ export function SessionDefaultsTab({ notice }: { notice?: ReactNode }) {
       ) : (
         <>
           <General defaults={defaults} save={save} />
+          <ToolCalls />
           <SpecMode defaults={defaults} save={save} />
           <Compaction defaults={defaults} save={save} />
           <Subagents defaults={defaults} save={save} />
@@ -150,6 +159,30 @@ function General({ defaults, save }: Props) {
               value: level,
               label: AUTONOMY_LABELS[level] ?? level,
             }))}
+          />
+        }
+      />
+    </SettingGroup>
+  )
+}
+
+/** Kept by this Client, not the Daemon: droid has no default of its own to edit here. */
+function ToolCalls() {
+  const [mode, setMode] = usePreference(defaultToolMode)
+  return (
+    <SettingGroup title="Tool calls">
+      <SettingRow
+        title="Mode"
+        description="Script lets the model call tools from a small program that can batch and filter them. A Session keeps the mode it starts with. Kept on this device."
+        control={
+          <Select
+            label="Default tool calls"
+            value={mode ?? FOLLOW_DROID}
+            onChange={(value) => setMode(isToolMode(value) ? value : null)}
+            options={[
+              { value: FOLLOW_DROID, label: 'Follow droid settings' },
+              ...TOOL_MODES.map((value) => ({ value, label: TOOL_MODE_LABELS[value] })),
+            ]}
           />
         }
       />

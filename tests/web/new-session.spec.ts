@@ -286,3 +286,77 @@ test.describe('new session', () => {
     await expect((await openSidebar()).getByRole('region', { name: 'fresh-project' })).toBeVisible()
   })
 })
+
+test.describe('tool calls', () => {
+  test.use({ scenario: { sessions: [newer] } })
+
+  test('Script picked under the reasoning effort starts a Session that calls tools through Script', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    // droid decides by default; the page shows what the Daemon gave the draft.
+    const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
+    expect(draft.params).not.toHaveProperty('toolExecutionMode')
+    const trigger = form.getByRole('button', { name: 'Model' })
+    await trigger.click()
+    const tools = page.getByRole('radiogroup', { name: 'Tool calls' })
+    await expect(tools.getByRole('radio', { name: 'Direct' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await tools.getByRole('radio', { name: 'Script' }).click()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toHaveText('Auto ModelNoneScript')
+
+    await form.getByRole('button', { name: 'Start session' }).click()
+    // A Session's tool mode is fixed when it is created, so the draft gives way to a new one.
+    const created = await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
+    expect(created.params).toMatchObject({
+      cwd: '/Users/dev/acme-web',
+      toolExecutionMode: 'script_only',
+    })
+    const closed = await fakeDaemon.waitForRequest('daemon.close_session')
+    expect(closed.params).toMatchObject({ sessionId: sessionIdOf(draft) })
+    await expect(page).toHaveURL(new RegExp(`#/s/${sessionIdOf(created)}`))
+  })
+
+  test('the default set in Settings goes into the draft, which is taken as it is', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    await (await openSidebar()).getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Session defaults' }).click()
+    const mode = page.getByRole('combobox', { name: 'Default tool calls' })
+    await expect(mode).toHaveText('Follow droid settings')
+    await mode.click()
+    await page.getByRole('listbox').getByRole('option', { name: 'Script' }).click()
+    await expect(mode).toHaveText('Script')
+    await page.getByRole('button', { name: 'Back' }).click()
+
+    await (await openSidebar()).getByRole('button', { name: 'New session', exact: true }).click()
+    const form = page.getByRole('region', { name: 'New session' })
+    await expect
+      .poll(() =>
+        fakeDaemon.requests
+          .filter((r) => r.method === 'daemon.initialize_session')
+          .map((r) => (r.params as Record<string, unknown>)['toolExecutionMode']),
+      )
+      .toContain('script_only')
+    await expect(form.getByRole('button', { name: 'Model' })).toHaveText('Auto ModelNoneScript')
+    await form.getByRole('button', { name: 'Start session' }).click()
+    const takeover = await fakeDaemon.waitForRequest('daemon.update_session_settings')
+    const draft = fakeDaemon.requests
+      .filter((r) => r.method === 'daemon.initialize_session')
+      .find((r) => (r.params as Record<string, unknown>)['toolExecutionMode'] === 'script_only')!
+    expect(takeover.params).toMatchObject({ sessionId: sessionIdOf(draft) })
+    await expect(page).toHaveURL(new RegExp(`#/s/${sessionIdOf(draft)}`))
+  })
+})

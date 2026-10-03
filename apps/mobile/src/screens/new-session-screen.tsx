@@ -14,6 +14,8 @@ import {
 import { useWorkspaceChoice, type WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
 import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { useSlashItems, type SlashItem } from '@droi/daemon-layer/use-slash-items'
+import { usePreference } from '@droi/daemon-layer/local-preference'
+import { defaultToolMode, newSessionToolMode, type ToolMode } from '@droi/daemon-layer/tool-mode'
 import { useRouter } from 'expo-router'
 import { useHeaderHeight } from 'expo-router/react-navigation'
 import { ChevronDown } from 'lucide-react-native'
@@ -94,13 +96,9 @@ function NewSession({
     modelId?: string
     reasoningEffort?: string
     autonomyLevel?: string
+    toolMode?: ToolMode
   }>({})
-  const settings = {
-    models: defaults.models,
-    modelId: overrides.modelId ?? defaults.modelId,
-    reasoningEffort: overrides.reasoningEffort ?? defaults.reasoningEffort,
-    autonomyLevel: overrides.autonomyLevel ?? defaults.autonomyLevel,
-  }
+  const [toolModeDefault] = usePreference(defaultToolMode)
   const pickModel = (modelId: string) => {
     // A new model may not offer the current effort; fall back to its list.
     const model = defaults.models.find((m) => m.id === modelId)
@@ -114,6 +112,14 @@ function NewSession({
   }
 
   const draft = useDraftSession(workspace, choice.tags)
+  const toolMode = newSessionToolMode(overrides.toolMode, toolModeDefault, draft.toolMode)
+  const settings = {
+    models: defaults.models,
+    modelId: overrides.modelId ?? defaults.modelId,
+    reasoningEffort: overrides.reasoningEffort ?? defaults.reasoningEffort,
+    autonomyLevel: overrides.autonomyLevel ?? defaults.autonomyLevel,
+    toolExecutionMode: toolMode.requested,
+  }
   const slashItems = useSlashItems(draft.sessionId, NO_BUILTINS)
 
   // Leaving without sending closes the draft; a send has taken it over already.
@@ -253,6 +259,10 @@ function NewSession({
                   setOverrides({ ...overrides, reasoningEffort })
                 }
                 onAutonomyLevel={(autonomyLevel) => setOverrides({ ...overrides, autonomyLevel })}
+                toolMode={{
+                  value: toolMode.shown,
+                  onChange: (mode) => setOverrides({ ...overrides, toolMode: mode }),
+                }}
               />
             }
           />

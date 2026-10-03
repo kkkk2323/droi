@@ -129,3 +129,31 @@ test('leaving the page closes the draft, which never shows in the list', async (
   const again = await openSessionList(page)
   await expect(again.getByRole('group')).toHaveCount(2)
 })
+
+test('Script picked for tool calls starts a Session that calls tools through Script', async ({
+  page,
+  fakeDaemon,
+}) => {
+  await pairPhone(page, fakeDaemon)
+  const form = await openNewSession(page)
+  const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
+  expect(draft.params).not.toHaveProperty('toolExecutionMode')
+  const tools = form.getByRole('button', { name: 'Tool calls', exact: true })
+  await expect(tools).toHaveText(/Direct/)
+  await tools.click()
+  await page
+    .getByRole('dialog', { name: 'Tool calls' })
+    .getByRole('radio', { name: 'Script' })
+    .click()
+  await expect(tools).toHaveText(/Script/)
+
+  await form.getByRole('button', { name: 'Start session' }).click()
+  // A Session's tool mode is fixed when it is created, so the draft gives way to a new one.
+  const created = await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
+  expect(created.params).toMatchObject({
+    cwd: '/Users/dev/acme-web',
+    toolExecutionMode: 'script_only',
+  })
+  const closed = await fakeDaemon.waitForRequest('daemon.close_session')
+  expect(closed.params).toMatchObject({ sessionId: sessionIdOf(draft) })
+})

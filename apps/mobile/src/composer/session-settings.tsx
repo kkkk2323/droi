@@ -1,5 +1,5 @@
-// Model, reasoning effort and autonomy in the composer's bottom row, each
-// opening a sheet. The model sheet has the web Client's brand rail, search
+// Model, reasoning effort and autonomy in the composer's bottom row (and,
+// for a new Session, its tool calls), each opening a sheet. The model sheet has the web Client's brand rail, search
 // and favourites (kept on this phone).
 import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
 import { BRAND_LABELS, brandOf, type Brand } from '@droi/daemon-layer/model-brand'
@@ -17,6 +17,7 @@ import {
   useSessionSettingsActions,
   type SessionSettingsView,
 } from '@droi/daemon-layer/use-session-settings'
+import { TOOL_MODES, TOOL_MODE_LABELS, type ToolMode } from '@droi/daemon-layer/tool-mode'
 import { ChevronDown, ShieldCheck, Star } from 'lucide-react-native'
 import { useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
@@ -40,19 +41,28 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
   )
 }
 
-type Open = 'model' | 'effort' | 'autonomy' | null
+type Open = 'model' | 'effort' | 'tools' | 'autonomy' | null
+
+/** Direct or Script tool calls; only a new Session can choose. */
+export interface ToolModeControl {
+  /** Null until known (droid decides and the Daemon has not said). */
+  value: ToolMode | null
+  onChange: (mode: ToolMode) => void
+}
 
 export function SettingsControls({
   settings,
   onModel,
   onReasoningEffort,
   onAutonomyLevel,
+  toolMode,
   error = null,
 }: {
   settings: SessionSettingsView
   onModel: (modelId: string) => void
   onReasoningEffort: (effort: string) => void
   onAutonomyLevel: (level: string) => void
+  toolMode?: ToolModeControl
   error?: string | null
 }) {
   const colors = useColors()
@@ -95,6 +105,13 @@ export function SettingsControls({
             onPress={() => setOpen('effort')}
           />
         ) : null}
+        {toolMode ? (
+          <Pill
+            label="Tool calls"
+            value={toolMode.value ? TOOL_MODE_LABELS[toolMode.value] : '…'}
+            onPress={() => setOpen('tools')}
+          />
+        ) : null}
         <Pill
           label="Autonomy"
           icon={<ShieldCheck size={12} color={colors.mutedForeground} strokeWidth={1.75} />}
@@ -126,6 +143,23 @@ export function SettingsControls({
           ))}
         </View>
       </Sheet>
+      {toolMode ? (
+        <Sheet visible={open === 'tools'} title="Tool calls" onClose={close}>
+          <View role="radiogroup" aria-label="Tool calls">
+            {TOOL_MODES.map((mode) => (
+              <SheetOption
+                key={mode}
+                label={TOOL_MODE_LABELS[mode]}
+                checked={mode === toolMode.value}
+                onPress={() => {
+                  close()
+                  toolMode.onChange(mode)
+                }}
+              />
+            ))}
+          </View>
+        </Sheet>
+      ) : null}
       <Sheet visible={open === 'autonomy'} title="Autonomy" onClose={close}>
         <View role="radiogroup" aria-label="Autonomy">
           {AUTONOMY_LEVELS.map((level) => (

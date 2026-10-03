@@ -12,6 +12,7 @@ import {
   type PickerFilter,
 } from '@droi/daemon-layer/model-choices'
 import { cn } from '@/lib/utils'
+import { TOOL_MODES, TOOL_MODE_LABELS, type ToolMode } from '@droi/daemon-layer/tool-mode'
 import type { ModelChoice } from '@droi/daemon-layer/use-session-settings'
 
 /** A choice that is not a model, such as "Same as main"; it stays at the top of the list. */
@@ -31,7 +32,15 @@ export interface PickerEffort {
   onChange: (effort: string) => void
 }
 
+/** Direct or Script tool calls, set under the reasoning effort; only a new Session can choose. */
+export interface PickerToolMode {
+  /** Null until known (droid decides and the Daemon has not said). */
+  value: ToolMode | null
+  onChange: (mode: ToolMode) => void
+}
+
 const NO_EXTRAS: PickerExtra[] = []
+const TOOL_MODE_OPTIONS = TOOL_MODES.map((mode) => ({ value: mode, label: TOOL_MODE_LABELS[mode] }))
 
 export function ModelPicker({
   models,
@@ -43,6 +52,7 @@ export function ModelPicker({
   disabled = false,
   field = false,
   effort,
+  toolMode,
   className,
 }: {
   models: ModelChoice[]
@@ -57,6 +67,7 @@ export function ModelPicker({
   /** Framed field that opens downwards, for settings rows, instead of the composer's text button. */
   field?: boolean
   effort?: PickerEffort
+  toolMode?: PickerToolMode
   className?: string
 }) {
   const [open, setOpen] = useState(false)
@@ -146,6 +157,9 @@ export function ModelPicker({
         </span>
         {effortLabel && levels.length > 0 ? (
           <span className="shrink-0 text-muted-foreground">{effortLabel}</span>
+        ) : null}
+        {toolMode?.value === 'script_only' ? (
+          <span className="shrink-0 text-muted-foreground">Script</span>
         ) : null}
         <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
       </Popover.Trigger>
@@ -316,8 +330,30 @@ export function ModelPicker({
                   )
                 })}
               </ul>
-              {effort && levels.length > 0 ? (
-                <EffortLevels levels={levels} value={effort.value} onChange={effort.onChange} />
+              {(effort && levels.length > 0) || toolMode ? (
+                <div className="flex flex-col gap-1.5 border-t px-3 py-2">
+                  {effort && levels.length > 0 ? (
+                    <Segmented
+                      title="Reasoning"
+                      name="Reasoning effort"
+                      options={levels.map((level) => ({
+                        value: level,
+                        label: EFFORT_LABELS[level] ?? level,
+                      }))}
+                      value={effort.value}
+                      onChange={effort.onChange}
+                    />
+                  ) : null}
+                  {toolMode ? (
+                    <Segmented
+                      title="Tools"
+                      name="Tool calls"
+                      options={TOOL_MODE_OPTIONS}
+                      value={toolMode.value}
+                      onChange={(mode) => toolMode.onChange(mode as ToolMode)}
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </Popover.Popup>
@@ -328,19 +364,26 @@ export function ModelPicker({
 }
 
 /**
- * Every level named at once, one click each. Changing it leaves the picker
+ * Every choice named at once, one click each. Changing it leaves the picker
  * open; picking a model is what closes it.
  */
-function EffortLevels({
-  levels,
+function Segmented({
+  title,
+  name,
+  options,
   value,
   onChange,
 }: {
-  levels: readonly string[]
+  /** The short visible label. */
+  title: string
+  /** The radio group's accessible name. */
+  name: string
+  options: ReadonlyArray<{ value: string; label: string }>
   value: string | null
-  onChange: (effort: string) => void
+  onChange: (value: string) => void
 }) {
   const buttons = useRef<Array<HTMLButtonElement | null>>([])
+  const levels = options.map((option) => option.value)
   const current = Math.max(levels.indexOf(value ?? ''), 0)
   const move = (index: number) => {
     const next = levels[index]
@@ -349,13 +392,13 @@ function EffortLevels({
     if (next !== value) onChange(next)
   }
   return (
-    <div className="flex items-center gap-3 border-t px-3 py-2">
-      <span aria-hidden className="shrink-0 text-xs text-muted-foreground">
-        Reasoning
+    <div className="flex items-center gap-3">
+      <span aria-hidden className="w-16 shrink-0 text-xs text-muted-foreground">
+        {title}
       </span>
       <div
         role="radiogroup"
-        aria-label="Reasoning effort"
+        aria-label={name}
         className="flex min-w-0 flex-1 gap-0.5 rounded-lg bg-muted p-0.5"
         onKeyDown={(event) => {
           if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
@@ -367,7 +410,7 @@ function EffortLevels({
           }
         }}
       >
-        {levels.map((level, index) => {
+        {options.map(({ value: level, label }, index) => {
           const checked = level === value
           return (
             <button
@@ -387,7 +430,7 @@ function EffortLevels({
                 checked && 'bg-background font-medium text-foreground shadow-sm',
               )}
             >
-              {EFFORT_LABELS[level] ?? level}
+              {label}
             </button>
           )
         })}

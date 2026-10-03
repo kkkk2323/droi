@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import type { FakeDaemon } from '../fake-daemon/fake-daemon'
 import { session, userMessage } from '../fake-daemon/scenario'
-import { expect, openSessionList, pairPhone, test } from './fixtures'
+import { expect, openNewSession, openSessionList, pairPhone, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
 
@@ -84,4 +84,27 @@ test.describe('session defaults the organization manages', () => {
     await expect(row(page, 'Default model')).toHaveCount(0)
     await expect(row(page, 'Reasoning level')).toBeVisible()
   })
+})
+
+test('the tool calls default is kept on this phone and goes into new Sessions', async ({
+  page,
+  fakeDaemon,
+}) => {
+  await pairPhone(page, fakeDaemon)
+  await openDefaults(page)
+  await expect(row(page, 'Mode')).toHaveAccessibleName('Mode: Follow droid settings')
+  await choose(page, 'Mode', 'Script')
+  await expect(row(page, 'Mode')).toHaveAccessibleName('Mode: Script')
+  // Not a Daemon setting: nothing is sent for it.
+  expect(saved(fakeDaemon)).toBeUndefined()
+
+  const form = await openNewSession(page)
+  await expect(form.getByRole('button', { name: 'Tool calls', exact: true })).toHaveText(/Script/)
+  await expect
+    .poll(() =>
+      fakeDaemon.requests
+        .filter((r) => r.method === 'daemon.initialize_session')
+        .map((r) => (r.params as Record<string, unknown>)['toolExecutionMode']),
+    )
+    .toContain('script_only')
 })

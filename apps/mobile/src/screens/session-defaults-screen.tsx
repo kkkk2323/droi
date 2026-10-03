@@ -21,6 +21,13 @@ import {
   type SubagentTier,
 } from '@droi/daemon-layer/session-defaults'
 import { useSessionDefaultsEditor } from '@droi/daemon-layer/use-session-defaults'
+import { usePreference } from '@droi/daemon-layer/local-preference'
+import {
+  TOOL_MODES,
+  TOOL_MODE_LABELS,
+  defaultToolMode,
+  isToolMode,
+} from '@droi/daemon-layer/tool-mode'
 import { useState } from 'react'
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { ListPicker, ListSection, ListSwitch } from '../ui/list'
@@ -31,6 +38,7 @@ import { useColors } from '../ui/use-colors'
 const SAME_AS_MAIN = '__same_as_main__'
 const MODEL_DEFAULT = '__model_default__'
 const INHERIT = 'inherit'
+const FOLLOW_DROID = 'droid'
 const TIER_LABELS: Record<SubagentTier, string> = {
   light: 'Light task',
   medium: 'Medium task',
@@ -71,6 +79,27 @@ export function SessionDefaultsScreen({ computerName }: { computerName: string }
         <Sections defaults={defaults} save={save} />
       )}
     </ScrollView>
+  )
+}
+
+/** Kept on this phone, for every computer: droid has no default of its own to edit here. */
+function ToolCalls() {
+  const [mode, setMode] = usePreference(defaultToolMode)
+  return (
+    <ListSection
+      title="Tool calls"
+      footer="Script lets the model call tools from a small program that can batch and filter them. A Session keeps the mode it starts with. Kept on this phone."
+    >
+      <ListPicker
+        label="Mode"
+        value={mode ?? FOLLOW_DROID}
+        options={[
+          { value: FOLLOW_DROID, label: 'Follow droid settings' },
+          ...TOOL_MODES.map((value) => ({ value, label: TOOL_MODE_LABELS[value] })),
+        ]}
+        onChange={(value) => setMode(isToolMode(value) ? value : null)}
+      />
+    </ListSection>
   )
 }
 
@@ -148,6 +177,8 @@ function Sections({ defaults, save }: { defaults: SessionDefaultsView; save: Sav
           onChange={editable('autonomyLevel', (autonomyLevel) => save({ autonomyLevel }))}
         />
       </ListSection>
+
+      <ToolCalls />
 
       <ListSection
         title="Spec mode"

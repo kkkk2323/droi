@@ -307,7 +307,13 @@ export function createScenario(input: ScenarioInput): Scenario {
         sessionId: created.sessionId,
         hostId: HOST_ID,
         session: { messages: [], title: created.title },
-        settings: sessionSettings(),
+        // Like the real Daemon, a mode asked for here is the Session's for good.
+        settings: {
+          ...sessionSettings(),
+          ...(typeof params['toolExecutionMode'] === 'string'
+            ? { toolExecutionMode: params['toolExecutionMode'] }
+            : {}),
+        },
         availableModels: AVAILABLE_MODELS,
       }
     },

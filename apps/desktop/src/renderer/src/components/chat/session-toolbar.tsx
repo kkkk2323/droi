@@ -9,7 +9,7 @@ import {
   type SessionSettingsView,
 } from '@droi/daemon-layer/use-session-settings'
 import { AUTONOMY_LABELS } from '@droi/daemon-layer/model-choices'
-import { ModelPicker } from './model-picker'
+import { ModelPicker, type PickerToolMode } from './model-picker'
 
 /** Editable title for the page header. */
 export function SessionTitle({
@@ -44,12 +44,15 @@ export function SettingsControls({
   onModel,
   onReasoningEffort,
   onAutonomyLevel,
+  toolMode,
   error = null,
 }: {
   settings: SessionSettingsView
   onModel: (modelId: string) => void
   onReasoningEffort: (effort: string) => void
   onAutonomyLevel: (level: string) => void
+  /** Only a new Session chooses it. */
+  toolMode?: PickerToolMode
   error?: string | null
 }) {
   const model = settings.models.find((m) => m.id === settings.modelId)
@@ -68,6 +71,7 @@ export function SettingsControls({
           options: efforts,
           onChange: onReasoningEffort,
         }}
+        {...(toolMode ? { toolMode } : {})}
       />
       <Select
         quiet
