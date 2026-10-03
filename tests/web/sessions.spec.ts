@@ -1086,6 +1086,37 @@ test.describe('opening a tool row at the bottom of the transcript', () => {
     await page.waitForTimeout(600)
     expect(Math.abs((await row.boundingBox())!.y - before)).toBeLessThan(2)
   })
+
+  test('closing it again after scrolling down leaves the end in view', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Many steps/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    await expect(transcript).toContainText('All steps done.')
+    const row = page.getByRole('button', { name: 'Execute: echo step 3' })
+    await page.waitForTimeout(400)
+    await row.click()
+    await expect(row).toHaveAttribute('aria-expanded', 'true')
+    await page.waitForTimeout(600)
+    const gap = () => transcript.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)
+    // Part of the way down, short of the end: the scroll that closing forces
+    // back up must not be taken for the reader's.
+    const opened = await gap()
+    const box = (await transcript.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, opened / 2)
+    await expect.poll(gap).toBeLessThan(opened)
+    await page.waitForTimeout(200)
+    expect(await gap()).toBeGreaterThan(20)
+    await row.click()
+    await expect(row).toHaveAttribute('aria-expanded', 'false')
+    await page.waitForTimeout(600)
+    expect(await gap()).toBeLessThanOrEqual(2)
+    await expect(page.getByRole('button', { name: 'Scroll to latest' })).toHaveCount(0)
+  })
 })
 
 test.describe('reconnect keeps the Session', () => {

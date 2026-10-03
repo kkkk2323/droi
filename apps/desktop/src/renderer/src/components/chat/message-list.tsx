@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -250,9 +257,44 @@ export function MessageList({
     },
     [],
   )
+  // Closing a row the reader has scrolled down past shortens the list, and
+  // the browser pulls scrollTop back to the new end. Virtuoso takes that pull
+  // for the reader scrolling up and "compensates" by the whole height the row
+  // lost, which throws the view up past the end. Hold the clicked disclosure
+  // where it was clicked for a moment instead; the end then lands in view.
+  // Only a disclosure: other buttons (loading earlier messages) move on purpose.
+  const holdFrame = useRef<number | null>(null)
+  const releaseHold = () => {
+    if (holdFrame.current !== null) cancelAnimationFrame(holdFrame.current)
+    holdFrame.current = null
+  }
+  useEffect(
+    () => () => {
+      if (holdFrame.current !== null) cancelAnimationFrame(holdFrame.current)
+    },
+    [],
+  )
+  const holdClicked = (event: MouseEvent<HTMLElement>) => {
+    releaseHold()
+    const el = scroller.current
+    const target = event.target instanceof Element ? event.target : null
+    if (!el || !target || !el.contains(target)) return
+    const control = target.closest('[aria-expanded]')
+    if (!control) return
+    const top = control.getBoundingClientRect().top
+    const start = performance.now()
+    holdFrame.current = requestAnimationFrame(function hold() {
+      holdFrame.current = null
+      if (!control.isConnected || performance.now() - start > USER_RESIZE_WINDOW_MS) return
+      const shift = control.getBoundingClientRect().top - top
+      if (Math.abs(shift) > 1) el.scrollTop += shift
+      holdFrame.current = requestAnimationFrame(hold)
+    })
+  }
   const readerScrolls = () => {
     restoring.current = false
     stopSeeking()
+    releaseHold()
   }
   const readerActs = () => {
     touched()
@@ -387,6 +429,7 @@ export function MessageList({
       className={cn('relative h-full', !settled && 'invisible')}
       onPointerDownCapture={readerActs}
       onKeyDownCapture={readerActs}
+      onClickCapture={holdClicked}
       onWheelCapture={readerScrolls}
       onTouchMoveCapture={readerScrolls}
     >
