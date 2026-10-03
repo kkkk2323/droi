@@ -32,7 +32,7 @@ export interface PickerEffort {
   onChange: (effort: string) => void
 }
 
-/** Direct or Script tool calls, set under the reasoning effort; only a new Session can choose. */
+/** Direct, Script or both, set under the reasoning effort; only a new Session can choose. */
 export interface PickerToolMode {
   /** Null until known (droid decides and the Daemon has not said). */
   value: ToolMode | null
@@ -158,8 +158,8 @@ export function ModelPicker({
         {effortLabel && levels.length > 0 ? (
           <span className="shrink-0 text-muted-foreground">{effortLabel}</span>
         ) : null}
-        {toolMode?.value === 'script_only' ? (
-          <span className="shrink-0 text-muted-foreground">Script</span>
+        {toolMode?.value && toolMode.value !== 'direct_only' ? (
+          <span className="shrink-0 text-muted-foreground">{TOOL_MODE_LABELS[toolMode.value]}</span>
         ) : null}
         <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
       </Popover.Trigger>

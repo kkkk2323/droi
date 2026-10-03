@@ -173,7 +173,7 @@ function ToolCalls() {
     <SettingGroup title="Tool calls">
       <SettingRow
         title="Mode"
-        description="Script lets the model call tools from a small program that can batch and filter them. A Session keeps the mode it starts with. Kept on this device."
+        description="Script lets the model call tools from a small program that can batch and filter them; Both offers it alongside direct calls. A Session keeps the mode it starts with. Kept on this device."
         control={
           <Select
             label="Default tool calls"

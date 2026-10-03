@@ -1,15 +1,17 @@
-// Whether a Session's model calls tools directly or from a Script program.
+// Whether a Session's model calls tools directly, from a Script program, or
+// either way.
 // The Daemon fixes the mode when it creates the Session and offers no way to
 // change it later, so it is chosen only for new Sessions. Without a choice,
 // droid decides: `toolExecutionMode` in ~/.factory/settings.json, else
 // Factory's per-model list, else direct.
 import { createPreference } from './local-preference'
 
-export const TOOL_MODES = ['direct_only', 'script_only'] as const
+export const TOOL_MODES = ['direct_only', 'direct_and_script', 'script_only'] as const
 export type ToolMode = (typeof TOOL_MODES)[number]
 
 export const TOOL_MODE_LABELS: Record<ToolMode, string> = {
   direct_only: 'Direct',
+  direct_and_script: 'Both',
   script_only: 'Script',
 }
 

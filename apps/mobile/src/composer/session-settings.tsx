@@ -43,7 +43,7 @@ export function SessionSettingsBar({ sessionId }: { sessionId: string }) {
 
 type Open = 'model' | 'effort' | 'tools' | 'autonomy' | null
 
-/** Direct or Script tool calls; only a new Session can choose. */
+/** Direct, Script or both; only a new Session can choose. */
 export interface ToolModeControl {
   /** Null until known (droid decides and the Daemon has not said). */
   value: ToolMode | null

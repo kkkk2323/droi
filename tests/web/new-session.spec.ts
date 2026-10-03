@@ -305,6 +305,7 @@ test.describe('tool calls', () => {
     const trigger = form.getByRole('button', { name: 'Model' })
     await trigger.click()
     const tools = page.getByRole('radiogroup', { name: 'Tool calls' })
+    await expect(tools.getByRole('radio')).toHaveText(['Direct', 'Both', 'Script'])
     await expect(tools.getByRole('radio', { name: 'Direct' })).toHaveAttribute(
       'aria-checked',
       'true',

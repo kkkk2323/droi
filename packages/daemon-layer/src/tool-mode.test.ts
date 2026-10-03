@@ -31,13 +31,14 @@ describe('newSessionToolMode', () => {
 
 describe('the stored default', () => {
   it('reads only the modes droid knows and keeps the choice', () => {
-    const values = new Map([['droi.toolExecutionMode', 'direct_and_script']])
+    const values = new Map([['droi.toolExecutionMode', 'script_and_direct']])
     setPreferenceStorage({
       getItem: (key) => values.get(key) ?? null,
       setItem: (key, value) => void values.set(key, value),
       removeItem: (key) => void values.delete(key),
     })
-    expect(isToolMode('direct_and_script')).toBe(false)
+    expect(isToolMode('direct_and_script')).toBe(true)
+    expect(isToolMode('script_and_direct')).toBe(false)
     expect(defaultToolMode.get()).toBeNull()
     defaultToolMode.set('script_only')
     expect(values.get('droi.toolExecutionMode')).toBe('script_only')

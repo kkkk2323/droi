@@ -141,10 +141,9 @@ test('Script picked for tool calls starts a Session that calls tools through Scr
   const tools = form.getByRole('button', { name: 'Tool calls', exact: true })
   await expect(tools).toHaveText(/Direct/)
   await tools.click()
-  await page
-    .getByRole('dialog', { name: 'Tool calls' })
-    .getByRole('radio', { name: 'Script' })
-    .click()
+  const sheet = page.getByRole('dialog', { name: 'Tool calls' })
+  await expect(sheet.getByRole('radio')).toHaveText(['Direct', 'Both', 'Script'])
+  await sheet.getByRole('radio', { name: 'Script' }).click()
   await expect(tools).toHaveText(/Script/)
 
   await form.getByRole('button', { name: 'Start session' }).click()
