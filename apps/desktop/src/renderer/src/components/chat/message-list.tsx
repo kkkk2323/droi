@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -10,6 +11,7 @@ import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuos
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
+import { activeItem, railItems, TurnRail } from './turn-rail'
 import {
   turnEnds,
   workingLabel,
@@ -72,6 +74,21 @@ function topRow(scroller: HTMLElement): { index: number; offset: number } | null
     if (rect.bottom > top) return { index: Number(row.dataset['index']), offset: top - rect.top }
   }
   return null
+}
+
+/** How far down the viewport the reader's eye is taken to be, as a fraction of its height. */
+const READING_LINE = 0.25
+
+/** The row under the reading line. */
+function readingRow(scroller: HTMLElement): number | null {
+  const rect = scroller.getBoundingClientRect()
+  const line = rect.top + rect.height * READING_LINE
+  let found: number | null = null
+  for (const row of scroller.querySelectorAll<HTMLElement>('[data-index]')) {
+    if (row.getBoundingClientRect().top > line) break
+    found = Number(row.dataset['index'])
+  }
+  return found
 }
 
 function ListHeader({ context }: { context?: ListContext }) {
@@ -191,6 +208,8 @@ export function MessageList({
   })
   const restoredMidway = restored !== undefined && !restored.atBottom
   const [atBottom, setAtBottom] = useState(!restoredMidway)
+  const rail = useMemo(() => railItems([...earlier, transcript].flat()), [earlier, transcript])
+  const [readRow, setReadRow] = useState<number | null>(null)
   // Virtuoso's followOutput fires on a count change only; a streaming reply
   // grows the last entry for seconds without one. Follow height changes too,
   // unless the reader has scrolled away (judged on their scroll events, so
@@ -210,8 +229,10 @@ export function MessageList({
     scrollFrame.current = requestAnimationFrame(() => {
       scrollFrame.current = null
       const el = scroller.current
-      if (el && !restoring.current)
+      if (!el) return
+      if (!restoring.current)
         following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD
+      setReadRow(readingRow(el))
     })
   }).current
   const attachScroller = (el: HTMLElement | Window | null) => {
@@ -326,6 +347,43 @@ export function MessageList({
       seekFrame.current = requestAnimationFrame(check)
     })
   }
+  // Like the end, a row far up sits among estimated heights: aim, then aim
+  // again once the scroll is still, until the row is at the top or the list
+  // can scroll no further.
+  const seekRow = (index: number) => {
+    stopSeeking()
+    setReadRow(index)
+    const el = scroller.current
+    if (!el) return
+    const offsetOf = () => {
+      const row = el.querySelector(`[data-index="${index}"]`)
+      return row ? row.getBoundingClientRect().top - el.getBoundingClientRect().top : null
+    }
+    const before = offsetOf()
+    const near = before !== null && Math.abs(before) < 2 * el.clientHeight
+    virtuoso.current?.scrollToIndex({
+      index,
+      align: 'start',
+      behavior: near && !prefersReducedMotion() ? 'smooth' : 'auto',
+    })
+    const start = performance.now()
+    let last = -1
+    let still = 0
+    seekFrame.current = requestAnimationFrame(function check() {
+      seekFrame.current = null
+      if (performance.now() - start > SEEK_TIMEOUT_MS) return
+      still = el.scrollTop === last ? still + 1 : 0
+      last = el.scrollTop
+      if (still >= 3) {
+        const offset = offsetOf()
+        const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight <= 2
+        if (offset !== null && (Math.abs(offset) <= 2 || (offset > 0 && atEnd))) return
+        virtuoso.current?.scrollToIndex({ index, align: 'start' })
+        still = 0
+      }
+      seekFrame.current = requestAnimationFrame(check)
+    })
+  }
   useEffect(() => {
     if (!scrollToEndKey) return
     // The sent message is appended a tick after the send; scroll once now and
@@ -426,7 +484,7 @@ export function MessageList({
 
   return (
     <div
-      className={cn('relative h-full', !settled && 'invisible')}
+      className={cn('@container relative h-full', !settled && 'invisible')}
       onPointerDownCapture={readerActs}
       onKeyDownCapture={readerActs}
       onClickCapture={holdClicked}
@@ -467,6 +525,7 @@ export function MessageList({
         increaseViewportBy={{ top: 600, bottom: 600 }}
         itemContent={renderEntry}
       />
+      <TurnRail items={rail} active={activeItem(rail, readRow)} onJump={seekRow} />
       {!atBottom ? (
         <Button
           size="icon-sm"
