@@ -1,3 +1,9 @@
+## 1.31.0 - 2026-10-03
+
+### Added
+
+- Tool calls has a third choice, Both: the new Session's model may call tools directly or through Script, as it sees fit. It sits between Direct and Script in the model picker, on the phone's Tool calls sheet and in Session defaults. On the desktop, in the browser and on the phone.
+
 ## 1.30.0 - 2026-10-03
 
 ### Added
