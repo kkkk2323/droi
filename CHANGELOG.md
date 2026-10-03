@@ -1,3 +1,9 @@
+## 1.31.1 - 2026-10-03
+
+### Fixed
+
+- A Session started with Workspace: None no longer shows its folder (named like `2026-10-02-5c4802`) as a Workspace in the sidebar when the Daemon lists it without its tags. It stays under Recents, and the folder is left out of the recent Workspaces in New session. On the desktop, in the browser and on the phone.
+
 ## 1.31.0 - 2026-10-03
 
 ### Added
