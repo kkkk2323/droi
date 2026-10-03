@@ -126,6 +126,40 @@ test.describe('next to Workspaces', () => {
   })
 })
 
+test.describe('pinning in Recents', () => {
+  const NOW = Math.floor(Date.now() / 1000)
+  const newer = session('Pasta recipe', `${SCRATCH_FOLDER}/2026-09-20-cccccc`, [userMessage('a')], {
+    tags: [SCRATCH],
+    updatedAt: NOW - 60,
+  })
+  const older = session('Trip plan', `${SCRATCH_FOLDER}/2026-09-19-dddddd`, [userMessage('b')], {
+    tags: [SCRATCH],
+    updatedAt: NOW - 600,
+  })
+  test.use({ scenario: { sessions: [newer, older] } })
+
+  test('a pinned Session leaves Recents for the Pinned section at the top', async ({
+    page,
+    openClient,
+    openSidebar,
+  }) => {
+    await openClient()
+    const sidebar = await openSidebar()
+    const recents = sidebar.getByRole('region', { name: 'Recents' })
+    await expect(recents.getByRole('listitem')).toHaveCount(2)
+    await recents.getByRole('button', { name: /Trip plan/ }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Pin', exact: true }).click()
+
+    await expect(sidebar.getByRole('button', { name: 'Pinned', exact: true })).toBeVisible()
+    const pinned = sidebar.getByRole('region', { name: 'Pinned sessions' })
+    await expect(sidebar.getByRole('region').first()).toHaveAccessibleName('Pinned sessions')
+    await expect(pinned.getByRole('listitem').first()).toContainText('Trip plan')
+    await expect(pinned.getByRole('listitem').first().getByLabel('Pinned')).toBeVisible()
+    await expect(recents.getByRole('listitem')).toHaveCount(1)
+    await expect(recents.getByRole('button', { name: /Trip plan/ })).toHaveCount(0)
+  })
+})
+
 test.describe('archiving', () => {
   const folder = `${SCRATCH_FOLDER}/2026-09-20-bbbbbb`
   const earlier = session('Trip plan', folder, [userMessage('a')], { tags: [SCRATCH] })

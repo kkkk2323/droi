@@ -9,6 +9,7 @@ import {
   foldContinued,
   DEFAULT_SORT,
   NO_PINS,
+  PINNED_SESSIONS_GROUP_KEY,
   groupByWorkspace,
   moveWorkspace,
   noteFirstSeen,
@@ -76,6 +77,25 @@ describe('groupByWorkspace', () => {
     )
     expect(groups.map((g) => g.label)).toEqual(['alpha', 'gamma', 'beta'])
     expect(groups[0]!.sessions.map((s) => s.sessionId)).toEqual(['a', 'c'])
+  })
+
+  test('pinned apart, Sessions leave their groups for one of their own, first', () => {
+    const groups = groupByWorkspace(
+      [
+        summary({ sessionId: 'a', cwd: '/w/alpha', updatedAt: 10 }),
+        summary({ sessionId: 'b', cwd: '/w/beta', updatedAt: 30 }),
+        summary({ sessionId: 'c', cwd: '/w/alpha', updatedAt: 20 }),
+        summary({ sessionId: 'g', cwd: '/w/gamma', updatedAt: 40 }),
+      ],
+      { workspaces: new Set(['/w/alpha']), sessions: new Set(['a', 'b']) },
+      DEFAULT_SORT,
+      { pinnedApart: true },
+    )
+    expect(groups.map((g) => [g.key, g.sessions.map((s) => s.sessionId)])).toEqual([
+      [PINNED_SESSIONS_GROUP_KEY, ['b', 'a']],
+      ['/w/alpha', ['c']],
+      ['/w/gamma', ['g']],
+    ])
   })
 })
 
@@ -168,7 +188,7 @@ describe('groupByWorkspace with Scratch Workspaces', () => {
     expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['s2', 's1'])
   })
 
-  test('Recents stays last even when pinned; its pinned Sessions still come first', () => {
+  test('Recents stays last even when pinned; its pinned Sessions, apart, go to the pinned group', () => {
     const groups = groupByWorkspace(
       [
         summary({ sessionId: 's1', cwd: '/c/a', tags: scratch, updatedAt: 50 }),
@@ -179,9 +199,14 @@ describe('groupByWorkspace with Scratch Workspaces', () => {
         workspaces: new Set([groupByWorkspace([summary({ tags: scratch })])[0]!.key]),
         sessions: new Set(['s1']),
       },
+      DEFAULT_SORT,
+      { pinnedApart: true },
     )
-    expect(groups.map((g) => g.label)).toEqual(['alpha', 'Recents'])
-    expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['s1', 's2'])
+    expect(groups.map((g) => [g.label, g.sessions.map((s) => s.sessionId)])).toEqual([
+      ['Pinned sessions', ['s1']],
+      ['alpha', ['p']],
+      ['Recents', ['s2']],
+    ])
   })
 })
 

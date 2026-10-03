@@ -73,6 +73,8 @@ export function isScratch(tags: readonly SessionTag[] | undefined): boolean {
 
 /** Group key of Recents, where every Scratch Session is listed. */
 export const RECENTS_GROUP_KEY = 'droi:recents'
+/** Group key of the pinned Sessions, taken out of their own groups. */
+export const PINNED_SESSIONS_GROUP_KEY = 'droi:pinned-sessions'
 
 /** Drops Sessions that another listed Session continues; the chain shows as its latest link. */
 export function foldContinued(sessions: readonly SessionSummary[]): SessionSummary[] {
@@ -310,7 +312,9 @@ export function noteFirstSeen(
  * The Workspace groups in the chosen order (by default the one with the most
  * conversations first, ties broken by the newest), and inside each the
  * Sessions newest first or by when they were first seen. Pinned Workspaces and
- * Sessions come before the rest, in the same order among themselves.
+ * Sessions come before the rest, in the same order among themselves. With
+ * `pinnedApart` (the computer's sidebar) pinned Sessions instead leave their
+ * groups for one of their own, first.
  *
  * The default does not rank Workspaces by recency alone because the Daemon's
  * `updatedAt` is the file's modified time, which moves when a Session is
@@ -320,10 +324,23 @@ export function groupByWorkspace(
   sessions: readonly SessionSummary[],
   pins: Pins = NO_PINS,
   order: SortOrder = DEFAULT_SORT,
+  { pinnedApart = false }: { pinnedApart?: boolean } = {},
 ): WorkspaceGroup[] {
   const groups = new Map<string, WorkspaceGroup>()
   let recents: WorkspaceGroup | null = null
+  let pinned: WorkspaceGroup | null = null
   for (const session of sessions) {
+    if (pinnedApart && pins.sessions.has(session.sessionId)) {
+      pinned ??= {
+        key: PINNED_SESSIONS_GROUP_KEY,
+        label: 'Pinned sessions',
+        path: '',
+        scratch: false,
+        sessions: [],
+      }
+      pinned.sessions.push(session)
+      continue
+    }
     if (isScratch(session.tags)) {
       recents ??= {
         key: RECENTS_GROUP_KEY,
@@ -347,7 +364,7 @@ export function groupByWorkspace(
   const result = [...groups.values()]
   const created = (session: SessionSummary) =>
     order.firstSeen[session.sessionId] ?? session.updatedAt * 1000
-  for (const group of recents ? [...result, recents] : result) {
+  for (const group of [...result, ...(recents ? [recents] : []), ...(pinned ? [pinned] : [])]) {
     group.sessions.sort(
       (a, b) =>
         Number(pins.sessions.has(b.sessionId)) - Number(pins.sessions.has(a.sessionId)) ||
@@ -377,7 +394,7 @@ export function groupByWorkspace(
       Number(pins.workspaces.has(b.key)) - Number(pins.workspaces.has(a.key)) ||
       chosen[order.workspaces](a, b),
   )
-  return recents ? [...result, recents] : result
+  return [...(pinned ? [pinned] : []), ...result, ...(recents ? [recents] : [])]
 }
 
 /**

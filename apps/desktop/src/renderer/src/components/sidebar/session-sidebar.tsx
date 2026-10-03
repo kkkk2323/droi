@@ -48,6 +48,7 @@ import { countBusy, type Busy, type SessionActivity } from '@droi/daemon-layer/u
 import type { SessionSortControls } from '@droi/daemon-layer/use-session-sort'
 import {
   OLDER_BATCH,
+  PINNED_SESSIONS_GROUP_KEY,
   SESSION_SORT_LABELS,
   WORKSPACE_SORT_LABELS,
   moveWorkspace,
@@ -116,17 +117,21 @@ export function SessionSidebar({
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [query, setQuery] = useState('')
   const recents = groups.find((group) => group.scratch)
-  const pinned = groups.filter((group) => !group.scratch && pinnedGroups.includes(group.key))
-  const rest = groups.filter((group) => !group.scratch && !pinnedGroups.includes(group.key))
+  const pinnedLoose = groups.find((group) => group.key === PINNED_SESSIONS_GROUP_KEY)
+  const workspaces = groups.filter(
+    (group) => !group.scratch && group.key !== PINNED_SESSIONS_GROUP_KEY,
+  )
+  const pinned = workspaces.filter((group) => pinnedGroups.includes(group.key))
+  const rest = workspaces.filter((group) => !pinnedGroups.includes(group.key))
   const [over, setOver] = useState<Reorder['over']>(null)
   const reorder: Reorder | null =
     sort.order.workspaces === 'manual'
       ? {
-          shown: groups.filter((g) => !g.scratch).map((g) => g.key),
+          shown: workspaces.map((g) => g.key),
           move: (key, target, place) => {
             sort.setManual(
               moveWorkspace(
-                groups.filter((g) => !g.scratch).map((g) => g.key),
+                workspaces.map((g) => g.key),
                 key,
                 target,
                 place,
@@ -147,7 +152,7 @@ export function SessionSidebar({
     <WorkspaceSection
       key={group.key}
       group={group}
-      reorder={group.scratch ? null : reorder}
+      reorder={group.scratch || group === pinnedLoose ? null : reorder}
       selectedSessionId={selectedSessionId}
       activity={activity}
       subagentsRunning={subagentsRunning}
@@ -186,7 +191,7 @@ export function SessionSidebar({
             // Manual starts from what is on screen, unless the user already placed some.
             onWorkspaces={(value) => {
               if (value === 'manual' && sort.order.manual.length === 0) {
-                sort.setManual(groups.filter((g) => !g.scratch).map((g) => g.key))
+                sort.setManual(workspaces.map((g) => g.key))
               }
               sort.setWorkspaces(value)
             }}
@@ -213,17 +218,18 @@ export function SessionSidebar({
               <p className="px-2 py-1 text-xs text-muted-foreground">No sessions yet.</p>
             ) : null}
             {/* The Workspaces label only appears when there is another section to tell it from. */}
-            {pinned.length > 0 ? (
+            {pinnedLoose || pinned.length > 0 ? (
               <FoldableSection
                 label="Pinned"
                 id="sidebar-pinned"
                 foldKey={PINNED_SECTION_KEY}
-                busy={busy(pinned)}
+                busy={busy(pinnedLoose ? [pinnedLoose, ...pinned] : pinned)}
               >
+                {pinnedLoose ? section(pinnedLoose) : null}
                 {pinned.map(section)}
               </FoldableSection>
             ) : null}
-            {rest.length > 0 && (pinned.length > 0 || recents) ? (
+            {rest.length > 0 && (pinnedLoose || pinned.length > 0 || recents) ? (
               <FoldableSection
                 label="Workspaces"
                 id="sidebar-workspaces"
@@ -296,7 +302,10 @@ function WorkspaceSection({
   const [folded] = usePreference(foldedWorkspaces)
   const [pinnedGroups] = usePreference(pinnedWorkspaces)
   const [pinnedIds] = usePreference(pinnedSessions)
-  const open = !folded.includes(group.key)
+  // The pinned Sessions sit straight under the Pinned label, without a header of their own.
+  const loose = group.key === PINNED_SESSIONS_GROUP_KEY
+  const flat = group.scratch || loose
+  const open = loose || !folded.includes(group.key)
   const pinned = pinnedGroups.includes(group.key)
   const [revealed, setRevealed] = useState(0)
   const { visible, hidden } = visibleSessions(
@@ -376,111 +385,113 @@ function WorkspaceSection({
       )}
       {...dropProps}
     >
-      <ContextMenu.Root>
-        {group.scratch ? (
-          // Recents is a section of its own, like Pinned and Workspaces, not a folder.
-          <ContextMenu.Trigger render={<div />}>
-            <SectionHeader
-              label={group.label}
-              title="Sessions without a workspace"
-              open={open}
-              controls={listId}
-              onToggle={toggle}
-              action={newButton}
-              busy={foldedBusy}
-            />
-          </ContextMenu.Trigger>
-        ) : (
-          <ContextMenu.Trigger
-            render={
-              <h2
-                className={cn(
-                  'group/ws flex h-8 items-center rounded-lg text-[13px] font-medium text-foreground transition-colors hover:bg-sidebar-accent/60',
-                  reorder && 'cursor-grab active:cursor-grabbing',
-                )}
-                {...dragProps}
+      {loose ? null : (
+        <ContextMenu.Root>
+          {group.scratch ? (
+            // Recents is a section of its own, like Pinned and Workspaces, not a folder.
+            <ContextMenu.Trigger render={<div />}>
+              <SectionHeader
+                label={group.label}
+                title="Sessions without a workspace"
+                open={open}
+                controls={listId}
+                onToggle={toggle}
+                action={newButton}
+                busy={foldedBusy}
               />
-            }
-          >
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-controls={listId}
-              title={group.path}
-              onClick={toggle}
-              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-            >
-              <span className="relative grid size-4 shrink-0 place-items-center text-muted-foreground">
-                <FolderIcon
-                  aria-hidden
-                  strokeWidth={1.75}
-                  className="size-3.5 transition-opacity group-hover/ws:opacity-0"
-                />
-                <ChevronRight
-                  aria-hidden
+            </ContextMenu.Trigger>
+          ) : (
+            <ContextMenu.Trigger
+              render={
+                <h2
                   className={cn(
-                    'absolute size-3.5 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
-                    open && 'rotate-90',
+                    'group/ws flex h-8 items-center rounded-lg text-[13px] font-medium text-foreground transition-colors hover:bg-sidebar-accent/60',
+                    reorder && 'cursor-grab active:cursor-grabbing',
                   )}
+                  {...dragProps}
                 />
-              </span>
-              <span className="truncate">{group.label}</span>
-              {foldedBusy ? <BusyMark busy={foldedBusy} /> : null}
-            </button>
-            {newButton}
-          </ContextMenu.Trigger>
-        )}
-        <ContextMenu.Portal>
-          <ContextMenu.Positioner className="z-50 outline-none">
-            <ContextMenu.Popup aria-label={`Actions for ${group.label}`} className={MENU}>
-              {reorder && (above || below) ? (
-                <>
+              }
+            >
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={listId}
+                title={group.path}
+                onClick={toggle}
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              >
+                <span className="relative grid size-4 shrink-0 place-items-center text-muted-foreground">
+                  <FolderIcon
+                    aria-hidden
+                    strokeWidth={1.75}
+                    className="size-3.5 transition-opacity group-hover/ws:opacity-0"
+                  />
+                  <ChevronRight
+                    aria-hidden
+                    className={cn(
+                      'absolute size-3.5 opacity-0 transition-[opacity,transform] duration-150 group-hover/ws:opacity-100',
+                      open && 'rotate-90',
+                    )}
+                  />
+                </span>
+                <span className="truncate">{group.label}</span>
+                {foldedBusy ? <BusyMark busy={foldedBusy} /> : null}
+              </button>
+              {newButton}
+            </ContextMenu.Trigger>
+          )}
+          <ContextMenu.Portal>
+            <ContextMenu.Positioner className="z-50 outline-none">
+              <ContextMenu.Popup aria-label={`Actions for ${group.label}`} className={MENU}>
+                {reorder && (above || below) ? (
+                  <>
+                    <ContextMenu.Item
+                      disabled={!above}
+                      onClick={() => above && reorder.move(group.key, above, 'before')}
+                      className={cn(MENU_ITEM, 'data-[disabled]:opacity-50')}
+                    >
+                      <ArrowUp aria-hidden className="size-4 text-muted-foreground" />
+                      Move up
+                    </ContextMenu.Item>
+                    <ContextMenu.Item
+                      disabled={!below}
+                      onClick={() => below && reorder.move(group.key, below, 'after')}
+                      className={cn(MENU_ITEM, 'data-[disabled]:opacity-50')}
+                    >
+                      <ArrowDown aria-hidden className="size-4 text-muted-foreground" />
+                      Move down
+                    </ContextMenu.Item>
+                    <ContextMenu.Separator className="my-1 h-px bg-border" />
+                  </>
+                ) : null}
+                {/* Recents always sits at the bottom. */}
+                {group.scratch ? null : (
                   <ContextMenu.Item
-                    disabled={!above}
-                    onClick={() => above && reorder.move(group.key, above, 'before')}
-                    className={cn(MENU_ITEM, 'data-[disabled]:opacity-50')}
+                    onClick={() => toggleListed(pinnedWorkspaces, group.key)}
+                    className={MENU_ITEM}
                   >
-                    <ArrowUp aria-hidden className="size-4 text-muted-foreground" />
-                    Move up
+                    {pinned ? (
+                      <>
+                        <PinOff aria-hidden className="size-4 text-muted-foreground" />
+                        Unpin workspace
+                      </>
+                    ) : (
+                      <>
+                        <Pin aria-hidden className="size-4 text-muted-foreground" />
+                        Pin workspace
+                      </>
+                    )}
                   </ContextMenu.Item>
-                  <ContextMenu.Item
-                    disabled={!below}
-                    onClick={() => below && reorder.move(group.key, below, 'after')}
-                    className={cn(MENU_ITEM, 'data-[disabled]:opacity-50')}
-                  >
-                    <ArrowDown aria-hidden className="size-4 text-muted-foreground" />
-                    Move down
-                  </ContextMenu.Item>
-                  <ContextMenu.Separator className="my-1 h-px bg-border" />
-                </>
-              ) : null}
-              {/* Recents always sits at the bottom. */}
-              {group.scratch ? null : (
-                <ContextMenu.Item
-                  onClick={() => toggleListed(pinnedWorkspaces, group.key)}
-                  className={MENU_ITEM}
-                >
-                  {pinned ? (
-                    <>
-                      <PinOff aria-hidden className="size-4 text-muted-foreground" />
-                      Unpin workspace
-                    </>
-                  ) : (
-                    <>
-                      <Pin aria-hidden className="size-4 text-muted-foreground" />
-                      Pin workspace
-                    </>
-                  )}
+                )}
+                <ContextMenu.Item onClick={newHere} className={MENU_ITEM}>
+                  <SquarePen aria-hidden className="size-4 text-muted-foreground" />
+                  New session here
                 </ContextMenu.Item>
-              )}
-              <ContextMenu.Item onClick={newHere} className={MENU_ITEM}>
-                <SquarePen aria-hidden className="size-4 text-muted-foreground" />
-                New session here
-              </ContextMenu.Item>
-            </ContextMenu.Popup>
-          </ContextMenu.Positioner>
-        </ContextMenu.Portal>
-      </ContextMenu.Root>
+              </ContextMenu.Popup>
+            </ContextMenu.Positioner>
+          </ContextMenu.Portal>
+        </ContextMenu.Root>
+      )}
       <div id={listId} hidden={!open}>
         <ul className="flex flex-col gap-px">
           {visible.map((session) => {
@@ -496,7 +507,7 @@ function WorkspaceSection({
                     <RenameField
                       title={session.title}
                       inputRef={renameInput}
-                      className={group.scratch ? 'pl-2' : 'pl-8'}
+                      className={flat ? 'pl-2' : 'pl-8'}
                       onDone={(title) => {
                         setRenaming(null)
                         if (title) onRename(session, title)
@@ -510,7 +521,7 @@ function WorkspaceSection({
                       title={session.title}
                       className={cn(
                         'flex w-full flex-col gap-0.5 rounded-lg py-1.5 pr-2 text-left outline-none transition-colors duration-150',
-                        group.scratch ? 'pl-2' : 'pl-8',
+                        flat ? 'pl-2' : 'pl-8',
                         'hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring',
                         selected && 'bg-sidebar-accent',
                       )}
@@ -660,7 +671,7 @@ function WorkspaceSection({
             onClick={() => setRevealed(revealed + OLDER_BATCH)}
             className={cn(
               'flex h-7 w-full items-center rounded-lg pr-2 text-left text-[11px] text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
-              group.scratch ? 'pl-2' : 'pl-8',
+              flat ? 'pl-2' : 'pl-8',
             )}
           >
             Show {hidden} older

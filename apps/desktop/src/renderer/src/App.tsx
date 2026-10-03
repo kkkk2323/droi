@@ -93,6 +93,7 @@ function Shell({ hasShellBridge }: { hasShellBridge: boolean }) {
     foldContinued(mainSessions(listed)),
     { workspaces: new Set(pinnedGroups), sessions: new Set(pinnedIds) },
     sort.order,
+    { pinnedApart: true },
   )
   const recent = sessions.data ? recentWorkspaces(sessions.data) : null
   const selectedId = route.name === 'session' ? route.sessionId : null

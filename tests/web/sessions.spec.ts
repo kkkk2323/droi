@@ -281,29 +281,37 @@ test.describe('sidebar with old sessions', () => {
     await expect(acme.getByRole('button', { name: /Show \d+ older/ })).toHaveCount(0)
   })
 
-  test('a pinned Session stays visible and on top; the pin survives a reload', async ({
+  test('a pinned Session moves to the Pinned section at the top; the pin survives a reload', async ({
     page,
     openClient,
     openSidebar,
   }) => {
     await openClient()
-    let acme = (await openSidebar()).getByRole('region', { name: 'acme-web' })
+    let sidebar = await openSidebar()
+    let acme = sidebar.getByRole('region', { name: 'acme-web' })
     await acme.getByRole('button', { name: 'Show 1 older' }).click()
     await acme.getByRole('button', { name: /Old spike/ }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Pin', exact: true }).click()
 
-    const rows = acme.getByRole('listitem')
-    await expect(rows.first()).toContainText('Old spike')
-    await expect(rows.first().getByLabel('Pinned')).toBeVisible()
+    let pinned = sidebar.getByRole('region', { name: 'Pinned sessions' })
+    await expect(pinned.getByRole('listitem')).toHaveCount(1)
+    await expect(pinned.getByRole('listitem').first()).toContainText('Old spike')
+    await expect(pinned.getByRole('listitem').first().getByLabel('Pinned')).toBeVisible()
+    await expect(acme.getByRole('button', { name: /Old spike/ })).toHaveCount(0)
+    await expect(sidebar.getByRole('region').first()).toHaveAccessibleName('Pinned sessions')
 
     await page.reload()
-    acme = (await openSidebar()).getByRole('region', { name: 'acme-web' })
-    await expect(acme.getByRole('listitem').first()).toContainText('Old spike')
+    sidebar = await openSidebar()
+    pinned = sidebar.getByRole('region', { name: 'Pinned sessions' })
+    acme = sidebar.getByRole('region', { name: 'acme-web' })
+    await expect(pinned.getByRole('listitem').first()).toContainText('Old spike')
     await expect(acme.getByRole('button', { name: /Show \d+ older/ })).toHaveCount(0)
 
-    await acme.getByRole('button', { name: /Old spike/ }).click({ button: 'right' })
+    await pinned.getByRole('button', { name: /Old spike/ }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Unpin' }).click()
-    await expect(acme.getByRole('button', { name: /Old spike/ })).toHaveCount(0)
+    await expect(pinned).toHaveCount(0)
+    await expect(sidebar.getByRole('button', { name: /Old spike/ })).toHaveCount(0)
+    await expect(acme.getByRole('button', { name: 'Show 1 older' })).toBeVisible()
   })
 })
 
