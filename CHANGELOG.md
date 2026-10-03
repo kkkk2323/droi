@@ -1,3 +1,9 @@
+## 1.33.0 - 2026-10-03
+
+### Added
+
+- A rail along the transcript's right edge has a mark for every message you sent in the Session. Hovering or focusing a mark previews the message and the start of Droid's reply; clicking it jumps there, and the mark of the turn you are reading stands out as you scroll. The arrow keys, Home and End move between marks. It shows once a Session has two of your messages and the window has room beside the reading column. On the desktop and in the browser.
+
 ## 1.32.0 - 2026-10-03
 
 ### Added
