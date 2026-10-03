@@ -1,3 +1,14 @@
+## 1.29.0 - 2026-10-03
+
+### Changed
+
+- A pinned Session moves to the Pinned section at the top of the sidebar, before the pinned Workspaces, instead of only going first in its own Workspace or in Recents, where Recents sits at the bottom and the pin was easy to miss. Unpinned, it goes back. On the desktop and in the browser.
+
+### Fixed
+
+- Closing a tool row after scrolling part of the way down no longer throws the transcript up; the latest output stays in view. On the desktop and in the browser.
+- A Session that starts working moves up to the top of its Workspace in the sidebar, with its time, instead of keeping the place and time from the last time the list was read. On the desktop, in the browser and on the phone.
+
 ## 1.28.0 - 2026-10-02
 
 ### Added
