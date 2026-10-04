@@ -1,3 +1,9 @@
+## 1.33.3 - 2026-10-04
+
+### Fixed
+
+- The model picker under the message box stays usable after previous messages load. Before, scrolling up in a long Session or jumping to an earlier message from the rail turned it grey, showing the model's id, until you started a new Session. On the desktop, in the browser and on the phone.
+
 ## 1.33.2 - 2026-10-04
 
 ### Fixed
