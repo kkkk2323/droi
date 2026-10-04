@@ -1,3 +1,10 @@
+## 1.33.1 - 2026-10-04
+
+### Fixed
+
+- The rail of your messages has a mark for every message you sent, also after a restart. A Session opens with its latest 400 messages, and in a long run of tool calls those can hold one of yours or none, so the rail lost its older marks or did not show. It now reads your messages alone from the Daemon; clicking a mark from before the loaded messages loads the way there, its mark pulsing meanwhile, and jumps to it. On the desktop and in the browser.
+- A subagent started in the background shows as running at once: its Task card says Running instead of Started in background, and the calling Session's row in the sidebar says how many subagents are running. Before, both waited until the subagent finished or you switched Sessions. On the desktop, in the browser and on the phone.
+
 ## 1.33.0 - 2026-10-03
 
 ### Added
