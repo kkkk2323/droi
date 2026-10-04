@@ -186,7 +186,10 @@ export function TurnRail({
             const current = position === active
             return (
               <button
-                key={item.id}
+                // By row, not by message: with stable keys the marks moved down
+                // as a page of earlier messages came in, and the transcript's
+                // own correction for those rows then fell short.
+                key={item.loaded ? item.index : item.id}
                 type="button"
                 tabIndex={current ? 0 : -1}
                 aria-label={`Jump to message ${position + 1}`}
