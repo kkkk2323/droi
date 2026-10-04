@@ -1,3 +1,9 @@
+## 1.33.4 - 2026-10-04
+
+### Fixed
+
+- On a busy computer, loading previous messages keeps the message you are reading where it was. Before, it could move down by about a row once the earlier messages took their real heights. On the desktop and in the browser.
+
 ## 1.33.3 - 2026-10-04
 
 ### Fixed
