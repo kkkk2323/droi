@@ -93,10 +93,11 @@ test.describe('subagents', () => {
     await expect(page.getByRole('navigation', { name: 'Session hierarchy' })).toHaveCount(0)
   })
 
-  test('a subagent started while the Session is open joins its header and its card', async ({
+  test('a subagent started while the Session is open joins its header, its card and its row', async ({
     page,
     fakeDaemon,
     openClient,
+    openSidebar,
     pickSession,
   }) => {
     await openClient()
@@ -110,6 +111,8 @@ test.describe('subagents', () => {
         status: 'running',
       },
     })
+    // Like the real Daemon's, the list leaves the subagent out until its file is on disk.
+    child.unwritten = true
     fakeDaemon.scenario.sessions.push(child)
     const now = Date.now()
     fakeDaemon.notify(other.sessionId, {
@@ -147,6 +150,13 @@ test.describe('subagents', () => {
       .getByRole('log', { name: 'Transcript' })
       .getByRole('group', { name: 'Worker: Patch the token refresh' })
     await expect(card.getByRole('status')).toHaveText('Running')
+    const row = (await openSidebar()).getByRole('button', { name: /Fix the login bug/ })
+    await expect(row.getByRole('status')).toHaveText('1 subagent running')
+    if (await page.getByRole('dialog', { name: 'Sessions' }).isVisible()) {
+      await page.keyboard.press('Escape')
+      await drawerGone(page)
+    }
+
     await card.getByRole('button', { name: 'Open subagent session' }).click()
     await expect(page).toHaveURL(new RegExp(child.sessionId))
   })

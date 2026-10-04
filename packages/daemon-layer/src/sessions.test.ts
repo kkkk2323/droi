@@ -15,7 +15,9 @@ import {
   noteFirstSeen,
   type SortOrder,
   visibleSessions,
+  withAnnouncedSubagents,
   workspaceLabel,
+  type AnnouncedSubagent,
   type SessionSummary,
 } from './sessions'
 
@@ -299,5 +301,43 @@ describe('continuationChain', () => {
     const x = summary({ sessionId: 'x', parentId: 'y' })
     const y = summary({ sessionId: 'y', parentId: 'x' })
     expect(continuationChain([x, y], x)).toEqual([y])
+  })
+})
+
+describe('withAnnouncedSubagents', () => {
+  const announced = (overrides: Partial<AnnouncedSubagent>): AnnouncedSubagent => ({
+    sessionId: 'child',
+    callingSessionId: 'main',
+    callingToolUseId: 'toolu_1',
+    subagentType: 'explorer',
+    description: 'Map the app',
+    cwd: null,
+    announcedAt: 50,
+    ...overrides,
+  })
+
+  test('adds a row for a subagent the list lacks, in its caller’s Workspace', () => {
+    const main = summary({ sessionId: 'main', cwd: '/w/app/sub', repoRoot: '/w/app' })
+    const [row, ...rest] = withAnnouncedSubagents([main], [announced({})])
+    expect(rest).toEqual([main])
+    expect(row).toMatchObject({
+      sessionId: 'child',
+      title: 'Explorer: Map the app',
+      cwd: '/w/app/sub',
+      repoRoot: '/w/app',
+      updatedAt: 50,
+      callingSessionId: 'main',
+      callingToolUseId: 'toolu_1',
+    })
+  })
+
+  test('the listed row wins once the Daemon lists the subagent', () => {
+    const listed = [summary({ sessionId: 'main' }), summary({ sessionId: 'child', title: 'x' })]
+    expect(withAnnouncedSubagents(listed, [announced({})])).toBe(listed)
+  })
+
+  test('without a type or description the row is still named', () => {
+    const [row] = withAnnouncedSubagents([], [announced({ subagentType: '', description: '' })])
+    expect(row?.title).toBe('Subagent')
   })
 })

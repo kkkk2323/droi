@@ -12,7 +12,7 @@ import {
 } from 'react'
 import { useDaemonConnection } from './connection-context'
 import { SESSION_EVENT, type SubagentStatus } from './sdk-enums'
-import { SESSIONS_QUERY_KEY, type SessionSummary } from './sessions'
+import { SESSIONS_QUERY_KEY, subagentName, type SessionSummary } from './sessions'
 import { toolResultText, type ToolCall, type TranscriptEntry } from './transcript'
 
 export interface SessionRef {
@@ -156,10 +156,7 @@ export function taskRequest(call: ToolCall): TaskRequest {
   }
 }
 
-/** `explorer` → `Explorer`, the way the Daemon titles the subagent's Session. */
-export function subagentName(subagentType: string): string {
-  return subagentType ? subagentType.charAt(0).toUpperCase() + subagentType.slice(1) : 'Subagent'
-}
+export { subagentName }
 
 const BACKGROUND_LAUNCH = 'Task launched in background'
 

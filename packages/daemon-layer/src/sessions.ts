@@ -2,7 +2,7 @@
 // the Daemon on demand, so it lives in TanStack Query; the open Session's
 // transcript lives in the SDK state manager (see use-session.ts).
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { DaemonSessionController } from '@factory/droid-sdk'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
@@ -215,17 +215,17 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
     enabled: connected,
     staleTime: 10_000,
   })
+  const announced = useAnnouncedSubagents()
   const pages = query.data?.pages
-  const data = useMemo(
-    () =>
-      pages?.flatMap((page) =>
-        page.sessions.map((session) => {
-          const at = activeAt.get(session.sessionId) ?? 0
-          return at > session.updatedAt ? { ...session, updatedAt: at } : session
-        }),
-      ),
-    [pages, activeAt],
-  )
+  const data = useMemo(() => {
+    const listed = pages?.flatMap((page) =>
+      page.sessions.map((session) => {
+        const at = activeAt.get(session.sessionId) ?? 0
+        return at > session.updatedAt ? { ...session, updatedAt: at } : session
+      }),
+    )
+    return listed && withAnnouncedSubagents(listed, announced)
+  }, [pages, activeAt, announced])
   const { fetchNextPage } = query
   return {
     data,
@@ -235,6 +235,108 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => void fetchNextPage(),
   }
+}
+
+/**
+ * A subagent the Daemon has announced (`child_session_available`) to a Session
+ * this Client follows. The Daemon lists a Session only once its file is on
+ * disk, which comes after the announcement, and the list is next read when
+ * the run ends; until then the Client knows the subagent only from this.
+ */
+export interface AnnouncedSubagent {
+  sessionId: string
+  callingSessionId: string
+  callingToolUseId: string
+  subagentType: string
+  description: string
+  cwd: string | null
+  /** Unix epoch seconds, when this Client heard of it. */
+  announcedAt: number
+}
+
+/** `explorer` → `Explorer`, the way the Daemon titles the subagent's Session. */
+export function subagentName(subagentType: string): string {
+  return subagentType ? subagentType.charAt(0).toUpperCase() + subagentType.slice(1) : 'Subagent'
+}
+
+/** The listed Sessions, with a row first for each announced subagent the list lacks. */
+export function withAnnouncedSubagents(
+  listed: SessionSummary[],
+  announced: readonly AnnouncedSubagent[],
+): SessionSummary[] {
+  const byId = new Map(listed.map((s) => [s.sessionId, s]))
+  const missing = announced.filter((a) => !byId.has(a.sessionId))
+  if (missing.length === 0) return listed
+  const rows = missing.map((a): SessionSummary => {
+    const caller = byId.get(a.callingSessionId)
+    const name = subagentName(a.subagentType)
+    return {
+      sessionId: a.sessionId,
+      title: a.description ? `${name}: ${a.description}` : name,
+      cwd: a.cwd ?? caller?.cwd ?? null,
+      repoRoot: caller?.repoRoot ?? null,
+      updatedAt: a.announcedAt,
+      messagesCount: null,
+      archivedAt: null,
+      tags: [],
+      parentId: null,
+      callingSessionId: a.callingSessionId,
+      callingToolUseId: a.callingToolUseId,
+    }
+  })
+  return [...rows, ...listed]
+}
+
+const NO_ANNOUNCED: readonly AnnouncedSubagent[] = []
+
+/** The subagents the SDK has linked to their calling Session (see AnnouncedSubagent). */
+function useAnnouncedSubagents(): readonly AnnouncedSubagent[] {
+  const { sessionState } = useDaemonConnection()
+  const announcedAt = useRef(new Map<string, number>())
+  const snapshot = useRef({ key: '', value: NO_ANNOUNCED })
+
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      sessionState.subscribeToSessionEvents(
+        [
+          SESSION_EVENT.subagentInvocationSummaryUpdated,
+          SESSION_EVENT.loadStateChanged,
+          SESSION_EVENT.workingStateChanged,
+        ],
+        listener,
+      ),
+    [sessionState],
+  )
+
+  const getSnapshot = useCallback(() => {
+    const announced: AnnouncedSubagent[] = []
+    for (const [callingSessionId, children] of sessionState.getSubagentSessionIdsByParent()) {
+      for (const [callingToolUseId, sessionId] of children) {
+        let at = announcedAt.current.get(sessionId)
+        if (at === undefined) {
+          at = Math.floor(Date.now() / 1000)
+          announcedAt.current.set(sessionId, at)
+        }
+        const summary = sessionState.getSubagentInvocationSummary(sessionId)
+        announced.push({
+          sessionId,
+          callingSessionId,
+          callingToolUseId,
+          subagentType: summary?.subagentType ?? '',
+          description: summary?.description ?? '',
+          cwd: sessionState.getSessionManager(sessionId)?.getStore().getCwd() ?? null,
+          announcedAt: at,
+        })
+      }
+    }
+    const key = JSON.stringify(announced)
+    if (key !== snapshot.current.key) {
+      snapshot.current = { key, value: announced.length > 0 ? announced : NO_ANNOUNCED }
+    }
+    return snapshot.current.value
+  }, [sessionState])
+
+  return useSyncExternalStore(subscribe, getSnapshot, () => NO_ANNOUNCED)
 }
 
 type ListedSession = Awaited<
