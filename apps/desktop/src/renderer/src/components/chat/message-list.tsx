@@ -332,15 +332,50 @@ export function MessageList({
       holdFrame.current = requestAnimationFrame(hold)
     })
   }
+  // Rows brought in above arrive at estimated heights. Virtuoso shifts the
+  // view by the estimate and corrects it as the rows are measured, but only
+  // while it takes the scroll to be going up; on a busy machine they are
+  // measured after its own shift counted as going down, and the row being
+  // read moves by the difference. Note that row when the reader acts (they
+  // click to load earlier messages), and hold it there once the rows come in.
+  const readAnchor = useRef<{ id: string; offset: number } | null>(null)
   const readerScrolls = () => {
     restoring.current = false
+    readAnchor.current = null
     stopSeeking()
     releaseHold()
   }
   const readerActs = () => {
     touched()
     readerScrolls()
+    const el = scroller.current
+    const row = el ? topRow(el) : null
+    const entry = row ? latestEntries.current[row.index] : undefined
+    if (row && entry) readAnchor.current = { id: entry.id, offset: row.offset }
   }
+  const heldPrepended = useRef(prepended)
+  useEffect(() => {
+    const from = readAnchor.current
+    const grew = prepended > heldPrepended.current
+    heldPrepended.current = prepended
+    // A jump from the rail scrolls to its row itself.
+    if (!grew || !from || jumpingTo || following.current) return
+    readAnchor.current = null
+    if (seekFrame.current !== null) cancelAnimationFrame(seekFrame.current)
+    const start = performance.now()
+    seekFrame.current = requestAnimationFrame(function hold() {
+      seekFrame.current = null
+      const el = scroller.current
+      if (!el || performance.now() - start > SEEK_TIMEOUT_MS) return
+      const index = latestEntries.current.findIndex((entry) => entry.id === from.id)
+      const row = el.querySelector(`[data-index="${index}"]`)
+      if (row) {
+        const offset = el.getBoundingClientRect().top - row.getBoundingClientRect().top
+        if (Math.abs(offset - from.offset) > 1) el.scrollTop += from.offset - offset
+      }
+      seekFrame.current = requestAnimationFrame(hold)
+    })
+  }, [prepended, jumpingTo])
   const seekEnd = () => {
     stopSeeking()
     const from = scroller.current

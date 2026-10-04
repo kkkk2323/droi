@@ -800,6 +800,10 @@ test.describe('a Session longer than one load', () => {
     openClient,
     pickSession,
   }) => {
+    // A busy machine measures the rows brought in later than Virtuoso's own
+    // correction expects; throttled, the reader moves unless the list holds them.
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 })
     await openClient()
     await pickSession(/Long chat/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
