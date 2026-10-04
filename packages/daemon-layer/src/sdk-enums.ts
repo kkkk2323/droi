@@ -1,6 +1,6 @@
 // The SDK types these enums but does not export their runtime values, so the
 // Client carries the string literals. Verified against @factory/droid-sdk 0.9.1.
-import type { MultiSessionStateManager } from '@factory/droid-sdk'
+import type { DaemonSessionController, MultiSessionStateManager } from '@factory/droid-sdk'
 
 export type SessionEventName = Parameters<
   MultiSessionStateManager['subscribeToSessionEvents']
@@ -30,6 +30,11 @@ export const SESSION_EVENT: Record<
   metadataUpdated: event('metadata_updated'),
   subagentInvocationSummaryUpdated: event('subagent_invocation_summary_updated'),
 }
+
+/** The role `get_session_messages` filters by to return the user's messages alone. */
+export const USER_ROLE = 'user' as unknown as NonNullable<
+  Parameters<DaemonSessionController['getSessionMessages']>[0]['role']
+>
 
 /** A subagent's run as the Daemon reports it (the SDK's TaskInvocationStatus). */
 export type SubagentStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'

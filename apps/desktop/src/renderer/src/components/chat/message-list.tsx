@@ -11,7 +11,7 @@ import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuos
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageEntry } from './message-entry'
-import { activeItem, railItems, TurnRail } from './turn-rail'
+import { activeItem, railItems, TurnRail, type RailItem } from './turn-rail'
 import {
   turnEnds,
   workingLabel,
@@ -51,7 +51,11 @@ const SETTLE_TIMEOUT_MS = 400
 /** How long "Scroll to latest" keeps going after rows below grow on the way. */
 const SEEK_TIMEOUT_MS = 3000
 
+/** How many frames a jump waits for the rows it loaded to reach the list. */
+const LAND_FRAMES = 30
+
 const NO_EARLIER: ReadonlyArray<readonly TranscriptEntry[]> = []
+const NO_ENTRIES: readonly TranscriptEntry[] = []
 
 /**
  * Where each list was left, by `stateKey`, for as long as the Client runs.
@@ -166,6 +170,8 @@ export function MessageList({
   lead = null,
   scrollToEndKey = 0,
   stateKey,
+  olderUserMessages = NO_ENTRIES,
+  loadUntil,
 }: {
   transcript: readonly TranscriptEntry[]
   /** The Sessions this one continues after compactions, oldest first, shown above it. */
@@ -180,6 +186,10 @@ export function MessageList({
    * where the reader left it; one left at the end opens at the (new) end.
    */
   stateKey?: string
+  /** The user's messages from before the loaded ones of this Session, oldest first. */
+  olderUserMessages?: readonly TranscriptEntry[]
+  /** Loads this Session's earlier messages up to one of them; says whether it is loaded now. */
+  loadUntil?: (messageId: string) => Promise<boolean>
 }) {
   const virtuoso = useRef<VirtuosoHandle>(null)
   const parts = [...earlier, transcript]
@@ -208,8 +218,18 @@ export function MessageList({
   })
   const restoredMidway = restored !== undefined && !restored.atBottom
   const [atBottom, setAtBottom] = useState(!restoredMidway)
-  const rail = useMemo(() => railItems([...earlier, transcript].flat()), [earlier, transcript])
+  const rail = useMemo(
+    () =>
+      railItems(
+        [...earlier, transcript].flat(),
+        olderUserMessages,
+        earlier.reduce((count, part) => count + part.length, 0),
+      ),
+    [earlier, transcript, olderUserMessages],
+  )
   const [readRow, setReadRow] = useState<number | null>(null)
+  // A message from before the loaded ones the reader jumped to; its rows are on their way.
+  const [jumpingTo, setJumpingTo] = useState<string | null>(null)
   // Virtuoso's followOutput fires on a count change only; a streaming reply
   // grows the last entry for seconds without one. Follow height changes too,
   // unless the reader has scrolled away (judged on their scroll events, so
@@ -384,6 +404,28 @@ export function MessageList({
       seekFrame.current = requestAnimationFrame(check)
     })
   }
+  const jump = (item: RailItem) => {
+    if (item.loaded) {
+      seekRow(item.index)
+      return
+    }
+    if (!loadUntil || jumpingTo) return
+    setJumpingTo(item.id)
+    void loadUntil(item.id).then((loaded) => {
+      // The loaded rows reach the list on a render after the load.
+      let frames = 0
+      const land = () => {
+        const index = latestEntries.current.findIndex((entry) => entry.id === item.id)
+        if (index < 0 && loaded && ++frames < LAND_FRAMES) {
+          requestAnimationFrame(land)
+          return
+        }
+        setJumpingTo(null)
+        if (index >= 0) seekRow(index)
+      }
+      land()
+    })
+  }
   useEffect(() => {
     if (!scrollToEndKey) return
     // The sent message is appended a tick after the send; scroll once now and
@@ -525,7 +567,7 @@ export function MessageList({
         increaseViewportBy={{ top: 600, bottom: 600 }}
         itemContent={renderEntry}
       />
-      <TurnRail items={rail} active={activeItem(rail, readRow)} onJump={seekRow} />
+      <TurnRail items={rail} active={activeItem(rail, readRow)} loading={jumpingTo} onJump={jump} />
       {!atBottom ? (
         <Button
           size="icon-sm"

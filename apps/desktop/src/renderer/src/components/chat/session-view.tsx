@@ -16,6 +16,7 @@ import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
 import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import { ImageSessionProvider } from '@droi/daemon-layer/local-image'
 import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
+import { unloadedUserMessages, useUserMessages } from '@droi/daemon-layer/user-messages'
 import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { cn } from '@/lib/utils'
@@ -74,6 +75,11 @@ export function SessionView({
   const contextUsage = useContextUsage(sessionId, { loaded, modelId: settings.modelId })
   const gitChanges = useGitChanges(sessionId, { loaded, running: isRunning })
   const older = useOlderMessages(sessionId)
+  const userMessages = useUserMessages(sessionId, loaded && session.hasOlderMessages)
+  const olderUserMessages = useMemo(
+    () => unloadedUserMessages(userMessages, session.transcript),
+    [userMessages, session.transcript],
+  )
 
   // Earlier Sessions load one per click, nearest first; each can be large.
   const [revealed, setRevealed] = useState(0)
@@ -220,6 +226,8 @@ export function SessionView({
               lead={lead}
               scrollToEndKey={sentCount}
               stateKey={sessionId}
+              olderUserMessages={olderUserMessages}
+              loadUntil={older.loadUntil}
             />
           </ImageSessionProvider>
         )}

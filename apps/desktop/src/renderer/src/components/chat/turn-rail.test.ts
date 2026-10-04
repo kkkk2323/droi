@@ -22,9 +22,45 @@ describe('railItems', () => {
       entry('assistant', 'more'),
       entry('user', 'second'),
     ])
-    expect(items).toEqual([
-      { index: 1, prompt: 'first question', response: 'the answer' },
-      { index: 5, prompt: 'second', response: '' },
+    expect(items).toMatchObject([
+      { index: 1, loaded: true, prompt: 'first question', response: 'the answer' },
+      { index: 5, loaded: true, prompt: 'second', response: '' },
+    ])
+  })
+
+  test('messages from before the loaded ones go ahead of their row, with no reply yet', () => {
+    const earlier = entry('user', 'from the compacted Session')
+    const older = entry('user', 'not loaded')
+    const items = railItems(
+      [
+        earlier,
+        entry('assistant', 'old reply'),
+        entry('assistant', 'middle of a reply'),
+        entry('user', 'loaded'),
+      ],
+      [older],
+      2,
+    )
+    expect(
+      items.map(({ id, ...item }) => ({ id: id === older.id ? 'older' : 'other', ...item })),
+    ).toEqual([
+      {
+        id: 'other',
+        index: 0,
+        loaded: true,
+        prompt: 'from the compacted Session',
+        response: 'old reply',
+      },
+      { id: 'older', index: 2, loaded: false, prompt: 'not loaded', response: '' },
+      { id: 'other', index: 3, loaded: true, prompt: 'loaded', response: '' },
+    ])
+  })
+
+  test('with nothing loaded after them, they come last', () => {
+    const items = railItems([entry('user', 'a')], [entry('user', 'b')], 1)
+    expect(items.map((item) => [item.prompt, item.loaded])).toEqual([
+      ['a', true],
+      ['b', false],
     ])
   })
 
@@ -51,5 +87,13 @@ describe('activeItem', () => {
   })
   test('is the last turn while the row is unknown', () => {
     expect(activeItem(items, null)).toBe(1)
+  })
+  test('a row before the first loaded message belongs to the last one not loaded', () => {
+    const partial = railItems(
+      [entry('assistant', 'end of a reply'), entry('user', 'c')],
+      [entry('user', 'a'), entry('user', 'b')],
+    )
+    expect(activeItem(partial, 0)).toBe(1)
+    expect(activeItem(partial, 1)).toBe(2)
   })
 })

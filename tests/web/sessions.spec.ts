@@ -806,6 +806,19 @@ test.describe('a Session longer than one load', () => {
     await expect(transcript.getByText('Answer 549')).toBeVisible()
     const load = await fakeDaemon.waitForRequest('daemon.load_session')
     expect(load.params).toMatchObject({ messageLimit: 400 })
+    // The rail of the user's messages reads them alone, all of them, apart from the pages.
+    const userOnly = await fakeDaemon.waitForRequest('daemon.get_session_messages')
+    expect(userOnly.params).toMatchObject({ role: 'user' })
+    const olderPage = async (nth: number) => {
+      const pages = () =>
+        fakeDaemon.requests.filter(
+          (r) =>
+            r.method === 'daemon.get_session_messages' &&
+            (r.params as Record<string, unknown>)['role'] === undefined,
+        )
+      await expect.poll(() => pages().length).toBeGreaterThanOrEqual(nth)
+      return pages()[nth - 1]!
+    }
 
     // Up to the top: the first loaded message, and the way to the ones before it.
     const scrollTop = async () => {
@@ -823,7 +836,7 @@ test.describe('a Session longer than one load', () => {
 
     const before = await first.evaluate((el) => el.getBoundingClientRect().top)
     await load1.click()
-    const older = await fakeDaemon.waitForRequest('daemon.get_session_messages')
+    const older = await olderPage(1)
     expect(older.params).toMatchObject({
       sessionId: longSession.sessionId,
       cursor: many[150]!.id,
@@ -841,7 +854,7 @@ test.describe('a Session longer than one load', () => {
 
     // The last page brings the rest; the way up is gone.
     await load1.click()
-    const older2 = await fakeDaemon.waitForRequest('daemon.get_session_messages', 2)
+    const older2 = await olderPage(2)
     expect(older2.params).toMatchObject({ cursor: many[50]!.id, limit: 100 })
     await expect(transcript.getByRole('button', { name: 'Load previous messages' })).toHaveCount(0)
     for (let i = 0; i < 12; i++) await scrollTop()

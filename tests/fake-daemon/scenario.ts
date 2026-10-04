@@ -345,18 +345,20 @@ export function createScenario(input: ScenarioInput): Scenario {
       context.daemon.notifyArchiveState(found.sessionId, undefined)
       return { success: true }
     },
-    // The messages before the cursor (a message id), newest first, as the Daemon pages them.
+    // The messages before the cursor (a message id), newest first, as the Daemon pages them;
+    // with `role`, only that role's.
     'daemon.get_session_messages': (params) => {
       const found = mustFind(sessions, params['sessionId'])
       const limit = typeof params['limit'] === 'number' ? params['limit'] : 20
       const cursor = params['cursor']
+      const role = params['role']
+      const messages =
+        typeof role === 'string' ? found.messages.filter((m) => m.role === role) : found.messages
       const end =
-        typeof cursor === 'string'
-          ? found.messages.findIndex((m) => m.id === cursor)
-          : found.messages.length
+        typeof cursor === 'string' ? messages.findIndex((m) => m.id === cursor) : messages.length
       if (end < 0) throw new RpcError(-32602, `No message ${String(cursor)}`)
       const start = Math.max(0, end - limit)
-      const page = found.messages.slice(start, end).reverse()
+      const page = messages.slice(start, end).reverse()
       return {
         messages: page,
         hasMore: start > 0,
