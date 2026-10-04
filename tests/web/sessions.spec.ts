@@ -860,6 +860,29 @@ test.describe('a Session longer than one load', () => {
     for (let i = 0; i < 12; i++) await scrollTop()
     await expect(transcript.getByText('Question 0', { exact: true })).toBeVisible()
   })
+
+  test('the model picker keeps its models once previous messages are in', async ({
+    page,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Long chat/)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const model = page.getByRole('button', { name: 'Model and reasoning effort' })
+    await expect(model).toHaveText('Auto ModelNone')
+    for (let i = 0; i < 12; i++) {
+      await transcript.evaluate((el) => {
+        el.scrollTop = 0
+      })
+      await page.waitForTimeout(150)
+    }
+    await transcript.getByRole('button', { name: 'Load previous messages' }).click()
+    await expect(transcript.getByText('Answer 149', { exact: true })).toBeAttached()
+
+    await expect(model).toBeEnabled()
+    await expect(model).toHaveText('Auto ModelNone')
+  })
 })
 
 test.describe('running tools', () => {

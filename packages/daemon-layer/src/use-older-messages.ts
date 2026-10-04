@@ -51,9 +51,13 @@ export function useOlderMessages(sessionId: string): OlderMessages {
           found = enough(page.messages)
           cursor = hasMore && !found ? (page.nextCursor ?? page.messages.at(-1)?.id) : undefined
         }
+        // The SDK's merge clears the Session's state and restores its settings,
+        // but not the Daemon's model list, which only load_session sends.
+        const models = manager.getAvailableModels()
         sessionState.loadSession(sessionId, LOCAL_MACHINE_ID, pages.flat().reverse(), {
           hasOlderMessages: hasMore,
         })
+        if (models) manager.getStore().setAvailableModels(models)
         return found
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
