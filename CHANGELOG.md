@@ -1,3 +1,9 @@
+## 1.33.2 - 2026-10-04
+
+### Fixed
+
+- Loading previous messages keeps the message you are reading where it was again. In 1.33.1 it could move down by about a row. On the desktop and in the browser.
+
 ## 1.33.1 - 2026-10-04
 
 ### Fixed
