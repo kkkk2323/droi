@@ -66,8 +66,29 @@ const RESULT_SCHEMAS: Record<string, ZodLike> = {
   'daemon.unarchive_session': z.object({ success: z.boolean() }),
 }
 
+// The Daemon sends a Session's lifecycle on the same method; the SDK does not
+// export the wider schema that covers it.
+const SessionInactivityParams = z.object({
+  sessionId: z.string(),
+  notification: z.object({
+    type: z.literal('session_inactivity'),
+    message: z.string(),
+    timestamp: z.number(),
+    timeoutSeconds: z.number(),
+  }),
+})
+
+function either(first: ZodLike, second: ZodLike): ZodLike {
+  return {
+    safeParse(value) {
+      const result = first.safeParse(value)
+      return result.success ? result : second.safeParse(value)
+    },
+  }
+}
+
 const NOTIFICATION_SCHEMAS: Record<string, ZodLike> = {
-  'daemon.session_notification': SessionNotificationParamsSchema,
+  'daemon.session_notification': either(SessionNotificationParamsSchema, SessionInactivityParams),
   'daemon.connection_status': ConnectionStatusParams,
   'daemon.session.archive_state_changed': z.object({
     sessionId: z.string(),

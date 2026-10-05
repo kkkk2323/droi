@@ -12,6 +12,12 @@ export interface SessionView {
   /** What the transcript shows; an unchanged entry keeps its object from one snapshot to the next. */
   transcript: readonly TranscriptEntry[]
   loadState: LoadState
+  /**
+   * The Session has loaded at least once, so it can take a message even when
+   * not loaded now: the Daemon lets an idle Session go, and the SDK loads it
+   * again before the next request.
+   */
+  hasLoaded: boolean
   workingState: DroidWorkingState
   hasOlderMessages: boolean
   loadError: string | null
@@ -21,6 +27,7 @@ const EMPTY: SessionView = {
   messages: [],
   transcript: [],
   loadState: LOAD_STATE.notLoaded,
+  hasLoaded: false,
   workingState: 'idle' as DroidWorkingState,
   hasOlderMessages: false,
   loadError: null,
@@ -152,6 +159,7 @@ export function useSessions(sessionIds: readonly string[]): readonly SessionView
         messages,
         transcript: reuseUnchanged(previous[index]?.transcript ?? [], buildTranscript(messages)),
         loadState: manager.getLoadState() as unknown as LoadState,
+        hasLoaded: manager.getStore().getSessionId() === sessionId,
         workingState: manager.getDroidWorkingState(),
         hasOlderMessages: manager.getHasOlderMessages(),
         loadError,

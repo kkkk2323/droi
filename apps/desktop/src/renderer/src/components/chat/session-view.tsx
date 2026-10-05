@@ -242,7 +242,7 @@ export function SessionView({
         ) : (
           <InputBar
             isRunning={isRunning}
-            disabled={!loaded}
+            disabled={!session.hasLoaded}
             onSend={submit}
             onCancel={() => void turn.cancel()}
             error={turn.sendError ?? compaction.error}

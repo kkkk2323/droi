@@ -270,7 +270,7 @@ export function SessionScreen({
           ) : (
             <Composer
               isRunning={isRunning}
-              disabled={!loaded}
+              disabled={!view.hasLoaded}
               onSend={submit}
               onCancel={() => void turn.cancel()}
               error={turn.sendError ?? compaction.error}

@@ -379,6 +379,54 @@ test.describe('finished task list', () => {
   })
 })
 
+test.describe('a Session the Daemon let go', () => {
+  test.use({
+    scenario: {
+      sessions: [chat],
+      handlers: { 'daemon.add_user_message': streamedReply({ deltas: ['Back again.'] }) },
+    },
+  })
+
+  test('the composer still takes a message, which loads the Session again', async ({
+    page,
+    fakeDaemon,
+    openClient,
+    pickSession,
+  }) => {
+    await openClient()
+    await pickSession(/Chat/)
+    const input = page.getByRole('textbox', { name: 'Message' })
+    await expect(input).toBeEnabled()
+
+    // Left open long enough, the Daemon stops the Session's process.
+    const id = chat.sessionId
+    const listed = fakeDaemon.requests.filter(
+      (r) => r.method === 'daemon.list_available_sessions',
+    ).length
+    fakeDaemon.notify(id, {
+      type: 'session_inactivity',
+      message: 'Session inactive',
+      timestamp: Date.now(),
+      timeoutSeconds: 1800,
+    })
+    // Notifications arrive in order: once the title change refreshes the list,
+    // the inactivity has landed.
+    fakeDaemon.notify(id, { type: 'session_title_updated', title: 'Chat' })
+    await fakeDaemon.waitForRequest('daemon.list_available_sessions', listed + 1)
+
+    await expect(input).toBeEnabled()
+    await input.fill('still there?')
+    await input.press('Enter')
+    await fakeDaemon.waitForRequest('daemon.add_user_message')
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Back again.')
+    const methods = fakeDaemon.requests.map((r) => r.method)
+    expect(methods.filter((m) => m === 'daemon.load_session')).toHaveLength(2)
+    expect(methods.lastIndexOf('daemon.load_session')).toBeLessThan(
+      methods.indexOf('daemon.add_user_message'),
+    )
+  })
+})
+
 test.describe('drafts', () => {
   test.use({
     scenario: {
