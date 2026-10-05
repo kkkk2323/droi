@@ -1,3 +1,9 @@
+## 1.33.5 - 2026-10-05
+
+### Fixed
+
+- The message box takes your typing again after a Session sat idle for a long time. Before, once the Daemon had let the idle Session go, clicking the message box did nothing until you switched to another Session and back. Now the message you send loads the Session again first. On the desktop, in the browser and on the phone.
+
 ## 1.33.4 - 2026-10-04
 
 ### Fixed
