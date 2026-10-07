@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+# One Release holds Droi, the native app (apps/native): its disk image and its
+# signed update for the app to install itself. It also holds a last code update
+# for the Electron Desktop Shell, which those still on it install on their own:
+# it finds the native app's manifest and asks them to download it.
 jobs:
   validate:
     runs-on: macos-latest
@@ -34,8 +38,97 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
-  # The builds run beside validate; only the publishing jobs wait for it.
+  # The view tests run against the Fake Daemon, which the workspace's esbuild bundles.
+  validate-native:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: go vet ./apps/native/... && go test ./apps/native/...
+
+  # The builds upload to a draft, which the last job publishes once all are in.
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: CHANGELOG.md
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v version="$VERSION" '
+            /^## / {
+              if (in_section) exit
+              header = "## " version
+              if ($0 == header || index($0, header " ") == 1) in_section = 1
+              next
+            }
+            in_section { print }
+          ' CHANGELOG.md > notes.md
+          cat >> notes.md <<'EOF'
+
+          **Note:** The app is not signed with an Apple Developer certificate. If macOS blocks the app, run:
+          ```bash
+          xattr -cr /Applications/Droi.app
+          ```
+          EOF
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
+          fi
+
+  build-native:
+    needs: draft
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/native
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+
+      - name: Check the version
+        run: |
+          VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' mygo.json)
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::mygo.json is $VERSION, the tag $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      # One app for both chips, so one update manifest, the one the Electron
+      # Shell looks for (update-darwin-universal.json).
+      - name: Build, sign the update and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MYGO_UPDATER_PRIVATE_KEY" ]; then
+            echo "::error::the MYGO_UPDATER_PRIVATE_KEY secret is missing"
+            exit 1
+          fi
+          go tool mygo build -platform darwin/universal -upload
+
   build-asar:
+    needs: draft
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,139 +161,18 @@ jobs:
           echo "{\"version\":\"${VERSION}\",\"sha256\":\"${SHA}\"}" > apps/desktop/dist/latest.json
           echo "Generated latest.json: version=${VERSION}, sha256=${SHA}"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: droi-asar
-          path: |
-            apps/desktop/dist/app.asar.gz
-            apps/desktop/dist/latest.json
-
-  build-arm64:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      # Naming the dmg target replaces the configured universal one, which
-      # `--arm64` alone would build too, along with a zip, and throw away.
-      - name: Build arm64 DMG
-        run: pnpm -C apps/desktop exec electron-builder --mac dmg --arm64 --publish never
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: droi-mac-arm64
-          path: apps/desktop/dist/*arm64*.dmg
-
-  build-x64:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Build x64 DMG
-        run: pnpm -C apps/desktop exec electron-builder --mac dmg --x64 --publish never
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: droi-mac-x64
-          path: apps/desktop/dist/*x64*.dmg
-
-  release-asar:
-    needs: [validate, build-asar]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: droi-asar
-          path: dist
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/app.asar.gz
-            dist/latest.json
-
-  release:
-    needs: [validate, build-arm64, build-x64]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: CHANGELOG.md
-
-      - name: Extract changelog
-        id: changelog
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/}"
-          VERSION_NO_PREFIX="${TAG_VERSION#v}"
-          CHANGELOG_CONTENT=$(awk -v version="$VERSION_NO_PREFIX" '
-            BEGIN { in_section = 0; count = 0; current_cat = "" }
-            /^## / {
-              if (in_section) exit
-              header = "## " version
-              if ($0 == header || index($0, header " ") == 1) in_section = 1
-              next
-            }
-            in_section && /^### / {
-              current_cat = $0
-              if (!(current_cat in seen)) {
-                seen[current_cat] = 1
-                order[++count] = current_cat
-              }
-              next
-            }
-            in_section && /^- / {
-              if (current_cat != "") {
-                items[current_cat] = items[current_cat] $0 "\n"
-              }
-            }
-            END {
-              for (i = 1; i <= count; i++) {
-                if (i > 1) print ""
-                print order[i]
-                printf "%s", items[order[i]]
-              }
-            }
-          ' CHANGELOG.md)
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
+            apps/desktop/dist/app.asar.gz apps/desktop/dist/latest.json
 
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: droi-mac-*
-          merge-multiple: true
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.dmg
-          body: |
-            ${{ steps.changelog.outputs.content }}
-
-            **Note:** The app is not signed with an Apple Developer certificate. If macOS blocks the app, run:
-            ```bash
-            xattr -cr /Applications/Droi.app
-            ```
+  publish:
+    needs: [validate, validate-native, build-native, build-asar]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

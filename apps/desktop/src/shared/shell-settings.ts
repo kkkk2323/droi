@@ -38,6 +38,8 @@ export type UpdateState =
   | { status: 'downloading'; version: string; percent: number }
   | { status: 'ready'; version: string }
   | { status: 'error'; message: string }
+  /** A native Droi is released; this Shell takes no more updates. */
+  | { status: 'native'; version: string; url: string }
 
 export interface ShellSettingsSnapshot {
   login: LoginState

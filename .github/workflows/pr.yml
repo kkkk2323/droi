@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
 
-# The suites run side by side; the web Client's, the longest, is split three ways.
+# The suites run side by side.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -26,13 +26,11 @@ jobs:
 
       - run: pnpm test
 
-  web-e2e:
-    runs-on: ubuntu-latest
+  # The native app: its view tests run against the Fake Daemon, which the
+  # workspace's esbuild bundles, so the workspace is installed too.
+  native:
+    runs-on: macos-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1/3, 2/3, 3/3]
     steps:
       - uses: actions/checkout@v4
 
@@ -43,18 +41,17 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -C tests exec playwright install --with-deps chromium
-
-      - run: pnpm test:e2e --shard=${{ matrix.shard }}
-
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report-web-${{ strategy.job-index }}
-          path: tests/test-results
-          retention-days: 7
+      - name: Go checks
+        run: |
+          test -z "$(gofmt -l apps/native packages/droid-sdk-go)" || { gofmt -l apps/native packages/droid-sdk-go; exit 1; }
+          go vet ./apps/native/... ./packages/droid-sdk-go/...
+          go test ./apps/native/... ./packages/droid-sdk-go/...
 
   phone-e2e:
     runs-on: ubuntu-latest

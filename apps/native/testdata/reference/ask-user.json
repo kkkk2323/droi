@@ -1,0 +1,899 @@
+[
+  {
+    "tag": "div",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "status",
+    "label": "Connection",
+    "box": [-1, -1, 16, 32],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "text": "Connected",
+    "box": [13, 7, 59.7, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "aside",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "nav",
+    "label": "Sessions",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "bg": "oklch(0.955 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 0, 240, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "0px 0px 0px 76px"
+  },
+  {
+    "tag": "div",
+    "box": [0, 44, 240, 76],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "0px 8px 8px"
+  },
+  {
+    "tag": "button",
+    "text": "New session",
+    "box": [8, 44, 224, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-plus",
+    "box": [16, 52, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 80, 224, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 80, 188, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 80, 188, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-search",
+    "box": [16, 88, 16, 16],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "input",
+    "role": "searchbox",
+    "label": "Search sessions",
+    "box": [8, 80, 188, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklab(0.905 0 0 / 0.5)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "0px 28px 0px 32px"
+  },
+  {
+    "tag": "button",
+    "label": "Sort",
+    "box": [200, 80, 32, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "10px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-list-filter",
+    "box": [208, 88, 16, 16],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 120, 240, 476],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "0px 8px 8px"
+  },
+  {
+    "tag": "section",
+    "label": "acme-web",
+    "box": [8, 120, 224, 82],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "h2",
+    "box": [8, 120, 224, 32],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px"
+  },
+  {
+    "tag": "button",
+    "box": [8, 120, 196, 32],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [16, 128, 16, 16],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-folder-open",
+    "box": [17, 129, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-right",
+    "box": [17, 129, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "opacity": "0"
+  },
+  {
+    "tag": "span",
+    "text": "acme-web",
+    "box": [40, 126.3, 64.3, 19.5],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "New session in acme-web",
+    "box": [204, 124, 24, 24],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px",
+    "opacity": "0"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-square-pen",
+    "box": [209, 129, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 152, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "ul",
+    "box": [8, 152, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "li",
+    "box": [8, 152, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "button",
+    "box": [8, 152, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "bg": "oklch(0.905 0 0)",
+    "radius": "10px",
+    "pad": "6px 8px 6px 32px"
+  },
+  {
+    "tag": "span",
+    "box": [40, 158, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Deploy",
+    "box": [40, 158, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 179.5, 184, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "role": "status",
+    "label": "Needs input",
+    "box": [40, 179.5, 76.8, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.666 0.179 58.318)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-circle-alert",
+    "box": [40, 181.8, 12, 12],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.666 0.179 58.318)"
+  },
+  {
+    "tag": "span",
+    "text": "Needs input",
+    "box": [56, 179.5, 60.8, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.666 0.179 58.318)"
+  },
+  {
+    "tag": "time",
+    "text": "now",
+    "box": [202.7, 179.5, 21.3, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 596, 240, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "4px 8px 8px"
+  },
+  {
+    "tag": "button",
+    "label": "Settings",
+    "box": [8, 600, 32, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-settings",
+    "box": [16, 608, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "main",
+    "box": [240, 0, 784, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "border": "0px 0px 0px 1px oklch(0.9 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "Deploy",
+    "box": [241, 0, 783, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "header",
+    "box": [241, 0, 783, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 12px"
+  },
+  {
+    "tag": "div",
+    "box": [257, 10, 672, 24],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [257, 10, 73.8, 24],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h2",
+    "text": "Deploy",
+    "box": [257, 12, 45.8, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Rename session",
+    "box": [306.8, 10, 24, 24],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "opacity": "0"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-pencil",
+    "box": [312.8, 16, 12, 12],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [933, 8, 79, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Copy session info",
+    "box": [933, 8, 28, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-copy",
+    "box": [940, 15, 14, 14],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [963, 8, 49, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Open in Finder",
+    "box": [964, 9, 28, 26],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "8px 0px 0px 8px",
+    "pad": "0px 6px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-folder-open",
+    "box": [970, 14, 16, 16],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [992, 9, 1, 26],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.9 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Open in another app",
+    "box": [993, 9, 18, 26],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "0px 8px 8px 0px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [996, 16, 12, 12],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [241, 44, 783, 331.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [241, 44, 783, 331.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "log",
+    "label": "Transcript",
+    "box": [241, 44, 783, 331.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [252, 44, 761, 331.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [252, 44, 761, 12],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [252, 44, 761, 12],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [252, 56, 761, 232],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [252, 56, 761, 68],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "article",
+    "label": "You",
+    "box": [252, 56, 761, 68],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 24px"
+  },
+  {
+    "tag": "div",
+    "text": "hi",
+    "box": [944.7, 68, 44.3, 44],
+    "font": "400 15px/24px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.94 0 0)",
+    "radius": "16px",
+    "pad": "10px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [252, 124, 761, 68],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "article",
+    "label": "You",
+    "box": [252, 124, 761, 68],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 24px"
+  },
+  {
+    "tag": "div",
+    "text": "Ship it",
+    "box": [913.2, 136, 75.8, 44],
+    "font": "400 15px/24px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.94 0 0)",
+    "radius": "16px",
+    "pad": "10px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [252, 192, 761, 96],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "article",
+    "label": "Assistant",
+    "box": [252, 192, 761, 96],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 24px"
+  },
+  {
+    "tag": "div",
+    "box": [276, 212, 713, 56],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "box": [270, 212, 145, 24],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px",
+    "pad": "0px 6px"
+  },
+  {
+    "tag": "span",
+    "box": [274.8, 216.8, 14.4, 14.4],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-loader-circle",
+    "box": [274.8, 216.8, 14.4, 14.4],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Running AskUser",
+    "box": [294, 216, 97, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-right",
+    "box": [397, 218, 12, 12],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [282, 240, 707, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 0px 0px 1px oklch(0.9 0 0)",
+    "pad": "0px 0px 0px 12px"
+  },
+  {
+    "tag": "div",
+    "box": [295, 240, 694, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "AskUser: ",
+    "box": [289, 240, 694, 28],
+    "font": "400 12.5px/18.75px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "8px",
+    "pad": "0px 6px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-wrench",
+    "box": [295, 247, 14, 14],
+    "font": "400 12.5px/18.75px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "AskUser",
+    "box": [317, 244.6, 49.7, 18.8],
+    "font": "500 12.5px/18.75px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "role": "status",
+    "label": "Running",
+    "box": [961.6, 245.6, 16.8, 16.8],
+    "font": "400 12.5px/18.75px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-loader-circle",
+    "box": [961.6, 245.6, 16.8, 16.8],
+    "font": "400 12.5px/18.75px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [252, 288, 761, 35.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "status",
+    "label": "Session activity",
+    "text": "Waiting for your approval",
+    "box": [252, 288, 761, 35.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 24px 16px"
+  },
+  {
+    "tag": "span",
+    "box": [276, 295.8, 16, 4],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [276, 294.9, 4, 4],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "bg": "oklch(0.5 0 0)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "span",
+    "box": [282, 295.1, 4, 4],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "bg": "oklch(0.5 0 0)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "span",
+    "box": [288, 295.6, 4, 4],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "bg": "oklch(0.5 0 0)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "div",
+    "box": [248.5, 375.5, 768, 264.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 24px 12px"
+  },
+  {
+    "tag": "div",
+    "box": [272.5, 375.5, 720, 224.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "section",
+    "role": "group",
+    "label": "Droid has a question",
+    "box": [272.5, 375.5, 720, 224.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "16px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "12px 14px 10px"
+  },
+  {
+    "tag": "div",
+    "box": [287.5, 388.5, 690, 16.5],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Choice",
+    "box": [287.5, 388.5, 54.5, 16.5],
+    "font": "600 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-message-circle-question-mark",
+    "box": [287.5, 390.8, 12, 12],
+    "font": "600 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Which environment?",
+    "box": [287.5, 411, 690, 18],
+    "font": "500 13px/18px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "radiogroup",
+    "label": "Which environment?",
+    "box": [287.5, 439, 690, 76],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "role": "radio",
+    "box": [287.5, 439, 690, 36],
+    "font": "500 12px/18px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "6px 10px"
+  },
+  {
+    "tag": "span",
+    "text": "staging",
+    "box": [298.5, 448, 668, 18],
+    "font": "500 12px/18px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "role": "radio",
+    "box": [287.5, 479, 690, 36],
+    "font": "500 12px/18px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "6px 10px"
+  },
+  {
+    "tag": "span",
+    "text": "production",
+    "box": [298.5, 488, 668, 18],
+    "font": "500 12px/18px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [287.5, 519, 690, 34],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "0px 10px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-pencil",
+    "box": [298.5, 530, 12, 12],
+    "font": "400 14px/21px Geist",
+    "color": "oklab(0.5 0 0 / 0.6)"
+  },
+  {
+    "tag": "input",
+    "label": "Other answer for: Which environment?",
+    "box": [318.5, 527, 648, 18],
+    "font": "400 12px/18px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [287.5, 561, 690, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Cancel",
+    "box": [855, 561, 53.8, 28],
+    "font": "500 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "button",
+    "text": "Answer",
+    "box": [916.8, 561, 60.7, 28],
+    "font": "500 11px/16.5px Geist",
+    "color": "oklch(0.985 0 0)",
+    "bg": "oklch(0.2 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "0px 10px",
+    "opacity": "0.5"
+  },
+  {
+    "tag": "div",
+    "box": [272.5, 600, 720, 28],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [280.5, 606, 78.3, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-folder",
+    "box": [280.5, 607, 14, 14],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "acme-web",
+    "box": [300.5, 606, 58.3, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "role": "meter",
+    "label": "Context used",
+    "box": [874.9, 606, 109.6, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "box": [874.9, 607, 14, 14],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "1.0k / 200k · 1%",
+    "box": [894.9, 606, 89.6, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [76, 0, 32, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Hide sidebar",
+    "box": [76, 6, 32, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-panel-left",
+    "box": [84, 14, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  }
+]

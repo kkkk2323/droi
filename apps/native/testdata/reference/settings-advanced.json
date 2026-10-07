@@ -1,0 +1,591 @@
+[
+  {
+    "tag": "div",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "status",
+    "label": "Connection",
+    "box": [-1, -1, 16, 32],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "text": "Connected",
+    "box": [13, 7, 59.7, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "Settings",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)"
+  },
+  {
+    "tag": "nav",
+    "label": "Settings sections",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 1px 0px 0px oklch(0.9 0 0)",
+    "pad": "44px 8px 12px"
+  },
+  {
+    "tag": "button",
+    "text": "Back",
+    "box": [8, 44, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-arrow-left",
+    "box": [16, 52, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Account",
+    "box": [8, 88, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-user-round",
+    "box": [16, 96, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "General",
+    "box": [8, 124, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-settings-2",
+    "box": [16, 132, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Session defaults",
+    "box": [8, 160, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-sliders-horizontal",
+    "box": [16, 168, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Memory",
+    "box": [8, 196, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-brain",
+    "box": [16, 204, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Notifications",
+    "box": [8, 232, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-bell",
+    "box": [16, 240, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Remote Access",
+    "box": [8, 268, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-smartphone",
+    "box": [16, 276, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Advanced",
+    "box": [8, 304, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.15 0 0)",
+    "bg": "oklch(0.905 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-wrench",
+    "box": [16, 312, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "About",
+    "box": [8, 340, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-info",
+    "box": [16, 348, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [240, 0, 784, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [240, 0, 784, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [296, 44, 672, 970],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 32px 48px"
+  },
+  {
+    "tag": "h2",
+    "text": "Advanced",
+    "box": [328, 44, 608, 28],
+    "font": "600 18px/28px Geist",
+    "ls": "-0.45px",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "Daemon",
+    "box": [328, 96, 608, 203],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h3",
+    "text": "Daemon",
+    "box": [328, 96, 608, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 118, 608, 181],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "14px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 118, 608, 67],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 0px 1px 0px oklab(0.9 0 0 / 0.7)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 130, 576, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 130, 328.4, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Status",
+    "box": [344, 130, 328.4, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Listening on 127.0.0.1:4242 (pid 777).",
+    "box": [344, 152, 328.4, 20],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [688.4, 135, 231.6, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [688.4, 135, 231.6, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Running",
+    "box": [688.4, 139, 75.4, 24],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "3.35544e+07px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [697.4, 148, 6, 6],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.596 0.145 163.225)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "button",
+    "text": "Restart Daemon",
+    "box": [771.9, 135, 148.1, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-refresh-cw",
+    "box": [782.9, 143, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [328, 185, 608, 114],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 197, 576, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 197, 495.6, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "droid executable",
+    "box": [344, 197, 495.6, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Using /Users/dev/.local/bin/droid",
+    "box": [344, 219, 495.6, 20],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [855.6, 206, 64.4, 24],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Found",
+    "box": [855.6, 206, 64.4, 24],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "3.35544e+07px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [864.6, 215, 6, 6],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.596 0.145 163.225)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 251, 576, 36],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "form",
+    "box": [344, 251, 576, 36],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "input",
+    "label": "droid path override",
+    "box": [344, 251, 513.7, 36],
+    "font": "400 14px/20px \"Geist Mono\"",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 12px"
+  },
+  {
+    "tag": "button",
+    "label": "Save path",
+    "text": "Save",
+    "box": [865.7, 251, 54.3, 36],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px"
+  },
+  {
+    "tag": "section",
+    "label": "Factory API",
+    "box": [328, 323, 608, 156],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h3",
+    "text": "Factory API",
+    "box": [328, 323, 608, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 345, 608, 134],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "14px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 345, 608, 134],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 357, 576, 62],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 357, 576, 62],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Factory API base URL",
+    "box": [344, 357, 576, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Leave empty to talk to Factory directly. Set it to route the",
+    "box": [344, 379, 576, 40],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 431, 576, 36],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "form",
+    "box": [344, 431, 576, 36],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "input",
+    "label": "Factory API base URL",
+    "box": [344, 431, 513.7, 36],
+    "font": "400 14px/20px \"Geist Mono\"",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 12px"
+  },
+  {
+    "tag": "button",
+    "label": "Save URL",
+    "text": "Save",
+    "box": [865.7, 431, 54.3, 36],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px"
+  },
+  {
+    "tag": "section",
+    "label": "New Sessions in Droi",
+    "box": [328, 503, 608, 463],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h3",
+    "text": "New Sessions in Droi",
+    "box": [328, 503, 608, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 525, 608, 395],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "14px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 525, 608, 261],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 0px 1px 0px oklab(0.9 0 0 / 0.7)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 537, 576, 62],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 537, 576, 62],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Added to the system prompt",
+    "box": [344, 537, 576, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Appended to Droid's own system prompt in every new Session, ",
+    "box": [344, 559, 576, 40],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 611, 576, 162],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "form",
+    "box": [344, 611, 576, 162],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "textarea",
+    "label": "Added to the system prompt",
+    "box": [344, 611, 576, 118],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "8px 12px"
+  }
+]
