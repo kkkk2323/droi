@@ -95,6 +95,31 @@ func ContinuationTags(parentID string, inherited []Tag) []Tag {
 	return append(out, Tag{Name: ContinuesTag, Metadata: map[string]string{"parent": parentID}})
 }
 
+// AutomationTag is the tag the Daemon gives the Sessions an Automation
+// starts: metadata names the Automation and says "run" for a run.
+const AutomationTag = "automation"
+
+// AutomationRun is the Automation whose run a Session is, "" for none.
+func AutomationRun(tags []Tag) (id, name string) {
+	for _, t := range tags {
+		if t.Name == AutomationTag && t.Metadata["type"] == "run" {
+			return t.Metadata["automationId"], t.Metadata["automationName"]
+		}
+	}
+	return "", ""
+}
+
+// WithoutAutomationRuns leaves out the runs, which the Automations page lists.
+func WithoutAutomationRuns(list []Summary) []Summary {
+	var out []Summary
+	for _, s := range list {
+		if id, _ := AutomationRun(s.Tags); id == "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func IsDraft(tags []Tag) bool   { return hasTag(tags, DraftTag) }
 func IsScratch(tags []Tag) bool { return hasTag(tags, ScratchTag) }
 func IsMemory(tags []Tag) bool  { return hasTag(tags, MemoryTag) }
@@ -429,12 +454,13 @@ type RecentWorkspace struct {
 	LastUsedAt  int64
 }
 
-// RecentWorkspaces: most recent first, one per path, Scratch left out.
+// RecentWorkspaces: most recent first, one per path, Scratch and
+// Automation runs left out.
 func RecentWorkspaces(list []Summary) []RecentWorkspace {
 	byPath := map[string]*RecentWorkspace{}
 	var order []string
 	for _, s := range list {
-		if IsScratchSession(s) {
+		if id, _ := AutomationRun(s.Tags); IsScratchSession(s) || id != "" {
 			continue
 		}
 		path := WorkspaceOf(s)

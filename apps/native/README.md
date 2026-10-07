@@ -30,6 +30,7 @@ it is released and updates itself: [docs/releases.md](docs/releases.md).
 | `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                   |
 | `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)                |
 | `internal/sessions/`                                            | the Session list: grouping, sorting, pins, activity (daemon-layer port)                                 |
+| `internal/automations/`                                         | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                  |
 | `internal/models/`, `defaults/`, `skills/`, `mcp/`, `slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each   |
 | `internal/md/`                                                  | streaming Markdown to blocks                                                                            |
 | `internal/highlight/`                                           | code colours as Shiki gives them                                                                        |

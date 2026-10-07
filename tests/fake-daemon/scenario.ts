@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { RpcError, type FakeDaemon } from './fake-daemon'
 import type { JsonRpcRequest } from './protocol'
+import { automationHandlers, type AutomationFixture } from './automations'
 import { toolHandlers, type ToolsInput } from './tools'
 
 export interface SessionFixture {
@@ -124,6 +125,8 @@ export interface ScenarioInput {
   }>
   /** Unsaved work in worktrees, by path, for inspect_worktree_deletion and cleanup_worktree. */
   worktreeInspections?: Record<string, WorktreeInspectionFixture>
+  /** The local Automations the Daemon lists and runs. */
+  automations?: AutomationFixture[]
 }
 
 export const CONTEXT_BUDGET = 200_000
@@ -362,6 +365,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       return { commands: input.commands ?? [] }
     },
     ...tools,
+    ...automationHandlers(input, sessions),
     'daemon.list_skills': (params, context, request) => {
       activeOrThrow(params['sessionId'])
       return tools['daemon.list_skills']!(params, context, request)

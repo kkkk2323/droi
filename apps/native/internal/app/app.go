@@ -35,11 +35,13 @@ const sessionPage = 100
 
 // Route is the page the main panel shows.
 type Route struct {
-	Name      string // "home", "new", "session", "settings"
+	Name      string // "home", "new", "session", "settings", "automations"
 	SessionID string
 	Workspace string
 	Scratch   bool
 	Tab       string
+	// Automation is the one the Automations page shows, "" for the list.
+	Automation string
 }
 
 // Config is what the window needs from main: a Controller to the Daemon,
@@ -89,6 +91,9 @@ type Config struct {
 	Memory Memory
 	// Remote is the Gateway for paired phones; nil without a Host.
 	Remote Remote
+	// FactoryAppRunning reports whether the Factory App's Daemon runs too,
+	// for the Automations page's notice; nil never tells.
+	FactoryAppRunning func() bool
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -135,6 +140,7 @@ type App struct {
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
+	automations     automationsState
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
 	narrow, drawerOpen bool
@@ -422,6 +428,9 @@ func (a *App) Go(r Route) {
 	if r.Name == "new" {
 		a.newPage.reset(r)
 	}
+	if r.Name == "automations" {
+		a.enterAutomations(r)
+	}
 }
 
 // Route is the page shown.
@@ -494,6 +503,8 @@ func (a *App) View(c *ui.Context) {
 			case a.route.Name == "session":
 				sel := findSummary(listed, a.route.SessionID)
 				a.view(a.route.SessionID).build(c, a, sel, listed)
+			case a.route.Name == "automations":
+				a.automationsPage(c)
 			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():
 				// Home with nothing to show yet; the New session page would flash.
 				a.startingUpView(c)
