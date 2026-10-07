@@ -1,3 +1,15 @@
+## 1.34.3 - 2026-10-07
+
+### Fixed
+
+- ⌘V pastes an image from the clipboard into the message box, on the new-session page and in a Session. Before, the Edit menu took the key and pasted only text, so an image paste did nothing.
+- Hiding or showing the sidebar slides it again, as in the Electron app. Before, the conversation jumped to its new width at once.
+- The new-session page shows the logo and the question in the middle of the window again. Before, they sat at the top.
+
+### Changed
+
+- The Session header no longer has the Copy session info button. Right-click a Session in the sidebar to copy its ID or details.
+
 ## 1.34.2 - 2026-10-07
 
 ### Fixed
