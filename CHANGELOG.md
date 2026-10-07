@@ -1,3 +1,9 @@
+## 1.34.1 - 2026-10-07
+
+### Fixed
+
+- An image you paste or drop on the new-session page shows above the message box, with a button to remove it. Before, 1.34.0 attached it without showing it, so the paste looked like it did nothing.
+
 ## 1.34.0 - 2026-10-07
 
 ### Changed
