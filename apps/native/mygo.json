@@ -1,7 +1,7 @@
 {
   "name": "Droi",
   "identifier": "com.droi.app",
-  "version": "1.35.0",
+  "version": "1.36.0",
   "icon": "resources/icon.png",
   "out": "build",
   "updates": {

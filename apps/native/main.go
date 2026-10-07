@@ -27,7 +27,7 @@ import (
 )
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
-const devVersion = "1.35.0"
+const devVersion = "1.36.0"
 
 func main() {
 	// The Runtime Overlay runs the app's own executable as the Memory Server

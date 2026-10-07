@@ -1,3 +1,14 @@
+## 1.36.0 - 2026-10-07
+
+### Added
+
+- An Automations page, under New session in the sidebar, shows the Daemon's local Automations: their state, schedule in local time, last run and next run. You can run one now, pause or resume it, edit it, delete it, and create a new one. A schedule is Hourly, Daily, Weekdays, Weekly or Custom, with a preview of the cron expression the Daemon gets. A run opens its Session.
+- While the Factory App runs, the page warns that its Daemon runs the same Automations, so a run can start twice.
+
+### Changed
+
+- Sessions that an Automation ran no longer show in the sidebar or among the recent Workspaces. Open them from the Automation's runs.
+
 ## 1.35.0 - 2026-10-07
 
 ### Added
