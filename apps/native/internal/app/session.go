@@ -67,8 +67,6 @@ type sessionView struct {
 
 	renaming bool
 	rename   string
-	copyOpen bool
-	copied   time.Time
 	openIn   bool
 
 	compacting bool
@@ -361,7 +359,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 }
 
 // header is the PageHeader: the title, which a pencil renames, and the
-// copy and open-in controls. It drags the window.
+// open-in controls. It drags the window.
 func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, title, workspace string, nav subagentNav) {
 	a := v.a
 	k, t := a.kit, a.kit.T
@@ -383,7 +381,8 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 		if a.narrow {
 			a.openSessionsButton(c)
 		} else {
-			ui.Box(c).Width(leading).Shrink(0)
+			sp := ui.Box(c).Shrink(0)
+			sp.Width(sp.Animate("width", leading, 200*time.Millisecond))
 		}
 		ui.Row(c).Grow(1).MinWidth(0).Gap(k.Px(4)).Children(func() {
 			if v.renaming {
@@ -413,7 +412,6 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
 			v.subagentMenu(c, nav)
 			v.gitButton(c, s, loaded)
-			v.copyMenu(c, title, workspace)
 			v.openInButton(c, workspace)
 		})
 	})
@@ -442,38 +440,6 @@ func (v *sessionView) renameField(c *ui.Context, title string) {
 	if k.IconButton(c, "x", "Cancel rename", 24).Clicked() {
 		v.renaming = false
 	}
-}
-
-// copyMenu is CopySessionMenu: the Session's id, or its details.
-func (v *sessionView) copyMenu(c *ui.Context, title, workspace string) {
-	a := v.a
-	k, t := a.kit, a.kit.T
-	copied := time.Since(v.copied) < 1500*time.Millisecond
-	label, icon := "Copy session info", "copy"
-	if copied {
-		label, icon = "Copied", "check"
-		c.After(1500*time.Millisecond - time.Since(v.copied))
-	}
-	b := ui.ButtonBase(c).Label(label).Tooltip("Copy session info").Size(k.Px(28), k.Px(28)).Radius(k.Px(8)).Cursor(ui.CursorPointer).Expanded(v.copyOpen)
-	color := t.MutedForeground
-	if b.Hovered() || v.copyOpen {
-		b.Background(t.Accent)
-		color = t.Foreground
-	}
-	b.Children(func() { k.Icon(c, icon, 14, color) })
-	if b.Clicked() {
-		v.copyOpen = !v.copyOpen
-	}
-	k.MenuPopup(c, b, &v.copyOpen, true, "Copy session info", func() {
-		if k.MenuItem(c, &v.copyOpen, "fingerprint-pattern", "Copy session ID").Clicked() {
-			c.WriteClipboard(v.id)
-			v.copied = time.Now()
-		}
-		if k.MenuItem(c, &v.copyOpen, "copy", "Copy session details").Clicked() {
-			c.WriteClipboard(a.sessionDetails(sessions.Summary{SessionID: v.id, Title: title, Cwd: workspace}))
-			v.copied = time.Now()
-		}
-	})
 }
 
 // openInApps is the installed apps that open a folder, read once.

@@ -314,6 +314,62 @@ func TestNewSessionPage(t *testing.T) {
 	h.shoot("new-session")
 }
 
+// The logo and the question stand in the middle of the room above the
+// composer, as the web Client's flex column centres them.
+func TestNewSessionPageCentresItsQuestion(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("New session")
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.settle()
+	logo, ok1 := h.tt.Find("Droi")
+	question, ok2 := h.tt.Find("What do you want to build in")
+	composer, ok3 := h.tt.Find("Message composer")
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("logo %v, question %v, composer %v", ok1, ok2, ok3)
+	}
+	const header = 44
+	mid := (logo.Y + question.Y + question.H) / 2
+	room := (header + composer.Y) / 2
+	if d := mid - room; d < -4 || d > 4 {
+		t.Fatalf("the question's middle is %.0f, the room's %.0f", mid, room)
+	}
+}
+
+// Hiding the sidebar slides the main panel over, as the web Client's width
+// transition does, rather than moving it at once.
+func TestTheSidebarSlides(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("New session")
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.settle()
+	x := func() float32 {
+		r, _ := h.tt.Find("Message composer")
+		return r.X
+	}
+	start := x()
+	_ = h.tt.Click("Hide sidebar")
+	var seen []float32
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		h.tt.Frame()
+		seen = append(seen, x())
+		time.Sleep(10 * time.Millisecond)
+	}
+	end := seen[len(seen)-1]
+	if end >= start {
+		t.Fatalf("the composer stayed at %.0f", start)
+	}
+	between := false
+	for _, v := range seen {
+		between = between || v < start-1 && v > end+1
+	}
+	if !between {
+		t.Fatalf("the composer jumped from %.0f to %.0f: %v", start, end, seen)
+	}
+}
+
 func TestSettingsPages(t *testing.T) {
 	h := newHarness(t, sessionsScenario(), "")
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })

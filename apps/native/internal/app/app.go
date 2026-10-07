@@ -135,6 +135,9 @@ type App struct {
 	remote             remoteState
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
+	// pasteTo attaches the clipboard's image to the composer that had the
+	// keyboard focus in the last frame; nil when none had it.
+	pasteTo func() bool
 
 	listOnce sync.Once
 }
@@ -374,8 +377,15 @@ func (a *App) Go(r Route) {
 // Route is the page shown.
 func (a *App) Route() Route { return a.route }
 
+// PasteImage attaches the clipboard's image to the focused composer, and
+// reports whether it did. Paste of the Edit menu asks it before pasting
+// text: the menu takes ⌘V before the text area sees the key, and the text
+// area then pastes on its own, so the composer never sees the paste.
+func (a *App) PasteImage() bool { return a.pasteTo != nil && a.pasteTo() }
+
 // View builds the window.
 func (a *App) View(c *ui.Context) {
+	a.pasteTo = nil
 	c.SetTheme(a.kit.UITheme(c.Theme()))
 	status, listed, busy, listErr, listDone, more := a.snapshot()
 	a.restoreLast(listed, listDone)
@@ -395,12 +405,17 @@ func (a *App) View(c *ui.Context) {
 	shown := a.sidebarShown()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
 		if !a.narrow {
-			w := float32(0)
+			target := float32(0)
 			if shown {
-				w = 240
+				target = 240
 			}
-			side := ui.Column(c).Width(w).FillHeight().ClipX().Shrink(0).Transition(ui.ElementTransition{Size: true, Duration: 200 * time.Millisecond})
-			if !shown {
+			// Animated here, not with a Transition: that moves the box after
+			// the layout, so the main panel would jump to its new width.
+			side := ui.Column(c).FillHeight().ClipX().Shrink(0)
+			w := side.Animate("width", target, 200*time.Millisecond)
+			side.Width(w)
+			// As the web Client's visibility flip: once the slide is done.
+			if w == 0 {
 				side.Invisible()
 			}
 			side.Children(func() {

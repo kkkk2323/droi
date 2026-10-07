@@ -140,8 +140,10 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 				a.openSessionsButton(c)
 			}
 		})
-		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			ui.Column(c).FillWidth().MinHeightPercent(100).Center().Gap(k.Px(20)).PaddingX(k.Px(24)).Children(func() {
+		// Not a Scroll: one lays its children out in an unbounded height, so
+		// they could not be centred in it.
+		ui.Column(c).Grow(1).MinHeight(0).ClipY().Children(func() {
+			ui.Column(c).Fill().Center().Gap(k.Px(20)).PaddingX(k.Px(24)).Children(func() {
 				droiMark(c, k, 36)
 				ui.Row(c).Role(ui.RoleHeading).Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
 					h := func(s string) { k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
@@ -316,18 +318,29 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool,
 				in = k.TextArea(c, &s.text, "Message", "Do anything…", kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
 					MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!enabled).AutoFocus()
 			})
+			paste := func() bool {
+				if a.cfg.ReadImage == nil {
+					return false
+				}
+				data := a.cfg.ReadImage()
+				if len(data) == 0 {
+					return false
+				}
+				img, ok, err := attachments.FromBytes(data, "Pasted image.png", uuid.NewString())
+				switch {
+				case err != nil:
+					s.err = err.Error()
+				case ok:
+					s.images = append(s.images, img)
+				}
+				return ok || err != nil
+			}
+			if in.Focused() {
+				a.pasteTo = paste
+			}
 			in.HandleInput(func(ev ui.InputEvent) bool {
-				if isPaste(ev) && a.cfg.ReadImage != nil {
-					if data := a.cfg.ReadImage(); len(data) > 0 {
-						img, ok, err := attachments.FromBytes(data, "Pasted image.png", uuid.NewString())
-						switch {
-						case err != nil:
-							s.err = err.Error()
-						case ok:
-							s.images = append(s.images, img)
-						}
-						return ok || err != nil
-					}
+				if isPaste(ev) && paste() {
+					return true
 				}
 				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !in.Composing() {
 					start()

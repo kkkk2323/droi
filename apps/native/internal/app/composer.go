@@ -292,6 +292,9 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					in.AutoFocus()
 					v.focused = true
 				}
+				if in.Focused() {
+					a.pasteTo = v.pasteImage
+				}
 				in.HandleInput(func(ev ui.InputEvent) bool {
 					if isPaste(ev) {
 						return v.pasteImage()
