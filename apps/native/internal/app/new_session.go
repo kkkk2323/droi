@@ -289,8 +289,13 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool,
 			}
 		}
 		card.Children(func() {
-			in := k.TextArea(c, &s.text, "Message", "Do anything…", kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
-				MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!enabled).AutoFocus()
+			// In a column the text area's Grow(1) would take its height, as
+			// the composer's row gives it the width instead.
+			var in *ui.Element
+			ui.Row(c).Children(func() {
+				in = k.TextArea(c, &s.text, "Message", "Do anything…", kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
+					MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!enabled).AutoFocus()
+			})
 			in.HandleInput(func(ev ui.InputEvent) bool {
 				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !in.Composing() {
 					start()
