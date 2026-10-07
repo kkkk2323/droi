@@ -1,3 +1,17 @@
+## 1.34.6 - 2026-10-07
+
+### Added
+
+- The end of each reply has a Copy button. It copies everything Droid wrote in that turn as Markdown, without the reasoning and the tool calls.
+
+### Changed
+
+- The end of a reply shows the time and how long the turn ran, without the word “took” (for example, 04:28 PM · 28m 56s).
+
+### Fixed
+
+- Typing / in a Session lists its Skills again after Droi starts. Before, the list asked the Daemon too early, got an error, and showed only the built-in commands for a minute.
+
 ## 1.34.5 - 2026-10-07
 
 ### Changed
