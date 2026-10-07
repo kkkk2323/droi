@@ -1,0 +1,811 @@
+[
+  {
+    "tag": "div",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "status",
+    "label": "Connection",
+    "box": [-1, -1, 16, 32],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "text": "Connected",
+    "box": [13, 7, 59.7, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "aside",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "nav",
+    "label": "Sessions",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "bg": "oklch(0.955 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 0, 240, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "0px 0px 0px 76px"
+  },
+  {
+    "tag": "div",
+    "box": [0, 44, 240, 76],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "0px 8px 8px"
+  },
+  {
+    "tag": "button",
+    "text": "New session",
+    "box": [8, 44, 224, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-plus",
+    "box": [16, 52, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 80, 224, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 80, 188, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 80, 188, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-search",
+    "box": [16, 88, 16, 16],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "input",
+    "role": "searchbox",
+    "label": "Search sessions",
+    "box": [8, 80, 188, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklab(0.905 0 0 / 0.5)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)",
+    "pad": "0px 28px 0px 32px"
+  },
+  {
+    "tag": "button",
+    "label": "Sort",
+    "box": [200, 80, 32, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "10px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-list-filter",
+    "box": [208, 88, 16, 16],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 120, 240, 476],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "0px 8px 8px"
+  },
+  {
+    "tag": "section",
+    "label": "acme-web",
+    "box": [8, 120, 224, 133],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "h2",
+    "box": [8, 120, 224, 32],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px"
+  },
+  {
+    "tag": "button",
+    "box": [8, 120, 196, 32],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [16, 128, 16, 16],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-folder-open",
+    "box": [17, 129, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-right",
+    "box": [17, 129, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "opacity": "0"
+  },
+  {
+    "tag": "span",
+    "text": "acme-web",
+    "box": [40, 126.3, 64.3, 19.5],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "New session in acme-web",
+    "box": [204, 124, 24, 24],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px",
+    "opacity": "0"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-square-pen",
+    "box": [209, 129, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 152, 224, 101],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "ul",
+    "box": [8, 152, 224, 101],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "li",
+    "box": [8, 152, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "button",
+    "box": [8, 152, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "6px 8px 6px 32px"
+  },
+  {
+    "tag": "span",
+    "box": [40, 158, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Fix the login race",
+    "box": [40, 158, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 179.5, 184, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 179.5, 76.7, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-message-square",
+    "box": [40, 181.8, 12, 12],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "4 messages",
+    "box": [56, 179.5, 60.7, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "time",
+    "text": "5h",
+    "box": [211, 179.5, 13, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "li",
+    "box": [8, 203, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "button",
+    "box": [8, 203, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "6px 8px 6px 32px"
+  },
+  {
+    "tag": "span",
+    "box": [40, 209, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Add dark mode toggle",
+    "box": [40, 209, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 230.5, 184, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 230.5, 68.5, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-message-square",
+    "box": [40, 232.8, 12, 12],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "1 message",
+    "box": [56, 230.5, 52.5, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "time",
+    "text": "5h",
+    "box": [211, 230.5, 13, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "billing-service",
+    "box": [8, 261, 224, 82],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "h2",
+    "box": [8, 261, 224, 32],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px"
+  },
+  {
+    "tag": "button",
+    "box": [8, 261, 196, 32],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [16, 269, 16, 16],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-folder-open",
+    "box": [17, 270, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-right",
+    "box": [17, 270, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "opacity": "0"
+  },
+  {
+    "tag": "span",
+    "text": "billing-service",
+    "box": [40, 267.3, 86.4, 19.5],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "New session in billing-service",
+    "box": [204, 265, 24, 24],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "8px",
+    "opacity": "0"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-square-pen",
+    "box": [209, 270, 14, 14],
+    "font": "500 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [8, 293, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "ul",
+    "box": [8, 293, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "li",
+    "box": [8, 293, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "button",
+    "box": [8, 293, 224, 50],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "6px 8px 6px 32px"
+  },
+  {
+    "tag": "span",
+    "box": [40, 299, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "Refactor invoice generator",
+    "box": [40, 299, 184, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 320.5, 184, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [40, 320.5, 68.5, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-message-square",
+    "box": [40, 322.8, 12, 12],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "1 message",
+    "box": [56, 320.5, 52.5, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "time",
+    "text": "5h",
+    "box": [211, 320.5, 13, 16.5],
+    "font": "400 11px/16.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [0, 596, 240, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.3 0 0)",
+    "pad": "4px 8px 8px"
+  },
+  {
+    "tag": "button",
+    "label": "Settings",
+    "box": [8, 600, 32, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-settings",
+    "box": [16, 608, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.3 0 0)"
+  },
+  {
+    "tag": "main",
+    "box": [240, 0, 784, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "border": "0px 0px 0px 1px oklch(0.9 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "New session",
+    "box": [241, 0, 783, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "header",
+    "box": [241, 0, 783, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 12px"
+  },
+  {
+    "tag": "div",
+    "text": "New session",
+    "box": [257, 12, 755, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [241, 44, 783, 468],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 24px"
+  },
+  {
+    "tag": "svg",
+    "box": [614.5, 235.5, 36, 36],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h2",
+    "box": [443.1, 291.5, 378.8, 29],
+    "font": "500 20px/28px Geist",
+    "ls": "-0.5px",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "What do you want to build in",
+    "box": [443.1, 291.5, 251, 28],
+    "font": "500 20px/28px Geist",
+    "ls": "-0.5px",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "?",
+    "box": [700.1, 291.5, 121.8, 29],
+    "font": "500 20px/28px Geist",
+    "ls": "-0.5px",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Workspace",
+    "text": "acme-web",
+    "box": [700.1, 291.5, 110.9, 29],
+    "font": "500 20px/28px Geist",
+    "ls": "-0.5px",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 0px 1px 0px oklab(0.5 0 0 / 0.5)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [797, 298.5, 14, 14],
+    "font": "500 20px/28px Geist",
+    "ls": "-0.5px",
+    "color": "oklch(0.2 0 0)",
+    "opacity": "0.5"
+  },
+  {
+    "tag": "div",
+    "box": [248.5, 512, 768, 128],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 24px 12px"
+  },
+  {
+    "tag": "form",
+    "label": "Message composer",
+    "box": [272.5, 512, 720, 88],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [272.5, 512, 720, 88],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "16px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [273.5, 513, 718, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "textarea",
+    "label": "Message",
+    "box": [273.5, 513, 718, 42],
+    "font": "400 14px/24px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "14px 16px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [273.5, 555, 718, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "4px 8px 8px"
+  },
+  {
+    "tag": "button",
+    "label": "Add image",
+    "box": [281.5, 559, 32, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "3.35544e+07px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-plus",
+    "box": [289.5, 567, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [317.5, 561, 626, 28],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Model and reasoning effort",
+    "box": [317.5, 561, 159.6, 28],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)",
+    "radius": "8px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-sparkles",
+    "box": [325.5, 568, 14, 14],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)"
+  },
+  {
+    "tag": "span",
+    "text": "Auto Model",
+    "box": [345.5, 565.3, 68, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)"
+  },
+  {
+    "tag": "span",
+    "text": "None",
+    "box": [419.5, 565.3, 31.5, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [457.1, 569, 12, 12],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)",
+    "opacity": "0.6"
+  },
+  {
+    "tag": "button",
+    "role": "combobox",
+    "label": "Autonomy",
+    "box": [479.1, 561, 137.1, 28],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)",
+    "radius": "8px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-shield-check",
+    "box": [487.1, 568, 14, 14],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)"
+  },
+  {
+    "tag": "span",
+    "text": "Low autonomy",
+    "box": [505.1, 565.3, 87.1, 19.5],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)"
+  },
+  {
+    "tag": "span",
+    "box": [596.1, 569, 12, 12],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [596.1, 569, 12, 12],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklab(0.2 0 0 / 0.75)",
+    "opacity": "0.6"
+  },
+  {
+    "tag": "input",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [947.5, 559, 36, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 0px 0px 4px"
+  },
+  {
+    "tag": "button",
+    "label": "Start session",
+    "box": [951.5, 559, 32, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.985 0 0)",
+    "bg": "oklch(0.2 0 0)",
+    "radius": "3.35544e+07px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-arrow-up",
+    "box": [959.5, 567, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.985 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [272.5, 600, 720, 28],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "box": [280.5, 606, 144.9, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-folder",
+    "box": [280.5, 607, 14, 14],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "span",
+    "text": "/Users/dev/acme-web",
+    "box": [300.5, 606, 124.9, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [76, 0, 32, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Hide sidebar",
+    "box": [76, 6, 32, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px rgba(0, 0, 0, 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-panel-left",
+    "box": [84, 14, 16, 16],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  }
+]

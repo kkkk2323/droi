@@ -1,0 +1,7 @@
+{
+  "name": "Droi",
+  "identifier": "com.droi.native",
+  "version": "1.33.5",
+  "icon": "resources/icon.png",
+  "out": "build"
+}

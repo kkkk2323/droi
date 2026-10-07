@@ -1,0 +1,432 @@
+// Package sessions is the Session list as the Client shows it: summaries
+// from daemon.list_available_sessions, grouped by Workspace, sorted, pinned,
+// folded into compaction chains, and the subagents kept out (a port of
+// packages/daemon-layer/src/sessions.ts and its neighbours).
+package sessions
+
+import (
+	"cmp"
+	"regexp"
+	"slices"
+	"strings"
+)
+
+// Tag is a Session tag.
+type Tag struct {
+	Name     string            `json:"name"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// Summary is one listed Session.
+type Summary struct {
+	SessionID string
+	Title     string
+	Cwd       string
+	// RepoRoot is the grouping key the Daemon gives checkouts; Cwd else.
+	RepoRoot string
+	// UpdatedAt is in Unix seconds.
+	UpdatedAt     int64
+	MessagesCount *int
+	ArchivedAt    string
+	Tags          []Tag
+	// ParentID is the Session this one continues after a compaction.
+	ParentID string
+	// CallingSessionID and CallingToolUseID: for a subagent, its caller.
+	CallingSessionID string
+	CallingToolUseID string
+}
+
+// The tags Droi writes (see CONTEXT.md).
+const (
+	ContinuesTag = "droi.continues"
+	DraftTag     = "droi.draft"
+	ScratchTag   = "droi.scratch"
+	MemoryTag    = "droi.memory"
+)
+
+func hasTag(tags []Tag, name string) bool {
+	return slices.ContainsFunc(tags, func(t Tag) bool { return t.Name == name })
+}
+
+// ContinuationParent is the parent a child Session's tag names.
+func ContinuationParent(tags []Tag) string {
+	for _, t := range tags {
+		if t.Name == ContinuesTag {
+			return t.Metadata["parent"]
+		}
+	}
+	return ""
+}
+
+// ContinuationTags are a child's tags: the parent's, minus an older link,
+// plus the new one.
+func ContinuationTags(parentID string, inherited []Tag) []Tag {
+	var out []Tag
+	for _, t := range inherited {
+		if t.Name != ContinuesTag {
+			out = append(out, t)
+		}
+	}
+	return append(out, Tag{Name: ContinuesTag, Metadata: map[string]string{"parent": parentID}})
+}
+
+func IsDraft(tags []Tag) bool   { return hasTag(tags, DraftTag) }
+func IsScratch(tags []Tag) bool { return hasTag(tags, ScratchTag) }
+func IsMemory(tags []Tag) bool  { return hasTag(tags, MemoryTag) }
+
+var scratchFolder = regexp.MustCompile(`/\d{4}-\d{2}-\d{2}-[0-9a-f]{6}/?$`)
+
+// IsScratchSession: the tag, or a Scratch folder's name, since some
+// Sessions there come without the tag.
+func IsScratchSession(s Summary) bool {
+	return IsScratch(s.Tags) || (s.Cwd != "" && scratchFolder.MatchString(s.Cwd))
+}
+
+// Group keys that are no Workspace path.
+const (
+	RecentsGroupKey        = "droi:recents"
+	PinnedSessionsGroupKey = "droi:pinned-sessions"
+)
+
+// FoldContinued drops Sessions another listed Session continues.
+func FoldContinued(list []Summary) []Summary {
+	parents := map[string]bool{}
+	for _, s := range list {
+		if s.ParentID != "" && s.ParentID != s.SessionID {
+			parents[s.ParentID] = true
+		}
+	}
+	var out []Summary
+	for _, s := range list {
+		if !parents[s.SessionID] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// ContinuationChain is the listed Sessions s continues, nearest first.
+func ContinuationChain(list []Summary, s Summary) []Summary {
+	byID := map[string]Summary{}
+	for _, x := range list {
+		byID[x.SessionID] = x
+	}
+	seen := map[string]bool{s.SessionID: true}
+	var chain []Summary
+	p, ok := byID[s.ParentID]
+	for ok && !seen[p.SessionID] {
+		chain = append(chain, p)
+		seen[p.SessionID] = true
+		p, ok = byID[p.ParentID]
+	}
+	return chain
+}
+
+// MainSessions leaves the subagents out.
+func MainSessions(list []Summary) []Summary {
+	var out []Summary
+	for _, s := range list {
+		if s.CallingSessionID == "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Group is a Workspace's Sessions, or Recents, or the pinned ones.
+type Group struct {
+	Key      string
+	Label    string
+	Path     string
+	Scratch  bool
+	Sessions []Summary
+}
+
+// Pins are the pinned Workspaces and Sessions.
+type Pins struct {
+	Workspaces map[string]bool
+	Sessions   map[string]bool
+}
+
+// WorkspaceSort orders the groups; SessionSort the Sessions in them.
+type (
+	WorkspaceSort string
+	SessionSort   string
+)
+
+const (
+	SortMostSessions WorkspaceSort = "sessions"
+	SortRecent       WorkspaceSort = "recent"
+	SortName         WorkspaceSort = "name"
+	SortManual       WorkspaceSort = "manual"
+
+	SessionsRecent  SessionSort = "recent"
+	SessionsCreated SessionSort = "created"
+)
+
+var WorkspaceSorts = []WorkspaceSort{SortMostSessions, SortRecent, SortName, SortManual}
+var SessionSorts = []SessionSort{SessionsRecent, SessionsCreated}
+
+var WorkspaceSortLabels = map[WorkspaceSort]string{
+	SortMostSessions: "Most sessions", SortRecent: "Recently active", SortName: "Name", SortManual: "Manual",
+}
+var SessionSortLabels = map[SessionSort]string{SessionsRecent: "Recently active", SessionsCreated: "Created"}
+
+// Order is how the list is sorted.
+type Order struct {
+	Workspaces WorkspaceSort
+	Sessions   SessionSort
+	Manual     []string
+	// FirstSeen is when each Session was first seen, in ms; the Daemon
+	// lists no creation time.
+	FirstSeen map[string]float64
+}
+
+var DefaultOrder = Order{Workspaces: SortMostSessions, Sessions: SessionsRecent}
+
+// NoteFirstSeen adds the Sessions not seen before, at the earlier of now
+// and their last change; it returns nil when none was new.
+func NoteFirstSeen(firstSeen map[string]float64, list []Summary, nowMs float64) map[string]float64 {
+	var next map[string]float64
+	for _, s := range list {
+		if _, ok := firstSeen[s.SessionID]; ok {
+			continue
+		}
+		if next == nil {
+			next = make(map[string]float64, len(firstSeen)+1)
+			for k, v := range firstSeen {
+				next[k] = v
+			}
+		}
+		next[s.SessionID] = min(nowMs, float64(s.UpdatedAt)*1000)
+	}
+	return next
+}
+
+// GroupByWorkspace groups and sorts the list: by default the Workspace with
+// the most conversations first, ties to the newest, and inside each the
+// Sessions newest first. Pinned Workspaces and Sessions come first; with
+// pinnedApart pinned Sessions leave their groups for one of their own.
+// Scratch Sessions share one Recents group, always last.
+func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) []Group {
+	groups := map[string]*Group{}
+	var keys []string
+	var recents, pinned *Group
+	for _, s := range list {
+		if pinnedApart && pins.Sessions[s.SessionID] {
+			if pinned == nil {
+				pinned = &Group{Key: PinnedSessionsGroupKey, Label: "Pinned sessions"}
+			}
+			pinned.Sessions = append(pinned.Sessions, s)
+			continue
+		}
+		if IsScratchSession(s) {
+			if recents == nil {
+				recents = &Group{Key: RecentsGroupKey, Label: "Recents", Scratch: true}
+			}
+			recents.Sessions = append(recents.Sessions, s)
+			continue
+		}
+		path := cmp.Or(s.RepoRoot, s.Cwd)
+		key := cmp.Or(path, "(unknown)")
+		g := groups[key]
+		if g == nil {
+			g = &Group{Key: key, Label: WorkspaceLabel(path), Path: path}
+			groups[key] = g
+			keys = append(keys, key)
+		}
+		g.Sessions = append(g.Sessions, s)
+	}
+	result := make([]*Group, 0, len(keys))
+	for _, k := range keys {
+		result = append(result, groups[k])
+	}
+	created := func(s Summary) float64 {
+		if v, ok := order.FirstSeen[s.SessionID]; ok {
+			return v
+		}
+		return float64(s.UpdatedAt) * 1000
+	}
+	sortSessions := func(g *Group) {
+		slices.SortStableFunc(g.Sessions, func(a, b Summary) int {
+			if c := cmp.Compare(b2i(pins.Sessions[b.SessionID]), b2i(pins.Sessions[a.SessionID])); c != 0 {
+				return c
+			}
+			if order.Sessions == SessionsCreated {
+				if c := cmp.Compare(created(b), created(a)); c != 0 {
+					return c
+				}
+			}
+			return cmp.Compare(b.UpdatedAt, a.UpdatedAt)
+		})
+	}
+	for _, g := range result {
+		sortSessions(g)
+	}
+	if recents != nil {
+		sortSessions(recents)
+	}
+	if pinned != nil {
+		sortSessions(pinned)
+	}
+	newest := func(g *Group) int64 {
+		var n int64
+		for _, s := range g.Sessions {
+			n = max(n, s.UpdatedAt)
+		}
+		return n
+	}
+	conversations := func(g *Group) int {
+		n := 0
+		for _, s := range g.Sessions {
+			if s.MessagesCount == nil || *s.MessagesCount > 0 {
+				n++
+			}
+		}
+		return n
+	}
+	byDefault := func(a, b *Group) int {
+		if c := cmp.Compare(conversations(b), conversations(a)); c != 0 {
+			return c
+		}
+		return cmp.Compare(newest(b), newest(a))
+	}
+	place := func(g *Group) int {
+		if i := slices.Index(order.Manual, g.Key); i >= 0 {
+			return i
+		}
+		return len(order.Manual)
+	}
+	chosen := func(a, b *Group) int {
+		switch order.Workspaces {
+		case SortRecent:
+			return cmp.Or(cmp.Compare(newest(b), newest(a)), byDefault(a, b))
+		case SortName:
+			return cmp.Or(localeCompare(a.Label, b.Label), byDefault(a, b))
+		case SortManual:
+			return cmp.Or(cmp.Compare(place(a), place(b)), byDefault(a, b))
+		}
+		return byDefault(a, b)
+	}
+	slices.SortStableFunc(result, func(a, b *Group) int {
+		return cmp.Or(cmp.Compare(b2i(pins.Workspaces[b.Key]), b2i(pins.Workspaces[a.Key])), chosen(a, b))
+	})
+	var out []Group
+	if pinned != nil {
+		out = append(out, *pinned)
+	}
+	for _, g := range result {
+		out = append(out, *g)
+	}
+	if recents != nil {
+		out = append(out, *recents)
+	}
+	return out
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// localeCompare approximates String.localeCompare for Workspace names:
+// case folded first, then as is.
+func localeCompare(a, b string) int {
+	return cmp.Or(strings.Compare(strings.ToLower(a), strings.ToLower(b)), strings.Compare(a, b))
+}
+
+// MoveWorkspace is the manual order after moving key before or after
+// target, from the order shown.
+func MoveWorkspace(shown []string, key, target string, after bool) []string {
+	if key == target {
+		return slices.Clone(shown)
+	}
+	rest := slices.DeleteFunc(slices.Clone(shown), func(k string) bool { return k == key })
+	at := slices.Index(rest, target)
+	if at < 0 {
+		return slices.Clone(shown)
+	}
+	if after {
+		at++
+	}
+	return slices.Insert(rest, at, key)
+}
+
+// Sessions touched within RecentWindowMs always show; older ones wait
+// behind "Show N older", OlderBatch at a time.
+const (
+	RecentWindowMs = 3 * 24 * 60 * 60 * 1000
+	OlderBatch     = 30
+)
+
+// VisibleSessions are the rows a section shows: every pinned or recent
+// Session plus the first revealed older ones, and how many stay hidden.
+func VisibleSessions(list []Summary, revealed int, nowMs int64, pinned map[string]bool) ([]Summary, int) {
+	cutoff := nowMs - RecentWindowMs
+	var visible []Summary
+	older := 0
+	for _, s := range list {
+		if pinned[s.SessionID] {
+			visible = append(visible, s)
+			continue
+		}
+		recent := s.UpdatedAt*1000 >= cutoff
+		if recent || older < revealed {
+			visible = append(visible, s)
+		}
+		if !recent {
+			older++
+		}
+	}
+	return visible, max(0, older-revealed)
+}
+
+var trailingSep = regexp.MustCompile(`[\\/]+$`)
+
+// WorkspaceLabel is a Workspace's last path segment.
+func WorkspaceLabel(path string) string {
+	if path == "" {
+		return "Unknown workspace"
+	}
+	t := trailingSep.ReplaceAllString(path, "")
+	parts := strings.FieldsFunc(t, func(r rune) bool { return r == '/' || r == '\\' })
+	if len(parts) == 0 {
+		return t
+	}
+	return parts[len(parts)-1]
+}
+
+// RecentWorkspace is a Workspace the New session page offers.
+type RecentWorkspace struct {
+	Path, Label string
+	LastUsedAt  int64
+}
+
+// RecentWorkspaces: most recent first, one per path, Scratch left out.
+func RecentWorkspaces(list []Summary) []RecentWorkspace {
+	byPath := map[string]*RecentWorkspace{}
+	var order []string
+	for _, s := range list {
+		if IsScratchSession(s) {
+			continue
+		}
+		path := cmp.Or(s.RepoRoot, s.Cwd)
+		if path == "" {
+			continue
+		}
+		if w, ok := byPath[path]; !ok {
+			byPath[path] = &RecentWorkspace{Path: path, Label: WorkspaceLabel(path), LastUsedAt: s.UpdatedAt}
+			order = append(order, path)
+		} else if w.LastUsedAt < s.UpdatedAt {
+			w.LastUsedAt = s.UpdatedAt
+		}
+	}
+	out := make([]RecentWorkspace, 0, len(order))
+	for _, p := range order {
+		out = append(out, *byPath[p])
+	}
+	slices.SortStableFunc(out, func(a, b RecentWorkspace) int { return cmp.Compare(b.LastUsedAt, a.LastUsedAt) })
+	return out
+}

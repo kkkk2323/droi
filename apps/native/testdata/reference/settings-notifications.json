@@ -1,0 +1,684 @@
+[
+  {
+    "tag": "div",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "role": "status",
+    "label": "Connection",
+    "box": [-1, -1, 16, 32],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "span",
+    "text": "Connected",
+    "box": [13, 7, 59.7, 16],
+    "font": "400 12px/16px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "Settings",
+    "box": [0, 0, 1024, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)"
+  },
+  {
+    "tag": "nav",
+    "label": "Settings sections",
+    "box": [0, 0, 240, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 1px 0px 0px oklch(0.9 0 0)",
+    "pad": "44px 8px 12px"
+  },
+  {
+    "tag": "button",
+    "text": "Back",
+    "box": [8, 44, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-arrow-left",
+    "box": [16, 52, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Account",
+    "box": [8, 88, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-user-round",
+    "box": [16, 96, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "General",
+    "box": [8, 124, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-settings-2",
+    "box": [16, 132, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Session defaults",
+    "box": [8, 160, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-sliders-horizontal",
+    "box": [16, 168, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Memory",
+    "box": [8, 196, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-brain",
+    "box": [16, 204, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Notifications",
+    "box": [8, 232, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.15 0 0)",
+    "bg": "oklch(0.905 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-bell",
+    "box": [16, 240, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Remote Access",
+    "box": [8, 268, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-smartphone",
+    "box": [16, 276, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "Advanced",
+    "box": [8, 304, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-wrench",
+    "box": [16, 312, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "button",
+    "text": "About",
+    "box": [8, 340, 223, 32],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.3 0 0)",
+    "radius": "10px",
+    "pad": "0px 8px"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-info",
+    "box": [16, 348, 16, 16],
+    "font": "400 13px/19.5px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [240, 0, 784, 640],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [240, 0, 784, 44],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [296, 44, 672, 556],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "0px 32px 48px"
+  },
+  {
+    "tag": "h2",
+    "text": "Notifications",
+    "box": [328, 44, 608, 28],
+    "font": "600 18px/28px Geist",
+    "ls": "-0.45px",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "When Droid finishes",
+    "box": [328, 96, 608, 155],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h3",
+    "text": "When Droid finishes",
+    "box": [328, 96, 608, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 118, 608, 133],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "14px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 118, 608, 67],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 0px 1px 0px oklab(0.9 0 0 / 0.7)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 130, 576, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 130, 338.6, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Sound",
+    "box": [344, 130, 338.6, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Plays when Droid finishes and the Session stops.",
+    "box": [344, 152, 338.6, 20],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [698.6, 135, 221.4, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [698.6, 135, 221.4, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "role": "combobox",
+    "label": "Completion sound",
+    "box": [698.6, 135, 163.8, 32],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px"
+  },
+  {
+    "tag": "span",
+    "text": "Soft chime (default)",
+    "box": [709.6, 141, 125.8, 20],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [839.4, 145, 12, 12],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [839.4, 145, 12, 12],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "opacity": "0.6"
+  },
+  {
+    "tag": "input",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Test completion sound",
+    "text": "Test",
+    "box": [870.4, 135, 49.6, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 185, 608, 66],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 197, 576, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 197, 524, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Desktop notification",
+    "box": [344, 197, 524, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Unless you are looking at that Session.",
+    "box": [344, 219, 524, 20],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [884, 205, 36, 26],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "role": "switch",
+    "label": "Notify when Droid finishes",
+    "box": [884, 205, 36, 22],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.2 0 0)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "span",
+    "box": [900, 207, 18, 18],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "rgb(255, 255, 255)",
+    "radius": "3.35544e+07px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px"
+  },
+  {
+    "tag": "input",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "When Droid needs input",
+    "box": [328, 275, 608, 175],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h3",
+    "text": "When Droid needs input",
+    "box": [328, 275, 608, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 297, 608, 153],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "14px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 297, 608, 87],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "border": "0px 0px 1px 0px oklab(0.9 0 0 / 0.7)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 309, 576, 62],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 309, 289, 62],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Sound",
+    "box": [344, 309, 289, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "Plays when Droid stops to ask for permission or an answer.",
+    "box": [344, 331, 289, 40],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [649, 324, 271, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [649, 324, 271, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "role": "combobox",
+    "label": "Needs-input sound",
+    "box": [649, 324, 213.4, 32],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px"
+  },
+  {
+    "tag": "span",
+    "text": "Acknowledge tone (default)",
+    "box": [660, 330, 175.4, 20],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [839.4, 334, 12, 12],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [839.4, 334, 12, 12],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "opacity": "0.6"
+  },
+  {
+    "tag": "input",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "label": "Test needs-input sound",
+    "text": "Test",
+    "box": [870.4, 324, 49.6, 32],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "8px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 384, 608, 66],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 396, 576, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 396, 524, 42],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "Desktop notification",
+    "box": [344, 396, 524, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "p",
+    "text": "When a Session waits for a permission or an answer.",
+    "box": [344, 418, 524, 20],
+    "font": "400 13px/20px Geist",
+    "color": "oklch(0.5 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [884, 404, 36, 26],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "role": "switch",
+    "label": "Notify when Droid needs input",
+    "box": [884, 404, 36, 22],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.2 0 0)",
+    "radius": "3.35544e+07px"
+  },
+  {
+    "tag": "span",
+    "box": [900, 406, 18, 18],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "rgb(255, 255, 255)",
+    "radius": "3.35544e+07px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px"
+  },
+  {
+    "tag": "input",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "section",
+    "label": "Sounds",
+    "box": [328, 474, 608, 78],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h3",
+    "text": "Sounds",
+    "box": [328, 474, 608, 16],
+    "font": "500 12px/16px Geist",
+    "color": "oklch(0.5 0 0)",
+    "pad": "0px 4px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 496, 608, 56],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(0.955 0 0)",
+    "radius": "14px"
+  },
+  {
+    "tag": "div",
+    "box": [328, 496, 608, 56],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)",
+    "pad": "12px 16px"
+  },
+  {
+    "tag": "div",
+    "box": [344, 508, 576, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [344, 514, 432, 20],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "h4",
+    "text": "When to play sounds",
+    "box": [344, 514, 432, 20],
+    "font": "500 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "div",
+    "box": [792, 508, 128, 32],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "button",
+    "role": "combobox",
+    "label": "When to play sounds",
+    "box": [792, 508, 128, 32],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "bg": "oklch(1 0 0)",
+    "radius": "10px",
+    "border": "1px 1px 1px 1px oklch(0.9 0 0)",
+    "pad": "0px 10px"
+  },
+  {
+    "tag": "span",
+    "text": "Always",
+    "box": [803, 514, 45.5, 20],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "span",
+    "box": [897, 518, 12, 12],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)"
+  },
+  {
+    "tag": "svg",
+    "icon": "lucide-chevron-down",
+    "box": [897, 518, 12, 12],
+    "font": "400 14px/20px Geist",
+    "color": "oklch(0.2 0 0)",
+    "opacity": "0.6"
+  },
+  {
+    "tag": "input",
+    "box": [-1, -1, 1, 1],
+    "font": "400 14px/21px Geist",
+    "color": "oklch(0.2 0 0)"
+  }
+]
