@@ -1,3 +1,14 @@
+## 1.34.5 - 2026-10-07
+
+### Changed
+
+- On the new-session page, the Workspace opens a picker with a search box. Type to filter your recent projects, use the arrow keys and Enter to pick one, or choose Other folder… to open any folder.
+- The picker has Don't work in a project (before, None). Then the page asks “What should we work on?”, and a Work in a project button under the message box opens the picker again.
+
+### Fixed
+
+- VoiceOver can reach the Workspace button in the new-session question. Before, the question hid it.
+
 ## 1.34.4 - 2026-10-07
 
 ### Fixed
