@@ -147,6 +147,16 @@ func main() {
 			if win != nil {
 				win.Update(func() { a.Zoom(step) })
 			}
+		}, func() {
+			if win == nil {
+				nativePaste()
+				return
+			}
+			win.Update(func() {
+				if !a.PasteImage() {
+					nativePaste()
+				}
+			})
 		}))
 		win = mygo.NewWindow(mygo.WindowOptions{
 			Title:     "Droi",
@@ -199,14 +209,14 @@ func main() {
 
 // menu is the Desktop Shell's: the app, File, Edit, View and Window menus,
 // with zoom on ⌘= / ⌘- / ⌘0 as people press them.
-func menu(zoom func(step int)) *mygo.Menu {
+func menu(zoom func(step int), paste func()) *mygo.Menu {
 	item := func(label, acc string, step int, hidden bool) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Accelerator: acc, Hidden: hidden, Click: func(*mygo.MenuItem, *mygo.Window) { zoom(step) }}
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Role: mygo.RoleFileMenu},
-		{Role: mygo.RoleEditMenu},
+		editMenu(paste),
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("Actual Size", "CmdOrCtrl+0", 0, false),
 			item("Zoom In", "CmdOrCtrl+=", 1, false),
@@ -217,6 +227,25 @@ func menu(zoom func(step int)) *mygo.Menu {
 		}},
 		{Role: mygo.RoleWindowMenu},
 	})
+}
+
+// editMenu is MyGo's Edit menu of macOS, but for Paste, which the app does
+// itself: the role's Paste goes straight to the focused text area, and the
+// composer must see it first to attach an image on the clipboard.
+func editMenu(paste func()) *mygo.MenuItem {
+	return &mygo.MenuItem{Label: "Edit", Submenu: []*mygo.MenuItem{
+		{Role: mygo.RoleUndo},
+		{Role: mygo.RoleRedo},
+		mygo.Separator(),
+		{Role: mygo.RoleCut},
+		{Role: mygo.RoleCopy},
+		{Label: "Paste", Accelerator: "CmdOrCtrl+V", Click: func(*mygo.MenuItem, *mygo.Window) { paste() }},
+		{Role: mygo.RolePasteAndMatchStyle},
+		{Role: mygo.RoleDelete},
+		{Role: mygo.RoleSelectAll},
+		mygo.Separator(),
+		{Label: "Speech", Submenu: []*mygo.MenuItem{{Role: mygo.RoleStartSpeaking}, {Role: mygo.RoleStopSpeaking}}},
+	}}
 }
 
 // executable is the app's own binary, which the Daemon runs for Memory;
