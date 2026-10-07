@@ -6,6 +6,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/internal/brands"
+	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -45,7 +46,7 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 		func(id string) { update(protocol.UpdateSessionSettingsParams{ModelID: id}) },
 		func(e string) {
 			update(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(e)})
-		})
+		}, nil)
 	opts := make([]kit.Option, len(autonomyLevels))
 	for i, l := range autonomyLevels {
 		opts[i] = kit.Option{Value: l, Label: models.AutonomyLabels[l]}
@@ -63,20 +64,28 @@ func brandIcon(c *ui.Context, k *kit.Kit, b models.Brand, size float32, color ui
 	return k.Icon(c, "sparkles", size, color)
 }
 
+// pickerToolMode is the picker's Tools row, offered only for a Session
+// about to start: the Daemon fixes the mode when it creates the Session.
+// An empty value leaves no choice checked.
+type pickerToolMode struct {
+	value    defaults.ToolMode
+	onChange func(defaults.ToolMode)
+}
+
 // modelPicker is the ModelPicker: a quiet trigger naming the model and
-// its effort, opening a panel with the brands' rail, a search, the models
-// and the reasoning effort.
-func (a *App) modelPicker(c *ui.Context, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string)) {
-	a.modelPickerAs(c, false, "Model and reasoning effort", false, open, st, choices, value, effort, onModel, onEffort)
+// its effort, opening a panel with the brands' rail, a search, the models,
+// the reasoning effort and, when tools is set, the tool mode.
+func (a *App) modelPicker(c *ui.Context, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *pickerToolMode) {
+	a.modelPickerAs(c, false, "Model and reasoning effort", false, open, st, choices, value, effort, onModel, onEffort, tools)
 }
 
 // modelField is the ModelPicker's field look, for settings rows: a framed
 // trigger opening the panel downwards, without the reasoning effort.
 func (a *App) modelField(c *ui.Context, label string, disabled bool, open *bool, st *pickerState, choices []models.Choice, value string, onModel func(string)) {
-	a.modelPickerAs(c, true, label, disabled, open, st, choices, value, "", onModel, nil)
+	a.modelPickerAs(c, true, label, disabled, open, st, choices, value, "", onModel, nil, nil)
 }
 
-func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled bool, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string)) {
+func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled bool, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *pickerToolMode) {
 	k, t := a.kit, a.kit.T
 	var current *models.Choice
 	for i := range choices {
@@ -125,6 +134,9 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 		}
 		if effort != "" && len(levels) > 0 {
 			k.Text(c, effortLabel(effort), size, lh).TextColor(t.MutedForeground).Shrink(0)
+		}
+		if tools != nil && tools.value != "" && tools.value != defaults.DirectOnly {
+			k.Text(c, defaults.ToolModeLabels[tools.value], size, lh).TextColor(t.MutedForeground).Shrink(0)
 		}
 		k.Icon(c, "chevron-down", 12, fg).Opacity(0.6)
 	})
@@ -240,15 +252,30 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 					}
 				})
 			})
-			if len(levels) > 0 && onEffort != nil {
-				ui.Row(c).Gap(k.Px(12)).Padding(k.Px(8), k.Px(12)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-					k.Text(c, "Reasoning", 12, 16).TextColor(t.MutedForeground).Width(k.Px(64)).Shrink(0)
-					opts := make([]kit.Option, len(levels))
-					for i, l := range levels {
-						opts[i] = kit.Option{Value: l, Label: effortLabel(l)}
+			showEffort := len(levels) > 0 && onEffort != nil
+			if showEffort || tools != nil {
+				ui.Column(c).Gap(k.Px(6)).Padding(k.Px(8), k.Px(12)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+					segmented := func(title, name, value string, opts []kit.Option, onChange func(string)) {
+						ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
+							k.Text(c, title, 12, 16).TextColor(t.MutedForeground).Width(k.Px(64)).Shrink(0)
+							if next, ok := k.Segmented(c, name, value, opts); ok {
+								onChange(next)
+							}
+						})
 					}
-					if next, ok := k.Segmented(c, "Reasoning effort", effort, opts); ok {
-						onEffort(next)
+					if showEffort {
+						opts := make([]kit.Option, len(levels))
+						for i, l := range levels {
+							opts[i] = kit.Option{Value: l, Label: effortLabel(l)}
+						}
+						segmented("Reasoning", "Reasoning effort", effort, opts, onEffort)
+					}
+					if tools != nil {
+						opts := make([]kit.Option, len(defaults.ToolModes))
+						for i, m := range defaults.ToolModes {
+							opts[i] = kit.Option{Value: string(m), Label: defaults.ToolModeLabels[m]}
+						}
+						segmented("Tools", "Tool calls", string(tools.value), opts, func(v string) { tools.onChange(defaults.ToolMode(v)) })
 					}
 				})
 			}

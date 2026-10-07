@@ -365,16 +365,13 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool,
 								}
 							}
 						}
-					}, func(e string) { s.effort = e })
+					}, func(e string) { s.effort = e }, &pickerToolMode{value: shownMode, onChange: func(m defaults.ToolMode) { s.toolMode = m }})
 					opts := make([]kit.Option, len(autonomyLevels))
 					for i, l := range autonomyLevels {
 						opts[i] = kit.Option{Value: l, Label: models.AutonomyLabels[l]}
 					}
 					if next, ok := k.QuietSelect(c, &s.autoOpen, "Autonomy", "shield-check", autonomy, opts); ok {
 						s.autonomy = next
-					}
-					if shownMode != "" && shownMode != defaults.DirectOnly {
-						k.Text(c, defaults.ToolModeLabels[shownMode], 13, 19.5).TextColor(t.MutedForeground).PaddingX(k.Px(8))
 					}
 				})
 				ui.Row(c).Padding(0, 0, 0, k.Px(4)).Shrink(0).Children(func() {
