@@ -224,10 +224,11 @@ func (v *sessionView) toolsDialog(c *ui.Context) {
 	w, h := c.Size()
 	ui.DialogBase(c, &ts.open, func(backdrop, panel *ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
-		panel.Role(ui.RoleDialog).Label("Skills and MCP servers").Width(min(k.Px(640), w-k.Px(32))).MaxHeight(min(k.Px(640), h*0.85)).
+		maxH := min(k.Px(640), h*0.85)
+		panel.Role(ui.RoleDialog).Label("Skills and MCP servers").Width(min(k.Px(640), w-k.Px(32))).
 			Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).Clip().
 			Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
+		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(8), k.Px(12)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				ui.Row(c).Role(ui.RoleTabList).Label("Skills and MCP servers").Gap(k.Px(2)).Children(func() {
 					for _, tab := range [][2]string{{"skills", "Skills"}, {"mcp", "MCP servers"}} {
@@ -249,7 +250,9 @@ func (v *sessionView) toolsDialog(c *ui.Context) {
 					ts.open = false
 				}
 			})
-			ui.Scroll(c).Role(ui.RoleGroup).Label("Tab panel").Grow(1).MinHeight(0).FillWidth().Children(func() {
+			// The dialog takes the height of what it holds, so the panel
+			// gets one of its own: the dialog's room under the 45px tab row.
+			ui.Scroll(c).Role(ui.RoleGroup).Label("Tab panel").MaxHeight(maxH - k.Px(45)).FillWidth().Children(func() {
 				ui.Column(c).FillWidth().Padding(k.Px(12)).Children(func() {
 					if ts.tab == "mcp" {
 						v.mcpTab(c)

@@ -25,9 +25,16 @@ func TestGitChangesButton(t *testing.T) {
 		}
 	}
 	h.click(label)
+	h.frame()
 	for _, want := range []string{"2 uncommitted files", "login.ts", "src/auth/", "README.md"} {
 		if !h.hasText(want) {
 			t.Errorf("no %q in the changed files: %q", want, h.tt.Texts())
+		}
+	}
+	// Listed is not enough: the rows must take room in the popover.
+	for _, row := range []string{"src/auth/login.ts", "README.md"} {
+		if r, ok := h.tt.Find(row); !ok || r.H < 20 {
+			t.Errorf("row %q not shown: %+v", row, r)
 		}
 	}
 

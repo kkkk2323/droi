@@ -150,8 +150,9 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 	ui.PopoverBase(c, b, &v.git.open, func(p *ui.Element) {
 		w, h := c.Size()
 		p.AttachTo(b, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(6), 0, 0, 0).Role(ui.RoleDialog).Label("Changed files").
-			Width(min(k.Px(416), w-k.Px(16))).MaxHeight(min(k.Px(384), h-k.Px(60))).Radius(k.Px(12)).Border(1, t.Border).
+			Width(min(k.Px(416), w-k.Px(16))).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+		maxH := min(k.Px(384), h-k.Px(60))
 		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).Gap(k.Px(8)).Padding(k.Px(10), k.Px(12), k.Px(6), k.Px(12)).Children(func() {
 				title := "Working tree clean"
@@ -166,7 +167,10 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 			if !dirty {
 				return
 			}
-			ui.Scroll(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
+			// The popover takes the height of what it holds, so the list
+			// gets a height of its own: the rest of the popover's room
+			// under the 32px title row.
+			ui.Scroll(c).FillWidth().MaxHeight(maxH - k.Px(34)).Children(func() {
 				ui.Column(c).Role(ui.RoleList).Label("Changed files").FillWidth().Padding(0, k.Px(6), k.Px(6), k.Px(6)).Children(func() {
 					for _, f := range g.files {
 						v.gitFileRow(c, f)

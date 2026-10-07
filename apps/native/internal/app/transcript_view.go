@@ -219,7 +219,10 @@ func (v *sessionView) picture(c *ui.Context, id string, img transcript.Image, ma
 	if float32(h) > k.Px(maxH) {
 		scale = k.Px(maxH) / float32(h)
 	}
-	ui.Image(c, bm).Label(label).Size(float32(w)*scale, float32(h)*scale).MaxWidthPercent(100).Radius(k.Px(12)).Border(1, k.T.Border)
+	// Width and aspect ratio, not a fixed size, so a wide image narrows
+	// to its column as the web Client's max-w-full object-contain does.
+	ui.Image(c, bm).Label(label).Width(float32(w)*scale).MaxWidthPercent(100).AspectRatio(float32(w)/float32(h)).
+		Shrink(1).MinWidth(0).Radius(k.Px(12)).Border(1, k.T.Border)
 }
 
 // disclosure is the trigger of a fold: label and a chevron that turns as
