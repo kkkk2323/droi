@@ -35,7 +35,7 @@ tests/          # @droi/tests: the Playwright suites, one config per folder
 ├── electron/      # Smoke suite against the built Desktop Shell
 └── live/          # A few cases against a real Daemon (a reply, and Memory)
 scripts/        # install:mac and install:phone
-docs/           # ADRs, agent docs, the README pictures
+docs/           # ADRs, agent docs, the README screenshot
 ```
 
 The repository is a pnpm workspace; every command below runs from the root and
@@ -91,9 +91,8 @@ installed types before using an Expo module, and add Expo packages with
 
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
-- README pictures: `DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots`
-  draws the native app against the Fake Daemon into `docs/screenshot.png` and `docs/screenshots/`
-  (skipped in a normal run)
+- README screenshot: `DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots`
+  draws the native app against the Fake Daemon into `docs/screenshot.png` (skipped in a normal run)
 - Live test through the local droid-proxy (`dp`) with a cheap model:
   `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') pnpm test:live`
   (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)

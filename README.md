@@ -9,9 +9,7 @@
 [![MyGo](https://img.shields.io/badge/MyGo-0.2.16-6E56CF)](https://mygo.egoist.dev)
 [![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo)](https://expo.dev/)
 
-Droi is a native macOS app and an iPhone app for the [Factory Droid](https://docs.factory.ai) coding agent. It does not run the agent itself: it starts `droid daemon` and shows the Daemon's Sessions in a fast, keyboard-friendly window, and on your iPhone if you pair one.
-
-The Mac app is written in Go on [MyGo](https://mygo.egoist.dev)'s native UI: no Electron, no webview. On our test Mac it shows the Session list in under a second and uses about 100 MB of memory when idle, where the Electron app it replaces took about three seconds and 500 MB ([measurements](./apps/native/docs/performance.md)).
+A native Mac and iPhone app for the [Factory Droid](https://docs.factory.ai) coding agent.
 
 ![A Session in Droi](./docs/screenshot.png)
 
@@ -30,24 +28,16 @@ The Mac app is written in Go on [MyGo](https://mygo.egoist.dev)'s native UI: no 
 - **Updates itself**: it checks every hour, downloads only what changed, checks the signature, and restarts once no Session is working.
 - **Local proxy support**: point the Daemon at a Factory API base URL such as a local `droid-proxy`.
 
-<table>
-  <tr>
-    <td><img src="./docs/screenshots/dark.png" alt="The dark theme"></td>
-    <td><img src="./docs/screenshots/new-session.png" alt="The New session page"></td>
-  </tr>
-  <tr>
-    <td align="center">Dark theme (and Solarized Light)</td>
-    <td align="center">A new Session: pick the Workspace and the model</td>
-  </tr>
-  <tr>
-    <td><img src="./docs/screenshots/permission.png" alt="A permission prompt"></td>
-    <td><img src="./docs/screenshots/remote-access.png" alt="Settings, Remote Access"></td>
-  </tr>
-  <tr>
-    <td align="center">Allow a command, or always allow ones like it</td>
-    <td align="center">Pair a phone with a QR code</td>
-  </tr>
-</table>
+## Performance
+
+The Mac app is written in Go on [MyGo](https://mygo.egoist.dev)'s native UI, with no Electron and no webview. Compared with the Electron app it replaces, on our test Mac:
+
+| | Native | Electron |
+|---|---|---|
+| Launch to the Session list | 0.95 s | 2.9 s |
+| Memory when idle | 103 MB | 526 MB |
+
+How we measured: [apps/native/docs/performance.md](./apps/native/docs/performance.md).
 
 ## Requirements
 
@@ -102,7 +92,7 @@ Run these from the repository root.
 | `pnpm install:phone` | build a signed Release of the Phone App and install it on the connected iPhone |
 | `pnpm test:live` | one case against a real Daemon; runs only with `FACTORY_API_KEY` |
 
-The tests never need a Factory key: they run the real Clients against a scripted Fake Daemon that checks its own messages with the SDK's schemas (see [ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md)). The pictures in this README come from the Fake Daemon too:
+The tests never need a Factory key: they run the real Clients against a scripted Fake Daemon that checks its own messages with the SDK's schemas (see [ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md)). The screenshot in this README comes from the Fake Daemon too:
 
 ```bash
 DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots
