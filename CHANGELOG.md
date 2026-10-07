@@ -1,3 +1,15 @@
+## 1.34.0 - 2026-10-07
+
+### Changed
+
+- Droi on the Mac is a native app now. It is written in Go instead of running in Electron: on our test Mac it shows the Session list in under a second instead of about three, and uses 103 MB of memory instead of 526 MB when idle. It looks and works as before, and keeps your Sessions, settings, alert sounds, Memory and paired phones, as it uses the same data folder. The Electron app's update shows a card that links to the download; drag the new Droi into Applications to replace the old one.
+- Droi updates itself: it checks soon after starting and then every hour, downloads only what changed when it can, checks the update's signature, and restarts once no Session is working and the window is in the background. Settings → About can check, download and restart at once.
+- Release downloads have the native app only; the browser Client is gone. The phone keeps working: pair it in Settings → Remote Access as before.
+
+### Fixed
+
+- Memory no longer fails at the first start when its database does not exist yet. Before, the Memory Server and the hook could open the new database at the same moment and one of them gave up.
+
 ## 1.33.5 - 2026-10-05
 
 ### Fixed
