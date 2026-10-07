@@ -280,8 +280,14 @@ func (r treeRenderer) table(p map[string]any) {
 	if len(cols) == 0 {
 		return
 	}
-	ui.ScrollHorizontal(c).Radius(k.Px(8)).Border(1, t.Border).Clip().Children(func() {
-		ui.Grid(c).Columns(len(cols)).Grow(1).Children(func() {
+	// As the web Client's w-full table with auto layout: columns as wide as
+	// their content within the reading column, long cells wrapping.
+	tracks := make([]ui.Track, len(cols))
+	for i := range tracks {
+		tracks[i] = ui.FitContent()
+	}
+	ui.Column(c).FillWidth().Radius(k.Px(8)).Border(1, t.Border).Clip().Children(func() {
+		ui.Grid(c).FillWidth().ColumnTracks(tracks...).Children(func() {
 			for _, col := range cols {
 				ui.Box(c).Padding(k.Px(6), k.Px(10)).Background(t.Muted.Alpha(0.4)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 					k.Text(c, col.header, 12.5, 18.75).FontWeight(500).NoWrap()

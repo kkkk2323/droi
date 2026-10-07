@@ -108,6 +108,9 @@ type App struct {
 	more     *float64
 	busy     map[string]string // working states the Daemon reported
 	dirty    bool
+	// turnAt is when each working Session's turn began, in Unix seconds:
+	// it keeps the Session's place in the list until the turn ends.
+	turnAt map[string]int64
 
 	sidebar  sidebarState
 	views    map[string]*sessionView
@@ -154,13 +157,14 @@ func New(cfg Config) *App {
 		cfg.Prefs = prefs.Memory()
 	}
 	a := &App{
-		cfg:   cfg,
-		ctl:   cfg.Controller,
-		prefs: cfg.Prefs,
-		ctx:   context.Background(),
-		route: Route{Name: "home"},
-		busy:  map[string]string{},
-		views: map[string]*sessionView{},
+		cfg:    cfg,
+		ctl:    cfg.Controller,
+		prefs:  cfg.Prefs,
+		ctx:    context.Background(),
+		route:  Route{Name: "home"},
+		busy:   map[string]string{},
+		turnAt: map[string]int64{},
+		views:  map[string]*sessionView{},
 
 		drafts:      drafts.New(cfg.Prefs),
 		compactions: compaction.NewLog(),
@@ -183,8 +187,9 @@ func (a *App) Start() {
 	a.watchAlerts()
 	a.ctl.Store().Subscribe(func(e session.Event) {
 		a.storeRev.Add(1)
-		if e.Kind == session.EventWorkingStateChanged || e.Kind == session.EventSettingsUpdated || e.Kind == session.EventMetadataUpdated {
-			a.touch(e.SessionID)
+		if e.Kind == session.EventWorkingStateChanged {
+			s := a.ctl.Store().Session(e.SessionID)
+			a.touch(e.SessionID, s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle)
 		}
 		a.redraw()
 	})
@@ -246,18 +251,47 @@ func (a *App) onEvent(e controller.Event) {
 	a.redraw()
 }
 
-// touch moves a Session that just did something to the top of its group,
-// as the web Client's activeAt does until the list is read again.
-func (a *App) touch(id string) {
+// touch moves a Session whose turn begins to the top of its group, as the
+// web Client's activeAt does. The working states inside one turn leave it
+// where it is: two working Sessions would otherwise swap places on every
+// step either takes.
+func (a *App) touch(id string, working bool) {
 	now := a.cfg.Now().Unix()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if !working {
+		delete(a.turnAt, id)
+		return
+	}
+	if _, ok := a.turnAt[id]; ok {
+		return
+	}
+	a.turnAt[id] = now
 	for i := range a.listed {
 		if a.listed[i].SessionID == id && a.listed[i].UpdatedAt < now {
-			if s := a.ctl.Store().Session(id); s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle {
-				a.listed[i].UpdatedAt = now
+			a.listed[i].UpdatedAt = now
+		}
+	}
+}
+
+// holdTurns keeps working Sessions where their turn put them when the
+// list is read again: the Daemon's date for one moves with every message
+// its turn writes. Call with mu held.
+func (a *App) holdTurns(list []sessions.Summary) {
+	for i := range list {
+		id := list[i].SessionID
+		at, ok := a.turnAt[id]
+		if !ok {
+			continue
+		}
+		// The list may be read for the end of the turn before touch hears of it.
+		if a.ctl != nil {
+			if s := a.ctl.Store().Session(id); s == nil || s.WorkingState() == protocol.DroidWorkingStateIdle {
+				delete(a.turnAt, id)
+				continue
 			}
 		}
+		list[i].UpdatedAt = at
 	}
 }
 
@@ -279,6 +313,7 @@ func (a *App) refreshList() {
 	}
 	a.listErr = ""
 	a.listed = summariesOf(res.Sessions)
+	a.holdTurns(a.listed)
 	a.more = nil
 	if res.HasMore {
 		a.more = res.NextCursor
@@ -304,8 +339,10 @@ func (a *App) loadOlder() {
 	if err != nil {
 		return
 	}
+	older := summariesOf(res.Sessions)
 	a.mu.Lock()
-	a.listed = append(a.listed, summariesOf(res.Sessions)...)
+	a.holdTurns(older)
+	a.listed = append(a.listed, older...)
 	a.more = nil
 	if res.HasMore {
 		a.more = res.NextCursor

@@ -191,6 +191,23 @@ func TestRunFrom(t *testing.T) {
 	}
 }
 
+// A background Task the Daemon reports done shows as done, not as launched.
+func TestFromSummary(t *testing.T) {
+	count, ms := float64(7), float64(4200)
+	run := FromSummary(protocol.SubagentInvocationSummary{Status: protocol.TaskInvocationStatusCompleted, ToolUseCount: &count, DurationMs: &ms})
+	if run.Status != Completed || run.ToolUseCount == nil || *run.ToolUseCount != 7 || run.DurationMs == nil || *run.DurationMs != 4200 {
+		t.Fatalf("run %+v", run)
+	}
+	r, ok := RunFrom(run, "idle")
+	if !ok {
+		t.Fatal("no run")
+	}
+	launched := task("Task launched in background\nsession_id: s1", false, nil)
+	if got := StateOf(launched, &r); got != TaskState(Completed) {
+		t.Fatalf("state %q", got)
+	}
+}
+
 func TestUnlistedTaskCalls(t *testing.T) {
 	entry := func(call *transcript.ToolCall) []*transcript.Entry {
 		return []*transcript.Entry{{ID: "e", Blocks: []transcript.Block{{Kind: transcript.Subagent, ID: "e:0", Call: call}}}}

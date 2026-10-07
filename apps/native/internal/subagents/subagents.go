@@ -14,6 +14,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
+
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
@@ -143,6 +145,16 @@ type Run struct {
 }
 
 func IsRunning(status Status) bool { return status == Running || status == Pending }
+
+// FromSummary is the Run the Daemon's subagent invocation summary reports.
+func FromSummary(sum protocol.SubagentInvocationSummary) *Run {
+	r := Run{Status: Status(sum.Status), DurationMs: sum.DurationMs}
+	if sum.ToolUseCount != nil {
+		n := int(*sum.ToolUseCount)
+		r.ToolUseCount = &n
+	}
+	return &r
+}
 
 // RunFrom is the Run for a subagent this Client has heard about: the
 // Daemon's own summary when it has one, else running while the subagent's
