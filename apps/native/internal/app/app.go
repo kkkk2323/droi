@@ -72,6 +72,10 @@ type Config struct {
 	Env func(string) string
 	// PlaySound plays an alert sound: a built-in name, "bell", or a file.
 	PlaySound func(sound string)
+	// Notify shows a desktop notification; nil shows none.
+	Notify func(Alert)
+	// Focused reports whether the window has the focus.
+	Focused func() bool
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -102,6 +106,9 @@ type App struct {
 	drafts      *drafts.Drafts
 	pending     drafts.Pending
 	compactions *compaction.Log
+	// unread are the Sessions that finished or started waiting while
+	// another one was open; opening one reads it. Main thread only.
+	unread map[string]bool
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
 
@@ -146,6 +153,7 @@ func (a *App) Start() {
 		return
 	}
 	a.ctl.Subscribe(a.onEvent)
+	a.watchAlerts()
 	a.ctl.Store().Subscribe(func(e session.Event) {
 		a.storeRev.Add(1)
 		if e.Kind == session.EventWorkingStateChanged || e.Kind == session.EventSettingsUpdated || e.Kind == session.EventMetadataUpdated {
@@ -190,6 +198,14 @@ func (a *App) onEvent(e controller.Event) {
 			go a.refreshList()
 		}
 		switch ev.Raw.Type {
+		case "tool_result":
+			// The Daemon edits files while a turn runs.
+			id := ev.SessionID
+			a.cfg.Update(func() {
+				if v := a.views[id]; v != nil {
+					v.gitStale()
+				}
+			})
 		case "mcp_status_changed", "mcp_auth_required", "mcp_auth_completed":
 			id := ev.SessionID
 			a.cfg.Update(func() {
@@ -319,6 +335,7 @@ func (a *App) Go(r Route) {
 	}
 	a.route = r
 	if r.Name == "session" {
+		delete(a.unread, r.SessionID)
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
 		a.view(r.SessionID).open()
 	}

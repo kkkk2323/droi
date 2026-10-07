@@ -466,7 +466,11 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	}
 	b.Children(func() {
 		ui.Row(c).Gap(k.Px(6)).Children(func() {
-			k.Text(c, s.Title, 13, 19.5).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
+			title := k.Text(c, s.Title, 13, 19.5).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
+			if a.unread[s.SessionID] {
+				title.FontWeight(500)
+				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label("Unread")
+			}
 			if pinned {
 				k.Icon(c, "pin", 12, t.Foreground).Opacity(0.7).Label("Pinned")
 			}

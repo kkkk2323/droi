@@ -52,8 +52,8 @@ Tracked in this file while the port is under way.
 - [x] Phase 3: shell, sidebar, search, routes, connection, `main.go`
 - [x] Phase 4: Session view: transcript, Markdown, code, tools, thinking, subagent cards, todos, Scripts
 - [x] Phase 5: composer, model picker, attachments, slash, queue, prompts, New session
-- [ ] Phase 6: done: Settings, Skills/MCP, Open in, copy Session; still to do: the git changes
-      button, alert sounds and notifications when a turn ends or waits, the subagent menu and trail
+- [x] Phase 6: Settings, Skills/MCP, git changes, Open in, copy Session, alerts (sound, desktop
+      notification, unread mark), the subagent menu and trail
 - [x] Phase 7: view tests against the Fake Daemon (`internal/app/app_test.go`) with a pixel
       comparison per reference screen
 

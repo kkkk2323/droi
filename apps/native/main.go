@@ -79,6 +79,20 @@ func main() {
 		Version:      version,
 		Env:          os.Getenv,
 		PlaySound:    func(s string) { playSound(h.FactoryHome(), s) },
+		// The id is the Session's, so a click (even one that launches the
+		// app again) knows what to open; a newer alert replaces the older.
+		Notify: func(n app.Alert) {
+			_ = mygo.NewNotification(mygo.NotificationOptions{ID: n.SessionID, Title: n.Title, Body: n.Body, Silent: true}).Show()
+		},
+		Focused: func() bool { return win != nil && win.IsFocused() },
+	})
+	mygo.App.OnNotificationClick(func(id string) {
+		if win == nil {
+			return
+		}
+		win.Show()
+		win.Focus()
+		win.Update(func() { a.OpenSession(id) })
 	})
 	highlight.Ready = func() { update(func() {}) }
 	h.OnChange(func() { update(func() {}) })

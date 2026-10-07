@@ -63,6 +63,9 @@ type sessionView struct {
 	compacting bool
 	composer   composerState
 	tools      toolsState
+	git        gitState
+	// subOpen and trailOpen: the header's subagent menus.
+	subOpen, trailOpen bool
 
 	// focused is whether the composer took the focus once already.
 	focused   bool
@@ -269,7 +272,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 	loaded := s != nil && s.LoadState() == session.Loaded
 
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
-		v.header(c, title, workspace)
+		v.header(c, s, loaded, title, workspace, a.subagentNavOf(listed, sel, v.id))
 		ui.Box(c).Grow(1).MinHeight(0).Children(func() {
 			switch {
 			case loadErr != "":
@@ -293,7 +296,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 
 // header is the PageHeader: the title, which a pencil renames, and the
 // copy and open-in controls. It drags the window.
-func (v *sessionView) header(c *ui.Context, title, workspace string) {
+func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, title, workspace string, nav subagentNav) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	// The web Client's leading spacer, always there, so the header's gap
@@ -313,6 +316,10 @@ func (v *sessionView) header(c *ui.Context, title, workspace string) {
 				v.renameField(c, title)
 				return
 			}
+			if len(nav.trail) > 0 {
+				v.sessionTrail(c, nav, title)
+				return
+			}
 			group := ui.Row(c).MinWidth(0).Gap(k.Px(4))
 			hover := group.Hovered()
 			group.Children(func() {
@@ -330,6 +337,8 @@ func (v *sessionView) header(c *ui.Context, title, workspace string) {
 			})
 		})
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
+			v.subagentMenu(c, nav)
+			v.gitButton(c, s, loaded)
 			v.copyMenu(c, title, workspace)
 			v.openInButton(c, workspace)
 		})
