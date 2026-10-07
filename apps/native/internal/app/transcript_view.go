@@ -69,7 +69,18 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 				v.row(c, rows[i-1])
 			}
 		}).Fill().Label("Transcript").PaddingX(scrollGutter)
-		_ = list
+		if v.pendingJump != "" {
+			for i, e := range entries {
+				if e.ID == v.pendingJump {
+					if row := rowOf(rows, entries[i]); row >= 0 {
+						v.hold()
+						v.list.ScrollTo(row, ui.Start)
+					}
+				}
+			}
+			v.pendingJump = ""
+		}
+		v.turnRail(c, s, rows, list.Bounds().W)
 		if first, _ := v.list.Visible(); first == 0 && hasOlder {
 			v.loadOlder()
 		}

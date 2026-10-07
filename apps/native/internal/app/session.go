@@ -53,6 +53,9 @@ type sessionView struct {
 	// JSON once: the transcript keeps a call's ToolCall while it stays the
 	// same, and builds a new one when it changes.
 	calls map[*transcript.ToolCall]*callView
+	rail  railState
+	// pendingJump is a rail jump to a message whose page just loaded.
+	pendingJump string
 	// links and streamingID are the frame's, for the transcript's rows.
 	links       *subagents.Links
 	streamingID string
@@ -85,7 +88,7 @@ func (a *App) view(id string) *sessionView {
 	v := a.views[id]
 	if v == nil {
 		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{},
-			calls: map[*transcript.ToolCall]*callView{}}
+			calls: map[*transcript.ToolCall]*callView{}, rail: railState{preview: -1}}
 		v.list.FollowEnd = true
 		d := a.drafts.Load(id)
 		v.composer.text, v.composer.images = d.Text, d.Images
