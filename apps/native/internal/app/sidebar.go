@@ -496,6 +496,15 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				status("", t.Info, "Compacting", true)
 			case doing == activity.Working:
 				status("", t.Info, "Working", true)
+			case s.Worktree != nil && s.Worktree.Branch != "":
+				label := "Worktree on " + s.Worktree.Branch
+				if s.Worktree.Ephemeral() {
+					label = "Ephemeral worktree on " + s.Worktree.Branch
+				}
+				ui.Row(c).Role(ui.RoleImage).Label(label).Tooltip(label).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
+					k.Icon(c, "git-branch", 12, t.MutedForeground)
+					k.Text(c, s.Worktree.Branch, 11, 16.5).TextColor(t.MutedForeground).SingleLine()
+				})
 			case s.MessagesCount != nil:
 				ui.Row(c).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
 					k.Icon(c, "message-square", 12, t.MutedForeground)
@@ -533,7 +542,11 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			archive = "Unarchive"
 		}
 		if m.Item(archive).Chosen() {
-			go a.toggleArchive(s)
+			if s.ArchivedAt == "" && s.Worktree.Ephemeral() {
+				a.askArchive(s)
+			} else {
+				go a.toggleArchive(s)
+			}
 		}
 	})
 }
@@ -570,10 +583,13 @@ func (a *App) renameSession(id, title string) {
 	}
 }
 
-func (a *App) toggleArchive(s sessions.Summary) {
+func (a *App) toggleArchive(s sessions.Summary) { _ = a.archive(s) }
+
+// archive archives the Session, or unarchives an archived one.
+func (a *App) archive(s sessions.Summary) error {
 	cl, err := a.ctl.Client()
 	if err != nil {
-		return
+		return err
 	}
 	if s.ArchivedAt != "" {
 		_, err = cl.UnarchiveSession(a.ctx, protocol.UnarchiveSessionParams{SessionID: s.SessionID})
@@ -591,6 +607,7 @@ func (a *App) toggleArchive(s sessions.Summary) {
 	if err == nil {
 		a.refreshList()
 	}
+	return err
 }
 
 // skeleton stands in for the list while it loads.

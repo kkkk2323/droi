@@ -241,6 +241,10 @@ var (
 	ManualWorkspaces  = List{Key: "droi.workspaceOrder"}
 	SessionsFirstSeen = Map{Key: "droi.sessionsFirstSeen"}
 	DefaultToolMode   = String{Key: "droi.toolExecutionMode"}
+	// NewSessionWorktree: new Sessions start in a worktree of their
+	// repository; WorktreeLifecycle is the lifecycle picked last.
+	NewSessionWorktree = Bool{Key: "droi.newSessionWorktree"}
+	WorktreeLifecycle  = String{Key: "droi.worktreeLifecycle", Fallback: "ephemeral"}
 	// Alerts holds the alert settings as JSON, as use-session-alerts.ts does.
 	Alerts = String{Key: "droi.alerts"}
 	// LargeMemoriesNoticed are the large Project Memories the corner card

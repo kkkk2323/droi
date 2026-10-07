@@ -24,6 +24,8 @@ export interface SessionFixture {
     branch: string
     files: Array<{ path: string; status: string; additions: number; deletions: number }>
   }
+  /** The Daemon-managed worktree the Session runs in; its cwd is the worktree's path. */
+  worktree?: WorktreeFixture
   /** A subagent: the calling Session and Task call, and the run its caller's load reports. */
   subagent?: {
     callingSessionId: string
@@ -34,6 +36,34 @@ export interface SessionFixture {
     toolUseCount?: number
     durationMs?: number
   }
+}
+
+export interface WorktreeFixture {
+  path: string
+  branch: string
+  lifecycle: 'ephemeral' | 'persistent'
+  /** The main checkout the worktree was made from. */
+  repoRoot: string
+  /** Set once the Daemon removed the checkout. */
+  removedAt?: string
+}
+
+/** A Git repository at a directory, as daemon.list_git_branches reports it. */
+export interface GitRepoFixture {
+  currentBranch: string
+  branches: string[]
+  defaultBranch?: string
+}
+
+/** What daemon.inspect_worktree_deletion finds in a worktree; clean when absent. */
+export interface WorktreeInspectionFixture {
+  changedFiles?: number
+  additions?: number
+  deletions?: number
+  untrackedFiles?: number
+  localOnlyCommits?: number
+  pullRequest?: { state: 'open' | 'merged' | 'closed'; url?: string; title?: string }
+  hasRemoteBranch?: boolean
 }
 
 export interface MessageFixture {
@@ -83,6 +113,17 @@ export interface ScenarioInput {
   opened?: Array<{ sessionId: string; workingState: string }>
   /** How long load_session takes, as the real Daemon reading a long Session from disk. */
   loadDelayMs?: number
+  /** Git repositories by directory; initialize_session makes worktrees only of these. */
+  gitRepos?: Record<string, GitRepoFixture>
+  /** Worktree setup profiles daemon.list_worktree_setup_profiles reports for every repository. */
+  worktreeProfiles?: Array<{
+    id: string
+    name: string
+    script?: string
+    source?: 'local' | 'repository'
+  }>
+  /** Unsaved work in worktrees, by path, for inspect_worktree_deletion and cleanup_worktree. */
+  worktreeInspections?: Record<string, WorktreeInspectionFixture>
 }
 
 export const CONTEXT_BUDGET = 200_000
@@ -130,7 +171,19 @@ export function createScenario(input: ScenarioInput): Scenario {
           sessionId: s.sessionId,
           updatedAt: s.updatedAt,
           title: s.title,
-          cwd: s.cwd,
+          // Like the real Daemon, a Session whose worktree is gone lists the main checkout.
+          cwd: s.worktree?.removedAt ? s.worktree.repoRoot : s.cwd,
+          ...(s.worktree ? { repoRoot: s.worktree.repoRoot } : {}),
+          ...(s.worktree && !s.worktree.removedAt
+            ? {
+                worktree: {
+                  path: s.worktree.path,
+                  branch: s.worktree.branch,
+                  lifecycle: s.worktree.lifecycle,
+                  repoRoot: s.worktree.repoRoot,
+                },
+              }
+            : {}),
           messagesCount: s.messages.length,
           ...(s.archivedAt ? { archivedAt: s.archivedAt } : {}),
           ...(s.tags ? { tags: s.tags } : {}),
@@ -209,6 +262,18 @@ export function createScenario(input: ScenarioInput): Scenario {
       const found = mustFind(sessions, params['sessionId'])
       found.archivedAt = new Date().toISOString()
       context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
+      // Like the real Daemon, archiving the last Session of a clean ephemeral
+      // worktree removes the checkout.
+      const tree = found.worktree
+      if (
+        tree &&
+        !tree.removedAt &&
+        tree.lifecycle === 'ephemeral' &&
+        !hasUnsavedWork(input.worktreeInspections?.[tree.path]) &&
+        !sessionsOf(sessions, tree.path).some((s) => !s.archivedAt)
+      ) {
+        removeWorktree(sessions, tree.path, context)
+      }
       return { success: true, archivedAt: found.archivedAt }
     },
     'daemon.get_default_settings': () => ({ ...defaults, availableModels: models }),
@@ -321,11 +386,29 @@ export function createScenario(input: ScenarioInput): Scenario {
           : {}),
       })
       created.unwritten = true
+      const repo = input.gitRepos?.[created.cwd]
+      // Like the real Daemon, a worktree asked for outside a Git repository is
+      // left out and the Session runs in its cwd.
+      if (params['worktree'] === true && repo) {
+        created.worktree = createWorktree(params, created, repo, defaults)
+        created.cwd = created.worktree.path
+      }
       sessions.unshift(created)
       return {
         sessionId: created.sessionId,
         hostId: HOST_ID,
         session: { messages: [], title: created.title },
+        ...(created.worktree
+          ? {
+              worktree: {
+                branch: created.worktree.branch,
+                lifecycle: created.worktree.lifecycle,
+                path: created.worktree.path,
+                repoRoot: created.worktree.repoRoot,
+                isNewlyCreated: true,
+              },
+            }
+          : {}),
         // Like the real Daemon, a mode asked for here is the Session's for good.
         settings: {
           ...sessionSettings(),
@@ -334,6 +417,102 @@ export function createScenario(input: ScenarioInput): Scenario {
             : {}),
         },
         availableModels: models,
+      }
+    },
+    'daemon.list_git_branches': (params) => {
+      const repo = input.gitRepos?.[String(params['cwd'])]
+      if (!repo) return { isGitRepository: false, branches: [] }
+      const checkedOut = sessions.flatMap((s) =>
+        s.worktree && !s.worktree.removedAt && s.worktree.repoRoot === params['cwd']
+          ? [{ branch: s.worktree.branch, path: s.worktree.path }]
+          : [],
+      )
+      return {
+        isGitRepository: true,
+        branches: [...new Set([...repo.branches, ...checkedOut.map((c) => c.branch)])],
+        currentBranch: repo.currentBranch,
+        defaultBranch: repo.defaultBranch ?? repo.currentBranch,
+        checkedOutBranches: checkedOut,
+      }
+    },
+    'daemon.list_worktree_setup_profiles': (params) => ({
+      profiles: (input.worktreeProfiles ?? []).map((p) => ({
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        source: 'local',
+        ...p,
+      })),
+      ...(input.gitRepos?.[String(params['cwd'])] ? { repoRoot: String(params['cwd']) } : {}),
+    }),
+    'daemon.list_managed_worktrees': () => {
+      const byPath = new Map<string, WorktreeFixture>()
+      for (const s of sessions) {
+        if (s.worktree && !s.worktree.removedAt) byPath.set(s.worktree.path, s.worktree)
+      }
+      return {
+        worktrees: [...byPath.values()].map((tree) => ({
+          path: tree.path,
+          repoRoot: tree.repoRoot,
+          branch: tree.branch,
+          lifecycle: tree.lifecycle,
+          sessions: sessionsOf(sessions, tree.path).map((s) => ({
+            sessionId: s.sessionId,
+            title: s.title,
+            updatedAt: s.updatedAt,
+          })),
+          isClean: !hasUnsavedWork(input.worktreeInspections?.[tree.path]),
+        })),
+      }
+    },
+    'daemon.inspect_worktree_deletion': (params) => {
+      const tree = managedWorktree(sessions, params['worktreePath'])
+      const found = input.worktreeInspections?.[tree.path] ?? {}
+      return {
+        worktreePath: tree.path,
+        branch: tree.branch,
+        changedFiles: found.changedFiles ?? 0,
+        additions: found.additions ?? 0,
+        deletions: found.deletions ?? 0,
+        untrackedFiles: found.untrackedFiles ?? 0,
+        ...(found.localOnlyCommits !== undefined
+          ? { localOnlyCommits: found.localOnlyCommits }
+          : {}),
+        ...(found.pullRequest ? { pullRequest: found.pullRequest } : {}),
+        hasRemoteBranch: found.hasRemoteBranch ?? false,
+        remoteRefsStale: false,
+      }
+    },
+    // Like the real Daemon: only its own worktrees, archiving their Sessions;
+    // uncommitted work keeps the checkout unless forced.
+    'daemon.cleanup_worktree': (params, context) => {
+      const tree = managedWorktree(sessions, params['worktreePath'])
+      const dirty = hasUnsavedWork(input.worktreeInspections?.[tree.path])
+      if (dirty && params['force'] !== true) {
+        return {
+          worktreePath: tree.path,
+          branch: tree.branch,
+          archivedSessionIds: [],
+          worktreeRemoved: false,
+          preservedReason: 'uncommitted_changes',
+          localBranchDeleted: false,
+          remoteBranchDeleted: false,
+          warnings: [],
+        }
+      }
+      const archived = sessionsOf(sessions, tree.path).filter((s) => !s.archivedAt)
+      for (const s of archived) {
+        s.archivedAt = new Date().toISOString()
+        context.daemon.notifyArchiveState(s.sessionId, s.archivedAt)
+      }
+      removeWorktree(sessions, tree.path, context)
+      return {
+        worktreePath: tree.path,
+        branch: tree.branch,
+        archivedSessionIds: archived.map((s) => s.sessionId),
+        worktreeRemoved: true,
+        localBranchDeleted: params['deleteLocalBranch'] === true,
+        remoteBranchDeleted: params['deleteRemoteBranch'] === true,
+        warnings: [],
       }
     },
     // Like the real Daemon, closing a Session nobody wrote to deletes it.
@@ -453,6 +632,62 @@ export function createScenario(input: ScenarioInput): Scenario {
 }
 
 export const HOST_ID = '11111111-1111-4111-8111-111111111111'
+
+/** The worktree initialize_session makes, as droid 0.235 names it. */
+function createWorktree(
+  params: Record<string, unknown>,
+  created: SessionFixture,
+  repo: GitRepoFixture,
+  defaults: Record<string, unknown>,
+): WorktreeFixture {
+  const root =
+    typeof defaults['worktreeDirectory'] === 'string'
+      ? defaults['worktreeDirectory']
+      : '/Users/test/.factory/worktrees'
+  const repoRoot = created.cwd
+  const name = repoRoot.split('/').filter(Boolean).pop() ?? 'repo'
+  const text = (key: string) => (typeof params[key] === 'string' ? (params[key] as string) : '')
+  const slug = text('worktreePromptSlug')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .slice(0, 5)
+    .join('-')
+    .slice(0, 25)
+  const branch =
+    text('worktreeNewBranch') ||
+    (params['worktreeBranchMode'] === 'existing' ? text('worktreeBaseBranch') : '') ||
+    (slug ? `droid/${slug}` : `${text('worktreeBaseBranch') || repo.currentBranch}-wt`)
+  return {
+    path: `${root}/${created.sessionId.slice(-8)}/${name}`,
+    branch,
+    lifecycle: params['worktreeLifecycle'] === 'persistent' ? 'persistent' : 'ephemeral',
+    repoRoot,
+  }
+}
+
+function sessionsOf(sessions: SessionFixture[], worktreePath: string): SessionFixture[] {
+  return sessions.filter((s) => s.worktree?.path === worktreePath)
+}
+
+function managedWorktree(sessions: SessionFixture[], path: unknown): WorktreeFixture {
+  const tree = sessions.find((s) => s.worktree?.path === path && !s.worktree?.removedAt)?.worktree
+  if (!tree) throw new RpcError(-32602, 'Path is not a Factory-managed worktree')
+  return tree
+}
+
+function hasUnsavedWork(found: WorktreeInspectionFixture | undefined): boolean {
+  return (found?.changedFiles ?? 0) + (found?.untrackedFiles ?? 0) > 0
+}
+
+function removeWorktree(sessions: SessionFixture[], path: string, context: HandlerContext): void {
+  const removedAt = new Date().toISOString()
+  for (const s of sessionsOf(sessions, path)) {
+    s.worktree!.removedAt = removedAt
+    s.cwd = s.worktree!.repoRoot
+  }
+  context.daemon.notifyDaemon('daemon.worktree.removed', { checkoutPath: path })
+}
 
 function mustFind(sessions: SessionFixture[], sessionId: unknown): SessionFixture {
   const found = sessions.find((s) => s.sessionId === sessionId)

@@ -263,7 +263,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 				})
 			}
 		})
-		k.Text(c, question.Question, 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
+		k.Text(c, question.Question, 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0).Selectable()
 		if len(question.Options) > 0 {
 			role, group := ui.RoleRadio, ui.RoleRadioGroup
 			if multi {

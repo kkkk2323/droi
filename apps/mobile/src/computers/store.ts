@@ -6,6 +6,7 @@ import {
   createStringPreference,
   type LocalPreference,
 } from '@droi/daemon-layer/local-preference'
+import type { SessionWorktree } from '@droi/daemon-layer/worktree'
 
 export interface PairedComputer {
   /** The computer id from the Gateway's /meta; stable across tokens and addresses. */
@@ -99,6 +100,8 @@ export interface SessionSummaryCache {
   title: string
   cwd: string | null
   repoRoot: string | null
+  /** Absent in caches written before worktrees. */
+  worktree?: SessionWorktree | null
   updatedAt: number
   archivedAt: string | null
   parentId: string | null

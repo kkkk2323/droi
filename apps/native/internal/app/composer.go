@@ -820,7 +820,10 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 			}
 			if err != nil {
 				v.fail(err)
+				return
 			}
+			// The Daemon sends no notification for a delete; the Client drops it.
+			s.ClearQueuedMessage(q.RequestID)
 		}()
 	}
 	list := func() {
@@ -828,7 +831,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 			for _, q := range queued {
 				ui.Row(c).Key(q.RequestID).Height(k.Px(30)).Gap(k.Px(8)).Padding(0, k.Px(6), 0, k.Px(12)).Children(func() {
 					icon(q)
-					k.Text(c, queuedText(q), 12.5, 18.75).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
+					k.Text(c, queuedText(q), 12.5, 18.75).TextColor(t.Foreground).SingleLine().Selectable().Grow(1).Shrink(1).MinWidth(0)
 					state := "Queued"
 					switch {
 					case isPaused(q):

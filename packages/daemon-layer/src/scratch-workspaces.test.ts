@@ -54,6 +54,7 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
     title: 't',
     cwd: null,
     repoRoot: null,
+    worktree: null,
     updatedAt: 0,
     messagesCount: null,
     archivedAt: null,

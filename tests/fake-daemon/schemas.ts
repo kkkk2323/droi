@@ -39,6 +39,14 @@ const AvailableSession = z.object({
   archivedAt: z.string().optional(),
   callingSessionId: z.string().optional(),
   callingToolUseId: z.string().optional(),
+  worktree: z
+    .object({
+      branch: z.string().optional(),
+      lifecycle: z.enum(['ephemeral', 'persistent']).optional(),
+      path: z.string().optional(),
+      repoRoot: z.string(),
+    })
+    .optional(),
 })
 const ListAvailableSessionsResult = z.object({
   sessions: z.array(AvailableSession),
@@ -93,6 +101,11 @@ const NOTIFICATION_SCHEMAS: Record<string, ZodLike> = {
   'daemon.session.archive_state_changed': z.object({
     sessionId: z.string(),
     archivedAt: z.string().optional(),
+  }),
+  'daemon.worktree.removed': z.object({ checkoutPath: z.string() }),
+  'daemon.worktree.branch_changed': z.object({
+    checkoutPath: z.string(),
+    branch: z.string().optional(),
   }),
 }
 

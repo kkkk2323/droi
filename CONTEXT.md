@@ -133,6 +133,10 @@ _Avoid_: project, project dir, cwd, repo
 A Workspace the Host creates for a Session started without choosing one, for work that belongs to no project. The Sessions that continue it after a compaction share it; archiving the conversation moves it to the Trash. Clients list these Sessions together, under Recents.
 _Avoid_: chat, temp dir, draft (a Draft Session is something else)
 
+**Worktree**:
+A git worktree the Daemon creates for a Session started with "New worktree": its own directory and a new `droid/<slug>` branch, cut from a base branch of the repository. It is the Session's Workspace, and Clients list the Session under the repository it came from. An ephemeral Worktree is deleted when its Session is archived (or when the Daemon's limit of ephemeral Worktrees is passed); a persistent one stays until the user deletes it in Settings → Worktrees. The Daemon creates and deletes Worktrees; Clients only ask.
+_Avoid_: branch (on its own), sandbox, checkout
+
 **Prompt**:
 A question the Daemon asks the human mid-turn: a permission request for a tool call, or an ask-user questionnaire. The Daemon sends it to every Client attached to the Session; the first answer wins and the Daemon then tells every Client the Prompt is resolved.
 _Avoid_: confirmation, approval dialog, permission request (when the ask-user case is included)

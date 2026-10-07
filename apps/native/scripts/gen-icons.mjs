@@ -28,7 +28,8 @@ function sources(dir) {
   })
 }
 
-// Streamdown's code block draws Download and Copy itself, outside these imports.
+// Streamdown's code block draws Download and Copy itself, outside these imports;
+// the worktree icons are the native app's own.
 const used = new Set([
   'Loader2',
   'PanelLeft',
@@ -37,6 +38,9 @@ const used = new Set([
   'ChevronDown',
   'Download',
   'Copy',
+  'GitFork',
+  'Laptop',
+  'Trash2',
 ])
 for (const file of sources(renderer)) {
   for (const m of readFileSync(file, 'utf8').matchAll(

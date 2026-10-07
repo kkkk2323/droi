@@ -46,6 +46,14 @@ Droi on the computer must be a build with the computer name and id in its
       out as JPEG); Take photo asks for the camera once; Paste image attaches an
       image copied in another app.
 
+## Worktrees
+
+- [ ] New session in a Git repository offers Worktree under the Workspace; a
+      Session started with "New worktree" shows in the list under the repository
+      with its branch, and `git worktree list` on the computer shows the checkout.
+- [ ] Archiving a Session in an ephemeral worktree asks first, and the checkout
+      is gone from the computer afterwards; a persistent one archives without asking.
+
 ## Skills and MCP servers
 
 - [ ] The wrench in a Session's header opens the sheet; switching a skill off

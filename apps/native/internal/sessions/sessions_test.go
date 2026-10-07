@@ -42,6 +42,26 @@ func TestGroupsByRepoRootNewestFirst(t *testing.T) {
 	eq(t, ids(gs[1].Sessions), []string{"c", "a"})
 }
 
+// A Session in a worktree belongs to its main checkout, in the list and
+// among the recent Workspaces, even when the Daemon names no repoRoot.
+func TestWorktreeSessionsGroupUnderTheirRepository(t *testing.T) {
+	tree := &Worktree{Path: "/home/.factory/worktrees/ab12cd34/alpha", Branch: "droid/x", RepoRoot: "/w/alpha", Lifecycle: "ephemeral"}
+	list := []Summary{
+		{SessionID: "a", Cwd: "/w/alpha", UpdatedAt: 10},
+		{SessionID: "t", Cwd: tree.Path, UpdatedAt: 20, Worktree: tree},
+	}
+	gs := GroupByWorkspace(list, Pins{}, DefaultOrder, false)
+	eq(t, labels(gs), []string{"alpha"})
+	eq(t, ids(gs[0].Sessions), []string{"t", "a"})
+	recent := RecentWorkspaces(list)
+	if len(recent) != 1 || recent[0].Path != "/w/alpha" || recent[0].LastUsedAt != 20 {
+		t.Fatalf("recent = %+v", recent)
+	}
+	if !tree.Ephemeral() || (&Worktree{Lifecycle: "persistent"}).Ephemeral() || (&Worktree{}).Ephemeral() || (*Worktree)(nil).Ephemeral() {
+		t.Fatal("only an ephemeral worktree goes with its Session")
+	}
+}
+
 func TestMoreConversationsFirstEmptyLast(t *testing.T) {
 	gs := GroupByWorkspace([]Summary{
 		{Cwd: "/w/busy", UpdatedAt: 10, MessagesCount: n(4)},

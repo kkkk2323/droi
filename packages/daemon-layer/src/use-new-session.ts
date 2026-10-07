@@ -6,12 +6,19 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { isToolMode, type ToolMode } from './tool-mode'
 import { uuid } from './uuid'
+import {
+  WORKTREE_INIT_TIMEOUT_MS,
+  worktreeParams,
+  type SessionWorktree,
+  type WorktreeRequest,
+} from './worktree'
 import type { DaemonConnection } from './connection'
 import { useDaemonConnection } from './connection-context'
 import {
   SESSIONS_QUERY_KEY,
   isScratchSession,
   workspaceLabel,
+  workspaceOf,
   type SessionSummary,
   type SessionTag,
 } from './sessions'
@@ -27,7 +34,7 @@ export function recentWorkspaces(sessions: readonly SessionSummary[]): RecentWor
   const byPath = new Map<string, RecentWorkspace>()
   for (const session of sessions) {
     if (isScratchSession(session)) continue
-    const path = session.repoRoot ?? session.cwd
+    const path = workspaceOf(session)
     if (!path) continue
     const existing = byPath.get(path)
     if (!existing || existing.lastUsedAt < session.updatedAt) {
@@ -46,7 +53,13 @@ export interface NewSessionSettings {
 }
 
 export interface NewSessionActions {
-  create(path: string, settings?: NewSessionSettings, tags?: SessionTag[]): Promise<string | null>
+  /** Resolves to the Session's id and, for a worktree, the checkout the Daemon made. */
+  create(
+    path: string,
+    settings?: NewSessionSettings,
+    tags?: SessionTag[],
+    worktree?: WorktreeRequest,
+  ): Promise<{ sessionId: string; worktree: SessionWorktree | null } | null>
   isCreating: boolean
   error: string | null
 }
@@ -61,34 +74,60 @@ type Connection = Pick<DaemonConnection, 'controller' | 'sessionState'>
 export async function openSession(
   { controller, sessionState }: Connection,
   path: string,
-  options: { settings?: NewSessionSettings; tags?: SessionTag[] } = {},
-): Promise<{ sessionId: string; toolExecutionMode: ToolMode | null } | { error: string }> {
+  options: {
+    settings?: NewSessionSettings
+    tags?: SessionTag[]
+    worktree?: WorktreeRequest
+  } = {},
+): Promise<
+  | { sessionId: string; toolExecutionMode: ToolMode | null; worktree: SessionWorktree | null }
+  | { error: string }
+> {
   const check = await controller.validateWorkingDirectory(path)
   if (!check.isValid) return { error: check.error ?? `${path} is not a usable directory.` }
-  const { settings, tags } = options
+  const { settings, tags, worktree } = options
   // The SDK wants the Session registered as loading before it asks the
   // Daemon to create it, so the id is chosen here.
   const sessionId = uuid()
   sessionState.markSessionLoading(sessionId, LOCAL_MACHINE_ID)
   try {
-    const result = await controller.initializeSession({
-      sessionId,
-      machineId: LOCAL_MACHINE_ID,
-      // Spawn credential; the Gateway swaps the placeholder for the real key.
-      token: GATEWAY_API_KEY_PLACEHOLDER,
-      cwd: check.resolvedPath ?? path,
-      sessionOriginHint: undefined,
-      sessionSource: undefined,
-      ...(settings?.modelId ? { modelId: settings.modelId } : {}),
-      ...(settings?.reasoningEffort ? { reasoningEffort: settings.reasoningEffort as never } : {}),
-      ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
-      ...(settings?.toolExecutionMode
-        ? { toolExecutionMode: settings.toolExecutionMode as never }
-        : {}),
-      ...(tags ? { tags } : {}),
-    })
+    const result = await controller.initializeSession(
+      {
+        sessionId,
+        machineId: LOCAL_MACHINE_ID,
+        // Spawn credential; the Gateway swaps the placeholder for the real key.
+        token: GATEWAY_API_KEY_PLACEHOLDER,
+        cwd: check.resolvedPath ?? path,
+        sessionOriginHint: undefined,
+        sessionSource: undefined,
+        ...(settings?.modelId ? { modelId: settings.modelId } : {}),
+        ...(settings?.reasoningEffort
+          ? { reasoningEffort: settings.reasoningEffort as never }
+          : {}),
+        ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
+        ...(settings?.toolExecutionMode
+          ? { toolExecutionMode: settings.toolExecutionMode as never }
+          : {}),
+        ...(tags ? { tags } : {}),
+        ...(worktree ? worktreeParams(worktree) : {}),
+      },
+      worktree ? { timeout: WORKTREE_INIT_TIMEOUT_MS } : undefined,
+    )
     const mode: unknown = result.settings?.toolExecutionMode
-    return { sessionId: result.sessionId, toolExecutionMode: isToolMode(mode) ? mode : null }
+    const made = result.worktree
+    return {
+      sessionId: result.sessionId,
+      toolExecutionMode: isToolMode(mode) ? mode : null,
+      // The Daemon ignores the request outside a Git repository.
+      worktree: made
+        ? {
+            path: made.path,
+            branch: made.branch,
+            lifecycle: made.lifecycle ?? worktree?.lifecycle ?? null,
+            repoRoot: made.repoRoot ?? check.resolvedPath ?? path,
+          }
+        : null,
+    }
   } catch (cause) {
     sessionState.removeSession(sessionId)
     throw cause
@@ -106,7 +145,8 @@ export function useNewSession(): NewSessionActions {
       path: string,
       settings?: NewSessionSettings,
       tags?: SessionTag[],
-    ): Promise<string | null> => {
+      worktree?: WorktreeRequest,
+    ) => {
       const trimmed = path.trim()
       if (!trimmed) {
         setError('Enter a directory path.')
@@ -118,13 +158,14 @@ export function useNewSession(): NewSessionActions {
         const opened = await openSession(connection, trimmed, {
           ...(settings ? { settings } : {}),
           ...(tags?.length ? { tags } : {}),
+          ...(worktree ? { worktree } : {}),
         })
         if ('error' in opened) {
           setError(opened.error)
           return null
         }
         await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
-        return opened.sessionId
+        return { sessionId: opened.sessionId, worktree: opened.worktree }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
         return null

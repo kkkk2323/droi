@@ -7,6 +7,7 @@ import type { DaemonSessionController } from '@factory/droid-sdk'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
 import { isMemorySession } from './memory-session'
+import type { SessionWorktree } from './worktree'
 
 export interface SessionSummary {
   sessionId: string
@@ -14,6 +15,8 @@ export interface SessionSummary {
   cwd: string | null
   /** Grouping key the Daemon provides for checkouts; falls back to cwd. */
   repoRoot: string | null
+  /** The Daemon-managed worktree the Session runs in; null for a checkout, or once it is removed. */
+  worktree: SessionWorktree | null
   /** Unix epoch seconds. */
   updatedAt: number
   messagesCount: number | null
@@ -158,6 +161,9 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
     connection.controller.on('connected', invalidate)
     connection.controller.on('sessionTitleUpdated', invalidate)
     connection.controller.on('sessionArchiveStateChanged', invalidate)
+    // A removed worktree leaves its Sessions in the main checkout; a branch change relabels the row.
+    connection.controller.on('worktreeRemoved', invalidate)
+    connection.controller.on('worktreeBranchChanged', invalidate)
     // A subagent starting or finishing: its Session is new to the list, or has news.
     const unsubscribe = connection.sessionState.subscribeToSessionEvents(
       [SESSION_EVENT.subagentInvocationSummaryUpdated],
@@ -167,6 +173,8 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
       connection.controller.off('connected', invalidate)
       connection.controller.off('sessionTitleUpdated', invalidate)
       connection.controller.off('sessionArchiveStateChanged', invalidate)
+      connection.controller.off('worktreeRemoved', invalidate)
+      connection.controller.off('worktreeBranchChanged', invalidate)
       unsubscribe()
     }
   }, [connection, queryClient])
@@ -275,6 +283,7 @@ export function withAnnouncedSubagents(
       title: a.description ? `${name}: ${a.description}` : name,
       cwd: a.cwd ?? caller?.cwd ?? null,
       repoRoot: caller?.repoRoot ?? null,
+      worktree: caller?.worktree ?? null,
       updatedAt: a.announcedAt,
       messagesCount: null,
       archivedAt: null,
@@ -349,6 +358,15 @@ function summaryOf(s: ListedSession): SessionSummary {
     title: s.title?.trim() || 'Untitled session',
     cwd: s.cwd ?? null,
     repoRoot: s.repoRoot ?? null,
+    worktree:
+      s.worktree?.path && s.worktree.branch
+        ? {
+            path: s.worktree.path,
+            branch: s.worktree.branch,
+            lifecycle: s.worktree.lifecycle ?? null,
+            repoRoot: s.worktree.repoRoot,
+          }
+        : null,
     updatedAt: s.updatedAt,
     messagesCount: s.messagesCount ?? null,
     archivedAt: s.archivedAt ?? null,
@@ -466,7 +484,7 @@ export function groupByWorkspace(
       recents.sessions.push(session)
       continue
     }
-    const path = session.repoRoot ?? session.cwd ?? ''
+    const path = workspaceOf(session) ?? ''
     const key = path || '(unknown)'
     let group = groups.get(key)
     if (!group) {
@@ -557,6 +575,13 @@ export function visibleSessions(
     if (!recent) older += 1
   }
   return { visible, hidden: Math.max(0, older - revealed) }
+}
+
+/** The Workspace a Session belongs to: its main checkout, never a worktree's own folder. */
+export function workspaceOf(
+  session: Pick<SessionSummary, 'cwd' | 'repoRoot' | 'worktree'>,
+): string | null {
+  return session.worktree?.repoRoot ?? session.repoRoot ?? session.cwd
 }
 
 export function workspaceLabel(path: string): string {

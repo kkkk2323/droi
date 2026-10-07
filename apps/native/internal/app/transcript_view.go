@@ -808,7 +808,11 @@ func (a *App) subagentRuns(listed []sessions.Summary) map[string]subagents.Run {
 		if h := store.Session(s.SessionID); h != nil {
 			working = string(h.WorkingState())
 		}
-		if r, ok := subagents.RunFrom(nil, working); ok {
+		var summary *subagents.Run
+		if sum, ok := store.SubagentInvocationSummary(s.SessionID); ok {
+			summary = subagents.FromSummary(sum)
+		}
+		if r, ok := subagents.RunFrom(summary, working); ok {
 			runs[s.SessionID] = r
 		}
 	}

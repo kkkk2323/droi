@@ -522,6 +522,20 @@ func TestAskUserCard(t *testing.T) {
 	h.send("Ship it")
 	h.until("the question", func() bool { return h.hasText("Which environment?") })
 	h.shoot("ask-user")
+	// The question can be selected and copied.
+	r, ok := h.tt.Find("Which environment?")
+	if !ok {
+		t.Fatal("no question")
+	}
+	h.tt.Press(r.X+1, r.Y+r.H/2)
+	h.tt.Move(r.X+r.W-1, r.Y+r.H/2)
+	h.tt.Release(r.X+r.W-1, r.Y+r.H/2)
+	h.frame()
+	h.tt.Command("copy")
+	h.frame()
+	if got := h.tt.Clipboard(); got == "" || !strings.HasPrefix("Which environment?", got) {
+		t.Fatalf("copied %q", got)
+	}
 }
 
 func TestReplyStreams(t *testing.T) {

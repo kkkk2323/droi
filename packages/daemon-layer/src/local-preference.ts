@@ -2,6 +2,7 @@
 // Stored per device (localStorage in a browser, app storage on the phone), so
 // a paired phone and the desktop window each keep their own.
 import { useSyncExternalStore } from 'react'
+import { DEFAULT_WORKTREE_LIFECYCLE, isWorktreeLifecycle, type WorktreeLifecycle } from './worktree'
 
 /** Synchronous key-value storage the Client supplies; a subset of the Web Storage API. */
 export interface PreferenceStorage {
@@ -114,6 +115,18 @@ export function toggleListed(preference: LocalPreference<string[]>, entry: strin
   const current = preference.get()
   preference.set(current.includes(entry) ? current.filter((e) => e !== entry) : [...current, entry])
 }
+
+/** Whether the New session page starts in a fresh Git worktree (see worktree.ts). */
+export const worktreeByDefault = createBooleanPreference('droi.worktreeByDefault', false)
+/** The lifecycle the last worktree was made with. */
+export const worktreeLifecyclePreference = createPreference<WorktreeLifecycle>(
+  'droi.worktreeLifecycle',
+  DEFAULT_WORKTREE_LIFECYCLE,
+  {
+    parse: (raw) => (isWorktreeLifecycle(raw) ? raw : DEFAULT_WORKTREE_LIFECYCLE),
+    serialize: String,
+  },
+)
 
 export const showArchivedSessions = createBooleanPreference('droi.showArchived', false)
 /** Model ids starred in the picker, in the order they were starred. */

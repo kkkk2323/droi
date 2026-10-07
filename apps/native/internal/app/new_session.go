@@ -44,10 +44,19 @@ type newSessionState struct {
 	picker    pickerState
 	autoOpen  bool
 
+	// worktree is the page's choice once worktreeSet; until then the
+	// preference decides. lifecycle, base and profile are "" for the
+	// preference, the current branch and the last setup profile.
+	worktreeSet, worktree    bool
+	lifecycle, base, profile string
+	worktreeOpen             bool
+
 	mu       sync.Mutex
 	creating bool
 	defaults *defaults.View
 	readAt   time.Time
+	// repos are the Workspaces' repositories, read again on each visit.
+	repos map[string]*repoInfo
 }
 
 const scratchPick = "scratch"
@@ -59,6 +68,8 @@ func (s *newSessionState) reset(r Route) {
 	s.pick, s.picked = "", false
 	s.modelID, s.effort, s.autonomy, s.toolMode = "", "", "", ""
 	s.err = ""
+	s.worktreeSet, s.worktree, s.lifecycle, s.base, s.profile, s.worktreeOpen = false, false, "", "", "", false
+	s.repos = nil
 	switch {
 	case r.Scratch:
 		s.pick, s.picked = scratchPick, true
@@ -117,6 +128,8 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 		workspace = recent[0].Path
 	}
 	scratch := workspace == scratchPick
+	repo := a.repoOf(workspace)
+	worktree := a.worktreeChoiceFor(repo)
 	dv := a.sessionDefaults()
 	var choices []models.Choice
 	modelID, effort, autonomy := s.modelID, s.effort, s.autonomy
@@ -175,7 +188,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 		})
 		col := ui.Column(c).FillWidth().MaxWidth(k.Px(columnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
 		col.Children(func() {
-			a.newSessionComposer(c, workspace, creating, choices, modelID, effort, autonomy, shownMode, requestedMode)
+			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode)
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
 				switch {
 				case scratch:
@@ -186,6 +199,9 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 					})
 					a.workspacePicker(c, tr, recent, scratchPick)
 				case workspace != "":
+					if repo != nil && repo.git {
+						a.worktreeControl(c, repo, worktree)
+					}
 					ui.Row(c).Gap(k.Px(6)).MinWidth(0).Tooltip(workspace).Children(func() {
 						k.Icon(c, "folder", 14, t.MutedForeground)
 						k.Text(c, workspace, 12, 16).TextColor(t.MutedForeground).SingleLine()
@@ -350,7 +366,7 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 
 // newSessionComposer is the InputBar of the start page: Enter starts the
 // Session, sending what was typed as its first message.
-func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode) {
+func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
 	enabled := workspace != "" && !creating
@@ -359,12 +375,14 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool,
 			return
 		}
 		text, images := s.text, s.images
-		go a.startSession(workspace, protocol.InitializeSessionParams{
+		p := protocol.InitializeSessionParams{
 			ModelID:           modelID,
 			ReasoningEffort:   protocol.ReasoningEffort(effort),
 			AutonomyLevel:     protocol.AutonomyLevel(autonomy),
 			ToolExecutionMode: protocol.ToolExecutionMode(requestedMode),
-		}, text, images)
+		}
+		worktree.apply(&p, text)
+		go a.startSession(workspace, p, text, images)
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label("Message composer").Gap(k.Px(6)).Children(func() {
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)

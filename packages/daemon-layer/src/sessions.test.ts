@@ -27,6 +27,7 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
     title: 't',
     cwd: null,
     repoRoot: null,
+    worktree: null,
     updatedAt: 0,
     messagesCount: null,
     archivedAt: null,
@@ -49,6 +50,33 @@ describe('groupByWorkspace', () => {
     expect(groups.map((g) => g.label)).toEqual(['beta', 'alpha'])
     expect(groups[0]!.sessions.map((s) => s.sessionId)).toEqual(['b', 'd'])
     expect(groups[1]!.sessions.map((s) => s.sessionId)).toEqual(['c', 'a'])
+  })
+
+  test('a worktree Session groups under its main checkout, not its own folder', () => {
+    const tree = {
+      path: '/wt/ab12cd34/app',
+      branch: 'droid/fix-it',
+      lifecycle: 'ephemeral' as const,
+    }
+    const groups = groupByWorkspace([
+      summary({ sessionId: 'a', cwd: '/w/app', updatedAt: 10 }),
+      summary({
+        sessionId: 'b',
+        cwd: tree.path,
+        repoRoot: '/w/app',
+        worktree: { ...tree, repoRoot: '/w/app' },
+        updatedAt: 20,
+      }),
+      summary({
+        sessionId: 'c',
+        cwd: tree.path,
+        worktree: { ...tree, repoRoot: '/w/app' },
+        updatedAt: 30,
+      }),
+    ])
+    expect(groups.map((g) => [g.path, g.sessions.map((s) => s.sessionId)])).toEqual([
+      ['/w/app', ['c', 'b', 'a']],
+    ])
   })
 
   test('workspaces with more conversations come first, empty ones last', () => {

@@ -246,6 +246,18 @@ export class FakeDaemon {
     })
   }
 
+  /** A Daemon-level notification, such as daemon.worktree.removed. */
+  notifyDaemon(method: string, params: Record<string, unknown>): void {
+    this.#broadcast({
+      jsonrpc: '2.0',
+      factoryApiVersion: '1.0.0',
+      factoryProtocolVersion: '1.217.0',
+      type: 'notification',
+      method,
+      params,
+    })
+  }
+
   /** Daemon-level (not Session-level) notification about archive state. */
   notifyArchiveState(sessionId: string, archivedAt: string | undefined): void {
     this.#broadcast({
