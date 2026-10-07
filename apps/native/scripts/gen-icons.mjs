@@ -1,74 +1,30 @@
-// Writes the Lucide icons the web Client imports as SVG files for the native
-// app, so both draw the same glyphs from the same lucide-react release.
-//   node apps/native/scripts/gen-icons.mjs
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { dirname, join, relative, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+// Writes the native app's Lucide icons as SVG files: every icon already in
+// internal/icons/svg, plus those named on the command line, from the
+// lucide-react-native release the Phone App draws with.
+//   node apps/native/scripts/gen-icons.mjs [icon-name ...]
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../../..')
-const renderer = join(root, 'apps/desktop/src/renderer/src')
 const out = resolve(import.meta.dirname, '../internal/icons/svg')
-const require = createRequire(join(root, 'apps/desktop/package.json'))
-const lucide = dirname(require.resolve('lucide-react/package.json'))
-const index = readFileSync(join(lucide, 'dist/esm/lucide-react.mjs'), 'utf8')
+const icons = join(root, 'apps/mobile/node_modules/lucide-react-native/dist/esm/icons')
 
-// Export name -> icon file, from lines like
-// export { default as Loader2, default as LoaderCircle } from './icons/loader-circle.mjs';
-const files = new Map()
-for (const m of index.matchAll(/export \{([^}]+)\} from '\.\/icons\/([a-z0-9-]+)\.mjs'/g)) {
-  for (const name of m[1].matchAll(/default as (\w+)/g)) files.set(name[1], m[2])
-}
-
-function sources(dir) {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const p = join(dir, e.name)
-    if (e.isDirectory()) return sources(p)
-    return /\.tsx?$/.test(e.name) && !/\.test\./.test(e.name) ? [p] : []
-  })
-}
-
-// Streamdown's code block draws Download and Copy itself, outside these imports;
-// the worktree and Automations icons are the native app's own.
-const used = new Set([
-  'Loader2',
-  'PanelLeft',
-  'X',
-  'ChevronRight',
-  'ChevronDown',
-  'Download',
-  'Copy',
-  'GitFork',
-  'Laptop',
-  'CalendarClock',
-  'CirclePause',
-  'Ellipsis',
-  'Play',
-  'Trash2',
-])
-for (const file of sources(renderer)) {
-  for (const m of readFileSync(file, 'utf8').matchAll(
-    /import\s*\{([^}]+)\}\s*from\s*'lucide-react'/g,
-  )) {
-    for (const part of m[1].split(',')) {
-      const name = part
-        .replace(/\btype\b/, '')
-        .split(/\s+as\s+/)[0]
-        .trim()
-      if (name && files.has(name)) used.add(name)
-    }
-  }
-}
-
-rmSync(out, { recursive: true, force: true })
 mkdirSync(out, { recursive: true })
-const written = new Set()
-for (const name of [...used].sort()) {
-  const file = files.get(name)
-  if (written.has(file)) continue
-  written.add(file)
-  const mod = await import(pathToFileURL(join(lucide, 'dist/esm/icons', `${file}.mjs`)).href)
-  const body = mod.__iconData.node
+const names = new Set([
+  ...readdirSync(out)
+    .filter((f) => f.endsWith('.svg'))
+    .map((f) => f.slice(0, -4)),
+  ...process.argv.slice(2),
+])
+for (const name of [...names].sort()) {
+  // Each icon module holds its data as an object literal; importing the module
+  // would pull in React Native.
+  const source = readFileSync(join(icons, `${name}.mjs`), 'utf8')
+  const literal = /const iconData = (\{[\s\S]*?\n\});/.exec(source)?.[1]
+  if (!literal) throw new Error(`no icon data in ${name}.mjs`)
+  /** @type {{ node: [string, Record<string, string>][] }} */
+  const data = new Function(`return (${literal})`)()
+  const body = data.node
     .map(([tag, attrs]) => {
       const a = Object.entries(attrs)
         .filter(([k]) => k !== 'key')
@@ -78,8 +34,8 @@ for (const name of [...used].sort()) {
     })
     .join('')
   writeFileSync(
-    join(out, `${file}.svg`),
+    join(out, `${name}.svg`),
     `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>\n`,
   )
 }
-console.log(`${written.size} icons in ${relative(root, out)}`)
+console.log(`${names.size} icons in ${relative(root, out)}`)
