@@ -44,19 +44,35 @@ func (a *App) droidUpdatedCard(c *ui.Context) {
 		return
 	}
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleStatus).Label("droid update").Absolute().Left(k.Px(16)).Bottom(k.Px(48)).Width(k.Px(288)).AlignItems(ui.Start).Gap(k.Px(10)).
+	a.cornerCard(c, "droid update", "refresh-cw", func() {
+		k.Text(c, "droid was updated", 14, 20).FontWeight(500)
+		k.Text(c, "Restart the Daemon to use the new version. Working Sessions are interrupted.", 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+		if a.smallButton(c, kit.Primary, "Restart Daemon", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+			go h.RestartDaemon()
+		}
+	}, func() { a.droidUpdateDismissed = true })
+}
+
+// cornerCards stack the corner cards above the sidebar's footer, whose
+// Settings button a card would cover.
+func (a *App) cornerCards(c *ui.Context) {
+	k := a.kit
+	ui.Column(c).Absolute().Left(k.Px(16)).Bottom(k.Px(48)).Gap(k.Px(8)).Children(func() {
+		a.droidUpdatedCard(c)
+		a.updateCard(c)
+	})
+}
+
+// cornerCard is one card of the corner: an icon, its body and Dismiss.
+func (a *App) cornerCard(c *ui.Context, label, icon string, body func(), dismiss func()) {
+	k, t := a.kit, a.kit.T
+	ui.Row(c).Role(ui.RoleStatus).Label(label).Width(k.Px(288)).AlignItems(ui.Start).Gap(k.Px(10)).
 		Padding(k.Px(12)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
 		Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1)).Children(func() {
-		k.Icon(c, "refresh-cw", 16, t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			k.Text(c, "droid was updated", 14, 20).FontWeight(500)
-			k.Text(c, "Restart the Daemon to use the new version. Working Sessions are interrupted.", 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
-			if a.smallButton(c, kit.Primary, "Restart Daemon", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
-				go h.RestartDaemon()
-			}
-		})
+		k.Icon(c, icon, 16, t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+		ui.Column(c).Grow(1).MinWidth(0).Children(body)
 		if k.IconButton(c, "x", "Dismiss", 24).Clicked() {
-			a.droidUpdateDismissed = true
+			dismiss()
 		}
 	})
 }

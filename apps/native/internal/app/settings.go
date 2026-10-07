@@ -359,7 +359,13 @@ func (a *App) generalTab(c *ui.Context) {
 func (a *App) aboutTab(c *ui.Context) {
 	version := a.cfg.Version
 	a.settingGroup(c, "", "",
-		func() { a.settingRow(c, "Droi "+version, "", nil, nil) },
+		func() {
+			var control func()
+			if a.cfg.Updater != nil {
+				control = func() { a.updateControl(c) }
+			}
+			a.settingRow(c, "Droi "+version, "", control, nil)
+		},
 		func() {
 			a.settingRow(c, "Where your data lives", "Sessions, settings and the Factory API key stay on this computer; phones reach it through the Gateway. What Droid works on goes to Factory, which runs the models.", nil, nil)
 		},

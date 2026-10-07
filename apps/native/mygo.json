@@ -3,5 +3,10 @@
   "identifier": "com.droi.app",
   "version": "1.33.5",
   "icon": "resources/icon.png",
-  "out": "build"
+  "out": "build",
+  "updates": {
+    "publicKey": "3OeFjinbGKRwGSEC25EkVeZdEUJ9SIZBS4+XMr57SM4=",
+    "github": "kkkk2323/droi",
+    "changelog": "../../CHANGELOG.md"
+  }
 }

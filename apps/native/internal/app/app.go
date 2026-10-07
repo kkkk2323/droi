@@ -23,6 +23,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
+	"github.com/kkkk2323/droi/apps/native/internal/updates"
 )
 
 // LoadedMessageLimit is how many of a Session's latest messages a load
@@ -78,6 +79,10 @@ type Config struct {
 	Focused func() bool
 	// ReadImage is the clipboard's image as PNG, nil without one.
 	ReadImage func() []byte
+	// Updater is the in-app update, nil where the app cannot update
+	// itself (a development build); Relaunch starts the installed one.
+	Updater  *updates.Updater
+	Relaunch func()
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -117,6 +122,8 @@ type App struct {
 	// droidUpdateDismissed closes the "droid was updated" card until the
 	// next update.
 	droidUpdateDismissed bool
+	// updateDismissed is the update step whose card was closed.
+	updateDismissed string
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
 
@@ -405,7 +412,7 @@ func (a *App) View(c *ui.Context) {
 				a.newSessionPage(c, listed, status)
 			}
 		})
-		a.droidUpdatedCard(c)
+		a.cornerCards(c)
 	})
 	// The toggle stays put at the window's top left; the sidebar slides under it.
 	ui.Overlay(c, func() {

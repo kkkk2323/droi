@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -20,6 +22,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
+	"github.com/kkkk2323/droi/apps/native/internal/updates"
 )
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
@@ -58,6 +61,12 @@ func main() {
 		DefaultMessageLimit:  app.LoadedMessageLimit,
 	})
 
+	// A build signed for updates can replace itself; `go run` cannot.
+	var updater *updates.Updater
+	if mygo.Updater.Enabled() && os.Getenv("DROI_NO_UPDATE_CHECK") == "" {
+		updater = updates.New(updates.MyGo{})
+	}
+
 	theme.RegisterFonts()
 	mygo.App.SetName("Droi")
 	mygo.App.RequestSingleInstanceLock()
@@ -89,7 +98,18 @@ func main() {
 		},
 		Focused:   func() bool { return win != nil && win.IsFocused() },
 		ReadImage: mygo.Clipboard.ReadImage,
+		Updater:   updater,
+		Relaunch:  mygo.App.Relaunch,
 	})
+	if updater != nil {
+		var waiting sync.Once
+		updater.OnChange(func(s updates.State) {
+			update(func() {})
+			if s.Status == updates.Ready {
+				waiting.Do(func() { go relaunchWhenIdle(a, update) })
+			}
+		})
+	}
 	mygo.App.OnNotificationClick(func(id string) {
 		if win == nil {
 			return
@@ -123,6 +143,9 @@ func main() {
 		})
 		h.Start()
 		a.Start()
+		if updater != nil {
+			go updater.Schedule(context.Background())
+		}
 		go func() {
 			if err := ctl.Connect(context.Background()); err != nil {
 				log.Println("droi: connect:", err)
@@ -169,6 +192,23 @@ func menu(zoom func(step int)) *mygo.Menu {
 		}},
 		{Role: mygo.RoleWindowMenu},
 	})
+}
+
+// relaunchWhenIdle restarts into an installed update once no Session is
+// busy and the window is in the background, checking every minute.
+func relaunchWhenIdle(a *app.App, update func(func())) {
+	for {
+		time.Sleep(time.Minute)
+		done := make(chan bool, 1)
+		update(func() { done <- a.RelaunchIfIdle() })
+		select {
+		case ok := <-done:
+			if ok {
+				return
+			}
+		case <-time.After(10 * time.Second): // no window to ask
+		}
+	}
 }
 
 // playSound plays an alert sound: "bell" is the system's beep, a built-in

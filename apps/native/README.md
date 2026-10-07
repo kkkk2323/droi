@@ -11,7 +11,8 @@ settings, the Pairing Token and Memory carry over. The window talks to the
 Daemon directly through `packages/droid-sdk-go`; the Host supplies the
 credential and the System Prompt Addition the Gateway adds for other Clients.
 
-How it performs next to the Electron app: [docs/performance.md](docs/performance.md).
+How it performs next to the Electron app: [docs/performance.md](docs/performance.md). How
+it is released and updates itself: [docs/releases.md](docs/releases.md).
 
 ## Layout
 
@@ -22,6 +23,7 @@ How it performs next to the Electron app: [docs/performance.md](docs/performance
 | `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                  |
 | `internal/icons/`                                               | the Lucide icons the web Client imports (`scripts/gen-icons.mjs`)                                       |
 | `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Scratch Workspaces |
+| `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                     |
 | `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                   |
 | `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)                |
 | `internal/sessions/`                                            | the Session list: grouping, sorting, pins, activity (daemon-layer port)                                 |
@@ -56,9 +58,10 @@ Tracked in this file while the port is under way.
       notification, unread mark), the subagent menu and trail
 - [x] Phase 7: view tests against the Fake Daemon (`internal/app/app_test.go`) with a pixel
       comparison per reference screen
-- [ ] Phase 8: replaces the Electron app: identity and data folder; zoom, pasted images, the
+- [x] Phase 8: replaces the Electron app: identity and data folder; zoom, pasted images, the
       turn rail, custom alert sounds, the sign-in banner, "droid was updated", the start-up screen
-- [ ] Phase 9: in-app update (signed delta updates, restart when idle)
+- [x] Phase 9: in-app update (signed delta updates, restart when idle); the Electron app's last
+      update points at the native one
 - [ ] Phase 10: Memory (store, Memory Server, hook, Memory Sessions, Settings → Memory)
 - [ ] Phase 11: Remote Access and pairing for the Phone App (Gateway)
 
