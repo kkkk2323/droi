@@ -81,6 +81,8 @@ export interface ScenarioInput {
   files?: Record<string, { mimeType: string; base64: string }>
   /** Sessions open in the Daemon (by any Client) with their working state, for list_opened_sessions. */
   opened?: Array<{ sessionId: string; workingState: string }>
+  /** How long load_session takes, as the real Daemon reading a long Session from disk. */
+  loadDelayMs?: number
 }
 
 export const CONTEXT_BUDGET = 200_000
@@ -103,6 +105,13 @@ export function createScenario(input: ScenarioInput): Scenario {
   // Like ~/.factory/settings.json behind the real Daemon: one set per Fake Daemon.
   let defaults: Record<string, unknown> = { ...sessionDefaults(), ...input.defaults }
   const models = input.models ?? AVAILABLE_MODELS
+  const tools = toolHandlers(input)
+  // Like the real Daemon, a Session it has not loaded has no commands or skills.
+  const activeOrThrow = (sessionId: unknown) => {
+    if (sessions.find((s) => s.sessionId === sessionId)?.inactive) {
+      throw new RpcError(-32603, 'No active session found for ID')
+    }
+  }
   const handlers: Record<string, MethodHandler> = {
     // Newest first, `limit` at a time; `endBefore` (epoch seconds) is the cursor
     // the Daemon hands back as `nextCursor` to fetch the page before it.
@@ -283,8 +292,15 @@ export function createScenario(input: ScenarioInput): Scenario {
         mimeType: file.mimeType,
       }
     },
-    'daemon.list_commands': () => ({ commands: input.commands ?? [] }),
-    ...toolHandlers(input),
+    'daemon.list_commands': (params) => {
+      activeOrThrow(params['sessionId'])
+      return { commands: input.commands ?? [] }
+    },
+    ...tools,
+    'daemon.list_skills': (params, context, request) => {
+      activeOrThrow(params['sessionId'])
+      return tools['daemon.list_skills']!(params, context, request)
+    },
     'daemon.validate_working_directory': (params, context) => {
       const path = String(params['workingDirectory'])
       const known = new Set([
@@ -368,9 +384,10 @@ export function createScenario(input: ScenarioInput): Scenario {
         ...(start > 0 ? { nextCursor: page[page.length - 1]!.id } : {}),
       }
     },
-    'daemon.load_session': (params) => {
+    'daemon.load_session': async (params) => {
       const found = sessions.find((s) => s.sessionId === params['sessionId'])
       if (!found) throw new Error(`Scenario has no session ${String(params['sessionId'])}`)
+      if (input.loadDelayMs) await new Promise((resolve) => setTimeout(resolve, input.loadDelayMs))
       delete found.inactive
       const subagentInvocations = sessions.flatMap((s) =>
         s.subagent?.callingSessionId === found.sessionId

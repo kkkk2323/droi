@@ -188,21 +188,30 @@ func (v *sessionView) compact(instructions string) {
 }
 
 // slashItems are the builtins and the Session's commands and skills, read
-// again a minute after they were.
-func (v *sessionView) slashItems() []slash.Item {
+// again a minute after they were. Until the Daemon has loaded the Session
+// it answers "No active session", so they wait for loaded, and a failed
+// read is tried again 5 seconds later.
+func (v *sessionView) slashItems(loaded bool) []slash.Item {
 	cs := &v.composer
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	if time.Since(cs.slashAt) > time.Minute && v.a.ctl != nil {
+	if loaded && time.Since(cs.slashAt) > time.Minute && v.a.ctl != nil {
 		cs.slashAt = time.Now()
+		failed := func() {
+			cs.mu.Lock()
+			cs.slashAt = time.Now().Add(5*time.Second - time.Minute)
+			cs.mu.Unlock()
+		}
 		go func() {
 			cl, err := v.a.ctl.Client()
 			if err != nil {
+				failed()
 				return
 			}
 			cmds, err1 := cl.ListCommands(v.a.ctx, protocol.ListCommandsParams{SessionID: v.id})
 			sk, err2 := cl.ListSkills(v.a.ctx, protocol.ListSkillsParams{SessionID: v.id})
 			if err1 != nil || err2 != nil {
+				failed()
 				return
 			}
 			cs.mu.Lock()
@@ -223,7 +232,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
-	items := v.slashItems()
+	items := v.slashItems(loaded)
 	picked, rest, hasPick := slash.Picked(cs.text, items)
 	prefix := ""
 	if hasPick {

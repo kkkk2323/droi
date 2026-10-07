@@ -445,6 +445,23 @@ func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
 	}
 }
 
+// The end of a reply has a Copy button that copies the turn's text as
+// Markdown, and the time without the word "took".
+func TestAReplyEndsWithACopyButton(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the Copy button", func() bool { _, ok := h.tt.Find("Copy reply"); return ok })
+	if h.hasText("took") {
+		t.Fatalf("the turn's end still says took: %q", h.tt.Texts())
+	}
+	h.click("Copy reply")
+	got := h.tt.Clipboard()
+	if !strings.HasPrefix(got, "`login()` calls `refreshToken()`") || !strings.Contains(got, "```ts\nexport async function login(user) {") ||
+		strings.Contains(got, "stale token.\n\n\n") || strings.Contains(got, "confirm before editing") {
+		t.Fatalf("copied %q", got)
+	}
+}
+
 func TestSettingsPages(t *testing.T) {
 	h := newHarness(t, sessionsScenario(), "")
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })

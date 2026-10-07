@@ -208,7 +208,7 @@ func TestFormat(t *testing.T) {
 	ended := float64(time.Date(2026, 9, 29, 23, 13, 0, 0, time.Local).UnixMilli())
 	eq(t, FormatTurnEnd(TurnEnd{EndedAt: ended}, now), "11:13 PM")
 	eq(t, FormatTurnEnd(TurnEnd{ended, ended - 400, true}, now), "11:13 PM")
-	eq(t, FormatTurnEnd(TurnEnd{ended, ended - 252_000, true}, now), "11:13 PM · took 4m 12s")
+	eq(t, FormatTurnEnd(TurnEnd{ended, ended - 252_000, true}, now), "11:13 PM · 4m 12s")
 	eq(t, FormatTimestamp(ended-86_400_000, now), "Sep 28 11:13 PM")
 	for ms, want := range map[float64]string{640: "640 ms", 12_400: "12s", 252_000: "4m 12s", 3_780_000: "1h 03m"} {
 		eq(t, FormatDuration(ms), want)
@@ -360,4 +360,14 @@ func TestScriptSource(t *testing.T) {
 	eq(t, ScriptSummary(call("Script", `{"script":"await tools.Grep({}); await tools.Edit({})"}`)), "Grep · Edit")
 	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1"}`)), "continued")
 	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","kill":true}`)), "stopped")
+}
+
+func TestReplyTextJoinsTheTurnsTextOnly(t *testing.T) {
+	turn := []*Entry{
+		{User: true, Blocks: []Block{{Kind: Text, Text: "Why?"}}},
+		{Blocks: []Block{{Kind: Thinking, Text: "hmm"}, {Kind: Text, Text: "Let me look.\n"}, {Kind: Tools}}},
+		{Blocks: []Block{{Kind: Text, Text: "It is the cache.\n\n```go\nx := 1\n```"}}},
+	}
+	eq(t, ReplyText(turn), "Let me look.\n\nIt is the cache.\n\n```go\nx := 1\n```")
+	eq(t, ReplyText(turn[:1]), "")
 }

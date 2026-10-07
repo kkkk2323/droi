@@ -348,16 +348,34 @@ func TurnEnds(entries []*Entry, running bool) map[string]TurnEnd {
 	return ends
 }
 
-// FormatTurnEnd is `11:13 PM`, or `11:13 PM · took 4m 12s` when the turn's start is known.
+// FormatTurnEnd is `11:13 PM`, or `11:13 PM · 4m 12s` when the turn's start is known.
 func FormatTurnEnd(end TurnEnd, now time.Time) string {
 	t := FormatTimestamp(end.EndedAt, now)
 	if !end.HasStart {
 		return t
 	}
 	if took := end.EndedAt - end.StartedAt; took >= 1000 {
-		return t + " · took " + FormatDuration(took)
+		return t + " · " + FormatDuration(took)
 	}
 	return t
+}
+
+// ReplyText is what the assistant wrote in a turn's entries, for Copy: the
+// text blocks a blank line apart, without thinking, tool calls or the
+// user's messages.
+func ReplyText(entries []*Entry) string {
+	var parts []string
+	for _, e := range entries {
+		if e.User {
+			continue
+		}
+		for _, b := range e.Blocks {
+			if s := strings.TrimSpace(b.Text); b.Kind == Text && s != "" {
+				parts = append(parts, s)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // FormatDuration is `640 ms`, `12s`, `4m 12s`, `1h 03m`.

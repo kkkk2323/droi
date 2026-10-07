@@ -41,14 +41,18 @@ type transcriptRow struct {
 	// streaming: the entry streams and this is its last text.
 	streaming bool
 	end       transcript.TurnEnd
+	// turn: a turn end's entries, from the user's message on, for Copy.
+	turn []*transcript.Entry
 }
 
 // rows cuts the entries into the list's rows, in px before Kit.Px.
 func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends map[string]transcript.TurnEnd) []transcriptRow {
 	var rows []transcriptRow
-	for _, e := range entries {
+	turnStart := 0
+	for i, e := range entries {
 		if e.User {
 			rows = append(rows, transcriptRow{kind: rowUser, key: e.ID, e: e})
+			turnStart = i
 			continue
 		}
 		start := len(rows)
@@ -86,7 +90,7 @@ func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends
 			}
 		}
 		if end, closes := ends[e.ID]; closes && end.EndedAt > 0 {
-			add(transcriptRow{kind: rowTurnEnd, key: e.ID + "/end", end: end}, 8, 0)
+			add(transcriptRow{kind: rowTurnEnd, key: e.ID + "/end", end: end, turn: entries[turnStart : i+1]}, 8, 0)
 		}
 		if len(rows) == start {
 			rows = append(rows, transcriptRow{kind: rowBlock, key: e.ID, e: e, block: -1})
@@ -150,7 +154,25 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 		}
 		switch r.kind {
 		case rowTurnEnd:
-			k.Text(c, transcript.FormatTurnEnd(r.end, a.cfg.Now()), 12, 16).TextColor(t.MutedForeground)
+			ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).Children(func() {
+				if text := transcript.ReplyText(r.turn); text != "" {
+					// The negative margins keep the row as tall as its text and
+					// the icon in line with the reply's left edge.
+					b := ui.ButtonBase(c).Label("Copy reply").Tooltip("Copy reply").Size(k.Px(24), k.Px(24)).
+						Margin(-k.Px(4), 0, -k.Px(4), -k.Px(5)).Radius(k.Px(6)).Center().Cursor(ui.CursorPointer)
+					color := t.MutedForeground
+					if b.Hovered() {
+						b.Background(t.Muted)
+						color = t.Foreground
+					}
+					b.Children(func() { k.Icon(c, "copy", 14, color) })
+					if b.Clicked() {
+						c.WriteClipboard(text)
+						c.Toast("Copied the reply")
+					}
+				}
+				k.Text(c, transcript.FormatTurnEnd(r.end, a.cfg.Now()), 12, 16).TextColor(t.MutedForeground)
+			})
 		case rowCluster:
 			v.cluster(c, r.e.Blocks[r.block])
 		case rowCall, rowNested:
