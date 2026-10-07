@@ -4,8 +4,8 @@ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkp
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6XeQ/0=
 github.com/ebitengine/purego v0.11.1/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
-github.com/egoist/mygo v0.2.15 h1:I+JbmjJnAXD1XbPRM0qhEHKuVMgdKvV1yNlprPldVXk=
-github.com/egoist/mygo v0.2.15/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
+github.com/egoist/mygo v0.2.16 h1:G0nkZdW8gpVS1dQm65ReK4J9WD/04SSJFCVtz1KmkUk=
+github.com/egoist/mygo v0.2.16/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
 github.com/frostybee/nuri v1.0.1 h1:CqvuonKdnN+IZsRbSR4+dBevKLIh/doqv97dqV+fBB4=
 github.com/frostybee/nuri v1.0.1/go.mod h1:Za24ALqdA0qDb3R2zd7eBCD2ctk9j+tlQsrBeV+bs7o=
 github.com/go-text/typesetting v0.3.5 h1:XZPUooClHY0Vf/rFyUyuPRNEkawARaFzLMQcXLSEyPk=

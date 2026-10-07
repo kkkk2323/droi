@@ -145,7 +145,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 		ui.Column(c).Grow(1).MinHeight(0).ClipY().Children(func() {
 			ui.Column(c).Fill().Center().Gap(k.Px(20)).PaddingX(k.Px(24)).Children(func() {
 				droiMark(c, k, 36)
-				ui.Row(c).Role(ui.RoleHeading).Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
+				ui.Row(c).Role(ui.RoleHeading).FillWidth().Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
 					h := func(s string) { k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
 					switch {
 					case workspace != "" && !scratch:

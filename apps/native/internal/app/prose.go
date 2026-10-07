@@ -145,7 +145,7 @@ func headingSize(level int) (size, lh float32) {
 func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight int) *ui.Element {
 	k, t := p.k, p.k.T
 	codeSize := size * 0.85
-	para := ui.RichText(c).FontSize(k.Px(size)).FixedLineHeight(k.Px(lh)).TextColor(p.color).Selectable()
+	para := ui.RichText(c).FontSize(k.Px(size)).FixedLineHeight(k.Px(lh)).TextColor(p.color)
 	if weight > 0 {
 		para.FontWeight(weight)
 	}
@@ -169,7 +169,8 @@ func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight
 			ui.RichText(c, span)
 		}
 	})
-	return para
+	// After Children: Selectable takes the text the runs inside make.
+	return para.Selectable()
 }
 
 // list is an ul or ol: 1.5rem of indent, the markers outside it in the

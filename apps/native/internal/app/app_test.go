@@ -370,6 +370,30 @@ func TestTheSidebarSlides(t *testing.T) {
 	}
 }
 
+// A paragraph of the reply is selectable and copies what was selected.
+// Its text comes from the runs built inside it, so Selectable must come
+// after them: before, a drag selected nothing and Copy copied "".
+func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	const para = "I will add the missing await and a regression test:"
+	r, ok := h.tt.Find(para)
+	if !ok {
+		t.Fatalf("no paragraph %q", para)
+	}
+	h.tt.Press(r.X+1, r.Y+r.H/2)
+	h.tt.Move(r.X+r.W-1, r.Y+r.H/2)
+	h.tt.Release(r.X+r.W-1, r.Y+r.H/2)
+	h.frame()
+	h.tt.Command("copy")
+	h.frame()
+	if got := h.tt.Clipboard(); got == "" || !strings.HasPrefix(para, got) {
+		t.Fatalf("copied %q", got)
+	}
+}
+
 func TestSettingsPages(t *testing.T) {
 	h := newHarness(t, sessionsScenario(), "")
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
