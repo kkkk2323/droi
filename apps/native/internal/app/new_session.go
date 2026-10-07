@@ -68,15 +68,23 @@ func (a *App) sessionDefaults() *defaults.View {
 	s := &a.newPage
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if time.Since(s.readAt) > time.Minute && a.ctl != nil {
+	// Before the connection is up the Daemon would refuse the request.
+	if time.Since(s.readAt) > time.Minute && a.ctl != nil && a.ctl.Status().Connected {
 		s.readAt = time.Now()
+		failed := func() {
+			s.mu.Lock()
+			s.readAt = time.Now().Add(5*time.Second - time.Minute)
+			s.mu.Unlock()
+		}
 		go func() {
 			cl, err := a.ctl.Client()
 			if err != nil {
+				failed()
 				return
 			}
 			res, err := cl.GetDefaultSettings(a.ctx)
 			if err != nil {
+				failed()
 				return
 			}
 			var raw map[string]any
