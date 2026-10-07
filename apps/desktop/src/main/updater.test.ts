@@ -9,6 +9,7 @@ import {
   createUpdater,
   isNewerVersion,
   parseManifest,
+  parseNativeManifest,
   shouldRecheck,
   type UpdaterFs,
 } from './updater'
@@ -54,6 +55,18 @@ describe('shouldRecheck', () => {
     expect(shouldRecheck({ status: 'available', version: '1.1.0' })).toBe(false)
     expect(shouldRecheck({ status: 'downloading', version: '1.1.0', percent: 40 })).toBe(false)
     expect(shouldRecheck({ status: 'ready', version: '1.1.0' })).toBe(false)
+    expect(shouldRecheck({ status: 'native', version: '1.34.0', url: 'u' })).toBe(false)
+  })
+})
+
+describe('parseNativeManifest', () => {
+  it("reads the version of MyGo's manifest", () => {
+    expect(parseNativeManifest({ version: '1.34.0', url: 'https://x/a.tar.gz', size: 1 })).toBe(
+      '1.34.0',
+    )
+    expect(parseNativeManifest({ version: '1.34.0' })).toBeNull()
+    expect(parseNativeManifest({ version: 'next', url: 'u' })).toBeNull()
+    expect(parseNativeManifest(null)).toBeNull()
   })
 })
 
@@ -135,6 +148,24 @@ describe('createUpdater', () => {
     expect(await u.install()).toMatchObject({ status: 'error', message: /does not match/ })
     expect(await readFile(asarPath, 'utf8')).toBe('old app code')
     expect(fs.existsSync(join(dir, 'update.asar'))).toBe(false)
+  })
+
+  it('points at the native app once a Release carries it, and installs nothing', async () => {
+    responses.set(
+      'https://github.com/acme/droi/releases/latest/download/update-darwin-universal.json',
+      () => Response.json({ version: '1.34.0', url: 'https://x/droi.tar.gz', signature: 's' }),
+    )
+    responses.set('https://github.com/acme/droi/releases/latest/download/latest.json', () =>
+      Response.json({ version: '1.34.0', sha256 }),
+    )
+    const u = updater()
+    expect(await u.check()).toEqual({
+      status: 'native',
+      version: '1.34.0',
+      url: 'https://github.com/acme/droi/releases/tag/v1.34.0',
+    })
+    expect(await u.install()).toMatchObject({ status: 'native' })
+    expect(await readFile(asarPath, 'utf8')).toBe('old app code')
   })
 
   it('does nothing when asked to install without an available update', async () => {

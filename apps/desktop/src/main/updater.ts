@@ -47,6 +47,13 @@ interface Manifest {
   sha256: string
 }
 
+/**
+ * The native app's update manifest (MyGo's, one Mac build for both chips).
+ * Once a Release carries it, Droi is the native app and this Shell stops
+ * updating: it points people at the download instead.
+ */
+export const NATIVE_MANIFEST = 'update-darwin-universal.json'
+
 /** True when `remote` is a higher semver-like `x.y.z` than `local`. */
 export function isNewerVersion(remote: string, local: string): boolean {
   const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number)
@@ -68,6 +75,15 @@ export function isNewerVersion(remote: string, local: string): boolean {
  */
 export function shouldRecheck(state: UpdateState): boolean {
   return state.status === 'idle' || state.status === 'up-to-date' || state.status === 'error'
+}
+
+/** The version of a native update manifest, null when it is not one. */
+export function parseNativeManifest(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null) return null
+  const { version, url } = data as { version?: unknown; url?: unknown }
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+/.test(version)) return null
+  if (typeof url !== 'string' || url === '') return null
+  return version.replace(/^v/, '')
 }
 
 export function parseManifest(data: unknown): Manifest | null {
@@ -100,6 +116,15 @@ export function createUpdater(options: UpdaterOptions): Updater {
     busy = true
     set({ status: 'checking' })
     try {
+      const native = await options
+        .fetch(releaseUrl(`latest/download/${NATIVE_MANIFEST}`))
+        .then(async (r) => (r.ok ? parseNativeManifest(await r.json()) : null))
+        .catch(() => null)
+      if (native) {
+        manifest = null
+        set({ status: 'native', version: native, url: releaseUrl(`tag/v${native}`) })
+        return state
+      }
       const response = await options.fetch(releaseUrl('latest/download/latest.json'))
       if (!response.ok) throw new Error(`Update check failed: HTTP ${response.status}`)
       const parsed = parseManifest(await response.json())

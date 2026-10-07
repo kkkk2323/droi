@@ -48,6 +48,11 @@ export function UpdateControl({
         <Button size="sm" onClick={() => void bridge.relaunch()}>
           Restart to update
         </Button>
+      ) : update.status === 'native' ? (
+        <Button size="sm" onClick={() => window.open(update.url)}>
+          <ArrowDownToLine aria-hidden />
+          Download Droi {update.version}
+        </Button>
       ) : (
         <Button
           size="sm"
@@ -79,12 +84,14 @@ function describe(update: UpdateState): string {
       return `${update.version} is installed`
     case 'error':
       return update.message
+    case 'native':
+      return 'The new Droi is a native app'
   }
 }
 
 /**
  * Local Client only: a small card in the bottom-left corner once a Release is
- * waiting, downloading or installed. Says nothing while checking or after a
+ * waiting, downloading or installed, or the native app replaces this one. Says nothing while checking or after a
  * failure; the About row carries those. Closing it hides that one step; the
  * card comes back when the update moves on (say, from downloading to ready).
  */
@@ -105,12 +112,52 @@ export function UpdateToast({
   const update = settings.data?.update
   if (
     !update ||
-    (update.status !== 'available' && update.status !== 'downloading' && update.status !== 'ready')
+    (update.status !== 'available' &&
+      update.status !== 'downloading' &&
+      update.status !== 'ready' &&
+      update.status !== 'native')
   ) {
     return null
   }
   const step = `${update.status}:${update.version}`
   if (dismissed === step) return null
+  if (update.status === 'native') {
+    return (
+      <div
+        role="status"
+        aria-label="Update"
+        className="animate-toast-in w-72 rounded-lg border bg-popover p-3 text-sm shadow-lg"
+      >
+        <div className="flex items-start gap-2.5">
+          <ArrowDownToLine aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Droi {update.version} is a native app</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              It is faster and smaller, and keeps your Sessions and settings. This app gets no more
+              updates: download the new one and replace this one with it.
+            </p>
+            <div className="mt-2 flex items-center gap-1">
+              <Button size="sm" onClick={() => window.open(update.url)}>
+                Download
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onOpenSettings}>
+                Details
+              </Button>
+            </div>
+          </div>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Dismiss"
+            className="-mr-1 -mt-1 shrink-0"
+            onClick={() => setDismissed(step)}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div
       role="status"
