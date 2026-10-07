@@ -1,0 +1,69 @@
+package app
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+
+	"github.com/kkkk2323/droi/apps/native/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/internal/host"
+)
+
+// testHost is a Host in throwaway folders: no login, no API key, no
+// Daemon started.
+func testHost(t *testing.T) *host.Host {
+	t.Helper()
+	home := t.TempDir()
+	return host.New(host.Config{UserData: t.TempDir(), Home: home, Env: func(k string) string {
+		if k == "HOME" {
+			return home
+		}
+		return ""
+	}, MoveToTrash: os.Remove})
+}
+
+func oneSession() fakedaemon.Scenario {
+	return fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "One", Cwd: "/Users/dev/acme-web",
+		Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}}}
+}
+
+func TestSetupBannerUntilSignedIn(t *testing.T) {
+	h0 := testHost(t)
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.until("the banner", func() bool { return h.hasText("Droi is not signed in to Factory yet") })
+	h.click("Sign in")
+	if r := h.a.Route(); r.Name != "settings" || r.Tab != "account" {
+		t.Fatalf("Sign in went to %+v", r)
+	}
+	if err := h0.Settings.Update(func(s *host.Settings) { k := "fk-x"; s.APIKey = &k }); err != nil {
+		t.Fatal(err)
+	}
+	h.a.Go(Route{Name: "home"})
+	h.settle()
+	if h.hasText("Droi is not signed in to Factory yet") {
+		t.Fatalf("the banner stays with an API key")
+	}
+}
+
+func TestStartingUpWaitsForTheFirstConnection(t *testing.T) {
+	if !startingUp(controller.Status{}, false) {
+		t.Error("not connected yet should be starting up")
+	}
+	if startingUp(controller.Status{Connected: true}, true) || startingUp(controller.Status{Reconnecting: true}, true) {
+		t.Error("a connection lost later is not starting up")
+	}
+}
+
+func TestCustomSoundIsPlayed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ding.wav")
+	p := alertPrefs{CompletionSound: "custom", CustomCompletionSound: &path, AwaitingInputSound: "custom"}
+	if got := soundFor(p, alerts.Completion); got != path {
+		t.Errorf("completion: %q", got)
+	}
+	if got := soundFor(p, alerts.AwaitingInput); got != "bell" {
+		t.Errorf("custom without a file falls back to the bell, got %q", got)
+	}
+}

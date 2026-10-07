@@ -2,13 +2,16 @@ package app
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 
+	"github.com/kkkk2323/droi/apps/native/internal/alerts"
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
@@ -619,6 +622,15 @@ func (a *App) advancedTab(c *ui.Context) {
 func (a *App) defaultsTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	k.Text(c, "Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings.", 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+	if h := a.cfg.Host; h != nil && h.DroidUpdated() {
+		a.settingGroup(c, "", "", func() {
+			a.settingRow(c, "droid was updated", "The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working.", func() {
+				if a.smallButton(c, kit.Primary, "Restart Daemon", "refresh-cw", false).Clicked() {
+					go h.RestartDaemon()
+				}
+			}, nil)
+		})
+	}
 	dv := a.sessionDefaults()
 	if dv == nil {
 		k.Text(c, "Loading session defaults…", 14, 20).TextColor(t.MutedForeground)
@@ -852,6 +864,23 @@ func sortInts(v []int) {
 	}
 }
 
+// customSoundRow is the chosen file under a Sound row set to Custom, nil
+// otherwise so the row keeps its height.
+func (a *App) customSoundRow(c *ui.Context, choice string, custom *string, pick func()) func() {
+	if choice != "custom" || custom == nil || *custom == "" {
+		return nil
+	}
+	return func() {
+		k, t := a.kit, a.kit.T
+		ui.Row(c).Gap(k.Px(8)).Children(func() {
+			k.Text(c, "Custom file: "+filepath.Base(*custom), 13, 19.5).TextColor(t.MutedForeground).SingleLine().Grow(1).MinWidth(0).Tooltip(*custom)
+			if a.smallButton(c, kit.Outline, "Choose…", "", false).Clicked() {
+				pick()
+			}
+		})
+	}
+}
+
 // alertPrefs are the sound and notification settings, as the web
 // Client's AlertPreferences keep them under droi.alerts.
 type alertPrefs struct {
@@ -864,7 +893,10 @@ type alertPrefs struct {
 	NotifyOnWaitingForInput  bool    `json:"notifyOnWaitingForInput"`
 }
 
-var soundChoices = []string{"off", "bell", "fx-ok01", "fx-ack01"}
+var soundChoices = []string{"off", "bell", "fx-ok01", "fx-ack01", "custom"}
+
+// soundFileExtensions are the audio files a custom sound may be.
+var soundFileExtensions = []string{"wav", "mp3", "m4a", "aac", "ogg", "flac", "aif", "aiff"}
 
 var soundLabels = map[string]string{"off": "Off", "bell": "Bell", "fx-ok01": "Soft chime", "fx-ack01": "Acknowledge tone", "custom": "Custom…"}
 
@@ -883,7 +915,25 @@ func (a *App) setAlertPrefs(p alertPrefs) {
 
 func (a *App) notificationsTab(c *ui.Context) {
 	p := a.alertPrefs()
-	soundRow := func(title, label, desc string, value *string, def string) func() {
+	soundRow := func(title, label, desc string, value *string, custom **string, def string) func() {
+		pick := func() {
+			go func() {
+				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Choose a sound", Filters: []mygo.FileFilter{{Name: "Audio", Extensions: soundFileExtensions}}})
+				if err != nil || len(paths) == 0 {
+					return
+				}
+				a.cfg.Update(func() {
+					p := a.alertPrefs()
+					path := paths[0]
+					if label == "Completion sound" {
+						p.CompletionSound, p.CustomCompletionSound = "custom", &path
+					} else {
+						p.AwaitingInputSound, p.CustomAwaitingInputSound = "custom", &path
+					}
+					a.setAlertPrefs(p)
+				})
+			}()
+		}
 		return func() {
 			opts := make([]kit.Option, len(soundChoices))
 			for i, s := range soundChoices {
@@ -895,13 +945,22 @@ func (a *App) notificationsTab(c *ui.Context) {
 			}
 			a.settingRow(c, "Sound", desc, func() {
 				if next, ok := a.fieldSelect(c, label, *value, opts, false); ok {
-					*value = next
-					a.setAlertPrefs(p)
+					// "Custom…" needs a file first; without one the old choice stays.
+					if next == "custom" && (*custom == nil || **custom == "") {
+						pick()
+					} else {
+						*value = next
+						a.setAlertPrefs(p)
+					}
 				}
 				if a.smallButton(c, kit.Outline, "Test", "", false).Label("Test "+strings.ToLower(title)).Clicked() && a.cfg.PlaySound != nil {
-					a.cfg.PlaySound(*value)
+					ev := alerts.Completion
+					if label != "Completion sound" {
+						ev = alerts.AwaitingInput
+					}
+					a.cfg.PlaySound(soundFor(p, ev))
 				}
-			}, nil)
+			}, a.customSoundRow(c, *value, *custom, pick))
 		}
 	}
 	notifyRow := func(label, desc string, value *bool) func() {
@@ -915,11 +974,11 @@ func (a *App) notificationsTab(c *ui.Context) {
 		}
 	}
 	a.settingGroup(c, "When Droid finishes", "",
-		soundRow("Completion sound", "Completion sound", "Plays when Droid finishes and the Session stops.", &p.CompletionSound, "fx-ok01"),
+		soundRow("Completion sound", "Completion sound", "Plays when Droid finishes and the Session stops.", &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
 		notifyRow("Notify when Droid finishes", "Unless you are looking at that Session.", &p.NotifyOnComplete),
 	)
 	a.settingGroup(c, "When Droid needs input", "",
-		soundRow("Needs-input sound", "Needs-input sound", "Plays when Droid stops to ask for permission or an answer.", &p.AwaitingInputSound, "fx-ack01"),
+		soundRow("Needs-input sound", "Needs-input sound", "Plays when Droid stops to ask for permission or an answer.", &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
 		notifyRow("Notify when Droid needs input", "When a Session waits for a permission or an answer.", &p.NotifyOnWaitingForInput),
 	)
 	a.settingGroup(c, "Sounds", "", func() {

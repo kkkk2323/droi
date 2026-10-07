@@ -111,6 +111,12 @@ type App struct {
 	// unread are the Sessions that finished or started waiting while
 	// another one was open; opening one reads it. Main thread only.
 	unread map[string]bool
+	// everConnected: the Controller connected once; until then the Daemon
+	// is starting up. Guarded by mu.
+	everConnected bool
+	// droidUpdateDismissed closes the "droid was updated" card until the
+	// next update.
+	droidUpdateDismissed bool
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
 
@@ -179,6 +185,7 @@ func (a *App) onEvent(e controller.Event) {
 	case controller.StatusChanged:
 		a.mu.Lock()
 		a.status = ev.Status
+		a.everConnected = a.everConnected || ev.Status.Connected
 		a.mu.Unlock()
 		if ev.Status.Connected {
 			go a.refreshList()
@@ -379,16 +386,26 @@ func (a *App) View(c *ui.Context) {
 		})
 		// The web Client keeps the main panel's left border while the sidebar is hidden.
 		main := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Clip().BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
+		a.mu.Lock()
+		starting := startingUp(status, a.everConnected)
+		a.mu.Unlock()
 		main.Children(func() {
-			a.banner(c, status)
-			switch a.route.Name {
-			case "session":
+			a.setupBanner(c)
+			if !starting {
+				a.banner(c, status)
+			}
+			switch {
+			case a.route.Name == "session":
 				sel := findSummary(listed, a.route.SessionID)
 				a.view(a.route.SessionID).build(c, a, sel, listed)
+			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():
+				// Home with nothing to show yet; the New session page would flash.
+				a.startingUpView(c)
 			default:
 				a.newSessionPage(c, listed, status)
 			}
 		})
+		a.droidUpdatedCard(c)
 	})
 	// The toggle stays put at the window's top left; the sidebar slides under it.
 	ui.Overlay(c, func() {
