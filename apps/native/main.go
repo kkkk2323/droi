@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
@@ -29,6 +30,16 @@ import (
 const devVersion = "1.33.5"
 
 func main() {
+	// The Runtime Overlay runs the app's own executable as the Memory Server
+	// and the hook; neither starts the app.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case host.MemoryServerCommand:
+			os.Exit(memory.ServeMain())
+		case host.MemoryHookCommand:
+			os.Exit(memory.HookMain())
+		}
+	}
 	version := mygo.App.Version()
 	if version == "" {
 		version = devVersion
@@ -51,6 +62,7 @@ func main() {
 		Version:     version,
 		MoveToTrash: mygo.Shell.TrashItem,
 		Env:         os.Getenv,
+		Executable:  executable(),
 	})
 	ctl := controller.New(controller.Config{
 		ResolveURL: h.WaitForDaemonURL,
@@ -77,6 +89,13 @@ func main() {
 			win.Update(fn)
 		}
 	}
+	gw := startGateway(h, version, mygo.Shell.TrashItem)
+	mem := startMemory(h, home, func() { update(func() {}) })
+	var remote app.Remote
+	if gw != nil {
+		remote = gw
+	}
+
 	a := app.New(app.Config{
 		Controller:   ctl,
 		Prefs:        prefs.Open(filepath.Join(userData, "preferences.json")),
@@ -100,6 +119,8 @@ func main() {
 		ReadImage: mygo.Clipboard.ReadImage,
 		Updater:   updater,
 		Relaunch:  mygo.App.Relaunch,
+		Remote:    remote,
+		Memory:    mem,
 	})
 	if updater != nil {
 		var waiting sync.Once
@@ -164,6 +185,10 @@ func main() {
 		}
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		if gw != nil {
+			gw.Close()
+		}
+		mem.Stop()
 		ctl.Close()
 		h.Stop()
 	})
@@ -192,6 +217,19 @@ func menu(zoom func(step int)) *mygo.Menu {
 		}},
 		{Role: mygo.RoleWindowMenu},
 	})
+}
+
+// executable is the app's own binary, which the Daemon runs for Memory;
+// "" under `go run`, whose binary is gone once it exits.
+func executable() string {
+	exe, err := os.Executable()
+	if err != nil || strings.Contains(exe, "go-build") {
+		return ""
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	return exe
 }
 
 // relaunchWhenIdle restarts into an installed update once no Session is

@@ -243,6 +243,9 @@ var (
 	DefaultToolMode   = String{Key: "droi.toolExecutionMode"}
 	// Alerts holds the alert settings as JSON, as use-session-alerts.ts does.
 	Alerts = String{Key: "droi.alerts"}
+	// LargeMemoriesNoticed are the large Project Memories the corner card
+	// announced, each as workspace + "\n" + its last consolidation.
+	LargeMemoriesNoticed = List{Key: "droi.largeMemoriesNoticed"}
 )
 
 // Drafts keep the composer's text per Session, as drafts.ts does.

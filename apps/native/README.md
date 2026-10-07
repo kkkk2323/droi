@@ -23,6 +23,9 @@ it is released and updates itself: [docs/releases.md](docs/releases.md).
 | `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                  |
 | `internal/icons/`                                               | the Lucide icons the web Client imports (`scripts/gen-icons.mjs`)                                       |
 | `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Scratch Workspaces |
+| `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export                |
+| `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                       |
+| `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints   |
 | `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                     |
 | `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                   |
 | `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)                |
@@ -62,8 +65,11 @@ Tracked in this file while the port is under way.
       turn rail, custom alert sounds, the sign-in banner, "droid was updated", the start-up screen
 - [x] Phase 9: in-app update (signed delta updates, restart when idle); the Electron app's last
       update points at the native one
-- [ ] Phase 10: Memory (store, Memory Server, hook, Memory Sessions, Settings → Memory)
-- [ ] Phase 11: Remote Access and pairing for the Phone App (Gateway)
+- [x] Phase 10: Memory (store, Memory Server, hook, Memory Sessions, Settings → Memory), on the
+      Electron app's data; the app's own binary is the Memory Server (`Droi memory-server`) and
+      the hook (`Droi memory-hook`)
+- [x] Phase 11: Remote Access and pairing for the Phone App (Gateway, Settings → Remote Access);
+      no web Client in the Gateway
 
 ### How close it is
 
@@ -80,5 +86,12 @@ Most of what is left is glyph edges, as MyGo and Chromium antialias text differe
 | Settings: General / Session defaults / Notifications / About | 1.7% / 2.5% / 2.0% / 2.0% |
 | permission / AskUser                                         | 1.2% / 0.9%               |
 
-Settings leaves out Account, Advanced and the Memory and Remote Access sections when there is no
-Host (the tests); the app has all but Memory and Remote Access.
+Settings leaves out Account, Memory, Remote Access and Advanced when there is no Host (the
+tests); the app has them all.
+
+Live tests against a real Daemon, through droid-proxy, skip without a key:
+
+```sh
+FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') \
+  go test ./apps/native/internal/host ./apps/native/internal/gateway -run Live -v
+```

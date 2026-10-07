@@ -100,6 +100,12 @@ func (s *SettingsStore) Update(fn func(*Settings)) error {
 	return s.saveLocked()
 }
 
+// ResetPairingToken makes a new Pairing Token; phones paired with the old
+// one need pairing again.
+func (s *SettingsStore) ResetPairingToken() error {
+	return s.Update(func(st *Settings) { st.PairingToken = randomToken() })
+}
+
 // APIKey is FACTORY_API_KEY, else the stored key.
 func (s *SettingsStore) APIKey() string {
 	if k := s.env("FACTORY_API_KEY"); k != "" {

@@ -24,6 +24,8 @@ type Config struct {
 	// MoveToTrash moves a Scratch Workspace with files to the Trash.
 	MoveToTrash func(path string) error
 	Env         func(string) string
+	// Executable runs the Memory Server and the hook; "" leaves Memory out.
+	Executable string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.
@@ -146,6 +148,28 @@ func (h *Host) ScratchFolder() string {
 	return filepath.Join(h.cfg.Home, ".droi", "chats")
 }
 
+// MemoryDir holds Memory's database, Markdown export and prompts (ADR
+// 0010), the Electron Shell's folder.
+func (h *Host) MemoryDir() string { return filepath.Join(h.cfg.UserData, "memory") }
+
+// runtimeOverlay writes the Runtime Overlay when Memory is on and answers
+// its path; "" starts the Daemon without one, and so without Memory.
+func (h *Host) runtimeOverlay() string {
+	if !h.Settings.Get().MemoryEnabled || h.cfg.Executable == "" {
+		return ""
+	}
+	path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
+	o := BuildRuntimeOverlay(MemoryAttachment{
+		Executable: h.cfg.Executable,
+		MemoryDir:  h.MemoryDir(),
+		ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+	})
+	if err := WriteRuntimeOverlay(path, o); err != nil {
+		return ""
+	}
+	return path
+}
+
 // DaemonLogPath is where the Daemon's output goes.
 func (h *Host) DaemonLogPath() string {
 	return filepath.Join(h.cfg.UserData, "logs", "daemon.log")
@@ -199,7 +223,7 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 		pipeW = w
 		liveness = []string{"--liveness-fd", "3"}
 	}
-	cmd := exec.Command(path, DaemonArgs(port, liveness, "")...)
+	cmd := exec.Command(path, DaemonArgs(port, liveness, h.runtimeOverlay())...)
 	cmd.ExtraFiles = extra
 	env := os.Environ()
 	if apiKey != "" {

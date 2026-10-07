@@ -30,7 +30,9 @@ var settingsTabs = []settingsTab{
 	{"account", "Account", "user-round", true},
 	{"general", "General", "settings-2", false},
 	{"defaults", "Session defaults", "sliders-horizontal", false},
+	{"memory", "Memory", "brain", true},
 	{"notifications", "Notifications", "bell", false},
+	{"remote", "Remote Access", "smartphone", true},
 	{"advanced", "Advanced", "wrench", true},
 	{"about", "About", "info", false},
 }
@@ -131,8 +133,12 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.generalTab(c)
 				case "defaults":
 					a.defaultsTab(c)
+				case "memory":
+					a.memoryTab(c)
 				case "notifications":
 					a.notificationsTab(c)
+				case "remote":
+					a.remoteTab(c)
 				case "advanced":
 					a.advancedTab(c)
 				case "about":
@@ -174,11 +180,17 @@ func (a *App) settingGroup(c *ui.Context, title, footer string, rows ...func()) 
 // settingRow is a setting: title and explanation on the left, its control
 // on the right, and what goes under them.
 func (a *App) settingRow(c *ui.Context, title, description string, control, below func()) {
+	k := a.kit
+	a.settingRowWith(c, func() { k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500) }, description, control, below)
+}
+
+// settingRowWith is a settingRow whose title is drawn by title.
+func (a *App) settingRowWith(c *ui.Context, title func(), description string, control, below func()) {
 	k, t := a.kit, a.kit.T
 	ui.Column(c).Padding(k.Px(12), k.Px(16)).Children(func() {
 		ui.Row(c).Wrap().GapX(k.Px(16)).GapY(k.Px(8)).Children(func() {
 			ui.Column(c).Grow(1).Basis(0).MinWidth(k.Px(192)).Children(func() {
-				k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500)
+				title()
 				if description != "" {
 					k.Text(c, description, 13, 20).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
 				}

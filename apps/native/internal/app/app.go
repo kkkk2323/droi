@@ -83,6 +83,10 @@ type Config struct {
 	// itself (a development build); Relaunch starts the installed one.
 	Updater  *updates.Updater
 	Relaunch func()
+	// Memory is the Host's Memory; nil without a Host.
+	Memory Memory
+	// Remote is the Gateway for paired phones; nil without a Host.
+	Remote Remote
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -124,6 +128,8 @@ type App struct {
 	droidUpdateDismissed bool
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
+	memory          memoryState
+	remote          remoteState
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
 

@@ -10,6 +10,7 @@ import {
   permissionTurn,
   askUserTurn,
   todoTurn,
+  structuredTurn,
   interruptHandler,
 } from 'DROI/tests/fake-daemon/turns'
 
@@ -33,6 +34,7 @@ type TurnSpec =
       todos: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>
       reply: string
     }
+  | { kind: 'structured'; structured: Record<string, unknown> }
 type Spec = {
   sessions?: SessionSpec[]
   turn?: TurnSpec
@@ -54,6 +56,8 @@ function turnHandler(turn: TurnSpec | undefined) {
       return askUserTurn(turn)
     case 'todo':
       return todoTurn(turn)
+    case 'structured':
+      return structuredTurn(() => turn.structured)
   }
 }
 

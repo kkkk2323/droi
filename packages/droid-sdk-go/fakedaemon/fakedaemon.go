@@ -53,18 +53,20 @@ type Message struct {
 
 // Turn is how the agent answers daemon.add_user_message: Kind is "reply"
 // (Deltas streamed), "permission" (asks to run Command, then Reply),
-// "askUser" (Question with Options) or "todo".
+// "askUser" (Question with Options), "todo", or "structured" (a Memory
+// Session's turn, ending with Structured as its structured output).
 type Turn struct {
-	Kind        string   `json:"kind"`
-	Deltas      []string `json:"deltas,omitempty"`
-	DelayMs     int      `json:"delayMs,omitempty"`
-	Command     string   `json:"command,omitempty"`
-	Reply       string   `json:"reply,omitempty"`
-	ToolOutput  string   `json:"toolOutput,omitempty"`
-	Question    string   `json:"question,omitempty"`
-	Options     []string `json:"options,omitempty"`
-	MultiSelect bool     `json:"multiSelect,omitempty"`
-	Todos       []Todo   `json:"todos,omitempty"`
+	Kind        string         `json:"kind"`
+	Deltas      []string       `json:"deltas,omitempty"`
+	DelayMs     int            `json:"delayMs,omitempty"`
+	Command     string         `json:"command,omitempty"`
+	Reply       string         `json:"reply,omitempty"`
+	ToolOutput  string         `json:"toolOutput,omitempty"`
+	Question    string         `json:"question,omitempty"`
+	Options     []string       `json:"options,omitempty"`
+	MultiSelect bool           `json:"multiSelect,omitempty"`
+	Todos       []Todo         `json:"todos,omitempty"`
+	Structured  map[string]any `json:"structured,omitempty"`
 }
 
 // Todo is an item of a todo turn's list.
