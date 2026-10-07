@@ -140,36 +140,19 @@ func headingSize(level int) (size, lh float32) {
 	return 14, 20
 }
 
-// chipPad is inline code's 0.35em of room on each side, at 12.75px.
-const chipPad = 4.4625
-
 // inlines is a paragraph of runs. Inline code is Geist Mono at 0.85em in
-// a rounded tint with 0.35em of room each side: MyGo's span backgrounds are
-// square and take no padding, so the room is letter spacing on the
-// characters around the code, and the tint is painted under the paragraph
-// from the code's word boxes.
+// the code color, without the web Client's tint.
 func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight int) *ui.Element {
 	k, t := p.k, p.k.T
-	var chips []*ui.Element
 	codeSize := size * 0.85
-	pad := k.Px(chipPad * size / 15)
 	para := ui.RichText(c).FontSize(k.Px(size)).FixedLineHeight(k.Px(lh)).TextColor(p.color).Selectable()
 	if weight > 0 {
 		para.FontWeight(weight)
 	}
 	para.Children(func() {
-		for i, r := range runs {
-			nextCode := i+1 < len(runs) && runs[i+1].Code
+		for _, r := range runs {
 			if r.Code {
-				if i == 0 {
-					// A hair space (about 1 DIP) widened to the chip's room.
-					ui.RichText(c, ui.Span{Text: "\u200a", LetterSpacing: pad - 1})
-				}
-				text := r.Text
-				_, last := lastRune(text)
-				chip := ui.RichText(c, ui.Span{Text: text[:last]}, ui.Span{Text: text[last:], LetterSpacing: pad}).
-					Font(k.Mono).FontSize(k.Px(codeSize)).TextColor(t.Code)
-				chips = append(chips, chip)
+				ui.RichText(c, ui.Span{Text: r.Text}).Font(k.Mono).FontSize(k.Px(codeSize)).TextColor(t.Code)
 				continue
 			}
 			span := ui.Span{Text: r.Text, Italic: r.Italic, Strikethrough: r.Strike}
@@ -183,37 +166,10 @@ func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight
 				}
 				continue
 			}
-			if nextCode && r.Text != "" {
-				_, last := lastRune(r.Text)
-				tail := span
-				span.Text, tail.Text, tail.LetterSpacing = r.Text[:last], r.Text[last:], pad
-				ui.RichText(c, span, tail)
-				continue
-			}
 			ui.RichText(c, span)
 		}
 	})
-	if len(chips) > 0 {
-		h := k.Px(codeSize*1.33) + 2*k.Px(codeSize*0.1)
-		para.Draw(func(pt *ui.Painter, _ ui.Rect) {
-			for _, ch := range chips {
-				b := ch.Bounds()
-				if b.W == 0 {
-					continue
-				}
-				mid := b.Y + b.H/2
-				pt.Fill(ui.Rect{X: b.X - pad, Y: mid - h/2, W: b.W + pad, H: h}, t.CodeBg, k.Px(4.8))
-			}
-		})
-	}
 	return para
-}
-
-func lastRune(s string) (r rune, at int) {
-	for i, x := range s {
-		r, at = x, i
-	}
-	return r, at
 }
 
 // list is an ul or ol: 1.5rem of indent, the markers outside it in the

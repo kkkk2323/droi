@@ -15,6 +15,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/md"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/internal/subagents"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
 
@@ -48,6 +49,13 @@ type sessionView struct {
 	docs   map[string][]*md.Node
 	usedAt map[string]int64
 	frame  int64
+	// calls caches what a tool call's result reads as, decoded from its
+	// JSON once: the transcript keeps a call's ToolCall while it stays the
+	// same, and builds a new one when it changes.
+	calls map[*transcript.ToolCall]*callView
+	// links and streamingID are the frame's, for the transcript's rows.
+	links       *subagents.Links
+	streamingID string
 	// While a fold the user opened holds the transcript in place: whether
 	// the list has left its end since, and the rows it had.
 	leftEnd  bool
@@ -76,7 +84,8 @@ type sessionView struct {
 func (a *App) view(id string) *sessionView {
 	v := a.views[id]
 	if v == nil {
-		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{}}
+		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{},
+			calls: map[*transcript.ToolCall]*callView{}}
 		v.list.FollowEnd = true
 		d := a.drafts.Load(id)
 		v.composer.text, v.composer.images = d.Text, d.Images
@@ -218,6 +227,55 @@ func (v *sessionView) sweep() {
 			delete(v.usedAt, text)
 		}
 	}
+	for call, cv := range v.calls {
+		if v.frame-cv.usedAt > 60 {
+			delete(v.calls, call)
+		}
+	}
+}
+
+type callView struct {
+	usedAt  int64
+	result  *transcript.ToolResultView
+	run     *transcript.ScriptRun
+	summary *string
+}
+
+func (v *sessionView) callView(call *transcript.ToolCall) *callView {
+	cv := v.calls[call]
+	if cv == nil {
+		cv = &callView{}
+		v.calls[call] = cv
+	}
+	cv.usedAt = v.frame
+	return cv
+}
+
+func (v *sessionView) result(call *transcript.ToolCall) transcript.ToolResultView {
+	cv := v.callView(call)
+	if cv.result == nil {
+		r := transcript.ReadResult(call)
+		cv.result = &r
+	}
+	return *cv.result
+}
+
+func (v *sessionView) scriptRun(call *transcript.ToolCall) transcript.ScriptRun {
+	cv := v.callView(call)
+	if cv.run == nil {
+		r := transcript.ReadScriptRun(call)
+		cv.run = &r
+	}
+	return *cv.run
+}
+
+func (v *sessionView) scriptSummary(call *transcript.ToolCall) string {
+	cv := v.callView(call)
+	if cv.summary == nil {
+		s := transcript.ScriptSummary(call)
+		cv.summary = &s
+	}
+	return *cv.summary
 }
 
 func (v *sessionView) image(id string, img transcript.Image) *ui.Bitmap {

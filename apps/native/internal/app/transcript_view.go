@@ -43,10 +43,12 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 	}
 	ends := transcript.TurnEnds(entries, running)
 	activity := transcript.WorkingLabel(ws)
-	links := &subagents.Links{ByToolUse: subagents.ByToolUse(listed), Runs: a.subagentRuns(listed)}
+	v.links = &subagents.Links{ByToolUse: subagents.ByToolUse(listed), Runs: a.subagentRuns(listed)}
+	v.streamingID = streamingID
+	rows := v.rows(entries, streamingID, ends)
 
-	// Row 0 is the lead, then the entries, then the activity row.
-	n := len(entries) + 2
+	// Row 0 is the lead, then the entries' rows, then the activity row.
+	n := len(rows) + 2
 	v.list.Key = func(i int) any {
 		switch {
 		case i == 0:
@@ -54,7 +56,7 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 		case i == n-1:
 			return "activity"
 		}
-		return entries[i-1].ID
+		return rows[i-1].key
 	}
 	ui.Box(c).Fill().Children(func() {
 		list := ui.List(c, &v.list, n, func(i int) {
@@ -64,9 +66,7 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 			case i == n-1:
 				v.activityRow(c, activity)
 			default:
-				e := entries[i-1]
-				end, closes := ends[e.ID]
-				v.entry(c, e, e.ID == streamingID, end, closes, links)
+				v.row(c, rows[i-1])
 			}
 		}).Fill().Label("Transcript").PaddingX(scrollGutter)
 		_ = list
@@ -171,71 +171,6 @@ func bounceDot(c *ui.Context, k *kit.Kit, i int, color ui.Color) {
 		y = -k.Px(4) * q * q
 	}
 	kit.Dot(c, k.Px(4), color).Margin(y, 0, -y, 0)
-}
-
-// entry is a MessageEntry: the user's bubble on the right, or the
-// Droid's blocks in the column.
-func (v *sessionView) entry(c *ui.Context, e *transcript.Entry, streaming bool, end transcript.TurnEnd, closes bool, links *subagents.Links) {
-	a := v.a
-	k, t := a.kit, a.kit.T
-	if e.User {
-		var parts []string
-		var images []transcript.Block
-		for _, b := range e.Blocks {
-			switch b.Kind {
-			case transcript.Text:
-				parts = append(parts, b.Text)
-			case transcript.Picture:
-				images = append(images, b)
-			}
-		}
-		text := strings.Join(parts, "\n")
-		v.column(c).Role(ui.RoleGroup).Label("You").AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
-			if len(images) > 0 {
-				ui.Row(c).Wrap().Justify(ui.End).Gap(k.Px(6)).MaxWidthPercent(85).Children(func() {
-					for _, b := range images {
-						v.picture(c, b.ID, b.Image, 192, "Attached image")
-					}
-				})
-			}
-			if text != "" {
-				k.Text(c, text, 15, 24).Selectable().MaxWidthPercent(85).Padding(k.Px(10), k.Px(16)).Radius(k.Px(16)).
-					Background(t.Secondary).TextColor(t.SecondaryForeground)
-			}
-		})
-		return
-	}
-	color := t.Foreground
-	if e.IsError {
-		color = t.DestructiveForeground
-	}
-	v.column(c).Role(ui.RoleGroup).Label("Assistant").PaddingY(k.Px(12)).TextColor(color).Children(func() {
-		f := flow{c: c}
-		for i, b := range e.Blocks {
-			switch b.Kind {
-			case transcript.Text:
-				v.reply(c, &f, b.Text, color)
-			case transcript.Picture:
-				f.block(k.Px(8), k.Px(8), func() { v.picture(c, b.ID, b.Image, 288, "Image from Droid") })
-			case transcript.Thinking:
-				f.block(k.Px(8), k.Px(8), func() { v.thinking(c, b, streaming) })
-			case transcript.Tools:
-				f.block(k.Px(8), k.Px(8), func() { v.cluster(c, b) })
-			case transcript.Subagent:
-				f.block(k.Px(8), k.Px(8), func() { v.subagentCard(c, b.Call, links) })
-			}
-			if streaming && i == len(e.Blocks)-1 && b.Kind == transcript.Text {
-				pulse := 0.6 * (0.5 + 0.5*float32(pulseWave(c)))
-				ui.Box(c).Label("Assistant is typing").Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))
-			}
-		}
-		if closes && end.EndedAt > 0 {
-			f.block(k.Px(8), 0, func() {
-				k.Text(c, transcript.FormatTurnEnd(end, a.cfg.Now()), 12, 16).TextColor(t.MutedForeground)
-			})
-		}
-		f.end()
-	})
 }
 
 // pulseWave is Tailwind's animate-pulse, 1 at rest and 0.5 halfway
@@ -356,8 +291,8 @@ var toolIcons = map[string]string{
 	"Skill":      "book-open",
 }
 
-// cluster is a ToolCluster: "Used Read, Edit" over the rows of its calls,
-// open by default.
+// cluster is a ToolCluster's trigger, "Used Read, Edit"; its calls are
+// rows of their own (see rows), shown while it is open, as by default.
 func (v *sessionView) cluster(c *ui.Context, b transcript.Block) {
 	k, t := v.a.kit, v.a.kit.T
 	open := v.flag("cluster:"+b.ID, true)
@@ -384,18 +319,6 @@ func (v *sessionView) cluster(c *ui.Context, b transcript.Block) {
 			*open = !*open
 			v.hold()
 		}
-		if !*open {
-			return
-		}
-		ui.Column(c).Margin(k.Px(4), 0, 0, k.Px(6)).Gap(k.Px(2)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Padding(0, 0, 0, k.Px(12)).Children(func() {
-			for _, call := range b.Calls {
-				if call.Nested != nil {
-					v.scriptGroup(c, call)
-				} else {
-					v.toolRow(c, call)
-				}
-			}
-		})
 	})
 }
 
@@ -424,7 +347,7 @@ func (v *sessionView) toolRow(c *ui.Context, call *transcript.ToolCall) {
 			icon = "plug"
 		}
 	}
-	res := transcript.ReadResult(call)
+	res := v.result(call)
 	open := v.flag("tool:"+call.Use.ID, false)
 	ui.Column(c).Key(call.Use.ID).Children(func() {
 		p := v.rowTrigger(c, open, call.Use.Name+": "+transcript.Summary(call))
@@ -563,12 +486,12 @@ func (v *sessionView) diffView(c *ui.Context, d *transcript.Diff) {
 	})
 }
 
-// scriptGroup is a ScriptGroup: the Script's row, which opens to its
-// program, inputs and output, over the calls its run made.
+// scriptGroup is a ScriptGroup's row, which opens to its program, inputs
+// and output; the calls its run made are rows of their own (see rows).
 func (v *sessionView) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 	k, t := v.a.kit, v.a.kit.T
-	run := transcript.ReadScriptRun(call)
-	summary := transcript.ScriptSummary(call)
+	run := v.scriptRun(call)
+	summary := v.scriptSummary(call)
 	failed := run.Status == "failed" || run.Status == "cancelled"
 	open := v.flag("script:"+call.Use.ID, false)
 	ui.Column(c).Key(call.Use.ID).Children(func() {
@@ -606,14 +529,6 @@ func (v *sessionView) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			}
 		})
 		p.Panel(func() { v.scriptDetail(c, call, run) })
-		if len(call.Nested) > 0 {
-			ui.Column(c).Role(ui.RoleGroup).Label("Calls made by Script").Margin(0, 0, 0, k.Px(7)).Gap(k.Px(2)).
-				BorderWidth(0, 0, 0, 1).BorderColor(t.Border).BorderStyle(ui.BorderDashed).Padding(0, 0, 0, k.Px(12)).Children(func() {
-				for _, inner := range call.Nested {
-					v.toolRow(c, inner)
-				}
-			})
-		}
 	})
 }
 
