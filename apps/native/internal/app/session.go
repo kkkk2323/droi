@@ -282,7 +282,12 @@ func (v *sessionView) scriptSummary(call *transcript.ToolCall) string {
 }
 
 func (v *sessionView) image(id string, img transcript.Image) *ui.Bitmap {
-	if b, ok := v.images[id]; ok {
+	return cachedBitmap(v.images, id, img)
+}
+
+// cachedBitmap decodes img once per id; a failed decode is cached as nil.
+func cachedBitmap(cache map[string]*ui.Bitmap, id string, img transcript.Image) *ui.Bitmap {
+	if b, ok := cache[id]; ok {
 		return b
 	}
 	data, err := base64.StdEncoding.DecodeString(img.Data)
@@ -290,7 +295,7 @@ func (v *sessionView) image(id string, img transcript.Image) *ui.Bitmap {
 	if err == nil {
 		b, _ = ui.DecodeBitmap(data)
 	}
-	v.images[id] = b
+	cache[id] = b
 	return b
 }
 
