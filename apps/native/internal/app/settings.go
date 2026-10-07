@@ -627,7 +627,7 @@ func (a *App) advancedTab(c *ui.Context) {
 			})
 		},
 		func() {
-			a.settingRow(c, "Scratch folder", "A session started with Workspace: None gets a new folder of its own in "+h.ScratchFolder()+". Archiving it moves the folder to the Trash. A change applies to new sessions only.", nil,
+			a.settingRow(c, "Scratch folder", "A session that does not work in a project gets a new folder of its own in "+h.ScratchFolder()+". Archiving it moves the folder to the Trash. A change applies to new sessions only.", nil,
 				saveRow(&s.scratch, "Scratch folder", "~/.droi/chats", "Save folder", true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.ScratchFolder = host.OptString(v) })
 				}))

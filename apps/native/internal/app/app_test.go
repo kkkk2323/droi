@@ -336,6 +336,57 @@ func TestNewSessionPageCentresItsQuestion(t *testing.T) {
 	}
 }
 
+// The Workspace opens a picker: its search narrows the recent Workspaces
+// and Enter takes the one left; "Don't work in a project" leaves the
+// question without one and "Work in a project" under the composer brings
+// the picker back.
+func TestTheWorkspacePickerSearchesAndCanPickNoProject(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("New session")
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.click("Workspace")
+	h.until("the search", func() bool { _, ok := h.tt.Find("Search projects"); return ok })
+	// The texts of the picker's list, each row's name and label once.
+	listed := func() string {
+		all := strings.Join(h.tt.Texts(), "|")
+		_, after, _ := strings.Cut(all, "|Projects|")
+		before, _, _ := strings.Cut(after, "|Other folder…")
+		return before
+	}
+	if got := listed(); got != "acme-web|acme-web|billing-service|billing-service" {
+		t.Fatalf("the picker lists %q", got)
+	}
+	h.tt.Type("bill")
+	h.frame()
+	if got := listed(); got != "billing-service|billing-service" {
+		t.Fatalf("the search left %q", got)
+	}
+	h.tt.Key(0, ui.KeyEnter)
+	h.frame()
+	if got := h.a.newPage.pick; got != "/Users/dev/billing-service" {
+		t.Fatalf("Enter picked %q", got)
+	}
+
+	h.click("Workspace")
+	h.click("Don't work in a project")
+	h.until("the question without a project", func() bool { return h.hasText("What should we work on?") })
+	if _, ok := h.tt.Find("Workspace"); ok {
+		t.Fatal("the question still has a Workspace")
+	}
+	if _, ok := h.tt.Find("Start session"); !ok {
+		t.Fatal("no start button")
+	}
+	h.click("Work in a project")
+	h.until("the search", func() bool { _, ok := h.tt.Find("Search projects"); return ok })
+	h.tt.Type("acme")
+	h.tt.Key(0, ui.KeyEnter)
+	h.until("the question with acme-web", func() bool { return h.hasText("What do you want to build in") })
+	if got := h.a.newPage.pick; got != "/Users/dev/acme-web" {
+		t.Fatalf("the click picked %q", got)
+	}
+}
+
 // Hiding the sidebar slides the main panel over, as the web Client's width
 // transition does, rather than moving it at once.
 func TestTheSidebarSlides(t *testing.T) {
