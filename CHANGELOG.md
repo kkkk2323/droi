@@ -4,6 +4,10 @@
 
 - Droi runs on Windows 10 and 11 (x64). Each Release has a `Droi Setup <version>.exe` that installs for your user, with no administrator rights, and updates itself like the Mac app.
 - Until Droi can talk to the Daemon, the window is one sign-in page: Sign in with Factory, or paste a Factory API key. Settings stays reachable from the page.
+- A Session can start in a Worktree, in the native app and the Phone App. On the New session page, choose Work locally or New worktree, then whether the Worktree is ephemeral or persistent, its base branch and its setup profile. A switch keeps New worktree as the default on this device. The Daemon creates and deletes the Worktree.
+- The Session list shows a Session in a Worktree under its repository, with its branch.
+- Archiving a Session in an ephemeral Worktree asks first, because the Daemon then deletes the Worktree.
+- Settings → Worktrees (native app) sets the Worktree directory and the limit of ephemeral Worktrees, and lists the managed Worktrees, which you can delete (with their local or origin branch, if you choose).
 
 ### Changed
 
@@ -14,6 +18,11 @@
 
 - After you sign in or add an API key, the window connects to the Daemon. Before, it stayed on “Starting the Daemon” until Droi restarted.
 - The Daemon's notices show in the transcript as Droid's reply, for example “You've reached your 5-hour Droid Core usage limit” or a switch to another model. Before, a turn that ended on such a notice showed nothing, and a reopened Session showed the notice as a message from you.
+- Two working Sessions no longer swap places in the sidebar. A Session moves up only when a turn starts.
+- A background Task that finished shows Completed, with its tools and time. Before, it showed “Started in background”.
+- You can select and copy the text of an AskUser question and of a queued message.
+- Removing a queued message (×) removes its row at once.
+- json-render tables fill the reading column. Before, a long cell came out one character to a line.
 
 ## 1.34.6 - 2026-10-07
 
