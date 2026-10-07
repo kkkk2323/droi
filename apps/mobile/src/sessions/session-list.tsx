@@ -17,8 +17,9 @@ import {
   toggleListed,
   usePreference,
 } from '@droi/daemon-layer/local-preference'
+import { ARCHIVE_WORKTREE_WARNING, archiveDeletesWorktree } from '@droi/daemon-layer/worktree'
 import { useSessionActivity, type SessionActivity } from '@droi/daemon-layer/use-session-activity'
-import { ChevronDown, CircleAlert, Pin } from 'lucide-react-native'
+import { ChevronDown, CircleAlert, GitBranch, Pin } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { Spinner } from '../ui/activity'
@@ -189,12 +190,16 @@ function SessionActions({
   const colors = useColors()
   const [pinnedIds] = usePreference(pinnedSessions)
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [confirmingArchive, setConfirmingArchive] = useState(false)
   // Reset on opening rather than closing, so the rename field does not turn
   // back into the buttons while the sheet slides away.
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
-    if (open) setRenaming(null)
+    if (open) {
+      setRenaming(null)
+      setConfirmingArchive(false)
+    }
   }
   const saveRename = () => {
     if (session && renaming?.trim()) onRename(session, renaming.trim())
@@ -214,6 +219,26 @@ function SessionActions({
           />
           <Button label="Save" disabled={!renaming.trim()} onPress={saveRename} />
         </View>
+      ) : session && confirmingArchive ? (
+        <View style={styles.confirm}>
+          <Text size="sm">{ARCHIVE_WORKTREE_WARNING}</Text>
+          <View style={styles.confirmButtons}>
+            <Button
+              label="Cancel"
+              variant="secondary"
+              style={styles.grow}
+              onPress={() => setConfirmingArchive(false)}
+            />
+            <Button
+              label="Archive"
+              style={[styles.grow, { backgroundColor: colors.destructive }]}
+              onPress={() => {
+                onArchiveToggle(session)
+                onClose()
+              }}
+            />
+          </View>
+        </View>
       ) : session ? (
         <>
           <SheetButton
@@ -227,6 +252,10 @@ function SessionActions({
           <SheetButton
             label={session.archivedAt ? 'Unarchive' : 'Archive'}
             onPress={() => {
+              if (!session.archivedAt && archiveDeletesWorktree(session)) {
+                setConfirmingArchive(true)
+                return
+              }
               onArchiveToggle(session)
               onClose()
             }}
@@ -337,6 +366,14 @@ function WorkspaceSection({
                 >
                   {session.title}
                 </Text>
+                {session.worktree ? (
+                  <View style={styles.branch}>
+                    <GitBranch size={11} color={colors.mutedForeground} strokeWidth={2} />
+                    <Text size="xs" tone="muted" mono numberOfLines={1} style={styles.branchName}>
+                      {session.worktree.branch}
+                    </Text>
+                  </View>
+                ) : null}
                 {isUnread ? (
                   <View
                     role="img"
@@ -475,6 +512,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   title: { flex: 1 },
+  confirm: { gap: space.md, paddingHorizontal: space.lg },
+  confirmButtons: { flexDirection: 'row', gap: space.sm },
+  grow: { flex: 1 },
+  branch: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1, maxWidth: 140 },
+  branchName: { flexShrink: 1 },
   unread: { width: 6, height: 6, borderRadius: 3 },
   mark: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 })

@@ -31,6 +31,7 @@ var settingsTabs = []settingsTab{
 	{"general", "General", "settings-2", false},
 	{"defaults", "Session defaults", "sliders-horizontal", false},
 	{"memory", "Memory", "brain", true},
+	{"worktrees", "Worktrees", "git-fork", false},
 	{"notifications", "Notifications", "bell", false},
 	{"remote", "Remote Access", "smartphone", true},
 	{"advanced", "Advanced", "wrench", true},
@@ -47,6 +48,7 @@ type settingsState struct {
 	loaded                                      bool
 	err                                         string
 	picker                                      pickerState
+	worktrees                                   managedWorktrees
 }
 
 func (s *settingsState) flag(key string) *bool {
@@ -135,6 +137,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.defaultsTab(c)
 				case "memory":
 					a.memoryTab(c)
+				case "worktrees":
+					a.worktreesTab(c)
 				case "notifications":
 					a.notificationsTab(c)
 				case "remote":
@@ -635,6 +639,42 @@ func (a *App) advancedTab(c *ui.Context) {
 	)
 }
 
+type defaultsPatch = defaults.Patch
+
+// saveDefaults shows the patched defaults at once and has the Daemon save them.
+func (a *App) saveDefaults(dv defaults.View, p defaults.Patch) {
+	view := defaults.ApplyPatch(dv, p)
+	a.newPage.mu.Lock()
+	a.newPage.defaults = &view
+	a.newPage.mu.Unlock()
+	go func() {
+		cl, err := a.ctl.Client()
+		if err == nil {
+			err = cl.Call(a.ctx, "daemon.update_session_defaults", p.Params(), nil)
+		}
+		a.cfg.Update(func() {
+			if err != nil {
+				a.settings.err = "Session defaults did not load or save: " + err.Error()
+			}
+			a.newPage.mu.Lock()
+			a.newPage.readAt = time.Time{}
+			a.newPage.mu.Unlock()
+		})
+	}()
+}
+
+// pickFolder asks for a folder; "" when none was chosen. Off the main thread.
+func (a *App) pickFolder(title string) string {
+	if a.cfg.PickFolder != nil {
+		return a.cfg.PickFolder(title)
+	}
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: title, Directory: true})
+	if err != nil || len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
+}
+
 // defaultsTab is the Session defaults: what a new Session starts with,
 // read from and saved to the Daemon.
 func (a *App) defaultsTab(c *ui.Context) {
@@ -654,26 +694,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 		k.Text(c, "Loading session defaults…", 14, 20).TextColor(t.MutedForeground)
 		return
 	}
-	save := func(p defaults.Patch) {
-		view := defaults.ApplyPatch(*dv, p)
-		a.newPage.mu.Lock()
-		a.newPage.defaults = &view
-		a.newPage.mu.Unlock()
-		go func() {
-			cl, err := a.ctl.Client()
-			if err == nil {
-				err = cl.Call(a.ctx, "daemon.update_session_defaults", p.Params(), nil)
-			}
-			a.cfg.Update(func() {
-				if err != nil {
-					a.settings.err = "Session defaults did not load or save: " + err.Error()
-				}
-				a.newPage.mu.Lock()
-				a.newPage.readAt = time.Time{}
-				a.newPage.mu.Unlock()
-			})
-		}()
-	}
+	save := func(p defaults.Patch) { a.saveDefaults(*dv, p) }
 	str := func(s string) *string { return &s }
 	locked := func(key string) bool { return dv.Locked[key] }
 	efforts := func(model, current string) []kit.Option {

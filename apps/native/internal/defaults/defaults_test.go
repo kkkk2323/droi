@@ -68,6 +68,22 @@ func TestPatchParams(t *testing.T) {
 	}
 }
 
+// The worktree settings read from the Daemon and go back as its fields;
+// "" puts the Daemon's default folder back.
+func TestWorktreeSettings(t *testing.T) {
+	view := ToSessionDefaults(map[string]any{"worktreeDirectory": "/trees", "worktreeAutoDeleteLimit": 20.0})
+	if view.WorktreeDirectory != "/trees" || view.WorktreeAutoDeleteLimit != 20 {
+		t.Fatalf("view = %+v", view)
+	}
+	p := Patch{WorktreeDirectory: ptr(""), WorktreeAutoDeleteLimit: ptr(5)}
+	if got, want := p.Params(), map[string]any{"worktreeDirectory": nil, "worktreeAutoDeleteLimit": 5}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Params = %v, want %v", got, want)
+	}
+	if next := ApplyPatch(view, p); next.WorktreeDirectory != "" || next.WorktreeAutoDeleteLimit != 5 {
+		t.Errorf("next = %+v", next)
+	}
+}
+
 func TestReasoningChoices(t *testing.T) {
 	list := ToSessionDefaults(map[string]any{"availableModels": modelList}).Models
 	for _, c := range []struct {

@@ -7,6 +7,7 @@ const summary = (overrides: Partial<SessionSummary>): SessionSummary => ({
   title: 't',
   cwd: null,
   repoRoot: null,
+  worktree: null,
   updatedAt: 0,
   messagesCount: null,
   archivedAt: null,
@@ -29,6 +30,23 @@ describe('recentWorkspaces', () => {
       ['alpha', 50],
       ['beta', 30],
     ])
+  })
+
+  test('offers the main checkout, never a worktree’s folder', () => {
+    const recent = recentWorkspaces([
+      summary({
+        cwd: '/wt/ab12cd34/app',
+        repoRoot: '/w/app',
+        worktree: {
+          path: '/wt/ab12cd34/app',
+          branch: 'droid/x',
+          lifecycle: 'persistent',
+          repoRoot: '/w/app',
+        },
+        updatedAt: 40,
+      }),
+    ])
+    expect(recent.map((w) => w.path)).toEqual(['/w/app'])
   })
 
   test('leaves Scratch Workspaces out: each is a conversation, not a place to go back to', () => {

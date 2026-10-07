@@ -34,6 +34,31 @@ type Summary struct {
 	// CallingSessionID and CallingToolUseID: for a subagent, its caller.
 	CallingSessionID string
 	CallingToolUseID string
+	// Worktree is the Daemon-managed worktree the Session runs in, nil for
+	// none or once it was removed.
+	Worktree *Worktree
+}
+
+// Worktree is a Session's worktree: a checkout of RepoRoot at Path, on Branch.
+type Worktree struct {
+	Path, Branch, RepoRoot string
+	// Lifecycle is "ephemeral" (the Daemon cleans it up, archiving the
+	// Session deletes it), "persistent" (deleted by hand only) or "".
+	Lifecycle string
+}
+
+// Ephemeral reports whether archiving the Session deletes its worktree. A
+// worktree listed without a lifecycle is one the Daemon adopted, which it
+// never cleans up.
+func (w *Worktree) Ephemeral() bool { return w != nil && w.Lifecycle == "ephemeral" }
+
+// WorkspaceOf is the Workspace a Session belongs to: a worktree's main
+// checkout, else the repository root the Daemon gives, else its folder.
+func WorkspaceOf(s Summary) string {
+	if s.Worktree != nil && s.Worktree.RepoRoot != "" {
+		return s.Worktree.RepoRoot
+	}
+	return cmp.Or(s.RepoRoot, s.Cwd)
 }
 
 // The tags Droi writes (see CONTEXT.md).
@@ -227,7 +252,7 @@ func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) 
 			recents.Sessions = append(recents.Sessions, s)
 			continue
 		}
-		path := cmp.Or(s.RepoRoot, s.Cwd)
+		path := WorkspaceOf(s)
 		key := cmp.Or(path, "(unknown)")
 		g := groups[key]
 		if g == nil {
@@ -412,7 +437,7 @@ func RecentWorkspaces(list []Summary) []RecentWorkspace {
 		if IsScratchSession(s) {
 			continue
 		}
-		path := cmp.Or(s.RepoRoot, s.Cwd)
+		path := WorkspaceOf(s)
 		if path == "" {
 			continue
 		}

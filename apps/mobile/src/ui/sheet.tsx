@@ -70,10 +70,13 @@ export function Sheet({
 /** One choice in a sheet: a radio row. */
 export function SheetOption({
   label,
+  description,
   checked,
   onPress,
 }: {
   label: string
+  /** A line under the label that says what the choice means. */
+  description?: string
   checked: boolean
   onPress: () => void
 }) {
@@ -83,13 +86,20 @@ export function SheetOption({
       role="radio"
       aria-checked={checked}
       aria-label={label}
+      accessibilityHint={description}
       onPress={onPress}
       style={({ pressed }) => [
         styles.option,
+        description ? styles.optionWithDescription : null,
         { backgroundColor: pressed || checked ? colors.accent : undefined },
       ]}
     >
       <Text weight={checked ? 'medium' : 'regular'}>{label}</Text>
+      {description ? (
+        <Text size="xs" tone="muted">
+          {description}
+        </Text>
+      ) : null}
     </Pressable>
   )
 }
@@ -110,4 +120,5 @@ const styles = StyleSheet.create({
     marginHorizontal: space.sm,
     borderRadius: radius.lg,
   },
+  optionWithDescription: { paddingVertical: space.sm, gap: 2 },
 })

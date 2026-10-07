@@ -77,6 +77,8 @@ type Config struct {
 	Notify func(Alert)
 	// Focused reports whether the window has the focus.
 	Focused func() bool
+	// PickFolder asks for a folder, "" for none; the system's dialog when nil.
+	PickFolder func(title string) string
 	// ReadImage is the clipboard's image as PNG, nil without one.
 	ReadImage func() []byte
 	// Updater is the in-app update, nil where the app cannot update
@@ -138,6 +140,8 @@ type App struct {
 	remote             remoteState
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
+	// worktreeAsk asks before a worktree is deleted. Main thread only.
+	worktreeAsk worktreeDialog
 	// pasteTo attaches the clipboard's image to the composer that had the
 	// keyboard focus in the last frame; nil when none had it.
 	pasteTo func() bool
@@ -212,6 +216,11 @@ func (a *App) onEvent(e controller.Event) {
 		a.everConnected = a.everConnected || ev.Status.Connected
 		a.mu.Unlock()
 		if ev.Status.Connected {
+			go a.refreshList()
+		}
+	case controller.DaemonNotification:
+		switch ev.Method {
+		case protocol.NotificationWorktreeRemoved, protocol.NotificationWorktreeBranchChanged:
 			go a.refreshList()
 		}
 	case controller.SessionNotification:
@@ -377,6 +386,9 @@ func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary 
 			n := int(*s.MessagesCount)
 			sum.MessagesCount = &n
 		}
+		if w := s.Worktree; w != nil && w.RemovedAt == "" && w.Path != "" {
+			sum.Worktree = &sessions.Worktree{Path: w.Path, Branch: w.Branch, RepoRoot: w.RepoRoot, Lifecycle: string(w.Lifecycle)}
+		}
 		out = append(out, sum)
 	}
 	return out
@@ -434,6 +446,7 @@ func (a *App) View(c *ui.Context) {
 	if c.Shortcut(ui.Cmd, ui.KeyB) && !a.narrow {
 		prefs.SidebarVisible.Set(a.prefs, !prefs.SidebarVisible.Get(a.prefs))
 	}
+	a.worktreeDialogView(c)
 	if a.route.Name == "settings" {
 		a.settingsPage(c, status)
 		return

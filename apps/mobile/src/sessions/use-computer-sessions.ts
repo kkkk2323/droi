@@ -37,6 +37,7 @@ function toCache(s: SessionSummary): SessionSummaryCache {
     title: s.title,
     cwd: s.cwd,
     repoRoot: s.repoRoot,
+    worktree: s.worktree,
     updatedAt: s.updatedAt,
     archivedAt: s.archivedAt,
     parentId: s.parentId,
@@ -48,6 +49,7 @@ function toCache(s: SessionSummary): SessionSummaryCache {
 function fromCache(s: SessionSummaryCache): SessionSummary {
   return {
     ...s,
+    worktree: s.worktree ?? null,
     messagesCount: null,
     tags: [],
     callingSessionId: s.callingSessionId ?? null,

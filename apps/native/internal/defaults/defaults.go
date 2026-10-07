@@ -40,6 +40,11 @@ type View struct {
 	// UserFactoryDir is where the Daemon keeps the user's own files
 	// (~/.factory), for the spec folder choices.
 	UserFactoryDir string
+	// WorktreeDirectory is where the Daemon makes worktrees, "" for its
+	// default (~/.factory/worktrees); WorktreeAutoDeleteLimit how many
+	// ephemeral ones it keeps, 0 for its default.
+	WorktreeDirectory       string
+	WorktreeAutoDeleteLimit int
 	// Locked holds the settings the organization manages; shown but not
 	// editable.
 	Locked map[string]bool
@@ -63,6 +68,9 @@ type Patch struct {
 	SubagentAutonomyLevel           *string
 	// SubagentModelSettings replaces the settings as a whole when non-nil.
 	SubagentModelSettings SubagentModelSettings
+	// WorktreeDirectory "" goes back to the Daemon's default folder.
+	WorktreeDirectory       *string
+	WorktreeAutoDeleteLimit *int
 }
 
 // Params is the patch as the Daemon's request fields; a cleared choice is null.
@@ -86,6 +94,10 @@ func (p Patch) Params() map[string]any {
 	put("specSaveDir", p.SpecSaveDir, true)
 	put("compactionModel", p.CompactionModel, false)
 	put("subagentAutonomyLevel", p.SubagentAutonomyLevel, false)
+	put("worktreeDirectory", p.WorktreeDirectory, true)
+	if p.WorktreeAutoDeleteLimit != nil {
+		out["worktreeAutoDeleteLimit"] = *p.WorktreeAutoDeleteLimit
+	}
 	if p.CompactionTokenLimit != nil {
 		out["compactionTokenLimit"] = *p.CompactionTokenLimit
 	}
@@ -194,6 +206,10 @@ func ToSessionDefaults(raw map[string]any) View {
 	if presets, ok := raw["specSavePresets"].(map[string]any); ok {
 		v.UserFactoryDir, _ = presets["userFactoryDir"].(string)
 	}
+	v.WorktreeDirectory = str("worktreeDirectory")
+	if n, ok := raw["worktreeAutoDeleteLimit"].(float64); ok {
+		v.WorktreeAutoDeleteLimit = int(n)
+	}
 	return v
 }
 
@@ -234,6 +250,10 @@ func ApplyPatch(view View, p Patch) View {
 	set(&view.SpecSaveDir, p.SpecSaveDir)
 	set(&view.CompactionModel, p.CompactionModel)
 	set(&view.SubagentAutonomyLevel, p.SubagentAutonomyLevel)
+	set(&view.WorktreeDirectory, p.WorktreeDirectory)
+	if p.WorktreeAutoDeleteLimit != nil {
+		view.WorktreeAutoDeleteLimit = *p.WorktreeAutoDeleteLimit
+	}
 	if p.CompactionTokenLimit != nil {
 		view.CompactionTokenLimit = *p.CompactionTokenLimit
 	}

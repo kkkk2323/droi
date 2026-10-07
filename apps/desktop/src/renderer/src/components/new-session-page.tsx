@@ -98,7 +98,8 @@ export function NewSessionPage({
 
   const start = async (target: string, prompt?: Submission) => {
     const sessionId =
-      (await draft.take(target, settings)) ?? (await create(target, settings, choice.tags))
+      (await draft.take(target, settings)) ??
+      (await create(target, settings, choice.tags))?.sessionId
     if (!sessionId) return
     if (prompt && (prompt.text.trim() || prompt.images.length > 0)) {
       setPendingPrompt(sessionId, { text: prompt.text, images: prompt.images })
