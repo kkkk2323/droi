@@ -1,6 +1,6 @@
 {
   "name": "Droi",
-  "identifier": "com.droi.native",
+  "identifier": "com.droi.app",
   "version": "1.33.5",
   "icon": "resources/icon.png",
   "out": "build"

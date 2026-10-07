@@ -22,10 +22,14 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
 )
 
-// version is the release version; the build sets it with -ldflags.
-var version = "1.33.5"
+// devVersion is the version of `go run`; a build takes mygo.json's.
+const devVersion = "1.33.5"
 
 func main() {
+	version := mygo.App.Version()
+	if version == "" {
+		version = devVersion
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
@@ -56,7 +60,6 @@ func main() {
 
 	theme.RegisterFonts()
 	mygo.App.SetName("Droi")
-	mygo.App.SetVersion(version)
 	mygo.App.RequestSingleInstanceLock()
 
 	var win *mygo.Window

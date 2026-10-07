@@ -5,13 +5,13 @@ native UI: no Electron, no webview, no Node at run time. It looks the same as
 the web Client (`apps/desktop/src/renderer`) running as the Local Client, pixel
 for pixel where it can.
 
-What it leaves out on purpose (first version):
+It replaces the Electron app: same bundle identifier (`com.droi.app`), name
+and data folder (`~/Library/Application Support/Droi`), so the Shell
+settings, the Pairing Token and Memory carry over. The window talks to the
+Daemon directly through `packages/droid-sdk-go`; the Host supplies the
+credential and the System Prompt Addition the Gateway adds for other Clients.
 
-- the Gateway and the web Client it serves: no Remote Access, no pairing, no
-  phone; the window talks to the Daemon directly through
-  `packages/droid-sdk-go`, and the Host supplies the credential and the
-  System Prompt Addition the Gateway used to add to frames;
-- Memory (Runtime Overlay, Memory Server, hook, Memory Sessions).
+How it performs next to the Electron app: [docs/performance.md](docs/performance.md).
 
 ## Layout
 
@@ -56,6 +56,11 @@ Tracked in this file while the port is under way.
       notification, unread mark), the subagent menu and trail
 - [x] Phase 7: view tests against the Fake Daemon (`internal/app/app_test.go`) with a pixel
       comparison per reference screen
+- [ ] Phase 8: replaces the Electron app: identity and data folder; zoom, pasted images, the
+      turn rail, custom alert sounds, the sign-in banner, "droid was updated", the start-up screen
+- [ ] Phase 9: in-app update (signed delta updates, restart when idle)
+- [ ] Phase 10: Memory (store, Memory Server, hook, Memory Sessions, Settings → Memory)
+- [ ] Phase 11: Remote Access and pairing for the Phone App (Gateway)
 
 ### How close it is
 
