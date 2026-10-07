@@ -26,6 +26,33 @@ jobs:
 
       - run: pnpm test
 
+  # The native app: its view tests run against the Fake Daemon, which the
+  # workspace's esbuild bundles, so the workspace is installed too.
+  native:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Go checks
+        run: |
+          test -z "$(gofmt -l apps/native packages/droid-sdk-go)" || { gofmt -l apps/native packages/droid-sdk-go; exit 1; }
+          go vet ./apps/native/... ./packages/droid-sdk-go/...
+          go test ./apps/native/... ./packages/droid-sdk-go/...
+
   web-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20

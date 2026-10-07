@@ -38,19 +38,26 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
+  # The view tests run against the Fake Daemon, which the workspace's esbuild bundles.
   validate-native:
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: apps/native
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/native/go.mod
 
-      - run: go vet ./... && go test ./...
+      - run: pnpm install --frozen-lockfile
+
+      - run: go vet ./apps/native/... && go test ./apps/native/...
 
   # The builds upload to a draft, which the last job publishes once all are in.
   draft:
