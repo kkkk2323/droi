@@ -1,3 +1,9 @@
+## 1.34.2 - 2026-10-07
+
+### Fixed
+
+- The new-session page's model picker has the Tools row again (Direct, Both, Script), as in the Electron app. Before, 1.34.0 showed the mode only as text, so a Session could start only in the default mode from Settings.
+
 ## 1.34.1 - 2026-10-07
 
 ### Fixed
