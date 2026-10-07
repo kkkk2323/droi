@@ -46,6 +46,22 @@ func TestLocateOpenInAppsFirstBundleFound(t *testing.T) {
 	}
 }
 
+func TestLocateOpenInAppsOnWindows(t *testing.T) {
+	found := LocateOpenInApps("windows", `C:\Users\me`, existsIn(
+		`C:\Program Files\Microsoft VS Code\Code.exe`,
+		`C:\Windows\explorer.exe`,
+		`C:\Users\me\AppData\Local\Microsoft\WindowsApps\wt.exe`,
+	))
+	want := []OpenInApp{
+		{ID: "vscode", Label: "VS Code", AppPath: `C:\Program Files\Microsoft VS Code\Code.exe`},
+		{ID: "explorer", Label: "File Explorer", AppPath: `C:\Windows\explorer.exe`},
+		{ID: "windows-terminal", Label: "Windows Terminal", AppPath: `C:\Users\me\AppData\Local\Microsoft\WindowsApps\wt.exe`, Args: []string{"-d"}},
+	}
+	if !reflect.DeepEqual(found, want) {
+		t.Fatalf("got %v", found)
+	}
+}
+
 func TestLocateOpenInAppsEmptyOffMac(t *testing.T) {
 	if found := LocateOpenInApps("linux", "/Users/me", func(string) bool { return true }); len(found) != 0 {
 		t.Fatalf("got %v", found)

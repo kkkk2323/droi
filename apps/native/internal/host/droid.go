@@ -16,7 +16,7 @@ func droidBinary() string {
 }
 
 // LocateDroid finds the `droid` executable: the settings override, then
-// PATH, then ~/.local/bin. "" when there is none.
+// PATH, then the folders its installer uses. "" when there is none.
 func LocateDroid(override, pathEnv, home string) string {
 	exists := func(p string) bool {
 		st, err := os.Stat(p)
@@ -33,10 +33,22 @@ func LocateDroid(override, pathEnv, home string) string {
 			return p
 		}
 	}
-	if p := filepath.Join(home, ".local", "bin", droidBinary()); exists(p) {
-		return p
+	for _, dir := range droidInstallDirs(runtime.GOOS, home) {
+		if p := filepath.Join(dir, droidBinary()); exists(p) {
+			return p
+		}
 	}
 	return ""
+}
+
+// droidInstallDirs are where the CLI's installer puts `droid`: ~/.local/bin,
+// and ~/bin on Windows.
+func droidInstallDirs(goos, home string) []string {
+	local := filepath.Join(home, ".local", "bin")
+	if goos == "windows" {
+		return []string{filepath.Join(home, "bin"), local}
+	}
+	return []string{local}
 }
 
 // DroidBuild is which `droid` file a Daemon was started from. The CLI

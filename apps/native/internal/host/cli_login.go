@@ -1,16 +1,16 @@
 package host
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -42,8 +42,8 @@ const (
 // CliLoginReader reads the CLI's login, again only when its files change.
 type CliLoginReader struct {
 	FactoryHome string
-	// ReadSecureKey reads a key from the system keychain; nil uses
-	// /usr/bin/security on macOS.
+	// ReadSecureKey reads a key from the system's key store; nil uses
+	// /usr/bin/security on macOS and the Credential Manager on Windows.
 	ReadSecureKey func(account string) string
 
 	mu       sync.Mutex
@@ -76,19 +76,6 @@ func (r *CliLoginReader) secureKey(account string) []byte {
 	return key
 }
 
-func securityKey(account string) string {
-	if runtime.GOOS != "darwin" {
-		return ""
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "/usr/bin/security", "find-generic-password", "-s", keychainService, "-a", account, "-w").Output()
-	if err != nil {
-		return ""
-	}
-	return string(out)
-}
-
 // Read returns the CLI's current login, or nil when it is logged out or
 // unreadable.
 func (r *CliLoginReader) Read() *CliLogin {
@@ -101,7 +88,7 @@ func (r *CliLoginReader) Read() *CliLogin {
 	sources := []source{
 		{"auth.v2.loginkeychain", func() []byte { return r.secureKey(securityCliAccount) }},
 		{"auth.v2.keyring", func() []byte { return r.secureKey(keyringAccount) }},
-		{"auth.v2.file", func() []byte { return readKeyFile(filepath.Join(r.FactoryHome, "auth.v2.key")) }},
+		{authKeyfileFile, func() []byte { return readKeyFile(filepath.Join(r.FactoryHome, authKeyFile)) }},
 	}
 	var ids []string
 	for _, s := range sources {
@@ -127,6 +114,112 @@ func (r *CliLoginReader) Read() *CliLogin {
 	}
 	r.identity, r.cached, r.read = identity, login, true
 	return login
+}
+
+// The droid CLI's credential files; the keyfile backend's key sits in authKeyFile.
+const (
+	authKeyfileFile = "auth.v2.file"
+	authKeyFile     = "auth.v2.key"
+)
+
+// authSecureFiles are the ciphertexts under a key in the system's key
+// store, which droid prefers to the keyfile's.
+var authSecureFiles = []string{"auth.v2.keyring", "auth.v2.loginkeychain"}
+
+// WriteCliLogin gives a login to the droid CLI, as Factory's own desktop
+// app does: the Daemon and the CLI then run as it and refresh it, and Droi
+// reads it back like any CLI login. It goes into the keyfile backend, the
+// one that needs no key store; the secure ciphertexts, an earlier login
+// droid would read first, are removed.
+func WriteCliLogin(factoryHome, accessToken, refreshToken string) error {
+	if err := os.MkdirAll(factoryHome, 0o700); err != nil {
+		return err
+	}
+	keyPath := filepath.Join(factoryHome, authKeyFile)
+	key := readKeyFile(keyPath)
+	if key == nil {
+		key = make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(keyPath, []byte(base64.StdEncoding.EncodeToString(key))); err != nil {
+			return err
+		}
+	}
+	creds := map[string]any{"access_token": accessToken, "refresh_token": refreshToken}
+	// The WorkOS organization, which droid refreshes the token in.
+	if org, ok := DecodeJWT(accessToken)["org_id"].(string); ok && org != "" {
+		creds["active_organization_id"] = org
+	}
+	plain, err := json.Marshal(creds)
+	if err != nil {
+		return err
+	}
+	enc, err := Encrypt(string(plain), key)
+	if err != nil {
+		return err
+	}
+	if err := writeFileAtomic(filepath.Join(factoryHome, authKeyfileFile), []byte(enc)); err != nil {
+		return err
+	}
+	for _, f := range authSecureFiles {
+		if err := os.Remove(filepath.Join(factoryHome, f)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveCliLogin signs the droid CLI out: its credential ciphertexts go,
+// their keys stay, as `droid` itself leaves them.
+func RemoveCliLogin(factoryHome string) error {
+	for _, f := range append([]string{authKeyfileFile}, authSecureFiles...) {
+		if err := os.Remove(filepath.Join(factoryHome, f)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeFileAtomic replaces path with data, readable by the user only.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// Encrypt seals text in the CLI's `iv:tag:ciphertext` AES-256-GCM format.
+func Encrypt(text string, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCMWithNonceSize(block, 16)
+	if err != nil {
+		return "", err
+	}
+	iv := make([]byte, 16)
+	if _, err := rand.Read(iv); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, iv, []byte(text), nil)
+	ct, tag := sealed[:len(sealed)-gcm.Overhead()], sealed[len(sealed)-gcm.Overhead():]
+	b := base64.StdEncoding.EncodeToString
+	return b(iv) + ":" + b(tag) + ":" + b(ct), nil
 }
 
 // Decrypt opens the CLI's `iv:tag:ciphertext` AES-256-GCM format.

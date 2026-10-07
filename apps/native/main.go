@@ -7,8 +7,8 @@ import (
 	"context"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +79,7 @@ func main() {
 		updater = updates.New(updates.MyGo{})
 	}
 
+	mac := runtime.GOOS == "darwin"
 	theme.RegisterFonts()
 	mygo.App.SetName("Droi")
 	mygo.App.RequestSingleInstanceLock()
@@ -101,7 +102,7 @@ func main() {
 		Prefs:        prefs.Open(filepath.Join(userData, "preferences.json")),
 		SystemPrompt: func() []byte { return h.SystemPrompt() },
 		Update:       update,
-		InsetTop:     true,
+		InsetTop:     mac,
 		FactoryHome:  h.FactoryHome(),
 		OpenPath:     mygo.Shell.OpenPath,
 		ShowInFolder: mygo.Shell.ShowItemInFolder,
@@ -158,30 +159,33 @@ func main() {
 				}
 			})
 		}))
-		win = mygo.NewWindow(mygo.WindowOptions{
-			Title:     "Droi",
-			Width:     1280,
-			Height:    800,
-			MinWidth:  720,
-			MinHeight: 480,
-			StateKey:  "main",
+		opts := mygo.WindowOptions{
+			Title:           "Droi",
+			Width:           1280,
+			Height:          800,
+			MinWidth:        720,
+			MinHeight:       480,
+			StateKey:        "main",
+			BackgroundColor: "#f3f3f3",
+			Content:         ui.View(a.View),
+		}
+		if mac {
 			// Centres the traffic lights (about 14pt tall) in the Client's 44pt
 			// top strip, where the sidebar toggle and the page headers sit.
-			TitleBarStyle:        mygo.TitleBarHiddenInset,
-			TrafficLightPosition: &mygo.Point{X: 13, Y: 15},
-			BackgroundColor:      "#f3f3f3",
-			Content:              ui.View(a.View),
-		})
+			opts.TitleBarStyle = mygo.TitleBarHiddenInset
+			opts.TrafficLightPosition = &mygo.Point{X: 13, Y: 15}
+		} else {
+			// The system's title bar: its buttons would cover the headers' right
+			// end. The menu bar stays out of sight; Alt shows it.
+			opts.AutoHideMenuBar = true
+		}
+		win = mygo.NewWindow(opts)
 		h.Start()
 		a.Start()
 		if updater != nil {
 			go updater.Schedule(context.Background())
 		}
-		go func() {
-			if err := ctl.Connect(context.Background()); err != nil {
-				log.Println("droi: connect:", err)
-			}
-		}()
+		go connectWhenSignedIn(ctl, h)
 	})
 	mygo.App.OnActivate(func(visible bool) {
 		if win != nil && !visible {
@@ -248,6 +252,35 @@ func editMenu(paste func()) *mygo.MenuItem {
 	}}
 }
 
+// connectWhenSignedIn keeps the window connected to the Daemon. Connect,
+// and the controller's own reconnecting, give up on a Daemon that rejects
+// the credential (none yet, or signed out), so whenever the controller or
+// the Host changes (a sign-in, an API key, a restarted Daemon) and the
+// window is neither connected nor reconnecting, it connects again.
+func connectWhenSignedIn(ctl *controller.Controller, h *host.Host) {
+	poke := make(chan struct{}, 1)
+	wake := func() {
+		select {
+		case poke <- struct{}{}:
+		default:
+		}
+	}
+	defer h.OnChange(wake)()
+	defer ctl.Subscribe(func(e controller.Event) {
+		if _, ok := e.(controller.StatusChanged); ok {
+			wake()
+		}
+	})()
+	for {
+		if st := ctl.Status(); !st.Connected && !st.Reconnecting && h.HasCredential() {
+			if err := ctl.Connect(context.Background()); err != nil {
+				log.Println("droi: connect:", err)
+			}
+		}
+		<-poke
+	}
+}
+
 // executable is the app's own binary, which the Daemon runs for Memory;
 // "" under `go run`, whose binary is gone once it exits.
 func executable() string {
@@ -299,5 +332,5 @@ func playSound(factoryHome, sound string) {
 	if _, err := os.Stat(path); err != nil {
 		return
 	}
-	go func() { _ = exec.Command("/usr/bin/afplay", path).Run() }()
+	go playFile(path)
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -33,6 +34,16 @@ type MemoryAttachment struct {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
+// hookCommandLine is the hook for the shell the Daemon runs hooks with: sh,
+// or cmd.exe on Windows. Windows paths hold no double quote, so quoting them
+// is enough there; `set "K=V"` keeps the space before && out of the value.
+func hookCommandLine(goos, memoryDir, executable string) string {
+	if goos == "windows" {
+		return `set "DROI_MEMORY_DIR=` + memoryDir + `"&& "` + executable + `" ` + MemoryHookCommand
+	}
+	return "DROI_MEMORY_DIR=" + shellQuote(memoryDir) + " " + shellQuote(executable) + " " + MemoryHookCommand
+}
+
 // BuildRuntimeOverlay is the settings file the Daemon merges for its own
 // process with --settings: the Memory Server pre-approved and loaded before
 // the first turn, and the hook at every Session event. Shape as droid
@@ -41,7 +52,7 @@ func BuildRuntimeOverlay(m MemoryAttachment) map[string]any {
 	env := map[string]string{"DROI_MEMORY_DIR": m.MemoryDir}
 	// Hooks run through the shell; the environment rides on the command line
 	// so it does not depend on the Daemon passing the overlay's env to them.
-	hookCommand := "DROI_MEMORY_DIR=" + shellQuote(m.MemoryDir) + " " + shellQuote(m.Executable) + " " + MemoryHookCommand
+	hookCommand := hookCommandLine(runtime.GOOS, m.MemoryDir, m.Executable)
 	hook := []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hookCommand, "timeout": hookTimeoutSeconds}}}}
 	hooks := map[string]any{}
 	for _, e := range HookEvents {

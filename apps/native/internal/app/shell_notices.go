@@ -13,24 +13,6 @@ func startingUp(status controller.Status, everConnected bool) bool {
 	return !status.Connected && !everConnected
 }
 
-// setupBanner says Droi has no credential yet, which every authenticate
-// then fails on, and what to do about it.
-func (a *App) setupBanner(c *ui.Context) {
-	h := a.cfg.Host
-	if h == nil || h.HasCredential() {
-		return
-	}
-	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleStatus).Label("Not signed in").Gap(k.Px(12)).Padding(k.Px(8), k.Px(16)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
-		Background(t.Card).Children(func() {
-		k.Icon(c, "key-round", 16, t.MutedForeground)
-		k.Text(c, "Droi is not signed in to Factory yet, so it cannot talk to the Daemon.", 14, 20).Grow(1).MinWidth(0)
-		if a.smallButton(c, kit.Primary, "Sign in", "", false).Clicked() {
-			a.Go(Route{Name: "settings", Tab: "account"})
-		}
-	})
-}
-
 // droidUpdatedCard is the corner card once droid updated itself while the
 // Daemon kept running the earlier build. Closing it hides it until the next
 // update.

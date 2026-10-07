@@ -9,7 +9,7 @@
 [![MyGo](https://img.shields.io/badge/MyGo-0.2.16-6E56CF)](https://mygo.egoist.dev)
 [![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo)](https://expo.dev/)
 
-A native Mac and iPhone app for the [Factory Droid](https://docs.factory.ai) coding agent.
+A native Mac, Windows and iPhone app for the [Factory Droid](https://docs.factory.ai) coding agent.
 
 ![A Session in Droi](./docs/screenshot.png)
 
@@ -41,9 +41,9 @@ How we measured: [apps/native/docs/performance.md](./apps/native/docs/performanc
 
 ## Requirements
 
-- macOS (one app for Apple silicon and Intel)
-- The [Droid CLI](https://docs.factory.ai) (`droid` on PATH or in `~/.local/bin`)
-- `droid login` done on this Mac: the Daemon runs as that login, and Droi signs in with the same account
+- macOS (one app for Apple silicon and Intel), or Windows 10 or 11 (x64)
+- The [Droid CLI](https://docs.factory.ai) (`droid` on PATH, in `~/.local/bin`, or in `%USERPROFILE%\bin` on Windows)
+- A Factory account: Droi shares its login with the `droid` CLI, and the Daemon runs as it
 
 ## Install
 
@@ -53,9 +53,11 @@ Download `Droi <version>.dmg` from the [latest Release](https://github.com/kkkk2
 xattr -cr /Applications/Droi.app
 ```
 
-Then open **Settings** (gear icon) → **Account** → **Sign in**, the same device-code login as `droid login`. Under **Advanced** you can set a Factory API base URL (a local `droid-proxy`, say). A Factory API key works as a fallback when you are not signed in, and `FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
+On Windows, run `Droi Setup <version>.exe` from the same Release. It installs Droi for your user only, with no administrator rights. The installer is not code-signed either: if SmartScreen stops it, choose **More info** → **Run anyway**.
 
-Droi keeps its settings, Memory and the Pairing Token in `~/Library/Application Support/Droi`, readable only by your user. It replaces the old Electron app in place: same bundle identifier and data folder, so your settings and paired phones carry over.
+When Droi opens, sign in with Factory (the same device-code login as `/login` in `droid`), or paste a Factory API key. Droi gives the login to the `droid` CLI, so the two share it; if `droid` is already signed in, Droi opens straight away. Under **Settings** → **Advanced** you can set a Factory API base URL (a local `droid-proxy`, say). `FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
+
+Droi keeps its settings, Memory and the Pairing Token in `~/Library/Application Support/Droi` (`%APPDATA%\Droi` on Windows), readable only by your user. It replaces the old Electron app in place: same bundle identifier and data folder, so your settings and paired phones carry over.
 
 ### The Phone App
 

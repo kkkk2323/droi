@@ -471,10 +471,10 @@ func (a *App) appIcon(app host.OpenInApp) *ui.Bitmap {
 	return nil
 }
 
-// preferredApp is the remembered app while it is installed, else Finder,
-// else the first.
+// preferredApp is the remembered app while it is installed, else the file
+// manager (Finder, File Explorer), else the first.
 func preferredApp(apps []host.OpenInApp, remembered string) (host.OpenInApp, bool) {
-	for _, id := range []string{remembered, "finder"} {
+	for _, id := range []string{remembered, "finder", "explorer"} {
 		for _, app := range apps {
 			if app.ID == id {
 				return app, true

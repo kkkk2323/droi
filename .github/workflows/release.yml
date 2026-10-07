@@ -8,8 +8,8 @@ on:
 permissions:
   contents: write
 
-# One Release holds Droi, the native app (apps/native): its disk image and its
-# signed update for the app to install itself. It also holds a last code update
+# One Release holds Droi, the native app (apps/native): its disk image, its
+# Windows installer, and their signed updates for the app to install itself. It also holds a last code update
 # for the Electron Desktop Shell, which those still on it install on their own:
 # it finds the native app's manifest and asks them to download it.
 jobs:
@@ -87,6 +87,8 @@ jobs:
           ```bash
           xattr -cr /Applications/Droi.app
           ```
+
+          On Windows the installer is not code-signed either: if SmartScreen stops it, choose **More info → Run anyway**.
           EOF
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
@@ -126,6 +128,34 @@ jobs:
             exit 1
           fi
           go tool mygo build -platform darwin/universal -upload
+
+  # MyGo needs no cgo, so Ubuntu builds the Windows app; NSIS makes its installer.
+  build-native-windows:
+    needs: draft
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/native
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+
+      - name: Install NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Build, sign the update and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MYGO_UPDATER_PRIVATE_KEY" ]; then
+            echo "::error::the MYGO_UPDATER_PRIVATE_KEY secret is missing"
+            exit 1
+          fi
+          go tool mygo build -platform windows/amd64 -upload
 
   build-asar:
     needs: draft
@@ -169,7 +199,7 @@ jobs:
             apps/desktop/dist/app.asar.gz apps/desktop/dist/latest.json
 
   publish:
-    needs: [validate, validate-native, build-native, build-asar]
+    needs: [validate, validate-native, build-native, build-native-windows, build-asar]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the release

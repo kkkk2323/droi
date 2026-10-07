@@ -1,3 +1,19 @@
+## Unreleased
+
+### Added
+
+- Droi runs on Windows 10 and 11 (x64). Each Release has a `Droi Setup <version>.exe` that installs for your user, with no administrator rights, and updates itself like the Mac app.
+- Until Droi can talk to the Daemon, the window is one sign-in page: Sign in with Factory, or paste a Factory API key. Settings stays reachable from the page.
+
+### Changed
+
+- Sign in with Factory now gives the login to the droid CLI on this computer, as Factory's own desktop app does. The Daemon runs as that login, so signing in works without `droid` signed in first. Signing out in Settings signs the CLI out too.
+- The browser opens the Factory sign-in page by itself. Before, Droi showed a code and waited.
+
+### Fixed
+
+- After you sign in or add an API key, the window connects to the Daemon. Before, it stayed on “Starting the Daemon” until Droi restarted.
+
 ## 1.34.6 - 2026-10-07
 
 ### Added

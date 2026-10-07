@@ -39,9 +39,8 @@ func (m *fakeMemory) Folder() string      { return "/tmp/memory" }
 func memoryHarness(t *testing.T, m *fakeMemory, on bool) (*harness, *host.Host) {
 	t.Helper()
 	h0 := testHost(t)
-	if on {
-		_ = h0.Settings.Update(func(s *host.Settings) { s.MemoryEnabled = true })
-	}
+	// A key, or the window is the sign-in page.
+	_ = h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-test"); s.MemoryEnabled = on })
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0; cfg.Memory = m })
 	return h, h0
 }

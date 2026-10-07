@@ -126,6 +126,7 @@ type App struct {
 	// droidUpdateDismissed closes the "droid was updated" card until the
 	// next update.
 	droidUpdateDismissed bool
+	signIn               signInState
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
@@ -401,6 +402,10 @@ func (a *App) View(c *ui.Context) {
 		a.settingsPage(c, status)
 		return
 	}
+	if a.needsSignIn() {
+		a.signInPage(c)
+		return
+	}
 	t := a.kit.T
 	shown := a.sidebarShown()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
@@ -432,7 +437,6 @@ func (a *App) View(c *ui.Context) {
 		starting := startingUp(status, a.everConnected)
 		a.mu.Unlock()
 		main.Children(func() {
-			a.setupBanner(c)
 			if !starting {
 				a.banner(c, status)
 			}

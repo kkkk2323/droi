@@ -66,6 +66,10 @@ type FactoryAuth struct {
 	HTTP              *http.Client
 	WorkOS            string
 	ClientID          string
+	// Handoff, when set, takes a new login instead of FactoryAuth keeping
+	// it: the Host gives it to the droid CLI, whose login the Daemon needs
+	// anyway (WriteCliLogin).
+	Handoff func(accessToken, refreshToken string) error
 
 	mu         sync.Mutex
 	loaded     bool
@@ -234,6 +238,20 @@ func (a *FactoryAuth) poll(ctx context.Context, cancel context.CancelFunc, devic
 				fail("Sign-in failed.")
 				return
 			}
+			if a.Handoff != nil {
+				if err := a.Handoff(t.AccessToken, t.RefreshToken); err != nil {
+					fail("Could not save the login (" + err.Error() + ").")
+					return
+				}
+				a.mu.Lock()
+				if ctx.Err() == nil {
+					a.persistLocked(nil)
+					a.cancelPoll = nil
+					a.setLocked(LoginState{Status: SignedOut})
+				}
+				a.mu.Unlock()
+				return
+			}
 			acc := a.describe(ctx, t.AccessToken)
 			a.mu.Lock()
 			if ctx.Err() == nil {
@@ -328,6 +346,19 @@ func (a *FactoryAuth) CancelSignIn() {
 	} else {
 		a.setLocked(LoginState{Status: SignedOut})
 	}
+}
+
+// handOver gives a stored login to give and forgets it once given, without
+// telling OnChange: for the Host to call before it starts the Daemon.
+func (a *FactoryAuth) handOver(give func(accessToken, refreshToken string) error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.init()
+	if a.login == nil || give(a.login.AccessToken, a.login.RefreshToken) != nil {
+		return
+	}
+	a.persistLocked(nil)
+	a.state = LoginState{Status: SignedOut}
 }
 
 // SignOut forgets the login.

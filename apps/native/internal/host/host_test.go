@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -68,6 +69,15 @@ func TestPairingHostAndScratchFolderParsing(t *testing.T) {
 		if got := deref(ScratchFolderOf(in, "/h")); got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestDroidInstallDirs(t *testing.T) {
+	if got := droidInstallDirs("darwin", "/h"); !reflect.DeepEqual(got, []string{filepath.Join("/h", ".local", "bin")}) {
+		t.Errorf("darwin: %q", got)
+	}
+	if got := droidInstallDirs("windows", "/h"); !reflect.DeepEqual(got, []string{filepath.Join("/h", "bin"), filepath.Join("/h", ".local", "bin")}) {
+		t.Errorf("windows: %q", got)
 	}
 }
 
@@ -156,6 +166,69 @@ func TestCliLoginFromFileStore(t *testing.T) {
 	os.Remove(filepath.Join(home, "auth.v2.file"))
 	if r.Read() != nil {
 		t.Fatal("logged-out CLI still reads as a login")
+	}
+}
+
+func TestWriteCliLoginIsTheCLIsLogin(t *testing.T) {
+	home := t.TempDir()
+	key := []byte("0123456789abcdef0123456789abcdef")
+	os.WriteFile(filepath.Join(home, "auth.v2.key"), []byte(base64.StdEncoding.EncodeToString(key)), 0o600)
+	// An earlier login under a key-store key, which droid would read first.
+	os.WriteFile(filepath.Join(home, "auth.v2.keyring"), []byte("old"), 0o600)
+	token := jwt(map[string]any{"sub": "workos_user", "org_id": "org_w"})
+	if err := WriteCliLogin(home, token, "refresh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "auth.v2.keyring")); !os.IsNotExist(err) {
+		t.Error("the earlier secure login stays")
+	}
+	b, _ := os.ReadFile(filepath.Join(home, "auth.v2.file"))
+	var creds map[string]any
+	if err := json.Unmarshal([]byte(Decrypt(string(b), key)), &creds); err != nil {
+		t.Fatalf("not under the existing key: %v", err)
+	}
+	if creds["access_token"] != token || creds["refresh_token"] != "refresh" || creds["active_organization_id"] != "org_w" {
+		t.Errorf("%v", creds)
+	}
+	r := &CliLoginReader{FactoryHome: home, ReadSecureKey: func(string) string { return "" }}
+	if login := r.Read(); login == nil || login.AccessToken != token {
+		t.Fatalf("%+v", login)
+	}
+	if err := RemoveCliLogin(home); err != nil || r.Read() != nil {
+		t.Fatalf("signed out: %v %+v", err, r.Read())
+	}
+	if _, err := os.Stat(filepath.Join(home, "auth.v2.key")); err != nil {
+		t.Error("signing out removed the key")
+	}
+}
+
+func TestWriteCliLoginMakesAKey(t *testing.T) {
+	home := filepath.Join(t.TempDir(), ".factory")
+	if err := WriteCliLogin(home, jwt(map[string]any{"sub": "u"}), "r"); err != nil {
+		t.Fatal(err)
+	}
+	r := &CliLoginReader{FactoryHome: home, ReadSecureKey: func(string) string { return "" }}
+	if r.Read() == nil {
+		t.Fatal("no login under the new key")
+	}
+}
+
+func TestAStoredDroiLoginMovesToTheCLI(t *testing.T) {
+	home, data := t.TempDir(), t.TempDir()
+	cfg := Config{UserData: data, Home: home, Env: func(string) string { return "" }}
+	login, _ := json.Marshal(storedLogin{AccessToken: jwt(map[string]any{"sub": "u"}), RefreshToken: "r", Account: Account{UserID: "u"}})
+	if err := New(cfg).Settings.Update(func(s *Settings) { s.Login = OptString(string(login)) }); err != nil {
+		t.Fatal(err)
+	}
+	h := New(cfg)
+	if h.Cli.Read() == nil {
+		t.Fatal("the CLI has no login")
+	}
+	if h.Settings.Get().Login != nil && *h.Settings.Get().Login != "" {
+		t.Error("Droi kept its own copy")
+	}
+	if s := h.LoginState(); s.Status != SignedIn || s.Source != "cli" {
+		t.Errorf("%+v", s)
 	}
 }
 

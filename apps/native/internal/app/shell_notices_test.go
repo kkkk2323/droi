@@ -30,22 +30,31 @@ func oneSession() fakedaemon.Scenario {
 		Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}}}
 }
 
-func TestSetupBannerUntilSignedIn(t *testing.T) {
+func TestSignInPageUntilThereIsACredential(t *testing.T) {
 	h0 := testHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
-	h.until("the banner", func() bool { return h.hasText("Droi is not signed in to Factory yet") })
-	h.click("Sign in")
-	if r := h.a.Route(); r.Name != "settings" || r.Tab != "account" {
-		t.Fatalf("Sign in went to %+v", r)
+	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
+	if h.hasText("New session") {
+		t.Fatal("the sessions show before Droi can authenticate")
 	}
-	if err := h0.Settings.Update(func(s *host.Settings) { k := "fk-x"; s.APIKey = &k }); err != nil {
-		t.Fatal(err)
+	h.click("Factory API key")
+	h.tt.Type("fk-x")
+	h.click("Continue with API key")
+	h.until("the app", func() bool { return !h.hasText("Sign in to Droi") && h.hasText("New session") })
+	if h0.Settings.APIKey() != "fk-x" {
+		t.Fatalf("stored key %q", h0.Settings.APIKey())
 	}
-	h.a.Go(Route{Name: "home"})
-	h.settle()
-	if h.hasText("Droi is not signed in to Factory yet") {
-		t.Fatalf("the banner stays with an API key")
+}
+
+func TestSignInPageKeepsSettingsReachable(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
+	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
+	h.click("Settings")
+	if r := h.a.Route(); r.Name != "settings" || r.Tab != "advanced" {
+		t.Fatalf("Settings went to %+v", r)
 	}
+	h.click("Back")
+	h.until("the sign-in page again", func() bool { return h.hasText("Sign in to Droi") })
 }
 
 func TestStartingUpWaitsForTheFirstConnection(t *testing.T) {

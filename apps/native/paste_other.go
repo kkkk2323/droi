@@ -2,5 +2,5 @@
 
 package main
 
-// nativePaste does nothing: the app ships for macOS only.
+// nativePaste does nothing: off macOS the focused text area takes Ctrl+V itself.
 func nativePaste() {}

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -32,7 +33,7 @@ func roundTrip(t *testing.T, v any) any {
 }
 
 func TestTheRuntimeOverlayAttachesMemory(t *testing.T) {
-	hook := `[{"hooks":[{"type":"command","command":` + mustJSON(hookCommand) + `,"timeout":10}]}]`
+	hook := `[{"hooks":[{"type":"command","command":` + mustJSON(hookCommandLine(runtime.GOOS, attachment.MemoryDir, attachment.Executable)) + `,"timeout":10}]}]`
 	want := `{
 		"env": {"DROI_MEMORY_DIR": ` + mustJSON(attachment.MemoryDir) + `},
 		"blockOnMcpLoad": true,
@@ -60,7 +61,20 @@ func mustJSON(s string) string {
 	return string(b)
 }
 
+func TestTheHookCommandLines(t *testing.T) {
+	if got := hookCommandLine("darwin", attachment.MemoryDir, attachment.Executable); got != hookCommand {
+		t.Errorf("sh: %s", got)
+	}
+	want := `set "DROI_MEMORY_DIR=C:\Users\A B\AppData\Roaming\Droi\memory"&& "C:\Program Files\Droi\Droi.exe" memory-hook`
+	if got := hookCommandLine("windows", `C:\Users\A B\AppData\Roaming\Droi\memory`, `C:\Program Files\Droi\Droi.exe`); got != want {
+		t.Errorf("cmd.exe: %s", got)
+	}
+}
+
 func TestTheHookCommandIsQuotedForTheShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("cmd.exe runs the hook on Windows: TestTheHookCommandRunsInCmd")
+	}
 	o := BuildRuntimeOverlay(MemoryAttachment{Executable: "/usr/bin/printenv", MemoryDir: attachment.MemoryDir})
 	cmd := o["hooks"].(map[string]any)["SessionStart"].([]any)[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
 	// printenv prints the variable its argument names: ask for the one the command sets.

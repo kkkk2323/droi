@@ -402,14 +402,12 @@ func (a *App) accountTab(c *ui.Context) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
 	login := h.LoginState()
+	a.openSignInPage(c, login)
 	a.settingGroup(c, "Sign-in", "",
 		func() {
 			switch login.Status {
 			case host.SignedIn:
 				title := "Signed in with Factory"
-				if login.Source == "cli" {
-					title = "Signed in with the droid CLI’s login"
-				}
 				who := ""
 				if login.Account != nil {
 					who = login.Account.UserID
@@ -421,19 +419,13 @@ func (a *App) accountTab(c *ui.Context) {
 					}
 				}
 				a.settingRow(c, title, who, func() {
-					if login.Source == "cli" {
-						if a.smallButton(c, kit.Outline, "Sign in as someone else", "", false).Clicked() {
-							go func() { _, _ = h.Auth.SignIn(a.ctx) }()
-						}
-						return
-					}
 					if a.smallButton(c, kit.Outline, "Sign out", "log-out", false).Clicked() {
-						h.Auth.SignOut()
+						if err := h.SignOut(); err != nil {
+							a.settings.err = err.Error()
+						}
 					}
 				}, func() {
-					if login.Source == "cli" {
-						k.Text(c, "Reused from ~/.factory, the same login the Daemon runs as. Run `droid logout` in a terminal to drop it.", 14, 20).TextColor(t.MutedForeground)
-					}
+					k.Text(c, "Shared with the droid CLI on this computer ("+h.FactoryHome()+"), the login the Daemon runs as. Signing out signs the CLI out too.", 14, 20).TextColor(t.MutedForeground)
 				})
 			case host.Pending:
 				a.settingRow(c, "Finish signing in", "Your browser opened Factory. Enter this code there if it asks for one.", func() {
@@ -453,7 +445,7 @@ func (a *App) accountTab(c *ui.Context) {
 			default:
 				a.settingRow(c, "Sign in with Factory", "Uses the same login as the droid CLI. Droi then needs no API key; sessions and settings stay on this computer.", func() {
 					if a.smallButton(c, kit.Primary, "Sign in", "", false).Clicked() {
-						go func() { _, _ = h.Auth.SignIn(a.ctx) }()
+						a.startSignIn()
 					}
 				}, func() {
 					if login.Error != "" {

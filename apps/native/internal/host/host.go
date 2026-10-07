@@ -70,8 +70,22 @@ func New(cfg Config) *Host {
 			go h.RestartDaemon()
 		}
 	}
-	h.wasIn = h.Auth.State().Status == SignedIn
 	h.Cli = &CliLoginReader{FactoryHome: h.FactoryHome()}
+	writeCli := func(access, refresh string) error { return WriteCliLogin(h.FactoryHome(), access, refresh) }
+	h.Auth.Handoff = func(access, refresh string) error {
+		if err := writeCli(access, refresh); err != nil {
+			return err
+		}
+		h.changed()
+		go h.RestartDaemon()
+		return nil
+	}
+	// A login an earlier Droi kept for itself moves to the CLI when that has
+	// none: the Daemon cannot authenticate without one.
+	if h.Auth.State().Status == SignedIn && h.Cli.Read() == nil {
+		h.Auth.handOver(writeCli)
+	}
+	h.wasIn = h.Auth.State().Status == SignedIn
 	h.Scratch = &Scratch{Root: h.ScratchFolder, MoveToTrash: cfg.MoveToTrash}
 	h.Daemon = &Supervisor{Spawn: h.spawn, OnState: func(DaemonState) { h.changed() }}
 	return h
@@ -225,6 +239,7 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	}
 	cmd := exec.Command(path, DaemonArgs(port, liveness, h.runtimeOverlay())...)
 	cmd.ExtraFiles = extra
+	hideConsole(cmd)
 	env := os.Environ()
 	if apiKey != "" {
 		env = append(env, "FACTORY_API_KEY="+apiKey)
@@ -304,6 +319,19 @@ func (h *Host) Credential(ctx context.Context) (*droid.Credential, error) {
 		return &droid.Credential{APIKey: k}, nil
 	}
 	return nil, nil
+}
+
+// SignOut signs Droi out of Factory, and the droid CLI, whose login it
+// shares, with it; the Daemon restarts without a login.
+func (h *Host) SignOut() error {
+	err := RemoveCliLogin(h.FactoryHome())
+	if h.Auth.State().Status == SignedIn {
+		h.Auth.SignOut() // its OnChange restarts the Daemon
+	} else {
+		h.changed()
+		go h.RestartDaemon()
+	}
+	return err
 }
 
 // HasCredential reports that there is something to authenticate with.
