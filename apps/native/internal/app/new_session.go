@@ -32,9 +32,10 @@ type newSessionState struct {
 	modelID, effort, autonomy string
 	toolMode                  defaults.ToolMode
 
-	text   string
-	images []attachments.Image
-	err    string
+	text    string
+	images  []attachments.Image
+	bitmaps map[string]*ui.Bitmap
+	err     string
 
 	modelOpen bool
 	picker    pickerState
@@ -302,6 +303,12 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool,
 			}
 		}
 		card.Children(func() {
+			if len(s.images) > 0 {
+				if s.bitmaps == nil {
+					s.bitmaps = map[string]*ui.Bitmap{}
+				}
+				a.attachmentList(c, &s.images, s.bitmaps, nil)
+			}
 			// In a column the text area's Grow(1) would take its height, as
 			// the composer's row gives it the width instead.
 			var in *ui.Element
@@ -456,7 +463,7 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	s.mu.Unlock()
 	go a.refreshList()
 	a.cfg.Update(func() {
-		s.text, s.images = "", nil
+		s.text, s.images, s.bitmaps = "", nil, nil
 		a.Go(Route{Name: "session", SessionID: res.SessionID})
 	})
 }

@@ -47,3 +47,27 @@ func TestPastingAnImageAttachesIt(t *testing.T) {
 		t.Fatalf("an image paste changed the text: %q", v.composer.text)
 	}
 }
+
+func TestAnImagePastedOnTheNewSessionPageShows(t *testing.T) {
+	var b bytes.Buffer
+	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 40, 30)))
+	h := newHarnessWith(t, sessionsScenario(), "", func(cfg *Config) {
+		cfg.ReadImage = func() []byte { return b.Bytes() }
+	})
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("New session")
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.click("Message")
+	h.tt.Key(ui.Cmd, ui.KeyV)
+	h.frame()
+	if len(h.a.newPage.images) != 1 {
+		t.Fatalf("the paste attached %d images", len(h.a.newPage.images))
+	}
+	if _, ok := h.tt.Find("Pasted image.png"); !ok {
+		t.Fatal("the pasted image is not shown")
+	}
+	h.click("Remove Pasted image.png")
+	if len(h.a.newPage.images) != 0 {
+		t.Fatal("removing the image kept it")
+	}
+}

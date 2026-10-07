@@ -452,12 +452,17 @@ func (v *sessionView) chooseImages() {
 }
 
 func (v *sessionView) attachmentList(c *ui.Context) {
-	k, t := v.a.kit, v.a.kit.T
-	cs := &v.composer
+	v.a.attachmentList(c, &v.composer.images, v.images, v.saveDraft)
+}
+
+// attachmentList shows the images about to be sent, each with a button that
+// removes it; removed is called after one is.
+func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps map[string]*ui.Bitmap, removed func()) {
+	k, t := a.kit, a.kit.T
 	ui.Row(c).Role(ui.RoleList).Label("Attachments").Wrap().Gap(k.Px(8)).Padding(k.Px(12), k.Px(12), 0, k.Px(12)).Children(func() {
-		for _, img := range cs.images {
+		for _, img := range *images {
 			ui.Box(c).Key(img.ID).Size(k.Px(64), k.Px(64)).Children(func() {
-				if bm := v.image("att:"+img.ID, attachmentImage(img)); bm != nil {
+				if bm := cachedBitmap(bitmaps, "att:"+img.ID, attachmentImage(img)); bm != nil {
 					ui.Image(c, bm).Label(img.Name).Fill().Radius(k.Px(8)).Border(1, t.Border).Fit(ui.Cover)
 				}
 				x := ui.ButtonBase(c).Label("Remove "+img.Name).Size(k.Px(20), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).
@@ -469,14 +474,16 @@ func (v *sessionView) attachmentList(c *ui.Context) {
 				x.Children(func() { k.Icon(c, "x", 12, color) })
 				if x.Clicked() {
 					id := img.ID
-					out := cs.images[:0:0]
-					for _, i := range cs.images {
+					out := (*images)[:0:0]
+					for _, i := range *images {
 						if i.ID != id {
 							out = append(out, i)
 						}
 					}
-					cs.images = out
-					v.saveDraft()
+					*images = out
+					if removed != nil {
+						removed()
+					}
 				}
 			})
 		}
