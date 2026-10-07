@@ -25,7 +25,7 @@ it is released and updates itself: [docs/releases.md](docs/releases.md).
 | `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Scratch Workspaces |
 | `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export                |
 | `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                       |
-| `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints   |
+| `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints    |
 | `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                     |
 | `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                   |
 | `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)                |
