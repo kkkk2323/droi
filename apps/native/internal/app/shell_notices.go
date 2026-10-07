@@ -83,7 +83,11 @@ func (a *App) cornerCard(c *ui.Context, label, icon string, body func(), dismiss
 func (a *App) startingUpView(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	ui.Column(c).Fill().Children(func() {
-		ui.Row(c).Height(k.Px(44)).Shrink(0).DragWindow()
+		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
+			if a.narrow {
+				a.openSessionsButton(c)
+			}
+		})
 		ui.Row(c).Grow(1).Center().Children(func() {
 			ui.Row(c).Role(ui.RoleStatus).Label("Starting").Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
 				wave := float32(pulseWave(c))

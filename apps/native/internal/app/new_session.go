@@ -134,7 +134,11 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 	s.mu.Unlock()
 
 	ui.Column(c).Role(ui.RoleGroup).Label("New session").Fill().Children(func() {
-		ui.Row(c).Height(k.Px(44)).Shrink(0).DragWindow()
+		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
+			if a.narrow {
+				a.openSessionsButton(c)
+			}
+		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().MinHeightPercent(100).Center().Gap(k.Px(20)).PaddingX(k.Px(24)).Children(func() {
 				droiMark(c, k, 36)

@@ -364,14 +364,22 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 	// stands before the title too: room for the traffic lights and the
 	// sidebar toggle while the sidebar is hidden.
 	leading := float32(0)
-	if !prefs.SidebarVisible.Get(a.prefs) {
+	if !a.sidebarShown() {
 		leading = 100
 		if !a.cfg.InsetTop {
 			leading = 32
 		}
 	}
-	ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(12)).Gap(k.Px(4)).DragWindow().Children(func() {
-		ui.Box(c).Width(leading).Shrink(0)
+	padX := k.Px(12)
+	if a.narrow {
+		padX = k.Px(8)
+	}
+	ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(padX).Gap(k.Px(4)).DragWindow().Children(func() {
+		if a.narrow {
+			a.openSessionsButton(c)
+		} else {
+			ui.Box(c).Width(leading).Shrink(0)
+		}
 		ui.Row(c).Grow(1).MinWidth(0).Gap(k.Px(4)).Children(func() {
 			if v.renaming {
 				v.renameField(c, title)

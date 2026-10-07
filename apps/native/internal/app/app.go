@@ -129,7 +129,10 @@ type App struct {
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
-	remote          remoteState
+	// narrow is a window under the web Client's md breakpoint, where the
+	// sidebar is a drawer; drawerOpen whether it is out.
+	narrow, drawerOpen bool
+	remote             remoteState
 	// storeRev counts the Store's changes, for the views to build again.
 	storeRev atomic.Int64
 
@@ -356,6 +359,8 @@ func (a *App) Go(r Route) {
 		a.settings.back = a.route
 	}
 	a.route = r
+	// Picking anything in the drawer is the end of the drawer's job.
+	a.drawerOpen = false
 	if r.Name == "session" {
 		delete(a.unread, r.SessionID)
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
@@ -374,7 +379,12 @@ func (a *App) View(c *ui.Context) {
 	c.SetTheme(a.kit.UITheme(c.Theme()))
 	status, listed, busy, listErr, listDone, more := a.snapshot()
 	a.restoreLast(listed, listDone)
-	if c.Shortcut(ui.Cmd, ui.KeyB) {
+	a.narrow = a.isNarrow(c)
+	// A drawer only exists on narrow screens; widening the window closes it.
+	if !a.narrow {
+		a.drawerOpen = false
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyB) && !a.narrow {
 		prefs.SidebarVisible.Set(a.prefs, !prefs.SidebarVisible.Get(a.prefs))
 	}
 	if a.route.Name == "settings" {
@@ -382,21 +392,25 @@ func (a *App) View(c *ui.Context) {
 		return
 	}
 	t := a.kit.T
-	shown := prefs.SidebarVisible.Get(a.prefs)
+	shown := a.sidebarShown()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
-		w := float32(0)
-		if shown {
-			w = 240
-		}
-		side := ui.Column(c).Width(w).FillHeight().ClipX().Shrink(0).Transition(ui.ElementTransition{Size: true, Duration: 200 * time.Millisecond})
-		if !shown {
-			side.Invisible()
-		}
-		side.Children(func() {
-			ui.Column(c).Width(240).FillHeight().Children(func() {
-				a.sidebarView(c, listed, busy, listErr, listDone, more)
+		if !a.narrow {
+			w := float32(0)
+			if shown {
+				w = 240
+			}
+			side := ui.Column(c).Width(w).FillHeight().ClipX().Shrink(0).Transition(ui.ElementTransition{Size: true, Duration: 200 * time.Millisecond})
+			if !shown {
+				side.Invisible()
+			}
+			side.Children(func() {
+				ui.Column(c).Width(240).FillHeight().Children(func() {
+					a.sidebarView(c, listed, busy, listErr, listDone, more)
+				})
 			})
-		})
+		} else {
+			a.drawer(c, func() { a.sidebarView(c, listed, busy, listErr, listDone, more) })
+		}
 		// The web Client keeps the main panel's left border while the sidebar is hidden.
 		main := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Clip().BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
 		a.mu.Lock()
@@ -420,6 +434,9 @@ func (a *App) View(c *ui.Context) {
 		})
 		a.cornerCards(c)
 	})
+	if a.narrow {
+		return
+	}
 	// The toggle stays put at the window's top left; the sidebar slides under it.
 	ui.Overlay(c, func() {
 		left := float32(8)
