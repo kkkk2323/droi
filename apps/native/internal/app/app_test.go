@@ -40,6 +40,12 @@ type harness struct {
 
 func newHarness(t *testing.T, sc fakedaemon.Scenario, themeName string) *harness {
 	t.Helper()
+	return newHarnessWith(t, sc, themeName, nil)
+}
+
+// newHarnessWith is newHarness with the app's Config changed by with.
+func newHarnessWith(t *testing.T, sc fakedaemon.Scenario, themeName string, with func(*Config)) *harness {
+	t.Helper()
 	theme.RegisterFonts()
 	d := fakedaemon.Start(t, sc)
 	ctl := controller.New(controller.Config{
@@ -53,7 +59,7 @@ func newHarness(t *testing.T, sc fakedaemon.Scenario, themeName string) *harness
 	if themeName != "" {
 		prefs.Theme.Set(p, themeName)
 	}
-	h.a = New(Config{
+	cfg := Config{
 		Controller: ctl,
 		Prefs:      p,
 		Update: func(fn func()) {
@@ -67,7 +73,11 @@ func newHarness(t *testing.T, sc fakedaemon.Scenario, themeName string) *harness
 		// traffic lights over the sidebar, and Finder with no icon to read.
 		InsetTop:   true,
 		OpenInApps: func() []host.OpenInApp { return []host.OpenInApp{{ID: "finder", Label: "Finder"}} },
-	})
+	}
+	if with != nil {
+		with(&cfg)
+	}
+	h.a = New(cfg)
 	h.a.Start()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

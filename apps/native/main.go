@@ -87,7 +87,8 @@ func main() {
 		Notify: func(n app.Alert) {
 			_ = mygo.NewNotification(mygo.NotificationOptions{ID: n.SessionID, Title: n.Title, Body: n.Body, Silent: true}).Show()
 		},
-		Focused: func() bool { return win != nil && win.IsFocused() },
+		Focused:   func() bool { return win != nil && win.IsFocused() },
+		ReadImage: mygo.Clipboard.ReadImage,
 	})
 	mygo.App.OnNotificationClick(func(id string) {
 		if win == nil {
@@ -101,7 +102,11 @@ func main() {
 	h.OnChange(func() { update(func() {}) })
 
 	mygo.App.WhenReady(func() {
-		mygo.App.SetMenu(menu())
+		mygo.App.SetMenu(menu(func(step int) {
+			if win != nil {
+				win.Update(func() { a.Zoom(step) })
+			}
+		}))
 		win = mygo.NewWindow(mygo.WindowOptions{
 			Title:     "Droi",
 			Width:     1280,
@@ -144,13 +149,22 @@ func main() {
 	}
 }
 
-// menu is the Desktop Shell's: the app, File, Edit, View and Window menus.
-func menu() *mygo.Menu {
+// menu is the Desktop Shell's: the app, File, Edit, View and Window menus,
+// with zoom on ⌘= / ⌘- / ⌘0 as people press them.
+func menu(zoom func(step int)) *mygo.Menu {
+	item := func(label, acc string, step int, hidden bool) *mygo.MenuItem {
+		return &mygo.MenuItem{Label: label, Accelerator: acc, Hidden: hidden, Click: func(*mygo.MenuItem, *mygo.Window) { zoom(step) }}
+	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Role: mygo.RoleFileMenu},
 		{Role: mygo.RoleEditMenu},
 		{Label: "View", Submenu: []*mygo.MenuItem{
+			item("Actual Size", "CmdOrCtrl+0", 0, false),
+			item("Zoom In", "CmdOrCtrl+=", 1, false),
+			item("Zoom In", "CmdOrCtrl+Plus", 1, true),
+			item("Zoom Out", "CmdOrCtrl+-", -1, false),
+			mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen},
 		}},
 		{Role: mygo.RoleWindowMenu},

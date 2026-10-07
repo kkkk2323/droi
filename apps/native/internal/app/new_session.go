@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/google/uuid"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
@@ -305,6 +306,18 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, creating bool,
 					MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!enabled).AutoFocus()
 			})
 			in.HandleInput(func(ev ui.InputEvent) bool {
+				if isPaste(ev) && a.cfg.ReadImage != nil {
+					if data := a.cfg.ReadImage(); len(data) > 0 {
+						img, ok, err := attachments.FromBytes(data, "Pasted image.png", uuid.NewString())
+						switch {
+						case err != nil:
+							s.err = err.Error()
+						case ok:
+							s.images = append(s.images, img)
+						}
+						return ok || err != nil
+					}
+				}
 				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !in.Composing() {
 					start()
 					return true

@@ -24,9 +24,9 @@ type Kit struct {
 }
 
 // New makes the kit of a theme, font choice and text size.
-func New(name theme.Name, font theme.FontChoice, size theme.TextSize) *Kit {
+func New(name theme.Name, font theme.FontChoice, size theme.TextSize, zoom float64) *Kit {
 	sans, mono := theme.Families(font)
-	return &Kit{T: theme.Of(name), Sans: sans, Mono: mono, Rem: 16 * size.Scale()}
+	return &Kit{T: theme.Of(name), Sans: sans, Mono: mono, Rem: 16 * size.Scale() * float32(zoom)}
 }
 
 // Px scales a CSS length of the default text size, in px, to this kit's

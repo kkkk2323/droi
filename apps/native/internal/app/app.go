@@ -76,6 +76,8 @@ type Config struct {
 	Notify func(Alert)
 	// Focused reports whether the window has the focus.
 	Focused func() bool
+	// ReadImage is the clipboard's image as PNG, nil without one.
+	ReadImage func() []byte
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -143,7 +145,7 @@ func New(cfg Config) *App {
 }
 
 func (a *App) applyPrefs() {
-	a.kit = kit.New(theme.Parse(prefs.Theme.Get(a.prefs)), theme.FontChoice(prefs.Font.Get(a.prefs)), theme.TextSize(prefs.TextSize.Get(a.prefs)))
+	a.kit = kit.New(theme.Parse(prefs.Theme.Get(a.prefs)), theme.FontChoice(prefs.Font.Get(a.prefs)), theme.TextSize(prefs.TextSize.Get(a.prefs)), prefs.Zoom.Get(a.prefs))
 }
 
 // Start subscribes to the Controller and reads the Session list once

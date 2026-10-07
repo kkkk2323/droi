@@ -25,11 +25,16 @@ func ReadFile(path, id string) (img Image, ok bool, err error) {
 	if err != nil {
 		return Image{}, false, err
 	}
+	return FromBytes(data, filepath.Base(path), id)
+}
+
+// FromBytes is ReadFile for an image already in memory, such as one pasted
+// from the clipboard: ok is false when data is no image.
+func FromBytes(data []byte, name, id string) (img Image, ok bool, err error) {
 	mediaType := http.DetectContentType(data)
 	if !IsImageMediaType(mediaType) {
 		return Image{}, false, nil
 	}
-	name := filepath.Base(path)
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
 		return Image{}, false, nil

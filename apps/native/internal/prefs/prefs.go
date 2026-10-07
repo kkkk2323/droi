@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 )
 
@@ -183,6 +184,27 @@ func (p List) Toggle(s *Store, entry string) {
 	p.Set(s, append(cur, entry))
 }
 
+// Number is a number stored as its decimal text; Fallback when unset or
+// unreadable.
+type Number struct {
+	Key      string
+	Fallback float64
+}
+
+func (p Number) Get(s *Store) float64 {
+	v, ok := s.Get(p.Key)
+	if !ok {
+		return p.Fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return p.Fallback
+	}
+	return f
+}
+
+func (p Number) Set(s *Store, v float64) { s.Set(p.Key, strconv.FormatFloat(v, 'g', -1, 64)) }
+
 // Map is a map of numbers stored as JSON, as sessionsFirstSeen is.
 type Map struct{ Key string }
 
@@ -201,9 +223,11 @@ func (p Map) Set(s *Store, v map[string]float64) {
 
 // The preferences, under the web Client's keys.
 var (
-	Theme             = String{Key: "droi.theme", Fallback: "light"}
-	Font              = String{Key: "droi.font", Fallback: "geist"}
-	TextSize          = String{Key: "droi.textSize", Fallback: "default"}
+	Theme    = String{Key: "droi.theme", Fallback: "light"}
+	Font     = String{Key: "droi.font", Fallback: "geist"}
+	TextSize = String{Key: "droi.textSize", Fallback: "default"}
+	// Zoom is ⌘= and ⌘-, kept as Chromium keeps a page's zoom.
+	Zoom              = Number{Key: "droi.zoom", Fallback: 1}
 	SidebarVisible    = Bool{Key: "droi.sidebar", Fallback: true}
 	OpenInApp         = String{Key: "droi.openInApp"}
 	ShowArchived      = Bool{Key: "droi.showArchived"}

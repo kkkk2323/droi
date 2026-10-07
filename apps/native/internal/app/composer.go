@@ -293,6 +293,9 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					v.focused = true
 				}
 				in.HandleInput(func(ev ui.InputEvent) bool {
+					if isPaste(ev) {
+						return v.pasteImage()
+					}
 					if ev.Kind != ui.InputKeyDown {
 						return false
 					}
@@ -379,6 +382,32 @@ func (v *sessionView) saveDraft() {
 }
 
 // addFiles attaches the images of files; other files go in as their paths.
+// isPaste is ⌘V, which a text area takes as a key, or Paste of the Edit
+// menu, which comes as a command.
+func isPaste(ev ui.InputEvent) bool {
+	return ev.Kind == ui.InputCommand && ev.Text == "paste" || ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyV && ev.Mods == ui.Cmd
+}
+
+// pasteImage attaches the clipboard's image, as the web Client takes one
+// pasted; with none it lets the text area paste the text.
+func (v *sessionView) pasteImage() bool {
+	if v.a.cfg.ReadImage == nil {
+		return false
+	}
+	data := v.a.cfg.ReadImage()
+	if len(data) == 0 {
+		return false
+	}
+	img, ok, err := attachments.FromBytes(data, "Pasted image.png", uuid.NewString())
+	switch {
+	case err != nil:
+		v.composer.err = err.Error()
+	case ok:
+		v.composer.images = append(v.composer.images, img)
+	}
+	return ok || err != nil
+}
+
 func (v *sessionView) addFiles(paths []string) {
 	cs := &v.composer
 	var others []string
