@@ -13,8 +13,9 @@ Windows) and the Phone App (`apps/mobile`), with what they use: `packages/droid-
 `packages/daemon-layer`, `tests/fake-daemon` and `tests/mobile`.
 
 The Electron Desktop Shell and the web Client (`apps/desktop`, except its `package.json`
-version, which stays the release version) and their suites (`tests/web`, `tests/electron`)
-are deprecated. Do not add features to them, fix them or run their suites. They stay in the
+version, which stays the release version) and their suites (`tests/web`, `tests/electron`,
+`tests/live`, the release's `build-asar` job and the PR workflow's `smoke` job) are deprecated
+(`apps/desktop/README.md`). Do not add features to them, fix them or run their suites. They stay in the
 repository until they are removed, so a change to shared code must still pass `pnpm check`
 and `pnpm test` there; keep such fixes to what makes them compile.
 
@@ -38,9 +39,9 @@ packages/
 tests/          # @droi/tests: the Playwright suites, one config per folder
 ├── fake-daemon/   # The Fake Daemon: the Phone App's suite and the native app's view tests use it
 ├── mobile/        # The Phone App's web build against the Fake Daemon
-├── live/          # A few cases against a real Daemon (a reply, and Memory)
 ├── web/           # Deprecated: the web Client in a browser
-└── electron/      # Deprecated: smoke suite against the Desktop Shell
+├── electron/      # Deprecated: smoke suite against the Desktop Shell
+└── live/          # Deprecated: the web Client and the Electron Gateway against a real Daemon
 scripts/        # install:phone (install:mac builds the deprecated Electron app)
 docs/           # ADRs, agent docs, the README screenshot
 ```
@@ -61,14 +62,13 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 | `pnpm test` | Run vitest once |
 | `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
 | `pnpm install:phone` | Build a signed Release of the Phone App and install it on the connected iPhone |
-| `pnpm test:live` | One case against a real Daemon; skips unless `FACTORY_API_KEY` is set |
 | `pnpm typecheck` | TypeScript validation (root + Desktop Shell node/web + Phone App + tests) |
 | `pnpm lint` / `pnpm lint:fix` | oxlint |
 | `pnpm format` / `pnpm format:check` | oxfmt |
 | `pnpm check` | format check + lint + typecheck |
 
 Deprecated, for the Electron app only: `pnpm dev`, `pnpm dev:client`, `pnpm build`,
-`pnpm build:mac`, `pnpm install:mac`, `pnpm test:e2e`, `pnpm test:smoke`.
+`pnpm build:mac`, `pnpm install:mac`, `pnpm test:e2e`, `pnpm test:smoke`, `pnpm test:live`.
 
 ## Validation Workflow
 
@@ -105,11 +105,9 @@ installed types before using an Expo module, and add Expo packages with
   draws the native app against the Fake Daemon into `docs/screenshot.png` (skipped in a normal run)
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
-- Live test through the local droid-proxy (`dp`) with a cheap model:
-  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') pnpm test:live`
-  (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration).
-  The native app's live tests take the same variables:
-  `go test ./apps/native/internal/host ./apps/native/internal/gateway -run Live -v`
+- Live tests against a real Daemon, through the local droid-proxy (`dp`) with a cheap model:
+  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/internal/host ./apps/native/internal/gateway -run Live -v`
+  (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)
 
 ## Factory login
 

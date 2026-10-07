@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const clientPort = 5175
 
+// Deprecated, with the Electron app and web Client it tests (apps/desktop/README.md).
 // Layer 3 of ADR 0002: the Client in Chromium against a real Daemon through the
 // real Gateway. Skips unless FACTORY_API_KEY is set.
 export default defineConfig({

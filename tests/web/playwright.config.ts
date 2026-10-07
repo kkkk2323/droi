@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const clientPort = 5173
 
+// Deprecated, with the Electron app and web Client it tests (apps/desktop/README.md).
 // Layer 1 of ADR 0002: the Client runs in a real browser against a Fake Daemon.
 export default defineConfig({
   testDir: '.',

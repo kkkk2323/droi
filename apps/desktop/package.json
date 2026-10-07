@@ -2,7 +2,7 @@
   "name": "droi",
   "version": "1.36.0",
   "private": true,
-  "description": "The Desktop Shell and web Client: Droi's front end for the Droid Daemon",
+  "description": "Deprecated: the Electron Desktop Shell and web Client, replaced by apps/native. Only its version is still used, as the release version.",
   "license": "MIT",
   "author": "kkkk2323",
   "type": "module",

@@ -21,7 +21,7 @@ it is released and updates itself: [docs/releases.md](docs/releases.md).
 | `main.go`                                                       | the app: window, menus, the Host                                                                        |
 | `assets/`                                                       | the vendored Geist fonts, embedded                                                                      |
 | `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                  |
-| `internal/icons/`                                               | the Lucide icons the web Client imports (`scripts/gen-icons.mjs`)                                       |
+| `internal/icons/`                                               | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                                |
 | `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Scratch Workspaces |
 | `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export                |
 | `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                       |
@@ -44,8 +44,8 @@ it is released and updates itself: [docs/releases.md](docs/releases.md).
 go run ./apps/native                 # run it (needs droid on PATH)
 go test ./apps/native/...            # unit tests, view tests, Fake Daemon tests
 go tool -modfile=apps/native/go.mod mygo build apps/native   # .app and .dmg
-DROI_NATIVE_REF=1 pnpm test:e2e --project=desktop native-reference.spec.ts   # re-record the reference
-node apps/native/scripts/gen-icons.mjs   # after the web Client imports a new icon
+DROI_NATIVE_REF=1 pnpm test:e2e --project=desktop native-reference.spec.ts   # re-record the reference (deprecated web suite)
+node apps/native/scripts/gen-icons.mjs [icon-name ...]   # add Lucide icons, or rewrite those in internal/icons/svg
 ```
 
 ## Status
