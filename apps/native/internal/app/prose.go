@@ -259,8 +259,15 @@ func (p prose) table(c *ui.Context, n *md.Node) {
 			p.inlines(c, in, 14, 20, w)
 		})
 	}
-	ui.ScrollHorizontal(c).Radius(k.Px(8)).Border(1, t.Border).Clip().Children(func() {
-		ui.Grid(c).Columns(cols).Children(func() {
+	// Columns as wide as their content within the reading column, as a
+	// table with auto layout: long cells wrap instead of running off the
+	// right edge.
+	tracks := make([]ui.Track, cols)
+	for i := range tracks {
+		tracks[i] = ui.FitContent()
+	}
+	ui.Column(c).FillWidth().Radius(k.Px(8)).Border(1, t.Border).Clip().Children(func() {
+		ui.Grid(c).FillWidth().ColumnTracks(tracks...).Children(func() {
 			for i := range cols {
 				var in []md.Inline
 				if i < len(n.Header) {
