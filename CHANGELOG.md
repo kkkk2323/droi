@@ -1,3 +1,10 @@
+## 1.34.4 - 2026-10-07
+
+### Fixed
+
+- You can select text in Droid's replies and copy it with ⌘C or Edit → Copy. Before, dragging over a paragraph looked like it did nothing, and Copy copied nothing. A selection stays inside one paragraph, list item or code block.
+- Droi uses MyGo 0.2.16, which fixes a crash when the window enters full screen and uses less memory for pages you have left.
+
 ## 1.34.3 - 2026-10-07
 
 ### Fixed
