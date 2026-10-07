@@ -75,6 +75,8 @@ export interface ScenarioInput {
   contextUsedTokens?: number
   /** Overrides for the Session defaults the Daemon reports (`management`, say). */
   defaults?: Record<string, unknown>
+  /** The models the Daemon offers, in place of AVAILABLE_MODELS. */
+  models?: Array<Record<string, unknown>>
   /** Files on the computer, by absolute path, that get_workspace_file_content serves. */
   files?: Record<string, { mimeType: string; base64: string }>
   /** Sessions open in the Daemon (by any Client) with their working state, for list_opened_sessions. */
@@ -100,6 +102,7 @@ export function createScenario(input: ScenarioInput): Scenario {
   const files = structuredClone(input.files ?? {})
   // Like ~/.factory/settings.json behind the real Daemon: one set per Fake Daemon.
   let defaults: Record<string, unknown> = { ...sessionDefaults(), ...input.defaults }
+  const models = input.models ?? AVAILABLE_MODELS
   const handlers: Record<string, MethodHandler> = {
     // Newest first, `limit` at a time; `endBefore` (epoch seconds) is the cursor
     // the Daemon hands back as `nextCursor` to fetch the page before it.
@@ -199,7 +202,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       context.daemon.notifyArchiveState(found.sessionId, found.archivedAt)
       return { success: true, archivedAt: found.archivedAt }
     },
-    'daemon.get_default_settings': () => ({ ...defaults, availableModels: AVAILABLE_MODELS }),
+    'daemon.get_default_settings': () => ({ ...defaults, availableModels: models }),
     // The real Daemon merges the patch, drops keys sent as null, and replaces
     // subagentModelSettings as a whole.
     'daemon.update_session_defaults': (params) => {
@@ -209,7 +212,7 @@ export function createScenario(input: ScenarioInput): Scenario {
         else next[key] = value
       }
       defaults = next
-      return { success: true, defaults: { ...defaults, availableModels: AVAILABLE_MODELS } }
+      return { success: true, defaults: { ...defaults, availableModels: models } }
     },
     'daemon.get_context_breakdown': (params) => {
       const found = mustFind(sessions, params['sessionId'])
@@ -314,7 +317,7 @@ export function createScenario(input: ScenarioInput): Scenario {
             ? { toolExecutionMode: params['toolExecutionMode'] }
             : {}),
         },
-        availableModels: AVAILABLE_MODELS,
+        availableModels: models,
       }
     },
     // Like the real Daemon, closing a Session nobody wrote to deletes it.
@@ -389,6 +392,7 @@ export function createScenario(input: ScenarioInput): Scenario {
       )
       return {
         ...loadSessionResult(found, params['messageLimit']),
+        availableModels: models,
         ...(found.subagent
           ? {
               callingSessionId: found.subagent.callingSessionId,
