@@ -12,6 +12,8 @@ import {
   todoTurn,
   structuredTurn,
   interruptHandler,
+  resolveQueuedHandler,
+  withQueue,
 } from 'DROI/tests/fake-daemon/turns'
 
 type MessageSpec = {
@@ -76,8 +78,9 @@ const daemon = await FakeDaemon.start({
     ),
   ),
   handlers: {
-    ...(handler ? { 'daemon.add_user_message': handler } : {}),
+    ...(handler ? { 'daemon.add_user_message': withQueue(handler) } : {}),
     'daemon.interrupt_session': interruptHandler,
+    'daemon.resolve_queued_user_message': resolveQueuedHandler,
   },
   validDirectories: spec.validDirectories,
 })
