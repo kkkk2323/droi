@@ -37,6 +37,12 @@ const used = new Set([
   'ChevronDown',
   'Download',
   'Copy',
+  // The native Automations page, which the web Client does not have.
+  'CalendarClock',
+  'CirclePause',
+  'Ellipsis',
+  'Play',
+  'Trash2',
 ])
 for (const file of sources(renderer)) {
   for (const m of readFileSync(file, 'utf8').matchAll(

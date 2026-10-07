@@ -33,7 +33,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	k, t := a.kit, a.kit.T
 	pins := sessions.Pins{Workspaces: set(prefs.PinnedWorkspaces.Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
 	order := a.sortOrder(listed)
-	groups := sessions.GroupByWorkspace(sessions.FoldContinued(sessions.MainSessions(listed)), pins, order, true)
+	groups := sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
 	busy := a.activity(reported)
 	selected := ""
 	if a.route.Name == "session" {
@@ -43,8 +43,11 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	ui.Column(c).Role(ui.RoleGroup).Label("Sessions").Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
 		ui.Box(c).Height(44).Shrink(0).DragWindow()
 		ui.Column(c).Gap(k.Px(4)).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			if a.sidebarRow(c, "plus", "New session").Clicked() {
+			if a.sidebarRow(c, "plus", "New session", false).Clicked() {
 				a.Go(Route{Name: "new"})
+			}
+			if a.sidebarRow(c, "clock", "Automations", a.route.Name == "automations").Clicked() {
+				a.Go(Route{Name: "automations"})
 			}
 			ui.Row(c).Gap(k.Px(4)).Children(func() {
 				a.searchBox(c)
@@ -171,10 +174,14 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 }
 
 // sidebarRow is a SidebarRow: an icon and a label, h-8, rounded-lg.
-func (a *App) sidebarRow(c *ui.Context, icon, label string) *ui.Element {
+func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool) *ui.Element {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Height(k.Px(32)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
-	if b.Hovered() {
+	b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
+	kit.Selected(b, selected)
+	switch {
+	case selected:
+		b.Background(t.SidebarAccent)
+	case b.Hovered():
 		b.Background(t.SidebarAccent.Alpha(0.6))
 	}
 	b.Children(func() {

@@ -121,6 +121,8 @@ func main() {
 		Relaunch:  mygo.App.Relaunch,
 		Remote:    remote,
 		Memory:    mem,
+
+		FactoryAppRunning: host.FactoryAppRunning,
 	})
 	if updater != nil {
 		var waiting sync.Once

@@ -125,6 +125,14 @@ _Avoid_: plugin, extension, prompt template
 A tool server the Daemon connects a Session to, from the user's `~/.factory/mcp.json`, the Workspace's `.factory/mcp.json` or the organization's policy. The Daemon reports each one's connection and tools, switches them, adds and removes the user's own, and runs a sign-in whose page a Client opens and whose callback the Daemon takes on the computer.
 _Avoid_: connector (Factory's hosted integrations are something else), tool, integration
 
+**Automation**:
+A prompt the Daemon runs on a schedule on its computer, kept in `~/.factory/automations/<id>/` and shared with the droid CLI and the Factory App. Droi lists, runs, pauses, edits and creates the local ones; the Factory App's cloud kinds (Slack, webhook, a droid computer) are not Droi's.
+_Avoid_: cron, job, scheduled task, workflow
+
+**Automation Run**:
+One run of an Automation: a Session the Daemon starts with the `automation` tag, without asking for permission, and closes once idle. Clients list it on the Automations page, not with the other Sessions.
+_Avoid_: job run, execution, automation session
+
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo
