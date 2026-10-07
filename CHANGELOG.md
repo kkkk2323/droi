@@ -13,6 +13,7 @@
 ### Fixed
 
 - After you sign in or add an API key, the window connects to the Daemon. Before, it stayed on “Starting the Daemon” until Droi restarted.
+- The Daemon's notices show in the transcript as Droid's reply, for example “You've reached your 5-hour Droid Core usage limit” or a switch to another model. Before, a turn that ended on such a notice showed nothing, and a reopened Session showed the notice as a message from you.
 
 ## 1.34.6 - 2026-10-07
 

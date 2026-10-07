@@ -65,7 +65,14 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
   const watching = new Map<string, ToolCall>()
   const entries: TranscriptEntry[] = []
   for (const message of messages) {
-    if (message.role !== 'user' && message.role !== 'assistant') continue
+    // A user-only message is the Daemon telling the user something (a usage
+    // limit, a model swap): a system message live, a user message once
+    // loaded. It reads as the Droid's, as in Factory's own app.
+    const role =
+      message.visibility === 'user_only' && (message.role === 'system' || message.role === 'user')
+        ? 'assistant'
+        : message.role
+    if (role !== 'user' && role !== 'assistant') continue
     if (message.isUserVisible === false) continue
     const blocks: TranscriptBlock[] = []
     message.content.forEach((block, index) => {
@@ -121,7 +128,7 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
     const previous = entries[entries.length - 1]
     // One turn arrives as several assistant messages (reasoning, tool calls,
     // text); shown as one entry so nothing splits it. Tool runs join up too.
-    if (message.role === 'assistant' && previous?.role === 'assistant') {
+    if (role === 'assistant' && previous?.role === 'assistant') {
       for (const block of blocks) {
         const last = previous.blocks[previous.blocks.length - 1]
         if (block.kind === 'tools' && last?.kind === 'tools') last.calls.push(...block.calls)
@@ -133,7 +140,7 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
     }
     entries.push({
       id: message.id,
-      role: message.role,
+      role,
       blocks,
       createdAt: message.createdAt,
       isError: message.isError === true,

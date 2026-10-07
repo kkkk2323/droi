@@ -163,6 +163,30 @@ func TestMergesAndSkips(t *testing.T) {
 	eq(t, roles(es), []string{"assistant"})
 }
 
+func TestTheDaemonsNoticesShowOnTheDroidsSide(t *testing.T) {
+	userOnly := func(m *protocol.FactoryDroidMessage) { m.Visibility = protocol.MessageVisibilityUserOnly }
+	notice := `[{"type":"text","text":"You've reached your usage limit."}]`
+	// Live, the Daemon sends a notice as a system message; a loaded Session
+	// has it as a user message. Both are only for the user to read.
+	for _, role := range []string{"system", "user"} {
+		es := Build([]protocol.FactoryDroidMessage{
+			msg("user", `[{"type":"text","text":"hi"}]`),
+			msg("user", `[]`, userOnly, func(m *protocol.FactoryDroidMessage) { m.HookEventName = "UserPromptSubmit" }),
+			msg(role, notice, userOnly),
+			msg(role, notice, userOnly),
+		})
+		eq(t, roles(es), []string{"user", "assistant"})
+		eq(t, kinds(es[1]), []any{"text", "text"})
+		eq(t, es[1].Blocks[0].Text, "You've reached your usage limit.")
+		if _, ok := TurnEnds(es, false)[es[1].ID]; !ok {
+			t.Fatalf("%s notice: the turn does not end", role)
+		}
+	}
+
+	es := Build([]protocol.FactoryDroidMessage{msg("system", notice)})
+	eq(t, len(es), 0)
+}
+
 func TestResultTextAndImages(t *testing.T) {
 	r := &protocol.ToolResult{Content: json.RawMessage(`[{"type":"text","text":"Image file: shot.png"},{"type":"image","source":{"type":"base64","mediaType":"image/png","data":"AAAA"}},{"type":"image","source":{"type":"url","url":"https://example.com/a.png"}}]`)}
 	eq(t, ResultText(r), "Image file: shot.png")

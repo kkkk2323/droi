@@ -11,7 +11,7 @@ import {
 } from './transcript'
 
 const message = (
-  role: 'user' | 'assistant' | 'tool',
+  role: 'user' | 'assistant' | 'tool' | 'system',
   content: unknown[],
   extra: Partial<FactoryDroidMessage> = {},
 ): FactoryDroidMessage =>
@@ -182,6 +182,28 @@ describe('buildTranscript', () => {
       message('user', [], { hookEventName: 'UserPromptSubmit', hookStatus: 'completed' } as never),
     ])
     expect(entries).toEqual([])
+  })
+
+  test("the Daemon's user-only notices read as the Droid's, live (system) or loaded (user)", () => {
+    for (const role of ['system', 'user'] as const) {
+      const notice = () =>
+        message(role, [{ type: 'text', text: "You've reached your usage limit." }], {
+          visibility: 'user_only',
+        } as never)
+      const entries = buildTranscript([
+        message('user', [{ type: 'text', text: 'hi' }]),
+        message('user', [], {
+          hookEventName: 'UserPromptSubmit',
+          visibility: 'user_only',
+        } as never),
+        notice(),
+        notice(),
+      ])
+      expect(entries.map((e) => e.role)).toEqual(['user', 'assistant'])
+      expect(entries[1]!.blocks.map((b) => b.kind)).toEqual(['text', 'text'])
+      expect(turnEnds(entries, false).has(entries[1]!.id)).toBe(true)
+    }
+    expect(buildTranscript([message('system', [{ type: 'text', text: 'x' }])])).toEqual([])
   })
 
   test("a hook record between two assistant messages does not split the assistant's entry", () => {

@@ -139,7 +139,14 @@ func Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	watching := map[string]*ToolCall{}
 	var entries []*Entry
 	for _, m := range messages {
-		if m.Role != protocol.MessageRoleUser && m.Role != protocol.MessageRoleAssistant {
+		role := m.Role
+		// A user-only message is the Daemon telling the user something (a
+		// usage limit, a model swap): a system message live, a user message
+		// once loaded. It reads as the Droid's, as in Factory's own app.
+		if m.Visibility == protocol.MessageVisibilityUserOnly && (role == protocol.MessageRoleSystem || role == protocol.MessageRoleUser) {
+			role = protocol.MessageRoleAssistant
+		}
+		if role != protocol.MessageRoleUser && role != protocol.MessageRoleAssistant {
 			continue
 		}
 		if m.IsUserVisible != nil && !*m.IsUserVisible {
@@ -195,7 +202,7 @@ func Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			continue
 		}
 		isError := m.IsError != nil && *m.IsError
-		user := m.Role == protocol.MessageRoleUser
+		user := role == protocol.MessageRoleUser
 		// One turn arrives as several assistant messages; shown as one entry
 		// so nothing splits it. Tool runs join up too.
 		if n := len(entries); !user && n > 0 && !entries[n-1].User {
