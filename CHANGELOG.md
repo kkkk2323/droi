@@ -1,3 +1,9 @@
+## 1.38.1 - 2026-10-08
+
+### Fixed
+
+- Droi no longer keeps every opened Session in memory until it quits: only the last 3 Sessions opened keep their transcript, parsed Markdown and decoded pictures, and a picture not drawn for a while is decoded again when it comes back. In a test, opening 6 Sessions with a screenshot each now stays at about 47 MB instead of growing to 109 MB.
+
 ## 1.38.0 - 2026-10-08
 
 ### Added
