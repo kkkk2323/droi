@@ -446,6 +446,24 @@ func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
 	}
 }
 
+// A read of the Session list that answers after a newer one leaves the
+// newer list in place.
+func TestAnOlderListReadDoesNotOverwriteANewerOne(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	older, newer := h.a.startList(), h.a.startList()
+	list := func(title string) *protocol.ListAvailableSessionsResult {
+		return &protocol.ListAvailableSessionsResult{Sessions: []protocol.DaemonAvailableSessionInfo{{SessionID: title, Title: title, Cwd: "/Users/dev/acme-web"}}}
+	}
+	h.a.setList(newer, list("Newer"), nil)
+	h.a.setList(older, list("Older"), nil)
+	h.a.mu.Lock()
+	defer h.a.mu.Unlock()
+	if len(h.a.listed) != 1 || h.a.listed[0].Title != "Newer" {
+		t.Fatalf("listed %+v", h.a.listed)
+	}
+}
+
 // Another Session's events leave the open transcript as it was built: a
 // Session working in the background would otherwise build it again on
 // every event.

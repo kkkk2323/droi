@@ -113,8 +113,11 @@ type App struct {
 	listErr  string
 	listDone bool
 	more     *float64
-	busy     map[string]string // working states the Daemon reported
-	dirty    bool
+	// listGen counts the reads of the first page, so that a slower, older
+	// read does not overwrite a newer one's list.
+	listGen uint64
+	busy    map[string]string // working states the Daemon reported
+	dirty   bool
 	// turnAt is when each working Session's turn began, in Unix seconds:
 	// it keeps the Session's place in the list until the turn ends.
 	turnAt map[string]int64
@@ -324,11 +327,28 @@ func (a *App) refreshList() {
 	if err != nil {
 		return
 	}
+	gen := a.startList()
 	limit := float64(sessionPage)
 	show := prefs.ShowArchived.Get(a.prefs)
 	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show})
+	a.setList(gen, res, err)
+}
+
+// startList counts a read of the first page, which setList then takes.
+func (a *App) startList() uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.listGen++
+	return a.listGen
+}
+
+// setList takes the first page of read gen, unless a newer read started.
+func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if gen != a.listGen {
+		return
+	}
 	a.listDone = true
 	if err != nil {
 		a.listErr = err.Error()
@@ -347,7 +367,7 @@ func (a *App) refreshList() {
 // loadOlder reads the next page of Sessions.
 func (a *App) loadOlder() {
 	a.mu.Lock()
-	cursor := a.more
+	cursor, gen := a.more, a.listGen
 	a.mu.Unlock()
 	if cursor == nil {
 		return
@@ -364,6 +384,10 @@ func (a *App) loadOlder() {
 	}
 	older := summariesOf(res.Sessions)
 	a.mu.Lock()
+	if gen != a.listGen {
+		a.mu.Unlock()
+		return // the page follows a list read again since
+	}
 	a.holdTurns(older)
 	a.listed = append(a.listed, older...)
 	a.more = nil
