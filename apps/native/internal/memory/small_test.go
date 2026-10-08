@@ -201,7 +201,7 @@ func TestSessionsDirFollowsFactoryHomeOverride(t *testing.T) {
 		}
 		return "", false
 	}
-	eq(t, SessionsDir(env), "/tmp/f/sessions")
+	eq(t, SessionsDir(env), filepath.Join("/tmp/f", ".factory", "sessions"))
 }
 
 func TestIsMemorySessionTranscriptReadsTheTag(t *testing.T) {

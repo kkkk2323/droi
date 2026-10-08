@@ -415,63 +415,10 @@ func (a *App) hostUpdate(restart bool, fn func(*host.Settings)) {
 }
 
 func (a *App) accountTab(c *ui.Context) {
-	h := a.cfg.Host
-	k, t := a.kit, a.kit.T
-	login := h.LoginState()
+	login := a.cfg.Host.LoginState()
 	a.openSignInPage(c, login)
-	a.settingGroup(c, L("Sign-in"), "",
-		func() {
-			switch login.Status {
-			case host.SignedIn:
-				title := L("Signed in with Factory")
-				who := ""
-				if login.Account != nil {
-					who = login.Account.UserID
-					if login.Account.Email != nil {
-						who = *login.Account.Email
-					}
-					if login.Account.OrgID != nil {
-						who += " · " + *login.Account.OrgID
-					}
-				}
-				a.settingRow(c, title, who, func() {
-					if a.smallButton(c, kit.Outline, L("Sign out"), "log-out", false).Clicked() {
-						if err := h.SignOut(); err != nil {
-							a.settings.err = err.Error()
-						}
-					}
-				}, func() {
-					k.Text(c, L("Shared with the droid CLI on this computer (%s), the login the Daemon runs as. Signing out signs the CLI out too.", h.FactoryHome()), 14, 20).TextColor(t.MutedForeground)
-				})
-			case host.Pending:
-				a.settingRow(c, L("Finish signing in"), L("Your browser opened Factory. Enter this code there if it asks for one."), func() {
-					if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
-						h.Auth.CancelSignIn()
-					}
-				}, func() {
-					if login.Pending == nil {
-						return
-					}
-					ui.Row(c).Wrap().Gap(k.Px(12)).Children(func() {
-						k.Text(c, login.Pending.UserCode, 16, 24).Font(k.Mono).LetterSpacing(k.Px(3.2)).Label(L("Sign-in code")).
-							Padding(k.Px(6), k.Px(12)).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background)
-						ui.Link(c, L("Open the sign-in page again"), login.Pending.VerificationURIComplete).FontSize(k.Px(14)).Underline()
-					})
-				})
-			default:
-				a.settingRow(c, L("Sign in with Factory"), L("Uses the same login as the droid CLI. Droi then needs no API key; sessions and settings stay on this computer."), func() {
-					if a.smallButton(c, kit.Primary, L("Sign in"), "", false).Clicked() {
-						a.startSignIn()
-					}
-				}, func() {
-					if login.Error != "" {
-						k.Text(c, login.Error, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
-					}
-				})
-			}
-		},
-		func() { a.apiKeyRow(c, login) },
-	)
+	a.accountsGroup(c, login)
+	a.settingGroup(c, "", "", func() { a.apiKeyRow(c, login) })
 }
 
 func (a *App) apiKeyRow(c *ui.Context, login host.LoginState) {

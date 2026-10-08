@@ -29,8 +29,9 @@ type Account struct {
 // The token is never refreshed here: the CLI rotates refresh tokens, so
 // doing it from a second process would log the CLI out.
 type CliLogin struct {
-	AccessToken string
-	Account     Account
+	AccessToken  string
+	RefreshToken string
+	Account      Account
 }
 
 const (
@@ -260,8 +261,9 @@ func parseCredentials(text, factoryHome string) *CliLogin {
 		return nil
 	}
 	var v struct {
-		AccessToken string  `json:"access_token"`
-		ActiveOrgID *string `json:"active_organization_id"`
+		AccessToken  string  `json:"access_token"`
+		RefreshToken string  `json:"refresh_token"`
+		ActiveOrgID  *string `json:"active_organization_id"`
 	}
 	if json.Unmarshal([]byte(text), &v) != nil || v.AccessToken == "" {
 		return nil
@@ -282,7 +284,7 @@ func parseCredentials(text, factoryHome string) *CliLogin {
 			acc.OrgID = reg.OrgID
 		}
 	}
-	return &CliLogin{AccessToken: v.AccessToken, Account: acc}
+	return &CliLogin{AccessToken: v.AccessToken, RefreshToken: v.RefreshToken, Account: acc}
 }
 
 // Registration is who the CLI registered this computer as.

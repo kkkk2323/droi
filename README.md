@@ -57,6 +57,8 @@ On Windows, run `Droi Setup <version>.exe` from the same Release. It installs Dr
 
 When Droi opens, sign in with Factory (the same device-code login as `/login` in `droid`), or paste a Factory API key. Droi gives the login to the `droid` CLI, so the two share it; if `droid` is already signed in, Droi opens straight away. Under **Settings** → **Advanced** you can set a Factory API base URL (a local `droid-proxy`, say). `FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
 
+To use more than one Factory account, add them under **Settings** → **Account**. Each keeps its own login and shows its usage; all of them share your skills, droids, MCP servers, settings and sessions. Switching restarts the Daemon.
+
 Droi keeps its settings, Memory and the Pairing Token in `~/Library/Application Support/Droi` (`%APPDATA%\Droi` on Windows), readable only by your user. It replaces the old Electron app in place: same bundle identifier and data folder, so your settings and paired phones carry over.
 
 ### The Phone App

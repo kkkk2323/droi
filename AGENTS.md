@@ -113,7 +113,9 @@ installed types before using an Expo module, and add Expo packages with
 
 The native app hands its sign-in to the `droid` CLI (ADR 0015, `apps/native/internal/host/cli_login.go`):
 the two share one login, which the Daemon runs as. (The deprecated Electron Desktop Shell
-used the CLI's device flow instead, ADR 0005.)
+used the CLI's device flow instead, ADR 0005.) More Factory accounts can be added in Settings:
+each has its own folder, which the Daemon gets as `FACTORY_HOME_OVERRIDE`, linked to the CLI's
+skills, settings and sessions (ADR 0017, `apps/native/internal/host/accounts.go`).
 
 ## Factory API base URL
 

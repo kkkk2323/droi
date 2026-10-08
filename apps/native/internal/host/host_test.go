@@ -221,7 +221,7 @@ func TestAStoredDroiLoginMovesToTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := New(cfg)
-	if h.Cli.Read() == nil {
+	if h.cli(h.FactoryHome()).Read() == nil {
 		t.Fatal("the CLI has no login")
 	}
 	if h.Settings.Get().Login != nil && *h.Settings.Get().Login != "" {

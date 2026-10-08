@@ -24,14 +24,15 @@ const (
 	ScratchTag = "droi.scratch"
 )
 
-// SessionsDir is ~/.factory/sessions, or under FACTORY_HOME_OVERRIDE as the
-// Host and the Daemon honour it. A nil lookupEnv reads the process environment.
+// SessionsDir is ~/.factory/sessions, or .factory/sessions in
+// FACTORY_HOME_OVERRIDE, which droid takes for the home folder. A nil
+// lookupEnv reads the process environment.
 func SessionsDir(lookupEnv func(string) (string, bool)) string {
 	if lookupEnv == nil {
 		lookupEnv = os.LookupEnv
 	}
 	if home, ok := lookupEnv("FACTORY_HOME_OVERRIDE"); ok {
-		return filepath.Join(home, "sessions")
+		return filepath.Join(home, ".factory", "sessions")
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".factory", "sessions")

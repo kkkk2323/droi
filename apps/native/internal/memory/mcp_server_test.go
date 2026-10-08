@@ -50,7 +50,7 @@ func startServer(t *testing.T) *serverEnv {
 	root := must[string](t)(filepath.EvalSymlinks(t.TempDir()))
 	s := &serverEnv{
 		memoryDir: filepath.Join(root, "memory"), workspace: filepath.Join(root, "workspace"),
-		factoryHome: filepath.Join(root, "factory"), stderr: &lockedBuilder{},
+		factoryHome: filepath.Join(root, "home", ".factory"), stderr: &lockedBuilder{},
 		nextID: 1, waiting: map[int]chan map[string]any{}, lines: make(chan string, 100), done: make(chan int, 1),
 	}
 	if err := os.Mkdir(s.workspace, 0o777); err != nil {
@@ -64,7 +64,7 @@ func startServer(t *testing.T) *serverEnv {
 	}
 	writeFile(t, filepath.Join(s.sessionsFolder, testSession+".jsonl"), `{"type":"session_start","id":"`+testSession+`","title":"t","cwd":"`+s.workspace+`"}`+"\n")
 
-	env := map[string]string{"DROI_MEMORY_DIR": s.memoryDir, "FACTORY_HOME_OVERRIDE": s.factoryHome}
+	env := map[string]string{"DROI_MEMORY_DIR": s.memoryDir, "FACTORY_HOME_OVERRIDE": filepath.Dir(s.factoryHome)}
 	lookup := func(key string) (string, bool) { v, ok := env[key]; return v, ok }
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()

@@ -153,6 +153,7 @@ type App struct {
 	// next update.
 	droidUpdateDismissed bool
 	signIn               signInState
+	accounts             accountsState
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState

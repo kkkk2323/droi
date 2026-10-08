@@ -33,15 +33,21 @@ type Host struct {
 	cfg      Config
 	Settings *SettingsStore
 	Auth     *FactoryAuth
-	Cli      *CliLoginReader
 	Daemon   *Supervisor
 	Scratch  *Scratch
 
+	adding *FactoryAuth
+
 	mu        sync.Mutex
+	readers   map[string]*CliLoginReader
 	build     *DroidBuild
 	listeners map[int]func()
 	next      int
 	wasIn     bool
+
+	usageMu sync.Mutex
+	usage   map[string]*usageEntry
+	client  droidClientInfo
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -49,7 +55,7 @@ func New(cfg Config) *Host {
 	if cfg.Env == nil {
 		cfg.Env = os.Getenv
 	}
-	h := &Host{cfg: cfg, listeners: map[int]func(){}}
+	h := &Host{cfg: cfg, listeners: map[int]func(){}, readers: map[string]*CliLoginReader{}, usage: map[string]*usageEntry{}}
 	h.Settings = OpenSettings(filepath.Join(cfg.UserData, "settings.json"), cfg.Env)
 	h.Auth = &FactoryAuth{
 		Load: func() string { return deref(h.Settings.Get().Login) },
@@ -70,7 +76,7 @@ func New(cfg Config) *Host {
 			go h.RestartDaemon()
 		}
 	}
-	h.Cli = &CliLoginReader{FactoryHome: h.FactoryHome()}
+	h.adding = &FactoryAuth{OnChange: func(LoginState) { h.changed() }, Handoff: h.addAccount}
 	writeCli := func(access, refresh string) error { return WriteCliLogin(h.FactoryHome(), access, refresh) }
 	h.Auth.Handoff = func(access, refresh string) error {
 		if err := writeCli(access, refresh); err != nil {
@@ -82,7 +88,7 @@ func New(cfg Config) *Host {
 	}
 	// A login an earlier Droi kept for itself moves to the CLI when that has
 	// none: the Daemon cannot authenticate without one.
-	if h.Auth.State().Status == SignedIn && h.Cli.Read() == nil {
+	if h.Auth.State().Status == SignedIn && h.cli(h.FactoryHome()).Read() == nil {
 		h.Auth.handOver(writeCli)
 	}
 	h.wasIn = h.Auth.State().Status == SignedIn
@@ -135,13 +141,9 @@ func (h *Host) changed() {
 // Changed tells listeners the settings changed.
 func (h *Host) Changed() { h.changed() }
 
-// FactoryHome is the droid CLI's home, ~/.factory.
-func (h *Host) FactoryHome() string {
-	if d := h.cfg.Env("FACTORY_HOME_OVERRIDE"); d != "" {
-		return d
-	}
-	return filepath.Join(h.cfg.Home, ".factory")
-}
+// FactoryHome is the .factory folder of the account the Daemon runs as:
+// ~/.factory for the droid CLI's own, the account's folder for another.
+func (h *Host) FactoryHome() string { return h.homeOf(h.ActiveAccount()) }
 
 // FactoryAPIBaseURL is the setting, else FACTORY_API_BASE_URL, else Factory's.
 func (h *Host) FactoryAPIBaseURL() string {
@@ -206,12 +208,18 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	if path == "" {
 		return nil, errNoDroid
 	}
-	// Signed in: the Daemon runs as the droid CLI's login and the Host
-	// authenticates with the Droi login (ADR 0005). Without one an API key
-	// serves both sides.
+	// Signed in: the Daemon runs as the account's login. Without one an API
+	// key serves both sides.
 	apiKey := ""
-	if h.Auth.State().Status != SignedIn {
+	if h.LoginState().Status != SignedIn {
 		apiKey = h.Settings.APIKey()
+	}
+	override := ""
+	if id := h.ActiveAccount(); id != "" {
+		if err := shareFactoryHome(h.homeOf(id), h.SharedFactoryHome()); err != nil {
+			return nil, err
+		}
+		override = h.accountRoot(id)
 	}
 	baseURL := deref(h.Settings.Get().FactoryAPIBaseURL)
 	if baseURL == "" {
@@ -246,6 +254,9 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	}
 	if baseURL != "" {
 		env = append(env, "FACTORY_API_BASE_URL="+baseURL)
+	}
+	if override != "" {
+		env = append(env, "FACTORY_HOME_OVERRIDE="+override)
 	}
 	cmd.Env = env
 	if log := OpenDaemonLog(h.DaemonLogPath()); log != nil {
@@ -299,7 +310,7 @@ func (h *Host) LoginState() LoginState {
 	if s.Status != SignedOut {
 		return s
 	}
-	if cli := h.Cli.Read(); cli != nil {
+	if cli := h.cli(h.FactoryHome()).Read(); cli != nil {
 		acc := cli.Account
 		return LoginState{Status: SignedIn, Account: &acc, Source: "cli"}
 	}
@@ -312,7 +323,7 @@ func (h *Host) Credential(ctx context.Context) (*droid.Credential, error) {
 	if tok, err := h.Auth.AccessToken(ctx); err == nil && tok != "" {
 		return &droid.Credential{Token: tok}, nil
 	}
-	if cli := h.Cli.Read(); cli != nil {
+	if cli := h.cli(h.FactoryHome()).Read(); cli != nil {
 		return &droid.Credential{Token: cli.AccessToken}, nil
 	}
 	if k := h.Settings.APIKey(); k != "" {
@@ -321,8 +332,8 @@ func (h *Host) Credential(ctx context.Context) (*droid.Credential, error) {
 	return nil, nil
 }
 
-// SignOut signs Droi out of Factory, and the droid CLI, whose login it
-// shares, with it; the Daemon restarts without a login.
+// SignOut signs the account in use out, and so the droid CLI with it when
+// that is the CLI's own; the Daemon restarts without a login.
 func (h *Host) SignOut() error {
 	err := RemoveCliLogin(h.FactoryHome())
 	if h.Auth.State().Status == SignedIn {

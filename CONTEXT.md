@@ -14,6 +14,10 @@ _Avoid_: backend, server, engine, exec runner
 The process on a computer that starts and watches over the Daemon, runs the Gateway, supplies the Factory credential (normally the droid CLI's own login on that computer, an API key as fallback) and keeps that computer's Memory. The Desktop Shell embeds one; on a computer without a Desktop Shell (a headless Linux box) it runs on its own, installed from npm and kept alive by the system's service manager. Every computer a Client can reach has exactly one Host.
 _Avoid_: server, node, station, backend, agent runner
 
+**Factory Account**:
+A Factory login the Host can run its Daemon as. The first is the droid CLI's own, in `~/.factory`; each one added in Droi keeps its login in a folder of its own and shares the CLI's skills, droids, MCP Servers, settings and Sessions. The Daemon runs as one at a time, and switching restarts it.
+_Avoid_: profile, key, provider instance
+
 **Pinned Droid**:
 The one `droid` build a Droi release is made for. The Host fetches it and starts the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid cannot be fetched the Host falls back to the computer's own `droid` and says so.
 _Avoid_: bundled droid, vendored CLI, droid version (on its own)

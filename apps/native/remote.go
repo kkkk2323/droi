@@ -31,7 +31,7 @@ func startGateway(h *host.Host, version string, moveToTrash func(string) error) 
 		// Its refusal of a folder outside the Scratch folder answers 400.
 		Scratch: &gateway.ScratchFolders{Root: h.ScratchFolder, MoveToTrash: moveToTrash},
 		FindSessionFile: func(id string) string {
-			return host.FindSessionTranscript(filepath.Join(h.FactoryHome(), "sessions"), id)
+			return host.FindSessionTranscript(filepath.Join(h.SharedFactoryHome(), "sessions"), id)
 		},
 	})
 	if err != nil {

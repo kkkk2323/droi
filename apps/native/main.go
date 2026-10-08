@@ -105,14 +105,14 @@ func main() {
 		SystemPrompt: func() []byte { return h.SystemPrompt() },
 		Update:       update,
 		InsetTop:     mac,
-		FactoryHome:  h.FactoryHome(),
+		FactoryHome:  h.SharedFactoryHome(),
 		OpenPath:     mygo.Shell.OpenPath,
 		ShowInFolder: mygo.Shell.ShowItemInFolder,
 		Scratch:      h.Scratch,
 		Host:         h,
 		Version:      version,
 		Env:          os.Getenv,
-		PlaySound:    func(s string) { playSound(h.FactoryHome(), s) },
+		PlaySound:    func(s string) { playSound(h.SharedFactoryHome(), s) },
 		// The id is the Session's, so a click (even one that launches the
 		// app again) knows what to open; a newer alert replaces the older.
 		Notify: func(n app.Alert) {

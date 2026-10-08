@@ -35,6 +35,10 @@ type Settings struct {
 	ComputerID         string  `json:"computerId"`
 	APIKey             *string `json:"apiKey"`
 	Login              *string `json:"login"`
+	// Accounts are the ids of the Factory accounts added beside the droid
+	// CLI's own; ActiveAccount is the one the Daemon runs as, "" the CLI's.
+	Accounts      []string `json:"accounts,omitempty"`
+	ActiveAccount string   `json:"activeAccount,omitempty"`
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the
