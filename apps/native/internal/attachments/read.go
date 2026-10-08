@@ -7,12 +7,13 @@ import (
 	"image/draw"
 	_ "image/gif"
 	"image/jpeg"
-	_ "image/png"
+	"image/png"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	xdraw "golang.org/x/image/draw"
+	"golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
 
@@ -31,6 +32,18 @@ func ReadFile(path, id string) (img Image, ok bool, err error) {
 // FromBytes is ReadFile for an image already in memory, such as one pasted
 // from the clipboard: ok is false when data is no image.
 func FromBytes(data []byte, name, id string) (img Image, ok bool, err error) {
+	// Safari drags its pictures as TIFF, which the Daemon does not take.
+	if bytes.HasPrefix(data, []byte("II*\x00")) || bytes.HasPrefix(data, []byte("MM\x00*")) {
+		src, err := tiff.Decode(bytes.NewReader(data))
+		if err != nil {
+			return Image{}, false, nil
+		}
+		var out bytes.Buffer
+		if err := png.Encode(&out, src); err != nil {
+			return Image{}, false, err
+		}
+		data = out.Bytes()
+	}
 	mediaType := http.DetectContentType(data)
 	if !IsImageMediaType(mediaType) {
 		return Image{}, false, nil

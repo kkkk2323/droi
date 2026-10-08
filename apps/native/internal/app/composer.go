@@ -269,11 +269,11 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 			k.Text(c, cs.err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).PaddingX(k.Px(4))
 		}
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
-		if card.FileDragOver() {
+		if _, over := ui.DataDragOver(card, dropOptions); over {
 			card.Border(1, t.Primary.Alpha(0.6)).Background(t.Primary.Alpha(0.05))
 		}
-		if files := card.DroppedFiles(); len(files) > 0 {
-			v.addFiles(files)
+		if d, ok := ui.DropData(card, dropOptions); ok {
+			v.drop(readDrop(d.Data))
 		}
 		card.Children(func() {
 			if len(cs.images) > 0 {
@@ -442,13 +442,29 @@ func (v *sessionView) addFiles(paths []string) {
 				quoted[i] = strconv.Quote(p)
 			}
 		}
-		insert := strings.Join(quoted, " ")
-		if cs.text != "" && !strings.HasSuffix(cs.text, " ") && !strings.HasSuffix(cs.text, "\n") {
-			insert = " " + insert
-		}
-		cs.text += insert + " "
+		cs.text = appendWords(cs.text, strings.Join(quoted, " "))
 	}
 	v.saveDraft()
+}
+
+// drop adds what was dropped on the composer.
+func (v *sessionView) drop(d dropped) {
+	cs := &v.composer
+	switch {
+	case len(d.files) > 0:
+		v.addFiles(d.files)
+	case d.image != nil:
+		img, ok, err := attachments.FromBytes(d.image, "Dropped image.png", uuid.NewString())
+		switch {
+		case err != nil:
+			cs.err = err.Error()
+		case ok:
+			cs.images = append(cs.images, img)
+		}
+	case d.text != "":
+		cs.text = appendWords(cs.text, d.text)
+		v.saveDraft()
+	}
 }
 
 func (v *sessionView) chooseImages() {

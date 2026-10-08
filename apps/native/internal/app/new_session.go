@@ -386,12 +386,19 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label("Message composer").Gap(k.Px(6)).Children(func() {
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
-		if files := card.DroppedFiles(); len(files) > 0 {
-			for _, p := range files {
+		if drop, ok := ui.DropData(card, dropOptions); ok {
+			d := readDrop(drop.Data)
+			for _, p := range d.files {
 				if img, ok, _ := attachments.ReadFile(p, p); ok {
 					s.images = append(s.images, img)
 				}
 			}
+			if d.image != nil {
+				if img, ok, _ := attachments.FromBytes(d.image, "Dropped image.png", uuid.NewString()); ok {
+					s.images = append(s.images, img)
+				}
+			}
+			s.text = appendWords(s.text, d.text)
 		}
 		card.Children(func() {
 			if len(s.images) > 0 {
