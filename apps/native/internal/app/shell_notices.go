@@ -20,13 +20,13 @@ func startingUp(status controller.Status, everConnected bool) bool {
 func startupProblem(daemon host.DaemonState, status controller.Status) (title, detail string) {
 	switch {
 	case daemon.DroidMissing():
-		return "droid was not found", "Install the droid CLI, or set the path to droid in Settings."
+		return L("droid was not found"), L("Install the droid CLI, or set the path to droid in Settings.")
 	case daemon.Reason != "":
-		return "The Daemon did not start", "Last attempt: " + daemon.Reason + "."
+		return L("The Daemon did not start"), L("Last attempt: %s.", daemon.Reason)
 	case status.Failure != nil && status.Failure.Reason == controller.ReasonAuthRejected:
-		return "The Daemon did not accept the login", "Sign out and sign in again in Settings, then restart the Daemon. (" + status.Failure.Error() + ")"
+		return L("The Daemon did not accept the login"), L("Sign out and sign in again in Settings, then restart the Daemon. (%s)", status.Failure.Error())
 	case status.Failure != nil:
-		return "Droi could not connect to the Daemon", status.Failure.Error()
+		return L("Droi could not connect to the Daemon"), status.Failure.Error()
 	}
 	return "", ""
 }
@@ -116,10 +116,10 @@ func (a *App) startupProblemView(c *ui.Context, title, detail string) {
 			k.Text(c, title, 14, 20).FontWeight(500).TextAlign(ui.Center)
 			k.Text(c, detail, 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 			ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Outline, "Restart Daemon", "refresh-cw", false).Clicked() {
+				if a.smallButton(c, kit.Outline, L("Restart Daemon"), "refresh-cw", false).Clicked() {
 					go h.RestartDaemon()
 				}
-				if a.smallButton(c, kit.Ghost, "Settings", "settings", false).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Settings"), "settings", false).Clicked() {
 					a.Go(Route{Name: "settings", Tab: "advanced"})
 				}
 			})
