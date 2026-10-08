@@ -237,12 +237,9 @@ func menu(run func(id string), zoom func(step int), paste func()) *mygo.Menu {
 		return &mygo.MenuItem{Label: label, Accelerator: acc, Hidden: hidden, Click: func(*mygo.MenuItem, *mygo.Window) { zoom(step) }}
 	}
 	cmds := map[string]*mygo.MenuItem{}
-	var hidden []*mygo.MenuItem
 	for _, c := range app.Commands() {
-		it := &mygo.MenuItem{Label: c.Label, Accelerator: c.Key, Hidden: c.Hidden, Click: func(*mygo.MenuItem, *mygo.Window) { run(c.ID) }}
-		cmds[c.ID] = it
-		if c.Hidden {
-			hidden = append(hidden, it)
+		if !c.Hidden {
+			cmds[c.ID] = &mygo.MenuItem{Label: c.Label, Accelerator: c.Key, Click: func(*mygo.MenuItem, *mygo.Window) { run(c.ID) }}
 		}
 	}
 	appMenu := &mygo.MenuItem{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
@@ -278,7 +275,7 @@ func menu(run func(id string), zoom func(step int), paste func()) *mygo.Menu {
 		appMenu,
 		{Label: l10n.L("File"), Submenu: file},
 		editMenu(paste),
-		{Label: l10n.L("View"), Submenu: append(view, hidden...)},
+		{Label: l10n.L("View"), Submenu: view},
 		windowMenu(mac),
 	})
 }

@@ -59,16 +59,24 @@ func TestCmdNumbersTheSidebar(t *testing.T) {
 			t.Fatalf("no %s with ⌘ held: %q", shortcut(sessionCommand(n)), h.tt.Texts())
 		}
 	}
-	second := h.a.sidebar.numbered[1]
+	first, second := h.a.sidebar.numbered[0], h.a.sidebar.numbered[1]
 	h.tt.HoldModifiers(0)
 	h.frame()
-	h.a.Run(sessionCommand(2))
+	h.tt.Key(ui.Cmd, ui.Key2)
 	h.frame()
 	if r := h.a.Route(); r.Name != "session" || r.SessionID != second {
 		t.Fatalf("⌘2 went to %+v, want %s", r, second)
 	}
-	h.a.Run(sessionCommand(9)) // past the list: nothing
-	if r := h.a.Route(); r.SessionID != second {
+	// From the Session's page, where the composer has the keyboard.
+	h.settle()
+	h.tt.Key(ui.Cmd, ui.Key1)
+	h.frame()
+	if r := h.a.Route(); r.Name != "session" || r.SessionID != first {
+		t.Fatalf("⌘1 went to %+v, want %s", r, first)
+	}
+	h.tt.Key(ui.Cmd, ui.Key9) // past the list: nothing
+	h.frame()
+	if r := h.a.Route(); r.SessionID != first {
 		t.Fatalf("⌘9 went to %+v", r)
 	}
 }

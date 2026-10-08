@@ -586,6 +586,12 @@ func (a *App) View(c *ui.Context) {
 		})
 		a.cornerCards(c)
 	})
+	// After the sidebar, which numbers this frame's Sessions.
+	for n, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
+		if c.Shortcut(ui.Cmd, key) {
+			a.Run(sessionCommand(n + 1))
+		}
+	}
 	if a.narrow {
 		return
 	}

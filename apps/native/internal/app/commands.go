@@ -15,7 +15,8 @@ type Command struct {
 	Label string
 	// Key is its accelerator, such as "CmdOrCtrl+N".
 	Key string
-	// Hidden: in no menu, for its shortcut alone.
+	// Hidden: in no menu; the window takes its key itself (App.View), as
+	// neither macOS nor Windows runs the shortcut of a hidden menu item.
 	Hidden bool
 }
 

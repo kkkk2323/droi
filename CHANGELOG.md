@@ -4,6 +4,10 @@
 
 - The native app runs on MyGo 0.3.0. A control kept from an earlier frame can no longer stand for another one: development builds and the view tests stop at such a use, and a release build ignores it.
 
+### Fixed
+
+- ⌘1…⌘9 (Ctrl+1…Ctrl+9 on Windows) open the sidebar's first Sessions again. The shortcuts sat on hidden menu items, and neither macOS nor Windows runs the shortcut of a hidden item, so the keys did nothing.
+
 ## 1.39.0 - 2026-10-08
 
 ### Added
