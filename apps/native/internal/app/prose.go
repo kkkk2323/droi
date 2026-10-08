@@ -232,19 +232,26 @@ func (p prose) list(c *ui.Context, n *md.Node) {
 			}
 			ui.Column(c).PaddingY(k.Px(4)).Children(func() {
 				line := k.Px(p.lh)
+				// In a loose list the item's first block keeps its top margin;
+				// the marker goes down with its first line.
+				top := k.Px(4)
+				if !n.Tight && len(item.Children) > 0 {
+					m, _ := margins(item.Children[0])
+					top += k.Px(m)
+				}
 				if n.Ordered {
 					label := strconv.Itoa(n.Start+i) + "."
 					ui.Text(c, label).FontSize(k.Px(p.size)).FixedLineHeight(line).TextColor(t.MutedForeground).TextAlign(ui.End).
-						Absolute().Left(-k.Px(40)).Top(k.Px(4)).Width(k.Px(36)).FontFeatures("tnum").Unselectable()
+						Absolute().Left(-k.Px(40)).Top(top).Width(k.Px(36)).FontFeatures("tnum").Unselectable()
 				} else if item.Checked == 0 {
 					d := k.Px(p.size / 3)
-					kit.Dot(c, d, t.MutedForeground).Absolute().Left(-k.Px(14.5) - d/2).Top(k.Px(4) + line/2 - d/2)
+					kit.Dot(c, d, t.MutedForeground).Absolute().Left(-k.Px(14.5) - d/2).Top(top + line/2 - d/2)
 				}
 				f := flow{}
 				if item.Checked > 0 {
 					checked := item.Checked == 2
 					ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Start).Children(func() {
-						box := ui.Box(c).Size(k.Px(13), k.Px(13)).Margin((line-k.Px(13))/2, 0, 0, 0).Radius(k.Px(3)).Border(1, t.Input).Shrink(0)
+						box := ui.Box(c).Size(k.Px(13), k.Px(13)).Margin(top-k.Px(4)+(line-k.Px(13))/2, 0, 0, 0).Radius(k.Px(3)).Border(1, t.Input).Shrink(0)
 						if checked {
 							box.Background(t.Primary).Center().Children(func() { k.Icon(c, "check", 10, t.PrimaryForeground) })
 						}
