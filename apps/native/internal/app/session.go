@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,9 @@ type sessionView struct {
 	heldRows int
 	images   map[string]*ui.Bitmap
 	imageAt  map[string]int64
+	// localImages are the files the replies' images name, by path, as the
+	// Daemon read them; guarded by mu.
+	localImages map[string]*localImage
 	// zoom is the picture shown enlarged while zoomOpen.
 	zoom      *ui.Bitmap
 	zoomLabel string
@@ -91,7 +95,7 @@ type sessionView struct {
 func (a *App) view(id string) *sessionView {
 	v := a.views[id]
 	if v == nil {
-		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{}, imageAt: map[string]int64{},
+		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{}, imageAt: map[string]int64{}, localImages: map[string]*localImage{},
 			calls: map[*transcript.ToolCall]*callView{}, rail: railState{preview: -1}}
 		v.list.FollowEnd = true
 		d := a.drafts.Load(id)
@@ -247,6 +251,13 @@ func (v *sessionView) sweep() {
 			delete(v.imageAt, id)
 		}
 	}
+	v.mu.Lock()
+	for path, li := range v.localImages {
+		if v.frame-li.usedAt > imageIdleFrames {
+			delete(v.localImages, path)
+		}
+	}
+	v.mu.Unlock()
 }
 
 // imageIdleFrames is how many builds of its view a picture stays decoded
@@ -367,6 +378,60 @@ func (v *sessionView) scriptSummary(call *transcript.ToolCall) string {
 func (v *sessionView) image(id string, img transcript.Image) *ui.Bitmap {
 	v.imageAt[id] = v.frame
 	return cachedBitmap(v.images, id, img)
+}
+
+// localImage is a file a reply's image names, as the Daemon read it: img
+// once read, missing when it is not there or not a picture.
+type localImage struct {
+	img     *transcript.Image
+	missing bool
+	usedAt  int64
+}
+
+// localImage draws the picture at path on the computer, which the Daemon
+// reads, so a reply's screenshot shows over any connection to it.
+func (v *sessionView) localImage(c *ui.Context, path, alt string) {
+	k, t := v.a.kit, v.a.kit.T
+	v.mu.Lock()
+	li := v.localImages[path]
+	if li == nil {
+		li = &localImage{}
+		v.localImages[path] = li
+		go v.readImage(path, li)
+	}
+	li.usedAt = v.frame
+	img, missing := li.img, li.missing
+	v.mu.Unlock()
+	label := alt
+	if label == "" {
+		label = L("Image from Droid")
+	}
+	id := "file:" + path
+	switch {
+	case img != nil && v.image(id, *img) != nil:
+		v.picture(c, id, *img, 288, label)
+	case missing || img != nil:
+		k.Text(c, L("Image not available: %s", path), 12, 16).Italic().TextColor(t.MutedForeground).Selectable()
+	default:
+		ui.Box(c).Role(ui.RoleStatus).Label(L("Loading image")).Size(k.Px(256), k.Px(128)).Radius(k.Px(12)).Background(t.Muted)
+	}
+}
+
+func (v *sessionView) readImage(path string, li *localImage) {
+	var img *transcript.Image
+	if ctl := v.a.ctl; ctl != nil {
+		if cl, err := ctl.Client(); err == nil {
+			f, err := cl.GetWorkspaceFileContent(v.a.ctx, protocol.GetWorkspaceFileContentParams{SessionID: v.id, FilePath: path,
+				Encoding: protocol.GetWorkspaceFileContentParamsEncodingBase64})
+			if err == nil && f.Encoding == protocol.GetWorkspaceFileContentParamsEncodingBase64 && strings.HasPrefix(f.MimeType, "image/") {
+				img = &transcript.Image{MediaType: f.MimeType, Data: f.Content}
+			}
+		}
+	}
+	v.mu.Lock()
+	li.img, li.missing = img, img == nil
+	v.mu.Unlock()
+	v.a.redraw()
 }
 
 // cachedBitmap decodes img once per id; a failed decode is cached as nil.

@@ -22,6 +22,8 @@ type Inline struct {
 	Code   bool
 	Strike bool
 	URL    string
+	// Image: an image whose source is URL and whose alt text is Text.
+	Image bool
 }
 
 type Kind uint8
@@ -225,8 +227,10 @@ func (w *walker) inlines(n ast.Node, style Inline, out []Inline) []Inline {
 			add(string(v.Label(w.src)), st)
 		case *ast.Image:
 			st := style
-			st.URL = string(v.Destination)
-			add("[image]", st)
+			st.Image, st.URL = true, string(v.Destination)
+			st.Text = PlainText(w.inlines(v, Inline{}, nil))
+			// Appended, not added: two images in a row stay two runs.
+			out = append(out, st)
 		case *ast.RawHTML:
 			for i := 0; i < v.Segments.Len(); i++ {
 				seg := v.Segments.At(i)

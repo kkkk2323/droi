@@ -1,11 +1,13 @@
 package app
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/internal/attachments"
 	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/md"
@@ -57,6 +59,9 @@ type prose struct {
 	color    ui.Color
 	// shiki is the Shiki theme code blocks take.
 	shiki string
+	// localImage, when set, draws an image the Markdown names by its path
+	// on the computer; without it such an image is a link.
+	localImage func(c *ui.Context, path, alt string)
 }
 
 func newProse(k *kit.Kit) prose {
@@ -100,7 +105,7 @@ func (p prose) node(c *ui.Context, n *md.Node) {
 	k, t := p.k, p.k.T
 	switch n.Kind {
 	case md.NodeParagraph:
-		p.inlines(c, n.Inlines, p.size, p.lh, 0)
+		p.paragraph(c, n.Inlines)
 	case md.NodeHeading:
 		size, lh := headingSize(n.Level)
 		p.inlines(c, n.Inlines, size, lh, 600).LetterSpacing(k.Px(-0.01 * size))
@@ -140,6 +145,42 @@ func headingSize(level int) (size, lh float32) {
 	return 14, 20
 }
 
+// paragraph is a paragraph's runs, with each image it names by a path on
+// the computer drawn as a picture on a line of its own.
+func (p prose) paragraph(c *ui.Context, runs []md.Inline) {
+	if p.localImage == nil || !slices.ContainsFunc(runs, isLocalImage) {
+		p.inlines(c, runs, p.size, p.lh, 0)
+		return
+	}
+	ui.Column(c).Gap(p.k.Px(8)).Children(func() {
+		start := 0
+		text := func(end int) {
+			seg := slices.Clone(runs[start:end])
+			if strings.TrimSpace(md.PlainText(seg)) == "" {
+				return
+			}
+			// The spaces next to a picture would start or end a line.
+			if start > 0 {
+				seg[0].Text = strings.TrimLeft(seg[0].Text, " ")
+			}
+			if end < len(runs) {
+				seg[len(seg)-1].Text = strings.TrimRight(seg[len(seg)-1].Text, " ")
+			}
+			p.inlines(c, seg, p.size, p.lh, 0)
+		}
+		for i, r := range runs {
+			if isLocalImage(r) {
+				text(i)
+				p.localImage(c, attachments.LocalImagePath(r.URL), r.Text)
+				start = i + 1
+			}
+		}
+		text(len(runs))
+	})
+}
+
+func isLocalImage(r md.Inline) bool { return r.Image && attachments.LocalImagePath(r.URL) != "" }
+
 // inlines is a paragraph of runs. Inline code is Geist Mono at 0.85em in
 // the code color, without the web Client's tint.
 func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight int) *ui.Element {
@@ -158,6 +199,14 @@ func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight
 			span := ui.Span{Text: r.Text, Italic: r.Italic, Strikethrough: r.Strike}
 			if r.Bold {
 				span.Weight = 600
+			}
+			if r.Image {
+				label := r.Text
+				if label == "" {
+					label = L("[image]")
+				}
+				ui.Link(c, label, r.URL).FontWeight(500).Underline().TextColor(t.Primary)
+				continue
 			}
 			if r.URL != "" {
 				l := ui.Link(c, r.Text, r.URL).FontWeight(500).Underline().TextColor(t.Primary)
@@ -216,9 +265,9 @@ func (p prose) itemBlocks(c *ui.Context, f *flow, item *md.Node, tight bool) {
 	for i, ch := range item.Children {
 		if tight && ch.Kind == md.NodeParagraph {
 			if i > 0 {
-				f.block(0, 0, func() { p.inlines(c, ch.Inlines, p.size, p.lh, 0) })
+				f.block(0, 0, func() { p.paragraph(c, ch.Inlines) })
 			} else {
-				p.inlines(c, ch.Inlines, p.size, p.lh, 0)
+				p.paragraph(c, ch.Inlines)
 				f.started = true
 			}
 			continue

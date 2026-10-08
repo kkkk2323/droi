@@ -202,6 +202,7 @@ func pulseWave(c *ui.Context) float64 {
 func (v *sessionView) reply(c *ui.Context, f *flow, text string, color ui.Color) {
 	p := newProse(v.a.kit)
 	p.color = color
+	p.localImage = v.localImage
 	if !jsonrender.HasRenderTag(text) {
 		p.nodes(c, f, v.doc(text))
 		return

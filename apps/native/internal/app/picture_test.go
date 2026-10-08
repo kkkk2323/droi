@@ -38,6 +38,33 @@ func TestAWideAttachedImageFitsTheColumn(t *testing.T) {
 	}
 }
 
+// An image a reply names by its path on the computer, as Droid writes a
+// screenshot it took, comes through the Daemon and shows in the transcript;
+// one that is not there shows its path.
+func TestAReplysImageByPathIsShown(t *testing.T) {
+	sc := fakedaemon.Scenario{
+		Sessions: []fakedaemon.SessionSpec{{Title: "Shots", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{
+			{Role: "user", Text: "show me"},
+			{Role: "assistant", Text: "Here it is:\n\n![The banner](/Users/dev/acme-web/my%20shot.png)\n\n![Old shot](/tmp/missing.png)"},
+		}}},
+		Input: map[string]any{"files": map[string]any{
+			"/Users/dev/acme-web/my shot.png": map[string]any{"mimeType": "image/png", "base64": pngOf(800, 400)},
+		}},
+	}
+	h := newHarness(t, sc, "")
+	h.openSession("Shots")
+	h.until("the image", func() bool { _, ok := h.tt.Find("The banner"); return ok })
+	h.until("the missing image's path", func() bool { return h.hasText("/tmp/missing.png") })
+	h.frame()
+	img, _ := h.tt.Find("The banner")
+	if ratio := img.W / img.H; img.W <= 0 || ratio < 1.9 || ratio > 2.1 {
+		t.Fatalf("image %+v lost its 2:1 shape", img)
+	}
+	if h.hasText("[image]") {
+		t.Fatalf("the reply still reads [image]: %q", h.tt.Texts())
+	}
+}
+
 // Clicking a picture in the transcript shows it enlarged; a click closes it.
 func TestClickingAPictureEnlargesIt(t *testing.T) {
 	sc := fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Shots", Cwd: "/Users/dev/acme-web",
