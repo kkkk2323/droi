@@ -1,3 +1,15 @@
+## 1.38.2 - 2026-10-08
+
+### Fixed
+
+- A Session whose view Droi dropped also leaves the Droid SDK's store, with the subagents it called, once nothing in it works or waits for an answer; opening it again loads it again. Before, every Session opened kept its messages until Droi quit.
+- The composer and the Skills panel keep each skill's name and description only, not the whole skill the Daemon sends: with many skills, each open Session held several MB of skill bodies.
+- Switching through 12 real Sessions, Droi's Go heap now stays at about 37 MB instead of 66 MB.
+
+### Added
+
+- `DROI_PPROF=127.0.0.1:6061` serves Go's profiles, to see what holds Droi's memory.
+
 ## 1.38.1 - 2026-10-08
 
 ### Fixed
