@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 
+	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 )
 
@@ -11,6 +12,23 @@ import (
 // up on, as the web Client's isStartingUp.
 func startingUp(status controller.Status, everConnected bool) bool {
 	return !status.Connected && !everConnected
+}
+
+// startupProblem is why the window still waits for its first connection:
+// a Daemon that does not start, or one the window cannot connect to. Empty
+// while the Daemon is only coming up.
+func startupProblem(daemon host.DaemonState, status controller.Status) (title, detail string) {
+	switch {
+	case daemon.DroidMissing():
+		return "droid was not found", "Install the droid CLI, or set the path to droid in Settings."
+	case daemon.Reason != "":
+		return "The Daemon did not start", "Last attempt: " + daemon.Reason + "."
+	case status.Failure != nil && status.Failure.Reason == controller.ReasonAuthRejected:
+		return "The Daemon did not accept the login", "Sign out and sign in again in Settings, then restart the Daemon. (" + status.Failure.Error() + ")"
+	case status.Failure != nil:
+		return "Droi could not connect to the Daemon", status.Failure.Error()
+	}
+	return "", ""
 }
 
 // droidUpdatedCard is the corner card once droid updated itself while the
@@ -62,7 +80,7 @@ func (a *App) cornerCard(c *ui.Context, label, icon string, body func(), dismiss
 
 // startingUpView is the quiet start: a breathing dot and one line where the
 // content will appear, instead of a warning for a Daemon not up yet.
-func (a *App) startingUpView(c *ui.Context) {
+func (a *App) startingUpView(c *ui.Context, status controller.Status) {
 	k, t := a.kit, a.kit.T
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
@@ -70,11 +88,40 @@ func (a *App) startingUpView(c *ui.Context) {
 				a.openSessionsButton(c)
 			}
 		})
+		var title, detail string
+		if h := a.cfg.Host; h != nil {
+			title, detail = startupProblem(h.Daemon.State(), status)
+		}
+		if title != "" {
+			a.startupProblemView(c, title, detail)
+			return
+		}
 		ui.Row(c).Grow(1).Center().Children(func() {
 			ui.Row(c).Role(ui.RoleStatus).Label("Starting").Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
 				wave := float32(pulseWave(c))
 				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.4+0.3*wave))
 				k.Text(c, "Starting the Daemon", 14, 20).TextColor(t.MutedForeground)
+			})
+		})
+	})
+}
+
+// startupProblemView says why Droid is not there yet, with what can fix it.
+func (a *App) startupProblemView(c *ui.Context, title, detail string) {
+	h := a.cfg.Host
+	k, t := a.kit, a.kit.T
+	ui.Column(c).Grow(1).Center().PaddingX(k.Px(24)).Children(func() {
+		ui.Column(c).Role(ui.RoleStatus).Label(title).FillWidth().MaxWidth(k.Px(420)).AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
+			k.Icon(c, "circle-alert", 20, t.Attention)
+			k.Text(c, title, 14, 20).FontWeight(500).TextAlign(ui.Center)
+			k.Text(c, detail, 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
+			ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
+				if a.smallButton(c, kit.Outline, "Restart Daemon", "refresh-cw", false).Clicked() {
+					go h.RestartDaemon()
+				}
+				if a.smallButton(c, kit.Ghost, "Settings", "settings", false).Clicked() {
+					a.Go(Route{Name: "settings", Tab: "advanced"})
+				}
 			})
 		})
 	})

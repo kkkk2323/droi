@@ -316,3 +316,48 @@ func TestSupervisorRestartsAfterCrash(t *testing.T) {
 		t.Fatalf("state after Stop: %v", s.State())
 	}
 }
+
+func TestSupervisorKeepsWhyTheLastAttemptFailed(t *testing.T) {
+	var mu sync.Mutex
+	var states []DaemonState
+	s := &Supervisor{
+		Backoff: []time.Duration{10 * time.Millisecond},
+		Spawn:   func(int) (*exec.Cmd, error) { return nil, errNoDroid },
+		OnState: func(st DaemonState) {
+			mu.Lock()
+			states = append(states, st)
+			mu.Unlock()
+		},
+	}
+	s.Start()
+	defer s.Stop()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		var first, retry *DaemonState
+		for i := range states {
+			if states[i].Status != DaemonStarting {
+				continue
+			}
+			if states[i].Attempt == 1 && first == nil {
+				first = &states[i]
+			} else if states[i].Attempt > 1 && retry == nil {
+				retry = &states[i]
+			}
+		}
+		mu.Unlock()
+		if first != nil && retry != nil {
+			if first.Reason != "" {
+				t.Fatalf("the first attempt has a reason: %+v", *first)
+			}
+			if !retry.DroidMissing() {
+				t.Fatalf("a retry forgot why: %+v", *retry)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no retry: %+v", states)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
