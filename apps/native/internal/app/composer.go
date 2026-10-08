@@ -216,8 +216,9 @@ func (v *sessionView) slashItems(loaded bool) []slash.Item {
 				return
 			}
 			cs.mu.Lock()
-			cs.slash = slash.FromDaemon(cmds.Commands, sk.Skills)
-			cs.skills = sk.Skills
+			skills := skillsShown(sk.Skills)
+			cs.slash = slash.FromDaemon(cmds.Commands, skills)
+			cs.skills = skills
 			cs.mu.Unlock()
 			v.a.redraw()
 		}()

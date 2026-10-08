@@ -273,11 +273,41 @@ func (a *App) remember(id string) {
 		v := a.views[x]
 		if !keep[x] && v != nil && !v.busy() {
 			delete(a.views, x)
+			a.forget(x, keep)
 			continue
 		}
 		recent = append(recent, x)
 	}
 	a.recent = recent
+}
+
+// forget drops the messages of Session id, and of the subagents it called,
+// from the Store when nothing there is working or waiting for an answer:
+// the Store keeps every loaded Session's messages otherwise. Opening it
+// again loads it again.
+func (a *App) forget(id string, keep map[string]bool) {
+	if a.ctl == nil {
+		return
+	}
+	store := a.ctl.Store()
+	idle := func(x string) bool {
+		s := store.Session(x)
+		return s != nil && s.WorkingState() == protocol.DroidWorkingStateIdle &&
+			len(a.ctl.PendingPermissions(x))+len(a.ctl.PendingAskUsers(x)) == 0
+	}
+	ids := []string{id}
+	for _, x := range store.SessionIDs() {
+		if s := store.Session(x); s != nil {
+			if caller, _ := s.CallingSession(); caller == id && !keep[x] {
+				ids = append(ids, x)
+			}
+		}
+	}
+	for _, x := range ids {
+		if idle(x) {
+			a.ctl.Forget(x)
+		}
+	}
 }
 
 // busy: the view holds what would be lost with it, a load or /compact

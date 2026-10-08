@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 )
 
 // Only the Sessions opened last keep their view, with its transcript and
@@ -31,9 +32,24 @@ func TestOnlyTheLastSessionsKeepTheirView(t *testing.T) {
 	if h.a.views[first] != nil {
 		t.Fatal("the first Session kept its view")
 	}
+	if h.a.ctl.Store().Session(first) != nil {
+		t.Fatal("the Store kept the first Session's messages")
+	}
 	h.click("Task 0")
 	h.until("the transcript again", func() bool { return h.hasText("question 0") })
 	if got := h.a.views[first].composer.text; got != "half a thought" {
 		t.Fatalf("draft %q", got)
+	}
+}
+
+// The Daemon sends each skill whole; the window keeps only what it shows.
+func TestSkillsShownDropTheirBodies(t *testing.T) {
+	list := []protocol.SkillInfo{{Name: "review", Description: "Review a diff", Content: "a long body", Resources: []protocol.SkillResource{{}}}}
+	got := skillsShown(list)
+	if got[0].Name != "review" || got[0].Description != "Review a diff" || got[0].Content != "" || got[0].Resources != nil {
+		t.Fatalf("%+v", got[0])
+	}
+	if list[0].Content == "" {
+		t.Fatal("the Daemon's list changed")
 	}
 }

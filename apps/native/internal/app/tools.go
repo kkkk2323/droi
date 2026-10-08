@@ -56,6 +56,17 @@ func (v *sessionView) toolsStale() {
 // loadTools lists the Session's skills, servers and tools when the last
 // list is older than 30 seconds: the droid CLI or the Factory App may have
 // switched one meanwhile.
+// skillsShown are the skills without their bodies and resources, which the
+// Daemon sends whole and the window never shows: tens of skills hold MBs.
+func skillsShown(list []protocol.SkillInfo) []protocol.SkillInfo {
+	out := make([]protocol.SkillInfo, len(list))
+	for i, s := range list {
+		s.Content, s.Resources = "", nil
+		out[i] = s
+	}
+	return out
+}
+
 func (v *sessionView) loadTools() {
 	ts := &v.tools
 	ts.mu.Lock()
@@ -85,7 +96,7 @@ func (v *sessionView) loadTools() {
 		if err1 != nil {
 			ts.skillsErr = err1.Error()
 		} else {
-			ts.skills = sk.Skills
+			ts.skills = skillsShown(sk.Skills)
 			ts.projectAvailable = sk.ProjectAvailable != nil && *sk.ProjectAvailable
 		}
 		if err2 != nil {

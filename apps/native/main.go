@@ -28,7 +28,7 @@ import (
 )
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
-const devVersion = "1.38.1"
+const devVersion = "1.38.2"
 
 func main() {
 	// The Runtime Overlay runs the app's own executable as the Memory Server
@@ -80,6 +80,7 @@ func main() {
 		updater = updates.New(updates.MyGo{})
 	}
 
+	servePprof()
 	mac := runtime.GOOS == "darwin"
 	theme.RegisterFonts()
 	mygo.App.SetName("Droi")

@@ -551,6 +551,22 @@ func (c *Controller) InterruptSession(ctx context.Context, sessionID string) err
 	return nil
 }
 
+// Forget drops what this Client holds of a Session it no longer shows: its
+// state in the Store, and its reload after a reconnect. The Daemon keeps
+// the Session, and LoadSession reads it again. A Session being loaded is
+// kept.
+func (c *Controller) Forget(sessionID string) {
+	c.mu.Lock()
+	t := c.sessions[sessionID]
+	if t != nil && t.loading != nil {
+		c.mu.Unlock()
+		return
+	}
+	delete(c.sessions, sessionID)
+	c.mu.Unlock()
+	c.store.RemoveSession(sessionID)
+}
+
 // CloseSession closes a Session; the Controller stops following it.
 func (c *Controller) CloseSession(ctx context.Context, p protocol.CloseSessionParams) error {
 	cl, err := c.Client()
