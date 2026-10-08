@@ -507,7 +507,7 @@ func (a *App) View(c *ui.Context) {
 				a.automationsPage(c)
 			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():
 				// Home with nothing to show yet; the New session page would flash.
-				a.startingUpView(c)
+				a.startingUpView(c, status)
 			default:
 				a.newSessionPage(c, listed, status)
 			}
