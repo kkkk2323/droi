@@ -251,7 +251,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 						if current {
 							label = L("Jump to message %d, current", i+1)
 						}
-						b := ui.ButtonBase(c).Key(it.id).Label(label).FillWidth().Height(pitch).Shrink(0).
+						b := ui.ButtonBase(c.Key(it.id)).Label(label).FillWidth().Height(pitch).Shrink(0).
 							Justify(ui.End).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 						if b.Hovered() || b.Focused() {
 							r.preview = i

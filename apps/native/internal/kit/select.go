@@ -11,7 +11,7 @@ type Option struct {
 // QuietTrigger is the composer's text-button trigger: h-7, rounded-md,
 // px-2, 13px in the foreground at 75%, the muted background while hovered
 // or open.
-func (k *Kit) QuietTrigger(c *ui.Context, label string, open bool) *ui.Element {
+func (k *Kit) QuietTrigger(c *ui.Context, label string, open bool) ui.Element {
 	t := k.T
 	b := ui.ButtonBase(c).Label(label).Expanded(open).Height(k.Px(28)).Gap(k.Px(6)).PaddingX(k.Px(8)).Radius(k.Px(8)).Shrink(0).
 		FontSize(k.Px(13)).Cursor(ui.CursorPointer)
@@ -59,12 +59,12 @@ func (k *Kit) QuietSelect(c *ui.Context, open *bool, label, icon, value string, 
 	}
 	var picked string
 	ok := false
-	ui.PopoverBase(c, tr, open, func(p *ui.Element) {
+	ui.PopoverBase(c, tr, open, func(p ui.Element) {
 		p.Role(ui.RoleList).Label(label).Margin(k.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(k.Px(4)).Radius(k.Px(8)).
 			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).Children(func() {
 			for _, o := range items {
-				it := Selected(ui.ButtonBase(c).Key(o.Value).Role(ui.RoleListItem).Label(o.Label), o.Value == value).Disabled(o.Disabled).
+				it := Selected(ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleListItem).Label(o.Label), o.Value == value).Disabled(o.Disabled).
 					Gap(k.Px(6)).Padding(k.Px(6), k.Px(12), k.Px(6), k.Px(6)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
 				color := t.PopoverForeground
 				if it.Hovered() || it.Focused() {
@@ -103,7 +103,7 @@ func (k *Kit) Segmented(c *ui.Context, label, value string, options []Option) (s
 	ui.Row(c).Role(ui.RoleRadioGroup).Label(label).Grow(1).MinWidth(0).Gap(k.Px(2)).Padding(k.Px(2)).Radius(k.Px(8)).Background(t.Muted).Children(func() {
 		for _, o := range options {
 			checked := o.Value == value
-			b := ui.ButtonBase(c).Key(o.Value).Role(ui.RoleRadio).Checked(checked).Label(o.Label).Height(k.Px(24)).Grow(1).Basis(0).MinWidth(0).
+			b := ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleRadio).Checked(checked).Label(o.Label).Height(k.Px(24)).Grow(1).Basis(0).MinWidth(0).
 				PaddingX(k.Px(6)).Radius(k.Px(6)).Cursor(ui.CursorPointer)
 			color := t.MutedForeground
 			weight := 400

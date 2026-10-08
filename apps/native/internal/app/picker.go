@@ -58,7 +58,7 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 }
 
 // brandIcon is a provider's mark, or sparkles for the Auto router.
-func brandIcon(c *ui.Context, k *kit.Kit, b models.Brand, size float32, color ui.Color) *ui.Element {
+func brandIcon(c *ui.Context, k *kit.Kit, b models.Brand, size float32, color ui.Color) ui.Element {
 	if svg := brands.Mark(string(b)); svg != nil {
 		return ui.Image(c, svg).Size(k.Px(size), k.Px(size)).Shrink(0).TextColor(color)
 	}
@@ -103,7 +103,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 	if effort != "" && !contains(levels, effort) {
 		levels = append([]string{effort}, levels...)
 	}
-	var tr *ui.Element
+	var tr ui.Element
 	fg := t.Foreground.Alpha(0.75)
 	size, lh := float32(13), float32(19.5)
 	if field {
@@ -164,7 +164,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 		}
 		*open = false
 	}
-	ui.PopoverBase(c, tr, open, func(p *ui.Element) {
+	ui.PopoverBase(c, tr, open, func(p ui.Element) {
 		if field {
 			p.AttachTo(tr, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(4), 0, 0, 0)
 		} else {
@@ -288,7 +288,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 
 func (a *App) modelRow(c *ui.Context, row models.Row, highlighted, selected, starred bool, hover, click func()) {
 	k, t := a.kit, a.kit.T
-	r := kit.Selected(ui.Row(c).Key(row.ID).Role(ui.RoleListItem).Label(row.Label), selected).Gap(k.Px(12)).Padding(k.Px(8), k.Px(10)).
+	r := kit.Selected(ui.Row(c.Key(row.ID)).Role(ui.RoleListItem).Label(row.Label), selected).Gap(k.Px(12)).Padding(k.Px(8), k.Px(10)).
 		Radius(k.Px(8)).Cursor(ui.CursorPointer)
 	if _, _, over := r.PointerPosition(); over && !highlighted {
 		hover()

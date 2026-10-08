@@ -91,7 +91,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
 		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(240).Shrink(0).Gap(k.Px(4)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
 			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
-			nav := func(icon, label string, selected bool) *ui.Element {
+			nav := func(icon, label string, selected bool) ui.Element {
 				b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
 				color := t.SidebarForeground
 				switch {
@@ -236,12 +236,12 @@ func (a *App) fieldSelect(c *ui.Context, label, value string, options []kit.Opti
 	}
 	var picked string
 	ok := false
-	ui.PopoverBase(c, tr, open, func(p *ui.Element) {
+	ui.PopoverBase(c, tr, open, func(p ui.Element) {
 		p.Role(ui.RoleList).Label(label).Margin(k.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(k.Px(4)).Radius(k.Px(8)).
 			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).Children(func() {
 			for _, o := range options {
-				it := kit.Selected(ui.ButtonBase(c).Key(o.Value).Role(ui.RoleListItem).Label(l10n.T(o.Label)), o.Value == value).
+				it := kit.Selected(ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleListItem).Label(l10n.T(o.Label)), o.Value == value).
 					Gap(k.Px(6)).Padding(k.Px(6), k.Px(12), k.Px(6), k.Px(6)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
 				color := t.PopoverForeground
 				if it.Hovered() {
@@ -293,7 +293,7 @@ func b2f(b bool) float32 {
 }
 
 // field is a settings text input: h-9, rounded-lg, bordered.
-func (a *App) field(c *ui.Context, value *string, label, placeholder string, mono, password bool) *ui.Element {
+func (a *App) field(c *ui.Context, value *string, label, placeholder string, mono, password bool) ui.Element {
 	k, t := a.kit, a.kit.T
 	in := ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).Height(k.Px(36)).Grow(1).MinWidth(0).PaddingX(k.Px(12)).
 		Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).FontSize(k.Px(14)).TextColor(t.Foreground)
@@ -309,7 +309,7 @@ func (a *App) field(c *ui.Context, value *string, label, placeholder string, mon
 	return in
 }
 
-func (a *App) smallButton(c *ui.Context, v kit.Variant, label, icon string, disabled bool) *ui.Element {
+func (a *App) smallButton(c *ui.Context, v kit.Variant, label, icon string, disabled bool) ui.Element {
 	k, t := a.kit, a.kit.T
 	b := k.Button(c, v, 32, false, label).Disabled(disabled).FontSize(k.Px(13))
 	color := t.Foreground

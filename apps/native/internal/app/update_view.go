@@ -96,7 +96,7 @@ func (a *App) updateNotes(c *ui.Context, s updates.State) {
 		k.Text(c, L("What’s new in %s", s.Version), 13, 20).FontWeight(500)
 		p := newProse(k)
 		p.size, p.lh, p.color = 13, 22, k.T.MutedForeground
-		f := flow{c: c}
+		f := flow{}
 		p.nodes(c, &f, md.ParseTree(s.Notes))
 	})
 }

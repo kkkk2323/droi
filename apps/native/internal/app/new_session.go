@@ -165,7 +165,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 				// The heading is the question's text alone: as the row, it would
 				// hide the Workspace button in it from VoiceOver.
 				ui.Row(c).FillWidth().Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
-					h := func(s string) *ui.Element { return k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
+					h := func(s string) ui.Element { return k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
 					switch {
 					case workspace != "" && !scratch:
 						h(L("What do you want to build in")).Role(ui.RoleHeading)
@@ -250,7 +250,7 @@ func (a *App) workspaceMenu(c *ui.Context, recent []sessions.RecentWorkspace, va
 // workspacePicker is the panel a Workspace trigger opens: a search over
 // the recent Workspaces, another folder, and no project at all (a Scratch
 // folder). The arrows walk the rows and Enter picks one.
-func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.RecentWorkspace, value string) {
+func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.RecentWorkspace, value string) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
 	if tr.Clicked() {
@@ -299,7 +299,7 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 		}
 	}
 	row := func(i int, key, icon, text, title string, checked bool) {
-		b := ui.ButtonBase(c).Key(key).Label(text).Tooltip(title).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).
+		b := ui.ButtonBase(c.Key(key)).Label(text).Tooltip(title).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).
 			Justify(ui.Start).Cursor(ui.CursorPointer)
 		if i != other {
 			b.Role(ui.RoleMenuItemRadio).Checked(checked)
@@ -325,7 +325,7 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 			act(i)
 		}
 	}
-	ui.PopoverBase(c, tr, &s.menuOpen, func(p *ui.Element) {
+	ui.PopoverBase(c, tr, &s.menuOpen, func(p ui.Element) {
 		p.Label(L("Choose a project")).Width(k.Px(288)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Row(c).Gap(k.Px(8)).PaddingX(k.Px(12)).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
@@ -408,7 +408,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			}
 			// In a column the text area's Grow(1) would take its height, as
 			// the composer's row gives it the width instead.
-			var in *ui.Element
+			var in ui.Element
 			ui.Row(c).Children(func() {
 				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()

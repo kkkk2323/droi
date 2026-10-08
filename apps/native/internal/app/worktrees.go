@@ -183,7 +183,7 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 		s.worktreeSet, s.worktree = true, true
 		fn()
 	}
-	ui.PopoverBase(c, tr, &s.worktreeOpen, func(p *ui.Element) {
+	ui.PopoverBase(c, tr, &s.worktreeOpen, func(p ui.Element) {
 		p.Label(L("Worktree")).Width(k.Px(304)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Scroll(c).MaxHeight(k.Px(420)).Children(func() {
@@ -263,7 +263,7 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 // it, and a check when chosen. It reports a click.
 func (a *App) choiceRow(c *ui.Context, key, icon, label, note string, checked bool) bool {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Key(key).Role(ui.RoleMenuItemRadio).Checked(checked).Label(label).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).
+	b := ui.ButtonBase(c.Key(key)).Role(ui.RoleMenuItemRadio).Checked(checked).Label(label).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).
 		Radius(k.Px(6)).Justify(ui.Start).AlignItems(ui.Start).Cursor(ui.CursorPointer)
 	if note != "" {
 		b.Tooltip(note)
@@ -368,7 +368,7 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 		title, action = L("Archive session?"), L("Archive")
 		message = L("Archiving this session will delete its worktree.")
 	}
-	ui.DialogBase(c, &d.open, func(backdrop, panel *ui.Element) {
+	ui.DialogBase(c, &d.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		panel.Role(ui.RoleAlertDialog).Label(title).Width(min(k.Px(440), w-k.Px(32))).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
@@ -461,7 +461,7 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 
 // dangerButton is the action that deletes: solid red with white text, so
 // it stands out from Cancel beside it.
-func (a *App) dangerButton(c *ui.Context, label string, disabled bool) *ui.Element {
+func (a *App) dangerButton(c *ui.Context, label string, disabled bool) ui.Element {
 	k, t := a.kit, a.kit.T
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).PaddingX(k.Px(12)).Radius(k.Px(8)).Disabled(disabled).Cursor(ui.CursorPointer)
 	bg := t.Destructive

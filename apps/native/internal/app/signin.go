@@ -157,7 +157,7 @@ func (a *App) signInPending(c *ui.Context, p *host.LoginPending) {
 }
 
 // wideButton is a full-width h-9 button of the sign-in page.
-func (a *App) wideButton(c *ui.Context, v kit.Variant, label string, disabled bool) *ui.Element {
+func (a *App) wideButton(c *ui.Context, v kit.Variant, label string, disabled bool) ui.Element {
 	k, t := a.kit, a.kit.T
 	b := k.Button(c, v, 36, false, label).FillWidth().Disabled(disabled)
 	color := t.Foreground

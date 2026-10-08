@@ -41,7 +41,7 @@ func (a *App) openSessionsButton(c *ui.Context) {
 func (a *App) drawer(c *ui.Context, sidebar func()) {
 	t := a.kit.T
 	w, _ := c.Size()
-	ui.DialogBase(c, &a.drawerOpen, func(backdrop, panel *ui.Element) {
+	ui.DialogBase(c, &a.drawerOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		panel.Label(L("Sessions")).Absolute().Left(0).Top(0).Bottom(0).Width(min(w*0.85, a.kit.Px(288))).
 			Background(t.Sidebar).TextColor(t.Foreground).Clip().Shadow(0, a.kit.Px(20), a.kit.Px(25), -a.kit.Px(5), ui.RGBA(0, 0, 0, 0.1))

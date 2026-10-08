@@ -182,7 +182,7 @@ func (v *sessionView) hold() {
 	v.heldRows = len(v.entries)
 }
 
-func (v *sessionView) holdOnToggle(trigger *ui.Element) {
+func (v *sessionView) holdOnToggle(trigger ui.Element) {
 	if trigger.Changed() {
 		v.hold()
 	}
@@ -688,7 +688,7 @@ func (v *sessionView) openInButton(c *ui.Context, workspace string) {
 		}
 		k.MenuPopup(c, more, &v.openIn, true, L("Open in"), func() {
 			for _, app := range list {
-				item := ui.ButtonBase(c).Key(app.ID).Role(ui.RoleMenuItemRadio).Checked(app.ID == preferred.ID).Label(app.Label).
+				item := ui.ButtonBase(c.Key(app.ID)).Role(ui.RoleMenuItemRadio).Checked(app.ID == preferred.ID).Label(app.Label).
 					Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
 				if item.Hovered() {
 					item.Background(t.Accent)

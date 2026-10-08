@@ -219,7 +219,7 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 			b := r.e.Blocks[r.block]
 			switch b.Kind {
 			case transcript.Text:
-				f := flow{c: c, open: true}
+				f := flow{open: true}
 				v.reply(c, &f, b.Text, color)
 				if r.streaming {
 					pulse := 0.6 * (0.5 + 0.5*float32(pulseWave(c)))

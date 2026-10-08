@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- The native app runs on MyGo 0.3.0. A control kept from an earlier frame can no longer stand for another one: development builds and the view tests stop at such a use, and a release build ignores it.
+
 ## 1.39.0 - 2026-10-08
 
 ### Added

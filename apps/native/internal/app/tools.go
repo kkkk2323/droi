@@ -234,7 +234,7 @@ func (v *sessionView) toolsDialog(c *ui.Context) {
 	k, t := v.a.kit, v.a.kit.T
 	ts := &v.tools
 	w, h := c.Size()
-	ui.DialogBase(c, &ts.open, func(backdrop, panel *ui.Element) {
+	ui.DialogBase(c, &ts.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		maxH := min(k.Px(640), h*0.85)
 		panel.Role(ui.RoleDialog).Label(L("Skills and MCP servers")).Width(min(k.Px(640), w-k.Px(32))).
@@ -329,7 +329,7 @@ func (v *sessionView) skillsTab(c *ui.Context) {
 		}
 		for _, g := range skills.GroupSkills(list) {
 			label := l10n.T(trimOr(skills.LocationLabels[g.Location], g.Location))
-			ui.Column(c).Role(ui.RoleGroup).Label(label).Key("skills:" + g.Location).Children(func() {
+			ui.Column(c.Key("skills:" + g.Location)).Role(ui.RoleGroup).Label(label).Children(func() {
 				k.Text(c, label, 12, 16).FontWeight(500).TextColor(t.MutedForeground).Padding(0, k.Px(8), k.Px(4), k.Px(8))
 				ui.Column(c).Role(ui.RoleList).Gap(k.Px(2)).Children(func() {
 					for _, s := range g.Skills {
@@ -346,7 +346,7 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 	k, t := a.kit, a.kit.T
 	off := s.Enabled != nil && !*s.Enabled
 	sw, can := skills.SkillSwitch(s, project)
-	row := ui.Row(c).Role(ui.RoleListItem).Label(s.Name).Key(string(s.Location)+":"+s.Name).AlignItems(ui.Start).Gap(k.Px(12)).
+	row := ui.Row(c.Key(string(s.Location)+":"+s.Name)).Role(ui.RoleListItem).Label(s.Name).AlignItems(ui.Start).Gap(k.Px(12)).
 		Padding(k.Px(6), k.Px(8)).Radius(k.Px(10))
 	if off {
 		row.Opacity(0.7)
@@ -500,7 +500,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 		toolCount = int(*s.ToolCount)
 	}
 	name := s.Name
-	ui.Column(c).Role(ui.RoleListItem).Label(s.Name).Key("server:"+s.Name).Padding(k.Px(6), k.Px(8)).Radius(k.Px(10)).Children(func() {
+	ui.Column(c.Key("server:"+s.Name)).Role(ui.RoleListItem).Label(s.Name).Padding(k.Px(6), k.Px(8)).Radius(k.Px(10)).Children(func() {
 		ui.Row(c).AlignItems(ui.Start).Gap(k.Px(12)).Children(func() {
 			dot := t.MutedForeground.Alpha(0.4)
 			if f := mcpDot[status]; f != nil {
@@ -619,7 +619,7 @@ func (v *sessionView) toolList(c *ui.Context, s protocol.MCPServerStatusInfo, to
 	}
 	ui.Column(c).Role(ui.RoleList).Label(L("%s tools", s.Name)).Gap(k.Px(2)).Padding(k.Px(4), 0, 0, k.Px(4)).Children(func() {
 		for _, tool := range tools {
-			ui.Row(c).Key("tool:" + tool.Name).Gap(k.Px(12)).PaddingY(k.Px(2)).Children(func() {
+			ui.Row(c.Key("tool:" + tool.Name)).Gap(k.Px(12)).PaddingY(k.Px(2)).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 					k.Text(c, tool.Name, 12, 16).Font(k.Mono)
 					if tool.Description != "" {
@@ -722,7 +722,7 @@ func (v *sessionView) mcpCatalogue(c *ui.Context, taken []string) {
 				for _, e := range entries {
 					entry := e
 					setup := mcp.NeedsSetup(entry)
-					row := ui.Row(c).Role(ui.RoleListItem).Label(entry.Name).Key("reg:"+entry.Name).AlignItems(ui.Start).Gap(k.Px(12)).
+					row := ui.Row(c.Key("reg:"+entry.Name)).Role(ui.RoleListItem).Label(entry.Name).AlignItems(ui.Start).Gap(k.Px(12)).
 						Padding(k.Px(6), k.Px(8)).Radius(k.Px(10))
 					if row.Hovered() {
 						row.Background(t.Muted.Alpha(0.5))

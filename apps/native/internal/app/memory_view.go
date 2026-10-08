@@ -224,7 +224,7 @@ func (a *App) memoryRow(c *ui.Context, row memorywork.Row, loggedSince string) {
 	}
 	desc := L("%s · %s of %s characters · %s", countL(row.Entries, l10n.N("%d entry"), l10n.N("%d entries")), formatChars(row.Chars), formatChars(row.SoftLimit), consolidated)
 	busy := row.Consolidating || m.results[name] == "\x00"
-	ui.Column(c).Role(ui.RoleListItem).Label(shown).Key("memory:" + name).Children(func() {
+	ui.Column(c.Key("memory:" + name)).Role(ui.RoleListItem).Label(shown).Children(func() {
 		a.settingRowWith(c, func() {
 			if row.Workspace == "" {
 				k.Text(c, L("Global Memory"), 14, 20).Role(ui.RoleHeading).FontWeight(500)

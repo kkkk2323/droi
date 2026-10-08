@@ -103,7 +103,7 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 const scrollGutter = 11
 
 // column is the reading column: max-w-3xl centered, px-6.
-func (v *sessionView) column(c *ui.Context) *ui.Element {
+func (v *sessionView) column(c *ui.Context) ui.Element {
 	k := v.a.kit
 	return ui.Column(c).FillWidth().MaxWidth(k.Px(columnWidth)).AlignSelf(ui.Center).PaddingX(k.Px(24))
 }
@@ -212,9 +212,9 @@ func (v *sessionView) reply(c *ui.Context, f *flow, text string, color ui.Color)
 		case jsonrender.Markdown:
 			p.nodes(c, f, v.doc(seg.Text))
 		case jsonrender.Render:
-			f.block(v.a.kit.Px(8), v.a.kit.Px(8), func() { renderTree(c, v.a.kit, seg.Spec) })
+			f.block(c, v.a.kit.Px(8), v.a.kit.Px(8), func() { renderTree(c, v.a.kit, seg.Spec) })
 		case jsonrender.Pending:
-			f.block(v.a.kit.Px(8), v.a.kit.Px(8), func() {
+			f.block(c, v.a.kit.Px(8), v.a.kit.Px(8), func() {
 				v.a.kit.Text(c, L("Rendering…"), 13, 19.5).TextColor(v.a.kit.T.MutedForeground)
 			})
 		}
@@ -255,7 +255,7 @@ func (v *sessionView) zoomView(c *ui.Context) {
 	w, h := bm.Size()
 	maxW, maxH := ww-k.Px(64), wh-k.Px(64)
 	scale := min(float32(1), maxW/float32(w), maxH/float32(h))
-	ui.DialogBase(c, &v.zoomOpen, func(backdrop, panel *ui.Element) {
+	ui.DialogBase(c, &v.zoomOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.7))
 		panel.Label(L("Enlarged image")).Size(float32(w)*scale, float32(h)*scale).Radius(k.Px(8)).Clip().Cursor(ui.CursorPointer)
 		ui.Image(c, bm).Label(v.zoomLabel).Fill().Fit(ui.Contain)
@@ -316,7 +316,7 @@ func (v *sessionView) thinking(c *ui.Context, b transcript.Block, streaming bool
 			pr.size, pr.lh, pr.color = 14, 24, t.MutedForeground
 			doc := v.doc(b.Text)
 			ui.Column(c).Margin(max(k.Px(4), pr.firstMargin(doc)), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Selectable().Children(func() {
-				f := flow{c: c, open: true}
+				f := flow{open: true}
 				pr.nodes(c, &f, doc)
 			})
 		})
@@ -395,7 +395,7 @@ func (v *sessionView) toolRow(c *ui.Context, call *transcript.ToolCall) {
 	}
 	res := v.result(call)
 	open := v.flag("tool:"+call.Use.ID, false)
-	ui.Column(c).Key(call.Use.ID).Children(func() {
+	ui.Column(c.Key(call.Use.ID)).Children(func() {
 		p := v.rowTrigger(c, open, call.Use.Name+": "+transcript.Summary(call))
 		hover := p.Trigger.Hovered() || p.Trigger.Focused()
 		p.Trigger.Children(func() {
@@ -449,7 +449,7 @@ func (v *sessionView) toolRow(c *ui.Context, call *transcript.ToolCall) {
 // the result's first lines, and its pictures.
 func (v *sessionView) toolDetail(c *ui.Context, call *transcript.ToolCall, res transcript.ToolResultView) {
 	k, t := v.a.kit, v.a.kit.T
-	mono := func(text string, color ui.Color) *ui.Element {
+	mono := func(text string, color ui.Color) ui.Element {
 		return k.Text(c, text, 11.5, 20).Font(k.Mono).TextColor(color).Selectable()
 	}
 	ui.Column(c).Margin(k.Px(2), 0, k.Px(4), 0).Radius(k.Px(10)).Border(1, t.Border).Background(t.Card.Alpha(0.6)).Clip().Children(func() {
@@ -540,7 +540,7 @@ func (v *sessionView) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 	summary := v.scriptSummary(call)
 	failed := run.Status == "failed" || run.Status == "cancelled"
 	open := v.flag("script:"+call.Use.ID, false)
-	ui.Column(c).Key(call.Use.ID).Children(func() {
+	ui.Column(c.Key(call.Use.ID)).Children(func() {
 		p := v.rowTrigger(c, open, call.Use.Name+": "+summary)
 		hover := p.Trigger.Hovered() || p.Trigger.Focused()
 		p.Trigger.Children(func() {
@@ -788,7 +788,7 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 		p.Panel(func() {
 			ui.Scroll(c).MaxHeight(k.Px(384)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 				ui.Column(c).Padding(k.Px(10), k.Px(12)).Gap(k.Px(8)).Children(func() {
-					heading := func(s string) *ui.Element {
+					heading := func(s string) ui.Element {
 						return k.Text(c, strings.ToUpper(s), 11, 16.5).FontWeight(500).LetterSpacing(k.Px(0.275)).TextColor(t.MutedForeground).Margin(0, 0, k.Px(4), 0)
 					}
 					ui.Column(c).Role(ui.RoleGroup).Label(L("Prompt")).Children(func() {
@@ -800,7 +800,7 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 							heading(L("Report")).Unselectable()
 							pr := newProse(k)
 							pr.size, pr.lh = 13, 24
-							f := flow{c: c}
+							f := flow{}
 							pr.nodes(c, &f, v.doc(link.Report))
 						})
 					}
