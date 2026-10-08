@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 )
 
@@ -34,8 +35,8 @@ type Item struct {
 var Builtins = []Item{
 	{
 		Name:         "compact",
-		Description:  "Summarise the conversation and continue in a new session",
-		ArgumentHint: "[instructions]",
+		Description:  l10n.N("Summarise the conversation and continue in a new session"),
+		ArgumentHint: l10n.N("[instructions]"),
 		Kind:         Command,
 	},
 }

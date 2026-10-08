@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
@@ -105,6 +106,11 @@ type App struct {
 
 	kit   *kit.Kit
 	route Route
+	// locale is the system's (SetLocale); "" keeps the last one told.
+	locale string
+	// languageChanged hears a change of the language, for what the window
+	// does not draw, such as the menu bar.
+	languageChanged func()
 
 	// Guarded by mu: written by the Controller's goroutines.
 	mu       sync.Mutex
@@ -113,8 +119,11 @@ type App struct {
 	listErr  string
 	listDone bool
 	more     *float64
-	busy     map[string]string // working states the Daemon reported
-	dirty    bool
+	// listGen counts the reads of the first page, so that a slower, older
+	// read does not overwrite a newer one's list.
+	listGen uint64
+	busy    map[string]string // working states the Daemon reported
+	dirty   bool
 	// turnAt is when each working Session's turn began, in Unix seconds:
 	// it keeps the Session's place in the list until the turn ends.
 	turnAt map[string]int64
@@ -145,8 +154,9 @@ type App struct {
 	// sidebar is a drawer; drawerOpen whether it is out.
 	narrow, drawerOpen bool
 	remote             remoteState
-	// storeRev counts the Store's changes, for the views to build again.
-	storeRev atomic.Int64
+	// revs counts each Session's changes in the Store, for its view to
+	// build again: Session id → *atomic.Int64.
+	revs sync.Map
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
 	worktreeAsk worktreeDialog
 	// pasteTo attaches the clipboard's image to the composer that had the
@@ -181,11 +191,28 @@ func New(cfg Config) *App {
 		compactions: compaction.NewLog(),
 	}
 	a.applyPrefs()
+	if cfg.Updater != nil {
+		cfg.Updater.Skip(prefs.SkippedUpdate.Get(cfg.Prefs))
+	}
 	return a
 }
 
 func (a *App) applyPrefs() {
 	a.kit = kit.New(theme.Parse(prefs.Theme.Get(a.prefs)), theme.FontChoice(prefs.Font.Get(a.prefs)), theme.TextSize(prefs.TextSize.Get(a.prefs)), prefs.Zoom.Get(a.prefs))
+	if l10n.Set(prefs.Language.Get(a.prefs), a.locale) && a.languageChanged != nil {
+		a.languageChanged()
+	}
+}
+
+// SetLanguageChanged sets what hears a change of the app's language, on
+// the main thread.
+func (a *App) SetLanguageChanged(fn func()) { a.languageChanged = fn }
+
+// SetLocale tells the system's locale, such as "zh-CN", which the app's
+// language follows unless Settings picks one. Main thread only.
+func (a *App) SetLocale(locale string) {
+	a.locale = locale
+	a.applyPrefs()
 }
 
 // Start subscribes to the Controller and reads the Session list once
@@ -197,7 +224,7 @@ func (a *App) Start() {
 	a.ctl.Subscribe(a.onEvent)
 	a.watchAlerts()
 	a.ctl.Store().Subscribe(func(e session.Event) {
-		a.storeRev.Add(1)
+		a.rev(e.SessionID).Add(1)
 		if e.Kind == session.EventWorkingStateChanged {
 			s := a.ctl.Store().Session(e.SessionID)
 			a.touch(e.SessionID, s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle)
@@ -210,6 +237,12 @@ func (a *App) Start() {
 	if a.status.Connected {
 		go a.refreshList()
 	}
+}
+
+// rev is a Session's revision counter.
+func (a *App) rev(id string) *atomic.Int64 {
+	r, _ := a.revs.LoadOrStore(id, new(atomic.Int64))
+	return r.(*atomic.Int64)
 }
 
 // redraw asks for a frame from any goroutine.
@@ -317,11 +350,28 @@ func (a *App) refreshList() {
 	if err != nil {
 		return
 	}
+	gen := a.startList()
 	limit := float64(sessionPage)
 	show := prefs.ShowArchived.Get(a.prefs)
 	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show})
+	a.setList(gen, res, err)
+}
+
+// startList counts a read of the first page, which setList then takes.
+func (a *App) startList() uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.listGen++
+	return a.listGen
+}
+
+// setList takes the first page of read gen, unless a newer read started.
+func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if gen != a.listGen {
+		return
+	}
 	a.listDone = true
 	if err != nil {
 		a.listErr = err.Error()
@@ -340,7 +390,7 @@ func (a *App) refreshList() {
 // loadOlder reads the next page of Sessions.
 func (a *App) loadOlder() {
 	a.mu.Lock()
-	cursor := a.more
+	cursor, gen := a.more, a.listGen
 	a.mu.Unlock()
 	if cursor == nil {
 		return
@@ -357,6 +407,10 @@ func (a *App) loadOlder() {
 	}
 	older := summariesOf(res.Sessions)
 	a.mu.Lock()
+	if gen != a.listGen {
+		a.mu.Unlock()
+		return // the page follows a list read again since
+	}
 	a.holdTurns(older)
 	a.listed = append(a.listed, older...)
 	a.more = nil
@@ -379,7 +433,7 @@ func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary 
 		}
 		sum := sessions.Summary{
 			SessionID:        s.SessionID,
-			Title:            trimOr(s.Title, "Untitled session"),
+			Title:            trimOr(s.Title, L("Untitled session")),
 			Cwd:              s.Cwd,
 			RepoRoot:         s.RepoRoot,
 			UpdatedAt:        int64(s.UpdatedAt),
@@ -453,9 +507,7 @@ func (a *App) View(c *ui.Context) {
 	if !a.narrow {
 		a.drawerOpen = false
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyB) && !a.narrow {
-		prefs.SidebarVisible.Set(a.prefs, !prefs.SidebarVisible.Get(a.prefs))
-	}
+	a.sidebar.numbered = a.sidebar.numbered[:0]
 	a.worktreeDialogView(c)
 	if a.route.Name == "settings" {
 		a.settingsPage(c, status)
@@ -523,13 +575,13 @@ func (a *App) View(c *ui.Context) {
 		if a.cfg.InsetTop {
 			left = 76
 		}
-		label := "Hide sidebar"
+		label := L("Hide sidebar")
 		if !shown {
-			label = "Show sidebar"
+			label = L("Show sidebar")
 		}
-		b := a.kit.IconButton(c, "panel-left", label, 32).Absolute().Left(left).Top(6).Expanded(shown)
+		b := a.kit.IconButton(c, "panel-left", label, 32).Tooltip(withShortcut(label, CmdToggleSidebar)).Absolute().Left(left).Top(6).Expanded(shown)
 		if b.Clicked() {
-			prefs.SidebarVisible.Set(a.prefs, !shown)
+			a.Run(CmdToggleSidebar)
 		}
 	})
 }
@@ -565,9 +617,9 @@ func (a *App) banner(c *ui.Context, status controller.Status) {
 		return
 	}
 	t, k := a.kit.T, a.kit
-	text := "Reconnecting to Droid…"
+	text := L("Reconnecting to Droid…")
 	if !status.Reconnecting && status.Failure != nil {
-		text = "Not connected to Droid: " + status.Failure.Error()
+		text = L("Not connected to Droid: %s", status.Failure.Error())
 	}
 	ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(8)).Padding(k.Px(6), k.Px(16)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
 		Background(t.Attention.Alpha(0.1)).Children(func() {

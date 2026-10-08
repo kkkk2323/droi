@@ -187,7 +187,7 @@ func (p prose) list(c *ui.Context, n *md.Node) {
 				if n.Ordered {
 					label := strconv.Itoa(n.Start+i) + "."
 					ui.Text(c, label).FontSize(k.Px(p.size)).FixedLineHeight(line).TextColor(t.MutedForeground).TextAlign(ui.End).
-						Absolute().Left(-k.Px(40)).Top(k.Px(4)).Width(k.Px(36)).FontFeatures("tnum")
+						Absolute().Left(-k.Px(40)).Top(k.Px(4)).Width(k.Px(36)).FontFeatures("tnum").Unselectable()
 				} else if item.Checked == 0 {
 					d := k.Px(p.size / 3)
 					kit.Dot(c, d, t.MutedForeground).Absolute().Left(-k.Px(14.5) - d/2).Top(k.Px(4) + line/2 - d/2)
@@ -304,16 +304,16 @@ func (p prose) codeBlock(c *ui.Context, n *md.Node) {
 	lang := n.Lang
 	ui.Column(c).Radius(k.Px(12)).Border(1, t.Border).Background(t.Card).Clip().Children(func() {
 		ui.Row(c).Height(k.Px(36)).Padding(0, k.Px(8), 0, k.Px(16)).Children(func() {
-			k.Text(c, lang, 12, 16).Font(k.Mono).TextColor(t.MutedForeground)
+			k.Text(c, lang, 12, 16).Font(k.Mono).TextColor(t.MutedForeground).Unselectable()
 			ui.Spacer(c)
 			ui.Row(c).Gap(k.Px(8)).Padding(k.Px(4), k.Px(7)).Children(func() {
-				dl := p.codeAction(c, "download", "Download file")
+				dl := p.codeAction(c, "download", L("Download file"))
 				if dl.Clicked() {
 					c.WriteClipboard(n.Code)
 				}
-				if p.codeAction(c, "copy", "Copy Code").Clicked() {
+				if p.codeAction(c, "copy", L("Copy Code")).Clicked() {
 					c.WriteClipboard(n.Code)
-					c.Toast("Copied the code")
+					c.Toast(L("Copied the code"))
 				}
 			})
 		})
@@ -321,7 +321,7 @@ func (p prose) codeBlock(c *ui.Context, n *md.Node) {
 			ui.Row(c).AlignItems(ui.Start).Padding(k.Px(12), k.Px(16)).Children(func() {
 				lines := strings.Count(n.Code, "\n") + 1
 				line := k.Px(20.8)
-				ui.Column(c).Width(k.Px(24)).Shrink(0).Children(func() {
+				ui.Column(c).Width(k.Px(24)).Shrink(0).Unselectable().Children(func() {
 					for i := range lines {
 						ui.Text(c, strconv.Itoa(i+1)).Font(k.Mono).FontSize(k.Px(13)).FixedLineHeight(line).
 							TextColor(t.MutedForeground.Alpha(0.5)).TextAlign(ui.End).FillWidth()

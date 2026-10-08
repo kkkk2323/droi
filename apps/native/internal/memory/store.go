@@ -106,12 +106,14 @@ var GlobalSlot = Slot{Scope: ScopeGlobal}
 
 // ProjectSlot is a Workspace's Project Memory. The Daemon may hand over the
 // path a Session was opened with while a process's cwd is resolved (/tmp
-// against /private/tmp), so both are keyed by the real path.
+// against /private/tmp), so both are keyed by the real path. A linked git
+// worktree is keyed by the same place in its main checkout, so every
+// worktree of a repository shares the repository's Project Memory.
 func ProjectSlot(workspace string) Slot {
 	path := workspace
 	if abs, err := filepath.Abs(workspace); err == nil {
 		if real, err := filepath.EvalSymlinks(abs); err == nil {
-			path = real
+			path = mainCheckout(real)
 		}
 	}
 	// A Workspace that is gone keeps the path it was recorded under.

@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# A newer push to a pull request's branch cancels the run it replaces;
+# main keeps every run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The suites run side by side.
 jobs:
   check:
@@ -51,6 +57,7 @@ jobs:
         run: |
           test -z "$(gofmt -l apps/native packages/droid-sdk-go)" || { gofmt -l apps/native packages/droid-sdk-go; exit 1; }
           go vet ./apps/native/... ./packages/droid-sdk-go/...
+          GOOS=windows go vet ./apps/native/... ./packages/droid-sdk-go/...
           go test ./apps/native/... ./packages/droid-sdk-go/...
 
   phone-e2e:

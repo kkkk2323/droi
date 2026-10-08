@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/jsonrender"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/subagents"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
@@ -33,7 +35,7 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 	hasOlder := s.HasOlderMessages()
 	if len(entries) == 0 && !hasOlder {
 		ui.Box(c).Fill().Center().Children(func() {
-			k.Text(c, "What should Droid work on?", 14, 20).TextColor(t.MutedForeground)
+			k.Text(c, L("What should Droid work on?"), 14, 20).TextColor(t.MutedForeground)
 		})
 		return
 	}
@@ -68,7 +70,7 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 			default:
 				v.row(c, rows[i-1])
 			}
-		}).Fill().Label("Transcript").PaddingX(scrollGutter)
+		}).Fill().Label(L("Transcript")).PaddingX(scrollGutter)
 		if v.pendingJump != "" {
 			for i, e := range entries {
 				if e.ID == v.pendingJump {
@@ -85,12 +87,11 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 			v.loadOlder()
 		}
 		if !v.list.AtEnd() {
-			b := k.Button(c, kit.Outline, 32, true, "Scroll to latest").Radius(k.Px(16)).Absolute().Bottom(k.Px(12)).
+			b := k.Button(c, kit.Outline, 32, true, L("Scroll to latest")).Tooltip(withShortcut(L("Scroll to latest"), CmdScrollToLatest)).Radius(k.Px(16)).Absolute().Bottom(k.Px(12)).
 				Left(0).Right(0).Margin(0, ui.Auto, 0, ui.Auto).Shadow(0, k.Px(4), k.Px(12), 0, ui.RGBA(0, 0, 0, 0.08))
 			b.Children(func() { k.Icon(c, "arrow-down", 16, t.Foreground) })
 			if b.Clicked() {
-				v.list.FollowEnd = true
-				v.list.ScrollToEnd()
+				a.Run(CmdScrollToLatest)
 			}
 		}
 	})
@@ -122,12 +123,12 @@ func (v *sessionView) lead(c *ui.Context, s *session.Session) {
 		v.mu.Unlock()
 		v.column(c).Padding(0, k.Px(24), k.Px(8), k.Px(24)).Children(func() {
 			if err != "" {
-				k.Text(c, "Previous messages did not load: "+err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
+				k.Text(c, L("Previous messages did not load: %s", err), 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 				return
 			}
-			label := "Load previous messages"
+			label := L("Load previous messages")
 			if loading {
-				label = "Loading previous messages…"
+				label = L("Loading previous messages…")
 			}
 			b := ui.ButtonBase(c).Label(label).AlignSelf(ui.Start).Gap(k.Px(6)).Padding(k.Px(4), k.Px(6)).Radius(k.Px(6)).Disabled(loading).Cursor(ui.CursorPointer)
 			color := t.MutedForeground
@@ -154,7 +155,7 @@ func (v *sessionView) lead(c *ui.Context, s *session.Session) {
 func (v *sessionView) activityRow(c *ui.Context, label string) {
 	a := v.a
 	k, t := a.kit, a.kit.T
-	v.column(c).Row().Role(ui.RoleStatus).Label("Session activity").Gap(k.Px(8)).Padding(0, k.Px(24), k.Px(16), k.Px(24)).Children(func() {
+	v.column(c).Row().Role(ui.RoleStatus).Label(L("Session activity")).Gap(k.Px(8)).Padding(0, k.Px(24), k.Px(16), k.Px(24)).Children(func() {
 		if label == "" {
 			return
 		}
@@ -213,7 +214,7 @@ func (v *sessionView) reply(c *ui.Context, f *flow, text string, color ui.Color)
 			f.block(v.a.kit.Px(8), v.a.kit.Px(8), func() { renderTree(c, v.a.kit, seg.Spec) })
 		case jsonrender.Pending:
 			f.block(v.a.kit.Px(8), v.a.kit.Px(8), func() {
-				v.a.kit.Text(c, "Rendering…", 13, 19.5).TextColor(v.a.kit.T.MutedForeground)
+				v.a.kit.Text(c, L("Rendering…"), 13, 19.5).TextColor(v.a.kit.T.MutedForeground)
 			})
 		}
 	}
@@ -268,12 +269,12 @@ func (v *sessionView) disclosure(c *ui.Context, open *bool, label string, size, 
 // reasoning as muted Markdown behind a rule.
 func (v *sessionView) thinking(c *ui.Context, b transcript.Block, streaming bool) {
 	k, t := v.a.kit, v.a.kit.T
-	label := "Reasoning"
+	label := L("Reasoning")
 	switch {
 	case b.DurationMs != nil && *b.DurationMs > 0:
-		label = "Reasoned for " + transcript.FormatDuration(*b.DurationMs)
+		label = L("Reasoned for %s", transcript.FormatDuration(*b.DurationMs))
 	case streaming:
-		label = "Reasoning…"
+		label = L("Reasoning…")
 	}
 	open := v.flag("thinking:"+b.ID, false)
 	ui.Column(c).Children(func() {
@@ -283,7 +284,7 @@ func (v *sessionView) thinking(c *ui.Context, b transcript.Block, streaming bool
 			pr := newProse(k)
 			pr.size, pr.lh, pr.color = 14, 24, t.MutedForeground
 			doc := v.doc(b.Text)
-			ui.Column(c).Margin(max(k.Px(4), pr.firstMargin(doc)), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Children(func() {
+			ui.Column(c).Margin(max(k.Px(4), pr.firstMargin(doc)), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Selectable().Children(func() {
 				f := flow{c: c, open: true}
 				pr.nodes(c, &f, doc)
 			})
@@ -394,13 +395,13 @@ func (v *sessionView) toolRow(c *ui.Context, call *transcript.ToolCall) {
 					Font(k.Mono).FontSize(k.Px(11)).FontFeatures("tnum").Shrink(0)
 			}
 			if res.Pending {
-				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label("Running")
+				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(L("Running"))
 				return
 			}
 			if res.IsError {
-				k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label("Failed")
+				k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label(L("Failed"))
 			} else {
-				k.Icon(c, "check", 14, t.Success).Label("Succeeded")
+				k.Icon(c, "check", 14, t.Success).Label(L("Succeeded"))
 			}
 			ch := k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
 			if !hover && !*open && p.Progress() == 0 {
@@ -431,9 +432,9 @@ func (v *sessionView) toolDetail(c *ui.Context, call *transcript.ToolCall, res t
 					mono(input, t.Foreground)
 					switch {
 					case res.Status != nil:
-						color, icon, msg := t.Success, "check", "Succeeded"
+						color, icon, msg := t.Success, "check", L("Succeeded")
 						if !res.Status.Success {
-							color, icon, msg = t.DestructiveForeground, "circle-x", "Failed"
+							color, icon, msg = t.DestructiveForeground, "circle-x", L("Failed")
 						}
 						if res.Status.Message != "" {
 							msg = res.Status.Message
@@ -454,7 +455,7 @@ func (v *sessionView) toolDetail(c *ui.Context, call *transcript.ToolCall, res t
 		}
 		for i, img := range res.Images {
 			ui.Box(c).Padding(0, k.Px(10), k.Px(10), k.Px(10)).Children(func() {
-				v.picture(c, call.Use.ID+":"+strconv.Itoa(i), img, 320, "Picture from "+call.Use.Name)
+				v.picture(c, call.Use.ID+":"+strconv.Itoa(i), img, 320, L("Picture from %s", call.Use.Name))
 			})
 		}
 	})
@@ -475,7 +476,7 @@ func (v *sessionView) diffView(c *ui.Context, d *transcript.Diff) {
 		}
 		return strconv.Itoa(n)
 	}
-	ui.ScrollBoth(c).MaxHeight(k.Px(384)).Label("Diff").Children(func() {
+	ui.ScrollBoth(c).MaxHeight(k.Px(384)).Label(L("Diff")).Children(func() {
 		ui.Column(c).PaddingY(k.Px(4)).MinWidthPercent(100).Children(func() {
 			for _, l := range d.Lines {
 				bg, fg, sign := ui.Transparent, t.Foreground, " "
@@ -517,23 +518,23 @@ func (v *sessionView) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 				fg, iconColor = t.DestructiveForeground, t.DestructiveForeground
 			}
 			k.Icon(c, "braces", 14, iconColor)
-			k.Text(c, "Script", 12.5, 18.75).FontWeight(500).TextColor(fg).Shrink(0)
+			k.Text(c, L("Script"), 12.5, 18.75).FontWeight(500).TextColor(fg).Shrink(0)
 			k.Text(c, summary, 11.5, 17.25).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 			switch {
 			case call.Result == nil:
-				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label("Running")
+				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(L("Running"))
 			case run.Status == "running":
-				k.Icon(c, "clock", 14, t.MutedForeground).Label("Still running")
+				k.Icon(c, "clock", 14, t.MutedForeground).Label(L("Still running"))
 			case run.Status == "stalled":
-				k.Icon(c, "circle-alert", 14, t.Attention).Label("Stalled")
+				k.Icon(c, "circle-alert", 14, t.Attention).Label(L("Stalled"))
 			case failed:
-				label := "Failed"
+				label := L("Failed")
 				if run.Status == "cancelled" {
-					label = "Cancelled"
+					label = L("Cancelled")
 				}
 				k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label(label)
 			default:
-				k.Icon(c, "check", 14, t.Success).Label("Succeeded")
+				k.Icon(c, "check", 14, t.Success).Label(L("Succeeded"))
 			}
 			if call.Result != nil {
 				ch := k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
@@ -572,7 +573,7 @@ func (v *sessionView) scriptDetail(c *ui.Context, call *transcript.ToolCall, run
 		script, inputs, ok := transcript.ScriptSource(call)
 		if ok {
 			sep()
-			section("Source", func() { sourceView(c, k, script, nil) })
+			section(L("Source"), func() { sourceView(c, k, script, nil) })
 			for _, in := range inputs {
 				sep()
 				section("inputs."+in.Name, func() { pre(transcript.TruncateLines(in.Text, resultPreviewLines), t.MutedForeground, 240) })
@@ -580,7 +581,7 @@ func (v *sessionView) scriptDetail(c *ui.Context, call *transcript.ToolCall, run
 		}
 		if run.Error != "" || run.Output != "" || run.Value != "" || len(run.Images) > 0 {
 			sep()
-			section("Output", func() {
+			section(L("Output"), func() {
 				var spans []ui.Span
 				if run.Output != "" {
 					spans = append(spans, ui.Span{Text: transcript.TruncateLines(run.Output, resultPreviewLines)})
@@ -605,7 +606,7 @@ func (v *sessionView) scriptDetail(c *ui.Context, call *transcript.ToolCall, run
 				})
 				for i, img := range run.Images {
 					ui.Box(c).Padding(0, k.Px(10), k.Px(10), k.Px(10)).Children(func() {
-						v.picture(c, call.Use.ID+":run:"+strconv.Itoa(i), img, 320, "Picture from Script")
+						v.picture(c, call.Use.ID+":run:"+strconv.Itoa(i), img, 320, L("Picture from Script"))
 					})
 				}
 			})
@@ -620,9 +621,9 @@ func (v *sessionView) scriptDetail(c *ui.Context, call *transcript.ToolCall, run
 					k.Text(c, run.LogPath, 10.5, 15.75).Font(k.Mono).TextColor(t.MutedForeground.Alpha(0.7)).Tooltip(run.LogPath).
 						SingleLine().Grow(1).Shrink(1).MinWidth(0)
 					copied := v.flag("logcopied:"+call.Use.ID, false)
-					label, icon := "Copy log path", "copy"
+					label, icon := L("Copy log path"), "copy"
 					if *copied {
-						label, icon = "Copied log path", "check"
+						label, icon = L("Copied log path"), "check"
 					}
 					b := ui.ButtonBase(c).Label(label).Size(k.Px(20), k.Px(20)).Radius(k.Px(4)).Cursor(ui.CursorPointer)
 					if b.Hovered() {
@@ -645,7 +646,7 @@ func sourceView(c *ui.Context, k *kit.Kit, script string, marked map[int]bool) {
 	t := k.T
 	lines := strings.Split(strings.TrimSuffix(script, "\n"), "\n")
 	width := float32(len(strconv.Itoa(len(lines))))*k.Px(11.5)*0.6 + k.Px(18)
-	ui.ScrollBoth(c).MaxHeight(k.Px(320)).Label("Script source").Children(func() {
+	ui.ScrollBoth(c).MaxHeight(k.Px(320)).Label(L("Script source")).Children(func() {
 		ui.Column(c).Padding(0, 0, k.Px(6), 0).MinWidthPercent(100).Children(func() {
 			for i, line := range lines {
 				n := i + 1
@@ -665,13 +666,22 @@ func sourceView(c *ui.Context, k *kit.Kit, script string, marked map[int]bool) {
 	})
 }
 
+// countL is a count with its noun, "1 tool" or "3 tools"; one and many are
+// l10n.N keys holding a %d.
+func countL(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf(l10n.T(one), n)
+	}
+	return fmt.Sprintf(l10n.T(many), n)
+}
+
 var taskStateLabels = map[subagents.TaskState]string{
-	"pending":          "Starting",
-	"running":          "Running",
-	subagents.Launched: "Started in background",
-	"completed":        "Completed",
-	"failed":           "Failed",
-	"cancelled":        "Cancelled",
+	"pending":          l10n.N("Starting"),
+	"running":          l10n.N("Running"),
+	subagents.Launched: l10n.N("Started in background"),
+	"completed":        l10n.N("Completed"),
+	"failed":           l10n.N("Failed"),
+	"cancelled":        l10n.N("Cancelled"),
 }
 
 // subagentCard is a SubagentCard: the subagent's name and task, how the
@@ -683,11 +693,11 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 	name := subagents.SubagentName(link.Request.SubagentType)
 	desc := link.Request.Description
 	if desc == "" {
-		desc = "Task"
+		desc = L("Task")
 	}
 	var facts []string
 	if link.Run != nil && link.Run.ToolUseCount != nil {
-		facts = append(facts, plural(*link.Run.ToolUseCount, "tool", "tools"))
+		facts = append(facts, countL(*link.Run.ToolUseCount, l10n.N("%d tool"), l10n.N("%d tools")))
 	}
 	if link.Run != nil && link.Run.DurationMs != nil {
 		facts = append(facts, subagents.FormatRunDuration(*link.Run.DurationMs))
@@ -712,14 +722,14 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 				})
 			})
 			if link.SessionID != "" {
-				b := ui.ButtonBase(c).Label("Open subagent session").Height(k.Px(28)).Gap(k.Px(4)).PaddingX(k.Px(8)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
+				b := ui.ButtonBase(c).Label(L("Open subagent session")).Height(k.Px(28)).Gap(k.Px(4)).PaddingX(k.Px(8)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
 				color := t.MutedForeground
 				if b.Hovered() {
 					b.Background(t.Muted)
 					color = t.Foreground
 				}
 				b.Children(func() {
-					k.Text(c, "Open", 12, 16).FontWeight(500).TextColor(color)
+					k.Text(c, L("Open"), 12, 16).FontWeight(500).TextColor(color)
 					k.Icon(c, "arrow-up-right", 14, color)
 				})
 				if b.Clicked() {
@@ -737,21 +747,21 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 		}
 		tr.Children(func() {
 			k.Icon(c, "chevron-right", 12, color).Rotate(90 * p.Progress())
-			k.Text(c, "Details", 11.5, 17.25).TextColor(color)
+			k.Text(c, L("Details"), 11.5, 17.25).TextColor(color)
 		})
 		p.Panel(func() {
 			ui.Scroll(c).MaxHeight(k.Px(384)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 				ui.Column(c).Padding(k.Px(10), k.Px(12)).Gap(k.Px(8)).Children(func() {
-					heading := func(s string) {
-						k.Text(c, strings.ToUpper(s), 11, 16.5).FontWeight(500).LetterSpacing(k.Px(0.275)).TextColor(t.MutedForeground).Margin(0, 0, k.Px(4), 0)
+					heading := func(s string) *ui.Element {
+						return k.Text(c, strings.ToUpper(s), 11, 16.5).FontWeight(500).LetterSpacing(k.Px(0.275)).TextColor(t.MutedForeground).Margin(0, 0, k.Px(4), 0)
 					}
-					ui.Column(c).Role(ui.RoleGroup).Label("Prompt").Children(func() {
-						heading("Prompt")
+					ui.Column(c).Role(ui.RoleGroup).Label(L("Prompt")).Children(func() {
+						heading(L("Prompt"))
 						k.Text(c, link.Request.Prompt, 12.5, 20).TextColor(t.Foreground).Selectable()
 					})
 					if link.Report != "" {
-						ui.Column(c).Role(ui.RoleGroup).Label("Report").Children(func() {
-							heading("Report")
+						ui.Column(c).Role(ui.RoleGroup).Label(L("Report")).Selectable().Children(func() {
+							heading(L("Report")).Unselectable()
 							pr := newProse(k)
 							pr.size, pr.lh = 13, 24
 							f := flow{c: c}
@@ -788,7 +798,7 @@ func (v *sessionView) stateMark(c *ui.Context, state subagents.TaskState) {
 		} else {
 			k.Icon(c, icon, 12, color)
 		}
-		k.Text(c, taskStateLabels[state], 11.5, 17.25).TextColor(color)
+		k.Text(c, l10n.T(taskStateLabels[state]), 11.5, 17.25).TextColor(color)
 	})
 }
 

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 )
 
@@ -77,6 +78,8 @@ func (c *Controller) open() (*memory.Store, context.Context, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		// Best effort: what is not merged now is tried again on the next launch.
+		_ = s.MergeWorktrees()
 		c.store = s
 	}
 	return c.store, c.ctx, nil
@@ -142,12 +145,12 @@ func (c *Controller) Overview() (Overview, error) {
 func (c *Controller) Consolidate(workspace string) (Result, error) {
 	run := c.o.Runner()
 	if run == nil {
-		return Result{}, errors.New("The Daemon is not running.")
+		return Result{}, errors.New(l10n.L("The Daemon is not running."))
 	}
 	c.mu.Lock()
 	if c.consolidating[workspace] {
 		c.mu.Unlock()
-		return Result{}, errors.New("This Memory is already being consolidated.")
+		return Result{}, errors.New(l10n.L("This Memory is already being consolidated."))
 	}
 	c.consolidating[workspace] = true
 	c.mu.Unlock()

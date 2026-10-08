@@ -227,12 +227,16 @@ var (
 	Font     = String{Key: "droi.font", Fallback: "geist"}
 	TextSize = String{Key: "droi.textSize", Fallback: "default"}
 	// Zoom is ⌘= and ⌘-, kept as Chromium keeps a page's zoom.
-	Zoom              = Number{Key: "droi.zoom", Fallback: 1}
-	SidebarVisible    = Bool{Key: "droi.sidebar", Fallback: true}
-	OpenInApp         = String{Key: "droi.openInApp"}
-	ShowArchived      = Bool{Key: "droi.showArchived"}
-	FavoriteModels    = List{Key: "droi.favoriteModels"}
-	LastSessionID     = String{Key: "droi.lastSession"}
+	Zoom           = Number{Key: "droi.zoom", Fallback: 1}
+	SidebarVisible = Bool{Key: "droi.sidebar", Fallback: true}
+	// Language is "en" or "zh-Hans", "" to follow the system.
+	Language       = String{Key: "droi.language"}
+	OpenInApp      = String{Key: "droi.openInApp"}
+	ShowArchived   = Bool{Key: "droi.showArchived"}
+	FavoriteModels = List{Key: "droi.favoriteModels"}
+	LastSessionID  = String{Key: "droi.lastSession"}
+	// SkippedUpdate is the release Skip this version passed over.
+	SkippedUpdate     = String{Key: "droi.skippedUpdate"}
 	FoldedWorkspaces  = List{Key: "droi.foldedWorkspaces"}
 	PinnedWorkspaces  = List{Key: "droi.pinnedWorkspaces"}
 	PinnedSessions    = List{Key: "droi.pinnedSessions"}

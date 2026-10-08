@@ -14,6 +14,7 @@ import (
 	"slices"
 
 	"github.com/kkkk2323/droi/apps/native/internal/collate"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 )
 
@@ -33,10 +34,10 @@ type Switch struct {
 }
 
 var LocationLabels = map[string]string{
-	"project":    "Project",
-	"personal":   "Personal",
-	"builtin":    "Built-in",
-	"automation": "Automation",
+	"project":    l10n.N("Project"),
+	"personal":   l10n.N("Personal"),
+	"builtin":    l10n.N("Built-in"),
+	"automation": l10n.N("Automation"),
 }
 
 var LocationOrder = []string{"project", "personal", "builtin", "automation"}
@@ -89,13 +90,13 @@ func DisabledLabel(skill protocol.SkillInfo) string {
 	levels := disabledLevels(skill)
 	switch {
 	case slices.Contains(levels, "org"):
-		return "Disabled by organization"
+		return l10n.L("Disabled by organization")
 	case skill.DisabledBy != nil && skill.DisabledBy.Kind == protocol.SkillDisabledByKindFrontmatter:
-		return "Disabled in its file"
+		return l10n.L("Disabled in its file")
 	case len(levels) > 0 && !slices.ContainsFunc(levels, func(l string) bool { return l != "project" }):
-		return "Disabled for this project"
+		return l10n.L("Disabled for this project")
 	}
-	return "Disabled"
+	return l10n.L("Disabled")
 }
 
 type Group struct {

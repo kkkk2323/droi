@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 // Tag is a Session tag.
@@ -218,9 +220,9 @@ var WorkspaceSorts = []WorkspaceSort{SortMostSessions, SortRecent, SortName, Sor
 var SessionSorts = []SessionSort{SessionsRecent, SessionsCreated}
 
 var WorkspaceSortLabels = map[WorkspaceSort]string{
-	SortMostSessions: "Most sessions", SortRecent: "Recently active", SortName: "Name", SortManual: "Manual",
+	SortMostSessions: l10n.N("Most sessions"), SortRecent: l10n.N("Recently active"), SortName: l10n.N("Name"), SortManual: l10n.N("Manual"),
 }
-var SessionSortLabels = map[SessionSort]string{SessionsRecent: "Recently active", SessionsCreated: "Created"}
+var SessionSortLabels = map[SessionSort]string{SessionsRecent: l10n.N("Recently active"), SessionsCreated: l10n.N("Created")}
 
 // Order is how the list is sorted.
 type Order struct {
@@ -265,14 +267,14 @@ func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) 
 	for _, s := range list {
 		if pinnedApart && pins.Sessions[s.SessionID] {
 			if pinned == nil {
-				pinned = &Group{Key: PinnedSessionsGroupKey, Label: "Pinned sessions"}
+				pinned = &Group{Key: PinnedSessionsGroupKey, Label: l10n.L("Pinned sessions")}
 			}
 			pinned.Sessions = append(pinned.Sessions, s)
 			continue
 		}
 		if IsScratchSession(s) {
 			if recents == nil {
-				recents = &Group{Key: RecentsGroupKey, Label: "Recents", Scratch: true}
+				recents = &Group{Key: RecentsGroupKey, Label: l10n.L("Recents"), Scratch: true}
 			}
 			recents.Sessions = append(recents.Sessions, s)
 			continue
@@ -438,7 +440,7 @@ var trailingSep = regexp.MustCompile(`[\\/]+$`)
 // WorkspaceLabel is a Workspace's last path segment.
 func WorkspaceLabel(path string) string {
 	if path == "" {
-		return "Unknown workspace"
+		return l10n.L("Unknown workspace")
 	}
 	t := trailingSep.ReplaceAllString(path, "")
 	parts := strings.FieldsFunc(t, func(r rune) bool { return r == '/' || r == '\\' })

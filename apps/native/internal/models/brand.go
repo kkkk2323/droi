@@ -1,6 +1,10 @@
 package models
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
+)
 
 // Which company a model comes from, for grouping and the brand mark. The
 // Daemon's modelProvider is the wire dialect (a GLM served through Factory
@@ -29,7 +33,7 @@ var BrandLabels = map[Brand]string{
 	Moonshot:  "Moonshot",
 	DeepSeek:  "DeepSeek",
 	MiniMax:   "MiniMax",
-	Other:     "Other",
+	Other:     l10n.N("Other"),
 }
 
 // BrandOrder is the rail order in the picker; brands the Daemon does not

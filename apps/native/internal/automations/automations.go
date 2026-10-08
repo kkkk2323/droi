@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 // Repeat is how often a Schedule runs.
@@ -29,7 +31,7 @@ const (
 var Repeats = []Repeat{Hourly, Daily, Weekdays, Weekly, Custom}
 
 var RepeatLabels = map[Repeat]string{
-	Hourly: "Hourly", Daily: "Daily", Weekdays: "Weekdays", Weekly: "Weekly", Custom: "Custom",
+	Hourly: l10n.N("Hourly"), Daily: l10n.N("Daily"), Weekdays: l10n.N("Weekdays"), Weekly: l10n.N("Weekly"), Custom: l10n.N("Custom"),
 }
 
 // Schedule is a schedule as the user picks it, in local time.
@@ -155,24 +157,62 @@ func ParseClock(s string) (hour, minute int, ok bool) {
 // Describe is a schedule in words, in local time.
 func Describe(expr string, offset int) string {
 	if strings.TrimSpace(expr) == "* * * * *" {
-		return "Every minute"
+		return l10n.L("Every minute")
 	}
 	s := Parse(expr, offset)
 	at := Clock(s.Hour, s.Minute)
 	switch s.Repeat {
 	case Hourly:
-		return fmt.Sprintf("Every hour at :%02d", s.Minute)
+		return l10n.L("Every hour at :%02d", s.Minute)
 	case Daily:
-		return "Every day at " + at
+		return l10n.L("Every day at %s", at)
 	case Weekdays:
-		return "Weekdays at " + at
+		return l10n.L("Weekdays at %s", at)
 	case Weekly:
-		return "Every " + s.Weekday.String() + " at " + at
+		return everyWeekday(s.Weekday, at)
 	}
 	if expr == "" {
-		return "No schedule"
+		return l10n.L("No schedule")
 	}
-	return expr + " (UTC)"
+	return l10n.L("%s (UTC)", expr)
+}
+
+// everyWeekday is one sentence per day, so a language can order its words.
+func everyWeekday(d time.Weekday, at string) string {
+	switch d {
+	case time.Monday:
+		return l10n.L("Every Monday at %s", at)
+	case time.Tuesday:
+		return l10n.L("Every Tuesday at %s", at)
+	case time.Wednesday:
+		return l10n.L("Every Wednesday at %s", at)
+	case time.Thursday:
+		return l10n.L("Every Thursday at %s", at)
+	case time.Friday:
+		return l10n.L("Every Friday at %s", at)
+	case time.Saturday:
+		return l10n.L("Every Saturday at %s", at)
+	}
+	return l10n.L("Every Sunday at %s", at)
+}
+
+// WeekdayShort is a day's short name, for the picker.
+func WeekdayShort(d time.Weekday) string {
+	switch d {
+	case time.Monday:
+		return l10n.L("Mon")
+	case time.Tuesday:
+		return l10n.L("Tue")
+	case time.Wednesday:
+		return l10n.L("Wed")
+	case time.Thursday:
+		return l10n.L("Thu")
+	case time.Friday:
+		return l10n.L("Fri")
+	case time.Saturday:
+		return l10n.L("Sat")
+	}
+	return l10n.L("Sun")
 }
 
 // When is a time from the Daemon as the page shows it: the day in words
@@ -186,44 +226,47 @@ func When(iso string, now time.Time) string {
 	day := func(x time.Time) time.Time { y, m, d := x.Date(); return time.Date(y, m, d, 0, 0, 0, 0, x.Location()) }
 	switch day(t).Sub(day(now)).Round(time.Hour) / (24 * time.Hour) {
 	case 0:
-		return "today " + t.Format("15:04")
+		return l10n.L("today %s", t.Format("15:04"))
 	case 1:
-		return "tomorrow " + t.Format("15:04")
+		return l10n.L("tomorrow %s", t.Format("15:04"))
 	case -1:
-		return "yesterday " + t.Format("15:04")
+		return l10n.L("yesterday %s", t.Format("15:04"))
 	}
+	// The layouts are catalog keys, so a language can give its own order.
 	if t.Year() != now.Year() {
-		return t.Format("Jan 2 2006, 15:04")
+		return t.Format(l10n.L("Jan 2 2006, 15:04"))
 	}
-	return t.Format("Jan 2, 15:04")
+	return t.Format(l10n.L("Jan 2, 15:04"))
 }
 
 // StatusLabel is an Automation's status in words.
 func StatusLabel(status string) string {
 	switch status {
 	case "active":
-		return "Active"
+		return l10n.L("Active")
 	case "paused":
-		return "Paused"
+		return l10n.L("Paused")
 	case "invalid":
-		return "Invalid"
+		return l10n.L("Invalid")
 	case "":
-		return "Unknown"
+		return l10n.L("Unknown")
 	}
 	return strings.ToUpper(status[:1]) + status[1:]
 }
 
-// RunLabel is a run's status in words.
+// RunLabel is a run's status in words, in English and marked for the
+// catalog: the page compares it with "Running" and "Failed", and translates
+// it with l10n.T where it shows it.
 func RunLabel(status string) string {
 	switch status {
 	case "success", "completed":
-		return "Succeeded"
+		return l10n.N("Succeeded")
 	case "in_progress", "running":
-		return "Running"
+		return l10n.N("Running")
 	case "failed", "failure", "error":
-		return "Failed"
+		return l10n.N("Failed")
 	case "":
-		return "Unknown"
+		return l10n.N("Unknown")
 	}
 	return strings.ToUpper(status[:1]) + strings.ReplaceAll(status[1:], "_", " ")
 }

@@ -34,7 +34,7 @@ type sessionView struct {
 
 	list    ui.ListState
 	entries []*transcript.Entry
-	built   int64 // the Store revision entries were built at
+	built   int64 // the Session's revision entries were built at
 
 	// Guarded by mu: written by the goroutines loading the Session.
 	mu           sync.Mutex
@@ -297,10 +297,10 @@ func cachedBitmap(cache map[string]*ui.Bitmap, id string, img transcript.Image) 
 	return b
 }
 
-// refresh builds the transcript again when the Store changed, keeping the
+// refresh builds the transcript again when the Session changed, keeping the
 // entries that did not change so that their rows keep their state.
 func (v *sessionView) refresh(s *session.Session) {
-	rev := v.a.storeRev.Load()
+	rev := v.a.rev(v.id).Load()
 	if rev == v.built || s == nil {
 		return
 	}
@@ -317,7 +317,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 	v.resume()
 	s := a.ctl.Store().Session(v.id)
 	v.refresh(s)
-	title := "Untitled session"
+	title := L("Untitled session")
 	workspace := ""
 	if sel != nil {
 		title, workspace = sel.Title, sel.Cwd
@@ -347,7 +347,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 				if loading || s == nil || s.LoadState() != session.Loaded {
 					ui.Row(c).Fill().Center().Gap(k.Px(8)).Children(func() {
 						k.Spinner(c, 16, t.MutedForeground)
-						k.Text(c, "Loading session…", 14, 20).TextColor(t.MutedForeground)
+						k.Text(c, L("Loading session…"), 14, 20).TextColor(t.MutedForeground)
 					})
 				}
 			default:
@@ -397,7 +397,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 			hover := group.Hovered()
 			group.Children(func() {
 				k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
-				b := ui.ButtonBase(c).Label("Rename session").Size(k.Px(24), k.Px(24)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+				b := ui.ButtonBase(c).Label(L("Rename session")).Size(k.Px(24), k.Px(24)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
 				if !hover && !b.Focused() {
 					b.Opacity(0)
 				} else if b.Hovered() {
@@ -420,7 +420,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 func (v *sessionView) renameField(c *ui.Context, title string) {
 	a := v.a
 	k, t := a.kit, a.kit.T
-	in := ui.TextInputBase(c, &v.rename).Label("Session title").AutoFocus().Grow(1).MaxWidth(k.Px(448)).Height(k.Px(28)).
+	in := ui.TextInputBase(c, &v.rename).Label(L("Session title")).AutoFocus().Grow(1).MaxWidth(k.Px(448)).Height(k.Px(28)).
 		PaddingX(k.Px(8)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Background).FontSize(k.Px(14)).FontWeight(500).TextColor(t.Foreground)
 	save := func() {
 		v.renaming = false
@@ -434,10 +434,10 @@ func (v *sessionView) renameField(c *ui.Context, title string) {
 	if in.Shortcut(0, ui.KeyEscape) {
 		v.renaming = false
 	}
-	if k.IconButton(c, "check", "Save title", 24).Clicked() {
+	if k.IconButton(c, "check", L("Save title"), 24).Clicked() {
 		save()
 	}
-	if k.IconButton(c, "x", "Cancel rename", 24).Clicked() {
+	if k.IconButton(c, "x", L("Cancel rename"), 24).Clicked() {
 		v.renaming = false
 	}
 }
@@ -513,7 +513,7 @@ func (v *sessionView) openInButton(c *ui.Context, workspace string) {
 		}
 	}
 	ui.Row(c).Height(k.Px(28)).Radius(k.Px(8)).Border(1, t.Border).Children(func() {
-		main := ui.ButtonBase(c).Label("Open in "+preferred.Label).Tooltip("Open in "+preferred.Label).FillHeight().PaddingX(k.Px(6)).
+		main := ui.ButtonBase(c).Label(L("Open in %s", preferred.Label)).Tooltip(L("Open in %s", preferred.Label)).FillHeight().PaddingX(k.Px(6)).
 			Radius(k.Px(8), 0, 0, k.Px(8)).Cursor(ui.CursorPointer)
 		if main.Hovered() {
 			main.Background(t.Accent)
@@ -523,7 +523,7 @@ func (v *sessionView) openInButton(c *ui.Context, workspace string) {
 			open(preferred)
 		}
 		ui.Box(c).Width(1).FillHeight().Background(t.Border)
-		more := ui.ButtonBase(c).Label("Open in another app").Tooltip("Open in another app").FillHeight().Width(k.Px(18)).
+		more := ui.ButtonBase(c).Label(L("Open in another app")).Tooltip(L("Open in another app")).FillHeight().Width(k.Px(18)).
 			Radius(0, k.Px(8), k.Px(8), 0).Cursor(ui.CursorPointer).Expanded(v.openIn)
 		if more.Hovered() || v.openIn {
 			more.Background(t.Accent)
@@ -532,7 +532,7 @@ func (v *sessionView) openInButton(c *ui.Context, workspace string) {
 		if more.Clicked() {
 			v.openIn = !v.openIn
 		}
-		k.MenuPopup(c, more, &v.openIn, true, "Open in", func() {
+		k.MenuPopup(c, more, &v.openIn, true, L("Open in"), func() {
 			for _, app := range list {
 				item := ui.ButtonBase(c).Key(app.ID).Role(ui.RoleMenuItemRadio).Checked(app.ID == preferred.ID).Label(app.Label).
 					Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)

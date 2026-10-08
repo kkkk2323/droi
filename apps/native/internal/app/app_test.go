@@ -16,6 +16,7 @@ import (
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -442,6 +443,148 @@ func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
 	h.frame()
 	if got := h.tt.Clipboard(); got == "" || !strings.HasPrefix(para, got) {
 		t.Fatalf("copied %q", got)
+	}
+}
+
+// A right-click on a reply offers Copy and Select All, then copies its
+// Markdown or quotes it in the message.
+func TestAReplysMenu(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	const para = "I will add the missing await and a regression test:"
+	if err := h.tt.RightClick(para); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if got, want := strings.Join(h.tt.Menu(), "|"), "Copy|-|Select All|-|Copy as Markdown|Quote in message"; got != want {
+		t.Fatalf("menu %q, want %q", got, want)
+	}
+	if err := h.tt.ChooseMenuItem("Copy as Markdown"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if got := h.tt.Clipboard(); !strings.HasPrefix(got, "`login()` calls `refreshToken()`") || !strings.Contains(got, "```ts\n") {
+		t.Fatalf("copied %q", got)
+	}
+	if err := h.tt.RightClick(para); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if err := h.tt.ChooseMenuItem("Quote in message"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	v := h.a.views[h.a.Route().SessionID]
+	if got := v.composer.text; !strings.HasPrefix(got, "> `login()` calls") || !strings.Contains(got, "\n> - `src/auth/login.ts`") || !strings.HasSuffix(got, "path\n\n") {
+		t.Fatalf("composer %q", got)
+	}
+}
+
+// The composer grows a line at a time with what is typed, up to 8 lines,
+// past which it scrolls.
+func TestTheComposerGrowsWithItsText(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the composer", func() bool { _, ok := h.tt.Find("Message"); return ok })
+	h.settle()
+	height := func() float32 {
+		r, _ := h.tt.Find("Message")
+		return r.H
+	}
+	one := height()
+	h.click("Message")
+	h.tt.Type("one\ntwo\nthree")
+	h.frame()
+	line := h.a.kit.Px(24)
+	if got := height() - one; got < 2*line-1 || got > 2*line+1 {
+		t.Fatalf("three lines grew the composer by %.1f, want %.1f", got, 2*line)
+	}
+	h.tt.Type(strings.Repeat("\nmore", 20))
+	h.frame()
+	if got := height() - one; got < 7*line-1 || got > 7*line+1 {
+		t.Fatalf("23 lines grew the composer by %.1f, want %.1f", got, 7*line)
+	}
+}
+
+// A read of the Session list that answers after a newer one leaves the
+// newer list in place.
+func TestAnOlderListReadDoesNotOverwriteANewerOne(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	older, newer := h.a.startList(), h.a.startList()
+	list := func(title string) *protocol.ListAvailableSessionsResult {
+		return &protocol.ListAvailableSessionsResult{Sessions: []protocol.DaemonAvailableSessionInfo{{SessionID: title, Title: title, Cwd: "/Users/dev/acme-web"}}}
+	}
+	h.a.setList(newer, list("Newer"), nil)
+	h.a.setList(older, list("Older"), nil)
+	h.a.mu.Lock()
+	defer h.a.mu.Unlock()
+	if len(h.a.listed) != 1 || h.a.listed[0].Title != "Newer" {
+		t.Fatalf("listed %+v", h.a.listed)
+	}
+}
+
+// Another Session's events leave the open transcript as it was built: a
+// Session working in the background would otherwise build it again on
+// every event.
+func TestAnotherSessionDoesNotRebuildTheTranscript(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	v := h.a.views[h.a.Route().SessionID]
+	built := v.built
+	var other string
+	for _, s := range h.a.listed {
+		if s.Title == "Add dark mode toggle" {
+			other = s.SessionID
+		}
+	}
+	if _, err := h.a.ctl.LoadSession(context.Background(), protocol.LoadSessionParams{SessionID: other}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the other Session", func() bool { return h.a.ctl.Store().Session(other) != nil })
+	h.settle()
+	if v.built != built {
+		t.Fatalf("the transcript was built again at %d, after %d", v.built, built)
+	}
+}
+
+// A drag selects across a reply's paragraphs, code block and list, and
+// copies them without the list's markers or the code's line numbers and
+// language.
+func TestADragSelectsAcrossAReply(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	const first = "login() calls refreshToken() without awaiting it, so session() can run with the stale token."
+	const last = "src/auth/login.test.ts: cover the expired-token path"
+	from, ok := h.tt.Find(first)
+	if !ok {
+		t.Fatalf("no paragraph %q", first)
+	}
+	to, ok := h.tt.Find(last)
+	if !ok {
+		t.Fatalf("no list item %q", last)
+	}
+	h.tt.Press(from.X+1, from.Y+4)
+	h.tt.Move(to.X+to.W-1, to.Y+to.H-4)
+	h.tt.Release(to.X+to.W-1, to.Y+to.H-4)
+	h.frame()
+	h.tt.Command("copy")
+	h.frame()
+	want := strings.Join([]string{
+		first,
+		"I will add the missing await and a regression test:",
+		"export async function login(user) {\n  await refreshToken(user)\n  return session(user)\n}",
+		"src/auth/login.ts: await the refresh",
+		last,
+	}, "\n")
+	if got := h.tt.Clipboard(); got != want {
+		t.Fatalf("copied %q\nwant %q", got, want)
 	}
 }
 

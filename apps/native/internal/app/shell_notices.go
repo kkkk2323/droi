@@ -20,13 +20,13 @@ func startingUp(status controller.Status, everConnected bool) bool {
 func startupProblem(daemon host.DaemonState, status controller.Status) (title, detail string) {
 	switch {
 	case daemon.DroidMissing():
-		return "droid was not found", "Install the droid CLI, or set the path to droid in Settings."
+		return L("droid was not found"), L("Install the droid CLI, or set the path to droid in Settings.")
 	case daemon.Reason != "":
-		return "The Daemon did not start", "Last attempt: " + daemon.Reason + "."
+		return L("The Daemon did not start"), L("Last attempt: %s.", daemon.Reason)
 	case status.Failure != nil && status.Failure.Reason == controller.ReasonAuthRejected:
-		return "The Daemon did not accept the login", "Sign out and sign in again in Settings, then restart the Daemon. (" + status.Failure.Error() + ")"
+		return L("The Daemon did not accept the login"), L("Sign out and sign in again in Settings, then restart the Daemon. (%s)", status.Failure.Error())
 	case status.Failure != nil:
-		return "Droi could not connect to the Daemon", status.Failure.Error()
+		return L("Droi could not connect to the Daemon"), status.Failure.Error()
 	}
 	return "", ""
 }
@@ -44,10 +44,10 @@ func (a *App) droidUpdatedCard(c *ui.Context) {
 		return
 	}
 	k, t := a.kit, a.kit.T
-	a.cornerCard(c, "droid update", "refresh-cw", func() {
-		k.Text(c, "droid was updated", 14, 20).FontWeight(500)
-		k.Text(c, "Restart the Daemon to use the new version. Working Sessions are interrupted.", 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
-		if a.smallButton(c, kit.Primary, "Restart Daemon", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+	a.cornerCard(c, L("droid update"), "refresh-cw", func() {
+		k.Text(c, L("droid was updated"), 14, 20).FontWeight(500)
+		k.Text(c, L("Restart the Daemon to use the new version. Working Sessions are interrupted."), 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+		if a.smallButton(c, kit.Primary, L("Restart Daemon"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
 			go h.RestartDaemon()
 		}
 	}, func() { a.droidUpdateDismissed = true })
@@ -72,7 +72,7 @@ func (a *App) cornerCard(c *ui.Context, label, icon string, body func(), dismiss
 		Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1)).Children(func() {
 		k.Icon(c, icon, 16, t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Children(body)
-		if k.IconButton(c, "x", "Dismiss", 24).Clicked() {
+		if k.IconButton(c, "x", L("Dismiss"), 24).Clicked() {
 			dismiss()
 		}
 	})
@@ -97,10 +97,10 @@ func (a *App) startingUpView(c *ui.Context, status controller.Status) {
 			return
 		}
 		ui.Row(c).Grow(1).Center().Children(func() {
-			ui.Row(c).Role(ui.RoleStatus).Label("Starting").Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Role(ui.RoleStatus).Label(L("Starting")).Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
 				wave := float32(pulseWave(c))
 				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.4+0.3*wave))
-				k.Text(c, "Starting the Daemon", 14, 20).TextColor(t.MutedForeground)
+				k.Text(c, L("Starting the Daemon"), 14, 20).TextColor(t.MutedForeground)
 			})
 		})
 	})
@@ -116,10 +116,10 @@ func (a *App) startupProblemView(c *ui.Context, title, detail string) {
 			k.Text(c, title, 14, 20).FontWeight(500).TextAlign(ui.Center)
 			k.Text(c, detail, 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 			ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Outline, "Restart Daemon", "refresh-cw", false).Clicked() {
+				if a.smallButton(c, kit.Outline, L("Restart Daemon"), "refresh-cw", false).Clicked() {
 					go h.RestartDaemon()
 				}
-				if a.smallButton(c, kit.Ghost, "Settings", "settings", false).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Settings"), "settings", false).Clicked() {
 					a.Go(Route{Name: "settings", Tab: "advanced"})
 				}
 			})

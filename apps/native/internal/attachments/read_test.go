@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/image/tiff"
 )
 
 func writePNG(t *testing.T, w, h int) string {
@@ -62,5 +64,17 @@ func TestReadFileSkipsAFileThatIsNotAnImage(t *testing.T) {
 	_ = os.WriteFile(p, []byte("hello"), 0o644)
 	if _, ok, err := ReadFile(p, "c"); ok || err != nil {
 		t.Fatalf("ok %v err %v", ok, err)
+	}
+}
+
+// A TIFF, as Safari drags its pictures, goes as a PNG.
+func TestFromBytesTakesATIFF(t *testing.T) {
+	var b bytes.Buffer
+	if err := tiff.Encode(&b, image.NewRGBA(image.Rect(0, 0, 20, 10)), nil); err != nil {
+		t.Fatal(err)
+	}
+	img, ok, err := FromBytes(b.Bytes(), "Dropped image.png", "id")
+	if err != nil || !ok || img.MediaType != "image/png" {
+		t.Fatalf("%v %v %q", err, ok, img.MediaType)
 	}
 }

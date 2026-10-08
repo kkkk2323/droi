@@ -76,12 +76,12 @@ func (a *App) raise(id, title string, ev alerts.Event) {
 		}
 		a.mu.Unlock()
 	}
-	title = trimOr(title, "Untitled session")
+	title = trimOr(title, L("Untitled session"))
 	switch {
 	case ev == alerts.Completion && p.NotifyOnComplete:
-		a.cfg.Notify(Alert{SessionID: id, Title: "Droid finished", Body: title})
+		a.cfg.Notify(Alert{SessionID: id, Title: L("Droid finished"), Body: title})
 	case ev == alerts.AwaitingInput && p.NotifyOnWaitingForInput:
-		a.cfg.Notify(Alert{SessionID: id, Title: "Droid needs input", Body: title + " — waiting for your answer"})
+		a.cfg.Notify(Alert{SessionID: id, Title: L("Droid needs input"), Body: L("%s — waiting for your answer", title)})
 	}
 }
 

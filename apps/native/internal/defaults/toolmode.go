@@ -3,6 +3,7 @@ package defaults
 import (
 	"slices"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 )
 
@@ -23,9 +24,9 @@ const (
 var ToolModes = []ToolMode{DirectOnly, DirectAndScript, ScriptOnly}
 
 var ToolModeLabels = map[ToolMode]string{
-	DirectOnly:      "Direct",
-	DirectAndScript: "Both",
-	ScriptOnly:      "Script",
+	DirectOnly:      l10n.N("Direct"),
+	DirectAndScript: l10n.N("Both"),
+	ScriptOnly:      l10n.N("Script"),
 }
 
 func IsToolMode(value string) bool { return slices.Contains(ToolModes, ToolMode(value)) }

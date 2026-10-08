@@ -9,6 +9,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
@@ -26,6 +27,9 @@ type sidebarState struct {
 	revealed map[string]int
 	renaming string
 	rename   string
+	// numbered are the Sessions the sidebar showed in the last frame, in
+	// order, for ⌘1…⌘9.
+	numbered []string
 }
 
 // sidebarView is the web Client's SessionSidebar.
@@ -40,13 +44,13 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 		selected = a.route.SessionID
 	}
 
-	ui.Column(c).Role(ui.RoleGroup).Label("Sessions").Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Sessions")).Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
 		ui.Box(c).Height(44).Shrink(0).DragWindow()
 		ui.Column(c).Gap(k.Px(4)).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			if a.sidebarRow(c, "plus", "New session", false).Clicked() {
-				a.Go(Route{Name: "new"})
+			if a.sidebarRow(c, "plus", L("New session"), false).Tooltip(withShortcut(L("New session"), CmdNewSession)).Clicked() {
+				a.Run(CmdNewSession)
 			}
-			if a.sidebarRow(c, "clock", "Automations", a.route.Name == "automations").Clicked() {
+			if a.sidebarRow(c, "clock", L("Automations"), a.route.Name == "automations").Clicked() {
 				a.Go(Route{Name: "automations"})
 			}
 			ui.Row(c).Gap(k.Px(4)).Children(func() {
@@ -66,7 +70,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				a.skeleton(c)
 			}
 			if listDone && len(groups) == 0 && listErr == "" {
-				k.Text(c, "No sessions yet.", 12, 16).TextColor(t.MutedForeground).Padding(k.Px(4), k.Px(8))
+				k.Text(c, L("No sessions yet."), 12, 16).TextColor(t.MutedForeground).Padding(k.Px(4), k.Px(8))
 			}
 			var recents, loose *sessions.Group
 			var pinned, rest []sessions.Group
@@ -89,14 +93,14 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				if loose != nil {
 					all = append([]sessions.Group{*loose}, pinned...)
 				}
-				a.foldable(c, "Pinned", pinnedSectionKey, all, busy, func() {
+				a.foldable(c, L("Pinned"), pinnedSectionKey, all, busy, func() {
 					for _, g := range all {
 						section(g)
 					}
 				})
 			}
 			if len(rest) > 0 && (loose != nil || len(pinned) > 0 || recents != nil) {
-				a.foldable(c, "Workspaces", workspacesSectionKey, rest, busy, func() {
+				a.foldable(c, L("Workspaces"), workspacesSectionKey, rest, busy, func() {
 					for _, g := range rest {
 						section(g)
 					}
@@ -118,7 +122,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				}
 				b.Children(func() {
 					k.Icon(c, "chevron-down", 14, color)
-					k.Text(c, "Load older sessions", 12, 16).TextColor(color)
+					k.Text(c, L("Load older sessions"), 12, 16).TextColor(color)
 				})
 				if b.Clicked() {
 					go a.loadOlder()
@@ -126,9 +130,9 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 		})
 		ui.Row(c).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			b := k.IconButton(c, "settings", "Settings", 32)
+			b := k.IconButton(c, "settings", L("Settings"), 32).Tooltip(withShortcut(L("Settings"), CmdSettings))
 			if b.Clicked() {
-				a.Go(Route{Name: "settings"})
+				a.Run(CmdSettings)
 			}
 		})
 	})
@@ -194,7 +198,7 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool) *ui.E
 // sortMenu is the list-filter button and its menu of orders.
 func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Label("Sort").Tooltip("Sort").Size(k.Px(32), k.Px(32)).Radius(k.Px(10)).Cursor(ui.CursorPointer)
+	b := ui.ButtonBase(c).Label(L("Sort")).Tooltip(L("Sort")).Size(k.Px(32), k.Px(32)).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 	color := t.MutedForeground
 	if b.Hovered() {
 		b.Background(t.SidebarAccent.Alpha(0.6))
@@ -203,9 +207,9 @@ func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 	b.Children(func() { k.Icon(c, "list-filter", 16, color) })
 	o := a.sortOrder(nil)
 	b.Menu(func(m *ui.Menu) {
-		m.Item("Sort workspaces").Disabled(true)
+		m.Item(L("Sort workspaces")).Disabled(true)
 		for _, w := range sessions.WorkspaceSorts {
-			if m.Item(sessions.WorkspaceSortLabels[w]).Checked(o.Workspaces == w).Chosen() {
+			if m.Item(l10n.T(sessions.WorkspaceSortLabels[w])).Checked(o.Workspaces == w).Chosen() {
 				if w == sessions.SortManual && len(o.Manual) == 0 {
 					var keys []string
 					for _, g := range groups {
@@ -219,9 +223,9 @@ func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 			}
 		}
 		m.Separator()
-		m.Item("Sort sessions").Disabled(true)
+		m.Item(L("Sort sessions")).Disabled(true)
 		for _, s := range sessions.SessionSorts {
-			if m.Item(sessions.SessionSortLabels[s]).Checked(o.Sessions == s).Chosen() {
+			if m.Item(l10n.T(sessions.SessionSortLabels[s])).Checked(o.Sessions == s).Chosen() {
 				prefs.SessionSort.Set(a.prefs, string(s))
 			}
 		}
@@ -309,6 +313,10 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 	k, t := a.kit, a.kit.T
 	loose := g.Key == sessions.PinnedSessionsGroupKey
 	flat := g.Scratch || loose
+	name := g.Label
+	if g.Scratch {
+		name = L("Recents")
+	}
 	open := loose || !prefs.FoldedWorkspaces.Has(a.prefs, g.Key)
 	pinnedWS := prefs.PinnedWorkspaces.Has(a.prefs, g.Key)
 	pinnedIDs := set(prefs.PinnedSessions.Get(a.prefs))
@@ -321,7 +329,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 	}
 	toggle := func() { prefs.FoldedWorkspaces.Toggle(a.prefs, g.Key) }
 	newButton := func(shown bool) {
-		b := ui.ButtonBase(c).Label("New session in "+g.Label).Tooltip("New session in "+g.Label).
+		b := ui.ButtonBase(c).Label(L("New session in %s", name)).Tooltip(L("New session in %s", name)).
 			Size(k.Px(24), k.Px(24)).Radius(k.Px(8)).Margin(0, k.Px(4), 0, 0).Cursor(ui.CursorPointer)
 		color := t.MutedForeground
 		if b.Hovered() {
@@ -349,37 +357,37 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 		if manual {
 			at := indexOf(shown, g.Key)
 			if at >= 0 && len(shown) > 1 {
-				if m.Item("Move up").Disabled(at == 0).Chosen() {
+				if m.Item(L("Move up")).Disabled(at == 0).Chosen() {
 					prefs.ManualWorkspaces.Set(a.prefs, sessions.MoveWorkspace(shown, g.Key, shown[at-1], false))
 				}
-				if m.Item("Move down").Disabled(at == len(shown)-1).Chosen() {
+				if m.Item(L("Move down")).Disabled(at == len(shown)-1).Chosen() {
 					prefs.ManualWorkspaces.Set(a.prefs, sessions.MoveWorkspace(shown, g.Key, shown[at+1], true))
 				}
 				m.Separator()
 			}
 		}
 		if !g.Scratch {
-			label := "Pin workspace"
+			label := L("Pin workspace")
 			if pinnedWS {
-				label = "Unpin workspace"
+				label = L("Unpin workspace")
 			}
 			if m.Item(label).Chosen() {
 				prefs.PinnedWorkspaces.Toggle(a.prefs, g.Key)
 			}
 		}
-		if m.Item("New session here").Chosen() {
+		if m.Item(L("New session here")).Chosen() {
 			newHere()
 		}
 	}
 
-	section := ui.Column(c).Key(g.Key).Role(ui.RoleGroup).Label(g.Label).Margin(0, 0, k.Px(8), 0)
+	section := ui.Column(c).Key(g.Key).Role(ui.RoleGroup).Label(name).Margin(0, 0, k.Px(8), 0)
 	section.Children(func() {
 		switch {
 		case loose:
 		case g.Scratch:
 			wrap := ui.Column(c).ContextMenu(menu)
 			wrap.Children(func() {
-				a.sectionHeader(c, g.Label, "Sessions without a workspace", open, g.Sessions, busy, toggle, newButton)
+				a.sectionHeader(c, name, L("Sessions without a workspace"), open, g.Sessions, busy, toggle, newButton)
 			})
 			wrap.Opacity(1)
 		default:
@@ -439,7 +447,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 				b.Background(t.SidebarAccent.Alpha(0.6))
 				color = t.Foreground
 			}
-			b.Children(func() { k.Text(c, "Show "+itoa(hidden)+" older", 11, 16.5).TextColor(color) })
+			b.Children(func() { k.Text(c, L("Show %d older", hidden), 11, 16.5).TextColor(color) })
 			if b.Clicked() {
 				a.sidebar.revealed[g.Key] += sessions.OlderBatch
 			}
@@ -462,6 +470,8 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 		a.renameField(c, s, flat)
 		return
 	}
+	a.sidebar.numbered = append(a.sidebar.numbered, s.SessionID)
+	n := len(a.sidebar.numbered)
 	b := ui.ButtonBase(c).Key(s.SessionID).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
 		Gap(k.Px(2)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
@@ -476,13 +486,13 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			title := k.Text(c, s.Title, 13, 19.5).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
 			if a.unread[s.SessionID] {
 				title.FontWeight(500)
-				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label("Unread")
+				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
 			}
 			if pinned {
-				k.Icon(c, "pin", 12, t.Foreground).Opacity(0.7).Label("Pinned")
+				k.Icon(c, "pin", 12, t.Foreground).Opacity(0.7).Label(L("Pinned"))
 			}
 			if s.ArchivedAt != "" {
-				k.Icon(c, "archive", 12, t.Foreground).Opacity(0.7).Label("Archived")
+				k.Icon(c, "archive", 12, t.Foreground).Opacity(0.7).Label(L("Archived"))
 			}
 		})
 		ui.Row(c).Gap(k.Px(6)).Children(func() {
@@ -498,15 +508,15 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			}
 			switch {
 			case doing == activity.NeedsInput:
-				status("circle-alert", t.Attention, "Needs input", false)
+				status("circle-alert", t.Attention, L("Needs input"), false)
 			case doing == activity.Compacting:
-				status("", t.Info, "Compacting", true)
+				status("", t.Info, L("Compacting"), true)
 			case doing == activity.Working:
-				status("", t.Info, "Working", true)
+				status("", t.Info, L("Working"), true)
 			case s.Worktree != nil && s.Worktree.Branch != "":
-				label := "Worktree on " + s.Worktree.Branch
+				label := L("Worktree on %s", s.Worktree.Branch)
 				if s.Worktree.Ephemeral() {
-					label = "Ephemeral worktree on " + s.Worktree.Branch
+					label = L("Ephemeral worktree on %s", s.Worktree.Branch)
 				}
 				ui.Row(c).Role(ui.RoleImage).Label(label).Tooltip(label).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
 					k.Icon(c, "git-branch", 12, t.MutedForeground)
@@ -515,38 +525,42 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			case s.MessagesCount != nil:
 				ui.Row(c).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
 					k.Icon(c, "message-square", 12, t.MutedForeground)
-					k.Text(c, plural(*s.MessagesCount, "message", "messages"), 11, 16.5).TextColor(t.MutedForeground).SingleLine()
+					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), 11, 16.5).TextColor(t.MutedForeground).SingleLine()
 				})
 			}
 			ui.Spacer(c)
-			k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+			if n <= 9 && c.Modifiers() == ui.Cmd {
+				k.Text(c, shortcut(sessionCommand(n)), 11, 16.5).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
+			} else {
+				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+			}
 		})
 	})
 	if b.Clicked() {
 		a.Go(Route{Name: "session", SessionID: s.SessionID})
 	}
 	b.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Rename").Chosen() {
+		if m.Item(L("Rename")).Chosen() {
 			a.sidebar.renaming, a.sidebar.rename = s.SessionID, s.Title
 		}
-		pin := "Pin"
+		pin := L("Pin")
 		if pinned {
-			pin = "Unpin"
+			pin = L("Unpin")
 		}
 		if m.Item(pin).Chosen() {
 			prefs.PinnedSessions.Toggle(a.prefs, s.SessionID)
 		}
 		m.Separator()
-		if m.Item("Copy session ID").Chosen() {
+		if m.Item(L("Copy session ID")).Chosen() {
 			c.WriteClipboard(s.SessionID)
 		}
-		if m.Item("Copy session details").Chosen() {
+		if m.Item(L("Copy session details")).Chosen() {
 			c.WriteClipboard(a.sessionDetails(s))
 		}
 		m.Separator()
-		archive := "Archive"
+		archive := L("Archive")
 		if s.ArchivedAt != "" {
-			archive = "Unarchive"
+			archive = L("Unarchive")
 		}
 		if m.Item(archive).Chosen() {
 			if s.ArchivedAt == "" && s.Worktree.Ephemeral() {
@@ -562,7 +576,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 func (a *App) renameField(c *ui.Context, s sessions.Summary, flat bool) {
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Key(s.SessionID).Radius(k.Px(10)).Background(t.SidebarAccent).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Children(func() {
-		in := ui.TextInputBase(c, &a.sidebar.rename).Label("Session title").AutoFocus().Grow(1).Height(k.Px(32)).PaddingX(k.Px(6)).
+		in := ui.TextInputBase(c, &a.sidebar.rename).Label(L("Session title")).AutoFocus().Grow(1).Height(k.Px(32)).PaddingX(k.Px(6)).
 			Radius(k.Px(8)).Border(1, t.Border).Background(t.Background).FontSize(k.Px(13)).TextColor(t.Foreground)
 		done := func(save bool) {
 			title := strings.TrimSpace(a.sidebar.rename)

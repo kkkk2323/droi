@@ -75,7 +75,7 @@ func TestPasteOfTheEditMenuAttachesAnImage(t *testing.T) {
 
 	h.openSession("Fix the login race")
 	h.until("the composer", func() bool {
-		if _, ok := h.tt.Find("Ask anything"); !ok {
+		if _, ok := h.tt.Find("Message composer"); !ok {
 			return false
 		}
 		_ = h.tt.Click("Message")

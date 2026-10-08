@@ -9,23 +9,24 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
 
 // The lifecycles a new worktree can have, as the Factory App words them.
 var worktreeLifecycles = []struct{ value, label, description string }{
-	{string(protocol.WorktreeLifecycleEphemeral), "Ephemeral", "Single-session worktrees that are cleaned up automatically."},
-	{string(protocol.WorktreeLifecyclePersistent), "Persistent", "Multi-session worktrees that can only be deleted manually."},
+	{string(protocol.WorktreeLifecycleEphemeral), l10n.N("Ephemeral"), l10n.N("Single-session worktrees that are cleaned up automatically.")},
+	{string(protocol.WorktreeLifecyclePersistent), l10n.N("Persistent"), l10n.N("Multi-session worktrees that can only be deleted manually.")},
 }
 
 func lifecycleLabel(value string) string {
 	for _, l := range worktreeLifecycles {
 		if l.value == value {
-			return l.label
+			return l10n.T(l.label)
 		}
 	}
-	return "Ephemeral"
+	return L("Ephemeral")
 }
 
 // repoInfo is what the New session page knows of a Workspace's repository.
@@ -158,13 +159,13 @@ func (ch worktreeChoice) apply(p *protocol.InitializeSessionParams, prompt strin
 func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
-	label, icon := "Work locally", "laptop"
+	label, icon := L("Work locally"), "laptop"
 	if ch.On {
-		label, icon = "New worktree", "git-fork"
+		label, icon = L("New worktree"), "git-fork"
 	}
-	tr := k.QuietTrigger(c, "Worktree", s.worktreeOpen).Role(ui.RoleComboBox).Gap(k.Px(4)).Margin(0, 0, 0, -k.Px(8))
+	tr := k.QuietTrigger(c, L("Worktree"), s.worktreeOpen).Role(ui.RoleComboBox).Gap(k.Px(4)).Margin(0, 0, 0, -k.Px(8))
 	if ch.On {
-		tr.Tooltip(lifecycleLabel(ch.Lifecycle) + " worktree from " + ch.Base)
+		tr.Tooltip(L("%s worktree from %s", lifecycleLabel(ch.Lifecycle), ch.Base))
 	}
 	fg := t.MutedForeground
 	if tr.Hovered() || s.worktreeOpen {
@@ -183,15 +184,15 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 		fn()
 	}
 	ui.PopoverBase(c, tr, &s.worktreeOpen, func(p *ui.Element) {
-		p.Label("Worktree").Width(k.Px(304)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
+		p.Label(L("Worktree")).Width(k.Px(304)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Scroll(c).MaxHeight(k.Px(420)).Children(func() {
 			ui.Column(c).Padding(k.Px(4)).Children(func() {
-				ui.Column(c).Role(ui.RoleGroup).Label("Where to work").Children(func() {
-					if a.choiceRow(c, "local", "laptop", "Work locally", "", !ch.On) {
+				ui.Column(c).Role(ui.RoleGroup).Label(L("Where to work")).Children(func() {
+					if a.choiceRow(c, "local", "laptop", L("Work locally"), "", !ch.On) {
 						s.worktreeSet, s.worktree = true, false
 					}
-					if a.choiceRow(c, "worktree", "git-fork", "New worktree", "", ch.On) {
+					if a.choiceRow(c, "worktree", "git-fork", L("New worktree"), "", ch.On) {
 						s.worktreeSet, s.worktree = true, true
 					}
 				})
@@ -199,10 +200,10 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 					ui.Box(c).Height(1).Background(t.Border).Margin(k.Px(4), -k.Px(4))
 					k.Text(c, text, 11, 16.5).FontWeight(500).TextColor(t.MutedForeground).Padding(k.Px(4), k.Px(8))
 				}
-				caption("Lifecycle")
-				ui.Column(c).Role(ui.RoleGroup).Label("Lifecycle").Children(func() {
+				caption(L("Lifecycle"))
+				ui.Column(c).Role(ui.RoleGroup).Label(L("Lifecycle")).Children(func() {
 					for _, l := range worktreeLifecycles {
-						if a.choiceRow(c, "lifecycle:"+l.value, "", l.label, l.description, ch.On && ch.Lifecycle == l.value) {
+						if a.choiceRow(c, "lifecycle:"+l.value, "", l10n.T(l.label), l10n.T(l.description), ch.On && ch.Lifecycle == l.value) {
 							pick(func() {
 								s.lifecycle = l.value
 								prefs.WorktreeLifecycle.Set(a.prefs, l.value)
@@ -211,13 +212,13 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 					}
 				})
 				if len(repo.branches) > 0 {
-					caption("Base branch")
+					caption(L("Base branch"))
 					ui.Scroll(c).MaxHeight(k.Px(150)).Children(func() {
-						ui.Column(c).Role(ui.RoleGroup).Label("Base branch").Children(func() {
+						ui.Column(c).Role(ui.RoleGroup).Label(L("Base branch")).Children(func() {
 							for _, b := range repo.branches {
 								note := ""
 								if b == repo.current {
-									note = "Current branch"
+									note = L("Current branch")
 								}
 								if a.choiceRow(c, "base:"+b, "git-branch", b, note, ch.On && ch.Base == b) {
 									pick(func() { s.base = b })
@@ -227,15 +228,15 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 					})
 				}
 				if len(repo.profiles) > 0 {
-					caption("Setup profile")
-					ui.Column(c).Role(ui.RoleGroup).Label("Setup profile").Children(func() {
-						if a.choiceRow(c, "profile:none", "", "Start without setup profile", "", ch.On && ch.ProfileID == "") {
+					caption(L("Setup profile"))
+					ui.Column(c).Role(ui.RoleGroup).Label(L("Setup profile")).Children(func() {
+						if a.choiceRow(c, "profile:none", "", L("Start without setup profile"), "", ch.On && ch.ProfileID == "") {
 							pick(func() { s.profile = noProfile })
 						}
 						for _, pr := range repo.profiles {
 							note := ""
 							if pr.Source == protocol.WorktreeSetupProfileSourceRepository {
-								note = "Shared by repository"
+								note = L("Shared by repository")
 							}
 							if a.choiceRow(c, "profile:"+pr.ID, "", pr.Name, note, ch.On && ch.ProfileID == pr.ID) {
 								pick(func() { s.profile = pr.ID })
@@ -245,13 +246,13 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 				}
 				ui.Box(c).Height(1).Background(t.Border).Margin(k.Px(4), -k.Px(4))
 				def := prefs.NewSessionWorktree.Get(a.prefs)
-				ui.Row(c).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Tooltip("Whether new sessions start with worktrees enabled.").Children(func() {
-					k.Text(c, "Start new sessions in a worktree", 13, 19.5).Grow(1).MinWidth(0)
-					if a.toggle(c, "Start new sessions in a worktree", def, false) {
+				ui.Row(c).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Tooltip(L("Whether new sessions start with worktrees enabled.")).Children(func() {
+					k.Text(c, L("Start new sessions in a worktree"), 13, 19.5).Grow(1).MinWidth(0)
+					if a.toggle(c, L("Start new sessions in a worktree"), def, false) {
 						prefs.NewSessionWorktree.Set(a.prefs, !def)
 					}
 				})
-				k.Text(c, "The branch is created in the new worktree when the session starts. Your current checkout stays on its branch.", 11.5, 17).
+				k.Text(c, L("The branch is created in the new worktree when the session starts. Your current checkout stays on its branch."), 11.5, 17).
 					TextColor(t.MutedForeground).Padding(k.Px(2), k.Px(8), k.Px(6), k.Px(8))
 			})
 		})
@@ -358,14 +359,14 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	w, _ := c.Size()
 	archive := d.session != nil
-	title, action := "Delete worktree?", "Delete worktree"
-	message := "Deleting this worktree will also archive all associated sessions."
+	title, action := L("Delete worktree?"), L("Delete worktree")
+	message := L("Deleting this worktree will also archive all associated sessions.")
 	if d.sessions > 0 {
-		message = "Deleting this worktree will also archive " + plural(d.sessions, "associated session", "associated sessions") + "."
+		message = L("Deleting this worktree will also archive %s.", plural(d.sessions, L("associated session"), L("associated sessions")))
 	}
 	if archive {
-		title, action = "Archive session?", "Archive"
-		message = "Archiving this session will delete its worktree."
+		title, action = L("Archive session?"), L("Archive")
+		message = L("Archiving this session will delete its worktree.")
 	}
 	ui.DialogBase(c, &d.open, func(backdrop, panel *ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
@@ -382,56 +383,56 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 					})
 				}
 				if d.branch != "" {
-					fact("Branch:", d.branch)
+					fact(L("Branch:"), d.branch)
 				}
-				fact("Path:", d.path)
+				fact(L("Path:"), d.path)
 			})
 			warn := func(s string) { k.Text(c, s, 13, 20).Role(ui.RoleStatus).TextColor(t.AttentionForeground) }
 			in := d.inspect
 			switch {
 			case !d.checked:
-				k.Text(c, "Checking current git status...", 13, 20).Role(ui.RoleStatus).TextColor(t.MutedForeground)
+				k.Text(c, L("Checking current git status..."), 13, 20).Role(ui.RoleStatus).TextColor(t.MutedForeground)
 			case d.inspectErr != "":
-				warn("Could not check this worktree for unsaved work. Anything it holds will be deleted with it.")
+				warn(L("Could not check this worktree for unsaved work. Anything it holds will be deleted with it."))
 			case in != nil:
 				var parts []string
 				if in.ChangedFiles > 0 {
-					parts = append(parts, plural(int(in.ChangedFiles), "changed file", "changed files"))
+					parts = append(parts, plural(int(in.ChangedFiles), L("changed file"), L("changed files")))
 				}
 				if in.UntrackedFiles > 0 {
-					parts = append(parts, plural(int(in.UntrackedFiles), "untracked file", "untracked files"))
+					parts = append(parts, plural(int(in.UntrackedFiles), L("untracked file"), L("untracked files")))
 				}
 				if in.LocalOnlyCommits != nil && *in.LocalOnlyCommits > 0 {
-					parts = append(parts, plural(int(*in.LocalOnlyCommits), "commit on no remote", "commits on no remote"))
+					parts = append(parts, plural(int(*in.LocalOnlyCommits), L("commit on no remote"), L("commits on no remote")))
 				}
 				if len(parts) > 0 {
-					warn("Warning: this worktree has " + strings.Join(parts, ", ") + ".")
+					warn(L("Warning: this worktree has %s.", strings.Join(parts, ", ")))
 					if archive && in.ChangedFiles+in.UntrackedFiles > 0 {
-						k.Text(c, "Droid keeps a worktree with uncommitted changes; delete it in Settings → Worktrees.", 12, 18).TextColor(t.MutedForeground)
+						k.Text(c, L("Droid keeps a worktree with uncommitted changes; delete it in Settings → Worktrees."), 12, 18).TextColor(t.MutedForeground)
 					}
 				}
 				if pr := in.PullRequest; pr != nil {
-					label := "PR " + string(pr.State)
+					label := L("PR %s", string(pr.State))
 					if pr.Title != "" {
-						label += ": " + pr.Title
+						label = L("PR %s: %s", string(pr.State), pr.Title)
 					}
 					k.Text(c, label, 13, 20).TextColor(t.MutedForeground)
 				}
 				if in.RemoteRefsStale {
-					k.Text(c, "Origin could not be reached, so branch details may be out of date.", 12, 18).TextColor(t.MutedForeground)
+					k.Text(c, L("Origin could not be reached, so branch details may be out of date."), 12, 18).TextColor(t.MutedForeground)
 				}
 			}
 			if !archive && d.branch != "" {
 				ui.Column(c).Gap(k.Px(4)).Children(func() {
-					if a.checkRow(c, "Delete local branch", d.deleteLocal) {
+					if a.checkRow(c, L("Delete local branch"), d.deleteLocal) {
 						d.deleteLocal = !d.deleteLocal
 					}
 					if in != nil && in.HasRemoteBranch {
-						if a.checkRow(c, "Delete origin branch", d.deleteRemote) {
+						if a.checkRow(c, L("Delete origin branch"), d.deleteRemote) {
 							d.deleteRemote = !d.deleteRemote
 						}
 						if d.deleteRemote && in.PullRequest != nil && in.PullRequest.State == protocol.DaemonWorktreeBranchPullRequestStateOpen {
-							k.Text(c, "Deleting the origin branch closes the open pull request.", 12, 18).TextColor(t.AttentionForeground)
+							k.Text(c, L("Deleting the origin branch closes the open pull request."), 12, 18).TextColor(t.AttentionForeground)
 						}
 					}
 				})
@@ -440,7 +441,7 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 				k.Text(c, d.err, 13, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 			}
 			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Children(func() {
-				if a.smallButton(c, kit.Outline, "Cancel", "", d.busy).Clicked() || c.Shortcut(0, ui.KeyEscape) {
+				if a.smallButton(c, kit.Outline, L("Cancel"), "", d.busy).Clicked() || c.Shortcut(0, ui.KeyEscape) {
 					d.open = false
 				}
 				go_ := a.dangerButton(c, action, d.busy || !d.checked)
@@ -519,15 +520,15 @@ func (a *App) deleteWorktree(path string, local, remote, force bool) {
 	msg := ""
 	switch {
 	case err != nil:
-		msg = "Failed to delete worktree: " + err.Error()
+		msg = L("Failed to delete worktree: %s", err.Error())
 	case res.PreservedReason == protocol.DaemonWorktreePreservedReasonUncommittedChanges:
-		msg = "Worktree was kept: it holds uncommitted changes. Commit or stash them, or remove it with git worktree remove --force."
+		msg = L("Worktree was kept: it holds uncommitted changes. Commit or stash them, or remove it with git worktree remove --force.")
 	case !res.WorktreeRemoved:
-		msg = "Worktree could not be removed. Remove it manually with git worktree remove."
+		msg = L("Worktree could not be removed. Remove it manually with git worktree remove.")
 	}
 	notice := ""
 	if err == nil && res.WorktreeRemoved && len(res.Warnings) > 0 {
-		notice = "Worktree deleted with warnings: " + strings.Join(res.Warnings, "; ")
+		notice = L("Worktree deleted with warnings: %s", strings.Join(res.Warnings, "; "))
 	}
 	go a.refreshList()
 	a.cfg.Update(func() {
@@ -576,7 +577,7 @@ func (a *App) loadManagedWorktrees() {
 		a.cfg.Update(func() {
 			m.loading = false
 			if err != nil {
-				m.err = "Failed to load managed worktrees."
+				m.err = l10n.N("Failed to load managed worktrees.")
 				return
 			}
 			m.err, m.list = "", res.Worktrees
@@ -588,11 +589,11 @@ func (a *App) loadManagedWorktrees() {
 // how many ephemeral ones it keeps, and the ones it manages.
 func (a *App) worktreesTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	k.Text(c, "Worktrees let a session work on its own checkout and branch, beside your own. Droid makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer.", 13, 19.5).
+	k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droid makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer."), 13, 19.5).
 		TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	dv := a.sessionDefaults()
 	if dv == nil {
-		k.Text(c, "Loading worktree settings…", 14, 20).TextColor(t.MutedForeground)
+		k.Text(c, L("Loading worktree settings…"), 14, 20).TextColor(t.MutedForeground)
 		return
 	}
 	save := func(p defaultsPatch) { a.saveDefaults(*dv, p) }
@@ -601,21 +602,21 @@ func (a *App) worktreesTab(c *ui.Context) {
 		base = dv.UserFactoryDir
 	}
 	defaultDir := strings.TrimSuffix(base, "/") + "/worktrees"
-	a.settingGroup(c, "Worktree settings", "",
+	a.settingGroup(c, L("Worktree settings"), "",
 		func() {
 			const custom = "custom…"
-			opts := []kit.Option{{Value: "", Label: "Default (" + defaultDir + ")"}}
+			opts := []kit.Option{{Value: "", Label: L("Default (%s)", defaultDir)}}
 			if dv.WorktreeDirectory != "" {
-				opts = append(opts, kit.Option{Value: dv.WorktreeDirectory, Label: "Custom: " + dv.WorktreeDirectory})
+				opts = append(opts, kit.Option{Value: dv.WorktreeDirectory, Label: L("Custom: %s", dv.WorktreeDirectory)})
 			}
-			opts = append(opts, kit.Option{Value: custom, Label: "Custom…"})
-			a.settingRow(c, "Worktree directory", "Choose a custom parent directory for local worktrees.", func() {
-				next, ok := a.fieldSelect(c, "Worktree directory", dv.WorktreeDirectory, opts, false)
+			opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+			a.settingRow(c, L("Worktree directory"), L("Choose a custom parent directory for local worktrees."), func() {
+				next, ok := a.fieldSelect(c, L("Worktree directory"), dv.WorktreeDirectory, opts, false)
 				switch {
 				case !ok:
 				case next == custom:
 					go func() {
-						if dir := a.pickFolder("Choose a worktree directory"); dir != "" {
+						if dir := a.pickFolder(L("Choose a worktree directory")); dir != "" {
 							a.cfg.Update(func() { save(defaultsPatch{WorktreeDirectory: &dir}) })
 						}
 					}()
@@ -632,13 +633,13 @@ func (a *App) worktreesTab(c *ui.Context) {
 			var opts []kit.Option
 			for _, n := range []int{5, 10, 15, 20, 30, 50, 100} {
 				if n == defaultWorktreeLimit {
-					opts = append(opts, kit.Option{Value: strconv.Itoa(n), Label: strconv.Itoa(n) + " worktrees (default)"})
+					opts = append(opts, kit.Option{Value: strconv.Itoa(n), Label: L("%d worktrees (default)", n)})
 					continue
 				}
-				opts = append(opts, kit.Option{Value: strconv.Itoa(n), Label: strconv.Itoa(n) + " worktrees"})
+				opts = append(opts, kit.Option{Value: strconv.Itoa(n), Label: L("%d worktrees", n)})
 			}
-			a.settingRow(c, "Ephemeral worktrees limit", "Droid deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch.", func() {
-				if next, ok := a.fieldSelect(c, "Ephemeral worktrees limit", strconv.Itoa(limit), opts, false); ok {
+			a.settingRow(c, L("Ephemeral worktrees limit"), L("Droid deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch."), func() {
+				if next, ok := a.fieldSelect(c, L("Ephemeral worktrees limit"), strconv.Itoa(limit), opts, false); ok {
 					n, _ := strconv.Atoi(next)
 					save(defaultsPatch{WorktreeAutoDeleteLimit: &n})
 				}
@@ -655,18 +656,18 @@ func (a *App) worktreesTab(c *ui.Context) {
 			ephemeral++
 		}
 	}
-	footer := "Factory-managed worktrees on this computer."
+	footer := L("Factory-managed worktrees on this computer.")
 	if len(m.list) > 0 {
-		footer += " Ephemeral · " + strconv.Itoa(ephemeral) + ", Persistent · " + strconv.Itoa(persistent) + "."
+		footer += L(" Ephemeral · %d, Persistent · %d.", ephemeral, persistent)
 	}
 	rows := []func(){}
 	switch {
 	case m.err != "":
-		rows = append(rows, func() { a.settingRow(c, m.err, "", nil, nil) })
+		rows = append(rows, func() { a.settingRow(c, l10n.T(m.err), "", nil, nil) })
 	case m.list == nil && m.loading:
-		rows = append(rows, func() { a.settingRow(c, "Loading worktrees…", "", nil, nil) })
+		rows = append(rows, func() { a.settingRow(c, L("Loading worktrees…"), "", nil, nil) })
 	case len(m.list) == 0:
-		rows = append(rows, func() { a.settingRow(c, "No Factory-managed worktrees.", "", nil, nil) })
+		rows = append(rows, func() { a.settingRow(c, L("No Factory-managed worktrees."), "", nil, nil) })
 	}
 	for _, w := range m.list {
 		rows = append(rows, func() {
@@ -674,9 +675,9 @@ func (a *App) worktreesTab(c *ui.Context) {
 			if title == "" {
 				title = sessions.WorkspaceLabel(w.Path)
 			}
-			desc := sessions.WorkspaceLabel(w.RepoRoot) + " · " + lifecycleLabel(string(w.Lifecycle)) + " · " + plural(len(w.Sessions), "session", "sessions")
+			desc := sessions.WorkspaceLabel(w.RepoRoot) + " · " + lifecycleLabel(string(w.Lifecycle)) + " · " + plural(len(w.Sessions), L("session"), L("sessions"))
 			if w.IsClean != nil && !*w.IsClean {
-				desc += " · uncommitted changes"
+				desc += L(" · uncommitted changes")
 			}
 			a.settingRowWith(c, func() {
 				ui.Row(c).Gap(k.Px(6)).Children(func() {
@@ -684,7 +685,7 @@ func (a *App) worktreesTab(c *ui.Context) {
 					k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500).SingleLine().Shrink(1)
 				})
 			}, desc, func() {
-				if a.smallButton(c, kit.Ghost, "Delete", "trash", false).Label("Delete worktree " + title).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Delete"), "trash", false).Label(L("Delete worktree %s", title)).Clicked() {
 					a.askDeleteWorktree(w)
 				}
 			}, func() {
@@ -695,7 +696,7 @@ func (a *App) worktreesTab(c *ui.Context) {
 	if m.notice != "" {
 		k.Text(c, m.notice, 13, 20).Role(ui.RoleStatus).TextColor(t.AttentionForeground)
 	}
-	a.settingGroup(c, "Managed worktrees", footer, rows...)
+	a.settingGroup(c, L("Managed worktrees"), footer, rows...)
 }
 
 // defaultWorktreeLimit is the Daemon's worktreeAutoDeleteLimit when unset.

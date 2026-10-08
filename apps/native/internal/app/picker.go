@@ -8,6 +8,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/brands"
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 )
@@ -49,9 +50,9 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 		}, nil)
 	opts := make([]kit.Option, len(autonomyLevels))
 	for i, l := range autonomyLevels {
-		opts[i] = kit.Option{Value: l, Label: models.AutonomyLabels[l]}
+		opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
 	}
-	if next, ok := a.kit.QuietSelect(c, &cs.autoOpen, "Autonomy", "shield-check", string(set.AutonomyLevel), opts); ok {
+	if next, ok := a.kit.QuietSelect(c, &cs.autoOpen, L("Autonomy"), "shield-check", string(set.AutonomyLevel), opts); ok {
 		update(protocol.UpdateSessionSettingsParams{AutonomyLevel: protocol.AutonomyLevel(next)})
 	}
 }
@@ -76,7 +77,7 @@ type pickerToolMode struct {
 // its effort, opening a panel with the brands' rail, a search, the models,
 // the reasoning effort and, when tools is set, the tool mode.
 func (a *App) modelPicker(c *ui.Context, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *pickerToolMode) {
-	a.modelPickerAs(c, false, "Model and reasoning effort", false, open, st, choices, value, effort, onModel, onEffort, tools)
+	a.modelPickerAs(c, false, L("Model and reasoning effort"), false, open, st, choices, value, effort, onModel, onEffort, tools)
 }
 
 // modelField is the ModelPicker's field look, for settings rows: a framed
@@ -126,7 +127,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 			label = current.Label
 		}
 		if label == "" {
-			label = "Model"
+			label = L("Model")
 		}
 		l := k.Text(c, label, size, lh).TextColor(fg).SingleLine().Shrink(1)
 		if field {
@@ -136,7 +137,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 			k.Text(c, effortLabel(effort), size, lh).TextColor(t.MutedForeground).Shrink(0)
 		}
 		if tools != nil && tools.value != "" && tools.value != defaults.DirectOnly {
-			k.Text(c, defaults.ToolModeLabels[tools.value], size, lh).TextColor(t.MutedForeground).Shrink(0)
+			k.Text(c, l10n.T(defaults.ToolModeLabels[tools.value]), size, lh).TextColor(t.MutedForeground).Shrink(0)
 		}
 		k.Icon(c, "chevron-down", 12, fg).Opacity(0.6)
 	})
@@ -169,10 +170,10 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 		} else {
 			p.AttachTo(tr, ui.AnchorTopLeft, ui.AnchorBottomLeft).Margin(0, 0, k.Px(6), 0)
 		}
-		p.Label("Choose a model").
+		p.Label(L("Choose a model")).
 			Size(k.Px(480), k.Px(352)).Row().AlignItems(ui.Stretch).Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).
 			TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).Role(ui.RoleToolbar).Label("Filter models").Width(k.Px(56)).Shrink(0).Gap(k.Px(8)).Padding(k.Px(12), k.Px(8)).
+		ui.Column(c).Role(ui.RoleToolbar).Label(L("Filter models")).Width(k.Px(56)).Shrink(0).Gap(k.Px(8)).Padding(k.Px(12), k.Px(8)).
 			AlignItems(ui.Center).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Background(t.Sidebar).Children(func() {
 			rail := func(label string, pressed bool, icon func(color ui.Color)) bool {
 				b := ui.ButtonBase(c).Label(label).Tooltip(label).Checked(pressed).Size(k.Px(36), k.Px(36)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
@@ -189,7 +190,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 				return b.Clicked()
 			}
 			fav := st.filter == models.FilterFavorites && st.brand == ""
-			if rail("Favorites", fav && !searching, func(color ui.Color) { k.Icon(c, "star", 14, color) }) {
+			if rail(L("Favorites"), fav && !searching, func(color ui.Color) { k.Icon(c, "star", 14, color) }) {
 				st.brand = ""
 				st.filter = models.FilterFavorites
 				if fav {
@@ -200,7 +201,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 			ui.Box(c).Size(k.Px(20), 1).Margin(k.Px(4), 0).Background(t.Border).Shrink(0)
 			for _, b := range models.BrandsOf(choices) {
 				pressed := st.brand == b
-				if rail(models.BrandLabels[b], pressed && !searching, func(color ui.Color) { brandIcon(c, k, b, 14, color) }) {
+				if rail(l10n.T(models.BrandLabels[b]), pressed && !searching, func(color ui.Color) { brandIcon(c, k, b, 14, color) }) {
 					st.filter = models.FilterAll
 					st.brand = b
 					if pressed {
@@ -213,7 +214,7 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Row(c).Gap(k.Px(8)).PaddingX(k.Px(12)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				k.Icon(c, "search", 14, t.MutedForeground)
-				in := ui.TextInputBase(c, &st.query).Label("Search models").Placeholder("Search models…").AutoFocus().
+				in := ui.TextInputBase(c, &st.query).Label(L("Search models")).Placeholder(L("Search models…")).AutoFocus().
 					Height(k.Px(40)).Grow(1).MinWidth(0).FontSize(k.Px(14)).TextColor(t.Foreground)
 				if in.Changed() {
 					st.highlight = 0
@@ -230,14 +231,14 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 				}
 			})
 			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-				ui.Column(c).Role(ui.RoleList).Label("Models").Padding(k.Px(6)).Children(func() {
+				ui.Column(c).Role(ui.RoleList).Label(L("Models")).Padding(k.Px(6)).Children(func() {
 					if len(rows) == 0 {
-						msg := "No models."
+						msg := L("No models.")
 						switch {
 						case searching:
-							msg = "No models match."
+							msg = L("No models match.")
 						case st.filter == models.FilterFavorites && st.brand == "":
-							msg = "Star a model to keep it here."
+							msg = L("Star a model to keep it here.")
 						}
 						ui.Box(c).Height(k.Px(240)).Center().Children(func() {
 							k.Text(c, msg, 12, 16).TextColor(t.MutedForeground)
@@ -268,14 +269,14 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 						for i, l := range levels {
 							opts[i] = kit.Option{Value: l, Label: effortLabel(l)}
 						}
-						segmented("Reasoning", "Reasoning effort", effort, opts, onEffort)
+						segmented(L("Reasoning"), L("Reasoning effort"), effort, opts, onEffort)
 					}
 					if tools != nil {
 						opts := make([]kit.Option, len(defaults.ToolModes))
 						for i, m := range defaults.ToolModes {
-							opts[i] = kit.Option{Value: string(m), Label: defaults.ToolModeLabels[m]}
+							opts[i] = kit.Option{Value: string(m), Label: l10n.T(defaults.ToolModeLabels[m])}
 						}
-						segmented("Tools", "Tool calls", string(tools.value), opts, func(v string) { tools.onChange(defaults.ToolMode(v)) })
+						segmented(L("Tools"), L("Tool calls"), string(tools.value), opts, func(v string) { tools.onChange(defaults.ToolMode(v)) })
 					}
 				})
 			}
@@ -306,20 +307,20 @@ func (a *App) modelRow(c *ui.Context, row models.Row, highlighted, selected, sta
 			k.Text(c, row.Label, 13, 19.5).FontWeight(500).TextColor(fg).SingleLine()
 			ui.Row(c).Gap(k.Px(6)).Children(func() {
 				brandIcon(c, k, row.Brand, 12, t.MutedForeground)
-				source := models.BrandLabels[row.Brand]
+				source := l10n.T(models.BrandLabels[row.Brand])
 				if row.Provider == "" {
-					source = "Router"
+					source = L("Router")
 				}
 				k.Text(c, source, 11, 16.5).TextColor(t.MutedForeground).SingleLine()
 			})
 		})
 		if row.Multiplier != nil {
-			k.Text(c, models.FormatMultiplier(*row.Multiplier), 11, 16.5).Font(k.Mono).TextColor(t.MutedForeground).Tooltip("Usage multiplier").
+			k.Text(c, models.FormatMultiplier(*row.Multiplier), 11, 16.5).Font(k.Mono).TextColor(t.MutedForeground).Tooltip(L("Usage multiplier")).
 				FontFeatures("tnum").Shrink(0)
 		}
-		label := "Star " + row.Label
+		label := L("Star %s", row.Label)
 		if starred {
-			label = "Unstar " + row.Label
+			label = L("Unstar %s", row.Label)
 		}
 		star := ui.ButtonBase(c).Label(label).Checked(starred).Size(k.Px(28), k.Px(28)).Radius(k.Px(6)).Shrink(0).Cursor(ui.CursorPointer)
 		color := t.MutedForeground
@@ -334,7 +335,7 @@ func (a *App) modelRow(c *ui.Context, row models.Row, highlighted, selected, sta
 		star.Children(func() {
 			ic := k.Icon(c, "star", 16, color)
 			if starred {
-				ic.Label("Starred")
+				ic.Label(L("Starred"))
 			}
 		})
 		if star.Clicked() {
@@ -349,7 +350,7 @@ func (a *App) modelRow(c *ui.Context, row models.Row, highlighted, selected, sta
 
 func effortLabel(e string) string {
 	if l, ok := models.EffortLabels[e]; ok {
-		return l
+		return l10n.T(l)
 	}
 	return e
 }

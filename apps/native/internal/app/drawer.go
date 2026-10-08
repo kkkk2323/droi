@@ -32,7 +32,7 @@ func (a *App) openSessionsButton(c *ui.Context) {
 	if a.cfg.InsetTop {
 		ui.Box(c).Width(64).Shrink(0)
 	}
-	if k.IconButton(c, "panel-left", "Open sessions", 28).Expanded(a.drawerOpen).Clicked() {
+	if k.IconButton(c, "panel-left", L("Open sessions"), 28).Expanded(a.drawerOpen).Clicked() {
 		a.drawerOpen = true
 	}
 }
@@ -43,7 +43,7 @@ func (a *App) drawer(c *ui.Context, sidebar func()) {
 	w, _ := c.Size()
 	ui.DialogBase(c, &a.drawerOpen, func(backdrop, panel *ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
-		panel.Label("Sessions").Absolute().Left(0).Top(0).Bottom(0).Width(min(w*0.85, a.kit.Px(288))).
+		panel.Label(L("Sessions")).Absolute().Left(0).Top(0).Bottom(0).Width(min(w*0.85, a.kit.Px(288))).
 			Background(t.Sidebar).TextColor(t.Foreground).Clip().Shadow(0, a.kit.Px(20), a.kit.Px(25), -a.kit.Px(5), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).Fill().Children(sidebar)
 	})

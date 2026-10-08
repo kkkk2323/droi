@@ -18,6 +18,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/attachments"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/slash"
 )
@@ -264,16 +265,16 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		v.saveDraft()
 	}
 
-	ui.Column(c).Role(ui.RoleGroup).Label("Message composer").Gap(k.Px(6)).Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
 		if cs.err != "" {
 			k.Text(c, cs.err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).PaddingX(k.Px(4))
 		}
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
-		if card.FileDragOver() {
+		if _, over := ui.DataDragOver(card, dropOptions); over {
 			card.Border(1, t.Primary.Alpha(0.6)).Background(t.Primary.Alpha(0.05))
 		}
-		if files := card.DroppedFiles(); len(files) > 0 {
-			v.addFiles(files)
+		if d, ok := ui.DropData(card, dropOptions); ok {
+			v.drop(readDrop(d.Data))
 		}
 		card.Children(func() {
 			if len(cs.images) > 0 {
@@ -284,19 +285,19 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					v.slashTag(c, picked, rest)
 				}
 				value := cs.text[len(prefix):]
-				placeholder := "Ask anything"
+				placeholder := L("Ask anything")
 				switch {
 				case running:
-					placeholder = "Queue a message… (⌘↩ inserts it now)"
+					placeholder = L("Queue a message… (⌘↩ inserts it now)")
 				case hasPick && picked.ArgumentHint != "":
-					placeholder = picked.ArgumentHint
+					placeholder = l10n.T(picked.ArgumentHint)
 				}
 				left := k.Px(16)
 				if hasPick {
 					left = k.Px(8)
 				}
-				in := k.TextArea(c, &value, "Message", placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
-					MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!loaded)
+				in := k.TextArea(c, &value, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
+					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!loaded)
 				if !v.focused {
 					in.AutoFocus()
 					v.focused = true
@@ -351,7 +352,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				v.suggestionList(c, card, suggestions, active, accept)
 			}
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
-				add := k.Button(c, kit.Ghost, 32, true, "Add image").Radius(k.Px(16)).Disabled(!loaded)
+				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!loaded)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
 				if add.Clicked() {
 					go v.chooseImages()
@@ -362,7 +363,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				v.toolsButton(c)
 				ui.Row(c).Gap(k.Px(4)).Padding(0, 0, 0, k.Px(4)).Shrink(0).Children(func() {
 					if running {
-						stop := k.Button(c, kit.Secondary, 32, true, "Cancel").Radius(k.Px(16))
+						stop := k.Button(c, kit.Secondary, 32, true, L("Cancel")).Radius(k.Px(16))
 						stop.Children(func() {
 							ui.Box(c).Size(k.Px(10), k.Px(10)).Radius(k.Px(2)).Background(t.SecondaryForeground)
 						})
@@ -370,7 +371,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 							go func() { _ = a.ctl.InterruptSession(a.ctx, v.id) }()
 						}
 						if canSend {
-							q := k.Button(c, kit.Primary, 32, true, "Queue").Radius(k.Px(16)).Tooltip("Send after this turn (↩); ⌘↩ hands it to the running turn")
+							q := k.Button(c, kit.Primary, 32, true, L("Queue")).Radius(k.Px(16)).Tooltip(L("Send after this turn (↩); ⌘↩ hands it to the running turn"))
 							q.Children(func() { k.Icon(c, "arrow-up", 16, t.PrimaryForeground) })
 							if q.Clicked() {
 								submit("")
@@ -378,7 +379,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 						}
 						return
 					}
-					send := k.Button(c, kit.Primary, 32, true, "Send").Radius(k.Px(16)).Disabled(!canSend)
+					send := k.Button(c, kit.Primary, 32, true, L("Send")).Radius(k.Px(16)).Disabled(!canSend)
 					send.Children(func() { k.Icon(c, "arrow-up", 16, t.PrimaryForeground) })
 					if send.Clicked() {
 						submit("")
@@ -442,20 +443,54 @@ func (v *sessionView) addFiles(paths []string) {
 				quoted[i] = strconv.Quote(p)
 			}
 		}
-		insert := strings.Join(quoted, " ")
-		if cs.text != "" && !strings.HasSuffix(cs.text, " ") && !strings.HasSuffix(cs.text, "\n") {
-			insert = " " + insert
-		}
-		cs.text += insert + " "
+		cs.text = appendWords(cs.text, strings.Join(quoted, " "))
 	}
 	v.saveDraft()
 }
 
+// quote adds text to the message as a Markdown quote and puts the
+// keyboard focus back in the composer.
+func (v *sessionView) quote(text string) {
+	cs := &v.composer
+	quoted := "> " + strings.ReplaceAll(strings.TrimSpace(text), "\n", "\n> ") + "\n\n"
+	switch {
+	case cs.text == "":
+	case strings.HasSuffix(cs.text, "\n\n"):
+	case strings.HasSuffix(cs.text, "\n"):
+		quoted = "\n" + quoted
+	default:
+		quoted = "\n\n" + quoted
+	}
+	cs.text += quoted
+	v.focused = false
+	v.saveDraft()
+}
+
+// drop adds what was dropped on the composer.
+func (v *sessionView) drop(d dropped) {
+	cs := &v.composer
+	switch {
+	case len(d.files) > 0:
+		v.addFiles(d.files)
+	case d.image != nil:
+		img, ok, err := attachments.FromBytes(d.image, "Dropped image.png", uuid.NewString())
+		switch {
+		case err != nil:
+			cs.err = err.Error()
+		case ok:
+			cs.images = append(cs.images, img)
+		}
+	case d.text != "":
+		cs.text = appendWords(cs.text, d.text)
+		v.saveDraft()
+	}
+}
+
 func (v *sessionView) chooseImages() {
 	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-		Title:    "Choose images",
+		Title:    L("Choose images"),
 		Multiple: true,
-		Filters:  []mygo.FileFilter{{Name: "Images", Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}},
+		Filters:  []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}},
 	})
 	if err != nil || len(paths) == 0 {
 		return
@@ -471,13 +506,13 @@ func (v *sessionView) attachmentList(c *ui.Context) {
 // removes it; removed is called after one is.
 func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps map[string]*ui.Bitmap, removed func()) {
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleList).Label("Attachments").Wrap().Gap(k.Px(8)).Padding(k.Px(12), k.Px(12), 0, k.Px(12)).Children(func() {
+	ui.Row(c).Role(ui.RoleList).Label(L("Attachments")).Wrap().Gap(k.Px(8)).Padding(k.Px(12), k.Px(12), 0, k.Px(12)).Children(func() {
 		for _, img := range *images {
 			ui.Box(c).Key(img.ID).Size(k.Px(64), k.Px(64)).Children(func() {
 				if bm := cachedBitmap(bitmaps, "att:"+img.ID, attachmentImage(img)); bm != nil {
 					ui.Image(c, bm).Label(img.Name).Fill().Radius(k.Px(8)).Border(1, t.Border).Fit(ui.Cover)
 				}
-				x := ui.ButtonBase(c).Label("Remove "+img.Name).Size(k.Px(20), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).
+				x := ui.ButtonBase(c).Label(L("Remove %s", img.Name)).Size(k.Px(20), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).
 					Background(t.Background).Absolute().Top(-k.Px(6)).Right(-k.Px(6)).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05)).Cursor(ui.CursorPointer)
 				color := t.MutedForeground
 				if x.Hovered() {
@@ -505,15 +540,15 @@ func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps
 // slashTag is the command or skill the message will run, before its text.
 func (v *sessionView) slashTag(c *ui.Context, item slash.Item, rest string) {
 	k, t := v.a.kit, v.a.kit.T
-	kind, icon := "Command", "square-slash"
+	icon, label, remove := "square-slash", L("Command %s", item.Name), L("Remove command %s", item.Name)
 	if item.Kind == slash.Skill {
-		kind, icon = "Skill", "sparkles"
+		icon, label, remove = "sparkles", L("Skill %s", item.Name), L("Remove skill %s", item.Name)
 	}
-	ui.Row(c).Role(ui.RoleGroup).Label(kind+" "+item.Name).Tooltip(item.Description).Height(k.Px(24)).Gap(k.Px(4)).
+	ui.Row(c).Role(ui.RoleGroup).Label(label).Tooltip(l10n.T(item.Description)).Height(k.Px(24)).Gap(k.Px(4)).
 		Margin(k.Px(14), 0, 0, k.Px(12)).Padding(0, k.Px(2), 0, k.Px(6)).Radius(k.Px(6)).Background(t.Info.Alpha(0.1)).Shrink(0).Children(func() {
 		k.Icon(c, icon, 14, t.InfoForeground)
 		k.Text(c, item.Name, 13, 19.5).FontWeight(500).TextColor(t.InfoForeground).SingleLine()
-		x := ui.ButtonBase(c).Label("Remove "+strings.ToLower(kind)+" "+item.Name).Size(k.Px(20), k.Px(20)).Radius(k.Px(4)).Cursor(ui.CursorPointer)
+		x := ui.ButtonBase(c).Label(remove).Size(k.Px(20), k.Px(20)).Radius(k.Px(4)).Cursor(ui.CursorPointer)
 		op := float32(0.6)
 		if x.Hovered() {
 			op = 1
@@ -528,7 +563,7 @@ func (v *sessionView) slashTag(c *ui.Context, item slash.Item, rest string) {
 func (v *sessionView) suggestionList(c *ui.Context, card *ui.Element, items []slash.Item, active int, accept func(slash.Item)) {
 	k, t := v.a.kit, v.a.kit.T
 	ui.Overlay(c, func() {
-		list := ui.Column(c).Role(ui.RoleList).Label("Commands and skills").AttachTo(card, ui.AnchorTopLeft, ui.AnchorBottomLeft).
+		list := ui.Column(c).Role(ui.RoleList).Label(L("Commands and skills")).AttachTo(card, ui.AnchorTopLeft, ui.AnchorBottomLeft).
 			Width(card.Bounds().W-k.Px(16)).Margin(0, 0, k.Px(8), k.Px(8)).MaxHeight(k.Px(288)).Padding(k.Px(4)).Radius(k.Px(12)).
 			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		list.Children(func() {
@@ -543,17 +578,17 @@ func (v *sessionView) suggestionList(c *ui.Context, card *ui.Element, items []sl
 					kit.Selected(row, true).Background(t.Accent)
 					fg = t.AccentForeground
 				}
-				icon, kind := "square-slash", "Command"
+				icon, kind := "square-slash", L("Command")
 				if item.Kind == slash.Skill {
-					icon, kind = "sparkles", "Skill"
+					icon, kind = "sparkles", L("Skill")
 				}
 				row.Children(func() {
 					k.Icon(c, icon, 14, t.MutedForeground)
 					k.Text(c, "/"+item.Name, 13, 19.5).FontWeight(500).TextColor(fg).Shrink(0)
 					if item.ArgumentHint != "" {
-						k.Text(c, item.ArgumentHint, 11, 16.5).Font(k.Mono).TextColor(t.MutedForeground).Shrink(0)
+						k.Text(c, l10n.T(item.ArgumentHint), 11, 16.5).Font(k.Mono).TextColor(t.MutedForeground).Shrink(0)
 					}
-					k.Text(c, item.Description, 13, 19.5).TextColor(t.MutedForeground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
+					k.Text(c, l10n.T(item.Description), 13, 19.5).TextColor(t.MutedForeground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 					k.Text(c, kind, 11, 16.5).TextColor(t.MutedForeground).Shrink(0)
 				})
 				if row.Clicked() {
@@ -580,8 +615,11 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 			c.After(time.Second)
 			ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(4)).MinWidth(0).Children(func() {
 				k.Icon(c, "check", 12, t.Success)
-				k.Text(c, "Compacted, "+strconv.Itoa(done.RemovedCount)+" "+plural(done.RemovedCount, "message", "messages")[len(strconv.Itoa(done.RemovedCount))+1:]+" summarised", 12, 16).
-					TextColor(t.Success).SingleLine()
+				compacted := L("Compacted, %d messages summarised", done.RemovedCount)
+				if done.RemovedCount == 1 {
+					compacted = L("Compacted, %d message summarised", done.RemovedCount)
+				}
+				k.Text(c, compacted, 12, 16).TextColor(t.Success).SingleLine()
 			})
 		}
 		ui.Spacer(c)
@@ -638,7 +676,7 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session) {
 		color = t.Attention
 	}
 	label := formatTokens(used) + " / " + formatTokens(budget.ContextBudget) + " · " + strconv.Itoa(percent) + "%"
-	ui.Row(c).Role(ui.RoleMeter).Label("Context used").Tooltip(groupDigits(used) + " / " + groupDigits(budget.ContextBudget) + " tokens").
+	ui.Row(c).Role(ui.RoleMeter).Label(L("Context used")).Tooltip(L("%s / %s tokens", groupDigits(used), groupDigits(budget.ContextBudget))).
 		Gap(k.Px(6)).Shrink(0).Children(func() {
 		ring := ui.Box(c).Size(k.Px(14), k.Px(14))
 		ring.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -714,11 +752,11 @@ func (v *sessionView) todoIcon(c *ui.Context, status session.TodoStatus) {
 	k, t := v.a.kit, v.a.kit.T
 	switch status {
 	case session.TodoCompleted:
-		k.Icon(c, "circle-check", 12, t.Success).Label("Done")
+		k.Icon(c, "circle-check", 12, t.Success).Label(L("Done"))
 	case session.TodoInProgress:
-		k.Spinner(c, 12, t.Info).Label("In progress")
+		k.Spinner(c, 12, t.Info).Label(L("In progress"))
 	default:
-		k.Icon(c, "circle", 12, t.MutedForeground.Alpha(0.5)).Label("Pending")
+		k.Icon(c, "circle", 12, t.MutedForeground.Alpha(0.5)).Label(L("Pending"))
 	}
 }
 
@@ -735,12 +773,12 @@ func (v *sessionView) todoPanel(c *ui.Context, todos []session.TodoItem, done in
 	}
 	ui.Column(c).PaddingY(k.Px(4)).Children(func() {
 		p := ui.CollapsibleBase(c, open)
-		tr := p.Trigger.Label("Tasks, "+strconv.Itoa(done)+" of "+strconv.Itoa(len(todos))+" done").FillWidth().Height(k.Px(30)).
+		tr := p.Trigger.Label(L("Tasks, %d of %d done", done, len(todos))).FillWidth().Height(k.Px(30)).
 			Gap(k.Px(8)).Padding(0, k.Px(6), 0, k.Px(12)).Cursor(ui.CursorPointer)
 		tr.Children(func() {
 			if *open {
 				k.Icon(c, "list-checks", 12, t.MutedForeground)
-				k.Text(c, "Tasks", 12.5, 18.75).TextColor(t.MutedForeground).Grow(1)
+				k.Text(c, L("Tasks"), 12.5, 18.75).TextColor(t.MutedForeground).Grow(1)
 			} else if current != nil {
 				v.todoIcon(c, current.Status)
 				k.Text(c, current.Content, 12.5, 18.75).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
@@ -751,7 +789,7 @@ func (v *sessionView) todoPanel(c *ui.Context, todos []session.TodoItem, done in
 			})
 		})
 		p.Panel(func() {
-			ui.Column(c).Role(ui.RoleList).Label("Tasks").Padding(0, 0, k.Px(4), 0).Children(func() {
+			ui.Column(c).Role(ui.RoleList).Label(L("Tasks")).Padding(0, 0, k.Px(4), 0).Children(func() {
 				for _, td := range todos {
 					color := t.Foreground
 					if td.Status == session.TodoCompleted {
@@ -780,7 +818,7 @@ func queuedText(q session.QueuedMessage) string {
 				parts = append(parts, tb.Text)
 			}
 		case protocol.ContentBlockTypeImage:
-			parts = append(parts, "[image]")
+			parts = append(parts, L("[image]"))
 		}
 	}
 	return strings.Join(parts, " ")
@@ -827,20 +865,20 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 		}()
 	}
 	list := func() {
-		ui.Column(c).Role(ui.RoleList).Label("Queued messages").Children(func() {
+		ui.Column(c).Role(ui.RoleList).Label(L("Queued messages")).Children(func() {
 			for _, q := range queued {
 				ui.Row(c).Key(q.RequestID).Height(k.Px(30)).Gap(k.Px(8)).Padding(0, k.Px(6), 0, k.Px(12)).Children(func() {
 					icon(q)
 					k.Text(c, queuedText(q), 12.5, 18.75).TextColor(t.Foreground).SingleLine().Selectable().Grow(1).Shrink(1).MinWidth(0)
-					state := "Queued"
+					state := L("Queued")
 					switch {
 					case isPaused(q):
-						state = "Paused"
+						state = L("Paused")
 					case isSteering(q):
-						state = "Next"
+						state = L("Next")
 					}
 					k.Text(c, state, 11, 16.5).TextColor(t.MutedForeground).Shrink(0)
-					if isPaused(q) && k.IconButton(c, "pencil", "Edit queued message", 24).Clicked() {
+					if isPaused(q) && k.IconButton(c, "pencil", L("Edit queued message"), 24).Clicked() {
 						text := queuedText(q)
 						remove(q)
 						cs := &v.composer
@@ -850,7 +888,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 						cs.text = text
 						v.saveDraft()
 					}
-					if k.IconButton(c, "x", "Remove queued message", 24).Clicked() {
+					if k.IconButton(c, "x", L("Remove queued message"), 24).Clicked() {
 						remove(q)
 					}
 				})
@@ -871,16 +909,16 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 		}
 		open := v.flag("queued", false)
 		p := ui.CollapsibleBase(c, open)
-		p.Trigger.Label("Queued messages, "+strconv.Itoa(len(queued))).FillWidth().Height(k.Px(30)).Gap(k.Px(8)).
+		p.Trigger.Label(L("Queued messages, %d", len(queued))).FillWidth().Height(k.Px(30)).Gap(k.Px(8)).
 			Padding(0, k.Px(6), 0, k.Px(12)).Cursor(ui.CursorPointer).Children(func() {
 			if *open {
 				k.Icon(c, "clock", 12, t.MutedForeground)
-				k.Text(c, "Queued messages", 12.5, 18.75).TextColor(t.MutedForeground).Grow(1)
+				k.Text(c, L("Queued messages"), 12.5, 18.75).TextColor(t.MutedForeground).Grow(1)
 			} else {
 				icon(next)
 				k.Text(c, queuedText(next), 12.5, 18.75).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 			}
-			k.Text(c, strconv.Itoa(len(queued))+" queued", 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+			k.Text(c, L("%d queued", len(queued)), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
 			ui.Box(c).Size(k.Px(24), k.Px(24)).Center().Shrink(0).Children(func() {
 				k.Icon(c, "chevron-down", 12, t.MutedForeground).Rotate(180 * p.Progress())
 			})

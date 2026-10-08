@@ -10,12 +10,16 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/attachments"
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// L is the window's words in the user's language: l10n.L.
+func L(key string, args ...any) string { return l10n.L(key, args...) }
 
 func draftOf(text string, images []attachments.Image) drafts.Draft {
 	return drafts.Draft{Text: text, Images: images}
@@ -42,15 +46,15 @@ func relativeTime(t, now time.Time) string {
 	m := int(d / time.Minute)
 	switch {
 	case m < 1:
-		return "now"
+		return L("now")
 	case m < 60:
-		return fmt.Sprintf("%dm", m)
+		return L("%dm", m)
 	case m < 24*60:
-		return fmt.Sprintf("%dh", m/60)
+		return L("%dh", m/60)
 	case m < 30*24*60:
-		return fmt.Sprintf("%dd", m/(24*60))
+		return L("%dd", m/(24*60))
 	}
-	return t.Format("Jan 2")
+	return t.Format(L("Jan 2"))
 }
 
 func plural(n int, one, many string) string {

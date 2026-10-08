@@ -127,9 +127,12 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 		return
 	}
 	dirty := len(g.files) > 0
-	label := "Branch " + g.branch + ", no changes"
+	label := L("Branch %s, no changes", g.branch)
 	if dirty {
-		label = "Branch " + g.branch + ", " + plural(len(g.files), "changed file", "changed files")
+		label = L("Branch %s, %d changed files", g.branch, len(g.files))
+		if len(g.files) == 1 {
+			label = L("Branch %s, %d changed file", g.branch, len(g.files))
+		}
 	}
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).Gap(k.Px(6)).PaddingX(k.Px(6)).Radius(k.Px(6)).Cursor(ui.CursorPointer).Expanded(v.git.open)
 	color := t.MutedForeground
@@ -149,15 +152,18 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 	}
 	ui.PopoverBase(c, b, &v.git.open, func(p *ui.Element) {
 		w, h := c.Size()
-		p.AttachTo(b, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(6), 0, 0, 0).Role(ui.RoleDialog).Label("Changed files").
+		p.AttachTo(b, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(6), 0, 0, 0).Role(ui.RoleDialog).Label(L("Changed files")).
 			Width(min(k.Px(416), w-k.Px(16))).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
 		maxH := min(k.Px(384), h-k.Px(60))
 		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).Gap(k.Px(8)).Padding(k.Px(10), k.Px(12), k.Px(6), k.Px(12)).Children(func() {
-				title := "Working tree clean"
+				title := L("Working tree clean")
 				if dirty {
-					title = itoa(len(g.files)) + " uncommitted " + pluralWord(len(g.files), "file")
+					title = L("%d uncommitted files", len(g.files))
+					if len(g.files) == 1 {
+						title = L("%d uncommitted file", len(g.files))
+					}
 				}
 				k.Text(c, title, 12, 16).Role(ui.RoleHeading).TextColor(t.MutedForeground).SingleLine().Grow(1).MinWidth(0)
 				if dirty {
@@ -171,7 +177,7 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 			// gets a height of its own: the rest of the popover's room
 			// under the 32px title row.
 			ui.Scroll(c).FillWidth().MaxHeight(maxH - k.Px(34)).Children(func() {
-				ui.Column(c).Role(ui.RoleList).Label("Changed files").FillWidth().Padding(0, k.Px(6), k.Px(6), k.Px(6)).Children(func() {
+				ui.Column(c).Role(ui.RoleList).Label(L("Changed files")).FillWidth().Padding(0, k.Px(6), k.Px(6), k.Px(6)).Children(func() {
 					for _, f := range g.files {
 						v.gitFileRow(c, f)
 					}
@@ -215,11 +221,4 @@ func (v *sessionView) lineCounts(c *ui.Context, additions, deletions int) {
 		k.Text(c, "+"+itoa(additions), 12, 16).Font(k.Mono).FontFeatures("tnum").TextColor(t.Added)
 		k.Text(c, "−"+itoa(deletions), 12, 16).Font(k.Mono).FontFeatures("tnum").TextColor(t.Removed)
 	})
-}
-
-func pluralWord(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
 }

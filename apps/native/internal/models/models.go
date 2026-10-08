@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 )
 
@@ -144,20 +145,20 @@ func FormatMultiplier(multiplier float64) string {
 }
 
 var EffortLabels = map[string]string{
-	"none":    "None",
-	"dynamic": "Dynamic",
-	"off":     "Off",
-	"minimal": "Minimal",
-	"low":     "Low",
-	"medium":  "Medium",
-	"high":    "High",
-	"xhigh":   "Extra high",
-	"max":     "Max",
+	"none":    l10n.N("None"),
+	"dynamic": l10n.N("Dynamic"),
+	"off":     l10n.N("Off"),
+	"minimal": l10n.N("Minimal"),
+	"low":     l10n.N("Low"),
+	"medium":  l10n.N("Medium"),
+	"high":    l10n.N("High"),
+	"xhigh":   l10n.N("Extra high"),
+	"max":     l10n.N("Max"),
 }
 
 var AutonomyLabels = map[string]string{
-	"off":    "Ask for everything",
-	"low":    "Low autonomy",
-	"medium": "Medium autonomy",
-	"high":   "High autonomy",
+	"off":    l10n.N("Ask for everything"),
+	"low":    l10n.N("Low autonomy"),
+	"medium": l10n.N("Medium autonomy"),
+	"high":   l10n.N("High autonomy"),
 }

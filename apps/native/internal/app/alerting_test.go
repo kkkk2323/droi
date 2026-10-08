@@ -48,6 +48,9 @@ func TestCompletionAlertsWhileAnotherSessionIsOpen(t *testing.T) {
 	if _, ok := h.tt.Find("Unread"); !ok {
 		t.Error("no unread mark in the sidebar")
 	}
+	// The list reorders as the Sessions' times change; a click before it
+	// settles can land on another row.
+	h.settle()
 	h.click("Deploy")
 	if h.a.unread[deploy] {
 		t.Error("opening Deploy did not read it")

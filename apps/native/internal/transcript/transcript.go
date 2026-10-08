@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
 )
@@ -307,14 +308,15 @@ func ResultImages(r *protocol.ToolResult) []Image {
 }
 
 // FormatTimestamp is a turn's time, with the day in front when it was not
-// today, as Intl formats it for en-US (hour and minute two digits).
+// today, as Intl formats it for en-US (hour and minute two digits). The two
+// layouts are catalog keys, so a language can give its own order and clock.
 func FormatTimestamp(ms float64, now time.Time) string {
 	t := time.UnixMilli(int64(ms)).In(now.Location())
-	clock := t.Format("03:04 PM")
+	clock := t.Format(l10n.L("03:04 PM"))
 	if y, m, d := t.Date(); y == now.Year() && m == now.Month() && d == now.Day() {
 		return clock
 	}
-	return t.Format("Jan 2") + " " + clock
+	return t.Format(l10n.L("Jan 2")) + " " + clock
 }
 
 // TurnEnd is when a turn ended, and when the user's message that started it
@@ -388,32 +390,32 @@ func ReplyText(entries []*Entry) string {
 // FormatDuration is `640 ms`, `12s`, `4m 12s`, `1h 03m`.
 func FormatDuration(ms float64) string {
 	if ms < 1000 {
-		return fmt.Sprintf("%d ms", int(ms+0.5))
+		return l10n.L("%d ms", int(ms+0.5))
 	}
 	s := int(ms/1000 + 0.5)
 	if s < 60 {
-		return fmt.Sprintf("%ds", s)
+		return l10n.L("%ds", s)
 	}
 	m := s / 60
 	if m < 60 {
-		return fmt.Sprintf("%dm %ds", m, s%60)
+		return l10n.L("%dm %ds", m, s%60)
 	}
-	return fmt.Sprintf("%dh %02dm", m/60, m%60)
+	return l10n.L("%dh %02dm", m/60, m%60)
 }
 
 var workingLabels = map[string]string{
 	"idle":                          "",
-	"thinking":                      "Thinking",
-	"streaming_assistant_message":   "Responding",
-	"waiting_for_tool_confirmation": "Waiting for your approval",
-	"executing_tool":                "Running a tool",
-	"compacting_conversation":       "Compacting",
+	"thinking":                      l10n.N("Thinking"),
+	"streaming_assistant_message":   l10n.N("Responding"),
+	"waiting_for_tool_confirmation": l10n.N("Waiting for your approval"),
+	"executing_tool":                l10n.N("Running a tool"),
+	"compacting_conversation":       l10n.N("Compacting"),
 }
 
 // WorkingLabel is what the activity row under the transcript says for a working state.
 func WorkingLabel(state string) string {
 	if l, ok := workingLabels[state]; ok {
-		return l
+		return l10n.T(l)
 	}
 	return state
 }
