@@ -1,4 +1,4 @@
-## Unreleased
+## 1.37.0 - 2026-10-08
 
 ### Added
 
@@ -19,6 +19,7 @@
 
 - `/compact` on a long Session no longer fails after 30 seconds with "context deadline exceeded": Droi waits 240 seconds, as the Droid SDK does. Cleaning up a worktree, a semantic diff and file transfers wait as long as the SDK too.
 - An older read of the Session list no longer replaces a newer one.
+- While the Daemon does not come up, the window says why (droid was not found, the Daemon did not start, it did not accept the login, or Droi could not connect) and offers Restart Daemon and Settings, instead of "Starting the Daemon" for ever.
 - A Session in a git worktree uses its repository's Project Memory instead of an empty one of its own. Memory saved under a worktree that still exists moves into the repository's.
 
 ## 1.36.0 - 2026-10-07
