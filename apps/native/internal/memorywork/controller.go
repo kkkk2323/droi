@@ -77,6 +77,8 @@ func (c *Controller) open() (*memory.Store, context.Context, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		// Best effort: what is not merged now is tried again on the next launch.
+		_ = s.MergeWorktrees()
 		c.store = s
 	}
 	return c.store, c.ctx, nil
