@@ -422,7 +422,7 @@ func (a *App) automationNotice(c *ui.Context) {
 		}
 		c.After(left)
 	}
-	ui.Row(c).Key("notice").Role(ui.RoleStatus).Label(s.notice).Gap(k.Px(8)).AlignItems(ui.Start).
+	ui.Row(c.Key("notice")).Role(ui.RoleStatus).Label(s.notice).Gap(k.Px(8)).AlignItems(ui.Start).
 		Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Enter: &ui.Motion{Y: -4}, Exit: &ui.Motion{}}).Children(func() {
 		k.Icon(c, icon, 14, color).Margin(k.Px(3), 0, 0, 0)
 		k.Text(c, s.notice, 13, 20).TextColor(t.Foreground).Grow(1).MinWidth(0)
@@ -591,7 +591,7 @@ func (a *App) automationRow(c *ui.Context, e protocol.AutomationEntry) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
 	name := trimOr(e.Name, e.ID)
-	row := ui.Row(c).Key(e.ID).Transition(rowMotion).Height(k.Px(56)).PaddingX(k.Px(12)).Gap(k.Px(8)).AlignItems(ui.Center).
+	row := ui.Row(c.Key(e.ID)).Transition(rowMotion).Height(k.Px(56)).PaddingX(k.Px(12)).Gap(k.Px(8)).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6))
 	hover := row.Hovered()
 	if hover {
@@ -787,7 +787,7 @@ func (a *App) deleteDialog(c *ui.Context, e *protocol.AutomationEntry) {
 	s := &a.automations
 	w, _ := c.Size()
 	id, name := e.ID, trimOr(e.Name, e.ID)
-	ui.DialogBase(c, &s.confirmDelete, func(backdrop, panel *ui.Element) {
+	ui.DialogBase(c, &s.confirmDelete, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		panel.Role(ui.RoleAlertDialog).Label(L("Delete automation")).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
@@ -856,7 +856,7 @@ func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 	if r.Type == protocol.AutomationRunType("create") {
 		label = L("Setup, %s", strings.ToLower(label))
 	}
-	b := ui.ButtonBase(c).Key(r.RunID).Transition(rowMotion).Role(ui.RoleListItem).Label(L("Open run from %s", started)).Height(k.Px(40)).Gap(k.Px(10)).
+	b := ui.ButtonBase(c.Key(r.RunID)).Transition(rowMotion).Role(ui.RoleListItem).Label(L("Open run from %s", started)).Height(k.Px(40)).Gap(k.Px(10)).
 		PaddingX(k.Px(12)).Justify(ui.Start).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Cursor(ui.CursorPointer)
 	if r.SessionID == "" {
 		b.Disabled(true)

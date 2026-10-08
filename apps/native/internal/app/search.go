@@ -172,7 +172,7 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Search results")).Gap(1).Children(func() {
 		for _, h := range hits {
-			b := ui.ButtonBase(c).Key(h.sessionID).Label(h.title).Tooltip(h.title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
+			b := ui.ButtonBase(c.Key(h.sessionID)).Label(h.title).Tooltip(h.title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
 				Gap(k.Px(2)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 			switch {
 			case h.sessionID == selected:

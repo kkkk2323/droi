@@ -65,19 +65,19 @@ func (k *Kit) UITheme(base *ui.Theme) *ui.Theme {
 }
 
 // Icon is a Lucide icon of size DIPs in a color.
-func (k *Kit) Icon(c *ui.Context, name string, size float32, color ui.Color) *ui.Element {
+func (k *Kit) Icon(c *ui.Context, name string, size float32, color ui.Color) ui.Element {
 	return k.IconStroke(c, name, 2, size, color)
 }
 
 // IconStroke is Icon with another stroke width (lucide's strokeWidth).
-func (k *Kit) IconStroke(c *ui.Context, name string, stroke, size float32, color ui.Color) *ui.Element {
+func (k *Kit) IconStroke(c *ui.Context, name string, stroke, size float32, color ui.Color) ui.Element {
 	return ui.Icon(c, icons.Stroked(name, stroke)).Size(k.Px(size), k.Px(size)).Shrink(0).TextColor(color)
 }
 
 // Text is text at a CSS size and line height (both px), Tailwind's
 // text-[13px] leading-[19.5px]; the line height is that of the font size
 // times 1.5 when lh is 0, as Tailwind's text-sm and friends leave it.
-func (k *Kit) Text(c *ui.Context, s string, size, lh float32) *ui.Element {
+func (k *Kit) Text(c *ui.Context, s string, size, lh float32) ui.Element {
 	if lh == 0 {
 		lh = size * 1.5
 	}
@@ -98,7 +98,7 @@ const (
 // Button is a shadcn Button: a ButtonBase with the variant's colors and
 // hover, rounded-md (8px) unless set, its children laid out in a row.
 // size is its height (and width when square); Tailwind's h-9 is 36.
-func (k *Kit) Button(c *ui.Context, v Variant, size float32, square bool, label string) *ui.Element {
+func (k *Kit) Button(c *ui.Context, v Variant, size float32, square bool, label string) ui.Element {
 	t := k.T
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(size)).Radius(k.Px(8)).Gap(k.Px(6)).
 		FontSize(k.Px(14)).FontWeight(500).Cursor(ui.CursorPointer)
@@ -153,7 +153,7 @@ func (k *Kit) Button(c *ui.Context, v Variant, size float32, square bool, label 
 
 // IconButton is a ghost icon button, shadcn's size="icon-sm" (32) or
 // "icon-xs" (24, rounded 8, icon 12), muted until hovered.
-func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) *ui.Element {
+func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) ui.Element {
 	b := k.Button(c, Ghost, size, true, label)
 	color := k.T.MutedForeground
 	if b.Hovered() {
@@ -170,7 +170,7 @@ func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) *ui.El
 // Spinner is lucide's Loader2 turning once a second, as the web Client's
 // Spinner. It asks for a frame only when its angle moves a twelfth of a
 // turn, not at every refresh of the display.
-func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) *ui.Element {
+func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
 	const steps, period = 24, 1000
 	ms := int(c.Now().UnixMilli() % period)
 	step := ms * steps / period
@@ -181,11 +181,11 @@ func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) *ui.Element {
 // Selected marks e selected for assistive technology without MyGo's look
 // for it (the accent background and text), which the caller paints itself
 // afterwards.
-func Selected(e *ui.Element, on bool) *ui.Element {
+func Selected(e ui.Element, on bool) ui.Element {
 	return e.Selected(on).Background(ui.Color{}).TextColor(ui.Color{})
 }
 
 // Dot is a filled circle, as a status or unread mark.
-func Dot(c *ui.Context, size float32, color ui.Color) *ui.Element {
+func Dot(c *ui.Context, size float32, color ui.Color) ui.Element {
 	return ui.Box(c).Size(size, size).Radius(size / 2).Background(color).Shrink(0)
 }

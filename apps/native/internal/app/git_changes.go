@@ -150,7 +150,7 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 	if b.Clicked() {
 		v.git.open = !v.git.open
 	}
-	ui.PopoverBase(c, b, &v.git.open, func(p *ui.Element) {
+	ui.PopoverBase(c, b, &v.git.open, func(p ui.Element) {
 		w, h := c.Size()
 		p.AttachTo(b, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(6), 0, 0, 0).Role(ui.RoleDialog).Label(L("Changed files")).
 			Width(min(k.Px(416), w-k.Px(16))).Radius(k.Px(12)).Border(1, t.Border).
@@ -197,7 +197,7 @@ func (v *sessionView) gitFileRow(c *ui.Context, f protocol.DaemonGetGitDiffFile)
 	if letter == "" && f.Status != "" {
 		letter = strings.ToUpper(f.Status[:1])
 	}
-	ui.Row(c).Role(ui.RoleListItem).Key(f.Path).Label(f.Path).Tooltip(f.Status + ": " + f.Path).Height(k.Px(28)).Gap(k.Px(8)).
+	ui.Row(c.Key(f.Path)).Role(ui.RoleListItem).Label(f.Path).Tooltip(f.Status + ": " + f.Path).Height(k.Px(28)).Gap(k.Px(8)).
 		PaddingX(k.Px(6)).Radius(k.Px(6)).Children(func() {
 		color := t.MutedForeground
 		if f.Status == "deleted" {

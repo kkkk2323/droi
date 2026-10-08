@@ -30,11 +30,16 @@ var compactCommand = regexp.MustCompile(`^/compact(?:\s+([\s\S]*))?$`)
 // composerState is the InputBar's state for one Session: the text and
 // images typed, and the slash suggestions' highlight.
 type composerState struct {
-	text      string
-	images    []attachments.Image
-	highlight int
-	dismissed string // the text the suggestions were dismissed for
-	err       string
+	text   string
+	images []attachments.Image
+	// field is the text area's value, the text after a picked command's
+	// tag. MyGo writes an edit into it after the build that made the text
+	// area, so it outlives the build; fieldPrefix is the tag and fieldFrom
+	// the text it was taken from, which tell an edit from a new text.
+	field, fieldPrefix, fieldFrom string
+	highlight                     int
+	dismissed                     string // the text the suggestions were dismissed for
+	err                           string
 
 	modelOpen bool
 	picker    pickerState
@@ -226,6 +231,17 @@ func (v *sessionView) slashItems(loaded bool) []slash.Item {
 	return slash.Merge(slash.Builtins, cs.slash)
 }
 
+// takeEdit takes the text area's edit into text, unless text changed
+// since the field was taken from it.
+func (cs *composerState) takeEdit() bool {
+	if cs.text != cs.fieldFrom || cs.fieldPrefix+cs.field == cs.text {
+		return false
+	}
+	cs.text = cs.fieldPrefix + cs.field
+	cs.fieldFrom = cs.text
+	return true
+}
+
 // inputBar is the InputBar: attachments and text in a rounded card, the
 // settings and the send button in its footer row. Enter sends,
 // Shift+Enter breaks the line; while a turn runs Enter queues and Cmd+Enter
@@ -234,12 +250,17 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
+	if cs.takeEdit() {
+		cs.highlight = 0
+		v.saveDraft()
+	}
 	items := v.slashItems(loaded)
 	picked, rest, hasPick := slash.Picked(cs.text, items)
 	prefix := ""
 	if hasPick {
 		prefix = cs.text[:len(cs.text)-len(rest)]
 	}
+	cs.field, cs.fieldPrefix, cs.fieldFrom = cs.text[len(prefix):], prefix, cs.text
 	var suggestions []slash.Item
 	if q, ok := slash.Query(cs.text, len(cs.text)); ok && cs.dismissed != cs.text {
 		suggestions = slash.Filter(items, q, 8)
@@ -247,6 +268,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	active := min(cs.highlight, max(len(suggestions)-1, 0))
 	canSend := loaded && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
 	submit := func(placement protocol.QueuePlacement) {
+		cs.takeEdit()
 		if !canSend {
 			return
 		}
@@ -285,7 +307,6 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if hasPick {
 					v.slashTag(c, picked, rest)
 				}
-				value := cs.text[len(prefix):]
 				placeholder := L("Ask anything")
 				switch {
 				case running:
@@ -297,7 +318,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if hasPick {
 					left = k.Px(8)
 				}
-				in := k.TextArea(c, &value, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
+				in := k.TextArea(c, &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!loaded)
 				if !v.focused {
 					in.AutoFocus()
@@ -329,7 +350,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 							return true
 						}
 					}
-					if hasPick && ev.Key == ui.KeyBackspace && value == "" {
+					if hasPick && ev.Key == ui.KeyBackspace && cs.field == "" {
 						cs.text = rest
 						return true
 					}
@@ -343,11 +364,6 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					}
 					return false
 				})
-				if in.Changed() {
-					cs.text = prefix + value
-					cs.highlight = 0
-					v.saveDraft()
-				}
 			})
 			if len(suggestions) > 0 {
 				v.suggestionList(c, card, suggestions, active, accept)
@@ -532,7 +548,7 @@ func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Role(ui.RoleList).Label(L("Attachments")).Wrap().Gap(k.Px(8)).Padding(k.Px(12), k.Px(12), 0, k.Px(12)).Children(func() {
 		for _, img := range *images {
-			ui.Box(c).Key(img.ID).Size(k.Px(64), k.Px(64)).Children(func() {
+			ui.Box(c.Key(img.ID)).Size(k.Px(64), k.Px(64)).Children(func() {
 				if bm := cachedBitmap(bitmaps, "att:"+img.ID, attachmentImage(img)); bm != nil {
 					ui.Image(c, bm).Label(img.Name).Fill().Radius(k.Px(8)).Border(1, t.Border).Fit(ui.Cover)
 				}
@@ -584,7 +600,7 @@ func (v *sessionView) slashTag(c *ui.Context, item slash.Item, rest string) {
 	})
 }
 
-func (v *sessionView) suggestionList(c *ui.Context, card *ui.Element, items []slash.Item, active int, accept func(slash.Item)) {
+func (v *sessionView) suggestionList(c *ui.Context, card ui.Element, items []slash.Item, active int, accept func(slash.Item)) {
 	k, t := v.a.kit, v.a.kit.T
 	ui.Overlay(c, func() {
 		list := ui.Column(c).Role(ui.RoleList).Label(L("Commands and skills")).AttachTo(card, ui.AnchorTopLeft, ui.AnchorBottomLeft).
@@ -592,7 +608,7 @@ func (v *sessionView) suggestionList(c *ui.Context, card *ui.Element, items []sl
 			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		list.Children(func() {
 			for i, item := range items {
-				row := ui.Row(c).Key(item.Name).Role(ui.RoleListItem).Label("/"+item.Name).Gap(k.Px(10)).Padding(k.Px(6), k.Px(10)).
+				row := ui.Row(c.Key(item.Name)).Role(ui.RoleListItem).Label("/"+item.Name).Gap(k.Px(10)).Padding(k.Px(6), k.Px(10)).
 					Radius(k.Px(8)).Cursor(ui.CursorPointer)
 				if _, _, over := row.PointerPosition(); over && i != active {
 					v.composer.highlight = i
@@ -819,7 +835,7 @@ func (v *sessionView) todoPanel(c *ui.Context, todos []session.TodoItem, done in
 					if td.Status == session.TodoCompleted {
 						color = t.MutedForeground
 					}
-					ui.Row(c).Key(td.ID).AlignItems(ui.Start).MinHeight(k.Px(26)).Gap(k.Px(8)).Padding(k.Px(3), k.Px(12)).Children(func() {
+					ui.Row(c.Key(td.ID)).AlignItems(ui.Start).MinHeight(k.Px(26)).Gap(k.Px(8)).Padding(k.Px(3), k.Px(12)).Children(func() {
 						ui.Row(c).Height(k.Px(20)).Children(func() { v.todoIcon(c, td.Status) })
 						k.Text(c, td.Content, 12.5, 20).TextColor(color).Grow(1).MinWidth(0)
 					})
@@ -891,7 +907,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 	list := func() {
 		ui.Column(c).Role(ui.RoleList).Label(L("Queued messages")).Children(func() {
 			for _, q := range queued {
-				ui.Row(c).Key(q.RequestID).Height(k.Px(30)).Gap(k.Px(8)).Padding(0, k.Px(6), 0, k.Px(12)).Children(func() {
+				ui.Row(c.Key(q.RequestID)).Height(k.Px(30)).Gap(k.Px(8)).Padding(0, k.Px(6), 0, k.Px(12)).Children(func() {
 					icon(q)
 					k.Text(c, queuedText(q), 12.5, 18.75).TextColor(t.Foreground).SingleLine().Selectable().Grow(1).Shrink(1).MinWidth(0)
 					state := L("Queued")

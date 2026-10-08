@@ -17,7 +17,18 @@ import (
 type askState struct {
 	step   int
 	chosen map[int][]string
-	custom map[int]string
+	custom map[int]*string
+}
+
+// customAnswer is the answer typed for question idx. Its text input is
+// bound to it: MyGo writes an edit after the build, so it outlives it.
+func (st *askState) customAnswer(idx int) *string {
+	p := st.custom[idx]
+	if p == nil {
+		p = new(string)
+		st.custom[idx] = p
+	}
+	return p
 }
 
 // promptArea is every open Prompt of the Session, in the composer's place.
@@ -53,14 +64,14 @@ func (v *sessionView) answerFailed(err error) {
 // page's background.
 func (v *sessionView) promptCard(c *ui.Context, key, label string, fn func()) {
 	k, t := v.a.kit, v.a.kit.T
-	ui.Column(c).Key(key).Role(ui.RoleGroup).Label(label).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background).
+	ui.Column(c.Key(key)).Role(ui.RoleGroup).Label(label).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background).
 		Padding(k.Px(12), k.Px(14), k.Px(10), k.Px(14)).Children(fn)
 }
 
 // optionRow is an answer as a full-width row; a click picks it.
-func (v *sessionView) optionRow(c *ui.Context, key, label string, checked bool, role ui.Role, trailing func()) *ui.Element {
+func (v *sessionView) optionRow(c *ui.Context, key, label string, checked bool, role ui.Role, trailing func()) ui.Element {
 	k, t := v.a.kit, v.a.kit.T
-	b := ui.ButtonBase(c).Key(key).Role(role).Label(label).MinHeight(k.Px(36)).FillWidth().Gap(k.Px(8)).Padding(k.Px(6), k.Px(10)).
+	b := ui.ButtonBase(c.Key(key)).Role(role).Label(label).MinHeight(k.Px(36)).FillWidth().Gap(k.Px(8)).Padding(k.Px(6), k.Px(10)).
 		Radius(k.Px(8)).Border(1, ui.Transparent).Background(t.Card).Justify(ui.Start).Cursor(ui.CursorPointer)
 	if role == ui.RoleRadio || role == ui.RoleCheckBox {
 		b.Checked(checked)
@@ -209,7 +220,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 	}
 	st := v.asks[q.RequestID]
 	if st == nil {
-		st = &askState{chosen: map[int][]string{}, custom: map[int]string{}}
+		st = &askState{chosen: map[int][]string{}, custom: map[int]*string{}}
 		v.asks[q.RequestID] = st
 	}
 	if st.step >= len(q.Questions) {
@@ -219,7 +230,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 	idx := int(question.Index)
 	multi := question.MultiSelect != nil && *question.MultiSelect
 	selected := st.chosen[idx]
-	typed := st.custom[idx]
+	typed := *st.customAnswer(idx)
 	canContinue := len(selected) > 0 || strings.TrimSpace(typed) != ""
 	last := st.step+1 == len(q.Questions)
 	cancel := func() {
@@ -239,7 +250,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 		}
 		answers := make([]protocol.AskUserCollectedAnswer, len(q.Questions))
 		for i, qq := range q.Questions {
-			ans := strings.TrimSpace(st.custom[int(qq.Index)])
+			ans := strings.TrimSpace(*st.customAnswer(int(qq.Index)))
 			if ans == "" {
 				ans = strings.Join(st.chosen[int(qq.Index)], ", ")
 			}
@@ -278,7 +289,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 						}
 					})
 					if row.Clicked() {
-						st.custom[idx] = ""
+						*st.customAnswer(idx) = ""
 						switch {
 						case !multi:
 							st.chosen[idx] = []string{opt}
@@ -309,15 +320,14 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 				pen = t.Primary
 			}
 			k.Icon(c, "pencil", 12, pen)
-			value := typed
-			in := ui.TextInputBase(c, &value).Label(L("Other answer for: %s", question.Question)).Placeholder(L("Or type your own answer")).
+			value := st.customAnswer(idx)
+			in := ui.TextInputBase(c, value).Label(L("Other answer for: %s", question.Question)).Placeholder(L("Or type your own answer")).
 				Grow(1).MinWidth(0).FontSize(k.Px(12)).TextColor(t.Foreground)
 			if in.Focused() {
 				field.Border(1, t.Ring)
 			}
 			if in.Changed() {
-				st.custom[idx] = value
-				if strings.TrimSpace(value) != "" {
+				if strings.TrimSpace(*value) != "" {
 					st.chosen[idx] = nil
 				}
 			}
@@ -326,7 +336,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 			}
 		})
 		ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-			small := func(v kit.Variant, label string) *ui.Element {
+			small := func(v kit.Variant, label string) ui.Element {
 				b := k.Button(c, v, 28, false, label).PaddingX(k.Px(8)).FontSize(k.Px(11))
 				color := t.Foreground
 				if v == kit.Primary {

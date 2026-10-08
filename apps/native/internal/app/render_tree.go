@@ -17,14 +17,13 @@ func renderTree(c *ui.Context, k *kit.Kit, spec *jr.Spec) {
 	if spec == nil {
 		return
 	}
-	r := treeRenderer{c: c, k: k, spec: spec}
+	r := treeRenderer{k: k, spec: spec}
 	ui.Column(c).Margin(k.Px(4), 0).Gap(k.Px(8)).FontSize(k.Px(13)).Children(func() {
-		r.node(spec.Root, map[string]bool{})
+		r.node(c, spec.Root, map[string]bool{})
 	})
 }
 
 type treeRenderer struct {
-	c    *ui.Context
 	k    *kit.Kit
 	spec *jr.Spec
 }
@@ -84,13 +83,13 @@ func (r treeRenderer) cells(p map[string]any, key string, def float64) float32 {
 	return r.k.Px(float32(math.Min(8, math.Max(0, n)) * 4))
 }
 
-func (r treeRenderer) children(id string, seen map[string]bool) {
+func (r treeRenderer) children(c *ui.Context, id string, seen map[string]bool) {
 	for _, ch := range jr.ChildrenOf(r.spec, id, seen) {
-		r.node(ch, seen)
+		r.node(c, ch, seen)
 	}
 }
 
-func (r treeRenderer) node(id string, seen map[string]bool) {
+func (r treeRenderer) node(c *ui.Context, id string, seen map[string]bool) {
 	el, ok := r.spec.Elements[id]
 	if !ok {
 		return
@@ -100,8 +99,8 @@ func (r treeRenderer) node(id string, seen map[string]bool) {
 		below[k] = true
 	}
 	below[id] = true
-	c, k, t, p := r.c, r.k, r.k.T, el.Props
-	text := func(s string, size, lh float32) *ui.Element { return k.Text(c, s, size, lh) }
+	k, t, p := r.k, r.k.T, el.Props
+	text := func(s string, size, lh float32) ui.Element { return k.Text(c, s, size, lh) }
 	switch el.Type {
 	case "Box":
 		box := ui.Column(c).Wrap().MinWidth(0).Gap(r.cells(p, "gap", 0)).Padding(r.cells(p, "padding", 0))
@@ -111,7 +110,7 @@ func (r treeRenderer) node(id string, seen map[string]bool) {
 		if bs := jr.Str(p, "borderStyle"); bs != "" && bs != "none" {
 			box.Radius(k.Px(8)).Border(1, t.Border)
 		}
-		box.Children(func() { r.children(id, below) })
+		box.Children(func() { r.children(c, id, below) })
 	case "Text":
 		el := text(jr.Str(p, "text"), 13, 20).TextColor(r.toneText(jr.ToneOf(jr.Str(p, "color")), t.Foreground)).MinWidth(0)
 		if p["bold"] == true {
@@ -163,7 +162,7 @@ func (r treeRenderer) node(id string, seen map[string]bool) {
 			if title != "" {
 				text(title, 12, 16).FontWeight(600).TextColor(t.MutedForeground)
 			}
-			r.children(id, below)
+			r.children(c, id, below)
 		})
 	case "StatusLine":
 		tone := jr.ToneOf(jr.Str(p, "status"))
@@ -242,20 +241,20 @@ func (r treeRenderer) node(id string, seen map[string]bool) {
 			})
 		})
 	case "Table":
-		r.table(p)
+		r.table(c, p)
 	case "BarChart":
-		r.barChart(p)
+		r.barChart(c, p)
 	case "Sparkline":
-		r.sparkline(p)
+		r.sparkline(c, p)
 	case "Timeline":
-		r.timeline(p)
+		r.timeline(c, p)
 	default:
-		ui.Column(c).Gap(k.Px(8)).Children(func() { r.children(id, below) })
+		ui.Column(c).Gap(k.Px(8)).Children(func() { r.children(c, id, below) })
 	}
 }
 
-func (r treeRenderer) table(p map[string]any) {
-	c, k, t := r.c, r.k, r.k.T
+func (r treeRenderer) table(c *ui.Context, p map[string]any) {
+	k, t := r.k, r.k.T
 	rows := jr.Records(p, "rows")
 	type col struct{ key, header string }
 	var cols []col
@@ -306,8 +305,8 @@ func (r treeRenderer) table(p map[string]any) {
 	})
 }
 
-func (r treeRenderer) barChart(p map[string]any) {
-	c, k, t := r.c, r.k, r.k.T
+func (r treeRenderer) barChart(c *ui.Context, p map[string]any) {
+	k, t := r.k, r.k.T
 	type bar struct {
 		label string
 		value float64
@@ -339,8 +338,8 @@ func (r treeRenderer) barChart(p map[string]any) {
 
 func jsNum(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
-func (r treeRenderer) sparkline(p map[string]any) {
-	c, k, t := r.c, r.k, r.k.T
+func (r treeRenderer) sparkline(c *ui.Context, p map[string]any) {
+	k, t := r.k, r.k.T
 	data := jr.Numbers(p, "data")
 	if len(data) < 2 {
 		return
@@ -366,8 +365,8 @@ func (r treeRenderer) sparkline(p map[string]any) {
 	})
 }
 
-func (r treeRenderer) timeline(p map[string]any) {
-	c, k, t := r.c, r.k, r.k.T
+func (r treeRenderer) timeline(c *ui.Context, p map[string]any) {
+	k, t := r.k, r.k.T
 	items := jr.Records(p, "items")
 	ui.Column(c).Role(ui.RoleList).Children(func() {
 		for i, item := range items {

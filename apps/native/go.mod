@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/ebitengine/purego v0.11.1
-	github.com/egoist/mygo v0.2.18
+	github.com/egoist/mygo v0.3.0
 	github.com/frostybee/nuri v1.0.1
 	github.com/google/uuid v1.6.0
 	github.com/kkkk2323/droi/packages/droid-sdk-go v0.0.0-00010101000000-000000000000

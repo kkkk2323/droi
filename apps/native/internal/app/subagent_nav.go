@@ -70,7 +70,7 @@ func (a *App) subagentMark(c *ui.Context, run subagents.Run, ok bool) {
 // subagentItem is a SubagentRow inside a menu: its state, title and age.
 func (a *App) subagentItem(c *ui.Context, open *bool, s sessions.Summary, run subagents.Run, ok, checked bool) bool {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Key(s.SessionID).Role(ui.RoleMenuItem).Label(s.Title).Checked(checked).Gap(k.Px(8)).
+	b := ui.ButtonBase(c.Key(s.SessionID)).Role(ui.RoleMenuItem).Label(s.Title).Checked(checked).Gap(k.Px(8)).
 		Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
 	color := t.PopoverForeground
 	if b.Hovered() || b.Focused() {
@@ -92,9 +92,9 @@ func (a *App) subagentItem(c *ui.Context, open *bool, s sessions.Summary, run su
 	return false
 }
 
-func (a *App) subagentPopup(c *ui.Context, anchor *ui.Element, open *bool, end bool, fn func()) {
+func (a *App) subagentPopup(c *ui.Context, anchor ui.Element, open *bool, end bool, fn func()) {
 	k, t := a.kit, a.kit.T
-	ui.PopoverBase(c, anchor, open, func(p *ui.Element) {
+	ui.PopoverBase(c, anchor, open, func(p ui.Element) {
 		w, h := c.Size()
 		if end {
 			p.AttachTo(anchor, ui.AnchorBottomRight, ui.AnchorTopRight)
@@ -164,7 +164,7 @@ func (v *sessionView) sessionTrail(c *ui.Context, n subagentNav, title string) {
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Role(ui.RoleGroup).Label(L("Session hierarchy")).MinWidth(0).Gap(k.Px(2)).Children(func() {
 		for _, crumb := range n.trail {
-			ui.Row(c).Key(crumb.SessionID).MinWidth(0).Shrink(1).Gap(k.Px(2)).Children(func() {
+			ui.Row(c.Key(crumb.SessionID)).MinWidth(0).Shrink(1).Gap(k.Px(2)).Children(func() {
 				b := ui.ButtonBase(c).Role(ui.RoleButton).Label(crumb.Title).MaxWidth(k.Px(192)).Padding(k.Px(2), k.Px(6)).Radius(k.Px(6)).
 					Shrink(1).MinWidth(0).Cursor(ui.CursorPointer)
 				color := t.MutedForeground

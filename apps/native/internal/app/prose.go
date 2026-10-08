@@ -19,7 +19,6 @@ import (
 // and above the other. Its container's padding keeps the first and last
 // margins inside it, as the transcript's articles do.
 type flow struct {
-	c       *ui.Context
 	pending float32
 	started bool
 	// open: no padding above the first block, so its margin collapses
@@ -27,7 +26,7 @@ type flow struct {
 	open bool
 }
 
-func (f *flow) block(top, bottom float32, build func()) {
+func (f *flow) block(c *ui.Context, top, bottom float32, build func()) {
 	gap := top
 	if f.started {
 		gap = max(f.pending, top)
@@ -35,7 +34,7 @@ func (f *flow) block(top, bottom float32, build func()) {
 		gap = 0
 	}
 	if gap > 0 {
-		ui.Box(f.c).Height(gap).Shrink(0)
+		ui.Box(c).Height(gap).Shrink(0)
 	}
 	build()
 	f.started = true
@@ -43,9 +42,9 @@ func (f *flow) block(top, bottom float32, build func()) {
 }
 
 // end adds the last block's bottom margin.
-func (f *flow) end() {
+func (f *flow) end(c *ui.Context) {
 	if f.started && f.pending > 0 {
-		ui.Box(f.c).Height(f.pending).Shrink(0)
+		ui.Box(c).Height(f.pending).Shrink(0)
 	}
 }
 
@@ -97,7 +96,7 @@ func (p prose) firstMargin(nodes []*md.Node) float32 {
 func (p prose) nodes(c *ui.Context, f *flow, nodes []*md.Node) {
 	for _, n := range nodes {
 		top, bottom := margins(n)
-		f.block(p.k.Px(top), p.k.Px(bottom), func() { p.node(c, n) })
+		f.block(c, p.k.Px(top), p.k.Px(bottom), func() { p.node(c, n) })
 	}
 }
 
@@ -117,7 +116,7 @@ func (p prose) node(c *ui.Context, n *md.Node) {
 		ui.Column(c).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(12)).Children(func() {
 			q := p
 			q.color = t.MutedForeground
-			f := flow{c: c}
+			f := flow{}
 			q.nodes(c, &f, n.Children)
 		})
 	case md.NodeRule:
@@ -183,7 +182,7 @@ func isLocalImage(r md.Inline) bool { return r.Image && attachments.LocalImagePa
 
 // inlines is a paragraph of runs. Inline code is Geist Mono at 0.85em in
 // the code color, without the web Client's tint.
-func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight int) *ui.Element {
+func (p prose) inlines(c *ui.Context, runs []md.Inline, size, lh float32, weight int) ui.Element {
 	k, t := p.k, p.k.T
 	codeSize := size * 0.85
 	para := ui.RichText(c).FontSize(k.Px(size)).FixedLineHeight(k.Px(lh)).TextColor(p.color)
@@ -241,7 +240,7 @@ func (p prose) list(c *ui.Context, n *md.Node) {
 					d := k.Px(p.size / 3)
 					kit.Dot(c, d, t.MutedForeground).Absolute().Left(-k.Px(14.5) - d/2).Top(k.Px(4) + line/2 - d/2)
 				}
-				f := flow{c: c}
+				f := flow{}
 				if item.Checked > 0 {
 					checked := item.Checked == 2
 					ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Start).Children(func() {
@@ -265,7 +264,7 @@ func (p prose) itemBlocks(c *ui.Context, f *flow, item *md.Node, tight bool) {
 	for i, ch := range item.Children {
 		if tight && ch.Kind == md.NodeParagraph {
 			if i > 0 {
-				f.block(0, 0, func() { p.paragraph(c, ch.Inlines) })
+				f.block(c, 0, 0, func() { p.paragraph(c, ch.Inlines) })
 			} else {
 				p.paragraph(c, ch.Inlines)
 				f.started = true
@@ -273,10 +272,10 @@ func (p prose) itemBlocks(c *ui.Context, f *flow, item *md.Node, tight bool) {
 			continue
 		}
 		top, bottom := margins(ch)
-		f.block(p.k.Px(top), p.k.Px(bottom), func() { p.node(c, ch) })
+		f.block(c, p.k.Px(top), p.k.Px(bottom), func() { p.node(c, ch) })
 	}
 	if !tight {
-		f.end()
+		f.end(c)
 	}
 }
 
@@ -388,7 +387,7 @@ func (p prose) codeBlock(c *ui.Context, n *md.Node) {
 	})
 }
 
-func (p prose) codeAction(c *ui.Context, icon, label string) *ui.Element {
+func (p prose) codeAction(c *ui.Context, icon, label string) ui.Element {
 	k, t := p.k, p.k.T
 	b := ui.ButtonBase(c).Label(label).Tooltip(label).Size(k.Px(24), k.Px(24)).Radius(k.Px(6)).Cursor(ui.CursorPointer)
 	color := t.MutedForeground

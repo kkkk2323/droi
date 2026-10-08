@@ -193,7 +193,7 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 }
 
 // sidebarRow is a SidebarRow: an icon and a label, h-8, rounded-lg.
-func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trailing func()) *ui.Element {
+func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trailing func()) ui.Element {
 	k, t := a.kit, a.kit.T
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
@@ -398,7 +398,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 		}
 	}
 
-	section := ui.Column(c).Key(g.Key).Role(ui.RoleGroup).Label(name).Margin(0, 0, k.Px(8), 0)
+	section := ui.Column(c.Key(g.Key)).Role(ui.RoleGroup).Label(name).Margin(0, 0, k.Px(8), 0)
 	section.Children(func() {
 		switch {
 		case loose:
@@ -490,7 +490,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	}
 	a.sidebar.numbered = append(a.sidebar.numbered, s.SessionID)
 	n := len(a.sidebar.numbered)
-	b := ui.ButtonBase(c).Key(s.SessionID).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
+	b := ui.ButtonBase(c.Key(s.SessionID)).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
 		Gap(k.Px(2)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
 	switch {
@@ -593,7 +593,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 // renameField is a row's title as a field: Enter saves, Escape keeps the title.
 func (a *App) renameField(c *ui.Context, s sessions.Summary, flat bool) {
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Key(s.SessionID).Radius(k.Px(10)).Background(t.SidebarAccent).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Children(func() {
+	ui.Row(c.Key(s.SessionID)).Radius(k.Px(10)).Background(t.SidebarAccent).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Children(func() {
 		in := ui.TextInputBase(c, &a.sidebar.rename).Label(L("Session title")).AutoFocus().Grow(1).Height(k.Px(32)).PaddingX(k.Px(6)).
 			Radius(k.Px(8)).Border(1, t.Border).Background(t.Background).FontSize(k.Px(13)).TextColor(t.Foreground)
 		done := func(save bool) {
