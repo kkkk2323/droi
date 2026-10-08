@@ -1,3 +1,15 @@
+## 1.39.0 - 2026-10-08
+
+### Added
+
+- Settings → Account lists several Factory accounts. Add one with **Add account** (the same browser sign-in), then **Switch** to it; each keeps its own login, and all of them share your skills, droids, MCP servers, settings and sessions, so a Session started under one account goes on under another. Switching restarts the Daemon, and Droi asks first while a Session is working.
+- Each account shows its Standard usage for the 5-hour, weekly and monthly windows, and the account in use says when it is close to its limit. Droi asks Factory through the same Factory API base URL as the Daemon.
+
+### Fixed
+
+- A stored Factory API key no longer reaches the Daemon while you are signed in. droid lets the key override the login, so the Daemon ran as the key's account.
+- With `FACTORY_HOME_OVERRIDE` set, Droi and Memory read droid's folder where droid keeps it (`<override>/.factory`).
+
 ## 1.38.4 - 2026-10-08
 
 ### Fixed
