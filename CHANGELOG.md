@@ -1,3 +1,9 @@
+## 1.38.3 - 2026-10-08
+
+### Fixed
+
+- An image Droid writes into its reply as a path on the computer, such as a screenshot it took, shows in the conversation again. Droi reads the file through the Daemon, so it shows on the phone too; while it loads a grey box holds its place, and a file that is not there shows its path. Before, the native app showed every such image as [image].
+
 ## 1.38.2 - 2026-10-08
 
 ### Fixed
