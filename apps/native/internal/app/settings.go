@@ -376,11 +376,14 @@ func (a *App) aboutTab(c *ui.Context) {
 	version := a.cfg.Version
 	a.settingGroup(c, "", "",
 		func() {
-			var control func()
+			var control, below func()
 			if a.cfg.Updater != nil {
 				control = func() { a.updateControl(c) }
+				if s := a.cfg.Updater.State(); showsNotes(s) {
+					below = func() { a.updateNotes(c, s) }
+				}
 			}
-			a.settingRow(c, "Droi "+version, "", control, nil)
+			a.settingRow(c, "Droi "+version, "", control, below)
 		},
 		func() {
 			a.settingRow(c, "Where your data lives", "Sessions, settings and the Factory API key stay on this computer; phones reach it through the Gateway. What Droid works on goes to Factory, which runs the models.", nil, nil)

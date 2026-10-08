@@ -26,6 +26,9 @@ const (
 type State struct {
 	Status  Status
 	Version string
+	// Notes are the release's, in Markdown, while it is available,
+	// downloads or is installed.
+	Notes string
 	// Percent is the download's, 0 to 100.
 	Percent int
 	// Message says why it failed.
@@ -35,6 +38,8 @@ type State struct {
 // Release is a newer version found by a check.
 type Release interface {
 	Version() string
+	// Notes say what changed, in Markdown.
+	Notes() string
 	// Install downloads, verifies and puts the release in place of the
 	// app; progress reports the bytes downloaded of total.
 	Install(ctx context.Context, progress func(downloaded, total int64)) error
@@ -51,9 +56,11 @@ type Source interface {
 type Updater struct {
 	src Source
 
-	mu        sync.Mutex
-	state     State
-	release   Release
+	mu      sync.Mutex
+	state   State
+	release Release
+	// skipped is the version background checks do not install.
+	skipped   string
 	listeners []func(State)
 }
 
@@ -102,7 +109,7 @@ func (u *Updater) Check(ctx context.Context) State {
 		u.mu.Lock()
 		u.release = rel
 		u.mu.Unlock()
-		u.set(State{Status: Available, Version: rel.Version()})
+		u.set(State{Status: Available, Version: rel.Version(), Notes: rel.Notes()})
 	}
 	return u.State()
 }
@@ -117,8 +124,8 @@ func (u *Updater) Install(ctx context.Context) State {
 	if rel == nil || busy {
 		return u.State()
 	}
-	v := rel.Version()
-	u.set(State{Status: Downloading, Version: v})
+	v, notes := rel.Version(), rel.Notes()
+	u.set(State{Status: Downloading, Version: v, Notes: notes})
 	last := -1
 	err := rel.Install(ctx, func(done, total int64) {
 		if total <= 0 {
@@ -126,24 +133,45 @@ func (u *Updater) Install(ctx context.Context) State {
 		}
 		if p := int(done * 100 / total); p != last {
 			last = p
-			u.set(State{Status: Downloading, Version: v, Percent: p})
+			u.set(State{Status: Downloading, Version: v, Notes: notes, Percent: p})
 		}
 	})
 	if err != nil {
 		u.set(State{Status: Failed, Message: "The update did not install: " + err.Error()})
 		return u.State()
 	}
-	u.set(State{Status: Ready, Version: v})
+	u.set(State{Status: Ready, Version: v, Notes: notes})
 	return u.State()
 }
 
 // CheckAndInstall installs the release a check finds, as a background
 // check does: the app then restarts into it once idle.
 func (u *Updater) CheckAndInstall(ctx context.Context) State {
-	if s := u.Check(ctx); s.Status != Available {
+	s := u.Check(ctx)
+	if s.Status != Available {
 		return s
 	}
+	u.mu.Lock()
+	skipped := s.Version == u.skipped
+	u.mu.Unlock()
+	if skipped {
+		// Idle, so that the next check can find a newer release.
+		u.set(State{Status: Idle})
+		return u.State()
+	}
 	return u.Install(ctx)
+}
+
+// Skip keeps background checks from installing version, as Skip this
+// version asks; a check by hand still offers it.
+func (u *Updater) Skip(version string) {
+	u.mu.Lock()
+	u.skipped = version
+	s := u.state
+	u.mu.Unlock()
+	if version != "" && s.Status == Available && s.Version == version {
+		u.set(State{Status: Idle})
+	}
 }
 
 // ShouldRecheck is whether the hourly check may run: not while a release

@@ -185,6 +185,9 @@ func New(cfg Config) *App {
 		compactions: compaction.NewLog(),
 	}
 	a.applyPrefs()
+	if cfg.Updater != nil {
+		cfg.Updater.Skip(prefs.SkippedUpdate.Get(cfg.Prefs))
+	}
 	return a
 }
 

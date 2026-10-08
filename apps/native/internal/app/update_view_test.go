@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
 )
@@ -11,6 +12,7 @@ import (
 type testRelease struct{}
 
 func (testRelease) Version() string { return "9.9.9" }
+func (testRelease) Notes() string   { return "- Copy a reply as Markdown" }
 func (testRelease) Install(_ context.Context, p func(int64, int64)) error {
 	p(1, 1)
 	return nil
@@ -88,5 +90,34 @@ func TestAnInstalledUpdateRestartsOnlyWhenIdle(t *testing.T) {
 	focused = false
 	if !h.a.RelaunchIfIdle() || relaunched != 1 {
 		t.Fatal("did not relaunch an idle app in the background")
+	}
+}
+
+// The About row shows what the release changes, and Skip this version
+// on the card hides it and keeps the background check from installing it,
+// after a restart too.
+func TestReleaseNotesAndSkipThisVersion(t *testing.T) {
+	focused, relaunched := true, 0
+	h, u := updateHarness(t, &focused, &relaunched)
+	u.Check(context.Background())
+	h.a.Go(Route{Name: "settings", Tab: "about"})
+	h.settle()
+	if !h.hasText("What’s new in 9.9.9") || !h.hasText("Copy a reply as Markdown") {
+		t.Fatalf("no release notes: %q", h.tt.Texts())
+	}
+	h.a.Go(Route{Name: "home"})
+	h.settle()
+	h.click("Skip this version")
+	h.settle()
+	if h.hasText("Droi 9.9.9 is available") {
+		t.Fatal("Skip this version kept the card")
+	}
+	if got := prefs.SkippedUpdate.Get(h.a.prefs); got != "9.9.9" {
+		t.Fatalf("skipped %q", got)
+	}
+	next := updates.New(testSource{rel: testRelease{}})
+	New(Config{Prefs: h.a.prefs, Updater: next})
+	if s := next.CheckAndInstall(context.Background()); s.Status == updates.Ready {
+		t.Fatal("the next launch installed the skipped version")
 	}
 }

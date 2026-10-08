@@ -22,6 +22,7 @@ func (MyGo) Check(ctx context.Context) (Release, error) {
 type myGoRelease struct{ up *mygo.Update }
 
 func (r myGoRelease) Version() string { return r.up.Version }
+func (r myGoRelease) Notes() string   { return r.up.Notes }
 
 func (r myGoRelease) Install(ctx context.Context, progress func(int64, int64)) error {
 	return r.up.Install(ctx, progress)

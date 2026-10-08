@@ -12,6 +12,7 @@ type fakeRelease struct {
 }
 
 func (r fakeRelease) Version() string { return r.v }
+func (r fakeRelease) Notes() string   { return "- Faster" }
 func (r fakeRelease) Install(_ context.Context, progress func(int64, int64)) error {
 	progress(50, 100)
 	progress(100, 100)
@@ -82,5 +83,26 @@ func TestUpdaterSaysWhatFailed(t *testing.T) {
 	u.Check(context.Background())
 	if s := u.Install(context.Background()); s.Status != Failed || !ShouldRecheck(s) {
 		t.Errorf("install error: %+v", s)
+	}
+}
+
+// A skipped version is not installed by the background check, which can
+// then find a newer one; a check by hand still offers it.
+func TestSkippedVersion(t *testing.T) {
+	u := New(fakeSource{rel: fakeRelease{v: "1.34.0"}})
+	u.Skip("1.34.0")
+	if s := u.CheckAndInstall(context.Background()); s.Status != Idle || !ShouldRecheck(s) {
+		t.Fatalf("the background check went to %+v", s)
+	}
+	if s := u.Check(context.Background()); s.Status != Available || s.Version != "1.34.0" || s.Notes != "- Faster" {
+		t.Fatalf("a check by hand found %+v", s)
+	}
+	u.Skip("1.34.0")
+	if s := u.State(); s.Status != Idle {
+		t.Fatalf("skipping the available version left %+v", s)
+	}
+	u.Skip("1.33.0")
+	if s := u.CheckAndInstall(context.Background()); s.Status != Ready || s.Notes != "- Faster" {
+		t.Fatalf("another skipped version kept 1.34.0 from installing: %+v", s)
 	}
 }

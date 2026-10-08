@@ -6,6 +6,8 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/md"
+	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 )
 
@@ -81,6 +83,24 @@ func (a *App) updateControl(c *ui.Context) {
 	})
 }
 
+// showsNotes is whether the About row shows a release's notes: while it
+// waits, downloads or is installed.
+func showsNotes(s updates.State) bool {
+	return s.Notes != "" && (s.Status == updates.Available || s.Status == updates.Downloading || s.Status == updates.Ready)
+}
+
+// updateNotes are what the release changes, under the About row.
+func (a *App) updateNotes(c *ui.Context, s updates.State) {
+	k := a.kit
+	ui.Column(c).Role(ui.RoleGroup).Label("Release notes").Children(func() {
+		k.Text(c, "What’s new in "+s.Version, 13, 20).FontWeight(500)
+		p := newProse(k)
+		p.size, p.lh, p.color = 13, 22, k.T.MutedForeground
+		f := flow{c: c}
+		p.nodes(c, &f, md.ParseTree(s.Notes))
+	})
+}
+
 // updateCard is the corner card once a release waits, downloads or is
 // installed; closing it hides that one step.
 func (a *App) updateCard(c *ui.Context) {
@@ -115,12 +135,16 @@ func (a *App) updateCard(c *ui.Context) {
 				a.relaunch()
 			}
 		default:
-			ui.Row(c).Gap(k.Px(4)).Margin(k.Px(8), 0, 0, 0).Children(func() {
+			ui.Row(c).Wrap().Gap(k.Px(4)).Margin(k.Px(8), 0, 0, 0).Children(func() {
 				if a.smallButton(c, kit.Primary, "Update", "", false).Clicked() {
 					a.installUpdate()
 				}
 				if a.smallButton(c, kit.Ghost, "Details", "", false).Clicked() {
 					a.Go(Route{Name: "settings", Tab: "about"})
+				}
+				if a.smallButton(c, kit.Ghost, "Skip this version", "", false).Clicked() {
+					prefs.SkippedUpdate.Set(a.prefs, s.Version)
+					a.cfg.Updater.Skip(s.Version)
 				}
 			})
 		}
