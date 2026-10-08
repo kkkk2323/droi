@@ -34,7 +34,7 @@ type sessionView struct {
 
 	list    ui.ListState
 	entries []*transcript.Entry
-	built   int64 // the Store revision entries were built at
+	built   int64 // the Session's revision entries were built at
 
 	// Guarded by mu: written by the goroutines loading the Session.
 	mu           sync.Mutex
@@ -297,10 +297,10 @@ func cachedBitmap(cache map[string]*ui.Bitmap, id string, img transcript.Image) 
 	return b
 }
 
-// refresh builds the transcript again when the Store changed, keeping the
+// refresh builds the transcript again when the Session changed, keeping the
 // entries that did not change so that their rows keep their state.
 func (v *sessionView) refresh(s *session.Session) {
-	rev := v.a.storeRev.Load()
+	rev := v.a.rev(v.id).Load()
 	if rev == v.built || s == nil {
 		return
 	}

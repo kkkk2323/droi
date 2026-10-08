@@ -145,8 +145,9 @@ type App struct {
 	// sidebar is a drawer; drawerOpen whether it is out.
 	narrow, drawerOpen bool
 	remote             remoteState
-	// storeRev counts the Store's changes, for the views to build again.
-	storeRev atomic.Int64
+	// revs counts each Session's changes in the Store, for its view to
+	// build again: Session id → *atomic.Int64.
+	revs sync.Map
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
 	worktreeAsk worktreeDialog
 	// pasteTo attaches the clipboard's image to the composer that had the
@@ -197,7 +198,7 @@ func (a *App) Start() {
 	a.ctl.Subscribe(a.onEvent)
 	a.watchAlerts()
 	a.ctl.Store().Subscribe(func(e session.Event) {
-		a.storeRev.Add(1)
+		a.rev(e.SessionID).Add(1)
 		if e.Kind == session.EventWorkingStateChanged {
 			s := a.ctl.Store().Session(e.SessionID)
 			a.touch(e.SessionID, s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle)
@@ -210,6 +211,12 @@ func (a *App) Start() {
 	if a.status.Connected {
 		go a.refreshList()
 	}
+}
+
+// rev is a Session's revision counter.
+func (a *App) rev(id string) *atomic.Int64 {
+	r, _ := a.revs.LoadOrStore(id, new(atomic.Int64))
+	return r.(*atomic.Int64)
 }
 
 // redraw asks for a frame from any goroutine.

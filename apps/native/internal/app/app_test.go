@@ -16,6 +16,7 @@ import (
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -442,6 +443,32 @@ func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
 	h.frame()
 	if got := h.tt.Clipboard(); got == "" || !strings.HasPrefix(para, got) {
 		t.Fatalf("copied %q", got)
+	}
+}
+
+// Another Session's events leave the open transcript as it was built: a
+// Session working in the background would otherwise build it again on
+// every event.
+func TestAnotherSessionDoesNotRebuildTheTranscript(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	v := h.a.views[h.a.Route().SessionID]
+	built := v.built
+	var other string
+	for _, s := range h.a.listed {
+		if s.Title == "Add dark mode toggle" {
+			other = s.SessionID
+		}
+	}
+	if _, err := h.a.ctl.LoadSession(context.Background(), protocol.LoadSessionParams{SessionID: other}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the other Session", func() bool { return h.a.ctl.Store().Session(other) != nil })
+	h.settle()
+	if v.built != built {
+		t.Fatalf("the transcript was built again at %d, after %d", v.built, built)
 	}
 }
 
