@@ -1,3 +1,9 @@
+## 1.37.1 - 2026-10-08
+
+### Changed
+
+- The Chinese UI keeps programming terms in English: Subagent, Script, Reasoning, Skill, Autonomy, Token, Prompt, Diff, Compact, and the modes Auto, Direct and Both.
+
 ## 1.37.0 - 2026-10-08
 
 ### Added
