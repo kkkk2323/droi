@@ -1,3 +1,17 @@
+## 1.38.0 - 2026-10-08
+
+### Added
+
+- A click on a picture in a conversation shows it enlarged; a click or Escape closes it.
+- The sidebar's Automations row shows a spinner and a count while Automation runs work, and a Running automations group lists those runs' Sessions. The Automations page marks the running Automations and runs too.
+
+### Fixed
+
+- The model picker's rail of providers scrolls, so every provider can be reached.
+- A subagent's Session that the Session list does not have yet still leads back to its caller in its header.
+- A background Task's card shows Running, then Completed, as the subagent works, without opening its Session first.
+- The Delete button of the delete-automation dialog is solid red, as the delete-worktree dialog's, and Reset pairing token's text is red instead of black.
+
 ## 1.37.1 - 2026-10-08
 
 ### Changed
