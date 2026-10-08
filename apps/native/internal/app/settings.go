@@ -15,6 +15,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
@@ -350,7 +351,11 @@ func (a *App) generalTab(c *ui.Context) {
 			}
 		}
 	}
+	languages := []kit.Option{{Value: "", Label: "System"}, {Value: string(l10n.English), Label: "English"}, {Value: string(l10n.Chinese), Label: "简体中文"}}
 	a.settingGroup(c, "Appearance", "",
+		func() {
+			a.settingRow(c, "Language", "System follows this computer's language.", pick(prefs.Language, "Language", languages), nil)
+		},
 		func() {
 			a.settingRow(c, "Theme", "Light is the default. The choice is stored per browser.", pick(prefs.Theme, "Theme", themes), nil)
 		},

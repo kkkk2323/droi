@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
@@ -105,6 +106,11 @@ type App struct {
 
 	kit   *kit.Kit
 	route Route
+	// locale is the system's (SetLocale); "" keeps the last one told.
+	locale string
+	// languageChanged hears a change of the language, for what the window
+	// does not draw, such as the menu bar.
+	languageChanged func()
 
 	// Guarded by mu: written by the Controller's goroutines.
 	mu       sync.Mutex
@@ -193,6 +199,20 @@ func New(cfg Config) *App {
 
 func (a *App) applyPrefs() {
 	a.kit = kit.New(theme.Parse(prefs.Theme.Get(a.prefs)), theme.FontChoice(prefs.Font.Get(a.prefs)), theme.TextSize(prefs.TextSize.Get(a.prefs)), prefs.Zoom.Get(a.prefs))
+	if l10n.Set(prefs.Language.Get(a.prefs), a.locale) && a.languageChanged != nil {
+		a.languageChanged()
+	}
+}
+
+// SetLanguageChanged sets what hears a change of the app's language, on
+// the main thread.
+func (a *App) SetLanguageChanged(fn func()) { a.languageChanged = fn }
+
+// SetLocale tells the system's locale, such as "zh-CN", which the app's
+// language follows unless Settings picks one. Main thread only.
+func (a *App) SetLocale(locale string) {
+	a.locale = locale
+	a.applyPrefs()
 }
 
 // Start subscribes to the Controller and reads the Session list once

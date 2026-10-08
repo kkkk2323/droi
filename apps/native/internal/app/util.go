@@ -10,12 +10,16 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/attachments"
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// L is the window's words in the user's language: l10n.L.
+func L(key string, args ...any) string { return l10n.L(key, args...) }
 
 func draftOf(text string, images []attachments.Image) drafts.Draft {
 	return drafts.Draft{Text: text, Images: images}

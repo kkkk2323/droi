@@ -145,24 +145,34 @@ func main() {
 	highlight.Ready = func() { update(func() {}) }
 	h.OnChange(func() { update(func() {}) })
 
+	var setMenu func()
+	a.SetLanguageChanged(func() {
+		if setMenu != nil {
+			setMenu()
+		}
+	})
 	mygo.App.WhenReady(func() {
-		mygo.App.SetMenu(menu(func(id string) {
-			update(func() { a.Run(id) })
-		}, func(step int) {
-			if win != nil {
-				win.Update(func() { a.Zoom(step) })
-			}
-		}, func() {
-			if win == nil {
-				nativePaste()
-				return
-			}
-			win.Update(func() {
-				if !a.PasteImage() {
-					nativePaste()
+		setMenu = func() {
+			mygo.App.SetMenu(menu(func(id string) {
+				update(func() { a.Run(id) })
+			}, func(step int) {
+				if win != nil {
+					win.Update(func() { a.Zoom(step) })
 				}
-			})
-		}))
+			}, func() {
+				if win == nil {
+					nativePaste()
+					return
+				}
+				win.Update(func() {
+					if !a.PasteImage() {
+						nativePaste()
+					}
+				})
+			}))
+		}
+		a.SetLocale(mygo.App.Locale())
+		setMenu()
 		opts := mygo.WindowOptions{
 			Title:           "Droi",
 			Width:           1280,
