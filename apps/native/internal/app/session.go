@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -64,6 +65,7 @@ type sessionView struct {
 	leftEnd  bool
 	heldRows int
 	images   map[string]*ui.Bitmap
+	imageAt  map[string]int64
 	// zoom is the picture shown enlarged while zoomOpen.
 	zoom      *ui.Bitmap
 	zoomLabel string
@@ -89,7 +91,7 @@ type sessionView struct {
 func (a *App) view(id string) *sessionView {
 	v := a.views[id]
 	if v == nil {
-		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{},
+		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, docs: map[string][]*md.Node{}, usedAt: map[string]int64{}, images: map[string]*ui.Bitmap{}, imageAt: map[string]int64{},
 			calls: map[*transcript.ToolCall]*callView{}, rail: railState{preview: -1}}
 		v.list.FollowEnd = true
 		d := a.drafts.Load(id)
@@ -237,6 +239,55 @@ func (v *sessionView) sweep() {
 			delete(v.calls, call)
 		}
 	}
+	// A decoded picture is width × height × 4 bytes; one the list scrolled
+	// away from long ago is decoded again if it comes back.
+	for id, at := range v.imageAt {
+		if v.frame-at > imageIdleFrames {
+			delete(v.images, id)
+			delete(v.imageAt, id)
+		}
+	}
+}
+
+// imageIdleFrames is how many builds of its view a picture stays decoded
+// without being drawn.
+const imageIdleFrames = 600
+
+// keptViews is how many Sessions keep their view, the open one included:
+// a view holds its transcript, parsed Markdown and decoded pictures.
+const keptViews = 3
+
+// remember notes that Session id was opened, and drops the views of the
+// Sessions opened longest ago, except one that is busy.
+func (a *App) remember(id string) {
+	a.recent = append(slices.DeleteFunc(a.recent, func(x string) bool { return x == id }), id)
+	if len(a.recent) <= keptViews {
+		return
+	}
+	keep := map[string]bool{}
+	for _, x := range a.recent[len(a.recent)-keptViews:] {
+		keep[x] = true
+	}
+	var recent []string
+	for _, x := range a.recent {
+		v := a.views[x]
+		if !keep[x] && v != nil && !v.busy() {
+			delete(a.views, x)
+			continue
+		}
+		recent = append(recent, x)
+	}
+	a.recent = recent
+}
+
+// busy: the view holds what would be lost with it, a load or /compact
+// under way, or the answers to a question still open.
+func (v *sessionView) busy() bool {
+	v.mu.Lock()
+	loading := v.loading || v.olderLoading
+	v.mu.Unlock()
+	asking := len(v.asks) > 0 && v.a.ctl != nil && len(v.a.ctl.PendingAskUsers(v.id)) > 0
+	return loading || v.compacting || asking
 }
 
 type callView struct {
@@ -284,6 +335,7 @@ func (v *sessionView) scriptSummary(call *transcript.ToolCall) string {
 }
 
 func (v *sessionView) image(id string, img transcript.Image) *ui.Bitmap {
+	v.imageAt[id] = v.frame
 	return cachedBitmap(v.images, id, img)
 }
 

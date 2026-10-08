@@ -131,8 +131,10 @@ type App struct {
 	// them, a run of an Automation or a subagent, read for once each.
 	unlisted map[string]bool
 
-	sidebar  sidebarState
-	views    map[string]*sessionView
+	sidebar sidebarState
+	views   map[string]*sessionView
+	// recent are the Sessions whose view is kept, opened last at the end.
+	recent   []string
 	settings settingsState
 	newPage  newSessionState
 
@@ -491,6 +493,7 @@ func (a *App) Go(r Route) {
 		delete(a.unread, r.SessionID)
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
 		a.view(r.SessionID).open()
+		a.remember(r.SessionID)
 	}
 	if r.Name == "new" {
 		a.newPage.reset(r)
