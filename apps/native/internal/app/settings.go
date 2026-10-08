@@ -28,15 +28,15 @@ type settingsTab struct {
 }
 
 var settingsTabs = []settingsTab{
-	{"account", "Account", "user-round", true},
-	{"general", "General", "settings-2", false},
-	{"defaults", "Session defaults", "sliders-horizontal", false},
-	{"memory", "Memory", "brain", true},
-	{"worktrees", "Worktrees", "git-fork", false},
-	{"notifications", "Notifications", "bell", false},
-	{"remote", "Remote Access", "smartphone", true},
-	{"advanced", "Advanced", "wrench", true},
-	{"about", "About", "info", false},
+	{"account", l10n.N("Account"), "user-round", true},
+	{"general", l10n.N("General"), "settings-2", false},
+	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false},
+	{"memory", l10n.N("Memory"), "brain", true},
+	{"worktrees", l10n.N("Worktrees"), "git-fork", false},
+	{"notifications", l10n.N("Notifications"), "bell", false},
+	{"remote", l10n.N("Remote Access"), "smartphone", true},
+	{"advanced", l10n.N("Advanced"), "wrench", true},
+	{"about", l10n.N("About"), "info", false},
 }
 
 // settingsState is Settings' own: the page to go back to, and what is
@@ -88,8 +88,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	if c.Shortcut(0, ui.KeyEscape) {
 		a.Go(s.back)
 	}
-	ui.Row(c).Role(ui.RoleGroup).Label("Settings").Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
-		ui.Column(c).Role(ui.RoleGroup).Label("Settings sections").Width(240).Shrink(0).Gap(k.Px(4)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
+	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
+		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(240).Shrink(0).Gap(k.Px(4)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
 			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
 			nav := func(icon, label string, selected bool) *ui.Element {
 				b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
@@ -101,7 +101,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 				case b.Hovered():
 					b.Background(t.SidebarAccent.Alpha(0.6))
 				}
-				if label == "Back" {
+				if icon == "arrow-left" {
 					color = t.MutedForeground
 					if b.Hovered() {
 						color = t.Foreground
@@ -113,11 +113,11 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 				})
 				return b
 			}
-			if nav("arrow-left", "Back", false).Margin(0, 0, k.Px(8), 0).Clicked() {
+			if nav("arrow-left", L("Back"), false).Margin(0, 0, k.Px(8), 0).Clicked() {
 				a.Go(s.back)
 			}
 			for _, tab := range tabs {
-				if nav(tab.icon, tab.label, tab.id == current.id).Key(tab.id).Clicked() {
+				if nav(tab.icon, l10n.T(tab.label), tab.id == current.id).Key(tab.id).Clicked() {
 					a.route.Tab = tab.id
 				}
 			}
@@ -125,7 +125,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Children(func() {
 			ui.Box(c).Height(44).DragWindow()
 			ui.Column(c).FillWidth().MaxWidth(k.Px(672)).AlignSelf(ui.Center).Gap(k.Px(24)).Padding(0, k.Px(32), k.Px(48), k.Px(32)).Children(func() {
-				k.Text(c, current.label, 18, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.45))
+				k.Text(c, l10n.T(current.label), 18, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.45))
 				if s.err != "" {
 					k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 				}
@@ -215,10 +215,11 @@ func (a *App) settingRowWith(c *ui.Context, title func(), description string, co
 func (a *App) fieldSelect(c *ui.Context, label, value string, options []kit.Option, disabled bool) (string, bool) {
 	k, t := a.kit, a.kit.T
 	open := a.settings.flag("select:" + label)
+	label = l10n.T(label)
 	current := value
 	for _, o := range options {
 		if o.Value == value {
-			current = o.Label
+			current = l10n.T(o.Label)
 		}
 	}
 	tr := ui.ButtonBase(c).Role(ui.RoleComboBox).Label(label).Expanded(*open).Height(k.Px(32)).MinWidth(k.Px(128)).Gap(k.Px(4)).
@@ -240,7 +241,7 @@ func (a *App) fieldSelect(c *ui.Context, label, value string, options []kit.Opti
 			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).Children(func() {
 			for _, o := range options {
-				it := kit.Selected(ui.ButtonBase(c).Key(o.Value).Role(ui.RoleListItem).Label(o.Label), o.Value == value).
+				it := kit.Selected(ui.ButtonBase(c).Key(o.Value).Role(ui.RoleListItem).Label(l10n.T(o.Label)), o.Value == value).
 					Gap(k.Px(6)).Padding(k.Px(6), k.Px(12), k.Px(6), k.Px(6)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
 				color := t.PopoverForeground
 				if it.Hovered() {
@@ -253,7 +254,7 @@ func (a *App) fieldSelect(c *ui.Context, label, value string, options []kit.Opti
 							k.Icon(c, "check", 14, color)
 						}
 					})
-					k.Text(c, o.Label, 13, 19.5).TextColor(color).SingleLine()
+					k.Text(c, l10n.T(o.Label), 13, 19.5).TextColor(color).SingleLine()
 				})
 				if it.Clicked() {
 					*open = false
@@ -341,8 +342,8 @@ func (a *App) generalTab(c *ui.Context) {
 	for i, n := range theme.Names {
 		themes[i] = kit.Option{Value: string(n), Label: theme.Labels[n]}
 	}
-	fonts := []kit.Option{{Value: "geist", Label: "Geist"}, {Value: "system", Label: "System"}}
-	sizes := []kit.Option{{Value: "small", Label: "Small"}, {Value: "default", Label: "Default"}, {Value: "large", Label: "Large"}, {Value: "largest", Label: "Largest"}}
+	fonts := []kit.Option{{Value: "geist", Label: "Geist"}, {Value: "system", Label: L("System")}}
+	sizes := []kit.Option{{Value: "small", Label: L("Small")}, {Value: "default", Label: L("Default")}, {Value: "large", Label: L("Large")}, {Value: "largest", Label: L("Largest")}}
 	pick := func(p prefs.String, label string, opts []kit.Option) func() {
 		return func() {
 			if next, ok := a.fieldSelect(c, label, p.Get(a.prefs), opts, false); ok {
@@ -351,25 +352,25 @@ func (a *App) generalTab(c *ui.Context) {
 			}
 		}
 	}
-	languages := []kit.Option{{Value: "", Label: "System"}, {Value: string(l10n.English), Label: "English"}, {Value: string(l10n.Chinese), Label: "简体中文"}}
-	a.settingGroup(c, "Appearance", "",
+	languages := []kit.Option{{Value: "", Label: L("System")}, {Value: string(l10n.English), Label: "English"}, {Value: string(l10n.Chinese), Label: "简体中文"}}
+	a.settingGroup(c, L("Appearance"), "",
 		func() {
-			a.settingRow(c, "Language", "System follows this computer's language.", pick(prefs.Language, "Language", languages), nil)
+			a.settingRow(c, L("Language"), L("System follows this computer's language."), pick(prefs.Language, l10n.N("Language"), languages), nil)
 		},
 		func() {
-			a.settingRow(c, "Theme", "Light is the default. The choice is stored per browser.", pick(prefs.Theme, "Theme", themes), nil)
+			a.settingRow(c, L("Theme"), L("Light is the default. The choice is stored per browser."), pick(prefs.Theme, l10n.N("Theme"), themes), nil)
 		},
 		func() {
-			a.settingRow(c, "Font", "Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone.", pick(prefs.Font, "Font", fonts), nil)
+			a.settingRow(c, L("Font"), L("Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."), pick(prefs.Font, l10n.N("Font"), fonts), nil)
 		},
 		func() {
-			a.settingRow(c, "Text size", "Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this.", pick(prefs.TextSize, "Text size", sizes), nil)
+			a.settingRow(c, L("Text size"), L("Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."), pick(prefs.TextSize, l10n.N("Text size"), sizes), nil)
 		},
 	)
-	a.settingGroup(c, "Sidebar", "", func() {
-		a.settingRow(c, "Show archived sessions", "List archived sessions in the sidebar alongside the active ones.", func() {
+	a.settingGroup(c, L("Sidebar"), "", func() {
+		a.settingRow(c, L("Show archived sessions"), L("List archived sessions in the sidebar alongside the active ones."), func() {
 			on := prefs.ShowArchived.Get(a.prefs)
-			if a.toggle(c, "Show archived sessions", on, false) {
+			if a.toggle(c, L("Show archived sessions"), on, false) {
 				prefs.ShowArchived.Set(a.prefs, !on)
 				go a.refreshList()
 			}
@@ -388,10 +389,10 @@ func (a *App) aboutTab(c *ui.Context) {
 					below = func() { a.updateNotes(c, s) }
 				}
 			}
-			a.settingRow(c, "Droi "+version, "", control, below)
+			a.settingRow(c, L("Droi %s", version), "", control, below)
 		},
 		func() {
-			a.settingRow(c, "Where your data lives", "Sessions, settings and the Factory API key stay on this computer; phones reach it through the Gateway. What Droid works on goes to Factory, which runs the models.", nil, nil)
+			a.settingRow(c, L("Where your data lives"), L("Sessions, settings and the Factory API key stay on this computer; phones reach it through the Gateway. What Droid works on goes to Factory, which runs the models."), nil, nil)
 		},
 	)
 }
@@ -415,11 +416,11 @@ func (a *App) accountTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	login := h.LoginState()
 	a.openSignInPage(c, login)
-	a.settingGroup(c, "Sign-in", "",
+	a.settingGroup(c, L("Sign-in"), "",
 		func() {
 			switch login.Status {
 			case host.SignedIn:
-				title := "Signed in with Factory"
+				title := L("Signed in with Factory")
 				who := ""
 				if login.Account != nil {
 					who = login.Account.UserID
@@ -431,17 +432,17 @@ func (a *App) accountTab(c *ui.Context) {
 					}
 				}
 				a.settingRow(c, title, who, func() {
-					if a.smallButton(c, kit.Outline, "Sign out", "log-out", false).Clicked() {
+					if a.smallButton(c, kit.Outline, L("Sign out"), "log-out", false).Clicked() {
 						if err := h.SignOut(); err != nil {
 							a.settings.err = err.Error()
 						}
 					}
 				}, func() {
-					k.Text(c, "Shared with the droid CLI on this computer ("+h.FactoryHome()+"), the login the Daemon runs as. Signing out signs the CLI out too.", 14, 20).TextColor(t.MutedForeground)
+					k.Text(c, L("Shared with the droid CLI on this computer (%s), the login the Daemon runs as. Signing out signs the CLI out too.", h.FactoryHome()), 14, 20).TextColor(t.MutedForeground)
 				})
 			case host.Pending:
-				a.settingRow(c, "Finish signing in", "Your browser opened Factory. Enter this code there if it asks for one.", func() {
-					if a.smallButton(c, kit.Outline, "Cancel", "", false).Clicked() {
+				a.settingRow(c, L("Finish signing in"), L("Your browser opened Factory. Enter this code there if it asks for one."), func() {
+					if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
 						h.Auth.CancelSignIn()
 					}
 				}, func() {
@@ -449,14 +450,14 @@ func (a *App) accountTab(c *ui.Context) {
 						return
 					}
 					ui.Row(c).Wrap().Gap(k.Px(12)).Children(func() {
-						k.Text(c, login.Pending.UserCode, 16, 24).Font(k.Mono).LetterSpacing(k.Px(3.2)).Label("Sign-in code").
+						k.Text(c, login.Pending.UserCode, 16, 24).Font(k.Mono).LetterSpacing(k.Px(3.2)).Label(L("Sign-in code")).
 							Padding(k.Px(6), k.Px(12)).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background)
-						ui.Link(c, "Open the sign-in page again", login.Pending.VerificationURIComplete).FontSize(k.Px(14)).Underline()
+						ui.Link(c, L("Open the sign-in page again"), login.Pending.VerificationURIComplete).FontSize(k.Px(14)).Underline()
 					})
 				})
 			default:
-				a.settingRow(c, "Sign in with Factory", "Uses the same login as the droid CLI. Droi then needs no API key; sessions and settings stay on this computer.", func() {
-					if a.smallButton(c, kit.Primary, "Sign in", "", false).Clicked() {
+				a.settingRow(c, L("Sign in with Factory"), L("Uses the same login as the droid CLI. Droi then needs no API key; sessions and settings stay on this computer."), func() {
+					if a.smallButton(c, kit.Primary, L("Sign in"), "", false).Clicked() {
 						a.startSignIn()
 					}
 				}, func() {
@@ -477,63 +478,62 @@ func (a *App) apiKeyRow(c *ui.Context, login host.LoginState) {
 	fromEnv := a.cfg.Env != nil && a.cfg.Env("FACTORY_API_KEY") != ""
 	hasKey := h.Settings.APIKey() != ""
 	signedIn := login.Status == host.SignedIn
-	desc := "Only used when neither Droi nor the droid CLI is signed in. Stored on this computer; phones never see it."
+	desc := L("Only used when neither Droi nor the droid CLI is signed in. Stored on this computer; phones never see it.")
 	if fromEnv {
-		desc = "Supplied by FACTORY_API_KEY in the environment; the stored key is ignored."
+		desc = L("Supplied by FACTORY_API_KEY in the environment; the stored key is ignored.")
 	}
-	pill := "Missing"
+	pill := L("Missing")
 	switch {
 	case hasKey:
-		pill = "Set"
+		pill = L("Set")
 	case signedIn:
-		pill = "Not needed"
+		pill = L("Not needed")
 	}
 	save := func(key string) {
 		a.hostUpdate(!signedIn, func(st *host.Settings) { st.APIKey = host.OptString(key) })
 		s.apiKey = ""
 	}
-	a.settingRow(c, "Factory API key", desc, func() { a.statusPill(c, hasKey, pill) }, func() {
+	a.settingRow(c, L("Factory API key"), desc, func() { a.statusPill(c, hasKey, pill) }, func() {
 		ui.Row(c).Gap(k.Px(8)).Children(func() {
 			placeholder := "fk-…"
 			if hasKey {
-				placeholder = "•••••••••••• (key stored)"
+				placeholder = L("•••••••••••• (key stored)")
 			}
-			in := a.field(c, &s.apiKey, "Factory API key", placeholder, false, true).Disabled(fromEnv)
+			in := a.field(c, &s.apiKey, L("Factory API key"), placeholder, false, true).Disabled(fromEnv)
 			if in.Submitted() && strings.TrimSpace(s.apiKey) != "" {
 				save(s.apiKey)
 			}
-			if a.smallButton(c, kit.Outline, "Save", "", strings.TrimSpace(s.apiKey) == "" || fromEnv).Label("Save key").Clicked() {
+			if a.smallButton(c, kit.Outline, L("Save"), "", strings.TrimSpace(s.apiKey) == "" || fromEnv).Label(L("Save key")).Clicked() {
 				save(s.apiKey)
 			}
-			if hasKey && !fromEnv && a.smallButton(c, kit.Outline, "Remove", "", false).Clicked() {
+			if hasKey && !fromEnv && a.smallButton(c, kit.Outline, L("Remove"), "", false).Clicked() {
 				save("")
 			}
 		})
-		msg := "No key set. The Daemon cannot authenticate without one."
+		msg := L("No key set. The Daemon cannot authenticate without one.")
 		switch {
 		case hasKey:
-			msg = "A key is set."
+			msg = L("A key is set.")
 		case signedIn:
-			msg = "No key set. None is needed while signed in."
+			msg = L("No key set. None is needed while signed in.")
 		}
-		k.Text(c, msg, 12, 16).Role(ui.RoleStatus).Label("API key status").TextColor(t.MutedForeground).Margin(k.Px(8), 0, 0, 0)
+		k.Text(c, msg, 12, 16).Role(ui.RoleStatus).Label(L("API key status")).TextColor(t.MutedForeground).Margin(k.Px(8), 0, 0, 0)
 	})
 }
 
 func daemonStatusText(st host.DaemonState) (ok bool, label, detail string) {
 	switch st.Status {
 	case host.DaemonRunning:
-		return true, "Running", "Listening on 127.0.0.1:" + strconv.Itoa(st.Port) + " (pid " + strconv.Itoa(st.PID) + ")."
+		return true, L("Running"), L("Listening on 127.0.0.1:%d (pid %d).", st.Port, st.PID)
 	case host.DaemonStarting:
-		attempt := ""
 		if st.Attempt > 1 {
-			attempt = " (attempt " + strconv.Itoa(st.Attempt) + ")"
+			return false, L("Starting"), L("Waiting for the Daemon to answer on port %d (attempt %d).", st.Port, st.Attempt)
 		}
-		return false, "Starting", "Waiting for the Daemon to answer on port " + strconv.Itoa(st.Port) + attempt + "."
+		return false, L("Starting"), L("Waiting for the Daemon to answer on port %d.", st.Port)
 	case host.DaemonRestarting:
-		return false, "Not running", "Last attempt: " + st.Reason + ". Starting again in " + strconv.Itoa(int(st.Delay.Round(time.Second)/time.Second)) + "s (attempt " + strconv.Itoa(st.Attempt) + ")."
+		return false, L("Not running"), L("Last attempt: %s. Starting again in %ds (attempt %d).", st.Reason, int(st.Delay.Round(time.Second)/time.Second), st.Attempt)
 	}
-	return false, "Stopped", "The Daemon is not running."
+	return false, L("Stopped"), L("The Daemon is not running.")
 }
 
 func (a *App) advancedTab(c *ui.Context) {
@@ -548,18 +548,18 @@ func (a *App) advancedTab(c *ui.Context) {
 				if in.Submitted() {
 					save(*value)
 				}
-				if a.smallButton(c, kit.Outline, "Save", "", false).Label(button).Clicked() {
+				if a.smallButton(c, kit.Outline, L("Save"), "", false).Label(button).Clicked() {
 					save(*value)
 				}
 			})
 		}
 	}
-	a.settingGroup(c, "Daemon", "",
+	a.settingGroup(c, L("Daemon"), "",
 		func() {
 			ok, label, detail := daemonStatusText(h.Daemon.State())
-			a.settingRow(c, "Status", detail, func() {
+			a.settingRow(c, L("Status"), detail, func() {
 				a.statusPill(c, ok, label)
-				if a.smallButton(c, kit.Outline, "Restart Daemon", "refresh-cw", false).Clicked() {
+				if a.smallButton(c, kit.Outline, L("Restart Daemon"), "refresh-cw", false).Clicked() {
 					go h.RestartDaemon()
 				}
 			}, func() {
@@ -568,62 +568,62 @@ func (a *App) advancedTab(c *ui.Context) {
 					return
 				}
 				ui.Scroll(c).MaxHeight(k.Px(160)).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
-					k.Text(c, log, 12, 20).Font(k.Mono).Label("Daemon log").TextColor(t.MutedForeground).Selectable().Padding(k.Px(8), k.Px(12))
+					k.Text(c, log, 12, 20).Font(k.Mono).Label(L("Daemon log")).TextColor(t.MutedForeground).Selectable().Padding(k.Px(8), k.Px(12))
 				})
-				if a.smallButton(c, kit.Ghost, "Show log file", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() && a.cfg.ShowInFolder != nil {
+				if a.smallButton(c, kit.Ghost, L("Show log file"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() && a.cfg.ShowInFolder != nil {
 					a.cfg.ShowInFolder(h.DaemonLogPath())
 				}
 			})
 		},
 		func() {
 			found := h.DroidPath()
-			desc := "droid was not found on PATH or in ~/.local/bin. Enter its full path."
+			desc := L("droid was not found on PATH or in ~/.local/bin. Enter its full path.")
 			if found != "" {
-				desc = "Using " + found
+				desc = L("Using %s", found)
 			}
-			label := "Not found"
+			label := L("Not found")
 			if found != "" {
-				label = "Found"
+				label = L("Found")
 			}
-			a.settingRow(c, "droid executable", desc, func() { a.statusPill(c, found != "", label) },
-				saveRow(&s.droidPath, "droid path override", "Leave empty to auto-detect", "Save path", true, func(v string) {
+			a.settingRow(c, L("droid executable"), desc, func() { a.statusPill(c, found != "", label) },
+				saveRow(&s.droidPath, L("droid path override"), L("Leave empty to auto-detect"), L("Save path"), true, func(v string) {
 					a.hostUpdate(true, func(st *host.Settings) { st.DroidPath = host.OptString(v) })
 				}))
 		},
 	)
-	a.settingGroup(c, "Factory API", "", func() {
-		desc := "Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650)."
+	a.settingGroup(c, L("Factory API"), "", func() {
+		desc := L("Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).")
 		inherited := ""
 		if a.cfg.Env != nil {
 			inherited = a.cfg.Env("FACTORY_API_BASE_URL")
 		}
 		switch {
 		case st.FactoryAPIBaseURL != nil:
-			desc = "The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy."
+			desc = L("The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy.")
 		case inherited != "":
-			desc = "Inherited from the environment: " + inherited + ". Set a value here to override it."
+			desc = L("Inherited from the environment: %s. Set a value here to override it.", inherited)
 		}
 		placeholder := "https://api.factory.ai"
 		if inherited != "" {
 			placeholder = inherited
 		}
-		a.settingRow(c, "Factory API base URL", desc, nil, saveRow(&s.baseURL, "Factory API base URL", placeholder, "Save URL", true, func(v string) {
+		a.settingRow(c, L("Factory API base URL"), desc, nil, saveRow(&s.baseURL, L("Factory API base URL"), placeholder, L("Save URL"), true, func(v string) {
 			a.hostUpdate(true, func(st *host.Settings) { st.FactoryAPIBaseURL = host.OptString(v) })
 		}))
 	})
-	a.settingGroup(c, "New Sessions in Droi", "Droi’s own settings. They apply to new Sessions from every Client of this computer, not to the droid CLI or the Factory App.",
+	a.settingGroup(c, L("New Sessions in Droi"), L("Droi’s own settings. They apply to new Sessions from every Client of this computer, not to the droid CLI or the Factory App."),
 		func() {
-			a.settingRow(c, "Added to the system prompt", "Appended to Droid's own system prompt in every new Session, whether it starts here, in a browser or on a phone. Existing Sessions and subagents keep theirs.", nil, func() {
+			a.settingRow(c, L("Added to the system prompt"), L("Appended to Droid's own system prompt in every new Session, whether it starts here, in a browser or on a phone. Existing Sessions and subagents keep theirs."), nil, func() {
 				ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
-					k.TextArea(c, &s.prompt, "Added to the system prompt", "e.g. Reply in the language I write in. Prefer small, reviewable commits.",
+					k.TextArea(c, &s.prompt, L("Added to the system prompt"), L("e.g. Reply in the language I write in. Prefer small, reviewable commits."),
 						kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 4, Color: t.Foreground})
 				})
 				stored := derefOr(st.AppendSystemPrompt)
 				ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-					if a.smallButton(c, kit.Outline, "Save", "", strings.TrimSpace(s.prompt) == stored).Label("Save system prompt").Clicked() {
+					if a.smallButton(c, kit.Outline, L("Save"), "", strings.TrimSpace(s.prompt) == stored).Label(L("Save system prompt")).Clicked() {
 						a.hostUpdate(false, func(st *host.Settings) { st.AppendSystemPrompt = host.OptString(s.prompt) })
 					}
-					if stored != "" && a.smallButton(c, kit.Ghost, "Clear", "", false).Clicked() {
+					if stored != "" && a.smallButton(c, kit.Ghost, L("Clear"), "", false).Clicked() {
 						s.prompt = ""
 						a.hostUpdate(false, func(st *host.Settings) { st.AppendSystemPrompt = nil })
 					}
@@ -631,8 +631,8 @@ func (a *App) advancedTab(c *ui.Context) {
 			})
 		},
 		func() {
-			a.settingRow(c, "Scratch folder", "A session that does not work in a project gets a new folder of its own in "+h.ScratchFolder()+". Archiving it moves the folder to the Trash. A change applies to new sessions only.", nil,
-				saveRow(&s.scratch, "Scratch folder", "~/.droi/chats", "Save folder", true, func(v string) {
+			a.settingRow(c, L("Scratch folder"), L("A session that does not work in a project gets a new folder of its own in %s. Archiving it moves the folder to the Trash. A change applies to new sessions only.", h.ScratchFolder()), nil,
+				saveRow(&s.scratch, L("Scratch folder"), "~/.droi/chats", L("Save folder"), true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.ScratchFolder = host.OptString(v) })
 				}))
 		},
@@ -654,7 +654,7 @@ func (a *App) saveDefaults(dv defaults.View, p defaults.Patch) {
 		}
 		a.cfg.Update(func() {
 			if err != nil {
-				a.settings.err = "Session defaults did not load or save: " + err.Error()
+				a.settings.err = L("Session defaults did not load or save: %s", err)
 			}
 			a.newPage.mu.Lock()
 			a.newPage.readAt = time.Time{}
@@ -679,11 +679,11 @@ func (a *App) pickFolder(title string) string {
 // read from and saved to the Daemon.
 func (a *App) defaultsTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	k.Text(c, "Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings.", 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+	k.Text(c, L("Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings."), 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	if h := a.cfg.Host; h != nil && h.DroidUpdated() {
 		a.settingGroup(c, "", "", func() {
-			a.settingRow(c, "droid was updated", "The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working.", func() {
-				if a.smallButton(c, kit.Primary, "Restart Daemon", "refresh-cw", false).Clicked() {
+			a.settingRow(c, L("droid was updated"), L("The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working."), func() {
+				if a.smallButton(c, kit.Primary, L("Restart Daemon"), "refresh-cw", false).Clicked() {
 					go h.RestartDaemon()
 				}
 			}, nil)
@@ -691,7 +691,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 	}
 	dv := a.sessionDefaults()
 	if dv == nil {
-		k.Text(c, "Loading session defaults…", 14, 20).TextColor(t.MutedForeground)
+		k.Text(c, L("Loading session defaults…"), 14, 20).TextColor(t.MutedForeground)
 		return
 	}
 	save := func(p defaults.Patch) { a.saveDefaults(*dv, p) }
@@ -715,17 +715,17 @@ func (a *App) defaultsTab(c *ui.Context) {
 	for _, l := range dv.AvailableAutonomyLevels {
 		autonomy = append(autonomy, kit.Option{Value: l, Label: models.AutonomyLabels[l]})
 	}
-	const orgManaged = "Managed by your organization."
+	orgManaged := L("Managed by your organization.")
 	descIf := func(key, otherwise string) string {
 		if locked(key) {
 			return orgManaged
 		}
 		return otherwise
 	}
-	a.settingGroup(c, "Model and autonomy", "",
+	a.settingGroup(c, L("Model and autonomy"), "",
 		func() {
-			a.settingRow(c, "Model", descIf("modelId", ""), func() {
-				a.modelField(c, "Default model", locked("modelId"), a.settings.flag("model:default"), &a.settings.picker,
+			a.settingRow(c, L("Model"), descIf("modelId", ""), func() {
+				a.modelField(c, L("Default model"), locked("modelId"), a.settings.flag("model:default"), &a.settings.picker,
 					defaults.PickableModels(dv.Models, true), dv.ModelID, func(next string) {
 						p := defaults.Patch{ModelID: str(next)}
 						// A level the new model lacks would be refused; start from its first.
@@ -737,8 +737,8 @@ func (a *App) defaultsTab(c *ui.Context) {
 			}, nil)
 		},
 		func() {
-			a.settingRow(c, "Reasoning level", descIf("reasoningEffort", ""), func() {
-				if next, ok := a.fieldSelect(c, "Default reasoning level", dv.ReasoningEffort, efforts(dv.ModelID, dv.ReasoningEffort), locked("reasoningEffort")); ok {
+			a.settingRow(c, L("Reasoning level"), descIf("reasoningEffort", ""), func() {
+				if next, ok := a.fieldSelect(c, l10n.N("Default reasoning level"), dv.ReasoningEffort, efforts(dv.ModelID, dv.ReasoningEffort), locked("reasoningEffort")); ok {
 					save(defaults.Patch{ReasoningEffort: str(next)})
 				}
 			}, nil)
@@ -748,8 +748,8 @@ func (a *App) defaultsTab(c *ui.Context) {
 			for i, m := range defaults.InteractionModes {
 				modes[i] = kit.Option{Value: m.Value, Label: m.Label}
 			}
-			a.settingRow(c, "Interaction mode", "Auto starts working right away; Spec plans with you before it changes anything.", func() {
-				if next, ok := a.fieldSelect(c, "Default interaction mode", dv.InteractionMode, modes, locked("interactionMode")); ok {
+			a.settingRow(c, L("Interaction mode"), L("Auto starts working right away; Spec plans with you before it changes anything."), func() {
+				if next, ok := a.fieldSelect(c, l10n.N("Default interaction mode"), dv.InteractionMode, modes, locked("interactionMode")); ok {
 					save(defaults.Patch{InteractionMode: str(next)})
 				}
 			}, nil)
@@ -759,20 +759,20 @@ func (a *App) defaultsTab(c *ui.Context) {
 			if level == "" {
 				level = "off"
 			}
-			desc := defaults.AutonomyDescriptions[level]
+			desc := l10n.T(defaults.AutonomyDescriptions[level])
 			if desc == "" {
-				desc = "How much Droid may do without asking for approval."
+				desc = L("How much Droid may do without asking for approval.")
 			}
-			a.settingRow(c, "Autonomy level", desc, func() {
-				if next, ok := a.fieldSelect(c, "Default autonomy level", level, autonomy, locked("autonomyLevel")); ok {
+			a.settingRow(c, L("Autonomy level"), desc, func() {
+				if next, ok := a.fieldSelect(c, l10n.N("Default autonomy level"), level, autonomy, locked("autonomyLevel")); ok {
 					save(defaults.Patch{AutonomyLevel: str(next)})
 				}
 			}, nil)
 		},
 	)
-	a.settingGroup(c, "Tool calls", "", func() {
+	a.settingGroup(c, L("Tool calls"), "", func() {
 		const follow = "follow-droid"
-		opts := []kit.Option{{Value: follow, Label: "Follow droid settings"}}
+		opts := []kit.Option{{Value: follow, Label: L("Follow droid settings")}}
 		for _, m := range defaults.ToolModes {
 			opts = append(opts, kit.Option{Value: string(m), Label: defaults.ToolModeLabels[m]})
 		}
@@ -780,8 +780,8 @@ func (a *App) defaultsTab(c *ui.Context) {
 		if current == "" {
 			current = follow
 		}
-		a.settingRow(c, "Mode", "Script lets the model call tools from a small program that can batch and filter them; Both offers it alongside direct calls. A Session keeps the mode it starts with. Kept on this device.", func() {
-			if next, ok := a.fieldSelect(c, "Default tool calls", current, opts, false); ok {
+		a.settingRow(c, L("Mode"), L("Script lets the model call tools from a small program that can batch and filter them; Both offers it alongside direct calls. A Session keeps the mode it starts with. Kept on this device."), func() {
+			if next, ok := a.fieldSelect(c, l10n.N("Default tool calls"), current, opts, false); ok {
 				if next == follow {
 					next = ""
 				}
@@ -790,15 +790,15 @@ func (a *App) defaultsTab(c *ui.Context) {
 		}, nil)
 	})
 	const sameAsMain = "same-as-main"
-	a.settingGroup(c, "Spec mode", "",
+	a.settingGroup(c, L("Spec mode"), "",
 		func() {
-			a.settingRow(c, "Model", "", func() {
+			a.settingRow(c, L("Model"), "", func() {
 				value := dv.SpecModeModelID
 				if value == "" {
 					value = sameAsMain
 				}
-				opts := append([]kit.Option{{Value: sameAsMain, Label: "Same as main"}}, modelOpts(true)...)
-				if next, ok := a.fieldSelect(c, "Spec mode model", value, opts, locked("specModeModelId")); ok {
+				opts := append([]kit.Option{{Value: sameAsMain, Label: L("Same as main")}}, modelOpts(true)...)
+				if next, ok := a.fieldSelect(c, l10n.N("Spec mode model"), value, opts, locked("specModeModelId")); ok {
 					if next == sameAsMain {
 						next = ""
 					}
@@ -807,7 +807,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 			}, nil)
 		},
 		func() {
-			a.settingRow(c, "Reasoning level", "", func() {
+			a.settingRow(c, L("Reasoning level"), "", func() {
 				value := dv.SpecModeReasoningEffort
 				if value == "" {
 					value = sameAsMain
@@ -820,8 +820,8 @@ func (a *App) defaultsTab(c *ui.Context) {
 				if cur == "" {
 					cur = dv.ReasoningEffort
 				}
-				opts := append([]kit.Option{{Value: sameAsMain, Label: "Same as main"}}, efforts(model, cur)...)
-				if next, ok := a.fieldSelect(c, "Spec mode reasoning level", value, opts, locked("specModeReasoningEffort")); ok {
+				opts := append([]kit.Option{{Value: sameAsMain, Label: L("Same as main")}}, efforts(model, cur)...)
+				if next, ok := a.fieldSelect(c, l10n.N("Spec mode reasoning level"), value, opts, locked("specModeReasoningEffort")); ok {
 					if next == sameAsMain {
 						next = ""
 					}
@@ -830,11 +830,11 @@ func (a *App) defaultsTab(c *ui.Context) {
 			}, nil)
 		},
 	)
-	a.settingGroup(c, "Compaction", "",
+	a.settingGroup(c, L("Compaction"), "",
 		func() {
-			a.settingRow(c, "Compact automatically", "New Sessions compact their history once it passes the token limit.", func() {
+			a.settingRow(c, L("Compact automatically"), L("New Sessions compact their history once it passes the token limit."), func() {
 				on := dv.CompactionThresholdCheckEnabled
-				if a.toggle(c, "Compact automatically", on, locked("compactionThresholdCheckEnabled")) {
+				if a.toggle(c, L("Compact automatically"), on, locked("compactionThresholdCheckEnabled")) {
 					next := !on
 					save(defaults.Patch{CompactionThresholdCheckEnabled: &next})
 				}
@@ -854,8 +854,8 @@ func (a *App) defaultsTab(c *ui.Context) {
 			for i, v := range vals {
 				opts[i] = kit.Option{Value: strconv.Itoa(v), Label: defaults.TokenLimitLabel(v)}
 			}
-			a.settingRow(c, "Token limit", "", func() {
-				if next, ok := a.fieldSelect(c, "Compaction token limit", strconv.Itoa(limit), opts, locked("compactionTokenLimit")); ok {
+			a.settingRow(c, L("Token limit"), "", func() {
+				if next, ok := a.fieldSelect(c, l10n.N("Compaction token limit"), strconv.Itoa(limit), opts, locked("compactionTokenLimit")); ok {
 					n, _ := strconv.Atoi(next)
 					save(defaults.Patch{CompactionTokenLimit: &n})
 				}
@@ -863,23 +863,23 @@ func (a *App) defaultsTab(c *ui.Context) {
 		},
 		func() {
 			value := dv.CompactionModel
-			opts := append([]kit.Option{{Value: defaults.CurrentModel, Label: "Current model"}}, modelOpts(false)...)
-			a.settingRow(c, "Summary model", "The model that writes the summary.", func() {
-				if next, ok := a.fieldSelect(c, "Compaction model", value, opts, locked("compactionModel")); ok {
+			opts := append([]kit.Option{{Value: defaults.CurrentModel, Label: L("Current model")}}, modelOpts(false)...)
+			a.settingRow(c, L("Summary model"), L("The model that writes the summary."), func() {
+				if next, ok := a.fieldSelect(c, l10n.N("Compaction model"), value, opts, locked("compactionModel")); ok {
 					save(defaults.Patch{CompactionModel: str(next)})
 				}
 			}, nil)
 		},
 	)
-	a.settingGroup(c, "Subagents", "", func() {
+	a.settingGroup(c, L("Subagents"), "", func() {
 		const inherit = "inherit"
-		opts := append([]kit.Option{{Value: inherit, Label: "Inherit (calling session)"}}, autonomy...)
+		opts := append([]kit.Option{{Value: inherit, Label: L("Inherit (calling session)")}}, autonomy...)
 		value := dv.SubagentAutonomyLevel
 		if value == "" {
 			value = inherit
 		}
-		a.settingRow(c, "Autonomy level", "", func() {
-			if next, ok := a.fieldSelect(c, "Subagent autonomy level", value, opts, locked("subagentAutonomyLevel")); ok {
+		a.settingRow(c, L("Autonomy level"), "", func() {
+			if next, ok := a.fieldSelect(c, l10n.N("Subagent autonomy level"), value, opts, locked("subagentAutonomyLevel")); ok {
 				save(defaults.Patch{SubagentAutonomyLevel: str(next)})
 			}
 		}, nil)
@@ -912,8 +912,8 @@ func (a *App) customSoundRow(c *ui.Context, choice string, custom *string, pick 
 	return func() {
 		k, t := a.kit, a.kit.T
 		ui.Row(c).Gap(k.Px(8)).Children(func() {
-			k.Text(c, "Custom file: "+filepath.Base(*custom), 13, 19.5).TextColor(t.MutedForeground).SingleLine().Grow(1).MinWidth(0).Tooltip(*custom)
-			if a.smallButton(c, kit.Outline, "Choose…", "", false).Clicked() {
+			k.Text(c, L("Custom file: %s", filepath.Base(*custom)), 13, 19.5).TextColor(t.MutedForeground).SingleLine().Grow(1).MinWidth(0).Tooltip(*custom)
+			if a.smallButton(c, kit.Outline, L("Choose…"), "", false).Clicked() {
 				pick()
 			}
 		})
@@ -937,7 +937,7 @@ var soundChoices = []string{"off", "bell", "fx-ok01", "fx-ack01", "custom"}
 // soundFileExtensions are the audio files a custom sound may be.
 var soundFileExtensions = []string{"wav", "mp3", "m4a", "aac", "ogg", "flac", "aif", "aiff"}
 
-var soundLabels = map[string]string{"off": "Off", "bell": "Bell", "fx-ok01": "Soft chime", "fx-ack01": "Acknowledge tone", "custom": "Custom…"}
+var soundLabels = map[string]string{"off": l10n.N("Off"), "bell": l10n.N("Bell"), "fx-ok01": l10n.N("Soft chime"), "fx-ack01": l10n.N("Acknowledge tone"), "custom": l10n.N("Custom…")}
 
 func (a *App) alertPrefs() alertPrefs {
 	p := alertPrefs{CompletionSound: "fx-ok01", AwaitingInputSound: "fx-ack01", FocusMode: "always", NotifyOnComplete: true, NotifyOnWaitingForInput: true}
@@ -957,7 +957,7 @@ func (a *App) notificationsTab(c *ui.Context) {
 	soundRow := func(title, label, desc string, value *string, custom **string, def string) func() {
 		pick := func() {
 			go func() {
-				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Choose a sound", Filters: []mygo.FileFilter{{Name: "Audio", Extensions: soundFileExtensions}}})
+				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose a sound"), Filters: []mygo.FileFilter{{Name: L("Audio"), Extensions: soundFileExtensions}}})
 				if err != nil || len(paths) == 0 {
 					return
 				}
@@ -976,13 +976,13 @@ func (a *App) notificationsTab(c *ui.Context) {
 		return func() {
 			opts := make([]kit.Option, len(soundChoices))
 			for i, s := range soundChoices {
-				l := soundLabels[s]
+				l := l10n.T(soundLabels[s])
 				if s == def {
-					l += " (default)"
+					l = L("%s (default)", l)
 				}
 				opts[i] = kit.Option{Value: s, Label: l}
 			}
-			a.settingRow(c, "Sound", desc, func() {
+			a.settingRow(c, L("Sound"), desc, func() {
 				if next, ok := a.fieldSelect(c, label, *value, opts, false); ok {
 					// "Custom…" needs a file first; without one the old choice stays.
 					if next == "custom" && (*custom == nil || **custom == "") {
@@ -992,7 +992,7 @@ func (a *App) notificationsTab(c *ui.Context) {
 						a.setAlertPrefs(p)
 					}
 				}
-				if a.smallButton(c, kit.Outline, "Test", "", false).Label("Test "+strings.ToLower(title)).Clicked() && a.cfg.PlaySound != nil {
+				if a.smallButton(c, kit.Outline, L("Test"), "", false).Label(L("Test %s", strings.ToLower(l10n.T(title)))).Clicked() && a.cfg.PlaySound != nil {
 					ev := alerts.Completion
 					if label != "Completion sound" {
 						ev = alerts.AwaitingInput
@@ -1004,26 +1004,26 @@ func (a *App) notificationsTab(c *ui.Context) {
 	}
 	notifyRow := func(label, desc string, value *bool) func() {
 		return func() {
-			a.settingRow(c, "Desktop notification", desc, func() {
-				if a.toggle(c, label, *value, false) {
+			a.settingRow(c, L("Desktop notification"), desc, func() {
+				if a.toggle(c, l10n.T(label), *value, false) {
 					*value = !*value
 					a.setAlertPrefs(p)
 				}
 			}, nil)
 		}
 	}
-	a.settingGroup(c, "When Droid finishes", "",
-		soundRow("Completion sound", "Completion sound", "Plays when Droid finishes and the Session stops.", &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
-		notifyRow("Notify when Droid finishes", "Unless you are looking at that Session.", &p.NotifyOnComplete),
+	a.settingGroup(c, L("When Droid finishes"), "",
+		soundRow(l10n.N("Completion sound"), l10n.N("Completion sound"), L("Plays when Droid finishes and the Session stops."), &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
+		notifyRow(l10n.N("Notify when Droid finishes"), L("Unless you are looking at that Session."), &p.NotifyOnComplete),
 	)
-	a.settingGroup(c, "When Droid needs input", "",
-		soundRow("Needs-input sound", "Needs-input sound", "Plays when Droid stops to ask for permission or an answer.", &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
-		notifyRow("Notify when Droid needs input", "When a Session waits for a permission or an answer.", &p.NotifyOnWaitingForInput),
+	a.settingGroup(c, L("When Droid needs input"), "",
+		soundRow(l10n.N("Needs-input sound"), l10n.N("Needs-input sound"), L("Plays when Droid stops to ask for permission or an answer."), &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
+		notifyRow(l10n.N("Notify when Droid needs input"), L("When a Session waits for a permission or an answer."), &p.NotifyOnWaitingForInput),
 	)
-	a.settingGroup(c, "Sounds", "", func() {
-		opts := []kit.Option{{Value: "always", Label: "Always"}, {Value: "focused", Label: "Only when Droi is focused"}, {Value: "unfocused", Label: "Only when Droi is in the background"}}
-		a.settingRow(c, "When to play sounds", "", func() {
-			if next, ok := a.fieldSelect(c, "When to play sounds", p.FocusMode, opts, false); ok {
+	a.settingGroup(c, L("Sounds"), "", func() {
+		opts := []kit.Option{{Value: "always", Label: L("Always")}, {Value: "focused", Label: L("Only when Droi is focused")}, {Value: "unfocused", Label: L("Only when Droi is in the background")}}
+		a.settingRow(c, L("When to play sounds"), "", func() {
+			if next, ok := a.fieldSelect(c, l10n.N("When to play sounds"), p.FocusMode, opts, false); ok {
 				p.FocusMode = next
 				a.setAlertPrefs(p)
 			}

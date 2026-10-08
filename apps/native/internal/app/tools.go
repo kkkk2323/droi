@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/mcp"
 	"github.com/kkkk2323/droi/apps/native/internal/skills"
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
@@ -164,23 +165,23 @@ func (v *sessionView) toolsButton(c *ui.Context) {
 	}
 	var summary []string
 	if len(skillList) == 0 {
-		summary = append(summary, "No skills")
+		summary = append(summary, L("No skills"))
 	} else if off > 0 {
-		summary = append(summary, itoa(len(skillList))+" skills, "+itoa(off)+" disabled")
+		summary = append(summary, L("%d skills, %d disabled", len(skillList), off))
 	} else {
-		summary = append(summary, itoa(len(skillList))+" skills")
+		summary = append(summary, L("%d skills", len(skillList)))
 	}
 	if len(servers) == 0 {
-		summary = append(summary, "No MCP servers")
+		summary = append(summary, L("No MCP servers"))
 	} else {
 		lines := make([]string, len(servers))
 		for i, s := range servers {
-			lines[i] = s.Name + " · " + trimOr(mcp.StatusLabels[string(s.Status)], string(s.Status))
+			lines[i] = s.Name + " · " + l10n.T(trimOr(mcp.StatusLabels[string(s.Status)], string(s.Status)))
 		}
 		summary = append(summary, strings.Join(lines, "\n"))
 	}
 
-	skillsLabel := "Skills"
+	skillsLabel := L("Skills")
 	if len(skillList) > 0 {
 		skillsLabel += " "
 		if off > 0 {
@@ -193,7 +194,7 @@ func (v *sessionView) toolsButton(c *ui.Context) {
 		mcpLabel += " " + itoa(len(servers))
 	}
 
-	b := ui.ButtonBase(c).Label("Skills and MCP servers").Tooltip(strings.Join(summary, "\n\n")).Height(k.Px(28)).Shrink(0).
+	b := ui.ButtonBase(c).Label(L("Skills and MCP servers")).Tooltip(strings.Join(summary, "\n\n")).Height(k.Px(28)).Shrink(0).
 		Gap(k.Px(6)).PaddingX(k.Px(8)).Radius(k.Px(6)).Cursor(ui.CursorPointer).Expanded(ts.open)
 	color := t.Foreground.Alpha(0.75)
 	if b.Hovered() || ts.open {
@@ -225,13 +226,13 @@ func (v *sessionView) toolsDialog(c *ui.Context) {
 	ui.DialogBase(c, &ts.open, func(backdrop, panel *ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		maxH := min(k.Px(640), h*0.85)
-		panel.Role(ui.RoleDialog).Label("Skills and MCP servers").Width(min(k.Px(640), w-k.Px(32))).
+		panel.Role(ui.RoleDialog).Label(L("Skills and MCP servers")).Width(min(k.Px(640), w-k.Px(32))).
 			Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).Clip().
 			Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(8), k.Px(12)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-				ui.Row(c).Role(ui.RoleTabList).Label("Skills and MCP servers").Gap(k.Px(2)).Children(func() {
-					for _, tab := range [][2]string{{"skills", "Skills"}, {"mcp", "MCP servers"}} {
+				ui.Row(c).Role(ui.RoleTabList).Label(L("Skills and MCP servers")).Gap(k.Px(2)).Children(func() {
+					for _, tab := range [][2]string{{"skills", L("Skills")}, {"mcp", L("MCP servers")}} {
 						tb := kit.Selected(ui.ButtonBase(c).Role(ui.RoleTab).Label(tab[1]), ts.tab == tab[0]).Height(k.Px(28)).PaddingX(k.Px(10)).
 							Radius(k.Px(6)).Cursor(ui.CursorPointer)
 						color := t.MutedForeground
@@ -246,13 +247,13 @@ func (v *sessionView) toolsDialog(c *ui.Context) {
 					}
 				})
 				ui.Box(c).Grow(1)
-				if k.IconButton(c, "x", "Close", 24).Clicked() {
+				if k.IconButton(c, "x", L("Close"), 24).Clicked() {
 					ts.open = false
 				}
 			})
 			// The dialog takes the height of what it holds, so the panel
 			// gets one of its own: the dialog's room under the 45px tab row.
-			ui.Scroll(c).Role(ui.RoleGroup).Label("Tab panel").MaxHeight(maxH - k.Px(45)).FillWidth().Children(func() {
+			ui.Scroll(c).Role(ui.RoleGroup).Label(L("Tab panel")).MaxHeight(maxH - k.Px(45)).FillWidth().Children(func() {
 				ui.Column(c).FillWidth().Padding(k.Px(12)).Children(func() {
 					if ts.tab == "mcp" {
 						v.mcpTab(c)
@@ -272,11 +273,11 @@ func (v *sessionView) toolBadge(c *ui.Context, label string) {
 	})
 }
 
-func (v *sessionView) toolLoading(c *ui.Context, what string) {
+func (v *sessionView) toolLoading(c *ui.Context, msg string) {
 	k, t := v.a.kit, v.a.kit.T
 	ui.Row(c).Gap(k.Px(8)).Padding(k.Px(8)).Children(func() {
 		k.Spinner(c, 14, t.MutedForeground)
-		k.Text(c, "Loading "+what+"…", 14, 20).TextColor(t.MutedForeground)
+		k.Text(c, msg, 14, 20).TextColor(t.MutedForeground)
 	})
 }
 
@@ -302,13 +303,13 @@ func (v *sessionView) skillsTab(c *ui.Context) {
 	ts.mu.Unlock()
 	switch {
 	case !loaded:
-		v.toolLoading(c, "skills")
+		v.toolLoading(c, L("Loading skills…"))
 		return
 	case errMsg != "":
 		v.toolFailure(c, errMsg)
 		return
 	case len(list) == 0:
-		v.toolNote(c, "No skills are installed.")
+		v.toolNote(c, L("No skills are installed."))
 		return
 	}
 	ui.Column(c).Gap(k.Px(16)).Children(func() {
@@ -316,7 +317,7 @@ func (v *sessionView) skillsTab(c *ui.Context) {
 			v.toolFailure(c, actErr)
 		}
 		for _, g := range skills.GroupSkills(list) {
-			label := trimOr(skills.LocationLabels[g.Location], g.Location)
+			label := l10n.T(trimOr(skills.LocationLabels[g.Location], g.Location))
 			ui.Column(c).Role(ui.RoleGroup).Label(label).Key("skills:" + g.Location).Children(func() {
 				k.Text(c, label, 12, 16).FontWeight(500).TextColor(t.MutedForeground).Padding(0, k.Px(8), k.Px(4), k.Px(8))
 				ui.Column(c).Role(ui.RoleList).Gap(k.Px(2)).Children(func() {
@@ -344,10 +345,10 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 			ui.Row(c).Wrap().Gap(k.Px(6)).Children(func() {
 				k.Text(c, s.Name, 14, 20).FontWeight(500)
 				if off {
-					v.toolBadge(c, skills.DisabledLabel(s))
+					v.toolBadge(c, l10n.T(skills.DisabledLabel(s)))
 				}
 				if s.UserInvocable != nil && !*s.UserInvocable {
-					v.toolBadge(c, "Model only")
+					v.toolBadge(c, L("Model only"))
 				}
 				if saving {
 					k.Spinner(c, 12, t.MutedForeground)
@@ -360,7 +361,7 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 		if string(s.Location) == "personal" {
 			return
 		}
-		if a.toggle(c, s.Name+" enabled", !off, !can || saving) && can {
+		if a.toggle(c, L("%s enabled", s.Name), !off, !can || saving) && can {
 			name, level := s.Name, sw.Level
 			v.toolsAct(name, func() error {
 				cl, err := a.ctl.Client()
@@ -383,7 +384,7 @@ func (v *sessionView) mcpTab(c *ui.Context) {
 	loaded, errMsg, servers, summary, actErr := ts.loaded, ts.serversErr, mcp.SortServers(ts.servers), ts.summary, ts.actErr
 	ts.mu.Unlock()
 	if !loaded {
-		v.toolLoading(c, "MCP servers")
+		v.toolLoading(c, L("Loading MCP servers…"))
 		return
 	}
 	if errMsg != "" {
@@ -411,16 +412,16 @@ func (v *sessionView) mcpTab(c *ui.Context) {
 			v.toolFailure(c, actErr)
 		}
 		if len(servers) == 0 {
-			v.toolNote(c, "No MCP servers are configured.")
+			v.toolNote(c, L("No MCP servers are configured."))
 		} else {
-			ui.Column(c).Role(ui.RoleList).Label("MCP servers").Gap(k.Px(2)).Children(func() {
+			ui.Column(c).Role(ui.RoleList).Label(L("MCP servers")).Gap(k.Px(2)).Children(func() {
 				for _, s := range servers {
 					v.serverRow(c, s)
 				}
 			})
 		}
 		ui.Row(c).PaddingX(k.Px(8)).Children(func() {
-			if v.a.smallButton(c, kit.Outline, "Add server", "plus", false).Clicked() {
+			if v.a.smallButton(c, kit.Outline, L("Add server"), "plus", false).Clicked() {
 				ts.view, ts.query = "catalogue", ""
 				v.loadRegistry()
 			}
@@ -481,7 +482,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 	}
 	ts.mu.Unlock()
 	status := string(s.Status)
-	label := trimOr(mcp.StatusLabels[status], status)
+	label := l10n.T(trimOr(mcp.StatusLabels[status], status))
 	readOnly, droi, on := mcp.IsReadOnly(s), mcp.IsDroiMemory(s), status != "disabled"
 	toolCount := len(tools)
 	if s.ToolCount != nil {
@@ -504,9 +505,9 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 					v.toolBadge(c, string(s.ServerType))
 					switch string(s.Source) {
 					case "org":
-						v.toolBadge(c, "Organization")
+						v.toolBadge(c, L("Organization"))
 					case "project":
-						v.toolBadge(c, "Project")
+						v.toolBadge(c, L("Project"))
 					}
 					if droi {
 						v.toolBadge(c, "Droi")
@@ -514,14 +515,14 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 				})
 				line := label
 				if toolCount > 0 && on {
-					line += " · " + plural(toolCount, "tool", "tools")
+					line += " · " + toolCountLabel(toolCount)
 				}
 				if s.Error != "" {
 					line += " · " + s.Error
 				}
 				k.Text(c, line, 13, 20).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
 				if droi {
-					k.Text(c, "Droi’s Memory. Turn it on or off on the computer in Settings → Memory.", 13, 20).TextColor(t.MutedForeground)
+					k.Text(c, L("Droi’s Memory. Turn it on or off on the computer in Settings → Memory."), 13, 20).TextColor(t.MutedForeground)
 				}
 				if s.PendingAuthURL != "" {
 					v.signInNotice(c, s)
@@ -529,14 +530,14 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 				open := v.flag("mcp-tools:"+s.Name, false)
 				ui.Row(c).Wrap().Gap(k.Px(4)).Margin(k.Px(4), 0, 0, 0).Children(func() {
 					if on && toolCount > 0 {
-						b := k.Button(c, kit.Ghost, 24, false, plural(toolCount, "tool", "tools")).Expanded(*open).PaddingX(k.Px(8)).Gap(k.Px(4))
+						b := k.Button(c, kit.Ghost, 24, false, toolCountLabel(toolCount)).Expanded(*open).PaddingX(k.Px(8)).Gap(k.Px(4))
 						b.Children(func() {
 							rot := float32(0)
 							if *open {
 								rot = 90
 							}
 							k.Icon(c, "chevron-right", 12, t.MutedForeground).Rotate(rot)
-							k.Text(c, plural(toolCount, "tool", "tools"), 12, 16).FontWeight(500).TextColor(t.MutedForeground)
+							k.Text(c, toolCountLabel(toolCount), 12, 16).FontWeight(500).TextColor(t.MutedForeground)
 						})
 						if b.Clicked() {
 							*open = !*open
@@ -551,13 +552,13 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 						b.Children(func() { k.Text(c, label, 12, 16).FontWeight(500).TextColor(color) })
 						return b.Clicked()
 					}
-					if !readOnly && on && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, "Sign in") {
+					if !readOnly && on && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, L("Sign in")) {
 						v.mcpCall(name, func(cl mcpClient) error {
 							_, err := cl.AuthenticateMCPServer(a.ctx, protocol.AuthenticateMCPServerParams{SessionID: v.id, ServerName: name})
 							return err
 						}, nil)
 					}
-					if !readOnly && s.HasAuthTokens != nil && *s.HasAuthTokens && small(kit.Ghost, "Sign out") {
+					if !readOnly && s.HasAuthTokens != nil && *s.HasAuthTokens && small(kit.Ghost, L("Sign out")) {
 						v.mcpCall(name, func(cl mcpClient) error {
 							_, err := cl.ClearMCPAuth(a.ctx, protocol.ClearMCPAuthParams{SessionID: v.id, ServerName: name})
 							return err
@@ -565,17 +566,17 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 					}
 					if mcp.CanRemove(s) {
 						if ts.remove == s.Name {
-							if small(kit.Destructive, "Remove "+s.Name) {
+							if small(kit.Destructive, L("Remove %s", s.Name)) {
 								ts.remove = ""
 								v.mcpCall(name, func(cl mcpClient) error {
 									_, err := cl.RemoveMCPServer(a.ctx, protocol.RemoveMCPServerParams{SessionID: v.id, ServerName: name, SettingsLevel: "user"})
 									return err
 								}, nil)
 							}
-							if small(kit.Ghost, "Keep") {
+							if small(kit.Ghost, L("Keep")) {
 								ts.remove = ""
 							}
-						} else if small(kit.Ghost, "Remove") {
+						} else if small(kit.Ghost, L("Remove")) {
 							ts.remove = s.Name
 						}
 					}
@@ -587,7 +588,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 			if droi {
 				return
 			}
-			if a.toggle(c, s.Name+" enabled", on, readOnly || busy) && !readOnly {
+			if a.toggle(c, L("%s enabled", s.Name), on, readOnly || busy) && !readOnly {
 				enabled := !on
 				v.mcpCall(name, func(cl mcpClient) error {
 					_, err := cl.ToggleMCPServer(a.ctx, protocol.ToggleMCPServerParams{SessionID: v.id, ServerName: name, Enabled: enabled, SettingsLevel: "user"})
@@ -602,10 +603,10 @@ func (v *sessionView) toolList(c *ui.Context, s protocol.MCPServerStatusInfo, to
 	a := v.a
 	k, t := a.kit, a.kit.T
 	if len(tools) == 0 {
-		v.toolLoading(c, "tools")
+		v.toolLoading(c, L("Loading tools…"))
 		return
 	}
-	ui.Column(c).Role(ui.RoleList).Label(s.Name+" tools").Gap(k.Px(2)).Padding(k.Px(4), 0, 0, k.Px(4)).Children(func() {
+	ui.Column(c).Role(ui.RoleList).Label(L("%s tools", s.Name)).Gap(k.Px(2)).Padding(k.Px(4), 0, 0, k.Px(4)).Children(func() {
 		for _, tool := range tools {
 			ui.Row(c).Key("tool:" + tool.Name).Gap(k.Px(12)).PaddingY(k.Px(2)).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -614,7 +615,7 @@ func (v *sessionView) toolList(c *ui.Context, s protocol.MCPServerStatusInfo, to
 						k.Text(c, tool.Description, 12, 16).TextColor(t.MutedForeground).MaxLines(1)
 					}
 				})
-				if a.toggle(c, tool.Name+" enabled", tool.IsEnabled, readOnly) && !readOnly {
+				if a.toggle(c, L("%s enabled", tool.Name), tool.IsEnabled, readOnly) && !readOnly {
 					server, name, enabled := s.Name, tool.Name, !tool.IsEnabled
 					v.mcpCall(server, func(cl mcpClient) error {
 						_, err := cl.ToggleMCPTool(a.ctx, protocol.ToggleMCPToolParams{SessionID: v.id, ServerName: server, ToolName: name, Enabled: enabled})
@@ -630,19 +631,19 @@ func (v *sessionView) signInNotice(c *ui.Context, s protocol.MCPServerStatusInfo
 	a := v.a
 	k, t := a.kit, a.kit.T
 	name, url := s.Name, s.PendingAuthURL
-	ui.Row(c).Role(ui.RoleStatus).Label("Sign in to "+name).Wrap().Gap(k.Px(8)).Margin(k.Px(4), 0, 0, 0).Padding(k.Px(6), k.Px(8)).
+	ui.Row(c).Role(ui.RoleStatus).Label(L("Sign in to %s", name)).Wrap().Gap(k.Px(8)).Margin(k.Px(4), 0, 0, 0).Padding(k.Px(6), k.Px(8)).
 		Radius(k.Px(6)).Background(t.Attention.Alpha(0.1)).Children(func() {
-		k.Text(c, trimOr(s.PendingAuthMessage, "Sign in to continue"), 13, 20).Grow(1).MinWidth(0)
-		l := ui.ButtonBase(c).Role(ui.RoleLink).Label("Open sign-in page").Gap(k.Px(4)).Cursor(ui.CursorPointer)
+		k.Text(c, trimOr(s.PendingAuthMessage, L("Sign in to continue")), 13, 20).Grow(1).MinWidth(0)
+		l := ui.ButtonBase(c).Role(ui.RoleLink).Label(L("Open sign-in page")).Gap(k.Px(4)).Cursor(ui.CursorPointer)
 		l.Children(func() {
-			k.Text(c, "Open sign-in page", 13, 20).FontWeight(500).Underline()
+			k.Text(c, L("Open sign-in page"), 13, 20).FontWeight(500).Underline()
 			k.Icon(c, "external-link", 12, t.Foreground)
 		})
 		if l.Clicked() {
 			c.OpenURL(url)
 		}
-		b := k.Button(c, kit.Ghost, 24, false, "Cancel").PaddingX(k.Px(8))
-		b.Children(func() { k.Text(c, "Cancel", 12, 16).FontWeight(500) })
+		b := k.Button(c, kit.Ghost, 24, false, L("Cancel")).PaddingX(k.Px(8))
+		b.Children(func() { k.Text(c, L("Cancel"), 12, 16).FontWeight(500) })
 		if b.Clicked() {
 			v.mcpCall(name, func(cl mcpClient) error {
 				_, err := cl.CancelMCPAuth(a.ctx, protocol.CancelMCPAuthParams{SessionID: v.id, ServerName: name})
@@ -655,7 +656,7 @@ func (v *sessionView) signInNotice(c *ui.Context, s protocol.MCPServerStatusInfo
 func (v *sessionView) subHeader(c *ui.Context, title string, back func()) {
 	k := v.a.kit
 	ui.Row(c).Gap(k.Px(4)).Children(func() {
-		if k.IconButton(c, "chevron-left", "Back", 24).Clicked() {
+		if k.IconButton(c, "chevron-left", L("Back"), 24).Clicked() {
 			back()
 		}
 		k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500)
@@ -684,9 +685,9 @@ func (v *sessionView) mcpCatalogue(c *ui.Context, taken []string) {
 	state, registry, busy, actErr := ts.registryState, ts.registry, ts.busy, ts.actErr
 	ts.mu.Unlock()
 	ui.Column(c).Gap(k.Px(8)).Children(func() {
-		v.subHeader(c, "Add MCP server", func() { ts.view = "" })
+		v.subHeader(c, L("Add MCP server"), func() { ts.view = "" })
 		ui.Row(c).Children(func() {
-			in := a.field(c, &ts.query, "Search the catalogue", "Search Factory's catalogue", false, false).Padding(0, k.Px(12), 0, k.Px(32)).AutoFocus()
+			in := a.field(c, &ts.query, L("Search the catalogue"), L("Search Factory's catalogue"), false, false).Padding(0, k.Px(12), 0, k.Px(32)).AutoFocus()
 			_ = in
 			k.Icon(c, "search", 14, t.MutedForeground).Absolute().Left(k.Px(10)).Top(k.Px(11))
 		})
@@ -696,17 +697,17 @@ func (v *sessionView) mcpCatalogue(c *ui.Context, taken []string) {
 		entries := mcp.FilterRegistry(registry, ts.query, taken)
 		switch {
 		case state <= 1:
-			v.toolLoading(c, "the catalogue")
+			v.toolLoading(c, L("Loading the catalogue…"))
 		case state == 3:
-			k.Text(c, "The catalogue is not available.", 14, 20).TextColor(t.MutedForeground).PaddingX(k.Px(8))
+			k.Text(c, L("The catalogue is not available."), 14, 20).TextColor(t.MutedForeground).PaddingX(k.Px(8))
 		case len(entries) == 0:
-			msg := "Everything in the catalogue is added."
+			msg := L("Everything in the catalogue is added.")
 			if q := strings.TrimSpace(ts.query); q != "" {
-				msg = "Nothing in the catalogue matches “" + q + "”."
+				msg = L("Nothing in the catalogue matches “%s”.", q)
 			}
 			k.Text(c, msg, 14, 20).TextColor(t.MutedForeground).PaddingX(k.Px(8))
 		default:
-			ui.Column(c).Role(ui.RoleList).Label("Catalogue").Gap(k.Px(2)).Children(func() {
+			ui.Column(c).Role(ui.RoleList).Label(L("Catalogue")).Gap(k.Px(2)).Children(func() {
 				for _, e := range entries {
 					entry := e
 					setup := mcp.NeedsSetup(entry)
@@ -726,11 +727,11 @@ func (v *sessionView) mcpCatalogue(c *ui.Context, taken []string) {
 								k.Text(c, entry.Note, 12, 16).TextColor(t.MutedForeground.Alpha(0.8)).Margin(k.Px(2), 0, 0, 0)
 							}
 						})
-						verb := "Add"
+						verb, label := L("Add"), L("Add %s", entry.Name)
 						if setup {
-							verb = "Set up"
+							verb, label = L("Set up"), L("Set up %s", entry.Name)
 						}
-						b := k.Button(c, kit.Outline, 24, false, verb+" "+entry.Name).PaddingX(k.Px(8)).Margin(k.Px(2), 0, 0, 0).Shrink(0).Disabled(busy != "")
+						b := k.Button(c, kit.Outline, 24, false, label).PaddingX(k.Px(8)).Margin(k.Px(2), 0, 0, 0).Shrink(0).Disabled(busy != "")
 						b.Children(func() {
 							if busy == entry.Name {
 								k.Spinner(c, 12, t.Foreground)
@@ -751,9 +752,9 @@ func (v *sessionView) mcpCatalogue(c *ui.Context, taken []string) {
 			})
 		}
 		ui.Row(c).Gap(k.Px(4)).Padding(k.Px(8), k.Px(8), 0, k.Px(8)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-			k.Text(c, "Not in the catalogue?", 13, 20).TextColor(t.MutedForeground)
-			b := k.Button(c, kit.Ghost, 24, false, "Add a server by hand").PaddingX(k.Px(8))
-			b.Children(func() { k.Text(c, "Add a server by hand", 12, 16).FontWeight(500) })
+			k.Text(c, L("Not in the catalogue?"), 13, 20).TextColor(t.MutedForeground)
+			b := k.Button(c, kit.Ghost, 24, false, L("Add a server by hand")).PaddingX(k.Px(8))
+			b.Children(func() { k.Text(c, L("Add a server by hand"), 12, 16).FontWeight(500) })
 			if b.Clicked() {
 				ts.view, ts.from, ts.form, ts.problem = "form", nil, mcp.EmptyServerForm, ""
 			}
@@ -761,8 +762,16 @@ func (v *sessionView) mcpCatalogue(c *ui.Context, taken []string) {
 	})
 }
 
+// toolCountLabel is "1 tool" or "3 tools".
+func toolCountLabel(n int) string {
+	if n == 1 {
+		return L("%d tool", n)
+	}
+	return L("%d tools", n)
+}
+
 var serverTypes = []kit.Option{
-	{Value: "stdio", Label: "Command (stdio)"},
+	{Value: "stdio", Label: l10n.N("Command (stdio)")},
 	{Value: "http", Label: "HTTP"},
 	{Value: "sse", Label: "SSE"},
 }
@@ -776,30 +785,34 @@ func (v *sessionView) mcpForm(c *ui.Context, taken []string) {
 	busy, actErr := ts.busy, ts.actErr
 	ts.mu.Unlock()
 	f := &ts.form
-	title := "Add a server by hand"
-	if ts.from != nil {
-		title = "Set up " + ts.from.Name
+	types := make([]kit.Option, len(serverTypes))
+	for i, o := range serverTypes {
+		types[i] = kit.Option{Value: o.Value, Label: l10n.T(o.Label)}
 	}
-	ui.Column(c).Role(ui.RoleGroup).Label("Add MCP server").Gap(k.Px(8)).Children(func() {
+	title := L("Add a server by hand")
+	if ts.from != nil {
+		title = L("Set up %s", ts.from.Name)
+	}
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Add MCP server")).Gap(k.Px(8)).Children(func() {
 		v.subHeader(c, title, func() { ts.view = "catalogue" })
 		if ts.from != nil && ts.from.Note != "" {
 			k.Text(c, ts.from.Note, 13, 20).Padding(k.Px(6), k.Px(10)).Radius(k.Px(6)).Background(t.Attention.Alpha(0.1))
 		}
 		ui.Row(c).Wrap().Gap(k.Px(8)).Children(func() {
-			a.field(c, &f.Name, "Server name", "Name", false, false)
-			if typ, ok := a.fieldSelect(c, "Server type", string(f.Type), serverTypes, false); ok {
+			a.field(c, &f.Name, L("Server name"), L("Name"), false, false)
+			if typ, ok := a.fieldSelect(c, L("Server type"), string(f.Type), types, false); ok {
 				f.Type = protocol.MCPServerType(typ)
 			}
 		})
 		if f.Type != protocol.MCPServerTypeStdio {
-			a.field(c, &f.URL, "Server URL", "https://…", false, false)
+			a.field(c, &f.URL, L("Server URL"), "https://…", false, false)
 			ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
-				k.TextArea(c, &f.Headers, "Headers", "Headers, one per line: Authorization: Bearer …",
+				k.TextArea(c, &f.Headers, L("Headers"), L("Headers, one per line: Authorization: Bearer …"),
 					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 12, Line: 16, Mono: true, MinLines: 2, Color: t.Foreground})
 			})
 		} else {
-			a.field(c, &f.Command, "Command", "Command, e.g. npx", true, false)
-			a.field(c, &f.Args, "Arguments", "Arguments, separated by spaces", true, false)
+			a.field(c, &f.Command, L("Command"), L("Command, e.g. npx"), true, false)
+			a.field(c, &f.Args, L("Arguments"), L("Arguments, separated by spaces"), true, false)
 		}
 		problem := ts.problem
 		if problem == "" {
@@ -809,16 +822,16 @@ func (v *sessionView) mcpForm(c *ui.Context, taken []string) {
 			v.toolFailure(c, problem)
 		}
 		ui.Row(c).Gap(k.Px(4)).Justify(ui.End).Children(func() {
-			if a.smallButton(c, kit.Ghost, "Cancel", "", false).Clicked() {
+			if a.smallButton(c, kit.Ghost, L("Cancel"), "", false).Clicked() {
 				ts.view = "catalogue"
 			}
-			if a.smallButton(c, kit.Primary, "Add server", "", busy != "").Clicked() {
+			if a.smallButton(c, kit.Primary, L("Add server"), "", busy != "").Clicked() {
 				params, err := mcp.ParseServerForm(*f)
 				switch {
 				case err != nil:
 					ts.problem = err.Error()
 				case contains(taken, params.Name):
-					ts.problem = "There is already a server named \"" + params.Name + "\"."
+					ts.problem = L("There is already a server named \"%s\".", params.Name)
 				default:
 					ts.problem = ""
 					v.addServer(params)

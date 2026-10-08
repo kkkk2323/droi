@@ -146,18 +146,18 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 	}
 	col := v.column(c).Padding(k.Px(r.top), k.Px(24), k.Px(r.bottom), k.Px(24)).TextColor(color)
 	if r.kind != rowCall && r.kind != rowNested {
-		col.Role(ui.RoleGroup).Label("Assistant")
+		col.Role(ui.RoleGroup).Label(L("Assistant"))
 	}
 	if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Text {
 		text := r.e.Blocks[r.block].Text
 		col.Selectable().ContextMenu(func(m *ui.Menu) {
 			m.EditItems()
 			m.Separator()
-			if m.Item("Copy as Markdown").Chosen() {
+			if m.Item(L("Copy as Markdown")).Chosen() {
 				c.WriteClipboard(text)
-				c.Toast("Copied as Markdown")
+				c.Toast(L("Copied as Markdown"))
 			}
-			if m.Item("Quote in message").Chosen() {
+			if m.Item(L("Quote in message")).Chosen() {
 				v.quote(text)
 			}
 		})
@@ -172,7 +172,7 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 				if text := transcript.ReplyText(r.turn); text != "" {
 					// The negative margins keep the row as tall as its text and
 					// the icon in line with the reply's left edge.
-					b := ui.ButtonBase(c).Label("Copy reply").Tooltip("Copy reply").Size(k.Px(24), k.Px(24)).
+					b := ui.ButtonBase(c).Label(L("Copy reply")).Tooltip(L("Copy reply")).Size(k.Px(24), k.Px(24)).
 						Margin(-k.Px(4), 0, -k.Px(4), -k.Px(5)).Radius(k.Px(6)).Center().Cursor(ui.CursorPointer)
 					color := t.MutedForeground
 					if b.Hovered() {
@@ -182,7 +182,7 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 					b.Children(func() { k.Icon(c, "copy", 14, color) })
 					if b.Clicked() {
 						c.WriteClipboard(text)
-						c.Toast("Copied the reply")
+						c.Toast(L("Copied the reply"))
 					}
 				}
 				k.Text(c, transcript.FormatTurnEnd(r.end, a.cfg.Now()), 12, 16).TextColor(t.MutedForeground)
@@ -223,10 +223,10 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 				v.reply(c, &f, b.Text, color)
 				if r.streaming {
 					pulse := 0.6 * (0.5 + 0.5*float32(pulseWave(c)))
-					ui.Box(c).Label("Assistant is typing").Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))
+					ui.Box(c).Label(L("Assistant is typing")).Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))
 				}
 			case transcript.Picture:
-				v.picture(c, b.ID, b.Image, 288, "Image from Droid")
+				v.picture(c, b.ID, b.Image, 288, L("Image from Droid"))
 			case transcript.Thinking:
 				v.thinking(c, b, r.e.ID == v.streamingID)
 			case transcript.Subagent:
@@ -250,11 +250,11 @@ func (v *sessionView) userEntry(c *ui.Context, e *transcript.Entry) {
 		}
 	}
 	text := strings.Join(parts, "\n")
-	v.column(c).Role(ui.RoleGroup).Label("You").AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
+	v.column(c).Role(ui.RoleGroup).Label(L("You")).AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
 		if len(images) > 0 {
 			ui.Row(c).Wrap().Justify(ui.End).Gap(k.Px(6)).MaxWidthPercent(85).Children(func() {
 				for _, b := range images {
-					v.picture(c, b.ID, b.Image, 192, "Attached image")
+					v.picture(c, b.ID, b.Image, 192, L("Attached image"))
 				}
 			})
 		}

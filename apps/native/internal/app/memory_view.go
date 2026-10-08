@@ -11,6 +11,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 )
@@ -101,27 +102,29 @@ func (a *App) memoryTab(c *ui.Context) {
 func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	k, t := a.kit, a.kit.T
 	m := &a.memory
-	desc := "Off: Droid starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past mistakes on this computer."
+	desc := L("Off: Droid starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past mistakes on this computer.")
 	if on {
-		desc = "On: Droid can record and search what it learns about you and each Workspace, and recalls your corrections in every new Session. Only Droi’s Daemon has it; the droid CLI is untouched."
+		desc = L("On: Droid can record and search what it learns about you and each Workspace, and recalls your corrections in every new Session. Only Droi’s Daemon has it; the droid CLI is untouched.")
 	}
 	var below func()
 	if m.pending != nil {
 		next := *m.pending
-		word, verb := "off", "detach"
+		label := L("Turn Memory off")
+		question := L("Turn Memory off? The Daemon restarts to detach it. Sessions that are working stop.")
 		if next {
-			word, verb = "on", "attach"
+			label = L("Turn Memory on")
+			question = L("Turn Memory on? The Daemon restarts to attach it. Sessions that are working stop.")
 		}
 		below = func() {
-			ui.Row(c).Role(ui.RoleGroup).Label("Turn Memory " + word).Wrap().AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
-				k.Text(c, "Turn Memory "+word+"? The Daemon restarts to "+verb+" it. Sessions that are working stop.", 13, 20).
+			ui.Row(c).Role(ui.RoleGroup).Label(label).Wrap().AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
+				k.Text(c, question, 13, 20).
 					TextColor(t.MutedForeground).Grow(1).Basis(0).MinWidth(k.Px(192))
-				if a.smallButton(c, kit.Primary, "Restart Daemon", "", false).Clicked() {
+				if a.smallButton(c, kit.Primary, L("Restart Daemon"), "", false).Clicked() {
 					m.pending = nil
 					a.hostUpdate(true, func(s *host.Settings) { s.MemoryEnabled = next })
 					a.refreshMemory()
 				}
-				if a.smallButton(c, kit.Ghost, "Cancel", "", false).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Cancel"), "", false).Clicked() {
 					m.pending = nil
 				}
 			})
@@ -129,14 +132,14 @@ func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	}
 	a.settingRowWith(c, func() {
 		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
-			k.Text(c, "Memory", 14, 20).Role(ui.RoleHeading).FontWeight(500)
+			k.Text(c, L("Memory"), 14, 20).Role(ui.RoleHeading).FontWeight(500)
 			ui.Box(c).PaddingX(k.Px(6)).Radius(k.Px(999)).Border(1, t.Border).Children(func() {
-				k.Text(c, "Beta", 11, 16).TextColor(t.MutedForeground)
+				k.Text(c, L("Beta"), 11, 16).TextColor(t.MutedForeground)
 			})
 		})
 	}, desc, func() {
 		// The switch keeps showing the setting until the restart is confirmed.
-		if a.toggle(c, "Memory", on, false) {
+		if a.toggle(c, L("Memory"), on, false) {
 			next := !on
 			if m.pending != nil {
 				m.pending = nil
@@ -148,12 +151,12 @@ func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 }
 
 func (a *App) memoryModelRow(c *ui.Context, model string) {
-	a.settingRow(c, "Memory model", "Runs Droi’s own Memory work: extracting entries from a finished Session and consolidating a Memory that grew large. A cheap model is enough.", func() {
+	a.settingRow(c, L("Memory model"), L("Runs Droi’s own Memory work: extracting entries from a finished Session and consolidating a Memory that grew large. A cheap model is enough."), func() {
 		var choices = defaults.PickableModels(nil, false)
 		if dv := a.sessionDefaults(); dv != nil {
 			choices = defaults.PickableModels(dv.Models, false)
 		}
-		a.modelField(c, "Memory model", false, a.settings.flag("model:memory"), &a.settings.picker, choices, model, func(next string) {
+		a.modelField(c, L("Memory model"), false, a.settings.flag("model:memory"), &a.settings.picker, choices, model, func(next string) {
 			// Read at each Memory Session; the Daemon needs no restart.
 			a.hostUpdate(false, func(s *host.Settings) { s.MemoryModel = host.OptString(next) })
 		})
@@ -168,15 +171,15 @@ func (a *App) memoriesSection(c *ui.Context) {
 	switch {
 	case err != "":
 		rows = append(rows, func() {
-			a.settingRow(c, "Memory did not load", "", nil, func() {
+			a.settingRow(c, L("Memory did not load"), "", nil, func() {
 				k.Text(c, err, 13, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 			})
 		})
 	case ov == nil:
-		rows = append(rows, func() { a.settingRow(c, "Loading Memory…", "", nil, nil) })
+		rows = append(rows, func() { a.settingRow(c, L("Loading Memory…"), "", nil, nil) })
 	case len(ov.Rows) == 0:
 		rows = append(rows, func() {
-			a.settingRow(c, "Nothing remembered yet", "Entries show up here once Droid saves something about you or a Workspace.", nil, nil)
+			a.settingRow(c, L("Nothing remembered yet"), L("Entries show up here once Droid saves something about you or a Workspace."), nil, nil)
 		})
 	default:
 		for _, row := range ov.Rows {
@@ -184,13 +187,13 @@ func (a *App) memoriesSection(c *ui.Context) {
 		}
 	}
 	rows = append(rows, func() {
-		a.settingRow(c, "Files and prompts", "A read-only Markdown copy of each Memory, and the prompts Droi uses to extract and consolidate entries.", func() {
+		a.settingRow(c, L("Files and prompts"), L("A read-only Markdown copy of each Memory, and the prompts Droi uses to extract and consolidate entries."), func() {
 			ui.Row(c).Wrap().Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
-				if a.smallButton(c, kit.Outline, "Open memory folder", "folder-open", false).Clicked() && a.cfg.OpenPath != nil {
+				if a.smallButton(c, kit.Outline, L("Open memory folder"), "folder-open", false).Clicked() && a.cfg.OpenPath != nil {
 					dir := a.cfg.Memory.Folder()
 					go func() { _ = os.MkdirAll(dir, 0o755); _ = a.cfg.OpenPath(dir) }()
 				}
-				if a.smallButton(c, kit.Ghost, "Reset prompts to default", "rotate-ccw", false).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Reset prompts to default"), "rotate-ccw", false).Clicked() {
 					if e := a.cfg.Memory.ResetPrompts(); e == nil {
 						m.reset = true
 					} else {
@@ -200,30 +203,31 @@ func (a *App) memoriesSection(c *ui.Context) {
 			})
 		}, func() {
 			if m.reset {
-				k.Text(c, "The consolidation and extraction prompts are back to Droi’s.", 12, 16).Role(ui.RoleStatus).TextColor(t.MutedForeground)
+				k.Text(c, L("The consolidation and extraction prompts are back to Droi’s."), 12, 16).Role(ui.RoleStatus).TextColor(t.MutedForeground)
 			}
 		})
 	})
-	a.settingGroup(c, "Memories on this computer", "", rows...)
+	a.settingGroup(c, L("Memories on this computer"), "", rows...)
 }
 
 func (a *App) memoryRow(c *ui.Context, row memorywork.Row, loggedSince string) {
 	k, t := a.kit, a.kit.T
 	m := &a.memory
-	name := row.Workspace
+	// name keys the row and its result, so it stays as it is whatever the language.
+	name, shown := row.Workspace, row.Workspace
 	if name == "" {
-		name = "Global Memory"
+		name, shown = "Global Memory", L("Global Memory")
 	}
-	consolidated := "never consolidated"
+	consolidated := L("never consolidated")
 	if row.LastConsolidated != "" {
-		consolidated = "consolidated " + localDate(row.LastConsolidated)
+		consolidated = L("consolidated %s", localDate(row.LastConsolidated))
 	}
-	desc := plural(row.Entries, "entry", "entries") + " · " + formatChars(row.Chars) + " of " + formatChars(row.SoftLimit) + " characters · " + consolidated
+	desc := L("%s · %s of %s characters · %s", countL(row.Entries, l10n.N("%d entry"), l10n.N("%d entries")), formatChars(row.Chars), formatChars(row.SoftLimit), consolidated)
 	busy := row.Consolidating || m.results[name] == "\x00"
-	ui.Column(c).Role(ui.RoleListItem).Label(name).Key("memory:" + name).Children(func() {
+	ui.Column(c).Role(ui.RoleListItem).Label(shown).Key("memory:" + name).Children(func() {
 		a.settingRowWith(c, func() {
 			if row.Workspace == "" {
-				k.Text(c, "Global Memory", 14, 20).Role(ui.RoleHeading).FontWeight(500)
+				k.Text(c, L("Global Memory"), 14, 20).Role(ui.RoleHeading).FontWeight(500)
 			} else {
 				k.Text(c, row.Workspace, 13, 20).Role(ui.RoleHeading).FontWeight(500).Font(k.Mono).SingleLine()
 			}
@@ -232,26 +236,26 @@ func (a *App) memoryRow(c *ui.Context, row memorywork.Row, loggedSince string) {
 			if row.OverSoftLimit {
 				v = kit.Primary
 			}
-			label := "Consolidate"
+			label := L("Consolidate")
 			if busy {
-				label = "Consolidating…"
+				label = L("Consolidating…")
 			}
-			if a.smallButton(c, v, label, "", busy || row.Entries < 2).Label("Consolidate " + name).Clicked() {
+			if a.smallButton(c, v, label, "", busy || row.Entries < 2).Label(L("Consolidate %s", shown)).Clicked() {
 				a.consolidate(row.Workspace, name)
 			}
 		}, func() {
 			if loggedSince != "" {
-				line := plural(row.Searches, "search", "searches") + " since " + localDate(loggedSince)
+				line := L("%s since %s", countL(row.Searches, l10n.N("%d search"), l10n.N("%d searches")), localDate(loggedSince))
 				if row.Searches > 0 {
-					line += ", " + itoa(row.EmptySearches) + " found nothing"
+					line = L("%s, %d found nothing", line, row.EmptySearches)
 				}
-				line += " · " + plural(row.NeverFound, "entry", "entries") + " never found"
+				line = L("%s · %s never found", line, countL(row.NeverFound, l10n.N("%d entry"), l10n.N("%d entries")))
 				k.Text(c, line, 13, 20).TextColor(t.MutedForeground).Margin(-k.Px(10), 0, 0, 0)
 			}
 			if row.OverSoftLimit {
 				ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).Margin(k.Px(4), 0, 0, 0).Children(func() {
 					k.Icon(c, "circle-alert", 14, t.Attention)
-					k.Text(c, "Over its size; consolidate it to keep writes going.", 13, 20).TextColor(t.Attention)
+					k.Text(c, L("Over its size; consolidate it to keep writes going."), 13, 20).TextColor(t.Attention)
 				})
 			}
 			if r := m.results[name]; r != "" && r != "\x00" {
@@ -274,9 +278,9 @@ func (a *App) consolidate(workspace, name string) {
 			case err != nil:
 				m.results[name] = err.Error()
 			case res.Rejected == 0:
-				m.results[name] = "Consolidated " + plural(res.Applied, "category", "categories") + "."
+				m.results[name] = L("Consolidated %s.", countL(res.Applied, l10n.N("%d category"), l10n.N("%d categories")))
 			default:
-				m.results[name] = "Consolidated " + itoa(res.Applied) + "; " + itoa(res.Rejected) + " left unchanged because the model’s answer did not hold up."
+				m.results[name] = L("Consolidated %d; %d left unchanged because the model’s answer did not hold up.", res.Applied, res.Rejected)
 			}
 			a.refreshMemory()
 		})
@@ -324,10 +328,10 @@ func (a *App) memoryFullCard(c *ui.Context) {
 	workspace, _, _ := strings.Cut(key, "\n")
 	name := filepath.Base(workspace)
 	k, t := a.kit, a.kit.T
-	a.cornerCard(c, "Memory is large", "brain", func() {
-		k.Text(c, name+"’s Memory is large", 14, 20).FontWeight(500)
-		k.Text(c, "Consolidate it before it fills up; a full Memory takes no new entries.", 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
-		if a.smallButton(c, kit.Primary, "Open Memory settings", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+	a.cornerCard(c, L("Memory is large"), "brain", func() {
+		k.Text(c, L("%s’s Memory is large", name), 14, 20).FontWeight(500)
+		k.Text(c, L("Consolidate it before it fills up; a full Memory takes no new entries."), 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+		if a.smallButton(c, kit.Primary, L("Open Memory settings"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
 			notice()
 			a.Go(Route{Name: "settings", Tab: "memory"})
 		}

@@ -26,10 +26,10 @@ func (a *App) droidUpdatedCard(c *ui.Context) {
 		return
 	}
 	k, t := a.kit, a.kit.T
-	a.cornerCard(c, "droid update", "refresh-cw", func() {
-		k.Text(c, "droid was updated", 14, 20).FontWeight(500)
-		k.Text(c, "Restart the Daemon to use the new version. Working Sessions are interrupted.", 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
-		if a.smallButton(c, kit.Primary, "Restart Daemon", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+	a.cornerCard(c, L("droid update"), "refresh-cw", func() {
+		k.Text(c, L("droid was updated"), 14, 20).FontWeight(500)
+		k.Text(c, L("Restart the Daemon to use the new version. Working Sessions are interrupted."), 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+		if a.smallButton(c, kit.Primary, L("Restart Daemon"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
 			go h.RestartDaemon()
 		}
 	}, func() { a.droidUpdateDismissed = true })
@@ -54,7 +54,7 @@ func (a *App) cornerCard(c *ui.Context, label, icon string, body func(), dismiss
 		Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1)).Children(func() {
 		k.Icon(c, icon, 16, t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Children(body)
-		if k.IconButton(c, "x", "Dismiss", 24).Clicked() {
+		if k.IconButton(c, "x", L("Dismiss"), 24).Clicked() {
 			dismiss()
 		}
 	})
@@ -71,10 +71,10 @@ func (a *App) startingUpView(c *ui.Context) {
 			}
 		})
 		ui.Row(c).Grow(1).Center().Children(func() {
-			ui.Row(c).Role(ui.RoleStatus).Label("Starting").Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Role(ui.RoleStatus).Label(L("Starting")).Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
 				wave := float32(pulseWave(c))
 				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.4+0.3*wave))
-				k.Text(c, "Starting the Daemon", 14, 20).TextColor(t.MutedForeground)
+				k.Text(c, L("Starting the Daemon"), 14, 20).TextColor(t.MutedForeground)
 			})
 		})
 	})

@@ -7,6 +7,8 @@ package updates
 import (
 	"context"
 	"sync"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 // Status is where an update is.
@@ -102,7 +104,7 @@ func (u *Updater) Check(ctx context.Context) State {
 	rel, err := u.src.Check(ctx)
 	switch {
 	case err != nil:
-		u.set(State{Status: Failed, Message: "Could not check for updates: " + err.Error()})
+		u.set(State{Status: Failed, Message: l10n.L("Could not check for updates: %s", err.Error())})
 	case rel == nil:
 		u.set(State{Status: UpToDate})
 	default:
@@ -137,7 +139,7 @@ func (u *Updater) Install(ctx context.Context) State {
 		}
 	})
 	if err != nil {
-		u.set(State{Status: Failed, Message: "The update did not install: " + err.Error()})
+		u.set(State{Status: Failed, Message: l10n.L("The update did not install: %s", err.Error())})
 		return u.State()
 	}
 	u.set(State{Status: Ready, Version: v, Notes: notes})

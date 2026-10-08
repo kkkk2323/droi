@@ -6,7 +6,6 @@
 package subagents
 
 import (
-	"fmt"
 	"math"
 	"regexp"
 	"slices"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
@@ -79,7 +79,7 @@ func CallerTrail(list []sessions.Summary, sessionID, callingSessionID string) []
 		caller, known := byID[callerID]
 		latestID := compactionChain(list, callerID)[0]
 		latest, hasLatest := byID[latestID]
-		title := "Main session"
+		title := l10n.L("Main session")
 		if hasLatest {
 			title = latest.Title
 		} else if known {
@@ -201,7 +201,7 @@ func TaskRequest(call *transcript.ToolCall) Request {
 // subagent's Session.
 func SubagentName(subagentType string) string {
 	if subagentType == "" {
-		return "Subagent"
+		return l10n.L("Subagent")
 	}
 	r, n := utf8.DecodeRuneInString(subagentType)
 	return string(unicode.ToUpper(r)) + subagentType[n:]
@@ -332,11 +332,11 @@ func UnlistedTaskCalls(entries []*transcript.Entry, byToolUse map[string]session
 func FormatRunDuration(ms float64) string {
 	seconds := int(math.Round(ms / 1000))
 	if seconds < 60 {
-		return fmt.Sprintf("%ds", seconds)
+		return l10n.L("%ds", seconds)
 	}
 	minutes := seconds / 60
 	if minutes < 60 {
-		return fmt.Sprintf("%dm %ds", minutes, seconds%60)
+		return l10n.L("%dm %ds", minutes, seconds%60)
 	}
-	return fmt.Sprintf("%dh %dm", minutes/60, minutes%60)
+	return l10n.L("%dh %dm", minutes/60, minutes%60)
 }

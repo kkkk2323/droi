@@ -14,15 +14,15 @@ import (
 func describeUpdate(s updates.State) string {
 	switch s.Status {
 	case updates.Checking:
-		return "Checking…"
+		return L("Checking…")
 	case updates.UpToDate:
-		return "Up to date"
+		return L("Up to date")
 	case updates.Available:
-		return s.Version + " is available"
+		return L("%s is available", s.Version)
 	case updates.Downloading:
-		return "Downloading " + itoa(s.Percent) + "%"
+		return L("Downloading %d%%", s.Percent)
 	case updates.Ready:
-		return s.Version + " is installed"
+		return L("%s is installed", s.Version)
 	case updates.Failed:
 		return s.Message
 	}
@@ -64,17 +64,17 @@ func (a *App) updateControl(c *ui.Context) {
 		}
 		switch s.Status {
 		case updates.Available:
-			if a.smallButton(c, kit.Primary, "Update to "+s.Version, "arrow-down-to-line", false).Clicked() {
+			if a.smallButton(c, kit.Primary, L("Update to %s", s.Version), "arrow-down-to-line", false).Clicked() {
 				a.installUpdate()
 			}
 		case updates.Ready:
-			if a.smallButton(c, kit.Primary, "Restart to update", "", false).Clicked() {
+			if a.smallButton(c, kit.Primary, L("Restart to update"), "", false).Clicked() {
 				a.relaunch()
 			}
 		default:
-			label := "Check for updates"
+			label := L("Check for updates")
 			if s.Status == updates.Failed {
-				label = "Try again"
+				label = L("Try again")
 			}
 			if a.smallButton(c, kit.Outline, label, "", working).Clicked() {
 				a.checkForUpdate()
@@ -92,8 +92,8 @@ func showsNotes(s updates.State) bool {
 // updateNotes are what the release changes, under the About row.
 func (a *App) updateNotes(c *ui.Context, s updates.State) {
 	k := a.kit
-	ui.Column(c).Role(ui.RoleGroup).Label("Release notes").Children(func() {
-		k.Text(c, "What’s new in "+s.Version, 13, 20).FontWeight(500)
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Release notes")).Children(func() {
+		k.Text(c, L("What’s new in %s", s.Version), 13, 20).FontWeight(500)
 		p := newProse(k)
 		p.size, p.lh, p.color = 13, 22, k.T.MutedForeground
 		f := flow{c: c}
@@ -116,33 +116,33 @@ func (a *App) updateCard(c *ui.Context) {
 		return
 	}
 	k, t := a.kit, a.kit.T
-	icon, title := "arrow-down-to-line", "Droi "+s.Version+" is available"
+	icon, title := "arrow-down-to-line", L("Droi %s is available", s.Version)
 	switch s.Status {
 	case updates.Ready:
-		icon, title = "refresh-cw", "Droi "+s.Version+" is ready"
+		icon, title = "refresh-cw", L("Droi %s is ready", s.Version)
 	case updates.Downloading:
-		title = "Downloading Droi " + s.Version + "…"
+		title = L("Downloading Droi %s…", s.Version)
 	}
-	a.cornerCard(c, "Update", icon, func() {
+	a.cornerCard(c, L("Update"), icon, func() {
 		k.Text(c, title, 14, 20).FontWeight(500)
 		switch s.Status {
 		case updates.Downloading:
-			ui.Box(c).Role(ui.RoleProgress).Label("Download progress").FillWidth().Height(k.Px(4)).Radius(k.Px(2)).Background(t.Muted).Margin(k.Px(8), 0, 0, 0).Clip().Children(func() {
+			ui.Box(c).Role(ui.RoleProgress).Label(L("Download progress")).FillWidth().Height(k.Px(4)).Radius(k.Px(2)).Background(t.Muted).Margin(k.Px(8), 0, 0, 0).Clip().Children(func() {
 				ui.Box(c).WidthPercent(float32(s.Percent)).FillHeight().Radius(k.Px(2)).Background(t.Primary)
 			})
 		case updates.Ready:
-			if a.smallButton(c, kit.Primary, "Restart now", "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+			if a.smallButton(c, kit.Primary, L("Restart now"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
 				a.relaunch()
 			}
 		default:
 			ui.Row(c).Wrap().Gap(k.Px(4)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Primary, "Update", "", false).Clicked() {
+				if a.smallButton(c, kit.Primary, L("Update"), "", false).Clicked() {
 					a.installUpdate()
 				}
-				if a.smallButton(c, kit.Ghost, "Details", "", false).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Details"), "", false).Clicked() {
 					a.Go(Route{Name: "settings", Tab: "about"})
 				}
-				if a.smallButton(c, kit.Ghost, "Skip this version", "", false).Clicked() {
+				if a.smallButton(c, kit.Ghost, L("Skip this version"), "", false).Clicked() {
 					prefs.SkippedUpdate.Set(a.prefs, s.Version)
 					a.cfg.Updater.Skip(s.Version)
 				}

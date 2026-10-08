@@ -7,21 +7,22 @@
 package mcp
 
 import (
-	"fmt"
+	"errors"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/internal/collate"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 )
 
 var StatusLabels = map[string]string{
-	"connecting":   "Connecting",
-	"connected":    "Connected",
-	"disconnected": "Disconnected",
-	"failed":       "Failed",
-	"disabled":     "Disabled",
+	"connecting":   l10n.N("Connecting"),
+	"connected":    l10n.N("Connected"),
+	"disconnected": l10n.N("Disconnected"),
+	"failed":       l10n.N("Failed"),
+	"disabled":     l10n.N("Disabled"),
 }
 
 // DroiMemoryServer is Droi's Memory Server (ADR 0010), which the Desktop Shell
@@ -68,21 +69,21 @@ var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 func ParseServerForm(form ServerForm) (protocol.AddMCPServerParams, error) {
 	name := strings.TrimSpace(form.Name)
 	if name == "" {
-		return protocol.AddMCPServerParams{}, fmt.Errorf("Give the server a name.")
+		return protocol.AddMCPServerParams{}, errors.New(l10n.L("Give the server a name."))
 	}
 	if !serverName.MatchString(name) {
-		return protocol.AddMCPServerParams{}, fmt.Errorf("A name has letters, digits, \"-\" and \"_\" only.")
+		return protocol.AddMCPServerParams{}, errors.New(l10n.L("A name has letters, digits, \"-\" and \"_\" only."))
 	}
 	if form.Type == protocol.MCPServerTypeStdio {
 		command := strings.TrimSpace(form.Command)
 		if command == "" {
-			return protocol.AddMCPServerParams{}, fmt.Errorf("Give the command that starts the server.")
+			return protocol.AddMCPServerParams{}, errors.New(l10n.L("Give the command that starts the server."))
 		}
 		return protocol.AddMCPServerParams{Name: name, Type: form.Type, Command: command, Args: strings.Fields(form.Args)}, nil
 	}
 	url := strings.TrimSpace(form.URL)
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return protocol.AddMCPServerParams{}, fmt.Errorf("The URL starts with http:// or https://.")
+		return protocol.AddMCPServerParams{}, errors.New(l10n.L("The URL starts with http:// or https://."))
 	}
 	var headers map[string]string
 	for _, line := range strings.Split(form.Headers, "\n") {
@@ -91,7 +92,7 @@ func ParseServerForm(form ServerForm) (protocol.AddMCPServerParams, error) {
 		}
 		colon := strings.Index(line, ":")
 		if colon <= 0 {
-			return protocol.AddMCPServerParams{}, fmt.Errorf("A header is \"Name: value\"; \"%s\" is not.", strings.TrimSpace(line))
+			return protocol.AddMCPServerParams{}, errors.New(l10n.L("A header is \"Name: value\"; \"%s\" is not.", strings.TrimSpace(line)))
 		}
 		if headers == nil {
 			headers = map[string]string{}

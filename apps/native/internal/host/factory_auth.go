@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 // "Sign in with Factory": the OAuth device flow the droid CLI uses (WorkOS
@@ -176,7 +178,7 @@ func (a *FactoryAuth) SignIn(ctx context.Context) (*LoginPending, error) {
 		return nil, err
 	}
 	if res.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("Could not start sign-in (%d).", res.StatusCode)
+		return nil, errors.New(l10n.L("Could not start sign-in (%d).", res.StatusCode))
 	}
 	var body struct {
 		DeviceCode              string `json:"device_code"`
@@ -226,7 +228,7 @@ func (a *FactoryAuth) poll(ctx context.Context, cancel context.CancelFunc, devic
 			return
 		}
 		if err != nil {
-			fail("Sign-in failed (" + err.Error() + ").")
+			fail(l10n.L("Sign-in failed (%s).", err.Error()))
 			return
 		}
 		if res.StatusCode/100 == 2 {
@@ -235,12 +237,12 @@ func (a *FactoryAuth) poll(ctx context.Context, cancel context.CancelFunc, devic
 				RefreshToken string `json:"refresh_token"`
 			}
 			if json.Unmarshal(b, &t) != nil {
-				fail("Sign-in failed.")
+				fail(l10n.L("Sign-in failed."))
 				return
 			}
 			if a.Handoff != nil {
 				if err := a.Handoff(t.AccessToken, t.RefreshToken); err != nil {
-					fail("Could not save the login (" + err.Error() + ").")
+					fail(l10n.L("Could not save the login (%s).", err.Error()))
 					return
 				}
 				a.mu.Lock()
@@ -273,19 +275,19 @@ func (a *FactoryAuth) poll(ctx context.Context, cancel context.CancelFunc, devic
 			interval++
 			continue
 		case "access_denied":
-			fail("Sign-in was denied in the browser.")
+			fail(l10n.L("Sign-in was denied in the browser."))
 		case "expired_token":
-			fail("The sign-in code expired.")
+			fail(l10n.L("The sign-in code expired."))
 		default:
 			code := e.Error
 			if code == "" {
 				code = fmt.Sprint(res.StatusCode)
 			}
-			fail("Sign-in failed (" + code + ").")
+			fail(l10n.L("Sign-in failed (%s).", code))
 		}
 		return
 	}
-	fail("The sign-in code expired.")
+	fail(l10n.L("The sign-in code expired."))
 }
 
 // describe prefers Factory's own ids from whoami, which the Daemon compares,
@@ -410,8 +412,6 @@ func (a *FactoryAuth) AccessToken(ctx context.Context) (string, error) {
 	}
 }
 
-var errExpired = errors.New("Your Factory session expired. Sign in again.")
-
 func (a *FactoryAuth) refresh(ctx context.Context, cur storedLogin) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -437,7 +437,7 @@ func (a *FactoryAuth) refresh(ctx context.Context, cur storedLogin) (string, err
 		if err == nil && res.StatusCode >= 400 && res.StatusCode < 500 && res.StatusCode != 429 {
 			a.mu.Lock()
 			a.persistLocked(nil)
-			a.setLocked(LoginState{Status: SignedOut, Error: errExpired.Error()})
+			a.setLocked(LoginState{Status: SignedOut, Error: l10n.L("Your Factory session expired. Sign in again.")})
 			a.mu.Unlock()
 			return "", nil
 		}

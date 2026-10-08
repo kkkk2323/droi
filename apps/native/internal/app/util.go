@@ -46,15 +46,15 @@ func relativeTime(t, now time.Time) string {
 	m := int(d / time.Minute)
 	switch {
 	case m < 1:
-		return "now"
+		return L("now")
 	case m < 60:
-		return fmt.Sprintf("%dm", m)
+		return L("%dm", m)
 	case m < 24*60:
-		return fmt.Sprintf("%dh", m/60)
+		return L("%dh", m/60)
 	case m < 30*24*60:
-		return fmt.Sprintf("%dd", m/(24*60))
+		return L("%dd", m/(24*60))
 	}
-	return t.Format("Jan 2")
+	return t.Format(L("Jan 2"))
 }
 
 func plural(n int, one, many string) string {

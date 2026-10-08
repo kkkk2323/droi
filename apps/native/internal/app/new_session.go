@@ -16,6 +16,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
@@ -150,7 +151,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 	creating := s.creating
 	s.mu.Unlock()
 
-	ui.Column(c).Role(ui.RoleGroup).Label("New session").Fill().Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("New session")).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
 			if a.narrow {
 				a.openSessionsButton(c)
@@ -167,17 +168,17 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 					h := func(s string) *ui.Element { return k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
 					switch {
 					case workspace != "" && !scratch:
-						h("What do you want to build in").Role(ui.RoleHeading)
+						h(L("What do you want to build in")).Role(ui.RoleHeading)
 						ui.Row(c).Children(func() {
 							a.workspaceMenu(c, recent, workspace, labelOf(recent, workspace))
 							h("?")
 						})
 					case scratch:
-						h("What should we work on?").Role(ui.RoleHeading)
+						h(L("What should we work on?")).Role(ui.RoleHeading)
 					default:
-						h("Where should Droid work?").Role(ui.RoleHeading)
+						h(L("Where should Droid work?")).Role(ui.RoleHeading)
 						if len(listed) > 0 || status.Connected {
-							a.workspaceMenu(c, recent, "", "Choose a workspace")
+							a.workspaceMenu(c, recent, "", L("Choose a workspace"))
 						}
 					}
 				})
@@ -192,10 +193,10 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
 				switch {
 				case scratch:
-					tr := k.QuietTrigger(c, "Work in a project", s.menuOpen).Margin(0, 0, 0, -k.Px(8)).Tooltip("Not in a project: the session gets a new folder in " + a.scratchRoot())
+					tr := k.QuietTrigger(c, L("Work in a project"), s.menuOpen).Margin(0, 0, 0, -k.Px(8)).Tooltip(L("Not in a project: the session gets a new folder in %s", a.scratchRoot()))
 					tr.Children(func() {
 						k.Icon(c, "folder", 14, t.MutedForeground)
-						k.Text(c, "Work in a project", 12, 16).TextColor(t.MutedForeground).SingleLine()
+						k.Text(c, L("Work in a project"), 12, 16).TextColor(t.MutedForeground).SingleLine()
 					})
 					a.workspacePicker(c, tr, recent, scratchPick)
 				case workspace != "":
@@ -233,7 +234,7 @@ func labelOf(recent []sessions.RecentWorkspace, path string) string {
 func (a *App) workspaceMenu(c *ui.Context, recent []sessions.RecentWorkspace, value, label string) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
-	tr := ui.ButtonBase(c).Label("Workspace").Expanded(s.menuOpen).Gap(k.Px(2)).BorderWidth(0, 0, 1, 0).Cursor(ui.CursorPointer)
+	tr := ui.ButtonBase(c).Label(L("Workspace")).Expanded(s.menuOpen).Gap(k.Px(2)).BorderWidth(0, 0, 1, 0).Cursor(ui.CursorPointer)
 	line := t.MutedForeground.Alpha(0.5)
 	if tr.Hovered() || s.menuOpen {
 		line = t.Foreground
@@ -288,7 +289,7 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 		case i == other:
 			s.menuOpen = false
 			go func() {
-				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Choose a workspace", Directory: true})
+				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose a workspace"), Directory: true})
 				if err == nil && len(paths) > 0 {
 					a.cfg.Update(func() { choose(paths[0]) })
 				}
@@ -325,11 +326,11 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 		}
 	}
 	ui.PopoverBase(c, tr, &s.menuOpen, func(p *ui.Element) {
-		p.Label("Choose a project").Width(k.Px(288)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
+		p.Label(L("Choose a project")).Width(k.Px(288)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Row(c).Gap(k.Px(8)).PaddingX(k.Px(12)).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			k.Icon(c, "search", 14, t.MutedForeground)
-			in := ui.TextInputBase(c, &s.query).Label("Search projects").Placeholder("Search projects").AutoFocus().
+			in := ui.TextInputBase(c, &s.query).Label(L("Search projects")).Placeholder(L("Search projects")).AutoFocus().
 				Height(k.Px(40)).Grow(1).MinWidth(0).FontSize(k.Px(14)).TextColor(t.Foreground)
 			if in.Changed() {
 				s.highlight = 0
@@ -344,11 +345,11 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 			}
 		})
 		ui.Scroll(c).MaxHeight(k.Px(240)).Children(func() {
-			ui.Column(c).Role(ui.RoleList).Label("Projects").Padding(k.Px(4)).Children(func() {
+			ui.Column(c).Role(ui.RoleList).Label(L("Projects")).Padding(k.Px(4)).Children(func() {
 				if len(shown) == 0 {
-					msg := "No projects yet."
+					msg := L("No projects yet.")
 					if q != "" {
-						msg = "No projects match."
+						msg = L("No projects match.")
 					}
 					k.Text(c, msg, 13, 20).TextColor(t.MutedForeground).Padding(k.Px(6), k.Px(8))
 				}
@@ -358,8 +359,8 @@ func (a *App) workspacePicker(c *ui.Context, tr *ui.Element, recent []sessions.R
 			})
 		})
 		ui.Column(c).Padding(k.Px(4)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-			row(other, "other", "plus", "Other folder…", "Choose a folder on this computer", false)
-			row(none, scratchPick, "x", "Don't work in a project", "A new folder of its own in "+a.scratchRoot(), value == scratchPick)
+			row(other, "other", "plus", L("Other folder…"), L("Choose a folder on this computer"), false)
+			row(none, scratchPick, "x", L("Don't work in a project"), L("A new folder of its own in %s", a.scratchRoot()), value == scratchPick)
 		})
 	})
 }
@@ -384,7 +385,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		worktree.apply(&p, text)
 		go a.startSession(workspace, p, text, images)
 	}
-	ui.Column(c).Role(ui.RoleGroup).Label("Message composer").Gap(k.Px(6)).Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
 		if drop, ok := ui.DropData(card, dropOptions); ok {
 			d := readDrop(drop.Data)
@@ -411,7 +412,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			// the composer's row gives it the width instead.
 			var in *ui.Element
 			ui.Row(c).Children(func() {
-				in = k.TextArea(c, &s.text, "Message", "Do anything…", kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
+				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
 			paste := func() bool {
@@ -445,12 +446,12 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				return false
 			})
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
-				add := k.Button(c, kit.Ghost, 32, true, "Add image").Radius(k.Px(16)).Disabled(!enabled)
+				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!enabled)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
 				if add.Clicked() {
 					go func() {
-						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Choose images", Multiple: true,
-							Filters: []mygo.FileFilter{{Name: "Images", Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose images"), Multiple: true,
+							Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
 						if err != nil {
 							return
 						}
@@ -477,14 +478,14 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 					}, func(e string) { s.effort = e }, &pickerToolMode{value: shownMode, onChange: func(m defaults.ToolMode) { s.toolMode = m }})
 					opts := make([]kit.Option, len(autonomyLevels))
 					for i, l := range autonomyLevels {
-						opts[i] = kit.Option{Value: l, Label: models.AutonomyLabels[l]}
+						opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
 					}
-					if next, ok := k.QuietSelect(c, &s.autoOpen, "Autonomy", "shield-check", autonomy, opts); ok {
+					if next, ok := k.QuietSelect(c, &s.autoOpen, L("Autonomy"), "shield-check", autonomy, opts); ok {
 						s.autonomy = next
 					}
 				})
 				ui.Row(c).Padding(0, 0, 0, k.Px(4)).Shrink(0).Children(func() {
-					send := k.Button(c, kit.Primary, 32, true, "Start session").Radius(k.Px(16)).Disabled(!enabled)
+					send := k.Button(c, kit.Primary, 32, true, L("Start session")).Radius(k.Px(16)).Disabled(!enabled)
 					send.Children(func() {
 						if creating {
 							k.Spinner(c, 16, t.PrimaryForeground)
@@ -519,7 +520,7 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	var tags []protocol.SessionTag
 	if workspace == scratchPick {
 		if a.cfg.Scratch == nil {
-			fail("This computer has no Scratch folder.")
+			fail(L("This computer has no Scratch folder."))
 			return
 		}
 		dir, err := a.cfg.Scratch.Create()
@@ -543,7 +544,7 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	if !check.IsValid {
 		msg := check.Error
 		if msg == "" {
-			msg = workspace + " is not a usable directory."
+			msg = L("%s is not a usable directory.", workspace)
 		}
 		fail(msg)
 		return

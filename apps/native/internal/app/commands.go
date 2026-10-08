@@ -32,13 +32,13 @@ func sessionCommand(n int) string { return "session-" + strconv.Itoa(n) }
 // Commands are the window's commands, for the menu bar.
 func Commands() []Command {
 	cmds := []Command{
-		{ID: CmdNewSession, Label: "New Session", Key: "CmdOrCtrl+N"},
-		{ID: CmdSettings, Label: "Settings…", Key: "CmdOrCtrl+,"},
-		{ID: CmdToggleSidebar, Label: "Toggle Sidebar", Key: "CmdOrCtrl+B"},
-		{ID: CmdScrollToLatest, Label: "Scroll to Latest", Key: "CmdOrCtrl+J"},
+		{ID: CmdNewSession, Label: L("New Session"), Key: "CmdOrCtrl+N"},
+		{ID: CmdSettings, Label: L("Settings…"), Key: "CmdOrCtrl+,"},
+		{ID: CmdToggleSidebar, Label: L("Toggle Sidebar"), Key: "CmdOrCtrl+B"},
+		{ID: CmdScrollToLatest, Label: L("Scroll to Latest"), Key: "CmdOrCtrl+J"},
 	}
 	for n := 1; n <= 9; n++ {
-		cmds = append(cmds, Command{ID: sessionCommand(n), Label: "Session " + strconv.Itoa(n), Key: "CmdOrCtrl+" + strconv.Itoa(n), Hidden: true})
+		cmds = append(cmds, Command{ID: sessionCommand(n), Label: L("Session %d", n), Key: "CmdOrCtrl+" + strconv.Itoa(n), Hidden: true})
 	}
 	return cmds
 }

@@ -8,11 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
 
@@ -98,10 +98,10 @@ func NewRunner(dial Dial) Run {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-c.Done():
-			return nil, errors.New("Memory Session failed: the Daemon went away")
+			return nil, errors.New(l10n.L("Memory Session failed: the Daemon went away"))
 		case end := <-done:
 			if end.failure != "" {
-				return nil, fmt.Errorf("Memory Session failed: %s", end.failure)
+				return nil, errors.New(l10n.L("Memory Session failed: %s", end.failure))
 			}
 			return end.reply, nil
 		}
@@ -150,11 +150,11 @@ func (t *turn) see(n protocol.SessionNotificationParamsNotification) (turnEnd, b
 		case protocol.AgentTurnCompletionReasonCompleted, protocol.AgentTurnCompletionReasonSpecHandoff:
 			return turnEnd{reply: reply}, true
 		case protocol.AgentTurnCompletionReasonCancelled, protocol.AgentTurnCompletionReasonPermissionRejected:
-			return turnEnd{failure: "the turn ended as interrupted"}, true
+			return turnEnd{failure: l10n.L("the turn ended as interrupted")}, true
 		}
 		msg := t.firstError
 		if msg == "" {
-			msg = "Agent turn ended: " + string(v.Reason)
+			msg = l10n.L("Agent turn ended: %s", string(v.Reason))
 		}
 		return turnEnd{failure: msg}, true
 	}

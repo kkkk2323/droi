@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 )
 
@@ -203,7 +204,7 @@ func TruncateLines(text string, max int) string {
 	if len(lines) <= max {
 		return text
 	}
-	return fmt.Sprintf("%s\n… %d more lines", strings.Join(lines[:max], "\n"), len(lines)-max)
+	return strings.Join(lines[:max], "\n") + "\n" + l10n.L("… %d more lines", len(lines)-max)
 }
 
 // InputText is the call's input as the row's detail shows it: the command,
@@ -311,21 +312,24 @@ func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 			pending = true
 		}
 	}
-	var what string
+	var name string
 	switch {
 	case len(leaves) == 1:
-		_, what = ToolName(leaves[0].Use.Name)
+		_, name = ToolName(leaves[0].Use.Name)
 	case len(leaves) == 0 && len(calls) > 0:
-		_, what = ToolName(calls[0].Use.Name)
+		_, name = ToolName(calls[0].Use.Name)
 	case len(leaves) == 0:
-		what = "a tool"
+		return l10n.L("Running a tool"), true
 	default:
-		what = fmt.Sprintf("%d tools", len(leaves))
+		if pending {
+			return l10n.L("Running %d tools", len(leaves)), true
+		}
+		return l10n.L("Used %d tools", len(leaves)), false
 	}
 	if pending {
-		return "Running " + what, true
+		return l10n.L("Running %s", name), true
 	}
-	return "Used " + what, false
+	return l10n.L("Used %s", name), false
 }
 
 // ToolResultView is the result's text and how it reads, for the row and its detail.
@@ -416,7 +420,7 @@ func ReadScriptRun(c *ToolCall) ScriptRun {
 			run.Value = string(b)
 		}
 	} else if p, ok := env.ResultPath.(string); ok {
-		run.Value = "Saved to " + p
+		run.Value = l10n.L("Saved to %s", p)
 	}
 	for i, p := range parts {
 		if t := strings.TrimSpace(p); closingLine.MatchString(t) {
@@ -529,9 +533,9 @@ func ScriptToolNames(script string) []string {
 func ScriptSummary(c *ToolCall) string {
 	if c.Use.Name == WaitForScriptTool {
 		if k, _ := c.Input["kill"].(bool); k {
-			return "stopped"
+			return l10n.L("stopped")
 		}
-		return "continued"
+		return l10n.L("continued")
 	}
 	script, _, ok := ScriptSource(c)
 	if !ok {

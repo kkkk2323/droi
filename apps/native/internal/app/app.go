@@ -433,7 +433,7 @@ func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary 
 		}
 		sum := sessions.Summary{
 			SessionID:        s.SessionID,
-			Title:            trimOr(s.Title, "Untitled session"),
+			Title:            trimOr(s.Title, L("Untitled session")),
 			Cwd:              s.Cwd,
 			RepoRoot:         s.RepoRoot,
 			UpdatedAt:        int64(s.UpdatedAt),
@@ -575,9 +575,9 @@ func (a *App) View(c *ui.Context) {
 		if a.cfg.InsetTop {
 			left = 76
 		}
-		label := "Hide sidebar"
+		label := L("Hide sidebar")
 		if !shown {
-			label = "Show sidebar"
+			label = L("Show sidebar")
 		}
 		b := a.kit.IconButton(c, "panel-left", label, 32).Tooltip(withShortcut(label, CmdToggleSidebar)).Absolute().Left(left).Top(6).Expanded(shown)
 		if b.Clicked() {
@@ -617,9 +617,9 @@ func (a *App) banner(c *ui.Context, status controller.Status) {
 		return
 	}
 	t, k := a.kit.T, a.kit
-	text := "Reconnecting to Droid…"
+	text := L("Reconnecting to Droid…")
 	if !status.Reconnecting && status.Failure != nil {
-		text = "Not connected to Droid: " + status.Failure.Error()
+		text = L("Not connected to Droid: %s", status.Failure.Error())
 	}
 	ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(8)).Padding(k.Px(6), k.Px(16)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
 		Background(t.Attention.Alpha(0.1)).Children(func() {

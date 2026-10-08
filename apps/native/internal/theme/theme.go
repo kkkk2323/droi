@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/assets"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 // Name is a theme the user picks in Settings, as lib/theme.ts names them.
@@ -22,7 +23,7 @@ const (
 
 var Names = []Name{Light, Dark, SolarizedLight}
 
-var Labels = map[Name]string{Light: "Light", Dark: "Dark", SolarizedLight: "Solarized Light+"}
+var Labels = map[Name]string{Light: l10n.N("Light"), Dark: l10n.N("Dark"), SolarizedLight: "Solarized Light+"}
 
 // Tokens are the CSS custom properties of one theme.
 type Tokens struct {
@@ -256,7 +257,7 @@ type TextSize string
 
 var TextSizes = []TextSize{"small", "default", "large", "largest"}
 
-var TextSizeLabels = map[TextSize]string{"small": "Small", "default": "Default", "large": "Large", "largest": "Largest"}
+var TextSizeLabels = map[TextSize]string{"small": l10n.N("Small"), "default": l10n.N("Default"), "large": l10n.N("Large"), "largest": l10n.N("Largest")}
 
 // Scale is how much a text size scales the Client's rem, relative to 16px.
 func (s TextSize) Scale() float32 {

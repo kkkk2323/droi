@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 // DaemonStatus is where the Daemon child stands.
@@ -215,9 +217,9 @@ func (s *Supervisor) launch(gen int) {
 		s.attempt = 0
 	}
 	s.mu.Unlock()
-	reason := "exited"
+	reason := l10n.L("exited")
 	if ch.err != nil {
-		reason = "exited with " + ch.err.Error()
+		reason = l10n.L("exited with %s", ch.err.Error())
 	}
 	s.scheduleRestart(gen, reason)
 }

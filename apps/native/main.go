@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
@@ -243,59 +244,91 @@ func menu(run func(id string), zoom func(step int), paste func()) *mygo.Menu {
 		}
 	}
 	appMenu := &mygo.MenuItem{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
-		{Role: mygo.RoleAbout},
+		{Role: mygo.RoleAbout, Label: l10n.L("About Droi")},
 		mygo.Separator(),
 		cmds[app.CmdSettings],
 		mygo.Separator(),
-		{Role: mygo.RoleServices},
+		{Role: mygo.RoleServices, Label: l10n.L("Services")},
 		mygo.Separator(),
-		{Role: mygo.RoleHide},
-		{Role: mygo.RoleHideOthers},
-		{Role: mygo.RoleUnhide},
+		{Role: mygo.RoleHide, Label: l10n.L("Hide Droi")},
+		{Role: mygo.RoleHideOthers, Label: l10n.L("Hide Others")},
+		{Role: mygo.RoleUnhide, Label: l10n.L("Show All")},
 		mygo.Separator(),
-		{Role: mygo.RoleQuit},
+		quit(),
 	}}
-	file := []*mygo.MenuItem{cmds[app.CmdNewSession], mygo.Separator(), {Role: mygo.RoleClose}}
+	file := []*mygo.MenuItem{cmds[app.CmdNewSession], mygo.Separator(), {Role: mygo.RoleClose, Label: l10n.L("Close Window")}}
 	if !mac {
 		// Without an app menu, Settings and Quit are in File.
-		file = []*mygo.MenuItem{cmds[app.CmdNewSession], cmds[app.CmdSettings], mygo.Separator(), {Role: mygo.RoleQuit}}
+		file = []*mygo.MenuItem{cmds[app.CmdNewSession], cmds[app.CmdSettings], mygo.Separator(), quit()}
 	}
 	view := []*mygo.MenuItem{
 		cmds[app.CmdToggleSidebar],
 		cmds[app.CmdScrollToLatest],
 		mygo.Separator(),
-		item("Actual Size", "CmdOrCtrl+0", 0, false),
-		item("Zoom In", "CmdOrCtrl+=", 1, false),
-		item("Zoom In", "CmdOrCtrl+Plus", 1, true),
-		item("Zoom Out", "CmdOrCtrl+-", -1, false),
+		item(l10n.L("Actual Size"), "CmdOrCtrl+0", 0, false),
+		item(l10n.L("Zoom In"), "CmdOrCtrl+=", 1, false),
+		item(l10n.L("Zoom In"), "CmdOrCtrl+Plus", 1, true),
+		item(l10n.L("Zoom Out"), "CmdOrCtrl+-", -1, false),
 		mygo.Separator(),
-		{Role: mygo.RoleToggleFullScreen},
+		{Role: mygo.RoleToggleFullScreen, Label: l10n.L("Toggle Full Screen")},
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		appMenu,
-		{Label: "File", Submenu: file},
+		{Label: l10n.L("File"), Submenu: file},
 		editMenu(paste),
-		{Label: "View", Submenu: append(view, hidden...)},
-		{Role: mygo.RoleWindowMenu},
+		{Label: l10n.L("View"), Submenu: append(view, hidden...)},
+		windowMenu(mac),
 	})
+}
+
+// quit is the Quit item, labeled as MyGo labels the role on each platform.
+func quit() *mygo.MenuItem {
+	switch runtime.GOOS {
+	case "darwin":
+		return &mygo.MenuItem{Role: mygo.RoleQuit, Label: l10n.L("Quit Droi")}
+	case "windows":
+		return &mygo.MenuItem{Role: mygo.RoleQuit, Label: l10n.L("Exit")}
+	}
+	return &mygo.MenuItem{Role: mygo.RoleQuit, Label: l10n.L("Quit")}
+}
+
+// windowMenu is MyGo's Window menu, with the role's own items, so that its
+// labels can be translated. The role stays: the system lists windows in it.
+func windowMenu(mac bool) *mygo.MenuItem {
+	items := []*mygo.MenuItem{
+		{Role: mygo.RoleMinimize, Label: l10n.L("Minimize")},
+		{Role: mygo.RoleClose, Label: l10n.L("Close Window")},
+	}
+	if mac {
+		items = []*mygo.MenuItem{
+			{Role: mygo.RoleMinimize, Label: l10n.L("Minimize")},
+			{Role: mygo.RoleZoom, Label: l10n.L("Zoom")},
+			mygo.Separator(),
+			{Role: mygo.RoleFront, Label: l10n.L("Bring All to Front")},
+		}
+	}
+	return &mygo.MenuItem{Role: mygo.RoleWindowMenu, Label: l10n.L("Window"), Submenu: items}
 }
 
 // editMenu is MyGo's Edit menu of macOS, but for Paste, which the app does
 // itself: the role's Paste goes straight to the focused text area, and the
 // composer must see it first to attach an image on the clipboard.
 func editMenu(paste func()) *mygo.MenuItem {
-	return &mygo.MenuItem{Label: "Edit", Submenu: []*mygo.MenuItem{
-		{Role: mygo.RoleUndo},
-		{Role: mygo.RoleRedo},
+	return &mygo.MenuItem{Label: l10n.L("Edit"), Submenu: []*mygo.MenuItem{
+		{Role: mygo.RoleUndo, Label: l10n.L("Undo")},
+		{Role: mygo.RoleRedo, Label: l10n.L("Redo")},
 		mygo.Separator(),
-		{Role: mygo.RoleCut},
-		{Role: mygo.RoleCopy},
-		{Label: "Paste", Accelerator: "CmdOrCtrl+V", Click: func(*mygo.MenuItem, *mygo.Window) { paste() }},
-		{Role: mygo.RolePasteAndMatchStyle},
-		{Role: mygo.RoleDelete},
-		{Role: mygo.RoleSelectAll},
+		{Role: mygo.RoleCut, Label: l10n.L("Cut")},
+		{Role: mygo.RoleCopy, Label: l10n.L("Copy")},
+		{Label: l10n.L("Paste"), Accelerator: "CmdOrCtrl+V", Click: func(*mygo.MenuItem, *mygo.Window) { paste() }},
+		{Role: mygo.RolePasteAndMatchStyle, Label: l10n.L("Paste and Match Style")},
+		{Role: mygo.RoleDelete, Label: l10n.L("Delete")},
+		{Role: mygo.RoleSelectAll, Label: l10n.L("Select All")},
 		mygo.Separator(),
-		{Label: "Speech", Submenu: []*mygo.MenuItem{{Role: mygo.RoleStartSpeaking}, {Role: mygo.RoleStopSpeaking}}},
+		{Label: l10n.L("Speech"), Submenu: []*mygo.MenuItem{
+			{Role: mygo.RoleStartSpeaking, Label: l10n.L("Start Speaking")},
+			{Role: mygo.RoleStopSpeaking, Label: l10n.L("Stop Speaking")},
+		}},
 	}}
 }
 

@@ -50,7 +50,7 @@ func (a *App) searchBox(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(32))
 	box.Children(func() {
-		in := ui.TextInputBase(c, &a.sidebar.query).Label("Search sessions").Placeholder("Search sessions").
+		in := ui.TextInputBase(c, &a.sidebar.query).Label(L("Search sessions")).Placeholder(L("Search sessions")).
 			Fill().Radius(k.Px(10)).Padding(0, k.Px(28), 0, k.Px(32)).FontSize(k.Px(13)).TextColor(t.Foreground).Border(1, ui.Transparent)
 		if in.Focused() {
 			in.Background(t.Background).Border(1, t.Ring.Alpha(0.6))
@@ -65,7 +65,7 @@ func (a *App) searchBox(c *ui.Context) {
 		}
 		k.Icon(c, "search", 16, t.MutedForeground).Absolute().Left(k.Px(8)).Top(k.Px(8)).PassThrough()
 		if a.sidebar.query != "" {
-			x := k.IconButton(c, "x", "Clear search", 24).Absolute().Right(k.Px(4)).Top(k.Px(4))
+			x := k.IconButton(c, "x", L("Clear search"), 24).Absolute().Right(k.Px(4)).Top(k.Px(4))
 			if x.Clicked() {
 				a.sidebar.query = ""
 			}
@@ -106,7 +106,7 @@ func (a *App) search(query string) {
 				s.err = err.Error()
 			} else {
 				for _, r := range res.Sessions {
-					h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, "Untitled session")}
+					h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, L("Untitled session"))}
 					if r.UpdatedAt != nil {
 						h.updatedAt = int64(*r.UpdatedAt / 1000)
 					}
@@ -153,7 +153,7 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 		})
 	}
 	if len([]rune(q)) < searchMinLength {
-		note("Type a little more to search.", false)
+		note(L("Type a little more to search."), false)
 		return
 	}
 	s.mu.Lock()
@@ -164,13 +164,13 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 		k.Text(c, err, 12, 16).TextColor(t.DestructiveForeground).Padding(k.Px(4), k.Px(8))
 		return
 	case forQuery == "":
-		note("Searching…", true)
+		note(L("Searching…"), true)
 		return
 	case len(hits) == 0:
-		note("No sessions match.", false)
+		note(L("No sessions match."), false)
 		return
 	}
-	ui.Column(c).Role(ui.RoleGroup).Label("Search results").Gap(1).Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Search results")).Gap(1).Children(func() {
 		for _, h := range hits {
 			b := ui.ButtonBase(c).Key(h.sessionID).Label(h.title).Tooltip(h.title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
 				Gap(k.Px(2)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 )
 
@@ -120,7 +121,7 @@ func (a *App) loadAutomations(force bool) {
 			s.loading = false
 			s.listAt = a.cfg.Now()
 			if err != nil {
-				s.listErr = "Automations did not load: " + err.Error()
+				s.listErr = L("Automations did not load: %s", err)
 				// Soon again: the Daemon may only be starting.
 				s.listAt = s.listAt.Add(5*time.Second - automationsRefresh)
 				return
@@ -185,7 +186,7 @@ func refused(ok bool, msg string, err error) error {
 		return err
 	}
 	if msg == "" {
-		msg = "the Daemon refused the change"
+		msg = L("the Daemon refused the change")
 	}
 	return errors.New(msg)
 }
@@ -237,7 +238,7 @@ func (a *App) act(id, action, done string, fn func() error, then func()) {
 			}
 			s.noticeAt, s.noticeErr, s.notice = a.cfg.Now(), err != nil, done
 			if err != nil {
-				s.notice = "Could not " + action + ": " + err.Error()
+				s.notice = L("Could not %s: %s", l10n.T(action), err)
 			}
 			a.loadAutomations(true)
 			if id != "" {
@@ -253,7 +254,7 @@ func (a *App) automationsPage(c *ui.Context) {
 	s := &a.automations
 	a.loadAutomations(false)
 	a.checkFactoryApp()
-	ui.Column(c).Role(ui.RoleGroup).Label("Automations").Fill().Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Automations")).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
 			if a.narrow {
 				a.openSessionsButton(c)
@@ -294,7 +295,7 @@ func (a *App) automationHeader(c *ui.Context, crumbs []crumb, title string, besi
 	k, t := a.kit, a.kit.T
 	ui.Column(c).Gap(k.Px(6)).Children(func() {
 		if len(crumbs) > 0 {
-			ui.Row(c).Role(ui.RoleGroup).Label("Breadcrumb").Gap(k.Px(2)).AlignItems(ui.Center).Margin(0, 0, 0, -k.Px(6)).Children(func() {
+			ui.Row(c).Role(ui.RoleGroup).Label(L("Breadcrumb")).Gap(k.Px(2)).AlignItems(ui.Center).Margin(0, 0, 0, -k.Px(6)).Children(func() {
 				for i, cr := range crumbs {
 					if i > 0 {
 						k.Icon(c, "chevron-right", 12, t.MutedForeground.Alpha(0.6))
@@ -329,7 +330,9 @@ func (a *App) automationHeader(c *ui.Context, crumbs []crumb, title string, besi
 	})
 }
 
-var allAutomations = crumb{label: "Automations", name: "All automations", to: Route{Name: "automations"}}
+func allAutomations() crumb {
+	return crumb{label: L("Automations"), name: L("All automations"), to: Route{Name: "automations"}}
+}
 
 // factoryAppNotice says the Factory App runs the same Automations.
 func (a *App) factoryAppNotice(c *ui.Context) {
@@ -337,10 +340,10 @@ func (a *App) factoryAppNotice(c *ui.Context) {
 		return
 	}
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleStatus).Label("Factory App is running").AlignItems(ui.Start).Gap(k.Px(10)).Padding(k.Px(8), k.Px(12)).
+	ui.Row(c).Role(ui.RoleStatus).Label(L("Factory App is running")).AlignItems(ui.Start).Gap(k.Px(10)).Padding(k.Px(8), k.Px(12)).
 		Radius(k.Px(8)).Background(t.Attention.Alpha(0.08)).Children(func() {
 		k.Icon(c, "triangle-alert", 14, t.AttentionForeground).Margin(k.Px(3), 0, 0, 0)
-		k.Text(c, "The Factory App is running. Its own Daemon runs these automations too, so a run can start twice. Quit the Factory App to avoid that.", 13, 20).
+		k.Text(c, L("The Factory App is running. Its own Daemon runs these automations too, so a run can start twice. Quit the Factory App to avoid that."), 13, 20).
 			TextColor(t.Foreground.Alpha(0.85)).Grow(1).MinWidth(0)
 	})
 }
@@ -378,16 +381,16 @@ func (a *App) automationList(c *ui.Context) {
 		count = strconv.Itoa(len(s.list))
 	}
 	ui.Column(c).Gap(k.Px(4)).Children(func() {
-		a.automationHeader(c, nil, "Automations", func() {
+		a.automationHeader(c, nil, L("Automations"), func() {
 			if count != "" {
 				k.Text(c, count, 13, 20).TextColor(t.MutedForeground).FontFeatures("tnum")
 			}
 		}, func() {
-			if len(s.list) > 0 && a.smallButton(c, kit.Primary, "New automation", "plus", false).Clicked() {
+			if len(s.list) > 0 && a.smallButton(c, kit.Primary, L("New automation"), "plus", false).Clicked() {
 				a.Go(Route{Name: "automations", Tab: newAutomationTab})
 			}
 		})
-		k.Text(c, "Prompts Droid runs on a schedule, on this computer, while Droi is open.", 13, 20).TextColor(t.MutedForeground)
+		k.Text(c, L("Prompts Droid runs on a schedule, on this computer, while Droi is open."), 13, 20).TextColor(t.MutedForeground)
 	})
 	a.factoryAppNotice(c)
 	a.automationNotice(c)
@@ -395,15 +398,15 @@ func (a *App) automationList(c *ui.Context) {
 	case s.list == nil && s.listErr != "":
 		a.loadFailed(c, s.listErr, func() { a.loadAutomations(true) })
 	case s.list == nil:
-		a.skeletonRows(c, "Loading automations", 3, 56)
+		a.skeletonRows(c, L("Loading automations"), 3, 56)
 	case len(s.list) == 0:
 		a.noAutomations(c)
 	default:
 		if s.listErr != "" {
 			k.Text(c, s.listErr, 13, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 		}
-		ui.Column(c).Role(ui.RoleList).Label("Automations").Children(func() {
-			a.listHeading(c, "Automation", "Next run")
+		ui.Column(c).Role(ui.RoleList).Label(L("Automations")).Children(func() {
+			a.listHeading(c, L("Automation"), L("Next run"))
 			for _, e := range s.list {
 				a.automationRow(c, e)
 			}
@@ -453,7 +456,7 @@ func (a *App) loadFailed(c *ui.Context, msg string, retry func()) {
 		Background(t.Destructive.Alpha(0.06)).Children(func() {
 		k.Icon(c, "circle-alert", 14, t.DestructiveForeground)
 		k.Text(c, msg, 13, 20).TextColor(t.Foreground).Grow(1).MinWidth(0)
-		if a.smallButton(c, kit.Outline, "Try again", "refresh-cw", false).Clicked() {
+		if a.smallButton(c, kit.Outline, L("Try again"), "refresh-cw", false).Clicked() {
 			retry()
 		}
 	})
@@ -463,15 +466,15 @@ func (a *App) loadFailed(c *ui.Context, msg string, retry func()) {
 // and the way to make one.
 func (a *App) noAutomations(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	ui.Column(c).Role(ui.RoleGroup).Label("No automations yet").AlignItems(ui.Center).Gap(k.Px(6)).Padding(k.Px(40), k.Px(24)).
+	ui.Column(c).Role(ui.RoleGroup).Label(L("No automations yet")).AlignItems(ui.Center).Gap(k.Px(6)).Padding(k.Px(40), k.Px(24)).
 		Radius(k.Px(12)).Border(1, t.Border).Children(func() {
 		ui.Box(c).Size(k.Px(36), k.Px(36)).Radius(k.Px(10)).Background(t.Muted).Center().Margin(0, 0, k.Px(6), 0).Children(func() {
 			k.Icon(c, "calendar-clock", 18, t.MutedForeground)
 		})
-		k.Text(c, "No automations yet", 14, 20).FontWeight(500)
-		k.Text(c, "Run a prompt on a schedule, for example a summary of yesterday’s commits every morning.", 13, 20).
+		k.Text(c, L("No automations yet"), 14, 20).FontWeight(500)
+		k.Text(c, L("Run a prompt on a schedule, for example a summary of yesterday’s commits every morning."), 13, 20).
 			TextColor(t.MutedForeground).MaxWidth(k.Px(360)).TextAlign(ui.Center)
-		if a.smallButton(c, kit.Primary, "New automation", "plus", false).Margin(k.Px(10), 0, 0, 0).Clicked() {
+		if a.smallButton(c, kit.Primary, L("New automation"), "plus", false).Margin(k.Px(10), 0, 0, 0).Clicked() {
 			a.Go(Route{Name: "automations", Tab: newAutomationTab})
 		}
 	})
@@ -481,9 +484,9 @@ func (a *App) noAutomations(c *ui.Context) {
 func (a *App) summary(e protocol.AutomationEntry) string {
 	parts := []string{automations.Describe(e.Schedule, a.offset())}
 	if w := automations.When(e.LastRunAt, a.cfg.Now()); w != "" {
-		last := "last run " + w
+		last := L("last run %s", w)
 		if e.LastRunStatus != "" {
-			last += ", " + strings.ToLower(automations.RunLabel(e.LastRunStatus))
+			last += ", " + strings.ToLower(l10n.T(automations.RunLabel(e.LastRunStatus)))
 		}
 		parts = append(parts, last)
 	}
@@ -498,7 +501,7 @@ func (a *App) nextRun(e protocol.AutomationEntry) string {
 	if w := automations.When(e.NextRunAt, a.cfg.Now()); w != "" {
 		return w
 	}
-	return "Not scheduled"
+	return L("Not scheduled")
 }
 
 // automationMark is an Automation's state at a glance: running, active,
@@ -523,7 +526,7 @@ func (a *App) automationMark(c *ui.Context, e protocol.AutomationEntry) {
 
 // runNow starts a run of the Automation id at once.
 func (a *App) runNow(id string) {
-	a.act(id, "run", "Started a run.", func() error { _, err := a.dispatchRun(id); return err }, nil)
+	a.act(id, l10n.N("run"), L("Started a run."), func() error { _, err := a.dispatchRun(id); return err }, nil)
 }
 
 // automationRow opens the Automation, and shows a Run now button while the
@@ -556,7 +559,7 @@ func (a *App) automationRow(c *ui.Context, e protocol.AutomationEntry) {
 				k.Spinner(c, 14, t.MutedForeground)
 				return
 			}
-			run := k.IconButton(c, "play", "Run "+name+" now", 28).Disabled(s.acting != "")
+			run := k.IconButton(c, "play", L("Run %s now", name), 28).Disabled(s.acting != "")
 			if !hover && !run.Focused() {
 				run.Opacity(0)
 			}
@@ -582,12 +585,12 @@ func (a *App) missingAutomation(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
 	if s.list == nil && s.listErr == "" {
-		a.automationHeader(c, []crumb{allAutomations, {label: "…"}}, "", nil, nil)
-		a.skeletonRows(c, "Loading automation", 2, 40)
+		a.automationHeader(c, []crumb{allAutomations(), {label: "…"}}, "", nil, nil)
+		a.skeletonRows(c, L("Loading automation"), 2, 40)
 		return
 	}
-	a.automationHeader(c, []crumb{allAutomations, {label: "Not found"}}, "Automation not found", nil, nil)
-	k.Text(c, "It may have been deleted, here or in the Factory App.", 13, 20).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+	a.automationHeader(c, []crumb{allAutomations(), {label: L("Not found")}}, L("Automation not found"), nil, nil)
+	k.Text(c, L("It may have been deleted, here or in the Factory App."), 13, 20).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 }
 
 // fact is a line of an Automation's facts: a label and its value.
@@ -613,7 +616,7 @@ func (a *App) sectionTitle(c *ui.Context, title, count string) {
 // modelName is the name of the model an Automation's runs use.
 func (a *App) modelName(id string) string {
 	if id == "" {
-		return "Your default model"
+		return L("Your default model")
 	}
 	if dv := a.sessionDefaults(); dv != nil {
 		for _, m := range dv.Models {
@@ -631,64 +634,64 @@ func (a *App) automationView(c *ui.Context, e *protocol.AutomationEntry) {
 	id, name := e.ID, trimOr(e.Name, e.ID)
 	a.loadRuns(id, false)
 	busy := s.acting != ""
-	a.automationHeader(c, []crumb{allAutomations, {label: name}}, name, func() {
+	a.automationHeader(c, []crumb{allAutomations(), {label: name}}, name, func() {
 		a.statusPill(c, e.Status == "active", automations.StatusLabel(e.Status))
 	}, func() {
-		runLabel := "Run now"
+		runLabel := L("Run now")
 		if s.acting == "run" {
-			runLabel = "Starting…"
+			runLabel = L("Starting…")
 		}
-		if a.smallButton(c, kit.Primary, runLabel, "play", busy).Label("Run now").Clicked() {
+		if a.smallButton(c, kit.Primary, runLabel, "play", busy).Label(L("Run now")).Clicked() {
 			a.runNow(id)
 		}
-		if a.smallButton(c, kit.Outline, "Edit", "pencil", busy).Label("Edit automation").Clicked() {
+		if a.smallButton(c, kit.Outline, L("Edit"), "pencil", busy).Label(L("Edit automation")).Clicked() {
 			a.Go(Route{Name: "automations", Automation: id, Tab: editAutomationTab})
 		}
-		more := k.IconButton(c, "ellipsis", "More actions", 32).Expanded(s.menuOpen).Disabled(busy)
+		more := k.IconButton(c, "ellipsis", L("More actions"), 32).Expanded(s.menuOpen).Disabled(busy)
 		if more.Clicked() {
 			s.menuOpen = !s.menuOpen
 		}
-		k.MenuPopup(c, more, &s.menuOpen, true, "More actions", func() {
+		k.MenuPopup(c, more, &s.menuOpen, true, L("More actions"), func() {
 			if e.Status == "paused" {
-				if k.MenuItem(c, &s.menuOpen, "play", "Resume").Clicked() {
+				if k.MenuItem(c, &s.menuOpen, "play", L("Resume")).Clicked() {
 					a.setPaused(id, false)
 				}
-			} else if k.MenuItem(c, &s.menuOpen, "pause", "Pause").Clicked() {
+			} else if k.MenuItem(c, &s.menuOpen, "pause", L("Pause")).Clicked() {
 				a.setPaused(id, true)
 			}
-			if k.MenuItem(c, &s.menuOpen, "trash", "Delete…").Clicked() {
+			if k.MenuItem(c, &s.menuOpen, "trash", L("Delete…")).Clicked() {
 				s.confirmDelete = true
 			}
 		})
 	})
 	a.factoryAppNotice(c)
 	a.automationNotice(c)
-	ui.Column(c).Role(ui.RoleGroup).Label("Details").Gap(k.Px(8)).Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
 		off := a.offset()
-		a.fact(c, "Schedule", func() {
+		a.fact(c, L("Schedule"), func() {
 			k.Text(c, automations.Describe(e.Schedule, off), 13, 20).SingleLine().Shrink(0)
 			k.Text(c, e.Schedule+" UTC", 12, 20).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
 		})
-		a.fact(c, "Next run", func() { k.Text(c, a.nextRun(*e), 13, 20).FontFeatures("tnum").SingleLine() })
+		a.fact(c, L("Next run"), func() { k.Text(c, a.nextRun(*e), 13, 20).FontFeatures("tnum").SingleLine() })
 		if w := automations.When(e.LastRunAt, a.cfg.Now()); w != "" {
-			a.fact(c, "Last run", func() {
+			a.fact(c, L("Last run"), func() {
 				k.Text(c, w, 13, 20).FontFeatures("tnum").SingleLine()
 				if e.LastRunStatus != "" {
-					k.Text(c, automations.RunLabel(e.LastRunStatus), 13, 20).TextColor(t.MutedForeground).SingleLine()
+					k.Text(c, l10n.T(automations.RunLabel(e.LastRunStatus)), 13, 20).TextColor(t.MutedForeground).SingleLine()
 				}
 			})
 		}
-		a.fact(c, "Model", func() { k.Text(c, a.modelName(e.Model), 13, 20).SingleLine() })
-		a.fact(c, "Workspace", func() {
+		a.fact(c, L("Model"), func() { k.Text(c, a.modelName(e.Model), 13, 20).SingleLine() })
+		a.fact(c, L("Workspace"), func() {
 			if w := s.workdirs[id]; w != "" {
 				k.Text(c, w, 12, 20).Font(k.Mono).SingleLine().Shrink(1).MinWidth(0)
 			} else {
-				k.Text(c, "Its own folder in ~/.factory/automations", 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+				k.Text(c, L("Its own folder in ~/.factory/automations"), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
 			}
 		})
 	})
 	ui.Column(c).Gap(k.Px(8)).Children(func() {
-		a.sectionTitle(c, "Prompt", "")
+		a.sectionTitle(c, L("Prompt"), "")
 		ui.Column(c).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).Background(t.Muted.Alpha(0.5)).Children(func() {
 			k.Text(c, e.Prompt, 13, 20).TextColor(t.Foreground)
 		})
@@ -698,9 +701,9 @@ func (a *App) automationView(c *ui.Context, e *protocol.AutomationEntry) {
 
 // setPaused pauses the Automation id, or resumes it.
 func (a *App) setPaused(id string, pause bool) {
-	action, done := "resume", "Resumed. It runs on its schedule again."
+	action, done := l10n.N("resume"), L("Resumed. It runs on its schedule again.")
 	if pause {
-		action, done = "pause", "Paused. Run now still starts a run."
+		action, done = l10n.N("pause"), L("Paused. Run now still starts a run.")
 	}
 	a.act(id, action, done, func() error {
 		cl, err := a.ctl.Client()
@@ -730,19 +733,19 @@ func (a *App) deleteDialog(c *ui.Context, e *protocol.AutomationEntry) {
 	id, name := e.ID, trimOr(e.Name, e.ID)
 	ui.DialogBase(c, &s.confirmDelete, func(backdrop, panel *ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
-		panel.Role(ui.RoleAlertDialog).Label("Delete automation").Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
+		panel.Role(ui.RoleAlertDialog).Label(L("Delete automation")).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
-			k.Text(c, "Delete “"+name+"”?", 15, 22).Role(ui.RoleHeading).FontWeight(600)
-			k.Text(c, "It stops running and its folder in ~/.factory/automations is removed. The sessions of its past runs stay.", 13, 20).
+			k.Text(c, L("Delete “%s”?", name), 15, 22).Role(ui.RoleHeading).FontWeight(600)
+			k.Text(c, L("It stops running and its folder in ~/.factory/automations is removed. The sessions of its past runs stay."), 13, 20).
 				TextColor(t.MutedForeground)
 			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Margin(k.Px(14), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Outline, "Cancel", "", false).Clicked() {
+				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
 					s.confirmDelete = false
 				}
-				if a.smallButton(c, kit.Destructive, "Delete", "", s.acting != "").Clicked() {
+				if a.smallButton(c, kit.Destructive, L("Delete"), "", s.acting != "").Clicked() {
 					s.confirmDelete = false
-					a.act("", "delete", "Deleted “"+name+"”.", func() error {
+					a.act("", l10n.N("delete"), L("Deleted “%s”.", name), func() error {
 						cl, err := a.ctl.Client()
 						if err != nil {
 							return err
@@ -768,16 +771,16 @@ func (a *App) runsList(c *ui.Context, id string) {
 		count = strconv.Itoa(len(runs))
 	}
 	ui.Column(c).Gap(k.Px(4)).Children(func() {
-		a.sectionTitle(c, "Runs", count)
+		a.sectionTitle(c, L("Runs"), count)
 		switch {
 		case s.runsErr[id] != "" && !loaded:
-			a.loadFailed(c, "Runs did not load: "+s.runsErr[id], func() { a.loadRuns(id, true) })
+			a.loadFailed(c, L("Runs did not load: %s", s.runsErr[id]), func() { a.loadRuns(id, true) })
 		case !loaded:
-			a.skeletonRows(c, "Loading runs", 2, 40)
+			a.skeletonRows(c, L("Loading runs"), 2, 40)
 		case len(runs) == 0:
-			k.Text(c, "No runs yet. Run it now, or wait for its schedule.", 13, 20).TextColor(t.MutedForeground).Padding(k.Px(8), 0)
+			k.Text(c, L("No runs yet. Run it now, or wait for its schedule."), 13, 20).TextColor(t.MutedForeground).Padding(k.Px(8), 0)
 		default:
-			ui.Column(c).Role(ui.RoleList).Label("Runs").Children(func() {
+			ui.Column(c).Role(ui.RoleList).Label(L("Runs")).Children(func() {
 				for _, r := range runs {
 					a.runRow(c, r)
 				}
@@ -789,11 +792,11 @@ func (a *App) runsList(c *ui.Context, id string) {
 func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 	k, t := a.kit, a.kit.T
 	started := automations.When(r.StartedAt, a.cfg.Now())
-	label := automations.RunLabel(r.Status)
+	label := l10n.T(automations.RunLabel(r.Status))
 	if r.Type == protocol.AutomationRunType("create") {
-		label = "Setup, " + strings.ToLower(label)
+		label = L("Setup, %s", strings.ToLower(label))
 	}
-	b := ui.ButtonBase(c).Key(r.RunID).Transition(rowMotion).Role(ui.RoleListItem).Label("Open run from "+started).Height(k.Px(40)).Gap(k.Px(10)).
+	b := ui.ButtonBase(c).Key(r.RunID).Transition(rowMotion).Role(ui.RoleListItem).Label(L("Open run from %s", started)).Height(k.Px(40)).Gap(k.Px(10)).
 		PaddingX(k.Px(12)).Justify(ui.Start).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Cursor(ui.CursorPointer)
 	if r.SessionID == "" {
 		b.Disabled(true)
@@ -854,18 +857,18 @@ func (f *automationForm) schedule(offset int) (string, error) {
 	case automations.Hourly:
 		m, err := strconv.Atoi(strings.TrimSpace(f.minute))
 		if err != nil || m < 0 || m > 59 {
-			return "", errors.New("Enter the minute past the hour, from 0 to 59.")
+			return "", errors.New(L("Enter the minute past the hour, from 0 to 59."))
 		}
 		s.Minute = m
 	case automations.Daily, automations.Weekdays, automations.Weekly:
 		h, m, ok := automations.ParseClock(f.clock)
 		if !ok {
-			return "", errors.New("Enter the time as hours and minutes, for example 09:30.")
+			return "", errors.New(L("Enter the time as hours and minutes, for example 09:30."))
 		}
 		s.Hour, s.Minute = h, m
 	default:
 		if strings.TrimSpace(f.custom) == "" {
-			return "", errors.New("Enter a cron expression, in UTC.")
+			return "", errors.New(L("Enter a cron expression, in UTC."))
 		}
 	}
 	return s.Expression(offset), nil
@@ -918,20 +921,20 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 		}
 		return ""
 	}
-	crumbs, title := []crumb{allAutomations, {label: "New automation"}}, "New automation"
+	crumbs, title := []crumb{allAutomations(), {label: L("New automation")}}, L("New automation")
 	back := Route{Name: "automations"}
 	if e != nil {
 		back = Route{Name: "automations", Automation: e.ID}
 		name := trimOr(e.Name, e.ID)
-		crumbs, title = []crumb{allAutomations, {label: name, name: name, to: back}, {label: "Edit"}}, "Edit automation"
+		crumbs, title = []crumb{allAutomations(), {label: name, name: name, to: back}, {label: L("Edit")}}, L("Edit automation")
 	}
 	a.automationHeader(c, crumbs, title, nil, func() {
-		if a.smallButton(c, kit.Ghost, "Cancel", "", false).Clicked() {
+		if a.smallButton(c, kit.Ghost, L("Cancel"), "", false).Clicked() {
 			a.Go(back)
 		}
-		label, busyLabel, action := "Save changes", "Saving…", "save"
+		label, busyLabel, action := L("Save changes"), L("Saving…"), "save"
 		if e == nil {
-			label, busyLabel, action = "Create automation", "Creating…", "create"
+			label, busyLabel, action = L("Create automation"), L("Creating…"), "create"
 		}
 		shown := label
 		if s.acting == action {
@@ -944,76 +947,76 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 	a.automationNotice(c)
 	preview := ""
 	if expr, err := f.schedule(off); err == nil {
-		preview = automations.Describe(expr, off) + ", in this computer’s time. The Daemon keeps it as “" + expr + "” in UTC."
+		preview = L("%s, in this computer’s time. The Daemon keeps it as “%s” in UTC.", automations.Describe(expr, off), expr)
 	}
 	if f.repeat == automations.Custom {
-		preview = "Five cron fields in UTC, or words such as “every Monday at 9am PST”."
+		preview = L("Five cron fields in UTC, or words such as “every Monday at 9am PST”.")
 	}
 	repeats := make([]kit.Option, len(automations.Repeats))
 	for i, r := range automations.Repeats {
-		repeats[i] = kit.Option{Value: string(r), Label: automations.RepeatLabels[r]}
+		repeats[i] = kit.Option{Value: string(r), Label: l10n.T(automations.RepeatLabels[r])}
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(20)).Children(func() {
-		a.formField(c, "Name", "", problem("name"), func() {
+		a.formField(c, L("Name"), "", problem("name"), func() {
 			ui.Row(c).Children(func() {
-				in := a.field(c, &f.name, "Automation name", "Daily summary", false, false)
+				in := a.field(c, &f.name, L("Automation name"), L("Daily summary"), false, false)
 				if f.errOn == "name" {
 					in.Border(1, t.Destructive.Alpha(0.6))
 				}
 			})
 		})
-		a.formField(c, "Prompt", "Each run starts a new session with this prompt. Runs do not ask before they use tools.", problem("prompt"), func() {
+		a.formField(c, L("Prompt"), L("Each run starts a new session with this prompt. Runs do not ask before they use tools."), problem("prompt"), func() {
 			border := t.Border
 			if f.errOn == "prompt" {
 				border = t.Destructive.Alpha(0.6)
 			}
 			ui.Row(c).Radius(k.Px(10)).Border(1, border).Background(t.Background).Children(func() {
-				k.TextArea(c, &f.prompt, "Automation prompt", "Summarize yesterday’s commits in this repository and list anything that looks risky.",
+				k.TextArea(c, &f.prompt, L("Automation prompt"), L("Summarize yesterday’s commits in this repository and list anything that looks risky."),
 					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 5, Color: t.Foreground})
 			})
 		})
-		a.formField(c, "Schedule", preview, problem("schedule"), func() {
+		a.formField(c, L("Schedule"), preview, problem("schedule"), func() {
 			ui.Row(c).Children(func() {
-				if next, ok := k.Segmented(c, "Repeat", string(f.repeat), repeats); ok {
+				if next, ok := k.Segmented(c, L("Repeat"), string(f.repeat), repeats); ok {
 					f.repeat, f.err, f.errOn = automations.Repeat(next), "", ""
 				}
 			})
 			ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(2), 0, 0, 0).Children(func() {
 				switch f.repeat {
 				case automations.Hourly:
-					k.Text(c, "At minute", 13, 20).TextColor(t.MutedForeground).Shrink(0)
-					a.field(c, &f.minute, "Minute past the hour", "00", true, false).Grow(0).Basis(k.Px(64)).Shrink(0)
-					k.Text(c, "past each hour", 13, 20).TextColor(t.MutedForeground).Shrink(0)
+					k.Text(c, L("At minute"), 13, 20).TextColor(t.MutedForeground).Shrink(0)
+					a.field(c, &f.minute, L("Minute past the hour"), "00", true, false).Grow(0).Basis(k.Px(64)).Shrink(0)
+					k.Text(c, L("past each hour"), 13, 20).TextColor(t.MutedForeground).Shrink(0)
 				case automations.Custom:
-					a.field(c, &f.custom, "Cron expression", "0 9 * * 1-5", true, false)
+					a.field(c, &f.custom, L("Cron expression"), "0 9 * * 1-5", true, false)
 				default:
 					if f.repeat == automations.Weekly {
 						days := make([]kit.Option, 7)
 						for i := range 7 {
 							d := time.Weekday((i + 1) % 7)
-							days[i] = kit.Option{Value: strconv.Itoa(int(d)), Label: d.String()[:3]}
+							days[i] = kit.Option{Value: strconv.Itoa(int(d)), Label: automations.WeekdayShort(d)}
 						}
-						if next, ok := k.Segmented(c, "Day of the week", strconv.Itoa(int(f.weekday)), days); ok {
+						if next, ok := k.Segmented(c, L("Day of the week"), strconv.Itoa(int(f.weekday)), days); ok {
 							d, _ := strconv.Atoi(next)
 							f.weekday = time.Weekday(d)
 						}
 					}
-					k.Text(c, "At", 13, 20).TextColor(t.MutedForeground).Shrink(0)
-					a.field(c, &f.clock, "Time of day", "09:00", true, false).Grow(0).Basis(k.Px(88)).Shrink(0)
+					k.Text(c, L("At"), 13, 20).TextColor(t.MutedForeground).Shrink(0)
+					a.field(c, &f.clock, L("Time of day"), "09:00", true, false).Grow(0).Basis(k.Px(88)).Shrink(0)
 				}
 			})
 		})
-		a.formField(c, "Model", "Runs use your default model unless you pick another.", "", func() {
+		a.formField(c, L("Model"), L("Runs use your default model unless you pick another."), "", func() {
 			ui.Row(c).Children(func() {
-				a.modelField(c, "Automation model", false, &f.modelOpen, &f.picker, choices, shownModel, func(next string) { f.model = next })
+				a.modelField(c, L("Automation model"), false, &f.modelOpen, &f.picker, choices, shownModel, func(next string) { f.model = next })
 			})
 		})
-		a.formField(c, "Workspace", "Runs work in this folder, with its skills and settings. Leave it empty for the automation’s own folder in ~/.factory/automations.", "", func() {
+		a.formField(c, L("Workspace"), L("Runs work in this folder, with its skills and settings. Leave it empty for the automation’s own folder in ~/.factory/automations."), "", func() {
 			ui.Row(c).Gap(k.Px(8)).Children(func() {
-				a.field(c, &f.workdir, "Automation workspace", "/Users/you/project", true, false)
-				if a.smallButton(c, kit.Outline, "Choose…", "folder-open", false).Height(k.Px(36)).Label("Choose a workspace").Clicked() {
+				a.field(c, &f.workdir, L("Automation workspace"), "/Users/you/project", true, false)
+				if a.smallButton(c, kit.Outline, L("Choose…"), "folder-open", false).Height(k.Px(36)).Label(L("Choose a workspace")).Clicked() {
 					go func() {
-						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Choose a workspace", Directory: true})
+						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose a workspace"), Directory: true})
 						if err != nil || len(paths) == 0 {
 							return
 						}
@@ -1034,9 +1037,9 @@ func (a *App) saveAutomation(e *protocol.AutomationEntry) {
 	expr, err := f.schedule(a.offset())
 	switch {
 	case name == "":
-		f.err, f.errOn = "Give the automation a name.", "name"
+		f.err, f.errOn = L("Give the automation a name."), "name"
 	case prompt == "":
-		f.err, f.errOn = "Each run starts from the prompt, so it cannot be empty.", "prompt"
+		f.err, f.errOn = L("Each run starts from the prompt, so it cannot be empty."), "prompt"
 	case err != nil:
 		f.err, f.errOn = err.Error(), "schedule"
 	}
@@ -1046,7 +1049,7 @@ func (a *App) saveAutomation(e *protocol.AutomationEntry) {
 	model := f.model
 	if e != nil {
 		id := e.ID
-		a.act(id, "save", "Saved.", func() error { return a.updateAutomation(id, name, prompt, expr, model, workdir) }, func() {
+		a.act(id, l10n.N("save"), L("Saved."), func() error { return a.updateAutomation(id, name, prompt, expr, model, workdir) }, func() {
 			a.Go(Route{Name: "automations", Automation: id})
 		})
 		return
@@ -1057,7 +1060,7 @@ func (a *App) saveAutomation(e *protocol.AutomationEntry) {
 	}
 	id := automations.ID(name, taken)
 	skip := true
-	a.act("", "create", "Created. It runs on its schedule, and Run now starts one at once.", func() error {
+	a.act("", l10n.N("create"), L("Created. It runs on its schedule, and Run now starts one at once."), func() error {
 		cl, err := a.ctl.Client()
 		if err != nil {
 			return err

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 )
 
@@ -115,13 +116,13 @@ func (p Patch) Params() map[string]any {
 
 type Mode struct{ Value, Label string }
 
-var InteractionModes = []Mode{{"auto", "Auto"}, {"spec", "Spec"}}
+var InteractionModes = []Mode{{"auto", l10n.N("Auto")}, {"spec", l10n.N("Spec")}}
 
 var AutonomyDescriptions = map[string]string{
-	"off":    "Require approval for all actions",
-	"low":    "Allow file edits and read-only commands",
-	"medium": "Allow reversible commands",
-	"high":   "Allow all commands",
+	"off":    l10n.N("Require approval for all actions"),
+	"low":    l10n.N("Allow file edits and read-only commands"),
+	"medium": l10n.N("Allow reversible commands"),
+	"high":   l10n.N("Allow all commands"),
 }
 
 // CompactionLimits are the ones Factory offers; a stored value outside them

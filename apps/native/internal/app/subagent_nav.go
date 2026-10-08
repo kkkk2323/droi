@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/subagents"
 )
@@ -45,9 +46,9 @@ func (a *App) subagentMark(c *ui.Context, run subagents.Run, ok bool) {
 	k, t := a.kit, a.kit.T
 	switch {
 	case ok && subagents.IsRunning(run.Status):
-		k.Spinner(c, 14, t.Info).Role(ui.RoleImage).Label("Running")
+		k.Spinner(c, 14, t.Info).Role(ui.RoleImage).Label(L("Running"))
 	case ok && run.Status == subagents.Completed:
-		k.Icon(c, "check", 14, t.Success).Role(ui.RoleImage).Label("Completed")
+		k.Icon(c, "check", 14, t.Success).Role(ui.RoleImage).Label(L("Completed"))
 	default:
 		k.Icon(c, "circle-dashed", 14, t.MutedForeground)
 	}
@@ -65,7 +66,7 @@ func (a *App) subagentItem(c *ui.Context, open *bool, s sessions.Summary, run su
 	}
 	b.Children(func() {
 		a.subagentMark(c, run, ok)
-		k.Text(c, trimOr(s.Title, "Untitled session"), 14, 20).TextColor(color).SingleLine().Grow(1).MinWidth(0)
+		k.Text(c, trimOr(s.Title, L("Untitled session")), 14, 20).TextColor(color).SingleLine().Grow(1).MinWidth(0)
 		k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
 		if checked {
 			k.Icon(c, "check", 14, color)
@@ -87,7 +88,7 @@ func (a *App) subagentPopup(c *ui.Context, anchor *ui.Element, open *bool, end b
 		} else {
 			p.AttachTo(anchor, ui.AnchorBottomLeft, ui.AnchorTopLeft)
 		}
-		p.Role(ui.RoleMenu).Label("Subagents").Margin(k.Px(6), 0, 0, 0).Width(min(k.Px(320), w-k.Px(16))).MaxHeight(min(k.Px(384), h-k.Px(60))).Clip().
+		p.Role(ui.RoleMenu).Label(L("Subagents")).Margin(k.Px(6), 0, 0, 0).Width(min(k.Px(320), w-k.Px(16))).MaxHeight(min(k.Px(384), h-k.Px(60))).Clip().
 			Padding(k.Px(4)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
 			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).FillWidth().Children(fn)
@@ -108,10 +109,10 @@ func (v *sessionView) subagentMenu(c *ui.Context, n subagentNav) {
 			running++
 		}
 	}
-	count := plural(len(n.called), "subagent", "subagents")
+	count := countL(len(n.called), l10n.N("%d subagent"), l10n.N("%d subagents"))
 	label := count
 	if running > 0 {
-		label += ", " + itoa(running) + " running"
+		label = L("%s, %d running", count, running)
 	}
 	b := ui.ButtonBase(c).Role(ui.RoleMenuButton).Label(label).Height(k.Px(28)).Gap(k.Px(6)).PaddingX(k.Px(8)).Radius(k.Px(6)).
 		Cursor(ui.CursorPointer).Expanded(v.subOpen)
@@ -148,7 +149,7 @@ func (v *sessionView) subagentMenu(c *ui.Context, n subagentNav) {
 func (v *sessionView) sessionTrail(c *ui.Context, n subagentNav, title string) {
 	a := v.a
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleGroup).Label("Session hierarchy").MinWidth(0).Gap(k.Px(2)).Children(func() {
+	ui.Row(c).Role(ui.RoleGroup).Label(L("Session hierarchy")).MinWidth(0).Gap(k.Px(2)).Children(func() {
 		for _, crumb := range n.trail {
 			ui.Row(c).Key(crumb.SessionID).MinWidth(0).Shrink(1).Gap(k.Px(2)).Children(func() {
 				b := ui.ButtonBase(c).Role(ui.RoleButton).Label(crumb.Title).MaxWidth(k.Px(192)).Padding(k.Px(2), k.Px(6)).Radius(k.Px(6)).

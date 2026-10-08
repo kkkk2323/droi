@@ -307,13 +307,13 @@ func (p prose) codeBlock(c *ui.Context, n *md.Node) {
 			k.Text(c, lang, 12, 16).Font(k.Mono).TextColor(t.MutedForeground).Unselectable()
 			ui.Spacer(c)
 			ui.Row(c).Gap(k.Px(8)).Padding(k.Px(4), k.Px(7)).Children(func() {
-				dl := p.codeAction(c, "download", "Download file")
+				dl := p.codeAction(c, "download", L("Download file"))
 				if dl.Clicked() {
 					c.WriteClipboard(n.Code)
 				}
-				if p.codeAction(c, "copy", "Copy Code").Clicked() {
+				if p.codeAction(c, "copy", L("Copy Code")).Clicked() {
 					c.WriteClipboard(n.Code)
-					c.Toast("Copied the code")
+					c.Toast(L("Copied the code"))
 				}
 			})
 		})

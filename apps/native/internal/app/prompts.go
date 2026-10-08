@@ -88,12 +88,12 @@ func (v *sessionView) permissionCard(c *ui.Context, p controller.Permission) {
 		names[i] = u.ToolUse.Name
 	}
 	title := strings.Join(names, ", ")
-	v.promptCard(c, p.RequestID, "Permission request: "+title, func() {
+	v.promptCard(c, p.RequestID, L("Permission request: %s", title), func() {
 		ui.Row(c).Gap(k.Px(6)).Children(func() {
 			k.Icon(c, "shield-alert", 12, t.Attention)
-			k.Text(c, "Permission", 11, 16.5).FontWeight(600).TextColor(t.Attention)
+			k.Text(c, L("Permission"), 11, 16.5).FontWeight(600).TextColor(t.Attention)
 		})
-		k.Text(c, "Droid wants to run "+title, 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
+		k.Text(c, L("Droid wants to run %s", title), 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
 		ui.Column(c).Gap(k.Px(4)).Margin(k.Px(8), 0, 0, 0).Children(func() {
 			for _, u := range p.ToolUses {
 				details := u.Details.Raw
@@ -154,7 +154,7 @@ func (v *sessionView) scriptPermission(c *ui.Context, u protocol.ToolConfirmatio
 	}
 	ui.Column(c).Radius(k.Px(8)).Background(t.Card).Clip().Children(func() {
 		if len(sp.Calls) > 0 {
-			ui.Column(c).Role(ui.RoleList).Label("Calls in the Script").PaddingY(k.Px(4)).Children(func() {
+			ui.Column(c).Role(ui.RoleList).Label(L("Calls in the Script")).PaddingY(k.Px(4)).Children(func() {
 				for _, call := range sp.Calls {
 					ui.Row(c).AlignItems(ui.Start).Gap(k.Px(8)).Padding(k.Px(2), k.Px(10)).Children(func() {
 						k.Text(c, "L"+strconv.Itoa(call.Line), 11, 20).Font(k.Mono).TextColor(t.MutedForeground.Alpha(0.7)).Width(k.Px(32)).FontFeatures("tnum").Shrink(0)
@@ -174,9 +174,9 @@ func (v *sessionView) scriptPermission(c *ui.Context, u protocol.ToolConfirmatio
 		if input.Script == "" {
 			return
 		}
-		label := "Show source"
+		label := L("Show source")
 		if *open {
-			label = "Hide source"
+			label = L("Hide source")
 		}
 		b := ui.ButtonBase(c).Label(label).Expanded(*open).FillWidth().Height(k.Px(24)).Gap(k.Px(4)).PaddingX(k.Px(10)).Justify(ui.Start).
 			BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Cursor(ui.CursorPointer)
@@ -248,7 +248,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 		id := q.RequestID
 		go func() { v.answerFailed(a.ctl.RespondToAskUser(a.ctx, id, protocol.AskUserResult{Answers: answers})) }()
 	}
-	v.promptCard(c, q.RequestID, "Droid has a question", func() {
+	v.promptCard(c, q.RequestID, L("Droid has a question"), func() {
 		if c.Shortcut(0, ui.KeyEscape) {
 			cancel()
 		}
@@ -310,7 +310,7 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 			}
 			k.Icon(c, "pencil", 12, pen)
 			value := typed
-			in := ui.TextInputBase(c, &value).Label("Other answer for: " + question.Question).Placeholder("Or type your own answer").
+			in := ui.TextInputBase(c, &value).Label(L("Other answer for: %s", question.Question)).Placeholder(L("Or type your own answer")).
 				Grow(1).MinWidth(0).FontSize(k.Px(12)).TextColor(t.Foreground)
 			if in.Focused() {
 				field.Border(1, t.Ring)
@@ -335,16 +335,16 @@ func (v *sessionView) askUserCard(c *ui.Context, q controller.AskUser) {
 				b.Children(func() { k.Text(c, label, 11, 16).FontWeight(500).TextColor(color) })
 				return b
 			}
-			if st.step > 0 && small(kit.Ghost, "Back").Clicked() {
+			if st.step > 0 && small(kit.Ghost, L("Back")).Clicked() {
 				st.step--
 			}
 			ui.Spacer(c)
-			if small(kit.Ghost, "Cancel").Clicked() {
+			if small(kit.Ghost, L("Cancel")).Clicked() {
 				cancel()
 			}
-			next := "Next"
+			next := L("Next")
 			if last {
-				next = "Answer"
+				next = L("Answer")
 			}
 			go_ := small(kit.Primary, next).Disabled(!canContinue)
 			if go_.Clicked() {

@@ -51,7 +51,7 @@ func railItems(entries []*transcript.Entry, unloaded []*transcript.Entry) []rail
 		if t := entryText(e); t != "" {
 			return t
 		}
-		return "Attached image"
+		return L("Attached image")
 	}
 	var items []railItem
 	for _, e := range unloaded {
@@ -227,7 +227,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 	pitch, inset := k.Px(railPitch), k.Px(railInset)
 	_, h := c.Size()
 	maxH := min(k.Px(420), h*0.6)
-	nav := ui.Column(c).Role(ui.RoleGroup).Label("Your messages").Absolute().Top(0).Bottom(0).Right(k.Px(8)).Width(k.Px(28)).Justify(ui.Center)
+	nav := ui.Column(c).Role(ui.RoleGroup).Label(L("Your messages")).Absolute().Top(0).Bottom(0).Right(k.Px(8)).Width(k.Px(28)).Justify(ui.Center)
 	nav.Children(func() {
 		box := ui.Box(c).FillWidth().MaxHeight(maxH)
 		if !box.Hovered() {
@@ -247,9 +247,9 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 				ui.Column(c).FillWidth().PaddingY(inset).Children(func() {
 					for i, it := range items {
 						current := i == active
-						label := "Jump to message " + itoa(i+1)
+						label := L("Jump to message %d", i+1)
 						if current {
-							label += ", current"
+							label = L("Jump to message %d, current", i+1)
 						}
 						b := ui.ButtonBase(c).Key(it.id).Label(label).FillWidth().Height(pitch).Shrink(0).
 							Justify(ui.End).AlignItems(ui.Center).Cursor(ui.CursorPointer)
@@ -281,7 +281,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 					k.Text(c, it.prompt, 13, 19.5).FontWeight(500).TextColor(t.PopoverForeground).MaxLines(2)
 					switch {
 					case r.jumpingTo == it.id:
-						k.Text(c, "Loading earlier messages…", 12, 20).TextColor(t.MutedForeground).Margin(k.Px(4), 0, 0, 0)
+						k.Text(c, L("Loading earlier messages…"), 12, 20).TextColor(t.MutedForeground).Margin(k.Px(4), 0, 0, 0)
 					case it.response != "":
 						k.Text(c, it.response, 12, 20).TextColor(t.MutedForeground).MaxLines(3).Margin(k.Px(4), 0, 0, 0)
 					}
