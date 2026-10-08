@@ -14,8 +14,8 @@ Windows) and the Phone App (`apps/mobile`), with what they use: `packages/droid-
 
 The Electron Desktop Shell and the web Client (`apps/desktop`, except its `package.json`
 version, which stays the release version) and their suites (`tests/web`, `tests/electron`,
-`tests/live`, the release's `build-asar` job and the PR workflow's `smoke` job) are deprecated
-(`apps/desktop/README.md`). Do not add features to them, fix them or run their suites. They stay in the
+`tests/live` and the PR workflow's `smoke` job) are deprecated (`apps/desktop/README.md`).
+Releases no longer carry an update for the Electron app. Do not add features to them, fix them or run their suites. They stay in the
 repository until they are removed, so a change to shared code must still pass `pnpm check`
 and `pnpm test` there; keep such fixes to what makes them compile.
 

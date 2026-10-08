@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- The Electron app gets no more updates, starting with 1.36.0. Install the native Droi from the Release page instead; it keeps your Sessions and settings.
+
 ## 1.36.0 - 2026-10-07
 
 ### Added

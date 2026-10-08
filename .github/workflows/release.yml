@@ -9,9 +9,8 @@ permissions:
   contents: write
 
 # One Release holds Droi, the native app (apps/native): its disk image, its
-# Windows installer, and their signed updates for the app to install itself. It also holds a last code update
-# for the Electron Desktop Shell, which those still on it install on their own:
-# it finds the native app's manifest and asks them to download it.
+# Windows installer, and their signed updates for the app to install itself. The Electron
+# Desktop Shell is deprecated and gets no more updates.
 jobs:
   validate:
     runs-on: macos-latest
@@ -116,8 +115,7 @@ jobs:
             exit 1
           fi
 
-      # One app for both chips, so one update manifest, the one the Electron
-      # Shell looks for (update-darwin-universal.json).
+      # One app for both chips, so one update manifest (update-darwin-universal.json).
       - name: Build, sign the update and upload
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,49 +155,8 @@ jobs:
           fi
           go tool mygo build -platform windows/amd64 -upload
 
-  build-asar:
-    needs: draft
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Package app (--dir, no DMG)
-        run: pnpm -C apps/desktop exec electron-builder --mac --arm64 --dir --publish never
-
-      - name: Generate ASAR artifact
-        run: |
-          ASAR_PATH=$(find apps/desktop/dist -path '*/Contents/Resources/app.asar' | head -1)
-          if [ -z "$ASAR_PATH" ]; then
-            echo "::error::app.asar not found"
-            exit 1
-          fi
-          gzip -c "$ASAR_PATH" > apps/desktop/dist/app.asar.gz
-          SHA=$(shasum -a 256 apps/desktop/dist/app.asar.gz | awk '{print $1}')
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          echo "{\"version\":\"${VERSION}\",\"sha256\":\"${SHA}\"}" > apps/desktop/dist/latest.json
-          echo "Generated latest.json: version=${VERSION}, sha256=${SHA}"
-
-      - name: Upload
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
-            apps/desktop/dist/app.asar.gz apps/desktop/dist/latest.json
-
   publish:
-    needs: [validate, validate-native, build-native, build-native-windows, build-asar]
+    needs: [validate, validate-native, build-native, build-native-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the release
