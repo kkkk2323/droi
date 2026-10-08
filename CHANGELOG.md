@@ -1,8 +1,12 @@
-## Unreleased
+## 1.39.2 - 2026-10-08
 
 ### Changed
 
 - The native app runs on MyGo 0.3.3. A click or a shortcut that comes right after an edit, before the window draws again, now sees the edit.
+
+### Fixed
+
+- In a reply's numbered list with blank lines between its items, each number sits on its item's first line again. Before, it sat a few pixels above the text; bullets and task boxes in such lists were off the same way.
 
 ## 1.39.1 - 2026-10-08
 
