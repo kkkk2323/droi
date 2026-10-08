@@ -283,7 +283,7 @@ func (v *sessionView) thinking(c *ui.Context, b transcript.Block, streaming bool
 			pr := newProse(k)
 			pr.size, pr.lh, pr.color = 14, 24, t.MutedForeground
 			doc := v.doc(b.Text)
-			ui.Column(c).Margin(max(k.Px(4), pr.firstMargin(doc)), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Children(func() {
+			ui.Column(c).Margin(max(k.Px(4), pr.firstMargin(doc)), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Selectable().Children(func() {
 				f := flow{c: c, open: true}
 				pr.nodes(c, &f, doc)
 			})
@@ -742,16 +742,16 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 		p.Panel(func() {
 			ui.Scroll(c).MaxHeight(k.Px(384)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 				ui.Column(c).Padding(k.Px(10), k.Px(12)).Gap(k.Px(8)).Children(func() {
-					heading := func(s string) {
-						k.Text(c, strings.ToUpper(s), 11, 16.5).FontWeight(500).LetterSpacing(k.Px(0.275)).TextColor(t.MutedForeground).Margin(0, 0, k.Px(4), 0)
+					heading := func(s string) *ui.Element {
+						return k.Text(c, strings.ToUpper(s), 11, 16.5).FontWeight(500).LetterSpacing(k.Px(0.275)).TextColor(t.MutedForeground).Margin(0, 0, k.Px(4), 0)
 					}
 					ui.Column(c).Role(ui.RoleGroup).Label("Prompt").Children(func() {
 						heading("Prompt")
 						k.Text(c, link.Request.Prompt, 12.5, 20).TextColor(t.Foreground).Selectable()
 					})
 					if link.Report != "" {
-						ui.Column(c).Role(ui.RoleGroup).Label("Report").Children(func() {
-							heading("Report")
+						ui.Column(c).Role(ui.RoleGroup).Label("Report").Selectable().Children(func() {
+							heading("Report").Unselectable()
 							pr := newProse(k)
 							pr.size, pr.lh = 13, 24
 							f := flow{c: c}

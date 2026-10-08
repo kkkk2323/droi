@@ -445,6 +445,42 @@ func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
 	}
 }
 
+// A drag selects across a reply's paragraphs, code block and list, and
+// copies them without the list's markers or the code's line numbers and
+// language.
+func TestADragSelectsAcrossAReply(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	const first = "login() calls refreshToken() without awaiting it, so session() can run with the stale token."
+	const last = "src/auth/login.test.ts: cover the expired-token path"
+	from, ok := h.tt.Find(first)
+	if !ok {
+		t.Fatalf("no paragraph %q", first)
+	}
+	to, ok := h.tt.Find(last)
+	if !ok {
+		t.Fatalf("no list item %q", last)
+	}
+	h.tt.Press(from.X+1, from.Y+4)
+	h.tt.Move(to.X+to.W-1, to.Y+to.H-4)
+	h.tt.Release(to.X+to.W-1, to.Y+to.H-4)
+	h.frame()
+	h.tt.Command("copy")
+	h.frame()
+	want := strings.Join([]string{
+		first,
+		"I will add the missing await and a regression test:",
+		"export async function login(user) {\n  await refreshToken(user)\n  return session(user)\n}",
+		"src/auth/login.ts: await the refresh",
+		last,
+	}, "\n")
+	if got := h.tt.Clipboard(); got != want {
+		t.Fatalf("copied %q\nwant %q", got, want)
+	}
+}
+
 // The end of a reply has a Copy button that copies the turn's text as
 // Markdown, and the time without the word "took".
 func TestAReplyEndsWithACopyButton(t *testing.T) {

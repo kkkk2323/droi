@@ -148,6 +148,9 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 	if r.kind != rowCall && r.kind != rowNested {
 		col.Role(ui.RoleGroup).Label("Assistant")
 	}
+	if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Text {
+		col.Selectable()
+	}
 	col.Children(func() {
 		if r.block < 0 {
 			return
