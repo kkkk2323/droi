@@ -1,8 +1,25 @@
 ## Unreleased
 
+### Added
+
+- Simplified Chinese. Droi follows this computer's language; Settings → General → Language picks English or 简体中文 instead.
+- A drag selects across a reply's paragraphs, code blocks and lists, and copies them as one text, without list numbers or the code's line numbers.
+- A right-click on a reply offers Copy, Select All, Copy as Markdown and Quote in message.
+- The composers take images, links and text dropped from other apps, such as a picture dragged from a browser.
+- Shortcuts (Ctrl on Windows): ⌘N for a new Session, ⌘, for Settings, ⌘B for the sidebar, ⌘J to scroll to the latest message, and ⌘1 to ⌘9 for the sidebar's first Sessions, which show their numbers while ⌘ is held. The menu bar lists them, and the buttons' tooltips tell them.
+- The update shows its release notes in Settings → About, and its card offers Skip this version: the background check then does not install that version.
+
 ### Changed
 
 - The Electron app gets no more updates, starting with 1.36.0. Install the native Droi from the Release page instead; it keeps your Sessions and settings.
+- The composer grows up to 8 lines before it scrolls.
+- A Session working in the background no longer rebuilds the open transcript on each of its events.
+
+### Fixed
+
+- `/compact` on a long Session no longer fails after 30 seconds with "context deadline exceeded": Droi waits 240 seconds, as the Droid SDK does. Cleaning up a worktree, a semantic diff and file transfers wait as long as the SDK too.
+- An older read of the Session list no longer replaces a newer one.
+- A Session in a git worktree uses its repository's Project Memory instead of an empty one of its own. Memory saved under a worktree that still exists moves into the repository's.
 
 ## 1.36.0 - 2026-10-07
 
