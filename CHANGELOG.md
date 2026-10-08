@@ -1,3 +1,10 @@
+## 1.38.4 - 2026-10-08
+
+### Fixed
+
+- A file copied in the Finder and pasted into the composer goes in as its path, and a picture file is attached as the picture. Before, Droi attached the file's icon instead, so Droid saw an MP4 icon and not the video.
+- A file dropped on the New session page that is not a picture goes in as its path. Before, Droi dropped it without a word.
+
 ## 1.38.3 - 2026-10-08
 
 ### Fixed
