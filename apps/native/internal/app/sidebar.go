@@ -26,6 +26,9 @@ type sidebarState struct {
 	revealed map[string]int
 	renaming string
 	rename   string
+	// numbered are the Sessions the sidebar showed in the last frame, in
+	// order, for ⌘1…⌘9.
+	numbered []string
 }
 
 // sidebarView is the web Client's SessionSidebar.
@@ -43,8 +46,8 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	ui.Column(c).Role(ui.RoleGroup).Label("Sessions").Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
 		ui.Box(c).Height(44).Shrink(0).DragWindow()
 		ui.Column(c).Gap(k.Px(4)).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			if a.sidebarRow(c, "plus", "New session", false).Clicked() {
-				a.Go(Route{Name: "new"})
+			if a.sidebarRow(c, "plus", "New session", false).Tooltip(withShortcut("New session", CmdNewSession)).Clicked() {
+				a.Run(CmdNewSession)
 			}
 			if a.sidebarRow(c, "clock", "Automations", a.route.Name == "automations").Clicked() {
 				a.Go(Route{Name: "automations"})
@@ -126,9 +129,9 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 		})
 		ui.Row(c).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			b := k.IconButton(c, "settings", "Settings", 32)
+			b := k.IconButton(c, "settings", "Settings", 32).Tooltip(withShortcut("Settings", CmdSettings))
 			if b.Clicked() {
-				a.Go(Route{Name: "settings"})
+				a.Run(CmdSettings)
 			}
 		})
 	})
@@ -462,6 +465,8 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 		a.renameField(c, s, flat)
 		return
 	}
+	a.sidebar.numbered = append(a.sidebar.numbered, s.SessionID)
+	n := len(a.sidebar.numbered)
 	b := ui.ButtonBase(c).Key(s.SessionID).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
 		Gap(k.Px(2)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
@@ -519,7 +524,11 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				})
 			}
 			ui.Spacer(c)
-			k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+			if n <= 9 && c.Modifiers() == ui.Cmd {
+				k.Text(c, shortcut(sessionCommand(n)), 11, 16.5).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
+			} else {
+				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+			}
 		})
 	})
 	if b.Clicked() {

@@ -146,7 +146,9 @@ func main() {
 	h.OnChange(func() { update(func() {}) })
 
 	mygo.App.WhenReady(func() {
-		mygo.App.SetMenu(menu(func(step int) {
+		mygo.App.SetMenu(menu(func(id string) {
+			update(func() { a.Run(id) })
+		}, func(step int) {
 			if win != nil {
 				win.Update(func() { a.Zoom(step) })
 			}
@@ -214,23 +216,56 @@ func main() {
 }
 
 // menu is the Desktop Shell's: the app, File, Edit, View and Window menus,
-// with zoom on ⌘= / ⌘- / ⌘0 as people press them.
-func menu(zoom func(step int), paste func()) *mygo.Menu {
+// with zoom on ⌘= / ⌘- / ⌘0 as people press them, and the window's
+// commands (app.Commands), which take their shortcuts here.
+func menu(run func(id string), zoom func(step int), paste func()) *mygo.Menu {
+	mac := runtime.GOOS == "darwin"
 	item := func(label, acc string, step int, hidden bool) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Accelerator: acc, Hidden: hidden, Click: func(*mygo.MenuItem, *mygo.Window) { zoom(step) }}
 	}
+	cmds := map[string]*mygo.MenuItem{}
+	var hidden []*mygo.MenuItem
+	for _, c := range app.Commands() {
+		it := &mygo.MenuItem{Label: c.Label, Accelerator: c.Key, Hidden: c.Hidden, Click: func(*mygo.MenuItem, *mygo.Window) { run(c.ID) }}
+		cmds[c.ID] = it
+		if c.Hidden {
+			hidden = append(hidden, it)
+		}
+	}
+	appMenu := &mygo.MenuItem{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
+		{Role: mygo.RoleAbout},
+		mygo.Separator(),
+		cmds[app.CmdSettings],
+		mygo.Separator(),
+		{Role: mygo.RoleServices},
+		mygo.Separator(),
+		{Role: mygo.RoleHide},
+		{Role: mygo.RoleHideOthers},
+		{Role: mygo.RoleUnhide},
+		mygo.Separator(),
+		{Role: mygo.RoleQuit},
+	}}
+	file := []*mygo.MenuItem{cmds[app.CmdNewSession], mygo.Separator(), {Role: mygo.RoleClose}}
+	if !mac {
+		// Without an app menu, Settings and Quit are in File.
+		file = []*mygo.MenuItem{cmds[app.CmdNewSession], cmds[app.CmdSettings], mygo.Separator(), {Role: mygo.RoleQuit}}
+	}
+	view := []*mygo.MenuItem{
+		cmds[app.CmdToggleSidebar],
+		cmds[app.CmdScrollToLatest],
+		mygo.Separator(),
+		item("Actual Size", "CmdOrCtrl+0", 0, false),
+		item("Zoom In", "CmdOrCtrl+=", 1, false),
+		item("Zoom In", "CmdOrCtrl+Plus", 1, true),
+		item("Zoom Out", "CmdOrCtrl+-", -1, false),
+		mygo.Separator(),
+		{Role: mygo.RoleToggleFullScreen},
+	}
 	return mygo.NewMenu([]*mygo.MenuItem{
-		{Role: mygo.RoleAppMenu},
-		{Role: mygo.RoleFileMenu},
+		appMenu,
+		{Label: "File", Submenu: file},
 		editMenu(paste),
-		{Label: "View", Submenu: []*mygo.MenuItem{
-			item("Actual Size", "CmdOrCtrl+0", 0, false),
-			item("Zoom In", "CmdOrCtrl+=", 1, false),
-			item("Zoom In", "CmdOrCtrl+Plus", 1, true),
-			item("Zoom Out", "CmdOrCtrl+-", -1, false),
-			mygo.Separator(),
-			{Role: mygo.RoleToggleFullScreen},
-		}},
+		{Label: "View", Submenu: append(view, hidden...)},
 		{Role: mygo.RoleWindowMenu},
 	})
 }

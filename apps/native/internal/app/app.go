@@ -484,9 +484,7 @@ func (a *App) View(c *ui.Context) {
 	if !a.narrow {
 		a.drawerOpen = false
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyB) && !a.narrow {
-		prefs.SidebarVisible.Set(a.prefs, !prefs.SidebarVisible.Get(a.prefs))
-	}
+	a.sidebar.numbered = a.sidebar.numbered[:0]
 	a.worktreeDialogView(c)
 	if a.route.Name == "settings" {
 		a.settingsPage(c, status)
@@ -558,9 +556,9 @@ func (a *App) View(c *ui.Context) {
 		if !shown {
 			label = "Show sidebar"
 		}
-		b := a.kit.IconButton(c, "panel-left", label, 32).Absolute().Left(left).Top(6).Expanded(shown)
+		b := a.kit.IconButton(c, "panel-left", label, 32).Tooltip(withShortcut(label, CmdToggleSidebar)).Absolute().Left(left).Top(6).Expanded(shown)
 		if b.Clicked() {
-			prefs.SidebarVisible.Set(a.prefs, !shown)
+			a.Run(CmdToggleSidebar)
 		}
 	})
 }

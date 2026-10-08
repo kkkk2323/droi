@@ -85,12 +85,11 @@ func (v *sessionView) transcriptView(c *ui.Context, s *session.Session, listed [
 			v.loadOlder()
 		}
 		if !v.list.AtEnd() {
-			b := k.Button(c, kit.Outline, 32, true, "Scroll to latest").Radius(k.Px(16)).Absolute().Bottom(k.Px(12)).
+			b := k.Button(c, kit.Outline, 32, true, "Scroll to latest").Tooltip(withShortcut("Scroll to latest", CmdScrollToLatest)).Radius(k.Px(16)).Absolute().Bottom(k.Px(12)).
 				Left(0).Right(0).Margin(0, ui.Auto, 0, ui.Auto).Shadow(0, k.Px(4), k.Px(12), 0, ui.RGBA(0, 0, 0, 0.08))
 			b.Children(func() { k.Icon(c, "arrow-down", 16, t.Foreground) })
 			if b.Clicked() {
-				v.list.FollowEnd = true
-				v.list.ScrollToEnd()
+				a.Run(CmdScrollToLatest)
 			}
 		}
 	})
