@@ -149,7 +149,18 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 		col.Role(ui.RoleGroup).Label("Assistant")
 	}
 	if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Text {
-		col.Selectable()
+		text := r.e.Blocks[r.block].Text
+		col.Selectable().ContextMenu(func(m *ui.Menu) {
+			m.EditItems()
+			m.Separator()
+			if m.Item("Copy as Markdown").Chosen() {
+				c.WriteClipboard(text)
+				c.Toast("Copied as Markdown")
+			}
+			if m.Item("Quote in message").Chosen() {
+				v.quote(text)
+			}
+		})
 	}
 	col.Children(func() {
 		if r.block < 0 {

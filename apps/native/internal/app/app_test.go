@@ -446,6 +446,42 @@ func TestAReplyParagraphCopiesItsSelection(t *testing.T) {
 	}
 }
 
+// A right-click on a reply offers Copy and Select All, then copies its
+// Markdown or quotes it in the message.
+func TestAReplysMenu(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("regression test") })
+	h.settle()
+	const para = "I will add the missing await and a regression test:"
+	if err := h.tt.RightClick(para); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if got, want := strings.Join(h.tt.Menu(), "|"), "Copy|-|Select All|-|Copy as Markdown|Quote in message"; got != want {
+		t.Fatalf("menu %q, want %q", got, want)
+	}
+	if err := h.tt.ChooseMenuItem("Copy as Markdown"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if got := h.tt.Clipboard(); !strings.HasPrefix(got, "`login()` calls `refreshToken()`") || !strings.Contains(got, "```ts\n") {
+		t.Fatalf("copied %q", got)
+	}
+	if err := h.tt.RightClick(para); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if err := h.tt.ChooseMenuItem("Quote in message"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	v := h.a.views[h.a.Route().SessionID]
+	if got := v.composer.text; !strings.HasPrefix(got, "> `login()` calls") || !strings.Contains(got, "\n> - `src/auth/login.ts`") || !strings.HasSuffix(got, "path\n\n") {
+		t.Fatalf("composer %q", got)
+	}
+}
+
 // The composer grows a line at a time with what is typed, up to 8 lines,
 // past which it scrolls.
 func TestTheComposerGrowsWithItsText(t *testing.T) {

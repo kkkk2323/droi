@@ -447,6 +447,24 @@ func (v *sessionView) addFiles(paths []string) {
 	v.saveDraft()
 }
 
+// quote adds text to the message as a Markdown quote and puts the
+// keyboard focus back in the composer.
+func (v *sessionView) quote(text string) {
+	cs := &v.composer
+	quoted := "> " + strings.ReplaceAll(strings.TrimSpace(text), "\n", "\n> ") + "\n\n"
+	switch {
+	case cs.text == "":
+	case strings.HasSuffix(cs.text, "\n\n"):
+	case strings.HasSuffix(cs.text, "\n"):
+		quoted = "\n" + quoted
+	default:
+		quoted = "\n\n" + quoted
+	}
+	cs.text += quoted
+	v.focused = false
+	v.saveDraft()
+}
+
 // drop adds what was dropped on the composer.
 func (v *sessionView) drop(d dropped) {
 	cs := &v.composer
