@@ -1,4 +1,4 @@
-## Unreleased
+## 1.39.1 - 2026-10-08
 
 ### Changed
 
