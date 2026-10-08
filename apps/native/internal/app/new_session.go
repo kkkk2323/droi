@@ -389,10 +389,8 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
 		if drop, ok := ui.DropData(card, dropOptions); ok {
 			d := readDrop(drop.Data)
-			for _, p := range d.files {
-				if img, ok, _ := attachments.ReadFile(p, p); ok {
-					s.images = append(s.images, img)
-				}
+			if err := attachFiles(&s.text, &s.images, d.files); err != nil {
+				s.err = err.Error()
 			}
 			if d.image != nil {
 				if img, ok, _ := attachments.FromBytes(d.image, "Dropped image.png", uuid.NewString()); ok {
@@ -416,6 +414,12 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
 			paste := func() bool {
+				if paths := a.clipboardFiles(); len(paths) > 0 {
+					if err := attachFiles(&s.text, &s.images, paths); err != nil {
+						s.err = err.Error()
+					}
+					return true
+				}
 				if a.cfg.ReadImage == nil {
 					return false
 				}

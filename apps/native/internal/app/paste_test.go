@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"image"
 	"image/png"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -113,5 +116,52 @@ func TestAnImagePastedOnTheNewSessionPageShows(t *testing.T) {
 	h.click("Remove Pasted image.png")
 	if len(h.a.newPage.images) != 0 {
 		t.Fatal("removing the image kept it")
+	}
+}
+
+// A file copied in the Finder pastes as its path (or, for a picture, as the
+// picture), not as the icon the clipboard also holds.
+func TestPastingCopiedFilesAddsTheirPaths(t *testing.T) {
+	dir := t.TempDir()
+	video := filepath.Join(dir, "clip one.mp4")
+	_ = os.WriteFile(video, []byte("not a picture"), 0o644)
+	var b bytes.Buffer
+	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 40, 30)))
+	shot := filepath.Join(dir, "shot.png")
+	_ = os.WriteFile(shot, b.Bytes(), 0o644)
+	icon := b.Bytes()
+	files := []string{video, shot}
+	h := newHarnessWith(t, sessionsScenario(), "", func(cfg *Config) {
+		cfg.ReadImage = func() []byte { return icon }
+		cfg.ReadFiles = func() []string { return files }
+	})
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("New session")
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.click("Message")
+	h.tt.Key(ui.Cmd, ui.KeyV)
+	h.frame()
+	if want := strconv.Quote(video) + " "; h.a.newPage.text != want {
+		t.Fatalf("the New session page's text is %q, want %q", h.a.newPage.text, want)
+	}
+	if len(h.a.newPage.images) != 1 || h.a.newPage.images[0].Name != "shot.png" {
+		t.Fatalf("the New session page's images: %+v", h.a.newPage.images)
+	}
+
+	h.openSession("Fix the login race")
+	h.until("the composer", func() bool {
+		if _, ok := h.tt.Find("Message composer"); !ok {
+			return false
+		}
+		_ = h.tt.Click("Message")
+		h.frame()
+		return h.a.PasteImage()
+	})
+	v := h.a.views[h.a.Route().SessionID]
+	if want := strconv.Quote(video) + " "; v.composer.text != want {
+		t.Fatalf("the Session's text is %q, want %q", v.composer.text, want)
+	}
+	if len(v.composer.images) != 1 || v.composer.images[0].Name != "shot.png" {
+		t.Fatalf("the Session's images: %+v", v.composer.images)
 	}
 }

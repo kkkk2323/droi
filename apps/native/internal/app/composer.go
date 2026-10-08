@@ -403,8 +403,14 @@ func isPaste(ev ui.InputEvent) bool {
 }
 
 // pasteImage attaches the clipboard's image, as the web Client takes one
-// pasted; with none it lets the text area paste the text.
+// pasted; with none it lets the text area paste the text. Files copied in
+// the Finder go as addFiles takes them: the clipboard also holds their icon
+// as a picture, which is not what was copied.
 func (v *sessionView) pasteImage() bool {
+	if paths := v.a.clipboardFiles(); len(paths) > 0 {
+		v.addFiles(paths)
+		return true
+	}
 	if v.a.cfg.ReadImage == nil {
 		return false
 	}
@@ -424,14 +430,24 @@ func (v *sessionView) pasteImage() bool {
 
 func (v *sessionView) addFiles(paths []string) {
 	cs := &v.composer
+	if err := attachFiles(&cs.text, &cs.images, paths); err != nil {
+		cs.err = err.Error()
+	}
+	v.saveDraft()
+}
+
+// attachFiles attaches the images among paths and adds the other files to
+// text as their paths, which the agent reads itself; err is the last file
+// that could not be read.
+func attachFiles(text *string, images *[]attachments.Image, paths []string) (err error) {
 	var others []string
 	for _, p := range paths {
-		img, ok, err := attachments.ReadFile(p, uuid.NewString())
+		img, ok, e := attachments.ReadFile(p, uuid.NewString())
 		switch {
-		case err != nil:
-			cs.err = err.Error()
+		case e != nil:
+			err = e
 		case ok:
-			cs.images = append(cs.images, img)
+			*images = append(*images, img)
 		default:
 			others = append(others, p)
 		}
@@ -444,9 +460,16 @@ func (v *sessionView) addFiles(paths []string) {
 				quoted[i] = strconv.Quote(p)
 			}
 		}
-		cs.text = appendWords(cs.text, strings.Join(quoted, " "))
+		*text = appendWords(*text, strings.Join(quoted, " "))
 	}
-	v.saveDraft()
+	return err
+}
+
+func (a *App) clipboardFiles() []string {
+	if a.cfg.ReadFiles == nil {
+		return nil
+	}
+	return a.cfg.ReadFiles()
 }
 
 // quote adds text to the message as a Markdown quote and puts the

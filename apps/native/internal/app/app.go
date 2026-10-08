@@ -84,6 +84,8 @@ type Config struct {
 	PickFolder func(title string) string
 	// ReadImage is the clipboard's image as PNG, nil without one.
 	ReadImage func() []byte
+	// ReadFiles is the paths of the files on the clipboard, nil without any.
+	ReadFiles func() []string
 	// Updater is the in-app update, nil where the app cannot update
 	// itself (a development build); Relaunch starts the installed one.
 	Updater  *updates.Updater
