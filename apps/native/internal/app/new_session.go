@@ -405,7 +405,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			var in *ui.Element
 			ui.Row(c).Children(func() {
 				in = k.TextArea(c, &s.text, "Message", "Do anything…", kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
-					MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!enabled).AutoFocus()
+					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
 			paste := func() bool {
 				if a.cfg.ReadImage == nil {

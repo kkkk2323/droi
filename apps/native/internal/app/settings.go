@@ -608,7 +608,7 @@ func (a *App) advancedTab(c *ui.Context) {
 			a.settingRow(c, "Added to the system prompt", "Appended to Droid's own system prompt in every new Session, whether it starts here, in a browser or on a phone. Existing Sessions and subagents keep theirs.", nil, func() {
 				ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
 					k.TextArea(c, &s.prompt, "Added to the system prompt", "e.g. Reply in the language I write in. Prefer small, reviewable commits.",
-						kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 4, Color: t.Foreground, Muted: t.MutedForeground})
+						kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 4, Color: t.Foreground})
 				})
 				stored := derefOr(st.AppendSystemPrompt)
 				ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {

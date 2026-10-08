@@ -296,7 +296,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					left = k.Px(8)
 				}
 				in := k.TextArea(c, &value, "Message", placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
-					MinLines: 1, MaxHeight: 224, Color: t.Foreground, Muted: t.MutedForeground}).Disabled(!loaded)
+					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!loaded)
 				if !v.focused {
 					in.AutoFocus()
 					v.focused = true

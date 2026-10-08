@@ -969,7 +969,7 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 			}
 			ui.Row(c).Radius(k.Px(10)).Border(1, border).Background(t.Background).Children(func() {
 				k.TextArea(c, &f.prompt, "Automation prompt", "Summarize yesterday’s commits in this repository and list anything that looks risky.",
-					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 5, Color: t.Foreground, Muted: t.MutedForeground})
+					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 5, Color: t.Foreground})
 			})
 		})
 		a.formField(c, "Schedule", preview, problem("schedule"), func() {

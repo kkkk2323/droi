@@ -795,7 +795,7 @@ func (v *sessionView) mcpForm(c *ui.Context, taken []string) {
 			a.field(c, &f.URL, "Server URL", "https://…", false, false)
 			ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
 				k.TextArea(c, &f.Headers, "Headers", "Headers, one per line: Authorization: Bearer …",
-					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 12, Line: 16, Mono: true, MinLines: 2, Color: t.Foreground, Muted: t.MutedForeground})
+					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 12, Line: 16, Mono: true, MinLines: 2, Color: t.Foreground})
 			})
 		} else {
 			a.field(c, &f.Command, "Command", "Command, e.g. npx", true, false)
