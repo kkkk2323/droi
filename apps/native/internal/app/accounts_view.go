@@ -82,7 +82,7 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, login host.LoginSt
 	s := &a.accounts
 	name, detail := accountName(acc)
 	pending := acc.Active && login.Status == host.Pending && login.Pending != nil
-	ui.Column(c).Key("account:"+acc.ID).Role(ui.RoleGroup).Label(name).Transition(accountMotion).Padding(k.Px(12), k.Px(16)).Children(func() {
+	ui.Column(c.Key("account:"+acc.ID)).Role(ui.RoleGroup).Label(name).Transition(accountMotion).Padding(k.Px(12), k.Px(16)).Children(func() {
 		ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
 			initial := ""
 			if acc.Login != nil {
@@ -211,7 +211,7 @@ func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
 			case pct >= 80:
 				color = t.Attention
 			}
-			ui.Row(c).Key(m.key).Gap(k.Px(6)).AlignItems(ui.Center).Label(L("%s: %d%% used", m.label, int(pct))).Children(func() {
+			ui.Row(c.Key(m.key)).Gap(k.Px(6)).AlignItems(ui.Center).Label(L("%s: %d%% used", m.label, int(pct))).Children(func() {
 				k.Text(c, m.label, 11, 16).TextColor(t.MutedForeground)
 				track := ui.Box(c).Width(k.Px(40)).Height(k.Px(4)).Radius(k.Px(2)).Background(t.Border).ClipX()
 				track.Children(func() {
@@ -269,7 +269,7 @@ func (a *App) accountMark(c *ui.Context, initial, icon string) {
 // signInCode is the device flow's code under a row, lined up with its text.
 func (a *App) signInCode(c *ui.Context, p *host.LoginPending) {
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Key("code").Transition(accountMotion).Wrap().Gap(k.Px(12)).AlignItems(ui.Center).Margin(k.Px(10), 0, 0, k.Px(40)).Children(func() {
+	ui.Row(c.Key("code")).Transition(accountMotion).Wrap().Gap(k.Px(12)).AlignItems(ui.Center).Margin(k.Px(10), 0, 0, k.Px(40)).Children(func() {
 		k.Text(c, p.UserCode, 16, 24).Font(k.Mono).LetterSpacing(k.Px(3.2)).Label(L("Sign-in code")).
 			Padding(k.Px(4), k.Px(10)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Background)
 		ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Center).Children(func() {
@@ -295,7 +295,7 @@ func (a *App) accountError(c *ui.Context, msg string) {
 func (a *App) accountQuestion(c *ui.Context, text, action string, v kit.Variant, do func()) {
 	k, t := a.kit, a.kit.T
 	s := &a.accounts
-	ui.Row(c).Key("question").Transition(accountMotion).Wrap().GapX(k.Px(16)).GapY(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(10), 0, 0, k.Px(40)).Children(func() {
+	ui.Row(c.Key("question")).Transition(accountMotion).Wrap().GapX(k.Px(16)).GapY(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(10), 0, 0, k.Px(40)).Children(func() {
 		k.Text(c, text, 13, 20).Role(ui.RoleStatus).TextColor(t.MutedForeground).Grow(1).Basis(0).MinWidth(k.Px(192))
 		ui.Row(c).Gap(k.Px(8)).Shrink(0).Children(func() {
 			if a.smallButton(c, kit.Ghost, L("Cancel"), "", false).Clicked() {
@@ -322,7 +322,7 @@ func (a *App) addAccountRow(c *ui.Context, adding host.LoginState) {
 	k, t := a.kit, a.kit.T
 	s := &a.accounts
 	pending := adding.Status == host.Pending && adding.Pending != nil
-	ui.Column(c).Key("account:add").Padding(k.Px(12), k.Px(16)).Children(func() {
+	ui.Column(c.Key("account:add")).Padding(k.Px(12), k.Px(16)).Children(func() {
 		ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
 			a.accountMark(c, "", "plus")
 			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {

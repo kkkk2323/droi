@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- The native app runs on MyGo 0.3.3. A click or a shortcut that comes right after an edit, before the window draws again, now sees the edit.
+
 ## 1.39.1 - 2026-10-08
 
 ### Changed
