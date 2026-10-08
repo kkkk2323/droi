@@ -30,8 +30,12 @@ type DaemonState struct {
 	PID     int
 	Attempt int
 	Delay   time.Duration
-	Reason  string
+	// Reason is why the last attempt failed, while it is retried.
+	Reason string
 }
+
+// DroidMissing reports that the last attempt found no droid to start.
+func (s DaemonState) DroidMissing() bool { return s.Reason == string(errNoDroid) }
 
 // URL is the Daemon's WebSocket URL while it runs.
 func (s DaemonState) URL() string {
@@ -172,7 +176,13 @@ func (s *Supervisor) launch(gen int) {
 			s.mu.Unlock()
 			return
 		}
-		s.setLocked(DaemonState{Status: DaemonStarting, Port: port, Attempt: attempt})
+		// A retry keeps why the last attempt failed: the window shows it
+		// instead of an endless start.
+		reason := ""
+		if attempt > 1 {
+			reason = s.state.Reason
+		}
+		s.setLocked(DaemonState{Status: DaemonStarting, Port: port, Attempt: attempt, Reason: reason})
 		s.mu.Unlock()
 		cmd, err = s.Spawn(port)
 	}
