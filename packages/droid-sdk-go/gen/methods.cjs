@@ -27,7 +27,7 @@ for (const m of methods) {
   const ack = /sendAckCompatibleRequest/.test(b)
   const done = [...b.matchAll(/notification\.type === "(\w+)"/g)].map((x) => x[1])
   const timeout =
-    /sendRequest\(\s*validated,\s*\w+,\s*([^)\n]+)\)/.exec(b)?.[1]?.trim() ??
+    /sendRequest\(\s*validated,\s*\w+,\s*([^)]+?)\s*\)/.exec(b)?.[1]?.trim() ??
     /timeoutOverride: ([^,}\n]+)/.exec(b)?.[1]?.trim()
   const e = { name: m.name, args: m.args, rpc: rpc[0], req, res, ack, done, timeout }
   if (rpc.length > 1 || !req || !res) odd.push({ ...e, rpcs: rpc })

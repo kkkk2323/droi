@@ -533,6 +533,7 @@ fs.writeFileSync(
 
 const timeouts = {
   '3e5': '300 * time.Second',
+  '18e4': '180 * time.Second',
   COMPACTION_REQUEST_TIMEOUT: '240 * time.Second',
   FILE_TRANSFER_REQUEST_TIMEOUT: '900 * time.Second',
 }
