@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -11,10 +12,12 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
+	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
 
 // The Daemon reports no change to its Automations; the page reads them
@@ -70,6 +73,59 @@ type automationsState struct {
 	factoryApp       bool
 	factoryCheckedAt time.Time
 	factoryChecking  bool
+
+	// live are the runs whose Session is busy this frame, newest first;
+	// liveKey names them, to read the list again when one starts or ends.
+	live    []sessions.Summary
+	liveKey string
+}
+
+// noteLiveRuns finds the Automations' runs at work among the listed
+// Sessions. The Daemon tells of no change to an Automation, but it reports
+// every Session's working state, a run's too.
+func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.Activity) {
+	s := &a.automations
+	s.live = s.live[:0]
+	var ids []string
+	for _, x := range sessions.MainSessions(listed) {
+		if id, _ := sessions.AutomationRun(x.Tags); id != "" && busy[x.SessionID] != "" && x.ArchivedAt == "" {
+			s.live = append(s.live, x)
+			ids = append(ids, x.SessionID)
+		}
+	}
+	slices.SortStableFunc(s.live, func(p, q sessions.Summary) int { return int(q.UpdatedAt - p.UpdatedAt) })
+	key := strings.Join(ids, ",")
+	if key == s.liveKey {
+		return
+	}
+	s.liveKey = key
+	if a.route.Name == "automations" {
+		a.loadAutomations(true)
+		if id := a.route.Automation; id != "" {
+			a.loadRuns(id, true)
+		}
+	}
+}
+
+// liveRuns are the busy runs of the Automation id.
+func (a *App) liveRuns(id string) int {
+	n := 0
+	for _, x := range a.automations.live {
+		if aid, _ := sessions.AutomationRun(x.Tags); aid == id {
+			n++
+		}
+	}
+	return n
+}
+
+// runLive is whether the run's Session is busy this frame.
+func (a *App) runLive(sessionID string) bool {
+	for _, x := range a.automations.live {
+		if x.SessionID == sessionID {
+			return true
+		}
+	}
+	return false
 }
 
 // automationForm is what the editor's fields hold.
@@ -510,8 +566,8 @@ func (a *App) automationMark(c *ui.Context, e protocol.AutomationEntry) {
 	k, t := a.kit, a.kit.T
 	ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
 		switch {
-		case automations.RunLabel(e.LastRunStatus) == "Running":
-			k.Spinner(c, 14, t.Info)
+		case automations.RunLabel(e.LastRunStatus) == "Running" || a.liveRuns(e.ID) > 0:
+			k.Spinner(c, 14, t.Info).Role(ui.RoleImage).Label(L("Running"))
 		case e.Status == "paused":
 			k.Icon(c, "circle-pause", 14, t.MutedForeground)
 		case e.Status != "active":
@@ -743,7 +799,7 @@ func (a *App) deleteDialog(c *ui.Context, e *protocol.AutomationEntry) {
 				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
 					s.confirmDelete = false
 				}
-				if a.smallButton(c, kit.Destructive, L("Delete"), "", s.acting != "").Clicked() {
+				if a.dangerButton(c, L("Delete"), s.acting != "").Clicked() {
 					s.confirmDelete = false
 					a.act("", l10n.N("delete"), L("Deleted “%s”.", name), func() error {
 						cl, err := a.ctl.Client()
@@ -792,7 +848,11 @@ func (a *App) runsList(c *ui.Context, id string) {
 func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 	k, t := a.kit, a.kit.T
 	started := automations.When(r.StartedAt, a.cfg.Now())
-	label := l10n.T(automations.RunLabel(r.Status))
+	status := automations.RunLabel(r.Status)
+	if a.runLive(r.SessionID) {
+		status = "Running"
+	}
+	label := l10n.T(status)
 	if r.Type == protocol.AutomationRunType("create") {
 		label = L("Setup, %s", strings.ToLower(label))
 	}
@@ -807,7 +867,7 @@ func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 	}
 	b.Children(func() {
 		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
-			switch automations.RunLabel(r.Status) {
+			switch status {
 			case "Running":
 				k.Spinner(c, 14, t.Info)
 			case "Succeeded":

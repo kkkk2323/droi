@@ -127,6 +127,9 @@ type App struct {
 	// turnAt is when each working Session's turn began, in Unix seconds:
 	// it keeps the Session's place in the list until the turn ends.
 	turnAt map[string]int64
+	// unlisted are the Sessions that started working before the list had
+	// them, a run of an Automation or a subagent, read for once each.
+	unlisted map[string]bool
 
 	sidebar  sidebarState
 	views    map[string]*sessionView
@@ -271,10 +274,20 @@ func (a *App) onEvent(e controller.Event) {
 			_ = jsonUnmarshal(ev.Raw.Raw, &n)
 			a.mu.Lock()
 			a.busy[ev.SessionID] = n.NewState
+			fresh := n.NewState != "idle" && a.listDone && !a.unlisted[ev.SessionID] && findSummary(a.listed, ev.SessionID) == nil
+			if fresh {
+				if a.unlisted == nil {
+					a.unlisted = map[string]bool{}
+				}
+				a.unlisted[ev.SessionID] = true
+			}
 			a.mu.Unlock()
-			if n.NewState == "idle" {
+			if n.NewState == "idle" || fresh {
 				go a.refreshList()
 			}
+		}
+		if ev.Raw.Type == "child_session_available" {
+			go a.refreshList()
 		}
 		if ev.Raw.Type == "session_title_updated" {
 			go a.refreshList()
@@ -502,6 +515,7 @@ func (a *App) View(c *ui.Context) {
 	c.SetTheme(a.kit.UITheme(c.Theme()))
 	status, listed, busy, listErr, listDone, more := a.snapshot()
 	a.restoreLast(listed, listDone)
+	a.noteLiveRuns(listed, a.activity(busy))
 	a.narrow = a.isNarrow(c)
 	// A drawer only exists on narrow screens; widening the window closes it.
 	if !a.narrow {

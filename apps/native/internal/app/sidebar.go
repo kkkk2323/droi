@@ -19,6 +19,7 @@ import (
 const (
 	pinnedSectionKey     = "droi:pinned"
 	workspacesSectionKey = "droi:workspaces"
+	liveRunsSectionKey   = "droi:running-automations"
 )
 
 type sidebarState struct {
@@ -47,10 +48,15 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Sessions")).Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
 		ui.Box(c).Height(44).Shrink(0).DragWindow()
 		ui.Column(c).Gap(k.Px(4)).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			if a.sidebarRow(c, "plus", L("New session"), false).Tooltip(withShortcut(L("New session"), CmdNewSession)).Clicked() {
+			if a.sidebarRow(c, "plus", L("New session"), false, nil).Tooltip(withShortcut(L("New session"), CmdNewSession)).Clicked() {
 				a.Run(CmdNewSession)
 			}
-			if a.sidebarRow(c, "clock", L("Automations"), a.route.Name == "automations").Clicked() {
+			live := a.automations.live
+			if a.sidebarRow(c, "clock", L("Automations"), a.route.Name == "automations", func() {
+				if n, ok := activity.CountBusy(live, busy, nil); ok {
+					a.busyMark(c, n)
+				}
+			}).Clicked() {
 				a.Go(Route{Name: "automations"})
 			}
 			ui.Row(c).Gap(k.Px(4)).Children(func() {
@@ -86,6 +92,15 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				default:
 					rest = append(rest, *g)
 				}
+			}
+			if live := a.automations.live; len(live) > 0 {
+				a.foldable(c, L("Running automations"), liveRunsSectionKey, []sessions.Group{{Sessions: live}}, busy, func() {
+					ui.Column(c).Role(ui.RoleGroup).Label(L("Running automations")).Gap(1).Margin(0, 0, k.Px(8), 0).Children(func() {
+						for _, s := range live {
+							a.sessionRow(c, s, true, s.SessionID == selected, busy[s.SessionID], false)
+						}
+					})
+				})
 			}
 			section := func(g sessions.Group) { a.workspaceSection(c, g, groups, order, selected, busy) }
 			if loose != nil || len(pinned) > 0 {
@@ -178,7 +193,7 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 }
 
 // sidebarRow is a SidebarRow: an icon and a label, h-8, rounded-lg.
-func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool) *ui.Element {
+func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trailing func()) *ui.Element {
 	k, t := a.kit, a.kit.T
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
@@ -191,6 +206,9 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool) *ui.E
 	b.Children(func() {
 		k.Icon(c, icon, 16, t.MutedForeground)
 		k.Text(c, label, 13, 19.5).TextColor(t.Foreground)
+		if trailing != nil {
+			trailing()
+		}
 	})
 	return b
 }

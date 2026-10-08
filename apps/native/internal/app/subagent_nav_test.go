@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+
+	"github.com/kkkk2323/droi/apps/native/internal/subagents"
 )
 
 func subagentScenario() fakedaemon.Scenario {
@@ -22,6 +24,33 @@ func subagentScenario() fakedaemon.Scenario {
 		worker("22222222-2222-4222-8222-222222222222", "Worker: Patch the refresh", "completed"),
 		worker("33333333-3333-4333-8333-333333333333", "Worker: Write the test", "completed"),
 	}}
+}
+
+// A subagent the list does not have yet still leads back to its caller,
+// and runs as soon as its caller says it started.
+func TestAnUnlistedSubagentLeadsBackAndRuns(t *testing.T) {
+	const main, child = "11111111-1111-4111-8111-111111111111", "44444444-4444-4444-8444-444444444444"
+	sc := subagentScenario()
+	// The list does not tell this one's caller, as before the Daemon lists it as a subagent.
+	sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{Title: "Worker: Translate", Cwd: "/Users/dev/acme-web",
+		Messages: []fakedaemon.Message{{Role: "user", Text: "Translate"}}, Extra: map[string]any{"sessionId": child}})
+	h := newHarness(t, sc, "")
+	h.openSession("Fix the login race")
+	h.until("the reply", func() bool { return h.hasText("Fix it") })
+	if err := h.d.Notify(main, map[string]any{"type": "child_session_available", "childSessionId": child, "toolUseId": "toolu_new",
+		"subagentType": "worker", "description": "Translate", "timestamp": 1}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the run", func() bool { r, ok := h.a.subagentRun(child); return ok && r.Status == subagents.Running })
+	h.a.Go(Route{Name: "session", SessionID: child})
+	h.until("the trail", func() bool { _, ok := h.tt.Find("Session hierarchy"); return ok })
+	h.settle()
+	trail, _ := h.tt.Find("Session hierarchy")
+	h.tt.ClickAt(trail.X+20, trail.Y+trail.H/2)
+	h.frame()
+	if r := h.a.Route(); r.SessionID != main {
+		t.Fatalf("route after the crumb %+v", r)
+	}
 }
 
 func TestSubagentMenuAndTrail(t *testing.T) {

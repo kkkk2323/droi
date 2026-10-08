@@ -37,3 +37,32 @@ func TestAWideAttachedImageFitsTheColumn(t *testing.T) {
 		t.Fatalf("image %+v lost its 10:1 shape", img)
 	}
 }
+
+// Clicking a picture in the transcript shows it enlarged; a click closes it.
+func TestClickingAPictureEnlargesIt(t *testing.T) {
+	sc := fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Shots", Cwd: "/Users/dev/acme-web",
+		Messages: []fakedaemon.Message{{Role: "user", Content: []map[string]any{
+			{"type": "text", "text": "look"},
+			{"type": "image", "source": map[string]any{"type": "base64", "mediaType": "image/png", "data": pngOf(800, 600)}},
+		}}}}}}
+	h := newHarness(t, sc, "")
+	h.openSession("Shots")
+	h.until("the image", func() bool { _, ok := h.tt.Find("Attached image"); return ok })
+	h.frame()
+	small, _ := h.tt.Find("Attached image")
+	h.click("Attached image")
+	v := h.a.view(h.a.Route().SessionID)
+	if !v.zoomOpen {
+		t.Fatal("the picture did not open")
+	}
+	h.frame()
+	big, ok := h.tt.Find("Enlarged image")
+	if !ok || big.W <= small.W*1.5 {
+		t.Fatalf("enlarged %+v (found %v), thumbnail %+v", big, ok, small)
+	}
+	h.tt.ClickAt(big.X+big.W/2, big.Y+big.H/2)
+	h.frame()
+	if v.zoomOpen {
+		t.Fatal("a click did not close the picture")
+	}
+}

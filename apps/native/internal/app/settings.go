@@ -313,8 +313,11 @@ func (a *App) smallButton(c *ui.Context, v kit.Variant, label, icon string, disa
 	k, t := a.kit, a.kit.T
 	b := k.Button(c, v, 32, false, label).Disabled(disabled).FontSize(k.Px(13))
 	color := t.Foreground
-	if v == kit.Primary {
+	switch v {
+	case kit.Primary:
 		color = t.PrimaryForeground
+	case kit.Destructive:
+		color = t.Destructive
 	}
 	b.Children(func() {
 		if icon != "" {

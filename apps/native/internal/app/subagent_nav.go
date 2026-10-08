@@ -22,6 +22,19 @@ type subagentNav struct {
 
 func (a *App) subagentNavOf(listed []sessions.Summary, sel *sessions.Summary, id string) subagentNav {
 	var n subagentNav
+	// A subagent just started is in the Store before the list has it.
+	if (sel == nil || sel.CallingSessionID == "") && a.ctl != nil {
+		if h := a.ctl.Store().Session(id); h != nil {
+			if caller, toolUse := h.CallingSession(); caller != "" {
+				s := sessions.Summary{SessionID: id, Title: h.Title()}
+				if sel != nil {
+					s = *sel
+				}
+				s.CallingSessionID, s.CallingToolUseID = caller, toolUse
+				sel = &s
+			}
+		}
+	}
 	if sel == nil {
 		return n
 	}

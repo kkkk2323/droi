@@ -64,6 +64,10 @@ type sessionView struct {
 	leftEnd  bool
 	heldRows int
 	images   map[string]*ui.Bitmap
+	// zoom is the picture shown enlarged while zoomOpen.
+	zoom      *ui.Bitmap
+	zoomLabel string
+	zoomOpen  bool
 
 	renaming bool
 	rename   string
@@ -356,6 +360,9 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 		})
 		v.composerArea(c, s, workspace, loaded)
 	})
+	if v.zoomOpen {
+		v.zoomView(c)
+	}
 }
 
 // header is the PageHeader: the title, which a pencil renames, and the

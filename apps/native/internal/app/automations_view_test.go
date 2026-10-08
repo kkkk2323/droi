@@ -29,6 +29,27 @@ func automationsScenario() fakedaemon.Scenario {
 	}
 }
 
+// A run at work shows in the sidebar, under Automations, until it ends.
+func TestARunningAutomationShowsInTheSidebar(t *testing.T) {
+	h := newHarness(t, automationsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	if h.hasText("Running automations") {
+		t.Fatal("a section before any run works")
+	}
+	if err := h.d.Notify("run-1", map[string]any{"type": "droid_working_state_changed", "newState": "thinking"}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the running run", func() bool { return h.hasText("Running automations") && h.hasText("[Automation] Daily review") })
+	h.click("[Automation] Daily review")
+	if r := h.a.Route(); r.SessionID != "run-1" {
+		t.Fatalf("route %+v", r)
+	}
+	if err := h.d.Notify("run-1", map[string]any{"type": "droid_working_state_changed", "newState": "idle"}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the section gone", func() bool { return !h.hasText("Running automations") })
+}
+
 func offsetNow() int {
 	_, off := time.Now().Zone()
 	return off

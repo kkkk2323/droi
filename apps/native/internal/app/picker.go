@@ -173,43 +173,45 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 		p.Label(L("Choose a model")).
 			Size(k.Px(480), k.Px(352)).Row().AlignItems(ui.Stretch).Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).
 			TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).Role(ui.RoleToolbar).Label(L("Filter models")).Width(k.Px(56)).Shrink(0).Gap(k.Px(8)).Padding(k.Px(12), k.Px(8)).
-			AlignItems(ui.Center).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Background(t.Sidebar).Children(func() {
-			rail := func(label string, pressed bool, icon func(color ui.Color)) bool {
-				b := ui.ButtonBase(c).Label(label).Tooltip(label).Checked(pressed).Size(k.Px(36), k.Px(36)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
-				color := t.MutedForeground
-				switch {
-				case pressed:
-					b.Background(t.SidebarAccent)
-					color = t.Foreground
-				case b.Hovered():
-					b.Background(t.SidebarAccent.Alpha(0.6))
-					color = t.Foreground
+		// The rail scrolls: the Daemon can offer more brands than its height holds.
+		ui.Scroll(c).Width(k.Px(56)).Shrink(0).MinHeight(0).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Background(t.Sidebar).Children(func() {
+			ui.Column(c).Role(ui.RoleToolbar).Label(L("Filter models")).FillWidth().Gap(k.Px(8)).Padding(k.Px(12), k.Px(8)).AlignItems(ui.Center).Children(func() {
+				rail := func(label string, pressed bool, icon func(color ui.Color)) bool {
+					b := ui.ButtonBase(c).Label(label).Tooltip(label).Checked(pressed).Size(k.Px(36), k.Px(36)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
+					color := t.MutedForeground
+					switch {
+					case pressed:
+						b.Background(t.SidebarAccent)
+						color = t.Foreground
+					case b.Hovered():
+						b.Background(t.SidebarAccent.Alpha(0.6))
+						color = t.Foreground
+					}
+					b.Children(func() { icon(color) })
+					return b.Clicked()
 				}
-				b.Children(func() { icon(color) })
-				return b.Clicked()
-			}
-			fav := st.filter == models.FilterFavorites && st.brand == ""
-			if rail(L("Favorites"), fav && !searching, func(color ui.Color) { k.Icon(c, "star", 14, color) }) {
-				st.brand = ""
-				st.filter = models.FilterFavorites
-				if fav {
-					st.filter = models.FilterAll
-				}
-				st.highlight = 0
-			}
-			ui.Box(c).Size(k.Px(20), 1).Margin(k.Px(4), 0).Background(t.Border).Shrink(0)
-			for _, b := range models.BrandsOf(choices) {
-				pressed := st.brand == b
-				if rail(l10n.T(models.BrandLabels[b]), pressed && !searching, func(color ui.Color) { brandIcon(c, k, b, 14, color) }) {
-					st.filter = models.FilterAll
-					st.brand = b
-					if pressed {
-						st.brand = ""
+				fav := st.filter == models.FilterFavorites && st.brand == ""
+				if rail(L("Favorites"), fav && !searching, func(color ui.Color) { k.Icon(c, "star", 14, color) }) {
+					st.brand = ""
+					st.filter = models.FilterFavorites
+					if fav {
+						st.filter = models.FilterAll
 					}
 					st.highlight = 0
 				}
-			}
+				ui.Box(c).Size(k.Px(20), 1).Margin(k.Px(4), 0).Background(t.Border).Shrink(0)
+				for _, b := range models.BrandsOf(choices) {
+					pressed := st.brand == b
+					if rail(l10n.T(models.BrandLabels[b]), pressed && !searching, func(color ui.Color) { brandIcon(c, k, b, 14, color) }) {
+						st.filter = models.FilterAll
+						st.brand = b
+						if pressed {
+							st.brand = ""
+						}
+						st.highlight = 0
+					}
+				}
+			})
 		})
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Row(c).Gap(k.Px(8)).PaddingX(k.Px(12)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {

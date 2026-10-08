@@ -233,8 +233,38 @@ func (v *sessionView) picture(c *ui.Context, id string, img transcript.Image, ma
 	}
 	// Width and aspect ratio, not a fixed size, so a wide image narrows
 	// to its column as the web Client's max-w-full object-contain does.
-	ui.Image(c, bm).Label(label).Width(float32(w)*scale).MaxWidthPercent(100).AspectRatio(float32(w)/float32(h)).
-		Shrink(1).MinWidth(0).Radius(k.Px(12)).Border(1, k.T.Border)
+	pic := ui.Image(c, bm).Label(label).Role(ui.RoleButton).Focusable().Tooltip(L("Click to enlarge")).
+		Width(float32(w)*scale).MaxWidthPercent(100).AspectRatio(float32(w)/float32(h)).
+		Shrink(1).MinWidth(0).Radius(k.Px(12)).Border(1, k.T.Border).Cursor(ui.CursorPointer)
+	if pic.Clicked() {
+		v.zoom, v.zoomLabel, v.zoomOpen = bm, label, true
+	}
+}
+
+// zoomView shows the picture clicked in the transcript at the size the
+// window holds; a click or Escape closes it.
+func (v *sessionView) zoomView(c *ui.Context) {
+	if v.zoom == nil {
+		v.zoomOpen = false
+		return
+	}
+	k := v.a.kit
+	bm := v.zoom
+	ww, wh := c.Size()
+	w, h := bm.Size()
+	maxW, maxH := ww-k.Px(64), wh-k.Px(64)
+	scale := min(float32(1), maxW/float32(w), maxH/float32(h))
+	ui.DialogBase(c, &v.zoomOpen, func(backdrop, panel *ui.Element) {
+		backdrop.Background(ui.RGBA(0, 0, 0, 0.7))
+		panel.Label(L("Enlarged image")).Size(float32(w)*scale, float32(h)*scale).Radius(k.Px(8)).Clip().Cursor(ui.CursorPointer)
+		ui.Image(c, bm).Label(v.zoomLabel).Fill().Fit(ui.Contain)
+		if panel.Clicked() {
+			v.zoomOpen = false
+		}
+	})
+	if !v.zoomOpen {
+		v.zoom = nil
+	}
 }
 
 // disclosure is the trigger of a fold: label and a chevron that turns as
@@ -690,6 +720,11 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 	a := v.a
 	k, t := a.kit, a.kit.T
 	link := subagents.LinkFor(call, links)
+	if link.Run == nil && link.SessionID != "" {
+		if r, ok := a.subagentRun(link.SessionID); ok {
+			link.Run, link.State = &r, subagents.StateOf(call, &r)
+		}
+	}
 	name := subagents.SubagentName(link.Request.SubagentType)
 	desc := link.Request.Description
 	if desc == "" {
@@ -809,22 +844,32 @@ func (a *App) subagentRuns(listed []sessions.Summary) map[string]subagents.Run {
 	if a.ctl == nil {
 		return runs
 	}
-	store := a.ctl.Store()
 	for _, s := range listed {
 		if s.CallingSessionID == "" {
 			continue
 		}
-		working := ""
-		if h := store.Session(s.SessionID); h != nil {
-			working = string(h.WorkingState())
-		}
-		var summary *subagents.Run
-		if sum, ok := store.SubagentInvocationSummary(s.SessionID); ok {
-			summary = subagents.FromSummary(sum)
-		}
-		if r, ok := subagents.RunFrom(summary, working); ok {
+		if r, ok := a.subagentRun(s.SessionID); ok {
 			runs[s.SessionID] = r
 		}
 	}
 	return runs
+}
+
+// subagentRun is what the Store knows of one subagent's run, listed yet or
+// not: a background Task's subagent reaches the Store through its caller's
+// notifications before the Session list is read again.
+func (a *App) subagentRun(id string) (subagents.Run, bool) {
+	if a.ctl == nil {
+		return subagents.Run{}, false
+	}
+	store := a.ctl.Store()
+	working := ""
+	if h := store.Session(id); h != nil {
+		working = string(h.WorkingState())
+	}
+	var summary *subagents.Run
+	if sum, ok := store.SubagentInvocationSummary(id); ok {
+		summary = subagents.FromSummary(sum)
+	}
+	return subagents.RunFrom(summary, working)
 }
