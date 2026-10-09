@@ -1,3 +1,15 @@
+## 1.40.0 - 2026-10-09
+
+### Added
+
+- The Workspace picker on the New session page shows each Workspace's path under its name. It lists your five most recent Workspaces; **Show N more** lists the rest, and the search looks through all of them.
+- Workspaces with no session in the last 30 days wait behind **Show N older workspaces** at the end of the sidebar. Pinned Workspaces, and the one of the session you have open, always show.
+
+### Fixed
+
+- The sidebar and the Workspace picker list every Workspace again. Droi read only your newest 100 sessions, so a project you had not used for a while was missing until you clicked **Load older sessions**. Droi now reads all of them in the background, and that button is gone.
+- Two Workspaces with the same folder name read apart: `~/dev/tmp` and `/private/tmp` show as "tmp (dev)" and "tmp (private)", in the sidebar, the picker and the New session question.
+
 ## 1.39.2 - 2026-10-08
 
 ### Changed
