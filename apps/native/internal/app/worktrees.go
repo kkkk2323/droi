@@ -530,7 +530,7 @@ func (a *App) deleteWorktree(path string, local, remote, force bool) {
 	if err == nil && res.WorktreeRemoved && len(res.Warnings) > 0 {
 		notice = L("Worktree deleted with warnings: %s", strings.Join(res.Warnings, "; "))
 	}
-	go a.refreshList()
+	go a.reloadList()
 	a.cfg.Update(func() {
 		d := &a.worktreeAsk
 		d.busy = false

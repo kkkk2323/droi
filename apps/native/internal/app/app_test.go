@@ -348,19 +348,19 @@ func TestTheWorkspacePickerSearchesAndCanPickNoProject(t *testing.T) {
 	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
 	h.click("Workspace")
 	h.until("the search", func() bool { _, ok := h.tt.Find("Search projects"); return ok })
-	// The texts of the picker's list, each row's name and label once.
+	// The texts of the picker's list: each row's label, its name and its path.
 	listed := func() string {
 		all := strings.Join(h.tt.Texts(), "|")
 		_, after, _ := strings.Cut(all, "|Projects|")
 		before, _, _ := strings.Cut(after, "|Other folder…")
 		return before
 	}
-	if got := listed(); got != "acme-web|acme-web|billing-service|billing-service" {
+	if got := listed(); got != "acme-web|acme-web|/Users/dev/acme-web|billing-service|billing-service|/Users/dev/billing-service" {
 		t.Fatalf("the picker lists %q", got)
 	}
 	h.tt.Type("bill")
 	h.frame()
-	if got := listed(); got != "billing-service|billing-service" {
+	if got := listed(); got != "billing-service|billing-service|/Users/dev/billing-service" {
 		t.Fatalf("the search left %q", got)
 	}
 	h.tt.Key(0, ui.KeyEnter)

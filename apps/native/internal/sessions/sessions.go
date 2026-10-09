@@ -290,8 +290,16 @@ func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) 
 		g.Sessions = append(g.Sessions, s)
 	}
 	result := make([]*Group, 0, len(keys))
+	paths := make([]string, 0, len(keys))
 	for _, k := range keys {
 		result = append(result, groups[k])
+		paths = append(paths, groups[k].Path)
+	}
+	named := WorkspaceLabels(paths)
+	for _, g := range result {
+		if l, ok := named[g.Path]; ok {
+			g.Label = l
+		}
 	}
 	created := func(s Summary) float64 {
 		if v, ok := order.FirstSeen[s.SessionID]; ok {
@@ -435,19 +443,92 @@ func VisibleSessions(list []Summary, revealed int, nowMs int64, pinned map[strin
 	return visible, max(0, older-revealed)
 }
 
+// A Workspace none of whose Sessions changed in StaleWorkspaceMs waits
+// behind "Show N older workspaces".
+const StaleWorkspaceMs = 30 * 24 * 60 * 60 * 1000
+
+// SplitStale parts groups, in order, into the Workspaces used within
+// StaleWorkspaceMs or holding the Session keep, and the rest.
+func SplitStale(groups []Group, nowMs int64, keep string) (active, stale []Group) {
+	cutoff := nowMs - StaleWorkspaceMs
+	for _, g := range groups {
+		used := slices.ContainsFunc(g.Sessions, func(s Summary) bool { return s.UpdatedAt*1000 >= cutoff || (keep != "" && s.SessionID == keep) })
+		if used {
+			active = append(active, g)
+		} else {
+			stale = append(stale, g)
+		}
+	}
+	return active, stale
+}
+
 var trailingSep = regexp.MustCompile(`[\\/]+$`)
+
+func pathSegments(path string) []string {
+	return strings.FieldsFunc(trailingSep.ReplaceAllString(path, ""), func(r rune) bool { return r == '/' || r == '\\' })
+}
 
 // WorkspaceLabel is a Workspace's last path segment.
 func WorkspaceLabel(path string) string {
 	if path == "" {
 		return l10n.L("Unknown workspace")
 	}
-	t := trailingSep.ReplaceAllString(path, "")
-	parts := strings.FieldsFunc(t, func(r rune) bool { return r == '/' || r == '\\' })
+	parts := pathSegments(path)
 	if len(parts) == 0 {
-		return t
+		return trailingSep.ReplaceAllString(path, "")
 	}
 	return parts[len(parts)-1]
+}
+
+// WorkspaceLabels is each path's WorkspaceLabel; where two would read the
+// same, the folders above tell them apart, in brackets: /Users/me/dev/tmp
+// and /private/tmp read "tmp (dev)" and "tmp (private)".
+func WorkspaceLabels(paths []string) map[string]string {
+	segs := make(map[string][]string, len(paths))
+	for _, p := range paths {
+		if p != "" {
+			segs[p] = pathSegments(p)
+		}
+	}
+	depth := make(map[string]int, len(segs))
+	label := func(p string) string {
+		s := segs[p]
+		if len(s) == 0 {
+			return WorkspaceLabel(p)
+		}
+		name := s[len(s)-1]
+		if d := depth[p]; d > 0 {
+			return name + " (" + strings.Join(s[len(s)-1-d:len(s)-1], "/") + ")"
+		}
+		return name
+	}
+	for {
+		byLabel := make(map[string][]string, len(segs))
+		for p := range segs {
+			l := label(p)
+			byLabel[l] = append(byLabel[l], p)
+		}
+		grew := false
+		for _, same := range byLabel {
+			if len(same) < 2 {
+				continue
+			}
+			for _, p := range same {
+				if depth[p] < len(segs[p])-1 {
+					depth[p]++
+					grew = true
+				}
+			}
+		}
+		if !grew {
+			break
+		}
+	}
+	out := make(map[string]string, len(segs))
+	for p := range segs {
+		out[p] = label(p)
+	}
+	return out
 }
 
 // RecentWorkspace is a Workspace the New session page offers.
@@ -470,15 +551,18 @@ func RecentWorkspaces(list []Summary) []RecentWorkspace {
 			continue
 		}
 		if w, ok := byPath[path]; !ok {
-			byPath[path] = &RecentWorkspace{Path: path, Label: WorkspaceLabel(path), LastUsedAt: s.UpdatedAt}
+			byPath[path] = &RecentWorkspace{Path: path, LastUsedAt: s.UpdatedAt}
 			order = append(order, path)
 		} else if w.LastUsedAt < s.UpdatedAt {
 			w.LastUsedAt = s.UpdatedAt
 		}
 	}
+	named := WorkspaceLabels(order)
 	out := make([]RecentWorkspace, 0, len(order))
 	for _, p := range order {
-		out = append(out, *byPath[p])
+		w := *byPath[p]
+		w.Label = named[p]
+		out = append(out, w)
 	}
 	slices.SortStableFunc(out, func(a, b RecentWorkspace) int { return cmp.Compare(b.LastUsedAt, a.LastUsedAt) })
 	return out

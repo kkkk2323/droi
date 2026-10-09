@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -29,9 +30,11 @@ type newSessionState struct {
 	pick     string
 	picked   bool
 	menuOpen bool
-	// query and highlight are the Workspace picker's while it is open.
+	// query, highlight and allRecent are the Workspace picker's while it
+	// is open; highlight is -1 until the rows are known.
 	query     string
 	highlight int
+	allRecent bool
 
 	modelID, effort, autonomy string
 	toolMode                  defaults.ToolMode
@@ -123,7 +126,7 @@ func (a *App) sessionDefaults() *defaults.View {
 func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status controller.Status) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
-	recent := sessions.RecentWorkspaces(listed)
+	recent := a.recentWorkspaces(listed)
 	workspace := s.pick
 	if !s.picked && len(recent) > 0 {
 		workspace = recent[0].Path
@@ -247,6 +250,10 @@ func (a *App) workspaceMenu(c *ui.Context, recent []sessions.RecentWorkspace, va
 	a.workspacePicker(c, tr, recent, value)
 }
 
+// recentShown is how many recent Workspaces the picker lists until "Show
+// N more" or a search.
+const recentShown = 5
+
 // workspacePicker is the panel a Workspace trigger opens: a search over
 // the recent Workspaces, another folder, and no project at all (a Scratch
 // folder). The arrows walk the rows and Enter picks one.
@@ -255,14 +262,9 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 	s := &a.newPage
 	if tr.Clicked() {
 		s.menuOpen = !s.menuOpen
-		s.query, s.highlight = "", len(recent)+1
-		for i, w := range recent {
-			if w.Path == value {
-				s.highlight = i
-			}
-		}
-		if value == "" {
-			s.highlight = 0
+		s.query, s.allRecent, s.highlight = "", false, -1
+		if slices.IndexFunc(recent, func(w sessions.RecentWorkspace) bool { return w.Path == value }) >= recentShown {
+			s.allRecent = true
 		}
 	}
 	if !s.menuOpen {
@@ -275,7 +277,26 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 			shown = append(shown, w)
 		}
 	}
-	other, none := len(shown), len(shown)+1
+	hidden := 0
+	if q == "" && !s.allRecent && len(shown) > recentShown {
+		shown, hidden = shown[:recentShown], len(shown)-recentShown
+	}
+	more, other := -1, len(shown)
+	if hidden > 0 {
+		more, other = len(shown), len(shown)+1
+	}
+	none := other + 1
+	if s.highlight < 0 {
+		s.highlight = none
+		if value == "" {
+			s.highlight = 0
+		}
+		for i, w := range shown {
+			if w.Path == value {
+				s.highlight = i
+			}
+		}
+	}
 	active := min(s.highlight, none)
 	choose := func(v string) {
 		s.menuOpen = false
@@ -284,8 +305,10 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 	}
 	act := func(i int) {
 		switch {
-		case i < other:
+		case i < len(shown):
 			choose(shown[i].Path)
+		case i == more:
+			s.allRecent = true
 		case i == other:
 			s.menuOpen = false
 			go func() {
@@ -298,23 +321,36 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 			choose(scratchPick)
 		}
 	}
-	row := func(i int, key, icon, text, title string, checked bool) {
-		b := ui.ButtonBase(c.Key(key)).Label(text).Tooltip(title).Gap(k.Px(8)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).
+	row := func(i int, key, icon, text, detail, title string, checked bool) {
+		padY := k.Px(6)
+		if detail != "" {
+			padY = k.Px(4)
+		}
+		b := ui.ButtonBase(c.Key(key)).Label(text).Gap(k.Px(8)).Padding(padY, k.Px(8)).Radius(k.Px(6)).
 			Justify(ui.Start).Cursor(ui.CursorPointer)
-		if i != other {
+		if title != "" {
+			b.Tooltip(title)
+		}
+		if i < len(shown) || i == none {
 			b.Role(ui.RoleMenuItemRadio).Checked(checked)
 		}
 		if b.Hovered() && i != active {
 			s.highlight = i
 		}
-		color := t.PopoverForeground
+		color, muted := t.PopoverForeground, t.MutedForeground
 		if i == active {
 			b.Background(t.Accent)
 			color = t.AccentForeground
+			muted = color.Alpha(0.7)
 		}
 		b.Children(func() {
 			k.Icon(c, icon, 14, t.MutedForeground)
-			k.Text(c, text, 14, 20).TextColor(color).SingleLine().Grow(1).MinWidth(0)
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+				k.Text(c, text, 14, 20).TextColor(color).SingleLine()
+				if detail != "" {
+					k.Text(c, detail, 12, 16).TextColor(muted).SingleLine()
+				}
+			})
 			ui.Box(c).Size(k.Px(16), k.Px(16)).Shrink(0).Center().Children(func() {
 				if checked {
 					k.Icon(c, "check", 14, color)
@@ -344,7 +380,7 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 				act(active)
 			}
 		})
-		ui.Scroll(c).MaxHeight(k.Px(240)).Children(func() {
+		ui.Scroll(c).MaxHeight(k.Px(264)).Children(func() {
 			ui.Column(c).Role(ui.RoleList).Label(L("Projects")).Padding(k.Px(4)).Children(func() {
 				if len(shown) == 0 {
 					msg := L("No projects yet.")
@@ -354,13 +390,16 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 					k.Text(c, msg, 13, 20).TextColor(t.MutedForeground).Padding(k.Px(6), k.Px(8))
 				}
 				for i, w := range shown {
-					row(i, w.Path, "folder", w.Label, w.Path, w.Path == value)
+					row(i, w.Path, "folder", w.Label, tildePath(w.Path), w.Path, w.Path == value)
+				}
+				if hidden > 0 {
+					row(more, "more", "chevron-down", L("Show %d more", hidden), "", "", false)
 				}
 			})
 		})
 		ui.Column(c).Padding(k.Px(4)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-			row(other, "other", "plus", L("Other folder…"), L("Choose a folder on this computer"), false)
-			row(none, scratchPick, "x", L("Don't work in a project"), L("A new folder of its own in %s", a.scratchRoot()), value == scratchPick)
+			row(other, "other", "plus", L("Other folder…"), "", L("Choose a folder on this computer"), false)
+			row(none, scratchPick, "x", L("Don't work in a project"), "", L("A new folder of its own in %s", a.scratchRoot()), value == scratchPick)
 		})
 	})
 }

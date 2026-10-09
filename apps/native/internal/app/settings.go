@@ -375,7 +375,7 @@ func (a *App) generalTab(c *ui.Context) {
 			on := prefs.ShowArchived.Get(a.prefs)
 			if a.toggle(c, L("Show archived sessions"), on, false) {
 				prefs.ShowArchived.Set(a.prefs, !on)
-				go a.refreshList()
+				go a.reloadList()
 			}
 		}, nil)
 	})

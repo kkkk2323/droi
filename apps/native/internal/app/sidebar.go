@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -31,14 +32,16 @@ type sidebarState struct {
 	// numbered are the Sessions the sidebar showed in the last frame, in
 	// order, for ⌘1…⌘9.
 	numbered []string
+	// staleShown shows the Workspaces unused for a month.
+	staleShown bool
 }
 
 // sidebarView is the web Client's SessionSidebar.
-func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map[string]string, listErr string, listDone, more bool) {
+func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map[string]string, listErr string, listDone bool) {
 	k, t := a.kit, a.kit.T
 	pins := sessions.Pins{Workspaces: set(prefs.PinnedWorkspaces.Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
 	order := a.sortOrder(listed)
-	groups := sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
+	groups := a.sidebarGroups(listed, pins, order)
 	busy := a.activity(reported)
 	selected := ""
 	if a.route.Name == "session" {
@@ -103,6 +106,41 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				})
 			}
 			section := func(g sessions.Group) { a.workspaceSection(c, g, groups, order, selected, busy) }
+			active, stale := sessions.SplitStale(rest, a.cfg.Now().UnixMilli(), selected)
+			restSections := func() {
+				for _, g := range active {
+					section(g)
+				}
+				if len(stale) == 0 {
+					return
+				}
+				label, icon := L("Show %d older workspaces", len(stale)), "chevron-down"
+				if len(stale) == 1 {
+					label = L("Show 1 older workspace")
+				}
+				if a.sidebar.staleShown {
+					label, icon = L("Hide older workspaces"), "chevron-up"
+				}
+				b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).PaddingX(k.Px(8)).Gap(k.Px(6)).Radius(k.Px(8)).Justify(ui.Start).
+					Expanded(a.sidebar.staleShown).Tooltip(L("Workspaces with no session in the last 30 days")).Cursor(ui.CursorPointer)
+				color := t.MutedForeground
+				if b.Hovered() {
+					b.Background(t.SidebarAccent.Alpha(0.6))
+					color = t.Foreground
+				}
+				b.Children(func() {
+					k.Icon(c, icon, 14, color)
+					k.Text(c, label, 12, 16).TextColor(color)
+				})
+				if b.Clicked() {
+					a.sidebar.staleShown = !a.sidebar.staleShown
+				}
+				if a.sidebar.staleShown {
+					for _, g := range stale {
+						section(g)
+					}
+				}
+			}
 			if loose != nil || len(pinned) > 0 {
 				all := pinned
 				if loose != nil {
@@ -115,33 +153,12 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				})
 			}
 			if len(rest) > 0 && (loose != nil || len(pinned) > 0 || recents != nil) {
-				a.foldable(c, L("Workspaces"), workspacesSectionKey, rest, busy, func() {
-					for _, g := range rest {
-						section(g)
-					}
-				})
+				a.foldable(c, L("Workspaces"), workspacesSectionKey, rest, busy, restSections)
 			} else {
-				for _, g := range rest {
-					section(g)
-				}
+				restSections()
 			}
 			if recents != nil {
 				section(*recents)
-			}
-			if more {
-				b := ui.ButtonBase(c).Height(k.Px(28)).PaddingX(k.Px(8)).Gap(k.Px(6)).Radius(k.Px(8)).Justify(ui.Start).Margin(k.Px(4), 0, 0, 0)
-				color := t.MutedForeground
-				if b.Hovered() {
-					b.Background(t.SidebarAccent.Alpha(0.6))
-					color = t.Foreground
-				}
-				b.Children(func() {
-					k.Icon(c, "chevron-down", 14, color)
-					k.Text(c, L("Load older sessions"), 12, 16).TextColor(color)
-				})
-				if b.Clicked() {
-					go a.loadOlder()
-				}
 			}
 		})
 		ui.Row(c).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
@@ -151,6 +168,40 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 		})
 	})
+}
+
+// listMemo keeps what the views build from the list between frames: with
+// thousands of Sessions, building it takes milliseconds, too long to do
+// again for every frame of a spinner.
+type listMemo struct {
+	groupsKey string
+	groups    []sessions.Group
+	recentRev uint64
+	recentOK  bool
+	recent    []sessions.RecentWorkspace
+}
+
+// sidebarGroups is the sidebar's Workspace groups, built again only when
+// the list, the pins, the order or the language changed.
+func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order sessions.Order) []sessions.Group {
+	m := &a.listMemo
+	key := fmt.Sprint(a.shownRev, l10n.Code(), prefs.PinnedWorkspaces.Get(a.prefs), prefs.PinnedSessions.Get(a.prefs), order.Workspaces, order.Sessions, order.Manual, len(order.FirstSeen))
+	if m.groups == nil || m.groupsKey != key {
+		m.groupsKey = key
+		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
+	}
+	return m.groups
+}
+
+// recentWorkspaces is sessions.RecentWorkspaces of the list, built again
+// only when the list changed.
+func (a *App) recentWorkspaces(listed []sessions.Summary) []sessions.RecentWorkspace {
+	m := &a.listMemo
+	if !m.recentOK || m.recentRev != a.shownRev {
+		m.recentRev, m.recentOK = a.shownRev, true
+		m.recent = sessions.RecentWorkspaces(listed)
+	}
+	return m.recent
 }
 
 // activity is what each busy Session is doing, from the Daemon's reports
@@ -618,7 +669,7 @@ func (a *App) renameSession(id, title string) {
 		return
 	}
 	if _, err := cl.RenameSession(a.ctx, protocol.RenameSessionParams{SessionID: id, Title: title}); err == nil {
-		a.refreshList()
+		a.reloadList()
 	}
 }
 
@@ -644,7 +695,7 @@ func (a *App) archive(s sessions.Summary) error {
 		}
 	}
 	if err == nil {
-		a.refreshList()
+		a.reloadList()
 	}
 	return err
 }

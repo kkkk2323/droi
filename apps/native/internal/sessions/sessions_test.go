@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"maps"
 	"reflect"
 	"testing"
 )
@@ -159,6 +160,44 @@ func TestWorkspaceLabel(t *testing.T) {
 			t.Errorf("%q: %q", in, got)
 		}
 	}
+}
+
+// Two Workspaces of one name read apart by the folders above them, in
+// the sidebar and among the recent Workspaces; a name of its own stays bare.
+func TestWorkspacesOfOneNameReadApart(t *testing.T) {
+	got := WorkspaceLabels([]string{"/Users/me/dev/tmp", "/private/tmp", "/tmp", "/Users/me/dev/droi", "/a/x/site", "/b/x/site", ""})
+	want := map[string]string{
+		"/Users/me/dev/tmp": "tmp (dev)", "/private/tmp": "tmp (private)", "/tmp": "tmp",
+		"/Users/me/dev/droi": "droi", "/a/x/site": "site (a/x)", "/b/x/site": "site (b/x)",
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("labels %v", got)
+	}
+	list := []Summary{
+		{SessionID: "a", Cwd: "/Users/me/dev/tmp", UpdatedAt: 20},
+		{SessionID: "b", Cwd: "/private/tmp", UpdatedAt: 10},
+	}
+	eq(t, labels(GroupByWorkspace(list, Pins{}, DefaultOrder, false)), []string{"tmp (dev)", "tmp (private)"})
+	recent := RecentWorkspaces(list)
+	if len(recent) != 2 || recent[0].Label != "tmp (dev)" || recent[1].Label != "tmp (private)" {
+		t.Fatalf("recent = %+v", recent)
+	}
+}
+
+// Workspaces untouched for 30 days are stale, unless they hold the Session kept.
+func TestSplitStale(t *testing.T) {
+	const now = int64(1_800_000_000_000)
+	const day = int64(24 * 60 * 60)
+	groups := GroupByWorkspace([]Summary{
+		{SessionID: "new", Cwd: "/w/new", UpdatedAt: now/1000 - day},
+		{SessionID: "old", Cwd: "/w/old", UpdatedAt: now/1000 - 40*day},
+		{SessionID: "open", Cwd: "/w/open", UpdatedAt: now/1000 - 50*day},
+		{SessionID: "mixed-old", Cwd: "/w/mixed", UpdatedAt: now/1000 - 90*day},
+		{SessionID: "mixed-new", Cwd: "/w/mixed", UpdatedAt: now/1000 - 29*day},
+	}, Pins{}, Order{Workspaces: SortName}, false)
+	active, stale := SplitStale(groups, now, "open")
+	eq(t, labels(active), []string{"mixed", "new", "open"})
+	eq(t, labels(stale), []string{"old"})
 }
 
 func TestVisibleSessions(t *testing.T) {

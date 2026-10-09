@@ -120,12 +120,19 @@ type App struct {
 	listed   []sessions.Summary
 	listErr  string
 	listDone bool
-	more     *float64
 	// listGen counts the reads of the first page, so that a slower, older
 	// read does not overwrite a newer one's list.
 	listGen uint64
-	busy    map[string]string // working states the Daemon reported
-	dirty   bool
+	// listRev counts the changes to listed, for what is built from it.
+	listRev uint64
+	// pageIDs are the Sessions of the first page last read.
+	pageIDs map[string]bool
+	// older is how far the pages after the first are read; olderGen counts
+	// their reads, so that one made stale is dropped.
+	older    olderState
+	olderGen uint64
+	busy     map[string]string // working states the Daemon reported
+	dirty    bool
 	// turnAt is when each working Session's turn began, in Unix seconds:
 	// it keeps the Session's place in the list until the turn ends.
 	turnAt map[string]int64
@@ -139,6 +146,10 @@ type App struct {
 	recent   []string
 	settings settingsState
 	newPage  newSessionState
+	// shownRev is the listRev of the list this frame shows; listMemo
+	// keeps what is built from it.
+	shownRev uint64
+	listMemo listMemo
 
 	drafts      *drafts.Drafts
 	pending     drafts.Pending
@@ -264,12 +275,12 @@ func (a *App) onEvent(e controller.Event) {
 		a.everConnected = a.everConnected || ev.Status.Connected
 		a.mu.Unlock()
 		if ev.Status.Connected {
-			go a.refreshList()
+			go a.reloadList()
 		}
 	case controller.DaemonNotification:
 		switch ev.Method {
 		case protocol.NotificationWorktreeRemoved, protocol.NotificationWorktreeBranchChanged:
-			go a.refreshList()
+			go a.reloadList()
 		}
 	case controller.SessionNotification:
 		if ev.Raw.Type == "droid_working_state_changed" {
@@ -334,6 +345,7 @@ func (a *App) touch(id string, working bool) {
 		return
 	}
 	a.turnAt[id] = now
+	a.listRev++
 	for i := range a.listed {
 		if a.listed[i].SessionID == id && a.listed[i].UpdatedAt < now {
 			a.listed[i].UpdatedAt = now
@@ -362,7 +374,25 @@ func (a *App) holdTurns(list []sessions.Summary) {
 	}
 }
 
-// refreshList reads the first page of Sessions again.
+type olderState int
+
+const (
+	olderUnread olderState = iota
+	olderReading
+	olderRead
+)
+
+// olderPages are the pages a read of the first page leaves: the cursor
+// after it, and edge, its oldest Session's date in Unix seconds.
+type olderPages struct {
+	gen    uint64
+	cursor float64
+	edge   int64
+}
+
+// refreshList reads the first page of Sessions again and keeps the older
+// ones read before. The first time, or once reloadList made them stale,
+// it reads every page after it as well, which can take a while.
 func (a *App) refreshList() {
 	cl, err := a.ctl.Client()
 	if err != nil {
@@ -372,7 +402,19 @@ func (a *App) refreshList() {
 	limit := float64(sessionPage)
 	show := prefs.ShowArchived.Get(a.prefs)
 	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show})
-	a.setList(gen, res, err)
+	if p := a.setList(gen, res, err); p != nil {
+		a.readOlder(*p, show)
+	}
+}
+
+// reloadList reads every page again, for a change the first page may not
+// show: an older Session archived or renamed, another connection.
+func (a *App) reloadList() {
+	a.mu.Lock()
+	a.older = olderUnread
+	a.olderGen++
+	a.mu.Unlock()
+	a.refreshList()
 }
 
 // startList counts a read of the first page, which setList then takes.
@@ -383,60 +425,113 @@ func (a *App) startList() uint64 {
 	return a.listGen
 }
 
-// setList takes the first page of read gen, unless a newer read started.
-func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err error) {
+// setList takes the first page of read gen, unless a newer read started,
+// with the older Sessions kept. It returns the pages left to read, if
+// they are to be read.
+func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err error) *olderPages {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if gen != a.listGen {
-		return
+		return nil
 	}
 	a.listDone = true
 	if err != nil {
 		a.listErr = err.Error()
-		return
+		return nil
 	}
 	a.listErr = ""
-	a.listed = summariesOf(res.Sessions)
-	a.holdTurns(a.listed)
-	a.more = nil
-	if res.HasMore {
-		a.more = res.NextCursor
-	}
 	go a.redraw()
+	page := summariesOf(res.Sessions)
+	a.holdTurns(page)
+	a.pageIDs = make(map[string]bool, len(page))
+	for _, s := range page {
+		a.pageIDs[s.SessionID] = true
+	}
+	a.listRev++
+	if !res.HasMore || res.NextCursor == nil || len(res.Sessions) == 0 {
+		a.listed = page
+		a.older = olderRead
+		a.olderGen++
+		return nil
+	}
+	edge := int64(res.Sessions[0].UpdatedAt)
+	for _, s := range res.Sessions {
+		edge = min(edge, int64(s.UpdatedAt))
+	}
+	list := page
+	for _, s := range a.listed {
+		if !a.pageIDs[s.SessionID] && s.UpdatedAt <= edge {
+			list = append(list, s)
+		}
+	}
+	a.listed = list
+	if a.older != olderUnread {
+		return nil
+	}
+	a.older = olderReading
+	a.olderGen++
+	return &olderPages{gen: a.olderGen, cursor: *res.NextCursor, edge: edge}
 }
 
-// loadOlder reads the next page of Sessions.
-func (a *App) loadOlder() {
-	a.mu.Lock()
-	cursor, gen := a.more, a.listGen
-	a.mu.Unlock()
-	if cursor == nil {
-		return
+// readOlder reads the pages p leaves, then puts them in place of the
+// older Sessions kept until then.
+func (a *App) readOlder(p olderPages, show bool) {
+	failed := func() {
+		a.mu.Lock()
+		if a.olderGen == p.gen {
+			a.older = olderUnread
+		}
+		a.mu.Unlock()
 	}
 	cl, err := a.ctl.Client()
 	if err != nil {
+		failed()
 		return
 	}
-	limit := float64(sessionPage)
-	show := prefs.ShowArchived.Get(a.prefs)
-	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show, EndBefore: cursor})
-	if err != nil {
-		return
-	}
-	older := summariesOf(res.Sessions)
-	a.mu.Lock()
-	if gen != a.listGen {
+	var read []protocol.DaemonAvailableSessionInfo
+	limit, cursor := float64(sessionPage), p.cursor
+	for {
+		res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show, EndBefore: &cursor})
+		if err != nil {
+			failed()
+			return
+		}
+		a.mu.Lock()
+		stale := a.olderGen != p.gen
 		a.mu.Unlock()
-		return // the page follows a list read again since
+		if stale {
+			return
+		}
+		read = append(read, res.Sessions...)
+		if !res.HasMore || res.NextCursor == nil || *res.NextCursor == cursor {
+			break
+		}
+		cursor = *res.NextCursor
+	}
+	older := summariesOf(read)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.olderGen != p.gen {
+		return
 	}
 	a.holdTurns(older)
-	a.listed = append(a.listed, older...)
-	a.more = nil
-	if res.HasMore {
-		a.more = res.NextCursor
+	var list []sessions.Summary
+	kept := map[string]bool{}
+	for _, s := range a.listed {
+		if a.pageIDs[s.SessionID] || s.UpdatedAt >= p.edge {
+			list = append(list, s)
+			kept[s.SessionID] = true
+		}
 	}
-	a.mu.Unlock()
-	a.redraw()
+	for _, s := range older {
+		if !kept[s.SessionID] {
+			list = append(list, s)
+		}
+	}
+	a.listed = list
+	a.listRev++
+	a.older = olderRead
+	go a.redraw()
 }
 
 func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary {
@@ -474,14 +569,14 @@ func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary 
 }
 
 // snapshot copies what other goroutines write, for one frame.
-func (a *App) snapshot() (controller.Status, []sessions.Summary, map[string]string, string, bool, bool) {
+func (a *App) snapshot() (controller.Status, []sessions.Summary, map[string]string, string, bool, uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	busy := make(map[string]string, len(a.busy))
 	for k, v := range a.busy {
 		busy[k] = v
 	}
-	return a.status, append([]sessions.Summary(nil), a.listed...), busy, a.listErr, a.listDone, a.more != nil
+	return a.status, append([]sessions.Summary(nil), a.listed...), busy, a.listErr, a.listDone, a.listRev
 }
 
 // Go shows another page.
@@ -519,7 +614,8 @@ func (a *App) PasteImage() bool { return a.pasteTo != nil && a.pasteTo() }
 func (a *App) View(c *ui.Context) {
 	a.pasteTo = nil
 	c.SetTheme(a.kit.UITheme(c.Theme()))
-	status, listed, busy, listErr, listDone, more := a.snapshot()
+	status, listed, busy, listErr, listDone, rev := a.snapshot()
+	a.shownRev = rev
 	a.restoreLast(listed, listDone)
 	a.noteLiveRuns(listed, a.activity(busy))
 	a.narrow = a.isNarrow(c)
@@ -556,11 +652,11 @@ func (a *App) View(c *ui.Context) {
 			}
 			side.Children(func() {
 				ui.Column(c).Width(240).FillHeight().Children(func() {
-					a.sidebarView(c, listed, busy, listErr, listDone, more)
+					a.sidebarView(c, listed, busy, listErr, listDone)
 				})
 			})
 		} else {
-			a.drawer(c, func() { a.sidebarView(c, listed, busy, listErr, listDone, more) })
+			a.drawer(c, func() { a.sidebarView(c, listed, busy, listErr, listDone) })
 		}
 		// The web Client keeps the main panel's left border while the sidebar is hidden.
 		main := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Clip().BorderWidth(0, 0, 0, 1).BorderColor(t.Border)

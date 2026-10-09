@@ -3,9 +3,11 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/internal/attachments"
@@ -68,6 +70,23 @@ func plural(n int, one, many string) string {
 func workspaceName(path string) string {
 	if b := filepath.Base(strings.TrimRight(path, "/")); b != "." && b != "/" {
 		return b
+	}
+	return path
+}
+
+var homeDir = sync.OnceValue(func() string {
+	h, _ := os.UserHomeDir()
+	return strings.TrimRight(h, `/\`)
+})
+
+// tildePath is path with the home folder written ~.
+func tildePath(path string) string {
+	h := homeDir()
+	if h == "" {
+		return path
+	}
+	if rest, ok := strings.CutPrefix(path, h); ok && (rest == "" || rest[0] == '/' || rest[0] == '\\') {
+		return "~" + rest
 	}
 	return path
 }
