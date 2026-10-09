@@ -1,3 +1,9 @@
+## 1.41.1 - 2026-10-09
+
+### Changed
+
+- The speed in the footer under the composer is the session's average, in tokens a second, as in DeepSeek Harness. The last model call's speed is in the details its click opens.
+
 ## 1.41.0 - 2026-10-09
 
 ### Added
