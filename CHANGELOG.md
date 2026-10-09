@@ -1,3 +1,9 @@
+## 1.41.0 - 2026-10-09
+
+### Added
+
+- The footer under the composer shows how fast the model answered last, in tokens a second. Click it for the details: that call's wait for the first token and its output tokens, and for the whole session the number of model calls, the average wait and speed, and the time spent in the model and in tools. Droi times what it sees stream, and keeps the figures when you restart it, so a session's numbers start with its next reply.
+
 ## 1.40.0 - 2026-10-09
 
 ### Added
