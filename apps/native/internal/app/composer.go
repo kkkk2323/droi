@@ -744,7 +744,7 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session) {
 	})
 }
 
-// speedMeter is the last model call's speed; a click opens the details:
+// speedMeter is the Session's average model speed; a click opens the details:
 // that call's first token and output, and the Session's means and time in
 // the model and in tools.
 func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
@@ -762,7 +762,7 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 		color = t.Foreground
 	}
 	b.Children(func() {
-		k.Text(c, formatRate(last.TokensPerSecond())+" tok/s", 12, 16).TextColor(color).FontFeatures("tnum").SingleLine()
+		k.Text(c, formatRate(st.TokensPerSecond())+" tok/s", 12, 16).TextColor(color).FontFeatures("tnum").SingleLine()
 	})
 	if b.Clicked() {
 		v.speedOpen = !v.speedOpen

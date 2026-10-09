@@ -22,12 +22,12 @@ func TestSpeedMeterShowsSavedStats(t *testing.T) {
 			Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}, Extra: map[string]any{"sessionId": "s-speed"}}},
 	}, "", func(c *Config) { c.StatsFile = file })
 	h.openSession("Fast")
-	h.until("the last call's speed under the composer", func() bool { return h.hasText("85 tok/s") })
-	if h.hasText("Time in tools") {
+	h.until("the Session's average speed under the composer", func() bool { return h.hasText("72 tok/s") })
+	if h.hasText("Time in tools") || h.hasText("85 tok/s") {
 		t.Fatal("the details stay closed until clicked")
 	}
 	h.click("Model speed")
-	for _, want := range []string{"1.2s", "340", "4", "1.4s", "72 tok/s", "3m 12s", "45s"} {
+	for _, want := range []string{"1.2s", "85 tok/s", "340", "4", "1.4s", "3m 12s", "45s"} {
 		if !h.hasText(want) {
 			t.Fatalf("details lack %q; texts %q", want, h.tt.Texts())
 		}
