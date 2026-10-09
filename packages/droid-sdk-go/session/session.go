@@ -164,6 +164,13 @@ func (h *Session) Usage() (u Usage) {
 	return u
 }
 
+// Stats is the Session's model speed and time, as this Store saw it
+// stream, on top of any SetStatsSeed gave it.
+func (h *Session) Stats() (s Stats) {
+	h.read(func(st *state) { s = st.stats.totals.clone() })
+	return s
+}
+
 // Todos is the current task list; nil when the agent wrote none.
 func (h *Session) Todos() (todos []TodoItem) {
 	h.read(func(st *state) { todos = slices.Clone(st.todos.current) })

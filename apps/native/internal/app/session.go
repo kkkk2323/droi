@@ -85,6 +85,8 @@ type sessionView struct {
 	git        gitState
 	// subOpen and trailOpen: the header's subagent menus.
 	subOpen, trailOpen bool
+	// speedOpen: the footer's model speed details.
+	speedOpen bool
 
 	// focused is whether the composer took the focus once already.
 	focused   bool

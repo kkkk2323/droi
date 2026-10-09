@@ -57,6 +57,7 @@ const (
 	EventQueuedMessagesUpdated       EventKind = "queued_messages_updated"
 	EventStreamingPlaceholderUpdated EventKind = "streaming_placeholder_updated"
 	EventSubagentSummaryUpdated      EventKind = "subagent_invocation_summary_updated"
+	EventStatsUpdated                EventKind = "stats_updated"
 )
 
 // Event says what changed in which Session. Read the new state from the
@@ -105,6 +106,8 @@ type Store struct {
 	nextSub int
 	events  []Event
 	after   []func()
+
+	statsSeed func(sessionID string) (Stats, bool)
 
 	now           func() time.Time
 	submitTimeout time.Duration
@@ -218,6 +221,11 @@ func (s *Store) ensure(id string) (st *state, created bool) {
 		return st, false
 	}
 	st = newState(s, id)
+	if s.statsSeed != nil {
+		if seed, ok := s.statsSeed(id); ok {
+			st.stats.totals = seed.clone()
+		}
+	}
 	s.sessions[id] = st
 	s.emit(Event{Kind: EventRegistered, SessionID: id})
 	return st, true

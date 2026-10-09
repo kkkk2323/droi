@@ -106,6 +106,7 @@ func main() {
 		Update:       update,
 		InsetTop:     mac,
 		FactoryHome:  h.SharedFactoryHome(),
+		StatsFile:    filepath.Join(userData, "session-stats.json"),
 		OpenPath:     mygo.Shell.OpenPath,
 		ShowInFolder: mygo.Shell.ShowItemInFolder,
 		Scratch:      h.Scratch,

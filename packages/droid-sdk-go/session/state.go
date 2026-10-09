@@ -105,6 +105,8 @@ type state struct {
 	completion       protocol.AgentTurnCompletionReason
 	retry            *LLMRetry
 
+	stats statsFold
+
 	phases         map[string]protocol.ToolExecutionLifecyclePhase
 	progress       map[string][]protocol.ToolProgressUpdate
 	progressTimers map[string]*time.Timer
@@ -465,6 +467,9 @@ func (st *state) handle(typ string, v any, opts HandleOptions) {
 	}
 	switch n := v.(type) {
 	case *protocol.CreateMessageNotification:
+		if n.Message.Role == roleAssistant {
+			st.statsMessage()
+		}
 		st.createMessage(n)
 	case *protocol.ToolResultNotification:
 		st.toolResult(n.MessageID, n)
@@ -480,12 +485,14 @@ func (st *state) handle(typ string, v any, opts HandleOptions) {
 			st.setWorking(protocol.DroidWorkingStateStreamingAssistantMessage)
 			st.emit(EventWorkingStateChanged)
 		}
+		st.statsFirstToken()
 		st.textDelta(n.MessageID, n.TextDelta)
 	case *protocol.ThinkingTextDeltaNotification:
 		if st.working == protocol.DroidWorkingStateStreamingAssistantMessage {
 			st.setWorking(protocol.DroidWorkingStateThinking)
 			st.emit(EventWorkingStateChanged)
 		}
+		st.statsFirstToken()
 		st.thinkingDelta(n.MessageID, int(n.BlockIndex), n.TextDelta)
 	case *protocol.AssistantTextCompleteNotification:
 		st.completeText(n.MessageID, int(n.BlockIndex))
@@ -495,12 +502,14 @@ func (st *state) handle(typ string, v any, opts HandleOptions) {
 		st.retract(n.MessageID)
 	case *protocol.DroidWorkingStateChangedNotification:
 		st.workingRevision++
+		st.statsWorking(n.NewState)
 		st.transition(n.NewState)
 	case *protocol.PermissionResolvedNotification:
 		if st.working == protocol.DroidWorkingStateWaitingForToolConfirmation {
 			st.transition(protocol.DroidWorkingStateStreamingAssistantMessage)
 		}
 	case *protocol.ErrorNotification:
+		st.statsWorking(protocol.DroidWorkingStateIdle)
 		st.transition(protocol.DroidWorkingStateIdle)
 		// A worker that exits after finishing its turn reports a process
 		// exit error; that must not turn a completed turn into a failure.
@@ -519,6 +528,7 @@ func (st *state) handle(typ string, v any, opts HandleOptions) {
 		st.setTitle(n.Title)
 	case *protocol.SessionTokenUsageChangedNotification:
 		if n.SessionID == st.id {
+			st.statsUsage(n)
 			st.setUsage(&n.TokenUsage, n.InclusiveTokenUsage)
 			var lc *LastCallTokenUsage
 			if n.LastCallTokenUsage != nil {

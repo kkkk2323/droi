@@ -640,7 +640,7 @@ func (v *sessionView) suggestionList(c *ui.Context, card ui.Element, items []sla
 }
 
 // footer is the row under the composer: the Workspace, a finished
-// `/compact`, and the context meter.
+// `/compact`, the model's speed and the context meter.
 func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
@@ -664,6 +664,7 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 		}
 		ui.Spacer(c)
 		if loaded {
+			v.speedMeter(c, s)
 			v.contextMeter(c, s)
 		}
 	})
@@ -741,6 +742,90 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session) {
 		})
 		k.Text(c, label, 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum")
 	})
+}
+
+// speedMeter is the last model call's speed; a click opens the details:
+// that call's first token and output, and the Session's means and time in
+// the model and in tools.
+func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
+	k, t := v.a.kit, v.a.kit.T
+	st := s.Stats()
+	if st.Calls == 0 || st.Last == nil {
+		return
+	}
+	last := *st.Last
+	b := ui.ButtonBase(c).Label(L("Model speed")).Height(k.Px(24)).PaddingX(k.Px(6)).Radius(k.Px(6)).Shrink(0).
+		Cursor(ui.CursorPointer).Expanded(v.speedOpen)
+	color := t.MutedForeground
+	if b.Hovered() || v.speedOpen {
+		b.Background(t.Muted)
+		color = t.Foreground
+	}
+	b.Children(func() {
+		k.Text(c, formatRate(last.TokensPerSecond())+" tok/s", 12, 16).TextColor(color).FontFeatures("tnum").SingleLine()
+	})
+	if b.Clicked() {
+		v.speedOpen = !v.speedOpen
+	}
+	ui.PopoverBase(c, b, &v.speedOpen, func(p ui.Element) {
+		p.AttachTo(b, ui.AnchorTopRight, ui.AnchorBottomRight).Margin(0, 0, k.Px(6), 0).
+			Role(ui.RoleDialog).Label(L("Model speed")).Width(k.Px(240)).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).
+			Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
+			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+		ui.Column(c).FillWidth().Gap(k.Px(4)).Children(func() {
+			heading := func(text string) {
+				k.Text(c, text, 12, 16).TextColor(t.MutedForeground).SingleLine()
+			}
+			row := func(label, value string) {
+				ui.Row(c).FillWidth().Gap(k.Px(8)).Children(func() {
+					k.Text(c, label, 13, 18).SingleLine().Grow(1).MinWidth(0)
+					k.Text(c, value, 13, 18).FontFeatures("tnum").SingleLine().Shrink(0)
+				})
+			}
+			heading(L("Last model call"))
+			row(L("First token after"), formatSeconds(last.TTFTMs))
+			row(L("Speed"), formatRate(last.TokensPerSecond())+" tok/s")
+			row(L("Output tokens"), groupDigits(last.OutputTokens))
+			ui.Box(c).Height(k.Px(6))
+			heading(L("This Session"))
+			row(L("Model calls"), itoa(st.Calls))
+			row(L("First token after, on average"), formatSeconds(st.MeanTTFTMs()))
+			row(L("Average speed"), formatRate(st.TokensPerSecond())+" tok/s")
+			row(L("Time in the model"), formatSpan(st.ModelMs))
+			row(L("Time in tools"), formatSpan(st.ToolMs))
+		})
+	})
+}
+
+// formatSeconds is a latency: 0.8s, 12s; – when unknown.
+func formatSeconds(ms float64) string {
+	switch {
+	case ms <= 0:
+		return "–"
+	case ms < 10_000:
+		return strconv.FormatFloat(ms/1000, 'f', 1, 64) + "s"
+	}
+	return strconv.Itoa(int(math.Round(ms/1000))) + "s"
+}
+
+// formatRate is a tokens-per-second figure; – when unknown.
+func formatRate(r float64) string {
+	if r <= 0 {
+		return "–"
+	}
+	return strconv.Itoa(int(math.Round(r)))
+}
+
+// formatSpan is a total time: 45s, 3m 12s, 1h 5m.
+func formatSpan(ms float64) string {
+	sec := int(math.Round(ms / 1000))
+	switch {
+	case sec < 60:
+		return strconv.Itoa(sec) + "s"
+	case sec < 3600:
+		return strconv.Itoa(sec/60) + "m " + strconv.Itoa(sec%60) + "s"
+	}
+	return strconv.Itoa(sec/3600) + "h " + strconv.Itoa(sec%3600/60) + "m"
 }
 
 // groupDigits is n with thousands separators, as toLocaleString in en-US.

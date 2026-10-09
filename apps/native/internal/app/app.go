@@ -60,6 +60,9 @@ type Config struct {
 	InsetTop bool
 	// FactoryHome is ~/.factory, where the Daemon writes transcripts.
 	FactoryHome string
+	// StatsFile keeps each Session's speed and time across runs; "" keeps
+	// them in memory, as in tests.
+	StatsFile string
 	// OpenPath, ShowInFolder and Beep reach the desktop; nil in tests.
 	OpenPath     func(path string) error
 	ShowInFolder func(path string)
@@ -242,8 +245,15 @@ func (a *App) Start() {
 	}
 	a.ctl.Subscribe(a.onEvent)
 	a.watchAlerts()
+	stats := openSessionStats(a.cfg.StatsFile)
+	a.ctl.Store().SetStatsSeed(stats.get)
 	a.ctl.Store().Subscribe(func(e session.Event) {
 		a.rev(e.SessionID).Add(1)
+		if e.Kind == session.EventStatsUpdated {
+			if s := a.ctl.Store().Session(e.SessionID); s != nil {
+				stats.put(e.SessionID, s.Stats())
+			}
+		}
 		if e.Kind == session.EventWorkingStateChanged {
 			s := a.ctl.Store().Session(e.SessionID)
 			a.touch(e.SessionID, s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle)
