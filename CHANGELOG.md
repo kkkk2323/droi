@@ -1,3 +1,9 @@
+## 1.43.0 - 2026-10-10
+
+### Added
+
+- The session title has a **…** menu, shown when you point at the title. It renames, pins or unpins, copies the session ID or the session details, and archives the session, as the session's menu in the sidebar does. Rename moved there from the pencil.
+
 ## 1.42.0 - 2026-10-10
 
 ### Added
