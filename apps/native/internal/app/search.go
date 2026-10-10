@@ -1,8 +1,10 @@
 package app
 
 import (
+	"cmp"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +22,8 @@ const (
 	searchMinLength = 2
 	searchLimit     = 20
 	searchDebounce  = 250 * time.Millisecond
+	// searchRecentWindow is the span searched first; see search.
+	searchRecentWindow = 30 * 24 * time.Hour
 )
 
 type searchHit struct {
@@ -91,35 +95,115 @@ func (a *App) search(query string) {
 		if err != nil {
 			return
 		}
+		_, listed, _, _, _, _ := a.snapshot()
+		hits := titleHits(listed, q)
+		// publish reports whether q is still the query to answer.
+		publish := func(done bool, err error) bool {
+			s.mu.Lock()
+			current := s.asked == q
+			if current {
+				s.pending = !done
+				s.query = q
+				s.hits = hits
+				s.err = ""
+				if err != nil && len(hits) == 0 {
+					s.err = err.Error()
+				}
+			}
+			s.mu.Unlock()
+			if current {
+				a.redraw()
+			}
+			return current
+		}
 		s.mu.Lock()
 		s.asked = q
 		s.mu.Unlock()
-		limit, perSession, context := float64(searchLimit), 1.0, 80.0
-		res, err := cl.SearchSessions(a.ctx, protocol.SearchSessionsParams{Query: q, Kind: "message_text", LimitSessions: &limit, LimitHitsPerSession: &perSession, ContextChars: &context})
-		s.mu.Lock()
-		if s.asked == q {
-			s.pending = false
-			s.query = q
-			s.err = ""
-			s.hits = nil
-			if err != nil {
-				s.err = err.Error()
-			} else {
-				for _, r := range res.Sessions {
-					h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, L("Untitled session"))}
-					if r.UpdatedAt != nil {
-						h.updatedAt = int64(*r.UpdatedAt / 1000)
-					}
-					if len(r.Hits) > 0 && len(r.Hits[0].Snippets) > 0 {
-						h.snippet = snippetRuns(r.Hits[0].Snippets[0])
-					}
-					s.hits = append(s.hits, h)
-				}
-			}
+		if !publish(false, nil) {
+			return
 		}
-		s.mu.Unlock()
-		a.redraw()
+		limit, perSession, context := float64(searchLimit), 1.0, 80.0
+		ask := func(after *float64) ([]searchHit, error) {
+			res, err := cl.SearchSessions(a.ctx, protocol.SearchSessionsParams{Query: q, Kind: "message_text", LimitSessions: &limit,
+				LimitHitsPerSession: &perSession, ContextChars: &context, UpdatedAfterMs: after})
+			if err != nil {
+				return nil, err
+			}
+			return contentHits(res), nil
+		}
+		// The Daemon reads only its best few hundred candidates, and with thousands
+		// of Sessions a short query ranks them all alike, so a search of all of them
+		// misses most. The last month is few enough to be read whole.
+		after := float64(a.cfg.Now().Add(-searchRecentWindow).UnixMilli())
+		recent, err := ask(&after)
+		hits = mergeHits(hits, recent)
+		if err != nil || len(hits) >= searchLimit {
+			publish(true, err)
+			return
+		}
+		if !publish(false, nil) {
+			return
+		}
+		older, err := ask(nil)
+		hits = mergeHits(hits, older)
+		publish(true, err)
 	})
+}
+
+// titleHits are the listed Sessions whose title has the query, newest first.
+func titleHits(listed []sessions.Summary, query string) []searchHit {
+	q := strings.ToLower(query)
+	var found []sessions.Summary
+	for _, s := range sessions.MainSessions(listed) {
+		if strings.Contains(strings.ToLower(s.Title), q) {
+			found = append(found, s)
+		}
+	}
+	slices.SortStableFunc(found, func(a, b sessions.Summary) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
+	hits := make([]searchHit, 0, len(found))
+	for _, s := range found {
+		hits = append(hits, searchHit{sessionID: s.SessionID, title: trimOr(s.Title, L("Untitled session")), updatedAt: s.UpdatedAt})
+	}
+	return hits
+}
+
+func contentHits(res *protocol.SearchSessionsResult) []searchHit {
+	var hits []searchHit
+	for _, r := range res.Sessions {
+		h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, L("Untitled session"))}
+		if r.UpdatedAt != nil {
+			h.updatedAt = int64(*r.UpdatedAt / 1000)
+		}
+		if len(r.Hits) > 0 && len(r.Hits[0].Snippets) > 0 {
+			h.snippet = snippetRuns(r.Hits[0].Snippets[0])
+		}
+		hits = append(hits, h)
+	}
+	return hits
+}
+
+// mergeHits adds the hits a Session does not have yet, up to searchLimit; a
+// Session found by its title takes the snippet a later search found in it.
+func mergeHits(hits, more []searchHit) []searchHit {
+	out := slices.Clone(hits)
+	at := map[string]int{}
+	for i, h := range out {
+		at[h.sessionID] = i
+	}
+	for _, h := range more {
+		if i, ok := at[h.sessionID]; ok {
+			if len(out[i].snippet) == 0 {
+				out[i].snippet = h.snippet
+			}
+			continue
+		}
+		at[h.sessionID] = len(out)
+		out = append(out, h)
+	}
+	if len(out) > searchLimit {
+		out = out[:searchLimit]
+	}
+	return out
 }
 
 var (
@@ -157,13 +241,13 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 		return
 	}
 	s.mu.Lock()
-	hits, err, forQuery := s.hits, s.err, s.query
+	hits, err, forQuery, pending := s.hits, s.err, s.query, s.pending
 	s.mu.Unlock()
 	switch {
 	case err != "" && forQuery == q:
 		k.Text(c, err, 12, 16).TextColor(t.DestructiveForeground).Padding(k.Px(4), k.Px(8))
 		return
-	case forQuery == "":
+	case forQuery == "", len(hits) == 0 && pending:
 		note(L("Searching…"), true)
 		return
 	case len(hits) == 0:
