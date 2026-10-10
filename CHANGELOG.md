@@ -1,3 +1,12 @@
+## 1.42.0 - 2026-10-10
+
+### Added
+
+- Settings → Session defaults has the settings the Electron app had and the native app was missing:
+  - **Limits for specific models**, under Compaction: give a model its own token limit, change it or remove it.
+  - **Save folder**, under Spec mode: specs go to your home folder, the project's folder, or a folder you pick.
+  - **Task models**, under Subagents: the model and reasoning level for Subagents started with light, medium or heavy complexity.
+
 ## 1.41.1 - 2026-10-09
 
 ### Changed
