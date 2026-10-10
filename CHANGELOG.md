@@ -1,3 +1,13 @@
+## 1.44.0 - 2026-10-10
+
+### Added
+
+- A session whose subagents are running shows it in the sidebar: a spinner and **N subagents running** in place of its message count. A folded group counts it among its working sessions too.
+
+### Fixed
+
+- The sidebar's search finds sessions it missed. A title with the words shows at once, before the Daemon answers. The message text of the last 30 days is searched first, and every session only when that found fewer than 20: with thousands of sessions the Daemon reads only a few hundred of them, so a short query like a two-character Chinese word found nothing.
+
 ## 1.43.0 - 2026-10-10
 
 ### Added
