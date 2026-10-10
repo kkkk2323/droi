@@ -1,3 +1,9 @@
+## 1.44.1 - 2026-10-10
+
+### Fixed
+
+- A file dragged onto the composer from an app that hands macOS file references (`/.file/id=…`) instead of paths, such as a PDF, is added by its path instead of failing with **not a directory**.
+
 ## 1.44.0 - 2026-10-10
 
 ### Added
