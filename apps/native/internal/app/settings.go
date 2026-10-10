@@ -2,7 +2,9 @@ package app
 
 import (
 	"encoding/json"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -779,6 +781,39 @@ func (a *App) defaultsTab(c *ui.Context) {
 				}
 			}, nil)
 		},
+		func() {
+			const custom = "custom…"
+			paths := defaults.SpecSavePaths(dv.UserFactoryDir)
+			choice := defaults.SpecSaveChoiceOf(dv.SpecSaveDir, paths)
+			value := string(choice)
+			opts := []kit.Option{{Value: string(defaults.SpecUser), Label: L("User home")}, {Value: string(defaults.SpecProject), Label: L("Project")}}
+			desc := L("Specs go to %s.", paths.User)
+			switch choice {
+			case defaults.SpecProject:
+				desc = L("Specs go to the project's %s, or %s outside a project.", paths.Project, paths.User)
+			case defaults.SpecCustom:
+				value = dv.SpecSaveDir
+				opts = append(opts, kit.Option{Value: dv.SpecSaveDir, Label: L("Custom: %s", dv.SpecSaveDir)})
+				desc = L("Specs from every Session go to this folder.")
+			}
+			opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+			a.settingRow(c, L("Save folder"), descIf("specSaveDir", desc), func() {
+				next, ok := a.fieldSelect(c, l10n.N("Spec save folder"), value, opts, locked("specSaveDir"))
+				switch {
+				case !ok:
+				case next == custom:
+					go func() {
+						if dir := a.pickFolder(L("Choose a spec folder")); dir != "" {
+							a.cfg.Update(func() { save(defaults.Patch{SpecSaveDir: &dir}) })
+						}
+					}()
+				case next == string(defaults.SpecUser):
+					save(defaults.Patch{SpecSaveDir: str("")})
+				case next == string(defaults.SpecProject):
+					save(defaults.Patch{SpecSaveDir: str(paths.Project)})
+				}
+			}, nil)
+		},
 	)
 	a.settingGroup(c, L("Compaction"), "",
 		func() {
@@ -795,21 +830,67 @@ func (a *App) defaultsTab(c *ui.Context) {
 			if limit == 0 {
 				limit = defaults.DefaultCompactionLimit
 			}
-			vals := append([]int{}, defaults.CompactionLimits...)
-			if !containsInt(vals, limit) {
-				vals = append(vals, limit)
-			}
-			sortInts(vals)
-			opts := make([]kit.Option, len(vals))
-			for i, v := range vals {
-				opts[i] = kit.Option{Value: strconv.Itoa(v), Label: defaults.TokenLimitLabel(v)}
-			}
 			a.settingRow(c, L("Token limit"), "", func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Compaction token limit"), strconv.Itoa(limit), opts, locked("compactionTokenLimit")); ok {
+				if next, ok := a.fieldSelect(c, l10n.N("Compaction token limit"), strconv.Itoa(limit), limitOptions(limit), locked("compactionTokenLimit")); ok {
 					n, _ := strconv.Atoi(next)
 					save(defaults.Patch{CompactionTokenLimit: &n})
 				}
 			}, nil)
+		},
+		func() {
+			k, t := a.kit, a.kit.T
+			overrides := dv.CompactionTokenLimitPerModel
+			disabled := locked("compactionTokenLimitPerModel")
+			label := func(id string) string {
+				if i := slices.IndexFunc(dv.Models, func(m models.Choice) bool { return m.ID == id }); i >= 0 {
+					return dv.Models[i].Label
+				}
+				return id
+			}
+			var addable []models.Choice
+			for _, m := range defaults.PickableModels(dv.Models, true) {
+				if _, ok := overrides[m.ID]; !ok {
+					addable = append(addable, m)
+				}
+			}
+			with := func(id string, tokens int, keep bool) map[string]int {
+				next := maps.Clone(overrides)
+				if next == nil {
+					next = map[string]int{}
+				}
+				if keep {
+					next[id] = tokens
+				} else {
+					delete(next, id)
+				}
+				return next
+			}
+			a.settingRow(c, L("Limits for specific models"), descIf("compactionTokenLimitPerModel", L("Override the token limit for a model.")), nil, func() {
+				ui.Column(c).Role(ui.RoleList).Label(L("Model compaction limits")).Gap(k.Px(8)).Children(func() {
+					for _, id := range slices.Sorted(maps.Keys(overrides)) {
+						tokens, name := overrides[id], label(id)
+						ui.Row(c.Key(id)).Role(ui.RoleListItem).Label(name).Gap(k.Px(8)).Children(func() {
+							k.Text(c, name, 14, 20).TextColor(t.Foreground).SingleLine().Grow(1).MinWidth(0)
+							if next, ok := a.fieldSelect(c, L("%s compaction limit", name), strconv.Itoa(tokens), limitOptions(tokens), disabled); ok {
+								n, _ := strconv.Atoi(next)
+								save(defaults.Patch{CompactionTokenLimitPerModel: with(id, n, true)})
+							}
+							if k.IconButton(c, "x", L("Remove the %s limit", name), 32).Disabled(disabled).Clicked() {
+								save(defaults.Patch{CompactionTokenLimitPerModel: with(id, 0, false)})
+							}
+						})
+					}
+					ui.Row(c).Children(func() {
+						a.modelField(c, L("Add a model limit"), disabled || len(addable) == 0, a.settings.flag("model:compaction-limit"), &a.settings.picker, addable, "", func(id string) {
+							limit := dv.CompactionTokenLimit
+							if limit == 0 {
+								limit = defaults.DefaultCompactionLimit
+							}
+							save(defaults.Patch{CompactionTokenLimitPerModel: with(id, limit, true)})
+						})
+					})
+				})
+			})
 		},
 		func() {
 			value := dv.CompactionModel
@@ -821,19 +902,84 @@ func (a *App) defaultsTab(c *ui.Context) {
 			}, nil)
 		},
 	)
-	a.settingGroup(c, L("Subagents"), "", func() {
-		const inherit = "inherit"
-		opts := append([]kit.Option{{Value: inherit, Label: L("Inherit (calling session)")}}, autonomy...)
-		value := dv.SubagentAutonomyLevel
-		if value == "" {
-			value = inherit
-		}
-		a.settingRow(c, L("Autonomy level"), "", func() {
-			if next, ok := a.fieldSelect(c, l10n.N("Subagent autonomy level"), value, opts, locked("subagentAutonomyLevel")); ok {
-				save(defaults.Patch{SubagentAutonomyLevel: str(next)})
+	const inherit = "inherit"
+	a.settingGroup(c, L("Subagents"), "",
+		func() {
+			opts := append([]kit.Option{{Value: inherit, Label: L("Inherit (calling session)")}}, autonomy...)
+			value := dv.SubagentAutonomyLevel
+			if value == "" {
+				value = inherit
 			}
-		}, nil)
-	})
+			a.settingRow(c, L("Autonomy level"), "", func() {
+				if next, ok := a.fieldSelect(c, l10n.N("Subagent autonomy level"), value, opts, locked("subagentAutonomyLevel")); ok {
+					save(defaults.Patch{SubagentAutonomyLevel: str(next)})
+				}
+			}, nil)
+		},
+		func() {
+			k := a.kit
+			const modelDefault = "model-default"
+			settings := dv.SubagentModelSettings
+			a.settingRow(c, L("Task models"), L("The model and reasoning level for subagents started with light, medium or heavy complexity."), nil, func() {
+				ui.Column(c).Gap(k.Px(8)).Children(func() {
+					for _, tier := range subagentTierLabels {
+						model, effort := settings[tier.id+"Model"], settings[tier.id+"ReasoningEffort"]
+						ui.Row(c.Key(tier.id)).Gap(k.Px(8)).Children(func() {
+							k.Text(c, l10n.T(tier.name), 14, 20).SingleLine().Width(k.Px(112)).Shrink(0)
+							value := model
+							if value == "" {
+								value = inherit
+							}
+							opts := append([]kit.Option{{Value: inherit, Label: L("Inherit (calling session)")}}, modelOpts(true)...)
+							if next, ok := a.fieldSelect(c, tier.model, value, opts, locked("subagent."+tier.id+"Model")); ok {
+								if next == inherit {
+									next = ""
+								}
+								save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(settings, tier.id, next)})
+							}
+							if model == "" {
+								return
+							}
+							cur := effort
+							if cur == "" {
+								cur = modelDefault
+							}
+							levels := append([]kit.Option{{Value: modelDefault, Label: L("Model default")}}, efforts(model, effort)...)
+							if next, ok := a.fieldSelect(c, tier.reasoning, cur, levels, locked("subagent."+tier.id+"ReasoningEffort")); ok {
+								if next == modelDefault {
+									next = ""
+								}
+								save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierReasoning(settings, tier.id, next)})
+							}
+						})
+					}
+				})
+			})
+		},
+	)
+}
+
+// subagentTierLabels name the Subagent complexity tiers, in
+// defaults.SubagentTiers' order.
+var subagentTierLabels = []struct{ id, name, model, reasoning string }{
+	{"light", l10n.N("Light task"), l10n.N("Light task model"), l10n.N("Light task reasoning level")},
+	{"medium", l10n.N("Medium task"), l10n.N("Medium task model"), l10n.N("Medium task reasoning level")},
+	{"heavy", l10n.N("Heavy task"), l10n.N("Heavy task model"), l10n.N("Heavy task reasoning level")},
+}
+
+// limitOptions are the compaction token limits to pick from, with the
+// current one even when Factory does not offer it.
+func limitOptions(current int) []kit.Option {
+	vals := append([]int{}, defaults.CompactionLimits...)
+	if !containsInt(vals, current) {
+		vals = append(vals, current)
+	}
+	sortInts(vals)
+	opts := make([]kit.Option, len(vals))
+	for i, v := range vals {
+		opts[i] = kit.Option{Value: strconv.Itoa(v), Label: defaults.TokenLimitLabel(v)}
+	}
+	return opts
 }
 
 func containsInt(list []int, n int) bool {

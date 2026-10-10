@@ -126,7 +126,11 @@ func (a *App) modelPickerAs(c *ui.Context, field bool, name string, disabled boo
 			brandIcon(c, k, models.BrandOf(current.ID, current.Provider), 14, fg)
 			label = current.Label
 		}
-		if label == "" {
+		switch {
+		case label != "":
+		case field:
+			label = name
+		default:
 			label = L("Model")
 		}
 		l := k.Text(c, label, size, lh).TextColor(fg).SingleLine().Shrink(1)
