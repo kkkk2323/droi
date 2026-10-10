@@ -13,6 +13,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/internal/subagents"
 )
 
 // Folded like a Workspace group, in the same preference; no Workspace key has
@@ -34,6 +35,9 @@ type sidebarState struct {
 	numbered []string
 	// staleShown shows the Workspaces unused for a month.
 	staleShown bool
+	// subagentsRunning is how many subagents run under each listed row, this frame.
+	subagentsRunning map[string]int
+	runningKey       string
 }
 
 // sidebarView is the web Client's SessionSidebar.
@@ -43,6 +47,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	order := a.sortOrder(listed)
 	groups := a.sidebarGroups(listed, pins, order)
 	busy := a.activity(reported)
+	a.noteSubagentsRunning(listed, busy)
 	selected := ""
 	if a.route.Name == "session" {
 		selected = a.route.SessionID
@@ -56,7 +61,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 			live := a.automations.live
 			if a.sidebarRow(c, "clock", L("Automations"), a.route.Name == "automations", func() {
-				if n, ok := activity.CountBusy(live, busy, nil); ok {
+				if n, ok := activity.CountBusy(live, busy, a.sidebar.subagentsRunning); ok {
 					a.busyMark(c, n)
 				}
 			}).Clicked() {
@@ -225,6 +230,34 @@ func (a *App) activity(reported map[string]string) map[string]activity.Activity 
 	return activity.Snapshot(reported, loaded, compacting)
 }
 
+// noteSubagentsRunning counts the running subagents under each listed row.
+// A subagent runs by the Store's account of it or, when its caller is not
+// loaded here, by the working state the Daemon reports for it. The counts
+// are built again only when the list or the running subagents changed.
+func (a *App) noteSubagentsRunning(listed []sessions.Summary, busy map[string]activity.Activity) {
+	runs := map[string]subagents.Run{}
+	var ids []string
+	for _, s := range listed {
+		if s.CallingSessionID == "" {
+			continue
+		}
+		run, ok := a.subagentRun(s.SessionID)
+		if !ok && busy[s.SessionID] != "" {
+			run, ok = subagents.Run{Status: subagents.Running}, true
+		}
+		if ok && subagents.IsRunning(run.Status) {
+			runs[s.SessionID] = run
+			ids = append(ids, s.SessionID)
+		}
+	}
+	key := fmt.Sprint(a.shownRev, ids)
+	if a.sidebar.subagentsRunning != nil && a.sidebar.runningKey == key {
+		return
+	}
+	a.sidebar.runningKey = key
+	a.sidebar.subagentsRunning = subagents.RunningCounts(listed, runs)
+}
+
 func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 	seen := prefs.SessionsFirstSeen.Get(a.prefs)
 	if next := sessions.NoteFirstSeen(seen, listed, float64(a.cfg.Now().UnixMilli())); next != nil {
@@ -344,7 +377,7 @@ func (a *App) sectionHeader(c *ui.Context, label, title string, open bool, list 
 				ch.Opacity(0)
 			}
 			if !open {
-				if n, ok := activity.CountBusy(list, busy, nil); ok {
+				if n, ok := activity.CountBusy(list, busy, a.sidebar.subagentsRunning); ok {
 					a.busyMark(c, n)
 				}
 			}
@@ -486,7 +519,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 					})
 					k.Text(c, g.Label, 13, 19.5).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
 					if !open {
-						if n, ok := activity.CountBusy(g.Sessions, busy, nil); ok {
+						if n, ok := activity.CountBusy(g.Sessions, busy, a.sidebar.subagentsRunning); ok {
 							a.busyMark(c, n)
 						}
 					}
@@ -580,6 +613,8 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				status("circle-alert", t.Attention, L("Needs input"), false)
 			case doing == activity.Compacting:
 				status("", t.Info, L("Compacting"), true)
+			case a.sidebar.subagentsRunning[s.SessionID] > 0:
+				status("", t.Info, countL(a.sidebar.subagentsRunning[s.SessionID], l10n.N("%d subagent running"), l10n.N("%d subagents running")), true)
 			case doing == activity.Working:
 				status("", t.Info, L("Working"), true)
 			case s.Worktree != nil && s.Worktree.Branch != "":

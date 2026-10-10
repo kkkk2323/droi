@@ -87,3 +87,26 @@ func TestSubagentMenuAndTrail(t *testing.T) {
 		t.Fatalf("route after the crumb %+v", r)
 	}
 }
+
+// A Session whose subagents run shows it in the sidebar, even when only
+// the Daemon says the subagent is working.
+func TestTheSidebarShowsRunningSubagents(t *testing.T) {
+	const main, worker = "11111111-1111-4111-8111-111111111111", "55555555-5555-4555-8555-555555555555"
+	sc := subagentScenario()
+	sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{Title: "Worker: Fix the review", Cwd: "/Users/dev/acme-web",
+		Messages: []fakedaemon.Message{{Role: "user", Text: "Fix"}},
+		Extra: map[string]any{"sessionId": worker, "subagent": map[string]any{
+			"callingSessionId": main, "callingToolUseId": "toolu_5555", "subagentType": "worker",
+			"description": "Fix the review", "status": "running",
+		}}})
+	h := newHarness(t, sc, "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	if err := h.d.Notify(worker, map[string]any{"type": "droid_working_state_changed", "newState": "streaming_assistant_message"}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the running subagent", func() bool { return h.hasText("1 subagent running") })
+	if err := h.d.Notify(worker, map[string]any{"type": "droid_working_state_changed", "newState": "idle"}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the subagent stopped", func() bool { return !h.hasText("1 subagent running") && h.hasText("1 message") })
+}
