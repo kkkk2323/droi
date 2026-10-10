@@ -122,6 +122,7 @@ func main() {
 		Focused:   func() bool { return win != nil && win.IsFocused() },
 		ReadImage: mygo.Clipboard.ReadImage,
 		ReadFiles: func() []string { p, _ := mygo.Clipboard.ReadFiles(); return p },
+		FilePath:  filePath,
 		Updater:   updater,
 		Relaunch:  mygo.App.Relaunch,
 		Remote:    remote,

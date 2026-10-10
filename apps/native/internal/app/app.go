@@ -89,6 +89,9 @@ type Config struct {
 	ReadImage func() []byte
 	// ReadFiles is the paths of the files on the clipboard, nil without any.
 	ReadFiles func() []string
+	// FilePath turns a file reference of macOS (/.file/id=…), which some
+	// apps drag instead of a path, into the file's path; "" when it cannot.
+	FilePath func(ref string) string
 	// Updater is the in-app update, nil where the app cannot update
 	// itself (a development build); Relaunch starts the installed one.
 	Updater  *updates.Updater

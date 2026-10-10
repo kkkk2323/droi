@@ -32,6 +32,22 @@ func TestReadDrop(t *testing.T) {
 	}
 }
 
+func TestReadDropFileReference(t *testing.T) {
+	files, err := transfer.FileData("/.file/id=6571367.129607804", "/Users/dev/notes.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &App{cfg: Config{FilePath: func(ref string) string {
+		if ref == "/.file/id=6571367.129607804" {
+			return "/Users/dev/report.pdf"
+		}
+		return ""
+	}}}
+	if d := a.readDrop(files); len(d.files) != 2 || d.files[0] != "/Users/dev/report.pdf" || d.files[1] != "/Users/dev/notes.md" {
+		t.Errorf("files: %+v", d)
+	}
+}
+
 func TestAppendWords(t *testing.T) {
 	for _, c := range []struct{ text, words, want string }{
 		{"", "a", "a "},

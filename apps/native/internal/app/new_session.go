@@ -427,7 +427,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
 		if drop, ok := ui.DropData(card, dropOptions); ok {
-			d := readDrop(drop.Data)
+			d := a.readDrop(drop.Data)
 			if err := attachFiles(&s.text, &s.images, d.files); err != nil {
 				s.err = err.Error()
 			}

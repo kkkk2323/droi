@@ -297,7 +297,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 			card.Border(1, t.Primary.Alpha(0.6)).Background(t.Primary.Alpha(0.05))
 		}
 		if d, ok := ui.DropData(card, dropOptions); ok {
-			v.drop(readDrop(d.Data))
+			v.drop(v.a.readDrop(d.Data))
 		}
 		card.Children(func() {
 			if len(cs.images) > 0 {

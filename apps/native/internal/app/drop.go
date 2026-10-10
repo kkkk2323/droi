@@ -45,6 +45,23 @@ func readDrop(d transfer.Data) dropped {
 	return dropped{}
 }
 
+// readDrop is readDrop with the file references among the files turned
+// into paths.
+func (a *App) readDrop(d transfer.Data) dropped {
+	r := readDrop(d)
+	if a.cfg.FilePath == nil {
+		return r
+	}
+	for i, f := range r.files {
+		if strings.HasPrefix(f, "/.file/id=") {
+			if p := a.cfg.FilePath(f); p != "" {
+				r.files[i] = p
+			}
+		}
+	}
+	return r
+}
+
 // appendWords adds words to a message, a space apart from what it has.
 func appendWords(text, words string) string {
 	if words == "" {
