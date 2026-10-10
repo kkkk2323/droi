@@ -530,7 +530,7 @@ var zh = map[string]string{
 	"Remove queued message":            "移除已排队的消息",
 	"Remove skill %s":                  "移除 Skill %s",
 	"Rename":                           "重命名",
-	"Rename session":                   "重命名会话",
+	"Session actions":                  "会话操作",
 	"Rendering…":                       "渲染中…",
 	"Repeat":                           "重复",
 	"Report":                           "报告",

@@ -78,6 +78,8 @@ type sessionView struct {
 	renaming bool
 	rename   string
 	openIn   bool
+	// actionsOpen: the menu by the header's title.
+	actionsOpen bool
 
 	compacting bool
 	composer   composerState
@@ -489,7 +491,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 	loaded := s != nil && s.LoadState() == session.Loaded
 
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
-		v.header(c, s, loaded, title, workspace, a.subagentNavOf(listed, sel, v.id))
+		v.header(c, s, sel, loaded, title, workspace, a.subagentNavOf(listed, sel, v.id))
 		ui.Box(c).Grow(1).MinHeight(0).Children(func() {
 			switch {
 			case loadErr != "":
@@ -514,9 +516,9 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 	}
 }
 
-// header is the PageHeader: the title, which a pencil renames, and the
+// header is the PageHeader: the title with its actions menu, and the
 // open-in controls. It drags the window.
-func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, title, workspace string, nav subagentNav) {
+func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Summary, loaded bool, title, workspace string, nav subagentNav) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	// The web Client's leading spacer, always there, so the header's gap
@@ -553,16 +555,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 			hover := group.Hovered()
 			group.Children(func() {
 				k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
-				b := ui.ButtonBase(c).Label(L("Rename session")).Size(k.Px(24), k.Px(24)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
-				if !hover && !b.Focused() {
-					b.Opacity(0)
-				} else if b.Hovered() {
-					b.Background(t.Muted)
-				}
-				b.Children(func() { k.Icon(c, "pencil", 12, t.MutedForeground) })
-				if b.Clicked() {
-					v.renaming, v.rename = true, title
-				}
+				v.sessionActions(c, sel, title, workspace, hover)
 			})
 		})
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
@@ -570,6 +563,66 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, loaded bool, tit
 			v.gitButton(c, s, loaded)
 			v.openInButton(c, workspace)
 		})
+	})
+}
+
+// sessionActions is the menu by the header's title: rename, pin, copy and
+// archive the Session, as its row's context menu in the sidebar does.
+// Quiet until the title is hovered.
+func (v *sessionView) sessionActions(c *ui.Context, sel *sessions.Summary, title, workspace string, hover bool) {
+	a := v.a
+	k, t := a.kit, a.kit.T
+	b := ui.ButtonBase(c).Role(ui.RoleMenuButton).Label(L("Session actions")).Tooltip(L("Session actions")).Expanded(v.actionsOpen).
+		Size(k.Px(24), k.Px(24)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+	switch {
+	case !hover && !b.Focused() && !v.actionsOpen:
+		b.Opacity(0)
+	case b.Hovered() || v.actionsOpen:
+		b.Background(t.Muted)
+	}
+	b.Children(func() { k.Icon(c, "ellipsis", 14, t.MutedForeground) })
+	if b.Clicked() {
+		v.actionsOpen = !v.actionsOpen
+	}
+	summary := sessions.Summary{SessionID: v.id, Title: title, Cwd: workspace}
+	if sel != nil {
+		summary = *sel
+		summary.Title, summary.Cwd = title, workspace
+	}
+	separator := func() { ui.Box(c).Height(1).Background(t.Border).Margin(k.Px(4), -k.Px(4)) }
+	k.MenuPopup(c, b, &v.actionsOpen, false, L("Session actions"), func() {
+		if k.MenuItem(c, &v.actionsOpen, "pencil", L("Rename")).Clicked() {
+			v.renaming, v.rename = true, title
+		}
+		pin, icon := L("Pin"), "pin"
+		if prefs.PinnedSessions.Has(a.prefs, v.id) {
+			pin, icon = L("Unpin"), "pin-off"
+		}
+		if k.MenuItem(c, &v.actionsOpen, icon, pin).Clicked() {
+			prefs.PinnedSessions.Toggle(a.prefs, v.id)
+		}
+		separator()
+		if k.MenuItem(c, &v.actionsOpen, "copy", L("Copy session ID")).Clicked() {
+			c.WriteClipboard(v.id)
+		}
+		if k.MenuItem(c, &v.actionsOpen, "file-text", L("Copy session details")).Clicked() {
+			c.WriteClipboard(a.sessionDetails(summary))
+		}
+		if sel == nil {
+			return
+		}
+		separator()
+		archive, icon := L("Archive"), "archive"
+		if sel.ArchivedAt != "" {
+			archive, icon = L("Unarchive"), "archive-restore"
+		}
+		if k.MenuItem(c, &v.actionsOpen, icon, archive).Clicked() {
+			if sel.ArchivedAt == "" && sel.Worktree.Ephemeral() {
+				a.askArchive(summary)
+			} else {
+				go a.toggleArchive(summary)
+			}
+		}
 	})
 }
 
