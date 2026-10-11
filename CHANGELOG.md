@@ -1,3 +1,9 @@
+## 1.44.3 - 2026-10-11
+
+### Fixed
+
+- Picking a command or skill from the composer's suggestions keeps the keyboard focus in the composer, so you can go on typing without clicking it again.
+
 ## 1.44.2 - 2026-10-11
 
 ### Changed
