@@ -53,7 +53,7 @@ Download `Droi <version>.dmg` from the [latest Release](https://github.com/kkkk2
 xattr -cr /Applications/Droi.app
 ```
 
-On Windows, run `Droi Setup <version>.exe` from the same Release. It installs Droi for your user only, with no administrator rights. The installer is not code-signed either: if SmartScreen stops it, choose **More info** → **Run anyway**.
+On Windows, run `Droi Setup <version> amd64.exe` from the same Release. It installs Droi for your user only, with no administrator rights. The installer is not code-signed either: if SmartScreen stops it, choose **More info** → **Run anyway**.
 
 When Droi opens, sign in with Factory (the same device-code login as `/login` in `droid`), or paste a Factory API key. Droi gives the login to the `droid` CLI, so the two share it; if `droid` is already signed in, Droi opens straight away. Under **Settings** → **Advanced** you can set a Factory API base URL (a local `droid-proxy`, say). `FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
 

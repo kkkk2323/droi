@@ -6,6 +6,8 @@ github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6Xe
 github.com/ebitengine/purego v0.11.1/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/egoist/mygo v0.3.3 h1:ASPq7x9Qgda0bu9xLq2RRErbmjvCgXix9XCscEA4TaI=
 github.com/egoist/mygo v0.3.3/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
+github.com/egoist/mygo v0.4.2 h1:Vs2FDcg+h0SShYSlL8vpxhFeSbMfylVeV31naaTPeoU=
+github.com/egoist/mygo v0.4.2/go.mod h1:1sRzZ6jEhKE7iuEQXjyoXDgxyxQ1uTgMHDcDKZvoDIU=
 github.com/frostybee/nuri v1.0.1 h1:CqvuonKdnN+IZsRbSR4+dBevKLIh/doqv97dqV+fBB4=
 github.com/frostybee/nuri v1.0.1/go.mod h1:Za24ALqdA0qDb3R2zd7eBCD2ctk9j+tlQsrBeV+bs7o=
 github.com/go-text/typesetting v0.3.5 h1:XZPUooClHY0Vf/rFyUyuPRNEkawARaFzLMQcXLSEyPk=
