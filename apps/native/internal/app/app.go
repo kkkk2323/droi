@@ -181,9 +181,6 @@ type App struct {
 	revs sync.Map
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
 	worktreeAsk worktreeDialog
-	// pasteTo attaches the clipboard's image to the composer that had the
-	// keyboard focus in the last frame; nil when none had it.
-	pasteTo func() bool
 
 	listOnce sync.Once
 }
@@ -614,15 +611,8 @@ func (a *App) Go(r Route) {
 // Route is the page shown.
 func (a *App) Route() Route { return a.route }
 
-// PasteImage attaches the clipboard's image to the focused composer, and
-// reports whether it did. Paste of the Edit menu asks it before pasting
-// text: the menu takes ⌘V before the text area sees the key, and the text
-// area then pastes on its own, so the composer never sees the paste.
-func (a *App) PasteImage() bool { return a.pasteTo != nil && a.pasteTo() }
-
 // View builds the window.
 func (a *App) View(c *ui.Context) {
-	a.pasteTo = nil
 	c.SetTheme(a.kit.UITheme(c.Theme()))
 	status, listed, busy, listErr, listDone, rev := a.snapshot()
 	a.shownRev = rev

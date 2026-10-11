@@ -163,16 +163,6 @@ func main() {
 				if win != nil {
 					win.Update(func() { a.Zoom(step) })
 				}
-			}, func() {
-				if win == nil {
-					nativePaste()
-					return
-				}
-				win.Update(func() {
-					if !a.PasteImage() {
-						nativePaste()
-					}
-				})
 			}))
 		}
 		a.SetLocale(mygo.App.Locale())
@@ -232,7 +222,7 @@ func main() {
 // menu is the Desktop Shell's: the app, File, Edit, View and Window menus,
 // with zoom on ⌘= / ⌘- / ⌘0 as people press them, and the window's
 // commands (app.Commands), which take their shortcuts here.
-func menu(run func(id string), zoom func(step int), paste func()) *mygo.Menu {
+func menu(run func(id string), zoom func(step int)) *mygo.Menu {
 	mac := runtime.GOOS == "darwin"
 	item := func(label, acc string, step int, hidden bool) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Accelerator: acc, Hidden: hidden, Click: func(*mygo.MenuItem, *mygo.Window) { zoom(step) }}
@@ -275,7 +265,7 @@ func menu(run func(id string), zoom func(step int), paste func()) *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
 		appMenu,
 		{Label: l10n.L("File"), Submenu: file},
-		editMenu(paste),
+		editMenu(),
 		{Label: l10n.L("View"), Submenu: view},
 		windowMenu(mac),
 	})
@@ -310,17 +300,16 @@ func windowMenu(mac bool) *mygo.MenuItem {
 	return &mygo.MenuItem{Role: mygo.RoleWindowMenu, Label: l10n.L("Window"), Submenu: items}
 }
 
-// editMenu is MyGo's Edit menu of macOS, but for Paste, which the app does
-// itself: the role's Paste goes straight to the focused text area, and the
-// composer must see it first to attach an image on the clipboard.
-func editMenu(paste func()) *mygo.MenuItem {
+// editMenu is MyGo's Edit menu of macOS, with the role's own items, so that
+// its labels can be translated.
+func editMenu() *mygo.MenuItem {
 	return &mygo.MenuItem{Label: l10n.L("Edit"), Submenu: []*mygo.MenuItem{
 		{Role: mygo.RoleUndo, Label: l10n.L("Undo")},
 		{Role: mygo.RoleRedo, Label: l10n.L("Redo")},
 		mygo.Separator(),
 		{Role: mygo.RoleCut, Label: l10n.L("Cut")},
 		{Role: mygo.RoleCopy, Label: l10n.L("Copy")},
-		{Label: l10n.L("Paste"), Accelerator: "CmdOrCtrl+V", Click: func(*mygo.MenuItem, *mygo.Window) { paste() }},
+		{Role: mygo.RolePaste, Label: l10n.L("Paste")},
 		{Role: mygo.RolePasteAndMatchStyle, Label: l10n.L("Paste and Match Style")},
 		{Role: mygo.RoleDelete, Label: l10n.L("Delete")},
 		{Role: mygo.RoleSelectAll, Label: l10n.L("Select All")},

@@ -51,8 +51,9 @@ func TestPastingAnImageAttachesIt(t *testing.T) {
 	}
 }
 
-// Paste of the Edit menu (⌘V in the app, as the menu takes the key) asks
-// the focused composer for the clipboard's image before pasting text.
+// Paste of the Edit menu (⌘V in the app, as the menu takes the key) comes
+// to the focused text area as the paste command, which the composer sees
+// first to attach the clipboard's image.
 func TestPasteOfTheEditMenuAttachesAnImage(t *testing.T) {
 	var clip []byte
 	h := newHarnessWith(t, sessionsScenario(), "", func(cfg *Config) {
@@ -62,16 +63,19 @@ func TestPasteOfTheEditMenuAttachesAnImage(t *testing.T) {
 	h.click("New session")
 	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
 	h.click("Message")
-	if h.a.PasteImage() {
+	h.tt.Command("paste")
+	h.frame()
+	if len(h.a.newPage.images) != 0 {
 		t.Fatal("no image on the clipboard, yet the paste took one")
 	}
 	var b bytes.Buffer
 	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 40, 30)))
 	clip = b.Bytes()
-	if !h.a.PasteImage() {
-		t.Fatal("the New session page's composer did not take the image")
-	}
+	h.tt.Command("paste")
 	h.frame()
+	if len(h.a.newPage.images) != 1 {
+		t.Fatalf("the New session page's composer has %d images", len(h.a.newPage.images))
+	}
 	if _, ok := h.tt.Find("Pasted image.png"); !ok {
 		t.Fatal("the pasted image is not shown")
 	}
@@ -83,14 +87,20 @@ func TestPasteOfTheEditMenuAttachesAnImage(t *testing.T) {
 		}
 		_ = h.tt.Click("Message")
 		h.frame()
-		return h.a.PasteImage()
+		h.tt.Command("paste")
+		h.frame()
+		v := h.a.views[h.a.Route().SessionID]
+		return v != nil && len(v.composer.images) > 0
 	})
-	if v := h.a.views[h.a.Route().SessionID]; len(v.composer.images) != 1 {
+	v := h.a.views[h.a.Route().SessionID]
+	if len(v.composer.images) != 1 {
 		t.Fatalf("the Session's composer has %d images", len(v.composer.images))
 	}
 	_ = h.tt.Click("Search sessions")
 	h.frame()
-	if h.a.PasteImage() {
+	h.tt.Command("paste")
+	h.frame()
+	if len(v.composer.images) != 1 || len(h.a.newPage.images) != 1 {
 		t.Fatal("the image went to a composer without the focus")
 	}
 }
@@ -155,7 +165,10 @@ func TestPastingCopiedFilesAddsTheirPaths(t *testing.T) {
 		}
 		_ = h.tt.Click("Message")
 		h.frame()
-		return h.a.PasteImage()
+		h.tt.Command("paste")
+		h.frame()
+		v := h.a.views[h.a.Route().SessionID]
+		return v != nil && v.composer.text != ""
 	})
 	v := h.a.views[h.a.Route().SessionID]
 	if want := strconv.Quote(video) + " "; v.composer.text != want {

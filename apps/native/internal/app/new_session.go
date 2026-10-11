@@ -475,13 +475,8 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				}
 				return ok || err != nil
 			}
-			if in.Focused() {
-				a.pasteTo = paste
-			}
+			in.OnPaste(func(string) bool { return paste() })
 			in.HandleInput(func(ev ui.InputEvent) bool {
-				if isPaste(ev) && paste() {
-					return true
-				}
 				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !in.Composing() {
 					start()
 					return true

@@ -324,13 +324,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					in.AutoFocus()
 					v.focused = true
 				}
-				if in.Focused() {
-					a.pasteTo = v.pasteImage
-				}
+				in.OnPaste(func(string) bool { return v.pasteImage() })
 				in.HandleInput(func(ev ui.InputEvent) bool {
-					if isPaste(ev) {
-						return v.pasteImage()
-					}
 					if ev.Kind != ui.InputKeyDown {
 						return false
 					}
@@ -411,13 +406,6 @@ func (v *sessionView) saveDraft() {
 	v.a.drafts.Save(v.id, draftOf(v.composer.text, v.composer.images))
 }
 
-// addFiles attaches the images of files; other files go in as their paths.
-// isPaste is ⌘V, which a text area takes as a key, or Paste of the Edit
-// menu, which comes as a command.
-func isPaste(ev ui.InputEvent) bool {
-	return ev.Kind == ui.InputCommand && ev.Text == "paste" || ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyV && ev.Mods == ui.Cmd
-}
-
 // pasteImage attaches the clipboard's image, as the web Client takes one
 // pasted; with none it lets the text area paste the text. Files copied in
 // the Finder go as addFiles takes them: the clipboard also holds their icon
@@ -444,6 +432,7 @@ func (v *sessionView) pasteImage() bool {
 	return ok || err != nil
 }
 
+// addFiles attaches the images of files; other files go in as their paths.
 func (v *sessionView) addFiles(paths []string) {
 	cs := &v.composer
 	if err := attachFiles(&cs.text, &cs.images, paths); err != nil {
