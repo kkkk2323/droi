@@ -1,3 +1,10 @@
+## 1.44.2 - 2026-10-11
+
+### Changed
+
+- The Windows installer is now named `Droi Setup <version> amd64.exe`.
+- Droi runs on MyGo 0.4.2. Tooltips show next to what they describe instead of at the pointer, and a notice such as **Copied the reply** goes away on time after a dialog closes.
+
 ## 1.44.1 - 2026-10-10
 
 ### Fixed
