@@ -318,7 +318,9 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if hasPick {
 					left = k.Px(8)
 				}
-				in := k.TextArea(c, &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
+				// Keyed: the tag of a picked command comes before it, and would
+				// otherwise take its identity and the keyboard focus with it.
+				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!loaded)
 				if !v.focused {
 					in.AutoFocus()
