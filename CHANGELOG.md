@@ -1,3 +1,9 @@
+## 1.45.0 - 2026-10-12
+
+### Added
+
+- Droi now needs droid 0.233.0 or newer. When the droid on this computer is older, Droi does not start the Daemon from it: the window says which version it needs and which one it found, and **Update droid** updates it and starts the Daemon. If droid cannot update itself (for example an npm install, or updates turned off by your organization), the window shows what droid said.
+
 ## 1.44.5 - 2026-10-12
 
 ### Fixed
