@@ -457,7 +457,10 @@ func (c *Controller) applyNotification(sessionID string, v any, p protocol.Sessi
 			out = c.prompts.clearStale(sessionID, out)
 		}
 	case *protocol.ChildSessionAvailableNotification:
-		if t := c.sessions[v.ChildSessionID]; t == nil {
+		// A subagent resumed for another Task is announced again. Its
+		// Session is loaded again: the run before may have left the Client
+		// unsubscribed, and the new run's end would never come.
+		if t := c.sessions[v.ChildSessionID]; t == nil || t.loading == nil {
 			go c.hydrateChild(v.ChildSessionID)
 		}
 	}

@@ -318,3 +318,82 @@ func TestAddUserMessageKeepsTheCallersRequestID(t *testing.T) {
 		return ok && m.RequestID == "req-1"
 	})
 }
+
+// A subagent resumed for another Task is announced again; its Session is
+// loaded again, so that the notifications of the new run reach the Client
+// and its run ends when the subagent's turn does.
+func TestAResumedSubagentIsLoadedAgain(t *testing.T) {
+	const main, child = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{
+		{Title: "Main", Cwd: "/Users/dev/acme-web", Extra: map[string]any{"sessionId": main}},
+		{Title: "Worker: Fix it", Cwd: "/Users/dev/acme-web", Extra: map[string]any{"sessionId": child}},
+	}})
+	c, _ := start(t, d, controller.Config{})
+	if _, err := c.LoadSession(context.Background(), protocol.LoadSessionParams{SessionID: main}); err != nil {
+		t.Fatal(err)
+	}
+	loadsOfChild := func(n int) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			reqs, err := d.Requests()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := 0
+			for _, r := range reqs {
+				if r.Method == protocol.MethodLoadSession && strings.Contains(string(r.Params), child) {
+					got++
+				}
+			}
+			if got >= n {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the subagent was loaded %d times, want %d", got, n)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	status := func(want protocol.TaskInvocationStatus) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			sum, _ := c.Store().SubagentInvocationSummary(child)
+			if sum.Status == want {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("subagent status %q, want %q", sum.Status, want)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	announce := func(toolUse string) {
+		t.Helper()
+		if err := d.Notify(main, map[string]any{"type": "child_session_available", "childSessionId": child, "toolUseId": toolUse,
+			"subagentType": "worker", "description": "Fix it", "timestamp": 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	finish := func() {
+		t.Helper()
+		if err := d.Notify(child, map[string]any{"type": "agent_turn_completed", "reason": "completed", "tokenUsage": map[string]any{
+			"inputTokens": 0, "outputTokens": 0, "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0, "factoryCredits": 0,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	announce("toolu_first")
+	loadsOfChild(1)
+	status(protocol.TaskInvocationStatusRunning)
+	finish()
+	status(protocol.TaskInvocationStatusCompleted)
+
+	announce("toolu_second")
+	status(protocol.TaskInvocationStatusRunning)
+	loadsOfChild(2)
+	finish()
+	status(protocol.TaskInvocationStatusCompleted)
+}
