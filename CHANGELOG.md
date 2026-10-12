@@ -1,3 +1,10 @@
+## 1.44.4 - 2026-10-12
+
+### Fixed
+
+- The composer keeps the keyboard focus when a pasted image, an error or the queued messages show above the text, when a picked command or skill is removed with Backspace, and after a permission or question is answered, so you can go on typing without clicking it again.
+- Enter while an input method composes text, such as Pinyin before a candidate is chosen, no longer risks sending the message.
+
 ## 1.44.3 - 2026-10-11
 
 ### Fixed
