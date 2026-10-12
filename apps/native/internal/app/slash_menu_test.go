@@ -44,3 +44,30 @@ func TestPickingASkillKeepsTheFocusInTheComposer(t *testing.T) {
 		t.Fatalf("text after the pick: %q", got)
 	}
 }
+
+// Backspace in the empty text area removes the picked skill's tag; typing
+// goes on in the text area.
+func TestRemovingAPickedSkillKeepsTheFocusInTheComposer(t *testing.T) {
+	h := newHarness(t, fakedaemon.Scenario{
+		Sessions: []fakedaemon.SessionSpec{{Title: "One", Cwd: "/Users/dev/acme-web",
+			Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}},
+		Input: map[string]any{"skills": []map[string]any{{"name": "wait-what", "description": "Re-pitch the last message"}}},
+	}, "")
+	h.openSession("One")
+	h.until("the Session loaded", func() bool { return h.hasText("Context used") })
+	h.click("Message")
+	h.tt.Type("/wait")
+	h.until("the skill in the suggestions", func() bool { return h.hasText("wait-what") })
+	h.tt.Key(0, ui.KeyTab)
+	h.frame()
+	h.tt.Key(0, ui.KeyBackspace)
+	h.frame()
+	if _, ok := h.tt.Find("Skill wait-what"); ok {
+		t.Fatal("Backspace kept the skill's tag")
+	}
+	h.tt.Type("go")
+	h.frame()
+	if got := h.a.views[h.a.Route().SessionID].composer.text; got != "go" {
+		t.Fatalf("text after removing the skill: %q", got)
+	}
+}

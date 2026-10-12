@@ -476,8 +476,10 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				return ok || err != nil
 			}
 			in.OnPaste(func(string) bool { return paste() })
+			// Read as it is built: the element expires before the handler runs.
+			composing := in.Composing()
 			in.HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !in.Composing() {
+				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !composing {
 					start()
 					return true
 				}

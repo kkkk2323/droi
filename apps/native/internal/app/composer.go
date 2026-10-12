@@ -78,6 +78,8 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 		v.shelf(c, s)
 		if len(perms)+len(asks) > 0 {
 			v.promptArea(c, perms, asks)
+			// The prompt takes the focus; the composer gets it back after.
+			v.focused = false
 		} else {
 			v.inputBar(c, s, running, loaded)
 		}
@@ -288,11 +290,15 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		v.saveDraft()
 	}
 
-	ui.Column(c).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
+	// The composer and the text area's ancestors in it are keyed: what comes
+	// and goes before them (the shelf, an error, attachments, a picked
+	// command's tag) would otherwise change the text area's identity, and
+	// the keyboard focus would go with it.
+	ui.Column(c.Key("composer")).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
 		if cs.err != "" {
 			k.Text(c, cs.err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).PaddingX(k.Px(4))
 		}
-		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
+		card := ui.Column(c.Key("card")).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
 		if _, over := ui.DataDragOver(card, dropOptions); over {
 			card.Border(1, t.Primary.Alpha(0.6)).Background(t.Primary.Alpha(0.05))
 		}
@@ -303,7 +309,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 			if len(cs.images) > 0 {
 				v.attachmentList(c)
 			}
-			ui.Row(c).AlignItems(ui.Start).Children(func() {
+			ui.Row(c.Key("field")).AlignItems(ui.Start).Children(func() {
 				if hasPick {
 					v.slashTag(c, picked, rest)
 				}
@@ -318,8 +324,6 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if hasPick {
 					left = k.Px(8)
 				}
-				// Keyed: the tag of a picked command comes before it, and would
-				// otherwise take its identity and the keyboard focus with it.
 				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!loaded)
 				if !v.focused {
@@ -327,6 +331,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					v.focused = true
 				}
 				in.OnPaste(func(string) bool { return v.pasteImage() })
+				// Read as it is built: the element expires before the handler runs.
+				composing := in.Composing()
 				in.HandleInput(func(ev ui.InputEvent) bool {
 					if ev.Kind != ui.InputKeyDown {
 						return false
@@ -351,7 +357,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 						cs.text = rest
 						return true
 					}
-					if ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !in.Composing() {
+					if ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !composing {
 						if ev.Mods&ui.Cmd != 0 {
 							submit(protocol.QueuePlacementEndOfTurn)
 						} else {
