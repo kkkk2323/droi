@@ -4,6 +4,8 @@ status: accepted
 
 # A release pins its `droid`, and the Host updates itself when idle
 
+> The Pinned Droid is not built yet: ADR 0018 asks for a Minimum Droid instead until it is needed.
+
 Droi speaks the Daemon protocol through a pinned `@factory/droid-sdk`, while the Daemon's protocol version comes from whichever `droid` binary is on the computer's PATH, a binary that updates itself. On one computer the two drifted quietly: the SDK in this repo declares protocol 1.201.1 and the installed droid answers with a newer one, and the SDK's answer to a mismatch is to log and drop the notifications it cannot parse. With several Hosts (ADR 0012) the drift multiplies, and a Client that only ever spoke to one Daemon now meets three.
 
 We decided a Droi release names one **Pinned Droid**. The Host downloads that exact build from Factory's versioned release path (`downloads.factory.ai/factory-cli/releases/<version>/<platform>/<arch>/droid`, checksum beside it) into its own data directory, starts the Daemon from it, and disables droid's self-update for that copy. The Host's version, its Pinned Droid and its bundled Client and SDK are thereby fixed together at release time; the droid CLI the user runs in a terminal is a separate install that may be newer. When the download fails the Host falls back to the PATH `droid` and says so in `/meta`, so an offline box still works. An explicit `droidPath` setting skips the pin for development.

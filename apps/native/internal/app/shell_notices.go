@@ -17,10 +17,12 @@ func startingUp(status controller.Status, everConnected bool) bool {
 // startupProblem is why the window still waits for its first connection:
 // a Daemon that does not start, or one the window cannot connect to. Empty
 // while the Daemon is only coming up.
-func startupProblem(daemon host.DaemonState, status controller.Status) (title, detail string) {
+func startupProblem(daemon host.DaemonState, status controller.Status, droidVersion string) (title, detail string) {
 	switch {
 	case daemon.DroidMissing():
 		return L("droid was not found"), L("Install the droid CLI, or set the path to droid in Settings.")
+	case daemon.DroidTooOld():
+		return L("droid is too old"), L("Droi needs droid %s or newer; this computer has %s.", host.MinDroid, droidVersion)
 	case daemon.Reason != "":
 		return L("The Daemon did not start"), L("Last attempt: %s.", daemon.Reason)
 	case status.Failure != nil && status.Failure.Reason == controller.ReasonAuthRejected:
@@ -89,11 +91,17 @@ func (a *App) startingUpView(c *ui.Context, status controller.Status) {
 			}
 		})
 		var title, detail string
+		tooOld := false
 		if h := a.cfg.Host; h != nil {
-			title, detail = startupProblem(h.Daemon.State(), status)
+			st := h.Daemon.State()
+			version := ""
+			if tooOld = st.DroidTooOld(); tooOld {
+				version = h.DroidVersion()
+			}
+			title, detail = startupProblem(st, status, version)
 		}
 		if title != "" {
-			a.startupProblemView(c, title, detail)
+			a.startupProblemView(c, title, detail, tooOld)
 			return
 		}
 		ui.Row(c).Grow(1).Center().Children(func() {
@@ -106,17 +114,30 @@ func (a *App) startingUpView(c *ui.Context, status controller.Status) {
 	})
 }
 
-// startupProblemView says why Droid is not there yet, with what can fix it.
-func (a *App) startupProblemView(c *ui.Context, title, detail string) {
+// startupProblemView says why Droid is not there yet, with what can fix it:
+// updating droid when it is too old, else restarting the Daemon.
+func (a *App) startupProblemView(c *ui.Context, title, detail string, droidTooOld bool) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
+	update := h.DroidUpdateState()
 	ui.Column(c).Grow(1).Center().PaddingX(k.Px(24)).Children(func() {
 		ui.Column(c).Role(ui.RoleStatus).Label(title).FillWidth().MaxWidth(k.Px(420)).AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
 			k.Icon(c, "circle-alert", 20, t.Attention)
 			k.Text(c, title, 14, 20).FontWeight(500).TextAlign(ui.Center)
 			k.Text(c, detail, 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
+			if droidTooOld && update.Err != "" {
+				k.Text(c, L("droid did not update: %s", update.Err), 13, 18).TextColor(t.Destructive).TextAlign(ui.Center)
+			}
 			ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Outline, L("Restart Daemon"), "refresh-cw", false).Clicked() {
+				if droidTooOld {
+					label := L("Update droid")
+					if update.Running {
+						label = L("Updating droid…")
+					}
+					if a.smallButton(c, kit.Primary, label, "arrow-down-to-line", update.Running).Clicked() {
+						go h.UpdateDroid()
+					}
+				} else if a.smallButton(c, kit.Outline, L("Restart Daemon"), "refresh-cw", false).Clicked() {
 					go h.RestartDaemon()
 				}
 				if a.smallButton(c, kit.Ghost, L("Settings"), "settings", false).Clicked() {

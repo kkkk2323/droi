@@ -37,6 +37,9 @@ type DaemonState struct {
 // DroidMissing reports that the last attempt found no droid to start.
 func (s DaemonState) DroidMissing() bool { return s.Reason == string(errNoDroid) }
 
+// DroidTooOld reports that the last attempt found a droid older than MinDroid.
+func (s DaemonState) DroidTooOld() bool { return s.Reason == string(errDroidTooOld) }
+
 // URL is the Daemon's WebSocket URL while it runs.
 func (s DaemonState) URL() string {
 	if s.Status != DaemonRunning {

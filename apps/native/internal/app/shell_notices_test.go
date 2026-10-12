@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
@@ -84,6 +85,33 @@ func TestStartingUpSaysWhyDroidIsMissing(t *testing.T) {
 	h.click("Settings")
 	if r := h.a.Route(); r.Name != "settings" {
 		t.Fatalf("Settings went to %+v", r)
+	}
+}
+
+func TestStartingUpOffersToUpdateAnOldDroid(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a shell")
+	}
+	droidPath := filepath.Join(t.TempDir(), "droid")
+	os.WriteFile(droidPath, []byte("#!/bin/sh\nif [ \"$1\" = update ]; then\nprintf '#!/bin/sh\\necho 0.240.0\\n' > \"$0.new\" && chmod +x \"$0.new\" && mv \"$0.new\" \"$0\"\nexit 0\nfi\necho 0.200.0\n"), 0o755)
+	h0 := testHost(t)
+	h0.Settings.Update(func(s *host.Settings) {
+		s.APIKey = host.OptString("fk-x")
+		s.DroidPath = host.OptString(droidPath)
+	})
+	idle := controller.New(controller.Config{ResolveURL: h0.WaitForDaemonURL})
+	t.Cleanup(func() { idle.Close() })
+	h0.Start()
+	t.Cleanup(h0.Stop)
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host, cfg.Controller = h0, idle })
+	h.until("the reason", func() bool { return h.hasText("droid is too old") })
+	if !h.hasText("Droi needs droid " + host.MinDroid + " or newer; this computer has 0.200.0.") {
+		t.Fatal("does not say which versions")
+	}
+	h.click("Update droid")
+	h.until("the update", func() bool { return !h.hasText("droid is too old") })
+	if v := h0.DroidVersion(); v != "0.240.0" {
+		t.Fatalf("version %q", v)
 	}
 }
 

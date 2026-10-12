@@ -18,8 +18,12 @@ _Avoid_: server, node, station, backend, agent runner
 A Factory login the Host can run its Daemon as. The first is the droid CLI's own, in `~/.factory`; each one added in Droi keeps its login in a folder of its own and shares the CLI's skills, droids, MCP Servers, settings and Sessions. The Daemon runs as one at a time, and switching restarts it.
 _Avoid_: profile, key, provider instance
 
+**Minimum Droid**:
+The oldest `droid` build a Droi release starts its Daemon from. The Host reads `droid --version` before every start; an older droid does not start, and the window offers to update it with `droid update`.
+_Avoid_: required droid, droid version (on its own)
+
 **Pinned Droid**:
-The one `droid` build a Droi release is made for. The Host fetches it and starts the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid cannot be fetched the Host falls back to the computer's own `droid` and says so.
+The one `droid` build a Droi release would be made for (ADR 0013); not built yet, deferred in favour of the Minimum Droid (ADR 0018). The Host would fetch it and start the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid could not be fetched the Host would fall back to the computer's own `droid` and say so.
 _Avoid_: bundled droid, vendored CLI, droid version (on its own)
 
 **Desktop Shell**:

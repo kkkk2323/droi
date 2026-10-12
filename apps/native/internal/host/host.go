@@ -7,10 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
+
+	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 )
 
 const defaultFactoryAPIBaseURL = "https://api.factory.ai"
@@ -41,6 +44,7 @@ type Host struct {
 	mu        sync.Mutex
 	readers   map[string]*CliLoginReader
 	build     *DroidBuild
+	updating  DroidUpdate
 	listeners map[int]func()
 	next      int
 	wasIn     bool
@@ -196,6 +200,76 @@ func (h *Host) DroidPath() string {
 	return LocateDroid(deref(h.Settings.Get().DroidPath), h.cfg.Env("PATH"), h.cfg.Home)
 }
 
+// DroidVersion is what `droid --version` prints for DroidPath; "" when
+// it cannot be read.
+func (h *Host) DroidVersion() string {
+	v, _ := h.droidClient()
+	return v
+}
+
+// DroidUpdate is where UpdateDroid stands. Err is why the last one left
+// droid older than MinDroid.
+type DroidUpdate struct {
+	Running bool
+	Err     string
+}
+
+// DroidUpdateState is the update UpdateDroid runs or last ran.
+func (h *Host) DroidUpdateState() DroidUpdate {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.updating
+}
+
+// UpdateDroid runs `droid update` on DroidPath and, once droid is at least
+// MinDroid, starts the Daemon from it.
+func (h *Host) UpdateDroid() {
+	h.mu.Lock()
+	if h.updating.Running {
+		h.mu.Unlock()
+		return
+	}
+	h.updating = DroidUpdate{Running: true}
+	h.mu.Unlock()
+	h.changed()
+
+	path := h.DroidPath()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "update")
+	hideConsole(cmd)
+	// A Daemon gives its Sessions' commands FACTORY_DROID_AUTO_UPDATE_ENABLED=false,
+	// and with it `droid update` refuses as if droid came from npm.
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "FACTORY_DROID_AUTO_UPDATE_ENABLED=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	why := ""
+	if v := h.DroidVersion(); OlderThanMinDroid(v) {
+		why = lastLine(string(out))
+		if why == "" && err != nil {
+			why = err.Error()
+		}
+		if why == "" {
+			why = l10n.L("droid is still %s.", v)
+		}
+	}
+	h.mu.Lock()
+	h.updating = DroidUpdate{Err: why}
+	h.mu.Unlock()
+	h.changed()
+	if why == "" {
+		h.RestartDaemon()
+	}
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
 // DroidUpdated reports that droid changed on disk since the Daemon started.
 func (h *Host) DroidUpdated() bool {
 	h.mu.Lock()
@@ -207,6 +281,9 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	path := h.DroidPath()
 	if path == "" {
 		return nil, errNoDroid
+	}
+	if v, _ := h.droidClient(); OlderThanMinDroid(v) {
+		return nil, errDroidTooOld
 	}
 	// Signed in: the Daemon runs as the account's login. Without one an API
 	// key serves both sides.
@@ -297,7 +374,10 @@ type hostError string
 
 func (e hostError) Error() string { return string(e) }
 
-const errNoDroid = hostError("droid executable not found")
+const (
+	errNoDroid     = hostError("droid executable not found")
+	errDroidTooOld = hostError("droid is older than MinDroid")
+)
 
 func itoaPID() string {
 	b, _ := json.Marshal(os.Getpid())

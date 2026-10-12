@@ -5,8 +5,47 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// MinDroid is the oldest droid this release starts its Daemon from: the
+// build the Go SDK's protocol was checked against. Raise it when Droi
+// starts using what only a newer Daemon offers.
+const MinDroid = "0.233.0"
+
+// OlderThanMinDroid reports that version, as `droid --version` prints it,
+// is older than MinDroid. A version it cannot read is not.
+func OlderThanMinDroid(version string) bool {
+	have, ok := droidSemver(version)
+	if !ok {
+		return false
+	}
+	least, _ := droidSemver(MinDroid)
+	for i := range have {
+		if have[i] != least[i] {
+			return have[i] < least[i]
+		}
+	}
+	return false
+}
+
+func droidSemver(s string) ([3]int, bool) {
+	var v [3]int
+	core, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(s), "v"), "-")
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return v, false
+		}
+		v[i] = n
+	}
+	return v, true
+}
 
 func droidBinary() string {
 	if runtime.GOOS == "windows" {
