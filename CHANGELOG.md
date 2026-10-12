@@ -1,3 +1,9 @@
+## 1.44.5 - 2026-10-12
+
+### Fixed
+
+- A subagent resumed for another task no longer shows as running after it finished, in the header's subagent menu and in the sidebar.
+
 ## 1.44.4 - 2026-10-12
 
 ### Fixed
