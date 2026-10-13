@@ -1,3 +1,9 @@
+## 1.45.1 - 2026-10-13
+
+### Fixed
+
+- A Session left open for more than 30 minutes, for example while the screen was locked, no longer greys out its message box. The Daemon still stops an idle Session to free memory, but now the next message starts it again before sending, so you no longer need to switch to another Session and back.
+
 ## 1.45.0 - 2026-10-12
 
 ### Added
