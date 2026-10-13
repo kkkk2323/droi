@@ -27,7 +27,8 @@ func subagentScenario() fakedaemon.Scenario {
 }
 
 // A subagent the list does not have yet still leads back to its caller,
-// and runs as soon as its caller says it started.
+// runs as soon as its caller says it started, and counts in the caller's
+// subagent menu.
 func TestAnUnlistedSubagentLeadsBackAndRuns(t *testing.T) {
 	const main, child = "11111111-1111-4111-8111-111111111111", "44444444-4444-4444-8444-444444444444"
 	sc := subagentScenario()
@@ -42,6 +43,8 @@ func TestAnUnlistedSubagentLeadsBackAndRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.until("the run", func() bool { r, ok := h.a.subagentRun(child); return ok && r.Status == subagents.Running })
+	// The caller's header counts it with the two listed.
+	h.until("the subagent menu", func() bool { _, ok := h.findPrefix("3 subagents, 1 running"); return ok })
 	h.a.Go(Route{Name: "session", SessionID: child})
 	h.until("the trail", func() bool { _, ok := h.tt.Find("Session hierarchy"); return ok })
 	h.settle()
@@ -85,6 +88,23 @@ func TestSubagentMenuAndTrail(t *testing.T) {
 	h.frame()
 	if r := h.a.Route(); r.SessionID != "11111111-1111-4111-8111-111111111111" {
 		t.Fatalf("route after the crumb %+v", r)
+	}
+}
+
+// A subagent with no other of the same caller has its title as a heading:
+// the menu to switch between them would be empty.
+func TestALoneSubagentsTitleIsNoMenu(t *testing.T) {
+	sc := subagentScenario()
+	sc.Sessions = sc.Sessions[:2]
+	h := newHarness(t, sc, "")
+	h.a.Go(Route{Name: "session", SessionID: "22222222-2222-4222-8222-222222222222"})
+	h.until("the trail", func() bool { _, ok := h.tt.Find("Session hierarchy"); return ok })
+	h.settle()
+	trail, _ := h.tt.Find("Session hierarchy")
+	h.tt.ClickAt(trail.X+trail.W-20, trail.Y+trail.H/2)
+	h.settle()
+	if _, ok := h.tt.Find("Subagents"); ok {
+		t.Fatal("the lone subagent's title opened a menu")
 	}
 }
 
