@@ -1,3 +1,9 @@
+## 1.45.3 - 2026-10-13
+
+### Fixed
+
+- Dragging a picture out of an app that keeps its files to itself, such as WeChat, no longer shows a bare "operation not permitted" error. macOS does not let Droi open such a file, so the message box now says so and how to add the picture: save it to a folder such as Downloads first and add it from there, or give Droi Full Disk Access in System Settings › Privacy & Security.
+
 ## 1.45.2 - 2026-10-13
 
 ### Fixed
