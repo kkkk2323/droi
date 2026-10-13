@@ -199,6 +199,24 @@ func TestLoadThenPrependOlderPage(t *testing.T) {
 	}
 }
 
+// A Session the Store forgot still gets the Daemon's notices; one saying
+// its worker stopped is older than a later load, which must not end
+// NotLoaded because of it.
+func TestALoadOutdatesAnEarlierInactivity(t *testing.T) {
+	s, _ := newTestStore()
+	const id = "s1"
+	send(t, s, id, map[string]any{"type": "session_inactivity", "message": "idle", "timestamp": 1, "timeoutSeconds": 1800})
+	send(t, s, id, map[string]any{"type": "session_title_updated", "title": "Early"})
+	loadWith(t, s, id, protocol.LoadSessionResult{})
+	sess := s.Session(id)
+	if sess.LoadState() != Loaded || s.IsInactive(id) {
+		t.Fatalf("after the load: %s, inactive %v", sess.LoadState(), s.IsInactive(id))
+	}
+	if sess.Title() != "Early" {
+		t.Fatalf("the other notice was dropped too: title %q", sess.Title())
+	}
+}
+
 func TestLoadStateTransitions(t *testing.T) {
 	s, _ := newTestStore()
 	const id = "s1"

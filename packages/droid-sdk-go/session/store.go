@@ -573,13 +573,23 @@ type LoadToken struct {
 }
 
 // BeginLoad marks a Session Loading (see MarkLoading) and returns the token
-// for ApplyLoadResult.
+// for ApplyLoadResult. Notices kept for it that its worker stopped are
+// dropped: they came before this load, which starts or finds one.
 func (s *Store) BeginLoad(id string) LoadToken {
 	tok := LoadToken{SessionID: id}
 	if !valid(id) {
 		return tok
 	}
 	s.update(func() {
+		if queued, ok := s.pending[id]; ok {
+			s.pending[id] = slices.DeleteFunc(queued, func(n pendingNotification) bool {
+				switch n.v.(type) {
+				case *protocol.SessionInactivityNotification, *protocol.SessionProcessExitedNotification, *protocol.SessionUnsubscribedNotification:
+					return true
+				}
+				return false
+			})
+		}
 		st, _ := s.ensure(id)
 		if st.load != Loaded {
 			st.setLoadState(Loading, false)
