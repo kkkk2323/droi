@@ -2,14 +2,17 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
+	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
@@ -20,6 +23,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/internal/slash"
 )
 
 // newSessionState is the New session page's: the Workspace picked, the
@@ -43,6 +47,12 @@ type newSessionState struct {
 	images  []attachments.Image
 	bitmaps map[string]*ui.Bitmap
 	err     string
+	// slashHighlight is the slash suggestion picked with the arrows;
+	// slashDismissed the text Escape closed them for.
+	slashHighlight int
+	slashDismissed string
+	// caretToEnd puts the caret after a picked command, on the next build.
+	caretToEnd bool
 
 	modelOpen bool
 	picker    pickerState
@@ -57,6 +67,7 @@ type newSessionState struct {
 
 	mu       sync.Mutex
 	creating bool
+	draft    *draftSession
 	defaults *defaults.View
 	readAt   time.Time
 	// repos are the Workspaces' repositories, read again on each visit.
@@ -192,7 +203,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 		})
 		col := ui.Column(c).FillWidth().MaxWidth(k.Px(columnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
 		col.Children(func() {
-			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode)
+			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, a.draftItems(workspace, requestedMode))
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
 				switch {
 				case scratch:
@@ -406,10 +417,20 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 
 // newSessionComposer is the InputBar of the start page: Enter starts the
 // Session, sending what was typed as its first message.
-func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode) {
+func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode, items []slash.Item) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
 	enabled := workspace != "" && !creating
+	var suggestions []slash.Item
+	if q, ok := slash.Query(s.text, len(s.text)); ok && s.slashDismissed != s.text {
+		suggestions = slash.Filter(items, q, slash.DefaultLimit)
+	}
+	active := min(s.slashHighlight, max(len(suggestions)-1, 0))
+	accept := func(item slash.Item) {
+		s.text = "/" + item.Name + " "
+		s.slashHighlight = 0
+		s.caretToEnd = true
+	}
 	start := func() {
 		if !enabled {
 			return
@@ -452,6 +473,11 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
 					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
+			if s.caretToEnd {
+				s.caretToEnd = false
+				n := utf8.RuneCountInString(s.text)
+				in.SetTextSelection(n, n)
+			}
 			paste := func() bool {
 				if paths := a.clipboardFiles(); len(paths) > 0 {
 					if err := attachFiles(&s.text, &s.images, paths); err != nil {
@@ -479,12 +505,34 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			// Read as it is built: the element expires before the handler runs.
 			composing := in.Composing()
 			in.HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !composing {
+				if ev.Kind != ui.InputKeyDown {
+					return false
+				}
+				if len(suggestions) > 0 {
+					switch {
+					case ev.Key == ui.KeyDown:
+						s.slashHighlight = (active + 1) % len(suggestions)
+						return true
+					case ev.Key == ui.KeyUp:
+						s.slashHighlight = (active - 1 + len(suggestions)) % len(suggestions)
+						return true
+					case ev.Key == ui.KeyTab || ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0:
+						accept(suggestions[active])
+						return true
+					case ev.Key == ui.KeyEscape:
+						s.slashDismissed = s.text
+						return true
+					}
+				}
+				if ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !composing {
 					start()
 					return true
 				}
 				return false
 			})
+			if len(suggestions) > 0 {
+				a.suggestionList(c, card, suggestions, active, &s.slashHighlight, accept)
+			}
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
 				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!enabled)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
@@ -576,34 +624,28 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 		fail(err.Error())
 		return
 	}
-	check, err := cl.ValidateWorkingDirectory(a.ctx, protocol.ValidateWorkingDirectoryParams{WorkingDirectory: workspace})
-	if err != nil {
-		fail(err.Error())
-		return
+	id := ""
+	if tags == nil {
+		id = a.takeDraft(workspace, p)
 	}
-	if !check.IsValid {
-		msg := check.Error
-		if msg == "" {
-			msg = L("%s is not a usable directory.", workspace)
+	if id == "" {
+		if p.Cwd, err = a.validWorkspace(cl, workspace); err != nil {
+			fail(err.Error())
+			return
 		}
-		fail(msg)
-		return
-	}
-	p.Cwd = workspace
-	if check.ResolvedPath != "" {
-		p.Cwd = check.ResolvedPath
-	}
-	p.Tags = tags
-	if a.cfg.SystemPrompt != nil {
-		p.SystemPrompt = a.cfg.SystemPrompt()
-	}
-	res, err := a.ctl.InitializeSession(a.ctx, p)
-	if err != nil {
-		fail(err.Error())
-		return
+		p.Tags = tags
+		if a.cfg.SystemPrompt != nil {
+			p.SystemPrompt = a.cfg.SystemPrompt()
+		}
+		res, err := a.ctl.InitializeSession(a.ctx, p)
+		if err != nil {
+			fail(err.Error())
+			return
+		}
+		id = res.SessionID
 	}
 	if strings.TrimSpace(text) != "" || len(images) > 0 {
-		a.pending.Set(res.SessionID, drafts.PendingPrompt{Text: text, Images: images})
+		a.pending.Set(id, drafts.PendingPrompt{Text: text, Images: images})
 	}
 	s.mu.Lock()
 	s.creating = false
@@ -611,8 +653,28 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	go a.refreshList()
 	a.cfg.Update(func() {
 		s.text, s.images, s.bitmaps = "", nil, nil
-		a.Go(Route{Name: "session", SessionID: res.SessionID})
+		a.Go(Route{Name: "session", SessionID: id})
 	})
+}
+
+// validWorkspace is the directory the Daemon resolves workspace to, or why
+// it cannot work there.
+func (a *App) validWorkspace(cl *droid.Client, workspace string) (string, error) {
+	check, err := cl.ValidateWorkingDirectory(a.ctx, protocol.ValidateWorkingDirectoryParams{WorkingDirectory: workspace})
+	if err != nil {
+		return "", err
+	}
+	if !check.IsValid {
+		msg := check.Error
+		if msg == "" {
+			msg = L("%s is not a usable directory.", workspace)
+		}
+		return "", errors.New(msg)
+	}
+	if check.ResolvedPath != "" {
+		return check.ResolvedPath, nil
+	}
+	return workspace, nil
 }
 
 // droiMark is the app's mark, drawn as the web Client's DroiMark.

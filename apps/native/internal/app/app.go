@@ -602,6 +602,8 @@ func (a *App) Go(r Route) {
 	}
 	if r.Name == "new" {
 		a.newPage.reset(r)
+	} else {
+		a.dropDraft()
 	}
 	if r.Name == "automations" {
 		a.enterAutomations(r)

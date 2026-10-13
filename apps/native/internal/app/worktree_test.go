@@ -2,12 +2,14 @@ package app
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
 
 const (
@@ -41,15 +43,21 @@ func inWorktree(lifecycle string) fakedaemon.SessionSpec {
 		Extra:    map[string]any{"worktree": map[string]any{"path": acmeWorktree, "branch": "droid/fix-flaky-login", "lifecycle": lifecycle, "repoRoot": acmeWeb}}}
 }
 
+// initializeParams are those of the first Session created that is no
+// Draft Session.
 func (h *harness) initializeParams() map[string]any {
 	h.t.Helper()
-	req, err := h.d.WaitForRequest("daemon.initialize_session", 1)
-	if err != nil {
-		h.t.Fatal(err)
+	for n := 1; ; n++ {
+		req, err := h.d.WaitForRequest("daemon.initialize_session", n)
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		var p map[string]any
+		_ = json.Unmarshal(req.Params, &p)
+		if !strings.Contains(string(req.Params), sessions.DraftTag) {
+			return p
+		}
 	}
-	var p map[string]any
-	_ = json.Unmarshal(req.Params, &p)
-	return p
 }
 
 // The New session page offers a worktree for a Git Workspace and asks the
@@ -104,8 +112,12 @@ func TestTheNewSessionPageWorksLocallyByDefault(t *testing.T) {
 	h.click("New session")
 	h.until("the worktree control", func() bool { return h.hasText("Work locally") })
 	h.start("Say hello")
-	if p := h.initializeParams(); p["worktree"] != nil {
-		t.Fatalf("working locally asked for a worktree: %v", p)
+	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
+	reqs, _ := h.d.Requests()
+	for _, r := range reqs {
+		if r.Method == "daemon.initialize_session" && strings.Contains(string(r.Params), `"worktree"`) {
+			t.Fatalf("working locally asked for a worktree: %s", r.Params)
+		}
 	}
 
 	plain := newHarness(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{

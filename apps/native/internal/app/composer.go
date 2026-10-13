@@ -374,7 +374,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				})
 			})
 			if len(suggestions) > 0 {
-				v.suggestionList(c, card, suggestions, active, accept)
+				a.suggestionList(c, card, suggestions, active, &cs.highlight, accept)
 			}
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
 				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!ready)
@@ -614,8 +614,10 @@ func (v *sessionView) slashTag(c *ui.Context, item slash.Item, rest string) {
 	})
 }
 
-func (v *sessionView) suggestionList(c *ui.Context, card ui.Element, items []slash.Item, active int, accept func(slash.Item)) {
-	k, t := v.a.kit, v.a.kit.T
+// suggestionList is the commands and skills "/" offers, over the composer's
+// card; the row under the pointer becomes the highlight.
+func (a *App) suggestionList(c *ui.Context, card ui.Element, items []slash.Item, active int, highlight *int, accept func(slash.Item)) {
+	k, t := a.kit, a.kit.T
 	ui.Overlay(c, func() {
 		list := ui.Column(c).Role(ui.RoleList).Label(L("Commands and skills")).AttachTo(card, ui.AnchorTopLeft, ui.AnchorBottomLeft).
 			Width(card.Bounds().W-k.Px(16)).Margin(0, 0, k.Px(8), k.Px(8)).MaxHeight(k.Px(288)).Padding(k.Px(4)).Radius(k.Px(12)).
@@ -625,7 +627,7 @@ func (v *sessionView) suggestionList(c *ui.Context, card ui.Element, items []sla
 				row := ui.Row(c.Key(item.Name)).Role(ui.RoleListItem).Label("/"+item.Name).Gap(k.Px(10)).Padding(k.Px(6), k.Px(10)).
 					Radius(k.Px(8)).Cursor(ui.CursorPointer)
 				if _, _, over := row.PointerPosition(); over && i != active {
-					v.composer.highlight = i
+					*highlight = i
 				}
 				fg := t.PopoverForeground
 				if i == active {

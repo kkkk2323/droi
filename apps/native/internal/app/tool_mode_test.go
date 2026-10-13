@@ -27,21 +27,20 @@ func TestTheNewSessionPageStartsASessionWithTheToolModePicked(t *testing.T) {
 		t.Fatal("the picker's trigger does not name the mode")
 	}
 	h.click("Start session")
+	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
+	// The Session opened is the last one asked for: a draft taken over, or
+	// one created on send.
 	var asked string
-	h.until("the Session to be created", func() bool {
-		reqs, _ := h.d.Requests()
-		for _, r := range reqs {
-			if r.Method == "daemon.initialize_session" {
-				var p struct {
-					ToolExecutionMode string `json:"toolExecutionMode"`
-				}
-				_ = json.Unmarshal(r.Params, &p)
-				asked = p.ToolExecutionMode
-				return true
+	reqs, _ := h.d.Requests()
+	for _, r := range reqs {
+		if r.Method == "daemon.initialize_session" {
+			var p struct {
+				ToolExecutionMode string `json:"toolExecutionMode"`
 			}
+			_ = json.Unmarshal(r.Params, &p)
+			asked = p.ToolExecutionMode
 		}
-		return false
-	})
+	}
 	if asked != "script_only" {
 		t.Fatalf("the Session was asked for %q", asked)
 	}
