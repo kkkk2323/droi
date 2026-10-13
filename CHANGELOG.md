@@ -1,3 +1,14 @@
+## 1.46.0 - 2026-10-13
+
+### Added
+
+- Typing "/" on the New session page now lists the project's skills and commands, as it does in a Session. Pick one with the arrow keys and Tab or Enter, then type the rest of the message.
+
+### Fixed
+
+- A subagent started in the background now counts in its Session's subagent menu at once, instead of only after the Session list was read again.
+- In a subagent's Session, clicking the title no longer opens an empty menu when no other subagent of the same Session exists.
+
 ## 1.45.3 - 2026-10-13
 
 ### Fixed
