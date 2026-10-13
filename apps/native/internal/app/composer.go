@@ -2,8 +2,12 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"math"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -459,7 +463,7 @@ func attachFiles(text *string, images *[]attachments.Image, paths []string) (err
 		img, ok, e := attachments.ReadFile(p, uuid.NewString())
 		switch {
 		case e != nil:
-			err = e
+			err = readError(p, e)
 		case ok:
 			*images = append(*images, img)
 		default:
@@ -475,6 +479,18 @@ func attachFiles(text *string, images *[]attachments.Image, paths []string) (err
 			}
 		}
 		*text = appendWords(*text, strings.Join(quoted, " "))
+	}
+	return err
+}
+
+// readError is why the file at path could not be attached. macOS keeps
+// what a sandboxed app stores in its container from other apps, and a
+// picture dragged out of such an app (WeChat) brings only its path, no
+// access to it: the system's own error would not tell what to do.
+func readError(path string, err error) error {
+	if runtime.GOOS == "darwin" && errors.Is(err, fs.ErrPermission) &&
+		(strings.Contains(path, "/Library/Containers/") || strings.Contains(path, "/Library/Group Containers/")) {
+		return errors.New(L("macOS does not let Droi open %s, which another app keeps in its own data. Save it to a folder such as Downloads first, then add it from there, or give Droi Full Disk Access in System Settings › Privacy & Security.", filepath.Base(path)))
 	}
 	return err
 }

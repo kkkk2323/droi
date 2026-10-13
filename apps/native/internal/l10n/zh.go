@@ -3,6 +3,7 @@ package l10n
 // zh is Simplified Chinese, by the English text passed to L.
 var zh = map[string]string{
 	"droid was not found": "找不到 droid",
+	"macOS does not let Droi open %s, which another app keeps in its own data. Save it to a folder such as Downloads first, then add it from there, or give Droi Full Disk Access in System Settings › Privacy & Security.": "macOS 不允许 Droi 打开 %s，因为它在另一个 App 自己的数据里。请先把它存到“下载”等文件夹，再从那里添加；或在“系统设置 › 隐私与安全性”里给 Droi 打开“完全磁盘访问权限”。",
 	"Install the droid CLI, or set the path to droid in Settings.":          "请安装 droid CLI，或在设置中填写 droid 的路径。",
 	"The Daemon did not start":                                              "守护进程未能启动",
 	"Last attempt: %s.":                                                     "上次尝试：%s。",
