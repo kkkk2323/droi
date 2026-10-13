@@ -1,3 +1,9 @@
+## 1.45.2 - 2026-10-13
+
+### Fixed
+
+- Opening a Session you had not looked at for a while no longer leaves its message box greyed out until you switch to another Session and back. This happened when you had opened several other Sessions in between and the Daemon had stopped the Session while it was idle.
+
 ## 1.45.1 - 2026-10-13
 
 ### Fixed
