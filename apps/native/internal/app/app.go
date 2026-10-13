@@ -152,7 +152,11 @@ type App struct {
 	// shownRev is the listRev of the list this frame shows; listMemo
 	// keeps what is built from it.
 	shownRev uint64
-	listMemo listMemo
+	// subagentKey, subagentRev and subagentFirstSeen are knownSubagents'.
+	subagentKey       string
+	subagentRev       uint64
+	subagentFirstSeen map[string]int64
+	listMemo          listMemo
 
 	drafts      *drafts.Drafts
 	pending     drafts.Pending
@@ -617,6 +621,7 @@ func (a *App) Route() Route { return a.route }
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(a.kit.UITheme(c.Theme()))
 	status, listed, busy, listErr, listDone, rev := a.snapshot()
+	listed, rev = a.knownSubagents(listed, rev)
 	a.shownRev = rev
 	a.restoreLast(listed, listDone)
 	a.noteLiveRuns(listed, a.activity(busy))

@@ -23,7 +23,6 @@ type subagentNav struct {
 
 func (a *App) subagentNavOf(listed []sessions.Summary, sel *sessions.Summary, id string) subagentNav {
 	var n subagentNav
-	listed = a.withStoreSubagents(listed)
 	// A subagent just started is in the Store before the list has it.
 	if (sel == nil || sel.CallingSessionID == "") && a.ctl != nil {
 		if h := a.ctl.Store().Session(id); h != nil {
@@ -53,45 +52,6 @@ func (a *App) subagentNavOf(listed []sessions.Summary, sel *sessions.Summary, id
 		n.runs = a.subagentRuns(listed)
 	}
 	return n
-}
-
-// withStoreSubagents is listed with the subagents the Store knows of and the
-// list has not got yet: a background Task's subagent reaches the Store
-// through its caller's notifications before the list is read again.
-func (a *App) withStoreSubagents(listed []sessions.Summary) []sessions.Summary {
-	if a.ctl == nil {
-		return listed
-	}
-	store := a.ctl.Store()
-	var extra []sessions.Summary
-	cloned := false
-	for parent, children := range store.SubagentSessionIDsByParent() {
-		for toolUse, id := range children {
-			if i := slices.IndexFunc(listed, func(s sessions.Summary) bool { return s.SessionID == id }); i >= 0 {
-				// Listed before the Daemon tells its caller.
-				if listed[i].CallingSessionID == "" {
-					if !cloned {
-						listed, cloned = slices.Clone(listed), true
-					}
-					listed[i].CallingSessionID, listed[i].CallingToolUseID = parent, toolUse
-				}
-				continue
-			}
-			title := ""
-			if h := store.Session(id); h != nil {
-				title = h.Title()
-			}
-			if sum, ok := store.SubagentInvocationSummary(id); ok && title == "" && sum.Description != "" {
-				title = subagents.SubagentName(sum.SubagentType) + ": " + sum.Description
-			}
-			extra = append(extra, sessions.Summary{SessionID: id, Title: title, CallingSessionID: parent,
-				CallingToolUseID: toolUse, UpdatedAt: a.cfg.Now().Unix()})
-		}
-	}
-	if len(extra) == 0 {
-		return listed
-	}
-	return append(slices.Clone(listed), extra...)
 }
 
 // subagentMark is a subagent's state in a menu row: a spinner while it
