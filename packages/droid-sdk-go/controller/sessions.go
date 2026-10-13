@@ -449,6 +449,10 @@ func (c *Controller) applyNotification(sessionID string, v any, p protocol.Sessi
 		out = c.prompts.dropPermission(v.RequestID, v.SelectedOption, out)
 	case *protocol.SessionInactivityNotification, *protocol.SessionProcessExitedNotification:
 		c.prompts.inactive[sessionID] = true
+		// The worker is gone: the next session-scoped call loads it again.
+		if t := c.sessions[sessionID]; t != nil {
+			t.loaded = false
+		}
 	case *protocol.SessionClosedNotification:
 		out = c.prompts.forgetSession(sessionID, out)
 		delete(c.sessions, sessionID)

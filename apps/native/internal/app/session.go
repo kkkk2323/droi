@@ -91,7 +91,11 @@ type sessionView struct {
 	speedOpen bool
 
 	// focused is whether the composer took the focus once already.
-	focused   bool
+	focused bool
+	// hasLoaded: the Session was loaded once. The Daemon cleans up an idle
+	// one, and the Controller loads it again before the next call, so the
+	// composer stays usable.
+	hasLoaded bool
 	promptErr string
 	asks      map[string]*askState
 }
@@ -489,6 +493,9 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 	loadErr, loading := v.loadErr, v.loading
 	v.mu.Unlock()
 	loaded := s != nil && s.LoadState() == session.Loaded
+	if loaded {
+		v.hasLoaded = true
+	}
 
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
 		v.header(c, s, sel, loaded, title, workspace, a.subagentNavOf(listed, sel, v.id))

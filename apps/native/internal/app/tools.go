@@ -146,11 +146,14 @@ var mcpDot = map[string]func(k *kit.Kit) ui.Color{
 }
 
 // toolsButton is the footer's count of skills and MCP servers, which opens
-// their dialog; hovering lists the servers.
-func (v *sessionView) toolsButton(c *ui.Context) {
+// their dialog; hovering lists the servers. They are read only while the
+// Session is loaded: a read would load again one the Daemon cleaned up.
+func (v *sessionView) toolsButton(c *ui.Context, loaded bool) {
 	k, t := v.a.kit, v.a.kit.T
 	ts := &v.tools
-	v.loadTools()
+	if loaded {
+		v.loadTools()
+	}
 	ts.mu.Lock()
 	skillList, servers := ts.skills, mcp.SortServers(ts.servers)
 	ts.mu.Unlock()

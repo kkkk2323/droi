@@ -268,7 +268,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		suggestions = slash.Filter(items, q, 8)
 	}
 	active := min(cs.highlight, max(len(suggestions)-1, 0))
-	canSend := loaded && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
+	ready := loaded || v.hasLoaded
+	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
 	submit := func(placement protocol.QueuePlacement) {
 		cs.takeEdit()
 		if !canSend {
@@ -325,7 +326,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					left = k.Px(8)
 				}
 				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
-					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!loaded)
+					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!ready)
 				if !v.focused {
 					in.AutoFocus()
 					v.focused = true
@@ -372,7 +373,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				v.suggestionList(c, card, suggestions, active, accept)
 			}
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
-				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!loaded)
+				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!ready)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
 				if add.Clicked() {
 					go v.chooseImages()
@@ -380,7 +381,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(k.Px(2)).Children(func() {
 					v.settingsBar(c, s)
 				})
-				v.toolsButton(c)
+				v.toolsButton(c, loaded)
 				ui.Row(c).Gap(k.Px(4)).Padding(0, 0, 0, k.Px(4)).Shrink(0).Children(func() {
 					if running {
 						stop := k.Button(c, kit.Secondary, 32, true, L("Cancel")).Radius(k.Px(16))

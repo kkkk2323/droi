@@ -235,6 +235,40 @@ func TestReconnectLoadsSessionsAgain(t *testing.T) {
 	}
 }
 
+// The Daemon cleans up a Session's worker after a while idle; the next
+// session-scoped call loads it again first, as the TS SDK's
+// ensureSessionLoaded does.
+func TestACallLoadsASessionTheDaemonCleanedUp(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{
+		Sessions: []fakedaemon.SessionSpec{{Title: "Chat", Cwd: "/Users/dev/acme-web"}},
+		Turn:     &fakedaemon.Turn{Kind: "reply", Deltas: []string{"awake"}},
+	})
+	c, r := start(t, d, controller.Config{})
+	ctx := context.Background()
+	id := d.Sessions[0].SessionID
+	if _, err := c.LoadSession(ctx, protocol.LoadSessionParams{SessionID: id}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Notify(id, map[string]any{"type": "session_inactivity", "message": "Session cleaned up after inactivity", "timestamp": 1, "timeoutSeconds": 1800}); err != nil {
+		t.Fatal(err)
+	}
+	_, next := r.wait(t, 0, "the inactivity", func(e controller.Event) bool {
+		n, ok := e.(controller.SessionNotification)
+		if !ok {
+			return false
+		}
+		_, ok = n.Value.(*protocol.SessionInactivityNotification)
+		return ok
+	})
+	if _, err := c.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: "Still there?"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.WaitForRequest(protocol.MethodLoadSession, 2); err != nil {
+		t.Fatalf("the Session was not loaded again: %v", err)
+	}
+	r.wait(t, next, "turn end", turnEnded)
+}
+
 func TestConnectWaitsForTheDaemon(t *testing.T) {
 	d := fakedaemon.Start(t, fakedaemon.Scenario{})
 	if err := d.GoDown(); err != nil {
