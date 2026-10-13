@@ -1,3 +1,9 @@
+## 1.46.1 - 2026-10-13
+
+### Fixed
+
+- A subagent started in the background now shows the same state everywhere: in its Task card, in the header's subagent menu and in the sidebar. Before, the sidebar could list it as a Session of its own, or not count it as running, until the Session list was read again.
+
 ## 1.46.0 - 2026-10-13
 
 ### Added
