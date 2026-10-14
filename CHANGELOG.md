@@ -1,3 +1,9 @@
+## 1.49.0 - 2026-10-14
+
+### Added
+
+- `droi host --port N` sets the port its Gateway listens on, 41417 by default, so it can run next to another Droi Host or in a container whose published port differs. The pairing link names that port.
+
 ## 1.48.0 - 2026-10-14
 
 ### Added
