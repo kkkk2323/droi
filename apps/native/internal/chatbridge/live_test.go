@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +26,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
 
@@ -32,8 +35,11 @@ import (
 // Channel and a direct message to it, each asking for something that needs
 // a permission request, answered in WeCom (a number in the post, a button
 // on the card). Nothing is injected: every trigger and every answer comes
-// from WeCom. Only with WECOM_BOT_ID, WECOM_SECRET and FACTORY_API_KEY set;
-// see the native app's README for the rest of its environment.
+// from WeCom. It watches only the Chat Bridge's edges: the frames on its
+// connection to the Daemon, WeCom's API through a client of its own, and
+// what the droi-chat tools answer. Only with WECOM_BOT_ID, WECOM_SECRET and
+// FACTORY_API_KEY set; see the native app's README for the rest of its
+// environment.
 func TestLiveChatBridge(t *testing.T) {
 	botID, secret, key := os.Getenv("WECOM_BOT_ID"), os.Getenv("WECOM_SECRET"), os.Getenv("FACTORY_API_KEY")
 	if botID == "" || secret == "" || key == "" {
@@ -62,7 +68,10 @@ func TestLiveChatBridge(t *testing.T) {
 	_ = st.Update(func(s *host.Settings) {
 		s.ChatBridge = host.ChatBridgeSettings{BotID: botID, Secret: secret, Workspace: ws, AllowedUsers: allowed, Model: model}
 	})
-	w := &liveWatch{t: t, resolved: map[string]protocol.ToolConfirmationOutcome{}, idle: map[string]int{}}
+	w := &liveWatch{
+		t: t, starting: map[string]liveSession{}, sessions: map[string]liveSession{},
+		resolved: map[string]protocol.ToolConfirmationOutcome{}, answered: map[string]bool{}, idle: map[string]int{},
+	}
 	b := New(Options{
 		Settings: st,
 		Daemon: controller.Config{
@@ -70,10 +79,12 @@ func TestLiveChatBridge(t *testing.T) {
 			Credential: func(context.Context) (*droid.Credential, error) { return &droid.Credential{APIKey: key}, nil },
 			Record:     w.record,
 		},
-		Log: w.log,
+		// The probes call the droi-chat tools after the turns, which an idle
+		// close would leave without a token.
+		IdleTimeout: 3 * time.Hour,
+		Log:         w.log,
 	})
 	t.Cleanup(b.Stop)
-	b.ctl.Subscribe(w.event)
 	b.Follow()
 	waitFor(t, time.Minute, "the Chat Bridge to connect to WeCom", func() bool {
 		if s := b.Status(); s.State == NotConnected {
@@ -84,9 +95,7 @@ func TestLiveChatBridge(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
-	b.mu.Lock()
-	api := b.api
-	b.mu.Unlock()
+	api := newWeComAPI(DefaultAPIURL, botID, secret, time.Now)
 	topic := findChannel(ctx, t, api, channelName)
 	if len(allowed) == 0 {
 		// The Channel's creator is the one person sure to be there.
@@ -96,21 +105,21 @@ func TestLiveChatBridge(t *testing.T) {
 
 	// A post.
 	t.Logf("STEP 1: @ the robot in a new post in the WeCom Channel %q and ask for something that needs a permission request, such as running a shell command", channelName)
-	post := w.chatThread(t, b, wait, "an @ of the robot in a post in "+channelName, func(th *chatThread) bool {
-		return th.kind == kindChannelPost && th.topicID == topic.id
+	post := w.chatSession(t, wait, "an @ of the robot in a post in "+channelName, func(m map[string]string) bool {
+		return m["kind"] == string(kindChannelPost) && m["topicId"] == topic.id
 	})
-	perm := w.permission(t, wait, post.sessionID)
+	perm := w.permission(t, wait, post.id)
 	t.Logf("STEP 2: Droid asks to run %s; answer in the post with an @ of the robot and the number of an option, such as \"@robot 1\"", toolNames(&perm))
-	turns := w.turns(post.sessionID)
-	w.answered(t, wait, perm.RequestID)
-	waitFor(t, wait, "the post's Chat Session to end its turn", func() bool { return w.turns(post.sessionID) > turns })
+	turns := w.turns(post.id)
+	w.waitResolved(t, wait, perm.RequestID)
+	waitFor(t, wait, "the post's Chat Session to end its turn", func() bool { return w.turns(post.id) > turns })
 	var own []content
 	waitFor(t, time.Minute, "the robot's replies under the post", func() bool {
 		own = robotReplies(ctx, t, api, botID, post)
 		return slices.ContainsFunc(own, func(c content) bool { return strings.Contains(c.Content, "Droid asks to run ") }) &&
 			slices.ContainsFunc(own, func(c content) bool { return strings.Contains(c.Content, " answered the permission request to run ") })
 	})
-	if n := w.toolResults(post.sessionID, "Replied under the post in the WeCom Channel"); n == 0 {
+	if n := w.toolResults(post.id, "Replied under the post in the WeCom Channel"); n == 0 {
 		t.Error("Droid did not reply under the post")
 	} else {
 		t.Logf("Droid replied under the post %d times; the robot's replies there:", n)
@@ -121,27 +130,21 @@ func TestLiveChatBridge(t *testing.T) {
 
 	// A direct message.
 	t.Log("STEP 3: send the robot a direct message asking for something that needs a permission request, such as running a shell command")
-	dm := w.chatThread(t, b, wait, "a direct message to the robot", func(th *chatThread) bool { return th.kind == kindDirectMessage })
-	perm = w.permission(t, wait, dm.sessionID)
+	dm := w.chatSession(t, wait, "a direct message to the robot", func(m map[string]string) bool { return m["kind"] == string(kindDirectMessage) })
+	perm = w.permission(t, wait, dm.id)
 	t.Logf("STEP 4: Droid asks to run %s; click a button on the card in the direct message", toolNames(&perm))
-	turns = w.turns(dm.sessionID)
-	w.answered(t, wait, perm.RequestID)
-	b.mu.Lock()
-	var card *prompt
-	for _, p := range b.prompts.cards {
-		if p.requestID == perm.RequestID {
-			card = p
-		}
-	}
-	if card == nil || card.by == "" {
+	turns = w.turns(dm.id)
+	w.waitResolved(t, wait, perm.RequestID)
+	// No Client is connected: an answer the Chat Bridge sent came from the
+	// card.
+	if !w.answeredByChatBridge(perm.RequestID) {
 		t.Error("the permission request was not answered with the card")
 	}
-	b.mu.Unlock()
-	waitFor(t, wait, "the direct message's Chat Session to end its turn", func() bool { return w.turns(dm.sessionID) > turns })
+	waitFor(t, wait, "the direct message's Chat Session to end its turn", func() bool { return w.turns(dm.id) > turns })
 	if w.logged("cannot update a card in WeCom") {
 		t.Error("WeCom did not take the card's update")
 	}
-	if n := w.toolResults(dm.sessionID, "in WeCom"); n == 0 {
+	if n := w.toolResults(dm.id, "in WeCom"); n == 0 {
 		t.Error("Droid did not reply in the direct message")
 	}
 
@@ -157,12 +160,13 @@ func TestLiveChatBridge(t *testing.T) {
 		t.Error("a reply was not sent; see the tool errors above")
 	}
 
-	t.Run("Probes", func(t *testing.T) { liveProbes(ctx, t, b, api, post, dm, ws) })
+	t.Run("Probes", func(t *testing.T) { liveProbes(ctx, t, w, api, post, dm, ws) })
 }
 
 // liveProbes record what WeCom's docs leave open, for the notes; they fail
 // nothing but a broken download.
-func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *wecomAPI, post, dm *chatThread, ws string) {
+func liveProbes(ctx context.Context, t *testing.T, w *liveWatch, api *wecomAPI, post, dm liveSession, ws string) {
+	topicID, postID := post.meta["topicId"], post.meta["postId"]
 	err := api.post(ctx, "/topic/get_topic_list", "droi-live-invalid-token", map[string]any{"type": 1, "limit": 1}, nil)
 	t.Logf("an invalid access_token: %v", err)
 
@@ -170,8 +174,8 @@ func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *wecomAPI, pos
 		put  bool
 		what string
 	}{{true, "put"}, {true, "put again"}, {false, "removed"}, {false, "removed again"}} {
-		err := api.postEmoji(ctx, post.topicID, post.postID, "", 3, step.put)
-		t.Logf("emoji 3 %s on the post: %v; it now has %d of it", step.what, err, emojiCount(ctx, api, post, 3))
+		err := api.postEmoji(ctx, topicID, postID, "", 3, step.put)
+		t.Logf("emoji 3 %s on the post: %v; it now has %d of it", step.what, err, emojiCount(ctx, api, topicID, postID, 3))
 	}
 
 	bin := make([]byte, 600<<10)
@@ -185,10 +189,12 @@ func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *wecomAPI, pos
 	_ = png.Encode(&pic, img)
 	_ = os.WriteFile(filepath.Join(ws, "live-probe.bin"), bin, 0o644)
 	_ = os.WriteFile(filepath.Join(ws, "live-probe.png"), pic.Bytes(), 0o644)
-	out, err := b.reply(ctx, post, "Droi live test: a file of two chunks and an image (please ignore).", []string{"live-probe.bin", "live-probe.png"}, nil)
+	out, err := w.tool(ctx, post.id, "reply", map[string]any{
+		"text": "Droi live test: a file of two chunks and an image (please ignore).", "files": []string{"live-probe.bin", "live-probe.png"},
+	})
 	t.Logf("a Channel reply with a 600 KB file and an image: %q %v", out, err)
 	if m := regexp.MustCompile(`\(reply ([^)]+)\)`).FindStringSubmatch(out); m != nil {
-		c, err := api.getReply(ctx, post.topicID, post.postID, m[1])
+		c, err := api.getReply(ctx, topicID, postID, m[1])
 		if err != nil {
 			t.Errorf("cannot read the reply with the files: %v", err)
 		} else {
@@ -200,22 +206,22 @@ func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *wecomAPI, pos
 				if err == nil {
 					t.Logf("the file with its cookie: Content-Type %q, Content-Disposition %q", h.Get("Content-Type"), h.Get("Content-Disposition"))
 				}
-				name, data, err := b.channelAttachment(ctx, post, post.postID+":"+m[1]+":file:"+f.Placeholder)
+				data, answer, err := w.download(ctx, post.id, postID+":"+m[1]+":file:"+f.Placeholder)
 				if err != nil || !bytes.Equal(data, bin) {
-					t.Errorf("download_attachment of the file: %q, %d bytes, same bytes %v, %v", name, len(data), bytes.Equal(data, bin), err)
+					t.Errorf("download_attachment of the file: %q, %d bytes, same bytes %v, %v", answer, len(data), bytes.Equal(data, bin), err)
 				} else {
-					t.Logf("download_attachment of the file: %q, the same %d bytes", name, len(data))
+					t.Logf("download_attachment of the file: the same %d bytes: %q", len(data), answer)
 				}
 			}
 			if len(c.Images) > 0 {
-				name, data, err := b.channelAttachment(ctx, post, post.postID+":"+m[1]+":image:1")
-				t.Logf("download_attachment of the image: %q, %d bytes, same bytes %v, %v", name, len(data), bytes.Equal(data, pic.Bytes()), err)
+				data, answer, err := w.download(ctx, post.id, postID+":"+m[1]+":image:1")
+				t.Logf("download_attachment of the image: %q, %d bytes, same bytes %v, %v", answer, len(data), bytes.Equal(data, pic.Bytes()), err)
 			}
 		}
 	}
 
 	for i := range 6 {
-		out, err := b.searchChannel(ctx, post, []string{"Droi", "live"}, "")
+		out, err := w.tool(ctx, post.id, "search_channel", map[string]any{"keywords": []string{"Droi", "live"}})
 		t.Logf("search_channel for Droi live (try %d): %.600q %v", i+1, out, err)
 		if err != nil || strings.Contains(out, "Matches for") {
 			break
@@ -223,25 +229,8 @@ func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *wecomAPI, pos
 		time.Sleep(10 * time.Second)
 	}
 
-	b.mu.Lock()
-	wc, reqID := b.wecom, dm.reqID
-	var card map[string]any
-	for _, p := range b.prompts.cards {
-		if p.th == dm && p.settled {
-			card = settledCard(p)
-		}
-	}
-	b.mu.Unlock()
-	out, err = b.reply(ctx, dm, "Droi live test: a file (please ignore).", []string{"live-probe.bin"}, nil)
+	out, err = w.tool(ctx, dm.id, "reply", map[string]any{"text": "Droi live test: a file (please ignore).", "files": []string{"live-probe.bin"}})
 	t.Logf("a direct message with a 600 KB file, on the message's req_id: %q %v", out, err)
-	if wc != nil {
-		err := b.sendDirect(ctx, directChatThread(dm.userID), wc, markdown("Droi live test: a message sent with aibot_send_msg (please ignore)."))
-		t.Logf("aibot_send_msg with chat_type 1: %v", err)
-		if card != nil {
-			_, err := wc.call(ctx, "aibot_respond_update_msg", reqID, map[string]any{"response_type": "update_template_card", "template_card": card})
-			t.Logf("a card update on the message's req_id, not a click's: %v", err)
-		}
-	}
 }
 
 // asksForChatTool reports whether a permission request is for a droi-chat
@@ -357,12 +346,12 @@ func findChannel(ctx context.Context, t *testing.T, api *wecomAPI, name string) 
 	}
 }
 
-// robotReplies are the replies the robot wrote under th's post.
-func robotReplies(ctx context.Context, t *testing.T, api *wecomAPI, botID string, th *chatThread) []content {
+// robotReplies are the replies the robot wrote under s's post.
+func robotReplies(ctx context.Context, t *testing.T, api *wecomAPI, botID string, s liveSession) []content {
 	var out []content
 	cursor := ""
 	for {
-		page, next, err := api.replyPage(ctx, th.topicID, th.postID, cursor, maxReplyPage)
+		page, next, err := api.replyPage(ctx, s.meta["topicId"], s.meta["postId"], cursor, maxReplyPage)
 		if err != nil {
 			t.Logf("cannot read the replies: %v", err)
 			return out
@@ -379,7 +368,7 @@ func robotReplies(ctx context.Context, t *testing.T, api *wecomAPI, botID string
 	}
 }
 
-func emojiCount(ctx context.Context, api *wecomAPI, th *chatThread, emoji int) int {
+func emojiCount(ctx context.Context, api *wecomAPI, topicID, postID string, emoji int) int {
 	var res struct {
 		Posts []struct {
 			Emoji []struct {
@@ -388,7 +377,7 @@ func emojiCount(ctx context.Context, api *wecomAPI, th *chatThread, emoji int) i
 			} `json:"emoji_list"`
 		} `json:"post_list"`
 	}
-	if api.call(ctx, "/topic/get_post_list", map[string]any{"topic_id": th.topicID, "type": 0, "post_id_list": []string{th.postID}}, &res) != nil {
+	if api.call(ctx, "/topic/get_post_list", map[string]any{"topic_id": topicID, "type": 0, "post_id_list": []string{postID}}, &res) != nil {
 		return -1
 	}
 	n := 0
@@ -418,13 +407,27 @@ func waitFor(t *testing.T, d time.Duration, what string, ok func() bool) {
 	}
 }
 
-// liveWatch follows the Chat Bridge's Controller, the Daemon's frames and
-// the Chat Bridge's log.
+// liveSession is a Chat Session as the frames to the Daemon show it: its
+// droi.chat tag's metadata and the droi-chat server it was last given.
+type liveSession struct {
+	id         string
+	meta       map[string]string
+	url, token string
+}
+
+// liveWatch follows the frames on the Chat Bridge's connection to the
+// Daemon, and the Chat Bridge's log.
 type liveWatch struct {
-	t        *testing.T
-	mu       sync.Mutex
+	t  *testing.T
+	mu sync.Mutex
+	// starting are the Chat Sessions asked for, by request id, until the
+	// Daemon answers with their ids.
+	starting map[string]liveSession
+	sessions map[string]liveSession
 	perms    []controller.Permission
 	resolved map[string]protocol.ToolConfirmationOutcome
+	// answered are the permission requests the Chat Bridge answered.
+	answered map[string]bool
 	idle     map[string]int
 	// frames are the Daemon's frames that mention WeCom, such as droi-chat
 	// tool results.
@@ -445,17 +448,125 @@ func (w *liveWatch) logged(part string) bool {
 	return slices.ContainsFunc(w.logs, func(s string) bool { return strings.Contains(s, part) })
 }
 
+// liveFrame is a frame on the connection to the Daemon.
+type liveFrame struct {
+	Type   string          `json:"type"`
+	ID     string          `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
+	Result json.RawMessage `json:"result"`
+}
+
+// liveSessionParams is what the Chat Bridge starts or loads a Chat Session
+// with.
+type liveSessionParams struct {
+	SessionID string `json:"sessionId"`
+	Tags      []struct {
+		Name     string            `json:"name"`
+		Metadata map[string]string `json:"metadata"`
+	} `json:"tags"`
+	MCPServers []struct {
+		Name    string `json:"name"`
+		URL     string `json:"url"`
+		Headers []struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"headers"`
+	} `json:"mcpServers"`
+}
+
+// droiChat is the droi-chat server the params give, into s.
+func (p liveSessionParams) droiChat(s *liveSession) {
+	for _, m := range p.MCPServers {
+		if m.Name != host.ChatServerName {
+			continue
+		}
+		s.url = m.URL
+		for _, h := range m.Headers {
+			if h.Name == "Authorization" {
+				s.token = strings.TrimPrefix(h.Value, "Bearer ")
+			}
+		}
+	}
+}
+
 func (w *liveWatch) record(dir droid.Direction, frame []byte) {
-	if dir != droid.Received || !bytes.Contains(frame, []byte("WeCom")) {
+	var f liveFrame
+	if json.Unmarshal(frame, &f) != nil {
 		return
 	}
 	w.mu.Lock()
-	w.frames = append(w.frames, string(frame))
-	w.mu.Unlock()
+	defer w.mu.Unlock()
+	if dir == droid.Received && bytes.Contains(frame, []byte("WeCom")) {
+		w.frames = append(w.frames, string(frame))
+	}
+	switch {
+	case dir == droid.Sent && f.Method == "daemon.initialize_session":
+		var p liveSessionParams
+		_ = json.Unmarshal(f.Params, &p)
+		for _, tag := range p.Tags {
+			if tag.Name == sessions.ChatTag {
+				s := liveSession{meta: tag.Metadata}
+				p.droiChat(&s)
+				w.starting[f.ID] = s
+			}
+		}
+	case dir == droid.Sent && f.Method == "daemon.load_session":
+		var p liveSessionParams
+		_ = json.Unmarshal(f.Params, &p)
+		if s, ok := w.sessions[p.SessionID]; ok {
+			p.droiChat(&s)
+			w.sessions[p.SessionID] = s
+		}
+	case dir == droid.Received && f.Type == "response":
+		if s, ok := w.starting[f.ID]; ok {
+			delete(w.starting, f.ID)
+			var res struct {
+				SessionID string `json:"sessionId"`
+			}
+			if json.Unmarshal(f.Result, &res) == nil && res.SessionID != "" {
+				s.id = res.SessionID
+				w.sessions[s.id] = s
+			}
+		}
+	case dir == droid.Received && f.Method == protocol.ServerRequestRequestPermission:
+		var p protocol.RequestPermissionParams
+		if json.Unmarshal(f.Params, &p) != nil {
+			return
+		}
+		perm := controller.Permission{
+			RequestID: f.ID, SessionID: p.SessionID, AssociatedSessionIDs: append([]string{p.SessionID}, p.AssociatedSessionIDs...),
+			ToolUses: p.ToolUses, Options: p.Options,
+		}
+		w.perms = append(w.perms, perm)
+		w.t.Logf("permission request %s: %s", perm.RequestID, toolNames(&perm))
+	case dir == droid.Sent && f.Type == "response":
+		w.answered[f.ID] = true
+	case dir == droid.Received && f.Method == protocol.NotificationSessionNotification:
+		var p struct {
+			SessionID    string `json:"sessionId"`
+			Notification struct {
+				Type           string                           `json:"type"`
+				NewState       string                           `json:"newState"`
+				RequestID      string                           `json:"requestId"`
+				SelectedOption protocol.ToolConfirmationOutcome `json:"selectedOption"`
+			} `json:"notification"`
+		}
+		if json.Unmarshal(f.Params, &p) != nil {
+			return
+		}
+		switch n := p.Notification; {
+		case n.Type == "permission_resolved":
+			w.resolved[n.RequestID] = n.SelectedOption
+			w.t.Logf("permission request %s answered: %s", n.RequestID, n.SelectedOption)
+		case n.Type == "droid_working_state_changed" && n.NewState == string(protocol.DroidWorkingStateIdle):
+			w.idle[p.SessionID]++
+		}
+	}
 }
 
 // toolResults counts the Daemon's frames of session (any when "") that hold
-// part, and logs the tool errors among them.
+// part.
 func (w *liveWatch) toolResults(session, part string) int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -466,23 +577,6 @@ func (w *liveWatch) toolResults(session, part string) int {
 		}
 	}
 	return n
-}
-
-func (w *liveWatch) event(e controller.Event) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	switch e := e.(type) {
-	case controller.PermissionRequested:
-		w.perms = append(w.perms, e.Permission)
-		w.t.Logf("permission request %s: %s", e.Permission.RequestID, toolNames(&e.Permission))
-	case controller.PermissionResolved:
-		w.resolved[e.RequestID] = e.SelectedOption
-		w.t.Logf("permission request %s answered: %s", e.RequestID, e.SelectedOption)
-	case controller.SessionNotification:
-		if v, ok := e.Value.(*protocol.DroidWorkingStateChangedNotification); ok && v.NewState == protocol.DroidWorkingStateIdle {
-			w.idle[e.SessionID]++
-		}
-	}
 }
 
 func (w *liveWatch) turns(session string) int {
@@ -497,19 +591,27 @@ func (w *liveWatch) allPermissions() []controller.Permission {
 	return slices.Clone(w.perms)
 }
 
-// chatThread waits for a Chat Thread that match picks to have a Chat Session.
-func (w *liveWatch) chatThread(t *testing.T, b *Bridge, d time.Duration, what string, match func(*chatThread) bool) *chatThread {
+func (w *liveWatch) answeredByChatBridge(requestID string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.answered[requestID]
+}
+
+// chatSession waits for the Chat Bridge to start a Chat Session whose
+// droi.chat metadata match picks.
+func (w *liveWatch) chatSession(t *testing.T, d time.Duration, what string, match func(map[string]string) bool) liveSession {
 	t.Helper()
-	var found *chatThread
+	var found liveSession
 	waitFor(t, d, what, func() bool {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		for _, th := range b.chatThreads {
-			if th.sessionID != "" && match(th) {
-				found = th
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		for _, s := range w.sessions {
+			if match(s.meta) {
+				found = s
+				return true
 			}
 		}
-		return found != nil
+		return false
 	})
 	t.Logf("%s started a Chat Session", what)
 	return found
@@ -533,7 +635,7 @@ func (w *liveWatch) permission(t *testing.T, d time.Duration, session string) co
 	return found
 }
 
-func (w *liveWatch) answered(t *testing.T, d time.Duration, requestID string) {
+func (w *liveWatch) waitResolved(t *testing.T, d time.Duration, requestID string) {
 	t.Helper()
 	waitFor(t, d, "the permission request to be answered in WeCom", func() bool {
 		w.mu.Lock()
@@ -541,4 +643,55 @@ func (w *liveWatch) answered(t *testing.T, d time.Duration, requestID string) {
 		_, ok := w.resolved[requestID]
 		return ok
 	})
+}
+
+// tool calls a droi-chat tool as the Chat Session id does, with the token
+// the Chat Bridge last gave it, and answers its text; a tool error is err.
+func (w *liveWatch) tool(ctx context.Context, id, name string, args map[string]any) (string, error) {
+	w.mu.Lock()
+	s := w.sessions[id]
+	w.mu.Unlock()
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	var out struct {
+		Result struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+			IsError bool `json:"isError"`
+		} `json:"result"`
+	}
+	if res.StatusCode != http.StatusOK || json.NewDecoder(res.Body).Decode(&out) != nil {
+		return "", fmt.Errorf("%s: HTTP %d", name, res.StatusCode)
+	}
+	var text strings.Builder
+	for _, c := range out.Result.Content {
+		text.WriteString(c.Text)
+	}
+	if out.Result.IsError {
+		return "", fmt.Errorf("%s: %s", name, text.String())
+	}
+	return text.String(), nil
+}
+
+// download has download_attachment save an attachment, and reads what it
+// saved.
+func (w *liveWatch) download(ctx context.Context, session, id string) ([]byte, string, error) {
+	answer, err := w.tool(ctx, session, "download_attachment", map[string]any{"id": id})
+	if err != nil {
+		return nil, "", err
+	}
+	lines := strings.Split(strings.TrimSpace(answer), "\n")
+	data, err := os.ReadFile(lines[len(lines)-1])
+	return data, answer, err
 }
