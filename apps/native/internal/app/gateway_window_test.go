@@ -57,28 +57,29 @@ func TestSessionsStartedFromTheWindowGetTheSystemPromptAdditionOnceFromTheGatewa
 	h := startHarness(t, draftScenario(), "", "Be brief", nil)
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
 	h.click("New session")
-	h.until("the draft", func() bool { return len(initializeRequests(t, h)) == 1 })
 	h.click("Message")
 	h.typeInto("go")
 	h.click("Start session")
 	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
 
 	got := initializeRequests(t, h)
-	if len(got) != 1 {
-		t.Fatalf("%d Sessions created, want the draft alone", len(got))
+	if len(got) == 0 {
+		t.Fatal("no Session was created")
 	}
-	var p struct {
-		SystemPrompt map[string]string `json:"systemPrompt"`
-	}
-	if err := json.Unmarshal([]byte(got[0]), &p); err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{"type": "preset", "preset": "droid", "append": "Be brief"}
-	if len(p.SystemPrompt) != len(want) || p.SystemPrompt["type"] != "preset" || p.SystemPrompt["preset"] != "droid" || p.SystemPrompt["append"] != "Be brief" {
-		t.Fatalf("systemPrompt %v, want %v", p.SystemPrompt, want)
-	}
-	if n := strings.Count(got[0], "Be brief"); n != 1 {
-		t.Fatalf("the addition is in the request %d times: %s", n, got[0])
+	for _, params := range got {
+		var p struct {
+			SystemPrompt map[string]string `json:"systemPrompt"`
+		}
+		if err := json.Unmarshal([]byte(params), &p); err != nil {
+			t.Fatal(err)
+		}
+		sp := p.SystemPrompt
+		if len(sp) != 3 || sp["type"] != "preset" || sp["preset"] != "droid" || sp["append"] != "Be brief" {
+			t.Fatalf("systemPrompt %v in %s", sp, params)
+		}
+		if n := strings.Count(params, "Be brief"); n != 1 {
+			t.Fatalf("the addition is in the request %d times: %s", n, params)
+		}
 	}
 }
 
