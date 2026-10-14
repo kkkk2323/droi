@@ -74,7 +74,9 @@ type longConnection struct {
 	url, botID, secret string
 	ping, delay, max   time.Duration
 	onPush             func(frame)
-	log                func(string)
+	// onStatus hears the connection come up, or fail and why; not its close.
+	onStatus func(connected bool, reason string)
+	log      func(string)
 
 	stop chan struct{}
 	done chan struct{}
@@ -132,7 +134,7 @@ func (l *longConnection) connect() bool {
 	dcancel()
 	if err != nil {
 		if ctx.Err() == nil {
-			l.log("cannot reach WeCom: " + err.Error())
+			l.fail("cannot reach WeCom: " + err.Error())
 		}
 		return false
 	}
@@ -152,7 +154,7 @@ func (l *longConnection) connect() bool {
 	}()
 	if _, err := l.callOn(ctx, c, "aibot_subscribe", "", map[string]string{"bot_id": l.botID, "secret": l.secret}); err != nil {
 		if ctx.Err() == nil {
-			l.log("WeCom refused the subscription: " + err.Error())
+			l.fail("WeCom refused the subscription: " + err.Error())
 		}
 		return false
 	}
@@ -160,6 +162,7 @@ func (l *longConnection) connect() bool {
 	l.conn = c
 	l.mu.Unlock()
 	l.log("connected to WeCom")
+	l.onStatus(true, "")
 	ticker := time.NewTicker(l.ping)
 	defer ticker.Stop()
 	for {
@@ -172,7 +175,7 @@ func (l *longConnection) connect() bool {
 			}()
 		case err := <-dropped:
 			if ctx.Err() == nil {
-				l.log("the WeCom connection dropped: " + err.Error())
+				l.fail("the WeCom connection dropped: " + err.Error())
 			}
 			return true
 		case <-ctx.Done():
@@ -180,6 +183,11 @@ func (l *longConnection) connect() bool {
 			return true
 		}
 	}
+}
+
+func (l *longConnection) fail(reason string) {
+	l.log(reason)
+	l.onStatus(false, reason)
 }
 
 func (l *longConnection) receive(data []byte) {
