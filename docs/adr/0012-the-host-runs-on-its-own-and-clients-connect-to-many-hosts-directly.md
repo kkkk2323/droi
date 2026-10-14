@@ -4,6 +4,8 @@ status: accepted
 
 # The Host runs on its own, and Clients connect to many Hosts directly
 
+_Partly superseded by ADR 0019: the Host on its own is `droi host`, not an npm package; the window follows one Paired Computer at a time and switches by relaunching; there is no management surface on the Gateway, no Host self-update and no Tailscale-first binding. The direct topology, and the Host as the non-window part of Droi, stand._
+
 Until now everything that is not a window lived in the Electron main process: spawning the Daemon, the Gateway, the Factory credential, Memory. The Daemon itself is Factory's `droid daemon` and has always been able to run anywhere, but nothing could reach it without a Desktop Shell on the same computer. The user's shape is different: a headless Ubuntu box that should run Sessions, a Mac that sometimes runs its own and sometimes drives the Ubuntu box, and an iPhone that reaches either. All devices are on one Tailscale network.
 
 We decided to name the non-window part the **Host** and make it a package of its own (`droi-host` on npm, `packages/host` in the repo) with a command line for a computer without a Desktop Shell: `setup`, `start`, `stop`, `restart`, `status`, `logs`, `pair`, `config`, `update`. The Desktop Shell embeds the same package and injects what only Electron has (the user-data path, the version, the system trash, notifications). The topology stays **direct**: each computer runs one Host, every Client keeps a list of Paired Computers and connects to one at a time through that Host's Gateway. There is no rendezvous server between them; Tailscale is the network and the Pairing Token is the second lock.

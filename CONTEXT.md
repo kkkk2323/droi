@@ -11,7 +11,7 @@ The `droid daemon` process that owns every Session, its transcript, and all file
 _Avoid_: backend, server, engine, exec runner
 
 **Host**:
-The process on a computer that starts and watches over the Daemon, runs the Gateway, supplies the Factory credential (normally the droid CLI's own login on that computer, an API key as fallback) and keeps that computer's Memory. The Desktop Shell embeds one; on a computer without a Desktop Shell (a headless Linux box) it runs on its own, installed from npm and kept alive by the system's service manager. Every computer a Client can reach has exactly one Host.
+The process on a computer that starts and watches over the Daemon, runs the Gateway, supplies the Factory credential (normally the droid CLI's own login on that computer, an API key as fallback) and keeps that computer's Memory. The Desktop Shell embeds one; on a computer without a Desktop Shell (a headless Linux box) it runs on its own as `droi host`, the same Droi program without a window, kept alive by the system's service manager. Every computer a Client can reach has exactly one Host.
 _Avoid_: server, node, station, backend, agent runner
 
 **Factory Account**:
@@ -37,11 +37,11 @@ _Avoid_: proxy, API server, Hono server, web server
 ### Clients
 
 **Client**:
-A Droi user interface. Every Client speaks only the Daemon protocol and keeps no conversation state of its own. There are two: the web Client, which runs as the Local Client and as a Remote Client in a browser, and the Phone App.
+A Droi user interface. Every Client speaks only the Daemon protocol, reaches the Daemon through a Host's Gateway, and keeps no conversation state of its own. Two are maintained: the Desktop Shell window and the Phone App; the deprecated web Client is a third.
 _Avoid_: renderer, frontend, web UI
 
 **Local Client**:
-The web Client running inside the Desktop Shell window, whichever Paired Computer it is connected to. It alone can reach the Desktop Shell itself (settings, system notifications, opening folders in other apps); it reaches its own Host with a per-launch token and any other Host with that Host's Pairing Token.
+The Client in the Desktop Shell window, whichever Paired Computer it is connected to. It alone can reach the Desktop Shell itself (settings, system notifications, opening folders in other apps); it reaches its own Host's Gateway with a per-launch token and any other Host's Gateway with that Host's Pairing Token.
 
 **Remote Client**:
 A Client that is not the Desktop Shell window of the Host it is connected to: the Phone App on an iPhone, or the web Client in a browser anywhere else. It reaches the Host through the Gateway with the Pairing Token.
