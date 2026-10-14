@@ -104,6 +104,12 @@ Advanced settings, which belong to this computer's Host. This computer's Host ke
 for its phones and Automations. "Use this computer" (also offered when the other computer
 cannot be reached) clears the preference and relaunches.
 
+Preferences that name Workspaces by path (pinned and folded Workspaces, their manual order, the
+preferred Open in app) are kept per computer: this computer's stay under their old keys in
+`preferences.json`, so an update reads them unchanged, and another computer's sit under the same
+key with `@` and the computer id added. Drafts and Session stats are keyed by Session id and need
+no split.
+
 ## Layout
 
 | Path                                                            | What                                                                                                    |
