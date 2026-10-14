@@ -11,6 +11,10 @@ import (
 // MemoryServerName is the Memory Server's name in the Daemon's MCP list.
 const MemoryServerName = "droi-memory"
 
+// ChatServerName is the name of the Chat Bridge's droi-chat tools, which only
+// Chat Sessions are given (ADR 0020).
+const ChatServerName = "droi-chat"
+
 // The app's own executable runs the Memory Server and the hook as these
 // subcommands, where the Electron Shell ran its own Node.
 const (
