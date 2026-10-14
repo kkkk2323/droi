@@ -804,7 +804,7 @@ func (a *App) banner(c *ui.Context, status controller.Status) {
 	t, k := a.kit.T, a.kit
 	text := L("Reconnecting to Droid…")
 	if !status.Reconnecting && status.Failure != nil {
-		text = L("Not connected to Droid: %s", status.Failure.Error())
+		text = L("Not connected to Droid: %s", failureText(status.Failure))
 	}
 	ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(8)).Padding(k.Px(6), k.Px(16)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
 		Background(t.Attention.Alpha(0.1)).Children(func() {

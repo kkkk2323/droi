@@ -104,8 +104,11 @@ func computerError(err error) string {
 	case errors.Is(err, gateway.ErrTokenRejected):
 		return L("That computer does not accept this Pairing Token. It may have been reset; copy the link again.")
 	}
-	return L("Could not reach that computer: %s", err.Error())
+	return L("Could not reach that computer: %s", failureText(err))
 }
+
+// failureText is err as the window shows it, without any token.
+func failureText(err error) string { return gateway.RedactToken(err.Error()) }
 
 func (a *App) computerTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
@@ -186,7 +189,7 @@ func (a *App) followingStartView(c *ui.Context, status controller.Status) {
 			ui.Column(c).Role(ui.RoleStatus).Label(title).FillWidth().MaxWidth(k.Px(420)).AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
 				k.Icon(c, "circle-alert", 20, t.Attention)
 				k.Text(c, title, 14, 20).FontWeight(500).TextAlign(ui.Center)
-				k.Text(c, status.Failure.Error(), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
+				k.Text(c, failureText(status.Failure), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 				k.Text(c, L("Droi keeps trying. Use this computer to leave %s.", name), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 				if a.smallButton(c, kit.Primary, L("Use this computer"), "laptop", false).Margin(k.Px(8), 0, 0, 0).Clicked() {
 					a.useThisComputer()

@@ -26,9 +26,9 @@ func startupProblem(daemon host.DaemonState, status controller.Status, droidVers
 	case daemon.Reason != "":
 		return L("The Daemon did not start"), L("Last attempt: %s.", daemon.Reason)
 	case status.Failure != nil && status.Failure.Reason == controller.ReasonAuthRejected:
-		return L("The Daemon did not accept the login"), L("Sign out and sign in again in Settings, then restart the Daemon. (%s)", status.Failure.Error())
+		return L("The Daemon did not accept the login"), L("Sign out and sign in again in Settings, then restart the Daemon. (%s)", failureText(status.Failure))
 	case status.Failure != nil:
-		return L("Droi could not connect to the Daemon"), status.Failure.Error()
+		return L("Droi could not connect to the Daemon"), failureText(status.Failure)
 	}
 	return "", ""
 }

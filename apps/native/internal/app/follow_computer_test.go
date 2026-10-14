@@ -332,6 +332,9 @@ func TestAnUnreachableComputerShowsTheErrorAndUseThisComputerSwitchesBack(t *tes
 	h := followHarness(t, localSessions(), p, rl, nil)
 	computer.Save(h.a.prefs, p)
 	h.until("the error", func() bool { return h.hasText("Could not reach Ubuntu box") && h.hasButton("Use this computer") })
+	if h.hasText(p.Token) {
+		t.Fatal("the error shows the Pairing Token")
+	}
 	if h.hasText("On this Mac") {
 		t.Fatal("this computer's Sessions are shown in place of the other's")
 	}
