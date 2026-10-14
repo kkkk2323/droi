@@ -4,7 +4,8 @@
 // (aibot_subscribe, ping, aibot_msg_callback, aibot_event_callback, the
 // replies without a cmd) and, like the real server, refuses a handshake
 // whose Sec-WebSocket-* header names are not spelt WeCom's way. Its HTTPS
-// API (api.go) holds WeCom Channels with their posts and replies.
+// API (api.go) holds WeCom Channels with their posts and replies, searches
+// them (search.go), and serves and takes files and media (media.go).
 package fakewecom
 
 import (
@@ -78,6 +79,11 @@ type WeCom struct {
 	replies  map[string][]*Post
 	calls    []APICall
 	apiFail  map[string][]failure
+
+	downloads map[string]download
+	uploads   map[string]*upload
+	media     map[string]Media
+	jobs      map[string]searchJob
 }
 
 // Start runs a Fake WeCom for the test and stops it when the test ends.
@@ -206,7 +212,18 @@ func (w *WeCom) serve(rw http.ResponseWriter, r *http.Request) {
 		case !subscribed && f.Cmd != "ping":
 			errcode, errmsg = 40001, "not subscribed"
 		}
-		out, _ := json.Marshal(map[string]any{"headers": map[string]string{"req_id": f.Headers.ReqID}, "errcode": errcode, "errmsg": errmsg})
+		answer := map[string]any{"headers": map[string]string{"req_id": f.Headers.ReqID}, "errcode": errcode, "errmsg": errmsg}
+		if handler := frameHandlers[f.Cmd]; handler != nil && errcode == 0 && subscribed {
+			w.mu.Lock()
+			body, e := handler(w, f.Body)
+			w.mu.Unlock()
+			if e != nil {
+				answer["errcode"], answer["errmsg"] = e.code, e.msg
+			} else if body != nil {
+				answer["body"] = body
+			}
+		}
+		out, _ := json.Marshal(answer)
 		if err := c.Write(ctx, websocket.MessageText, out); err != nil {
 			return
 		}
