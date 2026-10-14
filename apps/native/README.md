@@ -14,6 +14,83 @@ credential and the System Prompt Addition the Gateway adds for other Clients.
 How it performs next to the Electron app: [docs/performance.md](docs/performance.md). How
 it is released and updates itself: [docs/releases.md](docs/releases.md).
 
+## droi host on Linux
+
+On Linux Droi has no window: `droi host` runs the Host (the Daemon, the Gateway with Remote
+Access always on, and Memory) in the foreground, for a headless computer your phone or another
+Client reaches (ADR 0019). Run `droi` without `host` there and it says so and exits.
+
+**Download.** Each [Release](https://github.com/kkkk2323/droi/releases/latest) has
+`droi-<version>-linux-amd64.tar.gz` and `droi-<version>-linux-arm64.tar.gz`, for glibc
+systems. Extract one anywhere; the program is `droi`:
+
+```sh
+VERSION=1.46.2 ARCH=amd64   # the Release's version; arm64 on ARM
+curl -fsSLO https://github.com/kkkk2323/droi/releases/download/v$VERSION/droi-$VERSION-linux-$ARCH.tar.gz
+sudo mkdir -p /opt/droi && sudo tar -xzf droi-$VERSION-linux-$ARCH.tar.gz -C /opt/droi
+```
+
+**First start.** Install the [Droid CLI](https://docs.factory.ai) (Droi finds `droid` in
+`~/.local/bin` as well as on PATH), then sign in the way `droid` does: run `droid login` on
+this computer, or set `FACTORY_API_KEY`. Droi reads the CLI's login from its keyfile, then from
+the system keyring (through `secret-tool`, when it is installed), then falls back to
+`FACTORY_API_KEY`. Start it:
+
+```sh
+/opt/droi/droi host
+```
+
+It prints `Pairing link: http://<address>:<port>/#pair=<token>` and, on a terminal, the same
+link as a QR code. Scan it with the Phone App, or give the link to another Client. A warning
+says so when there is no login yet; sign in and restart. It stops on Ctrl-C or SIGTERM, and
+refuses to start while another Droi Host (the app, or another `droi host`) answers on this
+computer, or when `droid` is missing or older than Droi needs.
+
+Its settings (`settings.json`, mode 0600, with the Pairing Token), Memory and logs are in
+`$XDG_CONFIG_HOME/droi` (`~/.config/droi` by default). Scratch folders a Client trashes go to
+the freedesktop Trash in `$XDG_DATA_HOME/Trash`.
+
+**Keep it running with systemd.** As a user service (`~/.config/systemd/user/droi-host.service`):
+
+```ini
+[Unit]
+Description=Droi Host
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/droi/droi host
+# FACTORY_API_KEY=... in this file (mode 0600), if you do not use `droid login`
+EnvironmentFile=-%h/.config/droi/env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now droi-host
+loginctl enable-linger "$USER"   # start at boot, without a login
+journalctl --user -u droi-host -f   # the pairing link is in the log
+```
+
+For a system service, put the unit in `/etc/systemd/system`, add `User=<you>` to `[Service]`
+(Droi needs that user's home for its settings and for `droid`), use `WantedBy=multi-user.target`,
+and run `systemctl enable --now droi-host`.
+
+**Reset the Pairing Token.** Stop the Host, delete `pairingToken` from
+`~/.config/droi/settings.json` (`jq 'del(.pairingToken)' settings.json` does it), and start
+it: it makes a new token, prints the new link and every phone paired before has to pair again.
+
+**Keep it on a private network.** The Gateway listens on every network interface of the
+computer and speaks plain HTTP, so a Pairing Token is the only protection. Reach the Host over a
+private network such as [Tailscale](https://tailscale.com), and do not expose its port to the
+internet. The link names the computer's first LAN address; to have it name another, for
+instance the Tailscale machine name, set `"pairingHost": "my-box"` in `settings.json` and
+restart.
+
 ## Layout
 
 | Path                                                            | What                                                                                                    |
