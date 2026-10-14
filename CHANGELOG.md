@@ -1,3 +1,18 @@
+## 1.47.0 - 2026-10-14
+
+### Added
+
+- `droi host` runs Droi without a window on Linux, for a server or a box you reach over the network. It starts the Daemon, the Gateway and Memory, prints the pairing link and a QR code, and signs in with that computer's `droid login` (kept in a file or in the system keyring) or with `FACTORY_API_KEY`. Each Release now has `droi-<version>-linux-amd64.tar.gz` and `-linux-arm64.tar.gz`; the native README explains the download, an example systemd unit and how to reset the Pairing Token.
+- The window can follow another computer. In Settings › Computer, paste the pairing link of a computer that runs Droi or `droi host`; Droi checks it and starts again on that computer, showing its Sessions, Session defaults, skills, MCP Servers, Automations and Worktrees. While it follows another computer, this computer's Account, Memory, Remote Access and Advanced settings and the actions that need this computer's disk are hidden, only pictures can be attached, and pins, folded Workspaces and manual order are kept apart for each computer. This computer keeps running for paired phones and Automations. "Use this computer" in the same place switches back.
+
+### Changed
+
+- The window now reaches this computer's Daemon through Droi's own Gateway, as the Phone App does, whether Remote Access is on or off. Nothing needs setting up: paired phones stay paired, the Gateway keeps its port and the System Prompt Addition still applies once.
+
+### Fixed
+
+- Archiving a Session that works in a Scratch Workspace now moves its folder to the Trash, as Settings says, and unarchiving it brings the folder back. A folder still used by another Session that continues the same Scratch Workspace stays until the last of them is archived.
+
 ## 1.46.2 - 2026-10-14
 
 ### Fixed
