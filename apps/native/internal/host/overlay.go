@@ -86,6 +86,25 @@ func BuildRuntimeOverlay(m MemoryAttachment) map[string]any {
 	}
 }
 
+// ApproveChatServer adds to an overlay the pre-approval of the droi-chat
+// tools, so their calls raise no Prompt. It adds no server: the Chat Bridge
+// passes droi-chat in each Chat Session's own mcpServers, so other Sessions
+// never have it.
+func ApproveChatServer(o map[string]any, approvedAt string) map[string]any {
+	sub := func(m map[string]any, key string) map[string]any {
+		v, ok := m[key].(map[string]any)
+		if !ok {
+			v = map[string]any{}
+			m[key] = v
+		}
+		return v
+	}
+	servers := sub(sub(sub(o, "mcp"), "persistentPermissions"), "servers")
+	servers[ChatServerName] = map[string]any{"approvedAt": approvedAt, "impactLevel": "high"}
+	sub(o, "mcpAutonomyOverrides")[ChatServerName] = map[string]any{"defaultLevel": "low"}
+	return o
+}
+
 // WriteRuntimeOverlay writes the overlay as JSON only the user can read.
 func WriteRuntimeOverlay(path string, overlay map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

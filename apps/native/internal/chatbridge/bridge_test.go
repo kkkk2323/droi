@@ -104,7 +104,9 @@ type initialized struct {
 	Cwd           string `json:"cwd"`
 	AutonomyLevel string `json:"autonomyLevel"`
 	ModelID       string `json:"modelId"`
-	SystemPrompt  struct {
+	// BlockOnMCPLoad keeps the first turn until droi-chat is connected.
+	BlockOnMCPLoad bool `json:"blockOnMcpLoad"`
+	SystemPrompt   struct {
 		Type   string `json:"type"`
 		Preset string `json:"preset"`
 		Append string `json:"append"`
@@ -258,6 +260,9 @@ func TestADirectMessageStartsAChatSession(t *testing.T) {
 	if sp.Type != "preset" || sp.Preset != "droid" || !strings.HasPrefix(sp.Append, "Answer in English.\n\n") ||
 		!strings.Contains(sp.Append, "HuangJunXiang") || !strings.Contains(sp.Append, "reply") {
 		t.Errorf("system prompt %+v", sp)
+	}
+	if !p.BlockOnMCPLoad {
+		t.Error("the first turn may start before droi-chat is connected")
 	}
 	if len(p.MCPServers) != 1 || p.MCPServers[0].Type != "http" || !strings.HasPrefix(p.MCPServers[0].URL, "http://127.0.0.1:") {
 		t.Errorf("mcpServers %+v", p.MCPServers)

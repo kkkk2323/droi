@@ -352,13 +352,15 @@ func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
 		addition = *s.AppendSystemPrompt
 	}
 	system, _ := json.Marshal(map[string]string{"type": "preset", "preset": "droid", "append": systemPromptAppend(addition, th)})
+	yes := true
 	res, err := b.ctl.InitializeSession(ctx, protocol.InitializeSessionParams{
-		Cwd:           cb.Workspace,
-		AutonomyLevel: protocol.AutonomyLevel(cb.AutonomyLevelOrDefault()),
-		ModelID:       cb.Model,
-		SystemPrompt:  system,
-		Tags:          []protocol.SessionTag{{Name: sessions.ChatTag, Metadata: map[string]string{"kind": threadKindDirect, "userId": th.userID}}},
-		MCPServers:    []json.RawMessage{server},
+		Cwd:            cb.Workspace,
+		BlockOnMCPLoad: &yes,
+		AutonomyLevel:  protocol.AutonomyLevel(cb.AutonomyLevelOrDefault()),
+		ModelID:        cb.Model,
+		SystemPrompt:   system,
+		Tags:           []protocol.SessionTag{{Name: sessions.ChatTag, Metadata: map[string]string{"kind": threadKindDirect, "userId": th.userID}}},
+		MCPServers:     []json.RawMessage{server},
 	})
 	if err != nil {
 		return "", err
