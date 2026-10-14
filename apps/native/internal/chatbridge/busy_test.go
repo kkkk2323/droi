@@ -59,7 +59,10 @@ func (r *rig) watchTurns() *turns {
 	return w
 }
 
-// wait waits until the Session's nth turn is over.
+// wait waits until the Session's nth turn is over. The Chat Bridge may not
+// have seen it yet: a barrier after it makes sure, since the Daemon's
+// answer to the barrier comes after the turn's end on the Chat Bridge's
+// connection.
 func (w *turns) wait(sessionID string, nth int) {
 	w.t.Helper()
 	deadline := time.After(10 * time.Second)
