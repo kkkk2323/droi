@@ -65,6 +65,7 @@ type Bridge struct {
 	threads map[string]*thread
 	tokens  map[string]*thread
 	seen    recent
+	media   mediaStore
 }
 
 // State is how far the Chat Bridge is connected to WeCom.
@@ -330,7 +331,7 @@ func (b *Bridge) handle(f frame) {
 	}
 	th.reqID, th.reqAt = f.Headers.ReqID, b.o.Now()
 	b.mu.Unlock()
-	b.deliver(th, directTrigger(user, textOf(m)))
+	b.deliver(th, directTrigger(user, textOf(m))+b.keepDirectMedia(th, m.MsgID, f.Body))
 }
 
 // refuse records a sender not on the allowlist, for the user to allow.

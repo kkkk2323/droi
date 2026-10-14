@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -145,12 +147,19 @@ var toolList = []tool{
 		Description: "Send a message to this Chat Thread in WeCom: in a WeCom Channel, a reply under the post; in a direct message, a message to the user. " +
 			"It is the only way anything you write reaches the people there; " +
 			"call it for progress on a long task and for your answer. Markdown, at most 20480 bytes. " +
+			"files attaches files of the Workspace (at most 8 files of up to 20 MB and 8 PNG, JPEG or GIF images of up to 10 MB): " +
+			"in a Channel they come with the reply, in a direct message each follows the text as a message of its own. " +
+			"mentions @s WeCom users by user id at the start of a Channel reply (at most 8; not in a direct message). " +
 			"A WeCom error, such as its rate limit of 30 messages a minute and 1000 an hour, comes back as a tool error: " +
 			"the message was not sent.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"text": map[string]any{"type": "string", "description": "The message, in Markdown."},
+				"files": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "maxItems": 2 * maxPerReply,
+					"description": "Paths of files in the Workspace to send, relative to it or absolute."},
+				"mentions": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "maxItems": maxPerReply,
+					"description": "WeCom user ids to @ in a WeCom Channel."},
 			},
 			"required":             []string{"text"},
 			"additionalProperties": false,
@@ -159,7 +168,8 @@ var toolList = []tool{
 	{
 		Name: "read_thread",
 		Description: "Read this Chat Thread in WeCom. In a WeCom Channel: the post (on the first page) and a page of its replies, oldest first, " +
-			"each with its id, author and time (UTC); @ mentions show as @<user id> (@you is you) and files as [file: name]. " +
+			"each with its id, author and time (UTC); @ mentions show as @<user id> (@you is you) and files as [file: name], " +
+			"and the files and images of each are listed under Attachments with the id download_attachment takes. " +
 			"A page ending with a cursor has more: call again with that cursor. " +
 			"In a direct message there is no history: new messages arrive in this Session.",
 		InputSchema: map[string]any{
@@ -167,7 +177,39 @@ var toolList = []tool{
 			"properties": map[string]any{
 				"cursor": map[string]any{"type": "string", "description": "The cursor the previous page ended with; omit for the first page."},
 				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": maxReplyPage, "description": "Replies per page, 20 when omitted."},
+				"post_id": map[string]any{"type": "string",
+					"description": "Another post of this WeCom Channel to read, such as one search_channel found; omit for this Chat Thread's post."},
 			},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Name: "search_channel",
+		Description: "Search this Chat Thread's WeCom Channel for posts and replies whose text holds every keyword. " +
+			"Each match comes with its post id (and reply ids) and a brief; read_thread with that post_id shows it in full. " +
+			"A page ending with a cursor has more: call again with the same keywords and that cursor. Not in a direct message.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"keywords": map[string]any{"type": "array", "items": map[string]any{"type": "string", "maxLength": maxKeywordBytes},
+					"minItems": 1, "maxItems": maxSearchKeywords, "description": "Words the text holds, all of them; at most 32 bytes each."},
+				"cursor": map[string]any{"type": "string", "description": "The cursor the previous page ended with; omit for the first page."},
+			},
+			"required":             []string{"keywords"},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Name: "download_attachment",
+		Description: "Download a file or image of this Chat Thread into its folder under the Workspace (in " + attachmentsDir + ", which Git ignores) and answer the path, " +
+			"to open with your other tools. The id is one listed under Attachments in a message from WeCom or in read_thread. " +
+			"In a WeCom Channel the link is read again at each download; a direct message's link lasts 5 minutes after the message arrived.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id": map[string]any{"type": "string", "description": "The attachment's id."},
+			},
+			"required":             []string{"id"},
 			"additionalProperties": false,
 		},
 	},
@@ -177,57 +219,106 @@ func (b *Bridge) callTool(ctx context.Context, th *thread, name string, args jso
 	switch name {
 	case "reply":
 		var p struct {
-			Text string `json:"text"`
+			Text     string   `json:"text"`
+			Files    []string `json:"files"`
+			Mentions []string `json:"mentions"`
 		}
 		if len(args) > 0 {
 			if err := json.Unmarshal(args, &p); err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
 		}
-		return b.reply(ctx, th, p.Text)
+		return b.reply(ctx, th, p.Text, p.Files, p.Mentions)
 	case "read_thread":
 		var p struct {
 			Cursor string `json:"cursor"`
 			Limit  int    `json:"limit"`
+			PostID string `json:"post_id"`
 		}
 		if len(args) > 0 {
 			if err := json.Unmarshal(args, &p); err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
 		}
-		return b.readThread(ctx, th, p.Cursor, p.Limit)
+		return b.readThread(ctx, th, p.PostID, p.Cursor, p.Limit)
+	case "search_channel":
+		var p struct {
+			Keywords []string `json:"keywords"`
+			Cursor   string   `json:"cursor"`
+		}
+		if len(args) > 0 {
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+		return b.searchChannel(ctx, th, p.Keywords, p.Cursor)
+	case "download_attachment":
+		var p struct {
+			ID string `json:"id"`
+		}
+		if len(args) > 0 {
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+		return b.downloadAttachment(ctx, th, p.ID)
 	}
 	return "", fmt.Errorf("no tool %q", name)
 }
 
-// reply sends Markdown to the Chat Thread. In a direct message it goes
-// under the latest message's req_id while WeCom still takes replies to it,
-// else as a message of its own.
-func (b *Bridge) reply(ctx context.Context, th *thread, text string) (string, error) {
+// reply sends Markdown, and files, to the Chat Thread. In a direct message
+// it goes under the latest message's req_id while WeCom still takes
+// replies to it, else as a message of its own.
+func (b *Bridge) reply(ctx context.Context, th *thread, text string, files, mentions []string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", errors.New("text is empty")
 	}
 	if len(text) > maxMarkdownBytes {
 		return "", fmt.Errorf("text is %d bytes; WeCom takes at most %d", len(text), maxMarkdownBytes)
 	}
+	if len(mentions) > 0 && th.kind != threadKindChannel {
+		return "", errors.New("mentions work only in a WeCom Channel; this is a direct message")
+	}
+	if len(mentions) > maxPerReply || slices.Contains(mentions, "") {
+		return "", fmt.Errorf("give at most %d user ids to mention", maxPerReply)
+	}
+	out, err := b.outgoingFiles(files)
+	if err != nil {
+		return "", err
+	}
 	if th.kind == threadKindChannel {
-		return b.replyInChannel(ctx, th, text)
+		return b.replyInChannel(ctx, th, text, out, mentions)
 	}
 	b.mu.Lock()
-	wc, reqID, at, user := b.wecom, th.reqID, th.reqAt, th.userID
+	wc, user := b.wecom, th.userID
 	b.mu.Unlock()
 	if wc == nil {
 		return "", errNotConnected
 	}
-	markdown := map[string]any{"content": text}
-	var err error
-	if reqID != "" && b.o.Now().Sub(at) < replyWindow {
-		_, err = wc.call(ctx, "aibot_respond_msg", reqID, map[string]any{"msgtype": "markdown", "markdown": markdown})
-	} else {
-		_, err = wc.call(ctx, "aibot_send_msg", "", map[string]any{"chatid": user, "chat_type": 1, "msgtype": "markdown", "markdown": markdown})
-	}
+	ids, err := uploadAll(ctx, wc.uploadStep, out)
 	if err != nil {
+		return "", err
+	}
+	if err := b.sendDirect(ctx, th, wc, map[string]any{"msgtype": "markdown", "markdown": map[string]any{"content": text}}); err != nil {
 		return "", fmt.Errorf("not sent: %w", err)
 	}
-	return "Sent to " + user + " in WeCom.", nil
+	if err := b.sendDirectFiles(ctx, th, wc, out, ids); err != nil {
+		return "", err
+	}
+	return "Sent to " + user + " in WeCom" + withFiles(out) + ".", nil
+}
+
+// sendDirect sends one message of a direct message.
+func (b *Bridge) sendDirect(ctx context.Context, th *thread, wc *longConnection, body map[string]any) error {
+	b.mu.Lock()
+	reqID, at, user := th.reqID, th.reqAt, th.userID
+	b.mu.Unlock()
+	if reqID != "" && b.o.Now().Sub(at) < replyWindow {
+		_, err := wc.call(ctx, "aibot_respond_msg", reqID, body)
+		return err
+	}
+	body = maps.Clone(body)
+	body["chatid"], body["chat_type"] = user, 1
+	_, err := wc.call(ctx, "aibot_send_msg", "", body)
+	return err
 }

@@ -83,7 +83,7 @@ func (b *Bridge) handleEvent(f frame) {
 	if err != nil {
 		text = "[WeCom did not give the text: " + err.Error() + "]"
 	} else {
-		text = cut(render(c, b.robotID()))
+		text = cut(render(c, b.robotID())) + channelAttachments(c, at.PostID, at.ReplyID)
 	}
 	b.deliver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, text, first))
 }
@@ -170,7 +170,7 @@ const (
 
 // readThread is a Channel post and a page of its replies, the post on the
 // first page only. It marks the replies shown as read.
-func (b *Bridge) readThread(ctx context.Context, th *thread, cursor string, limit int) (string, error) {
+func (b *Bridge) readThread(ctx context.Context, th *thread, postID, cursor string, limit int) (string, error) {
 	if th.kind != threadKindChannel {
 		return "This Chat Thread is a direct message with WeCom user " + th.userID + ": WeCom keeps no history the Chat Bridge can read. " +
 			"Every new message from them arrives in this Session as a message.", nil
@@ -186,16 +186,24 @@ func (b *Bridge) readThread(ctx context.Context, th *thread, cursor string, limi
 		return "", errNotConnected
 	}
 	robot := b.robotID()
+	own := postID == "" || postID == th.postID
+	if own {
+		postID = th.postID
+	}
 	var out strings.Builder
 	if cursor == "" {
-		p, err := api.getPost(ctx, th.topicID, th.postID)
+		p, err := api.getPost(ctx, th.topicID, postID)
 		if err != nil {
 			return "", fmt.Errorf("cannot read the post: %w", err)
 		}
-		fmt.Fprintf(&out, "Post %s in the WeCom Channel %s, by %s at %s%s:\n%s\n\n",
-			th.postID, channelLabel(name, th.topicID), authorName(p.author(), robot), stamp(p.CreateTime), edited(p), render(p, robot))
+		other := ""
+		if !own {
+			other = " (not this Chat Thread's post)"
+		}
+		fmt.Fprintf(&out, "Post %s%s in the WeCom Channel %s, by %s at %s%s:\n%s%s\n\n",
+			postID, other, channelLabel(name, th.topicID), authorName(p.author(), robot), stamp(p.CreateTime), edited(p), render(p, robot), channelAttachments(p, postID, ""))
 	}
-	replies, next, err := api.replyPage(ctx, th.topicID, th.postID, cursor, limit)
+	replies, next, err := api.replyPage(ctx, th.topicID, postID, cursor, limit)
 	if err != nil {
 		return "", fmt.Errorf("cannot read the replies: %w", err)
 	}
@@ -209,12 +217,15 @@ func (b *Bridge) readThread(ctx context.Context, th *thread, cursor string, limi
 		if r.ParentReplyID != "" {
 			answering = ", answering reply " + r.ParentReplyID
 		}
-		fmt.Fprintf(&out, "Reply %s by %s at %s%s%s:\n%s\n\n",
-			r.ReplyID, authorName(r.author(), robot), stamp(r.CreateTime), edited(r), answering, render(r, robot))
+		fmt.Fprintf(&out, "Reply %s by %s at %s%s%s:\n%s%s\n\n",
+			r.ReplyID, authorName(r.author(), robot), stamp(r.CreateTime), edited(r), answering, render(r, robot), channelAttachments(r, postID, r.ReplyID))
 	}
-	if next != "" {
+	switch {
+	case next != "" && own:
 		fmt.Fprintf(&out, "More replies: call read_thread with cursor %q.", next)
-	} else if len(replies) > 0 {
+	case next != "":
+		fmt.Fprintf(&out, "More replies: call read_thread with post_id %q and cursor %q.", postID, next)
+	case len(replies) > 0:
 		out.WriteString("No more replies.")
 	}
 	b.mu.Lock()
@@ -235,17 +246,27 @@ func edited(c content) string {
 	return ""
 }
 
-// replyInChannel posts Markdown as a reply under the Chat Thread's post.
-func (b *Bridge) replyInChannel(ctx context.Context, th *thread, text string) (string, error) {
+// replyInChannel posts Markdown, with files and mentions, as a reply under
+// the Chat Thread's post.
+func (b *Bridge) replyInChannel(ctx context.Context, th *thread, text string, files []outgoing, mentions []string) (string, error) {
 	b.mu.Lock()
 	api, name := b.api, th.channel
 	b.mu.Unlock()
 	if api == nil {
 		return "", errNotConnected
 	}
-	id, err := api.sendReply(ctx, th.topicID, th.postID, text)
+	content, extra := channelContent(text, files, mentions)
+	if len(content) > maxMarkdownBytes {
+		return "", fmt.Errorf("text with its mentions and files is %d bytes; WeCom takes at most %d", len(content), maxMarkdownBytes)
+	}
+	ids, err := uploadAll(ctx, api.uploadStep, files)
+	if err != nil {
+		return "", err
+	}
+	attachMedia(extra, files, ids)
+	id, err := api.sendReply(ctx, th.topicID, th.postID, content, extra)
 	if err != nil {
 		return "", fmt.Errorf("not sent: %w", err)
 	}
-	return fmt.Sprintf("Replied under the post in the WeCom Channel %s (reply %s).", channelLabel(name, th.topicID), id), nil
+	return fmt.Sprintf("Replied under the post in the WeCom Channel %s (reply %s)%s.", channelLabel(name, th.topicID), id, withFiles(files)), nil
 }
