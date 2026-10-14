@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+
 	"github.com/kkkk2323/droi/apps/native/internal/chatbridge/fakewecom"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 )
@@ -68,8 +70,9 @@ func TestAnAtInAChannelPostStartsAChatSession(t *testing.T) {
 }
 
 // barrier sends a direct message and waits for it to reach the Daemon as
-// the nth message: the Chat Bridge handles WeCom's events in order, so
-// every event before it has been handled.
+// the nth message: the Chat Bridge admits or drops WeCom's events in order,
+// so every event before it has been admitted or dropped (the work of
+// another Chat Thread may still be running).
 func (r *rig) barrier(nth int) {
 	r.t.Helper()
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "barrier"})
@@ -120,11 +123,19 @@ func TestTwoPostsInAChannelAreTwoChatThreads(t *testing.T) {
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: first, From: "HuangJunXiang"})
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: second, From: "HuangJunXiang"})
 
+	// Each post's work runs on its own, so the two may start in either order.
 	a, b := r.initialized(1), r.initialized(2)
+	if a.Tags[0].Metadata["postId"] == second {
+		a, b = b, a
+	}
 	if a.SessionID == b.SessionID || a.Tags[0].Metadata["postId"] != first || b.Tags[0].Metadata["postId"] != second {
 		t.Errorf("Sessions %s %v and %s %v", a.SessionID, a.Tags, b.SessionID, b.Tags)
 	}
-	if m := r.message(2); m.SessionID != b.SessionID || !strings.Contains(m.Text, "Second subject") || !strings.Contains(m.Text, "read_thread") {
+	m := r.message(2)
+	if m.SessionID != b.SessionID {
+		m = r.message(1)
+	}
+	if m.SessionID != b.SessionID || !strings.Contains(m.Text, "Second subject") || !strings.Contains(m.Text, "read_thread") {
 		t.Errorf("second post's message %+v", m)
 	}
 	// Droid in the first post replies under the first post only.
@@ -379,5 +390,73 @@ func TestARefusedTokenIsAToolErrorThatNamesWeComsError(t *testing.T) {
 	text, isError := droid.call("reply", map[string]any{"text": "x"})
 	if !isError || !strings.Contains(text, "45009") || strings.Contains(text, "tok-") || strings.Contains(text, robot.Secret) {
 		t.Errorf("reply answered %q (error %v)", text, isError)
+	}
+}
+
+// postSession is a Chat Session a Chat Bridge started before, for a post in
+// the Channel 定时任务.
+func postSession(postID string) fakedaemon.SessionSpec {
+	return fakedaemon.SessionSpec{
+		Title: "Earlier post", Cwd: workspace,
+		Messages: []fakedaemon.Message{{Role: "user", Text: "Hi"}, {Role: "assistant", Text: "Hello"}},
+		Extra: map[string]any{"tags": []map[string]any{{"name": "droi.chat", "metadata": map[string]string{
+			"kind": "channel", "topicId": topic, "postId": postID, "channel": "定时任务",
+		}}}},
+	}
+}
+
+const postID = "CiBRTTB2WklcpFULg7ryAHp6OQbp9mYPGg479/C2LXiaZxAB"
+
+func TestAfterTheHostRestartsAPostContinuesItsChatSession(t *testing.T) {
+	r := startOn(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{postSession(postID)}}, nil, nil)
+	id := r.d.Sessions[0].SessionID
+	if post := r.channel("Any news?"); post != postID {
+		t.Fatalf("post %s", post)
+	}
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: postID, From: "HuangJunXiang"})
+
+	m := r.message(1)
+	if m.SessionID != id || !strings.Contains(m.Text, "Any news?") {
+		t.Errorf("message %+v; the post's Chat Session is %s", m, id)
+	}
+	if strings.Contains(m.Text, "read_thread") {
+		t.Errorf("a continued Chat Session got the first trigger's hint:\n%s", m.Text)
+	}
+	if l := r.loaded(1); l.SessionID != id {
+		t.Errorf("loaded %s", l.SessionID)
+	}
+	if n := r.count("daemon.initialize_session"); n != 0 {
+		t.Errorf("%d new Chat Sessions", n)
+	}
+	if text, isError := r.droid(r.loaded(1)).call("reply", map[string]any{"text": "Nothing new"}); isError {
+		t.Errorf("reply failed: %s", text)
+	}
+}
+
+func TestNewInAPostStartsAnotherChatSession(t *testing.T) {
+	r := start(t, nil)
+	post := r.channel("Look at the nightly job")
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	first := r.initialized(1)
+	r.message(1)
+
+	reply := r.w.AddReply(topic, post, fakewecom.Post{
+		From: "HuangJunXiang", Text: "${inline_mention:b}\u200b !new Try the weekly job", Mentions: []fakewecom.Mention{atRobot("b")},
+	})
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, ReplyID: reply, From: "HuangJunXiang"})
+
+	if id := r.archivedSession(1); id != first.SessionID {
+		t.Errorf("archived %s, the post's Chat Session is %s", id, first.SessionID)
+	}
+	second := r.initialized(2)
+	if second.SessionID == first.SessionID || second.Tags[0].Metadata["postId"] != post {
+		t.Errorf("new Chat Session %s %+v", second.SessionID, second.Tags)
+	}
+	m := r.message(2)
+	if m.SessionID != second.SessionID || !strings.Contains(m.Text, "Try the weekly job") || strings.Contains(m.Text, "!new") {
+		t.Errorf("first message of the new Chat Session %+v", m)
+	}
+	if !strings.Contains(m.Text, "read_thread") {
+		t.Errorf("the new Chat Session's first trigger has no read_thread hint:\n%s", m.Text)
 	}
 }

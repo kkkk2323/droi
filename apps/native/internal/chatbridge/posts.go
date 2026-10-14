@@ -48,26 +48,34 @@ func (b *Bridge) handleEvent(f frame) {
 	if !b.admit(e.MsgID, user) {
 		return
 	}
-	key := threadKindChannel + ":" + e.TopicID + ":" + at.PostID
 	b.mu.Lock()
-	th := b.threads[key]
+	th := b.threads[postThread(e.TopicID, at.PostID).key]
 	if th == nil {
-		th = &thread{key: key, kind: threadKindChannel, topicID: e.TopicID, postID: at.PostID}
-		b.threads[key] = th
+		th = postThread(e.TopicID, at.PostID)
+		b.threads[th.key] = th
 	}
+	b.mu.Unlock()
+	b.run(th, func() { b.atBot(th, e) })
+}
+
+// atBot sends a post's Chat Session the @ of the robot there, with its text.
+func (b *Bridge) atBot(th *thread, e event) {
+	at, user := e.Event.TopicAtBot, e.From.UserID
+	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+	defer cancel()
+	// After a restart the map knows the post's Chat Session only once
+	// rebuilt, which the hint depends on.
+	if err := b.ready(ctx); err != nil {
+		b.o.Log(err.Error())
+		return
+	}
+	b.mu.Lock()
 	first := th.sessionID == ""
 	api, name := b.api, th.channel
 	b.mu.Unlock()
 	if api == nil {
 		return
 	}
-	// Droid reads the text with read_thread when it gets to it.
-	if b.working(th) {
-		b.deliver(th, busyNotice(user, at.ReplyID))
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
-	defer cancel()
 	if name == "" {
 		var err error
 		if name, err = api.channelName(ctx, e.TopicID); err != nil {
@@ -90,10 +98,21 @@ func (b *Bridge) handleEvent(f frame) {
 		text = "[WeCom did not give the text: " + err.Error() + "]"
 	} else {
 		text = cut(render(c, b.robotID()))
-		if at.ReplyID != "" {
-			b.markRead(th, at.ReplyID)
-		}
 	}
+	if rest, ok := cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you")); ok {
+		if rest == "" {
+			rest = "[started a new Chat Session with !new, with no task yet]"
+		}
+		b.markSent(th, at.ReplyID, err)
+		b.startOver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, rest, true))
+		return
+	}
+	// Droid reads the text with read_thread when it gets to it.
+	if b.working(th) {
+		b.deliver(th, busyNotice(user, at.ReplyID))
+		return
+	}
+	b.markSent(th, at.ReplyID, err)
 	b.deliver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, text, first))
 }
 
@@ -242,6 +261,14 @@ func (b *Bridge) markRead(th *thread, replyIDs ...string) {
 	}
 	for _, id := range replyIDs {
 		th.read[id] = true
+	}
+}
+
+// markSent marks the reply an @ was in as read when its message carries
+// the reply's text, which it does unless WeCom did not give it (err).
+func (b *Bridge) markSent(th *thread, replyID string, err error) {
+	if replyID != "" && err == nil {
+		b.markRead(th, replyID)
 	}
 }
 

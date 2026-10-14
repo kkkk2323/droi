@@ -82,7 +82,7 @@ func (w *turns) wait(sessionID string, nth int) {
 }
 
 func TestAnAtWhileItsChatSessionWorksSendsANoticeWithoutTheText(t *testing.T) {
-	r := startTurn(t, working, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} }, nil)
+	r := startOn(t, fakedaemon.Scenario{Turn: working}, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} }, nil)
 	post := r.channel("Fix the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	p := r.initialized(1)
@@ -119,7 +119,7 @@ func TestAnAtWhileItsChatSessionWorksSendsANoticeWithoutTheText(t *testing.T) {
 }
 
 func TestADirectMessageWhileItsChatSessionWorksGoesIntoTheTurnInFull(t *testing.T) {
-	r := startTurn(t, working, nil, nil)
+	r := startOn(t, fakedaemon.Scenario{Turn: working}, nil, nil)
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Fix the nightly job"})
 	p := r.initialized(1)
 	if m := r.message(1); m.QueuePlacement != "" {
@@ -133,5 +133,24 @@ func TestADirectMessageWhileItsChatSessionWorksGoesIntoTheTurnInFull(t *testing.
 	}
 	if m.QueuePlacement != "end_of_turn" {
 		t.Errorf("the message is queued %q, not into the running turn", m.QueuePlacement)
+	}
+}
+
+func TestNewWhileItsChatSessionWorksStillStartsOver(t *testing.T) {
+	r := startOn(t, fakedaemon.Scenario{Turn: working}, nil, nil)
+	post := r.channel("Fix the nightly job")
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	first := r.initialized(1)
+	r.message(1)
+
+	reply := r.w.AddReply(topic, post, fakewecom.Post{
+		From: "HuangJunXiang", Text: "${inline_mention:b}\u200b !new look at build-7 instead", Mentions: []fakewecom.Mention{atRobot("b")},
+	})
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, ReplyID: reply, From: "HuangJunXiang"})
+
+	second := r.initialized(2)
+	m := r.message(2)
+	if second.SessionID == first.SessionID || m.SessionID != second.SessionID || !strings.Contains(m.Text, "look at build-7 instead") {
+		t.Errorf("!new while working sent %+v; the new Chat Session is %s", m, second.SessionID)
 	}
 }

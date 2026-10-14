@@ -36,6 +36,11 @@ func (e *WeComError) Error() string { return fmt.Sprintf("WeCom error %d: %s", e
 
 var errNotConnected = errors.New("not connected to WeCom")
 
+// takenOver is why the Chat Bridge gave up the robot: another connection
+// subscribed it, and WeCom keeps one per robot. The Chat Bridge does not
+// take it back, which would only take turns with the other.
+const takenOver = "another connection took over the robot, so the Chat Bridge stopped; Restart takes it back"
+
 // frame is a frame on the long connection. The server's answer to a frame
 // has no cmd, and errcode in place of a body.
 type frame struct {
@@ -81,8 +86,9 @@ type longConnection struct {
 	stop chan struct{}
 	done chan struct{}
 
-	mu   sync.Mutex
-	conn *websocket.Conn
+	mu    sync.Mutex
+	conn  *websocket.Conn
+	taken bool
 	// waiting are the answers awaited by req_id; several frames can share one
 	// req_id (replies to one callback), and their answers come in order.
 	waiting map[string][]chan frame
@@ -105,6 +111,13 @@ func (l *longConnection) run() {
 	for {
 		if l.connect() {
 			delay = l.delay
+		}
+		l.mu.Lock()
+		taken := l.taken
+		l.mu.Unlock()
+		if taken {
+			l.fail(takenOver)
+			return
 		}
 		select {
 		case <-l.stop:
@@ -174,7 +187,10 @@ func (l *longConnection) connect() bool {
 				}
 			}()
 		case err := <-dropped:
-			if ctx.Err() == nil {
+			l.mu.Lock()
+			taken := l.taken
+			l.mu.Unlock()
+			if ctx.Err() == nil && !taken {
 				l.fail("the WeCom connection dropped: " + err.Error())
 			}
 			return true
@@ -195,6 +211,16 @@ func (l *longConnection) receive(data []byte) {
 	if json.Unmarshal(data, &f) != nil {
 		return
 	}
+	if f.Cmd == "aibot_event_callback" && isDisconnectedEvent(f.Body) {
+		l.mu.Lock()
+		l.taken = true
+		c := l.conn
+		l.mu.Unlock()
+		if c != nil {
+			c.CloseNow()
+		}
+		return
+	}
 	if f.Cmd != "" {
 		l.onPush(f)
 		return
@@ -209,6 +235,15 @@ func (l *longConnection) receive(data []byte) {
 	if ch != nil {
 		ch <- f
 	}
+}
+
+func isDisconnectedEvent(body json.RawMessage) bool {
+	var b struct {
+		Event struct {
+			EventType string `json:"eventtype"`
+		} `json:"event"`
+	}
+	return json.Unmarshal(body, &b) == nil && b.Event.EventType == "disconnected_event"
 }
 
 // dropAnswers ends the calls still waiting on connection c.
