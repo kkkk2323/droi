@@ -79,9 +79,6 @@ func (a *App) openDraft(d *draftSession) {
 	}
 	p := protocol.InitializeSessionParams{Cwd: cwd, ToolExecutionMode: protocol.ToolExecutionMode(d.mode),
 		Tags: []protocol.SessionTag{{Name: sessions.DraftTag}}}
-	if a.cfg.SystemPrompt != nil {
-		p.SystemPrompt = a.cfg.SystemPrompt()
-	}
 	res, err := a.ctl.InitializeSession(a.ctx, p)
 	if err != nil {
 		return

@@ -8,8 +8,9 @@ for pixel where it can.
 It replaces the Electron app: same bundle identifier (`com.droi.app`), name
 and data folder (`~/Library/Application Support/Droi`), so the Shell
 settings, the Pairing Token and Memory carry over. The window talks to the
-Daemon directly through `packages/droid-sdk-go`; the Host supplies the
-credential and the System Prompt Addition the Gateway adds for other Clients.
+Daemon through its own Host's Gateway with `packages/droid-sdk-go`, as a Local
+Client with a token made at each launch; the Gateway supplies the credential and
+the System Prompt Addition, as it does for other Clients.
 
 How it performs next to the Electron app: [docs/performance.md](docs/performance.md). How
 it is released and updates itself: [docs/releases.md](docs/releases.md).

@@ -260,17 +260,6 @@ func TestScratchCreateTrashRestore(t *testing.T) {
 	}
 }
 
-func TestSystemPromptAddition(t *testing.T) {
-	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" }})
-	if h.SystemPrompt() != nil {
-		t.Fatal("no addition still sends a system prompt")
-	}
-	h.Settings.Update(func(s *Settings) { s.AppendSystemPrompt = OptString(" Be brief ") })
-	if got := string(h.SystemPrompt()); got != `{"append":"Be brief","preset":"droid","type":"preset"}` {
-		t.Fatal(got)
-	}
-}
-
 func TestSupervisorRestartsAfterCrash(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a shell")
