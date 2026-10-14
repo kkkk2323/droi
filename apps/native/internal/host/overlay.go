@@ -99,6 +99,8 @@ func ApproveChatServer(o map[string]any, approvedAt string) map[string]any {
 		}
 		return v
 	}
+	// droid drops the whole overlay when "mcp" has no mcpServers.
+	sub(sub(o, "mcp"), "mcpServers")
 	servers := sub(sub(sub(o, "mcp"), "persistentPermissions"), "servers")
 	servers[ChatServerName] = map[string]any{"approvedAt": approvedAt, "impactLevel": "high"}
 	sub(o, "mcpAutonomyOverrides")[ChatServerName] = map[string]any{"defaultLevel": "low"}

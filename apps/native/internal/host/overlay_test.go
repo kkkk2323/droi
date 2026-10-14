@@ -103,8 +103,10 @@ func TestTheRuntimeOverlayIsWrittenForTheUserOnly(t *testing.T) {
 }
 
 func TestTheRuntimeOverlayPreApprovesTheChatToolsWithoutServingThem(t *testing.T) {
+	// droid rejects an "mcp" block without mcpServers, and with it the whole
+	// overlay ("mcp" failed validation in droid 0.241.1).
 	want := `{
-		"mcp": {"persistentPermissions": {"servers": {"droi-chat": {"approvedAt": "2026-09-29T12:00:00.000Z", "impactLevel": "high"}}}},
+		"mcp": {"mcpServers": {}, "persistentPermissions": {"servers": {"droi-chat": {"approvedAt": "2026-09-29T12:00:00.000Z", "impactLevel": "high"}}}},
 		"mcpAutonomyOverrides": {"droi-chat": {"defaultLevel": "low"}}
 	}`
 	var w any
