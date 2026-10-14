@@ -159,6 +159,7 @@ func main() {
 		Remote:    remote,
 		Memory:    mem,
 
+		ChatBridge:        chat,
 		FactoryAppRunning: host.FactoryAppRunning,
 	})
 	if updater != nil {

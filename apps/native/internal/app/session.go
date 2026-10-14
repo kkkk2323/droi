@@ -562,6 +562,9 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 			hover := group.Hovered()
 			group.Children(func() {
 				k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
+				if sel != nil && sessions.IsChat(sel.Tags) {
+					k.Icon(c, "bot", 14, t.MutedForeground).Label(L("Chat Session")).Tooltip(L("Started from WeCom by the Chat Bridge"))
+				}
 				v.sessionActions(c, sel, title, workspace, hover)
 			})
 		})
