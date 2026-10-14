@@ -90,6 +90,7 @@ var apiHandlers = map[string]apiHandler{
 	"/upload_media_init":       httpsUpload((*WeCom).uploadInit),
 	"/upload_media_chunk":      httpsUpload((*WeCom).uploadChunk),
 	"/upload_media_finish":     httpsUpload((*WeCom).uploadFinish),
+	"/topic/post_emoji":        (*WeCom).postEmoji,
 }
 
 // SetClock makes now the Fake WeCom's clock, which get_token's time is

@@ -2,7 +2,8 @@
 // robot's long connection and its HTTPS API that the Chat Bridge's tests,
 // and the window's, run against. It speaks the frames the real server does
 // (aibot_subscribe, ping, aibot_msg_callback, aibot_event_callback, the
-// replies without a cmd) and, like the real server, refuses a handshake
+// replies without a cmd, the disconnected_event a connection gets when
+// another subscribes the robot) and, like the real server, refuses a handshake
 // whose Sec-WebSocket-* header names are not spelt WeCom's way. Its HTTPS
 // API (api.go) holds WeCom Channels with their posts and replies, searches
 // them (search.go), and serves and takes files and media (media.go).
@@ -79,6 +80,7 @@ type WeCom struct {
 	replies  map[string][]*Post
 	calls    []APICall
 	apiFail  map[string][]failure
+	emoji    map[string][]int
 
 	downloads map[string]download
 	uploads   map[string]*upload
@@ -235,8 +237,20 @@ func (w *WeCom) serve(rw http.ResponseWriter, r *http.Request) {
 			w.connections++
 			w.notify()
 			w.mu.Unlock()
-			// One live connection per robot: a new subscription ends the old one.
+			// One live connection per robot: a new subscription ends the old
+			// one, which first hears why.
 			if old != nil && old != c {
+				ev, _ := json.Marshal(map[string]any{
+					"cmd":     "aibot_event_callback",
+					"headers": map[string]string{"req_id": randomID()},
+					"body": map[string]any{
+						"msgid": randomID(), "aibotid": w.robot.BotID, "create_time": time.Now().Unix(),
+						"msgtype": "event", "event": map[string]string{"eventtype": "disconnected_event"},
+					},
+				})
+				wctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				_ = old.Write(wctx, websocket.MessageText, ev)
+				cancel()
 				old.CloseNow()
 			}
 		}
