@@ -83,7 +83,11 @@ func (b *Bridge) handleEvent(f frame) {
 	if err != nil {
 		text = "[WeCom did not give the text: " + err.Error() + "]"
 	} else {
-		text = cut(render(c, b.robotID()))
+		text = render(c, b.robotID())
+		if b.answerInThread(th, user, text) {
+			return
+		}
+		text = cut(text)
 	}
 	b.deliver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, text, first))
 }

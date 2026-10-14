@@ -61,8 +61,15 @@ func start(t *testing.T, edit func(*host.Settings)) *rig {
 
 func startWith(t *testing.T, edit func(*host.Settings), options func(*chatbridge.Options)) *rig {
 	t.Helper()
+	return startTurn(t, fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}}, edit, options)
+}
+
+// startTurn is startWith with the Fake Daemon answering every message with
+// turn.
+func startTurn(t *testing.T, turn fakedaemon.Turn, edit func(*host.Settings), options func(*chatbridge.Options)) *rig {
+	t.Helper()
 	d := fakedaemon.Start(t, fakedaemon.Scenario{
-		Turn:             &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}},
+		Turn:             &turn,
 		ValidDirectories: []string{workspace},
 	})
 	w := fakewecom.Start(t, robot)

@@ -65,6 +65,7 @@ type Bridge struct {
 	threads map[string]*thread
 	tokens  map[string]*thread
 	seen    recent
+	prompts promptBook
 }
 
 // State is how far the Chat Bridge is connected to WeCom.
@@ -147,6 +148,7 @@ func New(o Options) *Bridge {
 		threads: map[string]*thread{},
 		tokens:  map[string]*thread{},
 	}
+	b.ctl.Subscribe(b.promptEvent)
 	go b.work()
 	return b
 }
@@ -246,6 +248,12 @@ func (b *Bridge) Stop() {
 }
 
 func (b *Bridge) push(f frame) {
+	// A click is answered within WeCom's 5 s, whatever the events before it
+	// are waiting for.
+	if isCardClick(f) {
+		go b.answerClick(f)
+		return
+	}
 	select {
 	case b.pushes <- f:
 	case <-b.stop:
@@ -330,6 +338,9 @@ func (b *Bridge) handle(f frame) {
 	}
 	th.reqID, th.reqAt = f.Headers.ReqID, b.o.Now()
 	b.mu.Unlock()
+	if b.answerInThread(th, user, textOf(m)) {
+		return
+	}
 	b.deliver(th, directTrigger(user, textOf(m)))
 }
 
