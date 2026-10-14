@@ -14,6 +14,7 @@ import (
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/chatbridge"
 	"github.com/kkkk2323/droi/apps/native/internal/chatbridge/fakewecom"
@@ -49,7 +50,18 @@ type rig struct {
 	settings *host.SettingsStore
 	file     string
 	clock    *clock
+	options  chatbridge.Options
 	b        *chatbridge.Bridge
+}
+
+// restart stops the Chat Bridge and starts another on the same Daemon,
+// WeCom and settings, as the Host does when it restarts.
+func (r *rig) restart() {
+	r.t.Helper()
+	r.b.Stop()
+	r.b = chatbridge.New(r.options)
+	r.t.Cleanup(r.b.Stop)
+	r.b.Follow()
 }
 
 // start runs a Chat Bridge whose settings allow HuangJunXiang; edit changes
@@ -61,10 +73,18 @@ func start(t *testing.T, edit func(*host.Settings)) *rig {
 
 func startWith(t *testing.T, edit func(*host.Settings), options func(*chatbridge.Options)) *rig {
 	t.Helper()
-	d := fakedaemon.Start(t, fakedaemon.Scenario{
-		Turn:             &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}},
-		ValidDirectories: []string{workspace},
-	})
+	return startOn(t, fakedaemon.Scenario{}, edit, options)
+}
+
+// startOn runs a Chat Bridge on a Daemon with sc's Sessions and Turn; the
+// Turn is a short reply when sc has none.
+func startOn(t *testing.T, sc fakedaemon.Scenario, edit func(*host.Settings), options func(*chatbridge.Options)) *rig {
+	t.Helper()
+	if sc.Turn == nil {
+		sc.Turn = &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}}
+	}
+	sc.ValidDirectories = []string{workspace}
+	d := fakedaemon.Start(t, sc)
 	w := fakewecom.Start(t, robot)
 	file := filepath.Join(t.TempDir(), "settings.json")
 	st := host.OpenSettings(file, func(string) string { return "" })
@@ -95,7 +115,7 @@ func startWith(t *testing.T, edit func(*host.Settings), options func(*chatbridge
 	b := chatbridge.New(o)
 	t.Cleanup(b.Stop)
 	b.Follow()
-	return &rig{t: t, d: d, w: w, settings: st, file: file, clock: clk, b: b}
+	return &rig{t: t, d: d, w: w, settings: st, file: file, clock: clk, options: o, b: b}
 }
 
 // initialized is the nth daemon.initialize_session the Chat Bridge sent.
@@ -153,6 +173,56 @@ func (r *rig) message(nth int) message {
 	var m message
 	_ = json.Unmarshal(req.Params, &m)
 	return m
+}
+
+// loaded is the nth daemon.load_session the Chat Bridge sent.
+func (r *rig) loaded(nth int) initialized {
+	r.t.Helper()
+	req, err := r.d.WaitForRequest("daemon.load_session", nth)
+	if err != nil {
+		r.t.Fatalf("no Chat Session loaded: %v", err)
+	}
+	var p initialized
+	if err := json.Unmarshal(req.Params, &p); err != nil {
+		r.t.Fatal(err)
+	}
+	return p
+}
+
+// closed is the session closed by the nth daemon.close_session.
+func (r *rig) closed(nth int) string {
+	r.t.Helper()
+	req, err := r.d.WaitForRequest("daemon.close_session", nth)
+	if err != nil {
+		r.t.Fatalf("no Chat Session closed: %v", err)
+	}
+	var p struct {
+		SessionID string `json:"sessionId"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	return p.SessionID
+}
+
+// before reports whether the Daemon got the ith request of method a before
+// the jth of method b.
+func (r *rig) before(a string, i int, b string, j int) bool {
+	r.t.Helper()
+	reqs, err := r.d.Requests()
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	na, nb := 0, 0
+	for _, q := range reqs {
+		switch q.Method {
+		case a:
+			if na++; na == i {
+				return nb < j
+			}
+		case b:
+			nb++
+		}
+	}
+	return false
 }
 
 func (r *rig) count(method string) int {
@@ -495,4 +565,251 @@ func TestAnEmptyBotIDLeavesTheChatBridgeOff(t *testing.T) {
 	_ = r.settings.Update(func(s *host.Settings) { s.ChatBridge.BotID = "" })
 	r.b.Follow()
 	r.w.WaitForDisconnect()
+}
+
+func TestAfterTheHostRestartsAChatThreadContinuesItsChatSession(t *testing.T) {
+	r := start(t, nil)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "First"})
+	first := r.initialized(1)
+	before := r.droid(first)
+	r.message(1)
+
+	r.restart()
+	r.w.WaitForSubscription(2)
+	reqID := r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Second"})
+
+	if m := r.message(2); m.SessionID != first.SessionID || !strings.Contains(m.Text, "Second") {
+		t.Errorf("second message %+v; the Chat Session is %s", m, first.SessionID)
+	}
+	if n := r.count("daemon.initialize_session"); n != 1 {
+		t.Errorf("%d Chat Sessions", n)
+	}
+	l := r.loaded(1)
+	if l.SessionID != first.SessionID {
+		t.Errorf("loaded %s, the Chat Session is %s", l.SessionID, first.SessionID)
+	}
+	after := r.droid(l)
+	if after.token == before.token {
+		t.Error("the reloaded Chat Session kept the token of a Chat Bridge that stopped")
+	}
+	if text, isError := after.call("reply", map[string]any{"text": "Still here"}); isError {
+		t.Fatalf("reply failed: %s", text)
+	}
+	if f := r.w.WaitForFrame("aibot_respond_msg", 1); f.ReqID != reqID {
+		t.Errorf("reply on %s, the latest message is %s", f.ReqID, reqID)
+	}
+}
+
+// chatSession is a Chat Session a Chat Bridge started before, for the
+// direct message with user.
+func chatSession(user string) fakedaemon.SessionSpec {
+	return fakedaemon.SessionSpec{
+		Title: "Earlier chat", Cwd: workspace,
+		Messages: []fakedaemon.Message{{Role: "user", Text: "Hi"}, {Role: "assistant", Text: "Hello"}},
+		Extra:    map[string]any{"tags": []map[string]any{{"name": "droi.chat", "metadata": map[string]string{"kind": "direct", "userId": user}}}},
+	}
+}
+
+func TestAnIdleChatSessionIsClosedAndTheNextMessageLoadsIt(t *testing.T) {
+	r := startOn(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{chatSession("HuangJunXiang")}}, nil,
+		func(o *chatbridge.Options) { o.IdleTimeout = 100 * time.Millisecond })
+	id := r.d.Sessions[0].SessionID
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "First"})
+	if m := r.message(1); m.SessionID != id {
+		t.Fatalf("first message to %s, the Chat Session is %s", m.SessionID, id)
+	}
+	if closed := r.closed(1); closed != id {
+		t.Fatalf("closed %s, the Chat Session is %s", closed, id)
+	}
+
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Second"})
+	if m := r.message(2); m.SessionID != id || !strings.Contains(m.Text, "Second") {
+		t.Errorf("second message %+v; the Chat Session is %s", m, id)
+	}
+	l := r.loaded(2)
+	if l.SessionID != id || !r.before("daemon.load_session", 2, "daemon.add_user_message", 2) {
+		t.Errorf("loaded %s again, before the message: %v", l.SessionID, r.before("daemon.load_session", 2, "daemon.add_user_message", 2))
+	}
+	if text, isError := r.droid(l).call("reply", map[string]any{"text": "Back"}); isError {
+		t.Errorf("reply failed: %s", text)
+	}
+	if old := r.droid(r.loaded(1)); old.token == r.droid(l).token {
+		t.Error("the Chat Session was loaded again with the same token")
+	} else if status, _ := old.rpc(old.token, "tools/call", map[string]any{"name": "reply", "arguments": map[string]any{"text": "stale"}}); status != http.StatusUnauthorized {
+		t.Errorf("the token of the closed load: HTTP %d", status)
+	}
+	// The turn ran and ended: the Chat Session is closed again.
+	if closed := r.closed(2); closed != id {
+		t.Errorf("closed %s, the Chat Session is %s", closed, id)
+	}
+	if n := r.count("daemon.initialize_session"); n != 0 {
+		t.Errorf("%d new Chat Sessions", n)
+	}
+}
+
+// client is another Client of the Daemon, such as the window.
+func (r *rig) client() *droid.Client {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, err := droid.Dial(ctx, droid.Options{URL: r.d.URL, Credential: &droid.Credential{APIKey: "fk-test"}})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+func TestAChatSessionArchivedInAClientEndsItsLink(t *testing.T) {
+	r := start(t, nil)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "First"})
+	first := r.initialized(1)
+	r.message(1)
+
+	force := true
+	if _, err := r.client().ArchiveSession(context.Background(), protocol.ArchiveSessionParams{SessionID: first.SessionID, Force: &force}); err != nil {
+		t.Fatal(err)
+	}
+	// The Chat Bridge lets the archived Chat Session go.
+	if id := r.closed(1); id != first.SessionID {
+		t.Fatalf("closed %s, the archived Chat Session is %s", id, first.SessionID)
+	}
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Second"})
+
+	second := r.initialized(2)
+	if second.SessionID == first.SessionID || second.Tags[0].Metadata["userId"] != "HuangJunXiang" {
+		t.Errorf("new Chat Session %s with %+v; the archived one is %s", second.SessionID, second.Tags, first.SessionID)
+	}
+	m := r.message(2)
+	if m.SessionID != second.SessionID || !strings.Contains(m.Text, "Second") || !strings.Contains(m.Text, "archived") {
+		t.Errorf("first message of the new Chat Session %+v", m)
+	}
+	if status, _ := r.droid(first).rpc(r.droid(first).token, "tools/call", map[string]any{"name": "reply", "arguments": map[string]any{"text": "late"}}); status != http.StatusUnauthorized {
+		t.Errorf("the archived Chat Session's token: HTTP %d", status)
+	}
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Third"})
+	if m := r.message(3); m.SessionID != second.SessionID || strings.Contains(m.Text, "archived") {
+		t.Errorf("third message %+v", m)
+	}
+}
+
+func TestAChatSessionArchivedWhileTheHostWasDownIsNotContinued(t *testing.T) {
+	archived := chatSession("HuangJunXiang")
+	archived.Extra["archivedAt"] = "2026-10-13T08:00:00.000Z"
+	r := startOn(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{archived}}, nil, nil)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Hello again"})
+
+	p := r.initialized(1)
+	if m := r.message(1); m.SessionID != p.SessionID || !strings.Contains(m.Text, "archived") || !strings.Contains(m.Text, "Hello again") {
+		t.Errorf("first message %+v to %s", m, p.SessionID)
+	}
+	if n := r.count("daemon.load_session"); n != 0 {
+		t.Errorf("%d loads of an archived Chat Session", n)
+	}
+}
+
+// archivedSession is the session archived by the nth daemon.archive_session.
+func (r *rig) archivedSession(nth int) string {
+	r.t.Helper()
+	req, err := r.d.WaitForRequest("daemon.archive_session", nth)
+	if err != nil {
+		r.t.Fatalf("no Chat Session archived: %v", err)
+	}
+	var p struct {
+		SessionID string `json:"sessionId"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	return p.SessionID
+}
+
+func TestNewArchivesTheChatSessionAndStartsAnother(t *testing.T) {
+	r := start(t, nil)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "First"})
+	first := r.initialized(1)
+	r.message(1)
+
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "!new Fix the build"})
+	if id := r.archivedSession(1); id != first.SessionID {
+		t.Errorf("archived %s, the Chat Session is %s", id, first.SessionID)
+	}
+	second := r.initialized(2)
+	m := r.message(2)
+	if m.SessionID != second.SessionID || second.SessionID == first.SessionID {
+		t.Errorf("message to %s; Chat Sessions %s then %s", m.SessionID, first.SessionID, second.SessionID)
+	}
+	if !strings.Contains(m.Text, "Fix the build") || strings.Contains(m.Text, "!new") || strings.Contains(m.Text, "archived") {
+		t.Errorf("first message of the new Chat Session:\n%s", m.Text)
+	}
+
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "!new"})
+	if id := r.archivedSession(2); id != second.SessionID {
+		t.Errorf("archived %s, the Chat Session is %s", id, second.SessionID)
+	}
+	third := r.initialized(3)
+	if m := r.message(3); m.SessionID != third.SessionID || strings.Contains(m.Text, "Fix the build") {
+		t.Errorf("message %+v; the Chat Session is %s", m, third.SessionID)
+	}
+
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Next"})
+	if m := r.message(4); m.SessionID != third.SessionID || strings.Contains(m.Text, "archived") {
+		t.Errorf("message %+v; the Chat Session is %s", m, third.SessionID)
+	}
+	if n := r.count("daemon.initialize_session"); n != 3 {
+		t.Errorf("%d Chat Sessions", n)
+	}
+}
+
+func TestTwoChatThreadsRunAsTwoChatSessionsAtOnce(t *testing.T) {
+	r := startOn(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"long", " answer"}, DelayMs: 1000}},
+		func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} },
+		func(o *chatbridge.Options) { o.IdleTimeout = 50 * time.Millisecond })
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "A long task"})
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "LiLei", Text: "A quick question"})
+
+	first, second := r.message(1), r.message(2)
+	if first.SessionID == second.SessionID {
+		t.Fatalf("both messages went to %s", first.SessionID)
+	}
+	// Both turns run for 2 s: no Chat Session is idle yet.
+	time.Sleep(500 * time.Millisecond)
+	if n := r.count("daemon.close_session"); n != 0 {
+		t.Errorf("%d Chat Sessions closed before the turns ended", n)
+	}
+	closed := map[string]bool{r.closed(1): true, r.closed(2): true}
+	if !closed[first.SessionID] || !closed[second.SessionID] {
+		t.Errorf("closed %v after the turns", closed)
+	}
+}
+
+func TestADaemonRestartKeepsAChatThreadsLink(t *testing.T) {
+	r := start(t, nil)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "First"})
+	p := r.initialized(1)
+	r.message(1)
+
+	if err := r.d.GoDown(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.d.ComeBack(); err != nil {
+		t.Fatal(err)
+	}
+	reqID := r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Second"})
+
+	if m := r.message(2); m.SessionID != p.SessionID || !strings.Contains(m.Text, "Second") {
+		t.Errorf("second message %+v; the Chat Session is %s", m, p.SessionID)
+	}
+	if n := r.count("daemon.initialize_session"); n != 1 {
+		t.Errorf("%d Chat Sessions", n)
+	}
+	// The Chat Session was loaded on the new connection with droi-chat.
+	l := r.loaded(1)
+	if l.SessionID != p.SessionID {
+		t.Errorf("loaded %s, the Chat Session is %s", l.SessionID, p.SessionID)
+	}
+	if text, isError := r.droid(l).call("reply", map[string]any{"text": "Still here"}); isError {
+		t.Fatalf("reply failed: %s", text)
+	}
+	if f := r.w.WaitForFrame("aibot_respond_msg", 1); f.ReqID != reqID {
+		t.Errorf("reply on %s, the latest message is %s", f.ReqID, reqID)
+	}
 }
