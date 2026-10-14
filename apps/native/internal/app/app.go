@@ -48,9 +48,8 @@ type Route struct {
 // Config is what the window needs from main: a Controller to the Daemon,
 // the preferences file and the System Prompt Addition for new Sessions.
 type Config struct {
-	Controller   *controller.Controller
-	Prefs        *prefs.Store
-	SystemPrompt func() []byte
+	Controller *controller.Controller
+	Prefs      *prefs.Store
 	// Invalidate asks the window for a frame after state changed on
 	// another goroutine; Update runs fn on the main thread and draws.
 	Update func(fn func())

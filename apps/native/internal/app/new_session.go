@@ -634,9 +634,6 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 			return
 		}
 		p.Tags = tags
-		if a.cfg.SystemPrompt != nil {
-			p.SystemPrompt = a.cfg.SystemPrompt()
-		}
 		res, err := a.ctl.InitializeSession(a.ctx, p)
 		if err != nil {
 			fail(err.Error())

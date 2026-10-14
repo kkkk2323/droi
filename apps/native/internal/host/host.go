@@ -430,18 +430,6 @@ func (h *Host) HasCredential() bool {
 	return h.LoginState().Status == SignedIn || h.Settings.APIKey() != ""
 }
 
-// SystemPrompt is the Daemon's {type: "preset", preset: "droid", append}
-// form of the System Prompt Addition, nil for none: it goes into every
-// daemon.initialize_session the window makes.
-func (h *Host) SystemPrompt() json.RawMessage {
-	add := deref(h.Settings.Get().AppendSystemPrompt)
-	if add == "" {
-		return nil
-	}
-	b, _ := json.Marshal(map[string]string{"type": "preset", "preset": "droid", "append": add})
-	return b
-}
-
 // WaitForDaemonURL blocks until the Daemon runs, or ctx ends.
 func (h *Host) WaitForDaemonURL(ctx context.Context) (string, error) {
 	for {

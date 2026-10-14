@@ -1,6 +1,6 @@
 // Command native is Droi as a native app: the Host starts the Daemon and
 // supplies the credential, and one MyGo window draws the Client (package
-// app) and talks to the Daemon directly through the Go SDK.
+// app) and reaches the Daemon through the Host's own Gateway with the Go SDK.
 package main
 
 import (
@@ -18,6 +18,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/app"
+	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
@@ -65,9 +66,14 @@ func main() {
 		Env:         os.Getenv,
 		Executable:  executable(),
 	})
+	localToken := gateway.NewLocalToken()
+	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem)
+	if gwErr != nil {
+		log.Println("droi: gateway:", gwErr)
+	}
 	ctl := controller.New(controller.Config{
-		ResolveURL: h.WaitForDaemonURL,
-		Credential: h.Credential,
+		ResolveURL: gatewayURL(gw, gwErr, localToken, h.WaitForDaemonURL),
+		Credential: gateway.PlaceholderCredential,
 		Caller:     "droi-native",
 		// The Daemon restarts on its own (the Host's Supervisor); keep trying.
 		MaxReconnectAttempts: 1000,
@@ -92,7 +98,6 @@ func main() {
 			win.Update(fn)
 		}
 	}
-	gw := startGateway(h, version, mygo.Shell.TrashItem)
 	mem := startMemory(h, home, func() { update(func() {}) })
 	var remote app.Remote
 	if gw != nil {
@@ -102,7 +107,6 @@ func main() {
 	a := app.New(app.Config{
 		Controller:   ctl,
 		Prefs:        prefs.Open(filepath.Join(userData, "preferences.json")),
-		SystemPrompt: func() []byte { return h.SystemPrompt() },
 		Update:       update,
 		InsetTop:     mac,
 		FactoryHome:  h.SharedFactoryHome(),

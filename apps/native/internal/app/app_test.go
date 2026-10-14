@@ -18,6 +18,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/theme"
@@ -31,13 +32,18 @@ const refW, refH = 1024, 640
 type harness struct {
 	t   *testing.T
 	d   *fakedaemon.Daemon
+	gw  *gateway.Gateway
 	ctl *controller.Controller
 	a   *App
 	tt  *ui.Tester
 
-	mu    sync.Mutex
-	queue []func()
+	mu       sync.Mutex
+	queue    []func()
+	addition string
 }
+
+// harnessCredential is the Factory credential the harness's Gateway holds.
+const harnessCredential = "fk-test"
 
 func newHarness(t *testing.T, sc fakedaemon.Scenario, themeName string) *harness {
 	t.Helper()
@@ -47,15 +53,42 @@ func newHarness(t *testing.T, sc fakedaemon.Scenario, themeName string) *harness
 // newHarnessWith is newHarness with the app's Config changed by with.
 func newHarnessWith(t *testing.T, sc fakedaemon.Scenario, themeName string, with func(*Config)) *harness {
 	t.Helper()
+	return startHarness(t, sc, themeName, "", with)
+}
+
+// startHarness is newHarnessWith with the System Prompt Addition the
+// harness's Gateway holds, which the window's first draft already needs.
+func startHarness(t *testing.T, sc fakedaemon.Scenario, themeName, addition string, with func(*Config)) *harness {
+	t.Helper()
 	theme.RegisterFonts()
 	d := fakedaemon.Start(t, sc)
+	h := &harness{t: t, d: d, addition: addition}
+	localToken := gateway.NewLocalToken()
+	gw, err := gateway.Start(gateway.Options{
+		DaemonURL:    func() string { return d.URL },
+		PairingToken: func() string { return "pairing-token" },
+		LocalToken:   func() string { return localToken },
+		Credential: func(context.Context) (*droid.Credential, error) {
+			return &droid.Credential{APIKey: harnessCredential}, nil
+		},
+		AppendSystemPrompt: func() string {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.addition
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { gw.Close() })
 	ctl := controller.New(controller.Config{
-		URL:                 d.URL,
-		Credential:          func(context.Context) (*droid.Credential, error) { return &droid.Credential{APIKey: "fk-test"}, nil },
-		DefaultMessageLimit: LoadedMessageLimit,
+		URL:                  gw.DaemonSocketURL(localToken),
+		Credential:           gateway.PlaceholderCredential,
+		DefaultMessageLimit:  LoadedMessageLimit,
+		MaxReconnectAttempts: 1000,
 	})
 	t.Cleanup(func() { ctl.Close() })
-	h := &harness{t: t, d: d, ctl: ctl}
+	h.gw, h.ctl = gw, ctl
 	p := prefs.Memory()
 	if themeName != "" {
 		prefs.Theme.Set(p, themeName)
