@@ -103,3 +103,51 @@ func TestTheRuntimeOverlayIsWrittenForTheUserOnly(t *testing.T) {
 		t.Errorf("mode %v", st.Mode().Perm())
 	}
 }
+
+func TestTheRuntimeOverlayPreApprovesTheChatToolsWithoutServingThem(t *testing.T) {
+	// droid rejects an "mcp" block without mcpServers, and with it the whole
+	// overlay ("mcp" failed validation in droid 0.241.1).
+	want := `{
+		"mcp": {"mcpServers": {}, "persistentPermissions": {"servers": {"droi-chat": {"approvedAt": "2026-09-29T12:00:00.000Z", "impactLevel": "high"}}}},
+		"mcpAutonomyOverrides": {"droi-chat": {"defaultLevel": "low"}}
+	}`
+	var w any
+	if err := json.Unmarshal([]byte(want), &w); err != nil {
+		t.Fatal(err)
+	}
+	if got := roundTrip(t, ApproveChatServer(map[string]any{}, attachment.ApprovedAt)); !reflect.DeepEqual(got, w) {
+		t.Errorf("overlay\n got %v\nwant %v", got, w)
+	}
+
+	o := roundTrip(t, ApproveChatServer(BuildRuntimeOverlay(attachment), attachment.ApprovedAt)).(map[string]any)
+	mcp := o["mcp"].(map[string]any)
+	servers := mcp["mcpServers"].(map[string]any)
+	if _, ok := servers[ChatServerName]; ok || servers[MemoryServerName] == nil {
+		t.Errorf("mcpServers %v: only Chat Sessions get droi-chat", servers)
+	}
+	approved := mcp["persistentPermissions"].(map[string]any)["servers"].(map[string]any)
+	overrides := o["mcpAutonomyOverrides"].(map[string]any)
+	for _, name := range []string{MemoryServerName, ChatServerName} {
+		if approved[name] == nil || overrides[name] == nil {
+			t.Errorf("%s is not pre-approved: %v %v", name, approved, overrides)
+		}
+	}
+}
+
+func TestTheDaemonGetsTheOverlayWhenTheChatBridgeIsOnAndMemoryOff(t *testing.T) {
+	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" }})
+	if p := h.runtimeOverlay(); p != "" {
+		t.Fatalf("an overlay with Memory and the Chat Bridge off: %s", p)
+	}
+	_ = h.Settings.Update(func(s *Settings) { s.ChatBridge.BotID = "aib-test" })
+	p := h.runtimeOverlay()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("no overlay: %v", err)
+	}
+	var o map[string]any
+	_ = json.Unmarshal(b, &o)
+	if o["mcpAutonomyOverrides"].(map[string]any)[ChatServerName] == nil || o["hooks"] != nil {
+		t.Errorf("overlay %s", b)
+	}
+}

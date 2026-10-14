@@ -86,12 +86,94 @@ and run `systemctl enable --now droi-host`.
 `~/.config/droi/settings.json` (`jq 'del(.pairingToken)' settings.json` does it), and start
 it: it makes a new token, prints the new link and every phone paired before has to pair again.
 
+**Turn on the Chat Bridge.** To answer a WeCom robot from this computer (see
+[Chat Bridge](#chat-bridge-droid-in-wecom)), stop the Host, add a `chatBridge` block to
+`~/.config/droi/settings.json` and start it again; it reads the block only at start:
+
+```json
+"chatBridge": {
+  "botId": "aib...",
+  "secret": "...",
+  "workspace": "/home/me/src/acme",
+  "allowedUsers": ["zhangsan"],
+  "autonomyLevel": "low",
+  "model": ""
+}
+```
+
+`botId` and `secret` are the robot's; an empty `botId` leaves the Chat Bridge off. `workspace` is
+the one folder every Chat Session runs in. `allowedUsers` are the WeCom user ids that may talk
+to the robot. `autonomyLevel` is `off`, `low` (the default when empty), `medium` or `high`, and
+an empty `model` uses the Session Defaults. The Host adds `refusedUsers` itself: the ids of
+senders it turned away, newest last, so you can move one to `allowedUsers` and restart. The
+settings file is mode 0600, which keeps the Secret yours. The log says `[chat] connected to
+WeCom`, or why not.
+
 **Keep it on a private network.** The Gateway listens on every network interface of the
 computer and speaks plain HTTP, so a Pairing Token is the only protection. Reach the Host over a
 private network such as [Tailscale](https://tailscale.com), and do not expose its port to the
 internet. The link names the computer's first LAN address; to have it name another, for
 instance the Tailscale machine name, set `"pairingHost": "my-box"` in `settings.json` and
 restart.
+
+## Chat Bridge: Droid in WeCom
+
+The Chat Bridge (ADR 0020) connects one WeCom (企业微信) smart robot to this computer's Host. When
+someone @s the robot in a post of a WeCom Channel (频道), or writes to it in a direct message,
+the Host runs what they ask as a Chat Session in one fixed Workspace, and Droid answers there
+with the `droi-chat` tools: it reads the post and its replies, searches the Channel, downloads
+attachments, replies with files and @s, and reacts with an emoji. Each post is its own Chat
+Thread, and so is each person's direct message; `!new` (in a post, `@robot !new`) starts the
+Chat Thread over. A permission request becomes a card with a button per option in a direct
+message, and a numbered reply in a post, answered with `@robot <number>`; the first answer
+wins, in WeCom or in any Client. Chat Sessions show in the Session list with a robot mark. The
+robot uses WeCom's long connection, so the computer needs no public address.
+
+**Create the robot.** In WeCom, open 工作台 → 智能机器人 → 新建机器人 (an administrator may have to
+allow it in the admin console). On the robot's edit page switch to **API 模式** (API mode) and
+choose **长连接** (long connection), not URL 回调. The robot's details page then shows its
+**Bot ID** and **Secret**; copy both and keep the Secret private.
+
+**Add it to a WeCom Channel.** Open the Channel (Channels need WeCom 5.0.12 or later; the
+feature is still in gray release) and add the robot from the robots listed under its name. A robot the Channel's
+creator adds gets 可获取所有内容，主动发送内容 (read everything, post on its own); one anyone else
+adds can read and answer only what @s it. Give it the full permission (the Channel's creator
+can change it in the Channel's robot settings): the Chat Bridge reads the whole post and its
+replies and searches the Channel. In a direct message no setting is needed: find the robot
+(its profile card has 发消息) and write to it.
+
+**Set it up in Droi.** Settings → Chat Bridge: enter the Bot ID, the Secret and the Workspace
+and Save. Turning it on asks to restart the Daemon once, which pre-approves the `droi-chat` tools so
+their calls raise no Prompt. The page shows Connected, or WeCom's reason when it is not (a
+wrong Secret shows WeCom's error 853000). Choose the Autonomy level (Autonomy 低 by default)
+and the model Chat Sessions run with. On `droi host`, put the same settings in its settings
+file (see [droi host on Linux](#droi-host-on-linux)). One robot keeps one long connection: a
+second Host with the same robot takes it over, and the first one stops and says so.
+
+**Who may talk to it.** Only the WeCom user ids on the allowlist start a Chat Session or answer
+a Prompt; everyone else is ignored. WeCom gives a user's id in plain text (such as
+`ZhangSan`) only when a super administrator created the robot; otherwise each company
+sees an encrypted id. Rather than looking it up, have the person write to the robot once: their
+id appears under Refused senders on the Chat Bridge page, and Allow moves it to the allowlist
+(on `droi host`, move it from `refusedUsers` to `allowedUsers` and restart).
+
+**Live test.** `TestLiveChatBridge` (`internal/chatbridge/live_test.go`) runs the Chat Bridge
+against a real robot and a real Daemon through droid-proxy, and waits for a person: an @ of
+the robot in a new post of the Channel `WECOM_CHANNEL` (default 定时任务) and then a direct
+message, each asking for something that needs a permission request (such as running
+`mkdir x` with Execute), answered in WeCom with `@robot 1` and with a card button. Its log
+says what to do at each step. It is skipped unless `WECOM_BOT_ID`, `WECOM_SECRET` and
+`FACTORY_API_KEY` are set; `WECOM_ALLOWED_USERS` (default: the Channel's creator),
+`DROI_LIVE_WAIT` (10 minutes per step) and `DROI_LIVE_MODEL` are optional. It then records what
+WeCom's docs leave open (token errors, emoji, file chunks and downloads, search) in its log,
+and posts a few messages marked as a test.
+
+```sh
+export WECOM_BOT_ID=aib... WECOM_SECRET=...   # a test robot's
+PATH=$HOME/.local/bin:$PATH FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) \
+  FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') \
+  go test ./apps/native/internal/chatbridge -run TestLiveChatBridge -v -count=1 -timeout 60m
+```
 
 ## Following another computer
 

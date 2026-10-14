@@ -168,18 +168,28 @@ func (h *Host) ScratchFolder() string {
 // 0010), the Electron Shell's folder.
 func (h *Host) MemoryDir() string { return filepath.Join(h.cfg.UserData, "memory") }
 
-// runtimeOverlay writes the Runtime Overlay when Memory is on and answers
-// its path; "" starts the Daemon without one, and so without Memory.
+// runtimeOverlay writes the Runtime Overlay when Memory or the Chat Bridge
+// is on and answers its path; "" starts the Daemon without one: without
+// Memory and without the droi-chat tools' pre-approval.
 func (h *Host) runtimeOverlay() string {
-	if !h.Settings.Get().MemoryEnabled || h.cfg.Executable == "" {
+	s := h.Settings.Get()
+	memory := s.MemoryEnabled && h.cfg.Executable != ""
+	if !memory && !s.ChatBridge.On() {
 		return ""
 	}
 	path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
-	o := BuildRuntimeOverlay(MemoryAttachment{
-		Executable: h.cfg.Executable,
-		MemoryDir:  h.MemoryDir(),
-		ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-	})
+	approvedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	o := map[string]any{}
+	if memory {
+		o = BuildRuntimeOverlay(MemoryAttachment{
+			Executable: h.cfg.Executable,
+			MemoryDir:  h.MemoryDir(),
+			ApprovedAt: approvedAt,
+		})
+	}
+	if s.ChatBridge.On() {
+		o = ApproveChatServer(o, approvedAt)
+	}
 	if err := WriteRuntimeOverlay(path, o); err != nil {
 		return ""
 	}

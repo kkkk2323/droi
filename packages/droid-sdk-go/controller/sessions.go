@@ -127,10 +127,12 @@ func spawnToken(cred *droid.Credential) string {
 }
 
 // stash keeps the spawn options of a load for the next one, as the TS SDK's
-// DaemonLoadSessionSpawnOptions.
+// DaemonLoadSessionSpawnOptions, and the Session's own MCP servers, which the
+// Daemon does not keep.
 func stash(p protocol.LoadSessionParams) protocol.LoadSessionParams {
 	return protocol.LoadSessionParams{
 		SessionID:                p.SessionID,
+		MCPServers:               p.MCPServers,
 		DisableInactivityTimeout: p.DisableInactivityTimeout,
 		DisableBuiltinSkills:     p.DisableBuiltinSkills,
 		SkipPermissionsUnsafe:    p.SkipPermissionsUnsafe,
@@ -141,6 +143,9 @@ func stash(p protocol.LoadSessionParams) protocol.LoadSessionParams {
 }
 
 func withStashed(p, s protocol.LoadSessionParams) protocol.LoadSessionParams {
+	if p.MCPServers == nil {
+		p.MCPServers = s.MCPServers
+	}
 	if p.DisableInactivityTimeout == nil {
 		p.DisableInactivityTimeout = s.DisableInactivityTimeout
 	}
@@ -319,6 +324,7 @@ func (c *Controller) InitializeSession(ctx context.Context, p protocol.Initializ
 	}
 	t.params = stash(protocol.LoadSessionParams{
 		SessionID:                sessionID,
+		MCPServers:               p.MCPServers,
 		DisableInactivityTimeout: p.DisableInactivityTimeout,
 		DisableBuiltinSkills:     p.DisableBuiltinSkills,
 		RuntimeSettingsPath:      p.RuntimeSettingsPath,

@@ -156,3 +156,21 @@ _Avoid_: branch (on its own), sandbox, checkout
 **Prompt**:
 A question the Daemon asks the human mid-turn: a permission request for a tool call, or an ask-user questionnaire. The Daemon sends it to every Client attached to the Session; the first answer wins and the Daemon then tells every Client the Prompt is resolved.
 _Avoid_: confirmation, approval dialog, permission request (when the ask-user case is included)
+
+### Chat
+
+**Chat Bridge**:
+The part of the Host that connects one WeCom smart robot to the Daemon: people talk to the robot in WeCom, and the Chat Bridge runs what they ask as Chat Sessions. It is off until its settings name a robot.
+_Avoid_: bot, integration, connector, plugin, channel (a WeCom Channel is something else)
+
+**Chat Thread**:
+One place in WeCom where people talk to the robot about one thing: a post in a WeCom Channel, or a direct message with the robot. It is WeCom's, not the Daemon's; a Chat Thread has one Chat Session at a time.
+_Avoid_: thread or chat (on its own), conversation, topic
+
+**Chat Session**:
+A Session the Chat Bridge started for a Chat Thread. Clients list it with the other Sessions and mark it. Droid reaches its Chat Thread only through the tools the Chat Bridge gives the Session: what it writes otherwise stays in the transcript.
+_Avoid_: bot session, WeCom session
+
+**WeCom Channel**:
+WeCom's 频道: a space where members discuss one subject in posts and replies, which a smart robot can be added to. Its posts are Chat Threads.
+_Avoid_: channel (on its own), topic (WeCom's API name for it)

@@ -2,6 +2,7 @@ package controller_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -265,6 +266,50 @@ func TestACallLoadsASessionTheDaemonCleanedUp(t *testing.T) {
 	}
 	if _, err := d.WaitForRequest(protocol.MethodLoadSession, 2); err != nil {
 		t.Fatalf("the Session was not loaded again: %v", err)
+	}
+	r.wait(t, next, "turn end", turnEnded)
+}
+
+// A Session's own MCP servers, such as a loopback one serving in-process
+// tools, are part of its spawn options: a load after the Daemon cleaned up
+// its worker passes them again.
+func TestALoadAgainKeepsTheSessionsMCPServers(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{
+		Turn:             &fakedaemon.Turn{Kind: "reply", Deltas: []string{"awake"}},
+		ValidDirectories: []string{"/Users/dev/acme-web"},
+	})
+	c, r := start(t, d, controller.Config{})
+	ctx := context.Background()
+	server := json.RawMessage(`{"type":"http","name":"tools","url":"http://127.0.0.1:1/mcp"}`)
+	init, err := c.InitializeSession(ctx, protocol.InitializeSessionParams{Cwd: "/Users/dev/acme-web", MCPServers: []json.RawMessage{server}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := init.SessionID
+	if err := d.Notify(id, map[string]any{"type": "session_inactivity", "message": "Session cleaned up after inactivity", "timestamp": 1, "timeoutSeconds": 1800}); err != nil {
+		t.Fatal(err)
+	}
+	_, next := r.wait(t, 0, "the inactivity", func(e controller.Event) bool {
+		n, ok := e.(controller.SessionNotification)
+		if !ok {
+			return false
+		}
+		_, ok = n.Value.(*protocol.SessionInactivityNotification)
+		return ok
+	})
+	if _, err := c.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: "Still there?"}); err != nil {
+		t.Fatal(err)
+	}
+	load, err := d.WaitForRequest(protocol.MethodLoadSession, 1)
+	if err != nil {
+		t.Fatalf("the Session was not loaded again: %v", err)
+	}
+	var p struct {
+		MCPServers []json.RawMessage `json:"mcpServers"`
+	}
+	_ = json.Unmarshal(load.Params, &p)
+	if len(p.MCPServers) != 1 || string(p.MCPServers[0]) != string(server) {
+		t.Errorf("load_session %s", load.Params)
 	}
 	r.wait(t, next, "turn end", turnEnded)
 }
