@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"testing"
 
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
@@ -22,9 +22,10 @@ import (
 // of a Fake Daemon of its own, with its own Scratch folder and System Prompt
 // Addition.
 type otherComputer struct {
-	d       *fakedaemon.Daemon
-	gw      *gateway.Gateway
-	scratch string
+	d        *fakedaemon.Daemon
+	gw       *gateway.Gateway
+	scratch  string
+	name, id string
 }
 
 const otherToken = "other-pairing-token"
@@ -58,12 +59,20 @@ func startOtherComputerWith(t *testing.T, sc fakedaemon.Scenario, addition strin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { gw.Close() })
-	o.gw = gw
+	o.gw, o.name, o.id = gw, opts.ComputerName, opts.ComputerID
 	return o
 }
 
+// startMacMini is a third computer, besides this one and the Ubuntu box.
+func startMacMini(t *testing.T) *otherComputer {
+	t.Helper()
+	sc := fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "On the mini", Cwd: "/Users/clive/mini-project",
+		Messages: []fakedaemon.Message{{Role: "user", Text: "hello from the mini"}}}}}
+	return startOtherComputerWith(t, sc, "", func(g *gateway.Options) { g.ComputerName, g.ComputerID = "Mac mini", "mini-1" })
+}
+
 func (o *otherComputer) paired() computer.Paired {
-	return computer.Paired{Gateway: o.gw.URL(), Token: otherToken, Name: "Ubuntu box", ID: "box-1"}
+	return computer.Paired{Gateway: o.gw.URL(), Token: otherToken, Name: o.name, ID: o.id}
 }
 
 func (o *otherComputer) link() string { return o.gw.URL() + "/#pair=" + otherToken }
@@ -83,7 +92,8 @@ func (o *otherComputer) initializeRequests(t *testing.T) []string {
 	return out
 }
 
-// relaunches counts the window's relaunches, which the tests cannot make.
+// relaunches counts the window's relaunches, which switching a computer
+// must not make.
 type relaunches struct{ n int }
 
 func (r *relaunches) relaunch() { r.n++ }
@@ -93,24 +103,9 @@ func (r *relaunches) relaunch() { r.n++ }
 // the harness's own Host and Gateway are this computer's, still running.
 func followHarness(t *testing.T, local fakedaemon.Scenario, p computer.Paired, rl *relaunches, with func(*Config)) *harness {
 	t.Helper()
-	// A saved address that cannot be used gives main no Gateway Client and
-	// a controller that fails to resolve its URL.
-	cc := controller.Config{
-		URL:                  p.SocketURL(),
-		Credential:           gateway.PlaceholderCredential,
-		DefaultMessageLimit:  LoadedMessageLimit,
-		MaxConnectAttempts:   1,
-		MaxReconnectAttempts: 1000,
-	}
-	client, err := gateway.NewClient(p.SocketURL())
-	if err != nil {
-		client = nil
-		cc.URL = ""
-		cc.ResolveURL = func(context.Context) (string, error) { return "", err }
-	}
-	ctl := controller.New(cc)
-	t.Cleanup(func() { ctl.Close() })
+	ctl, client := windowController(t, p.SocketURL())
 	h := startHarness(t, local, "", "This computer's rules", func(cfg *Config) {
+		computer.Follow(cfg.Prefs, p)
 		cfg.Computer, cfg.Controller, cfg.Gateway = &p, ctl, client
 		cfg.Host = testHost(t)
 		cfg.Host.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-local") })
@@ -249,10 +244,43 @@ func TestFollowingAnotherComputerDoesNotAskThisHostToSignIn(t *testing.T) {
 	}
 }
 
-func TestPastingAPairingLinkChecksItSavesTheComputerAndRelaunches(t *testing.T) {
+// thisComputer is the window of a Droi on this computer, signed in, whose
+// Relaunch rl counts.
+func thisComputer(t *testing.T, rl *relaunches, with func(*Config)) *harness {
+	t.Helper()
+	return startHarness(t, localSessions(), "", "This computer's rules", func(cfg *Config) {
+		cfg.Host = testHost(t)
+		cfg.Host.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-local") })
+		cfg.Relaunch = rl.relaunch
+		if with != nil {
+			with(cfg)
+		}
+	})
+}
+
+// showsOnly waits for the window to list the Session titled want and none
+// of the others.
+func (h *harness) showsOnly(want string, others ...string) {
+	h.t.Helper()
+	h.until(want+" alone", func() bool {
+		if !h.hasText(want) {
+			return false
+		}
+		for _, o := range others {
+			if h.hasText(o) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func TestPastingAPairingLinkRemembersTheComputerAndSwitchesToItWithoutARelaunch(t *testing.T) {
 	o := startOtherComputer(t, boxSessions(), "")
 	rl := &relaunches{}
-	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t); cfg.Relaunch = rl.relaunch })
+	h := thisComputer(t, rl, nil)
+	h.until("this computer's Session", func() bool { return h.hasText("On this Mac") })
+	before, beforeCtl := h.a, h.window
 	h.openSettingsTab("computer")
 	if !h.hasText("This computer") {
 		t.Fatalf("the Computer entry does not say this computer: %q", h.tt.Texts())
@@ -260,11 +288,158 @@ func TestPastingAPairingLinkChecksItSavesTheComputerAndRelaunches(t *testing.T) 
 	h.click("Pairing link")
 	h.typeInto("  " + o.link() + "  ")
 	h.click("Follow computer")
-	h.until("the relaunch", func() bool { return rl.n == 1 })
-
-	saved := computer.Load(h.a.prefs)
-	if saved == nil || *saved != o.paired() {
+	h.showsOnly("On the box", "On this Mac")
+	if rl.n != 0 || h.switches != 1 {
+		t.Fatalf("relaunched %d times, switched %d", rl.n, h.switches)
+	}
+	if !h.a.following() || h.a.computerID() != "box-1" {
+		t.Fatalf("following %v, computer %q", h.a.following(), h.a.computerID())
+	}
+	if before.ctx.Err() == nil || beforeCtl.Status().Connected {
+		t.Fatal("the previous window's App or Controller still runs")
+	}
+	if saved := computer.Load(h.a.prefs); saved == nil || *saved != o.paired() {
 		t.Fatalf("saved %+v, want %+v", saved, o.paired())
+	}
+	if got := computer.Remembered(h.a.prefs); len(got) != 1 || got[0] != o.paired() {
+		t.Fatalf("remembered %+v", got)
+	}
+}
+
+func TestSettingsListsTheRememberedComputersAndSwitchesInOneClick(t *testing.T) {
+	box, mini := startOtherComputer(t, boxSessions(), ""), startMacMini(t)
+	rl := &relaunches{}
+	h := thisComputer(t, rl, func(cfg *Config) {
+		computer.Follow(cfg.Prefs, box.paired())
+		computer.Follow(cfg.Prefs, mini.paired())
+		computer.UseThisComputer(cfg.Prefs)
+	})
+	h.openSettingsTab("computer")
+	for _, name := range []string{"This computer", "Ubuntu box", "Mac mini", "Current"} {
+		if !h.hasText(name) {
+			t.Fatalf("no %q in %q", name, h.tt.Texts())
+		}
+	}
+	if h.hasButton("Use this computer") || !h.hasButton("Switch to Ubuntu box") || !h.hasButton("Switch to Mac mini") {
+		t.Fatalf("the current computer is offered, or another is not: %q", h.tt.Texts())
+	}
+
+	h.click("Switch to Ubuntu box")
+	h.showsOnly("On the box", "On this Mac", "On the mini")
+	h.openSettingsTab("computer")
+	if h.hasButton("Switch to Ubuntu box") || !h.hasButton("Use this computer") {
+		t.Fatalf("the Ubuntu box is not marked current: %q", h.tt.Texts())
+	}
+
+	h.click("Switch to Mac mini")
+	h.showsOnly("On the mini", "On the box", "On this Mac")
+	h.click("On the mini")
+	h.until("its messages", func() bool { return h.hasText("hello from the mini") })
+
+	h.openSettingsTab("computer")
+	h.click("Use this computer")
+	h.showsOnly("On this Mac", "On the box", "On the mini")
+	if rl.n != 0 || h.switches != 3 {
+		t.Fatalf("relaunched %d times, switched %d", rl.n, h.switches)
+	}
+	if got := computer.Remembered(h.a.prefs); len(got) != 2 {
+		t.Fatalf("remembered %+v", got)
+	}
+}
+
+func TestAnOpenSessionOfThePreviousComputerIsGoneAfterASwitch(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	h := followHarness(t, localSessions(), o.paired(), &relaunches{}, nil)
+	h.until("the Session list", func() bool { return h.hasText("On the box") })
+	h.click("On the box")
+	h.until("its messages", func() bool { return h.hasText("hello from linux") })
+	h.openSettingsTab("computer")
+	h.click("Use this computer")
+	h.showsOnly("On this Mac", "On the box", "hello from linux")
+	if r := h.a.Route(); r.Name != "home" {
+		t.Fatalf("the window shows %+v", r)
+	}
+}
+
+func TestForgettingARememberedComputer(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	h := thisComputer(t, &relaunches{}, func(cfg *Config) {
+		computer.Follow(cfg.Prefs, o.paired())
+		computer.UseThisComputer(cfg.Prefs)
+	})
+	h.openSettingsTab("computer")
+	h.click("Forget Ubuntu box")
+	h.until("the computer gone", func() bool { return !h.hasText("Ubuntu box") })
+	if got := computer.Remembered(h.a.prefs); len(got) != 0 {
+		t.Fatalf("remembered %+v", got)
+	}
+	if h.switches != 0 {
+		t.Fatalf("forgetting another computer switched %d times", h.switches)
+	}
+}
+
+func TestForgettingTheFollowedComputerGoesBackToThisComputer(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	rl := &relaunches{}
+	h := followHarness(t, localSessions(), o.paired(), rl, nil)
+	h.until("the Session list", func() bool { return h.hasText("On the box") })
+	h.openSettingsTab("computer")
+	h.click("Forget Ubuntu box")
+	h.showsOnly("On this Mac", "On the box")
+	if computer.Load(h.a.prefs) != nil || len(computer.Remembered(h.a.prefs)) != 0 || rl.n != 0 {
+		t.Fatalf("following %+v, remembered %+v, relaunched %d", computer.Load(h.a.prefs), computer.Remembered(h.a.prefs), rl.n)
+	}
+}
+
+func TestTheComputerAnEarlierVersionFollowedIsRemembered(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	old := computer.Paired{Gateway: o.gw.URL(), Token: otherToken, Name: "Ubuntu box", ID: "box-1"}
+	h := thisComputer(t, &relaunches{}, func(cfg *Config) {
+		b, _ := json.Marshal(old)
+		cfg.Prefs.Set("droi.computer", string(b))
+	})
+	h.openSettingsTab("computer")
+	h.click("Switch to Ubuntu box")
+	h.showsOnly("On the box", "On this Mac")
+	if got := computer.Remembered(h.a.prefs); len(got) != 1 || got[0] != old {
+		t.Fatalf("remembered %+v", got)
+	}
+}
+
+func TestARememberedComputerWhoseTokenWasResetOffersANewLinkOrToForgetIt(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	stale := o.paired()
+	stale.Token = "reset-long-ago"
+	h := followHarness(t, localSessions(), stale, &relaunches{}, nil)
+	h.until("the error", func() bool {
+		return h.hasText("Could not reach Ubuntu box") && h.hasButton("Paste a new link") && h.hasButton("Forget Ubuntu box")
+	})
+	if h.hasText(stale.Token) {
+		t.Fatal("the error shows the Pairing Token")
+	}
+	h.click("Paste a new link")
+	if r := h.a.Route(); r.Name != "settings" || r.Tab != "computer" {
+		t.Fatalf("the window shows %+v", r)
+	}
+	h.click("Pairing link")
+	h.typeInto(o.link())
+	h.click("Follow computer")
+	h.showsOnly("On the box", "Could not reach")
+	if got := computer.Remembered(h.a.prefs); len(got) != 1 || got[0] != o.paired() {
+		t.Fatalf("remembered %+v", got)
+	}
+}
+
+func TestARememberedComputerWhoseTokenWasResetCanBeForgotten(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	stale := o.paired()
+	stale.Token = "reset-long-ago"
+	h := followHarness(t, localSessions(), stale, &relaunches{}, nil)
+	h.until("the error", func() bool { return h.hasButton("Forget Ubuntu box") })
+	h.click("Forget Ubuntu box")
+	h.showsOnly("On this Mac", "Could not reach")
+	if len(computer.Remembered(h.a.prefs)) != 0 {
+		t.Fatalf("remembered %+v", computer.Remembered(h.a.prefs))
 	}
 }
 
@@ -300,8 +475,8 @@ func TestALinkThatIsNotAGatewayOrWhoseTokenIsRejectedChangesNothing(t *testing.T
 			h.typeInto(tc.link)
 			h.click("Follow computer")
 			h.until("the refusal", func() bool { return h.hasText(tc.message) })
-			if rl.n != 0 || computer.Load(h.a.prefs) != nil {
-				t.Fatalf("relaunched %d times, saved %+v", rl.n, computer.Load(h.a.prefs))
+			if rl.n != 0 || h.switches != 0 || computer.Load(h.a.prefs) != nil || len(computer.Remembered(h.a.prefs)) != 0 {
+				t.Fatalf("relaunched %d times, switched %d, saved %+v", rl.n, h.switches, computer.Remembered(h.a.prefs))
 			}
 			if h.a.following() {
 				t.Fatal("the window follows another computer")
@@ -310,17 +485,26 @@ func TestALinkThatIsNotAGatewayOrWhoseTokenIsRejectedChangesNothing(t *testing.T
 	}
 }
 
-func TestUseThisComputerForgetsTheOtherAndRelaunches(t *testing.T) {
+func TestUseThisComputerSwitchesBackWithoutARelaunchAndRemembersTheOther(t *testing.T) {
 	o := startOtherComputer(t, boxSessions(), "")
 	rl := &relaunches{}
 	h := followHarness(t, localSessions(), o.paired(), rl, nil)
-	computer.Save(h.a.prefs, o.paired())
 	h.until("the Session list", func() bool { return h.hasText("On the box") })
 	h.openSettingsTab("computer")
 	h.click("Use this computer")
-	h.until("the relaunch", func() bool { return rl.n == 1 })
+	h.showsOnly("On this Mac", "On the box")
+	if rl.n != 0 || h.a.following() {
+		t.Fatalf("relaunched %d times, following %v", rl.n, h.a.following())
+	}
 	if computer.Load(h.a.prefs) != nil {
-		t.Fatal("the other computer is still saved")
+		t.Fatal("the other computer is still followed")
+	}
+	if got := computer.Remembered(h.a.prefs); len(got) != 1 || got[0] != o.paired() {
+		t.Fatalf("remembered %+v", got)
+	}
+	h.openSettingsTab("computer")
+	if !h.hasButton("Switch to Ubuntu box") {
+		t.Fatalf("the other computer is not offered: %q", h.tt.Texts())
 	}
 }
 
@@ -330,7 +514,6 @@ func TestAnUnreachableComputerShowsTheErrorAndUseThisComputerSwitchesBack(t *tes
 	o.gw.Close()
 	rl := &relaunches{}
 	h := followHarness(t, localSessions(), p, rl, nil)
-	computer.Save(h.a.prefs, p)
 	h.until("the error", func() bool { return h.hasText("Could not reach Ubuntu box") && h.hasButton("Use this computer") })
 	if h.hasText(p.Token) {
 		t.Fatal("the error shows the Pairing Token")
@@ -339,9 +522,9 @@ func TestAnUnreachableComputerShowsTheErrorAndUseThisComputerSwitchesBack(t *tes
 		t.Fatal("this computer's Sessions are shown in place of the other's")
 	}
 	h.click("Use this computer")
-	h.until("the relaunch", func() bool { return rl.n == 1 })
-	if computer.Load(h.a.prefs) != nil {
-		t.Fatal("the other computer is still saved")
+	h.showsOnly("On this Mac", "Could not reach")
+	if rl.n != 0 || computer.Load(h.a.prefs) != nil {
+		t.Fatalf("relaunched %d times, following %+v", rl.n, computer.Load(h.a.prefs))
 	}
 }
 
@@ -361,12 +544,11 @@ func TestASavedAddressThatCannotBeUsedShowsTheUnreachableViewNotAStoppedApp(t *t
 	rl := &relaunches{}
 	p := computer.Paired{Gateway: "not an address", Token: "t", Name: "Ubuntu box", ID: "box-1"}
 	h := followHarness(t, localSessions(), p, rl, nil)
-	computer.Save(h.a.prefs, p)
 	h.until("the error", func() bool { return h.hasText("Could not reach Ubuntu box") && h.hasButton("Use this computer") })
 	h.click("Use this computer")
-	h.until("the relaunch", func() bool { return rl.n == 1 })
-	if computer.Load(h.a.prefs) != nil {
-		t.Fatal("the other computer is still saved")
+	h.showsOnly("On this Mac", "Could not reach")
+	if rl.n != 0 || computer.Load(h.a.prefs) != nil {
+		t.Fatalf("relaunched %d times, following %+v", rl.n, computer.Load(h.a.prefs))
 	}
 }
 

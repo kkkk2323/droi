@@ -29,29 +29,107 @@ func TestNothingSavedMeansThisComputer(t *testing.T) {
 	}
 }
 
-func TestAPairedComputerIsKeptAndForgotten(t *testing.T) {
+var (
+	box  = Paired{Gateway: "http://box:41417", Token: "t", Name: "Ubuntu box", ID: "box-1"}
+	mini = Paired{Gateway: "http://mini:41417", Token: "m", Name: "Mac mini", ID: "mini-1"}
+)
+
+func TestAFollowedComputerIsKeptAcrossLaunches(t *testing.T) {
 	file := t.TempDir() + "/preferences.json"
-	want := Paired{Gateway: "http://box:41417", Token: "t", Name: "Ubuntu box", ID: "box-1"}
-	Save(prefs.Open(file), want)
-	if got := Load(prefs.Open(file)); got == nil || *got != want {
+	Follow(prefs.Open(file), box)
+	s := prefs.Open(file)
+	if got := Load(s); got == nil || *got != box {
 		t.Fatalf("%+v", got)
 	}
-	s := prefs.Open(file)
-	Clear(s)
-	if got := Load(prefs.Open(file)); got != nil {
+	if got := Remembered(s); len(got) != 1 || got[0] != box {
+		t.Fatalf("remembered %+v", got)
+	}
+}
+
+func TestUsingThisComputerKeepsTheOthersRemembered(t *testing.T) {
+	s := prefs.Memory()
+	Follow(s, box)
+	Follow(s, mini)
+	if got := Load(s); got == nil || *got != mini {
+		t.Fatalf("following %+v", got)
+	}
+	UseThisComputer(s)
+	if got := Load(s); got != nil {
 		t.Fatalf("still following %+v", got)
+	}
+	if got := Remembered(s); len(got) != 2 || got[0] != box || got[1] != mini {
+		t.Fatalf("remembered %+v", got)
+	}
+}
+
+func TestANewLinkForAComputerReplacesWhatWasKeptForIt(t *testing.T) {
+	s := prefs.Memory()
+	Follow(s, box)
+	Follow(s, mini)
+	reset := Paired{Gateway: "http://box.tail:41417", Token: "new", Name: "Ubuntu", ID: "box-1"}
+	Follow(s, reset)
+	if got := Remembered(s); len(got) != 2 || got[0] != reset || got[1] != mini {
+		t.Fatalf("remembered %+v", got)
+	}
+	if got := Load(s); got == nil || *got != reset {
+		t.Fatalf("following %+v", got)
+	}
+}
+
+func TestForgettingAComputer(t *testing.T) {
+	s := prefs.Memory()
+	Follow(s, box)
+	Follow(s, mini)
+	Forget(s, "box-1")
+	if got := Remembered(s); len(got) != 1 || got[0] != mini {
+		t.Fatalf("remembered %+v", got)
+	}
+	if got := Load(s); got == nil || *got != mini {
+		t.Fatalf("forgetting another computer changed the one followed: %+v", got)
+	}
+	Forget(s, "mini-1")
+	if Load(s) != nil || len(Remembered(s)) != 0 {
+		t.Fatalf("following %+v, remembered %+v", Load(s), Remembered(s))
+	}
+}
+
+func TestTheSingleComputerAnEarlierVersionKeptIsMigrated(t *testing.T) {
+	file := t.TempDir() + "/preferences.json"
+	old := prefs.Open(file)
+	old.Set("droi.computer", `{"gateway":"http://box:41417","token":"t","name":"Ubuntu box","id":"box-1"}`)
+	s := prefs.Open(file)
+	if got := Load(s); got == nil || *got != box {
+		t.Fatalf("following %+v", got)
+	}
+	if got := Remembered(s); len(got) != 1 || got[0] != box {
+		t.Fatalf("remembered %+v", got)
+	}
+	if _, ok := prefs.Open(file).Get("droi.computer"); ok {
+		t.Fatal("the old record is still there")
+	}
+	UseThisComputer(s)
+	if got := Load(prefs.Open(file)); got != nil {
+		t.Fatalf("the old record came back: %+v", got)
 	}
 }
 
 func TestAnUnreadableRecordMeansThisComputer(t *testing.T) {
-	s := prefs.Memory()
-	s.Set(prefsKey, "{not json")
-	if Load(s) != nil {
-		t.Fatal("followed a computer from a broken record")
+	for name, raw := range map[string]string{
+		"broken":             "{not json",
+		"without a token":    `{"followed":"box-1","computers":[{"gateway":"http://box:1","id":"box-1"}]}`,
+		"without an id":      `{"followed":"","computers":[{"gateway":"http://box:1","token":"t"}]}`,
+		"followed is absent": `{"followed":"gone","computers":[]}`,
+	} {
+		s := prefs.Memory()
+		s.Set(prefsKey, raw)
+		if Load(s) != nil || len(Remembered(s)) != 0 {
+			t.Errorf("%s: following %+v, remembered %+v", name, Load(s), Remembered(s))
+		}
 	}
-	s.Set(prefsKey, `{"gateway":"http://box:1"}`)
-	if Load(s) != nil {
-		t.Fatal("followed a computer without a token")
+	old := prefs.Memory()
+	old.Set("droi.computer", `{"gateway":"http://box:1"}`)
+	if Load(old) != nil || len(Remembered(old)) != 0 {
+		t.Fatal("migrated a computer without a token")
 	}
 }
 

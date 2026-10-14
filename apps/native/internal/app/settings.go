@@ -51,13 +51,13 @@ type settingsState struct {
 
 	apiKey, baseURL, droidPath, prompt, scratch string
 	// computerLink is the pairing link being typed; the check of one runs
-	// off the UI thread, and a refusal or a note stays until the next try.
-	computerLink, computerErr, computerNote string
-	computerChecking                        bool
-	loaded                                  bool
-	err                                     string
-	picker                                  pickerState
-	worktrees                               managedWorktrees
+	// off the UI thread, and a refusal stays until the next try.
+	computerLink, computerErr string
+	computerChecking          bool
+	loaded                    bool
+	err                       string
+	picker                    pickerState
+	worktrees                 managedWorktrees
 }
 
 func (s *settingsState) flag(key string) *bool {
