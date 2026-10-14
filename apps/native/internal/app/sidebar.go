@@ -45,7 +45,7 @@ type sidebarState struct {
 // sidebarView is the web Client's SessionSidebar.
 func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map[string]string, listErr string, listDone bool) {
 	k, t := a.kit, a.kit.T
-	pins := sessions.Pins{Workspaces: set(prefs.PinnedWorkspaces.Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
+	pins := sessions.Pins{Workspaces: set(a.pinnedWorkspaces().Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
 	order := a.sortOrder(listed)
 	groups := a.sidebarGroups(listed, pins, order)
 	busy := a.activity(reported)
@@ -192,7 +192,7 @@ type listMemo struct {
 // the list, the pins, the order or the language changed.
 func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order sessions.Order) []sessions.Group {
 	m := &a.listMemo
-	key := fmt.Sprint(a.shownRev, l10n.Code(), prefs.PinnedWorkspaces.Get(a.prefs), prefs.PinnedSessions.Get(a.prefs), order.Workspaces, order.Sessions, order.Manual, len(order.FirstSeen))
+	key := fmt.Sprint(a.shownRev, l10n.Code(), a.pinnedWorkspaces().Get(a.prefs), prefs.PinnedSessions.Get(a.prefs), order.Workspaces, order.Sessions, order.Manual, len(order.FirstSeen))
 	if m.groups == nil || m.groupsKey != key {
 		m.groupsKey = key
 		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
@@ -273,7 +273,7 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 	if s := prefs.SessionSort.Get(a.prefs); s != "" {
 		o.Sessions = sessions.SessionSort(s)
 	}
-	o.Manual = prefs.ManualWorkspaces.Get(a.prefs)
+	o.Manual = a.manualWorkspaces().Get(a.prefs)
 	o.FirstSeen = seen
 	return o
 }
@@ -321,7 +321,7 @@ func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 							keys = append(keys, g.Key)
 						}
 					}
-					prefs.ManualWorkspaces.Set(a.prefs, keys)
+					a.manualWorkspaces().Set(a.prefs, keys)
 				}
 				prefs.WorkspaceSort.Set(a.prefs, string(w))
 			}
@@ -339,12 +339,12 @@ func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 // foldable is the Pinned or Workspaces section: a label row folding a run
 // of Workspace groups.
 func (a *App) foldable(c *ui.Context, label, key string, groups []sessions.Group, busy map[string]activity.Activity, fn func()) {
-	open := !prefs.FoldedWorkspaces.Has(a.prefs, key)
+	open := !a.foldedWorkspaces().Has(a.prefs, key)
 	var list []sessions.Summary
 	for _, g := range groups {
 		list = append(list, g.Sessions...)
 	}
-	a.sectionHeader(c, label, "", open, list, busy, func() { prefs.FoldedWorkspaces.Toggle(a.prefs, key) }, nil)
+	a.sectionHeader(c, label, "", open, list, busy, func() { a.foldedWorkspaces().Toggle(a.prefs, key) }, nil)
 	if open {
 		ui.Column(c).Children(fn)
 	}
@@ -421,8 +421,8 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 	if g.Scratch {
 		name = L("Recents")
 	}
-	open := loose || !prefs.FoldedWorkspaces.Has(a.prefs, g.Key)
-	pinnedWS := prefs.PinnedWorkspaces.Has(a.prefs, g.Key)
+	open := loose || !a.foldedWorkspaces().Has(a.prefs, g.Key)
+	pinnedWS := a.pinnedWorkspaces().Has(a.prefs, g.Key)
 	pinnedIDs := set(prefs.PinnedSessions.Get(a.prefs))
 	newHere := func() {
 		if g.Scratch {
@@ -431,7 +431,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 			a.Go(Route{Name: "new", Workspace: g.Path})
 		}
 	}
-	toggle := func() { prefs.FoldedWorkspaces.Toggle(a.prefs, g.Key) }
+	toggle := func() { a.foldedWorkspaces().Toggle(a.prefs, g.Key) }
 	newButton := func(shown bool) {
 		b := ui.ButtonBase(c).Label(L("New session in %s", name)).Tooltip(L("New session in %s", name)).
 			Size(k.Px(24), k.Px(24)).Radius(k.Px(8)).Margin(0, k.Px(4), 0, 0).Cursor(ui.CursorPointer)
@@ -462,10 +462,10 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 			at := indexOf(shown, g.Key)
 			if at >= 0 && len(shown) > 1 {
 				if m.Item(L("Move up")).Disabled(at == 0).Chosen() {
-					prefs.ManualWorkspaces.Set(a.prefs, sessions.MoveWorkspace(shown, g.Key, shown[at-1], false))
+					a.manualWorkspaces().Set(a.prefs, sessions.MoveWorkspace(shown, g.Key, shown[at-1], false))
 				}
 				if m.Item(L("Move down")).Disabled(at == len(shown)-1).Chosen() {
-					prefs.ManualWorkspaces.Set(a.prefs, sessions.MoveWorkspace(shown, g.Key, shown[at+1], true))
+					a.manualWorkspaces().Set(a.prefs, sessions.MoveWorkspace(shown, g.Key, shown[at+1], true))
 				}
 				m.Separator()
 			}
@@ -476,7 +476,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 				label = L("Unpin workspace")
 			}
 			if m.Item(label).Chosen() {
-				prefs.PinnedWorkspaces.Toggle(a.prefs, g.Key)
+				a.pinnedWorkspaces().Toggle(a.prefs, g.Key)
 			}
 		}
 		if m.Item(L("New session here")).Chosen() {

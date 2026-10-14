@@ -12,6 +12,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 )
 
 // following reports whether the window shows another computer than this one.
@@ -26,6 +27,13 @@ func (a *App) computerID() string {
 	}
 	return a.followed.ID
 }
+
+// The preferences that name Workspaces by path, as kept for the computer the
+// window shows.
+func (a *App) pinnedWorkspaces() prefs.List { return prefs.PinnedWorkspaces.On(a.computerID()) }
+func (a *App) foldedWorkspaces() prefs.List { return prefs.FoldedWorkspaces.On(a.computerID()) }
+func (a *App) manualWorkspaces() prefs.List { return prefs.ManualWorkspaces.On(a.computerID()) }
+func (a *App) openInApp() prefs.String      { return prefs.OpenInApp.On(a.computerID()) }
 
 // computerName is how the followed computer is called.
 func (a *App) computerName() string {

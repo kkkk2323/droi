@@ -713,12 +713,12 @@ func (v *sessionView) openInButton(c *ui.Context, workspace string) {
 		apps = openInApps
 	}
 	list := apps()
-	preferred, ok := preferredApp(list, prefs.OpenInApp.Get(a.prefs))
+	preferred, ok := preferredApp(list, a.openInApp().Get(a.prefs))
 	if workspace == "" || !ok {
 		return
 	}
 	open := func(app host.OpenInApp) {
-		prefs.OpenInApp.Set(a.prefs, app.ID)
+		a.openInApp().Set(a.prefs, app.ID)
 		go func() { _ = host.OpenIn(list, workspace, app.ID) }()
 	}
 	appIcon := func(app host.OpenInApp) {

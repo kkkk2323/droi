@@ -148,6 +148,11 @@ func (p String) Get(s *Store) string {
 
 func (p String) Set(s *Store, v string) { s.Set(p.Key, v) }
 
+// On is the preference as kept for one Paired Computer; see List.On.
+func (p String) On(computer string) String {
+	return String{Key: onComputer(p.Key, computer), Fallback: p.Fallback}
+}
+
 // List is a list of strings stored as JSON.
 type List struct{ Key string }
 
@@ -170,6 +175,11 @@ func (p List) Set(s *Store, v []string) {
 	b, _ := json.Marshal(v)
 	s.Set(p.Key, string(b))
 }
+
+// On is the list as kept for one Paired Computer. "" is this computer, whose
+// list sits under the key every earlier version wrote, so an update reads what
+// it had.
+func (p List) On(computer string) List { return List{Key: onComputer(p.Key, computer)} }
 
 // Has reports whether the list holds entry.
 func (p List) Has(s *Store, entry string) bool { return slices.Contains(p.Get(s), entry) }
@@ -219,6 +229,15 @@ func (p Map) Get(s *Store) map[string]float64 {
 func (p Map) Set(s *Store, v map[string]float64) {
 	b, _ := json.Marshal(v)
 	s.Set(p.Key, string(b))
+}
+
+// onComputer is the key of a preference that names Workspaces by path, which
+// two computers can share without sharing the Workspace.
+func onComputer(key, computer string) string {
+	if computer == "" {
+		return key
+	}
+	return key + "@" + computer
 }
 
 // The preferences, under the web Client's keys.
