@@ -142,7 +142,8 @@ type tool struct {
 var toolList = []tool{
 	{
 		Name: "reply",
-		Description: "Send a message to this Chat Thread in WeCom. It is the only way anything you write reaches the people there; " +
+		Description: "Send a message to this Chat Thread in WeCom: in a WeCom Channel, a reply under the post; in a direct message, a message to the user. " +
+			"It is the only way anything you write reaches the people there; " +
 			"call it for progress on a long task and for your answer. Markdown, at most 20480 bytes. " +
 			"A WeCom error, such as its rate limit of 30 messages a minute and 1000 an hour, comes back as a tool error: " +
 			"the message was not sent.",
@@ -152,6 +153,21 @@ var toolList = []tool{
 				"text": map[string]any{"type": "string", "description": "The message, in Markdown."},
 			},
 			"required":             []string{"text"},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Name: "read_thread",
+		Description: "Read this Chat Thread in WeCom. In a WeCom Channel: the post (on the first page) and a page of its replies, oldest first, " +
+			"each with its id, author and time (UTC); @ mentions show as @<user id> (@you is you) and files as [file: name]. " +
+			"A page ending with a cursor has more: call again with that cursor. " +
+			"In a direct message there is no history: new messages arrive in this Session.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"cursor": map[string]any{"type": "string", "description": "The cursor the previous page ended with; omit for the first page."},
+				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": maxReplyPage, "description": "Replies per page, 20 when omitted."},
+			},
 			"additionalProperties": false,
 		},
 	},
@@ -169,18 +185,33 @@ func (b *Bridge) callTool(ctx context.Context, th *thread, name string, args jso
 			}
 		}
 		return b.reply(ctx, th, p.Text)
+	case "read_thread":
+		var p struct {
+			Cursor string `json:"cursor"`
+			Limit  int    `json:"limit"`
+		}
+		if len(args) > 0 {
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+		return b.readThread(ctx, th, p.Cursor, p.Limit)
 	}
 	return "", fmt.Errorf("no tool %q", name)
 }
 
-// reply sends Markdown to a direct message: under the latest message's
-// req_id while WeCom still takes replies to it, else as a message of its own.
+// reply sends Markdown to the Chat Thread. In a direct message it goes
+// under the latest message's req_id while WeCom still takes replies to it,
+// else as a message of its own.
 func (b *Bridge) reply(ctx context.Context, th *thread, text string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", errors.New("text is empty")
 	}
 	if len(text) > maxMarkdownBytes {
 		return "", fmt.Errorf("text is %d bytes; WeCom takes at most %d", len(text), maxMarkdownBytes)
+	}
+	if th.kind == threadKindChannel {
+		return b.replyInChannel(ctx, th, text)
 	}
 	b.mu.Lock()
 	wc, reqID, at, user := b.wecom, th.reqID, th.reqAt, th.userID

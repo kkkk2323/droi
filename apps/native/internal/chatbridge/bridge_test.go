@@ -99,6 +99,7 @@ func startOn(t *testing.T, sc fakedaemon.Scenario, edit func(*host.Settings), op
 		}
 	})
 	clk := &clock{now: time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)}
+	w.SetClock(clk.Now)
 	o := chatbridge.Options{
 		Settings: st,
 		Daemon: controller.Config{
@@ -106,6 +107,7 @@ func startOn(t *testing.T, sc fakedaemon.Scenario, edit func(*host.Settings), op
 			Credential: func(context.Context) (*droid.Credential, error) { return &droid.Credential{APIKey: "fk-test"}, nil },
 		},
 		WebSocketURL:   w.URL,
+		APIURL:         w.APIURL,
 		ReconnectDelay: 20 * time.Millisecond,
 		Now:            clk.Now,
 		Log:            func(s string) { t.Log(s) },
@@ -443,7 +445,7 @@ func TestAWeComErrorComesBackAsAToolError(t *testing.T) {
 	}
 }
 
-func TestTheDroiChatServerListsReply(t *testing.T) {
+func TestTheDroiChatServerListsItsTools(t *testing.T) {
 	r := start(t, nil)
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Hi"})
 	droid := r.droid(r.initialized(1))
@@ -453,8 +455,12 @@ func TestTheDroiChatServerListsReply(t *testing.T) {
 	}
 	_, out = droid.rpc(droid.token, "tools/list", map[string]any{})
 	list, _ := out["result"].(map[string]any)["tools"].([]any)
-	if len(list) != 1 || list[0].(map[string]any)["name"] != "reply" {
-		t.Errorf("tools %v", out)
+	var names []string
+	for _, x := range list {
+		names = append(names, x.(map[string]any)["name"].(string))
+	}
+	if strings.Join(names, ",") != "reply,read_thread" {
+		t.Errorf("tools %v", names)
 	}
 }
 

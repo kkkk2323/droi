@@ -32,6 +32,8 @@ type Options struct {
 	Daemon controller.Config
 	// WebSocketURL is WeCom's long connection, DefaultWebSocketURL when "".
 	WebSocketURL string
+	// APIURL is WeCom's HTTPS API for smart robots, DefaultAPIURL when "".
+	APIURL string
 	// PingInterval is 30 s, ReconnectDelay 1 s and MaxReconnectDelay a
 	// minute when zero.
 	PingInterval      time.Duration
@@ -62,6 +64,7 @@ type Bridge struct {
 	stopped bool
 	robot   string
 	wecom   *longConnection
+	api     *channelAPI
 	tools   *toolServer
 	threads map[string]*thread
 	tokens  map[string]*thread
@@ -74,9 +77,14 @@ type Bridge struct {
 
 // thread is a Chat Thread and its Chat Session.
 type thread struct {
-	key string
+	key  string
+	kind string
 	// userID is the other side of a direct message.
-	userID    string
+	userID string
+	// topicID and postID are a Channel post's; channel is the Channel's name.
+	topicID, postID, channel string
+	// read are the replies under the post read_thread showed Droid.
+	read      map[string]bool
 	sessionID string
 	// loaded: this Chat Bridge started or loaded the Chat Session, so it
 	// has the droi-chat server of token.
@@ -101,6 +109,7 @@ type thread struct {
 
 const (
 	threadKindDirect   = "direct"
+	threadKindChannel  = "channel"
 	replyWindow        = 24 * time.Hour
 	defaultIdleTimeout = 15 * time.Second
 	deliverTimeout     = 2 * time.Minute
@@ -110,6 +119,9 @@ const (
 func New(o Options) *Bridge {
 	if o.WebSocketURL == "" {
 		o.WebSocketURL = DefaultWebSocketURL
+	}
+	if o.APIURL == "" {
+		o.APIURL = DefaultAPIURL
 	}
 	if o.PingInterval <= 0 {
 		o.PingInterval = defaultPingInterval
@@ -160,8 +172,9 @@ func (b *Bridge) Follow() {
 		return
 	}
 	old := b.wecom
-	b.robot, b.wecom = robot, nil
+	b.robot, b.wecom, b.api = robot, nil, nil
 	if robot != "" {
+		b.api = newChannelAPI(b.o.APIURL, cb.BotID, cb.Secret, b.o.Now)
 		if b.tools == nil {
 			t, err := startToolServer(b)
 			if err != nil {
@@ -267,6 +280,10 @@ type callback struct {
 }
 
 func (b *Bridge) handle(f frame) {
+	if f.Cmd == "aibot_event_callback" {
+		b.handleEvent(f)
+		return
+	}
 	if f.Cmd != "aibot_msg_callback" {
 		return
 	}
@@ -425,7 +442,7 @@ func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
 		AutonomyLevel:  protocol.AutonomyLevel(cb.AutonomyLevelOrDefault()),
 		ModelID:        cb.Model,
 		SystemPrompt:   system,
-		Tags:           []protocol.SessionTag{{Name: sessions.ChatTag, Metadata: map[string]string{"kind": threadKindDirect, "userId": th.userID}}},
+		Tags:           []protocol.SessionTag{{Name: sessions.ChatTag, Metadata: th.metadata()}},
 		MCPServers:     []json.RawMessage{server},
 	})
 	b.mu.Lock()
@@ -437,6 +454,14 @@ func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
 	b.useToken(th, token)
 	th.sessionID, th.loaded = res.SessionID, true
 	return res.SessionID, nil
+}
+
+// metadata names the Chat Thread in its Chat Session's droi.chat tag.
+func (th *thread) metadata() map[string]string {
+	if th.kind == threadKindChannel {
+		return map[string]string{"kind": threadKindChannel, "topicId": th.topicID, "postId": th.postID, "channel": th.channel}
+	}
+	return map[string]string{"kind": threadKindDirect, "userId": th.userID}
 }
 
 func newToken() string {

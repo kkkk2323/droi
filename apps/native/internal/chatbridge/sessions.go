@@ -16,7 +16,7 @@ import (
 const listPageSize = 100
 
 func directThread(user string) *thread {
-	return &thread{key: threadKindDirect + ":" + user, userID: user}
+	return &thread{key: threadKindDirect + ":" + user, kind: threadKindDirect, userID: user}
 }
 
 // threadFromTags is the Chat Thread a Session's droi.chat tag names, nil

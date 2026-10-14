@@ -16,6 +16,13 @@ func systemPromptAppend(addition string, th *thread) string {
 	facts := fmt.Sprintf("You are working in a WeCom (企业微信) Chat Thread: a direct message with the WeCom user %s. "+
 		"Nothing you write reaches them unless you call the droi-chat tool reply. "+
 		"The droi-chat tools act on this Chat Thread only, and their messages arrive in this Session.", th.userID)
+	if th.kind == threadKindChannel {
+		facts = fmt.Sprintf("You are working in a WeCom (企业微信) Chat Thread: the post %s in the WeCom Channel %s, with its replies. "+
+			"Each time someone @s you there, the @ arrives in this Session as a message. "+
+			"Nothing you write reaches anyone unless you call the droi-chat tool reply, which posts a reply under the post; "+
+			"read_thread shows the post and its replies. The droi-chat tools act on this Chat Thread only.",
+			th.postID, channelLabel(th.channel, th.topicID))
+	}
 	if addition == "" {
 		return facts
 	}
@@ -29,6 +36,34 @@ const archivedNote = "The Chat Thread's previous Chat Session was archived; this
 // directTrigger is the message a direct message sends its Chat Session.
 func directTrigger(user, text string) string {
 	return fmt.Sprintf("WeCom user %s wrote in a direct message:\n\n%s", user, cut(text))
+}
+
+// channelTrigger is the message an @ in a Channel post sends its Chat
+// Session; the first one in a post says where to read the rest.
+func channelTrigger(user, channel, topicID, postID, replyID, text string, first bool) string {
+	where := "a post"
+	if replyID != "" {
+		where = "a reply to a post"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "WeCom user %s @-ed you in %s in the WeCom Channel %s.\ntopic_id: %s\npost_id: %s\n", user, where, channelLabel(channel, topicID), topicID, postID)
+	if replyID != "" {
+		fmt.Fprintf(&b, "reply_id: %s\n", replyID)
+	}
+	b.WriteString("\n" + text)
+	if first {
+		b.WriteString("\n\nread_thread shows the whole post and its replies.")
+	}
+	return b.String()
+}
+
+// channelLabel names a WeCom Channel by its name, or its id when WeCom did
+// not give the name.
+func channelLabel(name, topicID string) string {
+	if name == "" {
+		return "with topic_id " + topicID
+	}
+	return fmt.Sprintf("%q", name)
 }
 
 func cut(text string) string {

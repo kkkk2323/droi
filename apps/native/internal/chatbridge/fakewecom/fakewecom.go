@@ -1,11 +1,11 @@
 // Package fakewecom is the Fake WeCom: a stand-in for the WeCom smart
-// robot's long connection that the Chat Bridge's tests, and the window's,
-// run against. It speaks the frames the real server does (aibot_subscribe,
-// ping, aibot_msg_callback, the replies without a cmd, the
-// disconnected_event a connection gets when another subscribes the robot)
-// and, like the real
-// server, refuses a handshake whose Sec-WebSocket-* header names are not
-// spelt WeCom's way.
+// robot's long connection and its HTTPS API that the Chat Bridge's tests,
+// and the window's, run against. It speaks the frames the real server does
+// (aibot_subscribe, ping, aibot_msg_callback, aibot_event_callback, the
+// replies without a cmd, the disconnected_event a connection gets when
+// another subscribes the robot) and, like the real server, refuses a handshake
+// whose Sec-WebSocket-* header names are not spelt WeCom's way. Its HTTPS
+// API (api.go) holds WeCom Channels with their posts and replies.
 package fakewecom
 
 import (
@@ -57,6 +57,8 @@ type WeCom struct {
 	// URL is the long connection's address, for the Chat Bridge's settable
 	// WebSocket URL.
 	URL string
+	// APIURL is the HTTPS API's base, for the Chat Bridge's settable API URL.
+	APIURL string
 
 	t     testing.TB
 	robot Robot
@@ -69,12 +71,24 @@ type WeCom struct {
 	refused     int
 	frames      []Frame
 	fail        map[string][]failure
+
+	now      func() time.Time
+	tokens   map[string]time.Time
+	channels map[string]string
+	posts    map[string][]*Post
+	replies  map[string][]*Post
+	calls    []APICall
+	apiFail  map[string][]failure
 }
 
 // Start runs a Fake WeCom for the test and stops it when the test ends.
 func Start(t testing.TB, r Robot) *WeCom {
 	t.Helper()
-	w := &WeCom{t: t, robot: r, changed: make(chan struct{}), fail: map[string][]failure{}}
+	w := &WeCom{
+		t: t, robot: r, changed: make(chan struct{}), fail: map[string][]failure{},
+		tokens: map[string]time.Time{}, channels: map[string]string{},
+		posts: map[string][]*Post{}, replies: map[string][]*Post{}, apiFail: map[string][]failure{},
+	}
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(w.serve))
 	srv.Listener = recordingListener{srv.Listener}
 	srv.Config.ConnContext = func(ctx context.Context, c net.Conn) context.Context {
@@ -82,10 +96,13 @@ func Start(t testing.TB, r Robot) *WeCom {
 	}
 	srv.Start()
 	w.URL = "ws://" + srv.Listener.Addr().String()
+	api := httptest.NewServer(http.HandlerFunc(w.serveAPI))
+	w.APIURL = api.URL
 	t.Cleanup(func() {
 		w.Drop()
 		srv.CloseClientConnections()
 		srv.Close()
+		api.Close()
 	})
 	return w
 }
