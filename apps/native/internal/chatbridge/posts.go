@@ -3,6 +3,7 @@ package chatbridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -106,9 +107,16 @@ func (b *Bridge) atBot(th *thread, e event) {
 		if rest == "" {
 			rest = "[started a new Chat Session with !new, with no task yet]"
 		}
+		b.markSent(th, at.ReplyID, err)
 		b.startOver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, rest, true))
 		return
 	}
+	// Droid reads the text with read_thread when it gets to it.
+	if b.working(th) {
+		b.deliver(th, busyNotice(user, at.ReplyID))
+		return
+	}
+	b.markSent(th, at.ReplyID, err)
 	b.deliver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, text, first))
 }
 
@@ -241,15 +249,50 @@ func (b *Bridge) readThread(ctx context.Context, th *thread, cursor string, limi
 	} else if len(replies) > 0 {
 		out.WriteString("No more replies.")
 	}
+	for _, r := range replies {
+		b.markRead(th, r.ReplyID)
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+// markRead records replies Droid has seen, in read_thread or in the message
+// an @ sent it.
+func (b *Bridge) markRead(th *thread, replyIDs ...string) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if th.read == nil {
 		th.read = map[string]bool{}
 	}
-	for _, r := range replies {
-		th.read[r.ReplyID] = true
+	for _, id := range replyIDs {
+		th.read[id] = true
 	}
-	b.mu.Unlock()
-	return strings.TrimSpace(out.String()), nil
+}
+
+// markSent marks the reply an @ was in as read when its message carries
+// the reply's text, which it does unless WeCom did not give it (err).
+func (b *Bridge) markSent(th *thread, replyID string, err error) {
+	if replyID != "" && err == nil {
+		b.markRead(th, replyID)
+	}
+}
+
+// unread counts the replies under the post, not the robot's, that Droid
+// has not seen, among the newest page of them; more says the page was all
+// unread and older ones were left out.
+func (b *Bridge) unread(ctx context.Context, th *thread, api *channelAPI) (n int, more bool, err error) {
+	replies, older, err := api.latestReplies(ctx, th.topicID, th.postID, maxReplyPage)
+	if err != nil {
+		return 0, false, err
+	}
+	robot := b.robotID()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, r := range replies {
+		if a := r.author(); !th.read[r.ReplyID] && (a.Type != 1 || a.BotID != robot) {
+			n++
+		}
+	}
+	return n, older && n == len(replies), nil
 }
 
 func edited(c content) string {
@@ -257,6 +300,36 @@ func edited(c content) string {
 		return " (edited)"
 	}
 	return ""
+}
+
+const maxEmoji = 115
+
+// react puts one of WeCom's emoji on the post or one of its replies, or
+// removes it.
+func (b *Bridge) react(ctx context.Context, th *thread, emoji int, replyID string, remove bool) (string, error) {
+	if th.kind != threadKindChannel {
+		return "", errors.New("react works only in a WeCom Channel; this Chat Thread is a direct message")
+	}
+	if emoji < 1 || emoji > maxEmoji {
+		return "", fmt.Errorf("emoji is %d; WeCom's emoji are 1 to %d", emoji, maxEmoji)
+	}
+	b.mu.Lock()
+	api := b.api
+	b.mu.Unlock()
+	if api == nil {
+		return "", errNotConnected
+	}
+	if err := api.postEmoji(ctx, th.topicID, th.postID, replyID, emoji, !remove); err != nil {
+		return "", fmt.Errorf("not done: %w", err)
+	}
+	on := "the post"
+	if replyID != "" {
+		on = "reply " + replyID
+	}
+	if remove {
+		return fmt.Sprintf("Removed emoji %d from %s.", emoji, on), nil
+	}
+	return fmt.Sprintf("Put emoji %d on %s.", emoji, on), nil
 }
 
 // replyInChannel posts Markdown as a reply under the Chat Thread's post.
@@ -271,5 +344,20 @@ func (b *Bridge) replyInChannel(ctx context.Context, th *thread, text string) (s
 	if err != nil {
 		return "", fmt.Errorf("not sent: %w", err)
 	}
-	return fmt.Sprintf("Replied under the post in the WeCom Channel %s (reply %s).", channelLabel(name, th.topicID), id), nil
+	out := fmt.Sprintf("Replied under the post in the WeCom Channel %s (reply %s).", channelLabel(name, th.topicID), id)
+	// The reply is sent already; a failed count only leaves the hint out.
+	n, more, err := b.unread(ctx, th, api)
+	if err != nil {
+		b.o.Log("cannot count the unread replies: " + err.Error())
+		return out, nil
+	}
+	switch {
+	case more:
+		out += fmt.Sprintf(" The post has %d or more replies you have not read; read_thread shows them.", n)
+	case n == 1:
+		out += " The post has 1 reply you have not read; read_thread shows it."
+	case n > 1:
+		out += fmt.Sprintf(" The post has %d replies you have not read; read_thread shows them.", n)
+	}
+	return out, nil
 }

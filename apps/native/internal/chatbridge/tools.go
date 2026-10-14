@@ -146,7 +146,7 @@ var toolList = []tool{
 			"It is the only way anything you write reaches the people there; " +
 			"call it for progress on a long task and for your answer. Markdown, at most 20480 bytes. " +
 			"A WeCom error, such as its rate limit of 30 messages a minute and 1000 an hour, comes back as a tool error: " +
-			"the message was not sent.",
+			"the message was not sent. In a WeCom Channel the result says when the post has replies you have not read.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -168,6 +168,22 @@ var toolList = []tool{
 				"cursor": map[string]any{"type": "string", "description": "The cursor the previous page ended with; omit for the first page."},
 				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": maxReplyPage, "description": "Replies per page, 20 when omitted."},
 			},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Name: "react",
+		Description: "Put an emoji on this Chat Thread's post or on one of its replies in a WeCom Channel, or remove one you put; " +
+			"it does not work in a direct message. WeCom's emoji are numbered 1 to 115; common ones: " +
+			"69 收到 (got it), 3 DONE, 1 +1, 6 OK, 41 好, 48 强, 46 庆祝, 62 抱拳, 85 疑问, 115 鼓掌.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"emoji":    map[string]any{"type": "integer", "minimum": 1, "maximum": maxEmoji, "description": "The emoji's number."},
+				"reply_id": map[string]any{"type": "string", "description": "The reply to react to, as read_thread shows it; omit for the post."},
+				"remove":   map[string]any{"type": "boolean", "description": "Remove the emoji instead of putting it."},
+			},
+			"required":             []string{"emoji"},
 			"additionalProperties": false,
 		},
 	},
@@ -196,6 +212,18 @@ func (b *Bridge) callTool(ctx context.Context, th *thread, name string, args jso
 			}
 		}
 		return b.readThread(ctx, th, p.Cursor, p.Limit)
+	case "react":
+		var p struct {
+			Emoji   int    `json:"emoji"`
+			ReplyID string `json:"reply_id"`
+			Remove  bool   `json:"remove"`
+		}
+		if len(args) > 0 {
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+		return b.react(ctx, th, p.Emoji, p.ReplyID, p.Remove)
 	}
 	return "", fmt.Errorf("no tool %q", name)
 }

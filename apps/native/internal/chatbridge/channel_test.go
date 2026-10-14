@@ -83,10 +83,13 @@ func (r *rig) barrier(nth int) {
 
 func TestALaterAtInTheSamePostContinuesItsChatSession(t *testing.T) {
 	r := start(t, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} })
+	turns := r.watchTurns()
 	post := r.channel("Look at the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	p := r.initialized(1)
 	r.message(1)
+	turns.wait(p.SessionID, 1)
+	r.barrier(2)
 
 	reply := r.w.AddReply(topic, post, fakewecom.Post{
 		From:     "LiLei",
@@ -96,7 +99,7 @@ func TestALaterAtInTheSamePostContinuesItsChatSession(t *testing.T) {
 	})
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, ReplyID: reply, From: "LiLei"})
 
-	m := r.message(2)
+	m := r.message(3)
 	if m.SessionID != p.SessionID {
 		t.Errorf("the second @ went to %s, the post's Chat Session is %s", m.SessionID, p.SessionID)
 	}
@@ -108,8 +111,8 @@ func TestALaterAtInTheSamePostContinuesItsChatSession(t *testing.T) {
 	if strings.Contains(m.Text, "read_thread") {
 		t.Errorf("a later trigger has the read_thread hint:\n%s", m.Text)
 	}
-	if n := r.count("daemon.initialize_session"); n != 1 {
-		t.Errorf("%d Chat Sessions for one post", n)
+	if n := r.count("daemon.initialize_session"); n != 2 {
+		t.Errorf("%d Chat Sessions; the post's and the barrier's are 2", n)
 	}
 }
 

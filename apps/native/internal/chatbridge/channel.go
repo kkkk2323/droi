@@ -260,6 +260,32 @@ func (a *channelAPI) replyPage(ctx context.Context, topicID, postID, cursor stri
 	return res.Replies, res.NextCursor, nil
 }
 
+// latestReplies are the newest replies under a post, newest first, and
+// whether there are older ones.
+func (a *channelAPI) latestReplies(ctx context.Context, topicID, postID string, limit int) ([]content, bool, error) {
+	var res struct {
+		Replies []content `json:"reply_list"`
+		HasMore bool      `json:"has_more"`
+	}
+	err := a.call(ctx, "/topic/get_reply_list", map[string]any{
+		"topic_id": topicID, "post_id": postID, "type": 1, "sort_type": 1, "limit": limit,
+	}, &res)
+	return res.Replies, res.HasMore, err
+}
+
+// postEmoji puts one of WeCom's emoji on a post (replyID "") or a reply,
+// or removes it.
+func (a *channelAPI) postEmoji(ctx context.Context, topicID, postID, replyID string, emoji int, put bool) error {
+	body := map[string]any{"topic_id": topicID, "post_id": postID, "emoji_type": emoji, "action": 0}
+	if put {
+		body["action"] = 1
+	}
+	if replyID != "" {
+		body["reply_id"] = replyID
+	}
+	return a.call(ctx, "/topic/post_emoji", body, nil)
+}
+
 // sendReply posts Markdown under a post and returns the reply's id.
 func (a *channelAPI) sendReply(ctx context.Context, topicID, postID, text string) (string, error) {
 	var res struct {

@@ -419,8 +419,21 @@ func textOf(m callback) string {
 	return "[" + m.MsgType + "]"
 }
 
+// working reports whether the Chat Thread's Chat Session is in a turn.
+func (b *Bridge) working(th *thread) bool {
+	b.mu.Lock()
+	id := th.sessionID
+	b.mu.Unlock()
+	if id == "" {
+		return false
+	}
+	s := b.ctl.Store().Session(id)
+	return s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle
+}
+
 // deliver sends the Chat Thread's Chat Session one message, starting the
-// Session first when the Chat Thread has none.
+// Session first when the Chat Thread has none. A message to a Session in a
+// turn goes into that turn.
 func (b *Bridge) deliver(th *thread, text string) { b.deliverTo(th, text, false) }
 
 // startOver archives the Chat Thread's Chat Session and sends text to a new
@@ -470,7 +483,11 @@ func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
 		}
 		b.mu.Unlock()
 	}
-	if _, err := b.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: text}); err != nil {
+	p := protocol.AddUserMessageParams{SessionID: id, Text: text}
+	if b.working(th) {
+		p.QueuePlacement = protocol.QueuePlacementEndOfTurn
+	}
+	if _, err := b.ctl.AddUserMessage(ctx, p); err != nil {
 		b.o.Log("cannot send the Chat Session its message: " + err.Error())
 	}
 }

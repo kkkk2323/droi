@@ -169,8 +169,9 @@ func (r *rig) initialized(nth int) initialized {
 }
 
 type message struct {
-	SessionID string `json:"sessionId"`
-	Text      string `json:"text"`
+	SessionID      string `json:"sessionId"`
+	Text           string `json:"text"`
+	QueuePlacement string `json:"queuePlacement"`
 }
 
 func (r *rig) message(nth int) message {
@@ -465,7 +466,7 @@ func TestTheDroiChatServerListsItsTools(t *testing.T) {
 	for _, x := range list {
 		names = append(names, x.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "reply,read_thread" {
+	if strings.Join(names, ",") != "reply,read_thread,react" {
 		t.Errorf("tools %v", names)
 	}
 }
