@@ -126,6 +126,7 @@ func main() {
 		}
 	}
 	mem := hostrun.StartMemory(h, home, func() { update(func() {}) })
+	chat := hostrun.StartChatBridge(h)
 	var remote app.Remote
 	if gw != nil {
 		remote = gw
@@ -241,6 +242,7 @@ func main() {
 		if gw != nil {
 			gw.Close()
 		}
+		chat.Stop()
 		mem.Stop()
 		ctl.Close()
 		h.Stop()
