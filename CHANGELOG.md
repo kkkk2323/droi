@@ -1,3 +1,9 @@
+## 1.51.0 - 2026-10-14
+
+### Added
+
+- Once Droi knows another computer, the top left of the sidebar names the computer the window shows. Click it to switch to this computer or any remembered one, or to open Settings › Computer.
+
 ## 1.50.0 - 2026-10-14
 
 ### Added
