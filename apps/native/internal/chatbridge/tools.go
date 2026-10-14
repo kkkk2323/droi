@@ -146,7 +146,7 @@ var toolList = []tool{
 			"It is the only way anything you write reaches the people there; " +
 			"call it for progress on a long task and for your answer. Markdown, at most 20480 bytes. " +
 			"A WeCom error, such as its rate limit of 30 messages a minute and 1000 an hour, comes back as a tool error: " +
-			"the message was not sent.",
+			"the message was not sent. In a WeCom Channel the result says when the post has replies you have not read.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
