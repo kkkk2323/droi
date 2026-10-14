@@ -35,7 +35,6 @@ var settingsTabs = []settingsTab{
 	{"computer", l10n.N("Computer"), "laptop", false},
 	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false},
 	{"memory", l10n.N("Memory"), "brain", true},
-	{"chat", l10n.N("Chat Bridge"), "bot", true},
 	{"worktrees", l10n.N("Worktrees"), "git-fork", false},
 	{"notifications", l10n.N("Notifications"), "bell", false},
 	{"remote", l10n.N("Remote Access"), "smartphone", true},
@@ -130,7 +129,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 				}
 			}
 			if a.following() {
-				k.Text(c, L("Account, Memory, Chat Bridge, Remote Access and Advanced are changed on %s.", a.computerName()), 12, 18).Role(ui.RoleStatus).
+				k.Text(c, L("Account, Memory, Remote Access and Advanced are changed on %s.", a.computerName()), 12, 18).Role(ui.RoleStatus).
 					TextColor(t.MutedForeground).Padding(k.Px(8), k.Px(8), 0, k.Px(8))
 			}
 		})
@@ -152,8 +151,6 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.defaultsTab(c)
 				case "memory":
 					a.memoryTab(c)
-				case "chat":
-					a.chatTab(c)
 				case "worktrees":
 					a.worktreesTab(c)
 				case "notifications":

@@ -592,9 +592,6 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				title.FontWeight(500)
 				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
 			}
-			if sessions.IsChat(s.Tags) {
-				k.Icon(c, "bot", 12, t.Foreground).Opacity(0.7).Label(L("Chat Session"))
-			}
 			if pinned {
 				k.Icon(c, "pin", 12, t.Foreground).Opacity(0.7).Label(L("Pinned"))
 			}

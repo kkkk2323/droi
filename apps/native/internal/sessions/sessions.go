@@ -69,8 +69,6 @@ const (
 	DraftTag     = "droi.draft"
 	ScratchTag   = "droi.scratch"
 	MemoryTag    = "droi.memory"
-	// ChatTag marks a Chat Session; its metadata names the Chat Thread.
-	ChatTag = "droi.chat"
 )
 
 func hasTag(tags []Tag, name string) bool {
@@ -127,7 +125,6 @@ func WithoutAutomationRuns(list []Summary) []Summary {
 func IsDraft(tags []Tag) bool   { return hasTag(tags, DraftTag) }
 func IsScratch(tags []Tag) bool { return hasTag(tags, ScratchTag) }
 func IsMemory(tags []Tag) bool  { return hasTag(tags, MemoryTag) }
-func IsChat(tags []Tag) bool    { return hasTag(tags, ChatTag) }
 
 var scratchFolder = regexp.MustCompile(`/\d{4}-\d{2}-\d{2}-[0-9a-f]{6}/?$`)
 

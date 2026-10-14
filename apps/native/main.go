@@ -114,7 +114,6 @@ func main() {
 		}
 	}
 	mem := hostrun.StartMemory(h, home, func() { update(func() {}) })
-	chat := hostrun.StartChatBridge(h)
 	var remote app.Remote
 	if gw != nil {
 		remote = gw
@@ -123,8 +122,8 @@ func main() {
 	var setMenu func()
 	// shown is the window's insides for the computer it follows, built
 	// again in place of the old when the window switches to another; this
-	// computer's Host, Gateway, Memory and Chat Bridge run all the same, for
-	// its phones and Automations. Main thread only.
+	// computer's Host, Gateway and Memory run all the same, for its phones
+	// and Automations. Main thread only.
 	var shown *inside
 	var switchTo func(to *computer.Paired)
 	open := func(followed *computer.Paired) *inside {
@@ -164,7 +163,6 @@ func main() {
 			Remote:    remote,
 			Memory:    mem,
 
-			ChatBridge:        chat,
 			FactoryAppRunning: host.FactoryAppRunning,
 		})
 		a.SetLanguageChanged(func() {
@@ -259,7 +257,6 @@ func main() {
 		if gw != nil {
 			gw.Close()
 		}
-		chat.Stop()
 		mem.Stop()
 		shown.close()
 		h.Stop()

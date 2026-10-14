@@ -1,7 +1,6 @@
 // Package hostrun is `droi host` (ADR 0019): a Host with no window. It
-// starts the Daemon, the Gateway with Remote Access always on, Memory and
-// the Chat Bridge, prints the pairing link, and stops them all when its
-// context ends.
+// starts the Daemon, the Gateway with Remote Access always on and Memory,
+// prints the pairing link, and stops them all when its context ends.
 package hostrun
 
 import (
@@ -74,11 +73,9 @@ func Run(ctx context.Context, o Options) error {
 		return fmt.Errorf("the Gateway cannot listen: %w", err)
 	}
 	mem := StartMemory(h, o.Home, func() {})
-	chat := StartChatBridge(h)
 	h.Start()
 	defer func() {
 		_ = gw.Close()
-		chat.Stop()
 		mem.Stop()
 		h.Stop()
 	}()

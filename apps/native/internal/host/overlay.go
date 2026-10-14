@@ -11,10 +11,6 @@ import (
 // MemoryServerName is the Memory Server's name in the Daemon's MCP list.
 const MemoryServerName = "droi-memory"
 
-// ChatServerName is the name of the Chat Bridge's droi-chat tools, which only
-// Chat Sessions are given (ADR 0020).
-const ChatServerName = "droi-chat"
-
 // The app's own executable runs the Memory Server and the hook as these
 // subcommands, where the Electron Shell ran its own Node.
 const (
@@ -90,27 +86,6 @@ func BuildRuntimeOverlay(m MemoryAttachment) map[string]any {
 		"mcpAutonomyOverrides": map[string]any{MemoryServerName: map[string]any{"defaultLevel": "low"}},
 		"hooks":                hooks,
 	}
-}
-
-// ApproveChatServer adds to an overlay the pre-approval of the droi-chat
-// tools, so their calls raise no Prompt. It adds no server: the Chat Bridge
-// passes droi-chat in each Chat Session's own mcpServers, so other Sessions
-// never have it.
-func ApproveChatServer(o map[string]any, approvedAt string) map[string]any {
-	sub := func(m map[string]any, key string) map[string]any {
-		v, ok := m[key].(map[string]any)
-		if !ok {
-			v = map[string]any{}
-			m[key] = v
-		}
-		return v
-	}
-	// droid drops the whole overlay when "mcp" has no mcpServers.
-	sub(sub(o, "mcp"), "mcpServers")
-	servers := sub(sub(sub(o, "mcp"), "persistentPermissions"), "servers")
-	servers[ChatServerName] = map[string]any{"approvedAt": approvedAt, "impactLevel": "high"}
-	sub(o, "mcpAutonomyOverrides")[ChatServerName] = map[string]any{"defaultLevel": "low"}
-	return o
 }
 
 // WriteRuntimeOverlay writes the overlay as JSON only the user can read.

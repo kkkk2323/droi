@@ -39,40 +39,6 @@ type Settings struct {
 	// CLI's own; ActiveAccount is the one the Daemon runs as, "" the CLI's.
 	Accounts      []string `json:"accounts,omitempty"`
 	ActiveAccount string   `json:"activeAccount,omitempty"`
-	// ChatBridge is the Chat Bridge's robot (ADR 0020); off while BotID is "".
-	ChatBridge ChatBridgeSettings `json:"chatBridge,omitzero"`
-}
-
-// ChatBridgeSettings are the WeCom smart robot the Chat Bridge connects and
-// how its Chat Sessions run.
-type ChatBridgeSettings struct {
-	BotID  string `json:"botId,omitempty"`
-	Secret string `json:"secret,omitempty"`
-	// Workspace is the folder every Chat Session runs in.
-	Workspace string `json:"workspace,omitempty"`
-	// AllowedUsers are the WeCom user ids, as WeCom sends them (often
-	// encrypted per company), that may talk to the robot.
-	AllowedUsers []string `json:"allowedUsers,omitempty"`
-	// RefusedUsers are the senders the Chat Bridge refused, newest last.
-	RefusedUsers []string `json:"refusedUsers,omitempty"`
-	// AutonomyLevel is the Chat Sessions'; "" is DefaultChatAutonomyLevel.
-	AutonomyLevel string `json:"autonomyLevel,omitempty"`
-	// Model is the Chat Sessions' model; "" leaves it to the Session Defaults.
-	Model string `json:"model,omitempty"`
-}
-
-// DefaultChatAutonomyLevel is Autonomy 低.
-const DefaultChatAutonomyLevel = "low"
-
-// On reports that a robot is set.
-func (c ChatBridgeSettings) On() bool { return strings.TrimSpace(c.BotID) != "" }
-
-// AutonomyLevelOrDefault is the Autonomy level Chat Sessions run at.
-func (c ChatBridgeSettings) AutonomyLevelOrDefault() string {
-	if c.AutonomyLevel != "" {
-		return c.AutonomyLevel
-	}
-	return DefaultChatAutonomyLevel
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the
