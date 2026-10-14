@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
+	"github.com/kkkk2323/droi/apps/native/internal/archive"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -710,16 +712,24 @@ func (a *App) renameSession(id, title string) {
 
 func (a *App) toggleArchive(s sessions.Summary) { _ = a.archive(s) }
 
-// archive archives the Session, or unarchives an archived one.
+// archive archives the Session, or unarchives an archived one. A Scratch
+// Session's conversation goes with its folder, through the Gateway.
 func (a *App) archive(s sessions.Summary) error {
 	cl, err := a.ctl.Client()
 	if err != nil {
 		return err
 	}
+	a.mu.Lock()
+	listed := append([]sessions.Summary(nil), a.listed...)
+	a.mu.Unlock()
+	var scratch archive.Scratch = noScratch{}
+	if a.cfg.Gateway != nil {
+		scratch = a.cfg.Gateway
+	}
 	if s.ArchivedAt != "" {
-		_, err = cl.UnarchiveSession(a.ctx, protocol.UnarchiveSessionParams{SessionID: s.SessionID})
+		err = archive.Unarchive(a.ctx, cl, scratch, listed, s)
 	} else {
-		_, err = cl.ArchiveSession(a.ctx, protocol.ArchiveSessionParams{SessionID: s.SessionID})
+		err = archive.Conversation(a.ctx, cl, scratch, listed, s)
 		if err == nil {
 			a.cfg.Update(func() {
 				if a.route.SessionID == s.SessionID {
@@ -729,11 +739,15 @@ func (a *App) archive(s sessions.Summary) error {
 			})
 		}
 	}
-	if err == nil {
-		a.reloadList()
-	}
+	a.reloadList()
 	return err
 }
+
+// noScratch is a window without a Gateway: it has no folders to move.
+type noScratch struct{}
+
+func (noScratch) TrashScratch(context.Context, string) error   { return nil }
+func (noScratch) RestoreScratch(context.Context, string) error { return nil }
 
 // skeleton stands in for the list while it loads.
 func (a *App) skeleton(c *ui.Context) {

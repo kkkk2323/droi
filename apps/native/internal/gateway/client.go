@@ -69,6 +69,18 @@ func (c *Client) CreateScratch(ctx context.Context) (string, error) {
 	return made.Path, nil
 }
 
+// TrashScratch moves a Scratch Workspace of the Gateway's computer to its
+// Trash; an empty one is removed.
+func (c *Client) TrashScratch(ctx context.Context, path string) error {
+	return c.call(ctx, http.MethodPost, ScratchTrashPath, url.Values{ScratchPathQuery: {path}}, nil)
+}
+
+// RestoreScratch recreates a Scratch Workspace folder that is gone, so the
+// Sessions in it open again.
+func (c *Client) RestoreScratch(ctx context.Context, path string) error {
+	return c.call(ctx, http.MethodPost, ScratchRestorePath, url.Values{ScratchPathQuery: {path}}, nil)
+}
+
 // SessionFile is where the Daemon keeps the Session's transcript, "" when it
 // has none.
 func (c *Client) SessionFile(ctx context.Context, sessionID string) (string, error) {

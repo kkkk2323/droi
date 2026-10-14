@@ -47,6 +47,52 @@ func TestAClientCreatesAScratchWorkspaceInTheGatewaysScratchFolder(t *testing.T)
 	}
 }
 
+func TestAClientTrashesAndRestoresAScratchWorkspace(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "chats")
+	var trashed []string
+	_, c := startClientGateway(t, func(o *Options) {
+		o.Scratch = &ScratchFolders{Root: func() string { return root }, MoveToTrash: func(path string) error {
+			trashed = append(trashed, path)
+			return os.RemoveAll(path)
+		}}
+	})
+	path, err := c.CreateScratch(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.TrashScratch(t.Context(), path); err != nil {
+		t.Fatal(err)
+	}
+	if len(trashed) != 1 || trashed[0] != path || exists(path) {
+		t.Fatalf("trashed %v, folder there: %v", trashed, exists(path))
+	}
+	if err := c.RestoreScratch(t.Context(), path); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(path) {
+		t.Fatal("the folder was not restored")
+	}
+}
+
+func TestAClientIsToldWhenTheGatewayWillNotTouchAFolder(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "chats")
+	_, c := startClientGateway(t, func(o *Options) {
+		o.Scratch = &ScratchFolders{Root: func() string { return root }}
+	})
+	var status *StatusError
+	for name, call := range map[string]func() error{
+		"trash":   func() error { return c.TrashScratch(t.Context(), "/Users/dev/acme-web") },
+		"restore": func() error { return c.RestoreScratch(t.Context(), "/Users/dev/acme-web") },
+	} {
+		if err := call(); !errors.As(err, &status) || status.Status != 400 {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
 func TestAClientToldThereIsNoScratchFolderGetsErrNotFound(t *testing.T) {
 	_, c := startClientGateway(t, nil)
 	if _, err := c.CreateScratch(t.Context()); !errors.Is(err, ErrNotFound) {
