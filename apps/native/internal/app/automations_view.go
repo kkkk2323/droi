@@ -1074,7 +1074,7 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 		a.formField(c, L("Workspace"), L("Runs work in this folder, with its skills and settings. Leave it empty for the automation’s own folder in ~/.factory/automations."), "", func() {
 			ui.Row(c).Gap(k.Px(8)).Children(func() {
 				a.field(c, &f.workdir, L("Automation workspace"), "/Users/you/project", true, false)
-				if a.smallButton(c, kit.Outline, L("Choose…"), "folder-open", false).Height(k.Px(36)).Label(L("Choose a workspace")).Clicked() {
+				if !a.following() && a.smallButton(c, kit.Outline, L("Choose…"), "folder-open", false).Height(k.Px(36)).Label(L("Choose a workspace")).Clicked() {
 					go func() {
 						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose a workspace"), Directory: true})
 						if err != nil || len(paths) == 0 {

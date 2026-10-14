@@ -609,7 +609,9 @@ func (a *App) worktreesTab(c *ui.Context) {
 			if dv.WorktreeDirectory != "" {
 				opts = append(opts, kit.Option{Value: dv.WorktreeDirectory, Label: L("Custom: %s", dv.WorktreeDirectory)})
 			}
-			opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+			if !a.following() {
+				opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+			}
 			a.settingRow(c, L("Worktree directory"), L("Choose a custom parent directory for local worktrees."), func() {
 				next, ok := a.fieldSelect(c, L("Worktree directory"), dv.WorktreeDirectory, opts, false)
 				switch {

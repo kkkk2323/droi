@@ -714,7 +714,7 @@ func (v *sessionView) openInButton(c *ui.Context, workspace string) {
 	}
 	list := apps()
 	preferred, ok := preferredApp(list, prefs.OpenInApp.Get(a.prefs))
-	if workspace == "" || !ok {
+	if workspace == "" || !ok || a.following() {
 		return
 	}
 	open := func(app host.OpenInApp) {

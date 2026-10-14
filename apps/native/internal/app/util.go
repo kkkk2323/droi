@@ -79,6 +79,15 @@ var homeDir = sync.OnceValue(func() string {
 	return strings.TrimRight(h, `/\`)
 })
 
+// shownPath is a path as the window shows it: on this computer with its home
+// folder written ~, on another in full, since that computer's home is not ours.
+func (a *App) shownPath(path string) string {
+	if a.following() {
+		return path
+	}
+	return tildePath(path)
+}
+
 // tildePath is path with the home folder written ~.
 func tildePath(path string) string {
 	h := homeDir()

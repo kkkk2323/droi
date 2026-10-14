@@ -445,10 +445,11 @@ func (v *sessionView) pasteImage() bool {
 	return ok || err != nil
 }
 
-// addFiles attaches the images of files; other files go in as their paths.
+// addFiles attaches the images of files; other files go in as their paths,
+// except for another computer, which cannot read this one's.
 func (v *sessionView) addFiles(paths []string) {
 	cs := &v.composer
-	if err := attachFiles(&cs.text, &cs.images, paths); err != nil {
+	if err := attachFiles(&cs.text, &cs.images, paths, v.a.following()); err != nil {
 		cs.err = err.Error()
 	}
 	v.saveDraft()
@@ -456,8 +457,9 @@ func (v *sessionView) addFiles(paths []string) {
 
 // attachFiles attaches the images among paths and adds the other files to
 // text as their paths, which the agent reads itself; err is the last file
-// that could not be read.
-func attachFiles(text *string, images *[]attachments.Image, paths []string) (err error) {
+// that could not be read. With picturesOnly (another computer, which cannot
+// open this computer's paths) other files are refused instead.
+func attachFiles(text *string, images *[]attachments.Image, paths []string, picturesOnly bool) (err error) {
 	var others []string
 	for _, p := range paths {
 		img, ok, e := attachments.ReadFile(p, uuid.NewString())
@@ -469,6 +471,9 @@ func attachFiles(text *string, images *[]attachments.Image, paths []string) (err
 		default:
 			others = append(others, p)
 		}
+	}
+	if len(others) > 0 && picturesOnly {
+		return errors.New(L("Only pictures can be attached to another computer."))
 	}
 	if len(others) > 0 {
 		quoted := make([]string, len(others))

@@ -811,7 +811,9 @@ func (a *App) defaultsTab(c *ui.Context) {
 				opts = append(opts, kit.Option{Value: dv.SpecSaveDir, Label: L("Custom: %s", dv.SpecSaveDir)})
 				desc = L("Specs from every Session go to this folder.")
 			}
-			opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+			if !a.following() {
+				opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+			}
 			a.settingRow(c, L("Save folder"), descIf("specSaveDir", desc), func() {
 				next, ok := a.fieldSelect(c, l10n.N("Spec save folder"), value, opts, locked("specSaveDir"))
 				switch {

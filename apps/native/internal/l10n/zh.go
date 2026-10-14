@@ -931,4 +931,5 @@ var zh = map[string]string{
 	"Account, Memory, Remote Access and Advanced are changed on %s.":                                                         "账户、记忆、远程访问和高级设置请在 %s 上更改。",
 	"These are the settings of %s. Existing Sessions keep their settings.":                                                   "这是 %s 的设置。已有会话保持各自的设置。",
 	"Not in a project: the session gets a new folder on %s":                                                                  "不在项目中：会话将在 %s 上创建新文件夹",
+	"Only pictures can be attached to another computer.":                                                                     "只能给另一台电脑附加图片。",
 }

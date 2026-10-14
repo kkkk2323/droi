@@ -302,6 +302,14 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 		more, other = len(shown), len(shown)+1
 	}
 	none := other + 1
+	if a.following() {
+		// The folder dialog browses this computer's disk.
+		other = -2
+		none = len(shown)
+		if hidden > 0 {
+			none++
+		}
+	}
 	if s.highlight < 0 {
 		s.highlight = none
 		if value == "" {
@@ -406,7 +414,7 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 					k.Text(c, msg, 13, 20).TextColor(t.MutedForeground).Padding(k.Px(6), k.Px(8))
 				}
 				for i, w := range shown {
-					row(i, w.Path, "folder", w.Label, tildePath(w.Path), w.Path, w.Path == value)
+					row(i, w.Path, "folder", w.Label, a.shownPath(w.Path), w.Path, w.Path == value)
 				}
 				if hidden > 0 {
 					row(more, "more", "chevron-down", L("Show %d more", hidden), "", "", false)
@@ -414,7 +422,9 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 			})
 		})
 		ui.Column(c).Padding(k.Px(4)).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-			row(other, "other", "plus", L("Other folder…"), "", L("Choose a folder on this computer"), false)
+			if !a.following() {
+				row(other, "other", "plus", L("Other folder…"), "", L("Choose a folder on this computer"), false)
+			}
 			row(none, scratchPick, "x", L("Don't work in a project"), "", L("A new folder of its own in %s", a.scratchRoot()), value == scratchPick)
 		})
 	})
@@ -454,7 +464,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
 		if drop, ok := ui.DropData(card, dropOptions); ok {
 			d := readDrop(drop.Data)
-			if err := attachFiles(&s.text, &s.images, d.files); err != nil {
+			if err := attachFiles(&s.text, &s.images, d.files, a.following()); err != nil {
 				s.err = err.Error()
 			}
 			if d.image != nil {
@@ -485,7 +495,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			}
 			paste := func() bool {
 				if paths := a.clipboardFiles(); len(paths) > 0 {
-					if err := attachFiles(&s.text, &s.images, paths); err != nil {
+					if err := attachFiles(&s.text, &s.images, paths, a.following()); err != nil {
 						s.err = err.Error()
 					}
 					return true
