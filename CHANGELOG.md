@@ -1,3 +1,13 @@
+## 1.50.0 - 2026-10-14
+
+### Added
+
+- Droi remembers every computer you followed. Settings › Computer lists this computer and each remembered one; one click switches to it, with no pairing link to paste again. "Use this computer" goes back without forgetting the others, and each one can be forgotten. When a remembered computer cannot be reached, for instance because its Pairing Token was reset, Droi offers to paste a new link, forget it or use this computer.
+
+### Changed
+
+- Switching to another computer, or back to this one, no longer restarts Droi: the window stays open and shows the other computer's Sessions at once. A computer followed with an earlier version is kept.
+
 ## 1.49.0 - 2026-10-14
 
 ### Added
