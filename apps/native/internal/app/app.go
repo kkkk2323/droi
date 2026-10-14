@@ -796,6 +796,9 @@ func (a *App) View(c *ui.Context) {
 		if b.Clicked() {
 			a.Run(CmdToggleSidebar)
 		}
+		if shown {
+			a.computerMenu(c, left+36)
+		}
 	})
 }
 

@@ -194,7 +194,8 @@ Remote Access and Advanced settings, which belong to this computer's Host. This 
 Host keeps running for its phones and Automations. "Use this computer" goes back and keeps
 the others listed; the trash button forgets one. When the followed computer cannot be reached
 (it is off, or its Pairing Token was reset), the window offers to use this computer, paste a new
-link or forget it.
+link or forget it. Once another computer is remembered, the top left of the sidebar, beside its
+toggle, names the computer shown; its menu switches to any other or opens Settings → Computer.
 
 A switch does not relaunch the app. `main.go` keeps the window open and builds its insides
 again (`inside.go`): a new Controller to the computer's Gateway, a new Gateway Client and a new

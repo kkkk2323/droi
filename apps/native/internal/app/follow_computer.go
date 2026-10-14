@@ -102,6 +102,49 @@ func (a *App) forgetComputer(id string) {
 	}
 }
 
+// computerMenu is the sidebar's switch between the computers Droi knows,
+// at the window's top left beside the sidebar toggle; with no other
+// computer remembered there is nothing to switch to, so it is not shown.
+func (a *App) computerMenu(c *ui.Context, left float32) {
+	remembered := computer.Remembered(a.prefs)
+	if len(remembered) == 0 {
+		return
+	}
+	k, t := a.kit, a.kit.T
+	name := L("This computer")
+	if a.following() {
+		name = a.computerName()
+	}
+	b := ui.ButtonBase(c).Label(L("Computer: %s", name)).Tooltip(L("Switch computer")).Height(k.Px(32)).MaxWidth(k.Px(240 - left - 8)).
+		PaddingX(k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer).Absolute().Left(left).Top(6)
+	color := t.MutedForeground
+	if b.Hovered() {
+		b.Background(t.SidebarAccent.Alpha(0.6))
+		color = t.Foreground
+	}
+	b.Children(func() {
+		ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).Children(func() {
+			k.Text(c, name, 13, 18).TextColor(color).SingleLine().Shrink(1)
+			k.Icon(c, "chevron-down", 12, color)
+		})
+	})
+	b.Menu(func(m *ui.Menu) {
+		if m.Item(L("This computer")).Checked(!a.following()).Chosen() && a.following() {
+			a.useThisComputer()
+		}
+		for _, p := range remembered {
+			current := p.ID == a.computerID()
+			if m.Item(pairedName(p)).Checked(current).Chosen() && !current {
+				a.follow(p)
+			}
+		}
+		m.Separator()
+		if m.Item(L("Manage computers…")).Chosen() {
+			a.Go(Route{Name: "settings", Tab: "computer"})
+		}
+	})
+}
+
 func (a *App) switchTo(p *computer.Paired) {
 	if a.cfg.Switch != nil {
 		a.cfg.Switch(p)
