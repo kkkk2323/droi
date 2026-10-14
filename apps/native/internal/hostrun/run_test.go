@@ -224,7 +224,8 @@ func (r *running) waitForDaemon() {
 	r.b.t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		if _, err := os.Stat(r.b.pidFile); err == nil {
+		// The stand-in creates the file before it writes its pid into it.
+		if raw, err := os.ReadFile(r.b.pidFile); err == nil && len(raw) > 0 {
 			return
 		}
 		if time.Now().After(deadline) {
