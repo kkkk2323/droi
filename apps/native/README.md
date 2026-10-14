@@ -182,15 +182,25 @@ PATH=$HOME/.local/bin:$PATH FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.
 
 ## Following another computer
 
-Settings → Computer shows which computer the window follows: this one, or one other computer,
-added by pasting the pairing link a phone would scan (the link `droi host` prints, or the one
-in Settings → Remote Access of another Droi). Droi checks that the link reaches a Droi Gateway
-that accepts its Pairing Token, keeps it as a Client preference (`droi.computer` in
-`preferences.json`) and relaunches onto it. The window then connects to that Gateway instead
-of its own, lists that computer's Sessions and hides the Account, Memory, Remote Access and
-Advanced settings, which belong to this computer's Host. This computer's Host keeps running
-for its phones and Automations. "Use this computer" (also offered when the other computer
-cannot be reached) clears the preference and relaunches.
+Settings → Computer lists this computer and every other computer the window has followed,
+marks the current one and switches to any other with one click. A computer is added by pasting
+the pairing link a phone would scan (the link `droi host` prints, or the one in Settings →
+Remote Access of another Droi): Droi checks that the link reaches a Droi Gateway that accepts
+its Pairing Token, remembers it as a Client preference (`droi.computers` in `preferences.json`,
+which takes over the single `droi.computer` of earlier versions) and switches to it. A new link
+for a computer already listed replaces its address and token. The window then connects to that
+Gateway instead of its own, lists that computer's Sessions and hides the Account, Memory,
+Remote Access and Advanced settings, which belong to this computer's Host. This computer's
+Host keeps running for its phones and Automations. "Use this computer" goes back and keeps
+the others listed; the trash button forgets one. When the followed computer cannot be reached
+(it is off, or its Pairing Token was reset), the window offers to use this computer, paste a new
+link or forget it.
+
+A switch does not relaunch the app. `main.go` keeps the window open and builds its insides
+again (`inside.go`): a new Controller to the computer's Gateway, a new Gateway Client and a new
+`app.App`, started and connected; the old App stops hearing its Controller and its calls end
+(`App.Close`), then the old Controller closes. The menu, zoom, notification clicks and the
+updater's wait for an idle window always go to the current App. Relaunching stays for updates.
 
 Preferences that name Workspaces by path (pinned and folded Workspaces, their manual order, the
 preferred Open in app) are kept per computer: this computer's stay under their old keys in
@@ -210,7 +220,7 @@ no split.
 | `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
 | `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                     |
 | `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints  |
-| `internal/computer/`                                            | the Computer preference: the one other computer the window follows, and checking its pairing link     |
+| `internal/computer/`                                            | the Computer preference: the Paired Computers remembered, the one followed, and checking a link       |
 | `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                   |
 | `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                 |
 | `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)              |
