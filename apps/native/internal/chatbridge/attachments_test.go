@@ -82,6 +82,35 @@ func TestDownloadAttachmentSavesAChannelFileUnderTheWorkspace(t *testing.T) {
 	}
 }
 
+func TestADownloadADayOldIsDownloadedAgain(t *testing.T) {
+	r, ws := startInWorkspace(t, nil)
+	r.w.AddChannel(topic, "定时任务")
+	post := r.w.AddPost(topic, fakewecom.Post{
+		From: "HuangJunXiang", Text: "${inline_mention:b} what is in ${inline_file:f1}?",
+		Mentions: []fakewecom.Mention{atRobot("b")}, Files: []fakewecom.File{{Placeholder: "f1", Name: "nightly.log", Data: []byte("ok\n")}},
+	})
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	droid := r.droid(r.initialized(1))
+	id := between(r.message(1).Text, `file "nightly.log": "`, `"`)
+	download := func() string {
+		t.Helper()
+		answer, isError := droid.call("download_attachment", map[string]any{"id": id})
+		if isError {
+			t.Fatal(answer)
+		}
+		path, _ := saved(t, ws, answer)
+		return filepath.Base(path)
+	}
+
+	if first, again := download(), download(); first != "nightly.log" || again != first {
+		t.Errorf("downloaded as %s, then as %s", first, again)
+	}
+	r.clock.Add(25 * time.Hour)
+	if later := download(); later != "nightly-2.log" {
+		t.Errorf("a day later downloaded as %s", later)
+	}
+}
+
 func TestReadThreadNamesTheImagesAndFilesOfThePostAndItsReplies(t *testing.T) {
 	r, ws := startInWorkspace(t, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} })
 	r.w.AddChannel(topic, "定时任务")

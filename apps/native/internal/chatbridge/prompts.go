@@ -41,6 +41,7 @@ type prompt struct {
 	// answering: an answer from WeCom is on its way to the Daemon.
 	answering bool
 	settled   bool
+	settledAt time.Time
 	// choice is what the Prompt was answered with and by the WeCom user
 	// who did; by is "" when a Client answered.
 	choice, by string
@@ -52,15 +53,35 @@ type prompt struct {
 type promptBook struct {
 	seq  int
 	open map[string]*prompt
-	// cards are by task id; a settled one stays, for a later click to show
-	// how it was settled.
+	// cards are by task id; a settled one stays for cardKept, for a later
+	// click to show how it was settled.
 	cards map[string]*prompt
+}
+
+// inChatThread reports whether th has a Prompt waiting.
+func (pb *promptBook) inChatThread(th *chatThread) bool {
+	for _, p := range pb.open {
+		if p.th == th {
+			return true
+		}
+	}
+	return false
+}
+
+// prune forgets the cards settled more than cardKept ago.
+func (pb *promptBook) prune(now time.Time) {
+	for id, p := range pb.cards {
+		if p.settled && now.Sub(p.settledAt) > cardKept {
+			delete(pb.cards, id)
+		}
+	}
 }
 
 const (
 	// cardTimeout keeps a click's answer and the card's update inside
 	// WeCom's 5 s.
 	cardTimeout = 4 * time.Second
+	cardKept    = 24 * time.Hour
 	// WeCom's limits on a button_interaction card.
 	maxCardButtons    = 6
 	maxButtonRunes    = 10
@@ -105,6 +126,7 @@ func (b *Bridge) asked(p *prompt, sessions []string) {
 		b.mu.Unlock()
 		return
 	}
+	b.prompts.prune(b.o.Now())
 	b.prompts.seq++
 	p.seq = b.prompts.seq
 	if p.perm != nil && p.th.kind == kindDirectMessage {
@@ -149,7 +171,7 @@ func (b *Bridge) resolvedElsewhere(requestID, option string) {
 		b.mu.Unlock()
 		return
 	}
-	p.settle("")
+	p.settle("", b.o.Now())
 	note := settledNote(p)
 	b.mu.Unlock()
 	b.run(p.th, func() {
@@ -162,9 +184,9 @@ func (b *Bridge) resolvedElsewhere(requestID, option string) {
 }
 
 // settle marks the Prompt answered by the WeCom user by, or (by "") by a
-// Client with the option the Daemon said; b.mu is held.
-func (p *prompt) settle(by string) {
-	p.settled, p.answering, p.by = true, false, by
+// Client with the option the Daemon said, at at; b.mu is held.
+func (p *prompt) settle(by string, at time.Time) {
+	p.settled, p.answering, p.by, p.settledAt = true, false, by, at
 	if by == "" && p.perm != nil {
 		p.choice = ""
 		for _, o := range p.perm.Options {
@@ -242,7 +264,7 @@ func (b *Bridge) answerInChatThread(th *chatThread, user, text string) bool {
 // click is answerClick's.)
 func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, err error) {
 	b.mu.Lock()
-	note := p.took(user, choice, err)
+	note := p.took(user, choice, err, b.o.Now())
 	if note == "" {
 		note = settledNote(p)
 	}
@@ -259,13 +281,13 @@ func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, e
 // took records what the Daemon made of WeCom's answer to p: user's choice,
 // or a Client's answer before it, or neither, when it returns why; b.mu is
 // held.
-func (p *prompt) took(user, choice string, err error) (failed string) {
+func (p *prompt) took(user, choice string, err error, at time.Time) (failed string) {
 	switch {
 	case err == nil:
-		p.settle(user)
+		p.settle(user, at)
 		p.choice = choice
 	case errors.Is(err, controller.ErrPromptNotFound):
-		p.settle("")
+		p.settle("", at)
 	default:
 		p.answering = false
 		if p.ask != nil {
@@ -314,6 +336,7 @@ func (b *Bridge) answerClick(f frame) {
 	ctx, cancel := b.opContext(cardTimeout)
 	defer cancel()
 	b.mu.Lock()
+	b.prompts.prune(b.o.Now())
 	p := b.prompts.cards[click.TaskID]
 	if p == nil {
 		b.mu.Unlock()
@@ -334,7 +357,7 @@ func (b *Bridge) answerClick(f frame) {
 	b.mu.Unlock()
 	err = b.ctl.RespondToPermission(ctx, p.requestID, controller.PermissionAnswer{SelectedOption: opt.Value})
 	b.mu.Lock()
-	note := p.took(user, opt.Label, err)
+	note := p.took(user, opt.Label, err, b.o.Now())
 	card := settledCard(p)
 	settled := p.settled
 	b.mu.Unlock()

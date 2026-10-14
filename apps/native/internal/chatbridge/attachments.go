@@ -62,8 +62,17 @@ type mediaStore struct {
 	mu     sync.Mutex
 	direct map[string]map[string]directMedia
 	order  map[string][]string
-	saved  map[string]string
+	saved  map[string]savedFile
 }
+
+// savedFile is a download, which download_attachment answers again for
+// savedKept instead of downloading again.
+type savedFile struct {
+	path string
+	at   time.Time
+}
+
+const savedKept = 24 * time.Hour
 
 func (s *mediaStore) keep(key, id string, m directMedia) {
 	s.mu.Lock()
@@ -89,19 +98,30 @@ func (s *mediaStore) lookup(key, id string) (directMedia, bool) {
 	return m, ok
 }
 
-func (s *mediaStore) savedAt(key string) string {
+func (s *mediaStore) savedAt(key string, now time.Time) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.saved[key]
+	s.prune(now)
+	return s.saved[key].path
 }
 
-func (s *mediaStore) save(key, path string) {
+func (s *mediaStore) save(key, path string, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.saved == nil {
-		s.saved = map[string]string{}
+		s.saved = map[string]savedFile{}
 	}
-	s.saved[key] = path
+	s.prune(now)
+	s.saved[key] = savedFile{path: path, at: now}
+}
+
+// prune forgets the downloads older than savedKept; s.mu is held.
+func (s *mediaStore) prune(now time.Time) {
+	for key, f := range s.saved {
+		if now.Sub(f.at) > savedKept {
+			delete(s.saved, key)
+		}
+	}
 }
 
 // attachmentList is the lines naming attachments, after a message or a
@@ -198,7 +218,7 @@ func (b *Bridge) downloadAttachment(ctx context.Context, th *chatThread, id stri
 		return "", errors.New("the Chat Bridge has no Workspace")
 	}
 	key := th.key + "\x00" + id
-	if path := b.media.savedAt(key); path != "" {
+	if path := b.media.savedAt(key, b.o.Now()); path != "" {
 		if fi, err := os.Stat(path); err == nil {
 			return savedAnswer(path, fi.Size()), nil
 		}
@@ -220,7 +240,7 @@ func (b *Bridge) downloadAttachment(ctx context.Context, th *chatThread, id stri
 	if err != nil {
 		return "", fmt.Errorf("cannot save it: %w", err)
 	}
-	b.media.save(key, path)
+	b.media.save(key, path, b.o.Now())
 	return savedAnswer(path, int64(len(data))), nil
 }
 

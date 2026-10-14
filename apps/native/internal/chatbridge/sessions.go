@@ -24,6 +24,25 @@ func postChatThread(topicID, postID string) *chatThread {
 	return &chatThread{key: string(kindChannelPost) + ":" + topicID + ":" + postID, kind: kindChannelPost, topicID: topicID, postID: postID}
 }
 
+// chatThreadFor is the map's Chat Thread with th's key, th itself when the
+// map has none; b.mu is held. Before it adds th it forgets the Chat Threads
+// that hold nothing: no Chat Session, none archived, no work and no
+// Prompt. It runs only on the goroutine that handles WeCom's events, the
+// one place but sync that adds Chat Threads, so none it forgets is about to
+// get work.
+func (b *Bridge) chatThreadFor(th *chatThread) *chatThread {
+	if found := b.chatThreads[th.key]; found != nil {
+		return found
+	}
+	for key, old := range b.chatThreads {
+		if old.sessionID == "" && !old.archivedBefore && !old.running && len(old.ops) == 0 && !b.prompts.inChatThread(old) {
+			delete(b.chatThreads, key)
+		}
+	}
+	b.chatThreads[th.key] = th
+	return th
+}
+
 // chatThreadFromTags is the Chat Thread a Session's droi.chat tag names, nil
 // for a Session that is not a Chat Session.
 func chatThreadFromTags(tags []protocol.SessionTag) *chatThread {
@@ -353,8 +372,10 @@ func (b *Bridge) closeIfIdle(th *chatThread, epoch int) {
 		return
 	}
 	b.mu.Lock()
+	// The next load gets a token of its own.
 	if th.sessionID == id {
 		th.loaded = false
+		b.useToken(th, "")
 	}
 	b.mu.Unlock()
 }

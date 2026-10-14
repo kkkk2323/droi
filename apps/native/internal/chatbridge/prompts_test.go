@@ -591,6 +591,21 @@ func TestAPromptWeComIsSlowToShowHoldsUpNoOtherChatThread(t *testing.T) {
 	}
 }
 
+func TestADayAfterACardIsAnsweredAClickFindsItGone(t *testing.T) {
+	r := startTurn(t, permissionTurn, nil, nil)
+	other := r.window()
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})
+	c := r.sentCard(1)
+	r.w.Click(fakewecom.Click{From: "HuangJunXiang", TaskID: c.TaskID, Key: c.buttonFor(t, "Yes, allow")})
+	other.resolved()
+
+	r.clock.Add(25 * time.Hour)
+	click := r.w.Click(fakewecom.Click{From: "HuangJunXiang", TaskID: c.TaskID, Key: c.buttonFor(t, "Yes, allow")})
+	if updated, _ := r.updatedCard(click); !strings.Contains(updated.text, "no longer waits") || strings.Contains(updated.text, "HuangJunXiang") {
+		t.Errorf("a click a day later shows:\n%s", updated.text)
+	}
+}
+
 func TestNewStartsOverWhileAnAskUserWaits(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
 	post := r.newPost("Deploy")

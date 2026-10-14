@@ -48,11 +48,7 @@ func (b *Bridge) handleEvent(f frame) {
 		return
 	}
 	b.mu.Lock()
-	th := b.chatThreads[postChatThread(e.TopicID, at.PostID).key]
-	if th == nil {
-		th = postChatThread(e.TopicID, at.PostID)
-		b.chatThreads[th.key] = th
-	}
+	th := b.chatThreadFor(postChatThread(e.TopicID, at.PostID))
 	b.mu.Unlock()
 	b.run(th, func() { b.atBot(th, e) })
 }

@@ -147,6 +147,9 @@ const (
 	replyWindow        = 24 * time.Hour
 	defaultIdleTimeout = 15 * time.Second
 	deliverTimeout     = 2 * time.Minute
+	// maxRefusedUsers is how many refused senders the settings keep, the
+	// newest.
+	maxRefusedUsers = 50
 )
 
 // New makes a Chat Bridge; Follow starts it.
@@ -379,11 +382,7 @@ func (b *Bridge) handle(f frame) {
 		return
 	}
 	b.mu.Lock()
-	th := b.chatThreads[directChatThread(user).key]
-	if th == nil {
-		th = directChatThread(user)
-		b.chatThreads[th.key] = th
-	}
+	th := b.chatThreadFor(directChatThread(user))
 	th.reqID, th.reqAt = f.Headers.ReqID, b.o.Now()
 	b.mu.Unlock()
 	media := b.keepDirectMedia(th, m.MsgID, f.Body)
@@ -411,6 +410,9 @@ func (b *Bridge) refuse(user string) {
 	_ = b.o.Settings.Update(func(s *host.Settings) {
 		if !slices.Contains(s.ChatBridge.RefusedUsers, user) {
 			s.ChatBridge.RefusedUsers = append(s.ChatBridge.RefusedUsers, user)
+		}
+		if n := len(s.ChatBridge.RefusedUsers); n > maxRefusedUsers {
+			s.ChatBridge.RefusedUsers = slices.Clone(s.ChatBridge.RefusedUsers[n-maxRefusedUsers:])
 		}
 	})
 	go b.o.OnChange()

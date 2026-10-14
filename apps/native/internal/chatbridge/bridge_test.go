@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -534,6 +535,20 @@ func TestWhenTheDaemonCannotBeReachedTheChatThreadIsToldDroidCannotTakeItsMessag
 	}
 }
 
+func TestTheRefusedSendersKeptAreTheNewest50(t *testing.T) {
+	r := start(t, nil)
+	for i := range 51 {
+		r.w.SendDirectMessage(fakewecom.DirectMessage{From: fmt.Sprintf("wo-stranger-%02d", i), Text: "Hi"})
+	}
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Hi"})
+	r.message(1)
+
+	got := host.OpenSettings(r.file, nil).Get().ChatBridge.RefusedUsers
+	if len(got) != 50 || got[0] != "wo-stranger-01" || got[49] != "wo-stranger-50" {
+		t.Errorf("refused %d: %v", len(got), got)
+	}
+}
+
 func TestARepeatedMsgidStartsNothingTwice(t *testing.T) {
 	r := start(t, nil)
 	r.w.SendDirectMessage(fakewecom.DirectMessage{MsgID: "m-1", From: "HuangJunXiang", Text: "Once"})
@@ -759,6 +774,18 @@ func TestAnIdleChatSessionIsClosedAndTheNextMessageLoadsIt(t *testing.T) {
 	}
 	if n := r.count("daemon.initialize_session"); n != 0 {
 		t.Errorf("%d new Chat Sessions", n)
+	}
+}
+
+func TestAnIdleClosedChatSessionsTokenNoLongerWorks(t *testing.T) {
+	r := startWith(t, nil, func(o *chatbridge.Options) { o.IdleTimeout = 100 * time.Millisecond })
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "First"})
+	d := r.droid(r.initialized(1))
+	r.closed(1)
+	time.Sleep(100 * time.Millisecond)
+
+	if status, _ := d.rpc(d.token, "tools/call", map[string]any{"name": "reply", "arguments": map[string]any{"text": "late"}}); status != http.StatusUnauthorized {
+		t.Errorf("the closed Chat Session's token: HTTP %d", status)
 	}
 }
 
