@@ -10,7 +10,7 @@ import (
 
 func TestReplySaysWhenThePostHasUnreadReplies(t *testing.T) {
 	r := start(t, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} })
-	post := r.channel("The nightly job failed")
+	post := r.newPost("The nightly job failed")
 	at := r.w.AddReply(topic, post, fakewecom.Post{
 		From: "HuangJunXiang", Text: "${inline_mention:b} can you look?", Mentions: []fakewecom.Mention{atRobot("b")},
 	})
@@ -52,7 +52,7 @@ func TestReplySaysWhenThePostHasUnreadReplies(t *testing.T) {
 
 func TestAnUnreadCheckWeComRefusesStillSendsTheReply(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Status?")
+	post := r.newPost("Status?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 	r.message(1)

@@ -33,10 +33,10 @@ const (
 	errBotTokenInvalid = 853005
 )
 
-// channelAPI is WeCom's HTTPS API for the robot. Every call but get_token
+// wecomAPI is WeCom's HTTPS API for the robot. Every call but get_token
 // carries a token, which it fetches with a signature of the Secret and
 // keeps for its day.
-type channelAPI struct {
+type wecomAPI struct {
 	base, botID, secret string
 	now                 func() time.Time
 	client              *http.Client
@@ -46,14 +46,14 @@ type channelAPI struct {
 	expires time.Time
 }
 
-func newChannelAPI(base, botID, secret string, now func() time.Time) *channelAPI {
-	return &channelAPI{base: base, botID: botID, secret: secret, now: now, client: &http.Client{Timeout: apiTimeout}}
+func newWeComAPI(base, botID, secret string, now func() time.Time) *wecomAPI {
+	return &wecomAPI{base: base, botID: botID, secret: secret, now: now, client: &http.Client{Timeout: apiTimeout}}
 }
 
 // call posts body to path (such as "/topic/send_reply") and decodes the
 // answer into out, which may be nil. A token WeCom calls expired or invalid
 // is fetched again, once.
-func (a *channelAPI) call(ctx context.Context, path string, body, out any) error {
+func (a *wecomAPI) call(ctx context.Context, path string, body, out any) error {
 	for retried := false; ; retried = true {
 		token, err := a.accessToken(ctx)
 		if err != nil {
@@ -69,7 +69,7 @@ func (a *channelAPI) call(ctx context.Context, path string, body, out any) error
 	}
 }
 
-func (a *channelAPI) forget(token string) {
+func (a *wecomAPI) forget(token string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.token == token {
@@ -79,7 +79,7 @@ func (a *channelAPI) forget(token string) {
 
 // accessToken is the cached token, fetched when there is none or its day is
 // over; one fetch runs at a time.
-func (a *channelAPI) accessToken(ctx context.Context) (string, error) {
+func (a *wecomAPI) accessToken(ctx context.Context) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := a.now()
@@ -108,7 +108,7 @@ func (a *channelAPI) accessToken(ctx context.Context) (string, error) {
 
 // post makes one call. Its errors never carry the URL, which holds the
 // token.
-func (a *channelAPI) post(ctx context.Context, path, token string, body, out any) error {
+func (a *wecomAPI) post(ctx context.Context, path, token string, body, out any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -154,12 +154,14 @@ func (a *channelAPI) post(ctx context.Context, path, token string, body, out any
 	return json.Unmarshal(data, out)
 }
 
-// member is WeCom's UserInfo: a member (type 0) or a robot (type 1).
+// member is WeCom's UserInfo: a member or, of type memberRobot, a robot.
 type member struct {
 	Type   int    `json:"type"`
 	UserID string `json:"userid"`
 	BotID  string `json:"aibotid"`
 }
+
+const memberRobot = 1
 
 // content is a post (PostInfo) or a reply (ReplyInfo).
 type content struct {
@@ -201,7 +203,7 @@ func (c content) author() member {
 }
 
 // channelName is the name of the WeCom Channel topicID.
-func (a *channelAPI) channelName(ctx context.Context, topicID string) (string, error) {
+func (a *wecomAPI) channelName(ctx context.Context, topicID string) (string, error) {
 	var res struct {
 		Topics []struct {
 			TopicID string `json:"topic_id"`
@@ -220,7 +222,7 @@ func (a *channelAPI) channelName(ctx context.Context, topicID string) (string, e
 }
 
 // getPost is one post of a WeCom Channel.
-func (a *channelAPI) getPost(ctx context.Context, topicID, postID string) (content, error) {
+func (a *wecomAPI) getPost(ctx context.Context, topicID, postID string) (content, error) {
 	var res struct {
 		Posts []content `json:"post_list"`
 	}
@@ -236,7 +238,7 @@ func (a *channelAPI) getPost(ctx context.Context, topicID, postID string) (conte
 }
 
 // getReply is one reply under a post.
-func (a *channelAPI) getReply(ctx context.Context, topicID, postID, replyID string) (content, error) {
+func (a *wecomAPI) getReply(ctx context.Context, topicID, postID, replyID string) (content, error) {
 	var res struct {
 		Replies []content `json:"reply_list"`
 	}
@@ -255,7 +257,7 @@ func (a *channelAPI) getReply(ctx context.Context, topicID, postID, replyID stri
 
 // replyPage is a page of the replies under a post, oldest first, and the
 // cursor of the next page, "" after the last.
-func (a *channelAPI) replyPage(ctx context.Context, topicID, postID, cursor string, limit int) ([]content, string, error) {
+func (a *wecomAPI) replyPage(ctx context.Context, topicID, postID, cursor string, limit int) ([]content, string, error) {
 	var res struct {
 		Replies    []content `json:"reply_list"`
 		HasMore    bool      `json:"has_more"`
@@ -274,7 +276,7 @@ func (a *channelAPI) replyPage(ctx context.Context, topicID, postID, cursor stri
 
 // latestReplies are the newest replies under a post, newest first, and
 // whether there are older ones.
-func (a *channelAPI) latestReplies(ctx context.Context, topicID, postID string, limit int) ([]content, bool, error) {
+func (a *wecomAPI) latestReplies(ctx context.Context, topicID, postID string, limit int) ([]content, bool, error) {
 	var res struct {
 		Replies []content `json:"reply_list"`
 		HasMore bool      `json:"has_more"`
@@ -287,7 +289,7 @@ func (a *channelAPI) latestReplies(ctx context.Context, topicID, postID string, 
 
 // postEmoji puts one of WeCom's emoji on a post (replyID "") or a reply,
 // or removes it.
-func (a *channelAPI) postEmoji(ctx context.Context, topicID, postID, replyID string, emoji int, put bool) error {
+func (a *wecomAPI) postEmoji(ctx context.Context, topicID, postID, replyID string, emoji int, put bool) error {
 	body := map[string]any{"topic_id": topicID, "post_id": postID, "emoji_type": emoji, "action": 0}
 	if put {
 		body["action"] = 1
@@ -300,7 +302,7 @@ func (a *channelAPI) postEmoji(ctx context.Context, topicID, postID, replyID str
 
 // sendReply posts Markdown under a post and returns the reply's id; extra
 // adds the files, images and mentions its placeholders name.
-func (a *channelAPI) sendReply(ctx context.Context, topicID, postID, text string, extra map[string]any) (string, error) {
+func (a *wecomAPI) sendReply(ctx context.Context, topicID, postID, text string, extra map[string]any) (string, error) {
 	var res struct {
 		ReplyID string `json:"reply_id"`
 	}

@@ -96,8 +96,8 @@ func TestLiveChatBridge(t *testing.T) {
 
 	// A post.
 	t.Logf("STEP 1: @ the robot in a new post in the WeCom Channel %q and ask for something that needs a permission request, such as running a shell command", channelName)
-	post := w.thread(t, b, wait, "an @ of the robot in a post in "+channelName, func(th *thread) bool {
-		return th.kind == threadKindChannel && th.topicID == topic.id
+	post := w.chatThread(t, b, wait, "an @ of the robot in a post in "+channelName, func(th *chatThread) bool {
+		return th.kind == kindChannelPost && th.topicID == topic.id
 	})
 	perm := w.permission(t, wait, post.sessionID)
 	t.Logf("STEP 2: Droid asks to run %s; answer in the post with an @ of the robot and the number of an option, such as \"@robot 1\"", toolNames(&perm))
@@ -121,7 +121,7 @@ func TestLiveChatBridge(t *testing.T) {
 
 	// A direct message.
 	t.Log("STEP 3: send the robot a direct message asking for something that needs a permission request, such as running a shell command")
-	dm := w.thread(t, b, wait, "a direct message to the robot", func(th *thread) bool { return th.kind == threadKindDirect })
+	dm := w.chatThread(t, b, wait, "a direct message to the robot", func(th *chatThread) bool { return th.kind == kindDirectMessage })
 	perm = w.permission(t, wait, dm.sessionID)
 	t.Logf("STEP 4: Droid asks to run %s; click a button on the card in the direct message", toolNames(&perm))
 	turns = w.turns(dm.sessionID)
@@ -162,7 +162,7 @@ func TestLiveChatBridge(t *testing.T) {
 
 // liveProbes record what WeCom's docs leave open, for the notes; they fail
 // nothing but a broken download.
-func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *channelAPI, post, dm *thread, ws string) {
+func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *wecomAPI, post, dm *chatThread, ws string) {
 	err := api.post(ctx, "/topic/get_topic_list", "droi-live-invalid-token", map[string]any{"type": 1, "limit": 1}, nil)
 	t.Logf("an invalid access_token: %v", err)
 
@@ -235,7 +235,7 @@ func liveProbes(ctx context.Context, t *testing.T, b *Bridge, api *channelAPI, p
 	out, err = b.reply(ctx, dm, "Droi live test: a file (please ignore).", []string{"live-probe.bin"}, nil)
 	t.Logf("a direct message with a 600 KB file, on the message's req_id: %q %v", out, err)
 	if wc != nil {
-		err := b.sendDirect(ctx, directThread(dm.userID), wc, markdown("Droi live test: a message sent with aibot_send_msg (please ignore)."))
+		err := b.sendDirect(ctx, directChatThread(dm.userID), wc, markdown("Droi live test: a message sent with aibot_send_msg (please ignore)."))
 		t.Logf("aibot_send_msg with chat_type 1: %v", err)
 		if card != nil {
 			_, err := wc.call(ctx, "aibot_respond_update_msg", reqID, map[string]any{"response_type": "update_template_card", "template_card": card})
@@ -329,7 +329,7 @@ func startLiveDaemon(t *testing.T, root, home, key string) string {
 type liveChannel struct{ id, creator string }
 
 // findChannel is the WeCom Channel the robot is in with that name.
-func findChannel(ctx context.Context, t *testing.T, api *channelAPI, name string) liveChannel {
+func findChannel(ctx context.Context, t *testing.T, api *wecomAPI, name string) liveChannel {
 	t.Helper()
 	cursor := ""
 	for {
@@ -358,7 +358,7 @@ func findChannel(ctx context.Context, t *testing.T, api *channelAPI, name string
 }
 
 // robotReplies are the replies the robot wrote under th's post.
-func robotReplies(ctx context.Context, t *testing.T, api *channelAPI, botID string, th *thread) []content {
+func robotReplies(ctx context.Context, t *testing.T, api *wecomAPI, botID string, th *chatThread) []content {
 	var out []content
 	cursor := ""
 	for {
@@ -368,7 +368,7 @@ func robotReplies(ctx context.Context, t *testing.T, api *channelAPI, botID stri
 			return out
 		}
 		for _, r := range page {
-			if a := r.author(); a.Type == 1 && a.BotID == botID {
+			if a := r.author(); a.Type == memberRobot && a.BotID == botID {
 				out = append(out, r)
 			}
 		}
@@ -379,7 +379,7 @@ func robotReplies(ctx context.Context, t *testing.T, api *channelAPI, botID stri
 	}
 }
 
-func emojiCount(ctx context.Context, api *channelAPI, th *thread, emoji int) int {
+func emojiCount(ctx context.Context, api *wecomAPI, th *chatThread, emoji int) int {
 	var res struct {
 		Posts []struct {
 			Emoji []struct {
@@ -497,14 +497,14 @@ func (w *liveWatch) allPermissions() []controller.Permission {
 	return slices.Clone(w.perms)
 }
 
-// thread waits for a Chat Thread that match picks to have a Chat Session.
-func (w *liveWatch) thread(t *testing.T, b *Bridge, d time.Duration, what string, match func(*thread) bool) *thread {
+// chatThread waits for a Chat Thread that match picks to have a Chat Session.
+func (w *liveWatch) chatThread(t *testing.T, b *Bridge, d time.Duration, what string, match func(*chatThread) bool) *chatThread {
 	t.Helper()
-	var found *thread
+	var found *chatThread
 	waitFor(t, d, what, func() bool {
 		b.mu.Lock()
 		defer b.mu.Unlock()
-		for _, th := range b.threads {
+		for _, th := range b.chatThreads {
 			if th.sessionID != "" && match(th) {
 				found = th
 			}

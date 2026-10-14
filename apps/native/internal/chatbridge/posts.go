@@ -49,17 +49,17 @@ func (b *Bridge) handleEvent(f frame) {
 		return
 	}
 	b.mu.Lock()
-	th := b.threads[postThread(e.TopicID, at.PostID).key]
+	th := b.chatThreads[postChatThread(e.TopicID, at.PostID).key]
 	if th == nil {
-		th = postThread(e.TopicID, at.PostID)
-		b.threads[th.key] = th
+		th = postChatThread(e.TopicID, at.PostID)
+		b.chatThreads[th.key] = th
 	}
 	b.mu.Unlock()
 	b.run(th, func() { b.atBot(th, e) })
 }
 
 // atBot sends a post's Chat Session the @ of the robot there, with its text.
-func (b *Bridge) atBot(th *thread, e event) {
+func (b *Bridge) atBot(th *chatThread, e event) {
 	at, user := e.Event.TopicAtBot, e.From.UserID
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
@@ -71,7 +71,7 @@ func (b *Bridge) atBot(th *thread, e event) {
 	}
 	b.mu.Lock()
 	first := th.sessionID == ""
-	api, name := b.api, th.channel
+	api, name := b.api, th.channelName
 	b.mu.Unlock()
 	if api == nil {
 		return
@@ -82,7 +82,7 @@ func (b *Bridge) atBot(th *thread, e event) {
 			b.o.Log("cannot read the WeCom Channel's name: " + err.Error())
 		} else {
 			b.mu.Lock()
-			th.channel = name
+			th.channelName = name
 			b.mu.Unlock()
 		}
 	}
@@ -100,7 +100,7 @@ func (b *Bridge) atBot(th *thread, e event) {
 		text = render(c, b.robotID())
 		attachments := channelAttachments(c, at.PostID, at.ReplyID)
 		// An @ with files, or !new, is for Droid, not an answer.
-		if _, isNew := cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you")); attachments == "" && !isNew && b.answerInThread(th, user, text) {
+		if _, isNew := cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you")); attachments == "" && !isNew && b.answerInChatThread(th, user, text) {
 			// The answer reaches Droid as the Prompt's, not as a reply to read.
 			b.markSent(th, at.ReplyID, nil)
 			return
@@ -181,9 +181,9 @@ func render(c content, robot string) string {
 
 func mentionName(m member, robot string) string {
 	switch {
-	case m.Type == 1 && m.BotID == robot:
+	case m.Type == memberRobot && m.BotID == robot:
 		return "you"
-	case m.Type == 1:
+	case m.Type == memberRobot:
 		return "robot " + m.BotID
 	}
 	return m.UserID
@@ -191,7 +191,7 @@ func mentionName(m member, robot string) string {
 
 // authorName is who wrote a post or reply, as read_thread shows it.
 func authorName(m member, robot string) string {
-	if m.Type == 1 && m.BotID == robot {
+	if m.Type == memberRobot && m.BotID == robot {
 		return "you (the robot)"
 	}
 	return mentionName(m, robot)
@@ -206,8 +206,8 @@ const (
 
 // readThread is a Channel post and a page of its replies, the post on the
 // first page only. It marks the replies shown as read.
-func (b *Bridge) readThread(ctx context.Context, th *thread, postID, cursor string, limit int) (string, error) {
-	if th.kind != threadKindChannel {
+func (b *Bridge) readThread(ctx context.Context, th *chatThread, postID, cursor string, limit int) (string, error) {
+	if th.kind != kindChannelPost {
 		return "This Chat Thread is a direct message with WeCom user " + th.userID + ": WeCom keeps no history the Chat Bridge can read. " +
 			"Every new message from them arrives in this Session as a message.", nil
 	}
@@ -216,7 +216,7 @@ func (b *Bridge) readThread(ctx context.Context, th *thread, postID, cursor stri
 	}
 	limit = min(limit, maxReplyPage)
 	b.mu.Lock()
-	api, name := b.api, th.channel
+	api, name := b.api, th.channelName
 	b.mu.Unlock()
 	if api == nil {
 		return "", errNotConnected
@@ -272,7 +272,7 @@ func (b *Bridge) readThread(ctx context.Context, th *thread, postID, cursor stri
 
 // markRead records replies Droid has seen, in read_thread or in the message
 // an @ sent it.
-func (b *Bridge) markRead(th *thread, replyIDs ...string) {
+func (b *Bridge) markRead(th *chatThread, replyIDs ...string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if th.read == nil {
@@ -285,7 +285,7 @@ func (b *Bridge) markRead(th *thread, replyIDs ...string) {
 
 // markSent marks the reply an @ was in as read when its message carries
 // the reply's text, which it does unless WeCom did not give it (err).
-func (b *Bridge) markSent(th *thread, replyID string, err error) {
+func (b *Bridge) markSent(th *chatThread, replyID string, err error) {
 	if replyID != "" && err == nil {
 		b.markRead(th, replyID)
 	}
@@ -294,7 +294,7 @@ func (b *Bridge) markSent(th *thread, replyID string, err error) {
 // unread counts the replies under the post, not the robot's, that Droid
 // has not seen, among the newest page of them; more says the page was all
 // unread and older ones were left out.
-func (b *Bridge) unread(ctx context.Context, th *thread, api *channelAPI) (n int, more bool, err error) {
+func (b *Bridge) unread(ctx context.Context, th *chatThread, api *wecomAPI) (n int, more bool, err error) {
 	replies, older, err := api.latestReplies(ctx, th.topicID, th.postID, maxReplyPage)
 	if err != nil {
 		return 0, false, err
@@ -303,7 +303,7 @@ func (b *Bridge) unread(ctx context.Context, th *thread, api *channelAPI) (n int
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, r := range replies {
-		if a := r.author(); !th.read[r.ReplyID] && (a.Type != 1 || a.BotID != robot) {
+		if a := r.author(); !th.read[r.ReplyID] && (a.Type != memberRobot || a.BotID != robot) {
 			n++
 		}
 	}
@@ -321,8 +321,8 @@ const maxEmoji = 115
 
 // react puts one of WeCom's emoji on the post or one of its replies, or
 // removes it.
-func (b *Bridge) react(ctx context.Context, th *thread, emoji int, replyID string, remove bool) (string, error) {
-	if th.kind != threadKindChannel {
+func (b *Bridge) react(ctx context.Context, th *chatThread, emoji int, replyID string, remove bool) (string, error) {
+	if th.kind != kindChannelPost {
 		return "", errors.New("react works only in a WeCom Channel; this Chat Thread is a direct message")
 	}
 	if emoji < 1 || emoji > maxEmoji {
@@ -349,9 +349,9 @@ func (b *Bridge) react(ctx context.Context, th *thread, emoji int, replyID strin
 
 // replyInChannel posts Markdown, with files and mentions, as a reply under
 // the Chat Thread's post.
-func (b *Bridge) replyInChannel(ctx context.Context, th *thread, text string, files []outgoing, mentions []string) (string, error) {
+func (b *Bridge) replyInChannel(ctx context.Context, th *chatThread, text string, files []outgoing, mentions []string) (string, error) {
 	b.mu.Lock()
-	api, name := b.api, th.channel
+	api, name := b.api, th.channelName
 	b.mu.Unlock()
 	if api == nil {
 		return "", errNotConnected

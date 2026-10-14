@@ -23,9 +23,9 @@ func atRobot(ph string) fakewecom.Mention {
 	return fakewecom.Mention{Placeholder: ph, BotID: robot.BotID}
 }
 
-// channel adds the Channel 定时任务 and a post in it by HuangJunXiang that
+// newPost adds the Channel 定时任务 and a post in it by HuangJunXiang that
 // @s the robot.
-func (r *rig) channel(text string) string {
+func (r *rig) newPost(text string) string {
 	r.t.Helper()
 	r.w.AddChannel(topic, "定时任务")
 	return r.w.AddPost(topic, fakewecom.Post{
@@ -36,7 +36,7 @@ func (r *rig) channel(text string) string {
 
 func TestAnAtInAChannelPostStartsAChatSession(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("你好, what failed last night?")
+	post := r.newPost("你好, what failed last night?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 
 	p := r.initialized(1)
@@ -84,7 +84,7 @@ func (r *rig) barrier(nth int) {
 func TestALaterAtInTheSamePostContinuesItsChatSession(t *testing.T) {
 	r := start(t, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} })
 	turns := r.watchTurns()
-	post := r.channel("Look at the nightly job")
+	post := r.newPost("Look at the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	p := r.initialized(1)
 	r.message(1)
@@ -118,7 +118,7 @@ func TestALaterAtInTheSamePostContinuesItsChatSession(t *testing.T) {
 
 func TestTwoPostsInAChannelAreTwoChatThreads(t *testing.T) {
 	r := start(t, nil)
-	first := r.channel("First subject")
+	first := r.newPost("First subject")
 	second := r.w.AddPost(topic, fakewecom.Post{From: "HuangJunXiang", Text: "${inline_mention:b} Second subject", Mentions: []fakewecom.Mention{atRobot("b")}})
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: first, From: "HuangJunXiang"})
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: second, From: "HuangJunXiang"})
@@ -149,7 +149,7 @@ func TestTwoPostsInAChannelAreTwoChatThreads(t *testing.T) {
 
 func TestTheGroupChatCopyOfAnAtIsIgnored(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("你好")
+	post := r.newPost("你好")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.w.GroupCopy("HuangJunXiang", "@小蓝 你好")
 	r.message(1)
@@ -195,7 +195,7 @@ func TestChannelEventsWithoutAnAtStartNothing(t *testing.T) {
 
 func TestARepeatedTopicAtBotStartsNothingTwice(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Once")
+	post := r.newPost("Once")
 	r.w.AtBot(fakewecom.AtBot{MsgID: "e-1", TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.w.AtBot(fakewecom.AtBot{MsgID: "e-1", TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.message(1)
@@ -207,7 +207,7 @@ func TestARepeatedTopicAtBotStartsNothingTwice(t *testing.T) {
 
 func TestAChannelTriggerIsCutAt2000Characters(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel(strings.Repeat("字", 2500))
+	post := r.newPost(strings.Repeat("字", 2500))
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 
 	m := r.message(1)
@@ -222,7 +222,7 @@ func TestAChannelTriggerIsCutAt2000Characters(t *testing.T) {
 
 func TestReplyInAChannelPostsUnderThePost(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Status?")
+	post := r.newPost("Status?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 
@@ -322,7 +322,7 @@ func TestReadThreadInADirectMessageSaysThereIsNoHistory(t *testing.T) {
 
 func TestTheTokenIsFetchedOnceAndReusedUntilItExpires(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Status?")
+	post := r.newPost("Status?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 	r.message(1)
@@ -361,7 +361,7 @@ func TestTheTokenIsFetchedOnceAndReusedUntilItExpires(t *testing.T) {
 
 func TestATokenWeComNoLongerTakesIsFetchedAgain(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Status?")
+	post := r.newPost("Status?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 	r.message(1)
@@ -380,7 +380,7 @@ func TestATokenWeComNoLongerTakesIsFetchedAgain(t *testing.T) {
 
 func TestARefusedTokenIsAToolErrorThatNamesWeComsError(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Status?")
+	post := r.newPost("Status?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 	r.message(1)
@@ -410,7 +410,7 @@ const postID = "CiBRTTB2WklcpFULg7ryAHp6OQbp9mYPGg479/C2LXiaZxAB"
 func TestAfterTheHostRestartsAPostContinuesItsChatSession(t *testing.T) {
 	r := startOn(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{postSession(postID)}}, nil, nil)
 	id := r.d.Sessions[0].SessionID
-	if post := r.channel("Any news?"); post != postID {
+	if post := r.newPost("Any news?"); post != postID {
 		t.Fatalf("post %s", post)
 	}
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: postID, From: "HuangJunXiang"})
@@ -435,7 +435,7 @@ func TestAfterTheHostRestartsAPostContinuesItsChatSession(t *testing.T) {
 
 func TestNewInAPostStartsAnotherChatSession(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Look at the nightly job")
+	post := r.newPost("Look at the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	first := r.initialized(1)
 	r.message(1)

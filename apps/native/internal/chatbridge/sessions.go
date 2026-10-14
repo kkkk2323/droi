@@ -16,30 +16,30 @@ import (
 
 const listPageSize = 100
 
-func directThread(user string) *thread {
-	return &thread{key: threadKindDirect + ":" + user, kind: threadKindDirect, userID: user}
+func directChatThread(user string) *chatThread {
+	return &chatThread{key: string(kindDirectMessage) + ":" + user, kind: kindDirectMessage, userID: user}
 }
 
-func postThread(topicID, postID string) *thread {
-	return &thread{key: threadKindChannel + ":" + topicID + ":" + postID, kind: threadKindChannel, topicID: topicID, postID: postID}
+func postChatThread(topicID, postID string) *chatThread {
+	return &chatThread{key: string(kindChannelPost) + ":" + topicID + ":" + postID, kind: kindChannelPost, topicID: topicID, postID: postID}
 }
 
-// threadFromTags is the Chat Thread a Session's droi.chat tag names, nil
+// chatThreadFromTags is the Chat Thread a Session's droi.chat tag names, nil
 // for a Session that is not a Chat Session.
-func threadFromTags(tags []protocol.SessionTag) *thread {
+func chatThreadFromTags(tags []protocol.SessionTag) *chatThread {
 	for _, t := range tags {
 		if t.Name != sessions.ChatTag {
 			continue
 		}
-		switch t.Metadata["kind"] {
-		case threadKindDirect:
+		switch chatThreadKind(t.Metadata["kind"]) {
+		case kindDirectMessage:
 			if user := t.Metadata["userId"]; user != "" {
-				return directThread(user)
+				return directChatThread(user)
 			}
-		case threadKindChannel:
+		case kindChannelPost:
 			if t.Metadata["topicId"] != "" && t.Metadata["postId"] != "" {
-				th := postThread(t.Metadata["topicId"], t.Metadata["postId"])
-				th.channel = t.Metadata["channel"]
+				th := postChatThread(t.Metadata["topicId"], t.Metadata["postId"])
+				th.channelName = t.Metadata["channel"]
 				return th
 			}
 		}
@@ -78,7 +78,7 @@ func (b *Bridge) sync(ctx context.Context) error {
 		return err
 	}
 	type found struct {
-		th       *thread
+		th       *chatThread
 		live     *protocol.DaemonAvailableSessionInfo
 		archived bool
 	}
@@ -94,7 +94,7 @@ func (b *Bridge) sync(ctx context.Context) error {
 		}
 		for i := range res.Sessions {
 			s := &res.Sessions[i]
-			th := threadFromTags(s.Tags)
+			th := chatThreadFromTags(s.Tags)
 			if th == nil {
 				continue
 			}
@@ -118,10 +118,10 @@ func (b *Bridge) sync(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for key, f := range byKey {
-		th := b.threads[key]
+		th := b.chatThreads[key]
 		if th == nil {
 			th = f.th
-			b.threads[key] = th
+			b.chatThreads[key] = th
 		}
 		if th.sessionID != "" {
 			// A Chat Session not listed may be one just started, which the
@@ -132,9 +132,9 @@ func (b *Bridge) sync(ctx context.Context) error {
 			b.unlink(th)
 		}
 		if f.live != nil {
-			th.sessionID, th.archived = f.live.SessionID, false
+			th.sessionID, th.archivedBefore = f.live.SessionID, false
 		} else {
-			th.archived = f.archived
+			th.archivedBefore = f.archived
 		}
 	}
 	b.synced = true
@@ -142,7 +142,7 @@ func (b *Bridge) sync(ctx context.Context) error {
 }
 
 // unlink ends a Chat Thread's link to its Chat Session; b.mu is held.
-func (b *Bridge) unlink(th *thread) {
+func (b *Bridge) unlink(th *chatThread) {
 	if th.sessionID != "" {
 		b.ctl.Forget(th.sessionID)
 	}
@@ -153,7 +153,7 @@ func (b *Bridge) unlink(th *thread) {
 // issueToken makes a droi-chat token for a Chat Session of th, and the
 // server entry that carries it. The token works at once: the Daemon
 // connects to droi-chat while it starts or loads the Session.
-func (b *Bridge) issueToken(th *thread) (string, json.RawMessage, error) {
+func (b *Bridge) issueToken(th *chatThread) (string, json.RawMessage, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.tools == nil {
@@ -175,7 +175,7 @@ func (b *Bridge) issueToken(th *thread) (string, json.RawMessage, error) {
 }
 
 // useToken makes token th's, revoking the one it had; b.mu is held.
-func (b *Bridge) useToken(th *thread, token string) {
+func (b *Bridge) useToken(th *chatThread, token string) {
 	if th.token != "" && th.token != token {
 		delete(b.tokens, th.token)
 	}
@@ -185,7 +185,7 @@ func (b *Bridge) useToken(th *thread, token string) {
 // loadSession loads a Chat Session this Chat Bridge did not start, or
 // closed, with a new droi-chat token: the Daemon does not keep a Session's
 // MCP servers.
-func (b *Bridge) loadSession(ctx context.Context, th *thread, id string) error {
+func (b *Bridge) loadSession(ctx context.Context, th *chatThread, id string) error {
 	token, server, err := b.issueToken(th)
 	if err != nil {
 		return err
@@ -204,7 +204,7 @@ func (b *Bridge) loadSession(ctx context.Context, th *thread, id string) error {
 
 // run queues op on th's operations, which run one at a time on a goroutine
 // of th's own.
-func (b *Bridge) run(th *thread, op func()) {
+func (b *Bridge) run(th *chatThread, op func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.stopped {
@@ -215,9 +215,9 @@ func (b *Bridge) run(th *thread, op func()) {
 		return
 	}
 	th.running = true
-	b.threadOps.Add(1)
+	b.chatThreadOps.Add(1)
 	go func() {
-		defer b.threadOps.Done()
+		defer b.chatThreadOps.Done()
 		for {
 			b.mu.Lock()
 			if len(th.ops) == 0 || b.stopped {
@@ -233,9 +233,9 @@ func (b *Bridge) run(th *thread, op func()) {
 	}()
 }
 
-// sessionThread is the Chat Thread whose Chat Session id is; b.mu is held.
-func (b *Bridge) sessionThread(id string) *thread {
-	for _, th := range b.threads {
+// sessionChatThread is the Chat Thread whose Chat Session id is; b.mu is held.
+func (b *Bridge) sessionChatThread(id string) *chatThread {
+	for _, th := range b.chatThreads {
 		if th.sessionID == id {
 			return th
 		}
@@ -256,7 +256,7 @@ func (b *Bridge) onEvent(e controller.Event) {
 	case controller.SessionNotification:
 		b.mu.Lock()
 		defer b.mu.Unlock()
-		th := b.sessionThread(e.SessionID)
+		th := b.sessionChatThread(e.SessionID)
 		if th == nil {
 			return
 		}
@@ -281,16 +281,16 @@ func (b *Bridge) onEvent(e controller.Event) {
 			return
 		}
 		b.mu.Lock()
-		th := b.sessionThread(p.SessionID)
+		th := b.sessionChatThread(p.SessionID)
 		b.mu.Unlock()
 		if th != nil {
-			b.run(th, func() { b.archived(th, p.SessionID) })
+			b.run(th, func() { b.unlinkArchived(th, p.SessionID) })
 		}
 	}
 }
 
-// archive archives th's Chat Session id and ends its link.
-func (b *Bridge) archive(ctx context.Context, th *thread, id string) {
+// archiveChatSession archives th's Chat Session id and ends its link.
+func (b *Bridge) archiveChatSession(ctx context.Context, th *chatThread, id string) {
 	b.mu.Lock()
 	loaded := th.loaded
 	b.unlink(th)
@@ -310,9 +310,9 @@ func (b *Bridge) archive(ctx context.Context, th *thread, id string) {
 	}
 }
 
-// archived ends the link of a Chat Session archived in a Client: the Chat
+// unlinkArchived ends the link of a Chat Session archived in a Client: the Chat
 // Thread's next message starts a new one.
-func (b *Bridge) archived(th *thread, id string) {
+func (b *Bridge) unlinkArchived(th *chatThread, id string) {
 	b.mu.Lock()
 	if th.sessionID != id {
 		b.mu.Unlock()
@@ -323,7 +323,7 @@ func (b *Bridge) archived(th *thread, id string) {
 		th.idle.Stop()
 	}
 	b.unlink(th)
-	th.archived = true
+	th.archivedBefore = true
 	b.mu.Unlock()
 	if !loaded {
 		return
@@ -338,7 +338,7 @@ func (b *Bridge) archived(th *thread, id string) {
 // closeIfIdle closes th's Chat Session when no message came since epoch,
 // to free the Daemon's worker; a turn starting stops the timer that calls
 // it.
-func (b *Bridge) closeIfIdle(th *thread, epoch int) {
+func (b *Bridge) closeIfIdle(th *chatThread, epoch int) {
 	b.mu.Lock()
 	id := th.sessionID
 	idle := th.epoch == epoch && id != "" && th.loaded

@@ -33,8 +33,8 @@ const (
 // outgoing is a file of the Workspace a reply sends.
 type outgoing struct {
 	path, name string
-	// kind is WeCom's media type: image, or file.
-	kind string
+	// kind is an image or a file.
+	kind mediaKind
 }
 
 var imageExtensions = []string{".png", ".jpg", ".jpeg", ".gif"}
@@ -55,7 +55,7 @@ func (b *Bridge) outgoingFiles(paths []string) ([]outgoing, error) {
 		return nil, fmt.Errorf("cannot read the Workspace: %w", err)
 	}
 	var out []outgoing
-	count := map[string]int{}
+	count := map[mediaKind]int{}
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(ws, p)
@@ -79,9 +79,9 @@ func (b *Bridge) outgoingFiles(paths []string) ([]outgoing, error) {
 		case size > maxFileBytes:
 			return nil, fmt.Errorf("%s is %d bytes; WeCom takes files of at most 20 MB", p, size)
 		}
-		f := outgoing{path: real, name: filepath.Base(p), kind: "file"}
+		f := outgoing{path: real, name: filepath.Base(p), kind: mediaFile}
 		if slices.Contains(imageExtensions, strings.ToLower(filepath.Ext(f.name))) && fi.Size() <= maxImageBytes {
-			f.kind = "image"
+			f.kind = mediaImage
 		}
 		if count[f.kind]++; count[f.kind] > maxPerReply {
 			return nil, fmt.Errorf("a reply takes at most %d files and %d images", maxPerReply, maxPerReply)
@@ -95,7 +95,7 @@ func (b *Bridge) outgoingFiles(paths []string) ([]outgoing, error) {
 // _finish) on one route.
 type uploadStep func(ctx context.Context, step string, body, out any) error
 
-func (a *channelAPI) uploadStep(ctx context.Context, step string, body, out any) error {
+func (a *wecomAPI) uploadStep(ctx context.Context, step string, body, out any) error {
 	return a.call(ctx, "/"+step, body, out)
 }
 
@@ -178,7 +178,7 @@ func channelContent(text string, files []outgoing, mentions []string) (string, m
 	}
 	n := 0
 	for _, f := range files {
-		if f.kind == "file" {
+		if f.kind == mediaFile {
 			n++
 			text += fmt.Sprintf("\n\n${inline_file:file_%d}", n)
 		}
@@ -191,7 +191,7 @@ func channelContent(text string, files []outgoing, mentions []string) (string, m
 func attachMedia(extra map[string]any, files []outgoing, ids []string) {
 	var inline, images []any
 	for i, f := range files {
-		if f.kind == "image" {
+		if f.kind == mediaImage {
 			images = append(images, map[string]any{"media_id": ids[i]})
 		} else {
 			inline = append(inline, map[string]any{"placeholder": fmt.Sprintf("file_%d", len(inline)+1), "media_id": ids[i]})
@@ -207,9 +207,9 @@ func attachMedia(extra map[string]any, files []outgoing, ids []string) {
 
 // sendDirectFiles sends uploaded media as messages of their own after the
 // text.
-func (b *Bridge) sendDirectFiles(ctx context.Context, th *thread, wc *longConnection, files []outgoing, ids []string) error {
+func (b *Bridge) sendDirectFiles(ctx context.Context, th *chatThread, wc *longConnection, files []outgoing, ids []string) error {
 	for i, f := range files {
-		if err := b.sendDirect(ctx, th, wc, map[string]any{"msgtype": f.kind, f.kind: map[string]any{"media_id": ids[i]}}); err != nil {
+		if err := b.sendDirect(ctx, th, wc, map[string]any{"msgtype": f.kind, string(f.kind): map[string]any{"media_id": ids[i]}}); err != nil {
 			return fmt.Errorf("sent the text, but not %s or what follows it: %w", f.name, err)
 		}
 	}

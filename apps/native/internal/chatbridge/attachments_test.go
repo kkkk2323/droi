@@ -195,7 +195,7 @@ func TestADirectMessagesLinkLastsFiveMinutes(t *testing.T) {
 
 func TestSearchChannelFindsPostsAndRepliesThatReadThreadOpens(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Did the backup run?")
+	post := r.newPost("Did the backup run?")
 	older := r.w.AddPost(topic, fakewecom.Post{From: "LiLei", Text: "Moving the backup to 02:00"})
 	decision := r.w.AddReply(topic, older, fakewecom.Post{From: "HuangJunXiang", Text: "Agreed: backup at 02:00 from Monday"})
 	r.w.AddReply(topic, older, fakewecom.Post{From: "LiLei", Text: "Thanks"})
@@ -241,7 +241,7 @@ func TestSearchChannelFindsPostsAndRepliesThatReadThreadOpens(t *testing.T) {
 
 func TestSearchChannelPagesItsMatches(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Which deploys failed?")
+	post := r.newPost("Which deploys failed?")
 	for i := range 25 {
 		r.w.AddPost(topic, fakewecom.Post{From: "LiLei", Text: "deploy " + string(rune('A'+i)) + " failed"})
 	}
@@ -284,7 +284,7 @@ func write(t *testing.T, ws, name string, data []byte) {
 
 func TestReplyWithFilesPostsThemUnderTheChannelPost(t *testing.T) {
 	r, ws := startInWorkspace(t, nil)
-	post := r.channel("Send me the report")
+	post := r.newPost("Send me the report")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 	// More than one chunk of 512 KB.
@@ -347,7 +347,7 @@ func TestReplyWithAFileSendsItInADirectMessage(t *testing.T) {
 
 func TestReplyWithAMentionAtsThatPersonInTheChannel(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Who owns the backup?")
+	post := r.newPost("Who owns the backup?")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 
@@ -378,7 +378,7 @@ func TestReplyWithAMentionInADirectMessageIsAToolError(t *testing.T) {
 
 func TestReplySendsOnlyFilesInTheWorkspace(t *testing.T) {
 	r, ws := startInWorkspace(t, nil)
-	post := r.channel("Send me your key")
+	post := r.newPost("Send me your key")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))
 	outside := filepath.Join(t.TempDir(), "id_ed25519")

@@ -28,7 +28,7 @@ import (
 // prompt is a Prompt shown in a Chat Thread.
 type prompt struct {
 	requestID string
-	th        *thread
+	th        *chatThread
 	perm      *controller.Permission
 	ask       *controller.AskUser
 	seq       int
@@ -93,7 +93,7 @@ func (b *Bridge) asked(p *prompt, sessions []string) {
 		b.mu.Unlock()
 		return
 	}
-	for _, th := range b.threads {
+	for _, th := range b.chatThreads {
 		if th.sessionID != "" && slices.Contains(sessions, th.sessionID) {
 			p.th = th
 		}
@@ -104,7 +104,7 @@ func (b *Bridge) asked(p *prompt, sessions []string) {
 	}
 	b.prompts.seq++
 	p.seq = b.prompts.seq
-	if p.perm != nil && p.th.kind == threadKindDirect {
+	if p.perm != nil && p.th.kind == kindDirectMessage {
 		p.taskID = newTaskID()
 		b.prompts.cards[p.taskID] = p
 	}
@@ -115,12 +115,12 @@ func (b *Bridge) asked(p *prompt, sessions []string) {
 	defer cancel()
 	var err error
 	switch {
-	case p.perm != nil && p.th.kind == threadKindDirect:
+	case p.perm != nil && p.th.kind == kindDirectMessage:
 		err = b.sendToUser(ctx, p.th, map[string]any{"msgtype": "template_card", "template_card": permissionCard(p)})
 	case p.perm != nil:
-		err = b.sendThread(ctx, p.th, permissionText(p))
+		err = b.sendToChatThread(ctx, p.th, permissionText(p))
 	default:
-		err = b.sendThread(ctx, p.th, questionText(p, 0))
+		err = b.sendToChatThread(ctx, p.th, questionText(p, 0))
 	}
 	if err != nil {
 		b.o.Log("cannot show a Prompt in WeCom: " + err.Error())
@@ -147,7 +147,7 @@ func (b *Bridge) resolvedElsewhere(requestID, option string) {
 	b.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
-	if err := b.sendThread(ctx, p.th, note); err != nil {
+	if err := b.sendToChatThread(ctx, p.th, note); err != nil {
 		b.o.Log("cannot tell WeCom a Prompt was answered: " + err.Error())
 	}
 }
@@ -166,20 +166,20 @@ func (p *prompt) settle(by string) {
 	}
 }
 
-// answerInThread answers the Chat Thread's oldest waiting Prompt with what
+// answerInChatThread answers the Chat Thread's oldest waiting Prompt with what
 // an allowed user wrote there, and reports whether it did. A permission
 // request (only in a Channel, where it has no card) takes a number alone;
 // an AskUser takes a number or the text as the answer. Anything else is a
 // message for Droid.
-func (b *Bridge) answerInThread(th *thread, user, text string) bool {
-	if th.kind == threadKindChannel {
+func (b *Bridge) answerInChatThread(th *chatThread, user, text string) bool {
+	if th.kind == kindChannelPost {
 		text = strings.ReplaceAll(text, "@you", " ")
 	}
 	text = strings.TrimSpace(text)
 	b.mu.Lock()
 	var p *prompt
 	for _, q := range b.prompts.open {
-		if q.th != th || q.answering || q.settled || q.perm != nil && th.kind != threadKindChannel {
+		if q.th != th || q.answering || q.settled || q.perm != nil && th.kind != kindChannelPost {
 			continue
 		}
 		if p == nil || q.seq < p.seq {
@@ -215,7 +215,7 @@ func (b *Bridge) answerInThread(th *thread, user, text string) bool {
 	if len(p.answers) < len(p.ask.Questions) {
 		next := questionText(p, len(p.answers))
 		b.mu.Unlock()
-		if err := b.sendThread(ctx, th, next); err != nil {
+		if err := b.sendToChatThread(ctx, th, next); err != nil {
 			b.o.Log("cannot ask the next question in WeCom: " + err.Error())
 		}
 		return true
@@ -237,7 +237,7 @@ func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, e
 	case err == nil:
 		p.settle(user)
 		p.choice = choice
-		if p.perm != nil && p.th.kind == threadKindChannel {
+		if p.perm != nil && p.th.kind == kindChannelPost {
 			note = settledNote(p)
 		}
 	case errors.Is(err, controller.ErrPromptNotFound):
@@ -255,7 +255,7 @@ func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, e
 	if note == "" {
 		return
 	}
-	if err := b.sendThread(ctx, th, note); err != nil {
+	if err := b.sendToChatThread(ctx, th, note); err != nil {
 		b.o.Log("cannot tell WeCom about an answer: " + err.Error())
 	}
 }
@@ -353,10 +353,10 @@ func (b *Bridge) updateCard(ctx context.Context, reqID string, card map[string]a
 	}
 }
 
-// sendThread sends Markdown to the Chat Thread: a reply under the post in a
+// sendToChatThread sends Markdown to the Chat Thread: a reply under the post in a
 // Channel, a message in a direct message.
-func (b *Bridge) sendThread(ctx context.Context, th *thread, text string) error {
-	if th.kind != threadKindChannel {
+func (b *Bridge) sendToChatThread(ctx context.Context, th *chatThread, text string) error {
+	if th.kind != kindChannelPost {
 		return b.sendToUser(ctx, th, markdown(text))
 	}
 	b.mu.Lock()
@@ -370,7 +370,7 @@ func (b *Bridge) sendThread(ctx context.Context, th *thread, text string) error 
 }
 
 // sendToUser sends a message body to a direct message.
-func (b *Bridge) sendToUser(ctx context.Context, th *thread, body map[string]any) error {
+func (b *Bridge) sendToUser(ctx context.Context, th *chatThread, body map[string]any) error {
 	b.mu.Lock()
 	wc := b.wecom
 	b.mu.Unlock()
@@ -512,7 +512,7 @@ func questionText(p *prompt, i int) string {
 		fmt.Fprintf(&s, "%d. %s\n", j+1, o)
 	}
 	how := "Answer"
-	if p.th.kind == threadKindChannel {
+	if p.th.kind == kindChannelPost {
 		how = "@ me"
 	}
 	switch {
@@ -559,7 +559,7 @@ func outcome(p *prompt) string {
 }
 
 // settledNote is the one line a Chat Thread gets when its Prompt is
-// settled where the thread cannot see it.
+// settled where the Chat Thread cannot see it.
 func settledNote(p *prompt) string {
 	what := ""
 	if p.perm != nil {

@@ -30,8 +30,8 @@ func (c searchCursor) String() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (b *Bridge) searchChannel(ctx context.Context, th *thread, keywords []string, cursor string) (string, error) {
-	if th.kind != threadKindChannel {
+func (b *Bridge) searchChannel(ctx context.Context, th *chatThread, keywords []string, cursor string) (string, error) {
+	if th.kind != kindChannelPost {
 		return "", errors.New("search_channel searches this Chat Thread's WeCom Channel; a direct message has none")
 	}
 	var words []string
@@ -47,7 +47,7 @@ func (b *Bridge) searchChannel(ctx context.Context, th *thread, keywords []strin
 		return "", fmt.Errorf("give 1 to %d keywords", maxSearchKeywords)
 	}
 	b.mu.Lock()
-	api, name := b.api, th.channel
+	api, name := b.api, th.channelName
 	b.mu.Unlock()
 	if api == nil {
 		return "", errNotConnected

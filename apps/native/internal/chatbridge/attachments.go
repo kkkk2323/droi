@@ -43,7 +43,19 @@ const (
 
 var downloadClient = &http.Client{Timeout: downloadTimeout}
 
-type directMedia struct{ kind, url, aeskey, msgID string }
+// mediaKind is WeCom's type of a medium in a message.
+type mediaKind string
+
+const (
+	mediaImage mediaKind = "image"
+	mediaFile  mediaKind = "file"
+	mediaVideo mediaKind = "video"
+)
+
+type directMedia struct {
+	kind               mediaKind
+	url, aeskey, msgID string
+}
 
 // mediaStore is what download_attachment needs between calls.
 type mediaStore struct {
@@ -53,27 +65,27 @@ type mediaStore struct {
 	saved  map[string]string
 }
 
-func (s *mediaStore) keep(thread, id string, m directMedia) {
+func (s *mediaStore) keep(key, id string, m directMedia) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.direct == nil {
 		s.direct, s.order = map[string]map[string]directMedia{}, map[string][]string{}
 	}
-	if s.direct[thread] == nil {
-		s.direct[thread] = map[string]directMedia{}
+	if s.direct[key] == nil {
+		s.direct[key] = map[string]directMedia{}
 	}
-	s.direct[thread][id] = m
-	s.order[thread] = append(s.order[thread], id)
-	if q := s.order[thread]; len(q) > keptDirectMedia {
-		delete(s.direct[thread], q[0])
-		s.order[thread] = q[1:]
+	s.direct[key][id] = m
+	s.order[key] = append(s.order[key], id)
+	if q := s.order[key]; len(q) > keptDirectMedia {
+		delete(s.direct[key], q[0])
+		s.order[key] = q[1:]
 	}
 }
 
-func (s *mediaStore) lookup(thread, id string) (directMedia, bool) {
+func (s *mediaStore) lookup(key, id string) (directMedia, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	m, ok := s.direct[thread][id]
+	m, ok := s.direct[key][id]
 	return m, ok
 }
 
@@ -143,13 +155,13 @@ type mediaRef struct {
 
 // keepDirectMedia records the media a direct message carries and names
 // them for the trigger.
-func (b *Bridge) keepDirectMedia(th *thread, msgID string, body json.RawMessage) string {
+func (b *Bridge) keepDirectMedia(th *chatThread, msgID string, body json.RawMessage) string {
 	var m directMediaOf
 	if json.Unmarshal(body, &m) != nil || msgID == "" {
 		return ""
 	}
 	var lines []string
-	add := func(id, label, kind string, r mediaRef) {
+	add := func(id, label string, kind mediaKind, r mediaRef) {
 		if r.URL == "" {
 			return
 		}
@@ -158,17 +170,17 @@ func (b *Bridge) keepDirectMedia(th *thread, msgID string, body json.RawMessage)
 	}
 	switch m.MsgType {
 	case "image":
-		add(msgID+":image", "image", "image", m.Image)
+		add(msgID+":image", "image", mediaImage, m.Image)
 	case "file":
-		add(msgID+":file", "file", "file", m.File)
+		add(msgID+":file", "file", mediaFile, m.File)
 	case "video":
-		add(msgID+":video", "video", "video", m.Video)
+		add(msgID+":video", "video", mediaVideo, m.Video)
 	case "mixed":
 		n := 0
 		for _, it := range m.Mixed.Items {
 			if it.MsgType == "image" {
 				n++
-				add(fmt.Sprintf("%s:image:%d", msgID, n), fmt.Sprintf("image %d", n), "image", it.Image)
+				add(fmt.Sprintf("%s:image:%d", msgID, n), fmt.Sprintf("image %d", n), mediaImage, it.Image)
 			}
 		}
 	}
@@ -177,7 +189,7 @@ func (b *Bridge) keepDirectMedia(th *thread, msgID string, body json.RawMessage)
 
 // downloadAttachment saves an attachment of the Chat Thread in its folder
 // under the Workspace and says where.
-func (b *Bridge) downloadAttachment(ctx context.Context, th *thread, id string) (string, error) {
+func (b *Bridge) downloadAttachment(ctx context.Context, th *chatThread, id string) (string, error) {
 	if id == "" {
 		return "", errors.New("id is empty")
 	}
@@ -196,7 +208,7 @@ func (b *Bridge) downloadAttachment(ctx context.Context, th *thread, id string) 
 	var name string
 	var data []byte
 	var err error
-	if th.kind == threadKindChannel {
+	if th.kind == kindChannelPost {
 		name, data, err = b.channelAttachment(ctx, th, id)
 	} else {
 		name, data, err = b.directAttachment(ctx, th, id)
@@ -204,7 +216,7 @@ func (b *Bridge) downloadAttachment(ctx context.Context, th *thread, id string) 
 	if err != nil {
 		return "", err
 	}
-	path, err := saveAttachment(ws, threadFolder(th), name, data)
+	path, err := saveAttachment(ws, chatThreadFolder(th), name, data)
 	if err != nil {
 		return "", fmt.Errorf("cannot save it: %w", err)
 	}
@@ -222,7 +234,7 @@ func unknownAttachment(id string) error {
 
 // channelAttachment reads the post or reply again for a fresh link and
 // fetches the file or image with its cookie.
-func (b *Bridge) channelAttachment(ctx context.Context, th *thread, id string) (string, []byte, error) {
+func (b *Bridge) channelAttachment(ctx context.Context, th *chatThread, id string) (string, []byte, error) {
 	parts := strings.Split(id, ":")
 	var postID, replyID, kind, ref string
 	switch len(parts) {
@@ -277,7 +289,7 @@ func (b *Bridge) channelAttachment(ctx context.Context, th *thread, id string) (
 }
 
 // directAttachment fetches a direct message's media and decrypts it.
-func (b *Bridge) directAttachment(ctx context.Context, th *thread, id string) (string, []byte, error) {
+func (b *Bridge) directAttachment(ctx context.Context, th *chatThread, id string) (string, []byte, error) {
 	m, ok := b.media.lookup(th.key, id)
 	if !ok {
 		return "", nil, fmt.Errorf("%w; the Chat Bridge forgets them when the Host restarts", unknownAttachment(id))
@@ -298,7 +310,7 @@ func (b *Bridge) directAttachment(ctx context.Context, th *thread, id string) (s
 		if len(short) > 8 {
 			short = short[:8]
 		}
-		name = m.kind + "-" + short + extension(data)
+		name = string(m.kind) + "-" + short + extension(data)
 	}
 	return name, data, nil
 }
@@ -371,11 +383,11 @@ func extension(data []byte) string {
 	return extensions[t]
 }
 
-// threadFolder is the Chat Thread's folder in the Workspace's attachments
+// chatThreadFolder is the Chat Thread's folder in the Workspace's attachments
 // folder: WeCom's ids hold / and +, so it is named by a hash of them.
-func threadFolder(th *thread) string {
+func chatThreadFolder(th *chatThread) string {
 	sum := sha256.Sum256([]byte(th.key))
-	return th.kind + "-" + hex.EncodeToString(sum[:6])
+	return string(th.kind) + "-" + hex.EncodeToString(sum[:6])
 }
 
 // saveAttachment writes data as name in the Chat Thread's folder, under a

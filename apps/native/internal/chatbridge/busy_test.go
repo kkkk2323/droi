@@ -83,7 +83,7 @@ func (w *turns) wait(sessionID string, nth int) {
 
 func TestAnAtWhileItsChatSessionWorksSendsANoticeWithoutTheText(t *testing.T) {
 	r := startOn(t, fakedaemon.Scenario{Turn: working}, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} }, nil)
-	post := r.channel("Fix the nightly job")
+	post := r.newPost("Fix the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	p := r.initialized(1)
 	r.message(1)
@@ -138,7 +138,7 @@ func TestADirectMessageWhileItsChatSessionWorksGoesIntoTheTurnInFull(t *testing.
 
 func TestNewWhileItsChatSessionWorksStillStartsOver(t *testing.T) {
 	r := startOn(t, fakedaemon.Scenario{Turn: working}, nil, nil)
-	post := r.channel("Fix the nightly job")
+	post := r.newPost("Fix the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	first := r.initialized(1)
 	r.message(1)

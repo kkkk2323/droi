@@ -12,16 +12,16 @@ const maxTriggerRunes = 2000
 
 // systemPromptAppend is the Host's System Prompt Addition, then the facts
 // of the Chat Thread: which one it is, and that only reply reaches it.
-func systemPromptAppend(addition string, th *thread) string {
+func systemPromptAppend(addition string, th *chatThread) string {
 	facts := fmt.Sprintf("You are working in a WeCom (企业微信) Chat Thread: a direct message with the WeCom user %s. "+
 		"Nothing you write reaches them unless you call the droi-chat tool reply. "+
 		"The droi-chat tools act on this Chat Thread only, and their messages arrive in this Session.", th.userID)
-	if th.kind == threadKindChannel {
+	if th.kind == kindChannelPost {
 		facts = fmt.Sprintf("You are working in a WeCom (企业微信) Chat Thread: the post %s in the WeCom Channel %s, with its replies. "+
 			"Each time someone @s you there, the @ arrives in this Session as a message. "+
 			"Nothing you write reaches anyone unless you call the droi-chat tool reply, which posts a reply under the post; "+
 			"read_thread shows the post and its replies. The droi-chat tools act on this Chat Thread only.",
-			th.postID, channelLabel(th.channel, th.topicID))
+			th.postID, channelLabel(th.channelName, th.topicID))
 	}
 	if addition == "" {
 		return facts

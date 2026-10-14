@@ -69,7 +69,7 @@ func serveMCP(b *Bridge, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, rpcError(nil, -32000, "Method not allowed"))
 		return
 	}
-	th := b.threadOf(bearer(r))
+	th := b.chatThreadOf(bearer(r))
 	if th == nil {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeJSON(w, http.StatusUnauthorized, rpcError(nil, -32603, "Unauthorized"))
@@ -231,7 +231,7 @@ var toolList = []tool{
 	},
 }
 
-func (b *Bridge) callTool(ctx context.Context, th *thread, name string, args json.RawMessage) (string, error) {
+func (b *Bridge) callTool(ctx context.Context, th *chatThread, name string, args json.RawMessage) (string, error) {
 	switch name {
 	case "reply":
 		var p struct {
@@ -297,14 +297,14 @@ func (b *Bridge) callTool(ctx context.Context, th *thread, name string, args jso
 // reply sends Markdown, and files, to the Chat Thread. In a direct message
 // it goes under the latest message's req_id while WeCom still takes
 // replies to it, else as a message of its own.
-func (b *Bridge) reply(ctx context.Context, th *thread, text string, files, mentions []string) (string, error) {
+func (b *Bridge) reply(ctx context.Context, th *chatThread, text string, files, mentions []string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", errors.New("text is empty")
 	}
 	if len(text) > maxMarkdownBytes {
 		return "", fmt.Errorf("text is %d bytes; WeCom takes at most %d", len(text), maxMarkdownBytes)
 	}
-	if len(mentions) > 0 && th.kind != threadKindChannel {
+	if len(mentions) > 0 && th.kind != kindChannelPost {
 		return "", errors.New("mentions work only in a WeCom Channel; this is a direct message")
 	}
 	if len(mentions) > maxPerReply || slices.Contains(mentions, "") {
@@ -314,7 +314,7 @@ func (b *Bridge) reply(ctx context.Context, th *thread, text string, files, ment
 	if err != nil {
 		return "", err
 	}
-	if th.kind == threadKindChannel {
+	if th.kind == kindChannelPost {
 		return b.replyInChannel(ctx, th, text, out, mentions)
 	}
 	b.mu.Lock()
@@ -337,7 +337,7 @@ func (b *Bridge) reply(ctx context.Context, th *thread, text string, files, ment
 }
 
 // sendDirect sends one message of a direct message.
-func (b *Bridge) sendDirect(ctx context.Context, th *thread, wc *longConnection, body map[string]any) error {
+func (b *Bridge) sendDirect(ctx context.Context, th *chatThread, wc *longConnection, body map[string]any) error {
 	b.mu.Lock()
 	reqID, at, user := th.reqID, th.reqAt, th.userID
 	b.mu.Unlock()

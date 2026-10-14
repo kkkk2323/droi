@@ -57,20 +57,20 @@ type Bridge struct {
 	pushes chan frame
 	stop   chan struct{}
 	done   chan struct{}
-	// threadOps are the Chat Threads' running operation queues.
-	threadOps sync.WaitGroup
+	// chatThreadOps are the Chat Threads' running operation queues.
+	chatThreadOps sync.WaitGroup
 
-	mu      sync.Mutex
-	stopped bool
-	robot   string
-	wecom   *longConnection
-	status  Status
-	api     *channelAPI
-	tools   *toolServer
-	threads map[string]*thread
-	tokens  map[string]*thread
-	seen    recent
-	media   mediaStore
+	mu          sync.Mutex
+	stopped     bool
+	robot       string
+	wecom       *longConnection
+	status      Status
+	api         *wecomAPI
+	tools       *toolServer
+	chatThreads map[string]*chatThread
+	tokens      map[string]*chatThread
+	seen        recent
+	media       mediaStore
 	// synced: the Chat Thread map was rebuilt from the Daemon's Sessions
 	// since the Chat Bridge last connected to it.
 	synced  bool
@@ -100,14 +100,15 @@ type Status struct {
 	Reason string
 }
 
-// thread is a Chat Thread and its Chat Session.
-type thread struct {
+// chatThread is a Chat Thread and its Chat Session.
+type chatThread struct {
 	key  string
-	kind string
+	kind chatThreadKind
 	// userID is the other side of a direct message.
 	userID string
-	// topicID and postID are a Channel post's; channel is the Channel's name.
-	topicID, postID, channel string
+	// topicID and postID are a Channel post's; channelName is the
+	// Channel's name.
+	topicID, postID, channelName string
 	// read are the replies under the post read_thread showed Droid.
 	read      map[string]bool
 	sessionID string
@@ -115,9 +116,9 @@ type thread struct {
 	// has the droi-chat server of token.
 	loaded bool
 	token  string
-	// archived: the Chat Thread's last Chat Session was archived, which its
-	// next one is told.
-	archived bool
+	// archivedBefore: the Chat Thread's last Chat Session was archived,
+	// which its next one is told.
+	archivedBefore bool
 	// ops run one at a time, in order, so a Chat Thread's messages, its
 	// Chat Session's start and its idle close never overlap; other Chat
 	// Threads go on meanwhile.
@@ -132,9 +133,15 @@ type thread struct {
 	reqAt time.Time
 }
 
+// chatThreadKind is what a Chat Thread is: its droi.chat tag's kind.
+type chatThreadKind string
+
 const (
-	threadKindDirect   = "direct"
-	threadKindChannel  = "channel"
+	kindDirectMessage chatThreadKind = "direct"
+	kindChannelPost   chatThreadKind = "channel"
+)
+
+const (
 	replyWindow        = 24 * time.Hour
 	defaultIdleTimeout = 15 * time.Second
 	deliverTimeout     = 2 * time.Minute
@@ -170,13 +177,13 @@ func New(o Options) *Bridge {
 		o.Log = func(string) {}
 	}
 	b := &Bridge{
-		o:       o,
-		ctl:     controller.New(o.Daemon),
-		pushes:  make(chan frame, 256),
-		stop:    make(chan struct{}),
-		done:    make(chan struct{}),
-		threads: map[string]*thread{},
-		tokens:  map[string]*thread{},
+		o:           o,
+		ctl:         controller.New(o.Daemon),
+		pushes:      make(chan frame, 256),
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
+		chatThreads: map[string]*chatThread{},
+		tokens:      map[string]*chatThread{},
 	}
 	b.ctl.Subscribe(b.onEvent)
 	b.ctl.Subscribe(b.promptEvent)
@@ -214,7 +221,7 @@ func (b *Bridge) follow(again bool) {
 	b.robot, b.wecom, b.api = robot, nil, nil
 	b.status = Status{State: Off}
 	if robot != "" {
-		b.api = newChannelAPI(b.o.APIURL, cb.BotID, cb.Secret, b.o.Now)
+		b.api = newWeComAPI(b.o.APIURL, cb.BotID, cb.Secret, b.o.Now)
 		if b.tools == nil {
 			t, err := startToolServer(b)
 			if err != nil {
@@ -275,7 +282,7 @@ func (b *Bridge) Stop() {
 	}
 	close(b.stop)
 	<-b.done
-	b.threadOps.Wait()
+	b.chatThreadOps.Wait()
 	_ = b.ctl.Close()
 }
 
@@ -362,10 +369,10 @@ func (b *Bridge) handle(f frame) {
 		return
 	}
 	b.mu.Lock()
-	th := b.threads[directThread(user).key]
+	th := b.chatThreads[directChatThread(user).key]
 	if th == nil {
-		th = directThread(user)
-		b.threads[th.key] = th
+		th = directChatThread(user)
+		b.chatThreads[th.key] = th
 	}
 	th.reqID, th.reqAt = f.Headers.ReqID, b.o.Now()
 	b.mu.Unlock()
@@ -379,7 +386,7 @@ func (b *Bridge) handle(f frame) {
 	trigger := directTrigger(user, text) + media
 	b.run(th, func() {
 		// A message with files is for Droid, not an answer.
-		if media != "" || !b.answerInThread(th, user, text) {
+		if media != "" || !b.answerInChatThread(th, user, text) {
 			b.deliver(th, trigger)
 		}
 	})
@@ -423,7 +430,7 @@ func textOf(m callback) string {
 }
 
 // working reports whether the Chat Thread's Chat Session is in a turn.
-func (b *Bridge) working(th *thread) bool {
+func (b *Bridge) working(th *chatThread) bool {
 	b.mu.Lock()
 	id := th.sessionID
 	b.mu.Unlock()
@@ -437,13 +444,13 @@ func (b *Bridge) working(th *thread) bool {
 // deliver sends the Chat Thread's Chat Session one message, starting the
 // Session first when the Chat Thread has none. A message to a Session in a
 // turn goes into that turn.
-func (b *Bridge) deliver(th *thread, text string) { b.deliverTo(th, text, false) }
+func (b *Bridge) deliver(th *chatThread, text string) { b.deliverTo(th, text, false) }
 
 // startOver archives the Chat Thread's Chat Session and sends text to a new
 // one, for !new.
-func (b *Bridge) startOver(th *thread, text string) { b.deliverTo(th, text, true) }
+func (b *Bridge) startOver(th *chatThread, text string) { b.deliverTo(th, text, true) }
 
-func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
+func (b *Bridge) deliverTo(th *chatThread, text string, archiveFirst bool) {
 	ctx, cancel := b.opContext()
 	defer cancel()
 	if err := b.ready(ctx); err != nil {
@@ -457,8 +464,8 @@ func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
 		th.idle.Stop()
 	}
 	b.mu.Unlock()
-	if fresh && id != "" {
-		b.archive(ctx, th, id)
+	if archiveFirst && id != "" {
+		b.archiveChatSession(ctx, th, id)
 		id = ""
 	}
 	if id != "" && !loaded {
@@ -480,9 +487,9 @@ func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
 			return
 		}
 		b.mu.Lock()
-		if th.archived {
+		if th.archivedBefore {
 			text = archivedNote + text
-			th.archived = false
+			th.archivedBefore = false
 		}
 		b.mu.Unlock()
 	}
@@ -495,7 +502,7 @@ func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
 	}
 }
 
-func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
+func (b *Bridge) startSession(ctx context.Context, th *chatThread) (string, error) {
 	s := b.o.Settings.Get()
 	cb := s.ChatBridge
 	if cb.Workspace == "" {
@@ -532,11 +539,11 @@ func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
 }
 
 // metadata names the Chat Thread in its Chat Session's droi.chat tag.
-func (th *thread) metadata() map[string]string {
-	if th.kind == threadKindChannel {
-		return map[string]string{"kind": threadKindChannel, "topicId": th.topicID, "postId": th.postID, "channel": th.channel}
+func (th *chatThread) metadata() map[string]string {
+	if th.kind == kindChannelPost {
+		return map[string]string{"kind": string(kindChannelPost), "topicId": th.topicID, "postId": th.postID, "channel": th.channelName}
 	}
-	return map[string]string{"kind": threadKindDirect, "userId": th.userID}
+	return map[string]string{"kind": string(kindDirectMessage), "userId": th.userID}
 }
 
 func newToken() string {
@@ -545,8 +552,8 @@ func newToken() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// threadOf is the Chat Thread a droi-chat token was given for.
-func (b *Bridge) threadOf(token string) *thread {
+// chatThreadOf is the Chat Thread a droi-chat token was given for.
+func (b *Bridge) chatThreadOf(token string) *chatThread {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.tokens[token]

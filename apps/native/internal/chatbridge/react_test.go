@@ -10,7 +10,7 @@ import (
 
 func TestReactPutsAndRemovesAnEmojiOnThePostAndOnAReply(t *testing.T) {
 	r := start(t, nil)
-	post := r.channel("Deploy the fix")
+	post := r.newPost("Deploy the fix")
 	reply := r.w.AddReply(topic, post, fakewecom.Post{From: "HuangJunXiang", Text: "Tests are green"})
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	droid := r.droid(r.initialized(1))

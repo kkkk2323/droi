@@ -349,7 +349,7 @@ func (c *client) permission() controller.Permission {
 func TestAPermissionRequestInAChannelIsNumberedTextAnAtWithTheNumberAnswers(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
 	other := r.window()
-	post := r.channel("Push the release")
+	post := r.newPost("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 
 	asked := r.robotReply(post, 1)
@@ -363,7 +363,7 @@ func TestAPermissionRequestInAChannelIsNumberedTextAnAtWithTheNumberAnswers(t *t
 		t.Errorf("the Daemon got %q", got)
 	}
 	if note := r.robotReply(post, 2); !strings.Contains(note, "HuangJunXiang") || !strings.Contains(note, "Yes, allow") {
-		t.Errorf("the thread does not show who answered what:\n%s", note)
+		t.Errorf("the Chat Thread does not show who answered what:\n%s", note)
 	}
 	if n := r.count("daemon.add_user_message"); n != 1 {
 		t.Errorf("the answer also reached Droid as a message (%d messages)", n)
@@ -383,7 +383,7 @@ func TestOnlyAnAllowedUserAnswersAPrompt(t *testing.T) {
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})
 	c := r.sentCard(1)
 	click := r.w.Click(fakewecom.Click{From: "wo-stranger", TaskID: c.TaskID, Key: c.buttonFor(t, "Yes, allow")})
-	post := r.channel("Push the release")
+	post := r.newPost("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
 	r.atIn(post, "wo-stranger", "1")
@@ -412,7 +412,7 @@ func TestOnlyAnAllowedUserAnswersAPrompt(t *testing.T) {
 func TestTextThatIsNotANumberReachesDroidAndThePromptWaits(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
 	other := r.window()
-	post := r.channel("Push the release")
+	post := r.newPost("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
 	// Droid is in its turn, so the message says where the @ is, and
@@ -463,7 +463,7 @@ func TestAnAskUserIsNumberedTextANumberPicksAnOption(t *testing.T) {
 func TestAnAskUserTakesOtherTextAsTheAnswer(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
 	other := r.window()
-	post := r.channel("Deploy")
+	post := r.newPost("Deploy")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	if asked := r.robotReply(post, 1); !strings.Contains(asked, "Which branch?") || !strings.Contains(asked, "2. release") {
 		t.Errorf("the question:\n%s", asked)
@@ -502,7 +502,7 @@ func TestAPermissionAnsweredInAClientFirstIsSettledInTheDirectMessage(t *testing
 func TestAPermissionAnsweredInAClientFirstIsSettledInTheChannel(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
 	other := r.window()
-	post := r.channel("Push the release")
+	post := r.newPost("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
 	if err := other.ctl.RespondToPermission(context.Background(), other.permission().RequestID,
@@ -524,7 +524,7 @@ func TestAPermissionAnsweredInAClientFirstIsSettledInTheChannel(t *testing.T) {
 func TestAnAskUserAnsweredInAClientFirstIsSettledInWeCom(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
 	other := r.window()
-	post := r.channel("Deploy")
+	post := r.newPost("Deploy")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
 	ask := other.waitFor("AskUser", func(e controller.Event) bool {
@@ -537,7 +537,7 @@ func TestAnAskUserAnsweredInAClientFirstIsSettledInWeCom(t *testing.T) {
 		t.Fatal(err)
 	}
 	if note := r.robotReply(post, 2); !strings.Contains(note, "Droi") || !strings.Contains(note, "Which branch?") {
-		t.Errorf("the thread does not say where it was answered:\n%s", note)
+		t.Errorf("the Chat Thread does not say where it was answered:\n%s", note)
 	}
 	r.atIn(post, "HuangJunXiang", "2")
 	r.message(2)
@@ -561,7 +561,7 @@ func TestAnUnansweredPromptWaits(t *testing.T) {
 
 func TestNewStartsOverWhileAnAskUserWaits(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
-	post := r.channel("Deploy")
+	post := r.newPost("Deploy")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	first := r.initialized(1)
 	r.robotReply(post, 1)
