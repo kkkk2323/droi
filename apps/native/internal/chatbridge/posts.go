@@ -65,7 +65,7 @@ func (b *Bridge) atBot(th *chatThread, e event) {
 	// After a restart the map knows the post's Chat Session only once
 	// rebuilt, which the hint depends on.
 	if err := b.ready(ctx); err != nil {
-		b.o.Log(err.Error())
+		b.notTaken(th, err)
 		return
 	}
 	api, _, err := b.connection()

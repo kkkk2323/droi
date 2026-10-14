@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -501,6 +502,35 @@ func TestARefusedSenderHoldsUpNothingWhileTheChangeIsHeard(t *testing.T) {
 
 	if m := r.message(1); !strings.Contains(m.Text, "Hello") {
 		t.Errorf("first message %q", m.Text)
+	}
+}
+
+func TestWithNoWorkspaceTheChatThreadIsToldDroidCannotTakeItsMessage(t *testing.T) {
+	r := start(t, func(s *host.Settings) { s.ChatBridge.Workspace = "" })
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Hi"})
+	if note := r.directText(1); !strings.Contains(note, "could not take") || !strings.Contains(note, "Workspace") {
+		t.Errorf("the direct message was told:\n%s", note)
+	}
+
+	post := r.newPost("Status?")
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	if note := r.robotReply(post, 1); !strings.Contains(note, "could not take") || !strings.Contains(note, "Workspace") {
+		t.Errorf("the post was told:\n%s", note)
+	}
+	if n := r.count("daemon.initialize_session"); n != 0 {
+		t.Errorf("%d Chat Sessions", n)
+	}
+}
+
+func TestWhenTheDaemonCannotBeReachedTheChatThreadIsToldDroidCannotTakeItsMessage(t *testing.T) {
+	r := startWith(t, nil, func(o *chatbridge.Options) {
+		o.Daemon.MaxConnectAttempts = 1
+		o.Daemon.Credential = func(context.Context) (*droid.Credential, error) { return nil, errors.New("no key fk-secret") }
+	})
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Hi"})
+	note := r.directText(1)
+	if !strings.Contains(note, "could not take") || !strings.Contains(note, "Daemon") || strings.Contains(note, "fk-secret") {
+		t.Errorf("the direct message was told:\n%s", note)
 	}
 }
 

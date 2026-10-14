@@ -464,7 +464,7 @@ func (b *Bridge) deliverTo(th *chatThread, text string, archiveFirst bool) {
 	ctx, cancel := b.opContext(deliverTimeout)
 	defer cancel()
 	if err := b.ready(ctx); err != nil {
-		b.o.Log(err.Error())
+		b.notTaken(th, err)
 		return
 	}
 	b.mu.Lock()
@@ -486,14 +486,14 @@ func (b *Bridge) deliverTo(th *chatThread, text string, archiveFirst bool) {
 			b.mu.Unlock()
 			id = ""
 		} else if err != nil {
-			b.o.Log("cannot load the Chat Session: " + err.Error())
+			b.notTaken(th, &notTakenError{"the Daemon did not load its Chat Session", fmt.Errorf("cannot load the Chat Session: %w", err)})
 			return
 		}
 	}
 	if id == "" {
 		var err error
 		if id, err = b.startSession(ctx, th); err != nil {
-			b.o.Log("cannot start a Chat Session: " + err.Error())
+			b.notTaken(th, fmt.Errorf("cannot start a Chat Session: %w", err))
 			return
 		}
 		b.mu.Lock()
@@ -508,7 +508,40 @@ func (b *Bridge) deliverTo(th *chatThread, text string, archiveFirst bool) {
 		p.QueuePlacement = protocol.QueuePlacementEndOfTurn
 	}
 	if _, err := b.ctl.AddUserMessage(ctx, p); err != nil {
-		b.o.Log("cannot send the Chat Session its message: " + err.Error())
+		b.notTaken(th, fmt.Errorf("cannot send the Chat Session its message: %w", err))
+	}
+}
+
+// notTakenError is why a Chat Thread's message did not reach its Chat
+// Session: err for the log, and why for the Chat Thread, which never sees
+// err's details.
+type notTakenError struct {
+	why string
+	err error
+}
+
+func (e *notTakenError) Error() string { return e.err.Error() }
+func (e *notTakenError) Unwrap() error { return e.err }
+
+// notTaken logs why th's message did not reach its Chat Session and tells
+// the Chat Thread in one line.
+func (b *Bridge) notTaken(th *chatThread, err error) {
+	b.o.Log(err.Error())
+	b.mu.Lock()
+	stopped := b.stopped
+	b.mu.Unlock()
+	if stopped {
+		return
+	}
+	why := "the Daemon did not take it"
+	var nt *notTakenError
+	if errors.As(err, &nt) {
+		why = nt.why
+	}
+	ctx, cancel := b.opContext(fetchTimeout)
+	defer cancel()
+	if err := b.sendToChatThread(ctx, th, "Droid could not take this message: "+why+"."); err != nil {
+		b.o.Log("cannot tell WeCom a message was not taken: " + err.Error())
 	}
 }
 
@@ -516,7 +549,7 @@ func (b *Bridge) startSession(ctx context.Context, th *chatThread) (string, erro
 	s := b.o.Settings.Get()
 	cb := s.ChatBridge
 	if cb.Workspace == "" {
-		return "", errors.New("the Chat Bridge has no Workspace")
+		return "", &notTakenError{"the Chat Bridge has no Workspace set", errors.New("the Chat Bridge has no Workspace")}
 	}
 	token, server, err := b.issueToken(th)
 	if err != nil {

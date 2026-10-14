@@ -51,10 +51,10 @@ func chatThreadFromTags(tags []protocol.SessionTag) *chatThread {
 // connection has not yet.
 func (b *Bridge) ready(ctx context.Context) error {
 	if err := b.ctl.Connect(ctx); err != nil {
-		return fmt.Errorf("cannot reach the Daemon: %w", err)
+		return &notTakenError{"the Chat Bridge cannot reach the Daemon", fmt.Errorf("cannot reach the Daemon: %w", err)}
 	}
 	if err := b.sync(ctx); err != nil {
-		return fmt.Errorf("cannot list the Chat Sessions: %w", err)
+		return &notTakenError{"the Daemon did not list the Chat Sessions", fmt.Errorf("cannot list the Chat Sessions: %w", err)}
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func (b *Bridge) issueToken(th *chatThread) (string, json.RawMessage, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.tools == nil {
-		return "", nil, errors.New("the droi-chat tools are not listening")
+		return "", nil, &notTakenError{"the droi-chat tools are not listening", errors.New("the droi-chat tools are not listening")}
 	}
 	token := newToken()
 	server, err := json.Marshal(map[string]any{
