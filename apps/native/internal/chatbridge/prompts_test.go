@@ -278,13 +278,14 @@ func (r *rig) robotReplies(post string) int {
 }
 
 // atIn has a member reply under the post with an @ of the robot and text,
-// as WeCom writes it.
-func (r *rig) atIn(post, from, text string) {
+// as WeCom writes it, and returns the reply's id.
+func (r *rig) atIn(post, from, text string) string {
 	r.t.Helper()
 	reply := r.w.AddReply(topic, post, fakewecom.Post{
 		From: from, Text: "${inline_mention:ph_bot}\u200b " + text, Mentions: []fakewecom.Mention{atRobot("ph_bot")},
 	})
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, ReplyID: reply, From: from})
+	return reply
 }
 
 // directText waits for the nth Markdown message the robot sent in a
@@ -367,6 +368,10 @@ func TestAPermissionRequestInAChannelIsNumberedTextAnAtWithTheNumberAnswers(t *t
 	if n := r.count("daemon.add_user_message"); n != 1 {
 		t.Errorf("the answer also reached Droid as a message (%d messages)", n)
 	}
+	// The @ that answered is not a reply Droid has yet to read.
+	if text, isError := r.droid(r.initialized(1)).call("reply", map[string]any{"text": "Pushed"}); isError || strings.Contains(text, "not read") {
+		t.Errorf("reply answered %q (error %v)", text, isError)
+	}
 	for _, f := range append(r.w.Frames("aibot_respond_msg"), r.w.Frames("aibot_send_msg")...) {
 		t.Errorf("something went over the long connection for a Channel: %s", f.Body)
 	}
@@ -410,13 +415,15 @@ func TestTextThatIsNotANumberReachesDroidAndThePromptWaits(t *testing.T) {
 	post := r.channel("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
-	r.atIn(post, "HuangJunXiang", "1 is fine, but check the tag first")
-	if m := r.message(2); !strings.Contains(m.Text, "1 is fine, but check the tag first") {
-		t.Errorf("message %q", m.Text)
+	// Droid is in its turn, so the message says where the @ is, and
+	// read_thread shows its text.
+	reply := r.atIn(post, "HuangJunXiang", "1 is fine, but check the tag first")
+	if m := r.message(2); !strings.Contains(m.Text, reply) {
+		t.Errorf("message %q is not about reply %s", m.Text, reply)
 	}
-	r.atIn(post, "HuangJunXiang", "4")
-	if m := r.message(3); !strings.Contains(m.Text, "@you 4") {
-		t.Errorf("a number with no option reached Droid as %q", m.Text)
+	reply = r.atIn(post, "HuangJunXiang", "4")
+	if m := r.message(3); !strings.Contains(m.Text, reply) {
+		t.Errorf("a number with no option reached Droid as %q, not about reply %s", m.Text, reply)
 	}
 
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})

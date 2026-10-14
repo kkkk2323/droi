@@ -99,6 +99,8 @@ func (b *Bridge) atBot(th *thread, e event) {
 	} else {
 		text = render(c, b.robotID())
 		if _, isNew := cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you")); !isNew && b.answerInThread(th, user, text) {
+			// The answer reaches Droid as the Prompt's, not as a reply to read.
+			b.markSent(th, at.ReplyID, nil)
 			return
 		}
 		text = cut(text)
