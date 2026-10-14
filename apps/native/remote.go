@@ -3,40 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"log"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
 )
 
 // startGateway starts the Gateway that paired phones and this window connect
 // through. The window presents localToken, which a Pairing Token reset or
 // turning Remote Access off does not revoke.
 func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error) (*gateway.Gateway, error) {
-	s := h.Settings.Get()
-	return gateway.Start(gateway.Options{
-		Port:         gateway.PreferredPort,
-		RemoteAccess: s.RemoteAccess,
-		DaemonURL:    func() string { return h.Daemon.State().URL() },
-		PairingToken: func() string { return h.Settings.Get().PairingToken },
-		LocalToken:   func() string { return localToken },
-		Credential:   h.Credential,
-		AppendSystemPrompt: func() string {
-			if p := h.Settings.Get().AppendSystemPrompt; p != nil {
-				return *p
-			}
-			return ""
-		},
-		Version:      version,
-		ComputerName: gateway.ComputerName(),
-		ComputerID:   s.ComputerID,
-		// Its refusal of a folder outside the Scratch folder answers 400.
-		Scratch: &gateway.ScratchFolders{Root: h.ScratchFolder, MoveToTrash: moveToTrash},
-		FindSessionFile: func(id string) string {
-			return host.FindSessionTranscript(filepath.Join(h.SharedFactoryHome(), "sessions"), id)
-		},
-	})
+	opts := hostrun.GatewayOptions(h, version, moveToTrash)
+	opts.Port = gateway.PreferredPort
+	opts.RemoteAccess = h.Settings.Get().RemoteAccess
+	opts.LocalToken = func() string { return localToken }
+	return gateway.Start(opts)
 }
 
 // windowURL is the controller's ResolveURL: the Gateway of the computer the
@@ -45,6 +28,12 @@ func startGateway(h *host.Host, version, localToken string, moveToTrash func(str
 func windowURL(followed *computer.Paired, gw *gateway.Gateway, gwErr error, localToken string, daemonUp func(context.Context) (string, error)) func(context.Context) (string, error) {
 	if followed != nil {
 		url := followed.SocketURL()
+		if url == "" {
+			// A saved address that cannot be used still shows the way back
+			// to this computer; the app must not stop at launch.
+			err := fmt.Errorf("the saved address of %s, %q, cannot be used", followed.Name, followed.Gateway)
+			return func(context.Context) (string, error) { return "", err }
+		}
 		return func(context.Context) (string, error) { return url, nil }
 	}
 	return gatewayURL(gw, gwErr, localToken, daemonUp)
@@ -63,4 +52,25 @@ func gatewayURL(gw *gateway.Gateway, gwErr error, localToken string, daemonUp fu
 		}
 		return gw.DaemonSocketURL(localToken), nil
 	}
+}
+
+// windowClient is the window's side of the Gateway's plain endpoints: the
+// followed computer's, or this computer's own. Nil when there is none to
+// reach, which the window answers as a computer without a Scratch folder.
+func windowClient(followed *computer.Paired, gw *gateway.Gateway, localToken string) *gateway.Client {
+	var socketURL string
+	switch {
+	case followed != nil:
+		socketURL = followed.SocketURL()
+	case gw != nil:
+		socketURL = gw.DaemonSocketURL(localToken)
+	default:
+		return nil
+	}
+	c, err := gateway.NewClient(socketURL)
+	if err != nil {
+		log.Println("droi: gateway client:", err)
+		return nil
+	}
+	return c
 }

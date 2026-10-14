@@ -49,6 +49,13 @@ func TestStandInDroid(t *testing.T) {
 	if err := os.WriteFile(os.Getenv("DROI_STAND_IN_PID"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Until this file exists the Daemon is not up.
+	for gate := os.Getenv("DROI_STAND_IN_GATE"); gate != ""; {
+		if _, err := os.Stat(gate); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM)
 	go func() { <-term; os.Exit(0) }()
@@ -211,6 +218,22 @@ func (r *running) waitForOutput(sub string) {
 	}
 }
 
+// waitForDaemon waits until the Daemon has started: the link is printed
+// before it is up.
+func (r *running) waitForDaemon() {
+	r.b.t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if _, err := os.Stat(r.b.pidFile); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			r.b.t.Fatal("the Daemon did not start")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func (r *running) base() string { return "http://127.0.0.1:" + strconv.Itoa(r.b.port) }
 
 func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
@@ -258,9 +281,17 @@ func TestHostPrintsThePairingLinkServesMetaAndTakesAClient(t *testing.T) {
 	// A paired Client reaches the Daemon through the Gateway.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, "ws://127.0.0.1:"+strconv.Itoa(b.port)+gateway.DaemonPath+"?token="+token, nil)
-	if err != nil {
-		t.Fatal(err)
+	r.waitForDaemon()
+	var c *websocket.Conn
+	for {
+		c, _, err = websocket.Dial(ctx, "ws://127.0.0.1:"+strconv.Itoa(b.port)+gateway.DaemonPath+"?token="+token, nil)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	defer c.CloseNow()
 	if err := c.Write(ctx, websocket.MessageText, []byte("ping")); err != nil {
@@ -275,10 +306,22 @@ func TestHostPrintsThePairingLinkServesMetaAndTakesAClient(t *testing.T) {
 	}
 }
 
+func TestHostPrintsThePairingLinkBeforeTheDaemonIsUp(t *testing.T) {
+	b := newBox(t, "0.240.0")
+	gate := filepath.Join(t.TempDir(), "daemon-may-start")
+	t.Setenv("DROI_STAND_IN_GATE", gate)
+	r := b.start(nil)
+	r.waitForOutput("Pairing link: ")
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStopEndsTheGatewayAndTheDaemon(t *testing.T) {
 	b := newBox(t, "0.240.0")
 	r := b.start(nil)
 	r.waitForOutput("Pairing link: ")
+	r.waitForDaemon()
 	raw, err := os.ReadFile(b.pidFile)
 	if err != nil {
 		t.Fatal(err)

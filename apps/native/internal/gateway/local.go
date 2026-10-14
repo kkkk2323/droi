@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"net/url"
 
 	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
 )
@@ -20,7 +19,8 @@ func NewLocalToken() string {
 // DaemonSocketURL is the Daemon socket as a Client on this computer reaches
 // it, over loopback, presenting token.
 func (g *Gateway) DaemonSocketURL(token string) string {
-	return "ws://" + g.URL()[len("http://"):] + DaemonPath + "?" + TokenQuery + "=" + url.QueryEscape(token)
+	u, _ := SocketURL(g.URL(), token) // g.URL() is always an http origin
+	return u
 }
 
 // PlaceholderCredential is what a Client gives the SDK in place of a Factory

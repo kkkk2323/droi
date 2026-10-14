@@ -5,12 +5,9 @@ package hostrun
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -69,27 +66,9 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 
-	s := h.Settings.Get()
-	gw, err := gateway.Start(gateway.Options{
-		Port:         port,
-		RemoteAccess: true,
-		DaemonURL:    func() string { return h.Daemon.State().URL() },
-		PairingToken: func() string { return h.Settings.Get().PairingToken },
-		Credential:   h.Credential,
-		AppendSystemPrompt: func() string {
-			if p := h.Settings.Get().AppendSystemPrompt; p != nil {
-				return *p
-			}
-			return ""
-		},
-		Version:      o.Version,
-		ComputerName: gateway.ComputerName(),
-		ComputerID:   s.ComputerID,
-		Scratch:      &gateway.ScratchFolders{Root: h.ScratchFolder, MoveToTrash: trash.Move},
-		FindSessionFile: func(id string) string {
-			return host.FindSessionTranscript(filepath.Join(h.SharedFactoryHome(), "sessions"), id)
-		},
-	})
+	opts := GatewayOptions(h, o.Version, trash.Move)
+	opts.Port, opts.RemoteAccess = port, true
+	gw, err := gateway.Start(opts)
 	if err != nil {
 		return fmt.Errorf("the Gateway cannot listen: %w", err)
 	}
@@ -104,10 +83,12 @@ func Run(ctx context.Context, o Options) error {
 	if !h.HasCredential() {
 		fmt.Fprintln(out, "Warning: no login. Run `droid login` on this computer, or set FACTORY_API_KEY, then restart.")
 	}
+	// The Gateway listens whether or not the Daemon is up, so the link comes
+	// first: a Daemon that takes long to start must not hide it.
+	announce(out, o.Terminal, gw, h, o.Version)
 	if err := waitForDaemon(ctx, h); err != nil {
 		fmt.Fprintf(out, "Warning: the Daemon is not running yet: %s\n", err)
 	}
-	announce(out, o.Terminal, gw, h, o.Version)
 	<-ctx.Done()
 	return nil
 }
@@ -117,17 +98,8 @@ func Run(ctx context.Context, o Options) error {
 func hostAnswers(ctx context.Context, port int) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+strconv.Itoa(port)+gateway.MetaPath, nil)
-	if err != nil {
-		return false
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	defer res.Body.Close()
-	var meta gateway.Meta
-	return res.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(res.Body, 1<<16)).Decode(&meta) == nil && meta.App == "Droi"
+	_, err := gateway.FetchMeta(ctx, "http://127.0.0.1:"+strconv.Itoa(port))
+	return err == nil
 }
 
 // checkDroid refuses a missing droid, or one older than Droi needs, before

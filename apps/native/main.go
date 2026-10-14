@@ -34,6 +34,15 @@ import (
 // devVersion is the version of `go run`; a build takes mygo.json's.
 const devVersion = "1.46.2"
 
+// hostUnsupported is why `droi host` does not run on goos, "" where it does:
+// elsewhere the app is the Host (ADR 0019).
+func hostUnsupported(goos string) string {
+	if goos == "linux" {
+		return ""
+	}
+	return "droi host runs on Linux only. On this computer the Droi app is the Host."
+}
+
 func main() {
 	version := mygo.App.Version()
 	if version == "" {
@@ -49,6 +58,10 @@ func main() {
 		case host.MemoryHookCommand:
 			os.Exit(memory.HookMain())
 		case "host":
+			if msg := hostUnsupported(runtime.GOOS); msg != "" {
+				fmt.Fprintln(os.Stderr, msg)
+				os.Exit(2)
+			}
 			os.Exit(hostrun.Main(os.Args[2:], version, executable()))
 		}
 	}
@@ -114,18 +127,8 @@ func main() {
 	}
 	mem := hostrun.StartMemory(h, home, func() { update(func() {}) })
 	var remote app.Remote
-	var gwClient *gateway.Client
 	if gw != nil {
 		remote = gw
-	}
-	switch {
-	case followed != nil:
-		gwClient, err = gateway.NewClient(followed.SocketURL())
-	case gw != nil:
-		gwClient, err = gateway.NewClient(gw.DaemonSocketURL(localToken))
-	}
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	a := app.New(app.Config{
@@ -137,7 +140,7 @@ func main() {
 		StatsFile:    filepath.Join(userData, "session-stats.json"),
 		OpenPath:     mygo.Shell.OpenPath,
 		ShowInFolder: mygo.Shell.ShowItemInFolder,
-		Gateway:      gwClient,
+		Gateway:      windowClient(followed, gw, localToken),
 		Host:         h,
 		Version:      version,
 		Env:          os.Getenv,

@@ -95,3 +95,43 @@ func TestThisComputersLoginIsNotLookedAtWhileFollowingAnother(t *testing.T) {
 		t.Fatal("the window asked this Host whether it holds a login")
 	}
 }
+
+func TestASavedAddressThatCannotBeUsedIsAnErrorTheWindowShowsAndLeavesNoGatewayClient(t *testing.T) {
+	bad := &computer.Paired{Gateway: "not an address", Token: "box-token", Name: "Ubuntu box", ID: "box-1"}
+	got, err := windowURL(bad, nil, nil, "local-token", daemonUp)(context.Background())
+	if got != "" || err == nil || !strings.Contains(err.Error(), "Ubuntu box") {
+		t.Fatalf("%q, %v", got, err)
+	}
+	if c := windowClient(bad, nil, "local-token"); c != nil {
+		t.Fatalf("a Gateway Client for an address that cannot be used: %+v", c)
+	}
+}
+
+func TestTheWindowsGatewayClientReachesTheFollowedComputerOrThisOne(t *testing.T) {
+	other := &computer.Paired{Gateway: "http://box:41417", Token: "box-token", Name: "Ubuntu box", ID: "box-1"}
+	if windowClient(other, nil, "local-token") == nil {
+		t.Fatal("no Gateway Client for the followed computer")
+	}
+	gw, err := gateway.Start(gateway.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { gw.Close() })
+	if windowClient(nil, gw, "local-token") == nil {
+		t.Fatal("no Gateway Client for this computer")
+	}
+	if windowClient(nil, nil, "local-token") != nil {
+		t.Fatal("a Gateway Client without a Gateway")
+	}
+}
+
+func TestDroiHostRunsOnLinuxOnly(t *testing.T) {
+	if hostUnsupported("linux") != "" {
+		t.Fatal("droi host is refused on Linux")
+	}
+	for _, goos := range []string{"darwin", "windows"} {
+		if msg := hostUnsupported(goos); !strings.Contains(msg, "Linux only") {
+			t.Fatalf("%s: %q", goos, msg)
+		}
+	}
+}
