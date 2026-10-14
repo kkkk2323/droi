@@ -60,6 +60,11 @@ func (b *Bridge) handleEvent(f frame) {
 	if api == nil {
 		return
 	}
+	// Droid reads the text with read_thread when it gets to it.
+	if b.working(th) {
+		b.deliver(th, busyNotice(user, at.ReplyID))
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
 	if name == "" {

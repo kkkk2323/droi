@@ -61,8 +61,14 @@ func start(t *testing.T, edit func(*host.Settings)) *rig {
 
 func startWith(t *testing.T, edit func(*host.Settings), options func(*chatbridge.Options)) *rig {
 	t.Helper()
+	return startTurn(t, &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}}, edit, options)
+}
+
+// startTurn runs a Chat Bridge whose Chat Sessions' turns go as turn says.
+func startTurn(t *testing.T, turn *fakedaemon.Turn, edit func(*host.Settings), options func(*chatbridge.Options)) *rig {
+	t.Helper()
 	d := fakedaemon.Start(t, fakedaemon.Scenario{
-		Turn:             &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}},
+		Turn:             turn,
 		ValidDirectories: []string{workspace},
 	})
 	w := fakewecom.Start(t, robot)
@@ -142,8 +148,9 @@ func (r *rig) initialized(nth int) initialized {
 }
 
 type message struct {
-	SessionID string `json:"sessionId"`
-	Text      string `json:"text"`
+	SessionID      string `json:"sessionId"`
+	Text           string `json:"text"`
+	QueuePlacement string `json:"queuePlacement"`
 }
 
 func (r *rig) message(nth int) message {

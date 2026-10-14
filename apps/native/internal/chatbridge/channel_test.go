@@ -80,10 +80,12 @@ func (r *rig) barrier(nth int) {
 
 func TestALaterAtInTheSamePostContinuesItsChatSession(t *testing.T) {
 	r := start(t, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} })
+	turns := r.watchTurns()
 	post := r.channel("Look at the nightly job")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	p := r.initialized(1)
 	r.message(1)
+	turns.wait(p.SessionID, 1)
 
 	reply := r.w.AddReply(topic, post, fakewecom.Post{
 		From:     "LiLei",

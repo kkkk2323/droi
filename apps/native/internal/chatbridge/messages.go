@@ -51,6 +51,17 @@ func channelTrigger(user, channel, topicID, postID, replyID, text string, first 
 	return b.String()
 }
 
+// busyNotice is what an @ in a post sends its Chat Session while it works:
+// who and where, not the text.
+func busyNotice(user, replyID string) string {
+	where := "this post"
+	if replyID != "" {
+		where = "reply " + replyID + " under this post"
+	}
+	return fmt.Sprintf("WeCom user %s @-ed you in %s while you were working. "+
+		"The Chat Thread has messages you have not read: read_thread shows them.", user, where)
+}
+
 // channelLabel names a WeCom Channel by its name, or its id when WeCom did
 // not give the name.
 func channelLabel(name, topicID string) string {
