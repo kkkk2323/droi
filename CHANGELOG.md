@@ -1,3 +1,13 @@
+## 1.48.0 - 2026-10-14
+
+### Added
+
+- The Chat Bridge lets your team hand Droid work from WeCom (企业微信). Connect a WeCom smart robot in Settings › Chat Bridge (Bot ID, Secret, Workspace, who may talk to it, Autonomy level and model), or in the `chatBridge` block of `droi host`'s settings file; it needs no public address. @ the robot in a WeCom Channel post, or write to it directly, and Droid works in a Chat Session for that post or conversation: it reads the post and its replies, searches the Channel, opens attachments, reacts with an emoji and replies, with files and @mentions, when it decides to. Permission requests show as a button card in a direct message and as numbered options in a Channel; the first answer wins, in WeCom or in Droi. Chat Sessions carry a mark in the sidebar and the Session header, so you can follow or take over one from the window or the phone. The native README explains how to create the robot and add it to a Channel.
+
+### Fixed
+
+- Opening a Session again no longer moves it to the top of the Session list.
+
 ## 1.47.0 - 2026-10-14
 
 ### Added
