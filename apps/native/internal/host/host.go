@@ -169,8 +169,8 @@ func (h *Host) ScratchFolder() string {
 func (h *Host) MemoryDir() string { return filepath.Join(h.cfg.UserData, "memory") }
 
 // runtimeOverlay writes the Runtime Overlay when Memory or the Chat Bridge
-// is on and answers its path; "" starts the Daemon without one, and so
-// without Memory.
+// is on and answers its path; "" starts the Daemon without one: without
+// Memory and without the droi-chat tools' pre-approval.
 func (h *Host) runtimeOverlay() string {
 	s := h.Settings.Get()
 	memory := s.MemoryEnabled && h.cfg.Executable != ""

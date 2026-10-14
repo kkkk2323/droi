@@ -152,7 +152,7 @@ second Host with the same robot takes it over, and the first one stops and says 
 
 **Who may talk to it.** Only the WeCom user ids on the allowlist start a Chat Session or answer
 a Prompt; everyone else is ignored. WeCom gives a user's id in plain text (such as
-`HuangJunXiang`) only when a super administrator created the robot; otherwise each company
+`ZhangSan`) only when a super administrator created the robot; otherwise each company
 sees an encrypted id. Rather than looking it up, have the person write to the robot once: their
 id appears under Refused senders on the Chat Bridge page, and Allow moves it to the allowlist
 (on `droi host`, move it from `refusedUsers` to `allowedUsers` and restart).
