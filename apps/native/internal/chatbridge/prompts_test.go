@@ -460,6 +460,19 @@ func TestAnAskUserIsNumberedTextANumberPicksAnOption(t *testing.T) {
 	}
 }
 
+func TestAnAskUserAnsweredInWeComSaysWhoAnswered(t *testing.T) {
+	r := startTurn(t, askTurn, nil, nil)
+	other := r.window()
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Deploy"})
+	r.directText(1)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "2"})
+	other.answered("release")
+
+	if note := r.directText(2); !strings.Contains(note, "HuangJunXiang") || !strings.Contains(note, "release") || !strings.Contains(note, "Which branch?") {
+		t.Errorf("the Chat Thread does not show who answered what:\n%s", note)
+	}
+}
+
 func TestAnAskUserTakesOtherTextAsTheAnswer(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
 	other := r.window()

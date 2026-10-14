@@ -492,6 +492,18 @@ func TestASenderNotOnTheAllowlistStartsNothingAndIsRecorded(t *testing.T) {
 	}
 }
 
+func TestARefusedSenderHoldsUpNothingWhileTheChangeIsHeard(t *testing.T) {
+	release := make(chan struct{})
+	r := startWith(t, nil, func(o *chatbridge.Options) { o.OnChange = func() { <-release } })
+	t.Cleanup(func() { close(release) })
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "wo-encrypted-7f3a", Text: "Hi"})
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Hello"})
+
+	if m := r.message(1); !strings.Contains(m.Text, "Hello") {
+		t.Errorf("first message %q", m.Text)
+	}
+}
+
 func TestARepeatedMsgidStartsNothingTwice(t *testing.T) {
 	r := start(t, nil)
 	r.w.SendDirectMessage(fakewecom.DirectMessage{MsgID: "m-1", From: "HuangJunXiang", Text: "Once"})

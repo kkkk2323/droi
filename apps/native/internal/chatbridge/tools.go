@@ -149,7 +149,8 @@ var toolList = []tool{
 			"call it for progress on a long task and for your answer. Markdown, at most 20480 bytes. " +
 			"files attaches files of the Workspace (at most 8 files of up to 20 MB and 8 PNG, JPEG or GIF images of up to 10 MB): " +
 			"in a Channel they come with the reply, in a direct message each follows the text as a message of its own. " +
-			"mentions @s WeCom users by user id at the start of a Channel reply (at most 8; not in a direct message). " +
+			"mentions @s WeCom users by user id at the start of a Channel reply (at most 8; not in a direct message): " +
+			"the @s are added for you, so do not also write @<user id> in text. " +
 			"A WeCom error, such as its rate limit of 30 messages a minute and 1000 an hour, comes back as a tool error: " +
 			"the message was not sent. In a WeCom Channel the result says when the post has replies you have not read.",
 		InputSchema: map[string]any{

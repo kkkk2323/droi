@@ -237,12 +237,13 @@ func (b *Bridge) answerInChatThread(th *chatThread, user, text string) bool {
 	return true
 }
 
-// answered settles a Prompt WeCom answered and tells the Chat Thread: who
-// answered a permission request in a Channel, or that a Client was first.
+// answered settles a Prompt answered with text in its Chat Thread and tells
+// the Chat Thread who answered what, or that a Client was first. (A card's
+// click is answerClick's.)
 func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, err error) {
 	b.mu.Lock()
 	note := p.took(user, choice, err)
-	if note == "" && (p.by == "" || p.perm != nil && p.th.kind == kindChannelPost) {
+	if note == "" {
 		note = settledNote(p)
 	}
 	th := p.th

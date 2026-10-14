@@ -198,7 +198,8 @@ const (
 )
 
 // readThread is a Channel post and a page of its replies, the post on the
-// first page only. It marks the replies shown as read.
+// first page only. It marks the replies of the Chat Thread's own post it
+// shows as read.
 func (b *Bridge) readThread(ctx context.Context, th *chatThread, postID, cursor string, limit int) (string, error) {
 	if th.channelOnly("read_thread") != nil {
 		return "This Chat Thread is a direct message with WeCom user " + th.userID + ": WeCom keeps no history the Chat Bridge can read. " +
@@ -258,8 +259,12 @@ func (b *Bridge) readThread(ctx context.Context, th *chatThread, postID, cursor 
 	case len(replies) > 0:
 		out.WriteString("No more replies.")
 	}
-	for _, r := range replies {
-		b.markRead(th, r.ReplyID)
+	// Another post's replies are not this Chat Thread's, and their ids may
+	// be the same as some of its own.
+	if own {
+		for _, r := range replies {
+			b.markRead(th, r.ReplyID)
+		}
 	}
 	return strings.TrimSpace(out.String()), nil
 }

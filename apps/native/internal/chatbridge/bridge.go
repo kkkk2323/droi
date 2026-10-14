@@ -413,7 +413,7 @@ func (b *Bridge) refuse(user string) {
 			s.ChatBridge.RefusedUsers = append(s.ChatBridge.RefusedUsers, user)
 		}
 	})
-	b.o.OnChange()
+	go b.o.OnChange()
 }
 
 func textOf(m callback) string {

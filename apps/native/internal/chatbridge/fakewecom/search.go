@@ -83,11 +83,11 @@ func (w *WeCom) hits(keywords []string, topicID string) []any {
 		replies := []any{}
 		for _, r := range w.replies[replyKey(topicID, post.ID)] {
 			if matches(r, keywords) {
-				replies = append(replies, map[string]any{"reply_id": r.ID, "brief_content": brief(r.Text)})
+				replies = append(replies, map[string]any{"reply_id": r.ID, "brief_content": brief(r)})
 			}
 		}
 		if matches(post, keywords) || len(replies) > 0 {
-			out = append(out, map[string]any{"post_id": post.ID, "brief_content": brief(post.Text), "reply_list": replies})
+			out = append(out, map[string]any{"post_id": post.ID, "brief_content": brief(post), "reply_list": replies})
 		}
 	}
 	return out
@@ -105,11 +105,28 @@ func matches(p *Post, keywords []string) bool {
 	return true
 }
 
-var placeholders = regexp.MustCompile(`\$\{[^}]*\}|\x{200b}`)
+var (
+	placeholders = regexp.MustCompile(`\$\{[^}]*\}|\x{200b}`)
+	mentions     = regexp.MustCompile(`\$\{inline_mention:([^}]*)\}`)
+)
 
-// brief is WeCom's brief_content: plain text, at most 1024 bytes.
-func brief(text string) string {
-	s := strings.TrimSpace(placeholders.ReplaceAllString(text, ""))
+// brief is WeCom's brief_content: plain text, at most 1024 bytes. An @
+// shows as @ and the id, as WeCom shows the robot's: @<aibotid>; other
+// placeholders are left out.
+func brief(p *Post) string {
+	s := mentions.ReplaceAllStringFunc(p.Text, func(m string) string {
+		ph := mentions.FindStringSubmatch(m)[1]
+		for _, x := range p.Mentions {
+			if x.Placeholder == ph && x.BotID != "" {
+				return "@" + x.BotID
+			}
+			if x.Placeholder == ph {
+				return "@" + x.UserID
+			}
+		}
+		return ""
+	})
+	s = strings.TrimSpace(placeholders.ReplaceAllString(s, ""))
 	for len(s) > 1024 {
 		r := []rune(s)
 		s = string(r[:len(r)-1])

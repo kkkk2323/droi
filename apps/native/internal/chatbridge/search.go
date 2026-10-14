@@ -103,6 +103,9 @@ func (b *Bridge) searchChannel(ctx context.Context, th *chatThread, keywords []s
 	if len(res.Results) == 0 {
 		return "No more matches for " + where + ".", nil
 	}
+	// WeCom's briefs show the robot's own @ as its id.
+	robot := "@" + b.robotID()
+	brief := func(s string) string { return oneLine(strings.ReplaceAll(s, robot, "@you")) }
 	var out strings.Builder
 	fmt.Fprintf(&out, "Matches for %s, with a brief of each:\n\n", where)
 	for _, r := range res.Results {
@@ -110,9 +113,9 @@ func (b *Bridge) searchChannel(ctx context.Context, th *chatThread, keywords []s
 		if r.PostID == th.postID {
 			this = " (this Chat Thread's post)"
 		}
-		fmt.Fprintf(&out, "Post %s%s: %s\n", r.PostID, this, oneLine(r.Brief))
+		fmt.Fprintf(&out, "Post %s%s: %s\n", r.PostID, this, brief(r.Brief))
 		for _, reply := range r.Replies {
-			fmt.Fprintf(&out, "- reply %s: %s\n", reply.ReplyID, oneLine(reply.Brief))
+			fmt.Fprintf(&out, "- reply %s: %s\n", reply.ReplyID, brief(reply.Brief))
 		}
 		out.WriteString("\n")
 	}

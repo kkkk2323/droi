@@ -239,6 +239,21 @@ func TestSearchChannelFindsPostsAndRepliesThatReadThreadOpens(t *testing.T) {
 	}
 }
 
+func TestSearchChannelShowsTheRobotsOwnAtAsYou(t *testing.T) {
+	r := start(t, nil)
+	post := r.newPost("Did the backup run?")
+	r.w.AddPost(topic, fakewecom.Post{
+		From: "LiLei", Text: "${inline_mention:mention_ph_001}\u200b move the backup to 02:00", Mentions: []fakewecom.Mention{atRobot("mention_ph_001")},
+	})
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	droid := r.droid(r.initialized(1))
+
+	text, isError := droid.call("search_channel", map[string]any{"keywords": []string{"backup"}})
+	if isError || !strings.Contains(text, "@you move the backup to 02:00") || strings.Contains(text, robot.BotID) {
+		t.Errorf("search_channel answered (error %v):\n%s", isError, text)
+	}
+}
+
 func TestSearchChannelPagesItsMatches(t *testing.T) {
 	r := start(t, nil)
 	post := r.newPost("Which deploys failed?")

@@ -50,6 +50,25 @@ func TestReplySaysWhenThePostHasUnreadReplies(t *testing.T) {
 	}
 }
 
+func TestReadingAnotherPostLeavesThisPostsRepliesUnread(t *testing.T) {
+	r := start(t, nil)
+	post := r.newPost("Status?")
+	earlier := r.w.AddPost(topic, fakewecom.Post{From: "LiLei", Text: "Last week's status"})
+	r.w.AddReply(topic, earlier, fakewecom.Post{ID: "reply-1", From: "LiLei", Text: "All green"})
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	droid := r.droid(r.initialized(1))
+	r.message(1)
+	// WeCom's reply ids need not differ from post to post.
+	r.w.AddReply(topic, post, fakewecom.Post{ID: "reply-1", From: "LiLei", Text: "The disk is full"})
+
+	if text, isError := droid.call("read_thread", map[string]any{"post_id": earlier}); isError || !strings.Contains(text, "All green") {
+		t.Fatalf("read_thread of the other post answered %q (error %v)", text, isError)
+	}
+	if text, _ := droid.call("reply", map[string]any{"text": "Looking"}); !strings.Contains(text, "1 reply ") {
+		t.Errorf("reply after reading another post answered %q", text)
+	}
+}
+
 func TestAnUnreadCheckWeComRefusesStillSendsTheReply(t *testing.T) {
 	r := start(t, nil)
 	post := r.newPost("Status?")
