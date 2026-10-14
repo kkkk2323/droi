@@ -1,3 +1,9 @@
+## 1.46.2 - 2026-10-14
+
+### Fixed
+
+- A running Automation now shows under "Running automations" in the sidebar within a few seconds of starting. Before, when the Daemon reported the run before it listed it, the sidebar missed the run until something else made Droi read the Session list again.
+
 ## 1.46.1 - 2026-10-13
 
 ### Fixed
