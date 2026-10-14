@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -31,19 +33,26 @@ import (
 const devVersion = "1.46.2"
 
 func main() {
+	version := mygo.App.Version()
+	if version == "" {
+		version = devVersion
+	}
 	// The Runtime Overlay runs the app's own executable as the Memory Server
-	// and the hook; neither starts the app.
+	// and the hook; neither starts the app. `droi host` is a Host with no
+	// window.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case host.MemoryServerCommand:
 			os.Exit(memory.ServeMain())
 		case host.MemoryHookCommand:
 			os.Exit(memory.HookMain())
+		case "host":
+			os.Exit(hostrun.Main(os.Args[2:], version, executable()))
 		}
 	}
-	version := mygo.App.Version()
-	if version == "" {
-		version = devVersion
+	if runtime.GOOS == "linux" {
+		fmt.Fprintln(os.Stderr, "droi: only `droi host` is supported on Linux.")
+		os.Exit(2)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -93,7 +102,7 @@ func main() {
 		}
 	}
 	gw := startGateway(h, version, mygo.Shell.TrashItem)
-	mem := startMemory(h, home, func() { update(func() {}) })
+	mem := hostrun.StartMemory(h, home, func() { update(func() {}) })
 	var remote app.Remote
 	if gw != nil {
 		remote = gw

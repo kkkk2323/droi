@@ -1,4 +1,4 @@
-package main
+package hostrun
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 )
 
-// startMemory is the Host's side of Memory (ADR 0011): Settings → Memory,
+// StartMemory is the Host's side of Memory (ADR 0011): Settings → Memory,
 // consolidation, and the extractions the hook asks for, handled only while
 // Memory is on and the Daemon runs. Memory Sessions dial the Daemon
 // directly with the Host's credential, as this window does.
-func startMemory(h *host.Host, home string, changed func()) *memorywork.Controller {
+func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controller {
 	dial := func(ctx context.Context) (*droid.Client, error) {
 		url, err := h.WaitForDaemonURL(ctx)
 		if err != nil {
