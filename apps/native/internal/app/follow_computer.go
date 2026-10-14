@@ -17,15 +17,15 @@ import (
 
 // following reports whether the window shows another computer than this one.
 // It is the one flag behind every difference between the two.
-func (a *App) following() bool { return a.followed != nil }
+func (a *App) following() bool { return a.cfg.Computer != nil }
 
 // computerID is the id of the computer the window follows, "" for this
 // computer: the key a preference that belongs to one computer is kept under.
 func (a *App) computerID() string {
-	if a.followed == nil {
+	if a.cfg.Computer == nil {
 		return ""
 	}
-	return a.followed.ID
+	return a.cfg.Computer.ID
 }
 
 // The preferences that name Workspaces by path, as kept for the computer the
@@ -33,17 +33,17 @@ func (a *App) computerID() string {
 func (a *App) pinnedWorkspaces() prefs.List { return prefs.PinnedWorkspaces.On(a.computerID()) }
 func (a *App) foldedWorkspaces() prefs.List { return prefs.FoldedWorkspaces.On(a.computerID()) }
 func (a *App) manualWorkspaces() prefs.List { return prefs.ManualWorkspaces.On(a.computerID()) }
-func (a *App) openInApp() prefs.String      { return prefs.OpenInApp.On(a.computerID()) }
 
 // computerName is how the followed computer is called.
 func (a *App) computerName() string {
-	if a.followed == nil {
+	p := a.cfg.Computer
+	if p == nil {
 		return ""
 	}
-	if a.followed.Name != "" {
-		return a.followed.Name
+	if p.Name != "" {
+		return p.Name
 	}
-	return a.followed.Gateway
+	return p.Gateway
 }
 
 // followLink checks a pasted pairing link off the UI thread; one that
@@ -52,10 +52,14 @@ func (a *App) computerName() string {
 func (a *App) followLink(link string) {
 	s := &a.settings
 	s.computerChecking, s.computerErr = true, ""
+	thisID := ""
+	if a.cfg.Host != nil {
+		thisID = a.cfg.Host.Settings.Get().ComputerID
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 		defer cancel()
-		p, err := computer.Verify(ctx, link)
+		p, err := computer.Verify(ctx, link, thisID)
 		a.cfg.Update(func() {
 			s.computerChecking = false
 			if err != nil {
@@ -93,6 +97,10 @@ func computerError(err error) string {
 		return L("The link has no address. Paste the whole link, not just the token.")
 	case errors.Is(err, gateway.ErrNotGateway):
 		return L("That address does not answer as a Droi Gateway.")
+	case errors.Is(err, computer.ErrNoComputerID):
+		return L("That Gateway does not say which computer it is. Update Droi on that computer.")
+	case errors.Is(err, computer.ErrThisComputer):
+		return L("That link points at this computer. Paste the link of the other computer.")
 	case errors.Is(err, gateway.ErrTokenRejected):
 		return L("That computer does not accept this Pairing Token. It may have been reset; copy the link again.")
 	}

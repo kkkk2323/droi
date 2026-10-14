@@ -31,11 +31,16 @@ const otherToken = "other-pairing-token"
 
 func startOtherComputer(t *testing.T, sc fakedaemon.Scenario, addition string) *otherComputer {
 	t.Helper()
+	return startOtherComputerWith(t, sc, addition, nil)
+}
+
+func startOtherComputerWith(t *testing.T, sc fakedaemon.Scenario, addition string, with func(*gateway.Options)) *otherComputer {
+	t.Helper()
 	scratch := filepath.Join(t.TempDir(), "chats", "2026-10-14-ffeedd")
 	sc.ValidDirectories = append(sc.ValidDirectories, scratch)
 	d := fakedaemon.Start(t, sc)
 	o := &otherComputer{d: d, scratch: scratch}
-	gw, err := gateway.Start(gateway.Options{
+	opts := gateway.Options{
 		DaemonURL:          func() string { return d.URL },
 		PairingToken:       func() string { return otherToken },
 		Credential:         func(context.Context) (*droid.Credential, error) { return &droid.Credential{APIKey: "fk-other"}, nil },
@@ -44,7 +49,11 @@ func startOtherComputer(t *testing.T, sc fakedaemon.Scenario, addition string) *
 		ComputerName:       "Ubuntu box",
 		ComputerID:         "box-1",
 		Scratch:            madeFolder(o.scratch),
-	})
+	}
+	if with != nil {
+		with(&opts)
+	}
+	gw, err := gateway.Start(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,18 +93,23 @@ func (r *relaunches) relaunch() { r.n++ }
 // the harness's own Host and Gateway are this computer's, still running.
 func followHarness(t *testing.T, local fakedaemon.Scenario, p computer.Paired, rl *relaunches, with func(*Config)) *harness {
 	t.Helper()
-	ctl := controller.New(controller.Config{
+	// A saved address that cannot be used gives main no Gateway Client and
+	// a controller that fails to resolve its URL.
+	cc := controller.Config{
 		URL:                  p.SocketURL(),
 		Credential:           gateway.PlaceholderCredential,
 		DefaultMessageLimit:  LoadedMessageLimit,
 		MaxConnectAttempts:   1,
 		MaxReconnectAttempts: 1000,
-	})
-	t.Cleanup(func() { ctl.Close() })
+	}
 	client, err := gateway.NewClient(p.SocketURL())
 	if err != nil {
-		t.Fatal(err)
+		client = nil
+		cc.URL = ""
+		cc.ResolveURL = func(context.Context) (string, error) { return "", err }
 	}
+	ctl := controller.New(cc)
+	t.Cleanup(func() { ctl.Close() })
 	h := startHarness(t, local, "", "This computer's rules", func(cfg *Config) {
 		cfg.Computer, cfg.Controller, cfg.Gateway = &p, ctl, client
 		cfg.Host = testHost(t)
@@ -338,4 +352,37 @@ func TestFollowingAnotherComputerLeavesThisComputersGatewayServingPhones(t *test
 	if !h.ctl.Status().Connected {
 		t.Fatal("this computer's own connection is gone")
 	}
+}
+
+func TestASavedAddressThatCannotBeUsedShowsTheUnreachableViewNotAStoppedApp(t *testing.T) {
+	rl := &relaunches{}
+	p := computer.Paired{Gateway: "not an address", Token: "t", Name: "Ubuntu box", ID: "box-1"}
+	h := followHarness(t, localSessions(), p, rl, nil)
+	computer.Save(h.a.prefs, p)
+	h.until("the error", func() bool { return h.hasText("Could not reach Ubuntu box") && h.hasButton("Use this computer") })
+	h.click("Use this computer")
+	h.until("the relaunch", func() bool { return rl.n == 1 })
+	if computer.Load(h.a.prefs) != nil {
+		t.Fatal("the other computer is still saved")
+	}
+}
+
+func TestTheNewFolderChoiceNamesTheComputerWhoseFolderItMakes(t *testing.T) {
+	o := startOtherComputer(t, boxSessions(), "")
+	h := followHarness(t, localSessions(), o.paired(), nil, nil)
+	if got := h.a.newFolderIn(); !strings.Contains(got, "Ubuntu box") {
+		t.Fatalf("%q does not name the followed computer", got)
+	}
+}
+
+func TestAComputerWithoutAScratchFolderIsNamedInTheReason(t *testing.T) {
+	o := startOtherComputerWith(t, boxSessions(), "", func(g *gateway.Options) { g.Scratch = nil })
+	h := followHarness(t, localSessions(), o.paired(), nil, nil)
+	h.until("the Session list", func() bool { return h.hasText("On the box") })
+	h.a.Go(Route{Name: "new", Scratch: true})
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.click("Message")
+	h.typeInto("hi")
+	h.click("Start session")
+	h.until("the reason", func() bool { return h.hasText("Ubuntu box has no Scratch folder.") })
 }

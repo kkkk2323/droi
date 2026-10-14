@@ -41,7 +41,7 @@ A Droi user interface. Every Client speaks only the Daemon protocol, reaches the
 _Avoid_: renderer, frontend, web UI
 
 **Local Client**:
-The Client in the Desktop Shell window, whichever Paired Computer it is connected to. It alone can reach the Desktop Shell itself (settings, system notifications, opening folders in other apps); it reaches its own Host's Gateway with a per-launch token and any other Host's Gateway with that Host's Pairing Token.
+The Client in the Desktop Shell window, whichever Paired Computer it is connected to; the window follows one Paired Computer at a time, this computer's own Host unless the Computer preference names another. It alone can reach the Desktop Shell itself (settings, system notifications, opening folders in other apps); it reaches its own Host's Gateway with a per-launch token and any other Host's Gateway with that Host's Pairing Token.
 
 **Remote Client**:
 A Client that is not the Desktop Shell window of the Host it is connected to: the Phone App on an iPhone, or the web Client in a browser anywhere else. It reaches the Host through the Gateway with the Pairing Token.

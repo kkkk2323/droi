@@ -110,12 +110,10 @@ type Config struct {
 
 // App is the window's state, which lasts from frame to frame.
 type App struct {
-	cfg Config
-	// followed is the computer the window follows, nil for this computer.
-	followed *computer.Paired
-	ctl      *controller.Controller
-	prefs    *prefs.Store
-	ctx      context.Context
+	cfg   Config
+	ctl   *controller.Controller
+	prefs *prefs.Store
+	ctx   context.Context
 
 	kit   *kit.Kit
 	route Route
@@ -219,15 +217,14 @@ func New(cfg Config) *App {
 		cfg.Host, cfg.Memory, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil
 	}
 	a := &App{
-		cfg:      cfg,
-		followed: cfg.Computer,
-		ctl:      cfg.Controller,
-		prefs:    cfg.Prefs,
-		ctx:      context.Background(),
-		route:    Route{Name: "home"},
-		busy:     map[string]string{},
-		turnAt:   map[string]int64{},
-		views:    map[string]*sessionView{},
+		cfg:    cfg,
+		ctl:    cfg.Controller,
+		prefs:  cfg.Prefs,
+		ctx:    context.Background(),
+		route:  Route{Name: "home"},
+		busy:   map[string]string{},
+		turnAt: map[string]int64{},
+		views:  map[string]*sessionView{},
 
 		drafts:      drafts.New(cfg.Prefs),
 		compactions: compaction.NewLog(),

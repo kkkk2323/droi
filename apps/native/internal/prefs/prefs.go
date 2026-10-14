@@ -148,11 +148,6 @@ func (p String) Get(s *Store) string {
 
 func (p String) Set(s *Store, v string) { s.Set(p.Key, v) }
 
-// On is the preference as kept for one Paired Computer; see List.On.
-func (p String) On(computer string) String {
-	return String{Key: onComputer(p.Key, computer), Fallback: p.Fallback}
-}
-
 // List is a list of strings stored as JSON.
 type List struct{ Key string }
 

@@ -6,6 +6,7 @@ package computer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -54,10 +55,20 @@ func Save(s *prefs.Store, p Paired) {
 // Clear goes back to this computer from the next launch.
 func Clear(s *prefs.Store) { s.Remove(prefsKey) }
 
+var (
+	// ErrNoComputerID is a Gateway whose /meta names no computer, so the
+	// Preferences kept for it could not be told from this computer's.
+	ErrNoComputerID = errors.New("the Gateway does not say which computer it belongs to")
+	// ErrThisComputer is a link to this computer's own Gateway.
+	ErrThisComputer = errors.New("the link points at this computer")
+)
+
 // Verify reads a pasted pairing link and checks that it reaches a Droi
-// Gateway that accepts its Pairing Token, as the Phone App's pairing does.
-// The errors are the gateway package's, or the network's when nothing answers.
-func Verify(ctx context.Context, link string) (Paired, error) {
+// Gateway that accepts its Pairing Token, as the Phone App's pairing does,
+// and that it belongs to another computer than thisComputerID. The errors
+// are the gateway package's, this package's, or the network's when nothing
+// answers.
+func Verify(ctx context.Context, link, thisComputerID string) (Paired, error) {
 	l, err := gateway.ParsePairingLink(link)
 	if err != nil {
 		return Paired{}, err
@@ -65,6 +76,12 @@ func Verify(ctx context.Context, link string) (Paired, error) {
 	meta, err := gateway.FetchMeta(ctx, l.Gateway)
 	if err != nil {
 		return Paired{}, err
+	}
+	if meta.ComputerID == "" {
+		return Paired{}, ErrNoComputerID
+	}
+	if meta.ComputerID == thisComputerID {
+		return Paired{}, ErrThisComputer
 	}
 	if err := gateway.CheckToken(ctx, l.Gateway, l.Token); err != nil {
 		return Paired{}, err

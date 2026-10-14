@@ -57,7 +57,7 @@ func TestAnUnreadableRecordMeansThisComputer(t *testing.T) {
 
 func TestVerifyReadsTheComputerAPairingLinkReaches(t *testing.T) {
 	gw := startGateway(t)
-	got, err := Verify(context.Background(), " "+gw.URL()+"/#pair=pairing-token ")
+	got, err := Verify(context.Background(), " "+gw.URL()+"/#pair=pairing-token ", "this-computer")
 	want := Paired{Gateway: gw.URL(), Token: "pairing-token", Name: "Ubuntu box", ID: "box-1"}
 	if err != nil || got != want {
 		t.Fatalf("%+v, %v", got, err)
@@ -66,16 +66,16 @@ func TestVerifyReadsTheComputerAPairingLinkReaches(t *testing.T) {
 
 func TestVerifyRefusesALinkWhoseTokenIsRejected(t *testing.T) {
 	gw := startGateway(t)
-	if _, err := Verify(context.Background(), gw.URL()+"/#pair=wrong"); !errors.Is(err, gateway.ErrTokenRejected) {
+	if _, err := Verify(context.Background(), gw.URL()+"/#pair=wrong", "this-computer"); !errors.Is(err, gateway.ErrTokenRejected) {
 		t.Fatalf("%v", err)
 	}
 }
 
 func TestVerifyRefusesWhatIsNotAGatewayOrNotALink(t *testing.T) {
-	if _, err := Verify(context.Background(), "hello world"); !errors.Is(err, gateway.ErrNotPairingLink) {
+	if _, err := Verify(context.Background(), "hello world", "this-computer"); !errors.Is(err, gateway.ErrNotPairingLink) {
 		t.Fatalf("%v", err)
 	}
-	if _, err := Verify(context.Background(), "abc123"); !errors.Is(err, gateway.ErrNoGatewayAddress) {
+	if _, err := Verify(context.Background(), "abc123", "this-computer"); !errors.Is(err, gateway.ErrNoGatewayAddress) {
 		t.Fatalf("%v", err)
 	}
 }
@@ -83,5 +83,23 @@ func TestVerifyRefusesWhatIsNotAGatewayOrNotALink(t *testing.T) {
 func TestSocketURLPresentsTheToken(t *testing.T) {
 	if got := (Paired{Gateway: "http://box:41417", Token: "t"}).SocketURL(); got != "ws://box:41417/daemon?token=t" {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestVerifyRefusesAGatewayWithoutAComputerId(t *testing.T) {
+	gw, err := gateway.Start(gateway.Options{PairingToken: func() string { return "pairing-token" }, ComputerName: "Old box"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { gw.Close() })
+	if _, err := Verify(context.Background(), gw.URL()+"/#pair=pairing-token", "this-computer"); !errors.Is(err, ErrNoComputerID) {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestVerifyRefusesALinkToThisComputersOwnGateway(t *testing.T) {
+	gw := startGateway(t)
+	if _, err := Verify(context.Background(), gw.URL()+"/#pair=pairing-token", "box-1"); !errors.Is(err, ErrThisComputer) {
+		t.Fatalf("%v", err)
 	}
 }

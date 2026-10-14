@@ -232,6 +232,22 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 	})
 }
 
+// newFolderIn says where the Scratch choice makes its folder.
+func (a *App) newFolderIn() string {
+	if a.following() {
+		return L("A new folder of its own on %s", a.computerName())
+	}
+	return L("A new folder of its own in %s", a.scratchRoot())
+}
+
+// noScratchFolder is the reason a Scratch Workspace cannot be made.
+func (a *App) noScratchFolder() string {
+	if a.following() {
+		return L("%s has no Scratch folder.", a.computerName())
+	}
+	return L("This computer has no Scratch folder.")
+}
+
 func (a *App) scratchRoot() string {
 	if a.cfg.Host != nil {
 		return a.cfg.Host.ScratchFolder()
@@ -425,7 +441,7 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 			if !a.following() {
 				row(other, "other", "plus", L("Other folder…"), "", L("Choose a folder on this computer"), false)
 			}
-			row(none, scratchPick, "x", L("Don't work in a project"), "", L("A new folder of its own in %s", a.scratchRoot()), value == scratchPick)
+			row(none, scratchPick, "x", L("Don't work in a project"), "", a.newFolderIn(), value == scratchPick)
 		})
 	})
 }
@@ -622,13 +638,13 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	a.redraw()
 	var tags []protocol.SessionTag
 	if workspace == scratchPick {
-		if a.cfg.Gateway == nil {
-			fail(L("This computer has no Scratch folder."))
-			return
+		var dir string
+		err := gateway.ErrNotFound
+		if a.cfg.Gateway != nil {
+			dir, err = a.cfg.Gateway.CreateScratch(a.ctx)
 		}
-		dir, err := a.cfg.Gateway.CreateScratch(a.ctx)
 		if errors.Is(err, gateway.ErrNotFound) {
-			fail(L("This computer has no Scratch folder."))
+			fail(a.noScratchFolder())
 			return
 		}
 		if err != nil {
