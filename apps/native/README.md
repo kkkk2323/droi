@@ -100,7 +100,7 @@ restart.
 | `assets/`                                                       | the vendored Geist fonts, embedded                                                                      |
 | `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                  |
 | `internal/icons/`                                               | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                                |
-| `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Scratch Workspaces |
+| `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login                    |
 | `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export                |
 | `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                       |
 | `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints    |

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -129,4 +131,114 @@ func TestAGatewayThatCannotListenShowsAnErrorInTheWindow(t *testing.T) {
 	// Connect keeps trying; the failure it records is what the window shows.
 	go none.Connect(context.Background())
 	h.until("the reason", func() bool { return h.hasText("address in use") })
+}
+
+// startScratchSession opens the start page for a Scratch Workspace and
+// starts a Session from it.
+func startScratchSession(t *testing.T, h *harness) {
+	t.Helper()
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.a.Go(Route{Name: "new", Scratch: true})
+	h.until("the start button", func() bool { _, ok := h.tt.Find("Start session"); return ok })
+	h.click("Message")
+	h.typeInto("hi")
+	h.click("Start session")
+}
+
+// madeFolder is a Scratch folder with a name the Fake Daemon can be told
+// is a valid directory beforehand.
+type madeFolder string
+
+func (f madeFolder) Create() (string, error) { return string(f), os.MkdirAll(string(f), 0o755) }
+func (f madeFolder) Trash(string) error      { return nil }
+func (f madeFolder) Restore(string) error    { return nil }
+
+func TestASessionWithoutAWorkspaceStartsInAScratchFolderTheGatewayMade(t *testing.T) {
+	made := filepath.Join(t.TempDir(), "chats", "2026-10-14-0a1b2c")
+	sc := draftScenario()
+	sc.ValidDirectories = []string{made}
+	h := startHarnessGateway(t, sc, "", "", func(o *gateway.Options) { o.Scratch = madeFolder(made) }, nil)
+	startScratchSession(t, h)
+	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
+
+	var p struct {
+		Cwd  string           `json:"cwd"`
+		Tags []map[string]any `json:"tags"`
+	}
+	// The start page may have opened a Draft Session for its earlier Workspace.
+	var scratch []string
+	for _, params := range initializeRequests(t, h) {
+		if strings.Contains(params, "droi.scratch") {
+			scratch = append(scratch, params)
+		}
+	}
+	if len(scratch) != 1 {
+		t.Fatalf("%d Scratch Sessions created: %v", len(scratch), scratch)
+	}
+	if err := json.Unmarshal([]byte(scratch[0]), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Cwd != made {
+		t.Fatalf("the Session works in %q, want the folder the Gateway made, %s", p.Cwd, made)
+	}
+	if info, err := os.Stat(p.Cwd); err != nil || !info.IsDir() {
+		t.Fatalf("the folder is not there: %v", err)
+	}
+	if len(p.Tags) != 1 || p.Tags[0]["name"] != "droi.scratch" {
+		t.Fatalf("tags %v", p.Tags)
+	}
+}
+
+func TestAGatewayWithoutAScratchFolderLeavesTheStartPageWithTheReason(t *testing.T) {
+	h := startHarnessGateway(t, draftScenario(), "", "", func(o *gateway.Options) { o.Scratch = nil }, nil)
+	startScratchSession(t, h)
+	h.until("the reason", func() bool { return h.hasText("This computer has no Scratch folder.") })
+	if h.a.Route().Name != "new" {
+		t.Fatalf("the window left the start page for %q", h.a.Route().Name)
+	}
+	for _, params := range initializeRequests(t, h) {
+		if strings.Contains(params, "droi.scratch") {
+			t.Fatalf("a Scratch Session was made: %s", params)
+		}
+	}
+}
+
+func TestACreatedFolderThatTheGatewayRefusesToMakeShowsItsReason(t *testing.T) {
+	h := newHarness(t, draftScenario(), "")
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.scratchRoot = filepath.Join(blocker, "chats")
+	startScratchSession(t, h)
+	h.until("the reason", func() bool { return h.hasText("not a directory") })
+}
+
+func TestCopySessionDetailsHasTheTranscriptLocationTheGatewayGives(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	id := h.a.route.SessionID
+	const file = "/srv/factory/sessions/-Users-dev-acme/transcript.jsonl"
+	h.mu.Lock()
+	h.transcripts[id] = file
+	h.mu.Unlock()
+
+	h.click("Session actions")
+	h.click("Copy session details")
+	h.until("the details", func() bool { return strings.Contains(h.tt.Clipboard(), "Transcript: "+file) })
+	if got := h.tt.Clipboard(); !strings.Contains(got, id) {
+		t.Fatalf("the details %q do not name the Session", got)
+	}
+}
+
+func TestCopySessionDetailsWithoutATranscriptStillCopiesTheRest(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	id := h.a.route.SessionID
+	h.click("Session actions")
+	h.click("Copy session details")
+	h.until("the details", func() bool { return strings.Contains(h.tt.Clipboard(), id) })
+	if got := h.tt.Clipboard(); strings.Contains(got, "Transcript") {
+		t.Fatalf("the details %q name a transcript the Gateway does not have", got)
+	}
 }

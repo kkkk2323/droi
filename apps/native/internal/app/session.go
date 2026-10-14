@@ -613,7 +613,7 @@ func (v *sessionView) sessionActions(c *ui.Context, sel *sessions.Summary, title
 			c.WriteClipboard(v.id)
 		}
 		if k.MenuItem(c, &v.actionsOpen, "file-text", L("Copy session details")).Clicked() {
-			c.WriteClipboard(a.sessionDetails(summary))
+			a.copySessionDetails(summary)
 		}
 		if sel == nil {
 			return

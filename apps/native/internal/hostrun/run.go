@@ -59,12 +59,11 @@ func Run(ctx context.Context, o Options) error {
 
 	trash := &host.FreedesktopTrash{Dir: TrashDir(env, o.Home)}
 	h := host.New(host.Config{
-		UserData:    ConfigDir(env, o.Home),
-		Home:        o.Home,
-		Version:     o.Version,
-		MoveToTrash: trash.Move,
-		Env:         env,
-		Executable:  o.Executable,
+		UserData:   ConfigDir(env, o.Home),
+		Home:       o.Home,
+		Version:    o.Version,
+		Env:        env,
+		Executable: o.Executable,
 	})
 	if err := checkDroid(h); err != nil {
 		return err

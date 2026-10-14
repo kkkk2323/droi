@@ -26,7 +26,7 @@ func testHost(t *testing.T) *host.Host {
 			return home
 		}
 		return ""
-	}, MoveToTrash: os.Remove})
+	}})
 }
 
 func oneSession() fakedaemon.Scenario {

@@ -659,7 +659,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			c.WriteClipboard(s.SessionID)
 		}
 		if m.Item(L("Copy session details")).Chosen() {
-			c.WriteClipboard(a.sessionDetails(s))
+			a.copySessionDetails(s)
 		}
 		m.Separator()
 		archive := L("Archive")

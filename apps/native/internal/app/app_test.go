@@ -40,6 +40,10 @@ type harness struct {
 	mu       sync.Mutex
 	queue    []func()
 	addition string
+	// scratchRoot is the Scratch folder the Gateway makes Workspaces in;
+	// transcripts are the Gateway's answers for the session-file endpoint.
+	scratchRoot string
+	transcripts map[string]string
 }
 
 // harnessCredential is the Factory credential the harness's Gateway holds.
@@ -60,11 +64,18 @@ func newHarnessWith(t *testing.T, sc fakedaemon.Scenario, themeName string, with
 // harness's Gateway holds, which the window's first draft already needs.
 func startHarness(t *testing.T, sc fakedaemon.Scenario, themeName, addition string, with func(*Config)) *harness {
 	t.Helper()
+	return startHarnessGateway(t, sc, themeName, addition, nil, with)
+}
+
+// startHarnessGateway is startHarness with the Gateway's Options changed by
+// withGateway.
+func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, addition string, withGateway func(*gateway.Options), with func(*Config)) *harness {
+	t.Helper()
 	theme.RegisterFonts()
 	d := fakedaemon.Start(t, sc)
-	h := &harness{t: t, d: d, addition: addition}
+	h := &harness{t: t, d: d, addition: addition, scratchRoot: filepath.Join(t.TempDir(), "chats"), transcripts: map[string]string{}}
 	localToken := gateway.NewLocalToken()
-	gw, err := gateway.Start(gateway.Options{
+	opts := gateway.Options{
 		DaemonURL:    func() string { return d.URL },
 		PairingToken: func() string { return "pairing-token" },
 		LocalToken:   func() string { return localToken },
@@ -76,7 +87,17 @@ func startHarness(t *testing.T, sc fakedaemon.Scenario, themeName, addition stri
 			defer h.mu.Unlock()
 			return h.addition
 		},
-	})
+		Scratch: &gateway.ScratchFolders{Root: func() string { return h.scratchRoot }, MoveToTrash: os.RemoveAll},
+		FindSessionFile: func(id string) string {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.transcripts[id]
+		},
+	}
+	if withGateway != nil {
+		withGateway(&opts)
+	}
+	gw, err := gateway.Start(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +109,10 @@ func startHarness(t *testing.T, sc fakedaemon.Scenario, themeName, addition stri
 		MaxReconnectAttempts: 1000,
 	})
 	t.Cleanup(func() { ctl.Close() })
+	client, err := gateway.NewClient(gw.DaemonSocketURL(localToken))
+	if err != nil {
+		t.Fatal(err)
+	}
 	h.gw, h.ctl = gw, ctl
 	p := prefs.Memory()
 	if themeName != "" {
@@ -101,8 +126,8 @@ func startHarness(t *testing.T, sc fakedaemon.Scenario, themeName, addition stri
 			h.queue = append(h.queue, fn)
 			h.mu.Unlock()
 		},
-		Now:         func() time.Time { return time.Now() },
-		FactoryHome: t.TempDir(),
+		Now:     func() time.Time { return time.Now() },
+		Gateway: client,
 		// The reference is the Local Client in the Desktop Shell's window:
 		// traffic lights over the sidebar, and Finder with no icon to read.
 		InsetTop:   true,

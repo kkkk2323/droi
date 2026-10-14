@@ -68,12 +68,11 @@ func main() {
 	}
 
 	h := host.New(host.Config{
-		UserData:    userData,
-		Home:        home,
-		Version:     version,
-		MoveToTrash: mygo.Shell.TrashItem,
-		Env:         os.Getenv,
-		Executable:  executable(),
+		UserData:   userData,
+		Home:       home,
+		Version:    version,
+		Env:        os.Getenv,
+		Executable: executable(),
 	})
 	localToken := gateway.NewLocalToken()
 	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem)
@@ -109,8 +108,12 @@ func main() {
 	}
 	mem := hostrun.StartMemory(h, home, func() { update(func() {}) })
 	var remote app.Remote
+	var gwClient *gateway.Client
 	if gw != nil {
 		remote = gw
+		if gwClient, err = gateway.NewClient(gw.DaemonSocketURL(localToken)); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	a := app.New(app.Config{
@@ -118,11 +121,10 @@ func main() {
 		Prefs:        prefs.Open(filepath.Join(userData, "preferences.json")),
 		Update:       update,
 		InsetTop:     mac,
-		FactoryHome:  h.SharedFactoryHome(),
 		StatsFile:    filepath.Join(userData, "session-stats.json"),
 		OpenPath:     mygo.Shell.OpenPath,
 		ShowInFolder: mygo.Shell.ShowItemInFolder,
-		Scratch:      h.Scratch,
+		Gateway:      gwClient,
 		Host:         h,
 		Version:      version,
 		Env:          os.Getenv,

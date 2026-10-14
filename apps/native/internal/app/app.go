@@ -18,6 +18,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/compaction"
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
+	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
@@ -57,8 +58,6 @@ type Config struct {
 	Now func() time.Time
 	// InsetTop: the traffic lights sit over the sidebar's top strip.
 	InsetTop bool
-	// FactoryHome is ~/.factory, where the Daemon writes transcripts.
-	FactoryHome string
 	// StatsFile keeps each Session's speed and time across runs; "" keeps
 	// them in memory, as in tests.
 	StatsFile string
@@ -67,8 +66,11 @@ type Config struct {
 	ShowInFolder func(path string)
 	// OpenInApps lists the apps that open a folder; the installed ones when nil.
 	OpenInApps func() []host.OpenInApp
-	// Scratch makes the folders of Sessions started without a Workspace.
-	Scratch *host.Scratch
+	// Gateway is the Client's side of the Gateway's plain endpoints: the
+	// Scratch Workspaces of Sessions started without a Workspace and where
+	// a Session's transcript is. It is made from the address and token the
+	// Daemon socket uses; nil without a Gateway.
+	Gateway *gateway.Client
 	// Host is the Daemon's supervisor and the login, for Settings; nil in
 	// tests, which leaves out the sections that need it.
 	Host *host.Host
@@ -185,6 +187,10 @@ type App struct {
 	revs sync.Map
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
 	worktreeAsk worktreeDialog
+
+	// copyText is what the next frame puts on the clipboard: a copy that had
+	// to ask the Gateway first. Main thread only.
+	copyText string
 
 	listOnce sync.Once
 }
@@ -654,6 +660,10 @@ func (a *App) Route() Route { return a.route }
 // View builds the window.
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(a.kit.UITheme(c.Theme()))
+	if a.copyText != "" {
+		c.WriteClipboard(a.copyText)
+		a.copyText = ""
+	}
 	status, listed, busy, listErr, listDone, rev := a.snapshot()
 	listed, rev = a.knownSubagents(listed, rev)
 	a.shownRev = rev

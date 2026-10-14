@@ -2,7 +2,6 @@ package app
 
 import (
 	"cmp"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/sessionfile"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 )
@@ -289,12 +287,17 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 	})
 }
 
-// sessionDetails are the lines Copy session details puts on the clipboard,
-// with the transcript file the Daemon wrote.
-func (a *App) sessionDetails(s sessions.Summary) string {
-	file := ""
-	if home := a.cfg.FactoryHome; home != "" {
-		file = host.FindSessionTranscript(filepath.Join(home, "sessions"), s.SessionID)
-	}
-	return sessionfile.Details(s.SessionID, s.Title, s.Cwd, file)
+// copySessionDetails puts the lines of Copy session details on the clipboard
+// with the transcript file the Daemon wrote, which the Gateway locates: the
+// next frame copies them, so a Gateway slow to answer never holds the window.
+// A Session whose file it cannot locate is copied without one.
+func (a *App) copySessionDetails(s sessions.Summary) {
+	go func() {
+		file := ""
+		if a.cfg.Gateway != nil {
+			file, _ = a.cfg.Gateway.SessionFile(a.ctx, s.SessionID)
+		}
+		details := sessionfile.Details(s.SessionID, s.Title, s.Cwd, file)
+		a.cfg.Update(func() { a.copyText = details })
+	}()
 }

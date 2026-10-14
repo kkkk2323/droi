@@ -19,6 +19,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/attachments"
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
+	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/models"
@@ -228,8 +229,8 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 }
 
 func (a *App) scratchRoot() string {
-	if a.cfg.Scratch != nil {
-		return a.cfg.Scratch.Root()
+	if a.cfg.Host != nil {
+		return a.cfg.Host.ScratchFolder()
 	}
 	return ""
 }
@@ -607,11 +608,15 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	a.redraw()
 	var tags []protocol.SessionTag
 	if workspace == scratchPick {
-		if a.cfg.Scratch == nil {
+		if a.cfg.Gateway == nil {
 			fail(L("This computer has no Scratch folder."))
 			return
 		}
-		dir, err := a.cfg.Scratch.Create()
+		dir, err := a.cfg.Gateway.CreateScratch(a.ctx)
+		if errors.Is(err, gateway.ErrNotFound) {
+			fail(L("This computer has no Scratch folder."))
+			return
+		}
 		if err != nil {
 			fail(err.Error())
 			return

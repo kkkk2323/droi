@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -229,34 +228,6 @@ func TestAStoredDroiLoginMovesToTheCLI(t *testing.T) {
 	}
 	if s := h.LoginState(); s.Status != SignedIn || s.Source != "cli" {
 		t.Errorf("%+v", s)
-	}
-}
-
-func TestScratchCreateTrashRestore(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "chats")
-	var trashed []string
-	s := &Scratch{Root: func() string { return root }, MoveToTrash: func(p string) error { trashed = append(trashed, p); return os.RemoveAll(p) }}
-	p, err := s.Create()
-	if err != nil || !scratchName.MatchString(filepath.Base(p)) {
-		t.Fatalf("%q %v", p, err)
-	}
-	if err := s.Trash(p); err != nil || len(trashed) != 0 {
-		t.Fatalf("empty folder: %v %v", err, trashed)
-	}
-	if _, err := os.Stat(p); !os.IsNotExist(err) {
-		t.Fatal("empty folder not removed")
-	}
-	if err := s.Restore(p); err != nil {
-		t.Fatal(err)
-	}
-	os.WriteFile(filepath.Join(p, "f"), []byte("x"), 0o644)
-	if err := s.Trash(p); err != nil || len(trashed) != 1 {
-		t.Fatalf("folder with files: %v %v", err, trashed)
-	}
-	for _, bad := range []string{"/etc", filepath.Join(root, "..", "2026-01-01-abcdef"), filepath.Join(root, "notscratch")} {
-		if err := s.Trash(bad); !errors.Is(err, ErrNotScratch) {
-			t.Errorf("%s: %v", bad, err)
-		}
 	}
 }
 

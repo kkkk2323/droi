@@ -44,7 +44,7 @@ func accountsTestHost(t *testing.T) (*host.Host, string) {
 	}))
 	t.Cleanup(factory.Close)
 	os.WriteFile(filepath.Join(data, "settings.json"), []byte(`{"accounts":["b1"],"factoryApiBaseUrl":"`+factory.URL+`"}`), 0o600)
-	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }, MoveToTrash: os.Remove})
+	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }})
 	t.Cleanup(h.Stop)
 	return h, data
 }

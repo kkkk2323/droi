@@ -24,9 +24,7 @@ type Config struct {
 	UserData string
 	Home     string
 	Version  string
-	// MoveToTrash moves a Scratch Workspace with files to the Trash.
-	MoveToTrash func(path string) error
-	Env         func(string) string
+	Env      func(string) string
 	// Executable runs the Memory Server and the hook; "" leaves Memory out.
 	Executable string
 }
@@ -37,7 +35,6 @@ type Host struct {
 	Settings *SettingsStore
 	Auth     *FactoryAuth
 	Daemon   *Supervisor
-	Scratch  *Scratch
 
 	adding *FactoryAuth
 
@@ -96,7 +93,6 @@ func New(cfg Config) *Host {
 		h.Auth.handOver(writeCli)
 	}
 	h.wasIn = h.Auth.State().Status == SignedIn
-	h.Scratch = &Scratch{Root: h.ScratchFolder, MoveToTrash: cfg.MoveToTrash}
 	h.Daemon = &Supervisor{Spawn: h.spawn, OnState: func(DaemonState) { h.changed() }}
 	return h
 }
