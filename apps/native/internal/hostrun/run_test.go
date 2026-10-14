@@ -382,6 +382,14 @@ func TestHostSaysWhenThereIsNoDroid(t *testing.T) {
 	}
 }
 
+func TestHostWithoutAnyLoginNamesDroidLogin(t *testing.T) {
+	b := newBox(t, "0.240.0")
+	delete(b.env, "FACTORY_API_KEY")
+	r := b.start(nil)
+	r.waitForOutput("droid login")
+	r.waitForOutput("Pairing link: ")
+}
+
 func TestScratchWorkspacesAClientTrashesGoToTheFreedesktopTrash(t *testing.T) {
 	b := newBox(t, "0.240.0")
 	r := b.start(nil)
