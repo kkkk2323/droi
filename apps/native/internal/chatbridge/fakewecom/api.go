@@ -15,8 +15,8 @@ import (
 // The Fake WeCom's HTTPS API stands in for qyapi.weixin.qq.com/cgi-bin/aibot:
 // get_token, and the Channel's posts and replies. APIURL is its base, for
 // the Chat Bridge's settable API URL. Tokens live a day by the Fake WeCom's
-// clock (SetClock); a call with an expired one gets 42001, an unknown one
-// 40014, as WeCom's other APIs answer.
+// clock (SetClock); a call with an unknown one gets 853005, as the real
+// aibot API answers, and an expired one 42001, as WeCom's other APIs do.
 
 // Post is a post or a reply in a WeCom Channel. ID and Time are made up
 // when empty.
@@ -281,7 +281,7 @@ func (w *WeCom) answer(r *http.Request, body json.RawMessage) (map[string]any, *
 	case token == "":
 		return nil, &apiError{41001, "access_token missing"}
 	case !ok:
-		return nil, &apiError{40014, "invalid access_token"}
+		return nil, &apiError{853005, "cli token invalid, please re-fetch"}
 	case !w.clock().Before(expires):
 		return nil, &apiError{42001, "access_token expired"}
 	}

@@ -26,9 +26,11 @@ const (
 	tokenLife   = 24*time.Hour - 5*time.Minute
 	apiTimeout  = 30 * time.Second
 	maxAPIBytes = 8 << 20
-	// WeCom's codes for an expired and an invalid access_token.
-	errTokenExpired = 42001
-	errTokenInvalid = 40014
+	// WeCom's codes for an expired and an invalid access_token: the aibot
+	// API answers 853005, WeCom's other APIs 42001 and 40014.
+	errTokenExpired    = 42001
+	errTokenInvalid    = 40014
+	errBotTokenInvalid = 853005
 )
 
 // channelAPI is WeCom's HTTPS API for the robot. Every call but get_token
@@ -59,7 +61,7 @@ func (a *channelAPI) call(ctx context.Context, path string, body, out any) error
 		}
 		err = a.post(ctx, path, token, body, out)
 		var we *WeComError
-		if !retried && errors.As(err, &we) && (we.Code == errTokenExpired || we.Code == errTokenInvalid) {
+		if !retried && errors.As(err, &we) && (we.Code == errTokenExpired || we.Code == errTokenInvalid || we.Code == errBotTokenInvalid) {
 			a.forget(token)
 			continue
 		}
