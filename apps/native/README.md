@@ -48,6 +48,11 @@ says so when there is no login yet; sign in and restart. It stops on Ctrl-C or S
 refuses to start while another Droi Host (the app, or another `droi host`) answers on this
 computer, or when `droid` is missing or older than Droi needs.
 
+The Gateway listens on port 41417; `droi host --port N` picks another, for instance when the
+computer already runs a Host there. In a container, publish the same port on both sides
+(`docker run -p 41418:41418 ... /opt/droi/droi host --port 41418`) and set `pairingHost` (see
+below) so the link names a port and an address other computers reach.
+
 Its settings (`settings.json`, mode 0600, with the Pairing Token), Memory and logs are in
 `$XDG_CONFIG_HOME/droi` (`~/.config/droi` by default). Scratch folders a Client trashes go to
 the freedesktop Trash in `$XDG_DATA_HOME/Trash`.
