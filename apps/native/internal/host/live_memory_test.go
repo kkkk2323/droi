@@ -149,6 +149,28 @@ func TestLiveMemory(t *testing.T) {
 
 	reply := ask(`From now on I want every answer to end with the word "otter". Remember this preference for future sessions, then reply "ok".`)
 	t.Logf("reply: %q", reply)
+
+	// The list dates a Session by its file, which gets every hook run the
+	// Daemon records: opening the Session again must not move it. The wait
+	// lets the SessionEnd of the close land first.
+	time.Sleep(2 * time.Second)
+	listed, err := c.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{})
+	if err != nil || len(listed.Sessions) == 0 {
+		t.Fatalf("no Session listed: %v", err)
+	}
+	id, before := listed.Sessions[0].SessionID, listed.Sessions[0].UpdatedAt
+	if _, err := c.LoadSession(ctx, protocol.LoadSessionParams{SessionID: id}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+	if listed, err = c.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range listed.Sessions {
+		if s.SessionID == id && s.UpdatedAt != before {
+			t.Errorf("opening the Session moved its date from %v to %v", before, s.UpdatedAt)
+		}
+	}
 	store, err := memory.OpenStore(memDir)
 	if err != nil {
 		t.Fatal(err)

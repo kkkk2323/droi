@@ -23,6 +23,11 @@ var HookEvents = []string{"SessionStart", "UserPromptSubmit", "PreCompact", "Ses
 
 const hookTimeoutSeconds = 10
 
+// sessionStartMatcher leaves out "resume": the Daemon writes every hook run
+// into the Session's file, and the Session list dates a Session by that
+// file, so merely opening one would move it to the top.
+const sessionStartMatcher = "^(startup|clear|compact)$"
+
 // MemoryAttachment is what the Runtime Overlay attaches (ADR 0010).
 type MemoryAttachment struct {
 	Executable string
@@ -46,18 +51,19 @@ func hookCommandLine(goos, memoryDir, executable string) string {
 
 // BuildRuntimeOverlay is the settings file the Daemon merges for its own
 // process with --settings: the Memory Server pre-approved and loaded before
-// the first turn, and the hook at every Session event. Shape as droid
+// the first turn, and the hook at every Session event but a resume. Shape as droid
 // 0.229.0 reads it: MCP under "mcp", general keys at the top level.
 func BuildRuntimeOverlay(m MemoryAttachment) map[string]any {
 	env := map[string]string{"DROI_MEMORY_DIR": m.MemoryDir}
 	// Hooks run through the shell; the environment rides on the command line
 	// so it does not depend on the Daemon passing the overlay's env to them.
 	hookCommand := hookCommandLine(runtime.GOOS, m.MemoryDir, m.Executable)
-	hook := []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hookCommand, "timeout": hookTimeoutSeconds}}}}
+	command := []any{map[string]any{"type": "command", "command": hookCommand, "timeout": hookTimeoutSeconds}}
 	hooks := map[string]any{}
 	for _, e := range HookEvents {
-		hooks[e] = hook
+		hooks[e] = []any{map[string]any{"hooks": command}}
 	}
+	hooks["SessionStart"] = []any{map[string]any{"matcher": sessionStartMatcher, "hooks": command}}
 	return map[string]any{
 		"env": env,
 		// Otherwise a Session's first turn can start before the Memory Server is connected.

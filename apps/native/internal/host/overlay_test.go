@@ -33,7 +33,9 @@ func roundTrip(t *testing.T, v any) any {
 }
 
 func TestTheRuntimeOverlayAttachesMemory(t *testing.T) {
-	hook := `[{"hooks":[{"type":"command","command":` + mustJSON(hookCommandLine(runtime.GOOS, attachment.MemoryDir, attachment.Executable)) + `,"timeout":10}]}]`
+	command := `[{"type":"command","command":` + mustJSON(hookCommandLine(runtime.GOOS, attachment.MemoryDir, attachment.Executable)) + `,"timeout":10}]`
+	hook := `[{"hooks":` + command + `}]`
+	start := `[{"matcher":"^(startup|clear|compact)$","hooks":` + command + `}]`
 	want := `{
 		"env": {"DROI_MEMORY_DIR": ` + mustJSON(attachment.MemoryDir) + `},
 		"blockOnMcpLoad": true,
@@ -42,7 +44,7 @@ func TestTheRuntimeOverlayAttachesMemory(t *testing.T) {
 			"persistentPermissions": {"servers": {"droi-memory": {"approvedAt": "2026-09-29T12:00:00.000Z", "impactLevel": "high"}}}
 		},
 		"mcpAutonomyOverrides": {"droi-memory": {"defaultLevel": "low"}},
-		"hooks": {"SessionStart": ` + hook + `, "UserPromptSubmit": ` + hook + `, "PreCompact": ` + hook + `, "SessionEnd": ` + hook + `}
+		"hooks": {"SessionStart": ` + start + `, "UserPromptSubmit": ` + hook + `, "PreCompact": ` + hook + `, "SessionEnd": ` + hook + `}
 	}`
 	var w any
 	if err := json.Unmarshal([]byte(want), &w); err != nil {
