@@ -1,3 +1,9 @@
+## 1.53.0 - 2026-10-14
+
+### Removed
+
+- The Chat Bridge for WeCom (企业微信) is gone, with Settings › Chat Bridge, the `chatBridge` block of `droi host`'s settings (now ignored) and the robot mark on Chat Sessions. Sessions it started stay as ordinary Sessions. Remembered computers and switching between them are unchanged.
+
 ## 1.52.0 - 2026-10-14
 
 ### Changed
