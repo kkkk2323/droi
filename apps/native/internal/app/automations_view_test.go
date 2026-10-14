@@ -44,10 +44,42 @@ func TestARunningAutomationShowsInTheSidebar(t *testing.T) {
 	if r := h.a.Route(); r.SessionID != "run-1" {
 		t.Fatalf("route %+v", r)
 	}
+	// The Fake Daemon's load reports no working state: an idle sent while
+	// the Session loads can leave it working.
+	h.until("the run's transcript", func() bool { return h.hasText("Nothing risky landed.") })
 	if err := h.d.Notify("run-1", map[string]any{"type": "droid_working_state_changed", "newState": "idle"}); err != nil {
 		t.Fatal(err)
 	}
 	h.until("the section gone", func() bool { return !h.hasText("Running automations") })
+}
+
+// The Daemon starts a run before it lists it; the sidebar shows the run
+// once the list has it, with no other change to read the list again.
+func TestARunListedLateShowsInTheSidebar(t *testing.T) {
+	sc := automationsScenario()
+	sc.Sessions[1].Extra["unwritten"] = true
+	h := newHarness(t, sc, "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	reqs, err := h.d.Requests()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	for _, r := range reqs {
+		if r.Method == "daemon.list_available_sessions" {
+			reads++
+		}
+	}
+	if err := h.d.Notify("run-1", map[string]any{"type": "droid_working_state_changed", "newState": "thinking"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.d.WaitForRequest("daemon.list_available_sessions", reads+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.d.Write("run-1"); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the running run", func() bool { return h.hasText("Running automations") && h.hasText("[Automation] Daily review") })
 }
 
 func offsetNow() int {

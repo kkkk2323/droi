@@ -116,6 +116,12 @@ rl.on('line', async (line) => {
       case 'notify':
         daemon.notify(String(cmd['sessionId']), cmd['notification'] as Record<string, unknown>)
         return out({ id: cmd.id })
+      case 'write': {
+        const found = daemon.scenario.sessions.find((s) => s.sessionId === cmd['sessionId'])
+        if (!found) throw new Error('no session ' + String(cmd['sessionId']))
+        delete found.unwritten
+        return out({ id: cmd.id })
+      }
       case 'requests':
         return out({ id: cmd.id, requests: daemon.requests })
       case 'waitForRequest': {

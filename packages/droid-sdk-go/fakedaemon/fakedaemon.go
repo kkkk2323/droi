@@ -263,6 +263,12 @@ func (d *Daemon) Notify(sessionID string, notification map[string]any) error {
 	return err
 }
 
+// Write puts an unwritten Session on disk: the Daemon lists it from now on.
+func (d *Daemon) Write(sessionID string) error {
+	_, err := d.Command("write", map[string]any{"sessionId": sessionID})
+	return err
+}
+
 // Request is a request the Daemon received.
 type Request struct {
 	Method string          `json:"method"`

@@ -140,7 +140,8 @@ type App struct {
 	// it keeps the Session's place in the list until the turn ends.
 	turnAt map[string]int64
 	// unlisted are the Sessions that started working before the list had
-	// them, a run of an Automation or a subagent, read for once each.
+	// them, a run of an Automation or a subagent, that readUntilListed reads
+	// the list for.
 	unlisted map[string]bool
 
 	sidebar sidebarState
@@ -309,7 +310,9 @@ func (a *App) onEvent(e controller.Event) {
 				a.unlisted[ev.SessionID] = true
 			}
 			a.mu.Unlock()
-			if n.NewState == "idle" || fresh {
+			if fresh {
+				go a.readUntilListed(ev.SessionID)
+			} else if n.NewState == "idle" {
 				go a.refreshList()
 			}
 		}
@@ -415,6 +418,38 @@ func (a *App) refreshList() {
 	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show})
 	if p := a.setList(gen, res, err); p != nil {
 		a.readOlder(*p, show)
+	}
+}
+
+// unlistedReads are the waits between reads of the list for a Session
+// that works before the Daemon lists it, the last one repeated: the Daemon
+// announces a run of an Automation before it is on disk.
+var unlistedReads = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second}
+
+// readUntilListed reads the list until it has the Session id, the Session
+// stops working, or the connection is gone.
+func (a *App) readUntilListed(id string) {
+	defer func() {
+		a.mu.Lock()
+		delete(a.unlisted, id)
+		a.mu.Unlock()
+	}()
+	for i := 0; ; i++ {
+		if _, err := a.ctl.Client(); err != nil {
+			return
+		}
+		a.refreshList()
+		a.mu.Lock()
+		done := a.busy[id] == "idle" || findSummary(a.listed, id) != nil
+		a.mu.Unlock()
+		if done {
+			return
+		}
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-time.After(unlistedReads[min(i, len(unlistedReads)-1)]):
+		}
 	}
 }
 
