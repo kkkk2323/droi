@@ -30,11 +30,13 @@ type Robot struct {
 	Secret string
 }
 
-// Frame is a frame the Chat Bridge sent.
+// Frame is a frame the Chat Bridge sent; Errcode is the Fake WeCom's
+// answer to it.
 type Frame struct {
-	Cmd   string
-	ReqID string
-	Body  json.RawMessage
+	Cmd     string
+	ReqID   string
+	Body    json.RawMessage
+	Errcode int
 }
 
 // DirectMessage is a text a user writes to the robot in a direct message.
@@ -70,6 +72,7 @@ type WeCom struct {
 	refused     int
 	frames      []Frame
 	fail        map[string][]failure
+	clicks      map[string]clicked
 
 	now      func() time.Time
 	tokens   map[string]time.Time
@@ -84,7 +87,7 @@ type WeCom struct {
 func Start(t testing.TB, r Robot) *WeCom {
 	t.Helper()
 	w := &WeCom{
-		t: t, robot: r, changed: make(chan struct{}), fail: map[string][]failure{},
+		t: t, robot: r, changed: make(chan struct{}), fail: map[string][]failure{}, clicks: map[string]clicked{},
 		tokens: map[string]time.Time{}, channels: map[string]string{},
 		posts: map[string][]*Post{}, replies: map[string][]*Post{}, apiFail: map[string][]failure{},
 	}
@@ -182,13 +185,11 @@ func (w *WeCom) serve(rw http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		w.mu.Lock()
-		w.frames = append(w.frames, Frame{Cmd: f.Cmd, ReqID: f.Headers.ReqID, Body: f.Body})
 		fail, failed := failure{}, false
 		if q := w.fail[f.Cmd]; len(q) > 0 {
 			fail, failed = q[0], true
 			w.fail[f.Cmd] = q[1:]
 		}
-		w.notify()
 		w.mu.Unlock()
 		errcode, errmsg := 0, "ok"
 		switch {
@@ -205,7 +206,13 @@ func (w *WeCom) serve(rw http.ResponseWriter, r *http.Request) {
 			}
 		case !subscribed && f.Cmd != "ping":
 			errcode, errmsg = 40001, "not subscribed"
+		case f.Cmd == "aibot_respond_update_msg":
+			errcode, errmsg = w.checkCardUpdate(f.Headers.ReqID, f.Body)
 		}
+		w.mu.Lock()
+		w.frames = append(w.frames, Frame{Cmd: f.Cmd, ReqID: f.Headers.ReqID, Body: f.Body, Errcode: errcode})
+		w.notify()
+		w.mu.Unlock()
 		out, _ := json.Marshal(map[string]any{"headers": map[string]string{"req_id": f.Headers.ReqID}, "errcode": errcode, "errmsg": errmsg})
 		if err := c.Write(ctx, websocket.MessageText, out); err != nil {
 			return
