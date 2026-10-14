@@ -42,7 +42,8 @@ type Options struct {
 	IdleTimeout time.Duration
 	// Now is time.Now when nil.
 	Now func() time.Time
-	// OnChange hears that the Chat Bridge changed the settings.
+	// OnChange hears that the Chat Bridge changed the settings or stopped
+	// (see Status).
 	OnChange func()
 	Log      func(string)
 }
@@ -172,7 +173,7 @@ func (b *Bridge) Follow() {
 		b.wecom = &longConnection{
 			url: b.o.WebSocketURL, botID: cb.BotID, secret: cb.Secret,
 			ping: b.o.PingInterval, delay: b.o.ReconnectDelay, max: b.o.MaxReconnectDelay,
-			onPush: b.push, log: b.o.Log,
+			onPush: b.push, onTaken: b.o.OnChange, log: b.o.Log,
 		}
 		b.wecom.start()
 	}
@@ -180,6 +181,17 @@ func (b *Bridge) Follow() {
 	if old != nil {
 		old.close()
 	}
+}
+
+// Status is the robot's long connection; zero while the Chat Bridge is off.
+func (b *Bridge) Status() Status {
+	b.mu.Lock()
+	wc := b.wecom
+	b.mu.Unlock()
+	if wc == nil {
+		return Status{}
+	}
+	return wc.status()
 }
 
 // Stop disconnects the robot and the Daemon.

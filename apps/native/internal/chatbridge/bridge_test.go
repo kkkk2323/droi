@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -811,5 +812,51 @@ func TestADaemonRestartKeepsAChatThreadsLink(t *testing.T) {
 	}
 	if f := r.w.WaitForFrame("aibot_respond_msg", 1); f.ReqID != reqID {
 		t.Errorf("reply on %s, the latest message is %s", f.ReqID, reqID)
+	}
+}
+
+func TestAnotherConnectionTakingTheRobotStopsTheChatBridge(t *testing.T) {
+	changed := make(chan struct{}, 8)
+	r := startWith(t, nil, func(o *chatbridge.Options) {
+		o.OnChange = func() {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		}
+	})
+	r.w.WaitForSubscription(1)
+	eventually(t, "connected", func() bool { s := r.b.Status(); return s.Connected && s.Stopped == nil })
+
+	// Another Host subscribes the same robot.
+	other := chatbridge.New(r.options)
+	t.Cleanup(other.Stop)
+	other.Follow()
+	r.w.WaitForSubscription(2)
+	select {
+	case <-changed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the Host never heard the Chat Bridge stopped")
+	}
+	if s := r.b.Status(); s.Connected || !errors.Is(s.Stopped, chatbridge.ErrTakenOver) {
+		t.Errorf("status %+v after another connection took the robot", s)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := r.w.Subscriptions(); n != 2 {
+		t.Errorf("%d subscriptions: the Chat Bridge fought for the robot", n)
+	}
+	if s := other.Status(); !s.Connected {
+		t.Errorf("the other Host's status %+v", s)
+	}
+}
+
+func eventually(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatalf("never %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

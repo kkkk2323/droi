@@ -36,6 +36,21 @@ func (e *WeComError) Error() string { return fmt.Sprintf("WeCom error %d: %s", e
 
 var errNotConnected = errors.New("not connected to WeCom")
 
+// ErrTakenOver is why the Chat Bridge gave up the robot: another connection
+// subscribed it, and WeCom keeps one per robot. The Chat Bridge does not
+// take it back, which would only take turns with the other; a change of
+// robot in the settings connects again.
+var ErrTakenOver = errors.New("another connection took over the robot")
+
+// Status is the robot's long connection.
+type Status struct {
+	// Connected: subscribed now.
+	Connected bool
+	// Stopped is why the Chat Bridge stopped connecting, nil while it
+	// keeps the robot.
+	Stopped error
+}
+
 // frame is a frame on the long connection. The server's answer to a frame
 // has no cmd, and errcode in place of a body.
 type frame struct {
@@ -74,13 +89,16 @@ type longConnection struct {
 	url, botID, secret string
 	ping, delay, max   time.Duration
 	onPush             func(frame)
-	log                func(string)
+	// onTaken hears that another connection took over the robot.
+	onTaken func()
+	log     func(string)
 
 	stop chan struct{}
 	done chan struct{}
 
-	mu   sync.Mutex
-	conn *websocket.Conn
+	mu    sync.Mutex
+	conn  *websocket.Conn
+	taken bool
 	// waiting are the answers awaited by req_id; several frames can share one
 	// req_id (replies to one callback), and their answers come in order.
 	waiting map[string][]chan frame
@@ -103,6 +121,14 @@ func (l *longConnection) run() {
 	for {
 		if l.connect() {
 			delay = l.delay
+		}
+		l.mu.Lock()
+		taken := l.taken
+		l.mu.Unlock()
+		if taken {
+			l.log("another connection took over the robot; the Chat Bridge stopped")
+			l.onTaken()
+			return
 		}
 		select {
 		case <-l.stop:
@@ -187,6 +213,16 @@ func (l *longConnection) receive(data []byte) {
 	if json.Unmarshal(data, &f) != nil {
 		return
 	}
+	if f.Cmd == "aibot_event_callback" && isDisconnectedEvent(f.Body) {
+		l.mu.Lock()
+		l.taken = true
+		c := l.conn
+		l.mu.Unlock()
+		if c != nil {
+			c.CloseNow()
+		}
+		return
+	}
 	if f.Cmd != "" {
 		l.onPush(f)
 		return
@@ -201,6 +237,25 @@ func (l *longConnection) receive(data []byte) {
 	if ch != nil {
 		ch <- f
 	}
+}
+
+func isDisconnectedEvent(body json.RawMessage) bool {
+	var b struct {
+		Event struct {
+			EventType string `json:"eventtype"`
+		} `json:"event"`
+	}
+	return json.Unmarshal(body, &b) == nil && b.Event.EventType == "disconnected_event"
+}
+
+func (l *longConnection) status() Status {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s := Status{Connected: l.conn != nil}
+	if l.taken {
+		s.Stopped = ErrTakenOver
+	}
+	return s
 }
 
 // dropAnswers ends the calls still waiting on connection c.
