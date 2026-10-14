@@ -202,12 +202,7 @@ func (a *App) chatAllowedRow(c *ui.Context, allowed []string) {
 			return
 		}
 		cs.user = ""
-		a.hostUpdate(false, func(s *host.Settings) {
-			if !slices.Contains(s.ChatBridge.AllowedUsers, id) {
-				s.ChatBridge.AllowedUsers = append(s.ChatBridge.AllowedUsers, id)
-			}
-			s.ChatBridge.RefusedUsers = slices.DeleteFunc(s.ChatBridge.RefusedUsers, func(u string) bool { return u == id })
-		})
+		a.hostUpdate(false, func(s *host.Settings) { allowChatUser(s, id) })
 	}
 	desc := L("WeCom user ids as WeCom sends them, often encrypted per company. Nobody else can start a Chat Session or answer its Prompts.")
 	a.settingRow(c, L("Allowed users"), desc, nil, func() {
@@ -245,17 +240,21 @@ func (a *App) chatRefusedRow(c *ui.Context, refused []string) {
 				ui.Row(c.Key("refused:" + id)).Role(ui.RoleListItem).Label(id).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
 					k.Text(c, id, 13, 20).Font(k.Mono).TextColor(t.Foreground).SingleLine().Selectable().Grow(1).MinWidth(0)
 					if a.smallButton(c, kit.Outline, L("Allow"), "", false).Label(L("Allow %s", id)).Clicked() {
-						a.hostUpdate(false, func(s *host.Settings) {
-							s.ChatBridge.RefusedUsers = slices.DeleteFunc(s.ChatBridge.RefusedUsers, func(u string) bool { return u == id })
-							if !slices.Contains(s.ChatBridge.AllowedUsers, id) {
-								s.ChatBridge.AllowedUsers = append(s.ChatBridge.AllowedUsers, id)
-							}
-						})
+						a.hostUpdate(false, func(s *host.Settings) { allowChatUser(s, id) })
 					}
 				})
 			}
 		})
 	})
+}
+
+// allowChatUser puts id on the Chat Bridge's allowlist and takes it off the
+// refused senders.
+func allowChatUser(s *host.Settings, id string) {
+	if !slices.Contains(s.ChatBridge.AllowedUsers, id) {
+		s.ChatBridge.AllowedUsers = append(s.ChatBridge.AllowedUsers, id)
+	}
+	s.ChatBridge.RefusedUsers = slices.DeleteFunc(s.ChatBridge.RefusedUsers, func(u string) bool { return u == id })
 }
 
 func (a *App) chatAutonomyRow(c *ui.Context, level string) {

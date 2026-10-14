@@ -245,19 +245,11 @@ func (b *Bridge) channelAttachment(ctx context.Context, th *chatThread, id strin
 	default:
 		return "", nil, unknownAttachment(id)
 	}
-	b.mu.Lock()
-	api := b.api
-	b.mu.Unlock()
-	if api == nil {
-		return "", nil, errNotConnected
+	api, _, err := b.connection()
+	if err != nil {
+		return "", nil, err
 	}
-	var c content
-	var err error
-	if replyID != "" {
-		c, err = api.getReply(ctx, th.topicID, postID, replyID)
-	} else {
-		c, err = api.getPost(ctx, th.topicID, postID)
-	}
+	c, err := api.getContent(ctx, th.topicID, postID, replyID)
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot read the post or reply it is in: %w", err)
 	}

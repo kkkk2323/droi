@@ -3,7 +3,6 @@ package chatbridge
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -69,15 +68,14 @@ func (b *Bridge) atBot(th *chatThread, e event) {
 		b.o.Log(err.Error())
 		return
 	}
-	b.mu.Lock()
-	first := th.sessionID == ""
-	api, name := b.api, th.channelName
-	b.mu.Unlock()
-	if api == nil {
+	api, _, err := b.connection()
+	if err != nil {
 		return
 	}
+	b.mu.Lock()
+	first, name := th.sessionID == "", th.channelName
+	b.mu.Unlock()
 	if name == "" {
-		var err error
 		if name, err = api.channelName(ctx, e.TopicID); err != nil {
 			b.o.Log("cannot read the WeCom Channel's name: " + err.Error())
 		} else {
@@ -86,28 +84,23 @@ func (b *Bridge) atBot(th *chatThread, e event) {
 			b.mu.Unlock()
 		}
 	}
-	var c content
-	var err error
-	if at.ReplyID != "" {
-		c, err = api.getReply(ctx, e.TopicID, at.PostID, at.ReplyID)
-	} else {
-		c, err = api.getPost(ctx, e.TopicID, at.PostID)
-	}
-	text := ""
+	c, err := api.getContent(ctx, e.TopicID, at.PostID, at.ReplyID)
+	text, rest, isNew := "", "", false
 	if err != nil {
 		text = "[WeCom did not give the text: " + err.Error() + "]"
 	} else {
 		text = render(c, b.robotID())
 		attachments := channelAttachments(c, at.PostID, at.ReplyID)
+		rest, isNew = cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you"))
 		// An @ with files, or !new, is for Droid, not an answer.
-		if _, isNew := cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you")); attachments == "" && !isNew && b.answerInChatThread(th, user, text) {
+		if attachments == "" && !isNew && b.answerInChatThread(th, user, text) {
 			// The answer reaches Droid as the Prompt's, not as a reply to read.
 			b.markSent(th, at.ReplyID, nil)
 			return
 		}
-		text = cut(text) + attachments
+		text, rest = cut(text)+attachments, cut(rest)+attachments
 	}
-	if rest, ok := cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you")); ok {
+	if isNew {
 		if rest == "" {
 			rest = "[started a new Chat Session with !new, with no task yet]"
 		}
@@ -207,7 +200,7 @@ const (
 // readThread is a Channel post and a page of its replies, the post on the
 // first page only. It marks the replies shown as read.
 func (b *Bridge) readThread(ctx context.Context, th *chatThread, postID, cursor string, limit int) (string, error) {
-	if th.kind != kindChannelPost {
+	if th.channelOnly("read_thread") != nil {
 		return "This Chat Thread is a direct message with WeCom user " + th.userID + ": WeCom keeps no history the Chat Bridge can read. " +
 			"Every new message from them arrives in this Session as a message.", nil
 	}
@@ -215,12 +208,13 @@ func (b *Bridge) readThread(ctx context.Context, th *chatThread, postID, cursor 
 		limit = defaultReplyPage
 	}
 	limit = min(limit, maxReplyPage)
-	b.mu.Lock()
-	api, name := b.api, th.channelName
-	b.mu.Unlock()
-	if api == nil {
-		return "", errNotConnected
+	api, _, err := b.connection()
+	if err != nil {
+		return "", err
 	}
+	b.mu.Lock()
+	name := th.channelName
+	b.mu.Unlock()
 	robot := b.robotID()
 	own := postID == "" || postID == th.postID
 	if own {
@@ -322,17 +316,15 @@ const maxEmoji = 115
 // react puts one of WeCom's emoji on the post or one of its replies, or
 // removes it.
 func (b *Bridge) react(ctx context.Context, th *chatThread, emoji int, replyID string, remove bool) (string, error) {
-	if th.kind != kindChannelPost {
-		return "", errors.New("react works only in a WeCom Channel; this Chat Thread is a direct message")
+	if err := th.channelOnly("react"); err != nil {
+		return "", err
 	}
 	if emoji < 1 || emoji > maxEmoji {
 		return "", fmt.Errorf("emoji is %d; WeCom's emoji are 1 to %d", emoji, maxEmoji)
 	}
-	b.mu.Lock()
-	api := b.api
-	b.mu.Unlock()
-	if api == nil {
-		return "", errNotConnected
+	api, _, err := b.connection()
+	if err != nil {
+		return "", err
 	}
 	if err := api.postEmoji(ctx, th.topicID, th.postID, replyID, emoji, !remove); err != nil {
 		return "", fmt.Errorf("not done: %w", err)
@@ -350,12 +342,13 @@ func (b *Bridge) react(ctx context.Context, th *chatThread, emoji int, replyID s
 // replyInChannel posts Markdown, with files and mentions, as a reply under
 // the Chat Thread's post.
 func (b *Bridge) replyInChannel(ctx context.Context, th *chatThread, text string, files []outgoing, mentions []string) (string, error) {
-	b.mu.Lock()
-	api, name := b.api, th.channelName
-	b.mu.Unlock()
-	if api == nil {
-		return "", errNotConnected
+	api, _, err := b.connection()
+	if err != nil {
+		return "", err
 	}
+	b.mu.Lock()
+	name := th.channelName
+	b.mu.Unlock()
 	content, extra := channelContent(text, files, mentions)
 	if len(content) > maxMarkdownBytes {
 		return "", fmt.Errorf("text with its mentions and files is %d bytes; WeCom takes at most %d", len(content), maxMarkdownBytes)

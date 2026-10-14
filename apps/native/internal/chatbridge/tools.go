@@ -234,64 +234,55 @@ var toolList = []tool{
 func (b *Bridge) callTool(ctx context.Context, th *chatThread, name string, args json.RawMessage) (string, error) {
 	switch name {
 	case "reply":
-		var p struct {
+		return withArgs(args, func(p struct {
 			Text     string   `json:"text"`
 			Files    []string `json:"files"`
 			Mentions []string `json:"mentions"`
-		}
-		if len(args) > 0 {
-			if err := json.Unmarshal(args, &p); err != nil {
-				return "", fmt.Errorf("invalid arguments: %w", err)
-			}
-		}
-		return b.reply(ctx, th, p.Text, p.Files, p.Mentions)
+		}) (string, error) {
+			return b.reply(ctx, th, p.Text, p.Files, p.Mentions)
+		})
 	case "read_thread":
-		var p struct {
+		return withArgs(args, func(p struct {
 			Cursor string `json:"cursor"`
 			Limit  int    `json:"limit"`
 			PostID string `json:"post_id"`
-		}
-		if len(args) > 0 {
-			if err := json.Unmarshal(args, &p); err != nil {
-				return "", fmt.Errorf("invalid arguments: %w", err)
-			}
-		}
-		return b.readThread(ctx, th, p.PostID, p.Cursor, p.Limit)
+		}) (string, error) {
+			return b.readThread(ctx, th, p.PostID, p.Cursor, p.Limit)
+		})
 	case "react":
-		var p struct {
+		return withArgs(args, func(p struct {
 			Emoji   int    `json:"emoji"`
 			ReplyID string `json:"reply_id"`
 			Remove  bool   `json:"remove"`
-		}
-		if len(args) > 0 {
-			if err := json.Unmarshal(args, &p); err != nil {
-				return "", fmt.Errorf("invalid arguments: %w", err)
-			}
-		}
-		return b.react(ctx, th, p.Emoji, p.ReplyID, p.Remove)
+		}) (string, error) {
+			return b.react(ctx, th, p.Emoji, p.ReplyID, p.Remove)
+		})
 	case "search_channel":
-		var p struct {
+		return withArgs(args, func(p struct {
 			Keywords []string `json:"keywords"`
 			Cursor   string   `json:"cursor"`
-		}
-		if len(args) > 0 {
-			if err := json.Unmarshal(args, &p); err != nil {
-				return "", fmt.Errorf("invalid arguments: %w", err)
-			}
-		}
-		return b.searchChannel(ctx, th, p.Keywords, p.Cursor)
+		}) (string, error) {
+			return b.searchChannel(ctx, th, p.Keywords, p.Cursor)
+		})
 	case "download_attachment":
-		var p struct {
+		return withArgs(args, func(p struct {
 			ID string `json:"id"`
-		}
-		if len(args) > 0 {
-			if err := json.Unmarshal(args, &p); err != nil {
-				return "", fmt.Errorf("invalid arguments: %w", err)
-			}
-		}
-		return b.downloadAttachment(ctx, th, p.ID)
+		}) (string, error) {
+			return b.downloadAttachment(ctx, th, p.ID)
+		})
 	}
 	return "", fmt.Errorf("no tool %q", name)
+}
+
+// withArgs runs a tool with its arguments decoded; none leave them zero.
+func withArgs[T any](args json.RawMessage, run func(T) (string, error)) (string, error) {
+	var p T
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &p); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+	return run(p)
 }
 
 // reply sends Markdown, and files, to the Chat Thread. In a direct message
@@ -304,8 +295,10 @@ func (b *Bridge) reply(ctx context.Context, th *chatThread, text string, files, 
 	if len(text) > maxMarkdownBytes {
 		return "", fmt.Errorf("text is %d bytes; WeCom takes at most %d", len(text), maxMarkdownBytes)
 	}
-	if len(mentions) > 0 && th.kind != kindChannelPost {
-		return "", errors.New("mentions work only in a WeCom Channel; this is a direct message")
+	if len(mentions) > 0 {
+		if err := th.channelOnly("mentions"); err != nil {
+			return "", err
+		}
 	}
 	if len(mentions) > maxPerReply || slices.Contains(mentions, "") {
 		return "", fmt.Errorf("give at most %d user ids to mention", maxPerReply)
@@ -317,23 +310,21 @@ func (b *Bridge) reply(ctx context.Context, th *chatThread, text string, files, 
 	if th.kind == kindChannelPost {
 		return b.replyInChannel(ctx, th, text, out, mentions)
 	}
-	b.mu.Lock()
-	wc, user := b.wecom, th.userID
-	b.mu.Unlock()
-	if wc == nil {
-		return "", errNotConnected
+	_, wc, err := b.connection()
+	if err != nil {
+		return "", err
 	}
 	ids, err := uploadAll(ctx, wc.uploadStep, out)
 	if err != nil {
 		return "", err
 	}
-	if err := b.sendDirect(ctx, th, wc, map[string]any{"msgtype": "markdown", "markdown": map[string]any{"content": text}}); err != nil {
+	if err := b.sendDirect(ctx, th, wc, markdown(text)); err != nil {
 		return "", fmt.Errorf("not sent: %w", err)
 	}
 	if err := b.sendDirectFiles(ctx, th, wc, out, ids); err != nil {
 		return "", err
 	}
-	return "Sent to " + user + " in WeCom" + withFiles(out) + ".", nil
+	return "Sent to " + th.userID + " in WeCom" + withFiles(out) + ".", nil
 }
 
 // sendDirect sends one message of a direct message.

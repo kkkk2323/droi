@@ -31,8 +31,8 @@ func (c searchCursor) String() string {
 }
 
 func (b *Bridge) searchChannel(ctx context.Context, th *chatThread, keywords []string, cursor string) (string, error) {
-	if th.kind != kindChannelPost {
-		return "", errors.New("search_channel searches this Chat Thread's WeCom Channel; a direct message has none")
+	if err := th.channelOnly("search_channel"); err != nil {
+		return "", err
 	}
 	var words []string
 	for _, k := range keywords {
@@ -46,12 +46,13 @@ func (b *Bridge) searchChannel(ctx context.Context, th *chatThread, keywords []s
 	if len(words) == 0 || len(words) > maxSearchKeywords {
 		return "", fmt.Errorf("give 1 to %d keywords", maxSearchKeywords)
 	}
-	b.mu.Lock()
-	api, name := b.api, th.channelName
-	b.mu.Unlock()
-	if api == nil {
-		return "", errNotConnected
+	api, _, err := b.connection()
+	if err != nil {
+		return "", err
 	}
+	b.mu.Lock()
+	name := th.channelName
+	b.mu.Unlock()
 	quoted := make([]string, len(words))
 	for i, w := range words {
 		quoted[i] = fmt.Sprintf("%q", w)

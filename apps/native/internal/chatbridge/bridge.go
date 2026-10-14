@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -550,6 +551,26 @@ func newToken() string {
 	b := make([]byte, 24)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// connection is the robot's HTTPS API and long connection, or
+// errNotConnected while no robot is set.
+func (b *Bridge) connection() (*wecomAPI, *longConnection, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.api == nil || b.wecom == nil {
+		return nil, nil, errNotConnected
+	}
+	return b.api, b.wecom, nil
+}
+
+// channelOnly is the error of what works only in a WeCom Channel, nil in
+// a Channel's Chat Thread.
+func (th *chatThread) channelOnly(what string) error {
+	if th.kind == kindChannelPost {
+		return nil
+	}
+	return fmt.Errorf("%s: only in a WeCom Channel, and this Chat Thread is a direct message", what)
 }
 
 // chatThreadOf is the Chat Thread a droi-chat token was given for.

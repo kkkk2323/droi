@@ -78,11 +78,11 @@ func channelLabel(name, topicID string) string {
 }
 
 func cut(text string) string {
-	r := []rune(text)
-	if len(r) <= maxTriggerRunes {
+	n := utf8.RuneCountInString(text)
+	if n <= maxTriggerRunes {
 		return text
 	}
-	return string(r[:maxTriggerRunes]) + fmt.Sprintf("\n\n[cut: the message is %d characters; this is the first %d]", len(r), maxTriggerRunes)
+	return cutRunes(text, maxTriggerRunes, "") + fmt.Sprintf("\n\n[cut: the message is %d characters; this is the first %d]", n, maxTriggerRunes)
 }
 
 // newDirectTrigger is the first message of the Chat Session a direct

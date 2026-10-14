@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
@@ -232,23 +233,9 @@ func (b *Bridge) answerInChatThread(th *chatThread, user, text string) bool {
 // answered a permission request in a Channel, or that a Client was first.
 func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, err error) {
 	b.mu.Lock()
-	note := ""
-	switch {
-	case err == nil:
-		p.settle(user)
-		p.choice = choice
-		if p.perm != nil && p.th.kind == kindChannelPost {
-			note = settledNote(p)
-		}
-	case errors.Is(err, controller.ErrPromptNotFound):
-		p.settle("")
+	note := p.took(user, choice, err)
+	if note == "" && (p.by == "" || p.perm != nil && p.th.kind == kindChannelPost) {
 		note = settledNote(p)
-	default:
-		p.answering = false
-		if p.ask != nil {
-			p.answers = p.answers[:len(p.answers)-1]
-		}
-		note = "The answer did not reach Droid: " + err.Error()
 	}
 	th := p.th
 	b.mu.Unlock()
@@ -258,6 +245,26 @@ func (b *Bridge) answered(ctx context.Context, p *prompt, user, choice string, e
 	if err := b.sendToChatThread(ctx, th, note); err != nil {
 		b.o.Log("cannot tell WeCom about an answer: " + err.Error())
 	}
+}
+
+// took records what the Daemon made of WeCom's answer to p: user's choice,
+// or a Client's answer before it, or neither, when it returns why; b.mu is
+// held.
+func (p *prompt) took(user, choice string, err error) (failed string) {
+	switch {
+	case err == nil:
+		p.settle(user)
+		p.choice = choice
+	case errors.Is(err, controller.ErrPromptNotFound):
+		p.settle("")
+	default:
+		p.answering = false
+		if p.ask != nil {
+			p.answers = p.answers[:len(p.answers)-1]
+		}
+		return "The answer did not reach Droid: " + err.Error()
+	}
+	return ""
 }
 
 // cardEvent is the body of a template_card_event.
@@ -318,17 +325,7 @@ func (b *Bridge) answerClick(f frame) {
 	b.mu.Unlock()
 	err = b.ctl.RespondToPermission(ctx, p.requestID, controller.PermissionAnswer{SelectedOption: opt.Value})
 	b.mu.Lock()
-	note := ""
-	switch {
-	case err == nil:
-		p.settle(user)
-		p.choice = opt.Label
-	case errors.Is(err, controller.ErrPromptNotFound):
-		p.settle("")
-	default:
-		p.answering = false
-		note = "The answer did not reach Droid: " + err.Error()
-	}
+	note := p.took(user, opt.Label, err)
 	card := settledCard(p)
 	settled := p.settled
 	b.mu.Unlock()
@@ -342,10 +339,8 @@ func (b *Bridge) answerClick(f frame) {
 }
 
 func (b *Bridge) updateCard(ctx context.Context, reqID string, card map[string]any) {
-	b.mu.Lock()
-	wc := b.wecom
-	b.mu.Unlock()
-	if wc == nil {
+	_, wc, err := b.connection()
+	if err != nil {
 		return
 	}
 	if _, err := wc.call(ctx, "aibot_respond_update_msg", reqID, map[string]any{"response_type": "update_template_card", "template_card": card}); err != nil {
@@ -359,23 +354,19 @@ func (b *Bridge) sendToChatThread(ctx context.Context, th *chatThread, text stri
 	if th.kind != kindChannelPost {
 		return b.sendToUser(ctx, th, markdown(text))
 	}
-	b.mu.Lock()
-	api := b.api
-	b.mu.Unlock()
-	if api == nil {
-		return errNotConnected
+	api, _, err := b.connection()
+	if err != nil {
+		return err
 	}
-	_, err := api.sendReply(ctx, th.topicID, th.postID, text, nil)
+	_, err = api.sendReply(ctx, th.topicID, th.postID, text, nil)
 	return err
 }
 
 // sendToUser sends a message body to a direct message.
 func (b *Bridge) sendToUser(ctx context.Context, th *chatThread, body map[string]any) error {
-	b.mu.Lock()
-	wc := b.wecom
-	b.mu.Unlock()
-	if wc == nil {
-		return errNotConnected
+	_, wc, err := b.connection()
+	if err != nil {
+		return err
 	}
 	return b.sendDirect(ctx, th, wc, body)
 }
@@ -390,12 +381,14 @@ func newTaskID() string {
 	return "droi-" + hex.EncodeToString(b)
 }
 
-func cutRunes(s string, n int) string {
+// cutRunes is s within n runes: when it is longer, its first runes and
+// then mark, n runes in all.
+func cutRunes(s string, n int, mark string) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
 	}
-	return string(r[:n-1]) + "…"
+	return string(r[:n-utf8.RuneCountInString(mark)]) + mark
 }
 
 // toolNames are the tools a permission request asks to run.
@@ -458,7 +451,7 @@ func permissionCard(p *prompt) map[string]any {
 // choice and who made it, and no options.
 func settledCard(p *prompt) map[string]any {
 	card := cardFrame(p)
-	card["sub_title_text"] = cutRunes(outcome(p), 112)
+	card["sub_title_text"] = cutRunes(outcome(p), 112, "…")
 	card["button_list"] = []map[string]any{{"text": "Answered", "style": 2, "key": "answered"}}
 	return card
 }
@@ -478,8 +471,8 @@ func goneCard(taskID string) map[string]any {
 func cardFrame(p *prompt) map[string]any {
 	return map[string]any{
 		"card_type":  "button_interaction",
-		"main_title": map[string]any{"title": cutRunes("Droid asks to run "+toolNames(p.perm), maxCardTitleRunes)},
-		"quote_area": map[string]any{"quote_text": cutRunes(toolDetails(p.perm), maxQuoteRunes)},
+		"main_title": map[string]any{"title": cutRunes("Droid asks to run "+toolNames(p.perm), maxCardTitleRunes, "…")},
+		"quote_area": map[string]any{"quote_text": cutRunes(toolDetails(p.perm), maxQuoteRunes, "…")},
 		"task_id":    p.taskID,
 	}
 }

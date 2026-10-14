@@ -255,6 +255,14 @@ func (a *wecomAPI) getReply(ctx context.Context, topicID, postID, replyID string
 	return content{}, errors.New("WeCom has no such reply")
 }
 
+// getContent is a post (replyID "") or one of its replies.
+func (a *wecomAPI) getContent(ctx context.Context, topicID, postID, replyID string) (content, error) {
+	if replyID != "" {
+		return a.getReply(ctx, topicID, postID, replyID)
+	}
+	return a.getPost(ctx, topicID, postID)
+}
+
 // replyPage is a page of the replies under a post, oldest first, and the
 // cursor of the next page, "" after the last.
 func (a *wecomAPI) replyPage(ctx context.Context, topicID, postID, cursor string, limit int) ([]content, string, error) {
