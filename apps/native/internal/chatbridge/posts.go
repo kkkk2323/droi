@@ -3,6 +3,7 @@ package chatbridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -238,6 +239,36 @@ func edited(c content) string {
 		return " (edited)"
 	}
 	return ""
+}
+
+const maxEmoji = 115
+
+// react puts one of WeCom's emoji on the post or one of its replies, or
+// removes it.
+func (b *Bridge) react(ctx context.Context, th *thread, emoji int, replyID string, remove bool) (string, error) {
+	if th.kind != threadKindChannel {
+		return "", errors.New("react works only in a WeCom Channel; this Chat Thread is a direct message")
+	}
+	if emoji < 1 || emoji > maxEmoji {
+		return "", fmt.Errorf("emoji is %d; WeCom's emoji are 1 to %d", emoji, maxEmoji)
+	}
+	b.mu.Lock()
+	api := b.api
+	b.mu.Unlock()
+	if api == nil {
+		return "", errNotConnected
+	}
+	if err := api.postEmoji(ctx, th.topicID, th.postID, replyID, emoji, !remove); err != nil {
+		return "", fmt.Errorf("not done: %w", err)
+	}
+	on := "the post"
+	if replyID != "" {
+		on = "reply " + replyID
+	}
+	if remove {
+		return fmt.Sprintf("Removed emoji %d from %s.", emoji, on), nil
+	}
+	return fmt.Sprintf("Put emoji %d on %s.", emoji, on), nil
 }
 
 // replyInChannel posts Markdown as a reply under the Chat Thread's post.

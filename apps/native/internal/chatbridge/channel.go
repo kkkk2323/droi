@@ -260,6 +260,19 @@ func (a *channelAPI) replyPage(ctx context.Context, topicID, postID, cursor stri
 	return res.Replies, res.NextCursor, nil
 }
 
+// postEmoji puts one of WeCom's emoji on a post (replyID "") or a reply,
+// or removes it.
+func (a *channelAPI) postEmoji(ctx context.Context, topicID, postID, replyID string, emoji int, put bool) error {
+	body := map[string]any{"topic_id": topicID, "post_id": postID, "emoji_type": emoji, "action": 0}
+	if put {
+		body["action"] = 1
+	}
+	if replyID != "" {
+		body["reply_id"] = replyID
+	}
+	return a.call(ctx, "/topic/post_emoji", body, nil)
+}
+
 // sendReply posts Markdown under a post and returns the reply's id.
 func (a *channelAPI) sendReply(ctx context.Context, topicID, postID, text string) (string, error) {
 	var res struct {

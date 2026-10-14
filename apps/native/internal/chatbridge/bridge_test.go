@@ -395,7 +395,7 @@ func TestTheDroiChatServerListsItsTools(t *testing.T) {
 	for _, x := range list {
 		names = append(names, x.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "reply,read_thread" {
+	if strings.Join(names, ",") != "reply,read_thread,react" {
 		t.Errorf("tools %v", names)
 	}
 }

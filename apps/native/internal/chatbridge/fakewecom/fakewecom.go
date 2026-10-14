@@ -78,6 +78,7 @@ type WeCom struct {
 	replies  map[string][]*Post
 	calls    []APICall
 	apiFail  map[string][]failure
+	emoji    map[string][]int
 }
 
 // Start runs a Fake WeCom for the test and stops it when the test ends.

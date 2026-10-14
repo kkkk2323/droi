@@ -82,6 +82,7 @@ var apiHandlers = map[string]apiHandler{
 	"/topic/get_post_list":  (*WeCom).getPostList,
 	"/topic/get_reply_list": (*WeCom).getReplyList,
 	"/topic/send_reply":     (*WeCom).sendReply,
+	"/topic/post_emoji":     (*WeCom).postEmoji,
 }
 
 // SetClock makes now the Fake WeCom's clock, which get_token's time is
