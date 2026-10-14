@@ -41,7 +41,7 @@ How we measured: [apps/native/docs/performance.md](./apps/native/docs/performanc
 
 ## Requirements
 
-- macOS (one app for Apple silicon and Intel), or Windows 10 or 11 (x64)
+- macOS (one app for Apple silicon and Intel), or Windows 10 or 11 (x64); on Linux (x64 or arm64) only the windowless Host, `droi host` ([how](./apps/native/README.md#droi-host-on-linux))
 - The [Droid CLI](https://docs.factory.ai) (`droid` on PATH, in `~/.local/bin`, or in `%USERPROFILE%\bin` on Windows)
 - A Factory account: Droi shares its login with the `droid` CLI, and the Daemon runs as it
 
