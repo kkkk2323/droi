@@ -18,12 +18,12 @@ type Controller interface {
 	UnarchiveSession(ctx context.Context, params protocol.UnarchiveSessionParams) (*protocol.UnarchiveSessionResult, error)
 }
 
-// Scratch is the Desktop Shell's side of Scratch Workspace folders.
+// Scratch is the Gateway's side of Scratch Workspace folders (gateway.Client).
 type Scratch interface {
-	// Trash moves the folder to the Trash; an empty one is simply removed.
-	Trash(ctx context.Context, path string) error
-	// Restore recreates the folder if it is gone.
-	Restore(ctx context.Context, path string) error
+	// TrashScratch moves the folder to the Trash; an empty one is simply removed.
+	TrashScratch(ctx context.Context, path string) error
+	// RestoreScratch recreates the folder if it is gone.
+	RestoreScratch(ctx context.Context, path string) error
 }
 
 func Conversation(ctx context.Context, c Controller, scratch Scratch, listed []sessions.Summary, session sessions.Summary) error {
@@ -31,7 +31,9 @@ func Conversation(ctx context.Context, c Controller, scratch Scratch, listed []s
 		_, err := c.ArchiveSession(ctx, protocol.ArchiveSessionParams{SessionID: session.SessionID})
 		return err
 	}
+	archiving := map[string]bool{}
 	for _, each := range append([]sessions.Summary{session}, sessions.ContinuationChain(listed, session)...) {
+		archiving[each.SessionID] = true
 		if each.ArchivedAt != "" {
 			continue
 		}
@@ -39,10 +41,21 @@ func Conversation(ctx context.Context, c Controller, scratch Scratch, listed []s
 			return err
 		}
 	}
-	if session.Cwd != "" {
-		return scratch.Trash(ctx, session.Cwd)
+	if session.Cwd == "" || stillUsed(listed, archiving, session.Cwd) {
+		return nil
 	}
-	return nil
+	return scratch.TrashScratch(ctx, session.Cwd)
+}
+
+// stillUsed says a Session outside the conversation being archived, such as
+// another continuation after the same compaction, is still open in the folder.
+func stillUsed(listed []sessions.Summary, archiving map[string]bool, cwd string) bool {
+	for _, s := range listed {
+		if s.Cwd == cwd && s.ArchivedAt == "" && !archiving[s.SessionID] {
+			return true
+		}
+	}
+	return false
 }
 
 func Unarchive(ctx context.Context, c Controller, scratch Scratch, listed []sessions.Summary, session sessions.Summary) error {
@@ -51,7 +64,7 @@ func Unarchive(ctx context.Context, c Controller, scratch Scratch, listed []sess
 		return err
 	}
 	if session.Cwd != "" {
-		if err := scratch.Restore(ctx, session.Cwd); err != nil {
+		if err := scratch.RestoreScratch(ctx, session.Cwd); err != nil {
 			return err
 		}
 	}

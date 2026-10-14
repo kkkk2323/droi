@@ -21,12 +21,12 @@ func (c *calls) UnarchiveSession(_ context.Context, p protocol.UnarchiveSessionP
 	return nil, nil
 }
 
-func (c *calls) Trash(_ context.Context, path string) error {
+func (c *calls) TrashScratch(_ context.Context, path string) error {
 	c.log = append(c.log, "trash "+path)
 	return nil
 }
 
-func (c *calls) Restore(_ context.Context, path string) error {
+func (c *calls) RestoreScratch(_ context.Context, path string) error {
 	c.log = append(c.log, "restore "+path)
 	return nil
 }
@@ -67,5 +67,29 @@ func TestAScratchConversationGoesWithItsChainAndFolder(t *testing.T) {
 	}
 	if want := []string{"restore /s/2026-01-02-abc123", "unarchive child", "unarchive parent", "unarchive root"}; !reflect.DeepEqual(c.log, want) {
 		t.Errorf("unarchive log = %v", c.log)
+	}
+}
+
+func TestAScratchFolderAnotherUnarchivedSessionStillUsesStaysWhereItIs(t *testing.T) {
+	var c calls
+	dir := "/s/2026-01-02-abc123"
+	cat := sessions.Summary{SessionID: "cat", ParentID: "root", Cwd: dir}
+	fish := sessions.Summary{SessionID: "fish", ParentID: "root", Cwd: dir}
+	listed := []sessions.Summary{cat, fish, {SessionID: "root", Cwd: dir}, {SessionID: "other", Cwd: "/s/2026-01-03-def456"}}
+
+	if err := Conversation(context.Background(), &c, &c, listed, cat); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"archive cat", "archive root"}; !reflect.DeepEqual(c.log, want) {
+		t.Errorf("log = %v, want the folder left alone", c.log)
+	}
+
+	c.log = nil
+	listed[0].ArchivedAt, listed[2].ArchivedAt = "2026-01-04", "2026-01-04"
+	if err := Conversation(context.Background(), &c, &c, listed, fish); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"archive fish", "trash " + dir}; !reflect.DeepEqual(c.log, want) {
+		t.Errorf("log = %v, want the folder to go with the last Session", c.log)
 	}
 }
