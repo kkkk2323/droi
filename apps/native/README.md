@@ -26,7 +26,8 @@ Client reaches (ADR 0019). Run `droi` without `host` there and it says so and ex
 systems. Extract one anywhere; the program is `droi`:
 
 ```sh
-VERSION=1.46.2 ARCH=amd64   # the Release's version; arm64 on ARM
+ARCH=amd64   # arm64 on ARM
+VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/kkkk2323/droi/releases/latest | sed 's|.*/v||')
 curl -fsSLO https://github.com/kkkk2323/droi/releases/download/v$VERSION/droi-$VERSION-linux-$ARCH.tar.gz
 sudo mkdir -p /opt/droi && sudo tar -xzf droi-$VERSION-linux-$ARCH.tar.gz -C /opt/droi
 ```
@@ -112,28 +113,28 @@ no split.
 
 ## Layout
 
-| Path                                                            | What                                                                                                    |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `main.go`                                                       | the app: window, menus, the Host                                                                        |
-| `assets/`                                                       | the vendored Geist fonts, embedded                                                                      |
-| `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                  |
-| `internal/icons/`                                               | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                                |
-| `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login                    |
-| `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export                |
-| `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                       |
-| `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints    |
-| `internal/computer/`                                            | the Computer preference: the one other computer the window follows, and checking its pairing link       |
-| `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                     |
-| `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                   |
-| `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)                |
-| `internal/sessions/`                                            | the Session list: grouping, sorting, pins, activity (daemon-layer port)                                 |
-| `internal/automations/`                                         | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                  |
-| `internal/models/`, `defaults/`, `skills/`, `mcp/`, `slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each   |
-| `internal/md/`                                                  | streaming Markdown to blocks                                                                            |
-| `internal/highlight/`                                           | code colours as Shiki gives them                                                                        |
-| `internal/kit/`                                                 | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs                    |
-| `internal/app/`                                                 | the views: shell, sidebar, Session, composer, prompts, settings                                         |
-| `testdata/reference/`                                           | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts`   |
+| Path                                                            | What                                                                                                  |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `main.go`                                                       | the app: window, menus, the Host                                                                      |
+| `assets/`                                                       | the vendored Geist fonts, embedded                                                                    |
+| `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                |
+| `internal/icons/`                                               | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |
+| `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login                   |
+| `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
+| `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                     |
+| `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints  |
+| `internal/computer/`                                            | the Computer preference: the one other computer the window follows, and checking its pairing link     |
+| `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                   |
+| `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                 |
+| `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)              |
+| `internal/sessions/`                                            | the Session list: grouping, sorting, pins, activity (daemon-layer port)                               |
+| `internal/automations/`                                         | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
+| `internal/models/`, `defaults/`, `skills/`, `mcp/`, `slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
+| `internal/md/`                                                  | streaming Markdown to blocks                                                                          |
+| `internal/highlight/`                                           | code colours as Shiki gives them                                                                      |
+| `internal/kit/`                                                 | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs                  |
+| `internal/app/`                                                 | the views: shell, sidebar, Session, composer, prompts, settings                                       |
+| `testdata/reference/`                                           | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |
 
 ## Commands (from the repository root)
 
