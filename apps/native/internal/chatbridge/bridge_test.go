@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -558,6 +557,65 @@ func TestTheLongConnectionKeepsPinging(t *testing.T) {
 	}
 }
 
+// waitForStatus waits until the Chat Bridge reports ok.
+func (r *rig) waitForStatus(what string, ok func(chatbridge.Status) bool) chatbridge.Status {
+	r.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		s := r.b.Status()
+		if ok(s) {
+			return s
+		}
+		if time.Now().After(deadline) {
+			r.t.Fatalf("never %s; status %+v", what, s)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestTheStatusSaysConnectedOrWhyNot(t *testing.T) {
+	r := start(t, func(s *host.Settings) { s.ChatBridge.Secret = "wrong" })
+	s := r.waitForStatus("not connected", func(s chatbridge.Status) bool { return s.State == chatbridge.NotConnected })
+	if !strings.Contains(s.Reason, "853000") || !strings.Contains(s.Reason, "invalid bot_id or secret") || strings.Contains(s.Reason, "wrong") {
+		t.Errorf("reason %q", s.Reason)
+	}
+
+	_ = r.settings.Update(func(s *host.Settings) { s.ChatBridge.Secret = robot.Secret })
+	r.b.Follow()
+	r.waitForStatus("connected", func(s chatbridge.Status) bool { return s.State == chatbridge.Connected && s.Reason == "" })
+
+	r.w.Drop()
+	r.w.WaitForSubscription(2)
+	r.waitForStatus("connected again", func(s chatbridge.Status) bool { return s.State == chatbridge.Connected })
+
+	_ = r.settings.Update(func(s *host.Settings) { s.ChatBridge.BotID = "" })
+	r.b.Follow()
+	r.waitForStatus("off", func(s chatbridge.Status) bool { return s.State == chatbridge.Off })
+}
+
+func TestTheStatusChangeIsHeard(t *testing.T) {
+	heard := make(chan struct{}, 16)
+	r := startWith(t, nil, func(o *chatbridge.Options) {
+		o.OnChange = func() { heard <- struct{}{} }
+	})
+	r.waitForStatus("connected", func(s chatbridge.Status) bool { return s.State == chatbridge.Connected })
+	select {
+	case <-heard:
+	case <-time.After(5 * time.Second):
+		t.Fatal("nobody heard the Chat Bridge connect")
+	}
+}
+
+func TestRestartConnectsAgainWithTheSameRobot(t *testing.T) {
+	r := start(t, nil)
+	r.w.WaitForSubscription(1)
+	r.b.Restart()
+	r.w.WaitForSubscription(2)
+	if n := r.w.Handshakes(); n != 2 {
+		t.Errorf("%d handshakes for one restart", n)
+	}
+}
+
 func TestAnEmptyBotIDLeavesTheChatBridgeOff(t *testing.T) {
 	r := start(t, func(s *host.Settings) { s.ChatBridge.BotID = "" })
 	time.Sleep(300 * time.Millisecond)
@@ -822,47 +880,28 @@ func TestADaemonRestartKeepsAChatThreadsLink(t *testing.T) {
 }
 
 func TestAnotherConnectionTakingTheRobotStopsTheChatBridge(t *testing.T) {
-	changed := make(chan struct{}, 8)
-	r := startWith(t, nil, func(o *chatbridge.Options) {
-		o.OnChange = func() {
-			select {
-			case changed <- struct{}{}:
-			default:
-			}
-		}
-	})
-	r.w.WaitForSubscription(1)
-	eventually(t, "connected", func() bool { s := r.b.Status(); return s.Connected && s.Stopped == nil })
+	r := start(t, nil)
+	r.waitForStatus("connected", func(s chatbridge.Status) bool { return s.State == chatbridge.Connected })
 
 	// Another Host subscribes the same robot.
 	other := chatbridge.New(r.options)
 	t.Cleanup(other.Stop)
 	other.Follow()
 	r.w.WaitForSubscription(2)
-	select {
-	case <-changed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the Host never heard the Chat Bridge stopped")
-	}
-	if s := r.b.Status(); s.Connected || !errors.Is(s.Stopped, chatbridge.ErrTakenOver) {
+	s := r.waitForStatus("stopped", func(s chatbridge.Status) bool { return s.State == chatbridge.NotConnected })
+	if !strings.Contains(s.Reason, "another connection took over the robot") {
 		t.Errorf("status %+v after another connection took the robot", s)
 	}
 	time.Sleep(300 * time.Millisecond)
 	if n := r.w.Subscriptions(); n != 2 {
 		t.Errorf("%d subscriptions: the Chat Bridge fought for the robot", n)
 	}
-	if s := other.Status(); !s.Connected {
+	if s := other.Status(); s.State != chatbridge.Connected {
 		t.Errorf("the other Host's status %+v", s)
 	}
-}
 
-func eventually(t *testing.T, what string, ok func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for !ok() {
-		if time.Now().After(deadline) {
-			t.Fatalf("never %s", what)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Restart takes the robot back.
+	r.b.Restart()
+	r.w.WaitForSubscription(3)
+	r.waitForStatus("connected again", func(s chatbridge.Status) bool { return s.State == chatbridge.Connected })
 }

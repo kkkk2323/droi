@@ -44,8 +44,8 @@ type Options struct {
 	IdleTimeout time.Duration
 	// Now is time.Now when nil.
 	Now func() time.Time
-	// OnChange hears that the Chat Bridge changed the settings or stopped
-	// (see Status).
+	// OnChange hears that the Chat Bridge changed the settings or its
+	// Status.
 	OnChange func()
 	Log      func(string)
 }
@@ -64,6 +64,7 @@ type Bridge struct {
 	stopped bool
 	robot   string
 	wecom   *longConnection
+	status  Status
 	api     *channelAPI
 	tools   *toolServer
 	threads map[string]*thread
@@ -73,6 +74,28 @@ type Bridge struct {
 	// since the Chat Bridge last connected to it.
 	synced bool
 	syncMu sync.Mutex
+}
+
+// State is how far the Chat Bridge is connected to WeCom.
+type State int
+
+const (
+	// Off: no robot is set.
+	Off State = iota
+	Connecting
+	Connected
+	// NotConnected: the last attempt failed or the connection dropped; the
+	// Chat Bridge tries again, unless another connection took over the
+	// robot (Reason says so), when only Restart connects again.
+	NotConnected
+)
+
+// Status is the Chat Bridge's connection, for Settings.
+type Status struct {
+	State State
+	// Reason is why it is NotConnected: WeCom's answer or the network's
+	// error. It never holds the Secret.
+	Reason string
 }
 
 // thread is a Chat Thread and its Chat Session.
@@ -160,19 +183,33 @@ func New(o Options) *Bridge {
 
 // Follow connects, reconnects or disconnects the robot as the settings now
 // name it: an empty Bot ID leaves the Chat Bridge off.
-func (b *Bridge) Follow() {
+func (b *Bridge) Follow() { b.follow(false) }
+
+// Restart connects again with the settings as they are now, even when the
+// robot is the same, rather than waiting out the delay between attempts.
+func (b *Bridge) Restart() { b.follow(true) }
+
+// Status is the connection to WeCom now.
+func (b *Bridge) Status() Status {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.status
+}
+
+func (b *Bridge) follow(again bool) {
 	cb := b.o.Settings.Get().ChatBridge
 	robot := ""
 	if cb.On() {
 		robot = cb.BotID + "\x00" + cb.Secret
 	}
 	b.mu.Lock()
-	if b.stopped || robot == b.robot {
+	if b.stopped || robot == b.robot && !again {
 		b.mu.Unlock()
 		return
 	}
 	old := b.wecom
 	b.robot, b.wecom, b.api = robot, nil, nil
+	b.status = Status{State: Off}
 	if robot != "" {
 		b.api = newChannelAPI(b.o.APIURL, cb.BotID, cb.Secret, b.o.Now)
 		if b.tools == nil {
@@ -183,28 +220,37 @@ func (b *Bridge) Follow() {
 				b.tools = t
 			}
 		}
-		b.wecom = &longConnection{
+		wc := &longConnection{
 			url: b.o.WebSocketURL, botID: cb.BotID, secret: cb.Secret,
 			ping: b.o.PingInterval, delay: b.o.ReconnectDelay, max: b.o.MaxReconnectDelay,
-			onPush: b.push, onTaken: b.o.OnChange, log: b.o.Log,
+			onPush: b.push, log: b.o.Log,
 		}
-		b.wecom.start()
+		wc.onStatus = func(connected bool, reason string) { b.connectionStatus(wc, connected, reason) }
+		b.wecom, b.status = wc, Status{State: Connecting}
+		wc.start()
 	}
 	b.mu.Unlock()
 	if old != nil {
 		old.close()
 	}
+	go b.o.OnChange()
 }
 
-// Status is the robot's long connection; zero while the Chat Bridge is off.
-func (b *Bridge) Status() Status {
+// connectionStatus records what connection wc reports while it is the
+// robot's. OnChange runs on its own goroutine: it may call Follow, which
+// waits for wc to end.
+func (b *Bridge) connectionStatus(wc *longConnection, connected bool, reason string) {
 	b.mu.Lock()
-	wc := b.wecom
-	b.mu.Unlock()
-	if wc == nil {
-		return Status{}
+	if b.wecom != wc {
+		b.mu.Unlock()
+		return
 	}
-	return wc.status()
+	b.status = Status{State: Connected}
+	if !connected {
+		b.status = Status{State: NotConnected, Reason: reason}
+	}
+	b.mu.Unlock()
+	go b.o.OnChange()
 }
 
 // Stop disconnects the robot and the Daemon.

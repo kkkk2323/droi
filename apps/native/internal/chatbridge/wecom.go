@@ -36,20 +36,10 @@ func (e *WeComError) Error() string { return fmt.Sprintf("WeCom error %d: %s", e
 
 var errNotConnected = errors.New("not connected to WeCom")
 
-// ErrTakenOver is why the Chat Bridge gave up the robot: another connection
+// takenOver is why the Chat Bridge gave up the robot: another connection
 // subscribed it, and WeCom keeps one per robot. The Chat Bridge does not
-// take it back, which would only take turns with the other; a change of
-// robot in the settings connects again.
-var ErrTakenOver = errors.New("another connection took over the robot")
-
-// Status is the robot's long connection.
-type Status struct {
-	// Connected: subscribed now.
-	Connected bool
-	// Stopped is why the Chat Bridge stopped connecting, nil while it
-	// keeps the robot.
-	Stopped error
-}
+// take it back, which would only take turns with the other.
+const takenOver = "another connection took over the robot, so the Chat Bridge stopped; Restart takes it back"
 
 // frame is a frame on the long connection. The server's answer to a frame
 // has no cmd, and errcode in place of a body.
@@ -89,9 +79,9 @@ type longConnection struct {
 	url, botID, secret string
 	ping, delay, max   time.Duration
 	onPush             func(frame)
-	// onTaken hears that another connection took over the robot.
-	onTaken func()
-	log     func(string)
+	// onStatus hears the connection come up, or fail and why; not its close.
+	onStatus func(connected bool, reason string)
+	log      func(string)
 
 	stop chan struct{}
 	done chan struct{}
@@ -126,8 +116,7 @@ func (l *longConnection) run() {
 		taken := l.taken
 		l.mu.Unlock()
 		if taken {
-			l.log("another connection took over the robot; the Chat Bridge stopped")
-			l.onTaken()
+			l.fail(takenOver)
 			return
 		}
 		select {
@@ -158,7 +147,7 @@ func (l *longConnection) connect() bool {
 	dcancel()
 	if err != nil {
 		if ctx.Err() == nil {
-			l.log("cannot reach WeCom: " + err.Error())
+			l.fail("cannot reach WeCom: " + err.Error())
 		}
 		return false
 	}
@@ -178,7 +167,7 @@ func (l *longConnection) connect() bool {
 	}()
 	if _, err := l.callOn(ctx, c, "aibot_subscribe", "", map[string]string{"bot_id": l.botID, "secret": l.secret}); err != nil {
 		if ctx.Err() == nil {
-			l.log("WeCom refused the subscription: " + err.Error())
+			l.fail("WeCom refused the subscription: " + err.Error())
 		}
 		return false
 	}
@@ -186,6 +175,7 @@ func (l *longConnection) connect() bool {
 	l.conn = c
 	l.mu.Unlock()
 	l.log("connected to WeCom")
+	l.onStatus(true, "")
 	ticker := time.NewTicker(l.ping)
 	defer ticker.Stop()
 	for {
@@ -197,8 +187,11 @@ func (l *longConnection) connect() bool {
 				}
 			}()
 		case err := <-dropped:
-			if ctx.Err() == nil {
-				l.log("the WeCom connection dropped: " + err.Error())
+			l.mu.Lock()
+			taken := l.taken
+			l.mu.Unlock()
+			if ctx.Err() == nil && !taken {
+				l.fail("the WeCom connection dropped: " + err.Error())
 			}
 			return true
 		case <-ctx.Done():
@@ -206,6 +199,11 @@ func (l *longConnection) connect() bool {
 			return true
 		}
 	}
+}
+
+func (l *longConnection) fail(reason string) {
+	l.log(reason)
+	l.onStatus(false, reason)
 }
 
 func (l *longConnection) receive(data []byte) {
@@ -246,16 +244,6 @@ func isDisconnectedEvent(body json.RawMessage) bool {
 		} `json:"event"`
 	}
 	return json.Unmarshal(body, &b) == nil && b.Event.EventType == "disconnected_event"
-}
-
-func (l *longConnection) status() Status {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	s := Status{Connected: l.conn != nil}
-	if l.taken {
-		s.Stopped = ErrTakenOver
-	}
-	return s
 }
 
 // dropAnswers ends the calls still waiting on connection c.

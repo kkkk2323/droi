@@ -212,7 +212,7 @@ func TestFollowingAnotherComputerHidesWhatBelongsToThisHost(t *testing.T) {
 	h := followHarness(t, localSessions(), o.paired(), nil, func(cfg *Config) { cfg.Remote = &fakeRemote{} })
 	h.until("the Session list", func() bool { return h.hasText("On the box") })
 	h.openSettingsTab("computer")
-	for _, hidden := range []string{"Account", "Memory", "Remote Access", "Advanced"} {
+	for _, hidden := range []string{"Account", "Memory", "Chat Bridge", "Remote Access", "Advanced"} {
 		if h.hasButton(hidden) {
 			t.Errorf("the %s tab is shown while following another computer", hidden)
 		}
@@ -222,7 +222,7 @@ func TestFollowingAnotherComputerHidesWhatBelongsToThisHost(t *testing.T) {
 			t.Errorf("no %s tab", shown)
 		}
 	}
-	if !h.hasText("Account, Memory, Remote Access and Advanced are changed on Ubuntu box.") {
+	if !h.hasText("Account, Memory, Chat Bridge, Remote Access and Advanced are changed on Ubuntu box.") {
 		t.Fatalf("no line saying where they are changed: %q", h.tt.Texts())
 	}
 }
@@ -230,7 +230,7 @@ func TestFollowingAnotherComputerHidesWhatBelongsToThisHost(t *testing.T) {
 func TestThisComputersSettingsTabsAreThereWhenFollowingNothing(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t); cfg.Remote = &fakeRemote{} })
 	h.openSettingsTab("computer")
-	for _, shown := range []string{"Account", "Memory", "Remote Access", "Advanced", "Computer"} {
+	for _, shown := range []string{"Account", "Memory", "Chat Bridge", "Remote Access", "Advanced", "Computer"} {
 		if !h.hasButton(shown) {
 			t.Errorf("no %s tab", shown)
 		}

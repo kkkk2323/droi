@@ -101,6 +101,8 @@ type Config struct {
 	Relaunch func()
 	// Memory is the Host's Memory; nil without a Host.
 	Memory Memory
+	// ChatBridge is the Host's Chat Bridge; nil without a Host.
+	ChatBridge ChatBridge
 	// Remote is the Gateway for paired phones; nil without a Host.
 	Remote Remote
 	// FactoryAppRunning reports whether the Factory App's Daemon runs too,
@@ -182,6 +184,7 @@ type App struct {
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
+	chat            chatState
 	automations     automationsState
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
@@ -212,9 +215,10 @@ func New(cfg Config) *App {
 		cfg.Prefs = prefs.Memory()
 	}
 	if cfg.Computer != nil {
-		// This computer's Host, Memory, Gateway and Factory App are not the
-		// followed computer's, so the views that need one are left out.
-		cfg.Host, cfg.Memory, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil
+		// This computer's Host, Memory, Chat Bridge, Gateway and Factory App
+		// are not the followed computer's, so the views that need one are
+		// left out.
+		cfg.Host, cfg.Memory, cfg.ChatBridge, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil, nil
 	}
 	a := &App{
 		cfg:    cfg,
