@@ -68,7 +68,9 @@ const (
 	maxQuoteRunes     = 600
 )
 
-// promptEvent follows the Controller's Prompts.
+// promptEvent follows the Controller's Prompts. What reaches WeCom goes on
+// the Chat Thread's operations: the Controller's events, the idle close
+// and the archive among them, wait for this to return.
 func (b *Bridge) promptEvent(e controller.Event) {
 	switch e := e.(type) {
 	case controller.PermissionRequested:
@@ -111,8 +113,12 @@ func (b *Bridge) asked(p *prompt, sessions []string) {
 	}
 	b.prompts.open[p.requestID] = p
 	b.mu.Unlock()
+	b.run(p.th, func() { b.show(p) })
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+// show sends a Prompt to its Chat Thread.
+func (b *Bridge) show(p *prompt) {
+	ctx, cancel := b.opContext(fetchTimeout)
 	defer cancel()
 	var err error
 	switch {
@@ -146,11 +152,13 @@ func (b *Bridge) resolvedElsewhere(requestID, option string) {
 	p.settle("")
 	note := settledNote(p)
 	b.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
-	defer cancel()
-	if err := b.sendToChatThread(ctx, p.th, note); err != nil {
-		b.o.Log("cannot tell WeCom a Prompt was answered: " + err.Error())
-	}
+	b.run(p.th, func() {
+		ctx, cancel := b.opContext(fetchTimeout)
+		defer cancel()
+		if err := b.sendToChatThread(ctx, p.th, note); err != nil {
+			b.o.Log("cannot tell WeCom a Prompt was answered: " + err.Error())
+		}
+	})
 }
 
 // settle marks the Prompt answered by the WeCom user by, or (by "") by a
@@ -191,7 +199,7 @@ func (b *Bridge) answerInChatThread(th *chatThread, user, text string) bool {
 		b.mu.Unlock()
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+	ctx, cancel := b.opContext(fetchTimeout)
 	defer cancel()
 	if p.perm != nil {
 		n, err := strconv.Atoi(text)
@@ -302,7 +310,7 @@ func (b *Bridge) answerClick(f frame) {
 	if !b.admit(e.MsgID, user) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), cardTimeout)
+	ctx, cancel := b.opContext(cardTimeout)
 	defer cancel()
 	b.mu.Lock()
 	p := b.prompts.cards[click.TaskID]

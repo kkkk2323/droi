@@ -83,6 +83,7 @@ type WeCom struct {
 	replies  map[string][]*Post
 	calls    []APICall
 	apiFail  map[string][]failure
+	held     map[string]chan struct{}
 	emoji    map[string][]int
 
 	downloads map[string]download
@@ -98,6 +99,7 @@ func Start(t testing.TB, r Robot) *WeCom {
 		t: t, robot: r, changed: make(chan struct{}), fail: map[string][]failure{}, clicks: map[string]clicked{},
 		tokens: map[string]time.Time{}, channels: map[string]string{},
 		posts: map[string][]*Post{}, replies: map[string][]*Post{}, apiFail: map[string][]failure{},
+		held: map[string]chan struct{}{},
 	}
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(w.serve))
 	srv.Listener = recordingListener{srv.Listener}

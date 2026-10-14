@@ -215,9 +215,9 @@ func (b *Bridge) run(th *chatThread, op func()) {
 		return
 	}
 	th.running = true
-	b.chatThreadOps.Add(1)
+	b.tracked.Add(1)
 	go func() {
-		defer b.chatThreadOps.Done()
+		defer b.tracked.Done()
 		for {
 			b.mu.Lock()
 			if len(th.ops) == 0 || b.stopped {
@@ -328,7 +328,7 @@ func (b *Bridge) unlinkArchived(th *chatThread, id string) {
 	if !loaded {
 		return
 	}
-	ctx, cancel := b.opContext()
+	ctx, cancel := b.opContext(deliverTimeout)
 	defer cancel()
 	if err := b.ctl.CloseSession(ctx, protocol.CloseSessionParams{SessionID: id}); err != nil {
 		b.o.Log("cannot close an archived Chat Session: " + err.Error())
@@ -346,7 +346,7 @@ func (b *Bridge) closeIfIdle(th *chatThread, epoch int) {
 	if !idle {
 		return
 	}
-	ctx, cancel := b.opContext()
+	ctx, cancel := b.opContext(deliverTimeout)
 	defer cancel()
 	if err := b.ctl.CloseSession(ctx, protocol.CloseSessionParams{SessionID: id}); err != nil {
 		b.o.Log("cannot close an idle Chat Session: " + err.Error())
@@ -359,10 +359,10 @@ func (b *Bridge) closeIfIdle(th *chatThread, epoch int) {
 	b.mu.Unlock()
 }
 
-// opContext bounds an operation on the Daemon and ends it when the Chat
-// Bridge stops.
-func (b *Bridge) opContext() (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), deliverTimeout)
+// opContext bounds an operation by d and ends it when the Chat Bridge
+// stops.
+func (b *Bridge) opContext(d time.Duration) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
 	go func() {
 		select {
 		case <-b.stop:

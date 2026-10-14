@@ -58,8 +58,9 @@ type Bridge struct {
 	pushes chan frame
 	stop   chan struct{}
 	done   chan struct{}
-	// chatThreadOps are the Chat Threads' running operation queues.
-	chatThreadOps sync.WaitGroup
+	// tracked are the goroutines Stop waits for: the Chat Threads'
+	// operation queues and the card clicks being answered.
+	tracked sync.WaitGroup
 
 	mu          sync.Mutex
 	stopped     bool
@@ -283,7 +284,7 @@ func (b *Bridge) Stop() {
 	}
 	close(b.stop)
 	<-b.done
-	b.chatThreadOps.Wait()
+	b.tracked.Wait()
 	_ = b.ctl.Close()
 }
 
@@ -291,7 +292,15 @@ func (b *Bridge) push(f frame) {
 	// A click is answered within WeCom's 5 s, whatever the events before it
 	// are waiting for.
 	if isCardClick(f) {
-		go b.answerClick(f)
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if !b.stopped {
+			b.tracked.Add(1)
+			go func() {
+				defer b.tracked.Done()
+				b.answerClick(f)
+			}()
+		}
 		return
 	}
 	select {
@@ -452,7 +461,7 @@ func (b *Bridge) deliver(th *chatThread, text string) { b.deliverTo(th, text, fa
 func (b *Bridge) startOver(th *chatThread, text string) { b.deliverTo(th, text, true) }
 
 func (b *Bridge) deliverTo(th *chatThread, text string, archiveFirst bool) {
-	ctx, cancel := b.opContext()
+	ctx, cancel := b.opContext(deliverTimeout)
 	defer cancel()
 	if err := b.ready(ctx); err != nil {
 		b.o.Log(err.Error())

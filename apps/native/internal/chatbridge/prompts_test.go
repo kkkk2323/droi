@@ -559,6 +559,25 @@ func TestAnUnansweredPromptWaits(t *testing.T) {
 	}
 }
 
+func TestAPromptWeComIsSlowToShowHoldsUpNoOtherChatThread(t *testing.T) {
+	r := startTurn(t, permissionTurn, func(s *host.Settings) { s.ChatBridge.AllowedUsers = []string{"HuangJunXiang", "LiLei"} }, nil)
+	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "LiLei", Text: "Push it"})
+	direct := r.initialized(1)
+	r.sentCard(1)
+	r.w.HoldAPI("/topic/send_reply")
+	post := r.newPost("Push the release")
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	r.w.WaitForAPICall("/topic/send_reply", 1)
+
+	force := true
+	if _, err := r.client().ArchiveSession(context.Background(), protocol.ArchiveSessionParams{SessionID: direct.SessionID, Force: &force}); err != nil {
+		t.Fatal(err)
+	}
+	if id := r.closed(1); id != direct.SessionID {
+		t.Errorf("closed %s, the archived Chat Session is %s", id, direct.SessionID)
+	}
+}
+
 func TestNewStartsOverWhileAnAskUserWaits(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
 	post := r.newPost("Deploy")

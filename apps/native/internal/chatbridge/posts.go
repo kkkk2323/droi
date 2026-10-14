@@ -60,7 +60,7 @@ func (b *Bridge) handleEvent(f frame) {
 // atBot sends a post's Chat Session the @ of the robot there, with its text.
 func (b *Bridge) atBot(th *chatThread, e event) {
 	at, user := e.Event.TopicAtBot, e.From.UserID
-	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+	ctx, cancel := b.opContext(fetchTimeout)
 	defer cancel()
 	// After a restart the map knows the post's Chat Session only once
 	// rebuilt, which the hint depends on.

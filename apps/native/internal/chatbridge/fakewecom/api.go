@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -170,6 +172,42 @@ func (w *WeCom) APICalls(path string) []APICall {
 	return out
 }
 
+// HoldAPI keeps the calls to path unanswered until release, or until the
+// caller gives up; the test's end releases them too.
+func (w *WeCom) HoldAPI(path string) (release func()) {
+	ch := make(chan struct{})
+	w.mu.Lock()
+	w.held[path] = ch
+	w.mu.Unlock()
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			w.mu.Lock()
+			if w.held[path] == ch {
+				delete(w.held, path)
+			}
+			w.mu.Unlock()
+			close(ch)
+		})
+	}
+	w.t.Cleanup(release)
+	return release
+}
+
+// WaitForAPICall waits for the nth call to path, which may still be held.
+func (w *WeCom) WaitForAPICall(path string, nth int) {
+	w.t.Helper()
+	w.waitFor(fmt.Sprintf("call %d to %s", nth, path), func() bool {
+		n := 0
+		for _, c := range w.calls {
+			if c.Path == path {
+				n++
+			}
+		}
+		return n >= nth
+	})
+}
+
 // FailAPI answers the next call to path with a WeCom error.
 func (w *WeCom) FailAPI(path string, errcode int, errmsg string) {
 	w.mu.Lock()
@@ -245,6 +283,17 @@ func (w *WeCom) serveAPI(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.mu.Lock()
 	w.calls = append(w.calls, APICall{Path: r.URL.Path, Body: body})
+	w.notify()
+	hold := w.held[r.URL.Path]
+	w.mu.Unlock()
+	if hold != nil {
+		select {
+		case <-hold:
+		case <-r.Context().Done():
+			return
+		}
+	}
+	w.mu.Lock()
 	out, e := w.answer(r, body)
 	w.notify()
 	w.mu.Unlock()

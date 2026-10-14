@@ -887,6 +887,20 @@ func TestADaemonRestartKeepsAChatThreadsLink(t *testing.T) {
 	}
 }
 
+func TestStopDoesNotWaitForWeCom(t *testing.T) {
+	r := start(t, nil)
+	r.w.HoldAPI("/topic/get_post_list")
+	post := r.newPost("Hello")
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	r.w.WaitForAPICall("/topic/get_post_list", 1)
+
+	began := time.Now()
+	r.b.Stop()
+	if d := time.Since(began); d > 3*time.Second {
+		t.Errorf("Stop took %v while WeCom did not answer", d)
+	}
+}
+
 func TestAnotherConnectionTakingTheRobotStopsTheChatBridge(t *testing.T) {
 	r := start(t, nil)
 	r.waitForStatus("connected", func(s chatbridge.Status) bool { return s.State == chatbridge.Connected })
