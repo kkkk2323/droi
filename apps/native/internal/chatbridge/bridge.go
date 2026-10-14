@@ -371,12 +371,8 @@ func (b *Bridge) startOver(th *thread, text string) { b.deliverTo(th, text, true
 func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
 	ctx, cancel := b.opContext()
 	defer cancel()
-	if err := b.ctl.Connect(ctx); err != nil {
-		b.o.Log("cannot reach the Daemon: " + err.Error())
-		return
-	}
-	if err := b.sync(ctx); err != nil {
-		b.o.Log("cannot list the Chat Sessions: " + err.Error())
+	if err := b.ready(ctx); err != nil {
+		b.o.Log(err.Error())
 		return
 	}
 	b.mu.Lock()

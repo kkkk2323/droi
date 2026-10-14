@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
@@ -19,6 +20,10 @@ func directThread(user string) *thread {
 	return &thread{key: threadKindDirect + ":" + user, kind: threadKindDirect, userID: user}
 }
 
+func postThread(topicID, postID string) *thread {
+	return &thread{key: threadKindChannel + ":" + topicID + ":" + postID, kind: threadKindChannel, topicID: topicID, postID: postID}
+}
+
 // threadFromTags is the Chat Thread a Session's droi.chat tag names, nil
 // for a Session that is not a Chat Session.
 func threadFromTags(tags []protocol.SessionTag) *thread {
@@ -31,7 +36,25 @@ func threadFromTags(tags []protocol.SessionTag) *thread {
 			if user := t.Metadata["userId"]; user != "" {
 				return directThread(user)
 			}
+		case threadKindChannel:
+			if t.Metadata["topicId"] != "" && t.Metadata["postId"] != "" {
+				th := postThread(t.Metadata["topicId"], t.Metadata["postId"])
+				th.channel = t.Metadata["channel"]
+				return th
+			}
 		}
+	}
+	return nil
+}
+
+// ready connects to the Daemon and rebuilds the Chat Thread map when this
+// connection has not yet.
+func (b *Bridge) ready(ctx context.Context) error {
+	if err := b.ctl.Connect(ctx); err != nil {
+		return fmt.Errorf("cannot reach the Daemon: %w", err)
+	}
+	if err := b.sync(ctx); err != nil {
+		return fmt.Errorf("cannot list the Chat Sessions: %w", err)
 	}
 	return nil
 }
