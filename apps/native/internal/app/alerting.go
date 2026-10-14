@@ -20,11 +20,11 @@ type Alert struct {
 // unread, the chosen sound plays, and a notification shows unless the
 // user is looking at that Session. A `/compact` this window ran counts as
 // a completion. It runs on the Store's goroutine; the window's state
-// changes through Update.
-func (a *App) watchAlerts() {
+// changes through Update. It returns the end of the watch.
+func (a *App) watchAlerts() (unsubscribe func()) {
 	tracker := alerts.NewTracker()
 	store := a.ctl.Store()
-	store.Subscribe(func(e session.Event) {
+	unsubscribe = store.Subscribe(func(e session.Event) {
 		switch e.Kind {
 		case session.EventLoadStateChanged:
 			if e.LoadState != session.Loaded {
@@ -49,6 +49,7 @@ func (a *App) watchAlerts() {
 		id := f.SessionID
 		a.cfg.Update(func() { a.raise(id, "", alerts.Completion) })
 	})
+	return unsubscribe
 }
 
 // raise is one alert, on the main thread.

@@ -89,23 +89,11 @@ func main() {
 		Executable: executable(),
 	})
 	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
-	// The window follows one other computer when the Computer preference
-	// names it; this computer's Host, Gateway and Memory run all the same, for
-	// its phones and Automations.
-	followed := computer.Load(userPrefs)
 	localToken := gateway.NewLocalToken()
 	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem)
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}
-	ctl := controller.New(controller.Config{
-		ResolveURL: windowURL(followed, gw, gwErr, localToken, h.WaitForDaemonURL),
-		Credential: gateway.PlaceholderCredential,
-		Caller:     "droi-native",
-		// The Daemon restarts on its own (the Host's Supervisor); keep trying.
-		MaxReconnectAttempts: 1000,
-		DefaultMessageLimit:  app.LoadedMessageLimit,
-	})
 
 	// A build signed for updates can replace itself; `go run` cannot.
 	var updater *updates.Updater
@@ -132,42 +120,77 @@ func main() {
 		remote = gw
 	}
 
-	a := app.New(app.Config{
-		Controller:   ctl,
-		Prefs:        userPrefs,
-		Computer:     followed,
-		Update:       update,
-		InsetTop:     mac,
-		StatsFile:    filepath.Join(userData, "session-stats.json"),
-		OpenPath:     mygo.Shell.OpenPath,
-		ShowInFolder: mygo.Shell.ShowItemInFolder,
-		Gateway:      windowClient(followed, gw, localToken),
-		Host:         h,
-		Version:      version,
-		Env:          os.Getenv,
-		PlaySound:    func(s string) { playSound(h.SharedFactoryHome(), s) },
-		// The id is the Session's, so a click (even one that launches the
-		// app again) knows what to open; a newer alert replaces the older.
-		Notify: func(n app.Alert) {
-			_ = mygo.NewNotification(mygo.NotificationOptions{ID: n.SessionID, Title: n.Title, Body: n.Body, Silent: true}).Show()
-		},
-		Focused:   func() bool { return win != nil && win.IsFocused() },
-		ReadImage: mygo.Clipboard.ReadImage,
-		ReadFiles: func() []string { p, _ := mygo.Clipboard.ReadFiles(); return p },
-		Updater:   updater,
-		Relaunch:  mygo.App.Relaunch,
-		Remote:    remote,
-		Memory:    mem,
+	var setMenu func()
+	// shown is the window's insides for the computer it follows, built
+	// again in place of the old when the window switches to another; this
+	// computer's Host, Gateway, Memory and Chat Bridge run all the same, for
+	// its phones and Automations. Main thread only.
+	var shown *inside
+	var switchTo func(to *computer.Paired)
+	open := func(followed *computer.Paired) *inside {
+		ctl := controller.New(controller.Config{
+			ResolveURL: windowURL(followed, gw, gwErr, localToken, h.WaitForDaemonURL),
+			Credential: gateway.PlaceholderCredential,
+			Caller:     "droi-native",
+			// The Daemon restarts on its own (the Host's Supervisor); keep trying.
+			MaxReconnectAttempts: 1000,
+			DefaultMessageLimit:  app.LoadedMessageLimit,
+		})
+		a := app.New(app.Config{
+			Controller:   ctl,
+			Prefs:        userPrefs,
+			Computer:     followed,
+			Switch:       func(to *computer.Paired) { switchTo(to) },
+			Update:       update,
+			InsetTop:     mac,
+			StatsFile:    filepath.Join(userData, "session-stats.json"),
+			OpenPath:     mygo.Shell.OpenPath,
+			ShowInFolder: mygo.Shell.ShowItemInFolder,
+			Gateway:      windowClient(followed, gw, localToken),
+			Host:         h,
+			Version:      version,
+			Env:          os.Getenv,
+			PlaySound:    func(s string) { playSound(h.SharedFactoryHome(), s) },
+			// The id is the Session's, so a click (even one that launches the
+			// app again) knows what to open; a newer alert replaces the older.
+			Notify: func(n app.Alert) {
+				_ = mygo.NewNotification(mygo.NotificationOptions{ID: n.SessionID, Title: n.Title, Body: n.Body, Silent: true}).Show()
+			},
+			Focused:   func() bool { return win != nil && win.IsFocused() },
+			ReadImage: mygo.Clipboard.ReadImage,
+			ReadFiles: func() []string { p, _ := mygo.Clipboard.ReadFiles(); return p },
+			Updater:   updater,
+			Relaunch:  mygo.App.Relaunch,
+			Remote:    remote,
+			Memory:    mem,
 
-		ChatBridge:        chat,
-		FactoryAppRunning: host.FactoryAppRunning,
-	})
+			ChatBridge:        chat,
+			FactoryAppRunning: host.FactoryAppRunning,
+		})
+		a.SetLanguageChanged(func() {
+			if setMenu != nil {
+				setMenu()
+			}
+		})
+		return &inside{ctl: ctl, app: a, following: followed != nil}
+	}
+	shown = open(computer.Load(userPrefs))
+	switchTo = func(to *computer.Paired) {
+		old := shown
+		shown = open(to)
+		shown.app.SetLocale(mygo.App.Locale())
+		shown.start(h)
+		old.close()
+		update(func() {})
+	}
+	current := func() *app.App { return shown.app }
+
 	if updater != nil {
 		var waiting sync.Once
 		updater.OnChange(func(s updates.State) {
 			update(func() {})
 			if s.Status == updates.Ready {
-				waiting.Do(func() { go relaunchWhenIdle(a, update) })
+				waiting.Do(func() { go relaunchWhenIdle(current, update) })
 			}
 		})
 	}
@@ -177,28 +200,22 @@ func main() {
 		}
 		win.Show()
 		win.Focus()
-		win.Update(func() { a.OpenSession(id) })
+		win.Update(func() { current().OpenSession(id) })
 	})
 	highlight.Ready = func() { update(func() {}) }
 	h.OnChange(func() { update(func() {}) })
 
-	var setMenu func()
-	a.SetLanguageChanged(func() {
-		if setMenu != nil {
-			setMenu()
-		}
-	})
 	mygo.App.WhenReady(func() {
 		setMenu = func() {
 			mygo.App.SetMenu(menu(func(id string) {
-				update(func() { a.Run(id) })
+				update(func() { current().Run(id) })
 			}, func(step int) {
 				if win != nil {
-					win.Update(func() { a.Zoom(step) })
+					win.Update(func() { current().Zoom(step) })
 				}
 			}))
 		}
-		a.SetLocale(mygo.App.Locale())
+		current().SetLocale(mygo.App.Locale())
 		setMenu()
 		opts := mygo.WindowOptions{
 			Title:           "Droi",
@@ -208,7 +225,7 @@ func main() {
 			MinHeight:       480,
 			StateKey:        "main",
 			BackgroundColor: "#f3f3f3",
-			Content:         ui.View(a.View),
+			Content:         ui.View(func(c *ui.Context) { current().View(c) }),
 		}
 		if mac {
 			// Centres the traffic lights (about 14pt tall) in the Client's 44pt
@@ -222,11 +239,10 @@ func main() {
 		}
 		win = mygo.NewWindow(opts)
 		h.Start()
-		a.Start()
+		shown.start(h)
 		if updater != nil {
 			go updater.Schedule(context.Background())
 		}
-		go connectWhenSignedIn(ctl, h, followed != nil)
 	})
 	mygo.App.OnActivate(func(visible bool) {
 		if win != nil && !visible {
@@ -245,7 +261,7 @@ func main() {
 		}
 		chat.Stop()
 		mem.Stop()
-		ctl.Close()
+		shown.close()
 		h.Stop()
 	})
 	if err := mygo.App.Run(); err != nil {
@@ -363,12 +379,13 @@ func shouldConnect(st controller.Status, following bool, hasCredential func() bo
 	return !st.Connected && !st.Reconnecting && (following || hasCredential())
 }
 
-// connectWhenSignedIn keeps the window connected to the Daemon. Connect,
-// and the controller's own reconnecting, give up on a Daemon that rejects
-// the credential (none yet, or signed out), so whenever the controller or
-// the Host changes (a sign-in, an API key, a restarted Daemon) and the
-// window is neither connected nor reconnecting, it connects again.
-func connectWhenSignedIn(ctl *controller.Controller, h *host.Host, following bool) {
+// connectWhenSignedIn keeps the window connected to the Daemon until ctx
+// ends. Connect, and the controller's own reconnecting, give up on a Daemon
+// that rejects the credential (none yet, or signed out), so whenever the
+// controller or the Host changes (a sign-in, an API key, a restarted
+// Daemon) and the window is neither connected nor reconnecting, it connects
+// again.
+func connectWhenSignedIn(ctx context.Context, ctl *controller.Controller, h *host.Host, following bool) {
 	poke := make(chan struct{}, 1)
 	wake := func() {
 		select {
@@ -382,13 +399,16 @@ func connectWhenSignedIn(ctl *controller.Controller, h *host.Host, following boo
 			wake()
 		}
 	})()
-	for {
+	for ctx.Err() == nil {
 		if shouldConnect(ctl.Status(), following, h.HasCredential) {
-			if err := ctl.Connect(context.Background()); err != nil {
+			if err := ctl.Connect(ctx); err != nil && ctx.Err() == nil {
 				log.Println("droi: connect:", err)
 			}
 		}
-		<-poke
+		select {
+		case <-poke:
+		case <-ctx.Done():
+		}
 	}
 }
 
@@ -405,13 +425,14 @@ func executable() string {
 	return exe
 }
 
-// relaunchWhenIdle restarts into an installed update once no Session is
-// busy and the window is in the background, checking every minute.
-func relaunchWhenIdle(a *app.App, update func(func())) {
+// relaunchWhenIdle restarts into an installed update once no Session of
+// the window's current App is busy and the window is in the background,
+// checking every minute. current is read on the main thread.
+func relaunchWhenIdle(current func() *app.App, update func(func())) {
 	for {
 		time.Sleep(time.Minute)
 		done := make(chan bool, 1)
-		update(func() { done <- a.RelaunchIfIdle() })
+		update(func() { done <- current().RelaunchIfIdle() })
 		select {
 		case ok := <-done:
 			if ok {

@@ -18,6 +18,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
@@ -44,6 +45,15 @@ type harness struct {
 	// transcripts are the Gateway's answers for the session-file endpoint.
 	scratchRoot string
 	transcripts map[string]string
+
+	// localToken is the window's token for the harness's own Gateway; cfg
+	// is the Config the window was made with, which switchTo makes the next
+	// one from; window is the Controller of the App shown; switches counts
+	// the switches.
+	localToken string
+	cfg        Config
+	window     *controller.Controller
+	switches   int
 }
 
 // harnessCredential is the Factory credential the harness's Gateway holds.
@@ -113,7 +123,7 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.gw, h.ctl = gw, ctl
+	h.gw, h.ctl, h.localToken = gw, ctl, localToken
 	p := prefs.Memory()
 	if themeName != "" {
 		prefs.Theme.Set(p, themeName)
@@ -132,10 +142,12 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 		// traffic lights over the sidebar, and Finder with no icon to read.
 		InsetTop:   true,
 		OpenInApps: func() []host.OpenInApp { return []host.OpenInApp{{ID: "finder", Label: "Finder"}} },
+		Switch:     h.switchTo,
 	}
 	if with != nil {
 		with(&cfg)
 	}
+	h.cfg, h.window = cfg, cfg.Controller
 	h.a = New(cfg)
 	h.a.Start()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -143,10 +155,55 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	if err := ctl.Connect(ctx); err != nil {
 		t.Fatal(err)
 	}
-	h.tt = ui.NewTester(h.a.View, refW, refH)
+	// The window draws whichever App is current, as main's does.
+	h.tt = ui.NewTester(func(c *ui.Context) { h.a.View(c) }, refW, refH)
 	h.tt.SetScale(2)
 	h.frame()
 	return h
+}
+
+// windowController is a Controller of the window to socketURL, as main
+// makes one: an address that cannot be used gives no Gateway Client and a
+// Controller that fails to resolve its URL.
+func windowController(t *testing.T, socketURL string) (*controller.Controller, *gateway.Client) {
+	t.Helper()
+	cc := controller.Config{
+		URL:                  socketURL,
+		Credential:           gateway.PlaceholderCredential,
+		DefaultMessageLimit:  LoadedMessageLimit,
+		MaxConnectAttempts:   1,
+		MaxReconnectAttempts: 1000,
+	}
+	client, err := gateway.NewClient(socketURL)
+	if err != nil {
+		client = nil
+		cc.URL = ""
+		cc.ResolveURL = func(context.Context) (string, error) { return "", err }
+	}
+	ctl := controller.New(cc)
+	t.Cleanup(func() { ctl.Close() })
+	return ctl, client
+}
+
+// switchTo is the window's Switch, as main's: a Controller and Gateway
+// Client for the computer, a new App on them, and the old App and its
+// Controller closed.
+func (h *harness) switchTo(to *computer.Paired) {
+	h.switches++
+	url := h.gw.DaemonSocketURL(h.localToken)
+	if to != nil {
+		p := *to
+		to, url = &p, p.SocketURL()
+	}
+	ctl, client := windowController(h.t, url)
+	cfg := h.cfg
+	cfg.Computer, cfg.Controller, cfg.Gateway = to, ctl, client
+	old, oldCtl := h.a, h.window
+	h.a, h.window = New(cfg), ctl
+	h.a.Start()
+	go ctl.Connect(context.Background())
+	old.Close()
+	oldCtl.Close()
 }
 
 func (h *harness) frame() {

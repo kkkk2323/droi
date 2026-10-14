@@ -72,10 +72,15 @@ type Config struct {
 	// a Session's transcript is. It is made from the address and token the
 	// Daemon socket uses; nil without a Gateway.
 	Gateway *gateway.Client
-	// Computer is the one other computer the window follows, from the
-	// Computer preference; nil for this computer. The Controller and Gateway
-	// are then those of that computer's Gateway.
+	// Computer is the other computer the window follows, from the Computer
+	// preference; nil for this computer. The Controller and Gateway are then
+	// those of that computer's Gateway.
 	Computer *computer.Paired
+	// Switch builds the window's insides again for the computer to follow,
+	// nil for this computer, once the Computer preference names it: a new
+	// Controller, Gateway Client and App, in place of this App, which it
+	// closes. The window stays open; Droi does not relaunch.
+	Switch func(to *computer.Paired)
 	// Host is the Daemon's supervisor and the login, for Settings; nil in
 	// tests, which leaves out the sections that need it.
 	Host *host.Host
@@ -115,7 +120,11 @@ type App struct {
 	cfg   Config
 	ctl   *controller.Controller
 	prefs *prefs.Store
-	ctx   context.Context
+	// ctx ends with Close, and with it every call the App still makes.
+	ctx    context.Context
+	cancel context.CancelFunc
+	// unsubscribe are Start's subscriptions, which Close ends.
+	unsubscribe []func()
 
 	kit   *kit.Kit
 	route Route
@@ -220,11 +229,13 @@ func New(cfg Config) *App {
 		// left out.
 		cfg.Host, cfg.Memory, cfg.ChatBridge, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil, nil
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{
 		cfg:    cfg,
 		ctl:    cfg.Controller,
 		prefs:  cfg.Prefs,
-		ctx:    context.Background(),
+		ctx:    ctx,
+		cancel: cancel,
 		route:  Route{Name: "home"},
 		busy:   map[string]string{},
 		turnAt: map[string]int64{},
@@ -264,11 +275,10 @@ func (a *App) Start() {
 	if a.ctl == nil {
 		return
 	}
-	a.ctl.Subscribe(a.onEvent)
-	a.watchAlerts()
+	a.unsubscribe = append(a.unsubscribe, a.ctl.Subscribe(a.onEvent), a.watchAlerts())
 	stats := openSessionStats(a.cfg.StatsFile)
 	a.ctl.Store().SetStatsSeed(stats.get)
-	a.ctl.Store().Subscribe(func(e session.Event) {
+	a.unsubscribe = append(a.unsubscribe, a.ctl.Store().Subscribe(func(e session.Event) {
 		a.rev(e.SessionID).Add(1)
 		if e.Kind == session.EventStatsUpdated {
 			if s := a.ctl.Store().Session(e.SessionID); s != nil {
@@ -280,7 +290,7 @@ func (a *App) Start() {
 			a.touch(e.SessionID, s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle)
 		}
 		a.redraw()
-	})
+	}))
 	a.mu.Lock()
 	a.status = a.ctl.Status()
 	a.mu.Unlock()
@@ -288,6 +298,20 @@ func (a *App) Start() {
 		go a.refreshList()
 	}
 }
+
+// Close stops the App once the window shows another: it hears its
+// Controller no more and the calls it makes end. The Controller is the
+// caller's to close, after this. Main thread only.
+func (a *App) Close() {
+	a.cancel()
+	for _, fn := range a.unsubscribe {
+		fn()
+	}
+	a.unsubscribe = nil
+}
+
+// closed reports whether Close was called, for work that ends after it.
+func (a *App) closed() bool { return a.ctx.Err() != nil }
 
 // rev is a Session's revision counter.
 func (a *App) rev(id string) *atomic.Int64 {

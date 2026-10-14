@@ -5,11 +5,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
+	"github.com/kkkk2323/droi/apps/native/internal/host"
 )
 
 func daemonUp(context.Context) (string, error) { return "ws://127.0.0.1:1", nil }
@@ -122,6 +124,30 @@ func TestTheWindowsGatewayClientReachesTheFollowedComputerOrThisOne(t *testing.T
 	}
 	if windowClient(nil, nil, "local-token") != nil {
 		t.Fatal("a Gateway Client without a Gateway")
+	}
+}
+
+func TestKeepingTheWindowConnectedStopsWithTheComputerItConnects(t *testing.T) {
+	home := t.TempDir()
+	h := host.New(host.Config{UserData: t.TempDir(), Home: home, Env: func(k string) string {
+		if k == "HOME" {
+			return home
+		}
+		return ""
+	}})
+	ctl := controller.New(controller.Config{URL: "ws://127.0.0.1:1", MaxConnectAttempts: 1})
+	t.Cleanup(func() { ctl.Close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		connectWhenSignedIn(ctx, ctl, h, true)
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("still keeping a closed computer's Controller connected")
 	}
 }
 
