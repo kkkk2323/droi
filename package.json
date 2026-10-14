@@ -1,7 +1,7 @@
 {
   "name": "droi-workspace",
   "private": true,
-  "description": "Droi: desktop, web and iPhone front ends for the Droid Daemon",
+  "description": "Native Mac, Windows and iPhone client for Factory Droid, built with Go (MyGo) and Expo",
   "type": "module",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
