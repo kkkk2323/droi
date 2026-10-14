@@ -1,3 +1,9 @@
+## 1.52.0 - 2026-10-14
+
+### Changed
+
+- In a WeCom Channel, once a post has a Chat Session, later replies under it reach Droid without an @ of the robot, as in a Slack thread Factory works in; only an @ starts a Chat Session. Droid stays quiet when a reply is not meant for it, and `!new` in a reply starts over. Replies from people not on the allowlist, edits and deletions send nothing.
+
 ## 1.51.0 - 2026-10-14
 
 ### Added
