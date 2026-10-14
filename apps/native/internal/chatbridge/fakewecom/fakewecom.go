@@ -5,7 +5,8 @@
 // replies without a cmd, the disconnected_event a connection gets when
 // another subscribes the robot) and, like the real server, refuses a handshake
 // whose Sec-WebSocket-* header names are not spelt WeCom's way. Its HTTPS
-// API (api.go) holds WeCom Channels with their posts and replies.
+// API (api.go) holds WeCom Channels with their posts and replies, searches
+// them (search.go), and serves and takes files and media (media.go).
 package fakewecom
 
 import (
@@ -83,6 +84,11 @@ type WeCom struct {
 	calls    []APICall
 	apiFail  map[string][]failure
 	emoji    map[string][]int
+
+	downloads map[string]download
+	uploads   map[string]*upload
+	media     map[string]Media
+	jobs      map[string]searchJob
 }
 
 // Start runs a Fake WeCom for the test and stops it when the test ends.
@@ -211,11 +217,24 @@ func (w *WeCom) serve(rw http.ResponseWriter, r *http.Request) {
 		case f.Cmd == "aibot_respond_update_msg":
 			errcode, errmsg = w.checkCardUpdate(f.Headers.ReqID, f.Body)
 		}
+		answer := map[string]any{"headers": map[string]string{"req_id": f.Headers.ReqID}, "errcode": errcode, "errmsg": errmsg}
+		answered := errcode
+		if handler := frameHandlers[f.Cmd]; handler != nil && errcode == 0 && subscribed {
+			w.mu.Lock()
+			body, e := handler(w, f.Body)
+			w.mu.Unlock()
+			if e != nil {
+				answer["errcode"], answer["errmsg"] = e.code, e.msg
+				answered = e.code
+			} else if body != nil {
+				answer["body"] = body
+			}
+		}
 		w.mu.Lock()
-		w.frames = append(w.frames, Frame{Cmd: f.Cmd, ReqID: f.Headers.ReqID, Body: f.Body, Errcode: errcode})
+		w.frames = append(w.frames, Frame{Cmd: f.Cmd, ReqID: f.Headers.ReqID, Body: f.Body, Errcode: answered})
 		w.notify()
 		w.mu.Unlock()
-		out, _ := json.Marshal(map[string]any{"headers": map[string]string{"req_id": f.Headers.ReqID}, "errcode": errcode, "errmsg": errmsg})
+		out, _ := json.Marshal(answer)
 		if err := c.Write(ctx, websocket.MessageText, out); err != nil {
 			return
 		}

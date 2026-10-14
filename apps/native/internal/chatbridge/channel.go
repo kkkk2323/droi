@@ -174,11 +174,21 @@ type content struct {
 	Files       []struct {
 		Placeholder string `json:"placeholder"`
 		FileName    string `json:"file_name"`
+		attachmentLink
 	} `json:"inline_file_list"`
+	Images   []attachmentLink `json:"image_list"`
 	Mentions []struct {
 		Placeholder string `json:"placeholder"`
 		Member      member `json:"member"`
 	} `json:"inline_mention_list"`
+}
+
+// attachmentLink is where a Channel file or image downloads, for an hour,
+// with its cookie.
+type attachmentLink struct {
+	URL         string `json:"download_url"`
+	CookieName  string `json:"cookie_name"`
+	CookieValue string `json:"cookie_value"`
 }
 
 func (c content) author() member {
@@ -286,11 +296,16 @@ func (a *channelAPI) postEmoji(ctx context.Context, topicID, postID, replyID str
 	return a.call(ctx, "/topic/post_emoji", body, nil)
 }
 
-// sendReply posts Markdown under a post and returns the reply's id.
-func (a *channelAPI) sendReply(ctx context.Context, topicID, postID, text string) (string, error) {
+// sendReply posts Markdown under a post and returns the reply's id; extra
+// adds the files, images and mentions its placeholders name.
+func (a *channelAPI) sendReply(ctx context.Context, topicID, postID, text string, extra map[string]any) (string, error) {
 	var res struct {
 		ReplyID string `json:"reply_id"`
 	}
-	err := a.call(ctx, "/topic/send_reply", map[string]any{"topic_id": topicID, "post_id": postID, "content": text}, &res)
+	body := map[string]any{"topic_id": topicID, "post_id": postID, "content": text}
+	for k, v := range extra {
+		body[k] = v
+	}
+	err := a.call(ctx, "/topic/send_reply", body, &res)
 	return res.ReplyID, err
 }

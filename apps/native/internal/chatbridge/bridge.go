@@ -70,6 +70,7 @@ type Bridge struct {
 	threads map[string]*thread
 	tokens  map[string]*thread
 	seen    recent
+	media   mediaStore
 	// synced: the Chat Thread map was rebuilt from the Daemon's Sessions
 	// since the Chat Bridge last connected to it.
 	synced  bool
@@ -368,15 +369,17 @@ func (b *Bridge) handle(f frame) {
 	}
 	th.reqID, th.reqAt = f.Headers.ReqID, b.o.Now()
 	b.mu.Unlock()
+	media := b.keepDirectMedia(th, m.MsgID, f.Body)
 	if rest, ok := cutNew(textOf(m)); ok {
-		trigger := newDirectTrigger(user, rest)
+		trigger := newDirectTrigger(user, rest) + media
 		b.run(th, func() { b.startOver(th, trigger) })
 		return
 	}
 	text := textOf(m)
-	trigger := directTrigger(user, text)
+	trigger := directTrigger(user, text) + media
 	b.run(th, func() {
-		if !b.answerInThread(th, user, text) {
+		// A message with files is for Droid, not an answer.
+		if media != "" || !b.answerInThread(th, user, text) {
 			b.deliver(th, trigger)
 		}
 	})

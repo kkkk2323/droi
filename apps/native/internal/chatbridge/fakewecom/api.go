@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type Post struct {
 	Text     string
 	Mentions []Mention
 	Files    []File
+	Images   []Image
 	Recalled bool
 	// ParentReplyID is the reply a reply answers, "" for one under the post.
 	ParentReplyID string
@@ -47,6 +49,7 @@ type Mention struct {
 type File struct {
 	Placeholder string
 	Name        string
+	Data        []byte
 }
 
 // APICall is a call the Chat Bridge made to the HTTPS API, its token
@@ -78,11 +81,16 @@ type apiError struct {
 type apiHandler func(w *WeCom, body json.RawMessage) (map[string]any, *apiError)
 
 var apiHandlers = map[string]apiHandler{
-	"/topic/get_topic_list": (*WeCom).getTopicList,
-	"/topic/get_post_list":  (*WeCom).getPostList,
-	"/topic/get_reply_list": (*WeCom).getReplyList,
-	"/topic/send_reply":     (*WeCom).sendReply,
-	"/topic/post_emoji":     (*WeCom).postEmoji,
+	"/topic/get_topic_list":    (*WeCom).getTopicList,
+	"/topic/get_post_list":     (*WeCom).getPostList,
+	"/topic/get_reply_list":    (*WeCom).getReplyList,
+	"/topic/send_reply":        (*WeCom).sendReply,
+	"/topic/search":            (*WeCom).search,
+	"/topic/get_search_result": (*WeCom).getSearchResult,
+	"/upload_media_init":       httpsUpload((*WeCom).uploadInit),
+	"/upload_media_chunk":      httpsUpload((*WeCom).uploadChunk),
+	"/upload_media_finish":     httpsUpload((*WeCom).uploadFinish),
+	"/topic/post_emoji":        (*WeCom).postEmoji,
 }
 
 // SetClock makes now the Fake WeCom's clock, which get_token's time is
@@ -220,6 +228,9 @@ func (w *WeCom) GroupCopy(from, text string) string {
 }
 
 func (w *WeCom) serveAPI(rw http.ResponseWriter, r *http.Request) {
+	if w.serveDownload(rw, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(rw, "POST only", http.StatusMethodNotAllowed)
 		return
@@ -357,7 +368,7 @@ func (w *WeCom) list(items []*Post, q listQuery, ids []string, idKey string) ([]
 	if q.Type == 0 {
 		for _, p := range items {
 			if slices.Contains(ids, p.ID) {
-				out = append(out, info(p, idKey))
+				out = append(out, w.info(p, idKey))
 			}
 		}
 		return out, false, ""
@@ -375,7 +386,7 @@ func (w *WeCom) list(items []*Post, q listQuery, ids []string, idKey string) ([]
 	from = min(max(from, 0), len(items))
 	to := min(from+limit, len(items))
 	for _, p := range items[from:to] {
-		out = append(out, info(p, idKey))
+		out = append(out, w.info(p, idKey))
 	}
 	if to < len(items) {
 		return out, true, strconv.Itoa(to)
@@ -390,15 +401,22 @@ func member(userID, botID string) map[string]any {
 	return map[string]any{"type": 0, "userid": userID}
 }
 
-// info is a post or reply as WeCom's PostInfo / ReplyInfo.
-func info(p *Post, idKey string) map[string]any {
+// info is a post or reply as WeCom's PostInfo / ReplyInfo, with fresh
+// download links for its files and images.
+func (w *WeCom) info(p *Post, idKey string) map[string]any {
 	mentions := []any{}
 	for _, m := range p.Mentions {
 		mentions = append(mentions, map[string]any{"placeholder": m.Placeholder, "member": member(m.UserID, m.BotID)})
 	}
 	files := []any{}
 	for _, f := range p.Files {
-		files = append(files, map[string]any{"placeholder": f.Placeholder, "file_name": f.Name})
+		file := w.channelLink(f.Data)
+		file["placeholder"], file["file_name"] = f.Placeholder, f.Name
+		files = append(files, file)
+	}
+	images := []any{}
+	for _, i := range p.Images {
+		images = append(images, w.channelLink(i.Data))
 	}
 	out := map[string]any{
 		idKey:                 p.ID,
@@ -409,7 +427,7 @@ func info(p *Post, idKey string) map[string]any {
 		"content":             p.Text,
 		"inline_file_list":    files,
 		"inline_mention_list": mentions,
-		"image_list":          []any{},
+		"image_list":          images,
 		"emoji_list":          []any{},
 	}
 	if idKey == "reply_id" {
@@ -427,9 +445,17 @@ func (w *WeCom) sendReply(body json.RawMessage) (map[string]any, *apiError) {
 		Mentions      []struct {
 			Placeholder string `json:"placeholder"`
 			Member      struct {
+				Type   int    `json:"type"`
 				UserID string `json:"userid"`
 			} `json:"member"`
 		} `json:"inline_mention_list"`
+		Files []struct {
+			Placeholder string `json:"placeholder"`
+			MediaID     string `json:"media_id"`
+		} `json:"inline_file_list"`
+		Images []struct {
+			MediaID string `json:"media_id"`
+		} `json:"image_list"`
 	}
 	_ = json.Unmarshal(body, &p)
 	if !w.hasPost(p.TopicID, p.PostID) {
@@ -438,9 +464,33 @@ func (w *WeCom) sendReply(body json.RawMessage) (map[string]any, *apiError) {
 	if p.Content == "" || len(p.Content) > 20480 {
 		return nil, &apiError{40058, "invalid content"}
 	}
+	if len(p.Mentions) > maxAttachments || len(p.Files) > maxAttachments || len(p.Images) > maxAttachments {
+		return nil, &apiError{40058, "too many mentions, files or images"}
+	}
 	r := w.fill(Post{Robot: w.robot.BotID, Text: p.Content, ParentReplyID: p.ParentReplyID})
 	for _, m := range p.Mentions {
+		// Only members can be @-ed, each where the content holds its placeholder.
+		if m.Member.Type != 0 || m.Member.UserID == "" || !strings.Contains(p.Content, "${inline_mention:"+m.Placeholder+"}") {
+			return nil, &apiError{40058, "invalid inline_mention_list"}
+		}
 		r.Mentions = append(r.Mentions, Mention{Placeholder: m.Placeholder, UserID: m.Member.UserID})
+	}
+	for _, f := range p.Files {
+		media, e := w.mediaOf(f.MediaID, "file", "https")
+		if e != nil {
+			return nil, e
+		}
+		if !strings.Contains(p.Content, "${inline_file:"+f.Placeholder+"}") {
+			return nil, &apiError{40058, "invalid inline_file_list"}
+		}
+		r.Files = append(r.Files, File{Placeholder: f.Placeholder, Name: media.Name, Data: media.Data})
+	}
+	for _, i := range p.Images {
+		media, e := w.mediaOf(i.MediaID, "image", "https")
+		if e != nil {
+			return nil, e
+		}
+		r.Images = append(r.Images, Image{Data: media.Data})
 	}
 	k := replyKey(p.TopicID, p.PostID)
 	w.replies[k] = append(w.replies[k], &r)

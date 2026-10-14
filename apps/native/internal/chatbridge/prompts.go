@@ -116,7 +116,7 @@ func (b *Bridge) asked(p *prompt, sessions []string) {
 	var err error
 	switch {
 	case p.perm != nil && p.th.kind == threadKindDirect:
-		err = b.sendDirect(ctx, p.th, map[string]any{"msgtype": "template_card", "template_card": permissionCard(p)})
+		err = b.sendToUser(ctx, p.th, map[string]any{"msgtype": "template_card", "template_card": permissionCard(p)})
 	case p.perm != nil:
 		err = b.sendThread(ctx, p.th, permissionText(p))
 	default:
@@ -336,7 +336,7 @@ func (b *Bridge) answerClick(f frame) {
 		b.updateCard(ctx, f.Headers.ReqID, card)
 		return
 	}
-	if err := b.sendDirect(ctx, p.th, markdown(note)); err != nil {
+	if err := b.sendToUser(ctx, p.th, markdown(note)); err != nil {
 		b.o.Log("cannot tell WeCom about an answer: " + err.Error())
 	}
 }
@@ -357,7 +357,7 @@ func (b *Bridge) updateCard(ctx context.Context, reqID string, card map[string]a
 // Channel, a message in a direct message.
 func (b *Bridge) sendThread(ctx context.Context, th *thread, text string) error {
 	if th.kind != threadKindChannel {
-		return b.sendDirect(ctx, th, markdown(text))
+		return b.sendToUser(ctx, th, markdown(text))
 	}
 	b.mu.Lock()
 	api := b.api
@@ -365,29 +365,19 @@ func (b *Bridge) sendThread(ctx context.Context, th *thread, text string) error 
 	if api == nil {
 		return errNotConnected
 	}
-	_, err := api.sendReply(ctx, th.topicID, th.postID, text)
+	_, err := api.sendReply(ctx, th.topicID, th.postID, text, nil)
 	return err
 }
 
-// sendDirect sends a message body to a direct message, under the latest
-// message's req_id while WeCom takes replies to it.
-func (b *Bridge) sendDirect(ctx context.Context, th *thread, body map[string]any) error {
+// sendToUser sends a message body to a direct message.
+func (b *Bridge) sendToUser(ctx context.Context, th *thread, body map[string]any) error {
 	b.mu.Lock()
-	wc, reqID, at, user := b.wecom, th.reqID, th.reqAt, th.userID
+	wc := b.wecom
 	b.mu.Unlock()
 	if wc == nil {
 		return errNotConnected
 	}
-	if reqID != "" && b.o.Now().Sub(at) < replyWindow {
-		_, err := wc.call(ctx, "aibot_respond_msg", reqID, body)
-		return err
-	}
-	push := map[string]any{"chatid": user, "chat_type": 1}
-	for k, v := range body {
-		push[k] = v
-	}
-	_, err := wc.call(ctx, "aibot_send_msg", "", push)
-	return err
+	return b.sendDirect(ctx, th, wc, body)
 }
 
 func markdown(text string) map[string]any {
