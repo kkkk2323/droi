@@ -208,7 +208,11 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
 				switch {
 				case scratch:
-					tr := k.QuietTrigger(c, L("Work in a project"), s.menuOpen).Margin(0, 0, 0, -k.Px(8)).Tooltip(L("Not in a project: the session gets a new folder in %s", a.scratchRoot()))
+					tooltip := L("Not in a project: the session gets a new folder in %s", a.scratchRoot())
+					if a.following() {
+						tooltip = L("Not in a project: the session gets a new folder on %s", a.computerName())
+					}
+					tr := k.QuietTrigger(c, L("Work in a project"), s.menuOpen).Margin(0, 0, 0, -k.Px(8)).Tooltip(tooltip)
 					tr.Children(func() {
 						k.Icon(c, "folder", 14, t.MutedForeground)
 						k.Text(c, L("Work in a project"), 12, 16).TextColor(t.MutedForeground).SingleLine()

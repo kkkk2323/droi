@@ -92,6 +92,18 @@ internet. The link names the computer's first LAN address; to have it name anoth
 instance the Tailscale machine name, set `"pairingHost": "my-box"` in `settings.json` and
 restart.
 
+## Following another computer
+
+Settings → Computer shows which computer the window follows: this one, or one other computer,
+added by pasting the pairing link a phone would scan (the link `droi host` prints, or the one
+in Settings → Remote Access of another Droi). Droi checks that the link reaches a Droi Gateway
+that accepts its Pairing Token, keeps it as a Client preference (`droi.computer` in
+`preferences.json`) and relaunches onto it. The window then connects to that Gateway instead
+of its own, lists that computer's Sessions and hides the Account, Memory, Remote Access and
+Advanced settings, which belong to this computer's Host. This computer's Host keeps running
+for its phones and Automations. "Use this computer" (also offered when the other computer
+cannot be reached) clears the preference and relaunches.
+
 ## Layout
 
 | Path                                                            | What                                                                                                    |
@@ -104,6 +116,7 @@ restart.
 | `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export                |
 | `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                       |
 | `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints    |
+| `internal/computer/`                                            | the Computer preference: the one other computer the window follows, and checking its pairing link       |
 | `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                     |
 | `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                   |
 | `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)                |

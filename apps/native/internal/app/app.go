@@ -17,6 +17,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/internal/compaction"
+	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/drafts"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
@@ -71,6 +72,10 @@ type Config struct {
 	// a Session's transcript is. It is made from the address and token the
 	// Daemon socket uses; nil without a Gateway.
 	Gateway *gateway.Client
+	// Computer is the one other computer the window follows, from the
+	// Computer preference; nil for this computer. The Controller and Gateway
+	// are then those of that computer's Gateway.
+	Computer *computer.Paired
 	// Host is the Daemon's supervisor and the login, for Settings; nil in
 	// tests, which leaves out the sections that need it.
 	Host *host.Host
@@ -105,10 +110,12 @@ type Config struct {
 
 // App is the window's state, which lasts from frame to frame.
 type App struct {
-	cfg   Config
-	ctl   *controller.Controller
-	prefs *prefs.Store
-	ctx   context.Context
+	cfg Config
+	// followed is the computer the window follows, nil for this computer.
+	followed *computer.Paired
+	ctl      *controller.Controller
+	prefs    *prefs.Store
+	ctx      context.Context
 
 	kit   *kit.Kit
 	route Route
@@ -206,15 +213,21 @@ func New(cfg Config) *App {
 	if cfg.Prefs == nil {
 		cfg.Prefs = prefs.Memory()
 	}
+	if cfg.Computer != nil {
+		// This computer's Host, Memory, Gateway and Factory App are not the
+		// followed computer's, so the views that need one are left out.
+		cfg.Host, cfg.Memory, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil
+	}
 	a := &App{
-		cfg:    cfg,
-		ctl:    cfg.Controller,
-		prefs:  cfg.Prefs,
-		ctx:    context.Background(),
-		route:  Route{Name: "home"},
-		busy:   map[string]string{},
-		turnAt: map[string]int64{},
-		views:  map[string]*sessionView{},
+		cfg:      cfg,
+		followed: cfg.Computer,
+		ctl:      cfg.Controller,
+		prefs:    cfg.Prefs,
+		ctx:      context.Background(),
+		route:    Route{Name: "home"},
+		busy:     map[string]string{},
+		turnAt:   map[string]int64{},
+		views:    map[string]*sessionView{},
 
 		drafts:      drafts.New(cfg.Prefs),
 		compactions: compaction.NewLog(),
@@ -724,6 +737,8 @@ func (a *App) View(c *ui.Context) {
 				a.view(a.route.SessionID).build(c, a, sel, listed)
 			case a.route.Name == "automations":
 				a.automationsPage(c)
+			case starting && a.following():
+				a.followingStartView(c, status)
 			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():
 				// Home with nothing to show yet; the New session page would flash.
 				a.startingUpView(c, status)

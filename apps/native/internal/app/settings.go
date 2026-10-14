@@ -32,6 +32,7 @@ type settingsTab struct {
 var settingsTabs = []settingsTab{
 	{"account", l10n.N("Account"), "user-round", true},
 	{"general", l10n.N("General"), "settings-2", false},
+	{"computer", l10n.N("Computer"), "laptop", false},
 	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false},
 	{"memory", l10n.N("Memory"), "brain", true},
 	{"worktrees", l10n.N("Worktrees"), "git-fork", false},
@@ -48,10 +49,14 @@ type settingsState struct {
 	open map[string]*bool
 
 	apiKey, baseURL, droidPath, prompt, scratch string
-	loaded                                      bool
-	err                                         string
-	picker                                      pickerState
-	worktrees                                   managedWorktrees
+	// computerLink is the pairing link being typed; the check of one runs
+	// off the UI thread, and a refusal or a note stays until the next try.
+	computerLink, computerErr, computerNote string
+	computerChecking                        bool
+	loaded                                  bool
+	err                                     string
+	picker                                  pickerState
+	worktrees                               managedWorktrees
 }
 
 func (s *settingsState) flag(key string) *bool {
@@ -123,6 +128,10 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.route.Tab = tab.id
 				}
 			}
+			if a.following() {
+				k.Text(c, L("Account, Memory, Remote Access and Advanced are changed on %s.", a.computerName()), 12, 18).Role(ui.RoleStatus).
+					TextColor(t.MutedForeground).Padding(k.Px(8), k.Px(8), 0, k.Px(8))
+			}
 		})
 		ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Children(func() {
 			ui.Box(c).Height(44).DragWindow()
@@ -136,6 +145,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.accountTab(c)
 				case "general":
 					a.generalTab(c)
+				case "computer":
+					a.computerTab(c)
 				case "defaults":
 					a.defaultsTab(c)
 				case "memory":
@@ -631,7 +642,11 @@ func (a *App) pickFolder(title string) string {
 // read from and saved to the Daemon.
 func (a *App) defaultsTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	k.Text(c, L("Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings."), 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+	shared := L("Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings.")
+	if a.following() {
+		shared = L("These are the settings of %s. Existing Sessions keep their settings.", a.computerName())
+	}
+	k.Text(c, shared, 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	if h := a.cfg.Host; h != nil && h.DroidUpdated() {
 		a.settingGroup(c, "", "", func() {
 			a.settingRow(c, L("droid was updated"), L("The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working."), func() {

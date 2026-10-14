@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 )
@@ -36,6 +37,17 @@ func startGateway(h *host.Host, version, localToken string, moveToTrash func(str
 			return host.FindSessionTranscript(filepath.Join(h.SharedFactoryHome(), "sessions"), id)
 		},
 	})
+}
+
+// windowURL is the controller's ResolveURL: the Gateway of the computer the
+// window follows, which needs nothing of this computer's Daemon, or this
+// computer's own.
+func windowURL(followed *computer.Paired, gw *gateway.Gateway, gwErr error, localToken string, daemonUp func(context.Context) (string, error)) func(context.Context) (string, error) {
+	if followed != nil {
+		url := followed.SocketURL()
+		return func(context.Context) (string, error) { return url, nil }
+	}
+	return gatewayURL(gw, gwErr, localToken, daemonUp)
 }
 
 // gatewayURL is the controller's ResolveURL: the Gateway's Daemon socket,

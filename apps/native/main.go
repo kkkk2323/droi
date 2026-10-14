@@ -19,6 +19,7 @@ import (
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/app"
+	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
@@ -74,13 +75,18 @@ func main() {
 		Env:        os.Getenv,
 		Executable: executable(),
 	})
+	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
+	// The window follows one other computer when the Computer preference
+	// names it; this computer's Host, Gateway and Memory run all the same, for
+	// its phones and Automations.
+	followed := computer.Load(userPrefs)
 	localToken := gateway.NewLocalToken()
 	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem)
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}
 	ctl := controller.New(controller.Config{
-		ResolveURL: gatewayURL(gw, gwErr, localToken, h.WaitForDaemonURL),
+		ResolveURL: windowURL(followed, gw, gwErr, localToken, h.WaitForDaemonURL),
 		Credential: gateway.PlaceholderCredential,
 		Caller:     "droi-native",
 		// The Daemon restarts on its own (the Host's Supervisor); keep trying.
@@ -111,14 +117,21 @@ func main() {
 	var gwClient *gateway.Client
 	if gw != nil {
 		remote = gw
-		if gwClient, err = gateway.NewClient(gw.DaemonSocketURL(localToken)); err != nil {
-			log.Fatal(err)
-		}
+	}
+	switch {
+	case followed != nil:
+		gwClient, err = gateway.NewClient(followed.SocketURL())
+	case gw != nil:
+		gwClient, err = gateway.NewClient(gw.DaemonSocketURL(localToken))
+	}
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	a := app.New(app.Config{
 		Controller:   ctl,
-		Prefs:        prefs.Open(filepath.Join(userData, "preferences.json")),
+		Prefs:        userPrefs,
+		Computer:     followed,
 		Update:       update,
 		InsetTop:     mac,
 		StatsFile:    filepath.Join(userData, "session-stats.json"),
@@ -208,7 +221,7 @@ func main() {
 		if updater != nil {
 			go updater.Schedule(context.Background())
 		}
-		go connectWhenSignedIn(ctl, h)
+		go connectWhenSignedIn(ctl, h, followed != nil)
 	})
 	mygo.App.OnActivate(func(visible bool) {
 		if win != nil && !visible {
@@ -336,12 +349,20 @@ func editMenu() *mygo.MenuItem {
 	}}
 }
 
+// shouldConnect says whether the window should connect again: it is neither
+// connected nor reconnecting, and the Daemon it reaches can authenticate it.
+// This computer's Daemon needs this Host's login; another computer's Gateway
+// holds its own, so this Host's is not asked.
+func shouldConnect(st controller.Status, following bool, hasCredential func() bool) bool {
+	return !st.Connected && !st.Reconnecting && (following || hasCredential())
+}
+
 // connectWhenSignedIn keeps the window connected to the Daemon. Connect,
 // and the controller's own reconnecting, give up on a Daemon that rejects
 // the credential (none yet, or signed out), so whenever the controller or
 // the Host changes (a sign-in, an API key, a restarted Daemon) and the
 // window is neither connected nor reconnecting, it connects again.
-func connectWhenSignedIn(ctl *controller.Controller, h *host.Host) {
+func connectWhenSignedIn(ctl *controller.Controller, h *host.Host, following bool) {
 	poke := make(chan struct{}, 1)
 	wake := func() {
 		select {
@@ -356,7 +377,7 @@ func connectWhenSignedIn(ctl *controller.Controller, h *host.Host) {
 		}
 	})()
 	for {
-		if st := ctl.Status(); !st.Connected && !st.Reconnecting && h.HasCredential() {
+		if shouldConnect(ctl.Status(), following, h.HasCredential) {
 			if err := ctl.Connect(context.Background()); err != nil {
 				log.Println("droi: connect:", err)
 			}
