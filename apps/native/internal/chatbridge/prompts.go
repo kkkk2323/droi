@@ -330,7 +330,7 @@ func (b *Bridge) answerClick(f frame) {
 		return
 	}
 	user, click := e.From.UserID, e.Event.Click
-	if !b.admit(e.MsgID, user) {
+	if !b.admit(e.MsgID, user, true) {
 		return
 	}
 	ctx, cancel := b.opContext(cardTimeout)

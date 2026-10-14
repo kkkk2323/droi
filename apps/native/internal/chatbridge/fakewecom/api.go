@@ -72,6 +72,18 @@ type AtBot struct {
 	From    string
 }
 
+// ReplyEvent is the topic_reply_event WeCom sends for a reply under a post
+// that does not @ the robot. Type is 1 (new, the default), 2 (edited) or 3
+// (deleted); MsgID is made up when empty.
+type ReplyEvent struct {
+	MsgID   string
+	TopicID string
+	PostID  string
+	ReplyID string
+	From    string
+	Type    int
+}
+
 const tokenLife = 24 * time.Hour
 
 type apiError struct {
@@ -245,6 +257,31 @@ func (w *WeCom) AtBot(a AtBot) string {
 		"create_time": now.Unix(),
 		"event":       map[string]any{"eventtype": "topic_at_bot", "topic_at_bot": at},
 		"topic_id":    a.TopicID,
+	})
+}
+
+// Replied pushes the topic_reply_event of a reply and returns its req_id.
+func (w *WeCom) Replied(e ReplyEvent) string {
+	w.t.Helper()
+	if e.MsgID == "" {
+		e.MsgID = randomID()
+	}
+	if e.Type == 0 {
+		e.Type = 1
+	}
+	w.mu.Lock()
+	now := w.clock()
+	w.mu.Unlock()
+	return w.Push("aibot_event_callback", "", map[string]any{
+		"msgid":       e.MsgID,
+		"aibotid":     w.robot.BotID,
+		"from":        map[string]string{"userid": e.From},
+		"msgtype":     "event",
+		"create_time": now.Unix(),
+		"event": map[string]any{"eventtype": "topic_reply_event", "topic_reply_event": map[string]any{
+			"type": e.Type, "post_id": e.PostID, "reply_id": e.ReplyID,
+		}},
+		"topic_id": e.TopicID,
 	})
 }
 

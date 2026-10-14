@@ -18,7 +18,8 @@ func systemPromptAppend(addition string, th *chatThread) string {
 		"The droi-chat tools act on this Chat Thread only, and their messages arrive in this Session.", th.userID)
 	if th.kind == kindChannelPost {
 		facts = fmt.Sprintf("You are working in a WeCom (企业微信) Chat Thread: the post %s in the WeCom Channel %s, with its replies. "+
-			"Each time someone @s you there, the @ arrives in this Session as a message. "+
+			"Each time someone @s you there, the @ arrives in this Session as a message, and so does each new reply under the post once this Chat Session has started, even one without an @ of you. "+
+			"A reply without an @ may be for someone else: when a message is not meant for you, do not reply to it. "+
 			"Nothing you write reaches anyone unless you call the droi-chat tool reply, which posts a reply under the post; "+
 			"read_thread shows the post and its replies. The droi-chat tools act on this Chat Thread only.",
 			th.postID, channelLabel(th.channelName, th.topicID))
@@ -38,17 +39,23 @@ func directTrigger(user, text string) string {
 	return fmt.Sprintf("WeCom user %s wrote in a direct message:\n\n%s", user, cut(text))
 }
 
-// channelTrigger is the message an @ in a Channel post sends its Chat
-// Session; the first one in a post says where to read the rest.
-func channelTrigger(user, channel, topicID, postID, replyID, text string, first bool) string {
+// channelTrigger is the message an @ in a Channel post, or a reply there
+// without one, sends its Chat Session; the first one in a post says where
+// to read the rest.
+func channelTrigger(m channelMessage, channel, text string, first bool) string {
 	where := "a post"
-	if replyID != "" {
+	if m.replyID != "" {
 		where = "a reply to a post"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "WeCom user %s @-ed you in %s in the WeCom Channel %s.\ntopic_id: %s\npost_id: %s\n", user, where, channelLabel(channel, topicID), topicID, postID)
-	if replyID != "" {
-		fmt.Fprintf(&b, "reply_id: %s\n", replyID)
+	if m.at {
+		fmt.Fprintf(&b, "WeCom user %s @-ed you in %s in the WeCom Channel %s.\n", m.user, where, channelLabel(channel, m.topicID))
+	} else {
+		fmt.Fprintf(&b, "WeCom user %s replied to the post in the WeCom Channel %s, without an @ of you; it may be for someone else.\n", m.user, channelLabel(channel, m.topicID))
+	}
+	fmt.Fprintf(&b, "topic_id: %s\npost_id: %s\n", m.topicID, m.postID)
+	if m.replyID != "" {
+		fmt.Fprintf(&b, "reply_id: %s\n", m.replyID)
 	}
 	b.WriteString("\n" + text)
 	if first {
@@ -57,15 +64,19 @@ func channelTrigger(user, channel, topicID, postID, replyID, text string, first 
 	return b.String()
 }
 
-// busyNotice is what an @ in a post sends its Chat Session while it works:
-// who and where, not the text.
-func busyNotice(user, replyID string) string {
+// busyNotice is what an @ in a post, or a reply without one, sends its
+// Chat Session while it works: who and where, not the text.
+func busyNotice(m channelMessage) string {
 	where := "this post"
-	if replyID != "" {
-		where = "reply " + replyID + " under this post"
+	if m.replyID != "" {
+		where = "reply " + m.replyID + " under this post"
 	}
-	return fmt.Sprintf("WeCom user %s @-ed you in %s while you were working. "+
-		"The Chat Thread has messages you have not read: read_thread shows them.", user, where)
+	did := "@-ed you in " + where
+	if !m.at {
+		did = "wrote " + where + ", without an @ of you,"
+	}
+	return fmt.Sprintf("WeCom user %s %s while you were working. "+
+		"The Chat Thread has messages you have not read: read_thread shows them.", m.user, did)
 }
 
 // channelLabel names a WeCom Channel by its name, or its id when WeCom did

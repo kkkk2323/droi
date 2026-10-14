@@ -11,9 +11,9 @@ import (
 )
 
 // Chat Threads in WeCom Channel posts: an @ of the robot in a post or one of
-// its replies arrives as the topic_at_bot event, which carries ids but no
-// text; the Chat Bridge reads the text, and Droid reads and replies, through
-// the Channel's HTTPS API.
+// its replies arrives as the topic_at_bot event, a reply without one as the
+// topic_reply_event; both carry ids but no text. The Chat Bridge reads the
+// text, and Droid reads and replies, through the Channel's HTTPS API.
 
 // event is the body of aibot_event_callback.
 type event struct {
@@ -28,34 +28,93 @@ type event struct {
 			PostID  string `json:"post_id"`
 			ReplyID string `json:"reply_id"`
 		} `json:"topic_at_bot"`
+		TopicReply struct {
+			Type    int    `json:"type"`
+			PostID  string `json:"post_id"`
+			ReplyID string `json:"reply_id"`
+		} `json:"topic_reply_event"`
 	} `json:"event"`
+}
+
+// replyCreated is the topic_reply_event of a new reply; 2 and 3 are an edit
+// and a deletion.
+const replyCreated = 1
+
+// channelMessage is a post or reply for a post's Chat Session: an @ of the
+// robot, or a reply without one (at false).
+type channelMessage struct {
+	topicID, postID, replyID, user string
+	at                             bool
 }
 
 const fetchTimeout = 30 * time.Second
 
 // handleEvent starts or continues a post's Chat Session on an @ of the
-// robot there. Every other event starts nothing.
+// robot there, and continues it on a new reply without one. Every other
+// event starts nothing.
 func (b *Bridge) handleEvent(f frame) {
 	var e event
 	if json.Unmarshal(f.Body, &e) != nil {
 		return
 	}
-	at, user := e.Event.TopicAtBot, e.From.UserID
-	if e.Event.Type != "topic_at_bot" || e.TopicID == "" || at.PostID == "" || user == "" {
+	at, reply, user := e.Event.TopicAtBot, e.Event.TopicReply, e.From.UserID
+	if e.TopicID == "" || user == "" {
 		return
 	}
-	if !b.admit(e.MsgID, user) {
-		return
+	switch {
+	case e.Event.Type == "topic_at_bot" && at.PostID != "":
+		if !b.admit(e.MsgID, user, true) {
+			return
+		}
+		m := channelMessage{topicID: e.TopicID, postID: at.PostID, replyID: at.ReplyID, user: user, at: true}
+		b.mu.Lock()
+		th := b.chatThreadFor(postChatThread(m.topicID, m.postID))
+		b.mu.Unlock()
+		b.run(th, func() { b.inPost(th, m) })
+	case e.Event.Type == "topic_reply_event" && reply.Type == replyCreated && reply.PostID != "" && reply.ReplyID != "":
+		// Replies not meant for the robot are not refusals to record.
+		if b.admit(e.MsgID, user, false) {
+			b.followUp(channelMessage{topicID: e.TopicID, postID: reply.PostID, replyID: reply.ReplyID, user: user})
+		}
 	}
-	b.mu.Lock()
-	th := b.chatThreadFor(postChatThread(e.TopicID, at.PostID))
-	b.mu.Unlock()
-	b.run(th, func() { b.atBot(th, e) })
 }
 
-// atBot sends a post's Chat Session the @ of the robot there, with its text.
-func (b *Bridge) atBot(th *chatThread, e event) {
-	at, user := e.Event.TopicAtBot, e.From.UserID
+// followUp sends a reply without an @ to its post's Chat Session; a post
+// without one starts none. Until the Chat Thread map is rebuilt after a
+// restart, which needs the Daemon, it is found off the event goroutine.
+func (b *Bridge) followUp(m channelMessage) {
+	key := postChatThread(m.topicID, m.postID).key
+	b.mu.Lock()
+	th, wait := b.chatThreads[key], !b.synced && !b.stopped
+	if th == nil && wait {
+		b.tracked.Add(1)
+	}
+	b.mu.Unlock()
+	switch {
+	case th != nil:
+		b.run(th, func() { b.inPost(th, m) })
+	case wait:
+		go func() {
+			defer b.tracked.Done()
+			ctx, cancel := b.opContext(fetchTimeout)
+			defer cancel()
+			if err := b.ready(ctx); err != nil {
+				b.o.Log("a reply without an @ was not sent to its Chat Session: " + err.Error())
+				return
+			}
+			b.mu.Lock()
+			th := b.chatThreads[key]
+			b.mu.Unlock()
+			if th != nil {
+				b.run(th, func() { b.inPost(th, m) })
+			}
+		}()
+	}
+}
+
+// inPost sends a post's Chat Session the @ of the robot there, or a reply
+// without one, with its text.
+func (b *Bridge) inPost(th *chatThread, m channelMessage) {
 	ctx, cancel := b.opContext(fetchTimeout)
 	defer cancel()
 	// After a restart the map knows the post's Chat Session only once
@@ -71,8 +130,11 @@ func (b *Bridge) atBot(th *chatThread, e event) {
 	b.mu.Lock()
 	first, name := th.sessionID == "", th.channelName
 	b.mu.Unlock()
+	if first && !m.at {
+		return
+	}
 	if name == "" {
-		if name, err = api.channelName(ctx, e.TopicID); err != nil {
+		if name, err = api.channelName(ctx, m.topicID); err != nil {
 			b.o.Log("cannot read the WeCom Channel's name: " + err.Error())
 		} else {
 			b.mu.Lock()
@@ -80,18 +142,18 @@ func (b *Bridge) atBot(th *chatThread, e event) {
 			b.mu.Unlock()
 		}
 	}
-	c, err := api.getContent(ctx, e.TopicID, at.PostID, at.ReplyID)
+	c, err := api.getContent(ctx, m.topicID, m.postID, m.replyID)
 	text, rest, isNew := "", "", false
 	if err != nil {
 		text = "[WeCom did not give the text: " + err.Error() + "]"
 	} else {
 		text = render(c, b.robotID())
-		attachments := channelAttachments(c, at.PostID, at.ReplyID)
+		attachments := channelAttachments(c, m.postID, m.replyID)
 		rest, isNew = cutNew(strings.TrimPrefix(strings.TrimSpace(text), "@you"))
-		// An @ with files, or !new, is for Droid, not an answer.
-		if attachments == "" && !isNew && b.answerInChatThread(th, user, text) {
+		// A message with files, or !new, is for Droid, not an answer.
+		if attachments == "" && !isNew && b.answerInChatThread(th, m.user, text) {
 			// The answer reaches Droid as the Prompt's, not as a reply to read.
-			b.markSent(th, at.ReplyID, nil)
+			b.markSent(th, m.replyID, nil)
 			return
 		}
 		text, rest = cut(text)+attachments, cut(rest)+attachments
@@ -100,22 +162,22 @@ func (b *Bridge) atBot(th *chatThread, e event) {
 		if rest == "" {
 			rest = "[started a new Chat Session with !new, with no task yet]"
 		}
-		b.markSent(th, at.ReplyID, err)
-		b.startOver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, rest, true))
+		b.markSent(th, m.replyID, err)
+		b.startOver(th, channelTrigger(m, name, rest, true))
 		return
 	}
 	// Droid reads the text with read_thread when it gets to it.
 	if b.working(th) {
-		b.deliver(th, busyNotice(user, at.ReplyID))
+		b.deliver(th, busyNotice(m))
 		return
 	}
-	b.markSent(th, at.ReplyID, err)
-	b.deliver(th, channelTrigger(user, name, e.TopicID, at.PostID, at.ReplyID, text, first))
+	b.markSent(th, m.replyID, err)
+	b.deliver(th, channelTrigger(m, name, text, first))
 }
 
-// admit reports whether an event is new and from an allowed sender; it
-// records a sender who is not.
-func (b *Bridge) admit(msgID, user string) bool {
+// admit reports whether an event is new and from an allowed sender; with
+// record, it records a sender who is not.
+func (b *Bridge) admit(msgID, user string, record bool) bool {
 	b.mu.Lock()
 	dup := !b.seen.add(msgID)
 	b.mu.Unlock()
@@ -123,7 +185,9 @@ func (b *Bridge) admit(msgID, user string) bool {
 		return false
 	}
 	if !slices.Contains(b.o.Settings.Get().ChatBridge.AllowedUsers, user) {
-		b.refuse(user)
+		if record {
+			b.refuse(user)
+		}
 		return false
 	}
 	return true

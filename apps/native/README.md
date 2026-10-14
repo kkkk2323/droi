@@ -128,8 +128,10 @@ someone @s the robot in a post of a WeCom Channel (频道), or writes to it in a
 the Host runs what they ask as a Chat Session in one fixed Workspace, and Droid answers there
 with the `droi-chat` tools: it reads the post and its replies, searches the Channel, downloads
 attachments, replies with files and @s, and reacts with an emoji. Each post is its own Chat
-Thread, and so is each person's direct message; `!new` (in a post, `@robot !new`) starts the
-Chat Thread over. A permission request becomes a card with a button per option in a direct
+Thread, and so is each person's direct message. Once a post has a Chat Session, later replies
+under it reach Droid without an @ (Droid stays quiet when one is not meant for it); only an @
+starts one. `!new` (in a post, `@robot !new`, or `!new` in a reply under a post with a Chat
+Session) starts the Chat Thread over. A permission request becomes a card with a button per option in a direct
 message, and a numbered reply in a post, answered with `@robot <number>`; the first answer
 wins, in WeCom or in any Client. Chat Sessions show in the Session list with a robot mark. The
 robot uses WeCom's long connection, so the computer needs no public address.
@@ -144,7 +146,7 @@ feature is still in gray release) and add the robot from the robots listed under
 creator adds gets 可获取所有内容，主动发送内容 (read everything, post on its own); one anyone else
 adds can read and answer only what @s it. Give it the full permission (the Channel's creator
 can change it in the Channel's robot settings): the Chat Bridge reads the whole post and its
-replies and searches the Channel. In a direct message no setting is needed: find the robot
+replies, hears replies without an @, and searches the Channel. In a direct message no setting is needed: find the robot
 (its profile card has 发消息) and write to it.
 
 **Set it up in Droi.** Settings → Chat Bridge: enter the Bot ID, the Secret and the Workspace
