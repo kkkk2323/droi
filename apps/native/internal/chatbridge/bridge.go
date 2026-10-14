@@ -39,6 +39,9 @@ type Options struct {
 	PingInterval      time.Duration
 	ReconnectDelay    time.Duration
 	MaxReconnectDelay time.Duration
+	// IdleTimeout is how long after its turn ends an idle Chat Session is
+	// closed, 15 s when zero; the next message loads it again.
+	IdleTimeout time.Duration
 	// Now is time.Now when nil.
 	Now func() time.Time
 	// OnChange hears that the Chat Bridge changed the settings or its
@@ -54,6 +57,8 @@ type Bridge struct {
 	pushes chan frame
 	stop   chan struct{}
 	done   chan struct{}
+	// threadOps are the Chat Threads' running operation queues.
+	threadOps sync.WaitGroup
 
 	mu      sync.Mutex
 	stopped bool
@@ -65,6 +70,10 @@ type Bridge struct {
 	threads map[string]*thread
 	tokens  map[string]*thread
 	seen    recent
+	// synced: the Chat Thread map was rebuilt from the Daemon's Sessions
+	// since the Chat Bridge last connected to it.
+	synced  bool
+	syncMu  sync.Mutex
 	prompts promptBook
 }
 
@@ -77,7 +86,8 @@ const (
 	Connecting
 	Connected
 	// NotConnected: the last attempt failed or the connection dropped; the
-	// Chat Bridge tries again.
+	// Chat Bridge tries again, unless another connection took over the
+	// robot (Reason says so), when only Restart connects again.
 	NotConnected
 )
 
@@ -100,17 +110,33 @@ type thread struct {
 	// read are the replies under the post read_thread showed Droid.
 	read      map[string]bool
 	sessionID string
-	token     string
+	// loaded: this Chat Bridge started or loaded the Chat Session, so it
+	// has the droi-chat server of token.
+	loaded bool
+	token  string
+	// archived: the Chat Thread's last Chat Session was archived, which its
+	// next one is told.
+	archived bool
+	// ops run one at a time, in order, so a Chat Thread's messages, its
+	// Chat Session's start and its idle close never overlap; other Chat
+	// Threads go on meanwhile.
+	ops     []func()
+	running bool
+	// epoch counts the messages delivered, so an idle close armed before
+	// the latest one does nothing.
+	epoch int
+	idle  *time.Timer
 	// reqID is the latest callback's, which replies go under for a day.
 	reqID string
 	reqAt time.Time
 }
 
 const (
-	threadKindDirect  = "direct"
-	threadKindChannel = "channel"
-	replyWindow       = 24 * time.Hour
-	deliverTimeout    = 2 * time.Minute
+	threadKindDirect   = "direct"
+	threadKindChannel  = "channel"
+	replyWindow        = 24 * time.Hour
+	defaultIdleTimeout = 15 * time.Second
+	deliverTimeout     = 2 * time.Minute
 )
 
 // New makes a Chat Bridge; Follow starts it.
@@ -130,6 +156,9 @@ func New(o Options) *Bridge {
 	if o.MaxReconnectDelay <= 0 {
 		o.MaxReconnectDelay = defaultMaxReconnectDelay
 	}
+	if o.IdleTimeout <= 0 {
+		o.IdleTimeout = defaultIdleTimeout
+	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}
@@ -148,6 +177,7 @@ func New(o Options) *Bridge {
 		threads: map[string]*thread{},
 		tokens:  map[string]*thread{},
 	}
+	b.ctl.Subscribe(b.onEvent)
 	b.ctl.Subscribe(b.promptEvent)
 	go b.work()
 	return b
@@ -244,6 +274,7 @@ func (b *Bridge) Stop() {
 	}
 	close(b.stop)
 	<-b.done
+	b.threadOps.Wait()
 	_ = b.ctl.Close()
 }
 
@@ -330,18 +361,25 @@ func (b *Bridge) handle(f frame) {
 		return
 	}
 	b.mu.Lock()
-	key := threadKindDirect + ":" + user
-	th := b.threads[key]
+	th := b.threads[directThread(user).key]
 	if th == nil {
-		th = &thread{key: key, kind: threadKindDirect, userID: user}
-		b.threads[key] = th
+		th = directThread(user)
+		b.threads[th.key] = th
 	}
 	th.reqID, th.reqAt = f.Headers.ReqID, b.o.Now()
 	b.mu.Unlock()
-	if b.answerInThread(th, user, textOf(m)) {
+	if rest, ok := cutNew(textOf(m)); ok {
+		trigger := newDirectTrigger(user, rest)
+		b.run(th, func() { b.startOver(th, trigger) })
 		return
 	}
-	b.deliver(th, directTrigger(user, textOf(m)))
+	text := textOf(m)
+	trigger := directTrigger(user, text)
+	b.run(th, func() {
+		if !b.answerInThread(th, user, text) {
+			b.deliver(th, trigger)
+		}
+	})
 }
 
 // refuse records a sender not on the allowlist, for the user to allow.
@@ -383,29 +421,54 @@ func textOf(m callback) string {
 
 // deliver sends the Chat Thread's Chat Session one message, starting the
 // Session first when the Chat Thread has none.
-func (b *Bridge) deliver(th *thread, text string) {
-	ctx, cancel := context.WithTimeout(context.Background(), deliverTimeout)
+func (b *Bridge) deliver(th *thread, text string) { b.deliverTo(th, text, false) }
+
+// startOver archives the Chat Thread's Chat Session and sends text to a new
+// one, for !new.
+func (b *Bridge) startOver(th *thread, text string) { b.deliverTo(th, text, true) }
+
+func (b *Bridge) deliverTo(th *thread, text string, fresh bool) {
+	ctx, cancel := b.opContext()
 	defer cancel()
-	go func() {
-		select {
-		case <-b.stop:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	if err := b.ctl.Connect(ctx); err != nil {
-		b.o.Log("cannot reach the Daemon: " + err.Error())
+	if err := b.ready(ctx); err != nil {
+		b.o.Log(err.Error())
 		return
 	}
 	b.mu.Lock()
-	id := th.sessionID
+	id, loaded := th.sessionID, th.loaded
+	th.epoch++
+	if th.idle != nil {
+		th.idle.Stop()
+	}
 	b.mu.Unlock()
+	if fresh && id != "" {
+		b.archive(ctx, th, id)
+		id = ""
+	}
+	if id != "" && !loaded {
+		err := b.loadSession(ctx, th, id)
+		if errors.Is(err, controller.ErrSessionNotFound) {
+			b.mu.Lock()
+			th.sessionID = ""
+			b.mu.Unlock()
+			id = ""
+		} else if err != nil {
+			b.o.Log("cannot load the Chat Session: " + err.Error())
+			return
+		}
+	}
 	if id == "" {
 		var err error
 		if id, err = b.startSession(ctx, th); err != nil {
 			b.o.Log("cannot start a Chat Session: " + err.Error())
 			return
 		}
+		b.mu.Lock()
+		if th.archived {
+			text = archivedNote + text
+			th.archived = false
+		}
+		b.mu.Unlock()
 	}
 	if _, err := b.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: text}); err != nil {
 		b.o.Log("cannot send the Chat Session its message: " + err.Error())
@@ -418,20 +481,10 @@ func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
 	if cb.Workspace == "" {
 		return "", errors.New("the Chat Bridge has no Workspace")
 	}
-	b.mu.Lock()
-	tools := b.tools
-	b.mu.Unlock()
-	if tools == nil {
-		return "", errors.New("the droi-chat tools are not listening")
+	token, server, err := b.issueToken(th)
+	if err != nil {
+		return "", err
 	}
-	token := newToken()
-	server, _ := json.Marshal(map[string]any{
-		"type":    "http",
-		"name":    host.ChatServerName,
-		"url":     tools.url,
-		"oauth":   false,
-		"headers": []map[string]string{{"name": "Authorization", "value": "Bearer " + token}},
-	})
 	addition := ""
 	if s.AppendSystemPrompt != nil {
 		addition = *s.AppendSystemPrompt
@@ -447,13 +500,14 @@ func (b *Bridge) startSession(ctx context.Context, th *thread) (string, error) {
 		Tags:           []protocol.SessionTag{{Name: sessions.ChatTag, Metadata: th.metadata()}},
 		MCPServers:     []json.RawMessage{server},
 	})
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if err != nil {
+		delete(b.tokens, token)
 		return "", err
 	}
-	b.mu.Lock()
-	th.sessionID, th.token = res.SessionID, token
-	b.tokens[token] = th
-	b.mu.Unlock()
+	b.useToken(th, token)
+	th.sessionID, th.loaded = res.SessionID, true
 	return res.SessionID, nil
 }
 

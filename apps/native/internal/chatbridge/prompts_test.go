@@ -30,9 +30,9 @@ type client struct {
 	changed chan struct{}
 }
 
-// client connects another Client to the Daemon; connect it before the
+// window connects another Client to the Daemon, as Droi's window; connect it before the
 // Prompt is asked, as the Daemon sends a Prompt to the Clients it has then.
-func (r *rig) client() *client {
+func (r *rig) window() *client {
 	r.t.Helper()
 	c := &client{t: r.t, changed: make(chan struct{})}
 	c.ctl = controller.New(controller.Config{
@@ -212,7 +212,7 @@ func (c card) buttonFor(t *testing.T, label string) string {
 
 func TestAPermissionRequestInADirectMessageIsACardAClickAnswers(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})
 
 	c := r.sentCard(1)
@@ -347,7 +347,7 @@ func (c *client) permission() controller.Permission {
 
 func TestAPermissionRequestInAChannelIsNumberedTextAnAtWithTheNumberAnswers(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	post := r.channel("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 
@@ -374,7 +374,7 @@ func TestAPermissionRequestInAChannelIsNumberedTextAnAtWithTheNumberAnswers(t *t
 
 func TestOnlyAnAllowedUserAnswersAPrompt(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})
 	c := r.sentCard(1)
 	click := r.w.Click(fakewecom.Click{From: "wo-stranger", TaskID: c.TaskID, Key: c.buttonFor(t, "Yes, allow")})
@@ -406,7 +406,7 @@ func TestOnlyAnAllowedUserAnswersAPrompt(t *testing.T) {
 
 func TestTextThatIsNotANumberReachesDroidAndThePromptWaits(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	post := r.channel("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
@@ -437,7 +437,7 @@ var askTurn = fakedaemon.Turn{Kind: "askUser", Question: "Which branch?", Option
 
 func TestAnAskUserIsNumberedTextANumberPicksAnOption(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Deploy"})
 
 	asked := r.directText(1)
@@ -455,7 +455,7 @@ func TestAnAskUserIsNumberedTextANumberPicksAnOption(t *testing.T) {
 
 func TestAnAskUserTakesOtherTextAsTheAnswer(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	post := r.channel("Deploy")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	if asked := r.robotReply(post, 1); !strings.Contains(asked, "Which branch?") || !strings.Contains(asked, "2. release") {
@@ -470,7 +470,7 @@ func TestAnAskUserTakesOtherTextAsTheAnswer(t *testing.T) {
 
 func TestAPermissionAnsweredInAClientFirstIsSettledInTheDirectMessage(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})
 	c := r.sentCard(1)
 	if err := other.ctl.RespondToPermission(context.Background(), other.permission().RequestID,
@@ -494,7 +494,7 @@ func TestAPermissionAnsweredInAClientFirstIsSettledInTheDirectMessage(t *testing
 
 func TestAPermissionAnsweredInAClientFirstIsSettledInTheChannel(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	post := r.channel("Push the release")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
@@ -516,7 +516,7 @@ func TestAPermissionAnsweredInAClientFirstIsSettledInTheChannel(t *testing.T) {
 
 func TestAnAskUserAnsweredInAClientFirstIsSettledInWeCom(t *testing.T) {
 	r := startTurn(t, askTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	post := r.channel("Deploy")
 	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
 	r.robotReply(post, 1)
@@ -538,7 +538,7 @@ func TestAnAskUserAnsweredInAClientFirstIsSettledInWeCom(t *testing.T) {
 
 func TestAnUnansweredPromptWaits(t *testing.T) {
 	r := startTurn(t, permissionTurn, nil, nil)
-	other := r.client()
+	other := r.window()
 	r.w.SendDirectMessage(fakewecom.DirectMessage{From: "HuangJunXiang", Text: "Push it"})
 	r.sentCard(1)
 	r.clock.Add(48 * time.Hour)
@@ -549,5 +549,17 @@ func TestAnUnansweredPromptWaits(t *testing.T) {
 	}
 	if n := len(r.w.Frames("aibot_respond_update_msg")); n != 0 {
 		t.Errorf("%d card updates", n)
+	}
+}
+
+func TestNewStartsOverWhileAnAskUserWaits(t *testing.T) {
+	r := startTurn(t, askTurn, nil, nil)
+	post := r.channel("Deploy")
+	r.w.AtBot(fakewecom.AtBot{TopicID: topic, PostID: post, From: "HuangJunXiang"})
+	first := r.initialized(1)
+	r.robotReply(post, 1)
+	r.atIn(post, "HuangJunXiang", "!new deploy the hotfix")
+	if second := r.initialized(2); second.SessionID == first.SessionID {
+		t.Error("!new answered the question instead of starting over")
 	}
 }
