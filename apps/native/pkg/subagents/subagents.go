@@ -15,9 +15,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 // SessionRef is a crumb to a Session.

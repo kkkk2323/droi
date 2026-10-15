@@ -12,7 +12,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/sessionfile"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // Fewer characters and the Daemon scans thousands of files for nothing much.

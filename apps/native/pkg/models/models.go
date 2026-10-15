@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 

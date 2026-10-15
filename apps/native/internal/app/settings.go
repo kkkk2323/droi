@@ -14,13 +14,13 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
-	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/models"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/theme"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
 // settingsTab is a section of Settings.

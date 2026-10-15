@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
 // "Sign in with Factory": the OAuth device flow the droid CLI uses (WorkOS

@@ -7,7 +7,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
 
 // Remote is the Gateway that lets a paired phone reach the Daemon.

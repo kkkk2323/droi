@@ -9,9 +9,9 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/attachments"
-	"github.com/kkkk2323/droi/apps/native/internal/jsonrender"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/pkg/jsonrender"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
 
 // mdStyle is how a kind of Markdown reads: its text size, in px of the

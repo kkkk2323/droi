@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 // The transcript's list builds only the rows in view, so an entry is cut

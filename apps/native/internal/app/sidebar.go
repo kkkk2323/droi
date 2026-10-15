@@ -11,11 +11,11 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/archive"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
-	"github.com/kkkk2323/droi/apps/native/internal/subagents"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
 )
 
 // Folded like a Workspace group, in the same preference; no Workspace key has

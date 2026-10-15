@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/attachments"
-	"github.com/kkkk2323/droi/apps/native/internal/drafts"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

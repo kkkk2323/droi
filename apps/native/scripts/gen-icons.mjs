@@ -1,12 +1,12 @@
 // Writes the native app's Lucide icons as SVG files: every icon already in
-// internal/icons/svg, plus those named on the command line, from the
+// pkg/icons/svg, plus those named on the command line, from the
 // lucide-react-native release the Phone App draws with.
 //   node apps/native/scripts/gen-icons.mjs [icon-name ...]
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../../..')
-const out = resolve(import.meta.dirname, '../internal/icons/svg')
+const out = resolve(import.meta.dirname, '../pkg/icons/svg')
 const icons = join(root, 'apps/mobile/node_modules/lucide-react-native/dist/esm/icons')
 
 mkdirSync(out, { recursive: true })

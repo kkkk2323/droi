@@ -6,7 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
 
 // signInState is the sign-in page's: the device flow being started, why it

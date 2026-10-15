@@ -10,7 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
 
 // accountsState is the Accounts group's: the switch or removal waiting for

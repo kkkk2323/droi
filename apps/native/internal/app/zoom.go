@@ -3,7 +3,7 @@ package app
 import (
 	"slices"
 
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // zoomFactors are Chromium's zoom levels, which ⌘= and ⌘- step through in

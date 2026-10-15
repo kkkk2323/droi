@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 func listedOrder(a *App) []string {

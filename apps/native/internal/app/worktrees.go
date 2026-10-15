@@ -8,10 +8,10 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // The lifecycles a new worktree can have, as the Factory App words them.

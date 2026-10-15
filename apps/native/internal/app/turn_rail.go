@@ -8,7 +8,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 // railItem is one message the user sent, as the TurnRail shows it.

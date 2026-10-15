@@ -21,8 +21,8 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/theme"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
 // The reference screens are 1024x640 at 2x (tests/web/native-reference.spec.ts).

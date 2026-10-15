@@ -11,11 +11,11 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
-	"github.com/kkkk2323/droi/apps/native/internal/subagents"
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 const resultPreviewLines = 40

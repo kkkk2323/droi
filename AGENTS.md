@@ -27,7 +27,8 @@ apps/
 ├── native/     # The desktop app: Go on MyGo (macOS, Windows); see apps/native/README.md
 │   ├── internal/app/   # The window: views and their tests against the Fake Daemon
 │   ├── internal/host/  # Host: settings, Daemon supervisor, sign-in, CLI login, Runtime Overlay
-│   └── internal/...    # transcript, gateway (Remote Access), memorywork (Memory), ...
+│   ├── internal/...    # gateway (Remote Access), memorywork (Memory), ...
+│   └── pkg/...         # Public, for WeCom Droi (ADR 0022): l10n, kit, theme, transcript, ...
 ├── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
 │               # screens under src/screens, hardware behind src/platform with
 │               # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md

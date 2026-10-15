@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // The menu by the header's title pins, copies and renames the Session.

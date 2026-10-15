@@ -13,10 +13,10 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
-	"github.com/kkkk2323/droi/apps/native/internal/subagents"
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 // olderPage is how many messages one daemon.get_session_messages brings.

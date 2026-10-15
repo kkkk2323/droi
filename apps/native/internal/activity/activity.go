@@ -9,7 +9,7 @@
 // use-session-activity.ts).
 package activity
 
-import "github.com/kkkk2323/droi/apps/native/internal/sessions"
+import "github.com/kkkk2323/droi/apps/native/pkg/sessions"
 
 type Activity string
 

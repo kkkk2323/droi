@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 func TestTitleHitsMatchTheTitleNewestFirst(t *testing.T) {

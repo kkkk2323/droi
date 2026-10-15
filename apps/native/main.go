@@ -24,11 +24,11 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/theme"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
 // devVersion is the version of `go run`; a build takes mygo.json's.

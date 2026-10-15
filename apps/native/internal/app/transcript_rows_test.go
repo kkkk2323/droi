@@ -5,7 +5,7 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 func TestRowsCutAClusterIntoItsCalls(t *testing.T) {

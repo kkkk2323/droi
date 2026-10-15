@@ -3,8 +3,8 @@ package defaults
 import (
 	"slices"
 
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // ToolMode is whether a Session's model calls tools directly, from a Script

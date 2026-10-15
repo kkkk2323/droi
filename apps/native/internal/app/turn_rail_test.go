@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/internal/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
 func TestRailItems(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	jr "github.com/kkkk2323/droi/apps/native/internal/jsonrender"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	jr "github.com/kkkk2323/droi/apps/native/pkg/jsonrender"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
 
 // renderTree draws a json-render block of a reply: the CLI's terminal

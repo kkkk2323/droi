@@ -129,26 +129,26 @@ no split.
 
 ## Layout
 
-| Path                                                            | What                                                                                                  |
-| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `main.go`                                                       | the app: window, menus, the Host                                                                      |
-| `assets/`                                                       | the vendored Geist fonts, embedded                                                                    |
-| `internal/theme/`                                               | the design tokens of `global.css`: the three themes, fonts, text sizes                                |
-| `internal/icons/`                                               | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |
-| `internal/host/`                                                | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login                   |
-| `internal/memory/`                                              | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
-| `internal/memorywork/`                                          | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                     |
-| `internal/gateway/`                                             | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints  |
-| `internal/computer/`                                            | the Computer preference: the Paired Computers remembered, the one followed, and checking a link       |
-| `internal/updates/`                                             | the in-app update: check, download, restart (MyGo's signed updates)                                   |
-| `internal/prefs/`                                               | the Client's local preferences (localStorage's place)                                                 |
-| `internal/transcript/`                                          | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)              |
-| `internal/sessions/`                                            | the Session list: grouping, sorting, pins, activity (daemon-layer port)                               |
-| `internal/automations/`                                         | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
-| `internal/models/`, `defaults/`, `skills/`, `mcp/`, `slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
-| `internal/kit/`                                                 | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs                  |
-| `internal/app/`                                                 | the views: shell, sidebar, Session, composer, prompts, settings                                       |
-| `testdata/reference/`                                           | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |
+| Path                                                                                      | What                                                                                                  |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `main.go`                                                                                 | the app: window, menus, the Host                                                                      |
+| `assets/`                                                                                 | the vendored Geist fonts, embedded                                                                    |
+| `pkg/theme/`                                                                              | the design tokens of `global.css`: the three themes, fonts, text sizes                                |
+| `pkg/icons/`                                                                              | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |
+| `internal/host/`                                                                          | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login                   |
+| `internal/memory/`                                                                        | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
+| `internal/memorywork/`                                                                    | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                     |
+| `internal/gateway/`                                                                       | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints  |
+| `internal/computer/`                                                                      | the Computer preference: the Paired Computers remembered, the one followed, and checking a link       |
+| `internal/updates/`                                                                       | the in-app update: check, download, restart (MyGo's signed updates)                                   |
+| `pkg/prefs/`                                                                              | the Client's local preferences (localStorage's place)                                                 |
+| `pkg/transcript/`                                                                         | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)              |
+| `pkg/sessions/`                                                                           | the Session list: grouping, sorting, pins, activity (daemon-layer port)                               |
+| `internal/automations/`                                                                   | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
+| `pkg/models/`, `pkg/defaults/`, `internal/skills/`, `internal/mcp/`, `internal/slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
+| `pkg/kit/`                                                                                | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs                  |
+| `internal/app/`                                                                           | the views: shell, sidebar, Session, composer, prompts, settings                                       |
+| `testdata/reference/`                                                                     | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |
 
 ## Commands (from the repository root)
 
@@ -157,7 +157,7 @@ go run ./apps/native                 # run it (needs droid on PATH)
 go test ./apps/native/...            # unit tests, view tests, Fake Daemon tests
 go tool -modfile=apps/native/go.mod mygo build apps/native   # .app and .dmg
 DROI_NATIVE_REF=1 pnpm test:e2e --project=desktop native-reference.spec.ts   # re-record the reference (deprecated web suite)
-node apps/native/scripts/gen-icons.mjs [icon-name ...]   # add Lucide icons, or rewrite those in internal/icons/svg
+node apps/native/scripts/gen-icons.mjs [icon-name ...]   # add Lucide icons, or rewrite those in pkg/icons/svg
 ```
 
 ## Status

@@ -150,3 +150,21 @@ func TestL(t *testing.T) {
 		t.Errorf("a key without values was formatted: %q", got)
 	}
 }
+
+func TestAdd(t *testing.T) {
+	defer Set("", "en-US")
+	defer added.Store(added.Load())
+	zh["Settings"] = "设置"
+	defer delete(zh, "Settings")
+	Add(map[string]string{"Bot %s": "机器人 %s", "Settings": "另一个"})
+	Add(map[string]string{"Posts": "帖子"})
+	if got := L("Bot %s", "A"); got != "Bot A" {
+		t.Errorf("English: %q", got)
+	}
+	Set("zh-Hans", "")
+	for key, want := range map[string]string{"Bot %s": "机器人 %s", "Posts": "帖子", "Settings": "设置"} {
+		if got := T(key); got != want {
+			t.Errorf("T(%q) = %q, want %q", key, got, want)
+		}
+	}
+}

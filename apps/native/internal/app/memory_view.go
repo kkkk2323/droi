@@ -8,12 +8,12 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/defaults"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // Memory is the Host's side of Memory that Settings → Memory and the

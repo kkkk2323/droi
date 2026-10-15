@@ -16,17 +16,17 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/compaction"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/internal/drafts"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
-	"github.com/kkkk2323/droi/apps/native/internal/theme"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
+	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
 // LoadedMessageLimit is how many of a Session's latest messages a load

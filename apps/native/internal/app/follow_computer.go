@@ -11,8 +11,8 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // following reports whether the window shows another computer than this one.

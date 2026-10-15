@@ -10,7 +10,7 @@ import (
 	"slices"
 
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 const prefsKey = "droi.computers"

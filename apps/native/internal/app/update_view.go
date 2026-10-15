@@ -6,9 +6,9 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 func describeUpdate(s updates.State) string {

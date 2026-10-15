@@ -1,7 +1,8 @@
 // Package l10n is the native app's words in the user's language. The key
 // is the English text, so a string without a translation reads as written;
 // the table is zh.go, which TestCatalog checks against every L("…") in the
-// app's sources.
+// app's sources. Another app built on these packages adds its own words
+// with Add.
 //
 // The language can change while the app runs: L reads the table in force,
 // and the views, built for every frame, read it again. So call L as a view
@@ -27,9 +28,33 @@ type state struct {
 	system string   // the system's locale, such as "zh-CN"
 }
 
-var current atomic.Pointer[state]
+var (
+	current atomic.Pointer[state]
+	added   atomic.Pointer[map[string]string]
+)
 
-func init() { current.Store(&state{system: "en-US"}) }
+func init() {
+	current.Store(&state{system: "en-US"})
+	added.Store(&map[string]string{})
+}
+
+// Add adds Chinese words for keys of another app's own. A key this
+// package already translates keeps its translation.
+func Add(chinese map[string]string) {
+	for {
+		old := added.Load()
+		next := make(map[string]string, len(*old)+len(chinese))
+		for k, v := range *old {
+			next[k] = v
+		}
+		for k, v := range chinese {
+			next[k] = v
+		}
+		if added.CompareAndSwap(old, &next) {
+			return
+		}
+	}
+}
 
 // Set applies the language picked in Settings ("en", "zh-Hans", or "" to
 // follow the system) and the system's locale, kept when ""; it reports
@@ -78,6 +103,9 @@ func N(key string) string { return key }
 func T(key string) string {
 	if Code() == Chinese {
 		if t, ok := zh[key]; ok {
+			return t
+		}
+		if t, ok := (*added.Load())[key]; ok {
 			return t
 		}
 	}

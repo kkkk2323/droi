@@ -13,7 +13,7 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
 const defaultFactoryAPIBaseURL = "https://api.factory.ai"

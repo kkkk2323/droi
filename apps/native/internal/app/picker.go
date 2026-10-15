@@ -5,12 +5,12 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/brands"
-	"github.com/kkkk2323/droi/apps/native/internal/defaults"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/models"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/brands"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // autonomyLevels are the levels the composer offers, in order.

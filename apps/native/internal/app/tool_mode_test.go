@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/internal/defaults"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 )
 
 func TestTheNewSessionPageStartsASessionWithTheToolModePicked(t *testing.T) {

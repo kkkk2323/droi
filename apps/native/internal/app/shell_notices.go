@@ -5,7 +5,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
 
 // startingUp is the Daemon coming up: never connected yet, and not given

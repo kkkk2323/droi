@@ -6,9 +6,9 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/defaults"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/slash"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // draftSession is the New session page's Draft Session: the Daemon lists

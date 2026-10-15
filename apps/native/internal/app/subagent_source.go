@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
-	"github.com/kkkk2323/droi/apps/native/internal/subagents"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
 )
 
 // knownSubagents is the frame's list as every view reads it: the Daemon's

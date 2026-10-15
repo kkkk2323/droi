@@ -14,10 +14,10 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/apps/native/internal/models"
-	"github.com/kkkk2323/droi/apps/native/internal/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // The Daemon reports no change to its Automations; the page reads them

@@ -8,8 +8,8 @@ package drafts
 import (
 	"sync"
 
-	"github.com/kkkk2323/droi/apps/native/internal/attachments"
-	"github.com/kkkk2323/droi/apps/native/internal/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 type Draft struct {

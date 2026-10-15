@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
 // The Host's side of Memory: what Settings → Memory shows, the manual
