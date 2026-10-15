@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	_ "github.com/egoist/mygo/locales/zh-Hans"
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
 
@@ -105,6 +106,7 @@ func main() {
 	mac := runtime.GOOS == "darwin"
 	theme.RegisterFonts()
 	mygo.App.SetName("Droi")
+	mygo.App.SetLanguages(string(l10n.English), string(l10n.Chinese))
 	mygo.App.RequestSingleInstanceLock()
 
 	var win *mygo.Window
@@ -166,6 +168,7 @@ func main() {
 			FactoryAppRunning: host.FactoryAppRunning,
 		})
 		a.SetLanguageChanged(func() {
+			mygo.App.SetLocale(string(l10n.Code()))
 			if setMenu != nil {
 				setMenu()
 			}
@@ -176,7 +179,7 @@ func main() {
 	switchTo = func(to *computer.Paired) {
 		old := shown
 		shown = open(to)
-		shown.app.SetLocale(mygo.App.Locale())
+		shown.app.SetLocale(systemLocale())
 		shown.start(h)
 		old.close()
 		update(func() {})
@@ -213,7 +216,8 @@ func main() {
 				}
 			}))
 		}
-		current().SetLocale(mygo.App.Locale())
+		current().SetLocale(systemLocale())
+		mygo.App.SetLocale(string(l10n.Code()))
 		setMenu()
 		opts := mygo.WindowOptions{
 			Title:           "Droi",
@@ -264,6 +268,16 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// systemLocale is the language the user reads best, such as "zh-Hans-CN",
+// which the app's language follows unless Settings picks one. App.Locale
+// is not it: since MyGo 0.5 that is the language the app shows.
+func systemLocale() string {
+	if langs := mygo.App.PreferredLanguages(); len(langs) > 0 {
+		return langs[0]
+	}
+	return ""
 }
 
 // menu is the Desktop Shell's: the app, File, Edit, View and Window menus,

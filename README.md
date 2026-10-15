@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go)](https://go.dev/)
-[![MyGo](https://img.shields.io/badge/MyGo-0.2.16-6E56CF)](https://mygo.egoist.dev)
+[![MyGo](https://img.shields.io/badge/MyGo-0.5.1-6E56CF)](https://mygo.egoist.dev)
 [![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo)](https://expo.dev/)
 
 A native Mac, Windows and iPhone app for the [Factory Droid](https://docs.factory.ai) coding agent.

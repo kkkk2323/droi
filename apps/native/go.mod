@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/coder/websocket v1.8.15
-	github.com/egoist/mygo v0.4.2
+	github.com/egoist/mygo v0.5.1
 	github.com/frostybee/nuri v1.0.1
 	github.com/google/uuid v1.6.0
 	github.com/kkkk2323/droi/packages/droid-sdk-go v0.0.0-00010101000000-000000000000
@@ -23,6 +23,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
