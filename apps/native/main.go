@@ -147,6 +147,7 @@ func main() {
 			StatsFile:    filepath.Join(userData, "session-stats.json"),
 			OpenPath:     mygo.Shell.OpenPath,
 			ShowInFolder: mygo.Shell.ShowItemInFolder,
+			FileIcon:     mygo.Shell.FileIcon,
 			Gateway:      windowClient(followed, gw, localToken),
 			Host:         h,
 			Version:      version,

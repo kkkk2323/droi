@@ -1,7 +1,6 @@
 package host
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -118,35 +117,4 @@ func OpenIn(apps []OpenInApp, path, appID string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown app: %s", appID)
-}
-
-// AppIconPNG is a bundle's icon as a PNG of size px, read with sips from
-// the icon file its Info.plist names; nil when it has none, and off macOS.
-func AppIconPNG(appPath string, size int) []byte {
-	if runtime.GOOS != "darwin" {
-		return nil
-	}
-	out, err := exec.Command("/usr/bin/plutil", "-extract", "CFBundleIconFile", "raw", filepath.Join(appPath, "Contents", "Info.plist")).Output()
-	if err != nil {
-		return nil
-	}
-	name := strings.TrimSpace(string(out))
-	if filepath.Ext(name) == "" {
-		name += ".icns"
-	}
-	icns := filepath.Join(appPath, "Contents", "Resources", name)
-	dir, err := os.MkdirTemp("", "droi-icon")
-	if err != nil {
-		return nil
-	}
-	defer os.RemoveAll(dir)
-	png := filepath.Join(dir, "icon.png")
-	var stderr bytes.Buffer
-	cmd := exec.Command("/usr/bin/sips", "-s", "format", "png", "-Z", fmt.Sprint(size), icns, "--out", png)
-	cmd.Stderr = &stderr
-	if cmd.Run() != nil {
-		return nil
-	}
-	data, _ := os.ReadFile(png)
-	return data
 }

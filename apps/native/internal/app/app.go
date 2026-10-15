@@ -67,6 +67,9 @@ type Config struct {
 	ShowInFolder func(path string)
 	// OpenInApps lists the apps that open a folder; the installed ones when nil.
 	OpenInApps func() []host.OpenInApp
+	// FileIcon is an app's icon as a PNG of size px; nil in tests, which
+	// show the apps without icons.
+	FileIcon func(path string, size int) ([]byte, error)
 	// Gateway is the Client's side of the Gateway's plain endpoints: the
 	// Scratch Workspaces of Sessions started without a Workspace and where
 	// a Session's transcript is. It is made from the address and token the

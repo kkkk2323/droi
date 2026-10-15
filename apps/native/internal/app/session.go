@@ -676,8 +676,11 @@ func (a *App) appIcon(app host.OpenInApp) *ui.Bitmap {
 		return bm
 	}
 	appIcons.Store(app.ID, (*ui.Bitmap)(nil))
+	if a.cfg.FileIcon == nil {
+		return nil
+	}
 	go func() {
-		if png := host.AppIconPNG(app.AppPath, 64); png != nil {
+		if png, err := a.cfg.FileIcon(app.AppPath, 64); err == nil {
 			if bm, err := ui.DecodeBitmap(png); err == nil {
 				appIcons.Store(app.ID, bm)
 				a.redraw()
