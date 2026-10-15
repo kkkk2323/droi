@@ -1,3 +1,15 @@
+## 1.56.0 - 2026-10-15
+
+### Added
+
+- Loops: a prompt Droid sends to the same session again on an interval, as droid's `/loop`. A session's loops show above its composer, with how often each runs and when it runs next; you can pause, resume or delete each one. `/loop 10m check the build` (or `/loop check the build every 10m`) starts one, `/loop stop` deletes them. Loops run while Droi runs: Droi keeps the session ready for them, and starts them again after Droi or Droid restarts.
+
+### Changed
+
+- Global Memory keeps to facts about you that hold in every project. When Droid saves to Global Memory, Droi reminds it to save a project's facts in that project's Memory instead, and in a chat without a project to leave out what the chat is about.
+- Consolidating Global Memory moves an entry about one project to that project's Memory and removes entries about a passing topic. Consolidating any Memory also removes one-off details, such as the result of one task.
+- Droi's Memory prompts update themselves when you have not edited them. Before, a prompt copied into the Memory folder stayed as it was first copied.
+
 ## 1.55.0 - 2026-10-15
 
 ### Changed
