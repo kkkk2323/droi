@@ -1,3 +1,13 @@
+## 1.54.0 - 2026-10-15
+
+### Changed
+
+- Droi runs on MyGo 0.5.1, and its program is about a quarter smaller.
+- Replies, reasoning, a subagent's report and the release notes are drawn by MyGo's Markdown view. A reply that is still streaming shows half-written formatting as what it will become, and its words fade in (not with Reduce Motion). Code blocks show their language and a Copy button, without line numbers or a Download button; a table wider than the column scrolls sideways; a picture shows at its own size, at most as wide as the column, and as its description when it cannot be read.
+- In Chinese, MyGo's own menus and controls (Undo, Cut, Copy, …) are in Chinese too.
+- Enter sends everything typed, even when it comes right after the last key.
+- The **Open in** menu takes the apps' icons from the system, and shows them on Windows too.
+
 ## 1.53.0 - 2026-10-14
 
 ### Removed

@@ -32,7 +32,7 @@ import (
 )
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
-const devVersion = "1.53.0"
+const devVersion = "1.54.0"
 
 // hostUnsupported is why `droi host` does not run on goos, "" where it does:
 // elsewhere the app is the Host (ADR 0019).
