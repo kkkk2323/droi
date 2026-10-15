@@ -7,6 +7,7 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -40,6 +41,7 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 		OnChange: changed,
 		Log:      func(s string) { log.Println("[memory]", s) },
 		Home:     home,
+		Sessions: memory.SessionsDir(nil),
 	})
 	var mu sync.Mutex
 	watching, running := false, false

@@ -32,6 +32,8 @@ type Options struct {
 	// Home is where a Memory Session without a Workspace on disk runs; the
 	// user's home folder when "".
 	Home string
+	// Sessions is the Daemon's sessions folder (Work.Sessions).
+	Sessions string
 }
 
 // Controller runs the Host's Memory work.
@@ -94,7 +96,7 @@ func (c *Controller) work(prompt PromptName, run Run) (Work, context.Context, er
 	if err != nil {
 		return Work{}, nil, err
 	}
-	return Work{Store: store, Run: run, ModelID: c.o.ModelID(), Prompt: text, Home: c.o.Home}, ctx, nil
+	return Work{Store: store, Run: run, ModelID: c.o.ModelID(), Prompt: text, Home: c.o.Home, Sessions: c.o.Sessions}, ctx, nil
 }
 
 // Overview is every Memory on this computer, as Settings → Memory shows it.

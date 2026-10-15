@@ -181,6 +181,15 @@ type SliceChanges struct {
 	Remove  []string  `json:"remove"`
 	// Merge makes several entries one new entry with the text.
 	Merge []Merge `json:"merge"`
+	// Move gives Global Memory entries to a Project Memory.
+	Move []Move `json:"move"`
+}
+
+// Move gives an entry to the Project Memory of Workspace, keeping its id,
+// category and day.
+type Move struct {
+	ID        string `json:"id"`
+	Workspace string `json:"workspace"`
 }
 
 // Rewrite gives an entry new text.
@@ -787,6 +796,9 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 	for _, m := range changes.Merge {
 		named = append(named, m.IDs...)
 	}
+	for _, m := range changes.Move {
+		named = append(named, m.ID)
+	}
 	namedSet := map[string]bool{}
 	for _, id := range named {
 		if !sentIDs[id] {
@@ -817,6 +829,18 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 	}
 	first := sent[0]
 	key := slotKey(SlotOf(first))
+	if len(changes.Move) > 0 && first.Scope != ScopeGlobal {
+		return "Only Global Memory entries can move to a project.", nil
+	}
+	texts := map[string]string{}
+	for _, e := range sent {
+		texts[e.ID] = e.Text
+	}
+	for _, m := range changes.Move {
+		if !filepath.IsAbs(m.Workspace) {
+			return "The answer moves " + m.ID + " to " + m.Workspace + ", which is not a Workspace path.", nil
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	reason := ""
@@ -829,6 +853,24 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 			}
 			if !ok || current.Text != e.Text {
 				reason = e.ID + " changed while it was being consolidated."
+				return nil
+			}
+		}
+		// A move adds to the project's Memory, so it keeps to that Memory's hard limit.
+		targets := map[string]Slot{}
+		adding := map[string]int{}
+		for _, m := range changes.Move {
+			slot := ProjectSlot(m.Workspace)
+			targets[slotKey(slot)] = slot
+			adding[slotKey(slot)] += jsLength(texts[m.ID])
+		}
+		for target, n := range adding {
+			size, err := s.sizeOf(target)
+			if err != nil {
+				return err
+			}
+			if size+n > Limits[ScopeProject].Hard {
+				reason = "The Memory of " + targets[target].Workspace + " has no room for the entries moved to it."
 				return nil
 			}
 		}
@@ -849,6 +891,15 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 				}
 			}
 			if _, err := s.insert(key, first.Category, jsTrim(m.Text)); err != nil {
+				return err
+			}
+		}
+		for _, m := range changes.Move {
+			slot := ProjectSlot(m.Workspace)
+			if err := s.ensureSlot(slot); err != nil {
+				return err
+			}
+			if _, err := s.exec("UPDATE entries SET slot = ? WHERE id = ?", slotKey(slot), m.ID); err != nil {
 				return err
 			}
 		}
@@ -917,6 +968,20 @@ func (s *Store) LogCall(call Call) error {
 		}
 		return nil
 	})
+}
+
+// WriterSession is the Session whose memory_add wrote the entry; "" when the
+// call log does not say, as for an entry a Memory Session wrote.
+func (s *Store) WriterSession(id string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var sessionID sql.NullString
+	err := s.queryRow(`SELECT c.session_id FROM call_entries ce JOIN calls c ON c.rowid = ce.call
+           WHERE ce.entry = ? AND ce.role = 'written' AND c.tool = 'memory_add' ORDER BY c.rowid LIMIT 1`, id).Scan(&sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return sessionID.String, err
 }
 
 // Usage says how the searches of one Memory went since calls were first

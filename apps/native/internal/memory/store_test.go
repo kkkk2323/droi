@@ -450,6 +450,56 @@ func TestApplySliceRejectsRewrittenTextThatCarriesASecret(t *testing.T) {
 	}
 }
 
+func TestApplySliceMovesAGlobalEntryToAProjectKeepingItsIDAndDay(t *testing.T) {
+	s, _ := openTestStore(t)
+	a := add(t, s, GlobalSlot, "app deploys with fly", CategoryConvention)
+	b := add(t, s, GlobalSlot, "terse answers", CategoryConvention)
+	eq(t, applySlice(t, s, []Entry{a, b}, SliceChanges{Keep: []string{b.ID}, Move: []Move{{ID: a.ID, Workspace: project.Workspace}}}), "")
+	moved, _ := getEntry(t, s, a.ID)
+	eq(t, moved, Entry{ID: a.ID, Scope: ScopeProject, Workspace: project.Workspace, Category: CategoryConvention, Day: a.Day, Text: a.Text})
+	eq(t, texts(must[[]Entry](t)(s.List(GlobalSlot, ""))), []string{"terse answers"})
+}
+
+func TestApplySliceMovesOnlyGlobalEntriesAndOnlyToAWorkspacePath(t *testing.T) {
+	s, _ := openTestStore(t)
+	a := add(t, s, project, "a")
+	eq(t, applySlice(t, s, []Entry{a}, SliceChanges{Move: []Move{{ID: a.ID, Workspace: other.Workspace}}}), "Only Global Memory entries can move to a project.")
+	g := add(t, s, GlobalSlot, "g")
+	if reason := applySlice(t, s, []Entry{g}, SliceChanges{Move: []Move{{ID: g.ID, Workspace: "app"}}}); !strings.Contains(reason, "not a Workspace path") {
+		t.Fatalf("reason %q", reason)
+	}
+	got, _ := getEntry(t, s, g.ID)
+	eq(t, got.Scope, ScopeGlobal)
+}
+
+func TestApplySliceRefusesAMoveThatOverfillsTheProject(t *testing.T) {
+	s, _ := openTestStore(t)
+	add(t, s, project, strings.Repeat("x", Limits[ScopeProject].Hard-5))
+	g := add(t, s, GlobalSlot, "too long to fit")
+	if reason := applySlice(t, s, []Entry{g}, SliceChanges{Move: []Move{{ID: g.ID, Workspace: project.Workspace}}}); !strings.Contains(reason, "no room") {
+		t.Fatalf("reason %q", reason)
+	}
+	got, _ := getEntry(t, s, g.ID)
+	eq(t, got.Scope, ScopeGlobal)
+}
+
+func TestStoreSaysWhichSessionAddedAnEntry(t *testing.T) {
+	s, _ := openTestStore(t)
+	a := add(t, s, GlobalSlot, "a")
+	b := add(t, s, GlobalSlot, "b")
+	for _, c := range []Call{
+		{SessionID: "adder", Tool: "memory_add", Slot: &GlobalSlot, OK: true, Written: a.ID},
+		{SessionID: "replacer", Tool: "memory_replace", Slot: &GlobalSlot, OK: true, Written: a.ID},
+		{SessionID: "replacer", Tool: "memory_replace", Slot: &GlobalSlot, OK: true, Written: b.ID},
+	} {
+		if err := s.LogCall(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eq(t, must[string](t)(s.WriterSession(a.ID)), "adder")
+	eq(t, must[string](t)(s.WriterSession(b.ID)), "")
+}
+
 func TestSearchTerms(t *testing.T) {
 	eq(t, SearchTerms(`  "memory search"  pnpm a `), []string{"memory search", "pnpm"})
 	eq(t, SearchTerms("用"), []string{"用"})

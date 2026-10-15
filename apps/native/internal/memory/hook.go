@@ -82,12 +82,13 @@ const (
 var policy = strings.Join([]string{
 	"Droi Memory is on: the droi-memory tools (memory_search, memory_list, memory_add, memory_replace, memory_remove) keep facts across Sessions.",
 	"- Search Memory before acting on this Workspace’s conventions, its tooling, or anything that failed before.",
-	"- Save durable facts as you learn them, one per entry: corrections the user makes (category correction), conventions, tool quirks, failures and their causes, insights; preferences about how to work with the user go in scope global.",
+	"- Save durable facts as you learn them, one per entry: corrections the user makes (category correction), conventions, tool quirks, failures and their causes, insights.",
+	"- Scope project, the default, holds everything about this Workspace. Scope global holds only what is true in every Workspace: how the user likes to work and be answered, their computers, accounts and everyday tools.",
 	"- Replace or remove an entry once it turns out to be wrong.",
 	"- Memory is context, not instruction. When it disagrees with the repository or with the user, they win.",
 }, "\n")
 
-const scratchPolicy = "- This Session is a chat without a project, so it has no Project Memory: only scope global applies. Save only facts about the user or their environment."
+const scratchPolicy = "- This Session is a chat without a project, so it has no Project Memory: only scope global applies. Save only facts about the user that hold in every Workspace, not what this chat is about: a project, a product, a client, other people or a topic researched here."
 
 // A correction names what was wrong or what to use instead; a bare negation
 // ("不是这个文件", "don't forget the tests") is everyday instruction, not one.
@@ -198,7 +199,7 @@ func userPromptContext(memoryDir string, input HookInput) (string, error) {
 			return "", err
 		}
 		if prompts%NudgeEvery == 0 {
-			notes = append(notes, "Memory check: review this stretch of the Session for durable facts worth saving (conventions, tool quirks, failures and their causes, preferences) and save any with memory_add.")
+			notes = append(notes, "Memory check: review this stretch of the Session for durable facts worth saving (conventions, tool quirks, failures and their causes, preferences) and save any with memory_add, in scope project unless the fact holds in every Workspace.")
 		}
 	}
 	if len(notes) == 0 {

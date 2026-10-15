@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -38,6 +39,9 @@ type Work struct {
 	// Home is where a Memory Session runs when its Memory has no Workspace on
 	// disk; the user's home folder when "".
 	Home string
+	// Sessions is the Daemon's sessions folder, where a Global Memory
+	// consolidation finds the Workspace that wrote each entry; "" skips that.
+	Sessions string
 }
 
 // SliceOutcome is how one category slice of a consolidation went.
@@ -75,8 +79,17 @@ var ConsolidationSchema = map[string]any{
 				"additionalProperties": false,
 			},
 		},
+		"move": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type":                 "object",
+				"properties":           map[string]any{"id": map[string]any{"type": "string"}, "workspace": map[string]any{"type": "string"}},
+				"required":             []string{"id", "workspace"},
+				"additionalProperties": false,
+			},
+		},
 	},
-	"required":             []string{"keep", "rewrite", "remove", "merge"},
+	"required":             []string{"keep", "rewrite", "remove", "merge", "move"},
 	"additionalProperties": false,
 }
 
@@ -167,6 +180,21 @@ func ParseSliceChanges(reply json.RawMessage) (memory.SliceChanges, bool) {
 		}
 		changes.Merge = append(changes.Merge, memory.Merge{IDs: ids, Text: text})
 	}
+	// A reply read from the final text, without the schema, may leave it out.
+	move, okMove := v["move"].([]any)
+	if !okMove && v["move"] != nil {
+		return memory.SliceChanges{}, false
+	}
+	changes.Move = []memory.Move{}
+	for _, r := range move {
+		m, _ := r.(map[string]any)
+		id, okID := m["id"].(string)
+		workspace, okWorkspace := m["workspace"].(string)
+		if !okID || !okWorkspace {
+			return memory.SliceChanges{}, false
+		}
+		changes.Move = append(changes.Move, memory.Move{ID: id, Workspace: workspace})
+	}
 	return changes, true
 }
 
@@ -242,12 +270,72 @@ type sentEntry struct {
 	ID   string `json:"id"`
 	Day  string `json:"day"`
 	Text string `json:"text"`
+	// WrittenIn is the Workspace of the Session that saved a Global Memory
+	// entry, or writtenInChat; "" when unknown.
+	WrittenIn string `json:"written_in,omitempty"`
 }
+
+// writtenInChat is where a Global Memory entry saved in a chat without a
+// project was written.
+const writtenInChat = "chat"
 
 type consolidationInput struct {
 	Memory   string      `json:"memory"`
 	Category string      `json:"category"`
 	Entries  []sentEntry `json:"entries"`
+	// Projects are the Workspaces a Global Memory entry may move to.
+	Projects []string `json:"projects,omitempty"`
+}
+
+// origins says where the Session that saved each Global Memory entry ran,
+// and offers every project among them, and every Project Memory, as a place
+// to move entries to.
+func (w Work) origins() (writtenIn map[string]string, projects []string, err error) {
+	writtenIn = map[string]string{}
+	offered := map[string]bool{}
+	summaries, err := w.Store.Summaries()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, s := range summaries {
+		if s.Scope == memory.ScopeProject {
+			offered[s.Workspace] = true
+		}
+	}
+	entries, err := w.Store.List(memory.GlobalSlot, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	sessions := map[string]string{}
+	for _, e := range entries {
+		session, err := w.Store.WriterSession(e.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if session == "" || w.Sessions == "" {
+			continue
+		}
+		where, seen := sessions[session]
+		if !seen {
+			if file := memory.FindSessionTranscript(w.Sessions, session); file != "" {
+				if memory.IsScratchSessionTranscript(file) {
+					where = writtenInChat
+				} else if cwd := memory.ReadSessionWorkspace(file); cwd != "" {
+					where = memory.ProjectSlot(cwd).Workspace
+					offered[where] = true
+				}
+			}
+			sessions[session] = where
+		}
+		if where != "" {
+			writtenIn[e.ID] = where
+		}
+	}
+	for workspace := range offered {
+		projects = append(projects, workspace)
+	}
+	sort.Strings(projects)
+	return writtenIn, projects, nil
 }
 
 // Consolidate consolidates every category of one Memory; each slice stands or
@@ -258,26 +346,43 @@ func Consolidate(ctx context.Context, w Work, slot memory.Slot) ([]SliceOutcome,
 	if slot.Scope != memory.ScopeGlobal {
 		memoryKey = slot.Workspace
 	}
+	// Every Workspace reads the Global Memory, so an entry there about one
+	// project can move to it.
+	global := slot.Scope == memory.ScopeGlobal
+	writtenIn, projects := map[string]string{}, []string(nil)
+	if global {
+		var err error
+		if writtenIn, projects, err = w.origins(); err != nil {
+			return outcomes, err
+		}
+	}
+	offered := map[string]bool{}
+	for _, p := range projects {
+		offered[p] = true
+	}
+	movedTo := map[string]bool{}
 	for _, category := range memory.Categories {
 		entries, err := w.Store.List(slot, category)
 		if err != nil {
 			return outcomes, err
 		}
 		for _, slice := range SlicesOf(entries) {
-			if len(slice) < 2 {
+			// A lone entry has nothing to merge with, but a Global one may
+			// still belong to a project or be a one-off.
+			if len(slice) < 2 && !global {
 				continue
 			}
 			outcome := SliceOutcome{Category: category, Entries: len(slice)}
 			sent := make([]sentEntry, len(slice))
 			for i, e := range slice {
-				sent[i] = sentEntry{ID: e.ID, Day: e.Day, Text: e.Text}
+				sent[i] = sentEntry{ID: e.ID, Day: e.Day, Text: e.Text, WrittenIn: writtenIn[e.ID]}
 			}
 			reply, err := w.run(ctx, Request{
 				Title:   "Memory: consolidate " + memoryName(slot) + " / " + string(category),
 				Cwd:     w.sessionWorkspace(slot),
 				ModelID: w.ModelID,
 				Prompt:  w.Prompt,
-				Input:   jsonText(consolidationInput{Memory: memoryKey, Category: string(category), Entries: sent}),
+				Input:   jsonText(consolidationInput{Memory: memoryKey, Category: string(category), Entries: sent, Projects: projects}),
 				Schema:  ConsolidationSchema,
 			})
 			switch changes, ok := ParseSliceChanges(reply); {
@@ -286,12 +391,25 @@ func Consolidate(ctx context.Context, w Work, slot memory.Slot) ([]SliceOutcome,
 			case !ok:
 				outcome.Reason = "The reply did not match the schema."
 			default:
-				reason, err := w.Store.ApplySlice(slice, changes)
-				if err != nil {
-					reason = err.Error()
+				reason := ""
+				for _, m := range changes.Move {
+					if !offered[m.Workspace] {
+						reason = "The answer moves " + m.ID + " to " + m.Workspace + ", which was not offered."
+						break
+					}
+				}
+				if reason == "" {
+					if reason, err = w.Store.ApplySlice(slice, changes); err != nil {
+						reason = err.Error()
+					}
 				}
 				outcome.OK = reason == ""
 				outcome.Reason = reason
+				if outcome.OK {
+					for _, m := range changes.Move {
+						movedTo[m.Workspace] = true
+					}
+				}
 			}
 			outcomes = append(outcomes, outcome)
 		}
@@ -306,8 +424,17 @@ func Consolidate(ctx context.Context, w Work, slot memory.Slot) ([]SliceOutcome,
 			return outcomes, err
 		}
 	}
-	_, err := memory.ExportMarkdown(w.Store, slot)
-	return outcomes, err
+	if _, err := memory.ExportMarkdown(w.Store, slot); err != nil {
+		return outcomes, err
+	}
+	for _, p := range projects {
+		if movedTo[p] {
+			if _, err := memory.ExportMarkdown(w.Store, memory.ProjectSlot(p)); err != nil {
+				return outcomes, err
+			}
+		}
+	}
+	return outcomes, nil
 }
 
 // TranscriptText is a transcript as an extraction sends it: its last

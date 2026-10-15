@@ -1,20 +1,36 @@
 package memorywork
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // The Memory Sessions' prompts. The app ships them embedded and copies them
 // into the Memory folder on first use; from then on the copies are read, so a
 // user can edit them, and "Reset prompts to default" copies them again.
-
-// The copies in prompts/ must match apps/desktop/resources/memory; a test
-// checks they do.
 //
 //go:embed prompts/*.md
 var shippedPrompts embed.FS
+
+// earlierPrompts are the SHA-256 of every prompt an earlier release shipped.
+// A copy that still matches one was never edited, so it gets the shipped
+// prompt in its place; add the old hash here whenever a prompt changes.
+var earlierPrompts = map[PromptName][]string{
+	PromptConsolidation: {"4bb5601ee72d78e6bda5dc963e473bf1c50f1f569b9f953766352641f281336f"},
+	PromptExtraction: {
+		"9ebfdf21dc5443d17547dd9468e50f8652eb12694ea29f6cc7eff16a17e06dee",
+		"4598bd35c89e1c67c7d3a41a53003e6089416ae7cd2ce89ba1cde7307303e0ae",
+	},
+}
+
+func isEarlierPrompt(name PromptName, text []byte) bool {
+	sum := sha256.Sum256(text)
+	return slices.Contains(earlierPrompts[name], hex.EncodeToString(sum[:]))
+}
 
 // PromptName names one Memory Session prompt.
 type PromptName string
@@ -39,18 +55,24 @@ func copyPrompt(memoryDir string, name PromptName) error {
 }
 
 // ReadPrompt reads a prompt from the Memory folder, copying the shipped one
-// there first when it is missing.
+// there first when it is missing or an earlier release's, unedited.
 func ReadPrompt(memoryDir string, name PromptName) (string, error) {
 	file := filepath.Join(memoryDir, PromptFiles[name])
-	if _, err := os.Stat(file); os.IsNotExist(err) {
+	b, err := os.ReadFile(file)
+	switch {
+	case os.IsNotExist(err):
 		if err := os.MkdirAll(memoryDir, 0o777); err != nil {
 			return "", err
 		}
-		if err := copyPrompt(memoryDir, name); err != nil {
-			return "", err
-		}
+	case err != nil:
+		return "", err
+	case !isEarlierPrompt(name, b):
+		return string(b), nil
 	}
-	b, err := os.ReadFile(file)
+	if err := copyPrompt(memoryDir, name); err != nil {
+		return "", err
+	}
+	b, err = os.ReadFile(file)
 	return string(b), err
 }
 

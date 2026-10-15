@@ -245,15 +245,122 @@ func TestConsolidationRunsAGlobalMemoryConsolidationInTheHomeFolder(t *testing.T
 	}
 }
 
+// globalFixture saves Global Memory entries as Sessions would: one in a
+// project, one in a chat without a project, one by a Memory Session.
+func globalFixture(t *testing.T, f *workFixture) (sessions string, fromProject, fromChat, unknown memory.Entry) {
+	t.Helper()
+	sessions = filepath.Join(f.root, "sessions")
+	folder := filepath.Join(sessions, "-somewhere")
+	if err := os.MkdirAll(folder, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	chat := filepath.Join(f.root, "chat")
+	for id, cwd := range map[string]string{"in-project": f.workspace, "in-chat": chat} {
+		if err := os.WriteFile(filepath.Join(folder, id+".jsonl"), []byte(`{"type":"session_start","cwd":`+jsonText(cwd)+`}`+"\n"), 0o666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(folder, "in-chat.settings.json"), []byte(`{"tags":[{"name":"droi.scratch"}]}`), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	global := func(session, text string, category memory.Category) memory.Entry {
+		r, err := f.store.Add(memory.GlobalSlot, category, text)
+		if err != nil || !r.OK {
+			t.Fatalf("add %q: %v %s", text, err, r.Reason)
+		}
+		if session != "" {
+			if err := f.store.LogCall(memory.Call{SessionID: session, Tool: "memory_add", Slot: &memory.GlobalSlot, OK: true, Written: r.Entry.ID}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return r.Entry
+	}
+	fromProject = global("in-project", "this app deploys with fly", "insight")
+	fromChat = global("in-chat", "Project Zomboid needs Java 17", "insight")
+	unknown = global("", "answer in Chinese", "preference")
+	return sessions, fromProject, fromChat, unknown
+}
+
+func TestGlobalConsolidationSaysWhereEntriesWereWrittenAndMovesOneToItsProject(t *testing.T) {
+	f := newWorkFixture(t)
+	sessions, fromProject, fromChat, unknown := globalFixture(t, f)
+	fake := &fakeRun{answer: func(r Request, sent []sentEntry) (any, error) {
+		if strings.HasSuffix(r.Title, "/ insight") {
+			return changes{"keep": []any{}, "rewrite": []any{}, "remove": []string{fromChat.ID}, "merge": []any{},
+				"move": []any{changes{"id": fromProject.ID, "workspace": f.workspace}}}, nil
+		}
+		return changes{"keep": []string{unknown.ID}, "rewrite": []any{}, "remove": []any{}, "merge": []any{}, "move": []any{}}, nil
+	}}
+	outcomes, err := Consolidate(context.Background(), Work{Store: f.store, Run: fake.run, ModelID: "m", Prompt: "P", Sessions: sessions}, memory.GlobalSlot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A lone Global entry is sent too: it may belong to a project.
+	if got, want := fake.titles(), []string{"Memory: consolidate Global Memory / insight", "Memory: consolidate Global Memory / preference"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("titles %q, want %q", got, want)
+	}
+	for _, o := range outcomes {
+		if !o.OK {
+			t.Errorf("outcome %+v", o)
+		}
+	}
+	want := `{"memory":"global","category":"insight","entries":[` +
+		`{"id":"` + fromProject.ID + `","day":"` + fromProject.Day + `","text":"this app deploys with fly","written_in":` + jsonText(f.workspace) + `},` +
+		`{"id":"` + fromChat.ID + `","day":"` + fromChat.Day + `","text":"Project Zomboid needs Java 17","written_in":"chat"}],` +
+		`"projects":[` + jsonText(f.workspace) + `]}`
+	if got := fake.requests[0].Input; got != want {
+		t.Errorf("input %s\nwant  %s", got, want)
+	}
+	if got := f.texts(t, memory.GlobalSlot, ""); !reflect.DeepEqual(got, []string{"answer in Chinese"}) {
+		t.Errorf("global %q", got)
+	}
+	if moved, _, _ := f.store.Get(fromProject.ID); moved.Scope != memory.ScopeProject || moved.Workspace != f.workspace {
+		t.Errorf("moved %+v", moved)
+	}
+	md, err := os.ReadFile(filepath.Join(f.store.Dir(), memory.MarkdownPath(f.project())))
+	if err != nil || !strings.Contains(string(md), "this app deploys with fly") {
+		t.Errorf("project markdown %v %s", err, md)
+	}
+}
+
+func TestConsolidationRejectsAMoveToAWorkspaceItDidNotOffer(t *testing.T) {
+	f := newWorkFixture(t)
+	sessions, fromProject, fromChat, _ := globalFixture(t, f)
+	fake := &fakeRun{answer: func(r Request, sent []sentEntry) (any, error) {
+		if strings.HasSuffix(r.Title, "/ insight") {
+			return changes{"keep": []string{fromChat.ID}, "rewrite": []any{}, "remove": []any{}, "merge": []any{},
+				"move": []any{changes{"id": fromProject.ID, "workspace": "/somewhere/else"}}}, nil
+		}
+		return changes{"keep": []string{sent[0].ID}, "rewrite": []any{}, "remove": []any{}, "merge": []any{}}, nil
+	}}
+	outcomes, err := Consolidate(context.Background(), Work{Store: f.store, Run: fake.run, ModelID: "m", Prompt: "P", Sessions: sessions}, memory.GlobalSlot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := outcomes[0]; o.OK || !strings.Contains(o.Reason, "was not offered") {
+		t.Errorf("outcome %+v", o)
+	}
+	if got := f.texts(t, memory.GlobalSlot, "insight"); len(got) != 2 {
+		t.Errorf("global insights %q", got)
+	}
+}
+
 func TestParseSliceChangesRefusesAnythingButTheSchema(t *testing.T) {
 	for _, reply := range []string{`"prose"`, `null`, `{}`, `{"keep":[1],"rewrite":[],"remove":[],"merge":[]}`,
-		`{"keep":[],"rewrite":[{"id":"a"}],"remove":[],"merge":[]}`, `{"keep":[],"rewrite":[],"remove":[],"merge":[{"ids":"a","text":"t"}]}`} {
+		`{"keep":[],"rewrite":[{"id":"a"}],"remove":[],"merge":[]}`, `{"keep":[],"rewrite":[],"remove":[],"merge":[{"ids":"a","text":"t"}]}`,
+		`{"keep":[],"rewrite":[],"remove":[],"merge":[],"move":{}}`, `{"keep":[],"rewrite":[],"remove":[],"merge":[],"move":[{"id":"a"}]}`} {
 		if _, ok := ParseSliceChanges(json.RawMessage(reply)); ok {
 			t.Errorf("accepted %s", reply)
 		}
 	}
-	got, ok := ParseSliceChanges(json.RawMessage(`{"keep":["a"],"rewrite":[{"id":"b","text":"B","x":1}],"remove":["c"],"merge":[{"ids":["d","e"],"text":"DE"}]}`))
-	want := memory.SliceChanges{Keep: []string{"a"}, Rewrite: []memory.Rewrite{{ID: "b", Text: "B"}}, Remove: []string{"c"}, Merge: []memory.Merge{{IDs: []string{"d", "e"}, Text: "DE"}}}
+	got, ok := ParseSliceChanges(json.RawMessage(`{"keep":["a"],"rewrite":[{"id":"b","text":"B","x":1}],"remove":["c"],"merge":[{"ids":["d","e"],"text":"DE"}],"move":[{"id":"f","workspace":"/w"}]}`))
+	want := memory.SliceChanges{Keep: []string{"a"}, Rewrite: []memory.Rewrite{{ID: "b", Text: "B"}}, Remove: []string{"c"}, Merge: []memory.Merge{{IDs: []string{"d", "e"}, Text: "DE"}}, Move: []memory.Move{{ID: "f", Workspace: "/w"}}}
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Errorf("parsed %+v %v", got, ok)
+	}
+	// A reply read from the final text may leave move out.
+	got, ok = ParseSliceChanges(json.RawMessage(`{"keep":["a"],"rewrite":[],"remove":[],"merge":[]}`))
+	want = memory.SliceChanges{Keep: []string{"a"}, Remove: []string{}, Rewrite: []memory.Rewrite{}, Merge: []memory.Merge{}, Move: []memory.Move{}}
 	if !ok || !reflect.DeepEqual(got, want) {
 		t.Errorf("parsed %+v %v", got, ok)
 	}

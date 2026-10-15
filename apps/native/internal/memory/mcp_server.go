@@ -20,8 +20,9 @@ const ServerName = "droi-memory"
 
 const protocolVersion = "2025-06-18"
 
-// toolsJSON is the TOOLS list of apps/desktop/src/memory/mcp-server.ts as
-// JSON.stringify writes it, so tools/list answers byte for byte the same.
+// toolsJSON began as the TOOLS list of apps/desktop/src/memory/mcp-server.ts
+// as JSON.stringify writes it; the deprecated Electron app no longer follows
+// it.
 //
 //go:embed tools.json
 var toolsJSON []byte
@@ -52,7 +53,7 @@ const (
 	memorySessionRefusal = "Memory tools are not available in a Memory Session. Answer from the material you were given."
 	noProjectMemory      = `This Session is a chat without a project, so it has no Project Memory. Only scope "global" applies here`
 	scratchRead          = noProjectMemory + ": search or list Global Memory instead."
-	scratchWrite         = noProjectMemory + `: save a fact about the user or their environment with scope "global"; do not save anything else.`
+	scratchWrite         = noProjectMemory + `: save only a fact about the user that holds in every Workspace, with scope "global"; leave out what this chat is about.`
 )
 
 // TextContent is one text block of a tool result.
@@ -223,6 +224,18 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		}
 		return textResult(verb+" "+result.Entry.ID+" in "+where+"."+full, false), nil
 	}
+	// Droid reaches for Global Memory for anything that sounds generally
+	// useful, and a chat without a project has nowhere else to write, so a
+	// Global write is answered with what belongs there.
+	globalCheck := func(id string) string {
+		if o.isScratch(sessionID) {
+			return "\n\nThis chat has no project, so Global Memory keeps only facts about the user that hold in every Workspace. If this one is about a project, a product, a client, other people or a topic researched in this chat, remove " + id + "."
+		}
+		if sessionProject() != nil {
+			return "\n\nGlobal Memory is read in every Workspace. If this fact is about a project rather than the user, add it with scope project instead and remove " + id + "."
+		}
+		return ""
+	}
 
 	switch name {
 	case "memory_search":
@@ -288,6 +301,9 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		saved, err := written(result, "Saved")
 		if err != nil || !result.OK {
 			return saved, err
+		}
+		if slot.Scope == ScopeGlobal {
+			saved.Content[0].Text += globalCheck(result.Entry.ID)
 		}
 		// Droid adds far more often than it replaces, so a fact that changed is
 		// usually saved beside the entry it supersedes, often in the other scope.

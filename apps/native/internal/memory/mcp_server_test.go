@@ -301,6 +301,30 @@ func TestServerGivesAScratchSessionNoProjectMemory(t *testing.T) {
 	eq(t, must[[]Entry](t)(s.openStore(t).List(Slot{Scope: ScopeProject, Workspace: s.workspace}, "")), []Entry{})
 }
 
+func TestServerAsksWhetherAGlobalEntryBelongsThere(t *testing.T) {
+	s := startServer(t)
+	r := s.call(t, "memory_add", map[string]any{"scope": "global", "category": "insight", "text": "app deploys with fly"})
+	id := regexp.MustCompile(`Saved ([0-9a-f]{8}) in Global Memory\.`).FindStringSubmatch(r.text)[1]
+	if !strings.Contains(r.text, "add it with scope project instead and remove "+id+".") {
+		t.Fatal(r.text)
+	}
+
+	scratch := "9b1f2c3d-0000-4000-8000-000000000003"
+	writeFile(t, filepath.Join(s.sessionsFolder, scratch+".jsonl"), `{"type":"session_start","id":"`+scratch+`","cwd":"`+s.workspace+`"}`+"\n")
+	writeFile(t, filepath.Join(s.sessionsFolder, scratch+".settings.json"), `{"tags":[{"name":"droi.scratch"}]}`)
+	r = s.call(t, "memory_add", map[string]any{"scope": "global", "category": "insight", "text": "Project Zomboid needs Java 17"}, scratch)
+	id = regexp.MustCompile(`Saved ([0-9a-f]{8}) in Global Memory\.`).FindStringSubmatch(r.text)[1]
+	if !strings.Contains(r.text, "This chat has no project") || !strings.HasSuffix(r.text, "remove "+id+".") {
+		t.Fatal(r.text)
+	}
+
+	// A Session it cannot place has no other scope to point to.
+	r = s.call(t, "memory_add", map[string]any{"scope": "global", "category": "preference", "text": "likes tables"}, "")
+	if !regexp.MustCompile(`^Saved [0-9a-f]{8} in Global Memory\.$`).MatchString(r.text) {
+		t.Fatal(r.text)
+	}
+}
+
 func TestServerLogsEveryCall(t *testing.T) {
 	s := startServer(t)
 	added := s.call(t, "memory_add", map[string]any{"scope": "project", "category": "convention", "text": "Run pnpm check before committing"})
