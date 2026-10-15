@@ -26,7 +26,7 @@ and `pnpm test` there; keep such fixes to what makes them compile.
 apps/
 ├── native/     # The desktop app: Go on MyGo (macOS, Windows); see apps/native/README.md
 │   ├── internal/app/   # The window: views and their tests against the Fake Daemon
-│   ├── internal/host/  # Host: settings, Daemon supervisor, sign-in, CLI login, Runtime Overlay
+│   ├── pkg/host/       # Host: settings, Daemon supervisor, sign-in, CLI login, Runtime Overlay
 │   ├── internal/...    # gateway (Remote Access), memorywork (Memory), ...
 │   └── pkg/...         # Public, for WeCom Droi (ADR 0022): l10n, kit, theme, transcript, ...
 ├── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
@@ -117,16 +117,16 @@ installed types before using an Expo module, and add Expo packages with
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
 - Live tests against a real Daemon, through the local droid-proxy (`dp`) with a cheap model:
-  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/internal/host ./apps/native/internal/gateway -run Live -v`
+  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/pkg/host ./apps/native/pkg/gateway -run Live -v`
   (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)
 
 ## Factory login
 
-The native app hands its sign-in to the `droid` CLI (ADR 0015, `apps/native/internal/host/cli_login.go`):
+The native app hands its sign-in to the `droid` CLI (ADR 0015, `apps/native/pkg/host/cli_login.go`):
 the two share one login, which the Daemon runs as. (The deprecated Electron Desktop Shell
 used the CLI's device flow instead, ADR 0005.) More Factory accounts can be added in Settings:
 each has its own folder, which the Daemon gets as `FACTORY_HOME_OVERRIDE`, linked to the CLI's
-skills, settings and sessions (ADR 0017, `apps/native/internal/host/accounts.go`).
+skills, settings and sessions (ADR 0017, `apps/native/pkg/host/accounts.go`).
 
 ## Factory API base URL
 

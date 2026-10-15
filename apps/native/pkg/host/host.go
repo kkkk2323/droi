@@ -27,6 +27,14 @@ type Config struct {
 	Env      func(string) string
 	// Executable runs the Memory Server and the hook; "" leaves Memory out.
 	Executable string
+	// FactoryRoot, optional, gives the Daemon a Factory home of its own:
+	// it runs with FACTORY_HOME_OVERRIDE=FactoryRoot, and the sign-in, the
+	// Sessions and the settings are in FactoryRoot/.factory instead of the
+	// droid CLI's ~/.factory.
+	FactoryRoot string
+	// ScratchFolder is where Scratch Workspaces go unless Settings names a
+	// folder; "" is ~/.droi/chats.
+	ScratchFolder string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.
@@ -161,6 +169,9 @@ func (h *Host) ScratchFolder() string {
 	if f := deref(h.Settings.Get().ScratchFolder); f != "" {
 		return f
 	}
+	if h.cfg.ScratchFolder != "" {
+		return h.cfg.ScratchFolder
+	}
 	return filepath.Join(h.cfg.Home, ".droi", "chats")
 }
 
@@ -293,6 +304,8 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 			return nil, err
 		}
 		override = h.accountRoot(id)
+	} else if h.cfg.FactoryRoot != "" {
+		override = h.cfg.FactoryRoot
 	}
 	baseURL := deref(h.Settings.Get().FactoryAPIBaseURL)
 	if baseURL == "" {

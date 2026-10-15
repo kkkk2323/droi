@@ -13,7 +13,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
-	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // testHost is a Host in throwaway folders: no login, no API key, no

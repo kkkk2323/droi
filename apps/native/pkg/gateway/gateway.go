@@ -97,7 +97,9 @@ type Options struct {
 	// AppendSystemPrompt, optional, is the System Prompt Addition, read at
 	// every Session start; blank leaves Droid's prompt alone.
 	AppendSystemPrompt func() string
-	// Version, ComputerName and ComputerID go into /meta.
+	// App, Version, ComputerName and ComputerID go into /meta; App "" is
+	// "Droi".
+	App          string
 	Version      string
 	ComputerName string
 	ComputerID   string
@@ -345,8 +347,12 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		status, body := g.answerSessionFile(r, q)
 		reply(w, status, body)
 	case MetaPath:
+		app := g.opts.App
+		if app == "" {
+			app = "Droi"
+		}
 		reply(w, http.StatusOK, Meta{
-			App:          "Droi",
+			App:          app,
 			Version:      g.opts.Version,
 			RemoteAccess: g.RemoteAccess(),
 			Name:         g.opts.ComputerName,

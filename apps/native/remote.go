@@ -6,16 +6,15 @@ import (
 	"log"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/internal/gateway"
-	"github.com/kkkk2323/droi/apps/native/internal/host"
-	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // startGateway starts the Gateway that paired phones and this window connect
 // through. The window presents localToken, which a Pairing Token reset or
 // turning Remote Access off does not revoke.
 func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error) (*gateway.Gateway, error) {
-	opts := hostrun.GatewayOptions(h, version, moveToTrash)
+	opts := h.GatewayOptions(version, moveToTrash)
 	opts.Port = gateway.PreferredPort
 	opts.RemoteAccess = h.Settings.Get().RemoteAccess
 	opts.LocalToken = func() string { return localToken }

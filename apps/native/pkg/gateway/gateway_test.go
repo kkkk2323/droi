@@ -432,6 +432,22 @@ func TestMetaDescribesTheShellWithoutSecrets(t *testing.T) {
 	}
 }
 
+func TestMetaNamesAnotherApp(t *testing.T) {
+	opts := baseOptions(startStandInDaemon(t))
+	opts.App = "WeCom Droi"
+	g := startGateway(t, opts)
+	resp, err := http.Get(g.URL() + MetaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got Meta
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	if got.App != "WeCom Droi" {
+		t.Fatalf("app %q", got.App)
+	}
+}
+
 func TestPairingCheckAnswers204ForTheRightTokenAnd401Otherwise(t *testing.T) {
 	g := startGateway(t, baseOptions(startStandInDaemon(t)))
 	for token, want := range map[string]int{testToken: 204, "nope": 401} {

@@ -14,7 +14,7 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 )
 
 // TestLiveGateway puts the Gateway in front of a real Daemon and connects

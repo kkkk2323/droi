@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/gateway"
-	"github.com/kkkk2323/droi/apps/native/internal/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // ErrHostRunning is returned when a Droi Host already answers on this
@@ -66,7 +66,7 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 
-	opts := GatewayOptions(h, o.Version, trash.Move)
+	opts := h.GatewayOptions(o.Version, trash.Move)
 	opts.Port, opts.RemoteAccess = port, true
 	gw, err := gateway.Start(opts)
 	if err != nil {

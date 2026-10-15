@@ -9,7 +9,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/kkkk2323/droi/apps/native/internal/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 

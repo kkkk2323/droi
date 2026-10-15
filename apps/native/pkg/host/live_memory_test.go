@@ -16,9 +16,9 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // TestLiveMemory is tests/live/memory.spec.ts against the native app: a

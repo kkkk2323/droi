@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 type fakeMemory struct {

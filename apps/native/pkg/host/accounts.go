@@ -39,12 +39,16 @@ var (
 	errAccountInUse = hostError("the account in use cannot be removed")
 )
 
-// SharedFactoryHome is the droid CLI's own ~/.factory, which the added
-// accounts share their skills, settings and Sessions with.
+// SharedFactoryHome is the droid CLI's own ~/.factory, or the Host's own
+// home under Config.FactoryRoot, which the added accounts share their
+// skills, settings and Sessions with.
 func (h *Host) SharedFactoryHome() string {
 	root := h.cfg.Home
 	if d := h.cfg.Env("FACTORY_HOME_OVERRIDE"); d != "" {
 		root = d
+	}
+	if h.cfg.FactoryRoot != "" {
+		root = h.cfg.FactoryRoot
 	}
 	return filepath.Join(root, ".factory")
 }
