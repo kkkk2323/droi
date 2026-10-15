@@ -141,6 +141,10 @@ _Avoid_: cron, job, scheduled task, workflow
 One run of an Automation: a Session the Daemon starts with the `automation` tag, without asking for permission, and closes once idle. Clients list it on the Automations page, not with the other Sessions.
 _Avoid_: job run, execution, automation session
 
+**Loop**:
+A prompt the Daemon sends to the same Session on a schedule, as droid's `/loop` and Loop tool make it (a cron of kind `session_prompt`). It fires only while the Session has a worker; Droi shows a Session's Loops above its composer and keeps that worker running for them.
+_Avoid_: cron, scheduled loop, Automation (that one starts a new Session each run)
+
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo

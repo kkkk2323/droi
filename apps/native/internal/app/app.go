@@ -208,6 +208,8 @@ type App struct {
 	// revs counts each Session's changes in the Store, for its view to
 	// build again.
 	revs sessionview.Revisions
+	// loops are the Daemon's loops. Guarded by mu.
+	loops loopsState
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
 	worktreeAsk worktreeDialog
 
@@ -316,6 +318,7 @@ func (a *App) Start() {
 	a.mu.Unlock()
 	if a.status.Connected {
 		go a.refreshList()
+		go a.readLoops()
 	}
 }
 
@@ -345,11 +348,14 @@ func (a *App) onEvent(e controller.Event) {
 		a.mu.Unlock()
 		if ev.Status.Connected {
 			go a.reloadList()
+			go a.readLoops()
 		}
 	case controller.DaemonNotification:
 		switch ev.Method {
 		case protocol.NotificationWorktreeRemoved, protocol.NotificationWorktreeBranchChanged:
 			go a.reloadList()
+		case protocol.NotificationCronStateChanged:
+			a.loopsChanged(ev.Params)
 		}
 	case controller.SessionNotification:
 		if ev.Raw.Type == "droid_working_state_changed" {

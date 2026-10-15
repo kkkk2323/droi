@@ -39,6 +39,12 @@ var Builtins = []Item{
 		ArgumentHint: l10n.N("[instructions]"),
 		Kind:         Command,
 	},
+	{
+		Name:         "loop",
+		Description:  l10n.N("Send a prompt to this session on an interval, while Droi runs"),
+		ArgumentHint: l10n.N("<interval> <prompt>"),
+		Kind:         Command,
+	},
 }
 
 // FromDaemon lists the Daemon's custom commands and the skills a user may

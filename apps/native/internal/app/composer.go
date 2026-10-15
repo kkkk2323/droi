@@ -99,17 +99,22 @@ func (v *sessionView) takePending(s *session.Session) {
 }
 
 // send sends a message, or queues it with placement while a turn runs;
-// `/compact` it runs itself.
-func (v *sessionView) send(s *session.Session, text string, images []attachments.Image, placement protocol.QueuePlacement) {
+// `/compact` and `/loop` it runs itself. It reports whether it took the
+// message: a `/loop` it cannot run stays in the composer.
+func (v *sessionView) send(s *session.Session, text string, images []attachments.Image, placement protocol.QueuePlacement) bool {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" && len(images) == 0 {
-		return
+		return false
 	}
 	if m := compactCommand.FindStringSubmatch(trimmed); m != nil && len(images) == 0 {
 		go v.compact(m[1])
-		return
+		return true
+	}
+	if m := loopCommand.FindStringSubmatch(trimmed); m != nil && len(images) == 0 {
+		return v.loop(s, m[1])
 	}
 	v.Send(text, images, placement)
+	return true
 }
 
 // compact runs `/compact`: in place on a newer Daemon, else as a handoff
@@ -245,7 +250,9 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		if !running {
 			placement = ""
 		}
-		v.send(s, cs.text, cs.images, placement)
+		if !v.send(s, cs.text, cs.images, placement) {
+			return false
+		}
 		cs.text, cs.images = "", nil
 		v.saveDraft()
 		return true
@@ -811,8 +818,9 @@ func groupDigits(f float64) string {
 	return b.String()
 }
 
-// shelf is the ComposerShelf: the task list under way and the messages
-// the Daemon holds, tucked against the composer's top edge.
+// shelf is the ComposerShelf: the Session's loops, the task list under
+// way and the messages the Daemon holds, tucked against the composer's top
+// edge.
 func (v *sessionView) shelf(c *ui.Context, s *session.Session) {
 	a := v.a
 	k, t := a.kit, a.kit.T
@@ -825,18 +833,29 @@ func (v *sessionView) shelf(c *ui.Context, s *session.Session) {
 	}
 	showTodos := len(todos) > 0 && done < len(todos)
 	queued := s.QueuedMessages()
-	if !showTodos && len(queued) == 0 {
+	ls := a.sessionLoops(v.id)
+	if !showTodos && len(queued) == 0 && len(ls) == 0 {
 		return
 	}
 	ui.Box(c).PaddingX(k.Px(14)).Children(func() {
 		ui.Column(c).Radius(k.Px(12), k.Px(12), 0, 0).BorderWidth(1, 1, 0, 1).BorderColor(t.Border).Background(t.Background).Clip().Children(func() {
+			first := true
+			divide := func() {
+				if !first {
+					ui.Box(c).Height(1).Background(t.Border)
+				}
+				first = false
+			}
+			if len(ls) > 0 {
+				divide()
+				v.loopList(c, ls)
+			}
 			if showTodos {
+				divide()
 				v.todoPanel(c, todos, done)
 			}
-			if showTodos && len(queued) > 0 {
-				ui.Box(c).Height(1).Background(t.Border)
-			}
 			if len(queued) > 0 {
+				divide()
 				v.queuedList(c, s, queued)
 			}
 		})
