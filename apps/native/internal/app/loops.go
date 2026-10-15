@@ -32,7 +32,8 @@ type loopsState struct {
 // readLoops reads every loop once connected, and keeps the worker of each
 // Session with one that runs or waits to run. Loading a Session also
 // resumes the loops the Daemon held when it started, or when the worker
-// was closed.
+// was closed. A Session kept before whose loops ended while the window was
+// not connected gets the timeout back.
 func (a *App) readLoops() {
 	cl, err := a.ctl.Client()
 	if err != nil {
@@ -58,9 +59,21 @@ func (a *App) readLoops() {
 	}
 	a.loops.byID = byID
 	// A new connection may be to a new Daemon, which has no worker yet.
+	wasKept := a.loops.kept
 	a.loops.kept = nil
 	a.mu.Unlock()
 	a.keepWorkers(sessions)
+	a.mu.Lock()
+	var release []string
+	for id := range wasKept {
+		if !a.loops.kept[id] {
+			release = append(release, id)
+		}
+	}
+	a.mu.Unlock()
+	for _, id := range release {
+		go a.keepWorker(id, false)
+	}
 	a.redraw()
 }
 
@@ -124,7 +137,11 @@ func (a *App) takeRecords(records ...protocol.CronRecord) map[string]bool {
 // keepWorkers loads each of sessions that has a loop to run without the
 // Daemon's inactivity timeout, again when one of its loops is held, and
 // with it once none is left to run, so that its worker can close again.
+// Another computer's Daemon outlives this window, which would then never
+// give the timeout back: there a Session with a held loop is only loaded,
+// which resumes it, as droid keeps the timeout for a remote Session.
 func (a *App) keepWorkers(sessions map[string]bool) {
+	remote := a.following()
 	for id := range sessions {
 		live, held := false, false
 		a.mu.Lock()
@@ -134,21 +151,23 @@ func (a *App) keepWorkers(sessions map[string]bool) {
 				held = held || l.Status == protocol.CronStatusHeld
 			}
 		}
+		keep := live && !remote
 		kept := a.loops.kept[id]
 		switch {
-		case live && (!kept || held):
+		case keep && (!kept || held):
 			if a.loops.kept == nil {
 				a.loops.kept = map[string]bool{}
 			}
 			a.loops.kept[id] = true
-		case !live && kept:
+		case !keep && kept:
 			delete(a.loops.kept, id)
+		case remote && held:
 		default:
 			a.mu.Unlock()
 			continue
 		}
 		a.mu.Unlock()
-		go a.keepWorker(id, live)
+		go a.keepWorker(id, keep)
 	}
 }
 

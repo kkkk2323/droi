@@ -1,11 +1,13 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
@@ -120,5 +122,81 @@ func TestALoopCommandWithoutAnIntervalStaysInTheComposer(t *testing.T) {
 	}
 	if h.count(protocol.MethodCreateCron)+h.count(protocol.MethodAddUserMessage) != 0 {
 		t.Error("the command was sent")
+	}
+}
+
+// A loop that ends while the window is not connected to the Daemon, here
+// deleted on another connection the window does not hear, gives its
+// Session the inactivity timeout back once the window connects again: the
+// last load of the Session asks for the timeout.
+func TestASessionWhoseLoopsEndedWhileDisconnectedGetsTheTimeoutBack(t *testing.T) {
+	h := newHarness(t, loopScenario(
+		map[string]any{"id": "l1", "sessionId": loopSession, "prompt": "Check the build", "expression": "*/10 * * * *"},
+	), "")
+	h.sent(protocol.MethodLoadSession, keptAlive(true))
+
+	h.a.unsubscribe[0]()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	other, err := droid.Dial(ctx, droid.Options{URL: h.d.URL, Credential: &droid.Credential{APIKey: "fk-test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if _, err := other.DeleteCron(ctx, protocol.DeleteCronParams{CronID: "l1", SessionID: loopSession}); err != nil {
+		t.Fatal(err)
+	}
+	h.settle()
+	h.a.unsubscribe[0] = h.ctl.Subscribe(h.a.onEvent)
+
+	if err := h.d.GoDown(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.d.ComeBack(); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the Session loaded with the timeout again", func() bool {
+		reqs, _ := h.d.Requests()
+		var last map[string]any
+		for _, r := range reqs {
+			var p map[string]any
+			if r.Method == protocol.MethodLoadSession && json.Unmarshal(r.Params, &p) == nil && p["sessionId"] == loopSession {
+				last = p
+			}
+		}
+		return last != nil && keptAlive(false)(last)
+	})
+}
+
+// Another computer's Daemon outlives the window, so the window never turns
+// its inactivity timeout off; it only loads a Session with a held loop,
+// which makes the Daemon resume the loop.
+func TestFollowingAComputerResumesItsLoopsWithoutKeepingTheirWorker(t *testing.T) {
+	o := startOtherComputer(t, loopScenario(
+		map[string]any{"id": "l1", "sessionId": loopSession, "prompt": "Check the build", "expression": "*/10 * * * *", "status": "held"},
+	), "")
+	h := followHarness(t, localSessions(), o.paired(), nil, nil)
+	h.until("the Session loaded for its held loop", func() bool {
+		reqs, _ := o.d.Requests()
+		for _, r := range reqs {
+			var p map[string]any
+			if r.Method == protocol.MethodLoadSession && json.Unmarshal(r.Params, &p) == nil && keptAlive(false)(p) {
+				return true
+			}
+		}
+		return false
+	})
+	h.openSession("Deploy")
+	h.until("the loop", func() bool { return h.hasText("Check the build") })
+	h.settle()
+	reqs, err := o.d.Requests()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range reqs {
+		var p map[string]any
+		if r.Method == protocol.MethodLoadSession && json.Unmarshal(r.Params, &p) == nil && p["disableInactivityTimeout"] == true {
+			t.Fatalf("the timeout was turned off: %s", r.Params)
+		}
 	}
 }
