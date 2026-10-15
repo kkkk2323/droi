@@ -8,6 +8,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
@@ -20,6 +21,9 @@ type railItem struct {
 	prompt   string
 	response string
 }
+
+// olderPage is how many messages one daemon.get_session_messages brings.
+const olderPage = 100
 
 const (
 	// railPitch is the height of one mark; the rail scrolls once marks
@@ -208,19 +212,20 @@ func (v *sessionView) loadUntil(messageID string, done func()) {
 // edge, one per message the user sent. Hovering a mark previews the message
 // and the start of its reply; clicking it jumps there, loading the way
 // first for a message from before the loaded ones.
-func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcriptRow, width float32) {
+func (v *sessionView) turnRail(c *ui.Context, s *session.Session, width float32) {
 	k, t := v.a.kit, v.a.kit.T
 	if width < k.Px(railMinWidth) {
 		return
 	}
-	items := railItems(v.entries, unloadedUserMessages(v.userMessages(s), v.entries))
+	entries := v.Entries()
+	items := railItems(entries, unloadedUserMessages(v.userMessages(s), entries))
 	if len(items) < 2 {
 		return
 	}
 	// The entry of the first row in view, as the turn being read.
 	reading := -1
-	if first, _ := v.list.Visible(); !v.list.AtEnd() && first >= 1 && first-1 < len(rows) {
-		reading = v.entryIndex(rows[first-1].e)
+	if e := v.ReadingEntry(); e != nil {
+		reading = v.entryIndex(e)
 	}
 	active := activeRailItem(items, reading)
 	r := &v.rail
@@ -259,7 +264,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 						w, color := k.Px(12), t.MutedForeground.Alpha(0.4)
 						switch {
 						case r.jumpingTo == it.id:
-							w, color = k.Px(20), t.Info.Alpha(0.6+0.4*float32(pulseWave(c)))
+							w, color = k.Px(20), t.Info.Alpha(0.6+0.4*float32(kit.PulseWave(c)))
 						case current:
 							w, color = k.Px(20), t.Foreground
 						case r.preview == i:
@@ -267,7 +272,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 						}
 						b.Children(func() { ui.Box(c).Width(w).Height(k.Px(2)).Radius(k.Px(1)).Background(color) })
 						if b.Clicked() {
-							v.jumpTo(it, rows)
+							v.jumpTo(it)
 						}
 					}
 				})
@@ -292,7 +297,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, rows []transcr
 }
 
 func (v *sessionView) entryIndex(e *transcript.Entry) int {
-	for i, x := range v.entries {
+	for i, x := range v.Entries() {
 		if x == e {
 			return i
 		}
@@ -300,23 +305,10 @@ func (v *sessionView) entryIndex(e *transcript.Entry) int {
 	return -1
 }
 
-// rowOf is the list row where entry starts: row 0 is the lead.
-func rowOf(rows []transcriptRow, e *transcript.Entry) int {
-	for i, r := range rows {
-		if r.e == e {
-			return i + 1
-		}
-	}
-	return -1
-}
-
-func (v *sessionView) jumpTo(it railItem, rows []transcriptRow) {
+func (v *sessionView) jumpTo(it railItem) {
 	r := &v.rail
 	if it.entry >= 0 {
-		if row := rowOf(rows, v.entries[it.entry]); row >= 0 {
-			v.hold()
-			v.list.ScrollTo(row, ui.Start)
-		}
+		v.ScrollToEntry(v.Entries()[it.entry])
 		return
 	}
 	if r.jumpingTo != "" {
@@ -326,6 +318,6 @@ func (v *sessionView) jumpTo(it railItem, rows []transcriptRow) {
 	v.loadUntil(it.id, func() {
 		r.jumpingTo = ""
 		// The loaded messages reach the transcript at its next build.
-		v.pendingJump = it.id
+		v.JumpTo(it.id)
 	})
 }

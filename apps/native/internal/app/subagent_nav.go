@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
 )
 
@@ -206,4 +207,21 @@ func (v *sessionView) sessionTrail(c *ui.Context, n subagentNav, title string) {
 			}
 		})
 	})
+}
+
+// subagentRuns are the runs of the listed subagents this Client knows of,
+// by their Session.
+func (a *App) subagentRuns(listed []sessions.Summary) map[string]subagents.Run {
+	if a.ctl == nil {
+		return map[string]subagents.Run{}
+	}
+	return sessionview.SubagentRuns(a.ctl.Store(), listed)
+}
+
+// subagentRun is what the Store knows of one subagent's run.
+func (a *App) subagentRun(id string) (subagents.Run, bool) {
+	if a.ctl == nil {
+		return subagents.Run{}, false
+	}
+	return sessionview.SubagentRun(a.ctl.Store(), id)
 }

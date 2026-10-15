@@ -25,6 +25,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // newSessionState is the New session page's: the Workspace picked, the
@@ -202,7 +203,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 				}
 			})
 		})
-		col := ui.Column(c).FillWidth().MaxWidth(k.Px(columnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
+		col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
 		col.Children(func() {
 			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, a.draftItems(workspace, requestedMode))
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {

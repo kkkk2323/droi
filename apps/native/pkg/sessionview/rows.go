@@ -1,10 +1,13 @@
-package app
+package sessionview
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
@@ -44,7 +47,7 @@ type transcriptRow struct {
 }
 
 // rows cuts the entries into the list's rows, in px before Kit.Px.
-func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends map[string]transcript.TurnEnd) []transcriptRow {
+func (v *View) rows(entries []*transcript.Entry, streamingID string, ends map[string]transcript.TurnEnd) []transcriptRow {
 	var rows []transcriptRow
 	turnStart := 0
 	for i, e := range entries {
@@ -66,7 +69,7 @@ func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends
 			started, pending = true, bottom
 		}
 		for i, b := range e.Blocks {
-			key := e.ID + "/" + itoa(i)
+			key := e.ID + "/" + strconv.Itoa(i)
 			switch b.Kind {
 			case transcript.Text:
 				last := e.ID == streamingID && i == len(e.Blocks)-1
@@ -100,9 +103,8 @@ func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends
 }
 
 // row builds one of the transcript's rows.
-func (v *sessionView) row(c *ui.Context, r transcriptRow) {
-	a := v.a
-	k, t := a.kit, a.kit.T
+func (v *View) row(c *ui.Context, r transcriptRow) {
+	k, t := v.look()
 	if r.kind == rowUser {
 		v.userEntry(c, r.e)
 		return
@@ -113,18 +115,18 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 	}
 	col := v.column(c).Padding(k.Px(r.top), k.Px(24), k.Px(r.bottom), k.Px(24)).TextColor(color)
 	if r.kind != rowCall && r.kind != rowNested {
-		col.Role(ui.RoleGroup).Label(L("Assistant"))
+		col.Role(ui.RoleGroup).Label(l10n.L("Assistant"))
 	}
 	if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Text {
 		text := r.e.Blocks[r.block].Text
 		col.Selectable().ContextMenu(func(m *ui.Menu) {
 			m.EditItems()
 			m.Separator()
-			if m.Item(L("Copy as Markdown")).Chosen() {
+			if m.Item(l10n.L("Copy as Markdown")).Chosen() {
 				c.WriteClipboard(text)
-				c.Toast(L("Copied as Markdown"))
+				c.Toast(l10n.L("Copied as Markdown"))
 			}
-			if m.Item(L("Quote in message")).Chosen() {
+			if m.Item(l10n.L("Quote in message")).Chosen() {
 				v.quote(text)
 			}
 		})
@@ -139,7 +141,7 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 				if text := transcript.ReplyText(r.turn); text != "" {
 					// The negative margins keep the row as tall as its text and
 					// the icon in line with the reply's left edge.
-					b := ui.ButtonBase(c).Label(L("Copy reply")).Tooltip(L("Copy reply")).Size(k.Px(24), k.Px(24)).
+					b := ui.ButtonBase(c).Label(l10n.L("Copy reply")).Tooltip(l10n.L("Copy reply")).Size(k.Px(24), k.Px(24)).
 						Margin(-k.Px(4), 0, -k.Px(4), -k.Px(5)).Radius(k.Px(6)).Center().Cursor(ui.CursorPointer)
 					color := t.MutedForeground
 					if b.Hovered() {
@@ -149,10 +151,10 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 					b.Children(func() { k.Icon(c, "copy", 14, color) })
 					if b.Clicked() {
 						c.WriteClipboard(text)
-						c.Toast(L("Copied the reply"))
+						c.Toast(l10n.L("Copied the reply"))
 					}
 				}
-				k.Text(c, transcript.FormatTurnEnd(r.end, a.cfg.Now()), 12, 16).TextColor(t.MutedForeground)
+				k.Text(c, transcript.FormatTurnEnd(r.end, v.env.Now()), 12, 16).TextColor(t.MutedForeground)
 			})
 		case rowCluster:
 			v.cluster(c, r.e.Blocks[r.block])
@@ -192,11 +194,11 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 				}
 				v.reply(c, b.Text, style, r.streaming)
 				if r.streaming {
-					pulse := 0.6 * (0.5 + 0.5*float32(pulseWave(c)))
-					ui.Box(c).Label(L("Assistant is typing")).Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))
+					pulse := 0.6 * (0.5 + 0.5*float32(kit.PulseWave(c)))
+					ui.Box(c).Label(l10n.L("Assistant is typing")).Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))
 				}
 			case transcript.Picture:
-				v.picture(c, b.ID, b.Image, 288, L("Image from Droid"))
+				v.picture(c, b.ID, b.Image, 288, l10n.L("Image from Droid"))
 			case transcript.Thinking:
 				v.thinking(c, b, r.e.ID == v.streamingID)
 			case transcript.Subagent:
@@ -207,8 +209,8 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 }
 
 // userEntry is the user's bubble on the right.
-func (v *sessionView) userEntry(c *ui.Context, e *transcript.Entry) {
-	k, t := v.a.kit, v.a.kit.T
+func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
+	k, t := v.look()
 	var parts []string
 	var images []transcript.Block
 	for _, b := range e.Blocks {
@@ -220,11 +222,11 @@ func (v *sessionView) userEntry(c *ui.Context, e *transcript.Entry) {
 		}
 	}
 	text := strings.Join(parts, "\n")
-	v.column(c).Role(ui.RoleGroup).Label(L("You")).AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
+	v.column(c).Role(ui.RoleGroup).Label(l10n.L("You")).AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
 		if len(images) > 0 {
 			ui.Row(c).Wrap().Justify(ui.End).Gap(k.Px(6)).MaxWidthPercent(85).Children(func() {
 				for _, b := range images {
-					v.picture(c, b.ID, b.Image, 192, L("Attached image"))
+					v.picture(c, b.ID, b.Image, 192, l10n.L("Attached image"))
 				}
 			})
 		}
@@ -233,4 +235,14 @@ func (v *sessionView) userEntry(c *ui.Context, e *transcript.Entry) {
 				Background(t.Secondary).TextColor(t.SecondaryForeground)
 		}
 	})
+}
+
+// rowOf is the list row where entry starts: row 0 is the lead.
+func rowOf(rows []transcriptRow, e *transcript.Entry) int {
+	for i, r := range rows {
+		if r.e == e {
+			return i + 1
+		}
+	}
+	return -1
 }

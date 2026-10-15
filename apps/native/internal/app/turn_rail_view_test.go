@@ -50,7 +50,7 @@ func TestTurnRailLoadsAnOlderMessage(t *testing.T) {
 	h.openSession("Long")
 	h.until("every message on the rail", func() bool { _, ok := h.tt.Find("Jump to message 1"); return ok })
 	v := h.a.views[h.a.Route().SessionID]
-	before := len(v.entries)
+	before := len(v.Entries())
 	h.until("the rail's whole list", func() bool { return len(v.rail.all) == LoadedMessageLimit })
 	h.settle()
 	// Scroll the rail to its first mark, the pointer over it.
@@ -66,7 +66,7 @@ func TestTurnRailLoadsAnOlderMessage(t *testing.T) {
 	}
 	h.click("Jump to message 1")
 	h.until("the first message loaded", func() bool {
-		return len(v.entries) > before && v.entries[0].User && entryText(v.entries[0]) == "Question 0"
+		return len(v.Entries()) > before && v.Entries()[0].User && entryText(v.Entries()[0]) == "Question 0"
 	})
 	h.settle()
 	h.settle()

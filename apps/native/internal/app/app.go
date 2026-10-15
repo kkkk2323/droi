@@ -8,7 +8,6 @@ package app
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -26,12 +25,13 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
 // LoadedMessageLimit is how many of a Session's latest messages a load
 // brings, as the web Client's LOADED_MESSAGE_LIMIT.
-const LoadedMessageLimit = 400
+const LoadedMessageLimit = sessionview.LoadedMessageLimit
 
 // sessionPage is how many Sessions one daemon.list_available_sessions reads.
 const sessionPage = 100
@@ -130,7 +130,7 @@ type App struct {
 	kit   *kit.Kit
 	route Route
 	// notesMD shows the release notes.
-	notesMD mdViews
+	notesMD sessionview.Markdown
 	// locale is the system's (SetLocale); "" keeps the last one told.
 	locale string
 	// languageChanged hears a change of the language, for what the window
@@ -202,8 +202,8 @@ type App struct {
 	narrow, drawerOpen bool
 	remote             remoteState
 	// revs counts each Session's changes in the Store, for its view to
-	// build again: Session id → *atomic.Int64.
-	revs sync.Map
+	// build again.
+	revs sessionview.Revisions
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
 	worktreeAsk worktreeDialog
 
@@ -243,7 +243,7 @@ func New(cfg Config) *App {
 		views:  map[string]*sessionView{},
 
 		drafts:      drafts.New(cfg.Prefs),
-		notesMD:     mdViews{own: true},
+		notesMD:     sessionview.Markdown{Own: true},
 		compactions: compaction.NewLog(),
 	}
 	a.applyPrefs()
@@ -281,7 +281,7 @@ func (a *App) Start() {
 	stats := openSessionStats(a.cfg.StatsFile)
 	a.ctl.Store().SetStatsSeed(stats.get)
 	a.unsubscribe = append(a.unsubscribe, a.ctl.Store().Subscribe(func(e session.Event) {
-		a.rev(e.SessionID).Add(1)
+		a.revs.Bump(e.SessionID)
 		if e.Kind == session.EventStatsUpdated {
 			if s := a.ctl.Store().Session(e.SessionID); s != nil {
 				stats.put(e.SessionID, s.Stats())
@@ -314,12 +314,6 @@ func (a *App) Close() {
 
 // closed reports whether Close was called, for work that ends after it.
 func (a *App) closed() bool { return a.ctx.Err() != nil }
-
-// rev is a Session's revision counter.
-func (a *App) rev(id string) *atomic.Int64 {
-	r, _ := a.revs.LoadOrStore(id, new(atomic.Int64))
-	return r.(*atomic.Int64)
-}
 
 // redraw asks for a frame from any goroutine.
 func (a *App) redraw() { a.cfg.Update(func() {}) }
@@ -681,7 +675,7 @@ func (a *App) Go(r Route) {
 	if r.Name == "session" {
 		delete(a.unread, r.SessionID)
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
-		a.view(r.SessionID).open()
+		a.view(r.SessionID).Open()
 		a.remember(r.SessionID)
 	}
 	if r.Name == "new" {

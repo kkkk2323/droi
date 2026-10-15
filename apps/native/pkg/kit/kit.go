@@ -178,6 +178,18 @@ func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
 	return k.Icon(c, "loader-circle", size, color).Rotate(float32(step) * 360 / steps)
 }
 
+// PulseWave is Tailwind's animate-pulse, 1 at rest and 0.5 halfway
+// through each 2s.
+func PulseWave(c *ui.Context) float64 {
+	ms := c.Now().UnixMilli() % 2000
+	c.After(50 * time.Millisecond)
+	x := float64(ms) / 1000
+	if x > 1 {
+		x = 2 - x
+	}
+	return 1 - x
+}
+
 // Selected marks e selected for assistive technology without MyGo's look
 // for it (the accent background and text), which the caller paints itself
 // afterwards.

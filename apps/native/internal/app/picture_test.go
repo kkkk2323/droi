@@ -77,7 +77,7 @@ func TestClickingAPictureEnlargesIt(t *testing.T) {
 	small, _ := h.tt.Find("Attached image")
 	h.click("Attached image")
 	v := h.a.view(h.a.Route().SessionID)
-	if !v.zoomOpen {
+	if !v.Zoomed() {
 		t.Fatal("the picture did not open")
 	}
 	h.frame()
@@ -87,7 +87,7 @@ func TestClickingAPictureEnlargesIt(t *testing.T) {
 	}
 	h.tt.ClickAt(big.X+big.W/2, big.Y+big.H/2)
 	h.frame()
-	if v.zoomOpen {
+	if v.Zoomed() {
 		t.Fatal("a click did not close the picture")
 	}
 }

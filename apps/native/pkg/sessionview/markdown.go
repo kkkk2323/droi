@@ -1,4 +1,4 @@
-package app
+package sessionview
 
 import (
 	"encoding/base64"
@@ -12,42 +12,43 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
 	"github.com/kkkk2323/droi/apps/native/pkg/jsonrender"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
-// mdStyle is how a kind of Markdown reads: its text size, in px of the
-// default text size, and its color.
-type mdStyle struct {
-	size  float32
-	muted bool
-	err   bool
+// MarkdownStyle is how a kind of Markdown reads: its text size, in px of
+// the default text size, and its color.
+type MarkdownStyle struct {
+	Size  float32
+	Muted bool
+	Err   bool
 }
 
 var (
-	mdReply    = mdStyle{size: 15}
-	mdError    = mdStyle{size: 15, err: true}
-	mdThinking = mdStyle{size: 14, muted: true}
-	mdReport   = mdStyle{size: 13}
-	mdNotes    = mdStyle{size: 13, muted: true}
+	mdReply    = MarkdownStyle{Size: 15}
+	mdError    = MarkdownStyle{Size: 15, Err: true}
+	mdThinking = MarkdownStyle{Size: 14, Muted: true}
+	mdReport   = MarkdownStyle{Size: 13}
 )
 
-// mdViews are the Markdown options of a page, one per style. A view keeps
+// Markdown is the Markdown options of a page, one per style. A page keeps
 // the images it loaded in its options, so they last as long as the page.
-type mdViews struct {
-	kit  *kit.Kit
-	opts map[mdStyle]*markdown.Options
-	// load reads an image a reply names; nil shows images as their
+type Markdown struct {
+	// Load reads an image a reply names; nil shows images as their
 	// descriptions.
-	load func(url string) (ui.ImageSource, error)
-	// own gives each view its own selection and context menu, for text
+	Load func(url string) (ui.ImageSource, error)
+	// Own gives each view its own selection and context menu, for text
 	// outside the transcript's selectable rows.
-	own bool
+	Own bool
+
+	kit  *kit.Kit
+	opts map[MarkdownStyle]*markdown.Options
 }
 
-// options are the options of style for kit k, made anew when the kit
+// Options are the options of style s for kit k, made anew when the kit
 // changes (the theme, the font, the text size or the zoom).
-func (m *mdViews) options(k *kit.Kit, s mdStyle) *markdown.Options {
+func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 	if m.kit != k || m.opts == nil {
-		m.kit, m.opts = k, map[mdStyle]*markdown.Options{}
+		m.kit, m.opts = k, map[MarkdownStyle]*markdown.Options{}
 	}
 	if o := m.opts[s]; o != nil {
 		return o
@@ -55,15 +56,15 @@ func (m *mdViews) options(k *kit.Kit, s mdStyle) *markdown.Options {
 	t := k.T
 	color := t.Foreground
 	switch {
-	case s.err:
+	case s.Err:
 		color = t.DestructiveForeground
-	case s.muted:
+	case s.Muted:
 		color = t.MutedForeground
 	}
 	o := &markdown.Options{
-		Theme:          &markdown.Theme{FontSize: k.Px(s.size), Font: k.Sans, CodeFont: k.Mono, Text: color, Strong: color, Code: t.Code},
-		LoadImage:      m.load,
-		ShareSelection: !m.own,
+		Theme:          &markdown.Theme{FontSize: k.Px(s.Size), Font: k.Sans, CodeFont: k.Mono, Text: color, Strong: color, Code: t.Code},
+		LoadImage:      m.Load,
+		ShareSelection: !m.Own,
 	}
 	m.opts[s] = o
 	return o
@@ -79,9 +80,9 @@ func markdownText(c *ui.Context, text string, o *markdown.Options, streaming boo
 
 // reply is a text block: Markdown, with the json-render blocks a reply
 // can carry drawn as their components.
-func (v *sessionView) reply(c *ui.Context, text string, style mdStyle, streaming bool) {
-	k := v.a.kit
-	o := v.md.options(k, style)
+func (v *View) reply(c *ui.Context, text string, style MarkdownStyle, streaming bool) {
+	k := v.kit()
+	o := v.md.Options(k, style)
 	if !jsonrender.HasRenderTag(text) {
 		markdownText(c, text, o, streaming)
 		return
@@ -95,7 +96,7 @@ func (v *sessionView) reply(c *ui.Context, text string, style mdStyle, streaming
 			case jsonrender.Render:
 				renderTree(c, k, seg.Spec)
 			case jsonrender.Pending:
-				k.Text(c, L("Rendering…"), 13, 19.5).TextColor(k.T.MutedForeground)
+				k.Text(c, l10n.L("Rendering…"), 13, 19.5).TextColor(k.T.MutedForeground)
 			}
 		}
 	})
@@ -106,16 +107,17 @@ var errNotLocalImage = errors.New("not an image on the computer")
 // loadImage reads an image a reply names by its path on the computer
 // through the Daemon, so a reply's screenshot shows over any connection
 // to it. Other images stay their descriptions.
-func (v *sessionView) loadImage(url string) (ui.ImageSource, error) {
+func (v *View) loadImage(url string) (ui.ImageSource, error) {
 	path := attachments.LocalImagePath(url)
-	if path == "" || v.a.ctl == nil {
+	ctl := v.env.Controller
+	if path == "" || ctl == nil {
 		return nil, errNotLocalImage
 	}
-	cl, err := v.a.ctl.Client()
+	cl, err := ctl.Client()
 	if err != nil {
 		return nil, err
 	}
-	f, err := cl.GetWorkspaceFileContent(v.a.ctx, protocol.GetWorkspaceFileContentParams{SessionID: v.id, FilePath: path,
+	f, err := cl.GetWorkspaceFileContent(v.env.Ctx, protocol.GetWorkspaceFileContentParams{SessionID: v.id, FilePath: path,
 		Encoding: protocol.GetWorkspaceFileContentParamsEncodingBase64})
 	if err != nil {
 		return nil, err

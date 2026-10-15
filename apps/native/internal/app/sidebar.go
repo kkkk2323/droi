@@ -225,7 +225,7 @@ func (a *App) activity(reported map[string]string) map[string]activity.Activity 
 	}
 	compacting := map[string]bool{}
 	for id, v := range a.views {
-		if v.compacting {
+		if v.Compacting() {
 			compacting[id] = true
 		}
 	}

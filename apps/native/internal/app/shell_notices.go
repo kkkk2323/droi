@@ -106,7 +106,7 @@ func (a *App) startingUpView(c *ui.Context, status controller.Status) {
 		}
 		ui.Row(c).Grow(1).Center().Children(func() {
 			ui.Row(c).Role(ui.RoleStatus).Label(L("Starting")).Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
-				wave := float32(pulseWave(c))
+				wave := float32(kit.PulseWave(c))
 				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.4+0.3*wave))
 				k.Text(c, L("Starting the Daemon"), 14, 20).TextColor(t.MutedForeground)
 			})

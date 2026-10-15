@@ -34,7 +34,7 @@ func TestAFileInAnotherAppsDataSaysHowToAddIt(t *testing.T) {
 	h.focusComposer()
 	h.tt.Key(ui.Cmd, ui.KeyV)
 	h.frame()
-	got := h.a.views[h.a.Route().SessionID].composer.err
+	got := h.a.views[h.a.Route().SessionID].Err()
 	for _, want := range []string{"photo.png", "another app", "Downloads", "Full Disk Access"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the error does not say %q: %q", want, got)

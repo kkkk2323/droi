@@ -67,7 +67,7 @@ func TestTypingGoesOnAfterAPasteFails(t *testing.T) {
 	h.focusComposer()
 	h.tt.Key(ui.Cmd, ui.KeyV)
 	h.frame()
-	if h.a.views[h.a.Route().SessionID].composer.err == "" {
+	if h.a.views[h.a.Route().SessionID].Err() == "" {
 		t.Fatal("the failed paste shows no error")
 	}
 	h.typeInto("still here")

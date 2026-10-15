@@ -59,6 +59,15 @@ func relativeTime(t, now time.Time) string {
 	return t.Format(L("Jan 2"))
 }
 
+// countL is a count with its noun, "1 tool" or "3 tools"; one and many are
+// l10n.N keys holding a %d.
+func countL(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf(l10n.T(one), n)
+	}
+	return fmt.Sprintf(l10n.T(many), n)
+}
+
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, one)

@@ -16,7 +16,6 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
-	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // compactCommand is `/compact [instructions]`, which the composer runs
@@ -43,7 +43,6 @@ type composerState struct {
 	field, fieldPrefix, fieldFrom string
 	highlight                     int
 	dismissed                     string // the text the suggestions were dismissed for
-	err                           string
 
 	modelOpen bool
 	picker    pickerState
@@ -74,14 +73,14 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 		v.takePending(s)
 	}
 	perms, asks := a.ctl.PendingPermissions(v.id), a.ctl.PendingAskUsers(v.id)
-	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.compacting
+	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.Compacting()
 	if running && len(perms)+len(asks) == 0 && c.Shortcut(0, ui.KeyEscape) {
-		go func() { _ = a.ctl.InterruptSession(a.ctx, v.id) }()
+		v.Interrupt()
 	}
-	v.column(c).Shrink(0).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Children(func() {
+	sessionview.Column(c, k).Shrink(0).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Children(func() {
 		v.shelf(c, s)
 		if len(perms)+len(asks) > 0 {
-			v.promptArea(c, perms, asks)
+			v.Prompts(c, perms, asks)
 			// The prompt takes the focus; the composer gets it back after.
 			v.focused = false
 		} else {
@@ -99,10 +98,9 @@ func (v *sessionView) takePending(s *session.Session) {
 	}
 }
 
-// send sends a message, or queues it with placement while a turn runs; an
-// idle send shows at once as an optimistic message.
+// send sends a message, or queues it with placement while a turn runs;
+// `/compact` it runs itself.
 func (v *sessionView) send(s *session.Session, text string, images []attachments.Image, placement protocol.QueuePlacement) {
-	a := v.a
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" && len(images) == 0 {
 		return
@@ -111,56 +109,16 @@ func (v *sessionView) send(s *session.Session, text string, images []attachments
 		go v.compact(m[1])
 		return
 	}
-	v.composer.err = ""
-	requestID, messageID := uuid.NewString(), uuid.NewString()
-	var content []protocol.ContentBlock
-	if trimmed != "" {
-		b, _ := protocol.NewContentBlock(map[string]any{"type": "text", "text": trimmed})
-		content = append(content, b)
-	}
-	sources := make([]protocol.Base64ImageSource, len(images))
-	for i, img := range images {
-		sources[i] = protocol.Base64ImageSource{Type: "base64", Data: img.Data, MediaType: protocol.Base64ImageSourceMediaType(img.MediaType)}
-		b, _ := protocol.NewContentBlock(map[string]any{"type": "image", "source": sources[i]})
-		content = append(content, b)
-	}
-	if placement == "" {
-		now := float64(time.Now().UnixMilli())
-		a.ctl.Store().RegisterOptimisticSubmit(session.OptimisticSubmit{
-			SessionID:         v.id,
-			ExternalKey:       requestID,
-			UserMessage:       protocol.FactoryDroidMessage{ID: messageID, Role: protocol.MessageRoleUser, Content: content, CreatedAt: now, UpdatedAt: now},
-			AssistantBubbleID: uuid.NewString(),
-			OnError:           func(err error) { v.fail(err) },
-		})
-	}
-	v.list.FollowEnd = true
-	v.list.ScrollToEnd()
-	p := protocol.AddUserMessageParams{SessionID: v.id, Text: trimmed, MessageID: messageID, QueuePlacement: placement}
-	if len(sources) > 0 {
-		p.Images = sources
-	}
-	go func() {
-		if _, err := a.ctl.AddUserMessage(droid.WithRequestID(a.ctx, requestID), p); err != nil {
-			if placement == "" {
-				a.ctl.Store().CancelOptimisticSubmit(requestID)
-			}
-			v.fail(err)
-		}
-	}()
-}
-
-func (v *sessionView) fail(err error) {
-	v.a.cfg.Update(func() { v.composer.err = err.Error() })
+	v.Send(text, images, placement)
 }
 
 // compact runs `/compact`: in place on a newer Daemon, else as a handoff
 // to a child Session, which this Client tags as the continuation and shows.
 func (v *sessionView) compact(instructions string) {
 	a := v.a
-	v.a.cfg.Update(func() { v.compacting = true })
+	v.a.cfg.Update(func() { v.SetCompacting(true) })
 	a.compactions.Start(v.id)
-	defer a.cfg.Update(func() { v.compacting = false })
+	defer a.cfg.Update(func() { v.SetCompacting(false) })
 	cl, err := a.ctl.Client()
 	var res *protocol.CompactSessionResult
 	if err == nil {
@@ -168,7 +126,7 @@ func (v *sessionView) compact(instructions string) {
 	}
 	if err != nil {
 		a.compactions.Fail(v.id)
-		v.fail(err)
+		v.Fail(err)
 		return
 	}
 	if res.NewSessionID != v.id {
@@ -272,7 +230,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		suggestions = slash.Filter(items, q, 8)
 	}
 	active := min(cs.highlight, max(len(suggestions)-1, 0))
-	ready := loaded || v.hasLoaded
+	ready := loaded || v.Ready()
 	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
 	// submit reports whether it sent. It reads the text again: a key can
 	// come with text typed after this frame was built.
@@ -303,8 +261,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	// command's tag) would otherwise change the text area's identity, and
 	// the keyboard focus would go with it.
 	ui.Column(c.Key("composer")).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
-		if cs.err != "" {
-			k.Text(c, cs.err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).PaddingX(k.Px(4))
+		if err := v.Err(); err != "" {
+			k.Text(c, err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).PaddingX(k.Px(4))
 		}
 		card := ui.Column(c.Key("card")).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
 		if _, over := ui.DataDragOver(card, dropOptions); over {
@@ -394,7 +352,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 							ui.Box(c).Size(k.Px(10), k.Px(10)).Radius(k.Px(2)).Background(t.SecondaryForeground)
 						})
 						if stop.Clicked() {
-							go func() { _ = a.ctl.InterruptSession(a.ctx, v.id) }()
+							v.Interrupt()
 						}
 						if canSend {
 							q := k.Button(c, kit.Primary, 32, true, L("Queue")).Radius(k.Px(16)).Tooltip(L("Send after this turn (↩); ⌘↩ hands it to the running turn"))
@@ -439,7 +397,7 @@ func (v *sessionView) pasteImage() bool {
 	img, ok, err := attachments.FromBytes(data, "Pasted image.png", uuid.NewString())
 	switch {
 	case err != nil:
-		v.composer.err = err.Error()
+		v.SetErr(err.Error())
 	case ok:
 		v.composer.images = append(v.composer.images, img)
 	}
@@ -451,7 +409,7 @@ func (v *sessionView) pasteImage() bool {
 func (v *sessionView) addFiles(paths []string) {
 	cs := &v.composer
 	if err := attachFiles(&cs.text, &cs.images, paths, v.a.following()); err != nil {
-		cs.err = err.Error()
+		v.SetErr(err.Error())
 	}
 	v.saveDraft()
 }
@@ -511,17 +469,7 @@ func (a *App) clipboardFiles() []string {
 // quote adds text to the message as a Markdown quote and puts the
 // keyboard focus back in the composer.
 func (v *sessionView) quote(text string) {
-	cs := &v.composer
-	quoted := "> " + strings.ReplaceAll(strings.TrimSpace(text), "\n", "\n> ") + "\n\n"
-	switch {
-	case cs.text == "":
-	case strings.HasSuffix(cs.text, "\n\n"):
-	case strings.HasSuffix(cs.text, "\n"):
-		quoted = "\n" + quoted
-	default:
-		quoted = "\n\n" + quoted
-	}
-	cs.text += quoted
+	v.composer.text = sessionview.QuoteText(v.composer.text, text)
 	v.focused = false
 	v.saveDraft()
 }
@@ -536,7 +484,7 @@ func (v *sessionView) drop(d dropped) {
 		img, ok, err := attachments.FromBytes(d.image, "Dropped image.png", uuid.NewString())
 		switch {
 		case err != nil:
-			cs.err = err.Error()
+			v.SetErr(err.Error())
 		case ok:
 			cs.images = append(cs.images, img)
 		}
@@ -559,7 +507,7 @@ func (v *sessionView) chooseImages() {
 }
 
 func (v *sessionView) attachmentList(c *ui.Context) {
-	v.a.attachmentList(c, &v.composer.images, v.images, v.saveDraft)
+	v.a.attachmentList(c, &v.composer.images, v.attached, v.saveDraft)
 }
 
 // attachmentList shows the images about to be sent, each with a button that
@@ -569,7 +517,7 @@ func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps
 	ui.Row(c).Role(ui.RoleList).Label(L("Attachments")).Wrap().Gap(k.Px(8)).Padding(k.Px(12), k.Px(12), 0, k.Px(12)).Children(func() {
 		for _, img := range *images {
 			ui.Box(c.Key(img.ID)).Size(k.Px(64), k.Px(64)).Children(func() {
-				if bm := cachedBitmap(bitmaps, "att:"+img.ID, attachmentImage(img)); bm != nil {
+				if bm := sessionview.CachedBitmap(bitmaps, "att:"+img.ID, attachmentImage(img)); bm != nil {
 					ui.Image(c, bm).Label(img.Name).Fill().Radius(k.Px(8)).Border(1, t.Border).Fit(ui.Cover)
 				}
 				x := ui.ButtonBase(c).Label(L("Remove %s", img.Name)).Size(k.Px(20), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).
@@ -909,7 +857,7 @@ func (v *sessionView) todoIcon(c *ui.Context, status session.TodoStatus) {
 
 func (v *sessionView) todoPanel(c *ui.Context, todos []session.TodoItem, done int) {
 	k, t := v.a.kit, v.a.kit.T
-	open := v.flag("todos", false)
+	open := v.Flag("todos", false)
 	var current *session.TodoItem
 	for _, st := range []session.TodoStatus{session.TodoInProgress, session.TodoPending} {
 		for i := range todos {
@@ -1004,7 +952,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 				_, err = cl.ResolveQueuedUserMessage(a.ctx, raw)
 			}
 			if err != nil {
-				v.fail(err)
+				v.Fail(err)
 				return
 			}
 			// The Daemon sends no notification for a delete; the Client drops it.
@@ -1054,7 +1002,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 				break
 			}
 		}
-		open := v.flag("queued", false)
+		open := v.Flag("queued", false)
 		p := ui.CollapsibleBase(c, open)
 		p.Trigger.Label(L("Queued messages, %d", len(queued))).FillWidth().Height(k.Px(30)).Gap(k.Px(8)).
 			Padding(0, k.Px(6), 0, k.Px(12)).Cursor(ui.CursorPointer).Children(func() {

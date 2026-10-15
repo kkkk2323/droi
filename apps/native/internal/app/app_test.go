@@ -650,7 +650,7 @@ func TestAnotherSessionDoesNotRebuildTheTranscript(t *testing.T) {
 	h.until("the reply", func() bool { return h.hasText("regression test") })
 	h.settle()
 	v := h.a.views[h.a.Route().SessionID]
-	built := v.built
+	built := v.Built()
 	var other string
 	for _, s := range h.a.listed {
 		if s.Title == "Add dark mode toggle" {
@@ -662,8 +662,8 @@ func TestAnotherSessionDoesNotRebuildTheTranscript(t *testing.T) {
 	}
 	h.until("the other Session", func() bool { return h.a.ctl.Store().Session(other) != nil })
 	h.settle()
-	if v.built != built {
-		t.Fatalf("the transcript was built again at %d, after %d", v.built, built)
+	if v.Built() != built {
+		t.Fatalf("the transcript was built again at %d, after %d", v.Built(), built)
 	}
 }
 

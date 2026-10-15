@@ -39,7 +39,7 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 				_, err = cl.UpdateSessionSettings(a.ctx, p)
 			}
 			if err != nil {
-				v.fail(err)
+				v.Fail(err)
 			}
 		}()
 	}

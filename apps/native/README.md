@@ -147,7 +147,8 @@ no split.
 | `internal/automations/`                                                                   | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
 | `pkg/models/`, `pkg/defaults/`, `internal/skills/`, `internal/mcp/`, `internal/slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
 | `pkg/kit/`                                                                                | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs                  |
-| `internal/app/`                                                                           | the views: shell, sidebar, Session, composer, prompts, settings                                       |
+| `pkg/sessionview/`                                                                        | one Session: transcript, Markdown, tool calls, Prompts, sending, a plain composer (no `*App`)         |
+| `internal/app/`                                                                           | the views: shell, sidebar, the Session's header, turn rail and composer, New session, settings        |
 | `testdata/reference/`                                                                     | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |
 
 ## Commands (from the repository root)

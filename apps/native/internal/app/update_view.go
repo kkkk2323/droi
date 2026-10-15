@@ -9,7 +9,11 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
+
+// mdNotes is how the release notes read.
+var mdNotes = sessionview.MarkdownStyle{Size: 13, Muted: true}
 
 func describeUpdate(s updates.State) string {
 	switch s.Status {
@@ -94,7 +98,7 @@ func (a *App) updateNotes(c *ui.Context, s updates.State) {
 	k := a.kit
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Release notes")).Children(func() {
 		k.Text(c, L("What’s new in %s", s.Version), 13, 20).FontWeight(500)
-		markdown.View(c, s.Notes, a.notesMD.options(k, mdNotes))
+		markdown.View(c, s.Notes, a.notesMD.Options(k, mdNotes))
 	})
 }
 

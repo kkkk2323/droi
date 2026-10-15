@@ -1,4 +1,4 @@
-package app
+package sessionview
 
 import (
 	"math"
@@ -9,6 +9,7 @@ import (
 
 	jr "github.com/kkkk2323/droi/apps/native/pkg/jsonrender"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
 // renderTree draws a json-render block of a reply: the CLI's terminal
@@ -169,7 +170,7 @@ func (r treeRenderer) node(c *ui.Context, id string, seen map[string]bool) {
 		ui.Row(c).Gap(k.Px(6)).Children(func() {
 			label := jr.Str(p, "status")
 			if label == "" {
-				label = L("Status")
+				label = l10n.L("Status")
 			}
 			k.Icon(c, toneIcon(tone), 14, r.toneText(tone, t.Foreground)).Label(label)
 			text(jr.Str(p, "text"), 13, 20)
@@ -194,7 +195,7 @@ func (r treeRenderer) node(c *ui.Context, id string, seen map[string]bool) {
 			}
 			name := label
 			if name == "" {
-				name = L("Progress")
+				name = l10n.L("Progress")
 			}
 			ui.Box(c).Role(ui.RoleProgress).Label(name).Height(k.Px(6)).MinWidth(k.Px(64)).Grow(1).Radius(k.Px(3)).Background(t.Muted).Clip().Children(func() {
 				ui.Box(c).FillHeight().WidthPercent(float32(value * 100)).Radius(k.Px(3)).Background(t.Primary)
@@ -208,7 +209,7 @@ func (r treeRenderer) node(c *ui.Context, id string, seen map[string]bool) {
 			ui.Row(c).Gap(k.Px(6)).Children(func() {
 				text(jr.Str(p, "value"), 18, 28).FontWeight(600).FontFeatures("tnum")
 				if trend == "up" || trend == "down" {
-					k.Icon(c, "trending-"+trend, 16, t.MutedForeground).Label(L("Trend %s", trend))
+					k.Icon(c, "trending-"+trend, 16, t.MutedForeground).Label(l10n.L("Trend %s", trend))
 				}
 			})
 		})
@@ -228,7 +229,7 @@ func (r treeRenderer) node(c *ui.Context, id string, seen map[string]bool) {
 			name = kind
 		}
 		if name == "" {
-			name = L("Note")
+			name = l10n.L("Note")
 		}
 		ui.Row(c).Role(ui.RoleGroup).Label(name).AlignItems(ui.Start).Gap(k.Px(8)).Padding(k.Px(8), k.Px(12)).Radius(k.Px(8)).
 			Border(1, t.Border).Background(t.Card.Alpha(0.6)).Children(func() {
@@ -321,7 +322,7 @@ func (r treeRenderer) barChart(c *ui.Context, p map[string]any) {
 		total += math.Max(0, v)
 	}
 	percent := p["showPercentage"] == true
-	ui.Grid(c).Role(ui.RoleList).Label(L("Bar chart")).ColumnTracks(ui.FitContent(), ui.Fr(1), ui.FitContent()).GapX(k.Px(10)).GapY(k.Px(4)).Children(func() {
+	ui.Grid(c).Role(ui.RoleList).Label(l10n.L("Bar chart")).ColumnTracks(ui.FitContent(), ui.Fr(1), ui.FitContent()).GapX(k.Px(10)).GapY(k.Px(4)).Children(func() {
 		for _, d := range data {
 			shown := jsNum(d.value)
 			if percent {
@@ -349,7 +350,7 @@ func (r treeRenderer) sparkline(c *ui.Context, p map[string]any) {
 		lo, hi = math.Min(lo, v), math.Max(hi, v)
 	}
 	color := r.toneText(jr.ToneOf(jr.Str(p, "color")), t.Foreground.Alpha(0.7))
-	label := L("Sparkline from %s to %s, range %s to %s", jsNum(data[0]), jsNum(data[len(data)-1]), jsNum(lo), jsNum(hi))
+	label := l10n.L("Sparkline from %s to %s, range %s to %s", jsNum(data[0]), jsNum(data[len(data)-1]), jsNum(lo), jsNum(hi))
 	ui.Box(c).Role(ui.RoleImage).Label(label).Size(k.Px(120), k.Px(24)).Draw(func(pt *ui.Painter, b ui.Rect) {
 		path := new(ui.Path)
 		for i, v := range data {

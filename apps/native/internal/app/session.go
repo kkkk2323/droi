@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/base64"
 	"os"
 	"runtime"
 	"slices"
@@ -13,61 +12,23 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
-// olderPage is how many messages one daemon.get_session_messages brings.
-const olderPage = 100
-
-// columnWidth is the reading column's max-w-3xl, which the transcript,
-// the Prompts and the composer share.
-const columnWidth = 768
-
 // sessionView is the state of one Session's page, kept while the window
-// lives so that going back finds it where it was.
+// lives so that going back finds it where it was: the Session view, and the
+// header, turn rail and composer the window draws with it.
 type sessionView struct {
+	*sessionview.View
 	a  *App
 	id string
 
-	list    ui.ListState
-	entries []*transcript.Entry
-	built   int64 // the Session's revision entries were built at
-
-	// Guarded by mu: written by the goroutines loading the Session.
-	mu           sync.Mutex
-	loading      bool
-	loadErr      string
-	olderLoading bool
-	olderErr     string
-
-	// flags are the disclosures' open states, by the block or call they open.
-	flags map[string]*bool
-	// md are the transcript's Markdown options.
-	md    mdViews
-	frame int64
-	// calls caches what a tool call's result reads as, decoded from its
-	// JSON once: the transcript keeps a call's ToolCall while it stays the
-	// same, and builds a new one when it changes.
-	calls map[*transcript.ToolCall]*callView
-	rail  railState
-	// pendingJump is a rail jump to a message whose page just loaded.
-	pendingJump string
-	// links and streamingID are the frame's, for the transcript's rows.
-	links       *subagents.Links
-	streamingID string
-	// While a fold the user opened holds the transcript in place: whether
-	// the list has left its end since, and the rows it had.
-	leftEnd  bool
-	heldRows int
-	images   map[string]*ui.Bitmap
-	imageAt  map[string]int64
-	// zoom is the picture shown enlarged while zoomOpen.
-	zoom      *ui.Bitmap
-	zoomLabel string
-	zoomOpen  bool
+	rail railState
+	// attached are the composer's pictures, decoded.
+	attached map[string]*ui.Bitmap
 
 	renaming bool
 	rename   string
@@ -75,10 +36,9 @@ type sessionView struct {
 	// actionsOpen: the menu by the header's title.
 	actionsOpen bool
 
-	compacting bool
-	composer   composerState
-	tools      toolsState
-	git        gitState
+	composer composerState
+	tools    toolsState
+	git      gitState
 	// subOpen and trailOpen: the header's subagent menus.
 	subOpen, trailOpen bool
 	// speedOpen: the footer's model speed details.
@@ -86,161 +46,30 @@ type sessionView struct {
 
 	// focused is whether the composer took the focus once already.
 	focused bool
-	// hasLoaded: the Session was loaded once. The Daemon cleans up an idle
-	// one, and the Controller loads it again before the next call, so the
-	// composer stays usable.
-	hasLoaded bool
-	promptErr string
-	asks      map[string]*askState
 }
 
 func (a *App) view(id string) *sessionView {
 	v := a.views[id]
 	if v == nil {
-		v = &sessionView{a: a, id: id, built: -1, flags: map[string]*bool{}, images: map[string]*ui.Bitmap{}, imageAt: map[string]int64{},
-			calls: map[*transcript.ToolCall]*callView{}, rail: railState{preview: -1}}
-		v.list.FollowEnd = true
-		v.md.load = v.loadImage
+		v = &sessionView{a: a, id: id, attached: map[string]*ui.Bitmap{}, rail: railState{preview: -1}}
+		v.View = sessionview.New(id, sessionview.Env{
+			Controller:     a.ctl,
+			Ctx:            a.ctx,
+			Kit:            func() *kit.Kit { return a.kit },
+			Update:         a.cfg.Update,
+			Now:            a.cfg.Now,
+			Revisions:      &a.revs,
+			OpenSession:    func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			Quote:          v.quote,
+			ScrollShortcut: shortcut(CmdScrollToLatest),
+			Overlay:        v.turnRail,
+		})
 		d := a.drafts.Load(id)
 		v.composer.text, v.composer.images = d.Text, d.Images
 		a.views[id] = v
 	}
 	return v
 }
-
-// open loads the Session from the Daemon unless it is loaded or loading.
-func (v *sessionView) open() {
-	ctl := v.a.ctl
-	if ctl == nil {
-		return
-	}
-	if s := ctl.Store().Session(v.id); s != nil && s.LoadState() == session.Loaded {
-		return
-	}
-	v.mu.Lock()
-	if v.loading {
-		v.mu.Unlock()
-		return
-	}
-	v.loading, v.loadErr = true, ""
-	v.mu.Unlock()
-	go func() {
-		limit := int64(LoadedMessageLimit)
-		_, err := ctl.LoadSession(v.a.ctx, protocol.LoadSessionParams{SessionID: v.id, MessageLimit: &limit})
-		v.mu.Lock()
-		v.loading = false
-		if err != nil {
-			v.loadErr = err.Error()
-		}
-		v.mu.Unlock()
-		v.a.redraw()
-	}()
-}
-
-// loadOlder brings the page of messages before the first one shown.
-func (v *sessionView) loadOlder() {
-	ctl := v.a.ctl
-	s := ctl.Store().Session(v.id)
-	if s == nil || !s.HasOlderMessages() {
-		return
-	}
-	cursor, ok := s.OlderMessagesCursor()
-	v.mu.Lock()
-	if !ok || v.olderLoading {
-		v.mu.Unlock()
-		return
-	}
-	v.olderLoading, v.olderErr = true, ""
-	v.mu.Unlock()
-	go func() {
-		defer v.a.redraw()
-		cl, err := ctl.Client()
-		var res *protocol.GetSessionMessagesResult
-		if err == nil {
-			limit := float64(olderPage)
-			res, err = cl.GetSessionMessages(v.a.ctx, protocol.GetSessionMessagesParams{SessionID: v.id, Cursor: cursor, Limit: &limit})
-		}
-		v.mu.Lock()
-		defer v.mu.Unlock()
-		v.olderLoading = false
-		if err != nil {
-			v.olderErr = err.Error()
-			return
-		}
-		page := make([]protocol.FactoryDroidMessage, len(res.Messages))
-		for i, m := range res.Messages {
-			page[len(page)-1-i] = m
-		}
-		ctl.Store().PrependOlderMessages(v.id, page, res.HasMore)
-	}()
-}
-
-// hold stops the transcript following its end, as the web Client's list
-// follows only rows added: a fold opened near the end grows below the row
-// clicked instead of pushing it up. Scrolling back to the end follows
-// again (resume).
-func (v *sessionView) hold() {
-	v.list.FollowEnd = false
-	v.leftEnd = false
-	v.heldRows = len(v.entries)
-}
-
-func (v *sessionView) holdOnToggle(trigger ui.Element) {
-	if trigger.Changed() {
-		v.hold()
-	}
-}
-
-// resume follows the end again when the user scrolls back to it, or when
-// rows are added while it shows, as the web Client follows new output.
-func (v *sessionView) resume() {
-	if v.list.FollowEnd {
-		return
-	}
-	atEnd := v.list.AtEnd()
-	if !atEnd {
-		v.leftEnd = true
-		return
-	}
-	if v.leftEnd || len(v.entries) != v.heldRows {
-		v.list.FollowEnd = true
-	}
-}
-
-func (v *sessionView) flag(key string, def bool) *bool {
-	p := v.flags[key]
-	if p == nil {
-		p = new(bool)
-		*p = def
-		v.flags[key] = p
-	}
-	return p
-}
-
-// sweep drops the decoded results and pictures no frame used lately.
-func (v *sessionView) sweep() {
-	v.frame++
-	if v.frame%120 != 0 {
-		return
-	}
-	for call, cv := range v.calls {
-		if v.frame-cv.usedAt > 60 {
-			delete(v.calls, call)
-		}
-	}
-	// A decoded picture is width × height × 4 bytes; one the list scrolled
-	// away from long ago is decoded again if it comes back.
-	for id, at := range v.imageAt {
-		if v.frame-at > imageIdleFrames {
-			delete(v.images, id)
-			delete(v.imageAt, id)
-		}
-	}
-}
-
-// imageIdleFrames is how many builds of its view a picture stays decoded
-// without being drawn.
-const imageIdleFrames = 600
 
 // keptViews is how many Sessions keep their view, the open one included:
 // a view holds its transcript, parsed Markdown and decoded pictures.
@@ -260,7 +89,7 @@ func (a *App) remember(id string) {
 	var recent []string
 	for _, x := range a.recent {
 		v := a.views[x]
-		if !keep[x] && v != nil && !v.busy() {
+		if !keep[x] && v != nil && !v.Busy() {
 			delete(a.views, x)
 			a.forget(x, keep)
 			continue
@@ -299,99 +128,10 @@ func (a *App) forget(id string, keep map[string]bool) {
 	}
 }
 
-// busy: the view holds what would be lost with it, a load or /compact
-// under way, or the answers to a question still open.
-func (v *sessionView) busy() bool {
-	v.mu.Lock()
-	loading := v.loading || v.olderLoading
-	v.mu.Unlock()
-	asking := len(v.asks) > 0 && v.a.ctl != nil && len(v.a.ctl.PendingAskUsers(v.id)) > 0
-	return loading || v.compacting || asking
-}
-
-type callView struct {
-	usedAt  int64
-	result  *transcript.ToolResultView
-	run     *transcript.ScriptRun
-	summary *string
-}
-
-func (v *sessionView) callView(call *transcript.ToolCall) *callView {
-	cv := v.calls[call]
-	if cv == nil {
-		cv = &callView{}
-		v.calls[call] = cv
-	}
-	cv.usedAt = v.frame
-	return cv
-}
-
-func (v *sessionView) result(call *transcript.ToolCall) transcript.ToolResultView {
-	cv := v.callView(call)
-	if cv.result == nil {
-		r := transcript.ReadResult(call)
-		cv.result = &r
-	}
-	return *cv.result
-}
-
-func (v *sessionView) scriptRun(call *transcript.ToolCall) transcript.ScriptRun {
-	cv := v.callView(call)
-	if cv.run == nil {
-		r := transcript.ReadScriptRun(call)
-		cv.run = &r
-	}
-	return *cv.run
-}
-
-func (v *sessionView) scriptSummary(call *transcript.ToolCall) string {
-	cv := v.callView(call)
-	if cv.summary == nil {
-		s := transcript.ScriptSummary(call)
-		cv.summary = &s
-	}
-	return *cv.summary
-}
-
-func (v *sessionView) image(id string, img transcript.Image) *ui.Bitmap {
-	v.imageAt[id] = v.frame
-	return cachedBitmap(v.images, id, img)
-}
-
-// cachedBitmap decodes img once per id; a failed decode is cached as nil.
-func cachedBitmap(cache map[string]*ui.Bitmap, id string, img transcript.Image) *ui.Bitmap {
-	if b, ok := cache[id]; ok {
-		return b
-	}
-	data, err := base64.StdEncoding.DecodeString(img.Data)
-	var b *ui.Bitmap
-	if err == nil {
-		b, _ = ui.DecodeBitmap(data)
-	}
-	cache[id] = b
-	return b
-}
-
-// refresh builds the transcript again when the Session changed, keeping the
-// entries that did not change so that their rows keep their state.
-func (v *sessionView) refresh(s *session.Session) {
-	rev := v.a.rev(v.id).Load()
-	if rev == v.built || s == nil {
-		return
-	}
-	v.built = rev
-	next := transcript.Build(s.DisplayMessages())
-	v.entries, _ = transcript.ReuseUnchanged(v.entries, next)
-}
-
 // build is the web Client's SessionView: the header, the transcript and
 // the composer.
 func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed []sessions.Summary) {
-	k, t := a.kit, a.kit.T
-	v.sweep()
-	v.resume()
-	s := a.ctl.Store().Session(v.id)
-	v.refresh(s)
+	s := v.Frame()
 	title := L("Untitled session")
 	workspace := ""
 	if sel != nil {
@@ -405,38 +145,14 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 			workspace = cwd
 		}
 	}
-	v.mu.Lock()
-	loadErr, loading := v.loadErr, v.loading
-	v.mu.Unlock()
 	loaded := s != nil && s.LoadState() == session.Loaded
-	if loaded {
-		v.hasLoaded = true
-	}
 
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
 		v.header(c, s, sel, loaded, title, workspace, a.subagentNavOf(listed, sel, v.id))
-		ui.Box(c).Grow(1).MinHeight(0).Children(func() {
-			switch {
-			case loadErr != "":
-				ui.Column(c).FillWidth().MaxWidth(k.Px(columnWidth)).AlignSelf(ui.Center).Padding(k.Px(24)).Children(func() {
-					k.Text(c, loadErr, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
-				})
-			case !loaded && len(v.entries) == 0:
-				if loading || s == nil || s.LoadState() != session.Loaded {
-					ui.Row(c).Fill().Center().Gap(k.Px(8)).Children(func() {
-						k.Spinner(c, 16, t.MutedForeground)
-						k.Text(c, L("Loading session…"), 14, 20).TextColor(t.MutedForeground)
-					})
-				}
-			default:
-				v.transcriptView(c, s, listed)
-			}
-		})
+		v.Transcript(c, s, listed)
 		v.composerArea(c, s, workspace, loaded)
 	})
-	if v.zoomOpen {
-		v.zoomView(c)
-	}
+	v.Zoom(c)
 }
 
 // header is the PageHeader: the title with its actions menu, and the

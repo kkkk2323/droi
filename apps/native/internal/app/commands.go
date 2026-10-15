@@ -57,8 +57,7 @@ func (a *App) Run(id string) {
 		}
 	case CmdScrollToLatest:
 		if v := a.views[a.route.SessionID]; a.route.Name == "session" && v != nil {
-			v.list.FollowEnd = true
-			v.list.ScrollToEnd()
+			v.ScrollToLatest()
 		}
 	}
 	if rest, ok := strings.CutPrefix(id, "session-"); ok {

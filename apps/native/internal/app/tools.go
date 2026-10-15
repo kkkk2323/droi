@@ -511,7 +511,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 			}
 			d := kit.Dot(c, k.Px(8), dot).Role(ui.RoleImage).Label(label).Tooltip(label).Margin(k.Px(7), 0, 0, 0)
 			if status == "connecting" {
-				d.Opacity(float32(0.5 + 0.5*pulseWave(c)))
+				d.Opacity(float32(0.5 + 0.5*kit.PulseWave(c)))
 			}
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				ui.Row(c).Wrap().Gap(k.Px(6)).Children(func() {
@@ -541,7 +541,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 				if s.PendingAuthURL != "" {
 					v.signInNotice(c, s)
 				}
-				open := v.flag("mcp-tools:"+s.Name, false)
+				open := v.Flag("mcp-tools:"+s.Name, false)
 				ui.Row(c).Wrap().Gap(k.Px(4)).Margin(k.Px(4), 0, 0, 0).Children(func() {
 					if on && toolCount > 0 {
 						b := k.Button(c, kit.Ghost, 24, false, toolCountLabel(toolCount)).Expanded(*open).PaddingX(k.Px(8)).Gap(k.Px(4))

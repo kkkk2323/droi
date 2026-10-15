@@ -1,4 +1,4 @@
-package app
+package sessionview
 
 import (
 	"testing"
@@ -16,7 +16,7 @@ func TestRowsCutAClusterIntoItsCalls(t *testing.T) {
 	e := &transcript.Entry{ID: "e", Blocks: []transcript.Block{
 		{Kind: transcript.Tools, ID: "c", Calls: []*transcript.ToolCall{call("a"), script}},
 	}}
-	v := &sessionView{flags: map[string]*bool{}}
+	v := &View{flags: map[string]*bool{}}
 
 	kinds := func() []rowKind {
 		var out []rowKind
