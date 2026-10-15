@@ -7,7 +7,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
 func summary(id string, edit func(*sessions.Summary)) sessions.Summary {

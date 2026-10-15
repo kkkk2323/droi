@@ -12,9 +12,9 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
+	droid "github.com/kkkk2323/droid-sdk-go"
+	"github.com/kkkk2323/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/attachments"
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"

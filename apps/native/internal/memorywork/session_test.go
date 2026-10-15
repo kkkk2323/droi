@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	droid "github.com/kkkk2323/droid-sdk-go"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 func TestAMemorySessionAnswersInJSONAndIsArchived(t *testing.T) {

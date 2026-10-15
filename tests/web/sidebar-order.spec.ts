@@ -1,6 +1,6 @@
 // The Session list's order and what a folded group says about its Sessions.
 import { expect, test } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 
 // Seconds, all within the last hour so every row shows.
 const NOW = Math.floor(Date.now() / 1000)

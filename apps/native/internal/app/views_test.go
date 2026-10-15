@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
 // Only the Sessions opened last keep their view, with its transcript and

@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
+	droid "github.com/kkkk2323/droid-sdk-go"
 )
 
 // InjectCredential replaces the Client's placeholder with the credential.

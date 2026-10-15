@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
+	"github.com/kkkk2323/droid-sdk-go/session"
 )
 
 // maxSavedStats bounds the file; the Sessions touched longest ago go first.

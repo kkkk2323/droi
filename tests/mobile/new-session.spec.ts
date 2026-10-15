@@ -1,6 +1,6 @@
-import type { RecordedRequest } from '../fake-daemon/fake-daemon'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { streamedReply } from '../fake-daemon/turns'
+import type { RecordedRequest } from '@droi/fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { streamedReply } from '@droi/fake-daemon/turns'
 import { expect, openNewSession, openSessionList, pairPhone, test } from './fixtures'
 
 function sessionIdOf(request: RecordedRequest): string {

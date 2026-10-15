@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 
 const chat = session('Chat', '/Users/dev/acme-web', [userMessage('hi')])
 

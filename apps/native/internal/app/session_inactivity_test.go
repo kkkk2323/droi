@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/session"
 )
 
 // The Daemon cleans up a Session left idle for half an hour. Its page stays

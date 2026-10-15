@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 const numberedLists = "Tight:\n\n1. First tight item\n2. Second tight item\n\nLoose:\n\n5. First loose item\n\n6. Second loose item\n\n   More of the second.\n"

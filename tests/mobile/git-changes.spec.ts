@@ -1,4 +1,4 @@
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import { expect, pairPhone, pickSession, test } from './fixtures'
 
 const dirty = session('Fix the login bug', '/Users/dev/acme-web', [userMessage('Why?')], {

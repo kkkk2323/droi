@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"

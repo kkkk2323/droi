@@ -1,12 +1,12 @@
 import type { Page } from '@playwright/test'
-import { assistantMessage, CONTEXT_BUDGET, session, userMessage } from '../fake-daemon/scenario'
+import { assistantMessage, CONTEXT_BUDGET, session, userMessage } from '@droi/fake-daemon/scenario'
 import {
   interruptHandler,
   resolveQueuedHandler,
   streamedReply,
   todoTurn,
   withQueue,
-} from '../fake-daemon/turns'
+} from '@droi/fake-daemon/turns'
 import { expect, pairPhone, pickSession, relaunch, test } from './fixtures'
 
 const chat = session('Chat', '/Users/dev/acme-web', [

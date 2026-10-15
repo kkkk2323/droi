@@ -9,7 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 // macOS keeps the files in another app's container from Droi: a picture

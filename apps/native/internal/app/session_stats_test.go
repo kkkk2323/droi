@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/session"
 )
 
 // A Session's speed from an earlier run shows under its composer.

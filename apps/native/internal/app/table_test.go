@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 const wideTable = "## 研究证据\n\n| 来源 | 结果 | 对我们的意义 |\n|---|---|---|\n" +

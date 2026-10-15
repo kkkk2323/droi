@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
+	droid "github.com/kkkk2323/droid-sdk-go"
 )
 
 // NewLocalToken is a token for Options.LocalToken: 32 random bytes, which the

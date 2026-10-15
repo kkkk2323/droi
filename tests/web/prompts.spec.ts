@@ -1,6 +1,6 @@
 import { expect, test, openPairingLink, pickSession } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { askUserTurn, permissionTurn } from '../fake-daemon/turns'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { askUserTurn, permissionTurn } from '@droi/fake-daemon/turns'
 
 const chat = session('Deploy', '/Users/dev/acme-web', [userMessage('hi')])
 

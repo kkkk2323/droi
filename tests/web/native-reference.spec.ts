@@ -12,8 +12,8 @@ import {
   thinkingBlock,
   userMessage,
   type MessageFixture,
-} from '../fake-daemon/scenario'
-import { askUserTurn, permissionTurn } from '../fake-daemon/turns'
+} from '@droi/fake-daemon/scenario'
+import { askUserTurn, permissionTurn } from '@droi/fake-daemon/turns'
 
 const OUT = resolve(import.meta.dirname, '../../apps/native/testdata/reference')
 const WIDTH = 1024

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { streamedReply } from '../fake-daemon/turns'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { streamedReply } from '@droi/fake-daemon/turns'
 import {
   expect,
   openNewSession,

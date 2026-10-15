@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 // Until the Daemon has loaded a Session it has no commands or skills for

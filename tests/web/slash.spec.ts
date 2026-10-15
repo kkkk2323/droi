@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { streamedReply } from '../fake-daemon/turns'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { streamedReply } from '@droi/fake-daemon/turns'
 
 const chat = session('Chat', '/Users/dev/acme-web', [userMessage('hi')])
 

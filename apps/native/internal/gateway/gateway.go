@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
+	droid "github.com/kkkk2323/droid-sdk-go"
 )
 
 // The Gateway contract the Clients share (packages/daemon-layer/src/gateway.ts).

@@ -1,4 +1,4 @@
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import { expect, pairPhone, pickSession, test } from './fixtures'
 
 const chat = session('Chat', '/Users/dev/acme-web', [userMessage('hi')])

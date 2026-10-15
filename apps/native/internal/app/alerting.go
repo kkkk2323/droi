@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
+	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
 	"github.com/kkkk2323/droi/apps/native/internal/compaction"

@@ -9,8 +9,9 @@ comments, commits and issues.
 ## What is maintained
 
 Only two apps are maintained: the native app (`apps/native`, Go on MyGo, macOS and
-Windows) and the Phone App (`apps/mobile`), with what they use: `packages/droid-sdk-go`,
-`packages/daemon-layer`, `tests/fake-daemon` and `tests/mobile`.
+Windows) and the Phone App (`apps/mobile`), with what they use: `packages/daemon-layer` and
+`tests/mobile`. The Go SDK and the Fake Daemon they use live in their own repository,
+[droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) (ADR 0021).
 
 The Electron Desktop Shell and the web Client (`apps/desktop`, except its `package.json`
 version, which stays the release version) and their suites (`tests/web`, `tests/electron`,
@@ -33,11 +34,9 @@ apps/
 └── desktop/    # Deprecated: Electron Desktop Shell and web Client (package "droi"; its
                 # version is the release version, which the Phone App reads too)
 packages/
-├── droid-sdk-go/  # The Go SDK of the Daemon's protocol: client, Session store, controller, Fake Daemon
 └── daemon-layer/  # @droi/daemon-layer: the Phone App's daemon layer (connection, Session
                    # state hooks, Gateway contract, local preferences); no DOM or Electron
 tests/          # @droi/tests: the Playwright suites, one config per folder
-├── fake-daemon/   # The Fake Daemon: the Phone App's suite and the native app's view tests use it
 ├── mobile/        # The Phone App's web build against the Fake Daemon
 ├── web/           # Deprecated: the web Client in a browser
 ├── electron/      # Deprecated: smoke suite against the Desktop Shell
@@ -56,8 +55,8 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 | Command | Description |
 |---------|-------------|
 | `go run ./apps/native` | Run the native app (needs `droid` on PATH) |
-| `go test ./apps/native/... ./packages/droid-sdk-go/...` | Go unit tests and the native app's view tests |
-| `go vet ./apps/native/... ./packages/droid-sdk-go/...` | Also with `GOOS=windows` when the change touches Windows |
+| `go test ./apps/native/...` | Go unit tests and the native app's view tests |
+| `go vet ./apps/native/...` | Also with `GOOS=windows` when the change touches Windows |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows) |
 | `pnpm test` | Run vitest once |
 | `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
@@ -73,9 +72,20 @@ Deprecated, for the Electron app only: `pnpm dev`, `pnpm dev:client`, `pnpm buil
 ## Validation Workflow
 
 Before committing run `pnpm check && pnpm test`, and for Go changes `gofmt -l`,
-`go vet` and `go test` over `./apps/native/... ./packages/droid-sdk-go/...` (as the PR
-workflow does). Run `pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the
-Fake Daemon changed. For what only an iPhone can show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
+`go vet` and `go test` over `./apps/native/...` (as the PR workflow does). Run
+`pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the Fake Daemon
+changed. For what only an iPhone can show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
+
+## droid-sdk-go
+
+The Go SDK (`github.com/kkkk2323/droid-sdk-go`) and the Fake Daemon
+(`@droi/fake-daemon`, which the Go SDK's `fakedaemon` package embeds) come from
+[droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) at a tag. To change either, change
+that repository (its README says how to rebuild the Fake Daemon), tag a release, then move
+both pins here to it: `apps/native/go.mod` (`go get github.com/kkkk2323/droid-sdk-go@<tag>`
+from `apps/native`) and `@droi/fake-daemon` in `tests/package.json`. While working on both,
+`go work use <checkout>` and `link:<checkout>/fake-daemon` use a local checkout; do not
+commit them.
 
 The Phone App is pinned to Expo SDK 57 (ADR 0006). Expo changes its APIs every
 SDK: read the versioned docs (`https://docs.expo.dev/versions/v57.0.0/`) or the

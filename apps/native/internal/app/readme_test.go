@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 // TestReadmeScreenshots is not a test: it renders the README's picture

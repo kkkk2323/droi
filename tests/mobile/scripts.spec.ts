@@ -2,9 +2,9 @@
 // WaitForScript picks the run up where it sits in the turn, the one-time
 // permission lists the calls by line, and a reply's <json-render> output is
 // drawn in place.
-import { session, userMessage } from '../fake-daemon/scenario'
-import { scriptScenario } from '../fake-daemon/scripts'
-import { scriptTurn } from '../fake-daemon/turns'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { scriptScenario } from '@droi/fake-daemon/scripts'
+import { scriptTurn } from '@droi/fake-daemon/turns'
 import { expect, pairPhone, pickSession, test } from './fixtures'
 
 const { sessions } = scriptScenario()

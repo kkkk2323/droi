@@ -5,7 +5,7 @@ import {
   toolCallMessage,
   toolResultMessage,
   userMessage,
-} from '../fake-daemon/scenario'
+} from '@droi/fake-daemon/scenario'
 
 const long = Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1} of the reply.`).join('\n\n')
 const chat = session(

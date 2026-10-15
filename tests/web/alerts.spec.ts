@@ -10,8 +10,8 @@ import {
   shellRecord,
   test,
 } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { permissionTurn, streamedReply } from '../fake-daemon/turns'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { permissionTurn, streamedReply } from '@droi/fake-daemon/turns'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('hi')])
 const notes = session('Notes', '/Users/dev/acme-web', [userMessage('yo')])

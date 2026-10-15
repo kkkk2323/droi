@@ -2,9 +2,9 @@
 // Scenarios, plus access to the stand-ins for the phone's hardware.
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../web/fixtures'
-import type { FakeDaemon } from '../fake-daemon/fake-daemon'
-import type { JsonRpcRequest } from '../fake-daemon/protocol'
-import { streamedReply } from '../fake-daemon/turns'
+import type { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
+import type { JsonRpcRequest } from '@droi/fake-daemon/protocol'
+import { streamedReply } from '@droi/fake-daemon/turns'
 
 /** What the Phone App's stand-ins recorded (see apps/mobile/src/platform/stand-ins.ts). */
 export interface StandIns {

@@ -10,8 +10,8 @@ import {
   toolResultMessage,
   userMessage,
   type MessageFixture,
-} from '../fake-daemon/scenario'
-import { subagentScenario } from '../fake-daemon/subagents'
+} from '@droi/fake-daemon/scenario'
+import { subagentScenario } from '@droi/fake-daemon/subagents'
 
 const { main, explorer, reviewer, other, sessions } = subagentScenario()
 

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 // A Session that finishes while another is open turns unread, plays the

@@ -1,7 +1,7 @@
 import { expect, openLocalClient, shellRecord, test } from './fixtures'
-import type { RecordedRequest } from '../fake-daemon/fake-daemon'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { streamedReply } from '../fake-daemon/turns'
+import type { RecordedRequest } from '@droi/fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { streamedReply } from '@droi/fake-daemon/turns'
 
 function sessionIdOf(request: RecordedRequest): string {
   return String((request.params as Record<string, unknown>)['sessionId'])

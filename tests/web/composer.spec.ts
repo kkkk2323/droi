@@ -2,14 +2,14 @@
 // images, the task list and the context meter.
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { CONTEXT_BUDGET, session, userMessage, assistantMessage } from '../fake-daemon/scenario'
+import { CONTEXT_BUDGET, session, userMessage, assistantMessage } from '@droi/fake-daemon/scenario'
 import {
   interruptHandler,
   resolveQueuedHandler,
   streamedReply,
   todoTurn,
   withQueue,
-} from '../fake-daemon/turns'
+} from '@droi/fake-daemon/turns'
 
 const chat = session('Chat', '/Users/dev/acme-web', [
   userMessage('hello'),

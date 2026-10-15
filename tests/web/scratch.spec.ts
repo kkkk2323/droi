@@ -1,9 +1,13 @@
 // Sessions without a Workspace: Workspace None starts one in a fresh Scratch
 // Workspace the Gateway makes, listed under Recents (ADR 0008).
 import { expect, test } from './fixtures'
-import { SCRATCH_FOLDER, type FakeDaemon, type RecordedRequest } from '../fake-daemon/fake-daemon'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { streamedReply } from '../fake-daemon/turns'
+import {
+  SCRATCH_FOLDER,
+  type FakeDaemon,
+  type RecordedRequest,
+} from '@droi/fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { streamedReply } from '@droi/fake-daemon/turns'
 
 const SCRATCH = { name: 'droi.scratch' }
 

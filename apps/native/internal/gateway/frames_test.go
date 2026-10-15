@@ -3,7 +3,7 @@ package gateway
 import (
 	"testing"
 
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
+	droid "github.com/kkkk2323/droid-sdk-go"
 )
 
 func TestInjectCredentialTouchesOnlyThePlaceholderFields(t *testing.T) {

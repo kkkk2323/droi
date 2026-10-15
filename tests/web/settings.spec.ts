@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 import { drawerGone, expect, openLocalClient, shellRecord, test } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 
 const first = session('First session', '/Users/dev/acme-web', [userMessage('hi')], {
   settings: { modelId: 'claude-opus-4-1', reasoningEffort: 'medium', autonomyLevel: 'low' },

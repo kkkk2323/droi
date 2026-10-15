@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
+	"github.com/kkkk2323/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
+	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/internal/compaction"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"

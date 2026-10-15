@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"testing"
 
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	droid "github.com/kkkk2323/droid-sdk-go"
+	"github.com/kkkk2323/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
 	"github.com/kkkk2323/droi/apps/native/internal/host"

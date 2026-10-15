@@ -17,7 +17,7 @@ import (
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/locales/zh-Hans"
 	"github.com/egoist/mygo/ui"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"

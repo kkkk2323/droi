@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 func TestGitChangesButton(t *testing.T) {

@@ -1,7 +1,7 @@
 // Subagents stay out of the Session list. They hang off the Session that
 // called them: a card per Task call, a sheet from the header, and a way back
 // from the subagent to its caller.
-import { subagentScenario } from '../fake-daemon/subagents'
+import { subagentScenario } from '@droi/fake-daemon/subagents'
 import { expect, openSessionList, pairPhone, pickSession, test } from './fixtures'
 
 const { main, explorer, reviewer, sessions } = subagentScenario()

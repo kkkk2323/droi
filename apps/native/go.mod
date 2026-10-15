@@ -6,7 +6,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/egoist/mygo v0.5.1
 	github.com/google/uuid v1.6.0
-	github.com/kkkk2323/droi/packages/droid-sdk-go v0.0.0-00010101000000-000000000000
+	github.com/kkkk2323/droid-sdk-go v0.1.0
 	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.48.0
 	modernc.org/sqlite v1.49.1
@@ -25,7 +25,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/kkkk2323/droi/packages/droid-sdk-go => ../../packages/droid-sdk-go
 
 tool github.com/egoist/mygo/cmd/mygo

@@ -8,7 +8,7 @@ import {
   toolResultMessage,
   userMessage,
   type MessageFixture,
-} from '../fake-daemon/scenario'
+} from '@droi/fake-daemon/scenario'
 
 const droiSession = session('Fix the login bug', '/Users/dev/acme-web', [
   userMessage('Why does login fail?'),

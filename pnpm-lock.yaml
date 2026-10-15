@@ -306,6 +306,9 @@ importers:
       '@droi/daemon-layer':
         specifier: workspace:*
         version: link:../packages/daemon-layer
+      '@droi/fake-daemon':
+        specifier: github:kkkk2323/droid-sdk-go#v0.1.0&path:/fake-daemon
+        version: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/c3f510df8b715519ea1d09ca9bbeda9107f33d72#path:/fake-daemon
       '@factory/droid-sdk':
         specifier: 0.9.1
         version: 0.9.1(patch_hash=caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7)
@@ -811,6 +814,10 @@ packages:
   '@develar/schema-utils@2.6.5':
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
     engines: {node: '>= 8.9.0'}
+
+  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/c3f510df8b715519ea1d09ca9bbeda9107f33d72#path:/fake-daemon':
+    resolution: {path: /fake-daemon, tarball: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/c3f510df8b715519ea1d09ca9bbeda9107f33d72}
+    version: 0.1.0
 
   '@egjs/hammerjs@2.0.17':
     resolution: {integrity: sha512-XQsZgjm2EcVUiZQf11UBJQfmZeEmOW8DpI1gsFeln6w0ae0ii4dMQEQ0kjl6DspdWX1aGY1/loyXnP0JS06e/A==}
@@ -6900,6 +6907,18 @@ snapshots:
     dependencies:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
+
+  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/c3f510df8b715519ea1d09ca9bbeda9107f33d72#path:/fake-daemon':
+    dependencies:
+      '@factory/droid-sdk': 0.9.1(patch_hash=caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7)
+      '@types/ws': 8.18.1
+      ws: 8.21.3
+      zod: 4.6.5
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
 
   '@egjs/hammerjs@2.0.17':
     dependencies:

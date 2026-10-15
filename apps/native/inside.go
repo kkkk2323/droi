@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/host"

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
-import type { FakeDaemon } from '../fake-daemon/fake-daemon'
-import { session, userMessage } from '../fake-daemon/scenario'
+import type { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import { expect, openSessionList, pairPhone, pickSession, standIns, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])

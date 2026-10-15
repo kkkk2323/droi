@@ -4,7 +4,7 @@ import {
   thinkingBlock,
   userMessage,
   type MessageFixture,
-} from '../fake-daemon/scenario'
+} from '@droi/fake-daemon/scenario'
 import {
   expect,
   inReadingOrder,

@@ -1,4 +1,4 @@
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import { expect, openSessionList, pairPhone, pickSession, test } from './fixtures'
 
 const work = session('Invoice export', '/Users/dev/billing-service', [userMessage('a')])

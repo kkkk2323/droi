@@ -1,7 +1,15 @@
+import { readFileSync } from 'node:fs'
 import { test as base, expect, type Locator, type Page } from '@playwright/test'
-import { FakeDaemon } from '../fake-daemon/fake-daemon'
-import type { ScenarioInput } from '../fake-daemon/scenario'
+import { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
+import type { ScenarioInput } from '@droi/fake-daemon/scenario'
 import type { DaemonState, ShellSettingsPatch } from '../../apps/desktop/src/shared/shell-settings'
+
+// /meta answers the release version, as a Gateway of this release would.
+FakeDaemon.appVersion = (
+  JSON.parse(readFileSync(new URL('../../apps/desktop/package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
 
 export interface OpenClientOptions {
   /** Override the Pairing Token in the link; defaults to the Fake Daemon's. */

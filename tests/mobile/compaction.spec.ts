@@ -1,7 +1,7 @@
 // A `/compact` the Daemon runs in place: the Daemon reports no working state
 // for it, so the Phone App marks the Session from its own log while it runs
 // and says what it did when it is done.
-import { assistantMessage, session, userMessage } from '../fake-daemon/scenario'
+import { assistantMessage, session, userMessage } from '@droi/fake-daemon/scenario'
 import { expect, openSessionList, pairPhone, pickSession, test } from './fixtures'
 
 const chat = session('Long chat', '/Users/dev/acme-web', [

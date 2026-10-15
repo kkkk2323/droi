@@ -2,7 +2,7 @@
 // with its parent, moves there, folds the parent out of the sidebar and can show
 // the parent's transcript above the boundary.
 import { expect, test } from './fixtures'
-import { session, userMessage, assistantMessage } from '../fake-daemon/scenario'
+import { session, userMessage, assistantMessage } from '@droi/fake-daemon/scenario'
 
 const chat = session('Long chat', '/Users/dev/acme-web', [
   userMessage('first question'),

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { SESSIONS_FOLDER } from '../fake-daemon/fake-daemon'
-import { session, userMessage } from '../fake-daemon/scenario'
+import { SESSIONS_FOLDER } from '@droi/fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 
 const loginBug = session('Fix the login bug', '/Users/dev/acme-web', [
   userMessage('Why does login fail?'),

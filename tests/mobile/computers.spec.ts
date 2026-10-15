@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
-import { FakeDaemon } from '../fake-daemon/fake-daemon'
-import { session, userMessage } from '../fake-daemon/scenario'
+import { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import {
   expect,
   openSessionList,

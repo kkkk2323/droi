@@ -1,9 +1,9 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, openLocalClient, shellRecord, test } from './fixtures'
 import { exposeShellMemory } from './memory-fixture'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { structuredTurn } from '../fake-daemon/turns'
-import type { RecordedRequest } from '../fake-daemon/fake-daemon'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { structuredTurn } from '@droi/fake-daemon/turns'
+import type { RecordedRequest } from '@droi/fake-daemon/fake-daemon'
 import { openMemoryStore, type MemorySlot } from '../../apps/desktop/src/memory/store'
 
 const first = session('First session', '/Users/dev/app', [userMessage('hello')])

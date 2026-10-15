@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
 // DiffLine is one line of an edit; Old/New are 0 where the line has no number.

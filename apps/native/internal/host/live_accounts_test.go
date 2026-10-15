@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	droid "github.com/kkkk2323/droi/packages/droid-sdk-go"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
+	droid "github.com/kkkk2323/droid-sdk-go"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
 // TestLiveAddedAccount starts a real Daemon as an added account and checks

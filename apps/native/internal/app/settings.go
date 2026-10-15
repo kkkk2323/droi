@@ -11,7 +11,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
 	"github.com/kkkk2323/droi/apps/native/internal/defaults"

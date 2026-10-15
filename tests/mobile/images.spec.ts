@@ -1,5 +1,5 @@
-import { assistantMessage, session, userMessage } from '../fake-daemon/scenario'
-import { streamedReply } from '../fake-daemon/turns'
+import { assistantMessage, session, userMessage } from '@droi/fake-daemon/scenario'
+import { streamedReply } from '@droi/fake-daemon/turns'
 import { expect, pairPhone, pickSession, presetStandIns, standIns, test } from './fixtures'
 
 const chat = session('Chat', '/Users/dev/acme-web', [

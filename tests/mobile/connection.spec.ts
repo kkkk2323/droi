@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import {
   expect,
   openNewSession,

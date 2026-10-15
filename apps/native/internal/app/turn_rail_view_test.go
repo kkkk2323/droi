@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 func railScenario(turns int) fakedaemon.Scenario {

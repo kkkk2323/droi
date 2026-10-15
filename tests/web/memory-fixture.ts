@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { FakeDaemon } from '../fake-daemon/fake-daemon'
+import type { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
 import {
   createMemoryController,
   type MemoryController,

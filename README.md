@@ -75,7 +75,7 @@ Phone App ── Gateway (Pairing Token check, credential) ─┘
 
 - **Daemon**: `droid daemon`. It owns every Session, its transcript and all file and Git work.
 - **Host**: inside the Mac app. It starts and watches the Daemon, supplies the Factory credential, runs the Gateway and keeps Memory.
-- **Desktop Shell**: the Mac app itself. Its window is a Client that talks to the Daemon directly through `packages/droid-sdk-go` and holds no conversation state.
+- **Desktop Shell**: the Mac app itself. Its window is a Client that talks to the Daemon directly through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) and holds no conversation state.
 - **Gateway**: lets a Remote Client reach the Daemon. It checks the Pairing Token and adds your Factory credential, so the credential never leaves the Mac. It listens on your network only while Remote Access is on.
 - **Phone App**: the iPhone Client (Expo), a Remote Client through the Gateway.
 
@@ -88,7 +88,7 @@ Run these from the repository root.
 | Command | What it does |
 |---------|--------------|
 | `go run ./apps/native` | run the Mac app (needs `droid` on PATH) |
-| `go test ./apps/native/... ./packages/droid-sdk-go/...` | unit tests, and view tests that draw the app against the Fake Daemon |
+| `go test ./apps/native/...` | unit tests, and view tests that draw the app against the Fake Daemon |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | build `Droi.app` and the DMG into `apps/native/build` |
 | `pnpm check` | format check, lint and typecheck of the TypeScript packages |
 | `pnpm test` | unit tests (vitest) |
@@ -96,7 +96,7 @@ Run these from the repository root.
 | `pnpm install:phone` | build a signed Release of the Phone App and install it on the connected iPhone |
 | `pnpm test:live` | one case against a real Daemon; runs only with `FACTORY_API_KEY` |
 
-The tests never need a Factory key: they run the real Clients against a scripted Fake Daemon that checks its own messages with the SDK's schemas (see [ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md)). The screenshot in this README comes from the Fake Daemon too:
+The tests never need a Factory key: they run the real Clients against a scripted Fake Daemon that checks its own messages with the SDK's schemas (see [ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md)). The Go SDK and the Fake Daemon live in [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go). The screenshot in this README comes from the Fake Daemon too:
 
 ```bash
 DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots
@@ -110,9 +110,7 @@ More on the Mac app (its layout, how it matches the Electron app, how to re-reco
 apps/native/                 the Mac app: Go on MyGo (Host, Gateway, Memory, the window)
 apps/mobile/                 the Phone App (Expo SDK 57, iPhone)
 apps/desktop/                the former Electron app; its package.json carries the release version
-packages/droid-sdk-go/       the Go SDK for the Daemon protocol, and the Fake Daemon for Go tests
 packages/daemon-layer/       the TypeScript daemon layer the Phone App uses
-tests/fake-daemon/           the scripted Fake Daemon
 tests/mobile/                Playwright: the Phone App's web build against the Fake Daemon
 tests/live/                  live test
 docs/adr/                    architecture decisions

@@ -1,4 +1,4 @@
-import { session, userMessage } from '../fake-daemon/scenario'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
 import { expect, openSessionList, pairPhone, pasteLink, pickSession, test } from './fixtures'
 
 const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])

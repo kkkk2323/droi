@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures'
-import { session, userMessage } from '../fake-daemon/scenario'
-import { scriptScenario } from '../fake-daemon/scripts'
-import { scriptTurn } from '../fake-daemon/turns'
+import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { scriptScenario } from '@droi/fake-daemon/scripts'
+import { scriptTurn } from '@droi/fake-daemon/turns'
 
 const { sessions } = scriptScenario()
 

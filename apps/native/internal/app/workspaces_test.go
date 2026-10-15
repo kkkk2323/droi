@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/packages/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
 // The list reads every page of Sessions, so a Workspace whose Sessions are
