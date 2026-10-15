@@ -262,6 +262,9 @@ func TestAPictureDroidWroteAsAPathOnAnotherComputerShows(t *testing.T) {
 	o := startOtherComputer(t, sc, "")
 	h := followHarness(t, localSessions(), o.paired(), nil, nil)
 	h.openSession("Shots")
-	h.until("the picture", func() bool { _, ok := h.tt.Find("The banner"); return ok })
-	h.until("the missing one's path", func() bool { return h.hasText("/tmp/gone.png") })
+	h.until("the picture in its 2:1 shape", func() bool {
+		img, ok := h.tt.Find("The banner")
+		return ok && img.H > 0 && img.W/img.H > 1.9 && img.W/img.H < 2.1
+	})
+	h.until("the missing one's description", func() bool { return h.hasText("Old shot") })
 }

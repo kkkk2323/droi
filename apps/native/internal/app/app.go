@@ -129,6 +129,8 @@ type App struct {
 
 	kit   *kit.Kit
 	route Route
+	// notesMD shows the release notes.
+	notesMD mdViews
 	// locale is the system's (SetLocale); "" keeps the last one told.
 	locale string
 	// languageChanged hears a change of the language, for what the window
@@ -241,6 +243,7 @@ func New(cfg Config) *App {
 		views:  map[string]*sessionView{},
 
 		drafts:      drafts.New(cfg.Prefs),
+		notesMD:     mdViews{own: true},
 		compactions: compaction.NewLog(),
 	}
 	a.applyPrefs()

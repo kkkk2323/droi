@@ -40,7 +40,7 @@ func TestAWideAttachedImageFitsTheColumn(t *testing.T) {
 
 // An image a reply names by its path on the computer, as Droid writes a
 // screenshot it took, comes through the Daemon and shows in the transcript;
-// one that is not there shows its path.
+// one that is not there shows its description.
 func TestAReplysImageByPathIsShown(t *testing.T) {
 	sc := fakedaemon.Scenario{
 		Sessions: []fakedaemon.SessionSpec{{Title: "Shots", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{
@@ -53,13 +53,11 @@ func TestAReplysImageByPathIsShown(t *testing.T) {
 	}
 	h := newHarness(t, sc, "")
 	h.openSession("Shots")
-	h.until("the image", func() bool { _, ok := h.tt.Find("The banner"); return ok })
-	h.until("the missing image's path", func() bool { return h.hasText("/tmp/missing.png") })
-	h.frame()
-	img, _ := h.tt.Find("The banner")
-	if ratio := img.W / img.H; img.W <= 0 || ratio < 1.9 || ratio > 2.1 {
-		t.Fatalf("image %+v lost its 2:1 shape", img)
-	}
+	h.until("the image in its 2:1 shape", func() bool {
+		img, ok := h.tt.Find("The banner")
+		return ok && img.H > 0 && img.W/img.H > 1.9 && img.W/img.H < 2.1
+	})
+	h.until("the missing image's description", func() bool { return h.hasText("Old shot") })
 	if h.hasText("[image]") {
 		t.Fatalf("the reply still reads [image]: %q", h.tt.Texts())
 	}

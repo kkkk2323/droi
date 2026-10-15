@@ -22,7 +22,6 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/gateway"
-	"github.com/kkkk2323/droi/apps/native/internal/highlight"
 	"github.com/kkkk2323/droi/apps/native/internal/host"
 	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
@@ -204,7 +203,6 @@ func main() {
 		win.Focus()
 		win.Update(func() { current().OpenSession(id) })
 	})
-	highlight.Ready = func() { update(func() {}) }
 	h.OnChange(func() { update(func() {}) })
 
 	mygo.App.WhenReady(func() {

@@ -5,8 +5,6 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/jsonrender"
-	"github.com/kkkk2323/droi/apps/native/internal/md"
 	"github.com/kkkk2323/droi/apps/native/internal/transcript"
 )
 
@@ -71,9 +69,8 @@ func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends
 			key := e.ID + "/" + itoa(i)
 			switch b.Kind {
 			case transcript.Text:
-				top, bottom := v.textMargins(b.Text)
 				last := e.ID == streamingID && i == len(e.Blocks)-1
-				add(transcriptRow{kind: rowBlock, key: key, block: i, streaming: last}, top, bottom)
+				add(transcriptRow{kind: rowBlock, key: key, block: i, streaming: last}, 8, 8)
 			case transcript.Tools:
 				add(transcriptRow{kind: rowCluster, key: key, block: i}, 8, 8)
 				if !*v.flag("cluster:"+b.ID, true) {
@@ -100,36 +97,6 @@ func (v *sessionView) rows(entries []*transcript.Entry, streamingID string, ends
 		rows[len(rows)-1].bottom = pending + 12
 	}
 	return rows
-}
-
-// textMargins are the room a reply's text takes above and below it: its
-// first block's top margin and its last block's bottom one.
-func (v *sessionView) textMargins(text string) (top, bottom float32) {
-	edge := func(n []*md.Node) (float32, float32) {
-		if len(n) == 0 {
-			return 0, 0
-		}
-		t, _ := margins(n[0])
-		_, b := margins(n[len(n)-1])
-		return t, b
-	}
-	if !jsonrender.HasRenderTag(text) {
-		return edge(v.doc(text))
-	}
-	segs := jsonrender.SplitReply(text)
-	for i, s := range segs {
-		t, b := float32(8), float32(8)
-		if s.Kind == jsonrender.Markdown {
-			t, b = edge(v.doc(s.Text))
-		}
-		if i == 0 {
-			top = t
-		}
-		if i == len(segs)-1 {
-			bottom = b
-		}
-	}
-	return top, bottom
 }
 
 // row builds one of the transcript's rows.
@@ -219,8 +186,11 @@ func (v *sessionView) row(c *ui.Context, r transcriptRow) {
 			b := r.e.Blocks[r.block]
 			switch b.Kind {
 			case transcript.Text:
-				f := flow{open: true}
-				v.reply(c, &f, b.Text, color)
+				style := mdReply
+				if r.e.IsError {
+					style = mdError
+				}
+				v.reply(c, b.Text, style, r.streaming)
 				if r.streaming {
 					pulse := 0.6 * (0.5 + 0.5*float32(pulseWave(c)))
 					ui.Box(c).Label(L("Assistant is typing")).Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))

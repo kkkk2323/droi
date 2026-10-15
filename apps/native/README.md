@@ -146,8 +146,6 @@ no split.
 | `internal/sessions/`                                            | the Session list: grouping, sorting, pins, activity (daemon-layer port)                               |
 | `internal/automations/`                                         | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
 | `internal/models/`, `defaults/`, `skills/`, `mcp/`, `slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
-| `internal/md/`                                                  | streaming Markdown to blocks                                                                          |
-| `internal/highlight/`                                           | code colours as Shiki gives them                                                                      |
 | `internal/kit/`                                                 | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs                  |
 | `internal/app/`                                                 | the views: shell, sidebar, Session, composer, prompts, settings                                       |
 | `testdata/reference/`                                           | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |

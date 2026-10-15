@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droi/packages/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/jsonrender"
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
 	"github.com/kkkk2323/droi/apps/native/internal/l10n"
 	"github.com/kkkk2323/droi/apps/native/internal/sessions"
@@ -197,30 +197,6 @@ func pulseWave(c *ui.Context) float64 {
 	return 1 - x
 }
 
-// reply is a text block: Markdown, with the json-render blocks a reply
-// can carry drawn as their components.
-func (v *sessionView) reply(c *ui.Context, f *flow, text string, color ui.Color) {
-	p := newProse(v.a.kit)
-	p.color = color
-	p.localImage = v.localImage
-	if !jsonrender.HasRenderTag(text) {
-		p.nodes(c, f, v.doc(text))
-		return
-	}
-	for _, seg := range jsonrender.SplitReply(text) {
-		switch seg.Kind {
-		case jsonrender.Markdown:
-			p.nodes(c, f, v.doc(seg.Text))
-		case jsonrender.Render:
-			f.block(c, v.a.kit.Px(8), v.a.kit.Px(8), func() { renderTree(c, v.a.kit, seg.Spec) })
-		case jsonrender.Pending:
-			f.block(c, v.a.kit.Px(8), v.a.kit.Px(8), func() {
-				v.a.kit.Text(c, L("Rendering…"), 13, 19.5).TextColor(v.a.kit.T.MutedForeground)
-			})
-		}
-	}
-}
-
 func (v *sessionView) picture(c *ui.Context, id string, img transcript.Image, maxH float32, label string) {
 	k := v.a.kit
 	bm := v.image(id, img)
@@ -312,12 +288,8 @@ func (v *sessionView) thinking(c *ui.Context, b transcript.Block, streaming bool
 		p := v.disclosure(c, open, label, 13, 19.5, 0, nil)
 		p.Trigger.Padding(k.Px(4), k.Px(6))
 		p.Panel(func() {
-			pr := newProse(k)
-			pr.size, pr.lh, pr.color = 14, 24, t.MutedForeground
-			doc := v.doc(b.Text)
-			ui.Column(c).Margin(max(k.Px(4), pr.firstMargin(doc)), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Selectable().Children(func() {
-				f := flow{open: true}
-				pr.nodes(c, &f, doc)
+			ui.Column(c).Margin(k.Px(8), 0, 0, 0).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Padding(0, 0, 0, k.Px(16)).Selectable().Children(func() {
+				markdownText(c, b.Text, v.md.options(k, mdThinking), streaming)
 			})
 		})
 	})
@@ -798,10 +770,7 @@ func (v *sessionView) subagentCard(c *ui.Context, call *transcript.ToolCall, lin
 					if link.Report != "" {
 						ui.Column(c).Role(ui.RoleGroup).Label(L("Report")).Selectable().Children(func() {
 							heading(L("Report")).Unselectable()
-							pr := newProse(k)
-							pr.size, pr.lh = 13, 24
-							f := flow{}
-							pr.nodes(c, &f, v.doc(link.Report))
+							markdown.View(c, link.Report, v.md.options(k, mdReport))
 						})
 					}
 				})

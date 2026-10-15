@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 
 	"github.com/kkkk2323/droi/apps/native/internal/kit"
-	"github.com/kkkk2323/droi/apps/native/internal/md"
 	"github.com/kkkk2323/droi/apps/native/internal/prefs"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 )
@@ -94,10 +94,7 @@ func (a *App) updateNotes(c *ui.Context, s updates.State) {
 	k := a.kit
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Release notes")).Children(func() {
 		k.Text(c, L("What’s new in %s", s.Version), 13, 20).FontWeight(500)
-		p := newProse(k)
-		p.size, p.lh, p.color = 13, 22, k.T.MutedForeground
-		f := flow{}
-		p.nodes(c, &f, md.ParseTree(s.Notes))
+		markdown.View(c, s.Notes, a.notesMD.options(k, mdNotes))
 	})
 }
 
