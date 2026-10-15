@@ -41,8 +41,7 @@ type composerState struct {
 	// area, so it outlives the build; fieldPrefix is the tag and fieldFrom
 	// the text it was taken from, which tell an edit from a new text.
 	field, fieldPrefix, fieldFrom string
-	highlight                     int
-	dismissed                     string // the text the suggestions were dismissed for
+	menu                          slashMenu
 
 	modelOpen bool
 	picker    pickerState
@@ -162,8 +161,8 @@ func (v *sessionView) compact(instructions string) {
 	}
 }
 
-// slashItems are the builtins and the Session's commands and skills, read
-// again a minute after they were. Until the Daemon has loaded the Session
+// slashItems are the Session's commands and skills, read again a minute
+// after they were. Until the Daemon has loaded the Session
 // it answers "No active session", so they wait for loaded, and a failed
 // read is tried again 5 seconds later.
 func (v *sessionView) slashItems(loaded bool) []slash.Item {
@@ -197,7 +196,7 @@ func (v *sessionView) slashItems(loaded bool) []slash.Item {
 			v.a.redraw()
 		}()
 	}
-	return slash.Merge(slash.Builtins, cs.slash)
+	return cs.slash
 }
 
 // takeEdit takes the text area's edit into text, unless text changed
@@ -220,21 +219,16 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
 	if cs.takeEdit() {
-		cs.highlight = 0
+		cs.menu.highlight = 0
 		v.saveDraft()
 	}
-	items := v.slashItems(loaded)
+	items := cs.menu.items(cs.text, slash.Builtins, v.slashItems(loaded))
 	picked, rest, hasPick := slash.Picked(cs.text, items)
 	prefix := ""
 	if hasPick {
 		prefix = cs.text[:len(cs.text)-len(rest)]
 	}
 	cs.field, cs.fieldPrefix, cs.fieldFrom = cs.text[len(prefix):], prefix, cs.text
-	var suggestions []slash.Item
-	if q, ok := slash.Query(cs.text, len(cs.text)); ok && cs.dismissed != cs.text {
-		suggestions = slash.Filter(items, q, 8)
-	}
-	active := min(cs.highlight, max(len(suggestions)-1, 0))
 	ready := loaded || v.Ready()
 	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
 	// submit reports whether it sent. It reads the text again: a key can
@@ -259,7 +253,6 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	}
 	accept := func(item slash.Item) {
 		cs.text = "/" + item.Name + " "
-		cs.highlight = 0
 		v.saveDraft()
 	}
 
@@ -305,21 +298,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				}
 				in.OnPaste(func(string) bool { return v.pasteImage() })
 				in.OnTextKey(func(key ui.TextKey) bool {
-					if len(suggestions) > 0 {
-						switch {
-						case key.Key == ui.KeyDown:
-							cs.highlight = (active + 1) % len(suggestions)
-							return true
-						case key.Key == ui.KeyUp:
-							cs.highlight = (active - 1 + len(suggestions)) % len(suggestions)
-							return true
-						case key.Key == ui.KeyTab || key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0:
-							accept(suggestions[active])
-							return true
-						case key.Key == ui.KeyEscape:
-							cs.dismissed = cs.text
-							return true
-						}
+					if cs.menu.key(key, cs.text, accept) {
+						return true
 					}
 					if hasPick && key.Key == ui.KeyBackspace && key.Text() == "" {
 						cs.text = rest
@@ -339,9 +319,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					return false
 				})
 			})
-			if len(suggestions) > 0 {
-				a.suggestionList(c, card, suggestions, active, &cs.highlight, accept)
-			}
+			cs.menu.view(c, a, card, accept)
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
 				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!ready)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })

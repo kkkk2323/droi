@@ -48,10 +48,7 @@ type newSessionState struct {
 	images  []attachments.Image
 	bitmaps map[string]*ui.Bitmap
 	err     string
-	// slashHighlight is the slash suggestion picked with the arrows;
-	// slashDismissed the text Escape closed them for.
-	slashHighlight int
-	slashDismissed string
+	menu    slashMenu
 	// caretToEnd puts the caret after a picked command, on the next build.
 	caretToEnd bool
 
@@ -168,7 +165,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 		})
 		col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
 		col.Children(func() {
-			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, slash.Merge(slash.Starters, a.draftItems(workspace, requestedMode)))
+			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, a.draftItems(workspace, requestedMode))
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
 				switch {
 				case scratch:
@@ -412,18 +409,13 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 
 // newSessionComposer is the InputBar of the start page: Enter starts the
 // Session, sending what was typed as its first message.
-func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode, items []slash.Item) {
+func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode, fromDaemon []slash.Item) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
 	enabled := workspace != "" && !creating
-	var suggestions []slash.Item
-	if q, ok := slash.Query(s.text, len(s.text)); ok && s.slashDismissed != s.text {
-		suggestions = slash.Filter(items, q, slash.DefaultLimit)
-	}
-	active := min(s.slashHighlight, max(len(suggestions)-1, 0))
+	s.menu.items(s.text, slash.Starters, fromDaemon)
 	accept := func(item slash.Item) {
 		s.text = "/" + item.Name + " "
-		s.slashHighlight = 0
 		s.caretToEnd = true
 	}
 	start := func() {
@@ -510,21 +502,8 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			}
 			in.OnPaste(func(string) bool { return paste() })
 			in.OnTextKey(func(key ui.TextKey) bool {
-				if len(suggestions) > 0 {
-					switch {
-					case key.Key == ui.KeyDown:
-						s.slashHighlight = (active + 1) % len(suggestions)
-						return true
-					case key.Key == ui.KeyUp:
-						s.slashHighlight = (active - 1 + len(suggestions)) % len(suggestions)
-						return true
-					case key.Key == ui.KeyTab || key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0:
-						accept(suggestions[active])
-						return true
-					case key.Key == ui.KeyEscape:
-						s.slashDismissed = s.text
-						return true
-					}
+				if s.menu.key(key, s.text, accept) {
+					return true
 				}
 				if key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0 {
 					s.text = key.Text()
@@ -533,9 +512,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				}
 				return false
 			})
-			if len(suggestions) > 0 {
-				a.suggestionList(c, card, suggestions, active, &s.slashHighlight, accept)
-			}
+			s.menu.view(c, a, card, accept)
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
 				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!enabled)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
