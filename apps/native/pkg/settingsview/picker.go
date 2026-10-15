@@ -42,16 +42,23 @@ type ToolModeChoice struct {
 // the reasoning effort and, when tools is set, the tool mode. The starred
 // models are kept in store.
 func ModelPicker(c *ui.Context, k *kit.Kit, store *prefs.Store, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
-	modelPickerAs(c, k, store, false, l10n.L("Model and reasoning effort"), false, open, st, choices, value, effort, onModel, onEffort, tools)
+	modelPickerAs(c, k, store, false, l10n.L("Model and reasoning effort"), "", false, open, st, choices, value, effort, onModel, onEffort, tools)
 }
 
 // ModelField is the ModelPicker's field look, for settings rows: a framed
 // trigger opening the panel downwards, without the reasoning effort.
 func ModelField(c *ui.Context, k *kit.Kit, store *prefs.Store, label string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value string, onModel func(string)) {
-	modelPickerAs(c, k, store, true, label, disabled, open, st, choices, value, "", onModel, nil, nil)
+	modelPickerAs(c, k, store, true, label, "", disabled, open, st, choices, value, "", onModel, nil, nil)
 }
 
-func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, name string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
+// ModelFieldOr is a ModelField whose list starts with fallback, a choice
+// of no model of its own ("Inherit", "Same as main"): picking it calls
+// onModel with "", and an empty value shows it.
+func ModelFieldOr(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value string, onModel func(string)) {
+	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, "", onModel, nil, nil)
+}
+
+func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, name, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
 	t := k.T
 	var current *models.Choice
 	for i := range choices {
@@ -93,6 +100,8 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 		}
 		switch {
 		case label != "":
+		case fallback != "":
+			label = fallback
 		case field:
 			label = name
 		default:
@@ -126,6 +135,9 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 	}
 	rows := models.VisibleModels(choices, favorites, filter, st.query)
 	searching := st.query != ""
+	if fallback != "" && !searching && filter == models.FilterAll {
+		rows = append([]models.Row{{Choice: models.Choice{Label: fallback}}}, rows...)
+	}
 	active := min(st.highlight, max(len(rows)-1, 0))
 	pick := func(id string) {
 		if id != value {
@@ -216,6 +228,10 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 						})
 					}
 					for i, row := range rows {
+						if row.ID == "" {
+							fallbackRow(c, k, row.Label, i == active, value == "", func() { st.highlight = i }, func() { pick("") })
+							continue
+						}
 						modelRow(c, k, store, row, i == active, row.ID == value, slices.Contains(favorites, row.ID), func() { st.highlight = i }, func() {
 							if !row.Disabled {
 								pick(row.ID)
@@ -253,6 +269,30 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 			}
 		})
 	})
+}
+
+// fallbackRow is the list's choice of no model of its own.
+func fallbackRow(c *ui.Context, k *kit.Kit, label string, highlighted, selected bool, hover, click func()) {
+	t := k.T
+	r := kit.Selected(ui.Row(c.Key("fallback")).Role(ui.RoleListItem).Label(label), selected).Padding(k.Px(8), k.Px(10)).
+		Radius(k.Px(8)).Cursor(ui.CursorPointer)
+	if _, _, over := r.PointerPosition(); over && !highlighted {
+		hover()
+	}
+	fg := t.PopoverForeground
+	switch {
+	case highlighted:
+		r.Background(t.Accent)
+		fg = t.AccentForeground
+	case selected:
+		r.Background(t.Muted)
+	}
+	r.Children(func() {
+		k.Text(c, label, 13, 19.5).FontWeight(500).TextColor(fg).SingleLine()
+	})
+	if r.Clicked() {
+		click()
+	}
 }
 
 func modelRow(c *ui.Context, k *kit.Kit, store *prefs.Store, row models.Row, highlighted, selected, starred bool, hover, click func()) {

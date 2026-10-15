@@ -43,13 +43,6 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 		}
 		return out
 	}
-	modelOpts := func(routers bool) []kit.Option {
-		var out []kit.Option
-		for _, m := range defaults.PickableModels(dv.Models, routers) {
-			out = append(out, kit.Option{Value: m.ID, Label: m.Label})
-		}
-		return out
-	}
 	autonomy := make([]kit.Option, 0, len(dv.AvailableAutonomyLevels))
 	for _, l := range dv.AvailableAutonomyLevels {
 		autonomy = append(autonomy, kit.Option{Value: l, Label: models.AutonomyLabels[l]})
@@ -132,17 +125,10 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 	k.SettingGroup(c, l10n.L("Spec mode"), "",
 		func() {
 			k.SettingRow(c, l10n.L("Model"), "", func() {
-				value := dv.SpecModeModelID
-				if value == "" {
-					value = sameAsMain
-				}
-				opts := append([]kit.Option{{Value: sameAsMain, Label: l10n.L("Same as main")}}, modelOpts(true)...)
-				if next, ok := s.Select(c, l10n.N("Spec mode model"), value, opts, locked("specModeModelId")); ok {
-					if next == sameAsMain {
-						next = ""
-					}
-					save(defaults.Patch{SpecModeModelID: str(next), SpecModeReasoningEffort: str("")})
-				}
+				ModelFieldOr(c, k, s.env.Prefs, l10n.L("Spec mode model"), l10n.L("Same as main"), locked("specModeModelId"), s.Flag("model:spec"), &s.picker,
+					defaults.PickableModels(dv.Models, true), dv.SpecModeModelID, func(next string) {
+						save(defaults.Patch{SpecModeModelID: str(next), SpecModeReasoningEffort: str("")})
+					})
 			}, nil)
 		},
 		func() {
@@ -282,11 +268,17 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 		},
 		func() {
 			value := dv.CompactionModel
-			opts := append([]kit.Option{{Value: defaults.CurrentModel, Label: l10n.L("Current model")}}, modelOpts(false)...)
+			if value == defaults.CurrentModel {
+				value = ""
+			}
 			k.SettingRow(c, l10n.L("Summary model"), l10n.L("The model that writes the summary."), func() {
-				if next, ok := s.Select(c, l10n.N("Compaction model"), value, opts, locked("compactionModel")); ok {
-					save(defaults.Patch{CompactionModel: str(next)})
-				}
+				ModelFieldOr(c, k, s.env.Prefs, l10n.L("Compaction model"), l10n.L("Current model"), locked("compactionModel"), s.Flag("model:compaction"), &s.picker,
+					defaults.PickableModels(dv.Models, false), value, func(next string) {
+						if next == "" {
+							next = defaults.CurrentModel
+						}
+						save(defaults.Patch{CompactionModel: str(next)})
+					})
 			}, nil)
 		},
 	)
@@ -313,17 +305,10 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 						model, effort := settings[tier.id+"Model"], settings[tier.id+"ReasoningEffort"]
 						ui.Row(c.Key(tier.id)).Gap(k.Px(8)).Children(func() {
 							k.Text(c, l10n.T(tier.name), 14, 20).SingleLine().Width(k.Px(112)).Shrink(0)
-							value := model
-							if value == "" {
-								value = inherit
-							}
-							opts := append([]kit.Option{{Value: inherit, Label: l10n.L("Inherit (calling session)")}}, modelOpts(true)...)
-							if next, ok := s.Select(c, tier.model, value, opts, locked("subagent."+tier.id+"Model")); ok {
-								if next == inherit {
-									next = ""
-								}
-								save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(settings, tier.id, next)})
-							}
+							ModelFieldOr(c, k, s.env.Prefs, l10n.T(tier.model), l10n.L("Inherit (calling session)"), locked("subagent."+tier.id+"Model"), s.Flag("model:subagent-"+tier.id), &s.picker,
+								defaults.PickableModels(dv.Models, true), model, func(next string) {
+									save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(settings, tier.id, next)})
+								})
 							if model == "" {
 								return
 							}

@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // openSessionDefaults opens Settings on the Session defaults page.
@@ -95,5 +97,40 @@ func TestSessionDefaultsSetsASubagentTierModel(t *testing.T) {
 	h.click("Extra high")
 	if got, _ := json.Marshal(h.defaultsPatchSent(2)["subagentModelSettings"]); string(got) != `{"heavyModel":"gpt-5","heavyReasoningEffort":"xhigh"}` {
 		t.Fatalf("subagentModelSettings %s", got)
+	}
+	h.click("Heavy task model")
+	h.until("the model list", func() bool { _, ok := h.tt.Find("Choose a model"); return ok })
+	// The list starts with the fallback, highlighted.
+	h.tt.Key(0, ui.KeyEnter)
+	h.frame()
+	if got, _ := json.Marshal(h.defaultsPatchSent(3)["subagentModelSettings"]); string(got) != `{}` {
+		t.Fatalf("subagentModelSettings %s", got)
+	}
+}
+
+// The spec mode and summary models are picked in the model picker, which
+// starts with the choice of no model of their own.
+func TestSessionDefaultsPicksSpecAndSummaryModels(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSessionDefaults()
+	h.click("Spec mode model")
+	h.until("the model list", func() bool { _, ok := h.tt.Find("Choose a model"); return ok })
+	h.click("GPT-5")
+	if p := h.defaultsPatchSent(1); p["specModeModelId"] != "gpt-5" {
+		t.Fatalf("update_session_defaults %v", p)
+	}
+	h.click("Compaction model")
+	h.until("the model list", func() bool { _, ok := h.tt.Find("Choose a model"); return ok })
+	h.tt.Type("gpt-5")
+	h.tt.Key(0, ui.KeyEnter)
+	h.frame()
+	if p := h.defaultsPatchSent(2); p["compactionModel"] != "gpt-5" {
+		t.Fatalf("update_session_defaults %v", p)
+	}
+	h.click("Compaction model")
+	h.until("the model list", func() bool { _, ok := h.tt.Find("Choose a model"); return ok })
+	h.click("Current model")
+	if p := h.defaultsPatchSent(3); p["compactionModel"] != "current-model" {
+		t.Fatalf("update_session_defaults %v", p)
 	}
 }
