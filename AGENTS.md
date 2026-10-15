@@ -30,6 +30,7 @@ apps/
 │   ├── internal/...    # memorywork (Memory), computer, updates, slash, ...
 │   └── pkg/...         # Public, for WeCom Droi (ADR 0022): host, gateway (Remote Access),
 │                       # sessionview (a Session's transcript, Prompts, plain composer),
+│                       # settingsview (Settings' Appearance, Session defaults, model picker),
 │                       # l10n, kit, theme, transcript, ...
 ├── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
 │               # screens under src/screens, hardware behind src/platform with

@@ -2,10 +2,7 @@ package app
 
 import (
 	"encoding/json"
-	"maps"
 	"path/filepath"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,9 +15,8 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
 )
 
 // settingsTab is a section of Settings.
@@ -42,11 +38,11 @@ var settingsTabs = []settingsTab{
 	{"about", l10n.N("About"), "info", false},
 }
 
-// settingsState is Settings' own: the page to go back to, and what is
-// being typed in its fields.
+// settingsState is Settings' own: the page to go back to, the shared
+// sections' state, and what is being typed in its fields.
 type settingsState struct {
+	*settingsview.Settings
 	back Route
-	open map[string]*bool
 
 	apiKey, baseURL, droidPath, prompt, scratch string
 	// computerLink is the pairing link being typed; the check of one runs
@@ -55,18 +51,7 @@ type settingsState struct {
 	computerChecking          bool
 	loaded                    bool
 	err                       string
-	picker                    pickerState
 	worktrees                 managedWorktrees
-}
-
-func (s *settingsState) flag(key string) *bool {
-	if s.open == nil {
-		s.open = map[string]*bool{}
-	}
-	if s.open[key] == nil {
-		s.open[key] = new(bool)
-	}
-	return s.open[key]
 }
 
 // settingsPage is the SettingsPage: the sections down the left, the one
@@ -176,213 +161,39 @@ func derefOr(p *string) string {
 
 // settingGroup is one card of related settings, a divider between rows.
 func (a *App) settingGroup(c *ui.Context, title, footer string, rows ...func()) {
-	k, t := a.kit, a.kit.T
-	ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(6)).Children(func() {
-		if title != "" {
-			k.Text(c, title, 12, 16).FontWeight(500).TextColor(t.MutedForeground).PaddingX(k.Px(4))
-		}
-		ui.Column(c).Radius(k.Px(14)).Background(t.Card).Clip().Children(func() {
-			for i, row := range rows {
-				if i > 0 {
-					ui.Box(c).Height(1).Background(t.Border.Alpha(0.7))
-				}
-				row()
-			}
-		})
-		if footer != "" {
-			k.Text(c, footer, 12, 20).TextColor(t.MutedForeground).PaddingX(k.Px(4))
-		}
-	})
+	a.kit.SettingGroup(c, title, footer, rows...)
 }
 
-// settingRow is a setting: title and explanation on the left, its control
-// on the right, and what goes under them.
 func (a *App) settingRow(c *ui.Context, title, description string, control, below func()) {
-	k := a.kit
-	a.settingRowWith(c, func() { k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500) }, description, control, below)
+	a.kit.SettingRow(c, title, description, control, below)
 }
 
-// settingRowWith is a settingRow whose title is drawn by title.
 func (a *App) settingRowWith(c *ui.Context, title func(), description string, control, below func()) {
-	k, t := a.kit, a.kit.T
-	ui.Column(c).Padding(k.Px(12), k.Px(16)).Children(func() {
-		ui.Row(c).Wrap().GapX(k.Px(16)).GapY(k.Px(8)).Children(func() {
-			ui.Column(c).Grow(1).Basis(0).MinWidth(k.Px(192)).Children(func() {
-				title()
-				if description != "" {
-					k.Text(c, description, 13, 20).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
-				}
-			})
-			if control != nil {
-				ui.Row(c).MinWidth(0).Gap(k.Px(8)).Shrink(0).Children(control)
-			}
-		})
-		if below != nil {
-			ui.Column(c).Margin(k.Px(12), 0, 0, 0).Children(below)
-		}
-	})
+	a.kit.SettingRowWith(c, title, description, control, below)
 }
 
-// fieldSelect is the framed Select of a settings row: h-8, min-w-32, a
-// border on the page's background.
+// fieldSelect is a settings row's Select, its list kept open from frame to
+// frame by its label.
 func (a *App) fieldSelect(c *ui.Context, label, value string, options []kit.Option, disabled bool) (string, bool) {
-	k, t := a.kit, a.kit.T
-	open := a.settings.flag("select:" + label)
-	label = l10n.T(label)
-	current := value
-	for _, o := range options {
-		if o.Value == value {
-			current = l10n.T(o.Label)
-		}
-	}
-	tr := ui.ButtonBase(c).Role(ui.RoleComboBox).Label(label).Expanded(*open).Height(k.Px(32)).MinWidth(k.Px(128)).Gap(k.Px(4)).
-		PaddingX(k.Px(10)).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Justify(ui.SpaceBetween).Disabled(disabled).Cursor(ui.CursorPointer)
-	if tr.Hovered() {
-		tr.Background(t.Muted.Alpha(0.6))
-	}
-	tr.Children(func() {
-		k.Text(c, current, 14, 20).TextColor(t.Foreground).SingleLine()
-		k.Icon(c, "chevron-down", 12, t.Foreground).Opacity(0.6)
-	})
-	if tr.Clicked() {
-		*open = !*open
-	}
-	var picked string
-	ok := false
-	ui.PopoverBase(c, tr, open, func(p ui.Element) {
-		p.Role(ui.RoleList).Label(label).Margin(k.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(k.Px(4)).Radius(k.Px(8)).
-			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).Children(func() {
-			for _, o := range options {
-				it := kit.Selected(ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleListItem).Label(l10n.T(o.Label)), o.Value == value).
-					Gap(k.Px(6)).Padding(k.Px(6), k.Px(12), k.Px(6), k.Px(6)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
-				color := t.PopoverForeground
-				if it.Hovered() {
-					it.Background(t.Accent)
-					color = t.AccentForeground
-				}
-				it.Children(func() {
-					ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Children(func() {
-						if o.Value == value {
-							k.Icon(c, "check", 14, color)
-						}
-					})
-					k.Text(c, l10n.T(o.Label), 13, 19.5).TextColor(color).SingleLine()
-				})
-				if it.Clicked() {
-					*open = false
-					if o.Value != value {
-						picked, ok = o.Value, true
-					}
-				}
-			}
-		})
-	})
-	return picked, ok
+	return a.settings.Select(c, label, value, options, disabled)
 }
 
-// toggle is the settings' Switch: 36x22, the primary color while on.
 func (a *App) toggle(c *ui.Context, label string, on, disabled bool) bool {
-	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Role(ui.RoleSwitch).Checked(on).Label(label).Size(k.Px(36), k.Px(22)).Radius(k.Px(11)).Disabled(disabled).Cursor(ui.CursorPointer)
-	bg := t.Input
-	if on {
-		bg = t.Primary
-	}
-	b.Background(bg)
-	x := b.Animate("on", b2f(on), 150*time.Millisecond)
-	b.Children(func() {
-		ui.Box(c).Size(k.Px(18), k.Px(18)).Radius(k.Px(9)).Background(ui.RGBA(255, 255, 255, 1)).Absolute().Top(k.Px(2)).Left(k.Px(2)+x*k.Px(14)).
-			Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.1))
-	})
-	return b.Clicked()
+	return a.kit.Toggle(c, label, on, disabled)
 }
 
-func b2f(b bool) float32 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// field is a settings text input: h-9, rounded-lg, bordered.
 func (a *App) field(c *ui.Context, value *string, label, placeholder string, mono, password bool) ui.Element {
-	k, t := a.kit, a.kit.T
-	in := ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).Height(k.Px(36)).Grow(1).MinWidth(0).PaddingX(k.Px(12)).
-		Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).FontSize(k.Px(14)).TextColor(t.Foreground)
-	if mono {
-		in.Font(k.Mono)
-	}
-	if password {
-		in.Password()
-	}
-	if in.Focused() {
-		in.Border(1, t.Ring.Alpha(0.6))
-	}
-	return in
+	return a.kit.Field(c, value, label, placeholder, mono, password)
 }
 
 func (a *App) smallButton(c *ui.Context, v kit.Variant, label, icon string, disabled bool) ui.Element {
-	k, t := a.kit, a.kit.T
-	b := k.Button(c, v, 32, false, label).Disabled(disabled).FontSize(k.Px(13))
-	color := t.Foreground
-	switch v {
-	case kit.Primary:
-		color = t.PrimaryForeground
-	case kit.Destructive:
-		color = t.Destructive
-	}
-	b.Children(func() {
-		if icon != "" {
-			k.Icon(c, icon, 16, color)
-		}
-		k.Text(c, label, 13, 20).FontWeight(500).TextColor(color)
-	})
-	return b
+	return a.kit.SmallButton(c, v, label, icon, disabled)
 }
 
-func (a *App) statusPill(c *ui.Context, ok bool, label string) {
-	k, t := a.kit, a.kit.T
-	color, bg := t.MutedForeground, t.Muted
-	if ok {
-		color, bg = t.Success, t.Success.Alpha(0.1)
-	}
-	ui.Row(c).Height(k.Px(22)).Gap(k.Px(6)).PaddingX(k.Px(8)).Radius(k.Px(11)).Background(bg).Children(func() {
-		kit.Dot(c, k.Px(6), color)
-		k.Text(c, label, 12, 16).FontWeight(500).TextColor(color)
-	})
-}
+func (a *App) statusPill(c *ui.Context, ok bool, label string) { a.kit.StatusPill(c, ok, label) }
 
 func (a *App) generalTab(c *ui.Context) {
-	themes := make([]kit.Option, len(theme.Names))
-	for i, n := range theme.Names {
-		themes[i] = kit.Option{Value: string(n), Label: theme.Labels[n]}
-	}
-	fonts := []kit.Option{{Value: "geist", Label: "Geist"}, {Value: "system", Label: L("System")}}
-	sizes := []kit.Option{{Value: "small", Label: L("Small")}, {Value: "default", Label: L("Default")}, {Value: "large", Label: L("Large")}, {Value: "largest", Label: L("Largest")}}
-	pick := func(p prefs.String, label string, opts []kit.Option) func() {
-		return func() {
-			if next, ok := a.fieldSelect(c, label, p.Get(a.prefs), opts, false); ok {
-				p.Set(a.prefs, next)
-				a.applyPrefs()
-			}
-		}
-	}
-	languages := []kit.Option{{Value: "", Label: L("System")}, {Value: string(l10n.English), Label: "English"}, {Value: string(l10n.Chinese), Label: "简体中文"}}
-	a.settingGroup(c, L("Appearance"), "",
-		func() {
-			a.settingRow(c, L("Language"), L("System follows this computer's language."), pick(prefs.Language, l10n.N("Language"), languages), nil)
-		},
-		func() {
-			a.settingRow(c, L("Theme"), L("Light is the default. The choice is stored per browser."), pick(prefs.Theme, l10n.N("Theme"), themes), nil)
-		},
-		func() {
-			a.settingRow(c, L("Font"), L("Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."), pick(prefs.Font, l10n.N("Font"), fonts), nil)
-		},
-		func() {
-			a.settingRow(c, L("Text size"), L("Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."), pick(prefs.TextSize, l10n.N("Text size"), sizes), nil)
-		},
-	)
+	a.settings.General(c, a.applyPrefs)
 	a.settingGroup(c, L("Sidebar"), "", func() {
 		a.settingRow(c, L("Show archived sessions"), L("List archived sessions in the sidebar alongside the active ones."), func() {
 			on := prefs.ShowArchived.Get(a.prefs)
@@ -605,26 +416,7 @@ func (a *App) advancedTab(c *ui.Context) {
 type defaultsPatch = defaults.Patch
 
 // saveDefaults shows the patched defaults at once and has the Daemon save them.
-func (a *App) saveDefaults(dv defaults.View, p defaults.Patch) {
-	view := defaults.ApplyPatch(dv, p)
-	a.newPage.mu.Lock()
-	a.newPage.defaults = &view
-	a.newPage.mu.Unlock()
-	go func() {
-		cl, err := a.ctl.Client()
-		if err == nil {
-			err = cl.Call(a.ctx, "daemon.update_session_defaults", p.Params(), nil)
-		}
-		a.cfg.Update(func() {
-			if err != nil {
-				a.settings.err = L("Session defaults did not load or save: %s", err)
-			}
-			a.newPage.mu.Lock()
-			a.newPage.readAt = time.Time{}
-			a.newPage.mu.Unlock()
-		})
-	}()
-}
+func (a *App) saveDefaults(dv defaults.View, p defaults.Patch) { a.settings.SaveDefaults(dv, p) }
 
 // pickFolder asks for a folder; "" when none was chosen. Off the main thread.
 func (a *App) pickFolder(title string) string {
@@ -638,16 +430,18 @@ func (a *App) pickFolder(title string) string {
 	return paths[0]
 }
 
-// defaultsTab is the Session defaults: what a new Session starts with,
-// read from and saved to the Daemon.
+// defaultsTab is the Session defaults, with the notice that the Daemon
+// runs an older droid than the one installed.
 func (a *App) defaultsTab(c *ui.Context) {
-	k, t := a.kit, a.kit.T
-	shared := L("Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings.")
+	note := ""
 	if a.following() {
-		shared = L("These are the settings of %s. Existing Sessions keep their settings.", a.computerName())
+		note = L("These are the settings of %s. Existing Sessions keep their settings.", a.computerName())
 	}
-	k.Text(c, shared, 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
-	if h := a.cfg.Host; h != nil && h.DroidUpdated() {
+	a.settings.SessionDefaults(c, note, func() {
+		h := a.cfg.Host
+		if h == nil || !h.DroidUpdated() {
+			return
+		}
 		a.settingGroup(c, "", "", func() {
 			a.settingRow(c, L("droid was updated"), L("The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working."), func() {
 				if a.smallButton(c, kit.Primary, L("Restart Daemon"), "refresh-cw", false).Clicked() {
@@ -655,365 +449,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 				}
 			}, nil)
 		})
-	}
-	dv := a.sessionDefaults()
-	if dv == nil {
-		k.Text(c, L("Loading session defaults…"), 14, 20).TextColor(t.MutedForeground)
-		return
-	}
-	save := func(p defaults.Patch) { a.saveDefaults(*dv, p) }
-	str := func(s string) *string { return &s }
-	locked := func(key string) bool { return dv.Locked[key] }
-	efforts := func(model, current string) []kit.Option {
-		var out []kit.Option
-		for _, e := range defaults.ReasoningChoices(dv.Models, model, current) {
-			out = append(out, kit.Option{Value: e, Label: effortLabel(e)})
-		}
-		return out
-	}
-	modelOpts := func(routers bool) []kit.Option {
-		var out []kit.Option
-		for _, m := range defaults.PickableModels(dv.Models, routers) {
-			out = append(out, kit.Option{Value: m.ID, Label: m.Label})
-		}
-		return out
-	}
-	autonomy := make([]kit.Option, 0, len(dv.AvailableAutonomyLevels))
-	for _, l := range dv.AvailableAutonomyLevels {
-		autonomy = append(autonomy, kit.Option{Value: l, Label: models.AutonomyLabels[l]})
-	}
-	orgManaged := L("Managed by your organization.")
-	descIf := func(key, otherwise string) string {
-		if locked(key) {
-			return orgManaged
-		}
-		return otherwise
-	}
-	a.settingGroup(c, L("Model and autonomy"), "",
-		func() {
-			a.settingRow(c, L("Model"), descIf("modelId", ""), func() {
-				a.modelField(c, L("Default model"), locked("modelId"), a.settings.flag("model:default"), &a.settings.picker,
-					defaults.PickableModels(dv.Models, true), dv.ModelID, func(next string) {
-						p := defaults.Patch{ModelID: str(next)}
-						// A level the new model lacks would be refused; start from its first.
-						if sup := defaults.ReasoningChoices(dv.Models, next, ""); len(sup) > 0 && !contains(sup, dv.ReasoningEffort) {
-							p.ReasoningEffort = str(sup[0])
-						}
-						save(p)
-					})
-			}, nil)
-		},
-		func() {
-			a.settingRow(c, L("Reasoning level"), descIf("reasoningEffort", ""), func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Default reasoning level"), dv.ReasoningEffort, efforts(dv.ModelID, dv.ReasoningEffort), locked("reasoningEffort")); ok {
-					save(defaults.Patch{ReasoningEffort: str(next)})
-				}
-			}, nil)
-		},
-		func() {
-			modes := make([]kit.Option, len(defaults.InteractionModes))
-			for i, m := range defaults.InteractionModes {
-				modes[i] = kit.Option{Value: m.Value, Label: m.Label}
-			}
-			a.settingRow(c, L("Interaction mode"), L("Auto starts working right away; Spec plans with you before it changes anything."), func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Default interaction mode"), dv.InteractionMode, modes, locked("interactionMode")); ok {
-					save(defaults.Patch{InteractionMode: str(next)})
-				}
-			}, nil)
-		},
-		func() {
-			level := dv.AutonomyLevel
-			if level == "" {
-				level = "off"
-			}
-			desc := l10n.T(defaults.AutonomyDescriptions[level])
-			if desc == "" {
-				desc = L("How much Droid may do without asking for approval.")
-			}
-			a.settingRow(c, L("Autonomy level"), desc, func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Default autonomy level"), level, autonomy, locked("autonomyLevel")); ok {
-					save(defaults.Patch{AutonomyLevel: str(next)})
-				}
-			}, nil)
-		},
-	)
-	a.settingGroup(c, L("Tool calls"), "", func() {
-		const follow = "follow-droid"
-		opts := []kit.Option{{Value: follow, Label: L("Follow droid settings")}}
-		for _, m := range defaults.ToolModes {
-			opts = append(opts, kit.Option{Value: string(m), Label: defaults.ToolModeLabels[m]})
-		}
-		current := string(defaults.DefaultToolMode(a.prefs))
-		if current == "" {
-			current = follow
-		}
-		a.settingRow(c, L("Mode"), L("Script lets the model call tools from a small program that can batch and filter them; Both offers it alongside direct calls. A Session keeps the mode it starts with. Kept on this device."), func() {
-			if next, ok := a.fieldSelect(c, l10n.N("Default tool calls"), current, opts, false); ok {
-				if next == follow {
-					next = ""
-				}
-				defaults.SetDefaultToolMode(a.prefs, defaults.ToolMode(next))
-			}
-		}, nil)
 	})
-	const sameAsMain = "same-as-main"
-	a.settingGroup(c, L("Spec mode"), "",
-		func() {
-			a.settingRow(c, L("Model"), "", func() {
-				value := dv.SpecModeModelID
-				if value == "" {
-					value = sameAsMain
-				}
-				opts := append([]kit.Option{{Value: sameAsMain, Label: L("Same as main")}}, modelOpts(true)...)
-				if next, ok := a.fieldSelect(c, l10n.N("Spec mode model"), value, opts, locked("specModeModelId")); ok {
-					if next == sameAsMain {
-						next = ""
-					}
-					save(defaults.Patch{SpecModeModelID: str(next), SpecModeReasoningEffort: str("")})
-				}
-			}, nil)
-		},
-		func() {
-			a.settingRow(c, L("Reasoning level"), "", func() {
-				value := dv.SpecModeReasoningEffort
-				if value == "" {
-					value = sameAsMain
-				}
-				model := dv.SpecModeModelID
-				if model == "" {
-					model = dv.ModelID
-				}
-				cur := dv.SpecModeReasoningEffort
-				if cur == "" {
-					cur = dv.ReasoningEffort
-				}
-				opts := append([]kit.Option{{Value: sameAsMain, Label: L("Same as main")}}, efforts(model, cur)...)
-				if next, ok := a.fieldSelect(c, l10n.N("Spec mode reasoning level"), value, opts, locked("specModeReasoningEffort")); ok {
-					if next == sameAsMain {
-						next = ""
-					}
-					save(defaults.Patch{SpecModeReasoningEffort: str(next)})
-				}
-			}, nil)
-		},
-		func() {
-			const custom = "custom…"
-			paths := defaults.SpecSavePaths(dv.UserFactoryDir)
-			choice := defaults.SpecSaveChoiceOf(dv.SpecSaveDir, paths)
-			value := string(choice)
-			opts := []kit.Option{{Value: string(defaults.SpecUser), Label: L("User home")}, {Value: string(defaults.SpecProject), Label: L("Project")}}
-			desc := L("Specs go to %s.", paths.User)
-			switch choice {
-			case defaults.SpecProject:
-				desc = L("Specs go to the project's %s, or %s outside a project.", paths.Project, paths.User)
-			case defaults.SpecCustom:
-				value = dv.SpecSaveDir
-				opts = append(opts, kit.Option{Value: dv.SpecSaveDir, Label: L("Custom: %s", dv.SpecSaveDir)})
-				desc = L("Specs from every Session go to this folder.")
-			}
-			if !a.following() {
-				opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
-			}
-			a.settingRow(c, L("Save folder"), descIf("specSaveDir", desc), func() {
-				next, ok := a.fieldSelect(c, l10n.N("Spec save folder"), value, opts, locked("specSaveDir"))
-				switch {
-				case !ok:
-				case next == custom:
-					go func() {
-						if dir := a.pickFolder(L("Choose a spec folder")); dir != "" {
-							a.cfg.Update(func() { save(defaults.Patch{SpecSaveDir: &dir}) })
-						}
-					}()
-				case next == string(defaults.SpecUser):
-					save(defaults.Patch{SpecSaveDir: str("")})
-				case next == string(defaults.SpecProject):
-					save(defaults.Patch{SpecSaveDir: str(paths.Project)})
-				}
-			}, nil)
-		},
-	)
-	a.settingGroup(c, L("Compaction"), "",
-		func() {
-			a.settingRow(c, L("Compact automatically"), L("New Sessions compact their history once it passes the token limit."), func() {
-				on := dv.CompactionThresholdCheckEnabled
-				if a.toggle(c, L("Compact automatically"), on, locked("compactionThresholdCheckEnabled")) {
-					next := !on
-					save(defaults.Patch{CompactionThresholdCheckEnabled: &next})
-				}
-			}, nil)
-		},
-		func() {
-			limit := dv.CompactionTokenLimit
-			if limit == 0 {
-				limit = defaults.DefaultCompactionLimit
-			}
-			a.settingRow(c, L("Token limit"), "", func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Compaction token limit"), strconv.Itoa(limit), limitOptions(limit), locked("compactionTokenLimit")); ok {
-					n, _ := strconv.Atoi(next)
-					save(defaults.Patch{CompactionTokenLimit: &n})
-				}
-			}, nil)
-		},
-		func() {
-			k, t := a.kit, a.kit.T
-			overrides := dv.CompactionTokenLimitPerModel
-			disabled := locked("compactionTokenLimitPerModel")
-			label := func(id string) string {
-				if i := slices.IndexFunc(dv.Models, func(m models.Choice) bool { return m.ID == id }); i >= 0 {
-					return dv.Models[i].Label
-				}
-				return id
-			}
-			var addable []models.Choice
-			for _, m := range defaults.PickableModels(dv.Models, true) {
-				if _, ok := overrides[m.ID]; !ok {
-					addable = append(addable, m)
-				}
-			}
-			with := func(id string, tokens int, keep bool) map[string]int {
-				next := maps.Clone(overrides)
-				if next == nil {
-					next = map[string]int{}
-				}
-				if keep {
-					next[id] = tokens
-				} else {
-					delete(next, id)
-				}
-				return next
-			}
-			a.settingRow(c, L("Limits for specific models"), descIf("compactionTokenLimitPerModel", L("Override the token limit for a model.")), nil, func() {
-				ui.Column(c).Role(ui.RoleList).Label(L("Model compaction limits")).Gap(k.Px(8)).Children(func() {
-					for _, id := range slices.Sorted(maps.Keys(overrides)) {
-						tokens, name := overrides[id], label(id)
-						ui.Row(c.Key(id)).Role(ui.RoleListItem).Label(name).Gap(k.Px(8)).Children(func() {
-							k.Text(c, name, 14, 20).TextColor(t.Foreground).SingleLine().Grow(1).MinWidth(0)
-							if next, ok := a.fieldSelect(c, L("%s compaction limit", name), strconv.Itoa(tokens), limitOptions(tokens), disabled); ok {
-								n, _ := strconv.Atoi(next)
-								save(defaults.Patch{CompactionTokenLimitPerModel: with(id, n, true)})
-							}
-							if k.IconButton(c, "x", L("Remove the %s limit", name), 32).Disabled(disabled).Clicked() {
-								save(defaults.Patch{CompactionTokenLimitPerModel: with(id, 0, false)})
-							}
-						})
-					}
-					ui.Row(c).Children(func() {
-						a.modelField(c, L("Add a model limit"), disabled || len(addable) == 0, a.settings.flag("model:compaction-limit"), &a.settings.picker, addable, "", func(id string) {
-							limit := dv.CompactionTokenLimit
-							if limit == 0 {
-								limit = defaults.DefaultCompactionLimit
-							}
-							save(defaults.Patch{CompactionTokenLimitPerModel: with(id, limit, true)})
-						})
-					})
-				})
-			})
-		},
-		func() {
-			value := dv.CompactionModel
-			opts := append([]kit.Option{{Value: defaults.CurrentModel, Label: L("Current model")}}, modelOpts(false)...)
-			a.settingRow(c, L("Summary model"), L("The model that writes the summary."), func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Compaction model"), value, opts, locked("compactionModel")); ok {
-					save(defaults.Patch{CompactionModel: str(next)})
-				}
-			}, nil)
-		},
-	)
-	const inherit = "inherit"
-	a.settingGroup(c, L("Subagents"), "",
-		func() {
-			opts := append([]kit.Option{{Value: inherit, Label: L("Inherit (calling session)")}}, autonomy...)
-			value := dv.SubagentAutonomyLevel
-			if value == "" {
-				value = inherit
-			}
-			a.settingRow(c, L("Autonomy level"), "", func() {
-				if next, ok := a.fieldSelect(c, l10n.N("Subagent autonomy level"), value, opts, locked("subagentAutonomyLevel")); ok {
-					save(defaults.Patch{SubagentAutonomyLevel: str(next)})
-				}
-			}, nil)
-		},
-		func() {
-			k := a.kit
-			const modelDefault = "model-default"
-			settings := dv.SubagentModelSettings
-			a.settingRow(c, L("Task models"), L("The model and reasoning level for subagents started with light, medium or heavy complexity."), nil, func() {
-				ui.Column(c).Gap(k.Px(8)).Children(func() {
-					for _, tier := range subagentTierLabels {
-						model, effort := settings[tier.id+"Model"], settings[tier.id+"ReasoningEffort"]
-						ui.Row(c.Key(tier.id)).Gap(k.Px(8)).Children(func() {
-							k.Text(c, l10n.T(tier.name), 14, 20).SingleLine().Width(k.Px(112)).Shrink(0)
-							value := model
-							if value == "" {
-								value = inherit
-							}
-							opts := append([]kit.Option{{Value: inherit, Label: L("Inherit (calling session)")}}, modelOpts(true)...)
-							if next, ok := a.fieldSelect(c, tier.model, value, opts, locked("subagent."+tier.id+"Model")); ok {
-								if next == inherit {
-									next = ""
-								}
-								save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(settings, tier.id, next)})
-							}
-							if model == "" {
-								return
-							}
-							cur := effort
-							if cur == "" {
-								cur = modelDefault
-							}
-							levels := append([]kit.Option{{Value: modelDefault, Label: L("Model default")}}, efforts(model, effort)...)
-							if next, ok := a.fieldSelect(c, tier.reasoning, cur, levels, locked("subagent."+tier.id+"ReasoningEffort")); ok {
-								if next == modelDefault {
-									next = ""
-								}
-								save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierReasoning(settings, tier.id, next)})
-							}
-						})
-					}
-				})
-			})
-		},
-	)
-}
-
-// subagentTierLabels name the Subagent complexity tiers, in
-// defaults.SubagentTiers' order.
-var subagentTierLabels = []struct{ id, name, model, reasoning string }{
-	{"light", l10n.N("Light task"), l10n.N("Light task model"), l10n.N("Light task reasoning level")},
-	{"medium", l10n.N("Medium task"), l10n.N("Medium task model"), l10n.N("Medium task reasoning level")},
-	{"heavy", l10n.N("Heavy task"), l10n.N("Heavy task model"), l10n.N("Heavy task reasoning level")},
-}
-
-// limitOptions are the compaction token limits to pick from, with the
-// current one even when Factory does not offer it.
-func limitOptions(current int) []kit.Option {
-	vals := append([]int{}, defaults.CompactionLimits...)
-	if !containsInt(vals, current) {
-		vals = append(vals, current)
-	}
-	sortInts(vals)
-	opts := make([]kit.Option, len(vals))
-	for i, v := range vals {
-		opts[i] = kit.Option{Value: strconv.Itoa(v), Label: defaults.TokenLimitLabel(v)}
-	}
-	return opts
-}
-
-func containsInt(list []int, n int) bool {
-	for _, x := range list {
-		if x == n {
-			return true
-		}
-	}
-	return false
-}
-
-func sortInts(v []int) {
-	for i := 1; i < len(v); i++ {
-		for j := i; j > 0 && v[j] < v[j-1]; j-- {
-			v[j], v[j-1] = v[j-1], v[j]
-		}
-	}
 }
 
 // customSoundRow is the chosen file under a Sound row set to Custom, nil

@@ -156,7 +156,7 @@ func (a *App) memoryModelRow(c *ui.Context, model string) {
 		if dv := a.sessionDefaults(); dv != nil {
 			choices = defaults.PickableModels(dv.Models, false)
 		}
-		a.modelField(c, L("Memory model"), false, a.settings.flag("model:memory"), &a.settings.picker, choices, model, func(next string) {
+		a.modelField(c, L("Memory model"), false, a.settings.Flag("model:memory"), a.settings.Picker(), choices, model, func(next string) {
 			// Read at each Memory Session; the Daemon needs no restart.
 			a.hostUpdate(false, func(s *host.Settings) { s.MemoryModel = host.OptString(next) })
 		})

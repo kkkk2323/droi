@@ -26,6 +26,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
@@ -170,6 +171,9 @@ type App struct {
 	recent   []string
 	settings settingsState
 	newPage  newSessionState
+	// defaults are the Session Defaults, which Settings and the New session
+	// page share.
+	defaults *settingsview.Defaults
 	// shownRev is the listRev of the list this frame shows; listMemo
 	// keeps what is built from it.
 	shownRev uint64
@@ -246,6 +250,20 @@ func New(cfg Config) *App {
 		notesMD:     sessionview.Markdown{Own: true},
 		compactions: compaction.NewLog(),
 	}
+	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update}
+	pickFolder := a.pickFolder
+	if cfg.Computer != nil {
+		// Another computer's Daemon cannot use a folder picked on this one.
+		pickFolder = nil
+	}
+	a.settings.Settings = settingsview.New(settingsview.Env{
+		Kit:        func() *kit.Kit { return a.kit },
+		Prefs:      cfg.Prefs,
+		Update:     cfg.Update,
+		Defaults:   a.defaults,
+		Failed:     func(msg string) { a.settings.err = msg },
+		PickFolder: pickFolder,
+	})
 	a.applyPrefs()
 	if cfg.Updater != nil {
 		cfg.Updater.Skip(prefs.SkippedUpdate.Get(cfg.Prefs))

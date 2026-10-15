@@ -1,12 +1,10 @@
 package app
 
 import (
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo"
@@ -70,8 +68,6 @@ type newSessionState struct {
 	mu       sync.Mutex
 	creating bool
 	draft    *draftSession
-	defaults *defaults.View
-	readAt   time.Time
 	// repos are the Workspaces' repositories, read again on each visit.
 	repos map[string]*repoInfo
 }
@@ -97,41 +93,7 @@ func (s *newSessionState) reset(r Route) {
 
 // sessionDefaults are the Daemon's defaults for a new Session, read again
 // a minute after they were.
-func (a *App) sessionDefaults() *defaults.View {
-	s := &a.newPage
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Before the connection is up the Daemon would refuse the request.
-	if time.Since(s.readAt) > time.Minute && a.ctl != nil && a.ctl.Status().Connected {
-		s.readAt = time.Now()
-		failed := func() {
-			s.mu.Lock()
-			s.readAt = time.Now().Add(5*time.Second - time.Minute)
-			s.mu.Unlock()
-		}
-		go func() {
-			cl, err := a.ctl.Client()
-			if err != nil {
-				failed()
-				return
-			}
-			res, err := cl.GetDefaultSettings(a.ctx)
-			if err != nil {
-				failed()
-				return
-			}
-			var raw map[string]any
-			b, _ := json.Marshal(res)
-			_ = json.Unmarshal(b, &raw)
-			view := defaults.ToSessionDefaults(raw)
-			s.mu.Lock()
-			s.defaults = &view
-			s.mu.Unlock()
-			a.redraw()
-		}()
-	}
-	return s.defaults
-}
+func (a *App) sessionDefaults() *defaults.View { return a.defaults.Get() }
 
 // newSessionPage is the Waku-style start page: one question with the
 // Workspace as a menu in it, and the composer under it. The first message
@@ -591,7 +553,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 								}
 							}
 						}
-					}, func(e string) { s.effort = e }, &pickerToolMode{value: shownMode, onChange: func(m defaults.ToolMode) { s.toolMode = m }})
+					}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
 					opts := make([]kit.Option, len(autonomyLevels))
 					for i, l := range autonomyLevels {
 						opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
