@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Droi exports its Host and Session view for WeCom Droi
