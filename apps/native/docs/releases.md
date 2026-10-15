@@ -56,7 +56,9 @@ it); the Electron users install it from the disk image, which the card links to.
 1. Bump the version in `apps/desktop/package.json` and `apps/native/mygo.json` (a test keeps
    them equal), and add its `## <version>` section to `CHANGELOG.md`, which becomes the
    release notes and the update's notes.
-2. Commit, tag `v<version>` and push the tag.
+2. Commit, tag `v<version>` and push the tag. Once the release is published, the workflow
+   also tags `apps/native/v<version>`, the version other apps require of the Go module
+   (ADR 0022).
 
 To try a signed build locally:
 

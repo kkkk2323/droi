@@ -37,7 +37,7 @@ jobs:
       #   run: pnpm test:compat
       #   timeout-minutes: 15
 
-  # The view tests run against the Fake Daemon, which the workspace's esbuild bundles.
+  # The view tests run against the Fake Daemon, which needs Node.
   validate-native:
     runs-on: macos-latest
     steps:
@@ -190,3 +190,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+      # Other apps require the Go module apps/native at this release (ADR 0022).
+      - name: Tag the Go module
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/apps/native/$GITHUB_REF_NAME" -f sha="$GITHUB_SHA"
