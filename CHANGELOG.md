@@ -1,3 +1,10 @@
+## 1.56.1 - 2026-10-15
+
+### Fixed
+
+- A session whose loops were deleted or paused while Droi was not connected to Droid lets its Droid process close again once Droi reconnects. Before, Droi kept it running until Droid restarted.
+- While Droi shows another computer, it no longer keeps that computer's sessions running for their loops, because that computer's Droid keeps running after Droi closes. Droi still starts those loops again when it connects. A loop 30 minutes or more apart there waits once its session has been idle for 30 minutes.
+
 ## 1.56.0 - 2026-10-15
 
 ### Added
