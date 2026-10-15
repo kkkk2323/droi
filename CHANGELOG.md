@@ -1,3 +1,10 @@
+## 1.55.0 - 2026-10-15
+
+### Changed
+
+- Nothing changes in the app. Its Host, Gateway and Session view became public Go packages under `apps/native/pkg`, for another app built on them, and each release now also tags the Go module (`apps/native/v<version>`).
+- The Go SDK and the Fake Daemon moved to their own repository, [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go).
+
 ## 1.54.0 - 2026-10-15
 
 ### Changed
