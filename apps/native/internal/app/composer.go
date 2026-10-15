@@ -274,10 +274,12 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	active := min(cs.highlight, max(len(suggestions)-1, 0))
 	ready := loaded || v.hasLoaded
 	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
-	submit := func(placement protocol.QueuePlacement) {
+	// submit reports whether it sent. It reads the text again: a key can
+	// come with text typed after this frame was built.
+	submit := func(placement protocol.QueuePlacement) bool {
 		cs.takeEdit()
-		if !canSend {
-			return
+		if !ready || strings.TrimSpace(cs.text) == "" && len(cs.images) == 0 {
+			return false
 		}
 		if running && placement == "" {
 			placement = protocol.QueuePlacementEndOfLoop
@@ -288,6 +290,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		v.send(s, cs.text, cs.images, placement)
 		cs.text, cs.images = "", nil
 		v.saveDraft()
+		return true
 	}
 	accept := func(item slash.Item) {
 		cs.text = "/" + item.Name + " "
@@ -336,37 +339,35 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					v.focused = true
 				}
 				in.OnPaste(func(string) bool { return v.pasteImage() })
-				// Read as it is built: the element expires before the handler runs.
-				composing := in.Composing()
-				in.HandleInput(func(ev ui.InputEvent) bool {
-					if ev.Kind != ui.InputKeyDown {
-						return false
-					}
+				in.OnTextKey(func(key ui.TextKey) bool {
 					if len(suggestions) > 0 {
 						switch {
-						case ev.Key == ui.KeyDown:
+						case key.Key == ui.KeyDown:
 							cs.highlight = (active + 1) % len(suggestions)
 							return true
-						case ev.Key == ui.KeyUp:
+						case key.Key == ui.KeyUp:
 							cs.highlight = (active - 1 + len(suggestions)) % len(suggestions)
 							return true
-						case ev.Key == ui.KeyTab || ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0:
+						case key.Key == ui.KeyTab || key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0:
 							accept(suggestions[active])
 							return true
-						case ev.Key == ui.KeyEscape:
+						case key.Key == ui.KeyEscape:
 							cs.dismissed = cs.text
 							return true
 						}
 					}
-					if hasPick && ev.Key == ui.KeyBackspace && cs.field == "" {
+					if hasPick && key.Key == ui.KeyBackspace && key.Text() == "" {
 						cs.text = rest
 						return true
 					}
-					if ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !composing {
-						if ev.Mods&ui.Cmd != 0 {
-							submit(protocol.QueuePlacementEndOfTurn)
-						} else {
-							submit("")
+					if key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0 {
+						cs.field = key.Text()
+						placement := protocol.QueuePlacement("")
+						if key.Mods&ui.Cmd != 0 {
+							placement = protocol.QueuePlacementEndOfTurn
+						}
+						if submit(placement) {
+							key.SetText("")
 						}
 						return true
 					}

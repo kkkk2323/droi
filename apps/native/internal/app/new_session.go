@@ -533,29 +533,25 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				return ok || err != nil
 			}
 			in.OnPaste(func(string) bool { return paste() })
-			// Read as it is built: the element expires before the handler runs.
-			composing := in.Composing()
-			in.HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind != ui.InputKeyDown {
-					return false
-				}
+			in.OnTextKey(func(key ui.TextKey) bool {
 				if len(suggestions) > 0 {
 					switch {
-					case ev.Key == ui.KeyDown:
+					case key.Key == ui.KeyDown:
 						s.slashHighlight = (active + 1) % len(suggestions)
 						return true
-					case ev.Key == ui.KeyUp:
+					case key.Key == ui.KeyUp:
 						s.slashHighlight = (active - 1 + len(suggestions)) % len(suggestions)
 						return true
-					case ev.Key == ui.KeyTab || ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0:
+					case key.Key == ui.KeyTab || key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0:
 						accept(suggestions[active])
 						return true
-					case ev.Key == ui.KeyEscape:
+					case key.Key == ui.KeyEscape:
 						s.slashDismissed = s.text
 						return true
 					}
 				}
-				if ev.Key == ui.KeyEnter && ev.Mods&ui.Shift == 0 && !composing {
+				if key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0 {
+					s.text = key.Text()
 					start()
 					return true
 				}
