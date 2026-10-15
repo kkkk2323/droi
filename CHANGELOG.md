@@ -1,3 +1,9 @@
+## 1.56.3 - 2026-10-15
+
+### Fixed
+
+- In Settings, Session defaults, the spec mode model, the summary model and the Subagent task models are picked in the same model picker as the default model, with search, brands and favorites. Its first row keeps the choice of no model of their own: Same as main, Current model or Inherit.
+
 ## 1.56.2 - 2026-10-15
 
 ### Fixed
