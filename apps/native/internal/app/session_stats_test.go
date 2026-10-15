@@ -26,6 +26,9 @@ func TestSpeedMeterShowsSavedStats(t *testing.T) {
 	if h.hasText("Time in tools") || h.hasText("85 tok/s") {
 		t.Fatal("the details stay closed until clicked")
 	}
+	// The context meter comes in after, beside the button, and moves it.
+	h.until("the context meter", func() bool { return h.hasText("1.0k / 200k") })
+	h.settle()
 	h.click("Model speed")
 	for _, want := range []string{"1.2s", "85 tok/s", "340", "4", "1.4s", "3m 12s", "45s"} {
 		if !h.hasText(want) {
