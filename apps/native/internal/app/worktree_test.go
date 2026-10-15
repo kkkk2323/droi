@@ -200,6 +200,8 @@ func TestSettingsSavesTheWorktreeDirectory(t *testing.T) {
 	h.until("the settings", func() bool { return h.hasText("Worktree directory") })
 	h.click("Default (/Users/test/.factory/worktrees)")
 	h.click("Custom…")
+	// The folder comes back on the UI thread, which only frames run.
+	h.until("the custom folder", func() bool { return h.hasText("Custom: /Users/dev/trees") })
 	req, err := h.d.WaitForRequest("daemon.update_session_defaults", 1)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +211,6 @@ func TestSettingsSavesTheWorktreeDirectory(t *testing.T) {
 	if p["worktreeDirectory"] != "/Users/dev/trees" {
 		t.Fatalf("update_session_defaults %v", p)
 	}
-	h.until("the custom folder", func() bool { return h.hasText("Custom: /Users/dev/trees") })
 }
 
 // start types the first message on the New session page and starts the Session.
