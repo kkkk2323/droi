@@ -104,6 +104,8 @@ func TestTheAutomationFormsFolderPickerAndTheFactoryAppNoticeAreThisComputersOnl
 	local.until("the Session list", func() bool { return local.hasText("Fix the login race") })
 	local.click("Automations")
 	local.until("the notice", func() bool { return local.hasText(notice) })
+	// The notice can come before the list, and with it the button.
+	local.until("the list", func() bool { return local.hasText("Daily review") })
 	local.click("New automation")
 	local.until("the form", func() bool { _, ok := local.tt.Find("Automation workspace"); return ok })
 	if !local.hasButton("Choose a workspace") {
