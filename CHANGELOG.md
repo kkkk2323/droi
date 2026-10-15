@@ -1,3 +1,9 @@
+## Unreleased
+
+### Fixed
+
+- Typing `/` on the New session page offers `/loop`, also without a project. A `/loop` that cannot run stays on the page with the reason, instead of starting an empty session.
+
 ## 1.56.1 - 2026-10-15
 
 ### Fixed

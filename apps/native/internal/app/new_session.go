@@ -14,6 +14,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/loops"
 	"github.com/kkkk2323/droi/apps/native/internal/slash"
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
@@ -167,7 +168,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 		})
 		col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
 		col.Children(func() {
-			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, a.draftItems(workspace, requestedMode))
+			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, slash.Merge(slash.Starters, a.draftItems(workspace, requestedMode)))
 			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
 				switch {
 				case scratch:
@@ -430,6 +431,18 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			return
 		}
 		text, images := s.text, s.images
+		// A `/loop` the new Session could not run would leave it empty.
+		if m := loopCommand.FindStringSubmatch(strings.TrimSpace(text)); m != nil && len(images) == 0 {
+			cmd, err := loops.ParseCommand(m[1])
+			switch {
+			case err != nil:
+				s.err = loopErr(err)
+				return
+			case cmd.Stop:
+				s.err = L("This session has no loops.")
+				return
+			}
+		}
 		p := protocol.InitializeSessionParams{
 			ModelID:           modelID,
 			ReasoningEffort:   protocol.ReasoningEffort(effort),

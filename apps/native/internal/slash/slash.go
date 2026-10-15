@@ -30,6 +30,13 @@ type Item struct {
 	Kind         Kind
 }
 
+var loop = Item{
+	Name:         "loop",
+	Description:  l10n.N("Send a prompt to this session on an interval, while Droi runs"),
+	ArgumentHint: l10n.N("<interval> <prompt>"),
+	Kind:         Command,
+}
+
 // Builtins are the commands the composer handles before anything reaches the
 // Daemon.
 var Builtins = []Item{
@@ -39,13 +46,12 @@ var Builtins = []Item{
 		ArgumentHint: l10n.N("[instructions]"),
 		Kind:         Command,
 	},
-	{
-		Name:         "loop",
-		Description:  l10n.N("Send a prompt to this session on an interval, while Droi runs"),
-		ArgumentHint: l10n.N("<interval> <prompt>"),
-		Kind:         Command,
-	},
+	loop,
 }
+
+// Starters are the builtins a new Session's first message can be:
+// `/compact` needs a conversation to summarise.
+var Starters = []Item{loop}
 
 // FromDaemon lists the Daemon's custom commands and the skills a user may
 // invoke, a name once, commands first.
