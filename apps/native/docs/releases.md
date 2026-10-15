@@ -6,8 +6,9 @@ which puts in one GitHub Release:
 - `Droi <version>.dmg`, one app for both Apple chips (`darwin/universal`), for new installs;
 - `droi-<version>-linux-amd64.tar.gz` and `-linux-arm64.tar.gz` (with a `.deb` and the
   `install.sh` each), the program for `droi host` on Linux and its signed update;
-- `droi-<version>-darwin-universal.tar.gz`, the signed update, delta updates from the last
-  three versions, and `update-darwin-universal.json`, the manifest the app checks;
+- `droi-<version>-darwin-universal.tar.gz`, the signed update, a delta update from the
+  previous version (`updates.deltas` in `mygo.json`), and `update-darwin-universal.json`,
+  the manifest the app checks;
 - `app.asar.gz` and `latest.json`, a last code update for the Electron Desktop Shell.
 
 The workflow builds into a draft and publishes it once every build is in, as the latest
@@ -22,8 +23,8 @@ Settings → About and the corner card show where it is, and "Restart to update"
 works or waits for an answer and the window is in the background, checking every minute.
 
 MyGo's updater does the rest: it downloads the delta for the running version when there is
-one (else the whole archive), checks the Ed25519 signature against the public key built into
-the app, and replaces the bundle. A file that is not signed with the key leaves the app as it
+one (else the whole archive, as an app more than one version behind does), checks the
+Ed25519 signature against the public key built into the app, and replaces the bundle. A file that is not signed with the key leaves the app as it
 was. Development builds (`go run`) and `DROI_NO_UPDATE_CHECK=1` do not update.
 
 ## The signing key
