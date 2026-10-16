@@ -53,13 +53,21 @@ it); the Electron users install it from the disk image, which the card links to.
 
 ## A release
 
-1. Bump the version in `apps/desktop/package.json` and `apps/native/mygo.json` (a test keeps
-   them equal), and add its `## <version>` section to `CHANGELOG.md`, which becomes the
-   release notes and the update's notes.
-2. Commit, tag `v<version>` and push the tag. Once the release is published, the workflow
-   also tags `apps/native/v<version>`, the version other apps require of the Go module
-   (ADR 0022).
+1. Add the version's `## <version> - <date>` section at the top of `CHANGELOG.md` (Added,
+   Changed, Fixed, in plain sentences). It becomes the release notes and the update's notes.
+2. Run `scripts/release.sh <version>` on main. It bumps the version in the three places a
+   test keeps equal (`apps/desktop/package.json`, `apps/native/mygo.json` and `devVersion`
+   in `apps/native/main.go`), commits them with the changelog as `chore(release): <version>`,
+   pushes main and the tag `v<version>`, and waits until the workflow has published the
+   Release (about 6 minutes). Arguments after the version go to `git commit`, such as
+   `--trailer "Co-authored-by: …"`.
+3. Reinstall the Phone App with `pnpm install:phone`, so that it matches the release.
 
+Push only `v<version>`: once the release is published, the workflow tags
+`apps/native/v<version>` itself, the version other apps require of the Go module (ADR 0022),
+and fails if that tag already exists. When a run fails only on a flaky test, fix the test on
+main and rerun the failed jobs (`gh run rerun <id> --failed`) rather than releasing another
+version.
 To try a signed build locally:
 
 ```sh

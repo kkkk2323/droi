@@ -96,6 +96,11 @@ SDK: read the versioned docs (`https://docs.expo.dev/versions/v57.0.0/`) or the
 installed types before using an Expo module, and add Expo packages with
 `npx expo install` from `apps/mobile` so the versions match the SDK.
 
+## Releases and performance
+
+- Releasing: `scripts/release.sh <version>`, after the changelog; steps in `apps/native/docs/releases.md`.
+- CPU, memory or frame cost: how to measure and profile is in `apps/native/docs/performance.md`.
+
 ## Code Style
 
 - Go: `gofmt`; no cgo (MyGo builds with `CGO_ENABLED=0`); platform code in `_windows.go` /
