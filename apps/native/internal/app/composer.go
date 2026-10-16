@@ -916,6 +916,38 @@ func queuedText(q session.QueuedMessage) string {
 	return strings.Join(parts, " ")
 }
 
+// queuedContent is a queued message as the composer holds one: its text
+// and its images.
+func queuedContent(q session.QueuedMessage) (string, []attachments.Image) {
+	var parts []string
+	var images []attachments.Image
+	for _, b := range q.Content {
+		switch b.Type {
+		case protocol.ContentBlockTypeText:
+			var tb struct {
+				Text string `json:"text"`
+			}
+			_ = json.Unmarshal(b.Raw, &tb)
+			if tb.Text != "" {
+				parts = append(parts, tb.Text)
+			}
+		case protocol.ContentBlockTypeImage:
+			var ib struct {
+				Source protocol.Base64ImageSource `json:"source"`
+			}
+			_ = json.Unmarshal(b.Raw, &ib)
+			if ib.Source.Data != "" {
+				mt := string(ib.Source.MediaType)
+				if mt == "" {
+					mt = "image/png"
+				}
+				images = append(images, attachments.Image{ID: uuid.NewString(), Name: "Queued image." + strings.TrimPrefix(mt, "image/"), MediaType: mt, Data: ib.Source.Data})
+			}
+		}
+	}
+	return strings.Join(parts, "\n"), images
+}
+
 func isPaused(q session.QueuedMessage) bool { return q.Kind == session.KindLocalPausedAfterEsc }
 
 func isSteering(q session.QueuedMessage) bool {
@@ -956,6 +988,40 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 			s.ClearQueuedMessage(q.RequestID)
 		}()
 	}
+	// edit takes the message out of the queue and puts it back in the
+	// composer. One the Daemon holds comes back only once the Daemon has
+	// deleted it: had it gone out already, it would be sent twice.
+	edit := func(q session.QueuedMessage) {
+		text, images := queuedContent(q)
+		restore := func() {
+			cs := &v.composer
+			if strings.TrimSpace(cs.text) != "" {
+				text += "\n" + cs.text
+			}
+			cs.text = text
+			cs.images = append(images, cs.images...)
+			v.focused = false
+			v.saveDraft()
+		}
+		if !q.Kind.DaemonBacked() {
+			s.ClearQueuedMessage(q.RequestID)
+			restore()
+			return
+		}
+		go func() {
+			cl, err := a.ctl.Client()
+			if err == nil {
+				raw, _ := json.Marshal(map[string]any{"sessionId": v.id, "requestId": q.RequestID, "action": "delete"})
+				_, err = cl.ResolveQueuedUserMessage(a.ctx, raw)
+			}
+			if err != nil {
+				v.Fail(err)
+				return
+			}
+			s.ClearQueuedMessage(q.RequestID)
+			a.cfg.Update(restore)
+		}()
+	}
 	list := func() {
 		ui.Column(c).Role(ui.RoleList).Label(L("Queued messages")).Children(func() {
 			for _, q := range queued {
@@ -970,15 +1036,8 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 						state = L("Next")
 					}
 					k.Text(c, state, 11, 16.5).TextColor(t.MutedForeground).Shrink(0)
-					if isPaused(q) && k.IconButton(c, "pencil", L("Edit queued message"), 24).Clicked() {
-						text := queuedText(q)
-						remove(q)
-						cs := &v.composer
-						if strings.TrimSpace(cs.text) != "" {
-							text += "\n" + cs.text
-						}
-						cs.text = text
-						v.saveDraft()
+					if k.IconButton(c, "pencil", L("Edit queued message"), 24).Clicked() {
+						edit(q)
 					}
 					if k.IconButton(c, "x", L("Remove queued message"), 24).Clicked() {
 						remove(q)
