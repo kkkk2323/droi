@@ -77,7 +77,16 @@ func (h *harness) frame() {
 	for _, fn := range q {
 		fn()
 	}
+	keepTime(h.tt)
 	h.tt.Frame()
+}
+
+// keepTime moves the Tester's clock to the system's: the Fake Daemon answers
+// in real time, so the view's animations and timers have to follow it.
+func keepTime(tt *ui.Tester) {
+	if d := time.Since(tt.Now()); d > 0 {
+		tt.Advance(d)
+	}
 }
 
 func (h *harness) until(what string, ok func() bool) {
