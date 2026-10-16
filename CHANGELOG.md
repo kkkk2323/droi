@@ -1,3 +1,9 @@
+## 1.56.4 - 2026-10-16
+
+### Fixed
+
+- Droi uses much less CPU while a session works when you have thousands of sessions. The sidebar no longer reads when each session was first seen, or copies the whole session list, on every frame it draws. On Windows, with 4751 sessions, Droi went from about 15% to about 8% of one core while a session worked.
+
 ## 1.56.3 - 2026-10-15
 
 ### Fixed
