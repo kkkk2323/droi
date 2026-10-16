@@ -1,7 +1,7 @@
 {
   "name": "droi-workspace",
   "private": true,
-  "description": "Native Mac, Windows and iPhone client for Factory Droid, built with Go (MyGo) and Expo",
+  "description": "Native Mac, Windows and iPhone app for Factory Droid: your droid Sessions in one window and on your phone, built with Go (MyGo) and Expo",
   "type": "module",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
