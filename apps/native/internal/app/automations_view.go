@@ -87,8 +87,11 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 	s := &a.automations
 	s.live = s.live[:0]
 	var ids []string
-	for _, x := range sessions.MainSessions(listed) {
-		if id, _ := sessions.AutomationRun(x.Tags); id != "" && busy[x.SessionID] != "" && x.ArchivedAt == "" {
+	for _, x := range listed {
+		if x.CallingSessionID != "" || busy[x.SessionID] == "" {
+			continue
+		}
+		if id, _ := sessions.AutomationRun(x.Tags); id != "" && x.ArchivedAt == "" {
 			s.live = append(s.live, x)
 			ids = append(ids, x.SessionID)
 		}

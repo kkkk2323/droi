@@ -186,6 +186,11 @@ type listMemo struct {
 	recentRev uint64
 	recentOK  bool
 	recent    []sessions.RecentWorkspace
+	// firstSeen is decoded from firstSeenRaw, the stored sessionsFirstSeen,
+	// which holds every Session ever listed: decoding it takes about a
+	// millisecond with thousands of them.
+	firstSeenRaw string
+	firstSeen    map[string]float64
 }
 
 // sidebarGroups is the sidebar's Workspace groups, built again only when
@@ -260,8 +265,19 @@ func (a *App) noteSubagentsRunning(listed []sessions.Summary, busy map[string]ac
 	a.sidebar.subagentsRunning = subagents.RunningCounts(listed, runs)
 }
 
+// firstSeen is the stored sessionsFirstSeen, decoded again only when it
+// changed. Callers must not change the map.
+func (a *App) firstSeen() map[string]float64 {
+	m := &a.listMemo
+	raw, _ := a.prefs.Get(prefs.SessionsFirstSeen.Key)
+	if m.firstSeen == nil || raw != m.firstSeenRaw {
+		m.firstSeenRaw, m.firstSeen = raw, prefs.SessionsFirstSeen.Parse(raw)
+	}
+	return m.firstSeen
+}
+
 func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
-	seen := prefs.SessionsFirstSeen.Get(a.prefs)
+	seen := a.firstSeen()
 	if next := sessions.NoteFirstSeen(seen, listed, float64(a.cfg.Now().UnixMilli())); next != nil {
 		prefs.SessionsFirstSeen.Set(a.prefs, next)
 		seen = next

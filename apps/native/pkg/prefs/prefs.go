@@ -214,10 +214,14 @@ func (p Number) Set(s *Store, v float64) { s.Set(p.Key, strconv.FormatFloat(v, '
 type Map struct{ Key string }
 
 func (p Map) Get(s *Store) map[string]float64 {
+	v, _ := s.Get(p.Key)
+	return p.Parse(v)
+}
+
+// Parse is the map stored as v, empty when v is "" or unreadable.
+func (p Map) Parse(v string) map[string]float64 {
 	out := map[string]float64{}
-	if v, ok := s.Get(p.Key); ok {
-		_ = json.Unmarshal([]byte(v), &out)
-	}
+	_ = json.Unmarshal([]byte(v), &out)
 	return out
 }
 
