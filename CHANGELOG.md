@@ -1,3 +1,13 @@
+## 1.56.6 - 2026-10-16
+
+### Changed
+
+- Droi now runs on MyGo 0.5.5.
+
+### Fixed
+
+- Droi uses about half as much CPU while a session works. Spinners, pulsing dots, the typing cursor and the bouncing dots now only paint the window again as they move, without working out the whole window each time, and they stop asking for frames when they are scrolled out of view. On a Mac with 4751 sessions and a working session open, Droi went from about 33% to about 17% of one core.
+
 ## 1.56.5 - 2026-10-16
 
 ### Fixed
