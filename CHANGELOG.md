@@ -1,3 +1,15 @@
+## 1.56.7 - 2026-10-16
+
+### Changed
+
+- The status colors (working blue, success green, attention orange, error red, and the added and removed lines of a diff) now stay within sRGB. On a Mac's own screen they are a touch less vivid, by less than most eyes can tell, and the window takes about half the graphics memory: about 50 MB less for a large window.
+
+### Fixed
+
+- Droi uses much less memory and some less CPU while a session works. It no longer reads every message of the open session again each time one changes, only the ones that changed. With a long working session open, Droi went from about 18 MB to about 7 MB of new memory a second, and from 57 to 25 memory cleanups a minute.
+- With a pinned session, the sidebar no longer goes through every one of your sessions each time it is drawn, and Droi no longer copies the whole session list each time the window is drawn.
+- On the Automations page, after Run now, Pause or Resume, the page shows the new state right away. Before, it could keep showing the old one until its next refresh.
+
 ## 1.56.6 - 2026-10-16
 
 ### Changed
