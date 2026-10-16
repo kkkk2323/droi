@@ -63,8 +63,8 @@ func historyID(i int) string { return fmt.Sprintf("%08x-0000-4000-8000-%012x", i
 // longHistory is a history of Sessions shaped like a real one: of the first
 // 4379, 163 in 40 Workspaces changed in the last 3 days, 455 more in 118 in
 // the last 30 and the rest in 252 over the year; the subagents follow, the
-// first 6 called by Session 0. The Sessions' first-seen times go in the
-// returned preferences, as the window keeps them.
+// first 6 called by Session 0. The Sessions' first-seen times and two pinned
+// Sessions go in the returned preferences, as the window keeps them.
 func longHistory(sessionCount, subagentCount int) (fakedaemon.Scenario, *prefs.Store) {
 	const day = 24 * 60 * 60
 	now := time.Now().Unix()
@@ -105,5 +105,6 @@ func longHistory(sessionCount, subagentCount int) (fakedaemon.Scenario, *prefs.S
 		})
 	}
 	prefs.SessionsFirstSeen.Set(store, first)
+	prefs.PinnedSessions.Set(store, []string{historyID(1), historyID(2)})
 	return sc, store
 }

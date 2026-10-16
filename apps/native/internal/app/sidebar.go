@@ -369,9 +369,13 @@ func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 // of Workspace groups.
 func (a *App) foldable(c *ui.Context, label, key string, groups []sessions.Group, busy map[string]activity.Activity, fn func()) {
 	open := !a.foldedWorkspaces().Has(a.prefs, key)
+	// Only a folded header counts its busy Sessions; the Workspaces section
+	// holds nearly every Session, too many to gather on every frame.
 	var list []sessions.Summary
-	for _, g := range groups {
-		list = append(list, g.Sessions...)
+	if !open {
+		for _, g := range groups {
+			list = append(list, g.Sessions...)
+		}
 	}
 	a.sectionHeader(c, label, "", open, list, busy, func() { a.foldedWorkspaces().Toggle(a.prefs, key) }, nil)
 	if open {
