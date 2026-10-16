@@ -16,6 +16,9 @@ func TestTheNewSessionPageStartsASessionWithTheToolModePicked(t *testing.T) {
 		dv := h.a.sessionDefaults()
 		return dv != nil && len(dv.Models) > 0
 	})
+	// The page's first draft opens with the default mode; its request must
+	// come before the one the pick makes, which the test takes as last.
+	h.until("the first draft", func() bool { return h.count("daemon.initialize_session") > 0 })
 	h.frame()
 	h.click("Model and reasoning effort")
 	h.until("the Tools row", func() bool { _, ok := h.tt.Find("Tool calls"); return ok })
