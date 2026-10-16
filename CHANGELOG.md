@@ -1,3 +1,9 @@
+## 1.56.5 - 2026-10-16
+
+### Fixed
+
+- Droi uses less CPU while a session works with that session open. Its spinners, pulses and bouncing dots now move together at 24 frames a second, where before they drew about 38. Droi also no longer works out a session's subagents, or reads your sidebar settings, again on every frame. On a Mac with 4751 sessions, Droi went from about 43% to about 33% of one core while a session worked.
+
 ## 1.56.4 - 2026-10-16
 
 ### Fixed
