@@ -20,6 +20,8 @@ type askState struct {
 	step   int
 	chosen map[int][]string
 	custom map[int]*string
+	// folded hides the answers, so that the transcript above can be read.
+	folded bool
 }
 
 // customAnswer is the answer typed for question idx. Its text input is
@@ -267,7 +269,16 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 		if c.Shortcut(0, ui.KeyEscape) {
 			cancel()
 		}
-		ui.Row(c).Gap(k.Px(8)).Children(func() {
+		fold := l10n.L("Hide options")
+		if st.folded {
+			fold = l10n.L("Show options")
+		}
+		header := ui.ButtonBase(c).Label(fold).Expanded(!st.folded).FillWidth().Gap(k.Px(8)).Justify(ui.Start).Cursor(ui.CursorPointer)
+		chevron := t.MutedForeground
+		if header.Hovered() {
+			chevron = t.Foreground
+		}
+		header.Children(func() {
 			ui.Row(c).Gap(k.Px(6)).Children(func() {
 				k.Icon(c, "message-circle-question-mark", 12, t.MutedForeground)
 				k.Text(c, question.Topic, 11, 16.5).FontWeight(600).TextColor(t.MutedForeground)
@@ -277,8 +288,21 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 					k.Text(c, strconv.Itoa(st.step+1)+" / "+strconv.Itoa(len(q.Questions)), 10, 15).FontWeight(500).FontFeatures("tnum").TextColor(t.MutedForeground)
 				})
 			}
+			ui.Spacer(c)
+			rot := float32(0)
+			if st.folded {
+				rot = 180
+			}
+			k.Icon(c, "chevron-down", 12, chevron).Rotate(rot)
 		})
-		k.Text(c, question.Question, 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0).Selectable()
+		if header.Clicked() {
+			st.folded = !st.folded
+		}
+		text := k.Text(c, question.Question, 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0).Selectable()
+		if st.folded {
+			text.SingleLine()
+			return
+		}
 		if len(question.Options) > 0 {
 			role, group := ui.RoleRadio, ui.RoleRadioGroup
 			if multi {
