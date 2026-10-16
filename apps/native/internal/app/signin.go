@@ -142,7 +142,7 @@ func (a *App) signInPending(c *ui.Context, p *host.LoginPending) {
 		k.Text(c, p.UserCode, 20, 28).Font(k.Mono).LetterSpacing(k.Px(4)).Label(L("Sign-in code")).
 			Padding(k.Px(10), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).Background(t.Card)
 		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
-			kit.Dot(c, k.Px(6), t.MutedForeground.Alpha(0.4+0.3*float32(kit.PulseWave(c))))
+			kit.PulseDot(c, k.Px(6), func(w float32) ui.Color { return t.MutedForeground.Alpha(0.4 + 0.3*w) })
 			k.Text(c, L("Waiting for the browser"), 13, 18).TextColor(t.MutedForeground)
 		})
 		if p.VerificationURIComplete != "" {

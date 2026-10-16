@@ -509,10 +509,13 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 			if f := mcpDot[status]; f != nil {
 				dot = f(k)
 			}
-			d := kit.Dot(c, k.Px(8), dot).Role(ui.RoleImage).Label(label).Tooltip(label).Margin(k.Px(7), 0, 0, 0)
+			var d ui.Element
 			if status == "connecting" {
-				d.Opacity(float32(0.5 + 0.5*kit.PulseWave(c)))
+				d = kit.PulseDot(c, k.Px(8), func(w float32) ui.Color { return dot.Alpha(0.5 + 0.5*w) })
+			} else {
+				d = kit.Dot(c, k.Px(8), dot)
 			}
+			d.Role(ui.RoleImage).Label(label).Tooltip(label).Margin(k.Px(7), 0, 0, 0)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				ui.Row(c).Wrap().Gap(k.Px(6)).Children(func() {
 					k.Text(c, s.Name, 14, 20).FontWeight(500)

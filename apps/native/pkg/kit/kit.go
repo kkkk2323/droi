@@ -168,16 +168,17 @@ func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) ui.Ele
 }
 
 // AnimationSteps is how many frames a second the animations ask for. They
-// all ask for them at the same instants of each second, so that a spinner,
-// a pulse and bouncing dots shown together cost one frame a step, not one
-// each.
+// all move in frames that only paint (Painter.After), which repaint the
+// last frame built without running the view, and at the same instants of
+// each second, so that a spinner, a pulse and bouncing dots shown together
+// cost one such frame a step. One out of view asks for none.
 const AnimationSteps = 24
 
-// AnimationFrame is how far into its second the frame is, in ms, and asks
-// for a frame at the next step.
-func AnimationFrame(c *ui.Context) int {
-	ms := int(c.Now().UnixMilli() % 1000)
-	c.After(time.Duration(stepDelay(ms)) * time.Millisecond)
+// AnimationStep is how far into its second the frame p paints is, in ms,
+// and asks for the frame of the next step.
+func AnimationStep(p *ui.Painter) int {
+	ms := int(p.Now().UnixMilli() % 1000)
+	p.After(time.Duration(stepDelay(ms)) * time.Millisecond)
 	return ms
 }
 
@@ -191,20 +192,33 @@ func stepDelay(ms int) int {
 // Spinner is lucide's Loader2 turning once a second, as the web Client's
 // Spinner, a step at a time.
 func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
-	step := AnimationFrame(c) * AnimationSteps / 1000
-	return k.Icon(c, "loader-circle", size, color).Rotate(float32(step) * 360 / AnimationSteps)
+	icon := icons.Stroked("loader-circle", 2)
+	s := k.Px(size)
+	return ui.Box(c).Size(s, s).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+		step := AnimationStep(p) * AnimationSteps / 1000
+		p.Transform(ui.Rotation(float32(step)*360/AnimationSteps), r.X+r.W/2, r.Y+r.H/2, func() {
+			p.Icon(icon, r, color)
+		})
+	})
 }
 
-// PulseWave is Tailwind's animate-pulse, 1 at rest and 0.5 halfway
-// through each 2s.
-func PulseWave(c *ui.Context) float64 {
-	AnimationFrame(c)
-	ms := c.Now().UnixMilli() % 2000
-	x := float64(ms) / 1000
-	if x > 1 {
-		x = 2 - x
-	}
-	return 1 - x
+// Pulse paints e's box, rounded by radius, in the color color gives for
+// the wave of Tailwind's animate-pulse: 1 at rest, 0 halfway through each
+// 2 s.
+func Pulse(e ui.Element, radius float32, color func(wave float32) ui.Color) ui.Element {
+	return e.Draw(func(p *ui.Painter, r ui.Rect) {
+		AnimationStep(p)
+		x := float32(p.Now().UnixMilli()%2000) / 1000
+		if x > 1 {
+			x = 2 - x
+		}
+		p.Fill(r, color(1-x), radius)
+	})
+}
+
+// PulseDot is a Dot whose color pulses as Pulse's does.
+func PulseDot(c *ui.Context, size float32, color func(wave float32) ui.Color) ui.Element {
+	return Pulse(ui.Box(c).Size(size, size).Shrink(0), size/2, color)
 }
 
 // Selected marks e selected for assistive technology without MyGo's look

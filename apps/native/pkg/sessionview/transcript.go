@@ -177,16 +177,20 @@ func (v *View) activityRow(c *ui.Context, label string) {
 // second apart: up 25% of the line and back each second.
 func bounceDot(c *ui.Context, k *kit.Kit, i int, color ui.Color) {
 	const period = 1000
-	ms := (kit.AnimationFrame(c) + period - i*150) % period
-	p := float32(ms) / period
-	var y float32
-	if p < 0.5 {
-		y = -k.Px(4) * (1 - (2*p)*(2*p))
-	} else {
-		q := 2*p - 1
-		y = -k.Px(4) * q * q
-	}
-	kit.Dot(c, k.Px(4), color).Margin(y, 0, -y, 0)
+	size, lift := k.Px(4), k.Px(4)
+	ui.Box(c).Size(size, size).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+		ms := (kit.AnimationStep(p) + period - i*150) % period
+		x := float32(ms) / period
+		var y float32
+		if x < 0.5 {
+			y = -lift * (1 - (2*x)*(2*x))
+		} else {
+			q := 2*x - 1
+			y = -lift * q * q
+		}
+		r.Y += y
+		p.Fill(r, color, size/2)
+	})
 }
 
 func (v *View) picture(c *ui.Context, id string, img transcript.Image, maxH float32, label string) {

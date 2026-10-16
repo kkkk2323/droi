@@ -194,8 +194,8 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 				}
 				v.reply(c, b.Text, style, r.streaming)
 				if r.streaming {
-					pulse := 0.6 * (0.5 + 0.5*float32(kit.PulseWave(c)))
-					ui.Box(c).Label(l10n.L("Assistant is typing")).Size(k.Px(8), k.Px(16)).Radius(k.Px(2)).Background(t.Foreground.Alpha(pulse)).Margin(0, 0, 0, k.Px(2))
+					cursor := ui.Box(c).Label(l10n.L("Assistant is typing")).Size(k.Px(8), k.Px(16)).Margin(0, 0, 0, k.Px(2))
+					kit.Pulse(cursor, k.Px(2), func(w float32) ui.Color { return t.Foreground.Alpha(0.6 * (0.5 + 0.5*w)) })
 				}
 			case transcript.Picture:
 				v.picture(c, b.ID, b.Image, 288, l10n.L("Image from Droid"))

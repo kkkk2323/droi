@@ -257,8 +257,7 @@ func (a *App) followingStartView(c *ui.Context, status controller.Status) {
 		if status.Failure == nil {
 			ui.Row(c).Grow(1).Center().Children(func() {
 				ui.Row(c).Role(ui.RoleStatus).Label(L("Connecting")).Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
-					wave := float32(kit.PulseWave(c))
-					kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.4+0.3*wave))
+					kit.PulseDot(c, k.Px(8), func(w float32) ui.Color { return t.MutedForeground.Alpha(0.4 + 0.3*w) })
 					k.Text(c, L("Connecting to %s", name), 14, 20).TextColor(t.MutedForeground)
 				})
 			})

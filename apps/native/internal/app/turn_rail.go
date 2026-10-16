@@ -262,15 +262,23 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, width float32)
 							r.preview = i
 						}
 						w, color := k.Px(12), t.MutedForeground.Alpha(0.4)
+						jumping := r.jumpingTo == it.id
 						switch {
-						case r.jumpingTo == it.id:
-							w, color = k.Px(20), t.Info.Alpha(0.6+0.4*float32(kit.PulseWave(c)))
+						case jumping:
+							w = k.Px(20)
 						case current:
 							w, color = k.Px(20), t.Foreground
 						case r.preview == i:
 							w, color = k.Px(18), t.MutedForeground
 						}
-						b.Children(func() { ui.Box(c).Width(w).Height(k.Px(2)).Radius(k.Px(1)).Background(color) })
+						b.Children(func() {
+							mark := ui.Box(c).Width(w).Height(k.Px(2))
+							if jumping {
+								kit.Pulse(mark, k.Px(1), func(wave float32) ui.Color { return t.Info.Alpha(0.6 + 0.4*wave) })
+							} else {
+								mark.Radius(k.Px(1)).Background(color)
+							}
+						})
 						if b.Clicked() {
 							v.jumpTo(it)
 						}
