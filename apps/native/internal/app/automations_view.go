@@ -49,6 +49,9 @@ type automationsState struct {
 	listErr string
 	listAt  time.Time
 	loading bool
+	// listAgain is a forced read asked for while one was under way, which
+	// may answer from before the change that asked for it.
+	listAgain bool
 
 	// workdirs are the Workspaces of the Automations, read from their
 	// folders with the list.
@@ -58,6 +61,8 @@ type automationsState struct {
 	runsErr  map[string]string
 	runsAt   map[string]time.Time
 	runsBusy map[string]bool
+	// runsAgain is listAgain for the runs of each Automation.
+	runsAgain map[string]bool
 
 	form automationForm
 	// formFor is the Automation the form was filled from, newAutomationTab
@@ -160,7 +165,11 @@ func (a *App) enterAutomations(r Route) {
 
 func (a *App) loadAutomations(force bool) {
 	s := &a.automations
-	if s.loading || a.ctl == nil || !force && !s.listAt.IsZero() && a.cfg.Now().Sub(s.listAt) < automationsRefresh {
+	if s.loading {
+		s.listAgain = s.listAgain || force
+		return
+	}
+	if a.ctl == nil || !force && !s.listAt.IsZero() && a.cfg.Now().Sub(s.listAt) < automationsRefresh {
 		return
 	}
 	s.loading = true
@@ -183,9 +192,13 @@ func (a *App) loadAutomations(force bool) {
 				s.listErr = L("Automations did not load: %s", err)
 				// Soon again: the Daemon may only be starting.
 				s.listAt = s.listAt.Add(5*time.Second - automationsRefresh)
-				return
+			} else {
+				s.listErr, s.list, s.workdirs = "", res.Automations, workdirs
 			}
-			s.listErr, s.list, s.workdirs = "", res.Automations, workdirs
+			if s.listAgain {
+				s.listAgain = false
+				a.loadAutomations(true)
+			}
 		})
 	}()
 }
@@ -194,6 +207,7 @@ func (a *App) loadRuns(id string, force bool) {
 	s := &a.automations
 	if s.runs == nil {
 		s.runs, s.runsErr, s.runsAt, s.runsBusy = map[string][]protocol.AutomationRunRecord{}, map[string]string{}, map[string]time.Time{}, map[string]bool{}
+		s.runsAgain = map[string]bool{}
 	}
 	every := runsRefresh
 	for _, r := range s.runs[id] {
@@ -201,7 +215,11 @@ func (a *App) loadRuns(id string, force bool) {
 			every = runningRefresh
 		}
 	}
-	if s.runsBusy[id] || a.ctl == nil || !force && !s.runsAt[id].IsZero() && a.cfg.Now().Sub(s.runsAt[id]) < every {
+	if s.runsBusy[id] {
+		s.runsAgain[id] = s.runsAgain[id] || force
+		return
+	}
+	if a.ctl == nil || !force && !s.runsAt[id].IsZero() && a.cfg.Now().Sub(s.runsAt[id]) < every {
 		return
 	}
 	s.runsBusy[id] = true
@@ -217,9 +235,13 @@ func (a *App) loadRuns(id string, force bool) {
 			s.runsAt[id] = a.cfg.Now()
 			if err != nil {
 				s.runsErr[id] = err.Error()
-				return
+			} else {
+				s.runsErr[id], s.runs[id] = "", res.Runs
 			}
-			s.runsErr[id], s.runs[id] = "", res.Runs
+			if s.runsAgain[id] {
+				s.runsAgain[id] = false
+				a.loadRuns(id, true)
+			}
 		})
 	}()
 }

@@ -58,6 +58,8 @@ jobs:
             GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -o /dev/null ./apps/native
           done
           go test ./apps/native/...
+          # On one CPU, a view test that races the Fake Daemon's answers fails here, not in a Release.
+          go test -cpu 1 ./apps/native/internal/app
 
   phone-e2e:
     runs-on: ubuntu-latest

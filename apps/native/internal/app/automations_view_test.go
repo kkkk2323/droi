@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -120,11 +121,15 @@ func TestTheAutomationsPageRunsPausesAndOpensAnAutomation(t *testing.T) {
 	if p.AutomationID != "daily-review" {
 		t.Fatalf("dispatched %s", req.Params)
 	}
-	h.until("the new run", func() bool { return h.hasText("Running") && h.hasText("Started a run.") })
+	// The notice goes after a few seconds, which a slow read of the runs can outlast.
+	h.until("the run's notice", func() bool { return h.hasText("Started a run.") })
+	h.until("the new run", func() bool { return h.hasText("Running") })
 
 	h.click("More actions")
 	h.click("Pause")
-	h.until("the paused status", func() bool { return h.hasText("Paused.") && h.hasText("Paused") })
+	h.until("the paused notice", func() bool { return h.hasText("Paused.") })
+	// The notice comes before the list is read again; the menu offers Resume once the status says so.
+	h.until("the paused status", func() bool { return slices.Contains(h.tt.Texts(), "Paused") })
 	h.click("More actions")
 	h.click("Resume")
 	h.until("the active status", func() bool { return h.hasText("Resumed.") })
