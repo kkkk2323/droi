@@ -167,22 +167,39 @@ func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) ui.Ele
 	return b
 }
 
+// AnimationSteps is how many frames a second the animations ask for. They
+// all ask for them at the same instants of each second, so that a spinner,
+// a pulse and bouncing dots shown together cost one frame a step, not one
+// each.
+const AnimationSteps = 24
+
+// AnimationFrame is how far into its second the frame is, in ms, and asks
+// for a frame at the next step.
+func AnimationFrame(c *ui.Context) int {
+	ms := int(c.Now().UnixMilli() % 1000)
+	c.After(time.Duration(stepDelay(ms)) * time.Millisecond)
+	return ms
+}
+
+// stepDelay is how many ms after ms of its second the next step starts: at
+// least 1, so that a frame on a step does not ask for itself again.
+func stepDelay(ms int) int {
+	next := ms*AnimationSteps/1000 + 1
+	return (next*1000+AnimationSteps-1)/AnimationSteps - ms
+}
+
 // Spinner is lucide's Loader2 turning once a second, as the web Client's
-// Spinner. It asks for a frame only when its angle moves a twelfth of a
-// turn, not at every refresh of the display.
+// Spinner, a step at a time.
 func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
-	const steps, period = 24, 1000
-	ms := int(c.Now().UnixMilli() % period)
-	step := ms * steps / period
-	c.After(time.Duration((step+1)*period/steps-ms) * time.Millisecond)
-	return k.Icon(c, "loader-circle", size, color).Rotate(float32(step) * 360 / steps)
+	step := AnimationFrame(c) * AnimationSteps / 1000
+	return k.Icon(c, "loader-circle", size, color).Rotate(float32(step) * 360 / AnimationSteps)
 }
 
 // PulseWave is Tailwind's animate-pulse, 1 at rest and 0.5 halfway
 // through each 2s.
 func PulseWave(c *ui.Context) float64 {
+	AnimationFrame(c)
 	ms := c.Now().UnixMilli() % 2000
-	c.After(50 * time.Millisecond)
 	x := float64(ms) / 1000
 	if x > 1 {
 		x = 2 - x

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"slices"
 	"time"
 
@@ -40,17 +41,30 @@ func (a *App) subagentNavOf(listed []sessions.Summary, sel *sessions.Summary, id
 	if sel == nil {
 		return n
 	}
-	if sel.CallingSessionID != "" {
-		n.trail = subagents.CallerTrail(listed, id, sel.CallingSessionID)
-		n.siblings = subagents.Siblings(listed, sel.CallingSessionID)
+	m := &a.listMemo
+	key := fmt.Sprint(a.shownRev, id, sel.CallingSessionID, sel.CallingToolUseID, sel.ParentID)
+	if m.navKey != key {
+		if sel.CallingSessionID != "" {
+			n.trail = subagents.CallerTrail(listed, id, sel.CallingSessionID)
+			n.siblings = subagents.Siblings(listed, sel.CallingSessionID)
+		}
+		callers := []string{id}
+		for _, s := range sessions.ContinuationChain(listed, *sel) {
+			callers = append(callers, s.SessionID)
+		}
+		n.called = subagents.Of(listed, callers)
+		m.navKey, m.nav = key, n
 	}
-	callers := []string{id}
-	for _, s := range sessions.ContinuationChain(listed, *sel) {
-		callers = append(callers, s.SessionID)
-	}
-	n.called = subagents.Of(listed, callers)
+	n = m.nav
 	if len(n.siblings)+len(n.called) > 0 {
-		n.runs = a.subagentRuns(listed)
+		n.runs = map[string]subagents.Run{}
+		for _, list := range [][]sessions.Summary{n.siblings, n.called} {
+			for _, s := range list {
+				if r, ok := a.subagentRun(s.SessionID); ok {
+					n.runs[s.SessionID] = r
+				}
+			}
+		}
 	}
 	return n
 }
@@ -207,15 +221,6 @@ func (v *sessionView) sessionTrail(c *ui.Context, n subagentNav, title string) {
 			}
 		})
 	})
-}
-
-// subagentRuns are the runs of the listed subagents this Client knows of,
-// by their Session.
-func (a *App) subagentRuns(listed []sessions.Summary) map[string]subagents.Run {
-	if a.ctl == nil {
-		return map[string]subagents.Run{}
-	}
-	return sessionview.SubagentRuns(a.ctl.Store(), listed)
 }
 
 // subagentRun is what the Store knows of one subagent's run.

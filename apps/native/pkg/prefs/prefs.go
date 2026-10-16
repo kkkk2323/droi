@@ -20,6 +20,39 @@ type Store struct {
 	values    map[string]string
 	listeners map[int]func()
 	next      int
+	// lists are the List values decoded, each with the string it was
+	// decoded from: views read them many times a frame.
+	lists map[string]decodedList
+}
+
+type decodedList struct {
+	raw  string
+	list []string
+	ok   bool
+}
+
+// list is the List stored under key, decoded again only when it changed.
+// Callers must not change it.
+func (s *Store) list(key string) ([]string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	raw, ok := s.values[key]
+	if !ok {
+		return nil, false
+	}
+	if d, ok := s.lists[key]; ok && d.raw == raw {
+		return d.list, d.ok
+	}
+	var out []string
+	ok = json.Unmarshal([]byte(raw), &out) == nil
+	if !ok {
+		out = nil
+	}
+	if s.lists == nil {
+		s.lists = map[string]decodedList{}
+	}
+	s.lists[key] = decodedList{raw: raw, list: out, ok: ok}
+	return out, ok
 }
 
 // Open loads the file, empty when it is missing or unreadable.
@@ -152,15 +185,11 @@ func (p String) Set(s *Store, v string) { s.Set(p.Key, v) }
 type List struct{ Key string }
 
 func (p List) Get(s *Store) []string {
-	v, ok := s.Get(p.Key)
+	list, ok := s.list(p.Key)
 	if !ok {
 		return nil
 	}
-	var out []string
-	if json.Unmarshal([]byte(v), &out) != nil {
-		return nil
-	}
-	return out
+	return slices.Clone(list)
 }
 
 func (p List) Set(s *Store, v []string) {
@@ -177,7 +206,10 @@ func (p List) Set(s *Store, v []string) {
 func (p List) On(computer string) List { return List{Key: onComputer(p.Key, computer)} }
 
 // Has reports whether the list holds entry.
-func (p List) Has(s *Store, entry string) bool { return slices.Contains(p.Get(s), entry) }
+func (p List) Has(s *Store, entry string) bool {
+	list, _ := s.list(p.Key)
+	return slices.Contains(list, entry)
+}
 
 // Toggle adds entry, or takes it out when listed.
 func (p List) Toggle(s *Store, entry string) {

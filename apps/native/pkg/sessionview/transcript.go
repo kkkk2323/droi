@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
@@ -178,8 +177,7 @@ func (v *View) activityRow(c *ui.Context, label string) {
 // second apart: up 25% of the line and back each second.
 func bounceDot(c *ui.Context, k *kit.Kit, i int, color ui.Color) {
 	const period = 1000
-	ms := (int(c.Now().UnixMilli()) + period - i*150) % period
-	c.After(33 * time.Millisecond)
+	ms := (kit.AnimationFrame(c) + period - i*150) % period
 	p := float32(ms) / period
 	var y float32
 	if p < 0.5 {

@@ -191,6 +191,15 @@ type listMemo struct {
 	// millisecond with thousands of them.
 	firstSeenRaw string
 	firstSeen    map[string]float64
+	// notedRev and notedRaw are the list and the stored sessionsFirstSeen
+	// NoteFirstSeen last looked through, which takes a lookup per Session.
+	notedRev uint64
+	notedRaw string
+	noted    bool
+	// navKey names the list and the Session nav was found for, without its
+	// runs, which change without the list.
+	navKey string
+	nav    subagentNav
 }
 
 // sidebarGroups is the sidebar's Workspace groups, built again only when
@@ -278,9 +287,13 @@ func (a *App) firstSeen() map[string]float64 {
 
 func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 	seen := a.firstSeen()
-	if next := sessions.NoteFirstSeen(seen, listed, float64(a.cfg.Now().UnixMilli())); next != nil {
-		prefs.SessionsFirstSeen.Set(a.prefs, next)
-		seen = next
+	if m := &a.listMemo; len(listed) > 0 && (!m.noted || m.notedRev != a.shownRev || m.notedRaw != m.firstSeenRaw) {
+		if next := sessions.NoteFirstSeen(seen, listed, float64(a.cfg.Now().UnixMilli())); next != nil {
+			prefs.SessionsFirstSeen.Set(a.prefs, next)
+			seen = next
+		} else {
+			m.noted, m.notedRev, m.notedRaw = true, a.shownRev, m.firstSeenRaw
+		}
 	}
 	o := sessions.DefaultOrder
 	if w := prefs.WorkspaceSort.Get(a.prefs); w != "" {
