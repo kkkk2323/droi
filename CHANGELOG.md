@@ -1,3 +1,14 @@
+## 1.56.8 - 2026-10-16
+
+### Added
+
+- A question from Droid can be folded: click the top line of its card to hide the answers and read the conversation above it, and click it again to show them. What you picked stays picked.
+- A session you left with an unsent message shows "Draft" with a pencil in the sidebar, until you send it. The session you are looking at does not, as its message box shows the text.
+
+### Changed
+
+- Every queued message can now be edited, not only one paused after Esc. The pencil takes it out of the queue and puts its text and images back in the message box. If the message went out in the meantime, it stays sent and is not put back, so it is never sent twice.
+
 ## 1.56.7 - 2026-10-16
 
 ### Changed
