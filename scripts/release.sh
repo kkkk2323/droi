@@ -49,8 +49,15 @@ for _ in $(seq 30); do
   sleep 5
 done
 [ -n "$run" ] || fail "no Release run for $tag"
-if ! gh run watch "$run" --exit-status --interval 30 >/dev/null; then
-  echo "release: run $run failed: gh run view $run --log-failed" >&2
+# gh run watch also stops on a network error; the run's own conclusion decides.
+conclusion=""
+for _ in $(seq 10); do
+  gh run watch "$run" --interval 30 >/dev/null 2>&1 || sleep 10
+  conclusion=$(gh run view "$run" --json status,conclusion --jq 'select(.status == "completed") | .conclusion' 2>/dev/null || true)
+  [ -n "$conclusion" ] && break
+done
+if [ "$conclusion" != success ]; then
+  echo "release: run $run ${conclusion:-did not finish}: gh run view $run --log-failed" >&2
   echo "A flaky test: fix it on main, then gh run rerun $run --failed (no new version)." >&2
   exit 1
 fi
