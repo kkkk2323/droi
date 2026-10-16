@@ -74,10 +74,12 @@ func TestSessionDefaultsSavesTheSpecFolder(t *testing.T) {
 	h.until("the project folder", func() bool { return h.hasText("Specs go to the project's .factory/docs") })
 	h.click("Spec save folder")
 	h.click("Custom…")
+	// The folder comes back off the UI thread and saves from the window's
+	// queue, which only frames run.
+	h.until("the custom folder", func() bool { return h.hasText("Custom: /Users/dev/specs") })
 	if p := h.defaultsPatchSent(2); p["specSaveDir"] != "/Users/dev/specs" {
 		t.Fatalf("update_session_defaults %v", p)
 	}
-	h.until("the custom folder", func() bool { return h.hasText("Custom: /Users/dev/specs") })
 }
 
 // Each Subagent tier can have its own model and reasoning level.

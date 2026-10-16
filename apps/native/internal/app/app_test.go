@@ -253,6 +253,7 @@ func (h *harness) hasText(sub string) bool {
 
 func (h *harness) click(name string) {
 	h.t.Helper()
+	keepTime(h.tt)
 	if err := h.tt.Click(name); err != nil {
 		h.t.Fatalf("click %q: %v", name, err)
 	}
