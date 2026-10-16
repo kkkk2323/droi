@@ -14,18 +14,23 @@ import (
 // list may lack it until the run ends, or carry it without its caller. Every
 // view (Task cards, the header's menu and trail, the sidebar) reads this one
 // list, so they cannot tell different stories. rev is bumped when the
-// subagents added change, for what is built from the list.
+// subagents added change, for what is built from the list. listed is the
+// snapshot's, shared with other frames: it is copied before a write.
 func (a *App) knownSubagents(listed []sessions.Summary, rev uint64) ([]sessions.Summary, uint64) {
 	if a.ctl == nil {
 		return listed, rev
 	}
 	store := a.ctl.Store()
 	var sig []string
+	owned := false
 	var extra []sessions.Summary
 	for parent, children := range store.SubagentSessionIDsByParent() {
 		for toolUse, id := range children {
 			if i := slices.IndexFunc(listed, func(s sessions.Summary) bool { return s.SessionID == id }); i >= 0 {
 				if listed[i].CallingSessionID == "" {
+					if !owned {
+						listed, owned = slices.Clone(listed), true
+					}
 					listed[i].CallingSessionID, listed[i].CallingToolUseID = parent, toolUse
 					sig = append(sig, "caller:"+id)
 				}

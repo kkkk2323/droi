@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -149,6 +150,11 @@ type App struct {
 	listGen uint64
 	// listRev counts the changes to listed, for what is built from it.
 	listRev uint64
+	// listCopy is listed at listCopyRev, which every frame gets until the
+	// list changes: copying thousands of Sessions per frame was most of
+	// what a frame allocated. Frames and searches only read it.
+	listCopy    []sessions.Summary
+	listCopyRev uint64
 	// pageIDs are the Sessions of the first page last read.
 	pageIDs map[string]bool
 	// older is how far the pages after the first are read; olderGen counts
@@ -685,7 +691,11 @@ func (a *App) snapshot() (controller.Status, []sessions.Summary, map[string]stri
 	for k, v := range a.busy {
 		busy[k] = v
 	}
-	return a.status, append([]sessions.Summary(nil), a.listed...), busy, a.listErr, a.listDone, a.listRev
+	if a.listCopy == nil || a.listCopyRev != a.listRev {
+		// Clipped, so that a reader's append makes a new array.
+		a.listCopy, a.listCopyRev = slices.Clip(slices.Clone(a.listed)), a.listRev
+	}
+	return a.status, a.listCopy, busy, a.listErr, a.listDone, a.listRev
 }
 
 // Go shows another page.
