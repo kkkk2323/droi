@@ -56,7 +56,14 @@ type Tokens struct {
 	SidebarMutedForeground ui.Color
 }
 
-func ok(l, c, h float32) ui.Color { return ui.Oklch(l, c, h) }
+// ok is CSS's oklch(l c h) as its nearest sRGB color. A color beyond sRGB
+// has MyGo draw the window into float16 drawables on a Display P3 screen,
+// twice the memory of 8-bit ones (about 50 MB for a large window), for
+// status colors that differ from their nearest sRGB ones by a ΔE under 2.2.
+func ok(l, c, h float32) ui.Color {
+	x := ui.Oklch(l, c, h)
+	return ui.Color{R: x.R, G: x.G, B: x.B, A: x.A}
+}
 
 var light = Tokens{
 	Name:                   Light,
