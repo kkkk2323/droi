@@ -109,6 +109,7 @@ type View struct {
 
 	list    ui.ListState
 	entries []*transcript.Entry
+	builder transcript.Builder
 	built   int64 // the Session's revision entries were built at
 	// frameRows are the list's rows of the frame being built.
 	frameRows []transcriptRow
@@ -454,7 +455,7 @@ func (v *View) refresh(s *session.Session) {
 		return
 	}
 	v.built = rev
-	next := transcript.Build(s.DisplayMessages())
+	next := v.builder.Build(s.DisplayMessages())
 	v.entries, _ = transcript.ReuseUnchanged(v.entries, next)
 }
 

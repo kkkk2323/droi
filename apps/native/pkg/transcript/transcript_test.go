@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -253,6 +255,74 @@ func TestReuseUnchanged(t *testing.T) {
 	eq(t, changed, true)
 	if next[0] != first[0] || next[1] == first[1] {
 		t.Fatal("only the changed entry is new")
+	}
+}
+
+// A Builder builds what Build does as a Session's messages change: a turn
+// streams, results come, an older page comes before, a message changes or
+// goes.
+func TestABuilderBuildsWhatBuildDoes(t *testing.T) {
+	withID := func(id string, m protocol.FactoryDroidMessage) protocol.FactoryDroidMessage { m.ID = id; return m }
+	older := []protocol.FactoryDroidMessage{
+		withID("o1", msg("user", `[{"type":"text","text":"earlier"}]`)),
+		withID("o2", msg("assistant", `[{"type":"thinking","thinking":"hm","signature":"","durationMs":5},{"type":"text","text":"before"}]`)),
+	}
+	base := []protocol.FactoryDroidMessage{
+		withID("u1", msg("user", `[{"type":"text","text":"run it"},{"type":"image","source":{"type":"base64","mediaType":"image/png","data":"AAAA"}}]`)),
+		withID("a1", msg("assistant", `[{"type":"tool_use","id":"run","name":"Script","input":{"script":"x"}},{"type":"tool_use","id":"t","name":"Task","input":{"subagent_type":"worker"}}]`)),
+		withID("a2", msg("assistant", `[{"type":"tool_use","id":"run-1","name":"Read","input":{"file_path":"/a"},"scriptExecution":{"runId":"run","outerToolUseId":"run"}}]`)),
+	}
+	streaming := func(text string) protocol.FactoryDroidMessage {
+		return withID("a3", msg("assistant", `[{"type":"text","text":"`+text+`","isStreaming":true}]`))
+	}
+	result := func(id, content string) protocol.FactoryDroidMessage {
+		return withID("r-"+id, msg("tool", `[{"type":"tool_result","toolUseId":"`+id+`","content":"`+content+`"}]`))
+	}
+	steps := [][]protocol.FactoryDroidMessage{
+		base,
+		append(slices.Clone(base), streaming("Wor")),
+		append(slices.Clone(base), streaming("Working on it")),
+		append(slices.Clone(base), result("run-1", "file a"), streaming("Working on it")),
+		append(slices.Clone(base), result("run-1", "file a"), result("run", "done"), result("t", "report"), withID("a3", msg("assistant", `[{"type":"text","text":"Done."}]`))),
+		append(slices.Concat(older, base), result("run-1", "file a"), result("run", "done"), withID("a3", msg("assistant", `[{"type":"text","text":"Done."}]`))),
+		append(slices.Concat(older, base[:1]), withID("a1", msg("assistant", `[{"type":"text","text":"edited"}]`))),
+		append(slices.Clone(older), withID("a1", msg("assistant", `[]`)), withID("a1", msg("assistant", `[{"type":"text","text":"twice"}]`))),
+		nil,
+		base,
+	}
+	var b Builder
+	for i, step := range steps {
+		if got, want := b.Build(step), Build(step); !reflect.DeepEqual(got, want) {
+			t.Fatalf("step %d: got %#v\nwant %#v", i, got, want)
+		}
+	}
+}
+
+// Building again after a message comes decodes only that message: the
+// others' blocks are kept as they were.
+func TestABuilderDecodesOnlyWhatChanged(t *testing.T) {
+	big := strings.Repeat("line of output ", 2000)
+	var msgs []protocol.FactoryDroidMessage
+	for i := range 200 {
+		id := fmt.Sprintf("call-%d", i)
+		msgs = append(msgs,
+			msg("assistant", `[{"type":"tool_use","id":"`+id+`","name":"Execute","input":{"command":"ls"}}]`),
+			msg("tool", `[{"type":"tool_result","toolUseId":"`+id+`","content":"`+big+`"}]`))
+	}
+	allocated := func(fn func()) uint64 {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		fn()
+		runtime.ReadMemStats(&after)
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	var b Builder
+	first := allocated(func() { b.Build(msgs) })
+	msgs = append(msgs, msg("assistant", `[{"type":"text","text":"done"}]`))
+	again := allocated(func() { b.Build(msgs) })
+	if again*20 > first {
+		t.Fatalf("building again allocated %d bytes, the first build %d", again, first)
 	}
 }
 

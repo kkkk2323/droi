@@ -5,6 +5,7 @@
 package transcript
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -103,6 +104,13 @@ func decodeInput(raw map[string]json.RawMessage) map[string]any {
 }
 
 func newCall(b protocol.ContentBlock, use protocol.ToolUse, result *protocol.ToolResult) *ToolCall {
+	input, rawInput, keys := callInput(b, use)
+	return &ToolCall{Use: use, Input: input, RawInput: rawInput, Keys: keys, Result: result}
+}
+
+// callInput is a tool use's input decoded, as the Daemon sent it, and its
+// keys in that order.
+func callInput(b protocol.ContentBlock, use protocol.ToolUse) (map[string]any, json.RawMessage, []string) {
 	var raw struct {
 		Input json.RawMessage `json:"input"`
 	}
@@ -110,7 +118,7 @@ func newCall(b protocol.ContentBlock, use protocol.ToolUse, result *protocol.Too
 	if len(raw.Input) == 0 || raw.Input[0] != '{' {
 		raw.Input = json.RawMessage("{}")
 	}
-	return &ToolCall{Use: use, Input: decodeInput(use.Input), RawInput: raw.Input, Keys: orderedKeys(raw.Input), Result: result}
+	return decodeInput(use.Input), raw.Input, orderedKeys(raw.Input)
 }
 
 func decode[T any](b protocol.ContentBlock) (T, bool) {
@@ -120,17 +128,124 @@ func decode[T any](b protocol.ContentBlock) (T, bool) {
 
 // Build makes the transcript of the messages a Session shows.
 func Build(messages []protocol.FactoryDroidMessage) []*Entry {
+	var b Builder
+	return b.Build(messages)
+}
+
+// Builder makes a Session's transcript again each time its messages change,
+// decoding each content block once: while a turn streams only its last
+// messages change, and a page of older messages leaves the others as they
+// were. Decoding every block of a long Session again on each change was
+// most of what a working Session's window allocated.
+type Builder struct {
+	messages map[string]*seenMessage
+	gen      uint64
+}
+
+// seenMessage is a message's blocks as the last Build decoded them.
+type seenMessage struct {
+	gen    uint64
+	blocks []*decodedBlock
+}
+
+// decodedBlock is what Build reads from one content block, kept while the
+// block's JSON stays the same. Builds share its values, which no one changes.
+type decodedBlock struct {
+	typ, id    string
+	raw        json.RawMessage
+	ok         bool
+	text       string
+	streaming  bool
+	durationMs *float64
+	image      Image
+	use        protocol.ToolUse
+	input      map[string]any
+	rawInput   json.RawMessage
+	keys       []string
+	result     *protocol.ToolResult
+}
+
+func decodeBlock(b protocol.ContentBlock, id string) *decodedBlock {
+	d := &decodedBlock{typ: b.Type, id: id, raw: b.Raw}
+	switch b.Type {
+	case protocol.ContentBlockTypeText:
+		t, _ := decode[protocol.TextBlock](b)
+		d.text, d.ok = t.Text, t.Text != ""
+		d.streaming = d.ok && session.IsStreaming(b)
+	case protocol.ContentBlockTypeImage:
+		im, _ := decode[protocol.ImageBlock](b)
+		d.image, d.ok = Image{string(im.Source.MediaType), im.Source.Data}, im.Source.Type == "base64"
+	case protocol.ContentBlockTypeThinking:
+		t, _ := decode[protocol.ThinkingBlock](b)
+		d.text, d.durationMs, d.ok = t.Thinking, t.DurationMs, t.Thinking != ""
+		d.streaming = d.ok && session.IsStreaming(b)
+	case protocol.ContentBlockTypeToolUse:
+		d.use, d.ok = decode[protocol.ToolUse](b)
+		if d.ok {
+			d.input, d.rawInput, d.keys = callInput(b, d.use)
+		}
+	case protocol.ContentBlockTypeToolResult:
+		var r protocol.ToolResult
+		r, d.ok = decode[protocol.ToolResult](b)
+		d.result = &r
+	}
+	return d
+}
+
+// blocks are message m's blocks decoded, those unchanged since the last
+// Build as it left them.
+func (bl *Builder) blocks(m protocol.FactoryDroidMessage) []*decodedBlock {
+	seen := bl.messages[m.ID]
+	// A message without an id, or with one twice in a list, is decoded anew.
+	if m.ID == "" || seen != nil && seen.gen == bl.gen {
+		out := make([]*decodedBlock, len(m.Content))
+		for i, b := range m.Content {
+			out[i] = decodeBlock(b, fmt.Sprintf("%s:%d", m.ID, i))
+		}
+		return out
+	}
+	if seen == nil {
+		seen = &seenMessage{}
+		bl.messages[m.ID] = seen
+	}
+	seen.gen = bl.gen
+	if len(seen.blocks) > len(m.Content) {
+		seen.blocks = seen.blocks[:len(m.Content)]
+	}
+	for len(seen.blocks) < len(m.Content) {
+		seen.blocks = append(seen.blocks, nil)
+	}
+	for i, b := range m.Content {
+		if d := seen.blocks[i]; d == nil || d.typ != b.Type || !bytes.Equal(d.raw, b.Raw) {
+			seen.blocks[i] = decodeBlock(b, fmt.Sprintf("%s:%d", m.ID, i))
+		}
+	}
+	return seen.blocks
+}
+
+// Build makes the transcript of the messages a Session shows, as the
+// package's Build does.
+func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
+	if bl.messages == nil {
+		bl.messages = map[string]*seenMessage{}
+	}
+	bl.gen++
+	defer func() {
+		for id, s := range bl.messages {
+			if s.gen != bl.gen {
+				delete(bl.messages, id)
+			}
+		}
+	}()
+
 	results := map[string]*protocol.ToolResult{}
 	for _, m := range messages {
 		if m.Role != protocol.MessageRoleTool {
 			continue
 		}
-		for _, b := range m.Content {
-			if b.Type != protocol.ContentBlockTypeToolResult {
-				continue
-			}
-			if r, ok := decode[protocol.ToolResult](b); ok {
-				results[r.ToolUseID] = &r
+		for _, d := range bl.blocks(m) {
+			if d.typ == protocol.ContentBlockTypeToolResult && d.ok {
+				results[d.result.ToolUseID] = d.result
 			}
 		}
 	}
@@ -154,27 +269,20 @@ func Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			continue
 		}
 		var blocks []Block
-		for i, b := range m.Content {
-			id := fmt.Sprintf("%s:%d", m.ID, i)
-			switch b.Type {
+		for _, d := range bl.blocks(m) {
+			if !d.ok {
+				continue
+			}
+			switch d.typ {
 			case protocol.ContentBlockTypeText:
-				if t, _ := decode[protocol.TextBlock](b); t.Text != "" {
-					blocks = append(blocks, Block{Kind: Text, ID: id, Text: t.Text, Streaming: session.IsStreaming(b)})
-				}
+				blocks = append(blocks, Block{Kind: Text, ID: d.id, Text: d.text, Streaming: d.streaming})
 			case protocol.ContentBlockTypeImage:
-				if im, _ := decode[protocol.ImageBlock](b); im.Source.Type == "base64" {
-					blocks = append(blocks, Block{Kind: Picture, ID: id, Image: Image{string(im.Source.MediaType), im.Source.Data}})
-				}
+				blocks = append(blocks, Block{Kind: Picture, ID: d.id, Image: d.image})
 			case protocol.ContentBlockTypeThinking:
-				if t, _ := decode[protocol.ThinkingBlock](b); t.Thinking != "" {
-					blocks = append(blocks, Block{Kind: Thinking, ID: id, Text: t.Thinking, DurationMs: t.DurationMs, Streaming: session.IsStreaming(b)})
-				}
+				blocks = append(blocks, Block{Kind: Thinking, ID: d.id, Text: d.text, DurationMs: d.durationMs, Streaming: d.streaming})
 			case protocol.ContentBlockTypeToolUse:
-				use, ok := decode[protocol.ToolUse](b)
-				if !ok {
-					continue
-				}
-				call := newCall(b, use, results[use.ID])
+				use := d.use
+				call := &ToolCall{Use: use, Input: d.input, RawInput: d.rawInput, Keys: d.keys, Result: results[use.ID]}
 				if use.ScriptExecution != nil {
 					if owner := watching[use.ScriptExecution.OuterToolUseID]; owner != nil {
 						owner.Nested = append(owner.Nested, call)
@@ -186,13 +294,13 @@ func Build(messages []protocol.FactoryDroidMessage) []*Entry {
 					watching[run] = call
 				}
 				if use.Name == TaskTool {
-					blocks = append(blocks, Block{Kind: Subagent, ID: id, Call: call})
+					blocks = append(blocks, Block{Kind: Subagent, ID: d.id, Call: call})
 					continue
 				}
 				if n := len(blocks); n > 0 && blocks[n-1].Kind == Tools {
 					blocks[n-1].Calls = append(blocks[n-1].Calls, call)
 				} else {
-					blocks = append(blocks, Block{Kind: Tools, ID: id, Calls: []*ToolCall{call}})
+					blocks = append(blocks, Block{Kind: Tools, ID: d.id, Calls: []*ToolCall{call}})
 				}
 			}
 		}
