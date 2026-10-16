@@ -35,6 +35,29 @@ func TestDraftTextIsStoredAndImagesStayInMemory(t *testing.T) {
 	}
 }
 
+func TestHasIsTextOrImagesLeftUnsent(t *testing.T) {
+	d := New(prefs.Memory())
+	if d.Has("s1") {
+		t.Error("nothing saved yet")
+	}
+	d.Save("s1", Draft{Text: " \n"})
+	if d.Has("s1") {
+		t.Error("blank text is no draft")
+	}
+	d.Save("s1", Draft{Text: "half a thought"})
+	if !d.Has("s1") || d.Has("s2") {
+		t.Error("text is a draft of its Session alone")
+	}
+	d.Save("s1", Draft{Images: []attachments.Image{{ID: "1"}}})
+	if !d.Has("s1") {
+		t.Error("an image alone is a draft")
+	}
+	d.Save("s1", Draft{})
+	if d.Has("s1") {
+		t.Error("a cleared draft")
+	}
+}
+
 func TestPendingPromptIsTakenOnce(t *testing.T) {
 	var p Pending
 	if _, ok := p.Take("s"); ok {

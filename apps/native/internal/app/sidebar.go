@@ -599,8 +599,9 @@ func indent(flat bool) float32 {
 	return 32
 }
 
-// sessionRow is one Session in the sidebar: title, then what it is doing or
-// its message count, and how long ago it changed.
+// sessionRow is one Session in the sidebar: title, then whether it holds an
+// unsent draft, what it is doing or its message count, and how long ago it
+// changed.
 func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool, doing activity.Activity, pinned bool) {
 	k, t := a.kit, a.kit.T
 	if a.sidebar.renaming == s.SessionID {
@@ -641,6 +642,12 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 						k.Icon(c, icon, 12, color)
 					}
 					k.Text(c, label, 11, 16.5).TextColor(color).SingleLine()
+				})
+			}
+			if !selected && a.drafts.Has(s.SessionID) {
+				ui.Row(c).Role(ui.RoleStatus).Label(L("Draft")).Gap(k.Px(4)).Shrink(0).Children(func() {
+					k.Icon(c, "pencil", 12, t.Foreground)
+					k.Text(c, L("Draft"), 11, 16.5).FontWeight(500).TextColor(t.Foreground).SingleLine()
 				})
 			}
 			switch {

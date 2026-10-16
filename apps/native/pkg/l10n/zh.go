@@ -253,6 +253,7 @@ var zh = map[string]string{
 	"Download progress":         "下载进度",
 	"Downloading %d%%":          "正在下载 %d%%",
 	"Downloading Droi %s…":      "正在下载 Droi %s…",
+	"Draft":                     "草稿",
 	"Droi %s":                   "Droi %s",
 	"Droi %s is available":      "Droi %s 可用",
 	"Droi %s is ready":          "Droi %s 已就绪",

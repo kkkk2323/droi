@@ -6,6 +6,7 @@
 package drafts
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
@@ -32,6 +33,16 @@ func (d *Drafts) Load(key string) Draft {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return Draft{Text: text, Images: d.images[key]}
+}
+
+// Has tells whether the composer left text or images unsent there.
+func (d *Drafts) Has(key string) bool {
+	if text, _ := d.store.Get(prefs.DraftKey(key)); strings.TrimSpace(text) != "" {
+		return true
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.images[key]) > 0
 }
 
 func (d *Drafts) Save(key string, draft Draft) {
