@@ -187,6 +187,12 @@ type Request struct {
 	SubagentType string
 	Description  string
 	Prompt       string
+	// Complexity is the tier asked for (light, medium or heavy), which picks
+	// the model of a built-in subagent; "" leaves the subagent's own.
+	Complexity string
+	// Resume is the Session of an earlier run this call follows up; "" for
+	// a new subagent.
+	Resume string
 }
 
 func TaskRequest(call *transcript.ToolCall) Request {
@@ -194,7 +200,25 @@ func TaskRequest(call *transcript.ToolCall) Request {
 		s, _ := call.Input[key].(string)
 		return s
 	}
-	return Request{SubagentType: text("subagent_type"), Description: text("description"), Prompt: text("prompt")}
+	return Request{SubagentType: text("subagent_type"), Description: text("description"), Prompt: text("prompt"),
+		Complexity: text("complexity"), Resume: text("resume")}
+}
+
+// The tools that read a background Task's progress and stop it.
+const (
+	TaskOutputTool = "TaskOutput"
+	TaskStopTool   = "TaskStop"
+)
+
+// TaskTarget is the subagent a TaskOutput or TaskStop call is about: its
+// task_id, the subagent's Session id or the start of it. "" for any other
+// call.
+func TaskTarget(call *transcript.ToolCall) string {
+	if call.Use.Name != TaskOutputTool && call.Use.Name != TaskStopTool {
+		return ""
+	}
+	id, _ := call.Input["task_id"].(string)
+	return strings.TrimSpace(id)
 }
 
 // SubagentName turns `explorer` into `Explorer`, the way the Daemon titles the
@@ -263,6 +287,11 @@ type Links struct {
 	// ByToolUse holds the listed subagents by the Task call that started them.
 	ByToolUse map[string]sessions.Summary
 	Runs      map[string]Run
+	// RunOf reads the run of a subagent Runs lacks; nil reads none.
+	RunOf func(sessionID string) (Run, bool)
+	// Latest is the last Task call of the transcript to each subagent (see
+	// LatestCalls).
+	Latest map[string]string
 }
 
 func ByToolUse(list []sessions.Summary) map[string]sessions.Summary {
@@ -285,26 +314,67 @@ type Link struct {
 	SessionID string
 }
 
+// sessionOf is the subagent's Session a Task call started or resumed, ""
+// until it is known.
+func sessionOf(call *transcript.ToolCall, byToolUse map[string]sessions.Summary) string {
+	if id := byToolUse[call.Use.ID].SessionID; id != "" {
+		return id
+	}
+	if id := LaunchedSessionID(call); id != "" {
+		return id
+	}
+	// A resumed subagent stays listed under the call that started it.
+	return TaskRequest(call).Resume
+}
+
 // LinkFor reads a Task call against what the Client knows; links may be nil.
 func LinkFor(call *transcript.ToolCall, links *Links) Link {
-	var sessionID string
+	if links == nil {
+		return Link{Request: TaskRequest(call), State: StateOf(call, nil), Report: Report(call)}
+	}
+	sessionID := sessionOf(call, links.ByToolUse)
+	// The Daemon keeps one account per subagent, of its latest run: a call
+	// resumed later reads only its own result.
+	latest := links.Latest[sessionID]
+	superseded := latest != "" && latest != call.Use.ID
 	var run *Run
-	if links != nil {
-		sessionID = links.ByToolUse[call.Use.ID].SessionID
-	}
-	if sessionID == "" {
-		sessionID = LaunchedSessionID(call)
-	}
-	if links != nil && sessionID != "" {
+	if sessionID != "" && !superseded {
 		if r, ok := links.Runs[sessionID]; ok {
 			run = &r
+		} else if links.RunOf != nil {
+			if r, ok := links.RunOf(sessionID); ok {
+				run = &r
+			}
 		}
 	}
-	l := Link{Request: TaskRequest(call), State: StateOf(call, run), Run: run, Report: Report(call)}
-	if links != nil {
-		l.SessionID = sessionID
+	state := StateOf(call, run)
+	if superseded {
+		switch state {
+		case Launched:
+			state = TaskState(Completed)
+		case TaskState(Running):
+			state = TaskState(Cancelled)
+		}
 	}
-	return l
+	return Link{Request: TaskRequest(call), State: state, Run: run, Report: Report(call), SessionID: sessionID}
+}
+
+// LatestCalls is the last Task call of the entries to each subagent they
+// reach, by the subagent's Session: a Task that resumes a subagent takes
+// its run over from the calls before it.
+func LatestCalls(entries []*transcript.Entry, byToolUse map[string]sessions.Summary) map[string]string {
+	latest := map[string]string{}
+	for _, entry := range entries {
+		for _, block := range entry.Blocks {
+			if block.Kind != transcript.Subagent {
+				continue
+			}
+			if id := sessionOf(block.Call, byToolUse); id != "" {
+				latest[id] = block.Call.Use.ID
+			}
+		}
+	}
+	return latest
 }
 
 // UnlistedTaskCalls names the Task calls whose subagent the list does not

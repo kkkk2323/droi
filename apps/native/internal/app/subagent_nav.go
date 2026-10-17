@@ -83,29 +83,36 @@ func (a *App) subagentMark(c *ui.Context, run subagents.Run, ok bool) {
 	}
 }
 
-// subagentItem is a SubagentRow inside a menu: its state, title and age.
+// subagentItem is a SubagentRow inside a menu: its state, title and age,
+// and a button that stops it while it runs.
 func (a *App) subagentItem(c *ui.Context, open *bool, s sessions.Summary, run subagents.Run, ok, checked bool) bool {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c.Key(s.SessionID)).Role(ui.RoleMenuItem).Label(s.Title).Checked(checked).Gap(k.Px(8)).
-		Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
-	color := t.PopoverForeground
-	if b.Hovered() || b.Focused() {
-		b.Background(t.Accent)
-		color = t.AccentForeground
-	}
-	b.Children(func() {
-		a.subagentMark(c, run, ok)
-		k.Text(c, trimOr(s.Title, L("Untitled session")), 14, 20).TextColor(color).SingleLine().Grow(1).MinWidth(0)
-		k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
-		if checked {
-			k.Icon(c, "check", 14, color)
+	picked := false
+	ui.Row(c.Key(s.SessionID)).Gap(k.Px(2)).Children(func() {
+		b := ui.ButtonBase(c).Role(ui.RoleMenuItem).Label(s.Title).Checked(checked).Gap(k.Px(8)).
+			Padding(k.Px(6), k.Px(8)).Radius(k.Px(6)).Justify(ui.Start).Grow(1).MinWidth(0).Cursor(ui.CursorPointer)
+		color := t.PopoverForeground
+		if b.Hovered() || b.Focused() {
+			b.Background(t.Accent)
+			color = t.AccentForeground
+		}
+		b.Children(func() {
+			a.subagentMark(c, run, ok)
+			k.Text(c, trimOr(s.Title, L("Untitled session")), 14, 20).TextColor(color).SingleLine().Grow(1).MinWidth(0)
+			k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+			if checked {
+				k.Icon(c, "check", 14, color)
+			}
+		})
+		if b.Clicked() {
+			*open = false
+			picked = true
+		}
+		if ok && subagents.IsRunning(run.Status) && a.ctl != nil && sessionview.StopSubagentButton(c, k) {
+			sessionview.StopSubagent(a.ctx, a.ctl, s.SessionID)
 		}
 	})
-	if b.Clicked() {
-		*open = false
-		return true
-	}
-	return false
+	return picked
 }
 
 func (a *App) subagentPopup(c *ui.Context, anchor ui.Element, open *bool, end bool, fn func()) {

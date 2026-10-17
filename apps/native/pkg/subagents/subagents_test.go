@@ -110,8 +110,9 @@ func TestSubagentsInTheList(t *testing.T) {
 
 func TestTaskCalls(t *testing.T) {
 	t.Run("reads the request from the input", func(t *testing.T) {
-		got := TaskRequest(task("", false, map[string]any{"subagent_type": "explorer", "description": "Map it", "prompt": "Go"}))
-		if got != (Request{"explorer", "Map it", "Go"}) {
+		got := TaskRequest(task("", false, map[string]any{"subagent_type": "explorer", "description": "Map it", "prompt": "Go",
+			"complexity": "heavy", "resume": "s-1"}))
+		if got != (Request{SubagentType: "explorer", Description: "Map it", Prompt: "Go", Complexity: "heavy", Resume: "s-1"}) {
 			t.Errorf("got %+v", got)
 		}
 		if SubagentName("explorer") != "Explorer" || SubagentName("") != "Subagent" {
@@ -175,6 +176,40 @@ func TestLinkFor(t *testing.T) {
 	links.ByToolUse["call"] = summary("s-1", nil)
 	if l := LinkFor(call, links); l.SessionID != "s-1" || l.Run != nil {
 		t.Errorf("listed: %+v", l)
+	}
+}
+
+// A Task that resumes a subagent reaches it by its input before anything
+// else names it, and takes its run over: the call before it reads only its
+// own result.
+func TestLinkForAResumedSubagent(t *testing.T) {
+	first := task("Task launched in background.\nsession_id: s-1", false, nil)
+	first.Use.ID = "first"
+	again := task("", false, map[string]any{"resume": "s-1"})
+	again.Use.ID = "again"
+	entries := []*transcript.Entry{{ID: "e", Blocks: []transcript.Block{
+		{Kind: transcript.Subagent, ID: "e:0", Call: first}, {Kind: transcript.Subagent, ID: "e:1", Call: again},
+	}}}
+	by := map[string]sessions.Summary{}
+	latest := LatestCalls(entries, by)
+	if !reflect.DeepEqual(latest, map[string]string{"s-1": "again"}) {
+		t.Fatalf("latest %v", latest)
+	}
+	links := &Links{ByToolUse: by, Latest: latest, RunOf: func(id string) (Run, bool) { return run(Running), id == "s-1" }}
+	if l := LinkFor(again, links); l.SessionID != "s-1" || l.State != "running" || l.Run == nil {
+		t.Errorf("the resuming call: %+v", l)
+	}
+	if l := LinkFor(first, links); l.SessionID != "s-1" || l.State != "completed" || l.Run != nil {
+		t.Errorf("the call before it: %+v", l)
+	}
+}
+
+func TestTaskTarget(t *testing.T) {
+	for name, want := range map[string]string{"TaskOutput": "s-1", "TaskStop": "s-1", "Read": ""} {
+		call := &transcript.ToolCall{Use: protocol.ToolUse{Name: name}, Input: map[string]any{"task_id": " s-1 "}}
+		if got := TaskTarget(call); got != want {
+			t.Errorf("%s: %q, want %q", name, got, want)
+		}
 	}
 }
 

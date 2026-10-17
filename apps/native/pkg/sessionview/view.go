@@ -132,9 +132,14 @@ type View struct {
 	calls map[*transcript.ToolCall]*callView
 	// pendingJump is a jump to a message whose page just loaded.
 	pendingJump string
-	// links and streamingID are the frame's, for the transcript's rows.
+	// links and streamingID are the frame's, for the transcript's rows;
+	// linksAt is what links were built from.
 	links       *subagents.Links
+	linksAt     linksKey
 	streamingID string
+	// progress is what each subagent's Session shows of its run, read
+	// again when that Session changes.
+	progress map[string]*subagentProgress
 	// While a fold the user opened holds the transcript in place: whether
 	// the list has left its end since, and the rows it had.
 	leftEnd  bool
@@ -170,7 +175,7 @@ func New(id string, env Env) *View {
 		env.Update = func(fn func()) { fn() }
 	}
 	v := &View{env: env, id: id, built: -1, flags: map[string]*bool{}, images: map[string]*ui.Bitmap{}, imageAt: map[string]int64{},
-		calls: map[*transcript.ToolCall]*callView{}}
+		calls: map[*transcript.ToolCall]*callView{}, progress: map[string]*subagentProgress{}}
 	v.list.FollowEnd = true
 	v.md.Load = v.loadImage
 	return v

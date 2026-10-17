@@ -1,12 +1,14 @@
 package sessionview
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
@@ -43,7 +45,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	}
 	ends := transcript.TurnEnds(entries, running)
 	activity := transcript.WorkingLabel(ws)
-	v.links = &subagents.Links{ByToolUse: subagents.ByToolUse(listed), Runs: v.subagentRuns(listed)}
+	v.links = v.subagentLinks(listed)
 	v.streamingID = streamingID
 	rows := v.rows(entries, streamingID, ends)
 	v.frameRows = rows
@@ -350,7 +352,9 @@ func (v *View) rowTrigger(c *ui.Context, open *bool, label string) ui.Collapsibl
 }
 
 // toolRow is a ToolRow: icon, name, the input's summary, the diff's
-// counts, and whether it ran; it opens to the input and the result.
+// counts, and whether it ran; it opens to the input and the result. A
+// TaskOutput or TaskStop call shows the subagent it is about, with a button
+// to its Session.
 func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 	k, t := v.look()
 	server, name := transcript.ToolName(call.Use.Name)
@@ -363,50 +367,73 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 	}
 	res := v.result(call)
 	open := v.flag("tool:"+call.Use.ID, false)
+	target, targetTitle := v.taskTarget(call)
+	parts := transcript.SummaryParts(call)
+	summary := transcript.Summary(call)
+	if targetTitle != "" {
+		parts, summary = []transcript.SummaryPart{{Value: targetTitle}}, targetTitle
+	}
 	ui.Column(c.Key(call.Use.ID)).Children(func() {
-		p := v.rowTrigger(c, open, call.Use.Name+": "+transcript.Summary(call))
-		hover := p.Trigger.Hovered() || p.Trigger.Focused()
-		p.Trigger.Children(func() {
-			fg, iconColor := t.Foreground, t.MutedForeground
-			if res.IsError {
-				fg, iconColor = t.DestructiveForeground, t.DestructiveForeground
-			}
-			k.Icon(c, icon, 14, iconColor)
-			if server != "" {
-				k.Text(c, server, 11.5, 17.25).TextColor(t.MutedForeground.Alpha(0.7)).Shrink(0)
-			}
-			k.Text(c, name, 12.5, 18.75).FontWeight(500).TextColor(fg).Shrink(0)
-			parts := transcript.SummaryParts(call)
-			spans := make([]ui.Span, 0, 3*len(parts))
-			for i, part := range parts {
-				if i > 0 {
-					spans = append(spans, ui.Span{Text: " · ", Color: t.MutedForeground.Alpha(0.5)})
+		var p ui.CollapsibleParts
+		trigger := func() {
+			p = v.rowTrigger(c, open, call.Use.Name+": "+summary)
+			hover := p.Trigger.Hovered() || p.Trigger.Focused()
+			p.Trigger.Children(func() {
+				fg, iconColor := t.Foreground, t.MutedForeground
+				if res.IsError {
+					fg, iconColor = t.DestructiveForeground, t.DestructiveForeground
 				}
-				if part.Key != "" {
-					spans = append(spans, ui.Span{Text: part.Key + ": ", Color: t.MutedForeground.Alpha(0.6)})
+				k.Icon(c, icon, 14, iconColor)
+				if server != "" {
+					k.Text(c, server, 11.5, 17.25).TextColor(t.MutedForeground.Alpha(0.7)).Shrink(0)
 				}
-				spans = append(spans, ui.Span{Text: part.Value})
-			}
-			ui.RichText(c, spans...).Font(k.Mono).FontSize(k.Px(11.5)).FixedLineHeight(k.Px(17.25)).TextColor(t.MutedForeground).
-				SingleLine().Grow(1).Shrink(1).MinWidth(0)
-			if d := res.Diff; d != nil {
-				ui.RichText(c, ui.Span{Text: "+" + strconv.Itoa(d.Added), Color: t.Added}, ui.Span{Text: " "}, ui.Span{Text: "−" + strconv.Itoa(d.Removed), Color: t.Removed}).
-					Font(k.Mono).FontSize(k.Px(11)).FontFeatures("tnum").Shrink(0)
-			}
-			if res.Pending {
-				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
-				return
-			}
-			if res.IsError {
-				k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label(l10n.L("Failed"))
-			} else {
-				k.Icon(c, "check", 14, t.Success).Label(l10n.L("Succeeded"))
-			}
-			ch := k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
-			if !hover && !*open && p.Progress() == 0 {
-				ch.Opacity(0)
-			}
-		})
+				k.Text(c, name, 12.5, 18.75).FontWeight(500).TextColor(fg).Shrink(0)
+				spans := make([]ui.Span, 0, 3*len(parts))
+				for i, part := range parts {
+					if i > 0 {
+						spans = append(spans, ui.Span{Text: " · ", Color: t.MutedForeground.Alpha(0.5)})
+					}
+					if part.Key != "" {
+						spans = append(spans, ui.Span{Text: part.Key + ": ", Color: t.MutedForeground.Alpha(0.6)})
+					}
+					spans = append(spans, ui.Span{Text: part.Value})
+				}
+				ui.RichText(c, spans...).Font(k.Mono).FontSize(k.Px(11.5)).FixedLineHeight(k.Px(17.25)).TextColor(t.MutedForeground).
+					SingleLine().Grow(1).Shrink(1).MinWidth(0)
+				if d := res.Diff; d != nil {
+					ui.RichText(c, ui.Span{Text: "+" + strconv.Itoa(d.Added), Color: t.Added}, ui.Span{Text: " "}, ui.Span{Text: "−" + strconv.Itoa(d.Removed), Color: t.Removed}).
+						Font(k.Mono).FontSize(k.Px(11)).FontFeatures("tnum").Shrink(0)
+				}
+				if res.Pending {
+					k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
+					return
+				}
+				if res.IsError {
+					k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label(l10n.L("Failed"))
+				} else {
+					k.Icon(c, "check", 14, t.Success).Label(l10n.L("Succeeded"))
+				}
+				ch := k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
+				if !hover && !*open && p.Progress() == 0 {
+					ch.Opacity(0)
+				}
+			})
+		}
+		if target == "" {
+			trigger()
+		} else {
+			ui.Row(c).Gap(k.Px(4)).Children(func() {
+				trigger()
+				p.Trigger.Shrink(1).MinWidth(0)
+				label := l10n.L("Open subagent session")
+				if targetTitle != "" {
+					label = l10n.L("Open %s", targetTitle)
+				}
+				if k.IconButton(c, "arrow-up-right", label, 28).Clicked() {
+					v.env.OpenSession(target)
+				}
+			})
+		}
 		p.Panel(func() {
 			v.toolDetail(c, call, res)
 		})
@@ -683,27 +710,44 @@ var taskStateLabels = map[subagents.TaskState]string{
 	"cancelled":        l10n.N("Cancelled"),
 }
 
+// complexityLabels name the Task's complexity tiers, as Settings does.
+var complexityLabels = map[string]string{
+	"light":  l10n.N("Light task"),
+	"medium": l10n.N("Medium task"),
+	"heavy":  l10n.N("Heavy task"),
+}
+
 // subagentCard is a SubagentCard: the subagent's name and task, how the
-// run went, a button to its Session, and the prompt and report folded.
+// run went (live, its latest tool), a button to stop it and one to its
+// Session, and the prompt and report folded.
 func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *subagents.Links) {
 	k, t := v.look()
 	link := subagents.LinkFor(call, links)
-	if link.Run == nil && link.SessionID != "" {
-		if r, ok := v.subagentRun(link.SessionID); ok {
-			link.Run, link.State = &r, subagents.StateOf(call, &r)
-		}
-	}
 	name := subagents.SubagentName(link.Request.SubagentType)
+	if link.Request.Resume != "" {
+		name = l10n.L("Resume %s", name)
+	}
 	desc := link.Request.Description
 	if desc == "" {
 		desc = l10n.L("Task")
 	}
+	running := link.State == subagents.TaskState(subagents.Running) || link.State == subagents.TaskState(subagents.Pending)
+	prog := v.subagentProgress(link.SessionID)
 	var facts []string
-	if link.Run != nil && link.Run.ToolUseCount != nil {
+	switch {
+	case link.Run != nil && link.Run.ToolUseCount != nil:
 		facts = append(facts, countL(*link.Run.ToolUseCount, l10n.N("%d tool"), l10n.N("%d tools")))
+	case running && prog != nil && prog.count > 0:
+		facts = append(facts, countL(prog.count, l10n.N("%d tool"), l10n.N("%d tools")))
 	}
 	if link.Run != nil && link.Run.DurationMs != nil {
 		facts = append(facts, subagents.FormatRunDuration(*link.Run.DurationMs))
+	}
+	if tier := complexityLabels[link.Request.Complexity]; tier != "" {
+		facts = append(facts, l10n.T(tier))
+	}
+	if prog != nil && prog.model != "" {
+		facts = append(facts, prog.model)
 	}
 	open := v.flag("subagent:"+call.Use.ID, false)
 	ui.Column(c).Role(ui.RoleGroup).Label(name+": "+desc).Radius(k.Px(12)).Border(1, t.Border).Background(t.Card.Alpha(0.6)).Clip().Children(func() {
@@ -720,10 +764,24 @@ func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *sub
 					v.stateMark(c, link.State)
 					for _, f := range facts {
 						k.Text(c, "·", 11.5, 17.25).TextColor(t.MutedForeground)
-						k.Text(c, f, 11.5, 17.25).TextColor(t.MutedForeground).FontFeatures("tnum")
+						k.Text(c, f, 11.5, 17.25).TextColor(t.MutedForeground).FontFeatures("tnum").SingleLine().Shrink(1)
 					}
 				})
+				if running && prog != nil && prog.tool != "" {
+					ui.Row(c).Label(l10n.L("Latest tool")).Gap(k.Px(6)).MinWidth(0).Children(func() {
+						icon := toolIcons[prog.tool]
+						if icon == "" {
+							icon = "wrench"
+						}
+						k.Icon(c, icon, 12, t.MutedForeground.Alpha(0.7))
+						k.Text(c, prog.tool, 11.5, 17.25).FontWeight(500).TextColor(t.MutedForeground).Shrink(0)
+						k.Text(c, prog.summary, 11.5, 17.25).Font(k.Mono).TextColor(t.MutedForeground.Alpha(0.8)).SingleLine().Shrink(1).MinWidth(0)
+					})
+				}
 			})
+			if running && link.SessionID != "" && v.env.Controller != nil && StopSubagentButton(c, k) {
+				StopSubagent(v.env.Ctx, v.env.Controller, link.SessionID)
+			}
 			if link.SessionID != "" && v.env.OpenSession != nil {
 				b := ui.ButtonBase(c).Label(l10n.L("Open subagent session")).Height(k.Px(28)).Gap(k.Px(4)).PaddingX(k.Px(8)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
 				color := t.MutedForeground
@@ -772,6 +830,28 @@ func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *sub
 			})
 		})
 	})
+}
+
+// StopSubagentButton is the small square button that stops a running
+// subagent, as the composer's stop is drawn; it reports a click.
+func StopSubagentButton(c *ui.Context, k *kit.Kit) bool {
+	t := k.T
+	b := ui.ButtonBase(c).Label(l10n.L("Stop subagent")).Tooltip(l10n.L("Stop subagent")).Size(k.Px(28), k.Px(28)).Radius(k.Px(8)).
+		Center().Shrink(0).Cursor(ui.CursorPointer)
+	color := t.MutedForeground
+	if b.Hovered() {
+		b.Background(t.Muted)
+		color = t.Foreground
+	}
+	b.Children(func() { ui.Box(c).Size(k.Px(8), k.Px(8)).Radius(k.Px(2)).Background(color) })
+	return b.Clicked()
+}
+
+// StopSubagent stops a subagent's running turn, as TaskStop does: the
+// Daemon then reports the run cancelled to its caller. Interrupting the
+// caller leaves a background subagent running.
+func StopSubagent(ctx context.Context, ctl *controller.Controller, id string) {
+	go func() { _ = ctl.InterruptSession(ctx, id) }()
 }
 
 func (v *View) stateMark(c *ui.Context, state subagents.TaskState) {
@@ -832,16 +912,100 @@ func SubagentRun(store *session.Store, id string) (subagents.Run, bool) {
 	return subagents.RunFrom(summary, working)
 }
 
-func (v *View) subagentRuns(listed []sessions.Summary) map[string]subagents.Run {
-	if v.env.Controller == nil {
-		return map[string]subagents.Run{}
-	}
-	return SubagentRuns(v.env.Controller.Store(), listed)
-}
-
 func (v *View) subagentRun(id string) (subagents.Run, bool) {
 	if v.env.Controller == nil {
 		return subagents.Run{}, false
 	}
 	return SubagentRun(v.env.Controller.Store(), id)
+}
+
+// linksKey is what a frame's subagent links are built from: the transcript
+// and the list (which the app keeps while it does not change).
+type linksKey struct {
+	built int64
+	list  *sessions.Summary
+	n     int
+}
+
+// subagentLinks links the transcript's Task calls to their subagents,
+// built again only when the transcript or the list changed: the list holds
+// every subagent of every Session.
+func (v *View) subagentLinks(listed []sessions.Summary) *subagents.Links {
+	key := linksKey{built: v.built, n: len(listed)}
+	if len(listed) > 0 {
+		key.list = &listed[0]
+	}
+	if v.links != nil && v.linksAt == key {
+		return v.links
+	}
+	by := subagents.ByToolUse(listed)
+	v.linksAt = key
+	return &subagents.Links{ByToolUse: by, RunOf: v.subagentRun, Latest: subagents.LatestCalls(v.entries, by)}
+}
+
+// subagentProgress is what a subagent's Session in the Store shows of its
+// run: its tool calls so far, the latest one, and its model.
+type subagentProgress struct {
+	rev     int64
+	count   int
+	tool    string
+	summary string
+	model   string
+}
+
+// subagentProgress reads subagent id's Session again only when it changed;
+// nil while the Store does not have it.
+func (v *View) subagentProgress(id string) *subagentProgress {
+	ctl := v.env.Controller
+	if id == "" || ctl == nil {
+		return nil
+	}
+	s := ctl.Store().Session(id)
+	if s == nil {
+		return nil
+	}
+	rev := v.env.Revisions.Load(id)
+	if p := v.progress[id]; p != nil && p.rev == rev {
+		return p
+	}
+	p := &subagentProgress{rev: rev}
+	call, n := transcript.LatestTool(s.Messages())
+	p.count = n
+	if call != nil {
+		_, p.tool = transcript.ToolName(call.Use.Name)
+		p.summary = transcript.Summary(call)
+	}
+	if model := s.Settings().ModelID; model != "" {
+		p.model = model
+		for _, m := range s.AvailableModels() {
+			if m.ID == model && m.DisplayName != "" {
+				p.model = m.DisplayName
+			}
+		}
+	}
+	v.progress[id] = p
+	return p
+}
+
+// taskTarget is the subagent a TaskOutput or TaskStop call is about, and
+// its title, when the transcript reaches it and its Session can be opened.
+func (v *View) taskTarget(call *transcript.ToolCall) (id, title string) {
+	want := subagents.TaskTarget(call)
+	if want == "" || v.env.OpenSession == nil || v.links == nil {
+		return "", ""
+	}
+	for sessionID, callID := range v.links.Latest {
+		// The Daemon takes the start of an id too.
+		if sessionID != want && (len(want) < 8 || !strings.HasPrefix(sessionID, want)) {
+			continue
+		}
+		title = v.links.ByToolUse[callID].Title
+		if ctl := v.env.Controller; title == "" && ctl != nil {
+			if s := ctl.Store().Session(sessionID); s != nil {
+				title = s.Title()
+			}
+		}
+		return sessionID, title
+	}
+	return "", ""
 }

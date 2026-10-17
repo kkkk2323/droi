@@ -132,6 +132,33 @@ func Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	return b.Build(messages)
 }
 
+// LatestTool is the last tool call among messages and how many tool calls
+// the assistant made, as a subagent's progress reads them. Only the last
+// call is decoded.
+func LatestTool(messages []protocol.FactoryDroidMessage) (*ToolCall, int) {
+	var last protocol.ContentBlock
+	n := 0
+	for _, m := range messages {
+		if m.Role != protocol.MessageRoleAssistant {
+			continue
+		}
+		for _, b := range m.Content {
+			if b.Type == protocol.ContentBlockTypeToolUse {
+				n++
+				last = b
+			}
+		}
+	}
+	if n == 0 {
+		return nil, 0
+	}
+	use, ok := decode[protocol.ToolUse](last)
+	if !ok {
+		return nil, n
+	}
+	return newCall(last, use, nil), n
+}
+
 // Builder makes a Session's transcript again each time its messages change,
 // decoding each content block once: while a turn streams only its last
 // messages change, and a page of older messages leaves the others as they

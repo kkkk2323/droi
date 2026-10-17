@@ -465,3 +465,20 @@ func TestReplyTextJoinsTheTurnsTextOnly(t *testing.T) {
 	eq(t, ReplyText(turn), "Let me look.\n\nIt is the cache.\n\n```go\nx := 1\n```")
 	eq(t, ReplyText(turn[:1]), "")
 }
+
+// A subagent's progress is the last tool call it made and how many.
+func TestLatestTool(t *testing.T) {
+	if call, n := LatestTool(nil); call != nil || n != 0 {
+		t.Fatalf("no messages: %v %d", call, n)
+	}
+	msgs := []protocol.FactoryDroidMessage{
+		msg("user", `[{"type":"text","text":"go"}]`),
+		msg("assistant", `[{"type":"tool_use","id":"a","name":"Grep","input":{"pattern":"x"}},{"type":"tool_use","id":"b","name":"Read","input":{"file_path":"src/a.ts"}}]`),
+		msg("tool", `[{"type":"tool_result","toolUseId":"b","content":"ok"}]`),
+		msg("assistant", `[{"type":"text","text":"done"}]`),
+	}
+	call, n := LatestTool(msgs)
+	if n != 2 || call == nil || call.Use.Name != "Read" || Summary(call) != "src/a.ts" {
+		t.Fatalf("got %d %+v", n, call)
+	}
+}
