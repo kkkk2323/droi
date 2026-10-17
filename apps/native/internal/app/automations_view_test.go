@@ -12,7 +12,10 @@ import (
 )
 
 func automationsScenario() fakedaemon.Scenario {
-	started := time.Now().Add(-26 * time.Hour).UTC()
+	// Yesterday at noon: 26 hours ago, in the first two hours of a day, is
+	// the day before yesterday, which the runs list names by its date.
+	y := time.Now().AddDate(0, 0, -1)
+	started := time.Date(y.Year(), y.Month(), y.Day(), 12, 0, 0, 0, time.Local).UTC()
 	return fakedaemon.Scenario{
 		Sessions: []fakedaemon.SessionSpec{
 			{Title: "Fix the login race", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{{Role: "user", Text: "Fix it"}}},
