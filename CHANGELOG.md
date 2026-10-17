@@ -1,3 +1,16 @@
+## 1.56.9 - 2026-10-17
+
+### Added
+
+- A running subagent's card shows what it is doing: the tool it uses right now, such as "Read src/strings.ts", and how many tools it has used so far. The card also shows the subagent's model and, when Droid asked for one, the task size (light, medium or heavy).
+- A running subagent can be stopped from its card, or from the subagents menu at the top of the session, with the small square button. Stopping the session that started it does not stop a subagent that runs in the background, so this is the way to stop one.
+- TaskOutput and TaskStop lines in a session name the subagent they are about, and their arrow opens it.
+
+### Fixed
+
+- When Droid gives a subagent more work (resume), the new card reads "Resume Worker" (or the subagent's name), shows the run and opens its session from the start. The card of the earlier run stays done instead of showing it running again.
+- Droi works out a session's subagent cards, and the subagents it has heard of before they are listed, only when they change, not on every frame it draws.
+
 ## 1.56.8 - 2026-10-16
 
 ### Added
