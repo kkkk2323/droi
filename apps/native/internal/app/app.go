@@ -183,10 +183,12 @@ type App struct {
 	// shownRev is the listRev of the list this frame shows; listMemo
 	// keeps what is built from it.
 	shownRev uint64
-	// subagentKey, subagentRev and subagentFirstSeen are knownSubagents'.
+	// subagentKey, subagentRev, subagentFirstSeen and known are
+	// knownSubagents'.
 	subagentKey       string
 	subagentRev       uint64
 	subagentFirstSeen map[string]int64
+	known             knownList
 	listMemo          listMemo
 
 	drafts      *drafts.Drafts
