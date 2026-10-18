@@ -46,7 +46,7 @@ func (h *harness) clearNewPage() {
 // builtin added to one composer and not the other was lost there before;
 // this goes through each of slash's lists, so a new builtin is checked too.
 func TestSlashOffersTheBuiltinsWhereverTheyRun(t *testing.T) {
-	h := newHarness(t, draftScenario(), "")
+	h, _ := scratchDraftHarness(t)
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
 	starts := map[string]bool{}
 	for _, b := range slash.Starters {
@@ -83,6 +83,9 @@ func TestSlashOffersTheBuiltinsWhereverTheyRun(t *testing.T) {
 	h.until("no project", func() bool { return h.hasText("What should we work on?") })
 	h.click("Message")
 	each(h.newPageText, h.clearNewPage, "without a project", isStarter)
+	// The personal and built-in skills come without one.
+	h.suggests(h.newPageText, "/", "/"+slash.Starters[0].Name, "/wait-what")
+	h.clearNewPage()
 
 	h.openSession("Fix the login race")
 	h.focusComposer()

@@ -179,20 +179,9 @@ func TestASessionStartedOnAnotherComputerGetsThatHostsAdditionAndScratchFolder(t
 	startScratchSession(t, h)
 	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
 
-	var scratch []string
-	for _, params := range o.initializeRequests(t) {
-		if strings.Contains(params, "droi.scratch") {
-			scratch = append(scratch, params)
-		}
-	}
-	if len(scratch) != 1 {
-		t.Fatalf("%d Scratch Sessions on the other computer: %v", len(scratch), scratch)
-	}
-	if !strings.Contains(scratch[0], o.scratch) {
-		t.Fatalf("the Session does not work in the other computer's Scratch folder %s: %s", o.scratch, scratch[0])
-	}
-	if !strings.Contains(scratch[0], "The box's rules") || strings.Contains(scratch[0], "This computer's rules") {
-		t.Fatalf("the System Prompt Addition is not that Host's: %s", scratch[0])
+	started := scratchStart(t, o.d, o.scratch)
+	if !strings.Contains(started, "The box's rules") || strings.Contains(started, "This computer's rules") {
+		t.Fatalf("the System Prompt Addition is not that Host's: %s", started)
 	}
 	if info, err := os.Stat(o.scratch); err != nil || !info.IsDir() {
 		t.Fatalf("the folder was not made there: %v", err)

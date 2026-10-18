@@ -585,34 +585,31 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	s.creating = true
 	s.mu.Unlock()
 	a.redraw()
-	var tags []protocol.SessionTag
-	if workspace == scratchPick {
-		var dir string
-		err := gateway.ErrNotFound
-		if a.cfg.Gateway != nil {
-			dir, err = a.cfg.Gateway.CreateScratch(a.ctx)
-		}
-		if errors.Is(err, gateway.ErrNotFound) {
-			fail(a.noScratchFolder())
-			return
-		}
-		if err != nil {
-			fail(err.Error())
-			return
-		}
-		workspace = dir
-		tags = []protocol.SessionTag{{Name: sessions.ScratchTag}}
-	}
 	cl, err := a.ctl.Client()
 	if err != nil {
 		fail(err.Error())
 		return
 	}
-	id := ""
-	if tags == nil {
-		id = a.takeDraft(workspace, p)
-	}
+	id := a.takeDraft(workspace, p)
 	if id == "" {
+		var tags []protocol.SessionTag
+		if workspace == scratchPick {
+			var dir string
+			err := gateway.ErrNotFound
+			if a.cfg.Gateway != nil {
+				dir, err = a.cfg.Gateway.CreateScratch(a.ctx)
+			}
+			if errors.Is(err, gateway.ErrNotFound) {
+				fail(a.noScratchFolder())
+				return
+			}
+			if err != nil {
+				fail(err.Error())
+				return
+			}
+			workspace = dir
+			tags = []protocol.SessionTag{{Name: sessions.ScratchTag}}
+		}
 		if p.Cwd, err = a.validWorkspace(cl, workspace); err != nil {
 			fail(err.Error())
 			return

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/kkkk2323/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
@@ -161,32 +162,48 @@ func TestASessionWithoutAWorkspaceStartsInAScratchFolderTheGatewayMade(t *testin
 	startScratchSession(t, h)
 	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
 
-	var p struct {
-		Cwd  string           `json:"cwd"`
-		Tags []map[string]any `json:"tags"`
-	}
-	// The start page may have opened a Draft Session for its earlier Workspace.
-	var scratch []string
-	for _, params := range initializeRequests(t, h) {
-		if strings.Contains(params, "droi.scratch") {
-			scratch = append(scratch, params)
-		}
-	}
-	if len(scratch) != 1 {
-		t.Fatalf("%d Scratch Sessions created: %v", len(scratch), scratch)
-	}
-	if err := json.Unmarshal([]byte(scratch[0]), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Cwd != made {
-		t.Fatalf("the Session works in %q, want the folder the Gateway made, %s", p.Cwd, made)
-	}
-	if info, err := os.Stat(p.Cwd); err != nil || !info.IsDir() {
+	scratchStart(t, h.d, made)
+	if info, err := os.Stat(made); err != nil || !info.IsDir() {
 		t.Fatalf("the folder is not there: %v", err)
 	}
-	if len(p.Tags) != 1 || p.Tags[0]["name"] != "droi.scratch" {
-		t.Fatalf("tags %v", p.Tags)
+}
+
+// scratchStart is the one initialize_session that started a Session in the
+// Scratch folder: the page's draft, which the send took, or a Session of its
+// own when the draft was not ready. Either way the Session has the Scratch
+// tag, from that request or from the take.
+func scratchStart(t *testing.T, d *fakedaemon.Daemon, folder string) string {
+	t.Helper()
+	reqs, err := d.Requests()
+	if err != nil {
+		t.Fatal(err)
 	}
+	type params struct {
+		SessionID string `json:"sessionId"`
+		Cwd       string `json:"cwd"`
+	}
+	isScratch := func(r fakedaemon.Request) bool { return strings.Contains(string(r.Params), `"droi.scratch"`) }
+	taken := map[string]bool{}
+	for _, r := range reqs {
+		var p params
+		if r.Method == "daemon.update_session_settings" && json.Unmarshal(r.Params, &p) == nil && isScratch(r) {
+			taken[p.SessionID] = true
+		}
+	}
+	// A draft the send could not take yet was closed; the Gateway that
+	// stands in here makes the same folder for it.
+	var started []string
+	for _, r := range reqs {
+		var p params
+		if r.Method == "daemon.initialize_session" && json.Unmarshal(r.Params, &p) == nil && p.Cwd == folder &&
+			(isScratch(r) || taken[p.SessionID]) {
+			started = append(started, string(r.Params))
+		}
+	}
+	if len(started) != 1 {
+		t.Fatalf("%d Scratch Sessions started in %s: %v", len(started), folder, started)
+	}
+	return started[0]
 }
 
 func TestAGatewayWithoutAScratchFolderLeavesTheStartPageWithTheReason(t *testing.T) {
