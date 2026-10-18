@@ -1,3 +1,9 @@
+## 1.56.11 - 2026-10-18
+
+### Fixed
+
+- On the New session page without a project ("Don't work in a project"), "/" now offers your personal and built-in skills, as it does in a project. Before, it offered only /loop. The session you start keeps the new folder the page made for it; if you leave the page without sending, the empty folder is removed.
+
 ## 1.56.10 - 2026-10-18
 
 ### Added
