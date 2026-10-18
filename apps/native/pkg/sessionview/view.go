@@ -178,6 +178,7 @@ func New(id string, env Env) *View {
 		calls: map[*transcript.ToolCall]*callView{}, progress: map[string]*subagentProgress{}}
 	v.list.FollowEnd = true
 	v.md.Load = v.loadImage
+	v.md.Enlarge = func(bm *ui.Bitmap, label string) { v.zoom, v.zoomLabel, v.zoomOpen = bm, label, true }
 	return v
 }
 

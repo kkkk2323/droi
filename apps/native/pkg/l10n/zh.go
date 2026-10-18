@@ -119,6 +119,7 @@ var zh = map[string]string{
 	"Automations":                    "自动化",
 	"Running automations":            "运行中的自动化",
 	"Click to enlarge":               "点击放大",
+	"Image":                          "图片",
 	"Enlarged image":                 "放大的图片",
 	"Automations did not load: %s":   "自动化加载失败：%s",
 	"Autonomy":                       "Autonomy",

@@ -4,9 +4,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	"github.com/egoist/mygo/ui/markdown/parser"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
@@ -36,12 +38,22 @@ type Markdown struct {
 	// Load reads an image a reply names; nil shows images as their
 	// descriptions.
 	Load func(url string) (ui.ImageSource, error)
+	// Enlarge, with Load, makes the images Load read clickable: a click
+	// hands the image and its description to Enlarge.
+	Enlarge func(bm *ui.Bitmap, label string)
 	// Own gives each view its own selection and context menu, for text
 	// outside the transcript's selectable rows.
 	Own bool
 
-	kit  *kit.Kit
-	opts map[MarkdownStyle]*markdown.Options
+	kit    *kit.Kit
+	opts   map[MarkdownStyle]*markdown.Options
+	images sync.Map // url → *mdImage
+}
+
+// mdImage is an image a reply names, loading or loaded.
+type mdImage struct {
+	mu  sync.Mutex
+	src ui.ImageSource
 }
 
 // Options are the options of style s for kit k, made anew when the kit
@@ -66,8 +78,105 @@ func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 		LoadImage:      m.Load,
 		ShareSelection: !m.Own,
 	}
+	if m.Load != nil && m.Enlarge != nil {
+		em := o.Theme.FontSize
+		o.Block = func(c *ui.Context, d *parser.Document, i int) bool {
+			if d.Block(i).Kind != parser.Paragraph || !imagesOnly(d.Inlines(i)) {
+				return false
+			}
+			m.imageRow(c, k, d.Inlines(i), em)
+			return true
+		}
+	}
 	m.opts[s] = o
 	return o
+}
+
+// imageRow shows a paragraph of images alone as markdown.View does, each
+// at most as wide as the view, its description until it loads, but each
+// one a button that enlarges it. markdown.View has no hook for clicks on
+// its images, so the paragraph is built here.
+func (m *Markdown) imageRow(c *ui.Context, k *kit.Kit, in []parser.Inline, em float32) {
+	ui.Row(c).Wrap().Gap(em * 0.5).AlignSelf(ui.Stretch).Children(func() {
+		for j := 0; j < len(in); j = in[j].Next {
+			n := &in[j]
+			if n.Kind != parser.Image {
+				continue
+			}
+			alt := parser.PlainText(in[j+1 : n.Next])
+			var src ui.ImageSource
+			if !n.Pending {
+				src = m.image(c, n.Dest)
+			}
+			bm, _ := src.(*ui.Bitmap)
+			if bm == nil {
+				label := alt
+				if label == "" {
+					label = l10n.L("Image")
+				}
+				ph := ui.Row(c).Padding(em*0.5, em*0.75).Radius(em * 0.3).Background(k.T.Foreground.Alpha(0.07))
+				ph.Role(ui.RoleImage).Label(alt)
+				ph.Children(func() { ui.Text(c, label).TextColor(k.T.MutedForeground).FontSize(em * 0.875) })
+				continue
+			}
+			w, h := bm.Size()
+			tip := n.Title
+			if tip == "" {
+				tip = l10n.L("Click to enlarge")
+			}
+			img := ui.Image(c, bm).Label(alt).Role(ui.RoleButton).Focusable().Tooltip(tip).Cursor(ui.CursorPointer).
+				Radius(em * 0.3).MaxWidthPercent(100)
+			if w > 0 && h > 0 {
+				img.AspectRatio(float32(w) / float32(h))
+			}
+			if img.Clicked() {
+				m.Enlarge(bm, alt)
+			}
+		}
+	})
+}
+
+// image returns the image at url once Load has read it, starting it the
+// first time, on a goroutine of its own.
+func (m *Markdown) image(c *ui.Context, url string) ui.ImageSource {
+	if url == "" {
+		return nil
+	}
+	v, loaded := m.images.LoadOrStore(url, &mdImage{})
+	e := v.(*mdImage)
+	if !loaded {
+		load, services := m.Load, c.Services()
+		go func() {
+			src, _ := load(url)
+			e.mu.Lock()
+			e.src = src
+			e.mu.Unlock()
+			services.Invalidate()
+		}()
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.src
+}
+
+// imagesOnly reports whether the inlines are images, and the spaces
+// between them, alone: the paragraphs markdown.View shows as images.
+func imagesOnly(in []parser.Inline) bool {
+	n := 0
+	for j := 0; j < len(in); j = in[j].Next {
+		switch in[j].Kind {
+		case parser.Image:
+			n++
+		case parser.SoftBreak, parser.LineBreak:
+		case parser.Text:
+			if strings.TrimSpace(in[j].Text) != "" {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return n > 0
 }
 
 // markdownText shows Markdown, as it streams in while streaming.

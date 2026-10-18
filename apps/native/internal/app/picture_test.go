@@ -91,3 +91,34 @@ func TestClickingAPictureEnlargesIt(t *testing.T) {
 		t.Fatal("a click did not close the picture")
 	}
 }
+
+// Clicking an image a reply names shows it enlarged, as an attached one.
+func TestClickingAReplysImageEnlargesIt(t *testing.T) {
+	sc := fakedaemon.Scenario{
+		Sessions: []fakedaemon.SessionSpec{{Title: "Shots", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{
+			{Role: "user", Text: "show me"},
+			{Role: "assistant", Text: "Here it is:\n\n![The banner](/Users/dev/acme-web/shot.png)"},
+		}}},
+		Input: map[string]any{"files": map[string]any{
+			"/Users/dev/acme-web/shot.png": map[string]any{"mimeType": "image/png", "base64": pngOf(800, 400)},
+		}},
+	}
+	h := newHarness(t, sc, "")
+	h.openSession("Shots")
+	h.until("the image in its 2:1 shape", func() bool {
+		img, ok := h.tt.Find("The banner")
+		return ok && img.H > 0 && img.W/img.H > 1.9 && img.W/img.H < 2.1
+	})
+	h.frame()
+	small, _ := h.tt.Find("The banner")
+	h.click("The banner")
+	v := h.a.view(h.a.Route().SessionID)
+	if !v.Zoomed() {
+		t.Fatal("the picture did not open")
+	}
+	h.frame()
+	big, ok := h.tt.Find("Enlarged image")
+	if !ok || big.W <= small.W {
+		t.Fatalf("enlarged %+v (found %v), image %+v", big, ok, small)
+	}
+}
