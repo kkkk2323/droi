@@ -1,3 +1,9 @@
+## 1.56.10 - 2026-10-18
+
+### Added
+
+- An image in Droid's reply, such as a screenshot it took, can be clicked to see it enlarged, as an image attached to a message can. A click or Esc closes it.
+
 ## 1.56.9 - 2026-10-17
 
 ### Added
