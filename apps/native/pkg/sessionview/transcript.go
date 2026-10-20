@@ -408,7 +408,9 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 					k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 					return
 				}
-				if res.IsError {
+				if j, ok := v.job(call.Use.ID); ok {
+					v.jobMark(c, j)
+				} else if res.IsError {
 					k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label(l10n.L("Failed"))
 				} else {
 					k.Icon(c, "check", 14, t.Success).Label(l10n.L("Succeeded"))
@@ -453,10 +455,16 @@ func (v *View) toolDetail(c *ui.Context, call *transcript.ToolCall, res transcri
 			ui.Box(c).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Padding(k.Px(6), k.Px(10)).Children(func() { mono(input, t.Foreground) })
 			v.diffView(c, res.Diff)
 		} else {
+			job, isJob := v.job(call.Use.ID)
+			output := isJob && v.ShowsOutput(job)
 			ui.Scroll(c).MaxHeight(k.Px(384)).Children(func() {
 				ui.Column(c).Padding(k.Px(10)).Children(func() {
 					mono(input, t.Foreground)
+					if isJob {
+						mono(v.JobState(job), t.Foreground)
+					}
 					switch {
+					case output:
 					case res.Status != nil:
 						color, icon, msg := t.Success, "check", l10n.L("Succeeded")
 						if !res.Status.Success {
@@ -478,6 +486,10 @@ func (v *View) toolDetail(c *ui.Context, call *transcript.ToolCall, res transcri
 					}
 				})
 			})
+			if output {
+				ui.Box(c).Height(1).Background(t.Border)
+				v.JobOutput(c, job)
+			}
 		}
 		for i, img := range res.Images {
 			ui.Box(c).Padding(0, k.Px(10), k.Px(10), k.Px(10)).Children(func() {
@@ -550,7 +562,11 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			case call.Result == nil:
 				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 			case run.Status == "running":
-				k.Icon(c, "clock", 14, t.MutedForeground).Label(l10n.L("Still running"))
+				if j, ok := v.job(call.Use.ID); ok {
+					v.jobMark(c, j)
+				} else {
+					k.Icon(c, "clock", 14, t.MutedForeground).Label(l10n.L("Still running"))
+				}
 			case run.Status == "stalled":
 				k.Icon(c, "circle-alert", 14, t.Attention).Label(l10n.L("Stalled"))
 			case failed:

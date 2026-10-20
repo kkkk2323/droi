@@ -44,6 +44,8 @@ type sessionView struct {
 	subOpen, trailOpen bool
 	// speedOpen: the footer's model speed details.
 	speedOpen bool
+	// jobsOpen: the header's background tasks.
+	jobsOpen bool
 
 	// focused is whether the composer took the focus once already.
 	focused bool
@@ -64,6 +66,7 @@ func (a *App) view(id string) *sessionView {
 			Quote:          v.quote,
 			ScrollShortcut: shortcut(CmdScrollToLatest),
 			Overlay:        v.turnRail,
+			Local:          func() bool { return !a.following() },
 		})
 		d := a.drafts.Load(id)
 		text, texts := pasted.Split(d.Text)
@@ -200,6 +203,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 			})
 		})
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
+			v.jobsMenu(c)
 			v.subagentMenu(c, nav)
 			v.gitButton(c, s, loaded)
 			v.openInButton(c, workspace)

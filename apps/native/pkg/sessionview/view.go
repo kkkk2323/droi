@@ -71,6 +71,10 @@ type Env struct {
 	// Overlay draws over the transcript's list once it is built, in a box
 	// the list fills; width is the list's.
 	Overlay func(c *ui.Context, s *session.Session, width float32)
+	// Local tells whether the Daemon runs on this computer, where a
+	// background command's output file and process can be looked at; nil
+	// when it never does.
+	Local func() bool
 }
 
 // Revisions counts each Session's changes in the Store, for its View to
@@ -150,6 +154,8 @@ type View struct {
 	zoom      *ui.Bitmap
 	zoomLabel string
 	zoomOpen  bool
+
+	jobs jobsState
 
 	compacting bool
 	// hasLoaded: the Session was loaded once. The Daemon cleans up an idle
@@ -478,6 +484,7 @@ func (v *View) Frame() *session.Session {
 		s = ctl.Store().Session(v.id)
 	}
 	v.refresh(s)
+	v.Jobs()
 	if s != nil && s.LoadState() == session.Loaded {
 		v.hasLoaded = true
 	}

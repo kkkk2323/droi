@@ -667,6 +667,8 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				status("", t.Info, countL(a.sidebar.subagentsRunning[s.SessionID], l10n.N("%d subagent running"), l10n.N("%d subagents running")), true)
 			case doing == activity.Working:
 				status("", t.Info, L("Working"), true)
+			case a.jobsRunning(s.SessionID) > 0:
+				status("", t.Info, countL(a.jobsRunning(s.SessionID), l10n.N("%d background task running"), l10n.N("%d background tasks running")), true)
 			case s.Worktree != nil && s.Worktree.Branch != "":
 				label := L("Worktree on %s", s.Worktree.Branch)
 				if s.Worktree.Ephemeral() {
