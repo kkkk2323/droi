@@ -1,3 +1,16 @@
+## 1.56.13 - 2026-10-20
+
+### Added
+
+- Settings shows when each account's plan renews or ends: each account row says "<plan> · Renews <date>" or "Ends <date>". Within a week of the end it also shows the days left, and a plan that has ended is shown in red.
+
+### Changed
+
+- A permission request's answers are now one row of buttons, like a question's: "No, cancel" on the left, and on the right "Yes, and always allow …" and "Yes, allow", the main button. Before, each answer filled a row of its own.
+
+### Fixed
+
+- The "Both" tool mode is gone from the native app and the Phone App, because droid no longer accepts it: a session started with Both failed with "Invalid request params". Direct and Script remain. A saved Both default now reads as "Follow droid settings".
 ## 1.56.12 - 2026-10-20
 
 ### Added
