@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const orgBody = `{"organization":{"id":"o1","subscription":{"factoryTier":"team_annual","orbSubscription":{"name":"Factory Pro Annual Plan","status":"active","end_date":null,"current_billing_period_end_date":"2099-01-30T08:00:00+00:00","trial_info":{"end_date":null}}}}}`
+
 const limitsBody = `{"usesTokenRateLimitsBilling":true,"limits":{"standard":{"fiveHour":{"usedPercent":0,"windowEnd":null},"weekly":{"usedPercent":12,"windowEnd":"2099-10-15T09:24:36.485Z"},"monthly":{"usedPercent":38,"windowEnd":"2099-10-19T14:30:36.292Z"}},"core":{"fiveHour":{"usedPercent":0,"windowEnd":null},"weekly":{"usedPercent":0,"windowEnd":null},"monthly":{"usedPercent":0,"windowEnd":null}}},"overagePreference":"droidCore","extraUsageBalanceCents":250}`
 
 // usageServer is Factory (and WorkOS under /workos) as the Host reaches
@@ -21,6 +23,7 @@ type usageServer struct {
 	mu       sync.Mutex
 	asked    []http.Header
 	renewals int
+	orgs     int
 	status   int
 }
 
@@ -34,6 +37,9 @@ func newUsageServer(t *testing.T) *usageServer {
 			s.asked = append(s.asked, r.Header.Clone())
 			w.WriteHeader(s.status)
 			w.Write([]byte(limitsBody))
+		case "/api/organization":
+			s.orgs++
+			w.Write([]byte(orgBody))
 		case "/workos/authenticate":
 			r.ParseForm()
 			if r.Form.Get("refresh_token") != "rb" || r.Form.Get("organization_id") != "org_b" {
@@ -110,6 +116,41 @@ func TestUsageIsAskedTheWayDroidAsks(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if len(s.asked) != 1 {
 		t.Fatalf("%d requests", len(s.asked))
+	}
+}
+
+func TestUsageCarriesThePlanAskedForHourly(t *testing.T) {
+	s := newUsageServer(t)
+	h := usageHost(t, s)
+	h.RefreshUsage("")
+	sub := waitUsage(t, h, "").Subscription
+	if sub == nil || sub.Plan != "Factory Pro Annual Plan" || sub.Status != "active" || !sub.Ends.IsZero() || !sub.Renews.Equal(time.Date(2099, 1, 30, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("%+v", sub)
+	}
+	// The usage is asked again a minute on; the plan waits for the hour.
+	h.usageMu.Lock()
+	h.usage[""].tried = time.Time{}
+	h.usageMu.Unlock()
+	h.RefreshUsage("")
+	waitUsage(t, h, "")
+	time.Sleep(50 * time.Millisecond)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.asked) != 2 || s.orgs != 1 {
+		t.Fatalf("%d usage, %d plan requests", len(s.asked), s.orgs)
+	}
+}
+
+func TestParseSubscription(t *testing.T) {
+	if sub, err := parseSubscription([]byte(`{"organization":{"subscription":{"orbSubscription":null}}}`)); sub != nil || err != nil {
+		t.Fatalf("no plan: %+v %v", sub, err)
+	}
+	if _, err := parseSubscription([]byte(`<html>`)); err == nil {
+		t.Fatal("no error for a page that is not JSON")
+	}
+	sub, err := parseSubscription([]byte(`{"organization":{"subscription":{"orbSubscription":{"name":"Pro","status":"active","end_date":"2099-02-01T00:00:00+00:00","current_billing_period_end_date":"2099-02-01T00:00:00+00:00","trial_info":{"end_date":"2099-01-01T00:00:00+00:00"}}}}}`))
+	if err != nil || sub.Ends.Year() != 2099 || sub.TrialEnds.Month() != time.January {
+		t.Fatalf("%+v %v", sub, err)
 	}
 }
 

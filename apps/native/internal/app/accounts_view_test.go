@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +25,8 @@ func testJWT(claims map[string]any) string {
 
 // accountsTestHost is a Host whose droid CLI is signed in as a@x.dev and
 // that has b@y.dev added, laid out as Droi keeps them. Its Factory API is
-// a stand-in that has a@x.dev near its 5-hour limit.
+// a stand-in that has a@x.dev near its 5-hour limit, on a plan that ends in
+// three days, and b@y.dev on one that renews.
 func accountsTestHost(t *testing.T) (*host.Host, string) {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
@@ -35,7 +38,16 @@ func accountsTestHost(t *testing.T) (*host.Host, string) {
 		t.Fatal(err)
 	}
 	ends := time.Now().Add(3 * time.Hour).UTC().Format(time.RFC3339)
+	planEnds := time.Now().Add(71 * time.Hour).UTC().Format(time.RFC3339)
 	factory := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/organization" {
+			end := "null"
+			if r.Header.Get("Authorization") == "Bearer "+aToken {
+				end = strconv.Quote(planEnds)
+			}
+			fmt.Fprintf(w, `{"organization":{"subscription":{"orbSubscription":{"name":"Factory Pro Plan","status":"active","end_date":%s,"current_billing_period_end_date":"2099-01-30T08:00:00+00:00","trial_info":{"end_date":null}}}}}`, end)
+			return
+		}
 		five, week := 22, 9
 		if r.Header.Get("Authorization") == "Bearer "+aToken {
 			five, week = 92, 41
@@ -66,6 +78,12 @@ func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
 	if _, ok := h.tt.Find("5h: 92% used"); !ok {
 		t.Fatal("the 5-hour meter has no name")
 	}
+	// Each account says when its plan renews or ends.
+	h.until("the plans", func() bool { return h.hasText("Factory Pro Plan · Renews ") })
+	ending := "Factory Pro Plan · Ends " + time.Now().Add(71*time.Hour).Local().Format("Jan 2, 2006") + " · 3 days left"
+	if _, ok := h.tt.Find(ending); !ok || !h.hasText("3 days left") {
+		t.Fatalf("no end for a@x.dev's plan: %q", h.tt.Texts())
+	}
 	h.shoot("settings-account")
 
 	h.click("Switch to b@y.dev")
@@ -85,6 +103,28 @@ func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
 	h.until("the account gone", func() bool { return !h.hasText("b@y.dev") })
 	if _, err := os.Stat(filepath.Join(data, "accounts", "b1")); !os.IsNotExist(err) {
 		t.Fatal("the account's folder stayed")
+	}
+}
+
+func TestSubscriptionText(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	renews := time.Date(2027, 1, 30, 8, 0, 0, 0, time.Local)
+	for _, c := range []struct {
+		sub   host.Subscription
+		want  string
+		level planLevel
+	}{
+		{host.Subscription{Plan: "Pro", Status: "active", Renews: renews}, "Pro · Renews Jan 30, 2027", planFine},
+		{host.Subscription{Plan: "Pro", Status: "active", Ends: renews}, "Pro · Ends Jan 30, 2027", planFine},
+		{host.Subscription{Plan: "Pro", Status: "active", Ends: now.Add(20 * time.Hour)}, "Pro · Ends Oct 21, 2026 · 1 day left", planEnding},
+		{host.Subscription{Status: "active", TrialEnds: now.Add(5 * 24 * time.Hour), Renews: renews}, "Trial ends Oct 25, 2026 · 5 days left", planEnding},
+		{host.Subscription{Plan: "Pro", Status: "ended", Ends: now.Add(-time.Hour)}, "Pro · Ended Oct 20, 2026", planEnded},
+		{host.Subscription{Plan: "Pro", Status: "ended"}, "Pro · Ended", planEnded},
+	} {
+		line, rest, level := subscriptionText(&c.sub, now)
+		if got := strings.TrimSuffix(line+" · "+rest, " · "); got != c.want || level != c.level {
+			t.Errorf("%+v: %q %d, want %q %d", c.sub, got, level, c.want, c.level)
+		}
 	}
 }
 
