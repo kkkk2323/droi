@@ -1,3 +1,8 @@
+## 1.58.1 - 2026-10-20
+
+### Fixed
+
+- Background tasks count only the commands Droid left running in the background. A Script that is still going is no longer counted in the top-right corner or the sidebar; its row says "Still running" until it ends.
 ## 1.58.0 - 2026-10-20
 
 ### Added
