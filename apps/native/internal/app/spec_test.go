@@ -47,6 +47,9 @@ func TestTheSpecSwitchTogglesSpecMode(t *testing.T) {
 	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "reply", Deltas: []string{"On it."}}), "")
 	h.openSession("Deploy")
 	h.until("the Spec switch", func() bool { _, ok := h.tt.Find("Spec mode"); return ok })
+	// The context meter comes in after, beside the switch, and moves it.
+	h.until("the context meter", func() bool { return h.hasText("1.0k / 200k") })
+	h.settle()
 	id := h.a.Route().SessionID
 	h.click("Spec mode")
 	h.until("Spec mode on", func() bool { return h.inMode(id, protocol.DroidInteractionModeSpec) })
