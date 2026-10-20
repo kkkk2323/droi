@@ -87,33 +87,3 @@ jobs:
           name: playwright-report-phone
           path: tests/test-results
           retention-days: 7
-
-  smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - run: pnpm install --frozen-lockfile
-
-      # Electron brings its own Chromium; it only needs the system libraries.
-      - run: pnpm -C tests exec playwright install-deps chromium
-
-      - run: pnpm build
-
-      - name: Desktop Shell smoke suite
-        run: xvfb-run -a pnpm test:smoke
-
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report-smoke
-          path: tests/test-results
-          retention-days: 7

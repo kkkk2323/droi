@@ -17,7 +17,7 @@ iPhone connected to this Mac and Droi running here with Remote Access on.
 ## Pairing and connecting
 
 Droi on the computer must be a build with the computer name and id in its
-`/meta` (`pnpm install:mac` from this repository).
+`/meta` (a current release, or `go run ./apps/native` from this repository).
 
 - [ ] Pasting the pairing link from Droi → Settings → Remote Access asks for
       local network access once, with Droi's explanation, then connects.

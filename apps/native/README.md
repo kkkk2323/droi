@@ -2,8 +2,8 @@
 
 The Desktop Shell and its window rewritten in Go on [MyGo](https://github.com/egoist/mygo)'s
 native UI: no Electron, no webview, no Node at run time. It looks the same as
-the web Client (`apps/desktop/src/renderer`) running as the Local Client, pixel
-for pixel where it can.
+the web Client did as the Local Client (that Client was removed after 1.59.0),
+pixel for pixel where it can.
 
 It replaces the Electron app: same bundle identifier (`com.droi.app`), name
 and data folder (`~/Library/Application Support/Droi`), so the Shell
@@ -151,7 +151,7 @@ no split.
 | `pkg/mermaid/`                                                                            | Mermaid flowcharts and sequence diagrams laid out for the Painter (after Ondine and Pele)             |
 | `pkg/settingsview/`                                                                       | Settings sections: General's Appearance, Session defaults, the model picker (no `*App`)               |
 | `internal/app/`                                                                           | the views: shell, sidebar, the Session's header, turn rail and composer, New session, settings        |
-| `testdata/reference/`                                                                     | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |
+| `testdata/reference/`                                                                     | the web Client's screens at 2x with computed styles, recorded before that Client was removed          |
 
 ## Commands (from the repository root)
 
@@ -159,7 +159,6 @@ no split.
 go run ./apps/native                 # run it (needs droid on PATH)
 go test ./apps/native/...            # unit tests, view tests, Fake Daemon tests
 go tool -modfile=apps/native/go.mod mygo build apps/native   # .app and .dmg
-DROI_NATIVE_REF=1 pnpm test:e2e --project=desktop native-reference.spec.ts   # re-record the reference (deprecated web suite)
 node apps/native/scripts/gen-icons.mjs [icon-name ...]   # add Lucide icons, or rewrite those in pkg/icons/svg
 ```
 

@@ -1,10 +1,27 @@
-// Fixtures for the Phone App's web build: the web Client's Fake Daemon and
-// Scenarios, plus access to the stand-ins for the phone's hardware.
-import type { Locator, Page } from '@playwright/test'
-import { test, expect } from '../web/fixtures'
-import type { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
+// Fixtures for the Phone App's web build: a Fake Daemon per test with its
+// Scenario, plus access to the stand-ins for the phone's hardware.
+import { readFileSync } from 'node:fs'
+import { test as base, expect, type Locator, type Page } from '@playwright/test'
+import { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
 import type { JsonRpcRequest } from '@droi/fake-daemon/protocol'
+import type { ScenarioInput } from '@droi/fake-daemon/scenario'
 import { streamedReply } from '@droi/fake-daemon/turns'
+
+// /meta answers the release version, as a Gateway of this release would.
+FakeDaemon.appVersion = (
+  JSON.parse(readFileSync(new URL('../../apps/native/mygo.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
+
+const test = base.extend<{ fakeDaemon: FakeDaemon; scenario: ScenarioInput }>({
+  scenario: [{}, { option: true }],
+  fakeDaemon: async ({ scenario }, use) => {
+    const daemon = await FakeDaemon.start(scenario)
+    await use(daemon)
+    await daemon.stop()
+  },
+})
 
 /** What the Phone App's stand-ins recorded (see apps/mobile/src/platform/stand-ins.ts). */
 export interface StandIns {

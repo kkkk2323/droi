@@ -8,8 +8,7 @@ which puts in one GitHub Release:
   `install.sh` each), the program for `droi host` on Linux and its signed update;
 - `droi-<version>-darwin-universal.tar.gz`, the signed update, a delta update from the
   previous version (`updates.deltas` in `mygo.json`), and `update-darwin-universal.json`,
-  the manifest the app checks;
-- `app.asar.gz` and `latest.json`, a last code update for the Electron Desktop Shell.
+  the manifest the app checks.
 
 The workflow builds into a draft and publishes it once every build is in, as the latest
 Release: apps read the manifest from `releases/latest/download/`.
@@ -55,10 +54,9 @@ it); the Electron users install it from the disk image, which the card links to.
 
 1. Add the version's `## <version> - <date>` section at the top of `CHANGELOG.md` (Added,
    Changed, Fixed, in plain sentences). It becomes the release notes and the update's notes.
-2. Run `scripts/release.sh <version>` on main. It bumps the version in the three places a
-   test keeps equal (`apps/desktop/package.json`, `apps/native/mygo.json` and `devVersion`
-   in `apps/native/main.go`), commits them with the changelog as `chore(release): <version>`,
-   pushes main and the tag `v<version>`, and waits until the workflow has published the
+2. Run `scripts/release.sh <version>` on main. It bumps the version in the two places a
+   test keeps equal (`apps/native/mygo.json` and `devVersion` in `apps/native/main.go`),
+   commits them with the changelog as `chore(release): <version>`, pushes main and the tag `v<version>`, and waits until the workflow has published the
    Release (about 6 minutes). Arguments after the version go to `git commit`, such as
    `--trailer "Co-authored-by: …"`.
 3. Reinstall the Phone App with `pnpm install:phone`, so that it matches the release.
