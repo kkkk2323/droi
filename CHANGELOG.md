@@ -1,3 +1,15 @@
+## 1.57.0 - 2026-10-20
+
+### Added
+
+- Spec mode: Droid plans with you before it changes anything. Turn on "Spec" beside the message box, or on the New session page before you start. When the plan is ready, it shows in the conversation, and a review card takes the place of the message box: add a note for Droid, pick the autonomy the work runs at, then "Proceed", or "Keep planning" to send the plan back (your note then goes to Droid as your next message). With "New session" on, the work starts in a new session with the plan, and Droi opens it. Plans in earlier sessions show the same way, with how they were answered.
+- Mermaid flowcharts and sequence diagrams in Droid's replies and plans are drawn as diagrams, in the app's colors. "Show source" shows the code, and a wide diagram scrolls sideways. Other diagram types, and a diagram with a mistake in it, stay as code.
+- A long paste, of 25 lines or 4,000 characters, waits as a card next to the images instead of going into the message box, and goes out after your message. In the conversation it shows as the same card, which opens on a click. A card can go back into the message box unless one of its lines is over 10,000 characters. Drafts keep the cards, and editing a queued message brings them back.
+
+### Fixed
+
+- Pasting a long log or JSON no longer hangs the window. Before, a paste of 100 KB on one line took almost a second, and so did every key pressed after it.
+
 ## 1.56.13 - 2026-10-20
 
 ### Added
