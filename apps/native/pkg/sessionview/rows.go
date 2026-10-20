@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
@@ -221,12 +222,28 @@ func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
 			images = append(images, b)
 		}
 	}
-	text := strings.Join(parts, "\n")
+	text, texts := pasted.Split(strings.Join(parts, "\n"))
 	v.column(c).Role(ui.RoleGroup).Label(l10n.L("You")).AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
 		if len(images) > 0 {
 			ui.Row(c).Wrap().Justify(ui.End).Gap(k.Px(6)).MaxWidthPercent(85).Children(func() {
 				for _, b := range images {
 					v.picture(c, b.ID, b.Image, 192, l10n.L("Attached image"))
+				}
+			})
+		}
+		for i, p := range texts {
+			open := v.flag("paste:"+e.ID+":"+strconv.Itoa(i), false)
+			action := l10n.L("Show text")
+			if *open {
+				action = l10n.L("Hide text")
+			}
+			ui.Column(c.Key("paste" + strconv.Itoa(i))).AlignItems(ui.End).Gap(k.Px(6)).MaxWidthPercent(85).Children(func() {
+				if acted, _ := PastedCard(c, k, p, action, open, ""); acted {
+					*open = !*open
+				}
+				if *open {
+					k.Text(c, p, 12.5, 20).Font(k.Mono).Selectable().Padding(k.Px(8), k.Px(12)).Radius(k.Px(8)).
+						Border(1, t.Border).Background(t.Muted).TextColor(t.Foreground)
 				}
 			})
 		}

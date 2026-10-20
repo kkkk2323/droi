@@ -9,6 +9,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
@@ -44,7 +45,11 @@ func entryText(e *transcript.Entry) string {
 			parts = append(parts, b.Text)
 		}
 	}
-	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
+	text, texts := pasted.Split(strings.Join(parts, "\n"))
+	if strings.TrimSpace(text) == "" && len(texts) > 0 {
+		text = pasted.Title(texts[0])
+	}
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // railItems are the rail's items: the user's messages from before the

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
@@ -36,6 +38,7 @@ var compactCommand = regexp.MustCompile(`^/compact(?:\s+([\s\S]*))?$`)
 type composerState struct {
 	text   string
 	images []attachments.Image
+	pasted []pasted.Text
 	// field is the text area's value, the text after a picked command's
 	// tag. MyGo writes an edit into it after the build that made the text
 	// area, so it outlives the build; fieldPrefix is the tag and fieldFrom
@@ -230,12 +233,12 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	}
 	cs.field, cs.fieldPrefix, cs.fieldFrom = cs.text[len(prefix):], prefix, cs.text
 	ready := loaded || v.Ready()
-	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images) > 0)
+	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images)+len(cs.pasted) > 0)
 	// submit reports whether it sent. It reads the text again: a key can
 	// come with text typed after this frame was built.
 	submit := func(placement protocol.QueuePlacement) bool {
 		cs.takeEdit()
-		if !ready || strings.TrimSpace(cs.text) == "" && len(cs.images) == 0 {
+		if !ready || strings.TrimSpace(cs.text) == "" && len(cs.images)+len(cs.pasted) == 0 {
 			return false
 		}
 		if running && placement == "" {
@@ -244,10 +247,10 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		if !running {
 			placement = ""
 		}
-		if !v.send(s, cs.text, cs.images, placement) {
+		if !v.send(s, pasted.Join(cs.text, cs.pasted), cs.images, placement) {
 			return false
 		}
-		cs.text, cs.images = "", nil
+		cs.text, cs.images, cs.pasted = "", nil, nil
 		v.saveDraft()
 		return true
 	}
@@ -272,7 +275,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 			v.drop(readDrop(d.Data))
 		}
 		card.Children(func() {
-			if len(cs.images) > 0 {
+			if len(cs.images)+len(cs.pasted) > 0 {
 				v.attachmentList(c)
 			}
 			ui.Row(c.Key("field")).AlignItems(ui.Start).Children(func() {
@@ -296,7 +299,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					in.AutoFocus()
 					v.focused = true
 				}
-				in.OnPaste(func(string) bool { return v.pasteImage() })
+				in.OnPaste(func(s string) bool { return v.pasteImage() || v.pasteText(s) })
 				in.OnTextKey(func(key ui.TextKey) bool {
 					if cs.menu.key(key, cs.text, accept) {
 						return true
@@ -360,7 +363,18 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 }
 
 func (v *sessionView) saveDraft() {
-	v.a.drafts.Save(v.id, draftOf(v.composer.text, v.composer.images))
+	v.a.drafts.Save(v.id, draftOf(v.composer.text, v.composer.images, v.composer.pasted))
+}
+
+// pasteText takes a long text as a card instead of the text area, which
+// would take seconds over it; a short one the text area pastes itself.
+func (v *sessionView) pasteText(s string) bool {
+	if !pasted.Long(s) {
+		return false
+	}
+	v.composer.pasted = append(v.composer.pasted, pasted.New(s))
+	v.saveDraft()
+	return true
 }
 
 // pasteImage attaches the clipboard's image, as the web Client takes one
@@ -473,6 +487,9 @@ func (v *sessionView) drop(d dropped) {
 		case ok:
 			cs.images = append(cs.images, img)
 		}
+	case pasted.Long(d.text):
+		cs.pasted = append(cs.pasted, pasted.New(d.text))
+		v.saveDraft()
 	case d.text != "":
 		cs.text = appendWords(cs.text, d.text)
 		v.saveDraft()
@@ -492,12 +509,17 @@ func (v *sessionView) chooseImages() {
 }
 
 func (v *sessionView) attachmentList(c *ui.Context) {
-	v.a.attachmentList(c, &v.composer.images, v.attached, v.saveDraft)
+	cs := &v.composer
+	v.a.attachmentList(c, &cs.images, &cs.pasted, v.attached, v.saveDraft, func(text string) {
+		cs.text = appendLines(cs.text, text)
+		v.focused = false
+	})
 }
 
-// attachmentList shows the images about to be sent, each with a button that
-// removes it; removed is called after one is.
-func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps map[string]*ui.Bitmap, removed func()) {
+// attachmentList shows the images and pasted texts about to be sent, each
+// with a button that removes it; removed is called after one is. A pasted
+// text can go back into the text area, through inline.
+func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, texts *[]pasted.Text, bitmaps map[string]*ui.Bitmap, removed func(), inline func(string)) {
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Role(ui.RoleList).Label(L("Attachments")).Wrap().Gap(k.Px(8)).Padding(k.Px(12), k.Px(12), 0, k.Px(12)).Children(func() {
 		for _, img := range *images {
@@ -527,7 +549,34 @@ func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, bitmaps
 				}
 			})
 		}
+		for _, p := range *texts {
+			action := ""
+			if pasted.Editable(p.Text) {
+				action = L("Show in text field")
+			}
+			ui.Box(c.Key(p.ID)).MaxWidthPercent(100).Children(func() {
+				acted, gone := sessionview.PastedCard(c, k, p.Text, action, nil, L("Remove pasted text"))
+				if !acted && !gone {
+					return
+				}
+				*texts = slices.DeleteFunc(slices.Clone(*texts), func(q pasted.Text) bool { return q.ID == p.ID })
+				if acted {
+					inline(p.Text)
+				}
+				if removed != nil {
+					removed()
+				}
+			})
+		}
 	})
+}
+
+// appendLines is text with more on a line of its own.
+func appendLines(text, more string) string {
+	if text == "" || strings.HasSuffix(text, "\n") {
+		return text + more
+	}
+	return text + "\n" + more
 }
 
 // slashTag is the command or skill the message will run, before its text.
@@ -906,8 +955,12 @@ func queuedText(q session.QueuedMessage) string {
 				Text string `json:"text"`
 			}
 			_ = json.Unmarshal(b.Raw, &tb)
-			if tb.Text != "" {
-				parts = append(parts, tb.Text)
+			text, texts := pasted.Split(tb.Text)
+			if text != "" {
+				parts = append(parts, text)
+			}
+			for range texts {
+				parts = append(parts, L("[pasted text]"))
 			}
 		case protocol.ContentBlockTypeImage:
 			parts = append(parts, L("[image]"))
@@ -993,6 +1046,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 	// deleted it: had it gone out already, it would be sent twice.
 	edit := func(q session.QueuedMessage) {
 		text, images := queuedContent(q)
+		text, texts := pasted.Split(text)
 		restore := func() {
 			cs := &v.composer
 			if strings.TrimSpace(cs.text) != "" {
@@ -1000,6 +1054,7 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 			}
 			cs.text = text
 			cs.images = append(images, cs.images...)
+			cs.pasted = append(pastedTexts(texts), cs.pasted...)
 			v.focused = false
 			v.saveDraft()
 		}

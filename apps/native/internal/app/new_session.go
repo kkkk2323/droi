@@ -23,6 +23,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
@@ -46,6 +47,7 @@ type newSessionState struct {
 
 	text    string
 	images  []attachments.Image
+	pasted  []pasted.Text
 	bitmaps map[string]*ui.Bitmap
 	err     string
 	menu    slashMenu
@@ -422,7 +424,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		if !enabled {
 			return
 		}
-		text, images := s.text, s.images
+		text, images := pasted.Join(s.text, s.pasted), s.images
 		// A `/loop` the new Session could not run would leave it empty.
 		if m := loopCommand.FindStringSubmatch(strings.TrimSpace(text)); m != nil && len(images) == 0 {
 			cmd, err := loops.ParseCommand(m[1])
@@ -456,14 +458,21 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 					s.images = append(s.images, img)
 				}
 			}
-			s.text = appendWords(s.text, d.text)
+			if pasted.Long(d.text) {
+				s.pasted = append(s.pasted, pasted.New(d.text))
+			} else {
+				s.text = appendWords(s.text, d.text)
+			}
 		}
 		card.Children(func() {
-			if len(s.images) > 0 {
+			if len(s.images)+len(s.pasted) > 0 {
 				if s.bitmaps == nil {
 					s.bitmaps = map[string]*ui.Bitmap{}
 				}
-				a.attachmentList(c, &s.images, s.bitmaps, nil)
+				a.attachmentList(c, &s.images, &s.pasted, s.bitmaps, nil, func(text string) {
+					s.text = appendLines(s.text, text)
+					s.caretToEnd = true
+				})
 			}
 			// In a column the text area's Grow(1) would take its height, as
 			// the composer's row gives it the width instead.
@@ -500,7 +509,16 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				}
 				return ok || err != nil
 			}
-			in.OnPaste(func(string) bool { return paste() })
+			in.OnPaste(func(text string) bool {
+				if paste() {
+					return true
+				}
+				if !pasted.Long(text) {
+					return false
+				}
+				s.pasted = append(s.pasted, pasted.New(text))
+				return true
+			})
 			in.OnTextKey(func(key ui.TextKey) bool {
 				if s.menu.key(key, s.text, accept) {
 					return true
@@ -630,7 +648,7 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	s.mu.Unlock()
 	go a.refreshList()
 	a.cfg.Update(func() {
-		s.text, s.images, s.bitmaps = "", nil, nil
+		s.text, s.images, s.pasted, s.bitmaps = "", nil, nil, nil
 		a.Go(Route{Name: "session", SessionID: id})
 	})
 }
