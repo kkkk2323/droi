@@ -13,6 +13,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
 	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
@@ -23,8 +24,18 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // L is the window's words in the user's language: l10n.L.
 func L(key string, args ...any) string { return l10n.L(key, args...) }
 
-func draftOf(text string, images []attachments.Image) drafts.Draft {
-	return drafts.Draft{Text: text, Images: images}
+// draftOf is what a composer holds as a draft: its pasted texts go after
+// its text, as they would be sent, so that they survive a restart too.
+func draftOf(text string, images []attachments.Image, texts []pasted.Text) drafts.Draft {
+	return drafts.Draft{Text: pasted.Join(text, texts), Images: images}
+}
+
+func pastedTexts(texts []string) []pasted.Text {
+	var out []pasted.Text
+	for _, t := range texts {
+		out = append(out, pasted.New(t))
+	}
+	return out
 }
 
 func attachmentImage(img attachments.Image) transcript.Image {

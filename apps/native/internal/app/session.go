@@ -13,6 +13,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
@@ -65,7 +66,8 @@ func (a *App) view(id string) *sessionView {
 			Overlay:        v.turnRail,
 		})
 		d := a.drafts.Load(id)
-		v.composer.text, v.composer.images = d.Text, d.Images
+		text, texts := pasted.Split(d.Text)
+		v.composer.text, v.composer.images, v.composer.pasted = text, d.Images, pastedTexts(texts)
 		a.views[id] = v
 	}
 	return v
