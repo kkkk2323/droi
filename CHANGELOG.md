@@ -1,3 +1,10 @@
+## 1.58.0 - 2026-10-20
+
+### Added
+
+- Background tasks show while they run. When Droid starts a command in the background, or a Script keeps running after its first answer, the top-right corner of the session counts them. Click the count to see each task and how long it has run. A command opens to the last 20 lines of its output while the Daemon runs on this computer.
+- A background task's tool row says it is running in the background, or how it ended ("Finished", or the exit code when it failed) and how long it took. The exit code shows once the session is opened again.
+- The sidebar marks a session that is idle but still has background tasks running, such as "1 background task running".
 ## 1.57.2 - 2026-10-20
 
 ### Changed
