@@ -312,24 +312,40 @@ func magpieHash(model string) string {
 	return hex.EncodeToString(sum[:3])
 }
 
-// sameMagpieModels reports that two catalogs hold the same models, so that a
-// refresh which changed nothing need not restart the Daemon under working
-// Sessions. A failed read is not a change: its catalog keeps the models before
+// sameMagpieModels reports that two catalogs would give the Daemon the same
+// models, so that a refresh which changed nothing need not restart it under
+// working Sessions. What the overlay carries of a model counts, not just its
+// name: a new output limit or a display name reaches the picker only through a
+// restart. A failed read is not a change: its catalog keeps the models before
 // it, and the Daemon has those.
 func sameMagpieModels(a, b MagpieCatalog) bool {
 	if a.BaseURL != b.BaseURL || len(a.Models) != len(b.Models) {
 		return false
 	}
-	ids := make(map[string]bool, len(b.Models))
+	seen := make(map[string]magpieModelFacts, len(b.Models))
 	for _, m := range b.Models {
-		ids[m.ID] = true
+		seen[m.ID] = magpieFacts(m)
 	}
 	for _, m := range a.Models {
-		if !ids[m.ID] {
+		facts, ok := seen[m.ID]
+		if !ok || facts != magpieFacts(m) {
 			return false
 		}
 	}
 	return true
+}
+
+// magpieModelFacts is what the overlay says of a model, with the modalities cut
+// to the one thing it uses, so a gateway that lists them in another order is
+// not a change.
+type magpieModelFacts struct {
+	name   string
+	output int
+	images bool
+}
+
+func magpieFacts(m MagpieModel) magpieModelFacts {
+	return magpieModelFacts{name: m.Name, output: m.MaxOutputTokens, images: m.Images()}
 }
 
 // MagpieDisplayName is what the picker calls a Magpie model.

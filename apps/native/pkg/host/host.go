@@ -210,14 +210,20 @@ func (h *Host) runtimeOverlay() string {
 		given = h.magpieModels()
 		models = MagpieCustomModels(given)
 	}
+	path := ""
+	if m.Executable != "" || len(models) > 0 {
+		path = filepath.Join(h.cfg.UserData, "runtime-overlay.json")
+		if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, OverlayOptions{CustomModels: models})); err != nil {
+			path = ""
+		}
+	}
+	if path == "" {
+		// No overlay reaches the Daemon, and so no models: a Refresh then has
+		// something to hand it.
+		h.rememberMagpieGiven(MagpieCatalog{})
+		return ""
+	}
 	h.rememberMagpieGiven(given)
-	if m.Executable == "" && len(models) == 0 {
-		return ""
-	}
-	path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
-	if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, OverlayOptions{CustomModels: models})); err != nil {
-		return ""
-	}
 	return path
 }
 

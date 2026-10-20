@@ -236,6 +236,31 @@ func TestMagpieCatalogComparison(t *testing.T) {
 	if !sameMagpieModels(a, b) {
 		t.Error("a failed read kept the models, which is what the Daemon has")
 	}
+	// What the overlay carries of a model counts, not just its name.
+	b = a
+	b.Models = []MagpieModel{{ID: "a/b", MaxOutputTokens: 64000}, {ID: "c/d"}}
+	if sameMagpieModels(a, b) {
+		t.Error("a new output limit reaches the Daemon only through a restart")
+	}
+	b = a
+	b.Models = []MagpieModel{{ID: "a/b", Name: "Renamed"}, {ID: "c/d"}}
+	if sameMagpieModels(a, b) {
+		t.Error("a new display name reaches the picker only through a restart")
+	}
+	// The modalities are read for images alone, so their order is no change.
+	b = a
+	b.Models = []MagpieModel{
+		{ID: "a/b", Modalities: MagpieModalities{Input: []string{"text", "image"}}},
+		{ID: "c/d", Modalities: MagpieModalities{Input: []string{"image", "text"}}},
+	}
+	c := a
+	c.Models = []MagpieModel{
+		{ID: "a/b", Modalities: MagpieModalities{Input: []string{"image", "text"}}},
+		{ID: "c/d", Modalities: MagpieModalities{Input: []string{"text", "image"}}},
+	}
+	if !sameMagpieModels(b, c) {
+		t.Error("the order of a model's modalities was taken for a change")
+	}
 }
 
 // A refresh tells its caller whether the Daemon has to start again, and it

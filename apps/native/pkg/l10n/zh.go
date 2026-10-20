@@ -5,7 +5,7 @@ var zh = map[string]string{
 	"%d models": "%d 个模型",
 	"A local gateway that runs coding agents on the models of many providers behind one endpoint. Its models join the model picker for new Sessions of this computer. Nothing is written to the droid CLI's settings, so the CLI and the Factory App do not see them.": "一个本地网关，把多家厂商的模型放在同一个端点后面供编码智能体使用。它的模型会加入本机新会话的模型选择器。不会写入 droid CLI 的设置，所以 CLI 和 Factory App 看不到它们。",
 	"Droi could not read the model list at %s. Is Magpie running?": "Droi 无法读取 %s 的模型列表。Magpie 在运行吗？",
-	"Droi reads this list when the Daemon starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.": "Droi 在后台服务启动时读取这份列表。刷新会重新读取，列表有变化时才重启后台服务（会中断正在工作的会话）。",
+	"Droi hands this list to the Daemon when it starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.": "Droi 在后台服务启动时把这份列表交给它。刷新会重新读取，列表有变化时才重启后台服务（会中断正在工作的会话）。",
 	"Gateway": "网关",
 	"Leave empty for %s, or set MAGPIE_BASE_URL.": "留空使用 %s，或设置 MAGPIE_BASE_URL。",
 	"Magpie":                "Magpie",

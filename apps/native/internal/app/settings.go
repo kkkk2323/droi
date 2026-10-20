@@ -453,7 +453,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 			case cat.Running():
 				ok, label = true, L("Running, no models")
 			}
-			desc := L("Droi reads this list when the Daemon starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.")
+			desc := L("Droi hands this list to the Daemon when it starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.")
 			if cat.Err != "" {
 				desc = L("Droi could not read the model list at %s. Is Magpie running?", h.MagpieBaseURL())
 			}
