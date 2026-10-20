@@ -1,3 +1,8 @@
+## 1.59.0 - 2026-10-20
+
+### Added
+
+- Magpie models: with [Magpie](https://usemagpie.ai) running on this computer, turn on "Offer Magpie's models" in Settings → Advanced, and its models join the model picker, grouped by the company behind each model. Droi hands them to this computer's Daemon only; the `droid` CLI's settings are not changed, so the CLI and the Factory App keep their own models. The section shows whether the gateway answers and how many models it has. "Refresh" reads the list again and restarts the Daemon only when the models changed. The gateway's address defaults to `http://127.0.0.1:3425`, or `MAGPIE_BASE_URL`.
 ## 1.58.1 - 2026-10-20
 
 ### Fixed
