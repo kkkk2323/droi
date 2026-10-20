@@ -205,6 +205,7 @@ type App struct {
 	droidUpdateDismissed bool
 	signIn               signInState
 	accounts             accountsState
+	elsewhere            elsewhereState
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
@@ -584,6 +585,7 @@ func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err
 		a.listed = page
 		a.older = olderRead
 		a.olderGen++
+		a.keepList()
 		return nil
 	}
 	edge := int64(res.Sessions[0].UpdatedAt)
@@ -663,6 +665,7 @@ func (a *App) readOlder(p olderPages, show bool) {
 	a.listed = list
 	a.listRev++
 	a.older = olderRead
+	a.keepList()
 	go a.redraw()
 }
 
@@ -687,6 +690,7 @@ func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary 
 			ParentID:         sessions.ContinuationParent(tags),
 			CallingSessionID: s.CallingSessionID,
 			CallingToolUseID: s.CallingToolUseID,
+			OrganizationID:   s.OrganizationID,
 		}
 		if s.MessagesCount != nil {
 			n := int(*s.MessagesCount)
@@ -726,8 +730,15 @@ func (a *App) Go(r Route) {
 	if r.Name == "session" {
 		delete(a.unread, r.SessionID)
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
-		a.view(r.SessionID).Open()
-		a.remember(r.SessionID)
+		a.elsewhere.confirm = ""
+		if acc, ok := a.elsewhere.accounts[r.SessionID]; ok {
+			// droid would refuse to load it; it loads after the switch.
+			a.noteUnopened(r.SessionID, acc)
+		} else {
+			delete(a.elsewhere.unopened, r.SessionID)
+			a.view(r.SessionID).Open()
+			a.remember(r.SessionID)
+		}
 	}
 	if r.Name == "new" {
 		a.newPage.reset(r)
@@ -751,6 +762,7 @@ func (a *App) View(c *ui.Context) {
 	}
 	status, listed, busy, listErr, listDone, rev := a.snapshot()
 	listed, rev = a.knownSubagents(listed, rev)
+	listed, rev = a.withElsewhere(listed, rev)
 	a.shownRev = rev
 	a.restoreLast(listed, listDone)
 	a.noteLiveRuns(listed, a.activity(busy))
@@ -805,8 +817,12 @@ func (a *App) View(c *ui.Context) {
 			}
 			switch {
 			case a.route.Name == "session":
-				sel := findSummary(listed, a.route.SessionID)
-				a.view(a.route.SessionID).build(c, a, sel, listed)
+				id := a.route.SessionID
+				if acc, sel, ok := a.elsewhereOf(id, listed); ok {
+					a.elsewhereView(c, id, sel, acc, len(a.activity(busy)))
+					break
+				}
+				a.view(id).build(c, a, findSummary(listed, id), listed)
 			case a.route.Name == "automations":
 				a.automationsPage(c)
 			case starting && a.following():

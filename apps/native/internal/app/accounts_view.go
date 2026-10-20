@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -108,8 +106,7 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, accounts []host.Ac
 		ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
 			initial := ""
 			if acc.Login != nil {
-				r, _ := utf8.DecodeRuneInString(name)
-				initial = string(unicode.ToUpper(r))
+				initial = accountInitial(name)
 			}
 			a.accountMark(c, initial, "user-round")
 			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {

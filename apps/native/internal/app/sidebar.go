@@ -619,9 +619,17 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	case b.Hovered():
 		b.Background(t.SidebarAccent.Alpha(0.6))
 	}
+	acc, elsewhere := a.elsewhere.accounts[s.SessionID]
 	b.Children(func() {
 		ui.Row(c).Gap(k.Px(6)).Children(func() {
-			title := k.Text(c, s.Title, 13, 19.5).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
+			titleColor := t.Foreground
+			if elsewhere {
+				titleColor = t.MutedForeground
+			}
+			title := k.Text(c, s.Title, 13, 19.5).TextColor(titleColor).SingleLine().Grow(1).Shrink(1)
+			if elsewhere {
+				a.elsewhereMark(c, acc)
+			}
 			if a.unread[s.SessionID] {
 				title.FontWeight(500)
 				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
@@ -684,6 +692,19 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	})
 	if b.Clicked() {
 		a.Go(Route{Name: "session", SessionID: s.SessionID})
+	}
+	if elsewhere {
+		// The Daemon runs as another account and cannot act on it.
+		b.ContextMenu(func(m *ui.Menu) {
+			if m.Item(L("Switch to %s", accountWho(acc))).Chosen() {
+				a.askSwitchFor(s.SessionID)
+			}
+			m.Separator()
+			if m.Item(L("Copy session ID")).Chosen() {
+				c.WriteClipboard(s.SessionID)
+			}
+		})
+		return
 	}
 	b.ContextMenu(func(m *ui.Menu) {
 		if m.Item(L("Rename")).Chosen() {

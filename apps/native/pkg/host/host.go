@@ -57,6 +57,10 @@ type Host struct {
 	usageMu sync.Mutex
 	usage   map[string]*usageEntry
 	client  droidClientInfo
+
+	indexMu  sync.Mutex
+	index    *sessionIndex
+	indexRev uint64
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -298,6 +302,9 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	if h.LoginState().Status != SignedIn {
 		apiKey = h.Settings.APIKey()
 	}
+	// Only a setting droid may honor later: failing to write it must not
+	// keep the Daemon from starting.
+	_ = h.shareSessionVisibility()
 	override := ""
 	if id := h.ActiveAccount(); id != "" {
 		if err := shareFactoryHome(h.homeOf(id), h.SharedFactoryHome()); err != nil {

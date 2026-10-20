@@ -171,6 +171,24 @@ func (h *Host) RemoveAccount(id string) error {
 	if !slices.Contains(h.Settings.Get().Accounts, id) {
 		return errNoAccount
 	}
+	// Its organization's Sessions go from the index, unless another account
+	// shares the organization.
+	accounts, org := h.Accounts(), ""
+	for _, acc := range accounts {
+		if acc.ID == id && acc.Login != nil {
+			org = deref(acc.Login.OrgID)
+		}
+	}
+	for _, acc := range accounts {
+		if acc.ID != id && acc.Login != nil && deref(acc.Login.OrgID) == org {
+			org = ""
+		}
+	}
+	if org != "" {
+		if err := h.forgetOrganization(org); err != nil {
+			return err
+		}
+	}
 	if err := h.Settings.Update(func(s *Settings) {
 		s.Accounts = slices.DeleteFunc(slices.Clone(s.Accounts), func(x string) bool { return x == id })
 	}); err != nil {

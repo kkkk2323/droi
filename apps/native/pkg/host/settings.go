@@ -39,6 +39,9 @@ type Settings struct {
 	// CLI's own; ActiveAccount is the one the Daemon runs as, "" the CLI's.
 	Accounts      []string `json:"accounts,omitempty"`
 	ActiveAccount string   `json:"activeAccount,omitempty"`
+	// VisibleOrgsAdded are the organization ids Droi put in droid's
+	// sessionVisibleOrganizationIds, the ones it may take out again.
+	VisibleOrgsAdded []string `json:"visibleOrgsAdded,omitempty"`
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the

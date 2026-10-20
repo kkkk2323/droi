@@ -39,6 +39,9 @@ type Summary struct {
 	// Worktree is the Daemon-managed worktree the Session runs in, nil for
 	// none or once it was removed.
 	Worktree *Worktree
+	// OrganizationID is the Factory organization the Session belongs to,
+	// "" for one from before droid kept it, which every organization lists.
+	OrganizationID string `json:",omitempty"`
 }
 
 // Worktree is a Session's worktree: a checkout of RepoRoot at Path, on Branch.
