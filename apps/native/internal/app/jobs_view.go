@@ -9,17 +9,12 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
-// jobsMenu is the header's count of the Session's background tasks still
-// running; it opens to them, a command to the last lines it wrote while
+// jobsMenu is the header's count of the Session's background commands
+// still running; it opens to them, each to the last lines it wrote while
 // the Daemon runs here.
 func (v *sessionView) jobsMenu(c *ui.Context) {
 	k, t := v.a.kit, v.a.kit.T
-	var jobs []transcript.Job
-	for _, j := range v.Jobs() {
-		if !j.Done {
-			jobs = append(jobs, j)
-		}
-	}
+	jobs := v.RunningCommands()
 	if len(jobs) == 0 {
 		v.jobsOpen = false
 		return
@@ -91,11 +86,11 @@ func (v *sessionView) jobList(c *ui.Context, jobs []transcript.Job) {
 	})
 }
 
-// jobsRunning counts a Session's background tasks still running, as far as
-// a view this window keeps of it knows.
+// jobsRunning counts a Session's background commands still running, as
+// far as a view this window keeps of it knows.
 func (a *App) jobsRunning(id string) int {
 	if v := a.views[id]; v != nil {
-		return v.RunningJobs()
+		return len(v.RunningCommands())
 	}
 	return 0
 }

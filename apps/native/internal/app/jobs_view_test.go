@@ -23,6 +23,11 @@ func backgroundJobScenario(t *testing.T) fakedaemon.Scenario {
 		{Role: "assistant", Content: []map[string]any{{"type": "tool_use", "id": "toolu_bg", "name": "Execute",
 			"input": map[string]any{"summary": "Release Droi 1.58.0", "command": "scripts/release.sh 1.58.0", "fireAndForget": true}}}},
 		{Role: "tool", Content: []map[string]any{{"type": "tool_result", "toolUseId": "toolu_bg", "content": started}}},
+		// A Script still going is the run of a call Droid waits on, not a background task.
+		{Role: "assistant", Content: []map[string]any{{"type": "tool_use", "id": "toolu_sc", "name": "Script",
+			"input": map[string]any{"script": "await tools.Execute({command: 'go test ./...'})"}}}},
+		{Role: "tool", Content: []map[string]any{{"type": "tool_result", "toolUseId": "toolu_sc", "content": []map[string]any{
+			{"type": "text", "text": "[Script running · 30.0 s elapsed · 1 pending call]"}, {"type": "text", "text": "{\"toolCallId\":\"toolu_sc\",\"status\":\"running\"}"}}}}},
 		{Role: "assistant", Text: "The release runs in the background."},
 	}}}}
 }
@@ -32,6 +37,9 @@ func TestABackgroundCommandShowsWhileItRuns(t *testing.T) {
 	h.openSession("Ship the release")
 	h.until("the header's count", func() bool { return h.hasText("1 background task") && h.hasText("Running in background · ") })
 	h.until("the sidebar's mark", func() bool { return h.hasText("1 background task running") })
+	if h.hasText("2 background tasks") {
+		t.Fatalf("the running Script counts as a background task: %q", h.tt.Texts())
+	}
 
 	h.click("1 background task")
 	h.click("Output of Release Droi 1.58.0")

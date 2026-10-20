@@ -85,8 +85,17 @@ func (v *View) Jobs() []transcript.Job {
 	return js.list
 }
 
-// RunningJobs counts the Session's background jobs still running.
-func (v *View) RunningJobs() int { return transcript.RunningJobs(v.Jobs()) }
+// RunningCommands are the Session's background commands still running.
+// A Script still going is not one: it is the run of a call Droid waits on.
+func (v *View) RunningCommands() []transcript.Job {
+	var out []transcript.Job
+	for _, j := range v.Jobs() {
+		if !j.Done && !j.Script {
+			out = append(out, j)
+		}
+	}
+	return out
+}
 
 // job is the background job a tool call started, if any; jobs must be
 // read this frame.

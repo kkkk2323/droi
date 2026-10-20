@@ -408,7 +408,7 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 					k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 					return
 				}
-				if j, ok := v.job(call.Use.ID); ok {
+				if j, ok := v.job(call.Use.ID); ok && (j.Done || !j.Script) {
 					v.jobMark(c, j)
 				} else if res.IsError {
 					k.Icon(c, "circle-x", 14, t.DestructiveForeground).Label(l10n.L("Failed"))
@@ -562,7 +562,7 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			case call.Result == nil:
 				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 			case run.Status == "running":
-				if j, ok := v.job(call.Use.ID); ok {
+				if j, ok := v.job(call.Use.ID); ok && j.Done {
 					v.jobMark(c, j)
 				} else {
 					k.Icon(c, "clock", 14, t.MutedForeground).Label(l10n.L("Still running"))
