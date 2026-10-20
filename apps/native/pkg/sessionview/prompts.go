@@ -104,12 +104,37 @@ func (v *View) permissionCard(c *ui.Context, p controller.Permission) {
 		names[i] = u.ToolUse.Name
 	}
 	title := strings.Join(names, ", ")
+	folded := v.flag("perm-folded:"+p.RequestID, false)
 	v.promptCard(c, p.RequestID, l10n.L("Permission request: %s", title), func() {
-		ui.Row(c).Gap(k.Px(6)).Children(func() {
-			k.Icon(c, "shield-alert", 12, t.Attention)
-			k.Text(c, l10n.L("Permission"), 11, 16.5).FontWeight(600).TextColor(t.Attention)
+		fold := l10n.L("Hide options")
+		if *folded {
+			fold = l10n.L("Show options")
+		}
+		header := ui.ButtonBase(c).Label(fold).Expanded(!*folded).FillWidth().Gap(k.Px(8)).Justify(ui.Start).Cursor(ui.CursorPointer)
+		chevron := t.MutedForeground
+		if header.Hovered() {
+			chevron = t.Foreground
+		}
+		header.Children(func() {
+			ui.Row(c).Gap(k.Px(6)).Children(func() {
+				k.Icon(c, "shield-alert", 12, t.Attention)
+				k.Text(c, l10n.L("Permission"), 11, 16.5).FontWeight(600).TextColor(t.Attention)
+			})
+			ui.Spacer(c)
+			rot := float32(0)
+			if *folded {
+				rot = 180
+			}
+			k.Icon(c, "chevron-down", 12, chevron).Rotate(rot)
 		})
-		k.Text(c, l10n.L("Droid wants to run %s", title), 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
+		if header.Clicked() {
+			*folded = !*folded
+		}
+		heading := k.Text(c, l10n.L("Droid wants to run %s", title), 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
+		if *folded {
+			heading.SingleLine()
+			return
+		}
 		ui.Column(c).Gap(k.Px(4)).Margin(k.Px(8), 0, 0, 0).Children(func() {
 			for _, u := range p.ToolUses {
 				details := u.Details.Raw
@@ -118,8 +143,10 @@ func (v *View) permissionCard(c *ui.Context, p controller.Permission) {
 					continue
 				}
 				input, _ := json.Marshal(u.ToolUse.Input)
-				k.Text(c, transcript.PermissionDetail(details, input), 12, 20).Font(k.Mono).Selectable().
-					Padding(k.Px(6), k.Px(10)).Radius(k.Px(8)).Background(t.Card)
+				// A long command would push the options below the window.
+				ui.Scroll(c).MaxHeight(k.Px(240)).Radius(k.Px(8)).Background(t.Card).Clip().Children(func() {
+					k.Text(c, transcript.PermissionDetail(details, input), 12, 20).Font(k.Mono).Selectable().Padding(k.Px(6), k.Px(10))
+				})
 			}
 		})
 		ui.Column(c).Gap(k.Px(4)).Margin(k.Px(10), 0, 0, 0).Children(func() {

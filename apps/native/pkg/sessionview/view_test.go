@@ -3,6 +3,7 @@ package sessionview
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -197,6 +198,54 @@ func TestAPermissionIsAnsweredFromItsCard(t *testing.T) {
 		t.Fatalf("still pending: %+v", got)
 	}
 	h.until("the composer back", func() bool { _, ok := h.tt.Find("Message"); return ok })
+}
+
+func TestALongCommandKeepsThePermissionsOptionsInTheWindow(t *testing.T) {
+	lines := make([]string, 80)
+	for i := range lines {
+		lines[i] = "echo step " + strconv.Itoa(i+1)
+	}
+	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "permission", Command: strings.Join(lines, "\n"), Reply: "Done."}))
+	h.send("Run the steps")
+	h.until("the permission card", func() bool { return h.hasText("echo step 1") })
+	r, ok := h.tt.Find("Yes, allow")
+	if !ok {
+		t.Fatalf("no Yes, allow in %q", h.tt.Texts())
+	}
+	if r.Y+r.H > 640 {
+		t.Fatalf("Yes, allow is at %+v, below the 640 high window", r)
+	}
+	if err := h.tt.Click("Yes, allow"); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the reply after the permission", func() bool { return h.hasText("Done.") })
+}
+
+func TestAPermissionCardFolds(t *testing.T) {
+	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "permission", Command: "rm -rf build", Reply: "Build directory removed."}))
+	h.send("Clean the build dir")
+	h.until("the permission card", func() bool { return h.hasText("rm -rf build") })
+	if err := h.tt.Click("Hide options"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if h.hasText("rm -rf build") {
+		t.Error("the folded card still shows the command")
+	}
+	if _, ok := h.tt.Find("Yes, allow"); ok {
+		t.Error("the folded card still shows its options")
+	}
+	if !h.hasText("Droid wants to run Execute") {
+		t.Errorf("the folded card lost its title: %q", h.tt.Texts())
+	}
+	if err := h.tt.Click("Show options"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if err := h.tt.Click("Yes, allow"); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the reply after the permission", func() bool { return h.hasText("Build directory removed.") })
 }
 
 func TestQuoteText(t *testing.T) {
