@@ -107,6 +107,22 @@ func TestTheRuntimeOverlayCarriesCustomModels(t *testing.T) {
 	}
 }
 
+// With both on, the overlay holds Memory's part and the models, and neither
+// gets in the other's way.
+func TestTheRuntimeOverlayCarriesMemoryAndCustomModels(t *testing.T) {
+	models := MagpieCustomModels(MagpieCatalog{BaseURL: DefaultMagpieBaseURL, Models: []MagpieModel{{ID: "a/b"}}})
+	got := BuildRuntimeOverlayWith(attachment, OverlayOptions{CustomModels: models})
+	if _, ok := got["hooks"]; !ok {
+		t.Errorf("Memory's hooks are gone: %v", got)
+	}
+	if _, ok := got["mcp"]; !ok {
+		t.Errorf("Memory's MCP server is gone: %v", got)
+	}
+	if list, ok := got["customModels"].([]any); !ok || len(list) != 1 {
+		t.Errorf("customModels %v", got["customModels"])
+	}
+}
+
 func TestTheRuntimeOverlayIsWrittenForTheUserOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "runtime-overlay.json")
 	if err := WriteRuntimeOverlay(path, BuildRuntimeOverlay(attachment)); err != nil {

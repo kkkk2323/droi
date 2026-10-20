@@ -80,77 +80,129 @@ func (c MagpieCatalog) Running() bool { return c.Err == "" && !c.Read.IsZero() }
 
 // MagpieBaseURL is the setting, else MAGPIE_BASE_URL, else Magpie's own.
 func (h *Host) MagpieBaseURL() string {
-	if u := deref(h.Settings.Get().MagpieBaseURL); u != "" {
+	if u := NormalizeMagpieBaseURL(deref(h.Settings.Get().MagpieBaseURL)); u != "" {
 		return u
 	}
-	if u := h.cfg.Env("MAGPIE_BASE_URL"); u != "" {
+	if u := NormalizeMagpieBaseURL(h.cfg.Env("MAGPIE_BASE_URL")); u != "" {
 		return u
 	}
 	return DefaultMagpieBaseURL
+}
+
+// NormalizeMagpieBaseURL is an address as the gateway is called: no spaces, no
+// trailing slash, and http:// when what was typed has no scheme.
+func NormalizeMagpieBaseURL(raw string) string {
+	t := strings.TrimSpace(raw)
+	if t == "" {
+		return ""
+	}
+	if !strings.Contains(t, "://") {
+		t = "http://" + t
+	}
+	return strings.TrimSuffix(t, "/")
 }
 
 // Magpie is the gateway's model list as the window shows it: what was last
 // read, with a read in the background once it is a minute old.
 func (h *Host) Magpie() MagpieCatalog {
 	base := h.MagpieBaseURL()
-	h.magpieMu.Lock()
-	c := h.magpie
-	reading := h.magpieReading
-	h.magpieMu.Unlock()
+	c := h.magpieCached()
 	if c.BaseURL != base {
 		// Another gateway: its models are not known yet. Whoever changed the
 		// address reads them, and a Daemon starting reads them too.
 		return MagpieCatalog{BaseURL: base}
 	}
-	if !reading && (c.Read.IsZero() || time.Since(c.Read) > magpieCatalogTTL) {
-		go h.RefreshMagpie()
+	if h.magpieStale() && h.claimBackgroundRead() {
+		go h.refreshIfStale()
 	}
 	return c
 }
 
-// RefreshMagpie reads the model list now.
-func (h *Host) RefreshMagpie() {
+// claimBackgroundRead takes the one background read a stale catalog needs, so
+// the frames that draw the window while it runs do not each start another.
+func (h *Host) claimBackgroundRead() bool {
 	h.magpieMu.Lock()
+	defer h.magpieMu.Unlock()
 	if h.magpieReading {
-		h.magpieMu.Unlock()
-		return
+		return false
 	}
 	h.magpieReading = true
-	h.magpieMu.Unlock()
-	h.readMagpie()
-	h.changed()
+	return true
 }
 
-// readMagpie reads the list and keeps it, success or failure; it answers what
-// is kept, so the caller never has to read the catalog again.
-func (h *Host) readMagpie() MagpieCatalog {
+// magpieCached is the last catalog, without asking for a read.
+func (h *Host) magpieCached() MagpieCatalog {
+	h.magpieMu.Lock()
+	defer h.magpieMu.Unlock()
+	return h.magpie
+}
+
+// magpieStale reports that the list is old enough to be read again, or that the
+// address is one nothing was read from.
+func (h *Host) magpieStale() bool {
+	c := h.magpieCached()
+	return c.BaseURL != h.MagpieBaseURL() || c.Read.IsZero() || time.Since(c.Read) > magpieCatalogTTL
+}
+
+// RefreshMagpie reads the model list now and reports whether the models the
+// Daemon would get changed, so a caller restarts it only when it must. Reads
+// take turns: one asked for while another runs waits for it and reads again.
+func (h *Host) RefreshMagpie() bool {
+	h.magpieReadMu.Lock()
+	defer h.magpieReadMu.Unlock()
+	changed := h.readMagpie()
+	h.changed()
+	return changed
+}
+
+// refreshIfStale is the read Magpie() asks for in the background; a read another
+// caller finished meanwhile leaves nothing to do.
+func (h *Host) refreshIfStale() {
+	defer func() {
+		h.magpieMu.Lock()
+		h.magpieReading = false
+		h.magpieMu.Unlock()
+	}()
+	h.magpieReadMu.Lock()
+	defer h.magpieReadMu.Unlock()
+	if !h.magpieStale() {
+		return
+	}
+	if h.readMagpie() {
+		h.changed()
+	}
+}
+
+// readMagpie reads the list and keeps it, success or failure, and reports
+// whether that changed the models; magpieReadMu is held.
+func (h *Host) readMagpie() bool {
+	before := h.magpieCached()
 	base := h.MagpieBaseURL()
 	models, err := ReadMagpieModels(base)
 	h.magpieMu.Lock()
-	defer h.magpieMu.Unlock()
 	cat := MagpieCatalog{BaseURL: base, Read: time.Now()}
 	if err != nil {
 		cat.Err = err.Error()
-		if h.magpie.BaseURL == base {
-			cat.Models = h.magpie.Models
+		if before.BaseURL == base {
+			cat.Models = before.Models
 		}
 	} else {
 		cat.Models = models
 	}
 	h.magpie = cat
-	h.magpieReading = false
-	return cat
+	h.magpieMu.Unlock()
+	return !magpieSame(before, cat)
 }
 
 // magpieModels is the catalog to hand the Daemon: the cached one, or a read
 // now when nothing has been read yet, since a Daemon starting without the
 // models would leave them out of the picker until the next read.
 func (h *Host) magpieModels() MagpieCatalog {
-	c := h.Magpie()
-	if c.Read.IsZero() {
-		c = h.readMagpie()
+	if c := h.Magpie(); !c.Read.IsZero() {
+		return c
 	}
-	return c
+	h.RefreshMagpie()
+	return h.magpieCached()
 }
 
 // ReadMagpieModels reads a gateway's model list, in the shape Magpie answers
@@ -242,6 +294,24 @@ func MagpieModelID(model string) string {
 func magpieHash(model string) string {
 	sum := sha256.Sum256([]byte(model))
 	return hex.EncodeToString(sum[:3])
+}
+
+// magpieSame reports that two catalogs hold the same models, so that a refresh
+// which changed nothing need not restart the Daemon under working Sessions.
+func magpieSame(a, b MagpieCatalog) bool {
+	if a.BaseURL != b.BaseURL || a.Err != b.Err || len(a.Models) != len(b.Models) {
+		return false
+	}
+	ids := make(map[string]bool, len(b.Models))
+	for _, m := range b.Models {
+		ids[m.ID] = true
+	}
+	for _, m := range a.Models {
+		if !ids[m.ID] {
+			return false
+		}
+	}
+	return true
 }
 
 // MagpieDisplayName is what the picker calls a Magpie model.

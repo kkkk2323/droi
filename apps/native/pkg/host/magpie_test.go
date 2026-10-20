@@ -206,6 +206,66 @@ func TestTheHostKeepsTheLastModelsWhenMagpieIsGone(t *testing.T) {
 	}
 }
 
+// A refresh that found the same models must not restart the Daemon under a
+// Session that is working.
+func TestMagpieCatalogComparison(t *testing.T) {
+	a := MagpieCatalog{BaseURL: "http://127.0.0.1:3425", Models: []MagpieModel{{ID: "a/b"}, {ID: "c/d"}}}
+	b := MagpieCatalog{BaseURL: "http://127.0.0.1:3425", Models: []MagpieModel{{ID: "c/d"}, {ID: "a/b"}}}
+	if !magpieSame(a, b) {
+		t.Error("the same models in another order are a change")
+	}
+	b.Models = append(b.Models, MagpieModel{ID: "e/f"})
+	if magpieSame(a, b) {
+		t.Error("a new model is not a change")
+	}
+	b = a
+	b.BaseURL = "http://127.0.0.1:3999"
+	if magpieSame(a, b) {
+		t.Error("another gateway is not a change")
+	}
+	b = a
+	b.Err = "connection refused"
+	if magpieSame(a, b) {
+		t.Error("a failed read is not a change, so a Daemon would not start again")
+	}
+}
+
+// A refresh tells its caller whether the Daemon has to start again.
+func TestRefreshMagpieReportsAChange(t *testing.T) {
+	first := magpieServer(t, `{"data":[{"id":"a/b"}]}`)
+	other := magpieServer(t, `{"data":[{"id":"c/d"}]}`)
+	h := testHost(t)
+	if err := h.Settings.Update(func(st *Settings) { st.MagpieBaseURL = OptString(first.URL) }); err != nil {
+		t.Fatal(err)
+	}
+	if !h.RefreshMagpie() {
+		t.Error("the first read is a change from no models")
+	}
+	if h.RefreshMagpie() {
+		t.Error("the same list was taken for a change, so the Daemon would restart for nothing")
+	}
+	if err := h.Settings.Update(func(st *Settings) { st.MagpieBaseURL = OptString(other.URL) }); err != nil {
+		t.Fatal(err)
+	}
+	if !h.RefreshMagpie() {
+		t.Error("another gateway's models were taken for the same")
+	}
+}
+
+func TestNormalizeMagpieBaseURL(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"http://127.0.0.1:3425", "http://127.0.0.1:3425"},
+		{"http://127.0.0.1:3425/", "http://127.0.0.1:3425"},
+		{" 127.0.0.1:3425 ", "http://127.0.0.1:3425"},
+		{"https://magpie.lan/", "https://magpie.lan"},
+		{"", ""},
+	} {
+		if got := NormalizeMagpieBaseURL(c.in); got != c.want {
+			t.Errorf("%q → %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 // testHost is a Host on a temporary folder, with nothing to start.
 func testHost(t *testing.T) *Host {
 	t.Helper()

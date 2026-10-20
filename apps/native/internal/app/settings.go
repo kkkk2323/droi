@@ -416,7 +416,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 		func() {
 			on := st.MagpieEnabled
 			a.settingRow(c, L("Offer Magpie's models"),
-				L("The Daemon restarts when this changes. Sessions already open keep the model they started with."),
+				L("The Daemon restarts when this changes. A Session already on a Magpie model then runs another model: choose its model again after the restart."),
 				func() {
 					if a.toggle(c, L("Offer Magpie's models"), on, false) {
 						next := !on
@@ -453,7 +453,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 			case cat.Running():
 				ok, label = true, L("Running, no models")
 			}
-			desc := L("Droi reads this list when the Daemon starts. Refresh reads it again and restarts the Daemon, which interrupts Sessions that are working.")
+			desc := L("Droi reads this list when the Daemon starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.")
 			if cat.Err != "" {
 				desc = L("Droi could not read the model list at %s. Is Magpie running?", h.MagpieBaseURL())
 			}
@@ -461,8 +461,9 @@ func (a *App) magpieGroup(c *ui.Context) {
 				a.statusPill(c, ok, label)
 				if a.smallButton(c, kit.Outline, L("Refresh"), "refresh-cw", false).Clicked() {
 					go func() {
-						h.RefreshMagpie()
-						h.RestartDaemon()
+						if h.RefreshMagpie() {
+							h.RestartDaemon()
+						}
 					}()
 				}
 			}, nil)

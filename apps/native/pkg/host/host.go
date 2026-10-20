@@ -58,7 +58,11 @@ type Host struct {
 	usage   map[string]*usageEntry
 	client  droidClientInfo
 
+	// magpieMu guards the catalog, magpieReadMu makes one read of the gateway
+	// run at a time, and magpieReading marks a background read queued or
+	// running.
 	magpieMu      sync.Mutex
+	magpieReadMu  sync.Mutex
 	magpie        MagpieCatalog
 	magpieReading bool
 
