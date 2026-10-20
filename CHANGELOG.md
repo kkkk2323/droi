@@ -1,3 +1,17 @@
+## 1.57.1 - 2026-10-20
+
+### Changed
+
+- Settings shows each account's usage as one line per window (5 hours, this week, this month): a bar of what is left, the share left, and when it resets, such as "Resets in 2h 15m" or "Resets in 3 days (Oct 24)". A window that has not started says "Not started". Core usage shows as a line of its own once the account uses it.
+- An account's plan shows as a small badge beside its name. The renewal date is gone; a plan's end shows only within a week of it, or once it has ended.
+- The account you share with droid in the terminal no longer says "droid CLI". With more than one account it says "Shared with droid in the terminal", and an organization shows only when two accounts have the same email.
+- Settings' sections are grouped: Personal, Sessions, Devices and System. "Added to the system prompt" and "Scratch folder" moved from Advanced to Session defaults.
+- In Chinese, Droi says 后台服务 instead of 守护进程 and 压缩上下文 instead of Compact, and several Settings descriptions are shorter and plainer.
+
+### Fixed
+
+- A Session default picked in Settings no longer jumps back to its old value now and then, which made picking that old value again do nothing.
+
 ## 1.57.0 - 2026-10-20
 
 ### Added
