@@ -19,23 +19,24 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
 )
 
-// settingsTab is a section of Settings.
+// settingsTab is a section of Settings, listed under its group's name.
 type settingsTab struct {
 	id, label, icon string
 	needsHost       bool
+	group           string
 }
 
 var settingsTabs = []settingsTab{
-	{"account", l10n.N("Account"), "user-round", true},
-	{"general", l10n.N("General"), "settings-2", false},
-	{"computer", l10n.N("Computer"), "laptop", false},
-	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false},
-	{"memory", l10n.N("Memory"), "brain", true},
-	{"worktrees", l10n.N("Worktrees"), "git-fork", false},
-	{"notifications", l10n.N("Notifications"), "bell", false},
-	{"remote", l10n.N("Remote Access"), "smartphone", true},
-	{"advanced", l10n.N("Advanced"), "wrench", true},
-	{"about", l10n.N("About"), "info", false},
+	{"account", l10n.N("Account"), "user-round", true, l10n.N("Personal")},
+	{"general", l10n.N("General"), "settings-2", false, l10n.N("Personal")},
+	{"notifications", l10n.N("Notifications"), "bell", false, l10n.N("Personal")},
+	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false, l10n.N("Sessions")},
+	{"memory", l10n.N("Memory"), "brain", true, l10n.N("Sessions")},
+	{"worktrees", l10n.N("Worktrees"), "git-fork", false, l10n.N("Sessions")},
+	{"computer", l10n.N("Computer"), "laptop", false, l10n.N("Devices")},
+	{"remote", l10n.N("Remote Access"), "smartphone", true, l10n.N("Devices")},
+	{"advanced", l10n.N("Advanced"), "wrench", true, l10n.N("System")},
+	{"about", l10n.N("About"), "info", false, l10n.N("System")},
 }
 
 // settingsState is Settings' own: the page to go back to, the shared
@@ -108,7 +109,16 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 			if nav("arrow-left", L("Back"), false).Margin(0, 0, k.Px(8), 0).Clicked() {
 				a.Go(s.back)
 			}
+			group := ""
 			for _, tab := range tabs {
+				if tab.group != group {
+					top := k.Px(12)
+					if group == "" {
+						top = 0
+					}
+					group = tab.group
+					k.Text(c, l10n.T(group), 11, 16).Key("group:"+group).FontWeight(500).TextColor(t.MutedForeground).SingleLine().Padding(top, k.Px(8), k.Px(2), k.Px(8))
+				}
 				if nav(tab.icon, l10n.T(tab.label), tab.id == current.id).Key(tab.id).Clicked() {
 					a.route.Tab = tab.id
 				}
@@ -310,24 +320,27 @@ func daemonStatusText(st host.DaemonState) (ok bool, label, detail string) {
 	return false, L("Stopped"), L("The Daemon is not running.")
 }
 
+// saveRow is a field and its Save button under a settings row.
+func (a *App) saveRow(c *ui.Context, value *string, label, placeholder, button string, mono bool, save func(string)) func() {
+	k := a.kit
+	return func() {
+		ui.Row(c).Gap(k.Px(8)).Children(func() {
+			in := a.field(c, value, label, placeholder, mono, false)
+			if in.Submitted() {
+				save(*value)
+			}
+			if a.smallButton(c, kit.Outline, L("Save"), "", false).Label(button).Clicked() {
+				save(*value)
+			}
+		})
+	}
+}
+
 func (a *App) advancedTab(c *ui.Context) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	st := h.Settings.Get()
-	saveRow := func(value *string, label, placeholder, button string, mono bool, save func(string)) func() {
-		return func() {
-			ui.Row(c).Gap(k.Px(8)).Children(func() {
-				in := a.field(c, value, label, placeholder, mono, false)
-				if in.Submitted() {
-					save(*value)
-				}
-				if a.smallButton(c, kit.Outline, L("Save"), "", false).Label(button).Clicked() {
-					save(*value)
-				}
-			})
-		}
-	}
 	a.settingGroup(c, L("Daemon"), "",
 		func() {
 			ok, label, detail := daemonStatusText(h.Daemon.State())
@@ -360,7 +373,7 @@ func (a *App) advancedTab(c *ui.Context) {
 				label = L("Found")
 			}
 			a.settingRow(c, L("droid executable"), desc, func() { a.statusPill(c, found != "", label) },
-				saveRow(&s.droidPath, L("droid path override"), L("Leave empty to auto-detect"), L("Save path"), true, func(v string) {
+				a.saveRow(c, &s.droidPath, L("droid path override"), L("Leave empty to auto-detect"), L("Save path"), true, func(v string) {
 					a.hostUpdate(true, func(st *host.Settings) { st.DroidPath = host.OptString(v) })
 				}))
 		},
@@ -381,10 +394,18 @@ func (a *App) advancedTab(c *ui.Context) {
 		if inherited != "" {
 			placeholder = inherited
 		}
-		a.settingRow(c, L("Factory API base URL"), desc, nil, saveRow(&s.baseURL, L("Factory API base URL"), placeholder, L("Save URL"), true, func(v string) {
+		a.settingRow(c, L("Factory API base URL"), desc, nil, a.saveRow(c, &s.baseURL, L("Factory API base URL"), placeholder, L("Save URL"), true, func(v string) {
 			a.hostUpdate(true, func(st *host.Settings) { st.FactoryAPIBaseURL = host.OptString(v) })
 		}))
 	})
+}
+
+// newSessionsGroup is what this computer's Host adds to every new Session.
+func (a *App) newSessionsGroup(c *ui.Context) {
+	h := a.cfg.Host
+	k, t := a.kit, a.kit.T
+	s := &a.settings
+	st := h.Settings.Get()
 	a.settingGroup(c, L("New Sessions in Droi"), L("Droi’s own settings. They apply to new Sessions from every Client of this computer, not to the droid CLI or the Factory App."),
 		func() {
 			a.settingRow(c, L("Added to the system prompt"), L("Appended to Droid's own system prompt in every new Session, whether it starts here, in a browser or on a phone. Existing Sessions and subagents keep theirs."), nil, func() {
@@ -406,7 +427,7 @@ func (a *App) advancedTab(c *ui.Context) {
 		},
 		func() {
 			a.settingRow(c, L("Scratch folder"), L("A session that does not work in a project gets a new folder of its own in %s. Archiving it moves the folder to the Trash. A change applies to new sessions only.", h.ScratchFolder()), nil,
-				saveRow(&s.scratch, L("Scratch folder"), "~/.droi/chats", L("Save folder"), true, func(v string) {
+				a.saveRow(c, &s.scratch, L("Scratch folder"), "~/.droi/chats", L("Save folder"), true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.ScratchFolder = host.OptString(v) })
 				}))
 		},
@@ -450,6 +471,9 @@ func (a *App) defaultsTab(c *ui.Context) {
 			}, nil)
 		})
 	})
+	if a.cfg.Host != nil && !a.following() {
+		a.newSessionsGroup(c)
+	}
 }
 
 // customSoundRow is the chosen file under a Sound row set to Custom, nil

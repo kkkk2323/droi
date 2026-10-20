@@ -103,7 +103,7 @@ func (s *Settings) General(c *ui.Context, apply func()) {
 			k.SettingRow(c, l10n.L("Language"), l10n.L("System follows this computer's language."), pick(prefs.Language, l10n.N("Language"), languages), nil)
 		},
 		func() {
-			k.SettingRow(c, l10n.L("Theme"), l10n.L("Light is the default. The choice is stored per browser."), pick(prefs.Theme, l10n.N("Theme"), themes), nil)
+			k.SettingRow(c, l10n.L("Theme"), l10n.L("Light is the default. Kept on this device."), pick(prefs.Theme, l10n.N("Theme"), themes), nil)
 		},
 		func() {
 			k.SettingRow(c, l10n.L("Font"), l10n.L("Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."), pick(prefs.Font, l10n.N("Font"), fonts), nil)

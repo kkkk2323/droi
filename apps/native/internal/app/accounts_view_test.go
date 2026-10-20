@@ -26,7 +26,7 @@ func testJWT(claims map[string]any) string {
 // accountsTestHost is a Host whose droid CLI is signed in as a@x.dev and
 // that has b@y.dev added, laid out as Droi keeps them. Its Factory API is
 // a stand-in that has a@x.dev near its 5-hour limit, on a plan that ends in
-// three days, and b@y.dev on one that renews.
+// three days, and b@y.dev on one that renews, drawing on Core too.
 func accountsTestHost(t *testing.T) (*host.Host, string) {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
@@ -49,10 +49,11 @@ func accountsTestHost(t *testing.T) (*host.Host, string) {
 			return
 		}
 		five, week := 22, 9
+		core := fmt.Sprintf(`{"fiveHour":{"usedPercent":9,"windowEnd":%q}}`, ends)
 		if r.Header.Get("Authorization") == "Bearer "+aToken {
-			five, week = 92, 41
+			five, week, core = 92, 41, "{}"
 		}
-		fmt.Fprintf(w, `{"limits":{"standard":{"fiveHour":{"usedPercent":%d,"windowEnd":%q},"weekly":{"usedPercent":%d,"windowEnd":%q},"monthly":{"usedPercent":17,"windowEnd":%q}},"core":{}}}`, five, ends, week, ends, ends)
+		fmt.Fprintf(w, `{"limits":{"standard":{"fiveHour":{"usedPercent":%d,"windowEnd":%q},"weekly":{"usedPercent":%d,"windowEnd":%q},"monthly":{"usedPercent":17,"windowEnd":null}},"core":%s}}`, five, ends, week, ends, core)
 	}))
 	t.Cleanup(factory.Close)
 	os.WriteFile(filepath.Join(data, "settings.json"), []byte(`{"accounts":["b1"],"factoryApiBaseUrl":"`+factory.URL+`"}`), 0o600)
@@ -67,22 +68,30 @@ func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
 	h.until("the Session list", func() bool { return h.hasText("One") })
 	h.click("Settings")
 	h.until("the accounts", func() bool { return h.hasText("b@y.dev") && h.hasText("In use") })
-	if !h.hasText("droid CLI · org_acme") {
-		t.Fatalf("the CLI's account is not marked: %q", h.tt.Texts())
+	if !h.hasText("Shared with droid in the terminal") || h.hasText("org_acme") || h.hasText("droid CLI ·") {
+		t.Fatalf("the CLI's account is not marked as shared, or names its organization: %q", h.tt.Texts())
 	}
-	// Each account shows its usage, and the one in use, near its limit, says so.
-	h.until("the usage", func() bool { return h.hasText("92%") && h.hasText("22%") })
+	// Each account shows what is left and when it resets, and the one in
+	// use, near its limit, says so.
+	h.until("the usage", func() bool { return h.hasText("8% left") && h.hasText("78% left") })
 	if !h.hasText("This account is close to its limit.") {
 		t.Fatalf("no hint to switch: %q", h.tt.Texts())
 	}
-	if _, ok := h.tt.Find("5h: 92% used"); !ok {
+	if _, ok := h.tt.Find("5h: 8% left"); !ok {
 		t.Fatal("the 5-hour meter has no name")
 	}
-	// Each account says when its plan renews or ends.
-	h.until("the plans", func() bool { return h.hasText("Factory Pro Plan · Renews ") })
-	ending := "Factory Pro Plan · Ends " + time.Now().Add(71*time.Hour).Local().Format("Jan 2, 2006") + " · 3 days left"
-	if _, ok := h.tt.Find(ending); !ok || !h.hasText("3 days left") {
-		t.Fatalf("no end for a@x.dev's plan: %q", h.tt.Texts())
+	if !h.hasText("Resets in 2h ") || !h.hasText("Not started") {
+		t.Fatalf("no reset time, or the monthly window that has not started has one: %q", h.tt.Texts())
+	}
+	// Core shows only for the account that draws on it.
+	if _, ok := h.tt.Find("Core: 91% left"); !ok || strings.Count(strings.Join(h.tt.Texts(), "\n"), "Core: ") != 1 {
+		t.Fatalf("Core is not shown for b@y.dev alone: %q", h.tt.Texts())
+	}
+	// The plan is a badge; only the one that ends soon says when.
+	h.until("the plans", func() bool { return h.hasText("Pro") })
+	ending := "Ends " + time.Now().Add(71*time.Hour).Local().Format("Jan 2, 2006") + " · 3 days left"
+	if _, ok := h.tt.Find(ending); !ok || h.hasText("Renews") || h.hasText("Factory Pro Plan") {
+		t.Fatalf("no end for a@x.dev's plan, or a renewal date: %q", h.tt.Texts())
 	}
 	h.shoot("settings-account")
 
@@ -114,16 +123,40 @@ func TestSubscriptionText(t *testing.T) {
 		want  string
 		level planLevel
 	}{
-		{host.Subscription{Plan: "Pro", Status: "active", Renews: renews}, "Pro · Renews Jan 30, 2027", planFine},
-		{host.Subscription{Plan: "Pro", Status: "active", Ends: renews}, "Pro · Ends Jan 30, 2027", planFine},
-		{host.Subscription{Plan: "Pro", Status: "active", Ends: now.Add(20 * time.Hour)}, "Pro · Ends Oct 21, 2026 · 1 day left", planEnding},
+		{host.Subscription{Plan: "Pro", Status: "active", Renews: renews}, "", planFine},
+		{host.Subscription{Plan: "Pro", Status: "active", Ends: renews}, "", planFine},
+		{host.Subscription{Plan: "Pro", Status: "active", Ends: now.Add(20 * time.Hour)}, "Ends Oct 21, 2026 · 1 day left", planEnding},
 		{host.Subscription{Status: "active", TrialEnds: now.Add(5 * 24 * time.Hour), Renews: renews}, "Trial ends Oct 25, 2026 · 5 days left", planEnding},
-		{host.Subscription{Plan: "Pro", Status: "ended", Ends: now.Add(-time.Hour)}, "Pro · Ended Oct 20, 2026", planEnded},
-		{host.Subscription{Plan: "Pro", Status: "ended"}, "Pro · Ended", planEnded},
+		{host.Subscription{Status: "active", TrialEnds: now.Add(20 * 24 * time.Hour), Renews: renews}, "", planFine},
+		{host.Subscription{Plan: "Pro", Status: "ended", Ends: now.Add(-time.Hour)}, "Ended Oct 20, 2026", planEnded},
+		{host.Subscription{Plan: "Pro", Status: "ended"}, "Ended", planEnded},
 	} {
 		line, rest, level := subscriptionText(&c.sub, now)
 		if got := strings.TrimSuffix(line+" · "+rest, " · "); got != c.want || level != c.level {
 			t.Errorf("%+v: %q %d, want %q %d", c.sub, got, level, c.want, c.level)
+		}
+	}
+}
+
+func TestResetText(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	for d, want := range map[time.Duration]string{
+		30 * time.Second:             "Resets soon",
+		42 * time.Minute:             "Resets in 42m",
+		2*time.Hour + 15*time.Minute: "Resets in 2h 15m",
+		30 * time.Hour:               "Resets in 1 day (Oct 21)",
+		4*24*time.Hour + 6*time.Hour: "Resets in 4 days (Oct 24)",
+	} {
+		if got := resetText(d, now); got != want {
+			t.Errorf("%v: %q, want %q", d, got, want)
+		}
+	}
+}
+
+func TestPlanName(t *testing.T) {
+	for plan, want := range map[string]string{"Factory Pro Plan": "Pro", "Max": "Max", "Factory Plan": "Factory Plan", "": ""} {
+		if got := planName(&host.Subscription{Plan: plan}); got != want {
+			t.Errorf("%q: %q, want %q", plan, got, want)
 		}
 	}
 }

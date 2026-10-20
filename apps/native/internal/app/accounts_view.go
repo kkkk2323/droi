@@ -2,7 +2,6 @@ package app
 
 import (
 	"math"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -47,44 +46,65 @@ func (a *App) accountsGroup(c *ui.Context, login host.LoginState) {
 			h.RefreshUsage(acc.ID)
 		}
 	}
+	for i, acc := range accounts {
+		if acc.Active && acc.Login == nil && login.Status == host.SignedIn {
+			accounts[i].Login = login.Account
+		}
+	}
 	var rows []func()
 	for _, acc := range accounts {
-		if acc.Active && acc.Login == nil && login.Status == host.SignedIn {
-			acc.Login = login.Account
-		}
-		rows = append(rows, func() { a.accountRow(c, acc, login, working, signedIn > 1) })
+		rows = append(rows, func() { a.accountRow(c, acc, accounts, login, working, signedIn > 1) })
 	}
 	rows = append(rows, func() { a.addAccountRow(c, adding) })
-	a.settingGroup(c, L("Accounts"), L("Signing out of the droid CLI's account signs the CLI out too. Added accounts keep their own login and share skills, droids, MCP servers, settings and sessions. Switching restarts the Daemon."), rows...)
+	a.settingGroup(c, L("Accounts"), L("Signing out of the account shared with droid in the terminal signs droid out there too. All accounts share skills, droids, MCP servers, settings and sessions. Switching restarts the Daemon."), rows...)
 }
 
-// accountName is what an account row says: who, then where it comes from.
-func accountName(acc host.AccountInfo) (name, detail string) {
-	var parts []string
-	if acc.ID == "" {
-		parts = append(parts, L("droid CLI"))
+// accountWho is who an account is signed in as.
+func accountWho(acc host.AccountInfo) string {
+	l := acc.Login
+	if l == nil {
+		return L("Signed out")
 	}
-	name = L("Signed out")
-	if l := acc.Login; l != nil {
-		name = l.UserID
-		if l.Email != nil {
-			name = *l.Email
-		}
-		if l.OrgID != nil {
-			parts = append(parts, *l.OrgID)
+	if l.Email != nil {
+		return *l.Email
+	}
+	return l.UserID
+}
+
+// accountName is what an account row says: who, then only what tells it
+// apart from the others: that it shares its login with droid in the
+// terminal, and its organization when another account has the same name.
+func accountName(acc host.AccountInfo, accounts []host.AccountInfo) (name, detail string) {
+	name = accountWho(acc)
+	var parts []string
+	if acc.ID == "" && len(accounts) > 1 {
+		parts = append(parts, L("Shared with droid in the terminal"))
+	}
+	if l := acc.Login; l != nil && l.OrgID != nil {
+		for _, o := range accounts {
+			if o.ID != acc.ID && o.Login != nil && accountWho(o) == name {
+				parts = append(parts, *l.OrgID)
+				break
+			}
 		}
 	}
 	return name, strings.Join(parts, " · ")
 }
 
-func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, login host.LoginState, working int, others bool) {
+func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, accounts []host.AccountInfo, login host.LoginState, working int, others bool) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
 	s := &a.accounts
-	name, detail := accountName(acc)
+	name, detail := accountName(acc, accounts)
 	pending := acc.Active && login.Status == host.Pending && login.Pending != nil
 	ui.Column(c.Key("account:"+acc.ID)).Role(ui.RoleGroup).Label(name).Transition(accountMotion).Padding(k.Px(12), k.Px(16)).Children(func() {
-		ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
+		// A row with its usage under the name is tall: its mark and buttons
+		// stay by the name rather than in the middle.
+		align := ui.Center
+		if acc.Login != nil && !pending {
+			align = ui.Start
+		}
+		ui.Row(c).Gap(k.Px(12)).AlignItems(align).Children(func() {
 			initial := ""
 			if acc.Login != nil {
 				r, _ := utf8.DecodeRuneInString(name)
@@ -96,7 +116,16 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, login host.LoginSt
 				if acc.Login == nil {
 					color = t.MutedForeground
 				}
-				k.Text(c, name, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(color).SingleLine()
+				var usage host.UsageState
+				if acc.Login != nil {
+					usage = h.AccountUsage(acc.ID)
+				}
+				ui.Row(c).Gap(k.Px(6)).MinHeight(k.Px(28)).AlignItems(ui.Center).MinWidth(0).Children(func() {
+					k.Text(c, name, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(color).SingleLine().Shrink(1).MinWidth(0)
+					if plan := planName(usage.Subscription); plan != "" {
+						a.planBadge(c, plan)
+					}
+				})
 				if pending {
 					detail = L("Your browser opened Factory. Enter this code there if it asks for one.")
 				}
@@ -104,9 +133,8 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, login host.LoginSt
 					k.Text(c, detail, 12, 16).TextColor(t.MutedForeground)
 				}
 				if acc.Login != nil && !pending {
-					usage := h.AccountUsage(acc.ID)
-					a.subscriptionLine(c, usage.Subscription)
 					a.usageMeters(c, usage)
+					a.subscriptionLine(c, usage.Subscription)
 					if acc.Active && others && nearLimit(usage) {
 						k.Text(c, L("This account is close to its limit. Switch to one with room left."), 12, 16).Role(ui.RoleStatus).TextColor(t.Attention).Margin(k.Px(4), 0, 0, 0)
 					}
@@ -183,8 +211,9 @@ func (a *App) activeAccountControls(c *ui.Context, acc host.AccountInfo, login h
 	}
 }
 
-// usageMeters is an account's Standard usage under its name: the 5-hour,
-// weekly and monthly windows as short bars, colored once they run high.
+// usageMeters is an account's usage under its name: what is left of the
+// 5-hour, weekly and monthly Standard windows and when each resets, then
+// Core's fullest window once it is being used.
 func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
 	k, t := a.kit, a.kit.T
 	now := time.Now()
@@ -197,35 +226,17 @@ func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
 		k.Text(c, msg, 12, 16).Role(ui.RoleStatus).TextColor(t.MutedForeground).Margin(k.Px(6), 0, 0, 0)
 		return
 	}
-	ui.Row(c).Role(ui.RoleGroup).Label(L("Usage")).Wrap().GapX(k.Px(14)).GapY(k.Px(4)).AlignItems(ui.Center).Margin(k.Px(6), 0, 0, 0).Children(func() {
-		for _, m := range []struct {
-			key, label string
-			w          host.UsageWindow
-		}{{"5h", L("5h"), u.Standard.FiveHour}, {"week", L("Week"), u.Standard.Weekly}, {"month", L("Month"), u.Standard.Monthly}} {
-			pct := m.w.Percent
-			if !m.w.Active(now) {
-				pct = 0
-			}
-			color := t.Foreground.Alpha(0.55)
-			switch {
-			case pct >= 100:
-				color = t.Destructive
-			case pct >= 80:
-				color = t.Attention
-			}
-			ui.Row(c.Key(m.key)).Gap(k.Px(6)).AlignItems(ui.Center).Label(L("%s: %d%% used", m.label, int(pct))).Children(func() {
-				k.Text(c, m.label, 11, 16).TextColor(t.MutedForeground)
-				track := ui.Box(c).Width(k.Px(40)).Height(k.Px(4)).Radius(k.Px(2)).Background(t.Border).ClipX()
-				track.Children(func() {
-					fill := ui.Box(c).Height(k.Px(4)).Radius(k.Px(2)).Background(color)
-					fill.Width(k.Px(40 * min(fill.Animate("fill", float32(pct), 240*time.Millisecond), 100) / 100))
-				})
-				pctColor := t.MutedForeground
-				if pct >= 80 {
-					pctColor = color
-				}
-				k.Text(c, strconv.Itoa(int(pct))+"%", 12, 16).Font(k.Mono).TextColor(pctColor).MinWidth(k.Px(30))
-			})
+	type meter struct {
+		key, label string
+		w          host.UsageWindow
+	}
+	meters := []meter{{"5h", L("5h"), u.Standard.FiveHour}, {"week", L("Week"), u.Standard.Weekly}, {"month", L("Month"), u.Standard.Monthly}}
+	if w, ok := u.Core.Highest(now); ok && w.Percent > 0 {
+		meters = append(meters, meter{"core", L("Core"), w})
+	}
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Usage")).Gap(k.Px(2)).Margin(k.Px(6), 0, 0, 0).Children(func() {
+		for _, m := range meters {
+			a.usageMeter(c, m.key, m.label, m.w, now)
 		}
 	})
 	if w, ok := u.Standard.Highest(now); ok && w.Percent >= 100 {
@@ -233,8 +244,76 @@ func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
 	}
 }
 
-// subscriptionLine is an account's plan and when it renews or ends. Only
-// the days left, within a week of the end, and an end past are in color.
+// usageMeter is one window: its name, a bar of what is left, the share
+// left, and when it resets. A window that is not running has all of it.
+func (a *App) usageMeter(c *ui.Context, key, label string, w host.UsageWindow, now time.Time) {
+	k, t := a.kit, a.kit.T
+	left, reset := 100, L("Not started")
+	if w.Active(now) {
+		left, reset = max(100-int(math.Ceil(w.Percent)), 0), resetText(w.Ends.Sub(now), now)
+	}
+	color := t.Foreground.Alpha(0.55)
+	switch {
+	case left <= 0:
+		color = t.Destructive
+	case left <= 20:
+		color = t.Attention
+	}
+	const width = 96
+	ui.Row(c.Key(key)).Gap(k.Px(8)).AlignItems(ui.Center).Label(L("%s: %d%% left", label, left)).Children(func() {
+		k.Text(c, label, 12, 16).TextColor(t.MutedForeground).Width(k.Px(44)).Shrink(0).SingleLine()
+		ui.Box(c).Width(k.Px(width)).Height(k.Px(4)).Shrink(0).Radius(k.Px(2)).Background(t.Border).ClipX().Children(func() {
+			fill := ui.Box(c).Height(k.Px(4)).Radius(k.Px(2)).Background(color)
+			fill.Width(k.Px(width * min(fill.Animate("fill", float32(left), 240*time.Millisecond), 100) / 100))
+		})
+		pctColor := t.Foreground
+		if left <= 20 {
+			pctColor = color
+		}
+		k.Text(c, L("%d%% left", left), 12, 16).TextColor(pctColor).MinWidth(k.Px(64)).Shrink(0)
+		k.Text(c, reset, 12, 16).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+	})
+}
+
+// resetText says when a window resets: hours and minutes within a day,
+// else the days left and the date.
+func resetText(d time.Duration, now time.Time) string {
+	h, m := int(d.Hours()), int(d.Minutes())%60
+	switch {
+	case h >= 48:
+		return L("Resets in %d days (%s)", h/24, now.Add(d).Format(L("Jan 2")))
+	case h >= 24:
+		return L("Resets in 1 day (%s)", now.Add(d).Format(L("Jan 2")))
+	case h > 0:
+		return L("Resets in %dh %dm", h, m)
+	case m > 0:
+		return L("Resets in %dm", m)
+	}
+	return L("Resets soon")
+}
+
+// planName is a plan's short name, "Pro" for "Factory Pro Plan".
+func planName(s *host.Subscription) string {
+	if s == nil {
+		return ""
+	}
+	words := strings.Fields(s.Plan)
+	if n := len(words); n > 2 && words[0] == "Factory" && words[n-1] == "Plan" {
+		return strings.Join(words[1:n-1], " ")
+	}
+	return strings.Join(words, " ")
+}
+
+// planBadge is the plan's name beside the account's.
+func (a *App) planBadge(c *ui.Context, plan string) {
+	k, t := a.kit, a.kit.T
+	ui.Row(c).Height(k.Px(18)).Shrink(0).PaddingX(k.Px(6)).Radius(k.Px(9)).Border(1, t.Border).Background(t.Background).AlignItems(ui.Center).Children(func() {
+		k.Text(c, plan, 11, 14).FontWeight(500).TextColor(t.MutedForeground).SingleLine()
+	})
+}
+
+// subscriptionLine is said only when the plan needs the user: it ends or
+// its trial ends within a week, or it has ended.
 func (a *App) subscriptionLine(c *ui.Context, s *host.Subscription) {
 	if s == nil {
 		return
@@ -248,11 +327,7 @@ func (a *App) subscriptionLine(c *ui.Context, s *host.Subscription) {
 	if rest != "" {
 		label += " · " + rest
 	}
-	row := ui.Row(c.Key("plan")).Label(label).Wrap().GapX(k.Px(4)).AlignItems(ui.Center)
-	if level != planFine {
-		row.Role(ui.RoleStatus)
-	}
-	row.Children(func() {
+	ui.Row(c.Key("plan")).Role(ui.RoleStatus).Label(label).Wrap().GapX(k.Px(4)).AlignItems(ui.Center).Margin(k.Px(4), 0, 0, 0).Children(func() {
 		color := t.MutedForeground
 		if level == planEnded {
 			color = t.Destructive
@@ -273,8 +348,8 @@ const (
 	planEnded
 )
 
-// subscriptionText is "<plan> · <when>": when it renews or ends, and rest,
-// within a week of the end, how many days are left.
+// subscriptionText is when the plan or its trial ends, with rest, how many
+// days are left; "" while it renews by itself or ends more than a week on.
 func subscriptionText(s *host.Subscription, now time.Time) (line, rest string, level planLevel) {
 	date := func(t time.Time) string { return t.Local().Format(L("Jan 2, 2006")) }
 	left := func(end time.Time) (string, planLevel) {
@@ -287,28 +362,22 @@ func subscriptionText(s *host.Subscription, now time.Time) (line, rest string, l
 		}
 		return L("1 day left"), planEnding
 	}
-	var parts []string
-	if s.Plan != "" {
-		parts = append(parts, s.Plan)
-	}
 	switch {
 	case s.Status == "ended" || (!s.Ends.IsZero() && !s.Ends.After(now)):
-		level = planEnded
 		if s.Ends.IsZero() {
-			parts = append(parts, L("Ended"))
-		} else {
-			parts = append(parts, L("Ended %s", date(s.Ends)))
+			return L("Ended"), "", planEnded
 		}
+		return L("Ended %s", date(s.Ends)), "", planEnded
 	case !s.Ends.IsZero():
-		parts = append(parts, L("Ends %s", date(s.Ends)))
-		rest, level = left(s.Ends)
+		if rest, level = left(s.Ends); level == planEnding {
+			return L("Ends %s", date(s.Ends)), rest, level
+		}
 	case !s.TrialEnds.IsZero() && s.TrialEnds.After(now):
-		parts = append(parts, L("Trial ends %s", date(s.TrialEnds)))
-		rest, level = left(s.TrialEnds)
-	case !s.Renews.IsZero():
-		parts = append(parts, L("Renews %s", date(s.Renews)))
+		if rest, level = left(s.TrialEnds); level == planEnding {
+			return L("Trial ends %s", date(s.TrialEnds)), rest, level
+		}
 	}
-	return strings.Join(parts, " · "), rest, level
+	return "", "", planFine
 }
 
 // resetsIn says when a window ends, as droid does: hours and minutes
