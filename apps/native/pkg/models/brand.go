@@ -79,6 +79,24 @@ var providerBrands = map[string]Brand{
 // BrandOf reads the brand off the model id; provider is "" for the Auto router.
 func BrandOf(modelID, provider string) Brand {
 	id := strings.ToLower(modelID)
+	// Droi names a Magpie model "custom:magpie-<provider>-<model>-<hash>", and
+	// the Daemon reports that id, not the gateway's "provider/model": the
+	// provider after the prefix names the company.
+	if rest, ok := strings.CutPrefix(id, magpieIDPrefix); ok {
+		if b, ok := gatewayBrand(rest); ok {
+			return b
+		}
+		// A gateway provider Droi does not know: the model's own name may still
+		// say, as in "workbuddy-glm-5-3-…".
+		if _, name, ok := strings.Cut(rest, "-"); ok {
+			for _, p := range idPrefixes {
+				if strings.HasPrefix(name, p.prefix) {
+					return p.brand
+				}
+			}
+		}
+		return Other
+	}
 	// "provider/model", as a gateway names one: the provider names the company,
 	// and the model keeps its own name after the last slash.
 	if i := strings.Index(id, "/"); i > 0 {
@@ -96,4 +114,21 @@ func BrandOf(modelID, provider string) Brand {
 		return b
 	}
 	return Other
+}
+
+// magpieIDPrefix starts the id Droi gives a Magpie model (package host builds
+// it); the rest is "<provider>-<model>-<hash>".
+const magpieIDPrefix = "custom:magpie-"
+
+// gatewayBrand reads a gateway provider's brand; its name may hold dashes, so
+// the longest known one that the name starts with wins.
+func gatewayBrand(rest string) (Brand, bool) {
+	var best string
+	var brand Brand
+	for name, b := range providerBrands {
+		if strings.HasPrefix(rest, name+"-") && len(name) > len(best) {
+			best, brand = name, b
+		}
+	}
+	return brand, best != ""
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -71,18 +72,18 @@ func TestMagpieCustomModels(t *testing.T) {
 	}
 	want := []map[string]any{
 		{
-			"id": "magpie-codex-gpt-6-1-sol", "model": "codex/gpt-6.1-sol",
+			"id": MagpieModelID("codex/gpt-6.1-sol"), "model": "codex/gpt-6.1-sol",
 			"displayName": "Magpie · GPT-6.1-Sol", "baseUrl": "http://127.0.0.1:3425/v1",
 			"apiKey": "magpie", "provider": MagpieProvider, "maxOutputTokens": 128000,
 		},
 		{
-			"id": "magpie-workbuddy-glm-5-3", "model": "workbuddy/glm-5.3",
+			"id": MagpieModelID("workbuddy/glm-5.3"), "model": "workbuddy/glm-5.3",
 			"displayName": "Magpie · GLM 5.3", "baseUrl": "http://127.0.0.1:3425/v1",
 			"apiKey": "magpie", "provider": MagpieProvider, "maxOutputTokens": 32000,
 			"noImageSupport": true,
 		},
 		{
-			"id": "magpie-workbuddy-glm-5-3-flash", "model": "workbuddy/glm-5.3-flash",
+			"id": MagpieModelID("workbuddy/glm-5.3-flash"), "model": "workbuddy/glm-5.3-flash",
 			"displayName": "Magpie · workbuddy/glm-5.3-flash", "baseUrl": "http://127.0.0.1:3425/v1",
 			"apiKey": "magpie", "provider": MagpieProvider, "maxOutputTokens": magpieDefaultOutput,
 			"noImageSupport": true,
@@ -99,15 +100,46 @@ func TestMagpieCustomModels(t *testing.T) {
 	}
 }
 
-func TestMagpieModelIDsDoNotCollide(t *testing.T) {
-	taken := map[string]bool{}
-	first := MagpieModelID("a/b.c", taken)
-	taken[first] = true
-	if second := MagpieModelID("a/b-c", taken); second != first+"-2" {
-		t.Errorf("%q then %q", first, second)
+// droid resolves a custom model only by an id that starts with "custom:"; an
+// entry without it is listed and then ignored, and the Session runs another
+// model without saying so.
+func TestMagpieModelIDsAreCustomIDsDroidResolves(t *testing.T) {
+	for _, model := range []string{"workbuddy/glm-5.3-flash", "plain-model", "a/b.c"} {
+		id := MagpieModelID(model)
+		if !strings.HasPrefix(id, "custom:") {
+			t.Errorf("%q is %q, which droid does not resolve", model, id)
+		}
+		if strings.Count(id, ":") != 1 || strings.ContainsAny(id, " /") {
+			t.Errorf("%q holds more than the prefix's colon, a space or a slash", id)
+		}
 	}
-	if got := MagpieModelID("!!!", map[string]bool{}); got != "magpie-model" {
-		t.Errorf("a name with no letters: %q", got)
+}
+
+// An id depends on its model alone: adding a model, reordering the list or
+// renaming a display name moves no Session to another model.
+func TestMagpieModelIDsDoNotMove(t *testing.T) {
+	one := MagpieCustomModels(MagpieCatalog{Models: []MagpieModel{{ID: "a/b.c", Name: "B"}}})
+	if len(one) != 1 {
+		t.Fatalf("entries %v", one)
+	}
+	before := one[0].(map[string]any)["id"]
+	// "a/b-c" comes out the same in letters but is another model, and it sorts
+	// first: it must not take the id the other one had.
+	both := MagpieCustomModels(MagpieCatalog{Models: []MagpieModel{
+		{ID: "a/b-c", Name: "C"},
+		{ID: "a/b.c", Name: "B"},
+	}})
+	after := both[1].(map[string]any)["id"]
+	if before != after {
+		t.Errorf("a/b.c moved from %q to %q", before, after)
+	}
+	if both[0].(map[string]any)["id"] == after {
+		t.Errorf("a/b-c took the same id %q", after)
+	}
+	// A display name is the picker's, not the id's.
+	renamed := MagpieCustomModels(MagpieCatalog{Models: []MagpieModel{{ID: "a/b.c", Name: "Renamed"}}})
+	if renamed[0].(map[string]any)["id"] != before {
+		t.Errorf("renaming moved the id to %q", renamed[0].(map[string]any)["id"])
 	}
 }
 
@@ -135,7 +167,7 @@ func TestTheHostOffersMagpieModelsToTheDaemon(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.CustomModels) != 1 || got.CustomModels[0]["id"] != "magpie-workbuddy-glm-5-3" {
+	if len(got.CustomModels) != 1 || got.CustomModels[0]["id"] != MagpieModelID("workbuddy/glm-5.3") {
 		t.Fatalf("overlay %s", b)
 	}
 	if got.Hooks != nil {

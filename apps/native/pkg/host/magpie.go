@@ -2,6 +2,8 @@ package host
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -191,13 +193,11 @@ func MagpieCustomModels(c MagpieCatalog) []any {
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	base := strings.TrimSuffix(c.BaseURL, "/") + "/v1"
 	out := make([]any, 0, len(models))
-	taken := map[string]bool{}
 	for _, m := range models {
 		if strings.TrimSpace(m.ID) == "" {
 			continue
 		}
-		id := MagpieModelID(m.ID, taken)
-		taken[id] = true
+		id := MagpieModelID(m.ID)
 		entry := map[string]any{
 			"id":              id,
 			"model":           m.ID,
@@ -215,23 +215,33 @@ func MagpieCustomModels(c MagpieCatalog) []any {
 	return out
 }
 
-// MagpieModelID is the droid id of a Magpie model: "magpie-" and the model's
-// own name, made of letters, digits and dashes, with a number on the end when
-// two names come out the same.
-func MagpieModelID(model string, taken map[string]bool) string {
-	id := "magpie-" + magpieSlug(model)
-	if id == "magpie-" {
-		id = "magpie-model"
+// MagpieModelID is the droid id of a Magpie model. It has to start with
+// "custom:", which is the only prefix droid resolves a custom model by: an
+// entry without it is listed and then ignored, and the Session quietly runs
+// another model. The rest names the gateway's provider and the model, and ends
+// in a hash of the gateway's own id, so an id depends on nothing but the model:
+// renaming its display name, reordering the catalog or adding a model that
+// comes out the same in letters cannot move a Session to another model.
+func MagpieModelID(model string) string {
+	provider, name, found := strings.Cut(model, "/")
+	if !found {
+		provider, name = "", model
 	}
-	if !taken[id] {
-		return id
+	slug := magpieSlug(name)
+	if slug == "" {
+		slug = "model"
 	}
-	for n := 2; ; n++ {
-		next := fmt.Sprintf("%s-%d", id, n)
-		if !taken[next] {
-			return next
-		}
+	id := "custom:magpie-"
+	if p := magpieSlug(provider); p != "" {
+		id += p + "-"
 	}
+	return id + slug + "-" + magpieHash(model)
+}
+
+// magpieHash is a short, fixed-length digest of a gateway model id.
+func magpieHash(model string) string {
+	sum := sha256.Sum256([]byte(model))
+	return hex.EncodeToString(sum[:3])
 }
 
 // MagpieDisplayName is what the picker calls a Magpie model.
