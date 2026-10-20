@@ -358,6 +358,21 @@ func (a *App) onEvent(e controller.Event) {
 			go a.reloadList()
 			go a.readLoops()
 		}
+	case controller.SpecHandoffStarted:
+		// The plan goes on in a new Session: follow it there, unless the
+		// user went elsewhere meanwhile.
+		go a.refreshList()
+		a.cfg.Update(func() {
+			if a.route.Name == "session" && a.route.SessionID == ev.SessionID {
+				a.Go(Route{Name: "session", SessionID: ev.NewSessionID})
+			}
+		})
+	case controller.SpecHandoffFailed:
+		a.cfg.Update(func() {
+			if v := a.views[ev.SessionID]; v != nil && ev.Err != nil {
+				v.SetErr(L("The new session did not start: %s", ev.Err.Error()))
+			}
+		})
 	case controller.DaemonNotification:
 		switch ev.Method {
 		case protocol.NotificationWorktreeRemoved, protocol.NotificationWorktreeBranchChanged:

@@ -46,6 +46,8 @@ func kinds(e *Entry) []any {
 			out = append(out, len(b.Calls))
 		case Subagent:
 			out = append(out, "subagent")
+		case Spec:
+			out = append(out, "spec")
 		}
 	}
 	return out

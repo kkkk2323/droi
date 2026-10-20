@@ -288,6 +288,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 					placeholder = L("Queue a message… (⌘↩ inserts it now)")
 				case hasPick && picked.ArgumentHint != "":
 					placeholder = l10n.T(picked.ArgumentHint)
+				case s.Settings().InteractionMode == protocol.DroidInteractionModeSpec:
+					placeholder = L("Describe what to build; Droid plans it with you first")
 				}
 				left := k.Px(16)
 				if hasPick {

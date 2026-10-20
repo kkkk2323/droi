@@ -160,6 +160,7 @@ type View struct {
 	err       string
 	promptErr string
 	asks      map[string]*askState
+	specs     map[string]*specAnswer
 	plain     plainComposer
 }
 

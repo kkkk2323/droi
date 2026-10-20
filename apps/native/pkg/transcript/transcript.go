@@ -18,11 +18,13 @@ import (
 )
 
 // The tool that starts a subagent, the one that runs a program calling other
-// tools, and the one that waits on such a run past its first minute.
+// tools, the one that waits on such a run past its first minute, and the one
+// that ends Spec mode with a plan for the user to approve.
 const (
 	TaskTool          = "Task"
 	ScriptTool        = "Script"
 	WaitForScriptTool = "WaitForScript"
+	SpecTool          = "ExitSpecMode"
 )
 
 // Image is a base64 picture as the Daemon sent it.
@@ -56,6 +58,8 @@ const (
 	Tools
 	// A Task call: work handed to a subagent, shown on its own.
 	Subagent
+	// An ExitSpecMode call: the plan Spec mode made, shown on its own.
+	Spec
 )
 
 type Block struct {
@@ -322,6 +326,10 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 				}
 				if use.Name == TaskTool {
 					blocks = append(blocks, Block{Kind: Subagent, ID: d.id, Call: call})
+					continue
+				}
+				if use.Name == SpecTool {
+					blocks = append(blocks, Block{Kind: Spec, ID: d.id, Call: call})
 					continue
 				}
 				if n := len(blocks); n > 0 && blocks[n-1].Kind == Tools {

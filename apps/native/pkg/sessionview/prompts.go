@@ -45,6 +45,10 @@ func (v *View) Prompts(c *ui.Context, perms []controller.Permission, asks []cont
 			k.Text(c, v.promptErr, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 		}
 		for _, p := range perms {
+			if isSpecReview(p) {
+				v.specReview(c, p)
+				continue
+			}
 			v.permissionCard(c, p)
 		}
 		for _, q := range asks {

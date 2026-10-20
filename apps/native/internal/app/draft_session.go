@@ -214,6 +214,9 @@ func (a *App) takeDraft(workspace string, p protocol.InitializeSessionParams) st
 	if p.ReasoningEffort != "" {
 		update["reasoningEffort"] = p.ReasoningEffort
 	}
+	if p.InteractionMode != "" {
+		update["interactionMode"] = p.InteractionMode
+	}
 	if p.AutonomyLevel != "" {
 		update["autonomyLevel"] = p.AutonomyLevel
 	}

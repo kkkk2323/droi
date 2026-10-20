@@ -204,6 +204,8 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 				v.thinking(c, b, r.e.ID == v.streamingID)
 			case transcript.Subagent:
 				v.subagentCard(c, b.Call, v.links)
+			case transcript.Spec:
+				v.specCard(c, b.Call)
 			}
 		}
 	})

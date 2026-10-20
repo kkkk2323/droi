@@ -43,7 +43,9 @@ type newSessionState struct {
 	allRecent bool
 
 	modelID, effort, autonomy string
-	toolMode                  defaults.ToolMode
+	// interaction is "auto" or "spec" once toggled on the page.
+	interaction string
+	toolMode    defaults.ToolMode
 
 	text    string
 	images  []attachments.Image
@@ -415,6 +417,10 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
 	enabled := workspace != "" && !creating
+	interaction := s.interaction
+	if dv := a.sessionDefaults(); interaction == "" && dv != nil {
+		interaction = dv.InteractionMode
+	}
 	s.menu.items(s.text, slash.Starters, fromDaemon)
 	accept := func(item slash.Item) {
 		s.text = "/" + item.Name + " "
@@ -440,6 +446,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		p := protocol.InitializeSessionParams{
 			ModelID:           modelID,
 			ReasoningEffort:   protocol.ReasoningEffort(effort),
+			InteractionMode:   protocol.DroidInteractionMode(interaction),
 			AutonomyLevel:     protocol.AutonomyLevel(autonomy),
 			ToolExecutionMode: protocol.ToolExecutionMode(requestedMode),
 		}
@@ -562,6 +569,12 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 							}
 						}
 					}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
+					if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
+						s.interaction = string(protocol.DroidInteractionModeSpec)
+						if spec {
+							s.interaction = string(protocol.DroidInteractionModeAuto)
+						}
+					}
 					opts := make([]kit.Option, len(autonomyLevels))
 					for i, l := range autonomyLevels {
 						opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
