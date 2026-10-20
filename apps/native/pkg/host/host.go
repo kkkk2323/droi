@@ -59,12 +59,13 @@ type Host struct {
 	client  droidClientInfo
 
 	// magpieMu guards the catalog, magpieReadMu makes one read of the gateway
-	// run at a time, and magpieReading marks a background read queued or
-	// running.
-	magpieMu      sync.Mutex
-	magpieReadMu  sync.Mutex
-	magpie        MagpieCatalog
-	magpieReading bool
+	// run at a time, magpieReading marks a background read queued or running,
+	// and magpieGivenCatalog is what the running Daemon was started with.
+	magpieMu           sync.Mutex
+	magpieReadMu       sync.Mutex
+	magpie             MagpieCatalog
+	magpieReading      bool
+	magpieGivenCatalog MagpieCatalog
 
 	indexMu  sync.Mutex
 	index    *sessionIndex
@@ -204,9 +205,12 @@ func (h *Host) runtimeOverlay() string {
 		}
 	}
 	var models []any
+	given := MagpieCatalog{}
 	if st.MagpieEnabled {
-		models = MagpieCustomModels(h.magpieModels())
+		given = h.magpieModels()
+		models = MagpieCustomModels(given)
 	}
+	h.rememberMagpieGiven(given)
 	if m.Executable == "" && len(models) == 0 {
 		return ""
 	}

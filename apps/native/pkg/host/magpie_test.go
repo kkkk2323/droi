@@ -9,11 +9,19 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // magpieServer stands in for a Magpie gateway answering its model list.
 func magpieServer(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	return magpieServerFunc(t, func() string { return body })
+}
+
+// magpieServerFunc is magpieServer with a list that changes between reads.
+func magpieServerFunc(t *testing.T, answer func() string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
@@ -25,7 +33,7 @@ func magpieServer(t *testing.T, body string) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body)
+		_, _ = io.WriteString(w, answer())
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -211,44 +219,82 @@ func TestTheHostKeepsTheLastModelsWhenMagpieIsGone(t *testing.T) {
 func TestMagpieCatalogComparison(t *testing.T) {
 	a := MagpieCatalog{BaseURL: "http://127.0.0.1:3425", Models: []MagpieModel{{ID: "a/b"}, {ID: "c/d"}}}
 	b := MagpieCatalog{BaseURL: "http://127.0.0.1:3425", Models: []MagpieModel{{ID: "c/d"}, {ID: "a/b"}}}
-	if !magpieSame(a, b) {
+	if !sameMagpieModels(a, b) {
 		t.Error("the same models in another order are a change")
 	}
 	b.Models = append(b.Models, MagpieModel{ID: "e/f"})
-	if magpieSame(a, b) {
+	if sameMagpieModels(a, b) {
 		t.Error("a new model is not a change")
 	}
 	b = a
 	b.BaseURL = "http://127.0.0.1:3999"
-	if magpieSame(a, b) {
+	if sameMagpieModels(a, b) {
 		t.Error("another gateway is not a change")
 	}
 	b = a
 	b.Err = "connection refused"
-	if magpieSame(a, b) {
-		t.Error("a failed read is not a change, so a Daemon would not start again")
+	if !sameMagpieModels(a, b) {
+		t.Error("a failed read kept the models, which is what the Daemon has")
 	}
 }
 
-// A refresh tells its caller whether the Daemon has to start again.
+// A refresh tells its caller whether the Daemon has to start again, and it
+// compares with what the Daemon was given, not with the cache.
 func TestRefreshMagpieReportsAChange(t *testing.T) {
 	first := magpieServer(t, `{"data":[{"id":"a/b"}]}`)
 	other := magpieServer(t, `{"data":[{"id":"c/d"}]}`)
 	h := testHost(t)
-	if err := h.Settings.Update(func(st *Settings) { st.MagpieBaseURL = OptString(first.URL) }); err != nil {
-		t.Fatal(err)
-	}
-	if !h.RefreshMagpie() {
-		t.Error("the first read is a change from no models")
-	}
+	enableMagpie(t, h, first.URL)
+	h.runtimeOverlay()
 	if h.RefreshMagpie() {
 		t.Error("the same list was taken for a change, so the Daemon would restart for nothing")
 	}
-	if err := h.Settings.Update(func(st *Settings) { st.MagpieBaseURL = OptString(other.URL) }); err != nil {
-		t.Fatal(err)
-	}
+	enableMagpie(t, h, other.URL)
 	if !h.RefreshMagpie() {
 		t.Error("another gateway's models were taken for the same")
+	}
+	h.runtimeOverlay()
+	if h.RefreshMagpie() {
+		t.Error("the Daemon was given them, and still a restart was asked for")
+	}
+}
+
+// The Settings page reads a stale catalog in the background as it draws, which
+// happens just as the user opens it to press Refresh: that read must not hide
+// the change the Daemon has not seen yet.
+func TestRefreshAfterABackgroundReadStillStartsTheDaemon(t *testing.T) {
+	var listed atomic.Value
+	listed.Store(`{"data":[{"id":"a/b"}]}`)
+	srv := magpieServerFunc(t, func() string { return listed.Load().(string) })
+	h := testHost(t)
+	enableMagpie(t, h, srv.URL)
+	h.runtimeOverlay()
+
+	listed.Store(`{"data":[{"id":"a/b"},{"id":"c/d"}]}`)
+	h.magpieMu.Lock()
+	h.magpie.Read = time.Now().Add(-2 * time.Minute)
+	h.magpieMu.Unlock()
+	h.Magpie()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(h.magpieCached().Models) != 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(h.magpieCached().Models) != 2 {
+		t.Fatal("the background read did not take")
+	}
+	if !h.RefreshMagpie() {
+		t.Error("Refresh found no change though the Daemon still has one model")
+	}
+}
+
+// enableMagpie points the Host at a gateway with Magpie on.
+func enableMagpie(t *testing.T, h *Host, url string) {
+	t.Helper()
+	if err := h.Settings.Update(func(st *Settings) {
+		st.MagpieEnabled = true
+		st.MagpieBaseURL = OptString(url)
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
