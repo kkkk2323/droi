@@ -37,18 +37,18 @@ _Avoid_: proxy, API server, Hono server, web server
 ### Clients
 
 **Client**:
-A Droi user interface. Every Client speaks only the Daemon protocol, reaches the Daemon through a Host's Gateway, and keeps no conversation state of its own. Two are maintained: the Desktop Shell window and the Phone App; the deprecated web Client is a third.
+A Droi user interface. Every Client speaks only the Daemon protocol, reaches the Daemon through a Host's Gateway, and keeps no conversation state of its own. There are two: the Desktop Shell window and the Phone App.
 _Avoid_: renderer, frontend, web UI
 
 **Local Client**:
 The Client in the Desktop Shell window, whichever Paired Computer it is connected to; the window follows one Paired Computer at a time, this computer's own Host unless the Computer preference names another. It alone can reach the Desktop Shell itself (settings, system notifications, opening folders in other apps); it reaches its own Host's Gateway with a per-launch token and any other Host's Gateway with that Host's Pairing Token.
 
 **Remote Client**:
-A Client that is not the Desktop Shell window of the Host it is connected to: the Phone App on an iPhone, or the web Client in a browser anywhere else. It reaches the Host through the Gateway with the Pairing Token.
+A Client that is not the Desktop Shell window of the Host it is connected to: the Phone App on an iPhone. It reaches the Host through the Gateway with the Pairing Token.
 _Avoid_: mobile, web mode, browser mode, LAN mode
 
 **Phone App**:
-The native iPhone Client. It is the Remote Client on iOS and takes the browser's place there; the browser Remote Client stays for every other device. It offers what the web Client offers, and nothing the desktop lacks.
+The native iPhone Client. It is the Remote Client, and it offers nothing the desktop lacks.
 _Avoid_: mobile app, iOS app, iOS Client
 
 **Pairing Token**:

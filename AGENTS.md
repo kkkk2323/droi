@@ -13,12 +13,10 @@ Windows) and the Phone App (`apps/mobile`), with what they use: `packages/daemon
 `tests/mobile`. The Go SDK and the Fake Daemon they use live in their own repository,
 [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) (ADR 0021).
 
-The Electron Desktop Shell and the web Client (`apps/desktop`, except its `package.json`
-version, which stays the release version) and their suites (`tests/web`, `tests/electron`,
-`tests/live` and the PR workflow's `smoke` job) are deprecated (`apps/desktop/README.md`).
-Releases no longer carry an update for the Electron app. Do not add features to them, fix them or run their suites. They stay in the
-repository until they are removed, so a change to shared code must still pass `pnpm check`
-and `pnpm test` there; keep such fixes to what makes them compile.
+The Electron Desktop Shell and the web Client (`apps/desktop`) and their suites
+(`tests/web`, `tests/electron`, `tests/live`) were removed after 1.59.0; the git history
+before that has them, and the ADRs that describe them stay as the record of those decisions.
+The release version lives in `apps/native/mygo.json`.
 
 ## Project Structure
 
@@ -32,20 +30,15 @@ apps/
 │                       # sessionview (a Session's transcript, Prompts, plain composer),
 │                       # settingsview (Settings' Appearance, Session defaults, model picker),
 │                       # l10n, kit, theme, transcript, ...
-├── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
-│               # screens under src/screens, hardware behind src/platform with
-│               # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md
-└── desktop/    # Deprecated: Electron Desktop Shell and web Client (package "droi"; its
-                # version is the release version, which the Phone App reads too)
+└── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
+                # screens under src/screens, hardware behind src/platform with
+                # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md
 packages/
 └── daemon-layer/  # @droi/daemon-layer: the Phone App's daemon layer (connection, Session
                    # state hooks, Gateway contract, local preferences); no DOM or Electron
 tests/          # @droi/tests: the Playwright suites, one config per folder
-├── mobile/        # The Phone App's web build against the Fake Daemon
-├── web/           # Deprecated: the web Client in a browser
-├── electron/      # Deprecated: smoke suite against the Desktop Shell
-└── live/          # Deprecated: the web Client and the Electron Gateway against a real Daemon
-scripts/        # install:phone (install:mac builds the deprecated Electron app)
+└── mobile/        # The Phone App's web build against the Fake Daemon
+scripts/        # install:phone, release.sh, measure-cpu.py
 docs/           # ADRs, agent docs, the README screenshot
 ```
 
@@ -65,13 +58,10 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 | `pnpm test` | Run vitest once |
 | `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
 | `pnpm install:phone` | Build a signed Release of the Phone App and install it on the connected iPhone |
-| `pnpm typecheck` | TypeScript validation (root + Desktop Shell node/web + Phone App + tests) |
+| `pnpm typecheck` | TypeScript validation (root + Phone App + tests) |
 | `pnpm lint` / `pnpm lint:fix` | oxlint |
 | `pnpm format` / `pnpm format:check` | oxfmt |
 | `pnpm check` | format check + lint + typecheck |
-
-Deprecated, for the Electron app only: `pnpm dev`, `pnpm dev:client`, `pnpm build`,
-`pnpm build:mac`, `pnpm install:mac`, `pnpm test:e2e`, `pnpm test:smoke`, `pnpm test:live`.
 
 ## Validation Workflow
 
@@ -131,7 +121,7 @@ installed types before using an Expo module, and add Expo packages with
 ## Factory login
 
 The native app hands its sign-in to the `droid` CLI (ADR 0015, `apps/native/pkg/host/cli_login.go`):
-the two share one login, which the Daemon runs as. (The deprecated Electron Desktop Shell
+the two share one login, which the Daemon runs as. (The removed Electron Desktop Shell
 used the CLI's device flow instead, ADR 0005.) More Factory accounts can be added in Settings:
 each has its own folder, which the Daemon gets as `FACTORY_HOME_OVERRIDE`, linked to the CLI's
 skills, settings and sessions (ADR 0017, `apps/native/pkg/host/accounts.go`).

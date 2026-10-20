@@ -2,7 +2,7 @@
   "name": "@droi/tests",
   "version": "0.0.0",
   "private": true,
-  "description": "Playwright suites: web Client and Phone App against the Fake Daemon, Desktop Shell smoke, live",
+  "description": "Playwright suite: the Phone App's web build against the Fake Daemon",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

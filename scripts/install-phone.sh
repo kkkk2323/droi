@@ -60,5 +60,5 @@ xcodebuild -workspace ios/Droi.xcworkspace -scheme Droi -configuration Release \
 xcrun devicectl device install app --device "$device" build/Build/Products/Release-iphoneos/Droi.app
 xcrun devicectl device process launch --device "$device" com.kkkk2323.droi >/dev/null ||
   echo "Installed but not launched: is the iPhone locked, or the developer not trusted yet?"
-echo "Installed Droi $(node -p 'require("../desktop/package.json").version') on the iPhone."
+echo "Installed Droi $(node -p 'require("../native/mygo.json").version') on the iPhone."
 echo "First install: trust the developer in Settings → General → VPN & Device Management."

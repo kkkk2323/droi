@@ -1,7 +1,7 @@
 // The Phone App's Expo config. The version is the desktop app's, read from
-// apps/desktop/package.json at build time, so both come from the same release.
+// apps/native/mygo.json at build time, so both come from the same release.
 import type { ConfigContext, ExpoConfig } from 'expo/config'
-import desktopPackage from '../desktop/package.json'
+import desktopApp from '../native/mygo.json'
 
 // Plain http is otherwise refused for names other than IPs, .local and ts.net.
 // DROI_HTTP_DOMAINS (comma separated, e.g. "myhome") adds the suffixes of a
@@ -15,7 +15,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Droi',
   slug: 'droi-phone',
-  version: desktopPackage.version,
+  version: desktopApp.version,
   // expo-router will not start in a standalone build without a scheme. Only
   // the router uses it; pairing stays the Desktop Shell's http link.
   scheme: 'droi-phone',

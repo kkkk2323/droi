@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./apps/desktop/resources/icon.svg" width="128" height="128" alt="Droi Logo">
+  <img src="./docs/icon.svg" width="128" height="128" alt="Droi Logo">
 </p>
 
 # Droi
@@ -146,7 +146,6 @@ More on the Mac app (its layout, how it matches the Electron app, how to re-reco
 ```
 apps/native/                 the Mac app: Go on MyGo (Host, Gateway, Memory, the window)
 apps/mobile/                 the Phone App (Expo SDK 57, iPhone)
-apps/desktop/                the former Electron app; its package.json carries the release version
 packages/daemon-layer/       the TypeScript daemon layer the Phone App uses
 tests/mobile/                Playwright: the Phone App's web build against the Fake Daemon
 docs/adr/                    architecture decisions

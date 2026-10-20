@@ -4,14 +4,4 @@ commands:
   lint: pnpm lint
   test: pnpm test
   check: pnpm check
-  build: pnpm build
-  e2e: pnpm test:e2e
-  smoke: pnpm build && pnpm test:smoke
-
-services:
-  client-dev:
-    start: pnpm dev:client --host 127.0.0.1 --port 5173
-    stop: lsof -tiTCP:5173 -sTCP:LISTEN | xargs kill 2>/dev/null || true
-    healthcheck: curl -sf http://127.0.0.1:5173 >/dev/null
-    port: 5173
-    depends_on: []
+  e2e: pnpm test:e2e:phone

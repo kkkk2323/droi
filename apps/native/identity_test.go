@@ -6,27 +6,23 @@ import (
 	"testing"
 )
 
-// The native app replaces the Electron one, so both carry the release
-// version and the bundle identifier the installed app already has.
-func TestIdentityMatchesTheDesktopShell(t *testing.T) {
+// electronAppID is the bundle identifier the Electron app was installed with;
+// the native app replaces it in place, so it keeps the identifier.
+const electronAppID = "com.droi.app"
+
+func TestIdentityIsTheReleaseAndTheInstalledApp(t *testing.T) {
 	var app struct{ Version, Identifier string }
-	var desktop struct {
-		Version string
-		Build   struct{ AppID string }
+	b, err := os.ReadFile("mygo.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for path, v := range map[string]any{"mygo.json": &app, "../desktop/package.json": &desktop} {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal(b, v); err != nil {
-			t.Fatal(err)
-		}
+	if err := json.Unmarshal(b, &app); err != nil {
+		t.Fatal(err)
 	}
-	if app.Version != desktop.Version || app.Version != devVersion {
-		t.Errorf("versions: mygo.json %q, desktop %q, devVersion %q", app.Version, desktop.Version, devVersion)
+	if app.Version != devVersion {
+		t.Errorf("versions: mygo.json %q, devVersion %q", app.Version, devVersion)
 	}
-	if app.Identifier != desktop.Build.AppID {
-		t.Errorf("identifier %q, the Desktop Shell's %q", app.Identifier, desktop.Build.AppID)
+	if app.Identifier != electronAppID {
+		t.Errorf("identifier %q, the installed app's %q", app.Identifier, electronAppID)
 	}
 }
