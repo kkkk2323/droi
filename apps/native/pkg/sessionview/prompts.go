@@ -74,6 +74,18 @@ func (v *View) promptCard(c *ui.Context, key, label string, fn func()) {
 		Padding(k.Px(12), k.Px(14), k.Px(10), k.Px(14)).Children(fn)
 }
 
+// smallButton is a prompt card's button: 28 high, its label at 11.
+func (v *View) smallButton(c *ui.Context, variant kit.Variant, label string) ui.Element {
+	k, t := v.look()
+	b := k.Button(c, variant, 28, false, label).PaddingX(k.Px(8)).FontSize(k.Px(11))
+	color := t.Foreground
+	if variant == kit.Primary {
+		color = t.PrimaryForeground
+	}
+	b.Children(func() { k.Text(c, label, 11, 16).FontWeight(500).TextColor(color) })
+	return b
+}
+
 // optionRow is an answer as a full-width row; a click picks it.
 func (v *View) optionRow(c *ui.Context, key, label string, checked bool, role ui.Role, trailing func()) ui.Element {
 	k, t := v.look()
@@ -149,29 +161,37 @@ func (v *View) permissionCard(c *ui.Context, p controller.Permission) {
 				})
 			}
 		})
-		ui.Column(c).Gap(k.Px(4)).Margin(k.Px(10), 0, 0, 0).Children(func() {
-			for i, opt := range p.Options {
-				cancel := opt.Value == "cancel"
-				row := v.optionRow(c, string(opt.Value), opt.Label, false, ui.RoleButton, func() {
-					if cancel {
-						k.Icon(c, "x", 12, t.MutedForeground)
-					} else {
-						k.Icon(c, "check", 12, t.Primary)
-					}
-				})
-				if i == 0 {
-					row.AutoFocus()
-				}
-				if cancel {
-					row.TextColor(t.MutedForeground)
-				}
-				if row.Clicked() {
-					id, answer := p.RequestID, opt.Value
-					go func() {
-						v.answerFailed(v.env.Controller.RespondToPermission(v.env.Ctx, id, controller.PermissionAnswer{SelectedOption: answer}))
-					}()
-				}
+		var cancels, allows []protocol.ToolConfirmationListItem
+		for _, opt := range p.Options {
+			if opt.Value == "cancel" {
+				cancels = append(cancels, opt)
+			} else {
+				allows = append(allows, opt)
 			}
+		}
+		answer := func(b ui.Element, opt protocol.ToolConfirmationListItem) {
+			if b.Clicked() {
+				id, value := p.RequestID, opt.Value
+				go func() {
+					v.answerFailed(v.env.Controller.RespondToPermission(v.env.Ctx, id, controller.PermissionAnswer{SelectedOption: value}))
+				}()
+			}
+		}
+		// Cancel sits alone on the left; the Daemon's first option, the plain
+		// allow, is the primary button at the far right.
+		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Start).Margin(k.Px(10), 0, 0, 0).Children(func() {
+			for _, opt := range cancels {
+				answer(v.smallButton(c, kit.Ghost, opt.Label).Shrink(0), opt)
+			}
+			ui.Row(c).Wrap().Justify(ui.End).Gap(k.Px(6)).Grow(1).MinWidth(0).Children(func() {
+				for i := len(allows) - 1; i >= 1; i-- {
+					answer(v.smallButton(c, kit.Outline, allows[i].Label), allows[i])
+				}
+				if len(allows) > 0 {
+					b := v.smallButton(c, kit.Primary, allows[0].Label).AutoFocus()
+					answer(b, allows[0])
+				}
+			})
 		})
 	})
 }
@@ -391,27 +411,18 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 			}
 		})
 		ui.Row(c).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-			small := func(v kit.Variant, label string) ui.Element {
-				b := k.Button(c, v, 28, false, label).PaddingX(k.Px(8)).FontSize(k.Px(11))
-				color := t.Foreground
-				if v == kit.Primary {
-					color = t.PrimaryForeground
-				}
-				b.Children(func() { k.Text(c, label, 11, 16).FontWeight(500).TextColor(color) })
-				return b
-			}
-			if st.step > 0 && small(kit.Ghost, l10n.L("Back")).Clicked() {
+			if st.step > 0 && v.smallButton(c, kit.Ghost, l10n.L("Back")).Clicked() {
 				st.step--
 			}
 			ui.Spacer(c)
-			if small(kit.Ghost, l10n.L("Cancel")).Clicked() {
+			if v.smallButton(c, kit.Ghost, l10n.L("Cancel")).Clicked() {
 				cancel()
 			}
 			next := l10n.L("Next")
 			if last {
 				next = l10n.L("Answer")
 			}
-			go_ := small(kit.Primary, next).Disabled(!canContinue)
+			go_ := v.smallButton(c, kit.Primary, next).Disabled(!canContinue)
 			if go_.Clicked() {
 				advance()
 			}

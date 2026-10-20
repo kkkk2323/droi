@@ -200,6 +200,27 @@ func TestAPermissionIsAnsweredFromItsCard(t *testing.T) {
 	h.until("the composer back", func() bool { _, ok := h.tt.Find("Message"); return ok })
 }
 
+func TestAPermissionCancelsOnTheLeftAndAllowsOnTheRight(t *testing.T) {
+	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "permission", Command: "rm -rf build", Reply: "Build directory removed."}))
+	h.send("Clean the build dir")
+	h.until("the permission card", func() bool { return h.hasText("rm -rf build") })
+	at := map[string]ui.Rect{}
+	for _, label := range []string{"No, cancel", "Yes, and always allow low impact commands", "Yes, allow"} {
+		r, ok := h.tt.Find(label)
+		if !ok {
+			t.Fatalf("no %q in %q", label, h.tt.Texts())
+		}
+		at[label] = r
+	}
+	cancel, always, allow := at["No, cancel"], at["Yes, and always allow low impact commands"], at["Yes, allow"]
+	if cancel.Y != allow.Y || always.Y != allow.Y {
+		t.Errorf("the options are not on one row: %+v", at)
+	}
+	if !(cancel.X < always.X && always.X < allow.X) {
+		t.Errorf("want No, cancel, then the always option, then Yes, allow from the left: %+v", at)
+	}
+}
+
 func TestALongCommandKeepsThePermissionsOptionsInTheWindow(t *testing.T) {
 	lines := make([]string, 80)
 	for i := range lines {
