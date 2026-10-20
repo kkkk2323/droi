@@ -87,7 +87,14 @@ func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
 	if _, ok := h.tt.Find("Core 5h: 91% left"); !ok || strings.Count(texts, "Core 5h: ") != 1 || strings.Count(texts, "Core Month: 100% left") != 1 {
 		t.Fatalf("Core is not shown for b@y.dev alone: %q", h.tt.Texts())
 	}
-	// When each window resets is in its details.
+	// The plan is a badge; only the one that ends soon says when.
+	ending := "Ends " + time.Now().Add(71*time.Hour).Local().Format("Jan 2, 2006") + " · 3 days left"
+	h.until("the plans", func() bool { _, ok := h.tt.Find(ending); return ok && h.hasText("Pro") })
+	if h.hasText("Renews") || h.hasText("Factory Pro Plan") {
+		t.Fatalf("a renewal date: %q", h.tt.Texts())
+	}
+	// When each window resets is in its details. Opened once the plans
+	// moved the rows down, so the click lands on the button.
 	if h.hasText("Resets in") {
 		t.Fatalf("the details show before they are asked for: %q", h.tt.Texts())
 	}
@@ -95,12 +102,6 @@ func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
 	h.until("a@x.dev's details", func() bool { return h.hasText("Resets in 2h ") && h.hasText("8% left") && h.hasText("Not started") })
 	if slices.Contains(h.tt.Texts(), "78% left") {
 		t.Fatalf("b@y.dev's details opened too: %q", h.tt.Texts())
-	}
-	// The plan is a badge; only the one that ends soon says when.
-	h.until("the plans", func() bool { return h.hasText("Pro") })
-	ending := "Ends " + time.Now().Add(71*time.Hour).Local().Format("Jan 2, 2006") + " · 3 days left"
-	if _, ok := h.tt.Find(ending); !ok || h.hasText("Renews") || h.hasText("Factory Pro Plan") {
-		t.Fatalf("no end for a@x.dev's plan, or a renewal date: %q", h.tt.Texts())
 	}
 	h.shoot("settings-account")
 
