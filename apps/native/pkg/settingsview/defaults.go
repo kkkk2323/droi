@@ -25,6 +25,9 @@ type Defaults struct {
 	mu     sync.Mutex
 	view   *defaults.View
 	readAt time.Time
+	// saves counts the saves started and saving those not yet answered: a
+	// read that crosses a save answers with the defaults before it.
+	saves, saving int
 }
 
 func (d *Defaults) ctx() context.Context {
@@ -42,6 +45,7 @@ func (d *Defaults) Get() *defaults.View {
 	// Before the connection is up the Daemon would refuse the request.
 	if time.Since(d.readAt) > time.Minute && d.Controller != nil && d.Controller.Status().Connected {
 		d.readAt = time.Now()
+		saves := d.saves
 		failed := func() {
 			d.mu.Lock()
 			d.readAt = time.Now().Add(5*time.Second - time.Minute)
@@ -63,7 +67,9 @@ func (d *Defaults) Get() *defaults.View {
 			_ = json.Unmarshal(b, &raw)
 			view := defaults.ToSessionDefaults(raw)
 			d.mu.Lock()
-			d.view = &view
+			if d.saves == saves && d.saving == 0 {
+				d.view = &view
+			}
 			d.mu.Unlock()
 			d.Update(func() {})
 		}()
@@ -77,6 +83,8 @@ func (d *Defaults) Save(dv defaults.View, p defaults.Patch, failed func(error)) 
 	view := defaults.ApplyPatch(dv, p)
 	d.mu.Lock()
 	d.view = &view
+	d.saves++
+	d.saving++
 	d.mu.Unlock()
 	go func() {
 		cl, err := d.Controller.Client()
@@ -88,6 +96,7 @@ func (d *Defaults) Save(dv defaults.View, p defaults.Patch, failed func(error)) 
 				failed(err)
 			}
 			d.mu.Lock()
+			d.saving--
 			d.readAt = time.Time{}
 			d.mu.Unlock()
 		})
