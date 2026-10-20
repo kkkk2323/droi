@@ -35,6 +35,7 @@ Droi is a Client of `droid daemon`, the Daemon in the Droid CLI. It shows and dr
 - **Live turns**: watch the reply stream, queue the next message while Droid works (⌘↩ hands it to the running turn), cancel at any time.
 - **Prompts**: allow or deny a tool call and answer Droid's questions. When a Session is open on the Mac and on the phone, both show the prompt and the first answer wins.
 - **Per-Session settings**: model, reasoning effort, autonomy and tool mode (Direct, Both, Script), from the Daemon's own model list.
+- **Magpie models**: with [Magpie](https://usemagpie.ai) running on this computer, its models join the model picker, with no settings file to edit. Droi reads the gateway's model list and hands it to this computer's Daemon alone; the `droid` CLI keeps its own.
 - **New Sessions**: in a recent Workspace, another folder, or a new folder of its own; paste or drop images into the message.
 - **Around the Session**: slash commands, Skills and MCP Servers, the Workspace's Git changes, and "Open in" Finder or your editor.
 - **Memory**: Droi keeps what Droid learns about you and your Workspaces (conventions, tool quirks, past failures) and gives it back in later Sessions.

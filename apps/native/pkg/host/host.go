@@ -58,6 +58,10 @@ type Host struct {
 	usage   map[string]*usageEntry
 	client  droidClientInfo
 
+	magpieMu      sync.Mutex
+	magpie        MagpieCatalog
+	magpieReading bool
+
 	indexMu  sync.Mutex
 	index    *sessionIndex
 	indexRev uint64
@@ -183,19 +187,27 @@ func (h *Host) ScratchFolder() string {
 // 0010), the Electron Shell's folder.
 func (h *Host) MemoryDir() string { return filepath.Join(h.cfg.UserData, "memory") }
 
-// runtimeOverlay writes the Runtime Overlay when Memory is on and answers
-// its path; "" starts the Daemon without Memory.
+// runtimeOverlay writes the Runtime Overlay when Memory or Magpie is on and
+// answers its path; "" starts the Daemon with neither.
 func (h *Host) runtimeOverlay() string {
-	if !h.Settings.Get().MemoryEnabled || h.cfg.Executable == "" {
+	st := h.Settings.Get()
+	var m MemoryAttachment
+	if st.MemoryEnabled && h.cfg.Executable != "" {
+		m = MemoryAttachment{
+			Executable: h.cfg.Executable,
+			MemoryDir:  h.MemoryDir(),
+			ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		}
+	}
+	var models []any
+	if st.MagpieEnabled {
+		models = MagpieCustomModels(h.magpieModels())
+	}
+	if m.Executable == "" && len(models) == 0 {
 		return ""
 	}
 	path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
-	o := BuildRuntimeOverlay(MemoryAttachment{
-		Executable: h.cfg.Executable,
-		MemoryDir:  h.MemoryDir(),
-		ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-	})
-	if err := WriteRuntimeOverlay(path, o); err != nil {
+	if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, OverlayOptions{CustomModels: models})); err != nil {
 		return ""
 	}
 	return path

@@ -39,6 +39,12 @@ func TestBrandOf(t *testing.T) {
 		{"my-fine-tune", "openai", OpenAI},
 		{"auto", "", Other},
 		{"mystery", "generic-chat-completion-api", Other},
+		// A gateway such as Magpie names a model "provider/model".
+		{"workbuddy/glm-5.3-flash", "generic-chat-completion-api", Zhipu},
+		{"codex/gpt-6.1-sol", "generic-chat-completion-api", OpenAI},
+		{"grok/grok-4.7", "generic-chat-completion-api", XAI},
+		{"openrouter/anthropic/claude-opus-5.5", "generic-chat-completion-api", Anthropic},
+		{"raccoon/sn-sensenova-6-8-flash", "generic-chat-completion-api", Other},
 	} {
 		if got := BrandOf(c.id, c.provider); got != c.want {
 			t.Errorf("BrandOf(%q, %q) = %q, want %q", c.id, c.provider, got, c.want)

@@ -2,6 +2,19 @@ package l10n
 
 // zh is Simplified Chinese, by the English text passed to L.
 var zh = map[string]string{
+	"%d models": "%d 个模型",
+	"A local gateway that runs coding agents on the models of many providers behind one endpoint. Its models join the model picker for new Sessions of this computer. Nothing is written to the droid CLI's settings, so the CLI and the Factory App do not see them.": "一个本地网关，把多家厂商的模型放在同一个端点后面供编码智能体使用。它的模型会加入本机新会话的模型选择器。不会写入 droid CLI 的设置，所以 CLI 和 Factory App 看不到它们。",
+	"Droi could not read the model list at %s. Is Magpie running?":                                                                             "Droi 无法读取 %s 的模型列表。Magpie 在运行吗？",
+	"Droi reads this list when the Daemon starts. Refresh reads it again and restarts the Daemon, which interrupts Sessions that are working.": "Droi 在后台服务启动时读取这份列表。刷新会重新读取并重启后台服务，正在工作的会话会被中断。",
+	"Gateway": "网关",
+	"Leave empty for %s, or set MAGPIE_BASE_URL.": "留空使用 %s，或设置 MAGPIE_BASE_URL。",
+	"Magpie":                "Magpie",
+	"Magpie base URL":       "Magpie 基础 URL",
+	"Not reachable":         "无法连接",
+	"Offer Magpie's models": "提供 Magpie 的模型",
+	"Refresh":               "刷新",
+	"Running, no models":    "运行中，没有模型",
+	"The Daemon restarts when this changes. Sessions already open keep the model they started with.": "改动后后台服务会重启。已经打开的会话仍保留开始时选的模型。",
 	"droid was not found": "找不到 droid",
 	"macOS does not let Droi open %s, which another app keeps in its own data. Save it to a folder such as Downloads first, then add it from there, or give Droi Full Disk Access in System Settings › Privacy & Security.": "macOS 不允许 Droi 打开 %s，因为它在另一个 App 自己的数据里。请先把它存到“下载”等文件夹，再从那里添加；或在“系统设置 › 隐私与安全性”里给 Droi 打开“完全磁盘访问权限”。",
 	"Install the droid CLI, or set the path to droid in Settings.":          "请安装 droid CLI，或在设置中填写 droid 的路径。",

@@ -62,11 +62,31 @@ var providerBrands = map[string]Brand{
 	"openai":    OpenAI,
 	"google":    Google,
 	"xai":       XAI,
+	// A gateway such as Magpie names a model "provider/model", where the
+	// provider is its own name for the company the model comes from.
+	"claude":   Anthropic,
+	"codex":    OpenAI,
+	"copilot":  OpenAI,
+	"grok":     XAI,
+	"glm":      Zhipu,
+	"zhipu":    Zhipu,
+	"kimi":     Moonshot,
+	"moonshot": Moonshot,
+	"deepseek": DeepSeek,
+	"minimax":  MiniMax,
 }
 
 // BrandOf reads the brand off the model id; provider is "" for the Auto router.
 func BrandOf(modelID, provider string) Brand {
 	id := strings.ToLower(modelID)
+	// "provider/model", as a gateway names one: the provider names the company,
+	// and the model keeps its own name after the last slash.
+	if i := strings.Index(id, "/"); i > 0 {
+		if b, ok := providerBrands[id[:i]]; ok {
+			return b
+		}
+		id = id[strings.LastIndex(id, "/")+1:]
+	}
 	for _, p := range idPrefixes {
 		if strings.HasPrefix(id, p.prefix) {
 			return p.brand

@@ -89,6 +89,24 @@ func TestTheHookCommandIsQuotedForTheShell(t *testing.T) {
 	}
 }
 
+// A Host with Magpie on and Memory off writes the models alone: no Memory
+// Server, no hooks, nothing for a Session to block on.
+func TestTheRuntimeOverlayCarriesCustomModels(t *testing.T) {
+	models := MagpieCustomModels(MagpieCatalog{BaseURL: DefaultMagpieBaseURL, Models: []MagpieModel{{ID: "workbuddy/glm-5.3"}}})
+	got := BuildRuntimeOverlayWith(MemoryAttachment{}, OverlayOptions{CustomModels: models})
+	if len(got) != 1 {
+		t.Fatalf("keys %v", got)
+	}
+	list, ok := got["customModels"].([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("customModels %v", got["customModels"])
+	}
+	entry := list[0].(map[string]any)
+	if entry["model"] != "workbuddy/glm-5.3" || entry["baseUrl"] != DefaultMagpieBaseURL+"/v1" {
+		t.Errorf("entry %v", entry)
+	}
+}
+
 func TestTheRuntimeOverlayIsWrittenForTheUserOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "runtime-overlay.json")
 	if err := WriteRuntimeOverlay(path, BuildRuntimeOverlay(attachment)); err != nil {

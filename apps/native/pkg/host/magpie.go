@@ -1,0 +1,271 @@
+package host
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+)
+
+// Magpie is a local gateway that runs coding agents on the models of many
+// providers behind one endpoint (https://usemagpie.ai). Droi does not run it
+// and does not talk to it for a Session: it reads the gateway's model list and
+// hands it to the Daemon as droid's custom models, in the Runtime Overlay, so
+// the CLI's own settings.json stays as it is and only this Daemon sees them.
+
+const (
+	// DefaultMagpieBaseURL is where the gateway listens.
+	DefaultMagpieBaseURL = "http://127.0.0.1:3425"
+	// MagpieProvider is the droid provider a Magpie model speaks: the gateway
+	// translates OpenAI Chat Completions into whatever the model wants.
+	MagpieProvider = "generic-chat-completion-api"
+	// magpieKey is what a loopback client sends: the gateway takes any key
+	// from this computer, and nothing secret is stored for it.
+	magpieKey = "magpie"
+	// magpieCatalogTTL is how long a model list stands before it is read again.
+	magpieCatalogTTL = time.Minute
+	// magpieTimeout bounds one read: a localhost call that must not hold up a
+	// frame or a Daemon start for long.
+	magpieTimeout = 2 * time.Second
+	// magpieDefaultOutput is the output limit of a model whose entry does not
+	// say one.
+	magpieDefaultOutput = 8192
+)
+
+// MagpieModalities is the shape of a model's modalities.
+type MagpieModalities struct {
+	Input []string `json:"input"`
+}
+
+// MagpieModel is one model the gateway offers.
+type MagpieModel struct {
+	// ID is the name the gateway knows it by, "provider/model".
+	ID              string           `json:"id"`
+	Name            string           `json:"display_name"`
+	MaxOutputTokens int              `json:"max_output_tokens"`
+	Modalities      MagpieModalities `json:"modalities"`
+}
+
+// Images reports that the model takes images.
+func (m MagpieModel) Images() bool {
+	for _, in := range m.Modalities.Input {
+		if in == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+// MagpieCatalog is what the gateway last told the Host.
+type MagpieCatalog struct {
+	// BaseURL is the gateway these models came from.
+	BaseURL string
+	Models  []MagpieModel
+	// Err is why the last read failed. Models then keep the last list that was
+	// read, so a restart of Magpie does not empty the picker.
+	Err string
+	// Read is when the last read finished, successfully or not.
+	Read time.Time
+}
+
+// Running reports that the gateway answered the last read.
+func (c MagpieCatalog) Running() bool { return c.Err == "" && !c.Read.IsZero() }
+
+// MagpieBaseURL is the setting, else MAGPIE_BASE_URL, else Magpie's own.
+func (h *Host) MagpieBaseURL() string {
+	if u := deref(h.Settings.Get().MagpieBaseURL); u != "" {
+		return u
+	}
+	if u := h.cfg.Env("MAGPIE_BASE_URL"); u != "" {
+		return u
+	}
+	return DefaultMagpieBaseURL
+}
+
+// Magpie is the gateway's model list as the window shows it: what was last
+// read, with a read in the background once it is a minute old.
+func (h *Host) Magpie() MagpieCatalog {
+	base := h.MagpieBaseURL()
+	h.magpieMu.Lock()
+	c := h.magpie
+	reading := h.magpieReading
+	h.magpieMu.Unlock()
+	if c.BaseURL != base {
+		// Another gateway: its models are not known yet. Whoever changed the
+		// address reads them, and a Daemon starting reads them too.
+		return MagpieCatalog{BaseURL: base}
+	}
+	if !reading && (c.Read.IsZero() || time.Since(c.Read) > magpieCatalogTTL) {
+		go h.RefreshMagpie()
+	}
+	return c
+}
+
+// RefreshMagpie reads the model list now.
+func (h *Host) RefreshMagpie() {
+	h.magpieMu.Lock()
+	if h.magpieReading {
+		h.magpieMu.Unlock()
+		return
+	}
+	h.magpieReading = true
+	h.magpieMu.Unlock()
+	h.readMagpie()
+	h.changed()
+}
+
+// readMagpie reads the list and keeps it, success or failure; it answers what
+// is kept, so the caller never has to read the catalog again.
+func (h *Host) readMagpie() MagpieCatalog {
+	base := h.MagpieBaseURL()
+	models, err := ReadMagpieModels(base)
+	h.magpieMu.Lock()
+	defer h.magpieMu.Unlock()
+	cat := MagpieCatalog{BaseURL: base, Read: time.Now()}
+	if err != nil {
+		cat.Err = err.Error()
+		if h.magpie.BaseURL == base {
+			cat.Models = h.magpie.Models
+		}
+	} else {
+		cat.Models = models
+	}
+	h.magpie = cat
+	h.magpieReading = false
+	return cat
+}
+
+// magpieModels is the catalog to hand the Daemon: the cached one, or a read
+// now when nothing has been read yet, since a Daemon starting without the
+// models would leave them out of the picker until the next read.
+func (h *Host) magpieModels() MagpieCatalog {
+	c := h.Magpie()
+	if c.Read.IsZero() {
+		c = h.readMagpie()
+	}
+	return c
+}
+
+// ReadMagpieModels reads a gateway's model list, in the shape Magpie answers
+// the OpenAI models endpoint with. Other services on that port answer
+// something else, which is an error and not an empty list.
+func ReadMagpieModels(base string) ([]MagpieModel, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), magpieTimeout)
+	defer cancel()
+	url := strings.TrimSuffix(base, "/") + "/v1/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+magpieKey)
+	resp, err := (&http.Client{Timeout: magpieTimeout}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the gateway answered HTTP %d", resp.StatusCode)
+	}
+	var list struct {
+		Data []MagpieModel `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&list); err != nil {
+		return nil, err
+	}
+	if list.Data == nil {
+		return nil, errors.New("not a Magpie model list")
+	}
+	return list.Data, nil
+}
+
+// MagpieCustomModels are the catalog's models as droid's customModels entries.
+// The ids are Droi's own and do not move when a display name or the order of
+// the list does, so a Session keeps the model it was started with.
+func MagpieCustomModels(c MagpieCatalog) []any {
+	models := append([]MagpieModel(nil), c.Models...)
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	base := strings.TrimSuffix(c.BaseURL, "/") + "/v1"
+	out := make([]any, 0, len(models))
+	taken := map[string]bool{}
+	for _, m := range models {
+		if strings.TrimSpace(m.ID) == "" {
+			continue
+		}
+		id := MagpieModelID(m.ID, taken)
+		taken[id] = true
+		entry := map[string]any{
+			"id":              id,
+			"model":           m.ID,
+			"displayName":     MagpieDisplayName(m),
+			"baseUrl":         base,
+			"apiKey":          magpieKey,
+			"provider":        MagpieProvider,
+			"maxOutputTokens": magpieOutput(m),
+		}
+		if !m.Images() {
+			entry["noImageSupport"] = true
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// MagpieModelID is the droid id of a Magpie model: "magpie-" and the model's
+// own name, made of letters, digits and dashes, with a number on the end when
+// two names come out the same.
+func MagpieModelID(model string, taken map[string]bool) string {
+	id := "magpie-" + magpieSlug(model)
+	if id == "magpie-" {
+		id = "magpie-model"
+	}
+	if !taken[id] {
+		return id
+	}
+	for n := 2; ; n++ {
+		next := fmt.Sprintf("%s-%d", id, n)
+		if !taken[next] {
+			return next
+		}
+	}
+}
+
+// MagpieDisplayName is what the picker calls a Magpie model.
+func MagpieDisplayName(m MagpieModel) string {
+	name := strings.TrimSpace(m.Name)
+	if name == "" {
+		name = m.ID
+	}
+	return "Magpie · " + name
+}
+
+func magpieOutput(m MagpieModel) int {
+	if m.MaxOutputTokens > 0 {
+		return m.MaxOutputTokens
+	}
+	return magpieDefaultOutput
+}
+
+// magpieSlug lowercases a name and keeps its letters and digits, a run of
+// anything else becoming one dash.
+func magpieSlug(s string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			dash = false
+		default:
+			if !dash && b.Len() > 0 {
+				b.WriteByte('-')
+				dash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}

@@ -125,6 +125,14 @@ _Avoid_: preferences, global settings, default settings (on their own)
 Text the Host keeps and the Gateway appends to Droid's own system prompt when a Session starts, whichever Client starts it. It never replaces Droid's prompt, and a Session keeps the one it started with.
 _Avoid_: system prompt override, custom instructions
 
+**Custom Model**:
+A model droid runs that is not Factory's, from `customModels` in `~/.factory/settings.json`: a base URL, an API key and a provider dialect, which is droid's own BYOK (bring your own key). A Session picks one like any other model, and it has no Factory usage multiplier. Clients show them; only the user and the Host add them.
+_Avoid_: BYOK model, external model, third-party model (on its own)
+
+**Magpie**:
+A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it and sends it no request of its own apart from the model list: the Host reads that list and hands the models to its Daemon as Custom Models in the Runtime Overlay. The droid CLI's own settings and the CLI itself do not see them.
+_Avoid_: proxy, provider, model router (a Router is Factory's), gateway (that is Droi's own)
+
 **Skill**:
 A `SKILL.md` folder the Daemon offers Droid, and the user through "/": built into the droid CLI, personal (`~/.factory/skills`), or the Workspace's (`.factory/skills`). The Daemon lists a Session's skills and writes the switches: off across all projects (`~/.factory/settings.json`) or off for one Workspace (`.factory/settings.json`); the organization's switches are read-only. A personal skill is managed by its files. Droi gives each skill one switch: a built-in one writes across all projects, the Workspace's writes for that Workspace.
 _Avoid_: plugin, extension, prompt template
