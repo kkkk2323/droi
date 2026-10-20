@@ -7,8 +7,8 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
-// ToolMode is whether a Session's model calls tools directly, from a Script
-// program, or either way. The Daemon fixes the mode when it creates the
+// ToolMode is whether a Session's model calls tools directly or from a
+// Script program. The Daemon fixes the mode when it creates the
 // Session and offers no way to change it later, so it is chosen only for new
 // Sessions. Without a choice, droid decides: `toolExecutionMode` in
 // ~/.factory/settings.json, else Factory's per-model list, else direct.
@@ -16,17 +16,15 @@ import (
 type ToolMode string
 
 const (
-	DirectOnly      ToolMode = "direct_only"
-	DirectAndScript ToolMode = "direct_and_script"
-	ScriptOnly      ToolMode = "script_only"
+	DirectOnly ToolMode = "direct_only"
+	ScriptOnly ToolMode = "script_only"
 )
 
-var ToolModes = []ToolMode{DirectOnly, DirectAndScript, ScriptOnly}
+var ToolModes = []ToolMode{DirectOnly, ScriptOnly}
 
 var ToolModeLabels = map[ToolMode]string{
-	DirectOnly:      l10n.N("Direct"),
-	DirectAndScript: l10n.N("Both"),
-	ScriptOnly:      l10n.N("Script"),
+	DirectOnly: l10n.N("Direct"),
+	ScriptOnly: l10n.N("Script"),
 }
 
 func IsToolMode(value string) bool { return slices.Contains(ToolModes, ToolMode(value)) }

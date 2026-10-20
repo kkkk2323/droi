@@ -112,7 +112,7 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 		if current == "" {
 			current = follow
 		}
-		k.SettingRow(c, l10n.L("Mode"), l10n.L("Script lets the model call tools from a small program that can batch and filter them; Both offers it alongside direct calls. A Session keeps the mode it starts with. Kept on this device."), func() {
+		k.SettingRow(c, l10n.L("Mode"), l10n.L("Script lets the model call tools from a small program that can batch and filter them. A Session keeps the mode it starts with. Kept on this device."), func() {
 			if next, ok := s.Select(c, l10n.N("Default tool calls"), current, opts, false); ok {
 				if next == follow {
 					next = ""
