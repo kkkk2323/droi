@@ -210,21 +210,22 @@ func (h *Host) runtimeOverlay() string {
 		given = h.magpieModels()
 		models = MagpieCustomModels(given)
 	}
-	path := ""
 	if m.Executable != "" || len(models) > 0 {
-		path = filepath.Join(h.cfg.UserData, "runtime-overlay.json")
+		path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
 		if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, OverlayOptions{CustomModels: models})); err != nil {
-			path = ""
+			// Nothing reached the Daemon, models included, so a Refresh has
+			// something to hand it.
+			h.rememberMagpieGiven(MagpieCatalog{})
+			return ""
 		}
+		h.rememberMagpieGiven(given)
+		return path
 	}
-	if path == "" {
-		// No overlay reaches the Daemon, and so no models: a Refresh then has
-		// something to hand it.
-		h.rememberMagpieGiven(MagpieCatalog{})
-		return ""
-	}
+	// Nothing to hand over: the Daemon runs without an overlay and gets no
+	// Magpie models. It gets them from this gateway though, as the record says,
+	// so reading the same empty list again is not a change.
 	h.rememberMagpieGiven(given)
-	return path
+	return ""
 }
 
 // DaemonLogPath is where the Daemon's output goes.

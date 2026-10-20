@@ -337,6 +337,32 @@ func TestNormalizeMagpieBaseURL(t *testing.T) {
 	}
 }
 
+// With Memory off and the gateway answering no models — it is down, or it has
+// none — there is nothing to hand the Daemon, and a Refresh must not restart it
+// over and over for that.
+func TestRefreshWithNoModelsAndNoMemoryIsNoChange(t *testing.T) {
+	empty := magpieServer(t, `{"data":[]}`)
+	down := magpieServer(t, `{"data":[]}`)
+	down.Close()
+	for _, c := range []struct{ name, url string }{
+		{"a gateway with no models", empty.URL},
+		{"a gateway that is down", down.URL},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := testHost(t)
+			enableMagpie(t, h, c.url)
+			if path := h.runtimeOverlay(); path != "" {
+				t.Fatalf("an overlay was written with no models and no Memory: %s", path)
+			}
+			for i := 0; i < 2; i++ {
+				if h.RefreshMagpie() {
+					t.Fatalf("Refresh %d restarted the Daemon though it has no models to give it", i+1)
+				}
+			}
+		})
+	}
+}
+
 // testHost is a Host on a temporary folder, with nothing to start.
 func testHost(t *testing.T) *Host {
 	t.Helper()
