@@ -1,0 +1,14 @@
+flowchart TD
+  subgraph outer [Outer]
+    subgraph inner [Inner]
+      a --> b
+      b --> a
+    end
+    c --> a
+    b --> d
+  end
+  start --> c
+  start --> a
+  d --> finish
+  b --> finish
+  finish --> start

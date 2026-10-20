@@ -1,0 +1,14 @@
+flowchart LR
+  subgraph Client
+    UI[Web app]
+    Cache[(Local cache)]
+  end
+  subgraph Services
+    API[API gateway] --> Orders[Order service]
+    API --> Auth[Auth service]
+  end
+  UI --> Cache
+  UI --> API
+  API --> UI
+  Auth -.->|token| UI
+  Orders --> DB[(Orders DB)]

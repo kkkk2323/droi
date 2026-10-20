@@ -45,9 +45,10 @@ type Markdown struct {
 	// outside the transcript's selectable rows.
 	Own bool
 
-	kit    *kit.Kit
-	opts   map[MarkdownStyle]*markdown.Options
-	images sync.Map // url → *mdImage
+	kit      *kit.Kit
+	opts     map[MarkdownStyle]*markdown.Options
+	images   sync.Map // url → *mdImage
+	diagrams map[diagramKey]*diagram
 }
 
 // mdImage is an image a reply names, loading or loaded.
@@ -78,8 +79,11 @@ func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 		LoadImage:      m.Load,
 		ShareSelection: !m.Own,
 	}
+	em := o.Theme.FontSize
+	o.Code = map[string]func(c *ui.Context, b *markdown.CodeBlockView){
+		"mermaid": func(c *ui.Context, b *markdown.CodeBlockView) { m.mermaidBlock(c, k, b, em) },
+	}
 	if m.Load != nil && m.Enlarge != nil {
-		em := o.Theme.FontSize
 		o.Block = func(c *ui.Context, d *parser.Document, i int) bool {
 			if d.Block(i).Kind != parser.Paragraph || !imagesOnly(d.Inlines(i)) {
 				return false

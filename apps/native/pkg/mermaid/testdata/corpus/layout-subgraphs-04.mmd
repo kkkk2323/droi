@@ -1,0 +1,13 @@
+flowchart LR
+  subgraph top [Runs down]
+    direction TB
+    t1 --> t2 --> t3
+  end
+  subgraph side [Runs across]
+    direction LR
+    s1 --> s2 --> s3
+  end
+  outside --> top
+  outside --> s1
+  t3 --> s2
+  s3 --> t1

@@ -148,6 +148,7 @@ no split.
 | `pkg/models/`, `pkg/defaults/`, `internal/skills/`, `internal/mcp/`, `internal/slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
 | `pkg/kit/`                                                                                | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs, setting rows    |
 | `pkg/sessionview/`                                                                        | one Session: transcript, Markdown, tool calls, Prompts, sending, a plain composer (no `*App`)         |
+| `pkg/mermaid/`                                                                            | Mermaid flowcharts and sequence diagrams laid out for the Painter (after Ondine and Pele)             |
 | `pkg/settingsview/`                                                                       | Settings sections: General's Appearance, Session defaults, the model picker (no `*App`)               |
 | `internal/app/`                                                                           | the views: shell, sidebar, the Session's header, turn rail and composer, New session, settings        |
 | `testdata/reference/`                                                                     | the web Client's screens at 2x with computed styles, recorded by `tests/web/native-reference.spec.ts` |

@@ -1,0 +1,13 @@
+flowchart TD
+  subgraph A [First]
+    a1
+    a2
+  end
+  subgraph B [Second]
+    b1
+    b2
+  end
+  A --> B
+  B --> A
+  a1 --> b1
+  b2 --> a2

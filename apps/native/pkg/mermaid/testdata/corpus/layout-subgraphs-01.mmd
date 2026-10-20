@@ -1,0 +1,15 @@
+flowchart TD
+  subgraph one [Group one]
+    a1 --> a2
+    a1 --> a3
+  end
+  subgraph two [Group two]
+    b1 --> b2
+  end
+  a2 --> b1
+  a3 --> b1
+  b2 --> a1
+  c --> one
+  c --> two
+  one --> d
+  two --> d

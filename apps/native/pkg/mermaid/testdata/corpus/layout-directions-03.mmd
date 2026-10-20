@@ -1,0 +1,7 @@
+flowchart LR
+  A[Start] --> B{Ready?}
+  B -->|Yes| C[Ship]
+  B -->|No| D[Fix]
+  D --> B
+  C --> E([Done])
+  D -->|Give up| E

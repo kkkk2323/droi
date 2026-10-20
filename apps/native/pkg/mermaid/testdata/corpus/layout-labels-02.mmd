@@ -1,0 +1,5 @@
+flowchart LR
+  A[Client] -->|request| B[Server]
+  B -->|response| A
+  B -->|query| C[(Database)]
+  C -->|rows| B
