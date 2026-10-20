@@ -1,3 +1,14 @@
+## 1.57.2 - 2026-10-20
+
+### Changed
+
+- Settings shows each account's usage as a small ring per window (5 hours, this week, this month) with the share left; hovering a ring says when it resets. "Details" opens each window's bar, share left and reset time.
+- Core usage, once an account draws on it, shows its 5-hour, weekly and monthly windows too, instead of only its fullest one.
+
+### Fixed
+
+- Switching to an account of another organization no longer empties the sidebar of the other account's sessions. droid lists and opens only the sessions of the account in use, so Droi keeps each account's list and shows the others' sessions beside the live ones, muted and marked with their account. Opening one offers to switch to that account (asking first while sessions work) and opens it once the switch is done.
+
 ## 1.57.1 - 2026-10-20
 
 ### Changed
