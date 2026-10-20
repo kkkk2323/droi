@@ -1,6 +1,7 @@
 package app
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -104,6 +105,7 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, login host.LoginSt
 				}
 				if acc.Login != nil && !pending {
 					usage := h.AccountUsage(acc.ID)
+					a.subscriptionLine(c, usage.Subscription)
 					a.usageMeters(c, usage)
 					if acc.Active && others && nearLimit(usage) {
 						k.Text(c, L("This account is close to its limit. Switch to one with room left."), 12, 16).Role(ui.RoleStatus).TextColor(t.Attention).Margin(k.Px(4), 0, 0, 0)
@@ -229,6 +231,84 @@ func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
 	if w, ok := u.Standard.Highest(now); ok && w.Percent >= 100 {
 		k.Text(c, L("Standard usage is used up. It resets %s.", resetsIn(w.Ends.Sub(now))), 12, 16).Role(ui.RoleStatus).TextColor(t.Destructive).Margin(k.Px(4), 0, 0, 0)
 	}
+}
+
+// subscriptionLine is an account's plan and when it renews or ends. Only
+// the days left, within a week of the end, and an end past are in color.
+func (a *App) subscriptionLine(c *ui.Context, s *host.Subscription) {
+	if s == nil {
+		return
+	}
+	k, t := a.kit, a.kit.T
+	line, rest, level := subscriptionText(s, time.Now())
+	if line == "" {
+		return
+	}
+	label := line
+	if rest != "" {
+		label += " · " + rest
+	}
+	row := ui.Row(c.Key("plan")).Label(label).Wrap().GapX(k.Px(4)).AlignItems(ui.Center)
+	if level != planFine {
+		row.Role(ui.RoleStatus)
+	}
+	row.Children(func() {
+		color := t.MutedForeground
+		if level == planEnded {
+			color = t.Destructive
+		}
+		k.Text(c, line, 12, 16).TextColor(color)
+		if rest != "" {
+			k.Text(c, "·", 12, 16).TextColor(t.MutedForeground)
+			k.Text(c, rest, 12, 16).FontWeight(500).TextColor(t.Attention)
+		}
+	})
+}
+
+type planLevel int
+
+const (
+	planFine planLevel = iota
+	planEnding
+	planEnded
+)
+
+// subscriptionText is "<plan> · <when>": when it renews or ends, and rest,
+// within a week of the end, how many days are left.
+func subscriptionText(s *host.Subscription, now time.Time) (line, rest string, level planLevel) {
+	date := func(t time.Time) string { return t.Local().Format(L("Jan 2, 2006")) }
+	left := func(end time.Time) (string, planLevel) {
+		d := end.Sub(now)
+		if d > 7*24*time.Hour {
+			return "", planFine
+		}
+		if days := int(math.Ceil(d.Hours() / 24)); days > 1 {
+			return L("%d days left", days), planEnding
+		}
+		return L("1 day left"), planEnding
+	}
+	var parts []string
+	if s.Plan != "" {
+		parts = append(parts, s.Plan)
+	}
+	switch {
+	case s.Status == "ended" || (!s.Ends.IsZero() && !s.Ends.After(now)):
+		level = planEnded
+		if s.Ends.IsZero() {
+			parts = append(parts, L("Ended"))
+		} else {
+			parts = append(parts, L("Ended %s", date(s.Ends)))
+		}
+	case !s.Ends.IsZero():
+		parts = append(parts, L("Ends %s", date(s.Ends)))
+		rest, level = left(s.Ends)
+	case !s.TrialEnds.IsZero() && s.TrialEnds.After(now):
+		parts = append(parts, L("Trial ends %s", date(s.TrialEnds)))
+		rest, level = left(s.TrialEnds)
+	case !s.Renews.IsZero():
+		parts = append(parts, L("Renews %s", date(s.Renews)))
+	}
+	return strings.Join(parts, " · "), rest, level
 }
 
 // resetsIn says when a window ends, as droid does: hours and minutes

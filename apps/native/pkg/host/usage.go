@@ -19,6 +19,9 @@ import (
 // again; the Account tab asks on every frame it draws.
 const usageTTL = time.Minute
 
+// subscriptionTTL is the same for an account's plan, which changes rarely.
+const subscriptionTTL = time.Hour
+
 // UsageWindow is one of a pool's rate-limit windows. Ends is zero while the
 // window has not started, and in the past once it is over.
 type UsageWindow struct {
@@ -43,18 +46,32 @@ type Usage struct {
 	ExtraCents int
 }
 
+// Subscription is an account's Factory plan, from /api/organization.
+type Subscription struct {
+	Plan string
+	// Status is Orb's: "active", "ended" or "upcoming".
+	Status string
+	// Renews is when the current billing period ends.
+	Renews time.Time
+	// Ends is when the plan stops; zero while it renews by itself.
+	Ends      time.Time
+	TrialEnds time.Time
+}
+
 // UsageState is where an account's usage stands: the last answer, why the
-// last fetch failed, and whether one is under way.
+// last fetch failed, and whether one is under way. Subscription is nil
+// until it is known, and for an account without a plan.
 type UsageState struct {
-	Usage    *Usage
-	Err      string
-	Fetching bool
-	Checked  time.Time
+	Usage        *Usage
+	Subscription *Subscription
+	Err          string
+	Fetching     bool
+	Checked      time.Time
 }
 
 type usageEntry struct {
 	UsageState
-	tried time.Time
+	tried, subTried time.Time
 }
 
 // AccountUsage is an account's usage as last fetched.
@@ -81,11 +98,20 @@ func (h *Host) RefreshUsage(id string) {
 		return
 	}
 	e.Fetching, e.tried = true, time.Now()
+	withSub := time.Since(e.subTried) >= subscriptionTTL
+	if withSub {
+		e.subTried = e.tried
+	}
 	h.usageMu.Unlock()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		u, err := h.fetchUsage(ctx, id)
+		var sub *Subscription
+		var subErr error
+		if withSub {
+			sub, subErr = h.fetchSubscription(ctx, id)
+		}
 		h.usageMu.Lock()
 		e.Fetching = false
 		if err != nil {
@@ -93,15 +119,39 @@ func (h *Host) RefreshUsage(id string) {
 		} else {
 			e.Usage, e.Err, e.Checked = u, "", time.Now()
 		}
+		if withSub {
+			if subErr != nil {
+				// Asked again with the next usage, not an hour on.
+				e.subTried = time.Time{}
+			} else {
+				e.Subscription = sub
+			}
+		}
 		h.usageMu.Unlock()
 		h.changed()
 	}()
 }
 
-// fetchUsage asks Factory, through the Factory API base URL the Daemon uses
+func (h *Host) fetchUsage(ctx context.Context, id string) (*Usage, error) {
+	b, err := h.factoryGet(ctx, id, "/api/billing/limits")
+	if err != nil {
+		return nil, err
+	}
+	return parseUsage(b)
+}
+
+func (h *Host) fetchSubscription(ctx context.Context, id string) (*Subscription, error) {
+	b, err := h.factoryGet(ctx, id, "/api/organization")
+	if err != nil {
+		return nil, err
+	}
+	return parseSubscription(b)
+}
+
+// factoryGet asks Factory, through the Factory API base URL the Daemon uses
 // (a local droid-proxy, say), the way droid asks: the account's own token
 // and droid's client headers.
-func (h *Host) fetchUsage(ctx context.Context, id string) (*Usage, error) {
+func (h *Host) factoryGet(ctx context.Context, id, path string) ([]byte, error) {
 	home := h.homeOf(id)
 	login := h.cli(home).Read()
 	if login == nil {
@@ -120,7 +170,7 @@ func (h *Host) fetchUsage(ctx context.Context, id string) (*Usage, error) {
 			return nil, err
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(h.FactoryAPIBaseURL(), "/")+"/api/billing/limits", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(h.FactoryAPIBaseURL(), "/")+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -145,11 +195,7 @@ func (h *Host) fetchUsage(ctx context.Context, id string) (*Usage, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, hostError(l10n.L("Factory answered %d.", res.StatusCode))
 	}
-	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	return parseUsage(b)
+	return io.ReadAll(io.LimitReader(res.Body, 1<<20))
 }
 
 func parseUsage(b []byte) (*Usage, error) {
@@ -180,6 +226,41 @@ func parseUsage(b []byte) (*Usage, error) {
 	}
 	p := func(x pool) UsagePool { return UsagePool{w(x.FiveHour), w(x.Weekly), w(x.Monthly)} }
 	return &Usage{Standard: p(v.Limits.Standard), Core: p(v.Limits.Core), Overage: deref(v.OveragePreference), ExtraCents: v.ExtraUsageBalanceCents}, nil
+}
+
+// parseSubscription reads the plan out of an organization; nil, without an
+// error, when it has none.
+func parseSubscription(b []byte) (*Subscription, error) {
+	var v struct {
+		Organization *struct {
+			Subscription *struct {
+				Orb *struct {
+					Name      string  `json:"name"`
+					Status    string  `json:"status"`
+					EndDate   *string `json:"end_date"`
+					PeriodEnd *string `json:"current_billing_period_end_date"`
+					Trial     struct {
+						EndDate *string `json:"end_date"`
+					} `json:"trial_info"`
+				} `json:"orbSubscription"`
+			} `json:"subscription"`
+		} `json:"organization"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil || v.Organization == nil {
+		return nil, hostError(l10n.L("Factory sent no plan."))
+	}
+	if v.Organization.Subscription == nil || v.Organization.Subscription.Orb == nil {
+		return nil, nil
+	}
+	o := v.Organization.Subscription.Orb
+	at := func(s *string) time.Time {
+		if s == nil {
+			return time.Time{}
+		}
+		t, _ := time.Parse(time.RFC3339, *s)
+		return t
+	}
+	return &Subscription{Plan: o.Name, Status: o.Status, Renews: at(o.PeriodEnd), Ends: at(o.EndDate), TrialEnds: at(o.Trial.EndDate)}, nil
 }
 
 // renewLogin refreshes an added account's login, as droid would, and gives
