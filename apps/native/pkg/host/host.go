@@ -58,6 +58,15 @@ type Host struct {
 	usage   map[string]*usageEntry
 	client  droidClientInfo
 
+	// magpieMu guards the catalog, magpieReadMu makes one read of the gateway
+	// run at a time, magpieReading marks a background read queued or running,
+	// and magpieGivenCatalog is what the running Daemon was started with.
+	magpieMu           sync.Mutex
+	magpieReadMu       sync.Mutex
+	magpie             MagpieCatalog
+	magpieReading      bool
+	magpieGivenCatalog MagpieCatalog
+
 	indexMu  sync.Mutex
 	index    *sessionIndex
 	indexRev uint64
@@ -183,22 +192,40 @@ func (h *Host) ScratchFolder() string {
 // 0010), the Electron Shell's folder.
 func (h *Host) MemoryDir() string { return filepath.Join(h.cfg.UserData, "memory") }
 
-// runtimeOverlay writes the Runtime Overlay when Memory is on and answers
-// its path; "" starts the Daemon without Memory.
+// runtimeOverlay writes the Runtime Overlay when Memory or Magpie is on and
+// answers its path; "" starts the Daemon with neither.
 func (h *Host) runtimeOverlay() string {
-	if !h.Settings.Get().MemoryEnabled || h.cfg.Executable == "" {
-		return ""
+	st := h.Settings.Get()
+	var m MemoryAttachment
+	if st.MemoryEnabled && h.cfg.Executable != "" {
+		m = MemoryAttachment{
+			Executable: h.cfg.Executable,
+			MemoryDir:  h.MemoryDir(),
+			ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		}
 	}
-	path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
-	o := BuildRuntimeOverlay(MemoryAttachment{
-		Executable: h.cfg.Executable,
-		MemoryDir:  h.MemoryDir(),
-		ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-	})
-	if err := WriteRuntimeOverlay(path, o); err != nil {
-		return ""
+	var models []any
+	given := MagpieCatalog{}
+	if st.MagpieEnabled {
+		given = h.magpieModels()
+		models = MagpieCustomModels(given)
 	}
-	return path
+	if m.Executable != "" || len(models) > 0 {
+		path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
+		if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, OverlayOptions{CustomModels: models})); err != nil {
+			// Nothing reached the Daemon, models included, so a Refresh has
+			// something to hand it.
+			h.rememberMagpieGiven(MagpieCatalog{})
+			return ""
+		}
+		h.rememberMagpieGiven(given)
+		return path
+	}
+	// Nothing to hand over: the Daemon runs without an overlay and gets no
+	// Magpie models. It gets them from this gateway though, as the record says,
+	// so reading the same empty list again is not a change.
+	h.rememberMagpieGiven(given)
+	return ""
 }
 
 // DaemonLogPath is where the Daemon's output goes.

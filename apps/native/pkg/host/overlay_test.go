@@ -89,6 +89,40 @@ func TestTheHookCommandIsQuotedForTheShell(t *testing.T) {
 	}
 }
 
+// A Host with Magpie on and Memory off writes the models alone: no Memory
+// Server, no hooks, nothing for a Session to block on.
+func TestTheRuntimeOverlayCarriesCustomModels(t *testing.T) {
+	models := MagpieCustomModels(MagpieCatalog{BaseURL: DefaultMagpieBaseURL, Models: []MagpieModel{{ID: "workbuddy/glm-5.3"}}})
+	got := BuildRuntimeOverlayWith(MemoryAttachment{}, OverlayOptions{CustomModels: models})
+	if len(got) != 1 {
+		t.Fatalf("keys %v", got)
+	}
+	list, ok := got["customModels"].([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("customModels %v", got["customModels"])
+	}
+	entry := list[0].(map[string]any)
+	if entry["model"] != "workbuddy/glm-5.3" || entry["baseUrl"] != DefaultMagpieBaseURL+"/v1" {
+		t.Errorf("entry %v", entry)
+	}
+}
+
+// With both on, the overlay holds Memory's part and the models, and neither
+// gets in the other's way.
+func TestTheRuntimeOverlayCarriesMemoryAndCustomModels(t *testing.T) {
+	models := MagpieCustomModels(MagpieCatalog{BaseURL: DefaultMagpieBaseURL, Models: []MagpieModel{{ID: "a/b"}}})
+	got := BuildRuntimeOverlayWith(attachment, OverlayOptions{CustomModels: models})
+	if _, ok := got["hooks"]; !ok {
+		t.Errorf("Memory's hooks are gone: %v", got)
+	}
+	if _, ok := got["mcp"]; !ok {
+		t.Errorf("Memory's MCP server is gone: %v", got)
+	}
+	if list, ok := got["customModels"].([]any); !ok || len(list) != 1 {
+		t.Errorf("customModels %v", got["customModels"])
+	}
+}
+
 func TestTheRuntimeOverlayIsWrittenForTheUserOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "runtime-overlay.json")
 	if err := WriteRuntimeOverlay(path, BuildRuntimeOverlay(attachment)); err != nil {

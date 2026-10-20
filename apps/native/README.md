@@ -135,7 +135,7 @@ no split.
 | `assets/`                                                                                 | the vendored Geist fonts, embedded                                                                    |
 | `pkg/theme/`                                                                              | the design tokens of `global.css`: the three themes, fonts, text sizes                                |
 | `pkg/icons/`                                                                              | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |
-| `pkg/host/`                                                                               | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login                   |
+| `pkg/host/`                                                                               | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Magpie's models  |
 | `internal/memory/`                                                                        | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
 | `internal/memorywork/`                                                                    | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                     |
 | `pkg/gateway/`                                                                            | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints  |

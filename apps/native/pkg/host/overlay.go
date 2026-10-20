@@ -49,11 +49,39 @@ func hookCommandLine(goos, memoryDir, executable string) string {
 	return "DROI_MEMORY_DIR=" + shellQuote(memoryDir) + " " + shellQuote(executable) + " " + MemoryHookCommand
 }
 
+// OverlayOptions are what the Host adds to the Runtime Overlay besides
+// Memory.
+type OverlayOptions struct {
+	// CustomModels are droid's customModels entries: the models the Daemon may
+	// run that are not Factory's, such as a Magpie gateway's.
+	CustomModels []any
+}
+
 // BuildRuntimeOverlay is the settings file the Daemon merges for its own
 // process with --settings: the Memory Server pre-approved and loaded before
 // the first turn, and the hook at every Session event but a resume. Shape as droid
 // 0.229.0 reads it: MCP under "mcp", general keys at the top level.
 func BuildRuntimeOverlay(m MemoryAttachment) map[string]any {
+	return BuildRuntimeOverlayWith(m, OverlayOptions{})
+}
+
+// BuildRuntimeOverlayWith is BuildRuntimeOverlay with what else the Host
+// attaches. An attachment without an Executable leaves Memory out.
+func BuildRuntimeOverlayWith(m MemoryAttachment, o OverlayOptions) map[string]any {
+	overlay := map[string]any{}
+	if m.Executable != "" {
+		for k, v := range memoryOverlay(m) {
+			overlay[k] = v
+		}
+	}
+	if len(o.CustomModels) > 0 {
+		overlay["customModels"] = o.CustomModels
+	}
+	return overlay
+}
+
+// memoryOverlay is Memory's part of the overlay.
+func memoryOverlay(m MemoryAttachment) map[string]any {
 	env := map[string]string{"DROI_MEMORY_DIR": m.MemoryDir}
 	// Hooks run through the shell; the environment rides on the command line
 	// so it does not depend on the Daemon passing the overlay's env to them.

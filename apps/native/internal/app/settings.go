@@ -46,6 +46,9 @@ type settingsState struct {
 	back Route
 
 	apiKey, baseURL, droidPath, prompt, scratch string
+	// magpieURL is what is typed in Settings → Advanced; Magpie's own default
+	// shows while it is empty.
+	magpieURL string
 	// computerLink is the pairing link being typed; the check of one runs
 	// off the UI thread, and a refusal stays until the next try.
 	computerLink, computerErr string
@@ -76,6 +79,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		st := a.cfg.Host.Settings.Get()
 		s.baseURL, s.droidPath = derefOr(st.FactoryAPIBaseURL), derefOr(st.DroidPath)
 		s.prompt, s.scratch = derefOr(st.AppendSystemPrompt), derefOr(st.ScratchFolder)
+		s.magpieURL = derefOr(st.MagpieBaseURL)
 		s.loaded = true
 	}
 	if c.Shortcut(0, ui.KeyEscape) {
@@ -398,6 +402,76 @@ func (a *App) advancedTab(c *ui.Context) {
 			a.hostUpdate(true, func(st *host.Settings) { st.FactoryAPIBaseURL = host.OptString(v) })
 		}))
 	})
+	a.magpieGroup(c)
+}
+
+// magpieGroup offers a Magpie gateway's models to this computer's Daemon. Droi
+// writes them into the Runtime Overlay only: the droid CLI's settings.json and
+// the CLI itself keep their own models.
+func (a *App) magpieGroup(c *ui.Context) {
+	h := a.cfg.Host
+	s := &a.settings
+	st := h.Settings.Get()
+	rows := []func(){
+		func() {
+			on := st.MagpieEnabled
+			a.settingRow(c, L("Offer Magpie's models"),
+				L("The Daemon restarts when this changes. A Session already on a Magpie model then runs another model: choose its model again after the restart."),
+				func() {
+					if a.toggle(c, L("Offer Magpie's models"), on, false) {
+						next := !on
+						a.hostUpdate(false, func(st *host.Settings) { st.MagpieEnabled = next })
+						go func() {
+							if next {
+								h.RefreshMagpie()
+							}
+							h.RestartDaemon()
+						}()
+					}
+				}, nil)
+		},
+		func() {
+			a.settingRow(c, L("Gateway"), L("Leave empty for %s, or set MAGPIE_BASE_URL.", host.DefaultMagpieBaseURL), nil,
+				a.saveRow(c, &s.magpieURL, L("Magpie base URL"), host.DefaultMagpieBaseURL, L("Save URL"), true, func(v string) {
+					a.hostUpdate(false, func(st *host.Settings) { st.MagpieBaseURL = host.OptString(v) })
+					go func() {
+						h.RefreshMagpie()
+						if h.Settings.Get().MagpieEnabled {
+							h.RestartDaemon()
+						}
+					}()
+				}))
+		},
+	}
+	if st.MagpieEnabled {
+		rows = append(rows, func() {
+			cat := h.Magpie()
+			ok, label := false, L("Not reachable")
+			switch {
+			case cat.Running() && len(cat.Models) > 0:
+				ok, label = true, L("%d models", len(cat.Models))
+			case cat.Running():
+				ok, label = true, L("Running, no models")
+			}
+			desc := L("Droi hands this list to the Daemon when it starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.")
+			if cat.Err != "" {
+				desc = L("Droi could not read the model list at %s. Is Magpie running?", h.MagpieBaseURL())
+			}
+			a.settingRow(c, L("Models"), desc, func() {
+				a.statusPill(c, ok, label)
+				if a.smallButton(c, kit.Outline, L("Refresh"), "refresh-cw", false).Clicked() {
+					go func() {
+						if h.RefreshMagpie() {
+							h.RestartDaemon()
+						}
+					}()
+				}
+			}, nil)
+		})
+	}
+	a.settingGroup(c, L("Magpie"),
+		L("A local gateway that runs coding agents on the models of many providers behind one endpoint. Its models join the model picker for new Sessions of this computer. Nothing is written to the droid CLI's settings, so the CLI and the Factory App do not see them."),
+		rows...)
 }
 
 // newSessionsGroup is what this computer's Host adds to every new Session.
