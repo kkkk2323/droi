@@ -187,8 +187,9 @@ func TestNewSessionToolMode(t *testing.T) {
 
 func TestStoredToolMode(t *testing.T) {
 	s := prefs.Memory()
-	s.Set("droi.toolExecutionMode", "script_and_direct")
-	if !IsToolMode("direct_and_script") || IsToolMode("script_and_direct") {
+	// droid 0.244 no longer has direct_and_script, which Droi once offered.
+	s.Set("droi.toolExecutionMode", "direct_and_script")
+	if !IsToolMode("script_only") || IsToolMode("direct_and_script") {
 		t.Error("IsToolMode")
 	}
 	if got := DefaultToolMode(s); got != "" {
