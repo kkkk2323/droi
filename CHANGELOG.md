@@ -1,3 +1,12 @@
+## 1.56.12 - 2026-10-20
+
+### Added
+
+- A permission request can be folded: click the top line of its card to hide the command and the buttons and read the conversation above it, and click it again to show them.
+
+### Fixed
+
+- A permission request with a long command, such as a long shell script, no longer pushes its buttons below the window. The command scrolls in its own box, so "Yes, allow" and "No, cancel" stay in reach.
 ## 1.56.11 - 2026-10-18
 
 ### Fixed
