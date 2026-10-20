@@ -887,6 +887,8 @@ var zh = map[string]string{
 	"Resets in %dh %dm":                 "%d 小时 %d 分钟后重置",
 	"Resets in %dm":                     "%d 分钟后重置",
 	"Resets soon":                       "即将重置",
+	"Standard":                          "Standard",
+	"Usage details for %s":              "%s 的用量详情",
 	"Shared with droid in the terminal": "与终端里的 droid 共用登录",
 	"5h":                                "5 小时",
 	"Checking usage…":                   "正在查询用量…",

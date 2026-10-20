@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,21 +72,29 @@ func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
 	if !h.hasText("Shared with droid in the terminal") || h.hasText("org_acme") || h.hasText("droid CLI ·") {
 		t.Fatalf("the CLI's account is not marked as shared, or names its organization: %q", h.tt.Texts())
 	}
-	// Each account shows what is left and when it resets, and the one in
+	// Each account shows a ring of what is left per window, and the one in
 	// use, near its limit, says so.
-	h.until("the usage", func() bool { return h.hasText("8% left") && h.hasText("78% left") })
+	h.until("the usage", func() bool {
+		_, a := h.tt.Find("5h: 8% left")
+		_, b := h.tt.Find("5h: 78% left")
+		return a && b
+	})
 	if !h.hasText("This account is close to its limit.") {
 		t.Fatalf("no hint to switch: %q", h.tt.Texts())
 	}
-	if _, ok := h.tt.Find("5h: 8% left"); !ok {
-		t.Fatal("the 5-hour meter has no name")
-	}
-	if !h.hasText("Resets in 2h ") || !h.hasText("Not started") {
-		t.Fatalf("no reset time, or the monthly window that has not started has one: %q", h.tt.Texts())
-	}
-	// Core shows only for the account that draws on it.
-	if _, ok := h.tt.Find("Core: 91% left"); !ok || strings.Count(strings.Join(h.tt.Texts(), "\n"), "Core: ") != 1 {
+	// Core shows, with its three windows, only for the account that draws on it.
+	texts := strings.Join(h.tt.Texts(), "\n")
+	if _, ok := h.tt.Find("Core 5h: 91% left"); !ok || strings.Count(texts, "Core 5h: ") != 1 || strings.Count(texts, "Core Month: 100% left") != 1 {
 		t.Fatalf("Core is not shown for b@y.dev alone: %q", h.tt.Texts())
+	}
+	// When each window resets is in its details.
+	if h.hasText("Resets in") {
+		t.Fatalf("the details show before they are asked for: %q", h.tt.Texts())
+	}
+	h.click("Usage details for a@x.dev")
+	h.until("a@x.dev's details", func() bool { return h.hasText("Resets in 2h ") && h.hasText("8% left") && h.hasText("Not started") })
+	if slices.Contains(h.tt.Texts(), "78% left") {
+		t.Fatalf("b@y.dev's details opened too: %q", h.tt.Texts())
 	}
 	// The plan is a badge; only the one that ends soon says when.
 	h.until("the plans", func() bool { return h.hasText("Pro") })

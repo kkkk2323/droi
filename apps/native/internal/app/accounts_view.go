@@ -2,6 +2,7 @@ package app
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -20,6 +21,8 @@ type accountsState struct {
 	starting bool
 	err      string
 	opened   string
+	// details are the accounts whose usage shows each window in full.
+	details map[string]bool
 }
 
 // accountMotion is how an account row and what opens under it come and go:
@@ -97,14 +100,12 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, accounts []host.Ac
 	s := &a.accounts
 	name, detail := accountName(acc, accounts)
 	pending := acc.Active && login.Status == host.Pending && login.Pending != nil
+	var usage host.UsageState
+	if acc.Login != nil {
+		usage = h.AccountUsage(acc.ID)
+	}
 	ui.Column(c.Key("account:"+acc.ID)).Role(ui.RoleGroup).Label(name).Transition(accountMotion).Padding(k.Px(12), k.Px(16)).Children(func() {
-		// A row with its usage under the name is tall: its mark and buttons
-		// stay by the name rather than in the middle.
-		align := ui.Center
-		if acc.Login != nil && !pending {
-			align = ui.Start
-		}
-		ui.Row(c).Gap(k.Px(12)).AlignItems(align).Children(func() {
+		ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
 			initial := ""
 			if acc.Login != nil {
 				r, _ := utf8.DecodeRuneInString(name)
@@ -116,11 +117,7 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, accounts []host.Ac
 				if acc.Login == nil {
 					color = t.MutedForeground
 				}
-				var usage host.UsageState
-				if acc.Login != nil {
-					usage = h.AccountUsage(acc.ID)
-				}
-				ui.Row(c).Gap(k.Px(6)).MinHeight(k.Px(28)).AlignItems(ui.Center).MinWidth(0).Children(func() {
+				ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Center).MinWidth(0).Children(func() {
 					k.Text(c, name, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(color).SingleLine().Shrink(1).MinWidth(0)
 					if plan := planName(usage.Subscription); plan != "" {
 						a.planBadge(c, plan)
@@ -133,11 +130,7 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, accounts []host.Ac
 					k.Text(c, detail, 12, 16).TextColor(t.MutedForeground)
 				}
 				if acc.Login != nil && !pending {
-					a.usageMeters(c, usage)
 					a.subscriptionLine(c, usage.Subscription)
-					if acc.Active && others && nearLimit(usage) {
-						k.Text(c, L("This account is close to its limit. Switch to one with room left."), 12, 16).Role(ui.RoleStatus).TextColor(t.Attention).Margin(k.Px(4), 0, 0, 0)
-					}
 				}
 			})
 			ui.Row(c).Gap(k.Px(8)).Shrink(0).AlignItems(ui.Center).Children(func() {
@@ -181,6 +174,16 @@ func (a *App) accountRow(c *ui.Context, acc host.AccountInfo, accounts []host.Ac
 				}
 			})
 		}
+		if acc.Login != nil && !pending {
+			// Under the whole row, lined up with its text, so the meters have
+			// the card's width rather than what the buttons leave.
+			ui.Column(c).Gap(k.Px(10)).Margin(k.Px(10), 0, k.Px(2), k.Px(40)).Children(func() {
+				a.usageMeters(c, acc.ID, name, usage)
+				if acc.Active && others && nearLimit(usage) {
+					k.Text(c, L("This account is close to its limit. Switch to one with room left."), 12, 16).Role(ui.RoleStatus).TextColor(t.Attention)
+				}
+			})
+		}
 	})
 }
 
@@ -211,11 +214,71 @@ func (a *App) activeAccountControls(c *ui.Context, acc host.AccountInfo, login h
 	}
 }
 
-// usageMeters is an account's usage under its name: what is left of the
-// 5-hour, weekly and monthly Standard windows and when each resets, then
-// Core's fullest window once it is being used.
-func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
+// usageWindowView is a window of a pool with its name.
+type usageWindowView struct {
+	key, label string
+	w          host.UsageWindow
+}
+
+// usageWindows are a pool's windows, shortest first.
+func usageWindows(p host.UsagePool) []usageWindowView {
+	return []usageWindowView{{"5h", L("5h"), p.FiveHour}, {"week", L("Week"), p.Weekly}, {"month", L("Month"), p.Monthly}}
+}
+
+// usagePoolView is a billing pool as the Account tab shows it.
+type usagePoolView struct {
+	key, name string
+	pool      host.UsagePool
+}
+
+// windowName is what a window is called on its own: Core's carry the
+// pool's name, Standard's are the account's usage as droid shows it.
+func (p usagePoolView) windowName(w usageWindowView) string {
+	if p.key == "core" {
+		return p.name + " " + w.label
+	}
+	return w.label
+}
+
+// drawsOn reports that a pool is in use: one of its windows runs with some
+// of it used.
+func drawsOn(p host.UsagePool, now time.Time) bool {
+	for _, w := range usageWindows(p) {
+		if w.w.Active(now) && w.w.Percent > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// usageLeft is the share of a window left and when it resets. A window
+// that is not running has all of it.
+func usageLeft(w host.UsageWindow, now time.Time) (left int, reset string) {
+	if !w.Active(now) {
+		return 100, L("Not started")
+	}
+	return max(100-int(math.Ceil(w.Percent)), 0), resetText(w.Ends.Sub(now), now)
+}
+
+// usageColors are a window's bar or ring and its share's text: quiet until
+// a fifth is left, then the attention color, red once none is.
+func (a *App) usageColors(left int) (fill, text ui.Color) {
+	t := a.kit.T
+	switch {
+	case left <= 0:
+		return t.Destructive, t.Destructive
+	case left <= 20:
+		return t.Attention, t.Attention
+	}
+	return t.Foreground.Alpha(0.55), t.Foreground
+}
+
+// usageMeters is an account's usage under its row: a ring per window of
+// Standard, and of Core once it is in use, and on "Details" each window's
+// share left and when it resets.
+func (a *App) usageMeters(c *ui.Context, id, name string, st host.UsageState) {
 	k, t := a.kit, a.kit.T
+	s := &a.accounts
 	now := time.Now()
 	u := st.Usage
 	if u == nil {
@@ -223,55 +286,103 @@ func (a *App) usageMeters(c *ui.Context, st host.UsageState) {
 		if st.Err != "" {
 			msg = L("Usage unavailable: %s", st.Err)
 		}
-		k.Text(c, msg, 12, 16).Role(ui.RoleStatus).TextColor(t.MutedForeground).Margin(k.Px(6), 0, 0, 0)
+		k.Text(c, msg, 12, 16).Role(ui.RoleStatus).TextColor(t.MutedForeground)
 		return
 	}
-	type meter struct {
-		key, label string
-		w          host.UsageWindow
+	pools := []usagePoolView{{"standard", L("Standard"), u.Standard}}
+	if drawsOn(u.Core, now) {
+		pools = append(pools, usagePoolView{"core", L("Core"), u.Core})
 	}
-	meters := []meter{{"5h", L("5h"), u.Standard.FiveHour}, {"week", L("Week"), u.Standard.Weekly}, {"month", L("Month"), u.Standard.Monthly}}
-	if w, ok := u.Core.Highest(now); ok && w.Percent > 0 {
-		meters = append(meters, meter{"core", L("Core"), w})
-	}
-	ui.Column(c).Role(ui.RoleGroup).Label(L("Usage")).Gap(k.Px(2)).Margin(k.Px(6), 0, 0, 0).Children(func() {
-		for _, m := range meters {
-			a.usageMeter(c, m.key, m.label, m.w, now)
+	open := s.details[id]
+	ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Start).Children(func() {
+		ui.Column(c).Role(ui.RoleGroup).Label(L("Usage")).Grow(1).Basis(0).MinWidth(0).Gap(k.Px(6)).Children(func() {
+			for _, p := range pools {
+				ui.Row(c.Key("rings:" + p.key)).Wrap().GapX(k.Px(12)).GapY(k.Px(4)).MinHeight(k.Px(24)).AlignItems(ui.Center).Children(func() {
+					if len(pools) > 1 {
+						k.Text(c, p.name, 12, 16).FontWeight(500).Width(k.Px(64)).Shrink(0).SingleLine()
+					}
+					for _, w := range usageWindows(p.pool) {
+						a.usageRing(c, w.key, w.label, p.windowName(w), w.w, now)
+					}
+				})
+			}
+		})
+		b := ui.ButtonBase(c).Label(L("Usage details for %s", name)).Expanded(open).Height(k.Px(24)).Gap(k.Px(4)).PaddingX(k.Px(6)).
+			Radius(k.Px(6)).Shrink(0).Cursor(ui.CursorPointer)
+		color := t.MutedForeground
+		if b.Hovered() {
+			b.Background(t.Muted)
+			color = t.Foreground
+		}
+		b.Children(func() {
+			k.Text(c, L("Details"), 12, 16).TextColor(color)
+			rot := float32(0)
+			if open {
+				rot = 180
+			}
+			k.Icon(c, "chevron-down", 12, color).Rotate(rot)
+		})
+		if b.Clicked() {
+			if s.details == nil {
+				s.details = map[string]bool{}
+			}
+			s.details[id] = !open
 		}
 	})
+	if open {
+		ui.Column(c.Key("details")).Transition(accountMotion).Gap(k.Px(10)).Children(func() {
+			for _, p := range pools {
+				ui.Column(c.Key("details:" + p.key)).Gap(k.Px(10)).Children(func() {
+					if len(pools) > 1 {
+						k.Text(c, p.name, 11, 16).FontWeight(500).TextColor(t.MutedForeground)
+					}
+					for _, w := range usageWindows(p.pool) {
+						a.usageMeter(c, w.key, w.label, p.windowName(w), w.w, now)
+					}
+				})
+			}
+		})
+	}
 	if w, ok := u.Standard.Highest(now); ok && w.Percent >= 100 {
-		k.Text(c, L("Standard usage is used up. It resets %s.", resetsIn(w.Ends.Sub(now))), 12, 16).Role(ui.RoleStatus).TextColor(t.Destructive).Margin(k.Px(4), 0, 0, 0)
+		k.Text(c, L("Standard usage is used up. It resets %s.", resetsIn(w.Ends.Sub(now))), 12, 16).Role(ui.RoleStatus).TextColor(t.Destructive)
 	}
 }
 
-// usageMeter is one window: its name, a bar of what is left, the share
-// left, and when it resets. A window that is not running has all of it.
-func (a *App) usageMeter(c *ui.Context, key, label string, w host.UsageWindow, now time.Time) {
+// usageRing is a window in brief: a ring of what is left, its name and
+// the share left; its tooltip says when it resets.
+func (a *App) usageRing(c *ui.Context, key, label, name string, w host.UsageWindow, now time.Time) {
 	k, t := a.kit, a.kit.T
-	left, reset := 100, L("Not started")
-	if w.Active(now) {
-		left, reset = max(100-int(math.Ceil(w.Percent)), 0), resetText(w.Ends.Sub(now), now)
-	}
-	color := t.Foreground.Alpha(0.55)
-	switch {
-	case left <= 0:
-		color = t.Destructive
-	case left <= 20:
-		color = t.Attention
-	}
-	const width = 96
-	ui.Row(c.Key(key)).Gap(k.Px(8)).AlignItems(ui.Center).Label(L("%s: %d%% left", label, left)).Children(func() {
-		k.Text(c, label, 12, 16).TextColor(t.MutedForeground).Width(k.Px(44)).Shrink(0).SingleLine()
-		ui.Box(c).Width(k.Px(width)).Height(k.Px(4)).Shrink(0).Radius(k.Px(2)).Background(t.Border).ClipX().Children(func() {
-			fill := ui.Box(c).Height(k.Px(4)).Radius(k.Px(2)).Background(color)
-			fill.Width(k.Px(width * min(fill.Animate("fill", float32(left), 240*time.Millisecond), 100) / 100))
+	left, reset := usageLeft(w, now)
+	fill, pct := a.usageColors(left)
+	ui.Row(c.Key(key)).Role(ui.RoleMeter).Label(L("%s: %d%% left", name, left)).Tooltip(reset).Gap(k.Px(6)).MinWidth(k.Px(108)).AlignItems(ui.Center).Children(func() {
+		ring := ui.Box(c).Size(k.Px(16), k.Px(16)).Shrink(0)
+		ratio := float64(ring.Animate("ring", float32(left), 240*time.Millisecond)) / 100
+		ring.Draw(func(p *ui.Painter, r ui.Rect) {
+			s := r.W / 16
+			drawRing(p, r.X+8*s, r.Y+8*s, 6.5*s, 2.5*s, ratio, t.Foreground.Alpha(0.1), fill)
 		})
-		pctColor := t.Foreground
-		if left <= 20 {
-			pctColor = color
-		}
-		k.Text(c, L("%d%% left", left), 12, 16).TextColor(pctColor).MinWidth(k.Px(64)).Shrink(0)
-		k.Text(c, reset, 12, 16).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+		k.Text(c, label, 12, 16).TextColor(t.MutedForeground)
+		k.Text(c, strconv.Itoa(left)+"%", 12, 16).FontWeight(500).TextColor(pct).FontFeatures("tnum")
+	})
+}
+
+// usageMeter is one window in full, as Synara's usage popovers draw it: its
+// name and the share left, when it resets at the end of the line, and a
+// thin bar of what is left under them.
+func (a *App) usageMeter(c *ui.Context, key, label, name string, w host.UsageWindow, now time.Time) {
+	k, t := a.kit, a.kit.T
+	left, reset := usageLeft(w, now)
+	color, pctColor := a.usageColors(left)
+	ui.Column(c.Key(key)).Role(ui.RoleGroup).Label(L("%s: %d%% left", name, left)).Gap(k.Px(4)).Children(func() {
+		ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Center).Children(func() {
+			k.Text(c, label, 12, 16).FontWeight(500).Shrink(0)
+			k.Text(c, L("%d%% left", left), 12, 16).TextColor(pctColor).FontFeatures("tnum").Grow(1).MinWidth(0).SingleLine()
+			k.Text(c, reset, 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+		})
+		ui.Box(c).FillWidth().Height(k.Px(4)).Radius(k.Px(2)).Background(t.Foreground.Alpha(0.08)).Clip().Children(func() {
+			fill := ui.Box(c).FillHeight().Radius(k.Px(2)).Background(color)
+			fill.WidthPercent(min(fill.Animate("fill", float32(left), 240*time.Millisecond), 100))
+		})
 	})
 }
 
