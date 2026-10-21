@@ -182,7 +182,8 @@ func activityIndicator(c *ui.Context, state string, size float32, color ui.Color
 	case protocol.DroidWorkingStateStreamingAssistantMessage:
 		return loading.LinearDots(c, o)
 	case protocol.DroidWorkingStateExecutingTool:
-		return loading.Arc(c, o)
+		// The tool rows above turn kit's spinner; this one turns with them.
+		return kit.Arc(c, size, color)
 	case protocol.DroidWorkingStateWaitingForToolConfirmation:
 		return loading.Pulse(c, o)
 	case protocol.DroidWorkingStateCompactingConversation:

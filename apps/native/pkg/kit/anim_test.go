@@ -2,6 +2,7 @@ package kit
 
 import (
 	"bytes"
+	"math"
 	"testing"
 	"time"
 
@@ -55,5 +56,40 @@ func TestAnimationsMoveWithoutBuildingTheView(t *testing.T) {
 				t.Error("the picture stopped moving")
 			}
 		})
+	}
+}
+
+// Spinners that appear at different times turn together.
+func TestSpinnersTurnTogether(t *testing.T) {
+	k := New(theme.Light, "", "", 1)
+	second := false
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Row(c).Children(func() {
+			k.Spinner(c, 16, k.T.Foreground)
+			if second {
+				k.Spinner(c, 16, k.T.Foreground)
+			}
+		})
+	}, 32, 16)
+	tt.Advance(300 * time.Millisecond)
+	second = true
+	tt.Frame()
+	tt.Advance(100 * time.Millisecond)
+	img := tt.Image()
+	// Where a spinner's stroke points: the angle of its ink's centroid.
+	angle := func(left int) float64 {
+		var sx, sy float64
+		for y := range 16 {
+			for x := range 16 {
+				ink := 255 - float64(img.RGBAAt(left+x, y).R)
+				sx += ink * (float64(x) - 7.5)
+				sy += ink * (float64(y) - 7.5)
+			}
+		}
+		return math.Atan2(sy, sx) * 180 / math.Pi
+	}
+	a, b := angle(0), angle(16)
+	if d := math.Abs(math.Remainder(a-b, 360)); d > 5 {
+		t.Fatalf("the spinners point %.0f° and %.0f° apart", a, b)
 	}
 }

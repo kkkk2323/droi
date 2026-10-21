@@ -5,9 +5,9 @@
 package kit
 
 import (
+	"math"
 	"time"
 
-	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/icons"
@@ -203,7 +203,37 @@ func stepDelay(ms int) int {
 
 // Spinner is loading.dev's Arc, one open stroke turning, for work under way.
 func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
-	return loading.Arc(c, loading.Options{Size: k.Px(size), Color: color})
+	return Arc(c, k.Px(size), color)
+}
+
+// arcCycle is the time of one turn of Arc, as loading.dev's.
+const arcCycle = 800 * time.Millisecond
+
+type arcKey struct{}
+
+// Arc is loading.dev's Arc, size DIPs high. Its angle comes from the clock,
+// not from when it appeared as loading.Arc's does, so that the spinners on
+// screen turn together.
+func Arc(c *ui.Context, size float32, color ui.Color) ui.Element {
+	still := c.Preferences().ReduceMotion
+	e := ui.Box(c).Size(size, size).Shrink(0).Role(ui.RoleProgress).Range(0, 1, -1)
+	path := ui.Local(e, arcKey{}, func() ui.Path { return ui.Path{} })
+	return e.Draw(func(p *ui.Painter, r ui.Rect) {
+		s := min(r.W, r.H)
+		cx, cy := r.X+r.W/2, r.Y+r.H/2
+		angle := float32(0)
+		if !still {
+			at := p.Now().UnixNano() % int64(arcCycle)
+			angle = 360 * float32(at) / float32(arcCycle)
+			p.AnimationFrame()
+		}
+		// Drawn at rest, twice as large, and turned and halved by the
+		// renderer: the same path every frame keeps its mask, as loading's.
+		path.Reset().Circle(cx, cy, 2*s*10/24).Trim(0, 1.8/(2*math.Pi))
+		p.Transform(ui.Scaling(0.5, 0.5).Then(ui.Rotation(angle)), cx, cy, func() {
+			p.StrokePath(path, 2*s*2.5/24, color)
+		})
+	})
 }
 
 // Pulse paints e's box, rounded by radius, in the color color gives for
