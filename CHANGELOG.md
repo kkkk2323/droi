@@ -1,3 +1,10 @@
+## 1.61.1 - 2026-10-21
+
+### Fixed
+
+- The choices on Droid's question card look like controls again. Each option has a border, a radio button or a check box in front, and turns blue once picked; the field for your own answer has a border too. Before, they were white on the white card and read as plain text.
+- Other boxes that had blended into the white since 1.60 stand out again: a permission's command, a Script's calls, the question counter, the note field on a Spec, the facts in the worktree dialog and the note on another account's session. "Keep planning" on a Spec is a framed button.
+
 ## 1.61.0 - 2026-10-21
 
 ### Added
