@@ -182,7 +182,7 @@ func (v *View) specReview(c *ui.Context, p controller.Permission) {
 			}
 		})
 		k.Text(c, l10n.L("Approve the plan above to start the work, or keep planning."), 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
-		ui.Box(c).Margin(k.Px(8), 0, 0, 0).Radius(k.Px(8)).Background(t.Card).Children(func() {
+		ui.Box(c).Margin(k.Px(8), 0, 0, 0).Radius(k.Px(8)).Border(1, t.Input).Background(t.Background).Children(func() {
 			k.TextArea(c, st.comment, l10n.L("Comment for Droid"), l10n.L("Add a note for Droid (optional)"),
 				kit.AreaStyle{Pad: [4]float32{6, 10, 6, 10}, Size: 12.5, Line: 19, MinLines: 1, MaxLines: 5, Color: t.Foreground})
 		})
@@ -224,7 +224,7 @@ func (v *View) specReview(c *ui.Context, p controller.Permission) {
 				b.Children(func() { k.Text(c, label, 12, 16).FontWeight(500).TextColor(color) })
 				return b
 			}
-			if cancel != "" && small(kit.Ghost, l10n.L("Keep planning")).Clicked() {
+			if cancel != "" && small(kit.Outline, l10n.L("Keep planning")).Clicked() {
 				note := strings.TrimSpace(*st.comment)
 				// The Daemon does not hand a declined plan's comment to the
 				// model; it goes as the next message instead.

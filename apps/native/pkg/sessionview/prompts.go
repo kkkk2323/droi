@@ -90,27 +90,56 @@ func (v *View) smallButton(c *ui.Context, variant kit.Variant, label string) ui.
 	return b
 }
 
-// optionRow is an answer as a full-width row; a click picks it.
+// optionRow is an answer as a full-width row; a click picks it. It is
+// framed like a field, so that it reads as a control on the card (whose
+// white matches the page's), with a radio or a check box in front when it
+// is one.
 func (v *View) optionRow(c *ui.Context, key, label string, checked bool, role ui.Role, trailing func()) ui.Element {
 	k, t := v.look()
 	b := ui.ButtonBase(c.Key(key)).Role(role).Label(label).MinHeight(k.Px(36)).FillWidth().Gap(k.Px(8)).Padding(k.Px(6), k.Px(10)).
-		Radius(k.Px(8)).Border(1, ui.Transparent).Background(t.Card).Justify(ui.Start).Cursor(ui.CursorPointer)
-	if role == ui.RoleRadio || role == ui.RoleCheckBox {
+		Radius(k.Px(8)).Border(1, t.Input).Background(t.Background).Justify(ui.Start).Cursor(ui.CursorPointer)
+	choice := role == ui.RoleRadio || role == ui.RoleCheckBox
+	if choice {
 		b.Checked(checked)
 	}
 	switch {
 	case checked:
-		b.Border(1, t.Primary.Alpha(0.35)).Background(t.Primary.Alpha(0.08))
+		b.Border(1, t.Tint).Background(t.Tint.Alpha(0.08))
 	case b.Focused():
-		b.Border(1, t.Ring)
+		b.Border(1, t.Tint.Alpha(0.6))
 	case b.Hovered():
-		b.Border(1, t.Border)
+		b.Background(t.Muted)
 	}
 	b.Children(func() {
-		k.Text(c, label, 12, 16).FontWeight(500).Grow(1).MinWidth(0)
+		if choice {
+			v.choiceMark(c, role == ui.RoleCheckBox, checked)
+		}
+		k.Text(c, label, k.Dense(12, 13), k.Dense(16, 18)).FontWeight(500).Grow(1).MinWidth(0)
 		trailing()
 	})
 	return b
+}
+
+// choiceMark is the radio, or the check box, in front of an option: an
+// empty ring until it is picked, then filled with the tint.
+func (v *View) choiceMark(c *ui.Context, box, checked bool) {
+	k, t := v.look()
+	radius := k.Px(7)
+	if box {
+		radius = k.Px(4)
+	}
+	m := ui.Box(c).Size(k.Px(14), k.Px(14)).Shrink(0).Center().Radius(radius).Border(1, t.Ring)
+	if !checked {
+		return
+	}
+	white := ui.RGBA(255, 255, 255, 1)
+	m.Border(1, t.Tint).Background(t.Tint).Children(func() {
+		if box {
+			k.Icon(c, "check", 10, white)
+		} else {
+			ui.Box(c).Size(k.Px(6), k.Px(6)).Radius(k.Px(3)).Background(white)
+		}
+	})
 }
 
 func (v *View) permissionCard(c *ui.Context, p controller.Permission) {
@@ -160,7 +189,7 @@ func (v *View) permissionCard(c *ui.Context, p controller.Permission) {
 				}
 				input, _ := json.Marshal(u.ToolUse.Input)
 				// A long command would push the options below the window.
-				ui.Scroll(c).MaxHeight(k.Px(240)).Radius(k.Px(8)).Background(t.Card).Clip().Children(func() {
+				ui.Scroll(c).MaxHeight(k.Px(240)).Radius(k.Px(8)).Background(t.Muted).Clip().Children(func() {
 					k.Text(c, transcript.PermissionDetail(details, input), 12, 20).Font(k.Mono).Selectable().Padding(k.Px(6), k.Px(10))
 				})
 			}
@@ -219,7 +248,7 @@ func (v *View) scriptPermission(c *ui.Context, u protocol.ToolConfirmationInfo, 
 	for _, call := range sp.Calls {
 		marked[call.Line] = true
 	}
-	ui.Column(c).Radius(k.Px(8)).Background(t.Card).Clip().Children(func() {
+	ui.Column(c).Radius(k.Px(8)).Background(t.Muted).Clip().Children(func() {
 		if len(sp.Calls) > 0 {
 			ui.Column(c).Role(ui.RoleList).Label(l10n.L("Calls in the Script")).PaddingY(k.Px(4)).Children(func() {
 				for _, call := range sp.Calls {
@@ -335,7 +364,7 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 				k.Text(c, question.Topic, 11, 16.5).FontWeight(600).TextColor(t.MutedForeground)
 			})
 			if len(q.Questions) > 1 {
-				ui.Row(c).Height(k.Px(18)).PaddingX(k.Px(6)).Radius(k.Px(5)).Background(t.Card).Children(func() {
+				ui.Row(c).Height(k.Px(18)).PaddingX(k.Px(6)).Radius(k.Px(5)).Background(t.Muted).Children(func() {
 					k.Text(c, strconv.Itoa(st.step+1)+" / "+strconv.Itoa(len(q.Questions)), 10, 15).FontWeight(500).FontFeatures("tnum").TextColor(t.MutedForeground)
 				})
 			}
@@ -362,11 +391,7 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 			ui.Column(c).Role(group).Label(question.Question).Gap(k.Px(4)).Margin(k.Px(10), 0, 0, 0).Children(func() {
 				for _, opt := range question.Options {
 					checked := slices.Contains(selected, opt)
-					row := v.optionRow(c, opt, opt, checked, role, func() {
-						if checked {
-							k.Icon(c, "check", 12, t.Primary)
-						}
-					})
+					row := v.optionRow(c, opt, opt, checked, role, func() {})
 					if row.Clicked() {
 						*st.customAnswer(idx) = ""
 						switch {
@@ -389,21 +414,21 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 		}
 		filled := strings.TrimSpace(typed) != ""
 		field := ui.Row(c).Height(k.Px(34)).Gap(k.Px(8)).PaddingX(k.Px(10)).Margin(k.Px(4), 0, 0, 0).Radius(k.Px(8)).
-			Border(1, ui.Transparent).Background(t.Card)
+			Border(1, t.Input).Background(t.Background)
 		if filled {
-			field.Border(1, t.Primary.Alpha(0.35)).Background(t.Primary.Alpha(0.06))
+			field.Border(1, t.Tint).Background(t.Tint.Alpha(0.06))
 		}
 		field.Children(func() {
-			pen := t.MutedForeground.Alpha(0.6)
+			pen := t.MutedForeground
 			if filled {
-				pen = t.Primary
+				pen = t.Tint
 			}
 			k.Icon(c, "pencil", 12, pen)
 			value := st.customAnswer(idx)
 			in := ui.TextInputBase(c, value).Label(l10n.L("Other answer for: %s", question.Question)).Placeholder(l10n.L("Or type your own answer")).
-				Grow(1).MinWidth(0).FontSize(k.Px(12)).TextColor(t.Foreground)
+				Grow(1).MinWidth(0).FontSize(k.Px(k.Dense(12, 13))).TextColor(t.Foreground)
 			if in.Focused() {
-				field.Border(1, t.Ring)
+				field.Border(1, t.Tint.Alpha(0.6))
 			}
 			if in.Changed() {
 				if strings.TrimSpace(*value) != "" {

@@ -182,7 +182,7 @@ func (a *App) elsewhereView(c *ui.Context, id string, sel *sessions.Summary, acc
 						k.Text(c, workspace, 12, 16).TextColor(t.MutedForeground).SingleLine()
 					}
 				})
-				ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Start).Padding(k.Px(12), k.Px(16)).Radius(k.Px(14)).Background(t.Card).Children(func() {
+				ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Start).Padding(k.Px(12), k.Px(16)).Radius(k.Px(14)).Background(t.Muted).Children(func() {
 					a.accountMark(c, accountInitial(who), "user-round")
 					ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(k.Px(2)).Children(func() {
 						k.Text(c, L("This session belongs to %s.", who), 13, 20).FontWeight(500)

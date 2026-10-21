@@ -375,7 +375,7 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 		ui.Column(c).FillWidth().Gap(k.Px(12)).Padding(k.Px(16)).Children(func() {
 			k.Text(c, title, 15, 22).Role(ui.RoleHeading).FontWeight(600)
 			k.Text(c, message, 13, 20).TextColor(t.MutedForeground)
-			ui.Column(c).Gap(k.Px(2)).Padding(k.Px(8), k.Px(10)).Radius(k.Px(8)).Background(t.Card).Children(func() {
+			ui.Column(c).Gap(k.Px(2)).Padding(k.Px(8), k.Px(10)).Radius(k.Px(8)).Background(t.Muted).Children(func() {
 				fact := func(name, value string) {
 					ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Start).Children(func() {
 						k.Text(c, name, 12, 18).TextColor(t.MutedForeground).Width(k.Px(52)).Shrink(0)
