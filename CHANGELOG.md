@@ -3,6 +3,11 @@
 ### Changed
 
 - Magpie's models have a tab of their own in the model picker, between Favorites and the brands. They share their names with the models the Daemon already offers, so the list the picker opens on, the brands' tabs and Favorites now show the Daemon's own models only. The search still reaches both lists, and a starred Magpie model stays in Favorites.
+
+### Fixed
+
+- A picture sent to a Magpie model that takes images now reaches the model. Before, droid dropped it with "this model does not support image inputs", because the Runtime Overlay left `noImageSupport` off and droid reads a custom model without that field as one that cannot take images.
+
 ## 1.59.0 - 2026-10-20
 
 ### Added

@@ -78,11 +78,14 @@ func TestMagpieCustomModels(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("%d entries: %+v", len(got), got)
 	}
+	// droid treats a custom model without noImageSupport as one that cannot
+	// take images, so a Magpie model that takes them has to say false.
 	want := []map[string]any{
 		{
 			"id": MagpieModelID("codex/gpt-6.1-sol"), "model": "codex/gpt-6.1-sol",
 			"displayName": "Magpie · GPT-6.1-Sol", "baseUrl": "http://127.0.0.1:3425/v1",
 			"apiKey": "magpie", "provider": MagpieProvider, "maxOutputTokens": 128000,
+			"noImageSupport": false,
 		},
 		{
 			"id": MagpieModelID("workbuddy/glm-5.3"), "model": "workbuddy/glm-5.3",
