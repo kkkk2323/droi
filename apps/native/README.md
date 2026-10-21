@@ -195,7 +195,7 @@ has moved from that Client, not how faithful the port is.
 `DROI_NATIVE_SHOTS=/tmp/shots go test ./apps/native/internal/app -v` writes each screen and a
 diff (red: a channel off by more than 24 of 255) next to the share of pixels that differ.
 
-The [PR #164 screen gallery](../../docs/pr-164/README.md) shows the current Light, Dark and
+[PR #164](https://github.com/kkkk2323/droi/pull/164) shows the current Light, Dark and
 Solarized Light+ surfaces, including Settings with its switch on and off. Those images are review
 evidence; the removed Client's reference images remain unchanged.
 

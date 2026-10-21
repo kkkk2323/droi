@@ -585,6 +585,32 @@ func TestAReplysMenu(t *testing.T) {
 	}
 }
 
+// The composer opens two lines high and grows a line at a time with what is
+// typed, up to 8 lines, past which it scrolls.
+func TestTheComposerGrowsWithItsText(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Fix the login race")
+	h.until("the composer", func() bool { _, ok := h.tt.Find("Message"); return ok })
+	h.settle()
+	height := func() float32 {
+		r, _ := h.tt.Find("Message")
+		return r.H
+	}
+	two := height()
+	h.click("Message")
+	h.tt.Type("one\ntwo\nthree")
+	h.frame()
+	line := h.a.kit.Px(22)
+	if got := height() - two; got < line-1 || got > line+1 {
+		t.Fatalf("three lines grew the composer by %.1f, want %.1f", got, line)
+	}
+	h.tt.Type(strings.Repeat("\nmore", 20))
+	h.frame()
+	if got := height() - two; got < 6*line-1 || got > 6*line+1 {
+		t.Fatalf("23 lines grew the composer by %.1f, want %.1f", got, 6*line)
+	}
+}
+
 // A read of the Session list that answers after a newer one leaves the
 // newer list in place.
 func TestAnOlderListReadDoesNotOverwriteANewerOne(t *testing.T) {
