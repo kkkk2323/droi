@@ -59,8 +59,8 @@ We decided:
 ## Consequences
 
 - The view tests' reference screens (the removed web Client's) no longer describe the app: their
-  pixel differences measure this departure rather than port fidelity. The screenshots under
-  `docs/pr-164/after` show the current design in Light, Dark and Solarized Light+. They are review
+  pixel differences measure this departure rather than port fidelity. The screenshots on
+  [PR #164](https://github.com/kkkk2323/droi/pull/164) show the current design in Light, Dark and Solarized Light+. They are review
   evidence, not replacement test baselines. `apps/native/README.md` documents how to render them.
 - `Tint` is the only accent in the tokens beyond the status colours: a view that needs attention
   paints with it, and nothing else should grow a colour of its own.
