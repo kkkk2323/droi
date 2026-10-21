@@ -291,6 +291,12 @@ var zh = map[string]string{
 	"Tool":                                   "工具",
 	"Uses OMP's models and tools":            "使用 OMP 自己的模型与工具",
 	"omp was not found. Install oh-my-pi, or set its path in Settings.": "找不到 omp。请安装 oh-my-pi，或在设置中填写它的路径。",
+	"omp was not found on PATH or in ~/.local/bin. Install oh-my-pi, or enter its full path.": "在 PATH 或 ~/.local/bin 中找不到 omp。请安装 oh-my-pi，或填写完整路径。",
+	"Using %s. New session can start OMP engine sessions on this computer.": "正在使用 %s。新会话可在本机启动 OMP 引擎会话。",
+	"omp executable":    "omp 可执行文件",
+	"omp path override": "omp 路径覆盖",
+	"Oh My Pi (omp) runs as a second coding engine beside Droid. Each OMP session is a local omp --mode rpc-ui process the Host manages. Phones reach live OMP sessions through this computer's Gateway.": "Oh My Pi（omp）是与 Droid 并列的第二个编码引擎。每个 OMP 会话是 Host 管理的本地 omp --mode rpc-ui 进程。手机通过本机 Gateway 访问进行中的 OMP 会话。",
+
 	"Do anything…":            "做任何事…",
 	"Don't work in a project": "不在项目中工作",
 	"Done":                    "完成",

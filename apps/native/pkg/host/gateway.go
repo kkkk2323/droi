@@ -28,5 +28,6 @@ func (h *Host) GatewayOptions(version string, moveToTrash func(string) error) ga
 		FindSessionFile: func(id string) string {
 			return FindSessionTranscript(filepath.Join(h.SharedFactoryHome(), "sessions"), id)
 		},
+		OMP: OMPGateway{M: h.OMP()},
 	}
 }

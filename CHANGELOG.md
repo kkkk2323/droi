@@ -1,3 +1,11 @@
+## Unreleased
+
+### Added
+
+- Settings → Advanced → OMP: show whether `omp` was found and set an override path (`ompPath`) without restarting the Daemon.
+- OMP session page: Markdown + tool cards closer to Droid's transcript, and an in-session model picker (`get_available_models` / `set_model`).
+- Gateway HTTP surface for live OMP sessions (`/omp/sessions`, prompt, abort, models, events). `/meta` reports `ompAvailable`. The Phone App lists live OMP sessions and opens a simple OMP session screen.
+
 ## 1.61.1 - 2026-10-21
 
 ### Fixed

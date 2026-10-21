@@ -45,6 +45,8 @@ const (
 
 	SessionFilePath = "/session-file"
 	SessionIDQuery  = "sessionId"
+
+	// OMP paths are defined in omp.go (OMPSessionsPath, …).
 )
 
 // PreferredPort is the Gateway's usual port. A paired phone remembers the
@@ -108,6 +110,8 @@ type Options struct {
 	// FindSessionFile, optional, is where the Daemon keeps a Session's
 	// transcript, "" when it has none; nil answers 404.
 	FindSessionFile func(sessionID string) string
+	// OMP, optional, exposes live oh-my-pi Sessions to phones; nil answers 404.
+	OMP OMPAccess
 }
 
 // Meta is the /meta answer.
@@ -119,6 +123,8 @@ type Meta struct {
 	Name string `json:"name"`
 	// ComputerID survives restarts, Pairing Token resets and address changes.
 	ComputerID string `json:"computerId"`
+	// OMPAvailable reports that this computer can start OMP engine sessions.
+	OMPAvailable bool `json:"ompAvailable,omitempty"`
 }
 
 // Gateway keeps one listener on loopback and, only while Remote Access is
@@ -351,13 +357,19 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		if app == "" {
 			app = "Droi"
 		}
-		reply(w, http.StatusOK, Meta{
+		meta := Meta{
 			App:          app,
 			Version:      g.opts.Version,
 			RemoteAccess: g.RemoteAccess(),
 			Name:         g.opts.ComputerName,
 			ComputerID:   g.opts.ComputerID,
-		})
+		}
+		if g.opts.OMP != nil {
+			meta.OMPAvailable = g.opts.OMP.Available()
+		}
+		reply(w, http.StatusOK, meta)
+	case OMPSessionsPath, OMPSessionPath, OMPPromptPath, OMPAbortPath, OMPModelsPath, OMPModelPath, OMPEventsPath:
+		g.answerOMP(w, r, path)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}

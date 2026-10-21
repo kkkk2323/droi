@@ -465,6 +465,31 @@ func (s *Session) GetMessages(ctx context.Context) (json.RawMessage, error) {
 	return data, err
 }
 
+// ModelInfo is one entry from get_available_models / get_state.
+type ModelInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	// Reasoning reports whether the model supports thinking levels.
+	Reasoning bool     `json:"reasoning"`
+	Input     []string `json:"input,omitempty"`
+}
+
+// GetAvailableModels lists models OMP can run.
+func (s *Session) GetAvailableModels(ctx context.Context) ([]ModelInfo, error) {
+	_, data, err := s.call(ctx, map[string]any{"type": "get_available_models"})
+	if err != nil {
+		return nil, err
+	}
+	var wrap struct {
+		Models []ModelInfo `json:"models"`
+	}
+	if err := json.Unmarshal(data, &wrap); err != nil {
+		return nil, err
+	}
+	return wrap.Models, nil
+}
+
 // SetModel selects a model by provider and id when both are known.
 func (s *Session) SetModel(ctx context.Context, provider, modelID string) error {
 	_, _, err := s.call(ctx, map[string]any{
@@ -478,6 +503,31 @@ func (s *Session) SetModel(ctx context.Context, provider, modelID string) error 
 		s.mu.Unlock()
 	}
 	return err
+}
+
+// SetModelByID finds provider from the available list when only id is known.
+func (s *Session) SetModelByID(ctx context.Context, modelID string) error {
+	if modelID == "" {
+		return errors.New("model id required")
+	}
+	models, err := s.GetAvailableModels(ctx)
+	if err != nil {
+		return err
+	}
+	for _, m := range models {
+		if m.ID == modelID {
+			provider := m.Provider
+			if provider == "" {
+				provider = "unknown"
+			}
+			return s.SetModel(ctx, provider, m.ID)
+		}
+	}
+	// Fall back: try common bare form provider/id.
+	if i := strings.IndexByte(modelID, '/'); i > 0 {
+		return s.SetModel(ctx, modelID[:i], modelID[i+1:])
+	}
+	return fmt.Errorf("model not found: %s", modelID)
 }
 
 // AnswerUI replies to an extension_ui_request. payload is one of the

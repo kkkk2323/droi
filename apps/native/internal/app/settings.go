@@ -45,7 +45,7 @@ type settingsState struct {
 	*settingsview.Settings
 	back Route
 
-	apiKey, baseURL, droidPath, prompt, scratch string
+	apiKey, baseURL, droidPath, ompPath, prompt, scratch string
 	// magpieURL is what is typed in Settings → Advanced; Magpie's own default
 	// shows while it is empty.
 	magpieURL string
@@ -78,6 +78,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	if !s.loaded && a.cfg.Host != nil {
 		st := a.cfg.Host.Settings.Get()
 		s.baseURL, s.droidPath = derefOr(st.FactoryAPIBaseURL), derefOr(st.DroidPath)
+		s.ompPath = derefOr(st.OMPPath)
 		s.prompt, s.scratch = derefOr(st.AppendSystemPrompt), derefOr(st.ScratchFolder)
 		s.magpieURL = derefOr(st.MagpieBaseURL)
 		s.loaded = true
@@ -382,6 +383,7 @@ func (a *App) advancedTab(c *ui.Context) {
 				}))
 		},
 	)
+	a.ompGroup(c)
 	a.settingGroup(c, L("Factory API"), "", func() {
 		desc := L("Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).")
 		inherited := ""
@@ -403,6 +405,31 @@ func (a *App) advancedTab(c *ui.Context) {
 		}))
 	})
 	a.magpieGroup(c)
+}
+
+// ompGroup is the path to oh-my-pi (`omp`), used when New session picks the
+// OMP engine instead of the Droid Daemon.
+func (a *App) ompGroup(c *ui.Context) {
+	h := a.cfg.Host
+	s := &a.settings
+	found := h.LocateOMP()
+	desc := L("omp was not found on PATH or in ~/.local/bin. Install oh-my-pi, or enter its full path.")
+	if found != "" {
+		desc = L("Using %s. New session can start OMP engine sessions on this computer.", found)
+	}
+	label := L("Not found")
+	if found != "" {
+		label = L("Found")
+	}
+	a.settingGroup(c, L("OMP"),
+		L("Oh My Pi (omp) runs as a second coding engine beside Droid. Each OMP session is a local omp --mode rpc-ui process the Host manages. Phones reach live OMP sessions through this computer's Gateway."),
+		func() {
+			a.settingRow(c, L("omp executable"), desc, func() { a.statusPill(c, found != "", label) },
+				a.saveRow(c, &s.ompPath, L("omp path override"), L("Leave empty to auto-detect"), L("Save path"), true, func(v string) {
+					a.hostUpdate(false, func(st *host.Settings) { st.OMPPath = host.OptString(v) })
+				}))
+		},
+	)
 }
 
 // magpieGroup offers a Magpie gateway's models to this computer's Daemon. Droi

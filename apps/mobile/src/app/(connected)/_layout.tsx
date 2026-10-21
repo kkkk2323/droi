@@ -15,6 +15,7 @@ export default function ConnectedLayout() {
     <Stack screenOptions={screenOptions}>
       <Stack.Screen name="index" options={{ title: 'Sessions' }} />
       <Stack.Screen name="session/[id]" options={{ title: '' }} />
+      <Stack.Screen name="omp/[id]" options={{ title: 'OMP session' }} />
       <Stack.Screen name="new" options={{ title: 'New session' }} />
     </Stack>
   )

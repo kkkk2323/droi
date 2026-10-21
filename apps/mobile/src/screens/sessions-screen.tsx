@@ -5,17 +5,19 @@
 import { archiveConversation, unarchiveConversation } from '@droi/daemon-layer/archive'
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { usePreference } from '@droi/daemon-layer/local-preference'
+import { listOmpSessions, type OmpSession } from '@droi/daemon-layer/omp'
 import { runningSubagents } from '@droi/daemon-layer/subagents'
 import { Stack, useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { Settings, SquarePen } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { lastSessionOf, pairedComputers } from '../computers/store'
 import { ConnectionGate } from '../connection/connection-notices'
 import { ComputerMenu, ComputerTitle } from '../sessions/computer-switch'
 import { sessionPath, useConnectedComputer } from '../sessions/connected-computer'
 import { SessionList } from '../sessions/session-list'
-import { IconButton } from '../ui/primitives'
+import { IconButton, Text } from '../ui/primitives'
+import { space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 
 export function SessionsScreen() {
@@ -35,6 +37,31 @@ function Sessions({
   const [computers] = usePreference(pairedComputers)
   const [switching, setSwitching] = useState(false)
   const { computer, sessions, unread, runs } = connected
+  const [ompSessions, setOmpSessions] = useState<OmpSession[]>([])
+  const [ompAvailable, setOmpAvailable] = useState(false)
+  useEffect(() => {
+    if (!connection.gateway.token) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const got = await listOmpSessions(connection.gateway.url, connection.gateway.token!)
+        if (cancelled) return
+        setOmpAvailable(got.available)
+        setOmpSessions(got.sessions)
+      } catch {
+        if (!cancelled) {
+          setOmpAvailable(false)
+          setOmpSessions([])
+        }
+      }
+    }
+    void load()
+    const t = setInterval(() => void load(), 5000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [connection.gateway.url, connection.gateway.token])
   useReopenLastSession(computer.id, (id) => connected.find(id) !== null)
   const computerTitle = (
     <ComputerTitle
@@ -70,6 +97,31 @@ function Sessions({
         />
       ) : null}
       <ConnectionGate computer={computer} keepWhenUnreachable>
+        {ompAvailable || ompSessions.length > 0 ? (
+          <View style={[styles.ompStrip, { borderBottomColor: colors.border }]}>
+            <Text size="xs" weight="semibold" tone="muted">
+              OMP{ompSessions.length ? ` · ${ompSessions.length}` : ''}
+            </Text>
+            {ompSessions.map((s) => (
+              <Pressable
+                key={s.id}
+                onPress={() => router.push(`/omp/${s.id}`)}
+                style={[styles.ompChip, { backgroundColor: colors.secondary }]}
+                accessibilityRole="button"
+                accessibilityLabel={s.title || 'OMP session'}
+              >
+                <Text size="xs" numberOfLines={1}>
+                  {s.title || 'OMP session'}
+                </Text>
+              </Pressable>
+            ))}
+            {ompAvailable && ompSessions.length === 0 ? (
+              <Text size="xs" tone="muted">
+                Live sessions appear here
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         <SessionList
           sessions={sessions}
           subagentsRunning={runningSubagents(sessions.sessions, runs)}
@@ -124,4 +176,19 @@ function useReopenLastSession(computerId: string, known: (sessionId: string) => 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   actions: { flexDirection: 'row', alignItems: 'center' },
+  ompStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  ompChip: {
+    maxWidth: 160,
+    paddingHorizontal: space.sm,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
 })

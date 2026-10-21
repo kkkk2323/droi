@@ -11,12 +11,13 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/omp"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // ompView is the window state for one OMP Session: transcript, pending UI
-// requests and a plain composer. It sits beside sessionView for Droid Sessions.
+// requests, model switching and a plain composer.
 type ompView struct {
 	a  *App
 	id string
@@ -31,8 +32,15 @@ type ompView struct {
 	working  bool
 	title    string
 	model    string
+	// models are OMP's available models, loaded once the session attaches.
+	models    []omp.ModelInfo
+	modelsErr string
 	// answering guards concurrent UI answers.
 	answering map[string]bool
+
+	render    ompRender
+	modelOpen bool
+	picker    pickerState
 }
 
 func (a *App) ompViewOf(id string) *ompView {
@@ -42,6 +50,7 @@ func (a *App) ompViewOf(id string) *ompView {
 	v := a.ompViews[id]
 	if v == nil {
 		v = &ompView{a: a, id: id, answering: map[string]bool{}}
+		v.render.md.Own = true
 		a.ompViews[id] = v
 		v.attach()
 	}
@@ -63,6 +72,9 @@ func (v *ompView) attach() {
 	v.working = handle.Session.Working()
 	v.title = handle.Title
 	v.model = handle.Model
+	if v.model == "" {
+		v.model = handle.Session.Model()
+	}
 	if v.unsub != nil {
 		v.unsub()
 	}
@@ -84,6 +96,59 @@ func (v *ompView) attach() {
 		v.a.cfg.Update(func() {})
 	})
 	v.mu.Unlock()
+	go v.loadModels()
+}
+
+func (v *ompView) loadModels() {
+	h := v.a.cfg.Host
+	if h == nil {
+		return
+	}
+	handle := h.OMP().Get(v.id)
+	if handle == nil || handle.Session == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(v.a.ctx, 20*time.Second)
+	defer cancel()
+	list, err := handle.Session.GetAvailableModels(ctx)
+	v.mu.Lock()
+	if err != nil {
+		v.modelsErr = err.Error()
+	} else {
+		v.models = list
+		v.modelsErr = ""
+		if v.model == "" {
+			// Prefer get_state's current model when the handle has none yet.
+			if st, err := handle.Session.GetState(ctx); err == nil {
+				var state struct {
+					Model *omp.ModelInfo `json:"model"`
+				}
+				if json.Unmarshal(st, &state) == nil && state.Model != nil {
+					v.model = state.Model.ID
+					handle.Model = state.Model.ID
+				}
+			}
+		}
+	}
+	v.mu.Unlock()
+	v.a.cfg.Update(func() {})
+}
+
+func (v *ompView) modelChoices() []models.Choice {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	out := make([]models.Choice, 0, len(v.models))
+	for _, m := range v.models {
+		name := m.Name
+		if name == "" {
+			name = m.ID
+		}
+		if m.Provider != "" && !strings.Contains(name, m.Provider) {
+			name = m.Provider + " · " + name
+		}
+		out = append(out, models.Choice{ID: m.ID, Label: name, Provider: m.Provider})
+	}
+	return out
 }
 
 func (v *ompView) build(c *ui.Context, a *App) {
@@ -111,6 +176,9 @@ func (v *ompView) build(c *ui.Context, a *App) {
 		})
 		return
 	}
+	entries := omp.TranscriptEntries(msgs)
+	choices := v.modelChoices()
+
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).PaddingX(k.Px(16)).AlignItems(ui.Center).Gap(k.Px(8)).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			if a.narrow {
@@ -120,21 +188,16 @@ func (v *ompView) build(c *ui.Context, a *App) {
 			ui.Row(c).Padding(k.Px(4), k.Px(8)).Radius(k.Px(8)).Background(t.Secondary).Children(func() {
 				k.Text(c, "OMP", 11, 14).FontWeight(600).TextColor(t.SecondaryForeground)
 			})
-			if model != "" {
-				k.Text(c, model, 12, 16).TextColor(t.MutedForeground).SingleLine()
-			}
 			if working {
 				k.Spinner(c, 14, t.MutedForeground)
 			}
 		})
 		ui.Scroll(c).Grow(1).Padding(k.Px(16), k.Px(24)).Children(func() {
 			ui.Column(c).MaxWidth(sessionview.ColumnWidth).Gap(k.Px(12)).Children(func() {
-				if len(msgs) == 0 && !working {
+				if len(entries) == 0 && !working {
 					k.Text(c, L("Send a message to start."), 13, 20).TextColor(t.MutedForeground)
 				}
-				for _, m := range msgs {
-					v.messageRow(c, k, m)
-				}
+				v.render.entries(c, a, entries)
 				for _, p := range pending {
 					v.uiCard(c, k, p)
 				}
@@ -167,7 +230,15 @@ func (v *ompView) build(c *ui.Context, a *App) {
 						return false
 					})
 				})
-				ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Children(func() {
+				ui.Row(c).Gap(k.Px(8)).Wrap().Children(func() {
+					if len(choices) > 0 {
+						a.modelPicker(c, &v.modelOpen, &v.picker, choices, model, "",
+							func(id string) { go v.setModel(id) },
+							func(string) {}, nil)
+					} else if model != "" {
+						k.Text(c, model, 12, 16).TextColor(t.MutedForeground).Padding(0, k.Px(6))
+					}
+					ui.Box(c).Grow(1)
 					if working {
 						stop := k.Button(c, kit.Ghost, 32, false, L("Stop")).Radius(k.Px(16))
 						stop.Children(func() { k.Text(c, L("Stop"), 13, 18).TextColor(t.Foreground) })
@@ -196,53 +267,11 @@ func (v *ompView) build(c *ui.Context, a *App) {
 	})
 }
 
-func (v *ompView) messageRow(c *ui.Context, k *kit.Kit, m omp.Message) {
-	t := k.T
-	label := m.Role
-	switch m.Role {
-	case "user":
-		label = L("You")
-	case "assistant":
-		label = L("OMP")
-	case "tool":
-		label = m.ToolName
-		if label == "" {
-			label = L("Tool")
-		}
-	}
-	ui.Column(c).Gap(k.Px(4)).Children(func() {
-		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
-			k.Text(c, label, 12, 16).FontWeight(600).TextColor(t.MutedForeground)
-			if m.Streaming {
-				k.Spinner(c, 12, t.MutedForeground)
-			}
-		})
-		if m.Thinking != "" {
-			k.Text(c, m.Thinking, 12, 18).TextColor(t.MutedForeground)
-		}
-		body := m.Text
-		if m.Role == "tool" {
-			body = m.ToolOut
-			if body == "" {
-				body = m.ToolArgs
-			}
-		}
-		if body != "" {
-			color := t.Foreground
-			if m.IsError {
-				color = t.DestructiveForeground
-			}
-			k.Text(c, body, 13, 20).TextColor(color).Selectable()
-		}
-	})
-}
-
 func (v *ompView) uiCard(c *ui.Context, k *kit.Kit, p omp.UIRequest) {
 	t := k.T
 	ui.Column(c).Gap(k.Px(8)).Padding(k.Px(12)).Radius(k.Px(12)).Border(1, t.Border).Background(t.Card).Children(func() {
 		k.Text(c, L("OMP needs an answer"), 13, 18).FontWeight(600)
 		k.Text(c, p.Method, 12, 16).TextColor(t.MutedForeground)
-		// Best-effort parse of common shapes.
 		var raw map[string]json.RawMessage
 		_ = json.Unmarshal(p.Raw, &raw)
 		if msg, ok := rawStringMsg(raw["message"]); ok {
@@ -272,7 +301,6 @@ func (v *ompView) uiCard(c *ui.Context, k *kit.Kit, p omp.UIRequest) {
 			}
 			_ = json.Unmarshal(raw["options"], &opts)
 			if len(opts) == 0 {
-				// Some shapes nest under detail.
 				_ = json.Unmarshal(raw["choices"], &opts)
 			}
 			ui.Column(c).Gap(k.Px(4)).Children(func() {
@@ -310,6 +338,28 @@ func rawStringMsg(r json.RawMessage) (string, bool) {
 		return s, true
 	}
 	return "", false
+}
+
+func (v *ompView) setModel(id string) {
+	h := v.a.cfg.Host
+	if h == nil {
+		return
+	}
+	handle := h.OMP().Get(v.id)
+	if handle == nil || handle.Session == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(v.a.ctx, 20*time.Second)
+	defer cancel()
+	if err := handle.Session.SetModelByID(ctx, id); err != nil {
+		v.a.cfg.Update(func() { v.err = err.Error() })
+		return
+	}
+	v.a.cfg.Update(func() {
+		v.model = id
+		handle.Model = id
+		v.err = ""
+	})
 }
 
 func (v *ompView) send(text string) {

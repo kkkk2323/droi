@@ -39,6 +39,8 @@ export interface DaemonConnection {
   readonly sessionState: MultiSessionStateManager
   /** The Gateway's Scratch Workspaces on the same computer (ADR 0008). */
   readonly scratch: ScratchWorkspaces
+  /** Gateway HTTP base URL and pairing token, for Host-side surfaces such as OMP. */
+  readonly gateway: { url: string; token: string | null }
   /** Where the computer keeps a Session's transcript; null when the Gateway cannot say. */
   sessionFile(sessionId: string): Promise<string | null>
   getState(): ConnectionState
@@ -219,6 +221,7 @@ export function createDaemonConnection(
     controller,
     sessionState,
     scratch: createScratchWorkspaces(config, fetchImpl),
+    gateway: { url: config.gatewayUrl, token: config.pairingToken },
     sessionFile: createSessionFileLookup(config, fetchImpl),
     getState: () => state,
     subscribe(listener) {
