@@ -80,3 +80,33 @@ func TestCmdNumbersTheSidebar(t *testing.T) {
 		t.Fatalf("⌘9 went to %+v", r)
 	}
 }
+
+// The numbers ⌘ shows take the place of the times without moving a row.
+func TestHoldingCmdLeavesTheSidebarRowsInPlace(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.settle()
+	titles := []string{"Refactor invoice generator", "Add dark mode toggle", "Fix the login race"}
+	rows := func() []ui.Rect {
+		var out []ui.Rect
+		for _, title := range titles {
+			r, ok := h.tt.Find(title)
+			if !ok {
+				t.Fatalf("no row %q", title)
+			}
+			out = append(out, r)
+		}
+		return out
+	}
+	before := rows()
+	h.tt.HoldModifiers(ui.Cmd)
+	h.frame()
+	held := rows()
+	h.tt.HoldModifiers(0)
+	h.frame()
+	for i := range titles {
+		if held[i] != before[i] {
+			t.Errorf("%q moved from %+v to %+v with ⌘ held", titles[i], before[i], held[i])
+		}
+	}
+}

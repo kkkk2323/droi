@@ -691,7 +691,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			}
 			ui.Spacer(c)
 			if n <= 9 && c.Modifiers() == ui.Cmd {
-				k.Text(c, shortcut(sessionCommand(n)), 11, 16.5).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
+				k.Text(c, shortcut(sessionCommand(n)), 11, 15).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
 			} else {
 				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 10, 15).TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
 			}
