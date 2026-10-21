@@ -12,10 +12,7 @@ export function ComputersScreen() {
   const router = useRouter()
   const [computers] = usePreference(pairedComputers)
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-    >
+    <ScrollView style={{ backgroundColor: colors.sidebar }} contentContainerStyle={styles.content}>
       {computers.length > 0 ? (
         <ListSection>
           {computers.map((computer) => (
@@ -38,5 +35,10 @@ export function ComputersScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.xl },
+  content: {
+    paddingHorizontal: space.md,
+    paddingTop: space.lg,
+    paddingBottom: space.xl,
+    gap: space.lg,
+  },
 })

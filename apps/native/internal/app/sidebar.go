@@ -57,7 +57,11 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Sessions")).Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
 		ui.Box(c).Height(44).Shrink(0).DragWindow()
-		ui.Column(c).Gap(k.Px(4)).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
+		ui.Row(c).Height(k.Px(32)).Gap(k.Px(7)).PaddingX(k.Px(16)).Shrink(0).Children(func() {
+			droiMark(c, k, 16)
+			k.Text(c, "Droi", 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
+		})
+		ui.Column(c).Gap(k.Px(2)).Padding(k.Px(8), k.Px(8), k.Px(12), k.Px(8)).Shrink(0).Children(func() {
 			if a.sidebarRow(c, "plus", L("New session"), false, nil).Tooltip(withShortcut(L("New session"), CmdNewSession)).Clicked() {
 				a.Run(CmdNewSession)
 			}
@@ -168,8 +172,8 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				section(*recents)
 			}
 		})
-		ui.Row(c).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Shrink(0).Children(func() {
-			b := k.IconButton(c, "settings", L("Settings"), 32).Tooltip(withShortcut(L("Settings"), CmdSettings))
+		ui.Row(c).Padding(k.Px(6), k.Px(8)).BorderWidth(1, 0, 0, 0).BorderColor(t.SidebarBorder).Shrink(0).Children(func() {
+			b := a.sidebarRow(c, "settings", L("Settings"), false, nil).Grow(1).Tooltip(withShortcut(L("Settings"), CmdSettings))
 			if b.Clicked() {
 				a.Run(CmdSettings)
 			}
@@ -320,8 +324,8 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 		b.Background(t.SidebarAccent.Alpha(0.7))
 	}
 	b.Children(func() {
-		k.Icon(c, icon, 16, t.MutedForeground)
-		k.Text(c, label, 13, 18).TextColor(t.Foreground)
+		k.IconStroke(c, icon, 1.6, 14, t.SidebarForeground)
+		k.Text(c, label, 12, 18).TextColor(t.SidebarForeground)
 		if trailing != nil {
 			trailing()
 		}
@@ -518,7 +522,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 		}
 	}
 
-	section := ui.Column(c.Key(g.Key)).Role(ui.RoleGroup).Label(name).Margin(0, 0, k.Px(8), 0)
+	section := ui.Column(c.Key(g.Key)).Role(ui.RoleGroup).Label(name).Margin(0, 0, k.Px(12), 0)
 	section.Children(func() {
 		switch {
 		case loose:
@@ -553,7 +557,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 							k.IconStroke(c, folder, 1.75, 14, t.MutedForeground)
 						}
 					})
-					k.Text(c, g.Label, 13, 19.5).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
+					k.Text(c, g.Label, 11, 17).FontWeight(500).TextColor(t.SidebarMutedForeground).SingleLine().Shrink(1)
 					if !open {
 						if n, ok := activity.CountBusy(g.Sessions, busy, a.sidebar.subagentsRunning); ok {
 							a.busyMark(c, n)
@@ -597,7 +601,7 @@ func indent(flat bool) float32 {
 	if flat {
 		return 8
 	}
-	return 32
+	return 12
 }
 
 // sessionRow is one Session in the sidebar: title, then whether it holds an
@@ -612,7 +616,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	a.sidebar.numbered = append(a.sidebar.numbered, s.SessionID)
 	n := len(a.sidebar.numbered)
 	b := ui.ButtonBase(c.Key(s.SessionID)).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
-		Gap(k.Px(1)).Padding(k.Px(5), k.Px(8), k.Px(5), k.Px(indent(flat))).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+		Gap(k.Px(2)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Radius(k.Px(6)).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
 	switch {
 	case selected:
@@ -627,7 +631,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			if elsewhere {
 				titleColor = t.MutedForeground
 			}
-			title := k.Text(c, s.Title, 13, 19.5).TextColor(titleColor).SingleLine().Grow(1).Shrink(1)
+			title := k.Text(c, s.Title, 12, 18).TextColor(titleColor).SingleLine().Grow(1).Shrink(1)
 			if elsewhere {
 				a.elsewhereMark(c, acc)
 			}
@@ -682,14 +686,14 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			case s.MessagesCount != nil:
 				ui.Row(c).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
 					k.Icon(c, "message-square", 12, t.MutedForeground)
-					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), 11, 16.5).TextColor(t.MutedForeground).SingleLine()
+					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), 10, 15).TextColor(t.SidebarMutedForeground).SingleLine()
 				})
 			}
 			ui.Spacer(c)
 			if n <= 9 && c.Modifiers() == ui.Cmd {
 				k.Text(c, shortcut(sessionCommand(n)), 11, 16.5).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
 			} else {
-				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 10, 15).TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
 			}
 		})
 	})

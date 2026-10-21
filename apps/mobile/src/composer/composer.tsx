@@ -23,7 +23,7 @@ import { useColors } from '../ui/use-colors'
 const NO_ITEMS: SlashItem[] = []
 
 /** The composer card's corner radius; the shelf above it sits inside the corners. */
-export const COMPOSER_RADIUS = radius.xl + 4
+export const COMPOSER_RADIUS = radius.lg
 
 export interface Submission {
   text: string
@@ -177,7 +177,7 @@ export function Composer({
       <View
         role="form"
         aria-label="Message composer"
-        style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}
+        style={[styles.card, { borderColor: colors.input, backgroundColor: colors.card }]}
       >
         {images.length > 0 ? (
           <ScrollView
@@ -295,6 +295,7 @@ export function Composer({
               <Pressable
                 role="button"
                 aria-label="Cancel"
+                hitSlop={2}
                 onPress={onCancel}
                 style={[styles.round, { backgroundColor: colors.secondary }]}
               >
@@ -303,6 +304,7 @@ export function Composer({
               <Pressable
                 role="button"
                 aria-label="Queue"
+                hitSlop={2}
                 accessibilityHint="Hold to hand the message to the running turn instead"
                 disabled={!canSend}
                 onPress={() => submit('end_of_loop')}
@@ -319,6 +321,7 @@ export function Composer({
             <Pressable
               role="button"
               aria-label={sendLabel}
+              hitSlop={2}
               aria-disabled={!canSend}
               disabled={!canSend}
               onPress={() => submit()}
@@ -373,11 +376,9 @@ const styles = StyleSheet.create({
   wrap: { gap: space.xs, paddingHorizontal: space.md },
   error: { paddingHorizontal: space.xs },
   card: {
-    // A full point, like the web Client's 1px border; a hairline is a third
-    // of that on an iPhone and all but disappears.
     borderWidth: 1,
     borderRadius: COMPOSER_RADIUS,
-    paddingTop: space.sm,
+    paddingTop: space.md,
   },
   inputRow: { flexDirection: 'row', alignItems: 'flex-start' },
   tag: {
@@ -395,22 +396,28 @@ const styles = StyleSheet.create({
   inputAfterTag: { paddingLeft: space.sm },
   input: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     maxHeight: 160,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
     fontFamily: fonts.sans,
     fontSize: fontSize.base,
-    lineHeight: 21,
+    lineHeight: 22,
   },
-  bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm },
+  bar: { flexDirection: 'row', alignItems: 'center', gap: space.xs, padding: space.sm },
   spacer: { flex: 1 },
   suggestions: {
     borderWidth: 1,
     borderRadius: radius.lg,
     paddingVertical: space.xs,
   },
-  option: { paddingHorizontal: space.md, paddingVertical: 6, gap: 2 },
+  option: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: space.xs,
+  },
   optionHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   shrink: { flexShrink: 1 },
   kind: { marginLeft: 'auto' },
@@ -434,11 +441,11 @@ const styles = StyleSheet.create({
     marginTop: space.xs,
     paddingVertical: space.xs,
   },
-  menuItem: { paddingHorizontal: space.md, minHeight: 36, justifyContent: 'center' },
+  menuItem: { paddingHorizontal: space.md, minHeight: 44, justifyContent: 'center' },
   round: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },

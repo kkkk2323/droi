@@ -115,7 +115,7 @@ func (a *App) computerMenu(c *ui.Context, left float32) {
 	if a.following() {
 		name = a.computerName()
 	}
-	b := ui.ButtonBase(c).Label(L("Computer: %s", name)).Tooltip(L("Switch computer")).Height(k.Px(32)).MaxWidth(k.Px(240 - left - 8)).
+	b := ui.ButtonBase(c).Label(L("Computer: %s", name)).Tooltip(L("Switch computer")).Height(k.Px(32)).MaxWidth(k.Px(224 - left - 8)).
 		PaddingX(k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer).Absolute().Left(left).Top(6)
 	color := t.MutedForeground
 	if b.Hovered() {

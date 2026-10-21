@@ -97,9 +97,8 @@ func (s *newSessionState) reset(r Route) {
 // a minute after they were.
 func (a *App) sessionDefaults() *defaults.View { return a.defaults.Get() }
 
-// newSessionPage is the Waku-style start page: one question with the
-// Workspace as a menu in it, and the composer under it. The first message
-// rides along into the Session.
+// newSessionPage groups the Workspace question and composer in one centred
+// start surface. The first message rides along into the Session.
 func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status controller.Status) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
@@ -136,62 +135,72 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 			if a.narrow {
 				a.openSessionsButton(c)
 			}
+			if !a.narrow && !a.sidebarShown() {
+				leading := float32(36)
+				if a.cfg.InsetTop {
+					leading = 104
+				}
+				ui.Box(c).Width(leading).Shrink(0)
+			}
+			k.Text(c, L("New session"), 12, 18).TextColor(t.MutedForeground)
 		})
-		// Not a Scroll: one lays its children out in an unbounded height, so
-		// they could not be centred in it.
-		ui.Column(c).Grow(1).MinHeight(0).ClipY().Children(func() {
-			ui.Column(c).Fill().Center().Gap(k.Px(20)).PaddingX(k.Px(24)).Children(func() {
-				droiMark(c, k, 36)
-				// The heading is the question's text alone: as the row, it would
-				// hide the Workspace button in it from VoiceOver.
-				ui.Row(c).FillWidth().Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
-					h := func(s string) ui.Element { return k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.3)) }
-					switch {
-					case workspace != "" && !scratch:
-						h(L("What do you want to build in")).Role(ui.RoleHeading)
-						ui.Row(c).Children(func() {
-							a.workspaceMenu(c, recent, workspace, labelOf(recent, workspace))
-							h("?")
-						})
-					case scratch:
-						h(L("What should we work on?")).Role(ui.RoleHeading)
-					default:
-						h(L("Where should Droid work?")).Role(ui.RoleHeading)
-						if len(listed) > 0 || status.Connected {
-							a.workspaceMenu(c, recent, "", L("Choose a workspace"))
+		_, height := c.Size()
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			// Centre the start surface while it fits; overflow stays scrollable.
+			ui.Column(c).FillWidth().MinHeight(max(0, height-k.Px(44))).Center().Gap(k.Px(24)).PaddingY(k.Px(24)).Children(func() {
+				ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(k.Px(12)).PaddingX(k.Px(24)).Children(func() {
+					droiMark(c, k, 28)
+					// The heading is the question's text alone: as the row, it would
+					// hide the Workspace button in it from VoiceOver.
+					ui.Row(c).FillWidth().Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
+						h := func(s string) ui.Element { return k.Text(c, s, 22, 30).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
+						switch {
+						case workspace != "" && !scratch:
+							h(L("What do you want to build in")).Role(ui.RoleHeading)
+							ui.Row(c).Children(func() {
+								a.workspaceMenu(c, recent, workspace, labelOf(recent, workspace))
+								h("?")
+							})
+						case scratch:
+							h(L("What should we work on?")).Role(ui.RoleHeading)
+						default:
+							h(L("Where should Droid work?")).Role(ui.RoleHeading)
+							if len(listed) > 0 || status.Connected {
+								a.workspaceMenu(c, recent, "", L("Choose a workspace"))
+							}
 						}
+					})
+					if s.err != "" {
+						k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 					}
 				})
-				if s.err != "" {
-					k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
-				}
-			})
-		})
-		col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Shrink(0)
-		col.Children(func() {
-			a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, a.draftItems(workspace, requestedMode))
-			ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
-				switch {
-				case scratch:
-					tooltip := L("Not in a project: the session gets a new folder in %s", a.scratchRoot())
-					if a.following() {
-						tooltip = L("Not in a project: the session gets a new folder on %s", a.computerName())
-					}
-					tr := k.QuietTrigger(c, L("Work in a project"), s.menuOpen).Margin(0, 0, 0, -k.Px(8)).Tooltip(tooltip)
-					tr.Children(func() {
-						k.Icon(c, "folder", 14, t.MutedForeground)
-						k.Text(c, L("Work in a project"), 12, 16).TextColor(t.MutedForeground).SingleLine()
+				col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).PaddingX(k.Px(32)).Shrink(0)
+				col.Children(func() {
+					a.newSessionComposer(c, workspace, worktree, creating, choices, modelID, effort, autonomy, shownMode, requestedMode, a.draftItems(workspace, requestedMode))
+					ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
+						switch {
+						case scratch:
+							tooltip := L("Not in a project: the session gets a new folder in %s", a.scratchRoot())
+							if a.following() {
+								tooltip = L("Not in a project: the session gets a new folder on %s", a.computerName())
+							}
+							tr := k.QuietTrigger(c, L("Work in a project"), s.menuOpen).Margin(0, 0, 0, -k.Px(8)).Tooltip(tooltip)
+							tr.Children(func() {
+								k.Icon(c, "folder", 14, t.MutedForeground)
+								k.Text(c, L("Work in a project"), 12, 16).TextColor(t.MutedForeground).SingleLine()
+							})
+							a.workspacePicker(c, tr, recent, scratchPick)
+						case workspace != "":
+							if repo != nil && repo.git {
+								a.worktreeControl(c, repo, worktree)
+							}
+							ui.Row(c).Gap(k.Px(6)).MinWidth(0).Tooltip(workspace).Children(func() {
+								k.Icon(c, "folder", 14, t.MutedForeground)
+								k.Text(c, workspace, 12, 16).TextColor(t.MutedForeground).SingleLine()
+							})
+						}
 					})
-					a.workspacePicker(c, tr, recent, scratchPick)
-				case workspace != "":
-					if repo != nil && repo.git {
-						a.worktreeControl(c, repo, worktree)
-					}
-					ui.Row(c).Gap(k.Px(6)).MinWidth(0).Tooltip(workspace).Children(func() {
-						k.Icon(c, "folder", 14, t.MutedForeground)
-						k.Text(c, workspace, 12, 16).TextColor(t.MutedForeground).SingleLine()
-					})
-				}
+				})
 			})
 		})
 	})
@@ -241,7 +250,7 @@ func (a *App) workspaceMenu(c *ui.Context, recent []sessions.RecentWorkspace, va
 	}
 	tr.BorderColor(line).BorderStyle(ui.BorderDashed)
 	tr.Children(func() {
-		k.Text(c, label, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.3))
+		k.Text(c, label, 22, 30).FontWeight(500).LetterSpacing(-k.Px(0.5))
 		k.Icon(c, "chevron-down", 14, t.Foreground).Opacity(0.5)
 	})
 	a.workspacePicker(c, tr, recent, value)
@@ -454,7 +463,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		go a.startSession(workspace, p, text, images)
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Message composer")).Gap(k.Px(6)).Children(func() {
-		card := ui.Column(c).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
+		card := ui.Column(c).Radius(k.Px(18)).Border(1, t.Input).Background(t.Card)
 		if drop, ok := ui.DropData(card, dropOptions); ok {
 			d := readDrop(drop.Data)
 			if err := attachFiles(&s.text, &s.images, d.files, a.following()); err != nil {
@@ -485,8 +494,8 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			// the composer's row gives it the width instead.
 			var in ui.Element
 			ui.Row(c).Children(func() {
-				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{14, 16, 4, 16}, Size: 14, Line: 24,
-					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
+				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{16, 16, 8, 16}, Size: 13, Line: 22,
+					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
 			if s.caretToEnd {
 				s.caretToEnd = false

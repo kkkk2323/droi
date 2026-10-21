@@ -27,6 +27,7 @@ export function ToolsButton({ sessionId }: { sessionId: string }) {
         role="button"
         aria-label="Skills and MCP servers"
         aria-haspopup="dialog"
+        hitSlop={4}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           styles.button,
@@ -76,8 +77,8 @@ export function ToolsButton({ sessionId }: { sessionId: string }) {
 
 const styles = StyleSheet.create({
   button: {
-    width: 30,
-    height: 30,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
@@ -89,7 +90,7 @@ const styles = StyleSheet.create({
     paddingBottom: space.sm,
   },
   tab: {
-    height: 30,
+    height: 44,
     paddingHorizontal: space.md,
     borderRadius: radius.md,
     justifyContent: 'center',

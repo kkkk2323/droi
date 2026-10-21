@@ -71,7 +71,7 @@ export function SessionList({
     <View
       role="navigation"
       aria-label="Sessions"
-      style={[styles.panel, { backgroundColor: colors.background }]}
+      style={[styles.panel, { backgroundColor: colors.sidebar }]}
     >
       <SessionSearchBox query={query} onChange={setQuery} />
       <ScrollView
@@ -324,7 +324,7 @@ function WorkspaceSection({
       >
         <Text
           role="heading"
-          size="xs"
+          size="sm"
           weight="medium"
           tone="muted"
           numberOfLines={1}
@@ -355,25 +355,42 @@ function WorkspaceSection({
                 onLongPress={() => onSessionActions(session)}
                 style={({ pressed }) => [
                   styles.row,
-                  pressed ? { backgroundColor: colors.accent } : null,
+                  pressed ? { backgroundColor: colors.sidebarAccent } : null,
                 ]}
               >
-                <Text
-                  size="base"
-                  weight={isUnread ? 'medium' : 'regular'}
-                  numberOfLines={1}
-                  style={styles.title}
-                >
-                  {session.title}
-                </Text>
-                {session.worktree ? (
-                  <View style={styles.branch}>
-                    <GitBranch size={11} color={colors.mutedForeground} strokeWidth={2} />
-                    <Text size="xs" tone="muted" mono numberOfLines={1} style={styles.branchName}>
-                      {session.worktree.branch}
-                    </Text>
-                  </View>
-                ) : null}
+                <View style={styles.sessionContent}>
+                  <Text
+                    size="base"
+                    weight={isUnread ? 'medium' : 'regular'}
+                    numberOfLines={1}
+                    style={styles.sessionTitle}
+                  >
+                    {session.title}
+                  </Text>
+                  {session.worktree || session.archivedAt ? (
+                    <View style={styles.metadata}>
+                      {session.worktree ? (
+                        <View style={styles.branch}>
+                          <GitBranch size={11} color={colors.mutedForeground} strokeWidth={2} />
+                          <Text
+                            size="xs"
+                            tone="muted"
+                            mono
+                            numberOfLines={1}
+                            style={styles.branchName}
+                          >
+                            {session.worktree.branch}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {session.archivedAt ? (
+                        <Text size="xs" tone="muted">
+                          Archived
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
                 {isUnread ? (
                   <View
                     role="img"
@@ -385,11 +402,6 @@ function WorkspaceSection({
                   <View role="img" aria-label="Pinned">
                     <Pin size={11} color={colors.mutedForeground} strokeWidth={2} />
                   </View>
-                ) : null}
-                {session.archivedAt ? (
-                  <Text size="xs" tone="muted">
-                    Archived
-                  </Text>
                 ) : null}
                 <ActivityMark
                   activity={activity.get(session.sessionId)}
@@ -426,7 +438,7 @@ function ActivityMark({
     return (
       <View role="status" aria-label="Compacting" style={styles.mark}>
         <Spinner size={12} color={colors.working} />
-        <Text size="xs" style={{ color: colors.working }}>
+        <Text size="xs" style={[styles.markText, { color: colors.working }]}>
           Compacting
         </Text>
       </View>
@@ -436,7 +448,7 @@ function ActivityMark({
     return (
       <View role="status" style={styles.mark}>
         <Spinner size={12} color={colors.working} />
-        <Text size="xs" style={{ color: colors.working }}>
+        <Text size="xs" style={[styles.markText, { color: colors.working }]}>
           {subagents} {subagents === 1 ? 'subagent' : 'subagents'} running
         </Text>
       </View>
@@ -446,7 +458,7 @@ function ActivityMark({
     return (
       <View role="status" aria-label="Working" style={styles.mark}>
         <Spinner size={12} color={colors.working} />
-        <Text size="xs" style={{ color: colors.working }}>
+        <Text size="xs" style={[styles.markText, { color: colors.working }]}>
           Working
         </Text>
       </View>
@@ -456,7 +468,7 @@ function ActivityMark({
     return (
       <View role="status" aria-label="Needs input" style={styles.mark}>
         <CircleAlert size={12} color={colors.attention} strokeWidth={2} />
-        <Text size="xs" style={{ color: colors.attention }}>
+        <Text size="xs" style={[styles.markText, { color: colors.attention }]}>
           Needs input
         </Text>
       </View>
@@ -467,31 +479,31 @@ function ActivityMark({
 
 const styles = StyleSheet.create({
   panel: { flex: 1 },
-  scroll: { flex: 1, paddingHorizontal: space.sm },
-  empty: { paddingHorizontal: space.sm, paddingVertical: space.xs },
+  scroll: { flex: 1, paddingHorizontal: space.md },
+  empty: { paddingHorizontal: space.sm, paddingVertical: space.lg },
   older: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs,
     marginTop: space.xs,
     paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
+    minHeight: 44,
     borderRadius: radius.md,
   },
-  section: { marginTop: space.md },
+  section: { marginTop: space.sm, paddingBottom: space.sm },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
+    gap: space.sm,
     paddingHorizontal: space.sm,
-    minHeight: 28,
+    minHeight: 44,
   },
   rename: { flexDirection: 'row', gap: space.sm, paddingHorizontal: space.lg },
   renameInput: {
     flex: 1,
-    height: 40,
+    height: 44,
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
     fontFamily: fonts.sans,
     fontSize: fontSize.base,
@@ -507,16 +519,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    minHeight: 44,
+    minHeight: 52,
     paddingHorizontal: space.sm,
-    borderRadius: radius.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.md,
   },
   title: { flex: 1 },
+  sessionContent: { flex: 1, minWidth: 0, gap: space.xs },
+  sessionTitle: { lineHeight: 21 },
+  metadata: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   confirm: { gap: space.md, paddingHorizontal: space.lg },
   confirmButtons: { flexDirection: 'row', gap: space.sm },
   grow: { flex: 1 },
-  branch: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1, maxWidth: 140 },
+  branch: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
   branchName: { flexShrink: 1 },
   unread: { width: 6, height: 6, borderRadius: 3 },
-  mark: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    flexShrink: 1,
+    maxWidth: '45%',
+  },
+  markText: { flexShrink: 1, lineHeight: 17 },
 })

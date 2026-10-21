@@ -26,8 +26,8 @@ type MarkdownStyle struct {
 }
 
 var (
-	mdReply    = MarkdownStyle{Size: 14}
-	mdError    = MarkdownStyle{Size: 14, Err: true}
+	mdReply    = MarkdownStyle{Size: 13}
+	mdError    = MarkdownStyle{Size: 13, Err: true}
 	mdThinking = MarkdownStyle{Size: 13, Muted: true}
 	mdReport   = MarkdownStyle{Size: 13}
 )

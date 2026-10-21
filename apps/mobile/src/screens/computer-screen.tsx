@@ -38,12 +38,12 @@ function ComputerForm({ id, name, address }: { id: string; name: string; address
 
   const inputStyle = [
     styles.input,
-    { borderColor: colors.input, color: colors.foreground, backgroundColor: colors.background },
+    { borderColor: colors.input, color: colors.foreground, backgroundColor: colors.card },
   ]
 
   return (
     <ScrollView
-      style={{ backgroundColor: colors.background }}
+      style={{ backgroundColor: colors.sidebar }}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
@@ -112,11 +112,11 @@ function ComputerForm({ id, name, address }: { id: string; name: string; address
 }
 
 const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.lg },
-  field: { gap: space.xs },
+  content: { padding: space.lg, gap: space.xl },
+  field: { gap: space.sm },
   input: {
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
     height: 44,
     fontFamily: fonts.sans,

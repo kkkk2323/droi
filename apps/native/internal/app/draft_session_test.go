@@ -48,11 +48,14 @@ func TestSlashOnTheNewSessionPageSuggestsTheWorkspacesSkills(t *testing.T) {
 	if got := h.a.newPage.text; got != "/wait-what go" {
 		t.Fatalf("text after the pick: %q", got)
 	}
+	h.a.newPage.mu.Lock()
+	draftID := h.a.newPage.draft.id
+	h.a.newPage.mu.Unlock()
 	h.tt.Key(0, ui.KeyEnter)
 	h.until("the Session", func() bool { return h.a.Route().Name == "session" })
 	id := h.a.Route().SessionID
-	if n := h.count("daemon.initialize_session"); n != 1 {
-		t.Fatalf("%d Sessions created, want the draft alone", n)
+	if id != draftID {
+		t.Fatalf("opened Session %s, want the active draft %s", id, draftID)
 	}
 	req, err := h.d.WaitForRequest("daemon.update_session_settings", 1)
 	if err != nil {

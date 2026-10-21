@@ -1,9 +1,9 @@
 # Droi native (MyGo)
 
 The Desktop Shell and its window rewritten in Go on [MyGo](https://github.com/egoist/mygo)'s
-native UI: no Electron, no webview, no Node at run time. It looks the same as
-the web Client did as the Local Client (that Client was removed after 1.59.0),
-pixel for pixel where it can.
+native UI: no Electron, no webview, no Node at run time. Its Synara-inspired workbench uses a
+grey navigation rail, a separate reading surface, compact system typography and inset composers
+(ADR 0025).
 
 It replaces the Electron app: same bundle identifier (`com.droi.app`), name
 and data folder (`~/Library/Application Support/Droi`), so the Shell
@@ -194,16 +194,10 @@ has moved from that Client, not how faithful the port is.
 
 `DROI_NATIVE_SHOTS=/tmp/shots go test ./apps/native/internal/app -v` writes each screen and a
 diff (red: a channel off by more than 24 of 255) next to the share of pixels that differ.
-Most of the rest is glyph edges, as MyGo and Chromium antialias text differently.
 
-| Screen                                                       | Differs                   |
-| ------------------------------------------------------------ | ------------------------- |
-| session (light / dark / Solarized)                           | 6.1% / 5.4% / 7.8%        |
-| session, tool call open                                      | 6.4%                      |
-| sidebar hidden                                               | 4.2%                      |
-| New session                                                  | 2.2%                      |
-| Settings: General / Session defaults / Notifications / About | 4.3% / 6.1% / 5.0% / 3.3% |
-| permission / AskUser                                         | 3.3% / 2.6%               |
+The [PR #164 screen gallery](../../docs/pr-164/README.md) shows the current Light, Dark and
+Solarized Light+ surfaces, including Settings with its switch on and off. Those images are review
+evidence; the removed Client's reference images remain unchanged.
 
 Settings leaves out Account, Memory, Remote Access and Advanced when there is no Host (the
 tests); the app has them all.

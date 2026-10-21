@@ -231,12 +231,16 @@ function NewSession({
               aria-label="Workspace"
               aria-haspopup="dialog"
               onPress={() => setPicking(true)}
-              style={[styles.workspace, { borderBottomColor: colors.mutedForeground }]}
+              style={[
+                styles.workspace,
+                { borderColor: colors.border, backgroundColor: colors.muted },
+              ]}
             >
               <Text
-                size={scratch ? 'base' : 'xl'}
+                size="base"
                 weight="medium"
                 tone={scratch ? 'muted' : undefined}
+                style={styles.worktreeText}
               >
                 {label ? `${label}?` : scratch ? 'Workspace: None' : 'Choose a workspace'}
               </Text>
@@ -250,7 +254,7 @@ function NewSession({
             aria-label="Worktree"
             aria-haspopup="dialog"
             onPress={() => setWorktreeSheet('options')}
-            style={styles.worktree}
+            style={[styles.worktree, { backgroundColor: colors.muted }]}
           >
             <GitBranch size={14} color={colors.mutedForeground} />
             <Text size="sm" tone="muted" numberOfLines={1} style={styles.worktreeText}>
@@ -466,23 +470,34 @@ function name(path: string): string {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  body: { flexGrow: 1, justifyContent: 'center', padding: space.xl, gap: space.lg },
-  question: { alignItems: 'center', gap: space.xs },
+  body: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.xl,
+    gap: space.md,
+  },
+  question: { alignItems: 'center', gap: space.md },
   center: { textAlign: 'center' },
   workspace: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
-    borderBottomWidth: 1,
-    borderStyle: 'dashed',
+    gap: space.sm,
+    minHeight: 44,
+    maxWidth: '100%',
+    paddingHorizontal: space.md,
+    borderWidth: 1,
+    borderRadius: radius.md,
   },
   worktree: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: space.xs,
+    gap: space.sm,
     minHeight: 44,
     maxWidth: '100%',
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
   },
   worktreeText: { flexShrink: 1 },
   baseBranch: {
@@ -499,9 +514,9 @@ const styles = StyleSheet.create({
   pathRow: { flexDirection: 'row', gap: space.sm },
   path: {
     flex: 1,
-    height: 40,
+    height: 44,
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
     fontFamily: fonts.mono,
     fontSize: fontSize.sm,

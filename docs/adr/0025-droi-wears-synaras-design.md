@@ -10,11 +10,11 @@ grey, borders as solid colours that fought the fills beside them, and code and i
 same family. The web Client is gone (it was removed after 1.59.0), so nothing anchors the look to
 that stylesheet any more, and the native app and the Phone App were carrying a copy of it each.
 
-[Synara](https://github.com/Emanuele-web04/synara) does the same job with less: a near-white page
-(`#fcfcfc`) with white panels, a near-black one (`#0e0e0e`) with `#131313` panels, borders and fills
-as single-digit alpha steps of the ink rather than greys of their own, one blue tint for the controls
-that show state, the system's interface face, and JetBrains Mono for code. We borrowed that material,
-not Synara's screens or its features.
+[Synara](https://github.com/Emanuele-web04/synara) separates navigation from work: a grey rail beside
+a white reading surface, compact system typography, restrained separators and an inset composer.
+Droi follows that composition as well as its material. The Light rail is `#ebebeb` beside `#ffffff`;
+Dark uses `#202124` beside `#18191b`. Blue remains reserved for focus and control state, and code
+uses JetBrains Mono. Solarized Light+ keeps its cream and parchment palette.
 
 We decided:
 
@@ -27,18 +27,21 @@ We decided:
   macOS, Segoe UI on Windows) is the default, as Synara does, and JetBrains Mono ships in
   `apps/native/assets/fonts` for code and for fields that are mono. The Font setting still offers the
   vendored Geist pair, and both faces stay registered, so choosing Geist changes nothing else.
-- **Geometry follows the reference, not the old stylesheet.** Buttons 28–32px high at 13px with an 8px
-  radius, fields 32px, switches 32×20, setting cards 12px with 10/12px rows, sidebar rows 28px,
-  user bubbles 14px of radius, headings 20px at weight 500 with −0.3px of tracking. Sizes come from
-  `pkg/kit`, so a view that already used a button or a setting row moved with it.
+- **Geometry follows the workbench composition.** The native sidebar is 224px with compact
+  Workspace headings, inset Session rows, a brand header and a labelled Settings action. Session
+  chrome and reading text use a 12–13px scale; New session groups its question and composer in
+  the centre and scrolls when a long draft or attachments outgrow a short window. Both composers
+  use an 18px radius
+  and two visible input lines. Settings uses flat groups with hairline separators, 28px navigation
+  rows and a centred content column. Shared controls remain in `pkg/kit`.
 - **The Phone App takes the same palettes, not the desktop type scale.**
   `apps/mobile/src/ui/theme.ts` holds the same palettes, loads JetBrains Mono
   through `expo-font`, and sets text in the system face with `fontWeight`.
   Session titles and transcript stay at 15px (`fontSize.base`), next to iOS's
   17pt body text: Synara's 13px scale is a desktop scale. The
   `@expo-google-fonts/geist*` packages are gone.
-- **Behaviour does not change.** No view gained or lost a control, no route, setting or label moved,
-  and the l10n catalogues changed only where a description named the old font.
+- **Behaviour does not change.** Every control, route, setting, handler and localized label remains
+  available. Layout, typography, colour, spacing and touch targets are presentation changes only.
 
 ## Considered Options
 
@@ -56,10 +59,9 @@ We decided:
 ## Consequences
 
 - The view tests' reference screens (the removed web Client's) no longer describe the app: their
-  pixel difference is now the measure of this departure (2–8% per screen) rather than of port
-  fidelity, and they cannot be re-recorded, since the Client that recorded them is gone.
-  `apps/native/README.md` says so; re-recording from the native app itself would turn the comparison
-  into a self-portrait and hide the drift.
+  pixel differences measure this departure rather than port fidelity. The screenshots under
+  `docs/pr-164/after` show the current design in Light, Dark and Solarized Light+. They are review
+  evidence, not replacement test baselines. `apps/native/README.md` documents how to render them.
 - `Tint` is the only accent in the tokens beyond the status colours: a view that needs attention
   paints with it, and nothing else should grow a colour of its own.
 - A new face is a download: JetBrains Mono adds about 300 KB to the native

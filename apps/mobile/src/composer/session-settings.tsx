@@ -255,7 +255,7 @@ function ModelSheet({
       <Star
         size={12}
         color={color}
-        fill={filter === option ? colors.primaryForeground : 'transparent'}
+        fill={filter === option ? colors.foreground : 'transparent'}
         strokeWidth={1.75}
       />
     ) : option === 'magpie' ? (
@@ -275,7 +275,7 @@ function ModelSheet({
         onChangeText={setQuery}
         autoCapitalize="none"
         autoCorrect={false}
-        style={[styles.search, { backgroundColor: colors.card, color: colors.foreground }]}
+        style={[styles.search, { backgroundColor: colors.muted, color: colors.foreground }]}
       />
       <ScrollView
         horizontal
@@ -293,15 +293,14 @@ function ModelSheet({
             onPress={() => choose(option)}
             style={[
               styles.chip,
-              { backgroundColor: filter === option ? colors.primary : colors.card },
+              {
+                backgroundColor: filter === option ? colors.accent : undefined,
+                borderColor: colors.border,
+              },
             ]}
           >
-            {railIcon(option, filter === option ? colors.primaryForeground : colors.foreground)}
-            <Text
-              size="xs"
-              weight="medium"
-              style={{ color: filter === option ? colors.primaryForeground : colors.foreground }}
-            >
+            {railIcon(option, colors.foreground)}
+            <Text size="xs" weight="medium" style={{ color: colors.foreground }}>
               {railLabel(option)}
             </Text>
           </Pressable>
@@ -373,15 +372,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    height: 30,
+    height: 40,
     paddingHorizontal: space.sm,
     borderRadius: radius.md,
     maxWidth: 180,
   },
   search: {
     marginHorizontal: space.lg,
-    height: 40,
-    borderRadius: radius.lg,
+    height: 44,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
     fontFamily: fonts.sans,
     fontSize: fontSize.base,
@@ -391,9 +390,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 28,
+    minHeight: 40,
     paddingHorizontal: space.md,
-    borderRadius: radius.full,
+    borderWidth: 1,
+    borderRadius: radius.md,
   },
   brandLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   models: { flexGrow: 0 },

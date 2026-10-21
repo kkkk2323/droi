@@ -46,10 +46,7 @@ export function SettingsScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-    >
+    <ScrollView style={{ backgroundColor: colors.sidebar }} contentContainerStyle={styles.content}>
       <ListSection>
         <ListRow
           label="Paired computers"
@@ -115,5 +112,10 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.xl },
+  content: {
+    paddingHorizontal: space.md,
+    paddingTop: space.lg,
+    paddingBottom: space.xl,
+    gap: space.lg,
+  },
 })

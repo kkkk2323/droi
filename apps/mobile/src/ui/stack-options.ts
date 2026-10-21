@@ -11,8 +11,8 @@ export function useStackScreenOptions(): Exclude<ScreenOptions, (...args: never[
   return {
     headerStyle: { backgroundColor: colors.background },
     headerTintColor: colors.foreground,
-    headerTitleStyle: { fontFamily: fonts.sans, fontWeight: '600', fontSize: 17 },
-    headerShadowVisible: false,
+    headerTitleStyle: { fontFamily: fonts.sans, fontWeight: '500', fontSize: 17 },
+    headerShadowVisible: true,
     headerBackButtonDisplayMode: 'minimal',
     contentStyle: { backgroundColor: colors.background },
   }

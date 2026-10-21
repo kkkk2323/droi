@@ -61,14 +61,11 @@ type Tokens struct {
 	SidebarMutedForeground ui.Color
 }
 
-// The themes follow Synara (Emanuele-web04/synara): a near-white page in
-// light and a near-black one in dark, surfaces one hairline apart, borders
-// and fills as low-alpha steps of the ink rather than separate greys, and a
-// single blue tint for the controls that show state (a switch, a focused
-// field).
+// The workbench separates a neutral navigation rail from the reading surface.
+// Controls use low-alpha ink and a single blue tint for focus and state.
 var light = Tokens{
 	Name:                   Light,
-	Background:             ui.Hex("#fcfcfc"),
+	Background:             ui.Hex("#ffffff"),
 	Foreground:             ui.Hex("#262626"),
 	Card:                   ui.Hex("#ffffff"),
 	CardForeground:         ui.Hex("#262626"),
@@ -87,7 +84,7 @@ var light = Tokens{
 	Border:                 ui.RGBA(0, 0, 0, 0.06),
 	Input:                  ui.RGBA(0, 0, 0, 0.08),
 	Ring:                   ui.Hex("#a3a3a3"),
-	Sidebar:                ui.Hex("#ffffff"),
+	Sidebar:                ui.Hex("#ebebeb"),
 	SidebarForeground:      ui.Hex("#262626"),
 	SidebarPrimary:         ui.Hex("#171717"),
 	SidebarPrimaryFg:       ui.Hex("#ffffff"),
@@ -108,18 +105,18 @@ var light = Tokens{
 	RemovedForeground:      ui.Hex("#b3211e"),
 	Highlight:              ui.RGBA(250, 204, 21, 0.35),
 	Selection:              ui.RGBA(0, 105, 204, 0.18),
-	SidebarMutedForeground: ui.Hex("#8a8a8a"),
+	SidebarMutedForeground: ui.Hex("#737373"),
 	Tint:                   ui.Hex("#0169cc"),
 }
 
 var dark = Tokens{
 	Name:                   Dark,
 	Dark:                   true,
-	Background:             ui.Hex("#0e0e0e"),
+	Background:             ui.Hex("#18191b"),
 	Foreground:             ui.Hex("#f5f5f5"),
-	Card:                   ui.Hex("#141414"),
+	Card:                   ui.Hex("#202124"),
 	CardForeground:         ui.Hex("#f5f5f5"),
-	Popover:                ui.Hex("#171717"),
+	Popover:                ui.Hex("#252629"),
 	PopoverForeground:      ui.Hex("#f5f5f5"),
 	Primary:                ui.Hex("#f5f5f5"),
 	PrimaryForeground:      ui.Hex("#171717"),
@@ -134,7 +131,7 @@ var dark = Tokens{
 	Border:                 ui.RGBA(255, 255, 255, 0.08),
 	Input:                  ui.RGBA(255, 255, 255, 0.1),
 	Ring:                   ui.Hex("#6b6b6b"),
-	Sidebar:                ui.Hex("#131313"),
+	Sidebar:                ui.Hex("#202124"),
 	SidebarForeground:      ui.Hex("#f5f5f5"),
 	SidebarPrimary:         ui.Hex("#f5f5f5"),
 	SidebarPrimaryFg:       ui.Hex("#171717"),
@@ -182,7 +179,7 @@ var solarized = Tokens{
 	Border:                 ui.RGBA(88, 110, 117, 0.14),
 	Input:                  ui.RGBA(88, 110, 117, 0.18),
 	Ring:                   ui.Hex("#b3a99b"),
-	Sidebar:                ui.Hex("#f7f2e5"),
+	Sidebar:                ui.Hex("#eee8d8"),
 	SidebarForeground:      ui.Hex("#44555c"),
 	SidebarPrimary:         ui.Hex("#5c6f76"),
 	SidebarPrimaryFg:       ui.Hex("#fdfaf1"),

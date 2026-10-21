@@ -252,10 +252,7 @@ export function TranscriptView({
             role="button"
             aria-label="Scroll to latest"
             onPress={() => toLatest(true)}
-            style={[
-              styles.down,
-              { backgroundColor: colors.background, borderColor: colors.border },
-            ]}
+            style={[styles.down, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <ArrowDown size={18} color={colors.foreground} strokeWidth={1.75} />
           </Pressable>
@@ -280,7 +277,7 @@ function Boundary() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
   content: { flexGrow: 1, paddingHorizontal: space.lg },
   header: { flexGrow: 1, justifyContent: 'flex-end' },
   lead: { paddingTop: space.md },
@@ -295,9 +292,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: space.md,
     alignSelf: 'center',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',

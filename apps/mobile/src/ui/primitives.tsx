@@ -141,9 +141,9 @@ export function Button({
       {...props}
       style={({ pressed }) => [
         {
-          minHeight: 40,
+          minHeight: 44,
           paddingHorizontal: space.lg,
-          borderRadius: radius.lg,
+          borderRadius: radius.md,
           backgroundColor: background,
           alignItems: 'center',
           justifyContent: 'center',

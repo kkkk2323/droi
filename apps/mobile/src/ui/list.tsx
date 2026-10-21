@@ -1,4 +1,4 @@
-// Grouped rows in the style of iOS settings, drawn with Droi's tokens.
+// Inset workbench groups shared by the phone's settings and detail screens.
 import { Check, ChevronRight } from 'lucide-react-native'
 import { Children, Fragment, isValidElement, useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
@@ -25,7 +25,7 @@ export function ListSection({
           {title}
         </Text>
       ) : null}
-      <View style={[styles.group, { backgroundColor: colors.card }]}>
+      <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {rows.map((row, index) => (
           <Fragment key={isValidElement(row) ? row.key : index}>
             {index > 0 ? (
@@ -205,20 +205,20 @@ export function ListChoices<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  switchLabel: { flex: 1 },
+  switchLabel: { flex: 1, lineHeight: 21, paddingVertical: space.sm },
   section: { gap: space.sm },
-  title: { paddingHorizontal: space.xs },
-  group: { borderRadius: radius.lg, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: space.lg },
-  footer: { paddingHorizontal: space.xs },
+  title: { paddingHorizontal: space.md, lineHeight: 18 },
+  group: { borderRadius: radius.md, borderWidth: 1, overflow: 'hidden' },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: space.md },
+  footer: { paddingHorizontal: space.md, lineHeight: 19 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    paddingHorizontal: space.lg,
-    minHeight: 44,
+    paddingHorizontal: space.md,
+    minHeight: 48,
   },
-  label: { flexShrink: 0 },
+  label: { flexShrink: 1, lineHeight: 21, paddingVertical: space.sm },
   sheetList: { flexGrow: 0 },
-  value: { flex: 1, textAlign: 'right' },
+  value: { flex: 1, minWidth: 48, textAlign: 'right', lineHeight: 21 },
 })

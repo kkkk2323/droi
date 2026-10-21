@@ -50,14 +50,14 @@ type searchState struct {
 
 func (a *App) searchBox(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(32))
+	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(28))
 	box.Children(func() {
 		in := ui.TextInputBase(c, &a.sidebar.query).Label(L("Search sessions")).Placeholder(L("Search sessions")).
-			Fill().Radius(k.Px(10)).Padding(0, k.Px(28), 0, k.Px(32)).FontSize(k.Px(13)).TextColor(t.Foreground).Border(1, ui.Transparent)
+			Fill().Radius(k.Px(6)).Padding(0, k.Px(28), 0, k.Px(28)).FontSize(k.Px(12)).TextColor(t.Foreground).Border(1, ui.Transparent)
 		if in.Focused() {
 			in.Background(t.Background).Border(1, t.Ring.Alpha(0.6))
 		} else {
-			in.Background(t.SidebarAccent.Alpha(0.5))
+			in.Background(t.SidebarAccent)
 		}
 		if in.Changed() {
 			a.search(a.sidebar.query)
@@ -65,9 +65,9 @@ func (a *App) searchBox(c *ui.Context) {
 		if a.sidebar.query != "" && in.Shortcut(0, ui.KeyEscape) {
 			a.sidebar.query = ""
 		}
-		k.Icon(c, "search", 16, t.MutedForeground).Absolute().Left(k.Px(8)).Top(k.Px(8)).PassThrough()
+		k.IconStroke(c, "search", 1.6, 14, t.SidebarMutedForeground).Absolute().Left(k.Px(8)).Top(k.Px(7)).PassThrough()
 		if a.sidebar.query != "" {
-			x := k.IconButton(c, "x", L("Clear search"), 24).Absolute().Right(k.Px(4)).Top(k.Px(4))
+			x := k.IconButton(c, "x", L("Clear search"), 24).Absolute().Right(k.Px(2)).Top(k.Px(2))
 			if x.Clicked() {
 				a.sidebar.query = ""
 			}

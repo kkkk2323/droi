@@ -1,7 +1,6 @@
-// The design tokens of the Synara-inspired theme the native app draws with
-// (apps/native/pkg/theme): a near-white page in light, a near-black one in
-// dark, surfaces a hairline apart, fills as low-alpha steps of the ink, the
-// system UI face and JetBrains Mono for code.
+// Shared Synara workbench materials: a white conversation beside a gray
+// sidebar in light mode, charcoal surfaces in dark mode, the system UI
+// face, and JetBrains Mono for code.
 
 export type ColorScheme = 'light' | 'dark'
 
@@ -13,7 +12,7 @@ export function schemeOf(theme: ThemeName): ColorScheme {
 }
 
 const light = {
-  background: '#fcfcfc',
+  background: '#ffffff',
   foreground: '#262626',
   card: '#ffffff',
   popover: '#ffffff',
@@ -28,7 +27,7 @@ const light = {
   border: 'rgba(0, 0, 0, 0.06)',
   input: 'rgba(0, 0, 0, 0.08)',
   ring: '#a3a3a3',
-  sidebar: '#ffffff',
+  sidebar: '#ebebeb',
   sidebarForeground: '#262626',
   sidebarAccent: 'rgba(0, 0, 0, 0.045)',
   sidebarBorder: 'rgba(0, 0, 0, 0.06)',
@@ -51,10 +50,10 @@ const light = {
 export type Colors = typeof light
 
 const dark: Colors = {
-  background: '#0e0e0e',
+  background: '#18191b',
   foreground: '#f5f5f5',
-  card: '#141414',
-  popover: '#171717',
+  card: '#202124',
+  popover: '#202124',
   primary: '#f5f5f5',
   primaryForeground: '#171717',
   secondary: 'rgba(255, 255, 255, 0.05)',
@@ -66,7 +65,7 @@ const dark: Colors = {
   border: 'rgba(255, 255, 255, 0.08)',
   input: 'rgba(255, 255, 255, 0.1)',
   ring: '#6b6b6b',
-  sidebar: '#131313',
+  sidebar: '#202124',
   sidebarForeground: '#f5f5f5',
   sidebarAccent: 'rgba(255, 255, 255, 0.06)',
   sidebarBorder: 'rgba(255, 255, 255, 0.07)',

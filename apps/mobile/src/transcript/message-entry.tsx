@@ -1,5 +1,5 @@
-// The transcript's rows: the user's message as a bubble, and each block of an
-// assistant turn (Markdown, an image, folded reasoning, quiet tool rows) as a
+// The transcript's rows: the user's message as an inset surface, and each
+// assistant block (Markdown, images, reasoning, quiet tool rows) as a
 // row of its own. A turn is split so the list can keep a block the reader is
 // on in place while a later block of the same turn grows.
 import {
@@ -41,7 +41,9 @@ export const UserMessage = memo(function UserMessage({ entry }: { entry: Transcr
         />
       ))}
       {text ? (
-        <View style={[styles.bubble, { backgroundColor: colors.secondary }]}>
+        <View
+          style={[styles.bubble, { backgroundColor: colors.muted, borderColor: colors.border }]}
+        >
           <Text selectable style={styles.bubbleText}>
             {text}
           </Text>
@@ -125,12 +127,13 @@ function renderBlock(
 }
 
 const styles = StyleSheet.create({
-  user: { alignItems: 'flex-end', gap: space.xs, paddingVertical: space.sm },
+  user: { alignItems: 'flex-end', gap: space.sm, paddingTop: space.xl, paddingBottom: space.md },
   bubble: {
-    maxWidth: '85%',
-    borderRadius: 18,
-    paddingHorizontal: space.lg,
-    paddingVertical: 10,
+    maxWidth: '92%',
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
   },
   bubbleText: { lineHeight: 22 },
   userImage: {
@@ -139,9 +142,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  // The turn's blocks sit space.sm apart, with space.sm above and below the turn.
+  // Blocks stay close; a new turn gets a little more room above it.
   assistant: { gap: space.sm, paddingBottom: space.sm },
-  assistantFirst: { paddingTop: space.sm },
+  assistantFirst: { paddingTop: space.md },
   assistantImage: {
     width: '100%',
     height: 240,
