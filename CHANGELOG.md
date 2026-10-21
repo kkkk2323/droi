@@ -1,3 +1,16 @@
+## 1.62.0 - 2026-10-21
+
+### Changed
+
+- Droi now runs on MyGo 0.6. The window redraws only what changed and lays out again only what moved, so a Session at work costs less to draw, and on a Mac a window that is hidden or covered draws nothing. The mouse wheel scrolls smoothly.
+- The activity row under a conversation shows at a glance what Droid is doing: an orbit while it thinks, dots that light up in turn while it answers, a turning arc while a tool runs, a ripple while it waits for your approval and folding arcs while it compacts. The other spinners, and the waits for the Daemon, another computer and the browser sign-in, use MyGo's loading indicators too.
+
+### Fixed
+
+- On Windows, the menu shortcuts work in the window. Before, Ctrl+N, Ctrl+,, Ctrl+B, Ctrl+J and zoom did nothing.
+- On Windows, opening Droi while it already runs brings its window to the front.
+- Starting a Session from New session no longer opens a second, unused draft Session and Scratch folder just before the Session shows.
+
 ## 1.61.1 - 2026-10-21
 
 ### Fixed
