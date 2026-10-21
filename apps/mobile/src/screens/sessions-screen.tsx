@@ -5,8 +5,9 @@
 import { archiveConversation, unarchiveConversation } from '@droi/daemon-layer/archive'
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import { usePreference } from '@droi/daemon-layer/local-preference'
-import { listOmpSessions, type OmpSession } from '@droi/daemon-layer/omp'
+import { listOmpSessions } from '@droi/daemon-layer/omp'
 import { runningSubagents } from '@droi/daemon-layer/subagents'
+import { useQuery } from '@tanstack/react-query'
 import { Stack, useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { Settings, SquarePen } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -37,31 +38,14 @@ function Sessions({
   const [computers] = usePreference(pairedComputers)
   const [switching, setSwitching] = useState(false)
   const { computer, sessions, unread, runs } = connected
-  const [ompSessions, setOmpSessions] = useState<OmpSession[]>([])
-  const [ompAvailable, setOmpAvailable] = useState(false)
-  useEffect(() => {
-    if (!connection.gateway.token) return
-    let cancelled = false
-    const load = async () => {
-      try {
-        const got = await listOmpSessions(connection.gateway.url, connection.gateway.token!)
-        if (cancelled) return
-        setOmpAvailable(got.available)
-        setOmpSessions(got.sessions)
-      } catch {
-        if (!cancelled) {
-          setOmpAvailable(false)
-          setOmpSessions([])
-        }
-      }
-    }
-    void load()
-    const t = setInterval(() => void load(), 5000)
-    return () => {
-      cancelled = true
-      clearInterval(t)
-    }
-  }, [connection.gateway.url, connection.gateway.token])
+  const omp = useQuery({
+    queryKey: ['omp-sessions', connection.gateway.url, connection.gateway.token],
+    enabled: Boolean(connection.gateway.token),
+    refetchInterval: 5000,
+    queryFn: () => listOmpSessions(connection.gateway.url, connection.gateway.token!),
+  })
+  const ompSessions = omp.data?.sessions ?? []
+  const ompAvailable = omp.data?.available ?? false
   useReopenLastSession(computer.id, (id) => connected.find(id) !== null)
   const computerTitle = (
     <ComputerTitle

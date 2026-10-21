@@ -1,14 +1,14 @@
 // A live OMP engine session opened through the computer's Gateway HTTP API.
+import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import {
   abortOmpSession,
   getOmpSession,
   promptOmpSession,
   type OmpMessage,
-  type OmpSession,
 } from '@droi/daemon-layer/omp'
-import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
+import { useQuery } from '@tanstack/react-query'
 import { Stack } from 'expo-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   KeyboardAvoidingView,
   Platform,
@@ -28,47 +28,38 @@ export function OmpSessionScreen({ sessionId }: { sessionId: string }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
   const { gateway } = useDaemonConnection()
-  const [session, setSession] = useState<OmpSession | null>(null)
-  const [messages, setMessages] = useState<OmpMessage[]>([])
   const [text, setText] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
 
-  const refresh = useCallback(async () => {
-    if (!gateway.token) {
-      setError('Missing pairing token')
-      setLoading(false)
-      return
-    }
-    try {
-      const got = await getOmpSession(gateway.url, gateway.token, sessionId)
-      setSession(got.session)
-      setMessages(got.messages)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [gateway, sessionId])
+  const query = useQuery({
+    queryKey: ['omp-session', gateway.url, gateway.token, sessionId],
+    enabled: Boolean(gateway.token),
+    refetchInterval: 1500,
+    queryFn: async () => {
+      if (!gateway.token) throw new Error('Missing pairing token')
+      return getOmpSession(gateway.url, gateway.token, sessionId)
+    },
+  })
 
-  useEffect(() => {
-    void refresh()
-    const t = setInterval(() => void refresh(), 1500)
-    return () => clearInterval(t)
-  }, [refresh])
+  const session = query.data?.session ?? null
+  const messages = query.data?.messages ?? []
+  const error =
+    actionError ??
+    (query.error instanceof Error ? query.error.message : query.error ? String(query.error) : null)
+  const loading = query.isPending && !query.data
 
   const send = async () => {
     const message = text.trim()
     if (!message || !gateway.token || busy) return
     setBusy(true)
     setText('')
+    setActionError(null)
     try {
       await promptOmpSession(gateway.url, gateway.token, sessionId, message)
-      await refresh()
+      await query.refetch()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setActionError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
@@ -76,11 +67,12 @@ export function OmpSessionScreen({ sessionId }: { sessionId: string }) {
 
   const stop = async () => {
     if (!gateway.token) return
+    setActionError(null)
     try {
       await abortOmpSession(gateway.url, gateway.token, sessionId)
-      await refresh()
+      await query.refetch()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setActionError(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -90,19 +82,7 @@ export function OmpSessionScreen({ sessionId }: { sessionId: string }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={88}
     >
-      <Stack.Screen
-        options={{
-          title: session?.title || 'OMP session',
-          headerRight: () =>
-            session?.working ? (
-              <Pressable onPress={() => void stop()} accessibilityRole="button">
-                <Text size="sm" tone="muted">
-                  Stop
-                </Text>
-              </Pressable>
-            ) : null,
-        }}
-      />
+      <Stack.Screen options={{ title: session?.title || 'OMP session' }} />
       {loading ? (
         <View style={styles.center}>
           <Spinner size={16} color={colors.mutedForeground} />
@@ -112,14 +92,27 @@ export function OmpSessionScreen({ sessionId }: { sessionId: string }) {
           style={styles.fill}
           contentContainerStyle={{ padding: space.md, paddingBottom: space.lg, gap: space.md }}
         >
-          <View style={[styles.badge, { backgroundColor: colors.secondary }]}>
-            <Text size="xs" weight="semibold">
-              OMP
-            </Text>
-            {session?.model ? (
-              <Text size="xs" tone="muted">
-                {session.model}
+          <View style={styles.metaRow}>
+            <View style={[styles.badge, { backgroundColor: colors.secondary }]}>
+              <Text size="xs" weight="semibold">
+                OMP
               </Text>
+              {session?.model ? (
+                <Text size="xs" tone="muted">
+                  {session.model}
+                </Text>
+              ) : null}
+            </View>
+            {session?.working ? (
+              <Pressable
+                onPress={() => void stop()}
+                accessibilityRole="button"
+                accessibilityLabel="Stop"
+              >
+                <Text size="sm" tone="muted">
+                  Stop
+                </Text>
+              </Pressable>
             ) : null}
           </View>
           {messages.length === 0 ? (
@@ -219,6 +212,12 @@ function MessageBubble({ message }: { message: OmpMessage }) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
   badge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
