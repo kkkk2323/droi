@@ -178,7 +178,7 @@ func activityIndicator(c *ui.Context, state string, size float32, color ui.Color
 	o := loading.Options{Size: size, Color: color}
 	switch protocol.DroidWorkingState(state) {
 	case protocol.DroidWorkingStateThinking:
-		return loading.Orbit(c, o)
+		return loading.Wave(c, o)
 	case protocol.DroidWorkingStateStreamingAssistantMessage:
 		return loading.LinearDots(c, o)
 	case protocol.DroidWorkingStateExecutingTool:
