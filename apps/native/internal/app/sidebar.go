@@ -57,10 +57,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Sessions")).Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
 		ui.Box(c).Height(44).Shrink(0).DragWindow()
-		ui.Row(c).Height(k.Px(32)).Gap(k.Px(7)).PaddingX(k.Px(16)).Shrink(0).Children(func() {
-			droiMark(c, k, 16)
-			k.Text(c, "Droi", 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
-		})
+		a.sidebarHeader(c)
 		ui.Column(c).Gap(k.Px(2)).Padding(k.Px(8), k.Px(8), k.Px(12), k.Px(8)).Shrink(0).Children(func() {
 			if a.sidebarRow(c, "plus", L("New session"), false, nil).Tooltip(withShortcut(L("New session"), CmdNewSession)).Clicked() {
 				a.Run(CmdNewSession)

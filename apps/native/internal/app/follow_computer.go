@@ -103,46 +103,54 @@ func (a *App) forgetComputer(id string) {
 	}
 }
 
-// computerMenu is the sidebar's switch between the computers Droi knows,
-// at the window's top left beside the sidebar toggle; with no other
-// computer remembered there is nothing to switch to, so it is not shown.
-func (a *App) computerMenu(c *ui.Context, left float32) {
+// sidebarHeader is the sidebar's top row, the Droi mark. Once another
+// computer is remembered the row also names the computer the window shows
+// and switches between them; with none there is nothing to switch to.
+func (a *App) sidebarHeader(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	brand := func() {
+		droiMark(c, k, 16)
+		k.Text(c, "Droi", 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
+	}
 	remembered := computer.Remembered(a.prefs)
 	if len(remembered) == 0 {
+		ui.Row(c).Height(k.Px(32)).Gap(k.Px(7)).PaddingX(k.Px(16)).Shrink(0).Children(brand)
 		return
 	}
-	k, t := a.kit, a.kit.T
 	name := L("This computer")
 	if a.following() {
 		name = a.computerName()
 	}
-	b := ui.ButtonBase(c).Label(L("Computer: %s", name)).Tooltip(L("Switch computer")).Height(k.Px(32)).MaxWidth(k.Px(224 - left - 8)).
-		PaddingX(k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer).Absolute().Left(left).Top(6)
-	color := t.MutedForeground
-	if b.Hovered() {
-		b.Background(t.SidebarAccent.Alpha(0.6))
-		color = t.Foreground
-	}
-	b.Children(func() {
-		ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).Children(func() {
-			k.Text(c, name, 13, 18).TextColor(color).SingleLine().Shrink(1)
-			k.Icon(c, "chevron-down", 12, color)
+	ui.Row(c).PaddingX(k.Px(8)).Shrink(0).Children(func() {
+		b := ui.ButtonBase(c).Label(L("Computer: %s", name)).Tooltip(L("Switch computer")).Height(k.Px(32)).Grow(1).MinWidth(0).
+			PaddingX(k.Px(8)).Gap(k.Px(7)).Radius(k.Px(8)).Justify(ui.Start).Cursor(ui.CursorPointer)
+		color := t.MutedForeground
+		if b.Hovered() {
+			b.Background(t.SidebarAccent.Alpha(0.7))
+			color = t.Foreground
+		}
+		b.Children(func() {
+			brand()
+			ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).MinWidth(0).Shrink(1).Margin(0, 0, 0, k.Px(2)).Children(func() {
+				k.Text(c, name, 13, 18).TextColor(color).SingleLine().Shrink(1)
+				k.Icon(c, "chevron-down", 12, color)
+			})
 		})
-	})
-	b.Menu(func(m *ui.Menu) {
-		if m.Item(L("This computer")).Checked(!a.following()).Chosen() && a.following() {
-			a.useThisComputer()
-		}
-		for _, p := range remembered {
-			current := p.ID == a.computerID()
-			if m.Item(pairedName(p)).Checked(current).Chosen() && !current {
-				a.follow(p)
+		b.Menu(func(m *ui.Menu) {
+			if m.Item(L("This computer")).Checked(!a.following()).Chosen() && a.following() {
+				a.useThisComputer()
 			}
-		}
-		m.Separator()
-		if m.Item(L("Manage computers…")).Chosen() {
-			a.Go(Route{Name: "settings", Tab: "computer"})
-		}
+			for _, p := range remembered {
+				current := p.ID == a.computerID()
+				if m.Item(pairedName(p)).Checked(current).Chosen() && !current {
+					a.follow(p)
+				}
+			}
+			m.Separator()
+			if m.Item(L("Manage computers…")).Chosen() {
+				a.Go(Route{Name: "settings", Tab: "computer"})
+			}
+		})
 	})
 }
 

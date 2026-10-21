@@ -788,7 +788,7 @@ func (a *App) View(c *ui.Context) {
 		if !a.narrow {
 			target := float32(0)
 			if shown {
-				target = 224
+				target = a.sidebarWidth()
 			}
 			// Animated here, not with a Transition: that moves the box after
 			// the layout, so the main panel would jump to its new width.
@@ -800,7 +800,7 @@ func (a *App) View(c *ui.Context) {
 				side.Invisible()
 			}
 			side.Children(func() {
-				ui.Column(c).Width(224).FillHeight().Children(func() {
+				ui.Column(c).Width(a.sidebarWidth()).FillHeight().Children(func() {
 					a.sidebarView(c, listed, busy, listErr, listDone)
 				})
 			})
@@ -860,11 +860,12 @@ func (a *App) View(c *ui.Context) {
 		if b.Clicked() {
 			a.Run(CmdToggleSidebar)
 		}
-		if shown {
-			a.computerMenu(c, left+36)
-		}
 	})
 }
+
+// sidebarWidth is the width of the sidebar and of Settings' list of
+// sections, so going to Settings and back moves nothing.
+func (a *App) sidebarWidth() float32 { return a.kit.Px(224) }
 
 // restoreLast reopens the Session that was open last, once the first list
 // confirms it still exists; going home on purpose afterwards sticks.

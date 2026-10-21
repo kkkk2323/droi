@@ -86,7 +86,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		a.Go(s.back)
 	}
 	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
-		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(k.Px(224)).Shrink(0).Gap(k.Px(2)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
+		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(a.sidebarWidth()).Shrink(0).Gap(k.Px(2)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
 			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
 			nav := func(icon, label string, selected bool) ui.Element {
 				b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(5)).Justify(ui.Start).Cursor(ui.CursorPointer)
