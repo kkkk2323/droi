@@ -137,7 +137,7 @@ final class SessionModel {
             } catch is CancellationError {
                 return
             } catch {
-                loadError = String(describing: error)
+                loadError = describe(error)
             }
         }
         render()
@@ -177,7 +177,7 @@ final class SessionModel {
             connection.store.prependOlderMessages(id, page: page.messages.reversed(), hasOlder: page.hasMore)
             render()
         } catch {
-            olderError = String(describing: error)
+            olderError = describe(error)
         }
     }
 
@@ -204,13 +204,13 @@ final class SessionModel {
             connection.store.registerOptimisticSubmit(
                 SessionStore.OptimisticSubmit(
                     sessionID: id, externalKey: requestID, userMessage: user, assistantBubbleID: newID(),
-                    onError: { [weak self] error in self?.sendError = String(describing: error) }))
+                    onError: { [weak self] error in self?.sendError = describe(error) }))
         }
         do {
             try await controller.addUserMessage(params, requestID: requestID)
         } catch {
             _ = connection.store.cancelOptimisticSubmit(requestID)
-            sendError = String(describing: error)
+            sendError = describe(error)
         }
     }
 
@@ -218,7 +218,7 @@ final class SessionModel {
         do {
             try await controller.interruptSession(id)
         } catch {
-            sendError = String(describing: error)
+            sendError = describe(error)
         }
     }
 
@@ -228,7 +228,7 @@ final class SessionModel {
                 _ = try await controller.client().resolveQueuedUserMessage(
                     .object(["sessionId": .string(id), "requestId": .string(message.requestID), "action": .string("delete")]))
             } catch {
-                sendError = String(describing: error)
+                sendError = describe(error)
                 return
             }
         }
@@ -272,7 +272,7 @@ final class SessionModel {
         do {
             _ = try await controller.client().updateSessionSettings(params)
         } catch {
-            sendError = String(describing: error)
+            sendError = describe(error)
         }
     }
 
@@ -299,7 +299,7 @@ final class SessionModel {
             return next != id ? next : nil
         } catch {
             log.fail(id)
-            sendError = String(describing: error)
+            sendError = describe(error)
             return nil
         }
     }
@@ -307,4 +307,17 @@ final class SessionModel {
 
 extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
+}
+
+/// An error as one plain sentence for the screen, not Foundation's dump.
+func describe(_ error: any Error) -> String {
+    switch error {
+    case let error as RPCError: return error.message
+    case DroidError.notConnected, DroidError.suspended, DroidError.closed, is ConnectionError:
+        return "Not connected to the computer."
+    case DroidError.sessionNotFound: return "Session not found"
+    case let error as NSError where error.domain == NSPOSIXErrorDomain || error.domain == NSURLErrorDomain:
+        return "The connection to the computer dropped."
+    default: return error.localizedDescription
+    }
 }

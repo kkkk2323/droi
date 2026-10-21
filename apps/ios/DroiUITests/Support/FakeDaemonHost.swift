@@ -46,6 +46,24 @@ struct FakeDaemon {
         command("notify", ["sessionId": session.id, "notification": notification])
     }
 
+    /// Something a Desktop Shell does to its Gateway (see the host's header): reset, revoke, meta, requests, dropSockets.
+    @discardableResult
+    func gateway(_ op: String, _ fields: [String: Any] = [:]) -> [String: Any] {
+        FakeDaemonHost.post("gateway/\(id)", fields.merging(["op": op]) { $1 })
+    }
+
+    /// Resets the Pairing Token and answers the new pairing link.
+    func resetToken() -> String {
+        gateway("reset")["link"] as? String ?? ""
+    }
+
+    /// The Gateway's HTTP requests (Scratch Workspaces, the session file), oldest first.
+    var gatewayRequests: [(method: String, path: String, query: [String: String])] {
+        (gateway("requests")["requests"] as? [[String: Any]] ?? []).map {
+            ($0["method"] as? String ?? "", $0["path"] as? String ?? "", $0["query"] as? [String: String] ?? [:])
+        }
+    }
+
     func stop() {
         FakeDaemonHost.post("stop/\(id)", [:])
     }
@@ -55,8 +73,11 @@ enum FakeDaemonHost {
     private static var port: String { ProcessInfo.processInfo.environment["DROI_HOST_PORT"] ?? "41999" }
 
     /// Starts a Fake Daemon with the JSON scenario serve.ts reads (sessions, turn, validDirectories, input).
-    static func start(_ scenario: [String: Any]) -> FakeDaemon {
-        let answer = post("start", ["scenario": scenario])
+    static func start(_ scenario: [String: Any], name: String? = nil, appVersion: String? = nil) -> FakeDaemon {
+        var body: [String: Any] = ["scenario": scenario]
+        if let name { body["name"] = name }
+        if let appVersion { body["appVersion"] = appVersion }
+        let answer = post("start", body)
         guard let id = answer["id"] as? String, let link = answer["link"] as? String, let url = answer["url"] as? String else {
             fatalError("the Fake Daemon did not start: \(answer)")
         }

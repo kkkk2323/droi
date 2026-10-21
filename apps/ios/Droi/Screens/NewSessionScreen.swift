@@ -86,6 +86,9 @@ private struct NewSessionForm: View {
 
     var body: some View {
         let label = pickedPath.map { path in known?.first { $0.path == path }?.label ?? workspaceLabel(path) }
+        let pickText = label.map { "\($0)?" } ?? (isScratchPick ? "Workspace: None" : "Choose a workspace")
+        let placementText =
+            inWorktree ? "New worktree · \(lifecycle.label)" + (shownBase.map { " · from \($0)" } ?? "") : "Work locally"
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: Space.lg) {
@@ -99,7 +102,7 @@ private struct NewSessionForm: View {
                         if label != nil || isScratchPick || known != nil {
                             Button { sheet = .workspace } label: {
                                 HStack(spacing: Space.xs) {
-                                    Text(label.map { "\($0)?" } ?? (isScratchPick ? "Workspace: None" : "Choose a workspace"))
+                                    Text(pickText)
                                         .font(.sans(isScratchPick ? FontSize.base : FontSize.xl, .medium))
                                         .foregroundStyle(isScratchPick ? palette.mutedForeground : palette.foreground)
                                     Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
@@ -112,18 +115,14 @@ private struct NewSessionForm: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Workspace")
+                            .accessibilityValue(pickText)
                         }
                     }
                     if canWorktree {
                         Button { sheet = .worktree } label: {
                             HStack(spacing: Space.xs) {
                                 Image(systemName: "arrow.triangle.branch").font(.system(size: 12))
-                                Text(
-                                    inWorktree
-                                        ? "New worktree · \(lifecycle.label)" + (shownBase.map { " · from \($0)" } ?? "")
-                                        : "Work locally"
-                                )
-                                .font(.sans(FontSize.sm)).lineLimit(1)
+                                Text(placementText).font(.sans(FontSize.sm)).lineLimit(1)
                                 Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
                             }
                             .foregroundStyle(palette.mutedForeground)
@@ -131,6 +130,7 @@ private struct NewSessionForm: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Worktree")
+                        .accessibilityValue(placementText)
                     }
                     if pick == .other {
                         HStack(spacing: Space.sm) {
@@ -252,6 +252,7 @@ private struct NewSessionForm: View {
                         }
                         ListRow(label: "Base branch", value: shownBase ?? "Default") { sheet = .branches }
                             .accessibilityLabel("Base branch")
+                            .accessibilityValue(shownBase ?? "Default")
                     }
                     ListSwitch(label: "Start with a worktree by default", isOn: Binding(
                         get: { prefs.worktreeByDefault },

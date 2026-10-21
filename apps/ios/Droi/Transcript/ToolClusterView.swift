@@ -95,7 +95,7 @@ struct ToolRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(name.tool): \(toolSummary(call))")
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            .accessibilityValue(spoken(reading, diff))
             if open {
                 ToolDetailView(call: call, reading: reading, diff: diff)
                     .padding(.leading, 24)
@@ -103,6 +103,14 @@ struct ToolRowView: View {
                     .accessibilityLabel("\(name.tool) details")
             }
         }
+    }
+
+    /// The icons at the row's end are hidden by its label, so the outcome goes in its value.
+    private func spoken(_ reading: ToolResultReading, _ diff: DiffResult?) -> String {
+        var parts = [reading.pending ? "Running" : reading.isError ? "Failed" : "Succeeded"]
+        if let diff { parts.append("+\(diff.added) \u{2212}\(diff.removed)") }
+        parts.append(open ? "Expanded" : "Collapsed")
+        return parts.joined(separator: ", ")
     }
 
     private func summary(name: ToolName, parts: [SummaryPart], isError: Bool) -> Text {

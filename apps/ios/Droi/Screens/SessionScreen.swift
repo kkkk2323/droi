@@ -23,9 +23,12 @@ struct SessionScreen: View {
             if !callerTrail.isEmpty {
                 ToolbarItem(placement: .principal) { SubagentTitle(connection: connection, sessionId: sessionId, trail: callerTrail) }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                GitChangesButton(connection: connection, sessionId: sessionId, workingState: model.workingState)
+            }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .topBarTrailing) {
                 SubagentsButton(connection: connection, sessionId: sessionId)
-                GitChangesButton(connection: connection, sessionId: sessionId, workingState: model.workingState)
                 ToolsButton(connection: connection, sessionId: sessionId)
             }
         }

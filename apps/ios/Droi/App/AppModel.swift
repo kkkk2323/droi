@@ -120,6 +120,7 @@ struct DroiApp: App {
         }
         #endif
         ExpoMigration.runOnce()
+        PerfLog.startIfAsked()
         let app = AppModel()
         #if DEBUG
         // `-DroiPairingLink <link>` pairs at launch, for the simulator, which has no camera to scan with.

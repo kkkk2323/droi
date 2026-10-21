@@ -113,6 +113,8 @@ final class ComputerConnection {
         // The pairing check already found the Gateway; the recovery poll does
         // the waiting when it goes away.
         config.maxConnectAttempts = 3
+        // A Daemon that answers 503 would otherwise keep the screen on "Connecting…" for two minutes.
+        config.preSpawnMaxWait = .zero
         config.maxReconnectAttempts = 3
         config.reconnectDelay = .seconds(1)
         config.maxReconnectDelay = .seconds(10)
@@ -377,9 +379,10 @@ final class ComputerConnection {
                 ListAvailableSessionsParams(limit: Double(sessionPage), includeArchived: preferences.showArchived))
             let first = page.sessions.filter { !isUnlisted($0) }.map(SessionSummary.init(listed:))
             // Keep the older pages already read; the first page replaces its own range.
+            // Without more behind it nothing is older, so an archived Session is not kept.
             let ids = Set(first.map(\.sessionId))
             let oldest = first.last?.updatedAt ?? .infinity
-            let older = listLive ? listed.filter { !ids.contains($0.sessionId) && $0.updatedAt < oldest } : []
+            let older = listLive && page.hasMore ? listed.filter { !ids.contains($0.sessionId) && $0.updatedAt < oldest } : []
             listed = first + older
             if !listLive || older.isEmpty {
                 hasOlderSessions = page.hasMore
@@ -426,6 +429,7 @@ final class ComputerConnection {
 
     func archive(_ session: SessionSummary) async throws {
         try await archiveConversation(Actions(connection: self), listed: listed, session: session)
+        if !preferences.showArchived { listed.removeAll { $0.sessionId == session.sessionId } }
         refreshSessions()
     }
 

@@ -32,6 +32,8 @@ fi
 # The Fake Daemon's /meta answers the release version, as a Gateway of this release would.
 DROID_FAKE_APP_VERSION="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/apps/native/mygo.json")"
 export DROID_FAKE_APP_VERSION FAKE_DAEMON_MJS DROI_HOST_PORT="$port"
+# xcodebuild hands TEST_RUNNER_* variables of its own environment to the test runner.
+export TEST_RUNNER_DROI_HOST_PORT="$port" TEST_RUNNER_DROI_APP_VERSION="$DROID_FAKE_APP_VERSION"
 
 xcrun simctl boot "$simulator" 2>/dev/null || true
 
@@ -55,7 +57,6 @@ xcodebuild test \
   -destination "id=$simulator" \
   -derivedDataPath "$build/dd-tests" \
   -resultBundlePath "$build/tests.xcresult" \
-  TEST_RUNNER_DROI_HOST_PORT="$port" \
   "$@"
 status=$?
 set -e

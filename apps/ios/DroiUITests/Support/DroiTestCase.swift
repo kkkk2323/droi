@@ -2,6 +2,7 @@ import XCTest
 
 /// What every UI test needs: a Fake Daemon of its own, the app launched on a
 /// phone that was never paired, and finders by accessibility label.
+@MainActor
 class DroiTestCase: XCTestCase {
     var app: XCUIApplication!
     var daemon: FakeDaemon!
@@ -28,16 +29,39 @@ class DroiTestCase: XCTestCase {
         sessions: [[String: Any]] = [DroiTestCase.session("Fix the login bug", [("user", "Why does login fail?"), ("assistant", "The SameSite cookie is dropped.")])],
         turn: [String: Any]? = nil,
         validDirectories: [String]? = nil,
-        input: [String: Any]? = nil
+        input: [String: Any]? = nil,
+        name: String? = nil,
+        appVersion: String? = nil
     ) -> FakeDaemon {
         var scenario: [String: Any] = ["sessions": sessions]
         if let turn { scenario["turn"] = turn }
         if let validDirectories { scenario["validDirectories"] = validDirectories }
         if let input { scenario["input"] = input }
-        let started = FakeDaemonHost.start(scenario)
-        daemon = started
+        let started = FakeDaemonHost.start(scenario, name: name, appVersion: appVersion)
+        if daemon == nil { daemon = started }
         addTeardownBlock { started.stop() }
         return started
+    }
+
+    /// A Session whose messages are given as the Daemon stores them (content blocks, tool calls and results).
+    static func session(_ title: String, in cwd: String = "/Users/test/project", messages: [[String: Any]], extra: [String: Any] = [:]) -> [String: Any] {
+        var session: [String: Any] = ["title": title, "cwd": cwd, "messages": messages]
+        if !extra.isEmpty { session["extra"] = extra }
+        return session
+    }
+
+    static func message(_ role: String, _ text: String) -> [String: Any] { ["role": role, "text": text] }
+
+    static func message(_ role: String, content: [[String: Any]]) -> [String: Any] { ["role": role, "content": content] }
+
+    static func toolCall(_ id: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+        message("assistant", content: [["type": "tool_use", "id": id, "name": name, "input": input]])
+    }
+
+    static func toolResult(_ id: String, _ content: Any, isError: Bool = false) -> [String: Any] {
+        var block: [String: Any] = ["type": "tool_result", "toolUseId": id, "content": content]
+        if isError { block["isError"] = true }
+        return message("tool", content: [block])
     }
 
     // MARK: Launching
@@ -74,7 +98,7 @@ class DroiTestCase: XCTestCase {
 
     /// Whatever has this accessibility label or identifier.
     func el(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any)[label]
+        app.descendants(matching: .any).matching(identifier: label).firstMatch
     }
 
     /// Whatever has a label containing the text.
@@ -95,7 +119,9 @@ class DroiTestCase: XCTestCase {
     /// Waits for the element and fails the test with its description when it does not show.
     @discardableResult
     func see(_ element: XCUIElement, timeout: TimeInterval = 10, _ message: String = "", file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
-        XCTAssertTrue(element.waitForExistence(timeout: timeout), "not on screen: \(message.isEmpty ? element.description : message)", file: file, line: line)
+        let found = element.waitForExistence(timeout: timeout)
+        if !found { dumpTree() }
+        XCTAssertTrue(found, "not on screen: \(message.isEmpty ? element.description : message)", file: file, line: line)
         return element
     }
 
@@ -122,10 +148,34 @@ class DroiTestCase: XCTestCase {
         return element
     }
 
+    /// Swipes the screen up until the element is on it (a lazy list builds its rows as they scroll in).
+    @discardableResult
+    func scrollTo(_ element: XCUIElement, swipes: Int = 12) -> XCUIElement {
+        var left = swipes
+        while !element.exists || !element.isHittable, left > 0 {
+            app.swipeUp()
+            left -= 1
+        }
+        return element
+    }
+
     /// Opens a Session from the list by its title.
     func openSession(_ title: String) {
         tap(title, timeout: 15)
         see(messageField, timeout: 15, "the composer of \(title)")
+    }
+
+    /// A long press opens a row's actions; choose one.
+    func press(_ element: XCUIElement, choose action: String) {
+        see(element).press(forDuration: 1.0)
+        see(app.buttons[action], timeout: 5, "the action \(action)").tap()
+    }
+
+    /// Drags the sheet with this navigation bar title down off the screen.
+    func dismissSheet(titled title: String) {
+        let grabber = see(app.navigationBars[title]).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        grabber.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.99)))
+        gone(app.navigationBars[title])
     }
 
     /// Goes back one screen.
@@ -138,6 +188,11 @@ class DroiTestCase: XCTestCase {
         see(messageField).tap()
         messageField.typeText(text)
         tap("Send")
+    }
+
+    /// What is on screen, in the test log, for a test that could not find its element.
+    func dumpTree() {
+        print("---- screen ----\n\(String(app.debugDescription.prefix(12000)))\n---- end ----")
     }
 
     func shot(_ name: String) {

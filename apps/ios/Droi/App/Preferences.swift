@@ -34,6 +34,7 @@ final class Preferences {
     var worktreeByDefault: Bool { didSet { defaults.set(worktreeByDefault, forKey: "droi.worktreeByDefault") } }
     var worktreeLifecycle: String { didSet { defaults.set(worktreeLifecycle, forKey: "droi.worktreeLifecycle") } }
     var toolMode: ToolMode? { didSet { defaults.set(toolMode?.rawValue, forKey: "droi.toolExecutionMode") } }
+    var versionNoticeDismissed: String? { didSet { defaults.set(versionNoticeDismissed, forKey: "droi.versionNoticeDismissed") } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -48,6 +49,7 @@ final class Preferences {
         worktreeByDefault = defaults.bool(forKey: "droi.worktreeByDefault")
         worktreeLifecycle = defaults.string(forKey: "droi.worktreeLifecycle") ?? "ephemeral"
         toolMode = defaults.string(forKey: "droi.toolExecutionMode").flatMap(ToolMode.init)
+        versionNoticeDismissed = defaults.string(forKey: "droi.versionNoticeDismissed")
     }
 
     func toggle(_ value: String, in keyPath: ReferenceWritableKeyPath<Preferences, [String]>) {
@@ -82,11 +84,6 @@ final class Preferences {
 
     func setCachedSessions(_ sessions: [SessionSummary], of computerId: String) {
         save(sessions, "droi.sessions.\(computerId)")
-    }
-
-    var versionNoticeDismissed: String? {
-        get { defaults.string(forKey: "droi.versionNoticeDismissed") }
-        set { defaults.set(newValue, forKey: "droi.versionNoticeDismissed") }
     }
 
     private func save<T: Encodable>(_ value: T, _ key: String) {

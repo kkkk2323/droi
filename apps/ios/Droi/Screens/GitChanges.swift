@@ -138,12 +138,15 @@ struct GitChangesButton: View {
                     .lineLimit(1).truncationMode(.middle)
                 if count > 0 { Counts(additions: changes.additions, deletions: changes.deletions) }
             }
-            .padding(.horizontal, Space.sm)
-            .frame(height: 30)
+            .padding(.horizontal, Space.md)
+            .frame(height: 36)
             .frame(maxWidth: 200)
-            .contentShape(Rectangle())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // The toolbar item hides its shared glass (an empty pill while there is
+        // nothing to show), so the button carries its own.
+        .glassEffect(.regular.interactive(), in: .capsule)
         .accessibilityLabel(
             count > 0
                 ? "Branch \(changes.branch), \(count) changed \(count == 1 ? "file" : "files")"
