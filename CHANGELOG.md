@@ -1,3 +1,8 @@
+## 1.62.2 - 2026-10-21
+
+### Changed
+
+- While Droid thinks, the activity row shows five bars rising and falling in a wave. Before, it was an orbit turning around a dot, which looked like the spinners of a running tool.
 ## 1.62.1 - 2026-10-21
 
 ### Changed
