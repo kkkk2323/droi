@@ -130,6 +130,12 @@ enum Keychain {
         SecItemDelete(base("pairingToken.\(computerId)") as CFDictionary)
     }
 
+    #if DEBUG
+    static func removeAll() {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
+    }
+    #endif
+
     private static func base(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }

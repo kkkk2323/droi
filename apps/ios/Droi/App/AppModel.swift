@@ -112,6 +112,13 @@ final class AppModel {
 @main
 struct DroiApp: App {
     @State private var app: AppModel = {
+        #if DEBUG
+        // `-DroiResetState` starts from a phone that was never paired, for the UI tests.
+        if UserDefaults.standard.bool(forKey: "DroiResetState"), let bundle = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundle)
+            Keychain.removeAll()
+        }
+        #endif
         ExpoMigration.runOnce()
         let app = AppModel()
         #if DEBUG
