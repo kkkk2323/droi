@@ -1,3 +1,13 @@
+## 1.62.1 - 2026-10-21
+
+### Changed
+
+- The switch between computers is now the Droi row at the top of the sidebar. It names the computer the window shows; click it to switch or to manage computers. Before, it sat in the title bar beside the sidebar button. It is in the sidebar of a narrow window too.
+
+### Fixed
+
+- Settings' list of sections is as wide as the sidebar, so opening Settings and going back no longer changes its width. Before, the two differed when Text size or zoom was not the default.
+- The spinners on screen turn together. Before, each started its turn when it appeared, so a running tool, its group and the activity row pointed different ways.
 ## 1.62.0 - 2026-10-21
 
 ### Changed
