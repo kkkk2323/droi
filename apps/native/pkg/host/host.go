@@ -70,6 +70,9 @@ type Host struct {
 	indexMu  sync.Mutex
 	index    *sessionIndex
 	indexRev uint64
+
+	// omp manages live oh-my-pi Sessions when the user picks that engine.
+	omp *OMPManager
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -121,8 +124,16 @@ func New(cfg Config) *Host {
 // Start launches the Daemon.
 func (h *Host) Start() { h.Daemon.Start() }
 
-// Stop ends the Daemon.
-func (h *Host) Stop() { h.Daemon.Stop() }
+// Stop ends the Daemon and every live OMP Session.
+func (h *Host) Stop() {
+	h.mu.Lock()
+	omp := h.omp
+	h.mu.Unlock()
+	if omp != nil {
+		omp.CloseAll()
+	}
+	h.Daemon.Stop()
+}
 
 // RestartDaemon starts a new Daemon from the droid on disk.
 func (h *Host) RestartDaemon() {

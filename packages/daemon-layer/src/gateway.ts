@@ -24,6 +24,8 @@ export interface GatewayMeta {
   name: string
   /** Stable id of the computer; survives restarts, Pairing Token resets and address changes. */
   computerId: string
+  /** True when this computer's Host can start oh-my-pi (OMP) engine sessions. */
+  ompAvailable?: boolean
 }
 
 /**
@@ -94,4 +96,95 @@ export function gatewayPairingCheckUrl(gatewayHttpUrl: string, pairingToken: str
   const url = new URL(GATEWAY_DAEMON_PATH, gatewayHttpUrl)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   return url.toString()
+}
+
+/** Live OMP sessions on the computer (Host-managed omp --mode rpc-ui). */
+export const GATEWAY_OMP_SESSIONS_PATH = '/omp/sessions'
+export const GATEWAY_OMP_SESSION_PATH = '/omp/session'
+export const GATEWAY_OMP_PROMPT_PATH = '/omp/session/prompt'
+export const GATEWAY_OMP_ABORT_PATH = '/omp/session/abort'
+export const GATEWAY_OMP_MODELS_PATH = '/omp/session/models'
+export const GATEWAY_OMP_MODEL_PATH = '/omp/session/model'
+export const GATEWAY_OMP_EVENTS_PATH = '/omp/session/events'
+
+export interface OmpSession {
+  id: string
+  title: string
+  cwd: string
+  model?: string
+  working: boolean
+  engine: 'omp' | string
+  updatedAt?: number
+}
+
+export interface OmpMessage {
+  id: string
+  role: string
+  text?: string
+  thinking?: string
+  streaming?: boolean
+  toolName?: string
+  toolId?: string
+  toolArgs?: string
+  toolOut?: string
+  isError?: boolean
+  timestamp?: number
+}
+
+export interface OmpModel {
+  id: string
+  name?: string
+  provider?: string
+}
+
+function ompUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  endpoint: string,
+  sessionId?: string,
+): string {
+  const url = new URL(endpoint, gatewayHttpUrl)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (sessionId !== undefined) url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
+  return url.toString()
+}
+
+export function gatewayOmpSessionsUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_SESSIONS_PATH)
+}
+
+export function gatewayOmpSessionUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_SESSION_PATH, sessionId)
+}
+
+export function gatewayOmpPromptUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_PROMPT_PATH)
+}
+
+export function gatewayOmpAbortUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_ABORT_PATH)
+}
+
+export function gatewayOmpModelsUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_MODELS_PATH, sessionId)
+}
+
+export function gatewayOmpModelUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_MODEL_PATH)
+}
+
+export function gatewayOmpEventsUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  return ompUrl(gatewayHttpUrl, pairingToken, GATEWAY_OMP_EVENTS_PATH, sessionId)
 }
