@@ -38,6 +38,7 @@ func TestSignInPageUntilThereIsACredential(t *testing.T) {
 	h0 := testHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
+	h.shoot("signin")
 	if h.hasText("New session") {
 		t.Fatal("the sessions show before Droi can authenticate")
 	}

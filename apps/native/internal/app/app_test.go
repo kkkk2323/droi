@@ -746,6 +746,22 @@ func TestSettingsPages(t *testing.T) {
 	}
 }
 
+func TestSettingsGeneralSwitchInEachTheme(t *testing.T) {
+	for _, theme := range []string{"light", "dark", "solarized-light"} {
+		t.Run(theme, func(t *testing.T) {
+			h := newHarness(t, sessionsScenario(), theme)
+			h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+			h.click("Settings")
+			h.click("General")
+			h.until("General heading", func() bool { return h.hasText("General") })
+			h.shoot("settings-general-" + theme)
+			prefs.ShowArchived.Set(h.cfg.Prefs, true)
+			h.settle()
+			h.shoot("settings-general-archived-" + theme)
+		})
+	}
+}
+
 func deployScenario(turn *fakedaemon.Turn) fakedaemon.Scenario {
 	return fakedaemon.Scenario{
 		Sessions: []fakedaemon.SessionSpec{{Title: "Deploy", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}},

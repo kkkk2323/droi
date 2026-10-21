@@ -53,7 +53,7 @@ test('text size changes the transcript and persists', async ({ page, fakeDaemon 
   await pairPhone(page, fakeDaemon)
   await pickSession(page, /Deploy/)
   const message = page.getByRole('article', { name: 'You' }).getByText('ship it')
-  await expect(message).toHaveCSS('font-size', '13px')
+  await expect(message).toHaveCSS('font-size', '15px')
 
   await openSettings(page)
   await page
@@ -63,14 +63,14 @@ test('text size changes the transcript and persists', async ({ page, fakeDaemon 
   // The app's own chrome keeps its size.
   await expect(page.getByRole('radio', { name: 'Largest' }).getByText('Largest')).toHaveCSS(
     'font-size',
-    '13px',
+    '15px',
   )
   // Settings opens from the list; go back there and into the Session.
   await page.goBack()
   await pickSession(page, /Deploy/)
-  await expect(message).toHaveCSS('font-size', '15.4375px')
-  await expect(page.getByRole('textbox', { name: 'Message' })).toHaveCSS('font-size', '15.4375px')
+  await expect(message).toHaveCSS('font-size', '17.8125px')
+  await expect(page.getByRole('textbox', { name: 'Message' })).toHaveCSS('font-size', '17.8125px')
 
   await relaunch(page)
-  await expect(message).toHaveCSS('font-size', '15.4375px')
+  await expect(message).toHaveCSS('font-size', '17.8125px')
 })

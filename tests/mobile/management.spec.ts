@@ -88,5 +88,5 @@ test('a Session row is a full-size touch target', async ({ page, fakeDaemon }) =
   const list = await openSessionList(page)
   const row = list.getByRole('button', { name: /Deploy/ })
   expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
-  await expect(row.getByText('Deploy')).toHaveCSS('font-size', '13px')
+  await expect(row.getByText('Deploy')).toHaveCSS('font-size', '15px')
 })

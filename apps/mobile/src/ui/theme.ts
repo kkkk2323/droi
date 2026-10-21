@@ -136,5 +136,5 @@ export const fonts = {
   monoMedium: 'JetBrainsMono_500Medium',
 } as const
 
-/** The reference's ui scale, at its default 13px chat size. */
-export const fontSize = { xs: 11, sm: 12, base: 13, lg: 15, xl: 19 } as const
+/** Phone type scale: 15px body, as before. Synara's 13px is desktop. */
+export const fontSize = { xs: 12, sm: 13, base: 15, lg: 17, xl: 20 } as const

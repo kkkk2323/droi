@@ -31,9 +31,12 @@ We decided:
   radius, fields 32px, switches 32×20, setting cards 12px with 10/12px rows, sidebar rows 28px,
   user bubbles 14px of radius, headings 20px at weight 500 with −0.3px of tracking. Sizes come from
   `pkg/kit`, so a view that already used a button or a setting row moved with it.
-- **The Phone App takes the same tokens.** `apps/mobile/src/ui/theme.ts` holds the same palettes and
-  type scale, loads JetBrains Mono through `expo-font`, and sets text in the system face with
-  `fontWeight`. The `@expo-google-fonts/geist*` packages are gone.
+- **The Phone App takes the same palettes, not the desktop type scale.**
+  `apps/mobile/src/ui/theme.ts` holds the same palettes, loads JetBrains Mono
+  through `expo-font`, and sets text in the system face with `fontWeight`.
+  Session titles and transcript stay at 15px (`fontSize.base`), next to iOS's
+  17pt body text: Synara's 13px scale is a desktop scale. The
+  `@expo-google-fonts/geist*` packages are gone.
 - **Behaviour does not change.** No view gained or lost a control, no route, setting or label moved,
   and the l10n catalogues changed only where a description named the old font.
 
@@ -59,7 +62,9 @@ We decided:
   into a self-portrait and hide the drift.
 - `Tint` is the only accent in the tokens beyond the status colours: a view that needs attention
   paints with it, and nothing else should grow a colour of its own.
-- A new face is a download: JetBrains Mono adds about 200 KB to the app (the variable TTF, one file).
+- A new face is a download: JetBrains Mono adds about 300 KB to the native
+  app (the variable TTF) and two static TTFs of about 270 KB each to the Phone
+  App.
 - The Phone App's `fonts` object is now two faces and two weights (regular and medium); a weight
   beyond those needs its own file added to `apps/mobile/assets/fonts` and registered in
   `_layout.tsx`.

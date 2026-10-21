@@ -4,7 +4,7 @@
 
 - Magpie's models have a tab of their own in the model picker, between Favorites and the brands. They share their names with the models the Daemon already offers, so the list the picker opens on, the brands' tabs and Favorites now show the Daemon's own models only. The search still reaches both lists, and a starred Magpie model stays in Favorites.
 - Droi has a new look, borrowing the design language of [Synara](https://github.com/Emanuele-web04/synara): a near-white page with white panels, a near-black one in dark mode, borders and fills as faint steps of the text colour instead of greys of their own, and one blue accent on the switches and focused fields. Controls are smaller and squarer — 28–32px buttons with an 8px radius, 32px fields, 32×20 switches, setting cards at 12px — and the sidebar's rows and the conversation's headings are tighter.
-- The interface is set in the system's own font (San Francisco on a Mac, Segoe UI on Windows) and code in JetBrains Mono, which Droi now bundles. Settings → Font still offers Geist, and both faces stay available. On the phone too.
+- The interface is set in the system's own font (San Francisco on a Mac, Segoe UI on Windows) and code in JetBrains Mono, which Droi now bundles. Users who had never picked a font move from Geist to the system face; Settings → Font still offers Geist. On the phone too.
 - Solarized Light+ keeps its palette but is drawn in the new material: the cream page, the parchment sidebar, base01 text and Solarized's blue on the switches.
 ## 1.59.0 - 2026-10-20
 

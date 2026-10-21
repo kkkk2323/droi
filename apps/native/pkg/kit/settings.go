@@ -118,7 +118,8 @@ func (k *Kit) FieldSelect(c *ui.Context, open *bool, label, value string, option
 }
 
 // Toggle is the settings' Switch, as the reference draws one: 32x20, a
-// hairline while off and the accent tint while on.
+// hairline while off and the accent tint while on. The knob stays white in
+// every theme so Dark still has contrast against the off track.
 func (k *Kit) Toggle(c *ui.Context, label string, on, disabled bool) bool {
 	t := k.T
 	b := ui.ButtonBase(c).Role(ui.RoleSwitch).Checked(on).Label(label).Size(k.Px(32), k.Px(20)).Radius(k.Px(10)).Disabled(disabled).Cursor(ui.CursorPointer)
@@ -129,7 +130,7 @@ func (k *Kit) Toggle(c *ui.Context, label string, on, disabled bool) bool {
 	b.Background(bg).Border(1, border)
 	x := b.Animate("on", b2f(on), 150*time.Millisecond)
 	b.Children(func() {
-		ui.Box(c).Size(k.Px(16), k.Px(16)).Radius(k.Px(8)).Background(t.PrimaryForeground).Absolute().Top(k.Px(1)).Left(k.Px(1)+x*k.Px(13)).
+		ui.Box(c).Size(k.Px(16), k.Px(16)).Radius(k.Px(8)).Background(ui.RGBA(255, 255, 255, 1)).Absolute().Top(k.Px(1)).Left(k.Px(1)+x*k.Px(13)).
 			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.15))
 	})
 	return b.Clicked()
