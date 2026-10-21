@@ -6,6 +6,11 @@
 - Droi now follows [Synara](https://github.com/Emanuele-web04/synara)'s workbench layout: a grey navigation rail beside a white reading surface, charcoal surfaces in Dark, a compact sidebar with clearer Workspace and Session hierarchy, and an inset composer. New session groups its question and input in the centre. Settings uses flat groups with subtle separators instead of filled cards. The Phone App carries the same surface hierarchy, grouped lists and inset composer while keeping its 15px body text and touch targets.
 - The interface is set in the system's own font (San Francisco on a Mac, Segoe UI on Windows) and code in JetBrains Mono, which Droi now bundles. Users who had never picked a font move from Geist to the system face; Settings → Font still offers Geist. On the phone too.
 - Solarized Light+ keeps its palette but is drawn in the new material: the cream page, the parchment sidebar, base01 text and Solarized's blue on the switches.
+
+### Fixed
+
+- A picture sent to a Magpie model that takes images now reaches the model. Before, droid dropped it with "this model does not support image inputs", because the Runtime Overlay left `noImageSupport` off and droid reads a custom model without that field as one that cannot take images.
+
 ## 1.59.0 - 2026-10-20
 
 ### Added
