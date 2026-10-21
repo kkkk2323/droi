@@ -665,11 +665,13 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	if strings.TrimSpace(text) != "" || len(images) > 0 {
 		a.pending.Set(id, drafts.PendingPrompt{Text: text, Images: images})
 	}
-	s.mu.Lock()
-	s.creating = false
-	s.mu.Unlock()
 	go a.refreshList()
+	// The page stays creating until it is left: a frame built between would
+	// see no draft and open another.
 	a.cfg.Update(func() {
+		s.mu.Lock()
+		s.creating = false
+		s.mu.Unlock()
 		s.text, s.images, s.pasted, s.bitmaps = "", nil, nil, nil
 		a.Go(Route{Name: "session", SessionID: id})
 	})
