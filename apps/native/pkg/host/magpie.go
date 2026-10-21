@@ -256,6 +256,9 @@ func ReadMagpieModels(base string) ([]MagpieModel, error) {
 // MagpieCustomModels are the catalog's models as droid's customModels entries.
 // The ids are Droi's own and do not move when a display name or the order of
 // the list does, so a Session keeps the model it was started with.
+// noImageSupport is always written: droid treats a custom model without the
+// field as one that cannot take images, so a Magpie model whose modalities
+// include them has to say false.
 func MagpieCustomModels(c MagpieCatalog) []any {
 	models := append([]MagpieModel(nil), c.Models...)
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
@@ -274,9 +277,7 @@ func MagpieCustomModels(c MagpieCatalog) []any {
 			"apiKey":          magpieKey,
 			"provider":        MagpieProvider,
 			"maxOutputTokens": magpieOutput(m),
-		}
-		if !m.Images() {
-			entry["noImageSupport"] = true
+			"noImageSupport":  !m.Images(),
 		}
 		out = append(out, entry)
 	}
