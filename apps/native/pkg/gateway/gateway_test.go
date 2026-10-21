@@ -423,6 +423,7 @@ func TestMetaDescribesTheShellWithoutSecrets(t *testing.T) {
 		"remoteAccess": false,
 		"name":         "Studio Mac",
 		"computerId":   "c0ffee00-0000-4000-8000-000000000000",
+		"ompAvailable": false,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatal(string(body))

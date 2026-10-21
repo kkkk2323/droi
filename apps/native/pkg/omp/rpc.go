@@ -416,14 +416,17 @@ func (s *Session) Prompt(ctx context.Context, message string, images []Image) (s
 	if len(images) > 0 {
 		req["images"] = images
 	}
-	id, raw, err := s.call(ctx, req)
-	if err != nil {
-		return id, err
-	}
-	_ = raw
 	s.mu.Lock()
 	s.working = true
 	s.mu.Unlock()
+	id, raw, err := s.call(ctx, req)
+	if err != nil {
+		s.mu.Lock()
+		s.working = false
+		s.mu.Unlock()
+		return id, err
+	}
+	_ = raw
 	return id, nil
 }
 
