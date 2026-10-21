@@ -216,6 +216,22 @@ func TestMetaReportsOMPAvailable(t *testing.T) {
 	}
 }
 
+func TestMetaReportsOMPUnavailable(t *testing.T) {
+	g := startGateway(t, withOMP(&fakeOMP{available: false}))
+	resp, err := http.Get(g.URL() + MetaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"ompAvailable":false`) {
+		t.Fatalf("%s", b)
+	}
+}
+
 func TestOMPEventsStream(t *testing.T) {
 	f := &fakeOMP{
 		available: true,

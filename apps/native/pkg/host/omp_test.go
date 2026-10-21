@@ -110,6 +110,9 @@ func TestOMPManagerCreateListsAndCloses(t *testing.T) {
 	if m.Get(h.ID) != nil {
 		t.Fatal("still live")
 	}
+	if got := m.LiveSummaries(); len(got) != 0 {
+		t.Fatalf("live after close: %+v", got)
+	}
 	mu.Lock()
 	n := started
 	mu.Unlock()

@@ -210,13 +210,15 @@ func (m *OMPManager) CloseAll() {
 	}
 }
 
-// LiveSummaries are the OMP Sessions this Host started in this run.
+// LiveSummaries are the OMP Sessions still running on this Host.
 func (m *OMPManager) LiveSummaries() []sessions.Summary {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]sessions.Summary, 0, len(m.index))
-	for _, s := range m.index {
-		out = append(out, s)
+	out := make([]sessions.Summary, 0, len(m.live))
+	for id := range m.live {
+		if s, ok := m.index[id]; ok {
+			out = append(out, s)
+		}
 	}
 	return out
 }

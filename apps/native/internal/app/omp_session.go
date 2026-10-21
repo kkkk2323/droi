@@ -295,13 +295,9 @@ func (v *ompView) uiCard(c *ui.Context, k *kit.Kit, p omp.UIRequest) {
 				}
 			})
 		case "select":
-			var opts []struct {
-				Value string `json:"value"`
-				Label string `json:"label"`
-			}
-			_ = json.Unmarshal(raw["options"], &opts)
+			opts := parseSelectOptions(raw["options"])
 			if len(opts) == 0 {
-				_ = json.Unmarshal(raw["choices"], &opts)
+				opts = parseSelectOptions(raw["choices"])
 			}
 			ui.Column(c).Gap(k.Px(4)).Children(func() {
 				for _, o := range opts {
@@ -338,6 +334,45 @@ func rawStringMsg(r json.RawMessage) (string, bool) {
 		return s, true
 	}
 	return "", false
+}
+
+type selectOption struct {
+	Value string
+	Label string
+}
+
+// parseSelectOptions reads OMP select choices: a string array (tool
+// approval) or {value,label} objects.
+func parseSelectOptions(raw json.RawMessage) []selectOption {
+	if len(raw) == 0 {
+		return nil
+	}
+	var names []string
+	if json.Unmarshal(raw, &names) == nil && len(names) > 0 {
+		out := make([]selectOption, 0, len(names))
+		for _, name := range names {
+			out = append(out, selectOption{Value: name, Label: name})
+		}
+		return out
+	}
+	var objs []struct {
+		Value string `json:"value"`
+		Label string `json:"label"`
+	}
+	if json.Unmarshal(raw, &objs) != nil {
+		return nil
+	}
+	out := make([]selectOption, 0, len(objs))
+	for _, o := range objs {
+		if o.Value == "" && o.Label == "" {
+			continue
+		}
+		if o.Value == "" {
+			o.Value = o.Label
+		}
+		out = append(out, selectOption{Value: o.Value, Label: o.Label})
+	}
+	return out
 }
 
 func (v *ompView) setModel(id string) {

@@ -124,7 +124,7 @@ type Meta struct {
 	// ComputerID survives restarts, Pairing Token resets and address changes.
 	ComputerID string `json:"computerId"`
 	// OMPAvailable reports that this computer can start OMP engine sessions.
-	OMPAvailable bool `json:"ompAvailable,omitempty"`
+	OMPAvailable bool `json:"ompAvailable"`
 }
 
 // Gateway keeps one listener on loopback and, only while Remote Access is
