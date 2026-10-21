@@ -1,3 +1,17 @@
+## 1.61.0 - 2026-10-21
+
+### Added
+
+- Settings → General → Density. Comfortable, the default, brings back 1.59's sizes: 14px text, a 15px conversation and 32px rows and buttons. Compact keeps 1.60's smaller ones, to fit more on the screen. Text size still scales either.
+
+### Changed
+
+- Text, borders and fields are easier to read again. Text is darker, borders and the edges of fields, the composer, the todo bar and menus are about as strong as in 1.59, and inline code has its colour back, in Light, Dark and Solarized Light+. On the phone too.
+
+### Fixed
+
+- Holding ⌘ no longer moves the Sessions in the sidebar: the ⌘1…⌘9 numbers take the place of the times without making a row taller.
+
 ## 1.60.0 - 2026-10-21
 
 ### Changed
