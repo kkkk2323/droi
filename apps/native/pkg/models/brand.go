@@ -120,6 +120,13 @@ func BrandOf(modelID, provider string) Brand {
 // it); the rest is "<provider>-<model>-<hash>".
 const magpieIDPrefix = "custom:magpie-"
 
+// IsMagpie reports that a model id names a Magpie gateway model, which the
+// picker keeps in a tab of its own: the gateway offers models of the same
+// names as the Daemon's own, and beside them the list reads as one crowd.
+func IsMagpie(modelID string) bool {
+	return strings.HasPrefix(strings.ToLower(modelID), magpieIDPrefix)
+}
+
 // gatewayBrand reads a gateway provider's brand; its name may hold dashes, so
 // the longest known one that the name starts with wins.
 func gatewayBrand(rest string) (Brand, bool) {

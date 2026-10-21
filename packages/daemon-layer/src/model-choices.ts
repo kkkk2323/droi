@@ -1,9 +1,12 @@
 // The model picker's rows and the settings' labels, for every Client.
-import { BRAND_LABELS, BRAND_ORDER, brandOf, type Brand } from './model-brand'
+import { BRAND_LABELS, BRAND_ORDER, brandOf, isMagpie, type Brand } from './model-brand'
 import type { ModelChoice } from './use-session-settings'
 
-/** Which rows the picker lists: everything, the starred ones, or one brand. */
-export type PickerFilter = 'all' | 'favorites' | Brand
+/**
+ * Which rows the picker lists: everything of the Daemon's own, the starred
+ * ones, a Magpie gateway's, or one brand.
+ */
+export type PickerFilter = 'all' | 'favorites' | 'magpie' | Brand
 
 export interface PickerRow extends ModelChoice {
   brand: Brand
@@ -11,7 +14,10 @@ export interface PickerRow extends ModelChoice {
 
 /**
  * Rows in display order. A non-empty query searches every model regardless of
- * the filter; favorites keep the order they were starred in.
+ * the filter; favorites keep the order they were starred in. Everything but the
+ * Magpie tab leaves the gateway's models out: the Daemon's own list is one
+ * crowd, Magpie's another, and a name both serve would read as two models of
+ * one kind.
  */
 export function visibleModels(
   models: ModelChoice[],
@@ -27,18 +33,30 @@ export function visibleModels(
       return tokens.every((t) => haystack.includes(t))
     })
   }
-  if (filter === 'all') return rows
+  if (filter === 'all') return rows.filter((row) => !isMagpie(row.id))
   if (filter === 'favorites') {
     return rows
       .filter((row) => favorites.includes(row.id))
       .sort((a, b) => favorites.indexOf(a.id) - favorites.indexOf(b.id))
   }
-  return rows.filter((row) => row.brand === filter)
+  if (filter === 'magpie') return rows.filter((row) => isMagpie(row.id))
+  return rows.filter((row) => !isMagpie(row.id) && row.brand === filter)
 }
 
-/** Brands present in the list, in rail order. */
+/** Whether the list holds a Magpie gateway's models, so the picker offers their tab. */
+export function hasMagpie(models: ModelChoice[]): boolean {
+  return models.some((m) => isMagpie(m.id))
+}
+
+/**
+ * Brands present in the Daemon's own list, in rail order. Magpie's models have
+ * their own tab rather than each brand's: their names repeat the Daemon's, and
+ * a brand tab holding both is the crowd the tab is there to avoid.
+ */
 export function brandsOf(models: ModelChoice[]): Brand[] {
-  const present = new Set(models.map((m) => brandOf(m.id, m.provider)))
+  const present = new Set(
+    models.filter((m) => !isMagpie(m.id)).map((m) => brandOf(m.id, m.provider)),
+  )
   return BRAND_ORDER.filter((b) => present.has(b))
 }
 

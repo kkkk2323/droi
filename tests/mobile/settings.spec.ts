@@ -100,3 +100,73 @@ test('models show their brand’s mark, and Auto Model says Router', async ({ pa
   await expect(rows.filter({ hasText: 'GPT-5' }).getByTestId('brand-openai')).toBeVisible()
   await expect(rows.filter({ hasText: 'Auto Model' })).toContainText('Router')
 })
+
+// Magpie offers models under the names the Daemon's own have; the picker
+// keeps them in a tab of their own rather than beside those copies.
+const magpieModels = [
+  {
+    id: 'auto',
+    displayName: 'Auto Model',
+    shortDisplayName: 'Auto Model',
+    modelProvider: 'factory',
+    supportedReasoningEfforts: ['none'],
+    defaultReasoningEffort: 'none',
+    isCustom: false,
+    tokenMultiplier: 1,
+    kind: 'router',
+  },
+  {
+    id: 'gpt-6-1-sol',
+    displayName: 'GPT-6.1-Sol',
+    shortDisplayName: 'GPT-6.1-Sol',
+    modelProvider: 'openai',
+    supportedReasoningEfforts: ['low', 'high'],
+    defaultReasoningEffort: 'high',
+    isCustom: false,
+    tokenMultiplier: 1.6,
+  },
+  {
+    id: 'custom:magpie-codex-gpt-6-1-sol-0a1b2c',
+    displayName: 'Magpie · GPT-6.1-Sol',
+    shortDisplayName: 'Magpie · GPT-6.1-Sol',
+    modelProvider: 'generic-chat-completion-api',
+    supportedReasoningEfforts: ['low', 'high'],
+    defaultReasoningEffort: 'high',
+    isCustom: true,
+    tokenMultiplier: 1,
+  },
+]
+
+test.describe('Magpie’s models', () => {
+  test.use({ scenario: { sessions: [first], models: magpieModels } })
+
+  test('have a tab of their own, out of the brands and the full list', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    await pickSession(page, /First session/)
+    await page.getByRole('button', { name: 'Model', exact: true }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a model' })
+    const models = picker.getByRole('list', { name: 'Models' })
+    const rail = picker.getByRole('toolbar', { name: 'Filter models' })
+
+    await expect(rail.getByRole('button', { name: 'Magpie' })).toBeVisible()
+    await expect(models.getByRole('radio')).toHaveText([/Auto Model/, /GPT-6\.1-Sol/])
+
+    await rail.getByRole('button', { name: 'Magpie' }).click()
+    await expect(models.getByRole('radio')).toHaveText([/Magpie · GPT-6\.1-Sol/])
+
+    // A brand's tab holds the Daemon's model only.
+    await rail.getByRole('button', { name: 'OpenAI' }).click()
+    await expect(models.getByRole('radio')).toHaveText([/GPT-6\.1-Sol/])
+
+    // The search still reaches the gateway's list.
+    await picker.getByRole('searchbox', { name: 'Search models' }).fill('gpt')
+    await expect(models.getByRole('radio')).toHaveText([/GPT-6\.1-Sol/, /Magpie · GPT-6\.1-Sol/])
+    await models.getByRole('radio', { name: /Magpie · GPT-6\.1-Sol/ }).click()
+    await expect
+      .poll(() => lastSettings(fakeDaemon))
+      .toMatchObject({ modelId: 'custom:magpie-codex-gpt-6-1-sol-0a1b2c' })
+  })
+})

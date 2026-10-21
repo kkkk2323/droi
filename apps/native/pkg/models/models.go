@@ -68,13 +68,17 @@ func DecodeChoices(data []byte) ([]Choice, error) {
 	return out, nil
 }
 
-// PickerFilter says which rows the picker lists: "all", "favorites", or one
-// Brand.
+// PickerFilter says which rows the picker lists: "all", "favorites", the
+// Magpie gateway's models, or one Brand.
 type PickerFilter string
 
 const (
 	FilterAll       PickerFilter = "all"
 	FilterFavorites PickerFilter = "favorites"
+	// FilterMagpie lists the models a Magpie gateway offers, and no others:
+	// the gateway serves models that share a name with the Daemon's own, so
+	// they get a tab rather than sit among them.
+	FilterMagpie PickerFilter = "magpie"
 )
 
 // Row is a picker row.
@@ -85,11 +89,22 @@ type Row struct {
 
 // VisibleModels are the rows in display order. A non-empty query searches
 // every model regardless of the filter; favorites keep the order they were
-// starred in.
+// starred in. Everything but the Magpie tab leaves the gateway's models out:
+// they share their names with the Daemon's, and beside them the list reads as
+// one crowd.
 func VisibleModels(models []Choice, favorites []string, filter PickerFilter, query string) []Row {
 	rows := make([]Row, len(models))
 	for i, m := range models {
 		rows[i] = Row{Choice: m, Brand: BrandOf(m.ID, m.Provider)}
+	}
+	inScope := func(row Row) bool {
+		switch filter {
+		case FilterMagpie:
+			return IsMagpie(row.ID)
+		case FilterFavorites:
+			return slices.Contains(favorites, row.ID)
+		}
+		return !IsMagpie(row.ID)
 	}
 	var out []Row
 	if tokens := strings.Fields(strings.ToLower(query)); len(tokens) > 0 {
@@ -103,10 +118,15 @@ func VisibleModels(models []Choice, favorites []string, filter PickerFilter, que
 	}
 	switch filter {
 	case FilterAll:
-		return rows
+		for _, row := range rows {
+			if inScope(row) {
+				out = append(out, row)
+			}
+		}
+		return out
 	case FilterFavorites:
 		for _, row := range rows {
-			if slices.Contains(favorites, row.ID) {
+			if inScope(row) {
 				out = append(out, row)
 			}
 		}
@@ -116,18 +136,32 @@ func VisibleModels(models []Choice, favorites []string, filter PickerFilter, que
 		return out
 	}
 	for _, row := range rows {
-		if string(row.Brand) == string(filter) {
+		if !inScope(row) {
+			continue
+		}
+		if filter == FilterMagpie || string(row.Brand) == string(filter) {
 			out = append(out, row)
 		}
 	}
 	return out
 }
 
-// BrandsOf are the brands present in the list, in rail order.
+// HasMagpie reports that the list holds a Magpie gateway's models, so that
+// the picker offers their tab.
+func HasMagpie(models []Choice) bool {
+	return slices.ContainsFunc(models, func(m Choice) bool { return IsMagpie(m.ID) })
+}
+
+// BrandsOf are the brands present in the Daemon's own list, in rail order.
+// Magpie's models have their own tab rather than each brand's: their names
+// repeat the Daemon's, and a brand tab holding both is the crowd the tab is
+// there to avoid.
 func BrandsOf(models []Choice) []Brand {
 	present := map[Brand]bool{}
 	for _, m := range models {
-		present[BrandOf(m.ID, m.Provider)] = true
+		if !IsMagpie(m.ID) {
+			present[BrandOf(m.ID, m.Provider)] = true
+		}
 	}
 	var out []Brand
 	for _, b := range BrandOrder {
