@@ -1,0 +1,112 @@
+name: Droi
+options:
+  bundleIdPrefix: com.kkkk2323
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ${APPLE_TEAM_ID}
+    CODE_SIGN_STYLE: Automatic
+packages:
+  DroiKit:
+    path: DroiKit
+  DroidSDK:
+    path: /Users/clive/dev/droid-sdk-swift
+  Markdown:
+    url: https://github.com/swiftlang/swift-markdown
+    from: "0.6.0"
+  SwiftMath:
+    url: https://github.com/mgriebling/SwiftMath
+    from: "1.7.0"
+targets:
+  Droi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Droi
+    dependencies:
+      - package: DroiKit
+      - package: DroidSDK
+        product: Droid
+      - package: Markdown
+      - package: SwiftMath
+    info:
+      path: Droi/Info.plist
+      properties:
+        CFBundleDisplayName: Droi
+        UIAppFonts: [Geist-Variable.ttf, GeistMono-Variable.ttf]
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSLocalNetworkUsageDescription: Droi connects to the Droi app on your computers over your local network.
+        NSCameraUsageDescription: Droi uses the camera to scan the pairing code shown on your computer, and to take photos you attach to a message.
+        NSPhotoLibraryUsageDescription: Droi attaches the photos you pick to your message.
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.kkkk2323.droi
+            CFBundleURLSchemes: [droi-phone]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+    postBuildScripts:
+      # Plain http is otherwise refused for names other than IPs, .local and
+      # ts.net. DROI_HTTP_DOMAINS (comma separated, e.g. "myhome") adds the
+      # suffixes of a private DNS such as Surge's; scripts/install-phone.sh
+      # reads it from the git-ignored apps/ios/.env.local, so a personal
+      # domain stays out of the repo. Runs before signing.
+      - name: Version and plain http to DROI_HTTP_DOMAINS
+        basedOnDependencyAnalysis: false
+        # Declared so the script runs after Xcode writes the Info.plist.
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        script: |
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          # One release version for both apps: apps/native/mygo.json's.
+          version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$SRCROOT/../native/mygo.json" | head -1)
+          [ -n "$version" ] && /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist"
+          IFS=',' read -ra domains <<< "${DROI_HTTP_DOMAINS:-}"
+          for domain in "${domains[@]}"; do
+            domain=$(echo "$domain" | sed 's/^[ .]*//; s/ *$//')
+            [ -z "$domain" ] && continue
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSExceptionDomains:$domain dict" "$plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSExceptionDomains:$domain:NSIncludesSubdomains bool true" "$plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSExceptionDomains:$domain:NSExceptionAllowsInsecureHTTPLoads bool true" "$plist" 2>/dev/null || true
+          done
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kkkk2323.droi
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+        # The post-build script reads apps/native/mygo.json and edits the built Info.plist.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+  DroiUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: DroiUITests
+    dependencies:
+      - target: Droi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kkkk2323.droi.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+schemes:
+  Droi:
+    build:
+      targets:
+        Droi: all
+    test:
+      targets:
+        - DroiUITests

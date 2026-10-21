@@ -1,0 +1,4 @@
+Droi.xcodeproj/
+Droi/Info.plist
+build/
+.env.local
