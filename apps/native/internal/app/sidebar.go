@@ -315,7 +315,7 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 // reference's list rows.
 func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trailing func()) ui.Element {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(8)).Justify(ui.Start).Cursor(ui.CursorPointer)
+	b := ui.ButtonBase(c).Label(label).Height(k.Px(k.Dense(28, 32))).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(8)).Justify(ui.Start).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
 	switch {
 	case selected:
@@ -325,7 +325,7 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 	}
 	b.Children(func() {
 		k.IconStroke(c, icon, 1.6, 14, t.SidebarForeground)
-		k.Text(c, label, 12, 18).TextColor(t.SidebarForeground)
+		k.Text(c, label, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.SidebarForeground)
 		if trailing != nil {
 			trailing()
 		}
@@ -336,7 +336,7 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 // sortMenu is the list-filter button and its menu of orders.
 func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Label(L("Sort")).Tooltip(L("Sort")).Size(k.Px(28), k.Px(28)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+	b := ui.ButtonBase(c).Label(L("Sort")).Tooltip(L("Sort")).Size(k.Px(k.Dense(28, 32)), k.Px(k.Dense(28, 32))).Radius(k.Px(8)).Cursor(ui.CursorPointer)
 	color := t.MutedForeground
 	if b.Hovered() {
 		b.Background(t.SidebarAccent)
@@ -533,7 +533,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 			})
 			wrap.Opacity(1)
 		default:
-			h := ui.Row(c).Role(ui.RoleHeading).Height(k.Px(28)).Radius(k.Px(8)).ContextMenu(menu)
+			h := ui.Row(c).Role(ui.RoleHeading).Height(k.Px(k.Dense(28, 32))).Radius(k.Px(8)).ContextMenu(menu)
 			hovered := h.Hovered()
 			if hovered {
 				h.Background(t.SidebarAccent)
@@ -557,7 +557,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 							k.IconStroke(c, folder, 1.75, 14, t.MutedForeground)
 						}
 					})
-					k.Text(c, g.Label, 11, 17).FontWeight(500).TextColor(t.SidebarMutedForeground).SingleLine().Shrink(1)
+					k.Text(c, g.Label, k.Dense(11, 12), k.Dense(17, 18)).FontWeight(500).TextColor(t.SidebarMutedForeground).SingleLine().Shrink(1)
 					if !open {
 						if n, ok := activity.CountBusy(g.Sessions, busy, a.sidebar.subagentsRunning); ok {
 							a.busyMark(c, n)
@@ -631,7 +631,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			if elsewhere {
 				titleColor = t.MutedForeground
 			}
-			title := k.Text(c, s.Title, 12, 18).TextColor(titleColor).SingleLine().Grow(1).Shrink(1)
+			title := k.Text(c, s.Title, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(titleColor).SingleLine().Grow(1).Shrink(1)
 			if elsewhere {
 				a.elsewhereMark(c, acc)
 			}
@@ -686,14 +686,14 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			case s.MessagesCount != nil:
 				ui.Row(c).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
 					k.Icon(c, "message-square", 12, t.MutedForeground)
-					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), 10, 15).TextColor(t.SidebarMutedForeground).SingleLine()
+					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).SingleLine()
 				})
 			}
 			ui.Spacer(c)
 			if n <= 9 && c.Modifiers() == ui.Cmd {
-				k.Text(c, shortcut(sessionCommand(n)), 11, 15).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
+				k.Text(c, shortcut(sessionCommand(n)), 11, k.Dense(15, 16.5)).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
 			} else {
-				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), 10, 15).TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
+				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
 			}
 		})
 	})

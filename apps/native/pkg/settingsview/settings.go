@@ -77,7 +77,7 @@ func (s *Settings) SaveDefaults(dv defaults.View, p defaults.Patch) {
 }
 
 // General is the General section's Appearance group: the language, theme,
-// font and text size, kept in Env.Prefs. apply is called once one changed,
+// font, text size and density, kept in Env.Prefs. apply is called once one changed,
 // to draw with it.
 func (s *Settings) General(c *ui.Context, apply func()) {
 	k, store := s.env.Kit(), s.env.Prefs
@@ -97,6 +97,7 @@ func (s *Settings) General(c *ui.Context, apply func()) {
 			}
 		}
 	}
+	densities := []kit.Option{{Value: string(theme.DensityComfortable), Label: l10n.L("Comfortable")}, {Value: string(theme.DensityCompact), Label: l10n.L("Compact")}}
 	languages := []kit.Option{{Value: "", Label: l10n.L("System")}, {Value: string(l10n.English), Label: "English"}, {Value: string(l10n.Chinese), Label: "简体中文"}}
 	k.SettingGroup(c, l10n.L("Appearance"), "",
 		func() {
@@ -110,6 +111,9 @@ func (s *Settings) General(c *ui.Context, apply func()) {
 		},
 		func() {
 			k.SettingRow(c, l10n.L("Text size"), l10n.L("Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."), pick(prefs.TextSize, l10n.N("Text size"), sizes), nil)
+		},
+		func() {
+			k.SettingRow(c, l10n.L("Density"), l10n.L("Comfortable has larger text and controls. Compact fits more on the screen."), pick(prefs.Density, l10n.N("Density"), densities), nil)
 		},
 	)
 }

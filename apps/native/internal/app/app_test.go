@@ -600,7 +600,7 @@ func TestTheComposerGrowsWithItsText(t *testing.T) {
 	h.click("Message")
 	h.tt.Type("one\ntwo\nthree")
 	h.frame()
-	line := h.a.kit.Px(22)
+	line := h.a.kit.Px(h.a.kit.Dense(22, 24))
 	if got := height() - two; got < line-1 || got > line+1 {
 		t.Fatalf("three lines grew the composer by %.1f, want %.1f", got, line)
 	}
@@ -608,6 +608,30 @@ func TestTheComposerGrowsWithItsText(t *testing.T) {
 	h.frame()
 	if got := height() - two; got < 6*line-1 || got > 6*line+1 {
 		t.Fatalf("23 lines grew the composer by %.1f, want %.1f", got, 6*line)
+	}
+}
+
+// Settings → Density picks the sizes: Comfortable, the default, keeps the
+// roomier rows Droi had before ADR 0025, and Compact the smaller ones.
+func TestDensityPicksTheSidebarRowHeight(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.settle()
+	height := func() float32 {
+		r, ok := h.tt.Find("New session")
+		if !ok {
+			t.Fatal("no New session row")
+		}
+		return r.H
+	}
+	if got, want := height(), h.a.kit.Px(32); got != want {
+		t.Fatalf("Comfortable row is %.1f high, want %.1f", got, want)
+	}
+	prefs.Density.Set(h.a.prefs, string(theme.DensityCompact))
+	h.a.applyPrefs()
+	h.settle()
+	if got, want := height(), h.a.kit.Px(28); got != want {
+		t.Fatalf("Compact row is %.1f high, want %.1f", got, want)
 	}
 }
 

@@ -14,7 +14,8 @@ The interface should feel like a precision instrument -- quiet confidence rather
 - **Theme**: Light mode is the primary experience (a near-white page like Synara's). Dark mode is a first-class toggle, stored per browser. Solarized Light+ is kept, drawn in the same material.
 - **Typography**: the system's interface font (San Francisco, Segoe UI) for UI, JetBrains Mono for code. Geist stays as Settings → Font's choice. No decorative fonts.
 - **Color**: neutral palette with one blue tint (`#0169cc` light, `#339cff` dark) for the controls that show state. Color is reserved for status, actions, and that tint -- never for decoration.
-- **Geometry**: 28–32px controls, 8–12px radii, 13px base text with 20px/500 headings and −0.3px tracking.
+- **Geometry**: Settings → Density picks the sizes (ADR 0026): Comfortable, the default, has 32px controls and 14px base text; Compact has 28px controls and 13px text. 8–12px radii, 20px/500 headings with −0.3px tracking.
+- **Contrast**: text `#171717`, muted text `#636363`, hairlines at 12% ink and inputs at 15% (ADR 0026). A white panel on the white page must still read as its own surface.
 - **Motion**: Subtle and purposeful (framer-motion). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.
 
 ### Design Principles

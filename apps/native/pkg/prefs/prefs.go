@@ -276,6 +276,7 @@ var (
 	Theme    = String{Key: "droi.theme", Fallback: "light"}
 	Font     = String{Key: "droi.font", Fallback: "system"}
 	TextSize = String{Key: "droi.textSize", Fallback: "default"}
+	Density  = String{Key: "droi.density", Fallback: "comfortable"}
 	// Zoom is ⌘= and ⌘-, kept as Chromium keeps a page's zoom.
 	Zoom           = Number{Key: "droi.zoom", Fallback: 1}
 	SidebarVisible = Bool{Key: "droi.sidebar", Fallback: true}

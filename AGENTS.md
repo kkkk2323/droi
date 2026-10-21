@@ -99,7 +99,9 @@ installed types before using an Expo module, and add Expo packages with
   imported as `@droi/daemon-layer/<module>` and uses relative imports inside itself
 - The system's interface font for UI and JetBrains Mono for code (vendored as TTF in
   `apps/native/assets/fonts`; Geist stays for Settings → Font, ADR 0025). Sizes, radii and
-  control heights come from `pkg/theme` and `pkg/kit`: use them, do not hard-code a colour.
+  control heights come from `pkg/theme` and `pkg/kit`: use them, do not hard-code a colour. A size
+  that differs between Settings → Density's Compact and Comfortable is `k.Dense(compact, comfortable)`
+  (ADR 0026).
 - File naming: kebab-case for components, camelCase for utilities
 - Git: Conventional Commits
 

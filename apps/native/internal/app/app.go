@@ -284,6 +284,7 @@ func New(cfg Config) *App {
 
 func (a *App) applyPrefs() {
 	a.kit = kit.New(theme.Parse(prefs.Theme.Get(a.prefs)), theme.FontChoice(prefs.Font.Get(a.prefs)), theme.TextSize(prefs.TextSize.Get(a.prefs)), prefs.Zoom.Get(a.prefs))
+	a.kit.Compact = theme.Density(prefs.Density.Get(a.prefs)) == theme.DensityCompact
 	if l10n.Set(prefs.Language.Get(a.prefs), a.locale) && a.languageChanged != nil {
 		a.languageChanged()
 	}

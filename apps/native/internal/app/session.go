@@ -199,7 +199,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 			hover := group.Hovered()
 			group.Children(func() {
 				k.IconStroke(c, "message-square", 1.5, 14, t.MutedForeground)
-				k.Text(c, title, 12, 18).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
+				k.Text(c, title, k.Dense(12, 14), k.Dense(18, 20)).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
 				v.sessionActions(c, sel, title, workspace, hover)
 			})
 		})

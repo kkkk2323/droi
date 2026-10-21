@@ -7,7 +7,7 @@ const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')]
 test.use({ scenario: { sessions: [deploy] } })
 
 // The theme's foreground: #262626 in light, #f5f5f5 in dark.
-const LIGHT_TEXT = 'rgb(38, 38, 38)'
+const LIGHT_TEXT = 'rgb(23, 23, 23)'
 const DARK_TEXT = 'rgb(245, 245, 245)'
 
 async function openSettings(page: Page) {

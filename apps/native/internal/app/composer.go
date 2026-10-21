@@ -295,7 +295,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if hasPick {
 					left = k.Px(8)
 				}
-				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 6, left / k.Px(1)}, Size: 13, Line: 22,
+				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 6, left / k.Px(1)}, Size: k.Dense(13, 14), Line: k.Dense(22, 24),
 					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!ready)
 				if !v.focused {
 					in.AutoFocus()

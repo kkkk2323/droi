@@ -66,34 +66,34 @@ type Tokens struct {
 var light = Tokens{
 	Name:                   Light,
 	Background:             ui.Hex("#ffffff"),
-	Foreground:             ui.Hex("#262626"),
+	Foreground:             ui.Hex("#171717"),
 	Card:                   ui.Hex("#ffffff"),
-	CardForeground:         ui.Hex("#262626"),
+	CardForeground:         ui.Hex("#171717"),
 	Popover:                ui.Hex("#ffffff"),
-	PopoverForeground:      ui.Hex("#262626"),
+	PopoverForeground:      ui.Hex("#171717"),
 	Primary:                ui.Hex("#171717"),
 	PrimaryForeground:      ui.Hex("#ffffff"),
 	Secondary:              ui.RGBA(0, 0, 0, 0.03),
-	SecondaryForeground:    ui.Hex("#262626"),
+	SecondaryForeground:    ui.Hex("#171717"),
 	Muted:                  ui.RGBA(0, 0, 0, 0.04),
-	MutedForeground:        ui.Hex("#6f6f6f"),
+	MutedForeground:        ui.Hex("#636363"),
 	Accent:                 ui.RGBA(0, 0, 0, 0.04),
-	AccentForeground:       ui.Hex("#262626"),
+	AccentForeground:       ui.Hex("#171717"),
 	Destructive:            ui.Hex("#ef4444"),
 	DestructiveForeground:  ui.Hex("#c81e1e"),
-	Border:                 ui.RGBA(0, 0, 0, 0.06),
-	Input:                  ui.RGBA(0, 0, 0, 0.08),
+	Border:                 ui.RGBA(0, 0, 0, 0.12),
+	Input:                  ui.RGBA(0, 0, 0, 0.15),
 	Ring:                   ui.Hex("#a3a3a3"),
 	Sidebar:                ui.Hex("#ebebeb"),
-	SidebarForeground:      ui.Hex("#262626"),
+	SidebarForeground:      ui.Hex("#171717"),
 	SidebarPrimary:         ui.Hex("#171717"),
 	SidebarPrimaryFg:       ui.Hex("#ffffff"),
 	SidebarAccent:          ui.RGBA(0, 0, 0, 0.045),
 	SidebarAccentFg:        ui.Hex("#171717"),
-	SidebarBorder:          ui.RGBA(0, 0, 0, 0.06),
+	SidebarBorder:          ui.RGBA(0, 0, 0, 0.10),
 	SidebarRing:            ui.Hex("#a3a3a3"),
-	Code:                   ui.Hex("#262626"),
-	CodeBg:                 ui.RGBA(0, 0, 0, 0.045),
+	Code:                   ui.Hex("#af2938"),
+	CodeBg:                 ui.RGBA(0, 0, 0, 0.055),
 	Success:                ui.Hex("#10b981"),
 	Attention:              ui.Hex("#f59e0b"),
 	AttentionForeground:    ui.Hex("#b45309"),
@@ -105,7 +105,7 @@ var light = Tokens{
 	RemovedForeground:      ui.Hex("#b3211e"),
 	Highlight:              ui.RGBA(250, 204, 21, 0.35),
 	Selection:              ui.RGBA(0, 105, 204, 0.18),
-	SidebarMutedForeground: ui.Hex("#737373"),
+	SidebarMutedForeground: ui.Hex("#5c5c5c"),
 	Tint:                   ui.Hex("#0169cc"),
 }
 
@@ -128,8 +128,8 @@ var dark = Tokens{
 	AccentForeground:       ui.Hex("#f5f5f5"),
 	Destructive:            ui.Hex("#f05454"),
 	DestructiveForeground:  ui.Hex("#f87575"),
-	Border:                 ui.RGBA(255, 255, 255, 0.08),
-	Input:                  ui.RGBA(255, 255, 255, 0.1),
+	Border:                 ui.RGBA(255, 255, 255, 0.12),
+	Input:                  ui.RGBA(255, 255, 255, 0.15),
 	Ring:                   ui.Hex("#6b6b6b"),
 	Sidebar:                ui.Hex("#202124"),
 	SidebarForeground:      ui.Hex("#f5f5f5"),
@@ -137,9 +137,9 @@ var dark = Tokens{
 	SidebarPrimaryFg:       ui.Hex("#171717"),
 	SidebarAccent:          ui.RGBA(255, 255, 255, 0.06),
 	SidebarAccentFg:        ui.Hex("#ffffff"),
-	SidebarBorder:          ui.RGBA(255, 255, 255, 0.07),
+	SidebarBorder:          ui.RGBA(255, 255, 255, 0.10),
 	SidebarRing:            ui.Hex("#6b6b6b"),
-	Code:                   ui.Hex("#f5f5f5"),
+	Code:                   ui.Hex("#fb9797"),
 	CodeBg:                 ui.RGBA(255, 255, 255, 0.06),
 	Success:                ui.Hex("#34d399"),
 	Attention:              ui.Hex("#fbbf24"),
@@ -171,7 +171,7 @@ var solarized = Tokens{
 	Secondary:              ui.RGBA(88, 110, 117, 0.06),
 	SecondaryForeground:    ui.Hex("#4b5c62"),
 	Muted:                  ui.RGBA(88, 110, 117, 0.07),
-	MutedForeground:        ui.Hex("#6b7f88"),
+	MutedForeground:        ui.Hex("#5b6e76"),
 	Accent:                 ui.RGBA(88, 110, 117, 0.08),
 	AccentForeground:       ui.Hex("#40505a"),
 	Destructive:            ui.Hex("#dc322f"),
@@ -187,7 +187,7 @@ var solarized = Tokens{
 	SidebarAccentFg:        ui.Hex("#3c4c54"),
 	SidebarBorder:          ui.RGBA(88, 110, 117, 0.14),
 	SidebarRing:            ui.Hex("#b3a99b"),
-	Code:                   ui.Hex("#4b5c62"),
+	Code:                   ui.Hex("#1f7f78"),
 	CodeBg:                 ui.RGBA(88, 110, 117, 0.08),
 	Success:                ui.Hex("#859900"),
 	Attention:              ui.Hex("#b58900"),
@@ -200,7 +200,7 @@ var solarized = Tokens{
 	RemovedForeground:      ui.Hex("#b32d2a"),
 	Highlight:              ui.RGBA(181, 137, 0, 0.22),
 	Selection:              ui.RGBA(38, 139, 210, 0.18),
-	SidebarMutedForeground: ui.Hex("#7d8d93"),
+	SidebarMutedForeground: ui.Hex("#5b6e76"),
 	Tint:                   ui.Hex("#268bd2"),
 }
 
@@ -276,6 +276,16 @@ func Families(f FontChoice) (sans, mono string) {
 	}
 	return SystemUI, JetBrainsMono
 }
+
+// Density is Settings → Density. Comfortable, the default, keeps the text
+// and control sizes Droi had before ADR 0025; Compact keeps the smaller
+// ones that ADR brought in, to fit more on the screen.
+type Density string
+
+const (
+	DensityComfortable Density = "comfortable"
+	DensityCompact     Density = "compact"
+)
 
 // TextSize is Settings → Text size, which scales every rem.
 type TextSize string

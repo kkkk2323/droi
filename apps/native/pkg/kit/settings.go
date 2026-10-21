@@ -32,7 +32,7 @@ func (k *Kit) SettingGroup(c *ui.Context, title, footer string, rows ...func()) 
 // SettingRow is a setting: title and explanation on the left, its control
 // on the right, and what goes under them.
 func (k *Kit) SettingRow(c *ui.Context, title, description string, control, below func()) {
-	k.SettingRowWith(c, func() { k.Text(c, title, 13, 18).Role(ui.RoleHeading).FontWeight(500) }, description, control, below)
+	k.SettingRowWith(c, func() { k.Text(c, title, k.Dense(13, 14), k.Dense(18, 20)).Role(ui.RoleHeading).FontWeight(500) }, description, control, below)
 }
 
 // SettingRowWith is a SettingRow whose title is drawn by title.
@@ -43,7 +43,7 @@ func (k *Kit) SettingRowWith(c *ui.Context, title func(), description string, co
 			ui.Column(c).Grow(1).Basis(0).MinWidth(k.Px(192)).Children(func() {
 				title()
 				if description != "" {
-					k.Text(c, description, 12, 18).TextColor(t.MutedForeground).Margin(k.Px(3), 0, 0, 0)
+					k.Text(c, description, k.Dense(12, 13), k.Dense(18, 20)).TextColor(t.MutedForeground).Margin(k.Px(3), 0, 0, 0)
 				}
 			})
 			if control != nil {
@@ -68,13 +68,13 @@ func (k *Kit) FieldSelect(c *ui.Context, open *bool, label, value string, option
 			current = l10n.T(o.Label)
 		}
 	}
-	tr := ui.ButtonBase(c).Role(ui.RoleComboBox).Label(label).Expanded(*open).Height(k.Px(28)).MinWidth(k.Px(144)).Gap(k.Px(8)).
+	tr := ui.ButtonBase(c).Role(ui.RoleComboBox).Label(label).Expanded(*open).Height(k.Px(k.Dense(28, 32))).MinWidth(k.Px(144)).Gap(k.Px(8)).
 		PaddingX(k.Px(8)).Radius(k.Px(5)).Border(1, t.Border).Background(ui.Color{}).Justify(ui.SpaceBetween).Disabled(disabled).Cursor(ui.CursorPointer)
 	if tr.Hovered() {
 		tr.Background(t.Muted)
 	}
 	tr.Children(func() {
-		k.Text(c, current, 12, 18).TextColor(t.Foreground).SingleLine()
+		k.Text(c, current, k.Dense(12, 14), k.Dense(18, 20)).TextColor(t.Foreground).SingleLine()
 		k.Icon(c, "chevron-down", 12, t.MutedForeground).Opacity(0.9)
 	})
 	if tr.Clicked() {
@@ -140,8 +140,8 @@ func b2f(b bool) float32 {
 // Field is a compact settings input with a hairline and a tinted focus border.
 func (k *Kit) Field(c *ui.Context, value *string, label, placeholder string, mono, password bool) ui.Element {
 	t := k.T
-	in := ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).Height(k.Px(30)).Grow(1).MinWidth(0).PaddingX(k.Px(8)).
-		Radius(k.Px(5)).Border(1, t.Border).Background(ui.Color{}).FontSize(k.Px(13)).TextColor(t.Foreground)
+	in := ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).Height(k.Px(k.Dense(30, 36))).Grow(1).MinWidth(0).PaddingX(k.Px(k.Dense(8, 12))).
+		Radius(k.Px(5)).Border(1, t.Border).Background(ui.Color{}).FontSize(k.Px(k.Dense(13, 14))).TextColor(t.Foreground)
 	if mono {
 		in.Font(k.Mono)
 	}
@@ -157,7 +157,7 @@ func (k *Kit) Field(c *ui.Context, value *string, label, placeholder string, mon
 // SmallButton is a compact settings button with an optional leading icon.
 func (k *Kit) SmallButton(c *ui.Context, v Variant, label, icon string, disabled bool) ui.Element {
 	t := k.T
-	b := k.Button(c, v, 28, false, label).Disabled(disabled).Radius(k.Px(5)).FontSize(k.Px(12))
+	b := k.Button(c, v, k.Dense(28, 32), false, label).Disabled(disabled).Radius(k.Px(5)).FontSize(k.Px(k.Dense(12, 13)))
 	color := t.Foreground
 	switch v {
 	case Primary:
@@ -169,7 +169,7 @@ func (k *Kit) SmallButton(c *ui.Context, v Variant, label, icon string, disabled
 		if icon != "" {
 			k.Icon(c, icon, 14, color)
 		}
-		k.Text(c, label, 12, 18).FontWeight(500).TextColor(color)
+		k.Text(c, label, k.Dense(12, 13), k.Dense(18, 20)).FontWeight(500).TextColor(color)
 	})
 	return b
 }

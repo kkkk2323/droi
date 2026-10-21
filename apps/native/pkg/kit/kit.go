@@ -21,6 +21,8 @@ type Kit struct {
 	Mono string
 	// Rem is the Client's rem in DIPs: 16 at the default text size.
 	Rem float32
+	// Compact is Settings → Density's Compact: smaller text and controls.
+	Compact bool
 }
 
 // New makes the kit of a theme, font choice and text size.
@@ -32,6 +34,15 @@ func New(name theme.Name, font theme.FontChoice, size theme.TextSize, zoom float
 // Px scales a CSS length of the default text size, in px, to this kit's
 // text size: every Tailwind size is in rem.
 func (k *Kit) Px(px float32) float32 { return px * k.Rem / 16 }
+
+// Dense is a length for the density shown, in px of the default text size:
+// compact when the kit is Compact, comfortable otherwise.
+func (k *Kit) Dense(compact, comfortable float32) float32 {
+	if k.Compact {
+		return compact
+	}
+	return comfortable
+}
 
 // UITheme is the MyGo theme the window starts from: the Client's background,
 // text, borders and fonts, so MyGo's own widgets fit in.
@@ -59,7 +70,7 @@ func (k *Kit) UITheme(base *ui.Theme) *ui.Theme {
 	t.Scrollbar = k.T.Foreground.Alpha(0.2)
 	t.ScrollbarWidth = 6
 	t.Radius = k.Px(8)
-	t.FontSize = k.Px(13)
+	t.FontSize = k.Px(k.Dense(13, 14))
 	t.Font = k.Sans
 	return &t
 }
@@ -101,7 +112,7 @@ const (
 func (k *Kit) Button(c *ui.Context, v Variant, size float32, square bool, label string) ui.Element {
 	t := k.T
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(size)).Radius(k.Px(8)).Gap(k.Px(6)).
-		FontSize(k.Px(13)).FontWeight(500).Cursor(ui.CursorPointer)
+		FontSize(k.Px(k.Dense(13, 14))).FontWeight(500).Cursor(ui.CursorPointer)
 	if square {
 		b.Width(k.Px(size))
 	} else {

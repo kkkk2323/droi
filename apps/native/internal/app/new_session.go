@@ -494,7 +494,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			// the composer's row gives it the width instead.
 			var in ui.Element
 			ui.Row(c).Children(func() {
-				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{16, 16, 8, 16}, Size: 13, Line: 22,
+				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{16, 16, 8, 16}, Size: k.Dense(13, 14), Line: k.Dense(22, 24),
 					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
 			if s.caretToEnd {

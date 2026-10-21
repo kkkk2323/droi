@@ -18,17 +18,19 @@ import (
 )
 
 // MarkdownStyle is how a kind of Markdown reads: its text size, in px of
-// the default text size, and its color.
+// the default text size, at the Compact density and (Roomy, when set) the
+// Comfortable one, and its color.
 type MarkdownStyle struct {
 	Size  float32
+	Roomy float32
 	Muted bool
 	Err   bool
 }
 
 var (
-	mdReply    = MarkdownStyle{Size: 13}
-	mdError    = MarkdownStyle{Size: 13, Err: true}
-	mdThinking = MarkdownStyle{Size: 13, Muted: true}
+	mdReply    = MarkdownStyle{Size: 13, Roomy: 15}
+	mdError    = MarkdownStyle{Size: 13, Roomy: 15, Err: true}
+	mdThinking = MarkdownStyle{Size: 13, Roomy: 14, Muted: true}
 	mdReport   = MarkdownStyle{Size: 13}
 )
 
@@ -58,7 +60,7 @@ type mdImage struct {
 }
 
 // Options are the options of style s for kit k, made anew when the kit
-// changes (the theme, the font, the text size or the zoom).
+// changes (the theme, the font, the text size, the density or the zoom).
 func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 	if m.kit != k || m.opts == nil {
 		m.kit, m.opts = k, map[MarkdownStyle]*markdown.Options{}
@@ -74,8 +76,12 @@ func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 	case s.Muted:
 		color = t.MutedForeground
 	}
+	size := s.Size
+	if s.Roomy > 0 {
+		size = k.Dense(s.Size, s.Roomy)
+	}
 	o := &markdown.Options{
-		Theme:          &markdown.Theme{FontSize: k.Px(s.Size), Font: k.Sans, CodeFont: k.Mono, Text: color, Strong: color, Code: t.Code},
+		Theme:          &markdown.Theme{FontSize: k.Px(size), Font: k.Sans, CodeFont: k.Mono, Text: color, Strong: color, Code: t.Code},
 		LoadImage:      m.Load,
 		ShareSelection: !m.Own,
 	}
