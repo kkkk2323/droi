@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 	"github.com/kkkk2323/droid-sdk-go/controller"
@@ -67,7 +68,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 			case i == 0:
 				v.lead(c, s)
 			case i == n-1:
-				v.activityRow(c, activity)
+				v.activityRow(c, ws, activity)
 			default:
 				v.row(c, rows[i-1])
 			}
@@ -158,41 +159,36 @@ func (v *View) lead(c *ui.Context, s *session.Session) {
 	})
 }
 
-// activityRow is the live turn's closing row: three dots and what the
-// Droid is doing, empty while idle.
-func (v *View) activityRow(c *ui.Context, label string) {
+// activityRow is the live turn's closing row: an indicator of the working
+// state and what the Droid is doing, empty while idle.
+func (v *View) activityRow(c *ui.Context, state, label string) {
 	k, t := v.look()
 	v.column(c).Row().Role(ui.RoleStatus).Label(l10n.L("Session activity")).Gap(k.Px(8)).Padding(0, k.Px(24), k.Px(16), k.Px(24)).Children(func() {
 		if label == "" {
 			return
 		}
-		ui.Row(c).Gap(k.Px(2)).Children(func() {
-			for i := range 3 {
-				bounceDot(c, k, i, t.MutedForeground)
-			}
-		})
+		activityIndicator(c, state, k.Px(16), t.MutedForeground)
 		k.Text(c, label, 13, 19.5).TextColor(t.MutedForeground)
 	})
 }
 
-// bounceDot is one of Tailwind's animate-bounce dots, a quarter of a
-// second apart: up 25% of the line and back each second.
-func bounceDot(c *ui.Context, k *kit.Kit, i int, color ui.Color) {
-	const period = 1000
-	size, lift := k.Px(4), k.Px(4)
-	ui.Box(c).Size(size, size).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-		ms := (kit.AnimationStep(p) + period - i*150) % period
-		x := float32(ms) / period
-		var y float32
-		if x < 0.5 {
-			y = -lift * (1 - (2*x)*(2*x))
-		} else {
-			q := 2*x - 1
-			y = -lift * q * q
-		}
-		r.Y += y
-		p.Fill(r, color, size/2)
-	})
+// activityIndicator draws each working state its own way, so that a glance
+// tells thinking from answering, running a tool or waiting for the user.
+func activityIndicator(c *ui.Context, state string, size float32, color ui.Color) ui.Element {
+	o := loading.Options{Size: size, Color: color}
+	switch protocol.DroidWorkingState(state) {
+	case protocol.DroidWorkingStateThinking:
+		return loading.Orbit(c, o)
+	case protocol.DroidWorkingStateStreamingAssistantMessage:
+		return loading.LinearDots(c, o)
+	case protocol.DroidWorkingStateExecutingTool:
+		return loading.Arc(c, o)
+	case protocol.DroidWorkingStateWaitingForToolConfirmation:
+		return loading.Pulse(c, o)
+	case protocol.DroidWorkingStateCompactingConversation:
+		return loading.Cascade(c, o)
+	}
+	return loading.BouncingDots(c, o)
 }
 
 func (v *View) picture(c *ui.Context, id string, img transcript.Image, maxH float32, label string) {

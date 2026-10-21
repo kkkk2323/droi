@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
@@ -530,7 +531,7 @@ func (a *App) signInCode(c *ui.Context, p *host.LoginPending) {
 		k.Text(c, p.UserCode, 16, 24).Font(k.Mono).LetterSpacing(k.Px(3.2)).Label(L("Sign-in code")).
 			Padding(k.Px(4), k.Px(10)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Background)
 		ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Center).Children(func() {
-			kit.PulseDot(c, k.Px(6), func(w float32) ui.Color { return t.MutedForeground.Alpha(0.4 + 0.3*w) })
+			loading.Pulse(c, loading.Options{Size: k.Px(14), Color: t.MutedForeground})
 			k.Text(c, L("Waiting for the browser"), 12, 16).TextColor(t.MutedForeground)
 		})
 		if p.VerificationURIComplete != "" {

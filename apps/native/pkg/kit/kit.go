@@ -7,6 +7,7 @@ package kit
 import (
 	"time"
 
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/icons"
@@ -178,11 +179,11 @@ func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) ui.Ele
 	return b
 }
 
-// AnimationSteps is how many frames a second the animations ask for. They
-// all move in frames that only paint (Painter.After), which repaint the
-// last frame built without running the view, and at the same instants of
-// each second, so that a spinner, a pulse and bouncing dots shown together
-// cost one such frame a step. One out of view asks for none.
+// AnimationSteps is how many frames a second the pulses ask for. They all
+// move in frames that only paint (Painter.After), which repaint the last
+// frame built without running the view, and at the same instants of each
+// second, so that pulses shown together cost one such frame a step. One
+// out of view asks for none.
 const AnimationSteps = 24
 
 // AnimationStep is how far into its second the frame p paints is, in ms,
@@ -200,17 +201,9 @@ func stepDelay(ms int) int {
 	return (next*1000+AnimationSteps-1)/AnimationSteps - ms
 }
 
-// Spinner is lucide's Loader2 turning once a second, as the web Client's
-// Spinner, a step at a time.
+// Spinner is loading.dev's Arc, one open stroke turning, for work under way.
 func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
-	icon := icons.Stroked("loader-circle", 2)
-	s := k.Px(size)
-	return ui.Box(c).Size(s, s).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-		step := AnimationStep(p) * AnimationSteps / 1000
-		p.Transform(ui.Rotation(float32(step)*360/AnimationSteps), r.X+r.W/2, r.Y+r.H/2, func() {
-			p.Icon(icon, r, color)
-		})
-	})
+	return loading.Arc(c, loading.Options{Size: k.Px(size), Color: color})
 }
 
 // Pulse paints e's box, rounded by radius, in the color color gives for
