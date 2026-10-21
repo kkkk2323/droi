@@ -1,3 +1,8 @@
+## Unreleased
+
+### Changed
+
+- Magpie's models have a tab of their own in the model picker, between Favorites and the brands. They share their names with the models the Daemon already offers, so the list the picker opens on, the brands' tabs and Favorites now show the Daemon's own models only. The search still reaches both lists, and a starred Magpie model stays in Favorites.
 ## 1.59.0 - 2026-10-20
 
 ### Added

@@ -2,12 +2,13 @@
 // for a new Session, its tool calls), each opening a sheet. The model sheet has the web Client's brand rail, search
 // and favourites (kept on this phone).
 import { favoriteModels, usePreference } from '@droi/daemon-layer/local-preference'
-import { BRAND_LABELS, brandOf, type Brand } from '@droi/daemon-layer/model-brand'
+import { BRAND_LABELS, brandOf, isMagpie, type Brand } from '@droi/daemon-layer/model-brand'
 import {
   AUTONOMY_LABELS,
   EFFORT_LABELS,
   brandsOf,
   formatMultiplier,
+  hasMagpie,
   visibleModels,
   type PickerFilter,
 } from '@droi/daemon-layer/model-choices'
@@ -18,7 +19,7 @@ import {
   type SessionSettingsView,
 } from '@droi/daemon-layer/use-session-settings'
 import { TOOL_MODES, TOOL_MODE_LABELS, type ToolMode } from '@droi/daemon-layer/tool-mode'
-import { ChevronDown, ShieldCheck, Star } from 'lucide-react-native'
+import { ChevronDown, Plug, ShieldCheck, Star } from 'lucide-react-native'
 import { useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { BrandIcon } from '../ui/brand-icon'
@@ -220,16 +221,51 @@ function ModelSheet({
   onPick: (modelId: string) => void
 }) {
   const colors = useColors()
-  const [filter, setFilter] = useState<PickerFilter>('all')
+  // A fresh sheet opens where the current model lives: Magpie's models are
+  // not in the list the picker opens on, so a Session on one would look like
+  // it had none. A pick keeps its tab until the sheet closes.
+  const [picked, setPicked] = useState<PickerFilter | null>(null)
+  const filter: PickerFilter = picked ?? (isMagpie(settings.modelId ?? '') ? 'magpie' : 'all')
   const [query, setQuery] = useState('')
   const [favorites, setFavorites] = usePreference(favoriteModels)
   const rows = visibleModels(settings.models, favorites, filter, query)
-  const choose = (next: PickerFilter) => setFilter(filter === next ? 'all' : next)
+  const choose = (next: PickerFilter) => setPicked(filter === next ? 'all' : next)
+  const closeSheet = () => {
+    setPicked(null)
+    setQuery('')
+    onClose()
+  }
   const toggleFavorite = (id: string) =>
     setFavorites(favorites.includes(id) ? favorites.filter((f) => f !== id) : [...favorites, id])
+  // Magpie's models have a tab of their own, between the favorites and the
+  // brands: the gateway serves models named like the Daemon's own.
+  const railOptions: PickerFilter[] = [
+    'favorites',
+    ...(hasMagpie(settings.models) ? (['magpie'] as const) : []),
+    ...brandsOf(settings.models),
+  ]
+  const railLabel = (option: PickerFilter) =>
+    option === 'favorites'
+      ? 'Favorites'
+      : option === 'magpie'
+        ? 'Magpie'
+        : BRAND_LABELS[option as Brand]
+  const railIcon = (option: PickerFilter, color: string) =>
+    option === 'favorites' ? (
+      <Star
+        size={12}
+        color={color}
+        fill={filter === option ? colors.primaryForeground : 'transparent'}
+        strokeWidth={1.75}
+      />
+    ) : option === 'magpie' ? (
+      <Plug size={12} color={color} strokeWidth={1.75} />
+    ) : (
+      <BrandIcon brand={option as Brand} size={12} color={color} />
+    )
 
   return (
-    <Sheet visible={visible} title="Choose a model" onClose={onClose}>
+    <Sheet visible={visible} title="Choose a model" onClose={closeSheet}>
       <TextInput
         role="searchbox"
         aria-label="Search models"
@@ -248,15 +284,11 @@ function ModelSheet({
         aria-label="Filter models"
         contentContainerStyle={styles.rail}
       >
-        {(['favorites', ...brandsOf(settings.models)] as PickerFilter[]).map((option) => (
+        {railOptions.map((option) => (
           <Pressable
             key={option}
             role="button"
-            aria-label={
-              option === 'favorites'
-                ? 'Favorites'
-                : BRAND_LABELS[option as keyof typeof BRAND_LABELS]
-            }
+            aria-label={railLabel(option)}
             aria-pressed={filter === option}
             onPress={() => choose(option)}
             style={[
@@ -264,28 +296,13 @@ function ModelSheet({
               { backgroundColor: filter === option ? colors.primary : colors.card },
             ]}
           >
-            {option === 'favorites' ? (
-              <Star
-                size={12}
-                color={filter === option ? colors.primaryForeground : colors.foreground}
-                fill={filter === option ? colors.primaryForeground : 'transparent'}
-                strokeWidth={1.75}
-              />
-            ) : (
-              <BrandIcon
-                brand={option as Brand}
-                size={12}
-                color={filter === option ? colors.primaryForeground : colors.foreground}
-              />
-            )}
+            {railIcon(option, filter === option ? colors.primaryForeground : colors.foreground)}
             <Text
               size="xs"
               weight="medium"
               style={{ color: filter === option ? colors.primaryForeground : colors.foreground }}
             >
-              {option === 'favorites'
-                ? 'Favorites'
-                : BRAND_LABELS[option as keyof typeof BRAND_LABELS]}
+              {railLabel(option)}
             </Text>
           </Pressable>
         ))}
@@ -300,7 +317,10 @@ function ModelSheet({
                 aria-checked={row.id === settings.modelId}
                 aria-label={row.label}
                 disabled={row.disabled}
-                onPress={() => onPick(row.id)}
+                onPress={() => {
+                  closeSheet()
+                  onPick(row.id)
+                }}
                 style={({ pressed }) => [
                   styles.model,
                   {

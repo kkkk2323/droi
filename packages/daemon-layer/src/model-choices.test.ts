@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { brandOf } from './model-brand'
-import { brandsOf, formatMultiplier, visibleModels } from './model-choices'
+import { brandOf, isMagpie } from './model-brand'
+import { brandsOf, formatMultiplier, hasMagpie, visibleModels } from './model-choices'
 import { toModelChoices, type ModelChoice } from './use-session-settings'
 
 const model = (id: string, provider: string | null, label = id): ModelChoice => ({
@@ -37,6 +37,49 @@ describe('brandOf', () => {
 describe('brandsOf', () => {
   it('lists the brands present in rail order', () => {
     expect(brandsOf(models)).toEqual(['anthropic', 'openai', 'google', 'zhipu', 'other'])
+  })
+})
+
+describe('Magpie’s models', () => {
+  const withMagpie = [
+    ...models,
+    model(
+      'custom:magpie-codex-gpt-6-1-sol-0a1b2c',
+      'generic-chat-completion-api',
+      'Magpie · GPT-6.1-Sol',
+    ),
+    model(
+      'custom:magpie-workbuddy-glm-5-3-4d5e6f',
+      'generic-chat-completion-api',
+      'Magpie · GLM 5.3',
+    ),
+  ]
+
+  it('are recognized by the id Droi gives them', () => {
+    expect(isMagpie('custom:magpie-codex-gpt-6-1-sol-0a1b2c')).toBe(true)
+    expect(isMagpie('CUSTOM:MAGPIE-x')).toBe(true)
+    expect(isMagpie('gpt-5')).toBe(false)
+    expect(hasMagpie(withMagpie)).toBe(true)
+    expect(hasMagpie(models)).toBe(false)
+  })
+
+  it('have a tab of their own, out of the brands’ tabs', () => {
+    expect(brandsOf(withMagpie)).toEqual(brandsOf(models))
+    expect(visibleModels(withMagpie, [], 'all', '').map((m) => m.id)).toEqual(
+      models.map((m) => m.id),
+    )
+    expect(visibleModels(withMagpie, [], 'zhipu', '').map((m) => m.id)).toEqual(['glm-5.3-flash'])
+    expect(visibleModels(withMagpie, [], 'magpie', '').map((m) => m.id)).toEqual([
+      'custom:magpie-codex-gpt-6-1-sol-0a1b2c',
+      'custom:magpie-workbuddy-glm-5-3-4d5e6f',
+    ])
+  })
+
+  it('are found by the search, whichever tab is open', () => {
+    expect(visibleModels(withMagpie, [], 'magpie', 'gpt').map((m) => m.id)).toEqual([
+      'gpt-5',
+      'custom:magpie-codex-gpt-6-1-sol-0a1b2c',
+    ])
   })
 })
 

@@ -66,6 +66,43 @@ func TestBrandsOf(t *testing.T) {
 	}
 }
 
+// A Magpie model is no brand tab's: the gateway serves models named like the
+// Daemon's own, so its models get a tab of their own instead.
+func TestMagpieModelsHaveTheirOwnTab(t *testing.T) {
+	withMagpie := append(append([]Choice(nil), list...),
+		model("custom:magpie-codex-gpt-6-1-sol-0a1b2c", "generic-chat-completion-api", "Magpie · GPT-6.1-Sol"),
+		model("custom:magpie-workbuddy-glm-5-3-4d5e6f", "generic-chat-completion-api", "Magpie · GLM 5.3"),
+	)
+	if got, want := BrandsOf(withMagpie), BrandsOf(list); !reflect.DeepEqual(got, want) {
+		t.Errorf("BrandsOf with Magpie = %v, want %v", got, want)
+	}
+	if !HasMagpie(withMagpie) || HasMagpie(list) {
+		t.Errorf("HasMagpie: %v, %v", HasMagpie(withMagpie), HasMagpie(list))
+	}
+	// Everything but the Magpie tab leaves the gateway's models out; a model
+	// starred by hand stays in the favorites, where the user put it.
+	for _, filter := range []PickerFilter{FilterAll, PickerFilter(Anthropic)} {
+		for _, row := range VisibleModels(withMagpie, nil, filter, "") {
+			if IsMagpie(row.ID) {
+				t.Errorf("%s lists the Magpie model %q", filter, row.ID)
+			}
+		}
+	}
+	if got := ids(VisibleModels(withMagpie, []string{withMagpie[5].ID}, FilterFavorites, "")); !reflect.DeepEqual(got,
+		[]string{withMagpie[5].ID}) {
+		t.Errorf("the favorites = %v", got)
+	}
+	wantMagpie := []string{withMagpie[5].ID, withMagpie[6].ID}
+	if got := ids(VisibleModels(withMagpie, nil, FilterMagpie, "")); !reflect.DeepEqual(got, wantMagpie) {
+		t.Errorf("the Magpie tab = %v, want %v", got, wantMagpie)
+	}
+	// The search reaches both lists, whichever tab is open.
+	if got := ids(VisibleModels(withMagpie, nil, FilterMagpie, "gpt")); !reflect.DeepEqual(got,
+		[]string{"gpt-5", withMagpie[5].ID}) {
+		t.Errorf("the search = %v", got)
+	}
+}
+
 func TestVisibleModels(t *testing.T) {
 	all := []string{"auto", "claude-opus-4-1", "gpt-5", "glm-5.3-flash", "gemini-3-pro"}
 	for _, c := range []struct {

@@ -38,6 +38,17 @@ export const BRAND_ORDER: Brand[] = [
   'other',
 ]
 
+/**
+ * The id prefix Droi gives a Magpie gateway's model (`custom:magpie-<provider>-<model>-<hash>`,
+ * built by the Host). Those models get a tab of their own in the picker.
+ */
+export const MAGPIE_ID_PREFIX = 'custom:magpie-'
+
+/** Whether a model id names a Magpie gateway model. */
+export function isMagpie(modelId: string): boolean {
+  return modelId.toLowerCase().startsWith(MAGPIE_ID_PREFIX)
+}
+
 const ID_PREFIXES: Array<[string, Brand]> = [
   ['claude', 'anthropic'],
   ['gpt', 'openai'],

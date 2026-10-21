@@ -122,7 +122,13 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 	if tr.Clicked() {
 		*open = !*open
 		if *open {
+			// Open where the current model lives: Magpie's models are not in
+			// the list the picker opens on, so a Session on one would look
+			// like it had none.
 			*st = PickerState{filter: models.FilterAll}
+			if models.IsMagpie(value) {
+				st.filter = models.FilterMagpie
+			}
 		}
 	}
 	if !*open {
@@ -181,6 +187,21 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 					st.highlight = 0
 				}
 				ui.Box(c).Size(k.Px(20), 1).Margin(k.Px(4), 0).Background(t.Border).Shrink(0)
+				// Magpie's models have a tab of their own: the gateway serves
+				// models named like the Daemon's own, and beside them the list
+				// reads as one crowd.
+				if models.HasMagpie(choices) {
+					pressed := st.filter == models.FilterMagpie && st.brand == ""
+					if rail(l10n.L("Magpie"), pressed && !searching, func(color ui.Color) { k.Icon(c, "plug", 14, color) }) {
+						st.brand = ""
+						st.filter = models.FilterMagpie
+						if pressed {
+							st.filter = models.FilterAll
+						}
+						st.highlight = 0
+					}
+					ui.Box(c).Size(k.Px(20), 1).Margin(k.Px(4), 0).Background(t.Border).Shrink(0)
+				}
 				for _, b := range models.BrandsOf(choices) {
 					pressed := st.brand == b
 					if rail(l10n.T(models.BrandLabels[b]), pressed && !searching, func(color ui.Color) { brandIcon(c, k, b, 14, color) }) {
