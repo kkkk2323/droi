@@ -34,15 +34,16 @@ export function Text({
   const colors = useColors()
   const scale = useTextScale()
   const own = scale === 1 ? undefined : StyleSheet.flatten(style)
-  const family = mono
-    ? weight === 'regular'
-      ? fonts.mono
-      : fonts.monoMedium
-    : weight === 'regular'
-      ? fonts.sans
+  // The interface face is the system's own, which picks its weight from
+  // fontWeight; JetBrains Mono, the code face, has a file per weight.
+  const family = mono ? (weight === 'regular' ? fonts.mono : fonts.monoMedium) : fonts.sans
+  const fontWeight = mono
+    ? undefined
+    : weight === 'semibold'
+      ? ('600' as const)
       : weight === 'medium'
-        ? fonts.sansMedium
-        : fonts.sansSemiBold
+        ? ('500' as const)
+        : ('400' as const)
   return (
     <RNText
       {...props}
@@ -50,6 +51,7 @@ export function Text({
         {
           color: tone === 'muted' ? colors.mutedForeground : colors.foreground,
           fontFamily: family,
+          fontWeight,
           fontSize: fontSize[size] * scale,
         },
         style,
@@ -139,9 +141,9 @@ export function Button({
       {...props}
       style={({ pressed }) => [
         {
-          minHeight: 40,
+          minHeight: 44,
           paddingHorizontal: space.lg,
-          borderRadius: radius.lg,
+          borderRadius: radius.md,
           backgroundColor: background,
           alignItems: 'center',
           justifyContent: 'center',

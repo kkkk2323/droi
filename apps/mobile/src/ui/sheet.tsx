@@ -57,7 +57,7 @@ export function Sheet({
             { maxHeight: Math.round(height * 0.85), paddingBottom: Math.max(insets.bottom, 14) },
           ]}
         >
-          <Text role="heading" size="xs" weight="semibold" tone="muted" style={styles.title}>
+          <Text role="heading" size="sm" weight="medium" tone="muted" style={styles.title}>
             {title}
           </Text>
           {children}
@@ -109,16 +109,14 @@ const styles = StyleSheet.create({
   // A quiet label, lined up with the rows' text.
   title: {
     paddingHorizontal: space.xl,
-    paddingBottom: space.sm,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    paddingBottom: space.md,
   },
   option: {
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: space.lg,
     marginHorizontal: space.sm,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
   },
   optionWithDescription: { paddingVertical: space.sm, gap: 2 },
 })

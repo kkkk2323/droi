@@ -274,7 +274,7 @@ func onComputer(key, computer string) string {
 // The preferences, under the web Client's keys.
 var (
 	Theme    = String{Key: "droi.theme", Fallback: "light"}
-	Font     = String{Key: "droi.font", Fallback: "geist"}
+	Font     = String{Key: "droi.font", Fallback: "system"}
 	TextSize = String{Key: "droi.textSize", Fallback: "default"}
 	// Zoom is ⌘= and ⌘-, kept as Chromium keeps a page's zoom.
 	Zoom           = Number{Key: "droi.zoom", Fallback: 1}

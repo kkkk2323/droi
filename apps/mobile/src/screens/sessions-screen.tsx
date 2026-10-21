@@ -16,6 +16,7 @@ import { ComputerMenu, ComputerTitle } from '../sessions/computer-switch'
 import { sessionPath, useConnectedComputer } from '../sessions/connected-computer'
 import { SessionList } from '../sessions/session-list'
 import { IconButton } from '../ui/primitives'
+import { useColors } from '../ui/use-colors'
 
 export function SessionsScreen() {
   const connected = useConnectedComputer()
@@ -28,6 +29,7 @@ function Sessions({
 }: {
   connected: NonNullable<ReturnType<typeof useConnectedComputer>>
 }) {
+  const colors = useColors()
   const router = useRouter()
   const connection = useDaemonConnection()
   const [computers] = usePreference(pairedComputers)
@@ -50,7 +52,13 @@ function Sessions({
 
   return (
     <View style={styles.fill}>
-      <Stack.Screen options={{ headerTitle: () => computerTitle, headerRight: () => actions }} />
+      <Stack.Screen
+        options={{
+          headerTitle: () => computerTitle,
+          headerRight: () => actions,
+          headerStyle: { backgroundColor: colors.sidebar },
+        }}
+      />
       {switching ? (
         <ComputerMenu
           computer={computer}

@@ -54,9 +54,7 @@ export function ComposerShelf({
   const showTodos = todos.length > 0 && done < todos.length
   if (!showTodos && queued.length === 0 && !actions.error) return null
   return (
-    <View
-      style={[styles.shelf, { borderColor: colors.border, backgroundColor: colors.background }]}
-    >
+    <View style={[styles.shelf, { borderColor: colors.border, backgroundColor: colors.card }]}>
       {showTodos ? <TodoPanel todos={todos} done={done} /> : null}
       {actions.error ? (
         <Text role="alert" size="xs" style={[styles.pad, { color: colors.destructiveForeground }]}>
@@ -320,8 +318,8 @@ const styles = StyleSheet.create({
     marginHorizontal: space.md + COMPOSER_RADIUS,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
     paddingVertical: space.xs,
   },
   pad: { paddingHorizontal: space.md },
@@ -329,17 +327,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    minHeight: 32,
+    minHeight: 44,
     paddingHorizontal: space.md,
   },
   list: { paddingBottom: space.xs },
   fill: { flex: 1 },
-  remove: { padding: space.xs },
+  remove: {
+    padding: space.sm,
+    minWidth: 36,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    height: 28,
+    minHeight: 28,
     // In line with the text inside the composer above, clear of the edges.
     paddingHorizontal: space.xl,
   },

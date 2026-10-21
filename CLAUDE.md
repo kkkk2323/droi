@@ -8,12 +8,13 @@ Professional developers who use Droi as their desktop AI coding assistant. They 
 The interface should feel like a precision instrument -- quiet confidence rather than flashy decoration. Every element earns its place. Users should feel empowered and in control, never overwhelmed or distracted.
 
 ### Aesthetic Direction
-- **Visual tone**: Refined and information-dense, inspired by Linear and Raycast. Clean lines, tight spacing, high signal-to-noise ratio.
-- **References**: Linear (polish, dark-mode-first, subtle animations), Raycast (command-driven efficiency, minimal chrome).
+- **Visual tone**: Refined and information-dense, inspired by Linear and Raycast, and by Synara's material (ADR 0025): a near-white page with panels a hairline apart, faint alpha fills rather than extra greys, tight controls.
+- **References**: Linear (polish, dark-mode-first, subtle animations), Raycast (command-driven efficiency, minimal chrome), Synara (surfaces, hairlines, the single tint).
 - **Anti-references**: Overly playful or colorful interfaces (Slack-style), heavy illustrations or mascots, excessive whitespace that wastes screen real estate.
-- **Theme**: Light mode is the primary experience (a warm-neutral window like a native macOS app, in the spirit of Waku). Dark mode is a first-class toggle, stored per browser.
-- **Typography**: Geist Sans for UI, Geist Mono for code. No decorative fonts.
-- **Color**: Neutral palette (oklch-based) with minimal accent usage. Color is reserved for status, actions, and differentiation -- never for decoration.
+- **Theme**: Light mode is the primary experience (a near-white page like Synara's). Dark mode is a first-class toggle, stored per browser. Solarized Light+ is kept, drawn in the same material.
+- **Typography**: the system's interface font (San Francisco, Segoe UI) for UI, JetBrains Mono for code. Geist stays as Settings → Font's choice. No decorative fonts.
+- **Color**: neutral palette with one blue tint (`#0169cc` light, `#339cff` dark) for the controls that show state. Color is reserved for status, actions, and that tint -- never for decoration.
+- **Geometry**: 28–32px controls, 8–12px radii, 13px base text with 20px/500 headings and −0.3px tracking.
 - **Motion**: Subtle and purposeful (framer-motion). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.
 
 ### Design Principles

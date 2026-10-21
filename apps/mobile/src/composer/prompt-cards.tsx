@@ -66,7 +66,7 @@ function PermissionCard({
     <View
       role="group"
       aria-label={`Permission request: ${title}`}
-      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}
+      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
     >
       <View style={styles.kicker}>
         <ShieldAlert size={12} color={colors.attention} strokeWidth={2} />
@@ -91,7 +91,7 @@ function PermissionCard({
             selectable
             size="xs"
             mono
-            style={[styles.detail, { backgroundColor: colors.card }]}
+            style={[styles.detail, { backgroundColor: colors.muted }]}
           >
             {permissionDetail(use.details, use.toolUse.input)}
           </Text>
@@ -153,7 +153,7 @@ function ScriptPermissionDetail({
         ? colors.attention
         : colors.mutedForeground
   return (
-    <View style={[styles.script, { backgroundColor: colors.card }]}>
+    <View style={[styles.script, { backgroundColor: colors.muted }]}>
       {permission.calls.length > 0 ? (
         <View role="list" aria-label="Calls in the Script" style={styles.scriptCalls}>
           {permission.calls.map((call) => (
@@ -267,7 +267,7 @@ function AskUserCard({
     <View
       role="group"
       aria-label="Droid has a question"
-      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}
+      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
     >
       <View style={styles.kicker}>
         <MessageCircleQuestion size={12} color={colors.mutedForeground} strokeWidth={2} />
@@ -275,7 +275,7 @@ function AskUserCard({
           {question.topic}
         </Text>
         {request.questions.length > 1 ? (
-          <Text size="xs" tone="muted" style={[styles.progress, { backgroundColor: colors.card }]}>
+          <Text size="xs" tone="muted" style={[styles.progress, { backgroundColor: colors.muted }]}>
             {step + 1} / {request.questions.length}
           </Text>
         ) : null}
@@ -315,7 +315,7 @@ function AskUserCard({
           })}
         </View>
       ) : null}
-      <View style={[styles.own, { backgroundColor: colors.card }]}>
+      <View style={[styles.own, { backgroundColor: colors.muted }]}>
         <Pencil size={12} color={colors.mutedForeground} />
         <TextInput
           aria-label={`Other answer for: ${question.question}`}
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   area: { gap: space.sm, paddingHorizontal: space.md },
   card: {
     borderWidth: 1,
-    borderRadius: radius.xl + 4,
+    borderRadius: radius.lg,
     padding: space.md,
     gap: space.sm,
   },
@@ -365,15 +365,17 @@ const styles = StyleSheet.create({
   scriptLine: { width: 28 },
   sourceToggle: {
     borderTopWidth: StyleSheet.hairlineWidth,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: space.sm,
-    paddingVertical: 6,
+    paddingVertical: space.sm,
   },
   options: { gap: space.xs },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: space.md,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -385,9 +387,9 @@ const styles = StyleSheet.create({
     gap: space.sm,
     borderRadius: radius.lg,
     paddingHorizontal: space.md,
-    minHeight: 40,
+    minHeight: 44,
   },
-  ownInput: { flex: 1, fontFamily: fonts.sans, fontSize: fontSize.sm, minHeight: 36 },
+  ownInput: { flex: 1, fontFamily: fonts.sans, fontSize: fontSize.base, minHeight: 44 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   fill: { flex: 1 },
 })

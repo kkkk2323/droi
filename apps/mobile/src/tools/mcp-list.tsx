@@ -389,7 +389,6 @@ function ToolList({
             disabled={readOnly}
             onValueChange={(checked) => onToggle(tool.name, checked)}
             trackColor={{ true: colors.primary }}
-            style={styles.smallSwitch}
           />
         </View>
       ))}
@@ -635,8 +634,8 @@ function plural(count: number, word: string): string {
 }
 
 const styles = StyleSheet.create({
-  list: { gap: space.sm },
-  row: { gap: space.xs, paddingVertical: space.xs },
+  list: { gap: space.md },
+  row: { gap: space.sm, paddingVertical: space.sm },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   rowBody: { flex: 1, minWidth: 0, gap: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
@@ -646,13 +645,12 @@ const styles = StyleSheet.create({
   toolsToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    height: 28,
+    gap: space.xs,
+    minHeight: 44,
     paddingRight: space.xs,
   },
   tools: { gap: space.xs, paddingLeft: space.lg },
-  tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  smallSwitch: { transform: [{ scale: 0.8 }] },
+  tool: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
   notice: { borderRadius: radius.lg, padding: space.sm, gap: space.xs },
   smallButton: {
     flexDirection: 'row',
@@ -661,21 +659,21 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.md,
     paddingHorizontal: space.sm,
-    height: 30,
+    height: 44,
     justifyContent: 'center',
   },
   subHeader: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  back: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
-    height: 40,
+    height: 44,
   },
-  searchInput: { flex: 1, fontSize: fontSize.sm, height: '100%' },
+  searchInput: { flex: 1, fontFamily: fonts.sans, fontSize: fontSize.base, height: '100%' },
   byHand: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -688,15 +686,15 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
-    height: 30,
+    height: 44,
     justifyContent: 'center',
   },
   form: { gap: space.sm },
   input: {
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
-    height: 40,
+    height: 44,
     fontFamily: fonts.mono,
     fontSize: fontSize.sm,
   },

@@ -5,8 +5,6 @@
 import '../polyfills'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { setPreferenceStorage } from '@droi/daemon-layer/local-preference'
-import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold } from '@expo-google-fonts/geist'
-import { GeistMono_400Regular, GeistMono_500Medium } from '@expo-google-fonts/geist-mono'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
@@ -18,6 +16,11 @@ import { hydrateStorage } from '../lib/app-storage'
 import { appQueryClient } from '../query-client'
 import { useStackScreenOptions } from '../ui/stack-options'
 import { applyThemeChoice, themeChoice, useColorSchemeName } from '../ui/use-colors'
+
+// JetBrains Mono, the code face. The interface face is the system's own,
+// which needs no font file.
+import JetBrainsMonoRegular from '../../assets/fonts/JetBrainsMono-Regular.ttf'
+import JetBrainsMonoMedium from '../../assets/fonts/JetBrainsMono-Medium.ttf'
 
 export const unstable_settings = { initialRouteName: '(connected)' }
 
@@ -40,11 +43,8 @@ export default function RootLayout() {
 function Root() {
   use(storageReady)
   const [fontsLoaded, fontError] = useFonts({
-    Geist_400Regular,
-    Geist_500Medium,
-    Geist_600SemiBold,
-    GeistMono_400Regular,
-    GeistMono_500Medium,
+    JetBrainsMono_400Regular: JetBrainsMonoRegular,
+    JetBrainsMono_500Medium: JetBrainsMonoMedium,
   })
   const screenOptions = useStackScreenOptions()
   const scheme = useColorSchemeName()

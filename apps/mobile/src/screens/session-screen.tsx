@@ -302,5 +302,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: space.sm,
   },
-  leadRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingVertical: space.xs },
+  leadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 44,
+    paddingVertical: space.sm,
+  },
 })

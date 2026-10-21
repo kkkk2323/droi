@@ -79,7 +79,7 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 	if running && len(perms)+len(asks) == 0 && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
 	}
-	sessionview.Column(c, k).Shrink(0).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Children(func() {
+	sessionview.Column(c, k).Shrink(0).Padding(0, k.Px(20), k.Px(8), k.Px(20)).Children(func() {
 		v.shelf(c, s)
 		if len(perms)+len(asks) > 0 {
 			v.Prompts(c, perms, asks)
@@ -267,7 +267,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		if err := v.Err(); err != "" {
 			k.Text(c, err, 12, 16).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).PaddingX(k.Px(4))
 		}
-		card := ui.Column(c.Key("card")).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background)
+		card := ui.Column(c.Key("card")).Radius(k.Px(18)).Border(1, t.Input).Background(t.Card)
 		if _, over := ui.DataDragOver(card, dropOptions); over {
 			card.Border(1, t.Primary.Alpha(0.6)).Background(t.Primary.Alpha(0.05))
 		}
@@ -295,8 +295,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if hasPick {
 					left = k.Px(8)
 				}
-				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 4, left / k.Px(1)}, Size: 14, Line: 24,
-					MinLines: 1, MaxLines: 8, Color: t.Foreground}).Disabled(!ready)
+				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 6, left / k.Px(1)}, Size: 13, Line: 22,
+					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!ready)
 				if !v.focused {
 					in.AutoFocus()
 					v.focused = true

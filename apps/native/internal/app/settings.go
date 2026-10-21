@@ -86,10 +86,10 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		a.Go(s.back)
 	}
 	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
-		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(240).Shrink(0).Gap(k.Px(4)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
+		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(k.Px(224)).Shrink(0).Gap(k.Px(2)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
 			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
 			nav := func(icon, label string, selected bool) ui.Element {
-				b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
+				b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(5)).Justify(ui.Start).Cursor(ui.CursorPointer)
 				color := t.SidebarForeground
 				switch {
 				case selected:
@@ -105,8 +105,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					}
 				}
 				b.Children(func() {
-					k.Icon(c, icon, 16, t.MutedForeground)
-					k.Text(c, label, 13, 19.5).TextColor(color).SingleLine()
+					k.Icon(c, icon, 14, color)
+					k.Text(c, label, 12, 18).TextColor(color).SingleLine()
 				})
 				return b
 			}
@@ -121,7 +121,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 						top = 0
 					}
 					group = tab.group
-					k.Text(c, l10n.T(group), 11, 16).Key("group:"+group).FontWeight(500).TextColor(t.MutedForeground).SingleLine().Padding(top, k.Px(8), k.Px(2), k.Px(8))
+					k.Text(c, l10n.T(group), 11, 16).Key("group:"+group).FontWeight(500).TextColor(t.MutedForeground).SingleLine().Padding(top, k.Px(8), k.Px(4), k.Px(8))
 				}
 				if nav(tab.icon, l10n.T(tab.label), tab.id == current.id).Key(tab.id).Clicked() {
 					a.route.Tab = tab.id
@@ -134,8 +134,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		})
 		ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Children(func() {
 			ui.Box(c).Height(44).DragWindow()
-			ui.Column(c).FillWidth().MaxWidth(k.Px(672)).AlignSelf(ui.Center).Gap(k.Px(24)).Padding(0, k.Px(32), k.Px(48), k.Px(32)).Children(func() {
-				k.Text(c, l10n.T(current.label), 18, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.45))
+			ui.Column(c).FillWidth().MaxWidth(k.Px(760)).AlignSelf(ui.Center).Gap(k.Px(28)).Padding(0, k.Px(32), k.Px(48), k.Px(32)).Children(func() {
+				k.Text(c, l10n.T(current.label), 20, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.3))
 				if s.err != "" {
 					k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 				}

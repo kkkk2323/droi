@@ -250,7 +250,9 @@ func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
 			})
 		}
 		if text != "" {
-			k.Text(c, text, 15, 24).Selectable().MaxWidthPercent(85).Padding(k.Px(10), k.Px(16)).Radius(k.Px(16)).
+			// The reference's user bubble: rounded-2xl, the faint secondary
+			// fill, at the transcript's reading size.
+			k.Text(c, text, 13, 21).Selectable().MaxWidthPercent(85).Padding(k.Px(10), k.Px(14)).Radius(k.Px(12)).
 				Background(t.Secondary).TextColor(t.SecondaryForeground)
 		}
 	})

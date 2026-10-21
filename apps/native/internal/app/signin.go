@@ -65,7 +65,7 @@ func (a *App) signInPage(c *ui.Context) {
 				ui.Column(c).FillWidth().MaxWidth(k.Px(340)).Gap(k.Px(24)).Children(func() {
 					ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
 						droiMark(c, k, 40)
-						k.Text(c, L("Sign in to Droi"), 20, 28).Role(ui.RoleHeading).FontWeight(500).LetterSpacing(-k.Px(0.5)).Margin(k.Px(12), 0, 0, 0)
+						k.Text(c, L("Sign in to Droi"), 20, 28).Role(ui.RoleHeading).FontWeight(500).LetterSpacing(-k.Px(0.3)).Margin(k.Px(12), 0, 0, 0)
 						k.Text(c, L("Droid runs on this computer with your Factory account. Sessions and settings stay here."), 14, 20).
 							TextColor(t.MutedForeground).TextAlign(ui.Center)
 					})

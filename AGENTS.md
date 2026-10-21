@@ -97,7 +97,9 @@ installed types before using an Expo module, and add Expo packages with
   `_other.go` (or `_darwin.go`) pairs
 - TypeScript strict, `verbatimModuleSyntax`, `noUncheckedIndexedAccess`; the shared layer is
   imported as `@droi/daemon-layer/<module>` and uses relative imports inside itself
-- Geist Sans for UI, Geist Mono for code (the native app vendors them as TTF in `apps/native/assets/fonts`)
+- The system's interface font for UI and JetBrains Mono for code (vendored as TTF in
+  `apps/native/assets/fonts`; Geist stays for Settings → Font, ADR 0025). Sizes, radii and
+  control heights come from `pkg/theme` and `pkg/kit`: use them, do not hard-code a colour.
 - File naming: kebab-case for components, camelCase for utilities
 - Git: Conventional Commits
 

@@ -32,7 +32,7 @@ export function PairingForm({ onPaired }: { onPaired: () => void }) {
           {
             borderColor: colors.input,
             color: colors.foreground,
-            backgroundColor: colors.background,
+            backgroundColor: colors.card,
           },
         ]}
       />
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
   form: { gap: space.md },
   input: {
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
     height: 44,
     fontFamily: fonts.mono,

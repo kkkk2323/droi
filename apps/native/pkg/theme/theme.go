@@ -1,6 +1,7 @@
-// Package theme holds the web Client's design tokens (apps/desktop/src/
-// renderer/src/styles/global.css) for the native views: the colours of the
-// three themes, Tailwind's type scale and radii, and the vendored Geist fonts.
+// Package theme holds the design tokens the native views paint with: the
+// colours of the three themes (after ADR 0025), Tailwind's type scale and
+// radii, and the vendored faces, JetBrains Mono for code and Geist for the
+// Font setting's own choice.
 package theme
 
 import (
@@ -51,154 +52,156 @@ type Tokens struct {
 	Removed, RemovedForeground         ui.Color
 	Highlight                          ui.Color
 	Selection                          ui.Color
+	// Tint is the one accent hue the controls that show state paint with: a
+	// switch that is on, a field with the focus. Everything else stays
+	// neutral, as the reference does.
+	Tint ui.Color
 	// SidebarMutedForeground is muted text inside the sidebar, which
 	// Solarized Light+ sets apart from the conversation's.
 	SidebarMutedForeground ui.Color
 }
 
-// ok is CSS's oklch(l c h) as its nearest sRGB color. A color beyond sRGB
-// has MyGo draw the window into float16 drawables on a Display P3 screen,
-// twice the memory of 8-bit ones (about 50 MB for a large window), for
-// status colors that differ from their nearest sRGB ones by a ΔE under 2.2.
-func ok(l, c, h float32) ui.Color {
-	x := ui.Oklch(l, c, h)
-	return ui.Color{R: x.R, G: x.G, B: x.B, A: x.A}
-}
-
+// The workbench separates a neutral navigation rail from the reading surface.
+// Controls use low-alpha ink and a single blue tint for focus and state.
 var light = Tokens{
 	Name:                   Light,
-	Background:             ok(1, 0, 0),
-	Foreground:             ok(0.2, 0, 0),
-	Card:                   ok(0.955, 0, 0),
-	CardForeground:         ok(0.2, 0, 0),
-	Popover:                ok(1, 0, 0),
-	PopoverForeground:      ok(0.2, 0, 0),
-	Primary:                ok(0.2, 0, 0),
-	PrimaryForeground:      ok(0.985, 0, 0),
-	Secondary:              ok(0.94, 0, 0),
-	SecondaryForeground:    ok(0.2, 0, 0),
-	Muted:                  ok(0.955, 0, 0),
-	MutedForeground:        ok(0.5, 0, 0),
-	Accent:                 ok(0.925, 0, 0),
-	AccentForeground:       ok(0.2, 0, 0),
-	Destructive:            ok(0.577, 0.245, 27.325),
-	DestructiveForeground:  ok(0.5, 0.22, 27),
-	Border:                 ok(0.9, 0, 0),
-	Input:                  ok(0.88, 0, 0),
-	Ring:                   ok(0.6, 0, 0),
-	Sidebar:                ok(0.955, 0, 0),
-	SidebarForeground:      ok(0.3, 0, 0),
-	SidebarPrimary:         ok(0.2, 0, 0),
-	SidebarPrimaryFg:       ok(0.985, 0, 0),
-	SidebarAccent:          ok(0.905, 0, 0),
-	SidebarAccentFg:        ok(0.15, 0, 0),
-	SidebarBorder:          ok(0.9, 0, 0),
-	SidebarRing:            ok(0.6, 0, 0),
-	Code:                   ok(0.5, 0.17, 20),
-	CodeBg:                 ok(0.955, 0, 0),
-	Success:                ok(0.596, 0.145, 163.225),
-	Attention:              ok(0.666, 0.179, 58.318),
-	AttentionForeground:    ok(0.555, 0.163, 48.998),
-	Info:                   ok(0.588, 0.158, 241.966),
-	InfoForeground:         ok(0.5, 0.134, 242.749),
-	Added:                  ok(0.596, 0.145, 163.225),
-	AddedForeground:        ok(0.432, 0.095, 166.913),
-	Removed:                ok(0.586, 0.253, 17.585),
-	RemovedForeground:      ok(0.455, 0.188, 13.697),
-	Highlight:              ok(0.924, 0.12, 95.746).Alpha(0.7),
-	Selection:              ui.RGBA(0, 120, 215, 0.25),
-	SidebarMutedForeground: ok(0.5, 0, 0),
+	Background:             ui.Hex("#ffffff"),
+	Foreground:             ui.Hex("#262626"),
+	Card:                   ui.Hex("#ffffff"),
+	CardForeground:         ui.Hex("#262626"),
+	Popover:                ui.Hex("#ffffff"),
+	PopoverForeground:      ui.Hex("#262626"),
+	Primary:                ui.Hex("#171717"),
+	PrimaryForeground:      ui.Hex("#ffffff"),
+	Secondary:              ui.RGBA(0, 0, 0, 0.03),
+	SecondaryForeground:    ui.Hex("#262626"),
+	Muted:                  ui.RGBA(0, 0, 0, 0.04),
+	MutedForeground:        ui.Hex("#6f6f6f"),
+	Accent:                 ui.RGBA(0, 0, 0, 0.04),
+	AccentForeground:       ui.Hex("#262626"),
+	Destructive:            ui.Hex("#ef4444"),
+	DestructiveForeground:  ui.Hex("#c81e1e"),
+	Border:                 ui.RGBA(0, 0, 0, 0.06),
+	Input:                  ui.RGBA(0, 0, 0, 0.08),
+	Ring:                   ui.Hex("#a3a3a3"),
+	Sidebar:                ui.Hex("#ebebeb"),
+	SidebarForeground:      ui.Hex("#262626"),
+	SidebarPrimary:         ui.Hex("#171717"),
+	SidebarPrimaryFg:       ui.Hex("#ffffff"),
+	SidebarAccent:          ui.RGBA(0, 0, 0, 0.045),
+	SidebarAccentFg:        ui.Hex("#171717"),
+	SidebarBorder:          ui.RGBA(0, 0, 0, 0.06),
+	SidebarRing:            ui.Hex("#a3a3a3"),
+	Code:                   ui.Hex("#262626"),
+	CodeBg:                 ui.RGBA(0, 0, 0, 0.045),
+	Success:                ui.Hex("#10b981"),
+	Attention:              ui.Hex("#f59e0b"),
+	AttentionForeground:    ui.Hex("#b45309"),
+	Info:                   ui.Hex("#3b82f6"),
+	InfoForeground:         ui.Hex("#1d4ed8"),
+	Added:                  ui.Hex("#00a240"),
+	AddedForeground:        ui.Hex("#0a7a34"),
+	Removed:                ui.Hex("#e02e2a"),
+	RemovedForeground:      ui.Hex("#b3211e"),
+	Highlight:              ui.RGBA(250, 204, 21, 0.35),
+	Selection:              ui.RGBA(0, 105, 204, 0.18),
+	SidebarMutedForeground: ui.Hex("#737373"),
+	Tint:                   ui.Hex("#0169cc"),
 }
 
 var dark = Tokens{
 	Name:                   Dark,
 	Dark:                   true,
-	Background:             ok(0.2, 0, 0),
-	Foreground:             ok(0.95, 0, 0),
-	Card:                   ok(0.25, 0, 0),
-	CardForeground:         ok(0.95, 0, 0),
-	Popover:                ok(0.23, 0, 0),
-	PopoverForeground:      ok(0.95, 0, 0),
-	Primary:                ok(0.95, 0, 0),
-	PrimaryForeground:      ok(0.2, 0, 0),
-	Secondary:              ok(0.28, 0, 0),
-	SecondaryForeground:    ok(0.95, 0, 0),
-	Muted:                  ok(0.25, 0, 0),
-	MutedForeground:        ok(0.68, 0, 0),
-	Accent:                 ok(0.3, 0, 0),
-	AccentForeground:       ok(0.95, 0, 0),
-	Destructive:            ok(0.396, 0.141, 25.723),
-	DestructiveForeground:  ok(0.7, 0.19, 25),
-	Border:                 ok(0.3, 0, 0),
-	Input:                  ok(0.32, 0, 0),
-	Ring:                   ok(0.5, 0, 0),
-	Sidebar:                ok(0.165, 0, 0),
-	SidebarForeground:      ok(0.8, 0, 0),
-	SidebarPrimary:         ok(0.95, 0, 0),
-	SidebarPrimaryFg:       ok(0.2, 0, 0),
-	SidebarAccent:          ok(0.26, 0, 0),
-	SidebarAccentFg:        ok(0.97, 0, 0),
-	SidebarBorder:          ok(0.26, 0, 0),
-	SidebarRing:            ok(0.5, 0, 0),
-	Code:                   ok(0.78, 0.12, 20),
-	CodeBg:                 ok(0.27, 0, 0),
-	Success:                ok(0.765, 0.177, 163.223),
-	Attention:              ok(0.828, 0.189, 84.429),
-	AttentionForeground:    ok(0.924, 0.12, 95.746),
-	Info:                   ok(0.746, 0.16, 232.661),
-	InfoForeground:         ok(0.828, 0.111, 230.318),
-	Added:                  ok(0.765, 0.177, 163.223),
-	AddedForeground:        ok(0.905, 0.093, 164.15),
-	Removed:                ok(0.712, 0.194, 13.428),
-	RemovedForeground:      ok(0.892, 0.058, 10.001),
-	Highlight:              ok(0.769, 0.188, 70.08).Alpha(0.3),
-	Selection:              ui.RGBA(100, 150, 255, 0.35),
-	SidebarMutedForeground: ok(0.68, 0, 0),
+	Background:             ui.Hex("#18191b"),
+	Foreground:             ui.Hex("#f5f5f5"),
+	Card:                   ui.Hex("#202124"),
+	CardForeground:         ui.Hex("#f5f5f5"),
+	Popover:                ui.Hex("#252629"),
+	PopoverForeground:      ui.Hex("#f5f5f5"),
+	Primary:                ui.Hex("#f5f5f5"),
+	PrimaryForeground:      ui.Hex("#171717"),
+	Secondary:              ui.RGBA(255, 255, 255, 0.05),
+	SecondaryForeground:    ui.Hex("#f5f5f5"),
+	Muted:                  ui.RGBA(255, 255, 255, 0.05),
+	MutedForeground:        ui.Hex("#9a9a9a"),
+	Accent:                 ui.RGBA(255, 255, 255, 0.05),
+	AccentForeground:       ui.Hex("#f5f5f5"),
+	Destructive:            ui.Hex("#f05454"),
+	DestructiveForeground:  ui.Hex("#f87575"),
+	Border:                 ui.RGBA(255, 255, 255, 0.08),
+	Input:                  ui.RGBA(255, 255, 255, 0.1),
+	Ring:                   ui.Hex("#6b6b6b"),
+	Sidebar:                ui.Hex("#202124"),
+	SidebarForeground:      ui.Hex("#f5f5f5"),
+	SidebarPrimary:         ui.Hex("#f5f5f5"),
+	SidebarPrimaryFg:       ui.Hex("#171717"),
+	SidebarAccent:          ui.RGBA(255, 255, 255, 0.06),
+	SidebarAccentFg:        ui.Hex("#ffffff"),
+	SidebarBorder:          ui.RGBA(255, 255, 255, 0.07),
+	SidebarRing:            ui.Hex("#6b6b6b"),
+	Code:                   ui.Hex("#f5f5f5"),
+	CodeBg:                 ui.RGBA(255, 255, 255, 0.06),
+	Success:                ui.Hex("#34d399"),
+	Attention:              ui.Hex("#fbbf24"),
+	AttentionForeground:    ui.Hex("#fcd34d"),
+	Info:                   ui.Hex("#60a5fa"),
+	InfoForeground:         ui.Hex("#93c5fd"),
+	Added:                  ui.Hex("#40c977"),
+	AddedForeground:        ui.Hex("#5ef0a4"),
+	Removed:                ui.Hex("#fa423e"),
+	RemovedForeground:      ui.Hex("#ff8a86"),
+	Highlight:              ui.RGBA(251, 191, 36, 0.22),
+	Selection:              ui.RGBA(51, 156, 255, 0.28),
+	SidebarMutedForeground: ui.Hex("#8f8f8f"),
+	Tint:                   ui.Hex("#339cff"),
 }
 
+// Solarized Light+ in the same material: the page a step brighter than its
+// panels, hairlines as low-alpha ink, and the tint the palette's blue.
 var solarized = Tokens{
 	Name:                   SolarizedLight,
-	Background:             ui.Hex("#fdf6e3"),
-	Foreground:             ui.Hex("#586e75"),
-	Card:                   ui.Hex("#eee8d5"),
-	CardForeground:         ui.Hex("#586e75"),
-	Popover:                ui.Hex("#eee8d5"),
-	PopoverForeground:      ui.Hex("#586e75"),
-	Primary:                ui.Hex("#ac9d57"),
-	PrimaryForeground:      ui.Hex("#ffffff"),
-	Secondary:              ui.Hex("#eee8d5"),
-	SecondaryForeground:    ui.Hex("#586e75"),
-	Muted:                  ui.Hex("#eee8d5"),
-	MutedForeground:        ui.Hex("#657b83"),
-	Accent:                 ui.Hex("#ddd6c1"),
-	AccentForeground:       ui.Hex("#586e75"),
+	Background:             ui.Hex("#fbf7ea"),
+	Foreground:             ui.Hex("#4b5c62"),
+	Card:                   ui.Hex("#f4efe2"),
+	CardForeground:         ui.Hex("#4b5c62"),
+	Popover:                ui.Hex("#fdfaf1"),
+	PopoverForeground:      ui.Hex("#4b5c62"),
+	Primary:                ui.Hex("#5c6f76"),
+	PrimaryForeground:      ui.Hex("#fdfaf1"),
+	Secondary:              ui.RGBA(88, 110, 117, 0.06),
+	SecondaryForeground:    ui.Hex("#4b5c62"),
+	Muted:                  ui.RGBA(88, 110, 117, 0.07),
+	MutedForeground:        ui.Hex("#6b7f88"),
+	Accent:                 ui.RGBA(88, 110, 117, 0.08),
+	AccentForeground:       ui.Hex("#40505a"),
 	Destructive:            ui.Hex("#dc322f"),
-	DestructiveForeground:  ui.Hex("#dc322f"),
-	Border:                 ui.Hex("#ddd6c1"),
-	Input:                  ui.Hex("#ddd6c1"),
-	Ring:                   ui.Hex("#d3af86"),
-	Sidebar:                ui.Hex("#eee8d5"),
-	SidebarForeground:      ui.Hex("#616161"),
-	SidebarPrimary:         ui.Hex("#ac9d57"),
-	SidebarPrimaryFg:       ui.Hex("#ffffff"),
-	SidebarAccent:          ui.Hex("#d1cbb8"),
-	SidebarAccentFg:        ui.Hex("#616161"),
-	SidebarBorder:          ui.Hex("#ddd6c1"),
-	SidebarRing:            ui.Hex("#d3af86"),
-	Code:                   ui.Hex("#2aa198"),
-	CodeBg:                 ui.Hex("#eee8d5"),
+	DestructiveForeground:  ui.Hex("#b32d2a"),
+	Border:                 ui.RGBA(88, 110, 117, 0.14),
+	Input:                  ui.RGBA(88, 110, 117, 0.18),
+	Ring:                   ui.Hex("#b3a99b"),
+	Sidebar:                ui.Hex("#eee8d8"),
+	SidebarForeground:      ui.Hex("#44555c"),
+	SidebarPrimary:         ui.Hex("#5c6f76"),
+	SidebarPrimaryFg:       ui.Hex("#fdfaf1"),
+	SidebarAccent:          ui.RGBA(88, 110, 117, 0.09),
+	SidebarAccentFg:        ui.Hex("#3c4c54"),
+	SidebarBorder:          ui.RGBA(88, 110, 117, 0.14),
+	SidebarRing:            ui.Hex("#b3a99b"),
+	Code:                   ui.Hex("#4b5c62"),
+	CodeBg:                 ui.RGBA(88, 110, 117, 0.08),
 	Success:                ui.Hex("#859900"),
 	Attention:              ui.Hex("#b58900"),
-	AttentionForeground:    ui.Hex("#b58900"),
+	AttentionForeground:    ui.Hex("#8f6a00"),
 	Info:                   ui.Hex("#268bd2"),
-	InfoForeground:         ui.Hex("#268bd2"),
+	InfoForeground:         ui.Hex("#1f6fa8"),
 	Added:                  ui.Hex("#859900"),
-	AddedForeground:        ui.Hex("#219186"),
+	AddedForeground:        ui.Hex("#6a7a00"),
 	Removed:                ui.Hex("#dc322f"),
-	RemovedForeground:      ui.Hex("#dc322f"),
-	Highlight:              ui.RGBA(0xb5, 0x89, 0x00, 0x40/255.0),
-	Selection:              ui.Hex("#ccc4b0"),
-	SidebarMutedForeground: ui.Hex("#717171"),
+	RemovedForeground:      ui.Hex("#b32d2a"),
+	Highlight:              ui.RGBA(181, 137, 0, 0.22),
+	Selection:              ui.RGBA(38, 139, 210, 0.18),
+	SidebarMutedForeground: ui.Hex("#7d8d93"),
+	Tint:                   ui.Hex("#268bd2"),
 }
 
 // Of returns the tokens of a theme; an unknown name is Light.
@@ -222,17 +225,29 @@ func Parse(s string) Name {
 	return Light
 }
 
-// Font families, as the CSS's --font-sans-choice and --font-mono-choice.
+// Font families. The interface face is the system's own (SF Pro on macOS,
+// Segoe UI on Windows), as the reference app uses; the code face is the
+// vendored JetBrains Mono.
 const (
+	// SystemUI is the system's interface font, as CSS's system-ui: the
+	// text stack resolves it to SF Pro on macOS and Segoe UI on Windows.
+	SystemUI = "system-ui"
+	// JetBrainsMono is the vendored code face, also for a field that is mono.
+	JetBrainsMono = "JetBrains Mono"
+	// Geist and GeistMono are still vendored, for the Font setting's choice.
 	Geist     = "Geist"
 	GeistMono = "Geist Mono"
 )
 
 var fontsOnce sync.Once
 
-// RegisterFonts registers the vendored Geist pair, once.
+// RegisterFonts registers the vendored faces, once: JetBrains Mono, and the
+// Geist pair the Font setting can still pick.
 func RegisterFonts() {
 	fontsOnce.Do(func() {
+		if err := ui.RegisterFont(assets.JetBrainsMonoVariable, JetBrainsMono); err != nil {
+			panic(err)
+		}
 		if err := ui.RegisterFont(assets.GeistVariable, Geist); err != nil {
 			panic(err)
 		}
@@ -242,21 +257,24 @@ func RegisterFonts() {
 	})
 }
 
-// FontChoice is Settings → Font: the vendored Geist pair or the system's.
+// FontChoice is Settings → Font: the system's interface font, the default,
+// or the vendored Geist pair.
 type FontChoice string
 
 const (
-	FontGeist  FontChoice = "geist"
+	// FontSystem is the reference's own: the system's interface font with
+	// JetBrains Mono for code.
 	FontSystem FontChoice = "system"
+	FontGeist  FontChoice = "geist"
 )
 
-// Families returns the sans and mono families of a font choice. "" is the
-// system's own sans, as -apple-system is in the CSS.
+// Families returns the sans and mono families of a font choice. SystemUI is
+// the text stack's own system font, as CSS's system-ui is.
 func Families(f FontChoice) (sans, mono string) {
-	if f == FontSystem {
-		return "", "Menlo, monospace"
+	if f == FontGeist {
+		return Geist, GeistMono
 	}
-	return Geist, GeistMono
+	return SystemUI, JetBrainsMono
 }
 
 // TextSize is Settings → Text size, which scales every rem.

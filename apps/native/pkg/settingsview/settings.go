@@ -85,7 +85,7 @@ func (s *Settings) General(c *ui.Context, apply func()) {
 	for i, n := range theme.Names {
 		themes[i] = kit.Option{Value: string(n), Label: theme.Labels[n]}
 	}
-	fonts := []kit.Option{{Value: "geist", Label: "Geist"}, {Value: "system", Label: l10n.L("System")}}
+	fonts := []kit.Option{{Value: string(theme.FontSystem), Label: l10n.L("System")}, {Value: string(theme.FontGeist), Label: "Geist"}}
 	sizes := []kit.Option{{Value: "small", Label: l10n.L("Small")}, {Value: "default", Label: l10n.L("Default")}, {Value: "large", Label: l10n.L("Large")}, {Value: "largest", Label: l10n.L("Largest")}}
 	pick := func(p prefs.String, label string, opts []kit.Option) func() {
 		return func() {
@@ -106,7 +106,7 @@ func (s *Settings) General(c *ui.Context, apply func()) {
 			k.SettingRow(c, l10n.L("Theme"), l10n.L("Light is the default. Kept on this device."), pick(prefs.Theme, l10n.N("Theme"), themes), nil)
 		},
 		func() {
-			k.SettingRow(c, l10n.L("Font"), l10n.L("Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone."), pick(prefs.Font, l10n.N("Font"), fonts), nil)
+			k.SettingRow(c, l10n.L("Font"), l10n.L("System uses this device's face, San Francisco on a Mac or Segoe UI on Windows. Geist is bundled with Droi."), pick(prefs.Font, l10n.N("Font"), fonts), nil)
 		},
 		func() {
 			k.SettingRow(c, l10n.L("Text size"), l10n.L("Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."), pick(prefs.TextSize, l10n.N("Text size"), sizes), nil)

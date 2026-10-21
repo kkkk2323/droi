@@ -6,9 +6,9 @@ const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')]
 
 test.use({ scenario: { sessions: [deploy] } })
 
-// The theme's foreground: #161616 in light, #eeeeee in dark.
-const LIGHT_TEXT = 'rgb(22, 22, 22)'
-const DARK_TEXT = 'rgb(238, 238, 238)'
+// The theme's foreground: #262626 in light, #f5f5f5 in dark.
+const LIGHT_TEXT = 'rgb(38, 38, 38)'
+const DARK_TEXT = 'rgb(245, 245, 245)'
 
 async function openSettings(page: Page) {
   await openSessionList(page)
@@ -45,8 +45,8 @@ test('Solarized Light+ draws the Settings in its colours', async ({ page, fakeDa
   const theme = page.getByRole('radiogroup', { name: 'Theme' })
   await theme.getByRole('radio', { name: 'Solarized Light+' }).click()
   await expect(theme.getByRole('radio', { name: 'Solarized Light+' })).toBeChecked()
-  // #586e75, Solarized's base01, whatever the system's appearance.
-  await expect(theme.getByText('System')).toHaveCSS('color', 'rgb(88, 110, 117)')
+  // #4b5c62, Solarized Light+ ink, whatever the system's appearance.
+  await expect(theme.getByText('System')).toHaveCSS('color', 'rgb(75, 92, 98)')
 })
 
 test('text size changes the transcript and persists', async ({ page, fakeDaemon }) => {

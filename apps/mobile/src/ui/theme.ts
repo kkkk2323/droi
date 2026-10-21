@@ -1,6 +1,6 @@
-// The web Client's design tokens (apps/desktop/src/renderer/src/styles/global.css),
-// translated for React Native: the oklch colours as sRGB hex, the rem radii
-// as points, and Geist as the per-weight families expo-font registers.
+// Shared Synara workbench materials: a white conversation beside a gray
+// sidebar in light mode, charcoal surfaces in dark mode, the system UI
+// face, and JetBrains Mono for code.
 
 export type ColorScheme = 'light' | 'dark'
 
@@ -13,98 +13,97 @@ export function schemeOf(theme: ThemeName): ColorScheme {
 
 const light = {
   background: '#ffffff',
-  foreground: '#161616',
-  card: '#f0f0f0',
+  foreground: '#262626',
+  card: '#ffffff',
   popover: '#ffffff',
-  primary: '#161616',
-  primaryForeground: '#fafafa',
-  secondary: '#ebebeb',
-  muted: '#f0f0f0',
-  mutedForeground: '#636363',
-  accent: '#e6e6e6',
-  destructive: '#e7000b',
-  destructiveForeground: '#c20000',
-  border: '#dedede',
-  input: '#d7d7d7',
-  ring: '#808080',
-  sidebar: '#f0f0f0',
-  sidebarForeground: '#2e2e2e',
-  sidebarAccent: '#dfdfdf',
-  sidebarBorder: '#dedede',
-  codeBackground: '#f0f0f0',
+  primary: '#171717',
+  primaryForeground: '#ffffff',
+  secondary: 'rgba(0, 0, 0, 0.03)',
+  muted: 'rgba(0, 0, 0, 0.04)',
+  mutedForeground: '#6f6f6f',
+  accent: 'rgba(0, 0, 0, 0.04)',
+  destructive: '#ef4444',
+  destructiveForeground: '#c81e1e',
+  border: 'rgba(0, 0, 0, 0.06)',
+  input: 'rgba(0, 0, 0, 0.08)',
+  ring: '#a3a3a3',
+  sidebar: '#ebebeb',
+  sidebarForeground: '#262626',
+  sidebarAccent: 'rgba(0, 0, 0, 0.045)',
+  sidebarBorder: 'rgba(0, 0, 0, 0.06)',
+  codeBackground: 'rgba(0, 0, 0, 0.045)',
   // Inline code. React Native cannot pad or round a span inside text, so a
-  // fill would be a bare box hugging the glyphs; mono type in a warm ink reads
-  // as code without the web Client's pill.
-  codeInline: '#9a5528',
-  // Status only, as the web Client uses them: emerald-600, amber-600, sky-600
-  // for Working, and sky-500 for the unread dot.
-  success: '#009966',
-  attention: '#dd7400',
-  working: '#0084d1',
-  unread: '#00a6f4',
-  // Diff lines: emerald-500 and rose-500 at 12%.
-  addedBackground: 'rgba(16, 185, 129, 0.12)',
-  removedBackground: 'rgba(244, 63, 94, 0.12)',
+  // fill would be a bare box hugging the glyphs; the ink reads as code
+  // without the reference's pill.
+  codeInline: '#262626',
+  // Status only, the reference's own tints: emerald, amber and blue.
+  success: '#10b981',
+  attention: '#f59e0b',
+  working: '#3b82f6',
+  unread: '#0169cc',
+  // Diff lines: the reference's added and removed green and red at 12%.
+  addedBackground: 'rgba(0, 162, 64, 0.12)',
+  removedBackground: 'rgba(224, 46, 42, 0.12)',
   backdrop: 'rgba(0, 0, 0, 0.3)',
 }
 
 export type Colors = typeof light
 
 const dark: Colors = {
-  background: '#161616',
-  foreground: '#eeeeee',
-  card: '#222222',
-  popover: '#1d1d1d',
-  primary: '#eeeeee',
-  primaryForeground: '#161616',
-  secondary: '#292929',
-  muted: '#222222',
-  mutedForeground: '#989898',
-  accent: '#2e2e2e',
-  destructive: '#82181a',
-  destructiveForeground: '#ff645f',
-  border: '#2e2e2e',
-  input: '#333333',
-  ring: '#636363',
-  sidebar: '#0e0e0e',
-  sidebarForeground: '#bebebe',
-  sidebarAccent: '#242424',
-  sidebarBorder: '#242424',
-  codeBackground: '#262626',
-  codeInline: '#e0a882',
-  // Tailwind's emerald-400, amber-400, sky-400 and sky-500.
-  success: '#00d492',
-  attention: '#ffb900',
-  working: '#00bcff',
-  unread: '#00a6f4',
-  addedBackground: 'rgba(16, 185, 129, 0.12)',
-  removedBackground: 'rgba(244, 63, 94, 0.12)',
+  background: '#18191b',
+  foreground: '#f5f5f5',
+  card: '#202124',
+  popover: '#202124',
+  primary: '#f5f5f5',
+  primaryForeground: '#171717',
+  secondary: 'rgba(255, 255, 255, 0.05)',
+  muted: 'rgba(255, 255, 255, 0.05)',
+  mutedForeground: '#9a9a9a',
+  accent: 'rgba(255, 255, 255, 0.05)',
+  destructive: '#f05454',
+  destructiveForeground: '#f87575',
+  border: 'rgba(255, 255, 255, 0.08)',
+  input: 'rgba(255, 255, 255, 0.1)',
+  ring: '#6b6b6b',
+  sidebar: '#202124',
+  sidebarForeground: '#f5f5f5',
+  sidebarAccent: 'rgba(255, 255, 255, 0.06)',
+  sidebarBorder: 'rgba(255, 255, 255, 0.07)',
+  codeBackground: 'rgba(255, 255, 255, 0.06)',
+  codeInline: '#f5f5f5',
+  success: '#34d399',
+  attention: '#fbbf24',
+  working: '#60a5fa',
+  unread: '#339cff',
+  addedBackground: 'rgba(64, 201, 119, 0.14)',
+  removedBackground: 'rgba(250, 66, 62, 0.14)',
   backdrop: 'rgba(0, 0, 0, 0.5)',
 }
 
-// Solarized Light+ as the web Client draws it (global.css, [data-theme='solarized-light']).
+// Solarized Light+ in the same material: the page a step brighter than its
+// panels, hairlines as low-alpha ink, the palette's blue as the tint.
 const solarizedLight: Colors = {
-  background: '#fdf6e3',
-  foreground: '#586e75',
-  card: '#eee8d5',
-  popover: '#eee8d5',
-  primary: '#ac9d57',
-  primaryForeground: '#ffffff',
-  secondary: '#eee8d5',
-  muted: '#eee8d5',
-  mutedForeground: '#657b83',
-  accent: '#ddd6c1',
+  background: '#fbf7ea',
+  foreground: '#4b5c62',
+  card: '#f4efe2',
+  popover: '#fdfaf1',
+  primary: '#5c6f76',
+  primaryForeground: '#fdfaf1',
+  secondary: 'rgba(88, 110, 117, 0.06)',
+  muted: 'rgba(88, 110, 117, 0.07)',
+  mutedForeground: '#6b7f88',
+  accent: 'rgba(88, 110, 117, 0.08)',
   destructive: '#dc322f',
-  destructiveForeground: '#dc322f',
-  border: '#ddd6c1',
-  input: '#ddd6c1',
-  ring: '#d3af86',
-  sidebar: '#eee8d5',
-  sidebarForeground: '#616161',
-  sidebarAccent: '#d1cbb8',
-  sidebarBorder: '#ddd6c1',
-  codeBackground: '#eee8d5',
-  codeInline: '#2aa198',
+  destructiveForeground: '#b32d2a',
+  border: 'rgba(88, 110, 117, 0.14)',
+  input: 'rgba(88, 110, 117, 0.18)',
+  ring: '#b3a99b',
+  sidebar: '#f7f2e5',
+  sidebarForeground: '#44555c',
+  sidebarAccent: 'rgba(88, 110, 117, 0.09)',
+  sidebarBorder: 'rgba(88, 110, 117, 0.14)',
+  codeBackground: 'rgba(88, 110, 117, 0.08)',
+  codeInline: '#4b5c62',
   success: '#859900',
   attention: '#b58900',
   working: '#268bd2',
@@ -120,18 +119,21 @@ export const COLORS: Record<ThemeName, Colors> = {
   'solarized-light': solarizedLight,
 }
 
-/** --radius is 0.625rem at the web Client's 16px root. */
+/** The reference's --radius is a 10px basis: lg 10, md 8, sm 6. */
 export const radius = { sm: 6, md: 8, lg: 10, xl: 14, full: 999 } as const
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const
 
+/**
+ * The system's own interface face (SF Pro on iOS) and JetBrains Mono for
+ * code, as the reference app uses them: one family object for every weight,
+ * since the system font selects its weight from `fontWeight`.
+ */
 export const fonts = {
-  sans: 'Geist_400Regular',
-  sansMedium: 'Geist_500Medium',
-  sansSemiBold: 'Geist_600SemiBold',
-  mono: 'GeistMono_400Regular',
-  monoMedium: 'GeistMono_500Medium',
+  sans: 'System',
+  mono: 'JetBrainsMono_400Regular',
+  monoMedium: 'JetBrainsMono_500Medium',
 } as const
 
-/** The web Client's html font-size is 14px; its text-sm and text-xs follow. */
+/** Phone type scale: 15px body, as before. Synara's 13px is desktop. */
 export const fontSize = { xs: 12, sm: 13, base: 15, lg: 17, xl: 20 } as const

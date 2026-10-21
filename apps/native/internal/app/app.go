@@ -787,7 +787,7 @@ func (a *App) View(c *ui.Context) {
 		if !a.narrow {
 			target := float32(0)
 			if shown {
-				target = 240
+				target = 224
 			}
 			// Animated here, not with a Transition: that moves the box after
 			// the layout, so the main panel would jump to its new width.
@@ -799,7 +799,7 @@ func (a *App) View(c *ui.Context) {
 				side.Invisible()
 			}
 			side.Children(func() {
-				ui.Column(c).Width(240).FillHeight().Children(func() {
+				ui.Column(c).Width(224).FillHeight().Children(func() {
 					a.sidebarView(c, listed, busy, listErr, listDone)
 				})
 			})

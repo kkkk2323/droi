@@ -130,8 +130,14 @@ export function Failure({ message }: { message: string }) {
 
 const styles = StyleSheet.create({
   group: { gap: space.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.xs },
-  body: { flex: 1, gap: 2 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: 52,
+    paddingVertical: space.sm,
+  },
+  body: { flex: 1, gap: space.xs },
   off: { opacity: 0.7 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
   badge: { borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },

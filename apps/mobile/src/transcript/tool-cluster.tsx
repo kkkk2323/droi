@@ -252,21 +252,21 @@ function DiffView({ lines }: { lines: DiffLine[] }) {
 }
 
 const styles = StyleSheet.create({
-  clusterHeader: { flexDirection: 'row', alignItems: 'center', gap: space.xs, height: 24 },
-  rows: { borderLeftWidth: StyleSheet.hairlineWidth, marginLeft: space.xs, paddingLeft: space.sm },
+  clusterHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
+  rows: { borderLeftWidth: 1, marginLeft: space.xs, paddingLeft: space.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    minHeight: 32,
+    minHeight: 44,
     borderRadius: radius.md,
     paddingHorizontal: space.xs,
   },
   summary: { flex: 1 },
   detail: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.lg,
-    marginBottom: space.xs,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    marginVertical: space.xs,
     overflow: 'hidden',
   },
   detailText: { padding: space.sm, lineHeight: 18 },

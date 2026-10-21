@@ -18,7 +18,7 @@ export function SessionSearchBox({
 }) {
   const colors = useColors()
   return (
-    <View style={[styles.box, { backgroundColor: colors.sidebarAccent }]}>
+    <View style={[styles.box, { backgroundColor: colors.card, borderColor: colors.sidebarBorder }]}>
       <Search size={16} color={colors.mutedForeground} strokeWidth={1.75} />
       <TextInput
         role="searchbox"
@@ -109,7 +109,7 @@ function SearchHitRow({ hit, onSelect }: { hit: SessionSearchHit; onSelect: () =
       onPress={onSelect}
       style={({ pressed }) => [styles.hit, pressed ? { backgroundColor: colors.accent } : null]}
     >
-      <Text size="sm" numberOfLines={1}>
+      <Text size="base" numberOfLines={1}>
         {hit.title}
       </Text>
       {hit.snippet.length > 0 ? (
@@ -133,26 +133,29 @@ const styles = StyleSheet.create({
   box: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
-    marginHorizontal: space.sm,
+    gap: space.sm,
+    marginHorizontal: space.md,
+    marginTop: space.md,
     marginBottom: space.xs,
-    paddingHorizontal: space.sm,
-    height: 36,
-    borderRadius: radius.lg,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: radius.md,
   },
   input: {
     flex: 1,
-    height: 36,
+    height: 44,
     fontFamily: fonts.sans,
-    fontSize: fontSize.sm,
+    fontSize: fontSize.base,
   },
   clear: { padding: space.xs },
   note: { paddingHorizontal: space.sm, paddingVertical: space.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   hit: {
-    gap: 2,
+    gap: space.xs,
+    minHeight: 52,
     paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    borderRadius: radius.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.md,
   },
 })

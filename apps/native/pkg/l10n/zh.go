@@ -340,7 +340,7 @@ var zh = map[string]string{
 	"Font":                  "字体",
 	"Found":                 "已找到",
 	"Fri":                   "周五",
-	"Geist is Droi's own. System uses this device's face, San Francisco on a Mac or iPhone.": "Geist 是 Droi 自带字体。“系统”使用此设备的字体，在 Mac 或 iPhone 上为 San Francisco。",
+	"System uses this device's face, San Francisco on a Mac or Segoe UI on Windows. Geist is bundled with Droi.": "“系统”使用此设备的字体：Mac 上是 San Francisco，Windows 上是 Segoe UI。Geist 随 Droi 一起提供。",
 	"General":                     "通用",
 	"Give the automation a name.": "为自动化命名。",
 	"Give the command that starts the server.": "填写启动服务器的命令。",

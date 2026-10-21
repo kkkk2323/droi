@@ -56,7 +56,7 @@ export function SessionDefaultsScreen({ computerName }: { computerName: string }
 
   return (
     <ScrollView
-      style={{ backgroundColor: colors.background }}
+      style={{ backgroundColor: colors.sidebar }}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
@@ -389,12 +389,17 @@ function CustomFolder({ stored, onSave }: { stored: string; onSave: (path: strin
 }
 
 const styles = StyleSheet.create({
-  content: { padding: space.lg, gap: space.xl },
-  intro: { paddingHorizontal: space.xs },
+  content: {
+    paddingHorizontal: space.md,
+    paddingTop: space.lg,
+    paddingBottom: space.xl,
+    gap: space.lg,
+  },
+  intro: { paddingHorizontal: space.md, lineHeight: 20 },
   folder: { gap: space.sm, marginTop: -space.md },
   input: {
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: space.md,
     height: 44,
     fontFamily: fonts.mono,

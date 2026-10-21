@@ -55,7 +55,10 @@ export function ComputerMenu({
     <View
       role="menu"
       aria-label="Computers"
-      style={[styles.menu, { borderBottomColor: colors.border }]}
+      style={[
+        styles.menu,
+        { borderBottomColor: colors.sidebarBorder, backgroundColor: colors.sidebar },
+      ]}
     >
       {computers
         .filter((c) => c.id !== computer.id)
@@ -107,7 +110,7 @@ const styles = StyleSheet.create({
   name: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   shrink: { flexShrink: 1 },
   menu: {
-    paddingHorizontal: space.sm,
+    paddingHorizontal: space.md,
     paddingBottom: space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -117,6 +120,6 @@ const styles = StyleSheet.create({
     gap: space.sm,
     minHeight: 44,
     paddingHorizontal: space.sm,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
   },
 })

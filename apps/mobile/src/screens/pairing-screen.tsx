@@ -47,6 +47,6 @@ export function PairingScreen({ firstLaunch }: { firstLaunch: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: space.xl, gap: space.md },
+  content: { paddingHorizontal: space.lg, gap: space.lg },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.lg },
 })

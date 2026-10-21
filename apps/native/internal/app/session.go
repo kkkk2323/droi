@@ -179,7 +179,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 	if a.narrow {
 		padX = k.Px(8)
 	}
-	ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(padX).Gap(k.Px(4)).DragWindow().Children(func() {
+	ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(padX).Gap(k.Px(4)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).DragWindow().Children(func() {
 		if a.narrow {
 			a.openSessionsButton(c)
 		} else {
@@ -198,7 +198,8 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 			group := ui.Row(c).MinWidth(0).Gap(k.Px(4))
 			hover := group.Hovered()
 			group.Children(func() {
-				k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
+				k.IconStroke(c, "message-square", 1.5, 14, t.MutedForeground)
+				k.Text(c, title, 12, 18).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
 				v.sessionActions(c, sel, title, workspace, hover)
 			})
 		})
