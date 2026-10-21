@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
@@ -46,6 +47,8 @@ type newSessionState struct {
 	// interaction is "auto" or "spec" once toggled on the page.
 	interaction string
 	toolMode    defaults.ToolMode
+	// engine is "" / "droid" for the Droid Daemon, or "omp" for oh-my-pi.
+	engine string
 
 	text    string
 	images  []attachments.Image
@@ -56,9 +59,10 @@ type newSessionState struct {
 	// caretToEnd puts the caret after a picked command, on the next build.
 	caretToEnd bool
 
-	modelOpen bool
-	picker    pickerState
-	autoOpen  bool
+	modelOpen  bool
+	picker     pickerState
+	autoOpen   bool
+	engineOpen bool
 
 	// worktree is the page's choice once worktreeSet; until then the
 	// preference decides. lifecycle, base and profile are "" for the
@@ -81,9 +85,10 @@ func (s *newSessionState) reset(r Route) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pick, s.picked = "", false
-	s.modelID, s.effort, s.autonomy, s.toolMode = "", "", "", ""
+	s.modelID, s.effort, s.autonomy, s.toolMode, s.engine = "", "", "", "", ""
 	s.err = ""
 	s.worktreeSet, s.worktree, s.lifecycle, s.base, s.profile, s.worktreeOpen = false, false, "", "", "", false
+	s.engineOpen = false
 	s.repos = nil
 	switch {
 	case r.Scratch:
@@ -440,6 +445,10 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			return
 		}
 		text, images := pasted.Join(s.text, s.pasted), s.images
+		if s.engine == host.OMPEngine {
+			go a.startOMPSession(workspace, modelID, text)
+			return
+		}
 		// A `/loop` the new Session could not run would leave it empty.
 		if m := loopCommand.FindStringSubmatch(strings.TrimSpace(text)); m != nil && len(images) == 0 {
 			cmd, err := loops.ParseCommand(m[1])
@@ -567,29 +576,50 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 					}()
 				}
 				ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(k.Px(2)).Children(func() {
-					a.modelPicker(c, &s.modelOpen, &s.picker, choices, modelID, effort, func(id string) {
-						s.modelID = id
-						for _, m := range choices {
-							if m.ID == id && !contains(m.ReasoningEfforts, effort) {
-								s.effort = ""
-								if len(m.ReasoningEfforts) > 0 {
-									s.effort = m.ReasoningEfforts[0]
-								}
+					if a.cfg.Host != nil && a.cfg.Host.LocateOMP() != "" && !a.following() {
+						engine := s.engine
+						if engine == "" {
+							engine = "droid"
+						}
+						engOpts := []kit.Option{
+							{Value: "droid", Label: L("Droid")},
+							{Value: host.OMPEngine, Label: L("OMP")},
+						}
+						if next, ok := k.QuietSelect(c, &s.engineOpen, L("Engine"), "bot", engine, engOpts); ok {
+							s.engine = next
+							if next == "droid" {
+								s.engine = ""
 							}
 						}
-					}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
-					if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
-						s.interaction = string(protocol.DroidInteractionModeSpec)
-						if spec {
-							s.interaction = string(protocol.DroidInteractionModeAuto)
+					}
+					if s.engine != host.OMPEngine {
+						a.modelPicker(c, &s.modelOpen, &s.picker, choices, modelID, effort, func(id string) {
+							s.modelID = id
+							for _, m := range choices {
+								if m.ID == id && !contains(m.ReasoningEfforts, effort) {
+									s.effort = ""
+									if len(m.ReasoningEfforts) > 0 {
+										s.effort = m.ReasoningEfforts[0]
+									}
+								}
+							}
+						}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
+						if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
+							s.interaction = string(protocol.DroidInteractionModeSpec)
+							if spec {
+								s.interaction = string(protocol.DroidInteractionModeAuto)
+							}
 						}
-					}
-					opts := make([]kit.Option, len(autonomyLevels))
-					for i, l := range autonomyLevels {
-						opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
-					}
-					if next, ok := k.QuietSelect(c, &s.autoOpen, L("Autonomy"), "shield-check", autonomy, opts); ok {
-						s.autonomy = next
+						opts := make([]kit.Option, len(autonomyLevels))
+						for i, l := range autonomyLevels {
+							opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
+						}
+						if next, ok := k.QuietSelect(c, &s.autoOpen, L("Autonomy"), "shield-check", autonomy, opts); ok {
+							s.autonomy = next
+						}
+					} else {
+						// OMP keeps its own model catalog; an optional fuzzy id can still be passed at start.
+						k.Text(c, L("Uses OMP's models and tools"), 12, 16).TextColor(t.MutedForeground).Padding(0, k.Px(6))
 					}
 				})
 				ui.Row(c).Padding(0, 0, 0, k.Px(4)).Shrink(0).Children(func() {

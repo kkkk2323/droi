@@ -173,6 +173,8 @@ type App struct {
 
 	sidebar sidebarState
 	views   map[string]*sessionView
+	// ompViews are the pages of OMP Sessions, kept while the window lives.
+	ompViews map[string]*ompView
 	// recent are the Sessions whose view is kept, opened last at the end.
 	recent   []string
 	settings settingsState
@@ -764,6 +766,7 @@ func (a *App) View(c *ui.Context) {
 	status, listed, busy, listErr, listDone, rev := a.snapshot()
 	listed, rev = a.knownSubagents(listed, rev)
 	listed, rev = a.withElsewhere(listed, rev)
+	listed, rev = a.withOMP(listed, rev)
 	a.shownRev = rev
 	a.restoreLast(listed, listDone)
 	a.noteLiveRuns(listed, a.activity(busy))
@@ -819,6 +822,10 @@ func (a *App) View(c *ui.Context) {
 			switch {
 			case a.route.Name == "session":
 				id := a.route.SessionID
+				if a.isOMPSession(id, listed) {
+					a.ompViewOf(id).build(c, a)
+					break
+				}
 				if acc, sel, ok := a.elsewhereOf(id, listed); ok {
 					a.elsewhereView(c, id, sel, acc, len(a.activity(busy)))
 					break

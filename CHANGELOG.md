@@ -21,6 +21,10 @@
 
 ## 1.60.0 - 2026-10-21
 
+### Added
+
+- OMP (oh-my-pi) sessions: when `omp` is on PATH (or set via Settings later), New session can start an OMP engine session beside Droid. The Host runs `omp --mode rpc-ui` per live session, streams messages and tool events, and surfaces approval/select prompts in the window. OMP sessions appear in the sidebar tagged as OMP and keep their own transcript page.
+
 ### Changed
 
 - Droi now follows [Synara](https://github.com/Emanuele-web04/synara)'s workbench layout: a grey navigation rail beside a white reading surface, charcoal surfaces in Dark, a compact sidebar with clearer Workspace and Session hierarchy, and an inset composer. New session groups its question and input in the centre. Settings uses flat groups with subtle separators instead of filled cards. The Phone App carries the same surface hierarchy, grouped lists and inset composer while keeping its 15px body text and touch targets.

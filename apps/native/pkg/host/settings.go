@@ -23,8 +23,11 @@ const DefaultMemoryModel = "glm-5.3-flash"
 // Settings are the Shell settings, in the layout of the Desktop Shell's
 // settings.json (apps/desktop/src/main/shell-settings.ts).
 type Settings struct {
-	RemoteAccess      bool    `json:"remoteAccess"`
-	DroidPath         *string `json:"droidPath"`
+	RemoteAccess bool    `json:"remoteAccess"`
+	DroidPath    *string `json:"droidPath"`
+	// OMPPath is an override for the oh-my-pi (`omp`) binary used when a
+	// Session runs on the OMP engine instead of the Droid Daemon.
+	OMPPath           *string `json:"ompPath"`
 	FactoryAPIBaseURL *string `json:"factoryApiBaseUrl"`
 	// MagpieEnabled offers the models of a Magpie gateway running on this
 	// computer to its Daemon, as custom models in the Runtime Overlay.
