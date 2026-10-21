@@ -70,12 +70,12 @@ func (v *View) answerFailed(err error) {
 	v.env.Update(func() { v.promptErr = msg })
 }
 
-// promptCard is the frame both cards share: rounded-2xl, bordered, on the
-// page's background.
+// promptCard is the frame both cards share: rounded-xl, a hairline, and the
+// faint ink fill the reference gives a raised card.
 func (v *View) promptCard(c *ui.Context, key, label string, fn func()) {
 	k, t := v.look()
-	ui.Column(c.Key(key)).Role(ui.RoleGroup).Label(label).Radius(k.Px(16)).Border(1, t.Border).Background(t.Background).
-		Padding(k.Px(12), k.Px(14), k.Px(10), k.Px(14)).Children(fn)
+	ui.Column(c.Key(key)).Role(ui.RoleGroup).Label(label).Radius(k.Px(12)).Border(1, t.Border).Background(t.Foreground.Alpha(0.02)).
+		Padding(k.Px(10), k.Px(12), k.Px(8), k.Px(12)).Children(fn)
 }
 
 // smallButton is a prompt card's button: 28 high, its label at 11.

@@ -1,6 +1,7 @@
-// Package theme holds the web Client's design tokens (apps/desktop/src/
-// renderer/src/styles/global.css) for the native views: the colours of the
-// three themes, Tailwind's type scale and radii, and the vendored Geist fonts.
+// Package theme holds the design tokens the native views paint with: the
+// colours of the three themes (after ADR 0025), Tailwind's type scale and
+// radii, and the vendored faces, JetBrains Mono for code and Geist for the
+// Font setting's own choice.
 package theme
 
 import (
@@ -51,6 +52,10 @@ type Tokens struct {
 	Removed, RemovedForeground         ui.Color
 	Highlight                          ui.Color
 	Selection                          ui.Color
+	// Tint is the one accent hue the controls that show state paint with: a
+	// switch that is on, a field with the focus. Everything else stays
+	// neutral, as the reference does.
+	Tint ui.Color
 	// SidebarMutedForeground is muted text inside the sidebar, which
 	// Solarized Light+ sets apart from the conversation's.
 	SidebarMutedForeground ui.Color
@@ -65,140 +70,156 @@ func ok(l, c, h float32) ui.Color {
 	return ui.Color{R: x.R, G: x.G, B: x.B, A: x.A}
 }
 
+// ink is a hex color of the reference palette (Synara's: Codex's neutral
+// scale), rgba a translucent step of it for fills and hairlines.
+func ink(s string) ui.Color { return ui.Hex(s) }
+
+func rgba(r, g, b uint8, a float32) ui.Color { return ui.RGBA(r, g, b, a) }
+
+// The themes follow Synara (Emanuele-web04/synara): a near-white page in
+// light and a near-black one in dark, surfaces one hairline apart, borders
+// and fills as low-alpha steps of the ink rather than separate greys, and a
+// single blue tint for the controls that show state (a switch, a focused
+// field).
 var light = Tokens{
 	Name:                   Light,
-	Background:             ok(1, 0, 0),
-	Foreground:             ok(0.2, 0, 0),
-	Card:                   ok(0.955, 0, 0),
-	CardForeground:         ok(0.2, 0, 0),
-	Popover:                ok(1, 0, 0),
-	PopoverForeground:      ok(0.2, 0, 0),
-	Primary:                ok(0.2, 0, 0),
-	PrimaryForeground:      ok(0.985, 0, 0),
-	Secondary:              ok(0.94, 0, 0),
-	SecondaryForeground:    ok(0.2, 0, 0),
-	Muted:                  ok(0.955, 0, 0),
-	MutedForeground:        ok(0.5, 0, 0),
-	Accent:                 ok(0.925, 0, 0),
-	AccentForeground:       ok(0.2, 0, 0),
-	Destructive:            ok(0.577, 0.245, 27.325),
-	DestructiveForeground:  ok(0.5, 0.22, 27),
-	Border:                 ok(0.9, 0, 0),
-	Input:                  ok(0.88, 0, 0),
-	Ring:                   ok(0.6, 0, 0),
-	Sidebar:                ok(0.955, 0, 0),
-	SidebarForeground:      ok(0.3, 0, 0),
-	SidebarPrimary:         ok(0.2, 0, 0),
-	SidebarPrimaryFg:       ok(0.985, 0, 0),
-	SidebarAccent:          ok(0.905, 0, 0),
-	SidebarAccentFg:        ok(0.15, 0, 0),
-	SidebarBorder:          ok(0.9, 0, 0),
-	SidebarRing:            ok(0.6, 0, 0),
-	Code:                   ok(0.5, 0.17, 20),
-	CodeBg:                 ok(0.955, 0, 0),
-	Success:                ok(0.596, 0.145, 163.225),
-	Attention:              ok(0.666, 0.179, 58.318),
-	AttentionForeground:    ok(0.555, 0.163, 48.998),
-	Info:                   ok(0.588, 0.158, 241.966),
-	InfoForeground:         ok(0.5, 0.134, 242.749),
-	Added:                  ok(0.596, 0.145, 163.225),
-	AddedForeground:        ok(0.432, 0.095, 166.913),
-	Removed:                ok(0.586, 0.253, 17.585),
-	RemovedForeground:      ok(0.455, 0.188, 13.697),
-	Highlight:              ok(0.924, 0.12, 95.746).Alpha(0.7),
-	Selection:              ui.RGBA(0, 120, 215, 0.25),
-	SidebarMutedForeground: ok(0.5, 0, 0),
+	Background:             ink("#fcfcfc"),
+	Foreground:             ink("#262626"),
+	Card:                   ink("#ffffff"),
+	CardForeground:         ink("#262626"),
+	Popover:                ink("#ffffff"),
+	PopoverForeground:      ink("#262626"),
+	Primary:                ink("#171717"),
+	PrimaryForeground:      ink("#ffffff"),
+	Secondary:              rgba(0, 0, 0, 0.03),
+	SecondaryForeground:    ink("#262626"),
+	Muted:                  rgba(0, 0, 0, 0.04),
+	MutedForeground:        ink("#6f6f6f"),
+	Accent:                 rgba(0, 0, 0, 0.04),
+	AccentForeground:       ink("#262626"),
+	Destructive:            ink("#ef4444"),
+	DestructiveForeground:  ink("#c81e1e"),
+	Border:                 rgba(0, 0, 0, 0.06),
+	Input:                  rgba(0, 0, 0, 0.08),
+	Ring:                   ink("#a3a3a3"),
+	Sidebar:                ink("#ffffff"),
+	SidebarForeground:      ink("#262626"),
+	SidebarPrimary:         ink("#171717"),
+	SidebarPrimaryFg:       ink("#ffffff"),
+	SidebarAccent:          rgba(0, 0, 0, 0.045),
+	SidebarAccentFg:        ink("#171717"),
+	SidebarBorder:          rgba(0, 0, 0, 0.06),
+	SidebarRing:            ink("#a3a3a3"),
+	Code:                   ink("#262626"),
+	CodeBg:                 rgba(0, 0, 0, 0.045),
+	Success:                ink("#10b981"),
+	Attention:              ink("#f59e0b"),
+	AttentionForeground:    ink("#b45309"),
+	Info:                   ink("#3b82f6"),
+	InfoForeground:         ink("#1d4ed8"),
+	Added:                  ink("#00a240"),
+	AddedForeground:        ink("#0a7a34"),
+	Removed:                ink("#e02e2a"),
+	RemovedForeground:      ink("#b3211e"),
+	Highlight:              rgba(250, 204, 21, 0.35),
+	Selection:              rgba(0, 105, 204, 0.18),
+	SidebarMutedForeground: ink("#8a8a8a"),
+	Tint:                   ink("#0169cc"),
 }
 
 var dark = Tokens{
 	Name:                   Dark,
 	Dark:                   true,
-	Background:             ok(0.2, 0, 0),
-	Foreground:             ok(0.95, 0, 0),
-	Card:                   ok(0.25, 0, 0),
-	CardForeground:         ok(0.95, 0, 0),
-	Popover:                ok(0.23, 0, 0),
-	PopoverForeground:      ok(0.95, 0, 0),
-	Primary:                ok(0.95, 0, 0),
-	PrimaryForeground:      ok(0.2, 0, 0),
-	Secondary:              ok(0.28, 0, 0),
-	SecondaryForeground:    ok(0.95, 0, 0),
-	Muted:                  ok(0.25, 0, 0),
-	MutedForeground:        ok(0.68, 0, 0),
-	Accent:                 ok(0.3, 0, 0),
-	AccentForeground:       ok(0.95, 0, 0),
-	Destructive:            ok(0.396, 0.141, 25.723),
-	DestructiveForeground:  ok(0.7, 0.19, 25),
-	Border:                 ok(0.3, 0, 0),
-	Input:                  ok(0.32, 0, 0),
-	Ring:                   ok(0.5, 0, 0),
-	Sidebar:                ok(0.165, 0, 0),
-	SidebarForeground:      ok(0.8, 0, 0),
-	SidebarPrimary:         ok(0.95, 0, 0),
-	SidebarPrimaryFg:       ok(0.2, 0, 0),
-	SidebarAccent:          ok(0.26, 0, 0),
-	SidebarAccentFg:        ok(0.97, 0, 0),
-	SidebarBorder:          ok(0.26, 0, 0),
-	SidebarRing:            ok(0.5, 0, 0),
-	Code:                   ok(0.78, 0.12, 20),
-	CodeBg:                 ok(0.27, 0, 0),
-	Success:                ok(0.765, 0.177, 163.223),
-	Attention:              ok(0.828, 0.189, 84.429),
-	AttentionForeground:    ok(0.924, 0.12, 95.746),
-	Info:                   ok(0.746, 0.16, 232.661),
-	InfoForeground:         ok(0.828, 0.111, 230.318),
-	Added:                  ok(0.765, 0.177, 163.223),
-	AddedForeground:        ok(0.905, 0.093, 164.15),
-	Removed:                ok(0.712, 0.194, 13.428),
-	RemovedForeground:      ok(0.892, 0.058, 10.001),
-	Highlight:              ok(0.769, 0.188, 70.08).Alpha(0.3),
-	Selection:              ui.RGBA(100, 150, 255, 0.35),
-	SidebarMutedForeground: ok(0.68, 0, 0),
+	Background:             ink("#0e0e0e"),
+	Foreground:             ink("#f5f5f5"),
+	Card:                   ink("#141414"),
+	CardForeground:         ink("#f5f5f5"),
+	Popover:                ink("#171717"),
+	PopoverForeground:      ink("#f5f5f5"),
+	Primary:                ink("#f5f5f5"),
+	PrimaryForeground:      ink("#171717"),
+	Secondary:              rgba(255, 255, 255, 0.05),
+	SecondaryForeground:    ink("#f5f5f5"),
+	Muted:                  rgba(255, 255, 255, 0.05),
+	MutedForeground:        ink("#9a9a9a"),
+	Accent:                 rgba(255, 255, 255, 0.05),
+	AccentForeground:       ink("#f5f5f5"),
+	Destructive:            ink("#f05454"),
+	DestructiveForeground:  ink("#f87575"),
+	Border:                 rgba(255, 255, 255, 0.08),
+	Input:                  rgba(255, 255, 255, 0.1),
+	Ring:                   ink("#6b6b6b"),
+	Sidebar:                ink("#131313"),
+	SidebarForeground:      ink("#f5f5f5"),
+	SidebarPrimary:         ink("#f5f5f5"),
+	SidebarPrimaryFg:       ink("#171717"),
+	SidebarAccent:          rgba(255, 255, 255, 0.06),
+	SidebarAccentFg:        ink("#ffffff"),
+	SidebarBorder:          rgba(255, 255, 255, 0.07),
+	SidebarRing:            ink("#6b6b6b"),
+	Code:                   ink("#f5f5f5"),
+	CodeBg:                 rgba(255, 255, 255, 0.06),
+	Success:                ink("#34d399"),
+	Attention:              ink("#fbbf24"),
+	AttentionForeground:    ink("#fcd34d"),
+	Info:                   ink("#60a5fa"),
+	InfoForeground:         ink("#93c5fd"),
+	Added:                  ink("#40c977"),
+	AddedForeground:        ink("#5ef0a4"),
+	Removed:                ink("#fa423e"),
+	RemovedForeground:      ink("#ff8a86"),
+	Highlight:              rgba(251, 191, 36, 0.22),
+	Selection:              rgba(51, 156, 255, 0.28),
+	SidebarMutedForeground: ink("#8f8f8f"),
+	Tint:                   ink("#339cff"),
 }
 
+// Solarized Light+ in the same material: the page a step brighter than its
+// panels, hairlines as low-alpha ink, and the tint the palette's blue.
 var solarized = Tokens{
 	Name:                   SolarizedLight,
-	Background:             ui.Hex("#fdf6e3"),
-	Foreground:             ui.Hex("#586e75"),
-	Card:                   ui.Hex("#eee8d5"),
-	CardForeground:         ui.Hex("#586e75"),
-	Popover:                ui.Hex("#eee8d5"),
-	PopoverForeground:      ui.Hex("#586e75"),
-	Primary:                ui.Hex("#ac9d57"),
-	PrimaryForeground:      ui.Hex("#ffffff"),
-	Secondary:              ui.Hex("#eee8d5"),
-	SecondaryForeground:    ui.Hex("#586e75"),
-	Muted:                  ui.Hex("#eee8d5"),
-	MutedForeground:        ui.Hex("#657b83"),
-	Accent:                 ui.Hex("#ddd6c1"),
-	AccentForeground:       ui.Hex("#586e75"),
-	Destructive:            ui.Hex("#dc322f"),
-	DestructiveForeground:  ui.Hex("#dc322f"),
-	Border:                 ui.Hex("#ddd6c1"),
-	Input:                  ui.Hex("#ddd6c1"),
-	Ring:                   ui.Hex("#d3af86"),
-	Sidebar:                ui.Hex("#eee8d5"),
-	SidebarForeground:      ui.Hex("#616161"),
-	SidebarPrimary:         ui.Hex("#ac9d57"),
-	SidebarPrimaryFg:       ui.Hex("#ffffff"),
-	SidebarAccent:          ui.Hex("#d1cbb8"),
-	SidebarAccentFg:        ui.Hex("#616161"),
-	SidebarBorder:          ui.Hex("#ddd6c1"),
-	SidebarRing:            ui.Hex("#d3af86"),
-	Code:                   ui.Hex("#2aa198"),
-	CodeBg:                 ui.Hex("#eee8d5"),
-	Success:                ui.Hex("#859900"),
-	Attention:              ui.Hex("#b58900"),
-	AttentionForeground:    ui.Hex("#b58900"),
-	Info:                   ui.Hex("#268bd2"),
-	InfoForeground:         ui.Hex("#268bd2"),
-	Added:                  ui.Hex("#859900"),
-	AddedForeground:        ui.Hex("#219186"),
-	Removed:                ui.Hex("#dc322f"),
-	RemovedForeground:      ui.Hex("#dc322f"),
-	Highlight:              ui.RGBA(0xb5, 0x89, 0x00, 0x40/255.0),
-	Selection:              ui.Hex("#ccc4b0"),
-	SidebarMutedForeground: ui.Hex("#717171"),
+	Background:             ink("#fbf7ea"),
+	Foreground:             ink("#4b5c62"),
+	Card:                   ink("#f4efe2"),
+	CardForeground:         ink("#4b5c62"),
+	Popover:                ink("#fdfaf1"),
+	PopoverForeground:      ink("#4b5c62"),
+	Primary:                ink("#5c6f76"),
+	PrimaryForeground:      ink("#fdfaf1"),
+	Secondary:              rgba(88, 110, 117, 0.06),
+	SecondaryForeground:    ink("#4b5c62"),
+	Muted:                  rgba(88, 110, 117, 0.07),
+	MutedForeground:        ink("#6b7f88"),
+	Accent:                 rgba(88, 110, 117, 0.08),
+	AccentForeground:       ink("#40505a"),
+	Destructive:            ink("#dc322f"),
+	DestructiveForeground:  ink("#b32d2a"),
+	Border:                 rgba(88, 110, 117, 0.14),
+	Input:                  rgba(88, 110, 117, 0.18),
+	Ring:                   ink("#b3a99b"),
+	Sidebar:                ink("#f7f2e5"),
+	SidebarForeground:      ink("#44555c"),
+	SidebarPrimary:         ink("#5c6f76"),
+	SidebarPrimaryFg:       ink("#fdfaf1"),
+	SidebarAccent:          rgba(88, 110, 117, 0.09),
+	SidebarAccentFg:        ink("#3c4c54"),
+	SidebarBorder:          rgba(88, 110, 117, 0.14),
+	SidebarRing:            ink("#b3a99b"),
+	Code:                   ink("#4b5c62"),
+	CodeBg:                 rgba(88, 110, 117, 0.08),
+	Success:                ink("#859900"),
+	Attention:              ink("#b58900"),
+	AttentionForeground:    ink("#8f6a00"),
+	Info:                   ink("#268bd2"),
+	InfoForeground:         ink("#1f6fa8"),
+	Added:                  ink("#859900"),
+	AddedForeground:        ink("#6a7a00"),
+	Removed:                ink("#dc322f"),
+	RemovedForeground:      ink("#b32d2a"),
+	Highlight:              rgba(181, 137, 0, 0.22),
+	Selection:              rgba(38, 139, 210, 0.18),
+	SidebarMutedForeground: ink("#7d8d93"),
+	Tint:                   ink("#268bd2"),
 }
 
 // Of returns the tokens of a theme; an unknown name is Light.
@@ -222,17 +243,29 @@ func Parse(s string) Name {
 	return Light
 }
 
-// Font families, as the CSS's --font-sans-choice and --font-mono-choice.
+// Font families. The interface face is the system's own (SF Pro on macOS,
+// Segoe UI on Windows), as the reference app uses; the code face is the
+// vendored JetBrains Mono.
 const (
+	// SystemUI is the system's interface font, as CSS's system-ui: the
+	// text stack resolves it to SF Pro on macOS and Segoe UI on Windows.
+	SystemUI = "system-ui"
+	// JetBrainsMono is the vendored code face, also for a field that is mono.
+	JetBrainsMono = "JetBrains Mono"
+	// Geist and GeistMono are still vendored, for the Font setting's choice.
 	Geist     = "Geist"
 	GeistMono = "Geist Mono"
 )
 
 var fontsOnce sync.Once
 
-// RegisterFonts registers the vendored Geist pair, once.
+// RegisterFonts registers the vendored faces, once: JetBrains Mono, and the
+// Geist pair the Font setting can still pick.
 func RegisterFonts() {
 	fontsOnce.Do(func() {
+		if err := ui.RegisterFont(assets.JetBrainsMonoVariable, JetBrainsMono); err != nil {
+			panic(err)
+		}
 		if err := ui.RegisterFont(assets.GeistVariable, Geist); err != nil {
 			panic(err)
 		}
@@ -242,21 +275,24 @@ func RegisterFonts() {
 	})
 }
 
-// FontChoice is Settings → Font: the vendored Geist pair or the system's.
+// FontChoice is Settings → Font: the system's interface font, the default,
+// or the vendored Geist pair.
 type FontChoice string
 
 const (
-	FontGeist  FontChoice = "geist"
+	// FontSystem is the reference's own: the system's interface font with
+	// JetBrains Mono for code.
 	FontSystem FontChoice = "system"
+	FontGeist  FontChoice = "geist"
 )
 
-// Families returns the sans and mono families of a font choice. "" is the
-// system's own sans, as -apple-system is in the CSS.
+// Families returns the sans and mono families of a font choice. SystemUI is
+// the text stack's own system font, as CSS's system-ui is.
 func Families(f FontChoice) (sans, mono string) {
-	if f == FontSystem {
-		return "", "Menlo, monospace"
+	if f == FontGeist {
+		return Geist, GeistMono
 	}
-	return Geist, GeistMono
+	return SystemUI, JetBrainsMono
 }
 
 // TextSize is Settings → Text size, which scales every rem.

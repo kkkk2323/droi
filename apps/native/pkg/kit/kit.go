@@ -59,7 +59,7 @@ func (k *Kit) UITheme(base *ui.Theme) *ui.Theme {
 	t.Scrollbar = k.T.Foreground.Alpha(0.2)
 	t.ScrollbarWidth = 6
 	t.Radius = k.Px(8)
-	t.FontSize = k.Px(14)
+	t.FontSize = k.Px(13)
 	t.Font = k.Sans
 	return &t
 }
@@ -95,35 +95,35 @@ const (
 	Destructive
 )
 
-// Button is a shadcn Button: a ButtonBase with the variant's colors and
-// hover, rounded-md (8px) unless set, its children laid out in a row.
+// Button is a shadcn Button as the reference draws one: rounded-lg (8px),
+// text-ui (13px, medium), h-8 by default, its children laid out in a row.
 // size is its height (and width when square); Tailwind's h-9 is 36.
 func (k *Kit) Button(c *ui.Context, v Variant, size float32, square bool, label string) ui.Element {
 	t := k.T
 	b := ui.ButtonBase(c).Label(label).Height(k.Px(size)).Radius(k.Px(8)).Gap(k.Px(6)).
-		FontSize(k.Px(14)).FontWeight(500).Cursor(ui.CursorPointer)
+		FontSize(k.Px(13)).FontWeight(500).Cursor(ui.CursorPointer)
 	if square {
 		b.Width(k.Px(size))
 	} else {
-		b.PaddingX(k.Px(10))
+		b.PaddingX(k.Px(11))
 	}
 	hover := b.Hovered()
 	switch v {
 	case Primary:
 		bg := t.Primary
 		if hover {
-			bg = bg.Alpha(0.8)
+			bg = bg.Alpha(0.9)
 		}
 		b.Background(bg).TextColor(t.PrimaryForeground)
 	case Outline:
-		bg := t.Background
-		if t.Dark {
-			bg = t.Input.Alpha(0.3)
-		}
+		// Transparent over the surface it sits on, the hairline and the ink
+		// doing the work: a filled default state would read heavier than the
+		// rest of the window.
+		bg := ui.Color{}
 		if hover {
 			bg = t.Muted
 		}
-		b.Background(bg).Border(1, t.Border).TextColor(t.Foreground).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
+		b.Background(bg).Border(1, t.Border).TextColor(t.Foreground)
 	case Secondary:
 		bg := t.Secondary
 		if hover {

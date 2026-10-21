@@ -135,7 +135,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Children(func() {
 			ui.Box(c).Height(44).DragWindow()
 			ui.Column(c).FillWidth().MaxWidth(k.Px(672)).AlignSelf(ui.Center).Gap(k.Px(24)).Padding(0, k.Px(32), k.Px(48), k.Px(32)).Children(func() {
-				k.Text(c, l10n.T(current.label), 18, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.45))
+				k.Text(c, l10n.T(current.label), 20, 28).Role(ui.RoleHeading).FontWeight(500).LetterSpacing(-k.Px(0.3))
 				if s.err != "" {
 					k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 				}

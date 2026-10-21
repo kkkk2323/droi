@@ -145,7 +145,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 				// The heading is the question's text alone: as the row, it would
 				// hide the Workspace button in it from VoiceOver.
 				ui.Row(c).FillWidth().Wrap().Justify(ui.Center).GapX(k.Px(6)).Children(func() {
-					h := func(s string) ui.Element { return k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5)) }
+					h := func(s string) ui.Element { return k.Text(c, s, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.3)) }
 					switch {
 					case workspace != "" && !scratch:
 						h(L("What do you want to build in")).Role(ui.RoleHeading)
@@ -241,7 +241,7 @@ func (a *App) workspaceMenu(c *ui.Context, recent []sessions.RecentWorkspace, va
 	}
 	tr.BorderColor(line).BorderStyle(ui.BorderDashed)
 	tr.Children(func() {
-		k.Text(c, label, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.5))
+		k.Text(c, label, 20, 28).FontWeight(500).LetterSpacing(-k.Px(0.3))
 		k.Icon(c, "chevron-down", 14, t.Foreground).Opacity(0.5)
 	})
 	a.workspacePicker(c, tr, recent, value)

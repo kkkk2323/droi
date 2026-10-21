@@ -132,8 +132,8 @@ no split.
 | Path                                                                                      | What                                                                                                  |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `main.go`                                                                                 | the app: window, menus, the Host                                                                      |
-| `assets/`                                                                                 | the vendored Geist fonts, embedded                                                                    |
-| `pkg/theme/`                                                                              | the design tokens of `global.css`: the three themes, fonts, text sizes                                |
+| `assets/`                                                                                 | the vendored JetBrains Mono and Geist fonts, embedded                                                 |
+| `pkg/theme/`                                                                              | the design tokens (ADR 0025): the three themes, fonts, text sizes, the one tint                       |
 | `pkg/icons/`                                                                              | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |
 | `pkg/host/`                                                                               | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Magpie's models  |
 | `internal/memory/`                                                                        | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
@@ -188,18 +188,22 @@ Tracked in this file while the port is under way.
 
 ### How close it is
 
+The reference screens are the removed web Client's, and Droi no longer looks like it on purpose:
+the window wears another design (ADR 0025), so what these numbers measure is now how far the app
+has moved from that Client, not how faithful the port is.
+
 `DROI_NATIVE_SHOTS=/tmp/shots go test ./apps/native/internal/app -v` writes each screen and a
 diff (red: a channel off by more than 24 of 255) next to the share of pixels that differ.
-Most of what is left is glyph edges, as MyGo and Chromium antialias text differently.
+Most of the rest is glyph edges, as MyGo and Chromium antialias text differently.
 
 | Screen                                                       | Differs                   |
 | ------------------------------------------------------------ | ------------------------- |
-| session (light / dark / Solarized)                           | 2.0% / 1.9% / 2.0%        |
-| session, tool call open                                      | 1.8%                      |
-| sidebar hidden                                               | 1.8%                      |
-| New session                                                  | 2.0%                      |
-| Settings: General / Session defaults / Notifications / About | 1.7% / 2.5% / 2.0% / 2.0% |
-| permission / AskUser                                         | 1.2% / 0.9%               |
+| session (light / dark / Solarized)                           | 6.1% / 5.4% / 7.8%        |
+| session, tool call open                                      | 6.4%                      |
+| sidebar hidden                                               | 4.2%                      |
+| New session                                                  | 2.2%                      |
+| Settings: General / Session defaults / Notifications / About | 4.3% / 6.1% / 5.0% / 3.3% |
+| permission / AskUser                                         | 3.3% / 2.6%               |
 
 Settings leaves out Account, Memory, Remote Access and Advanced when there is no Host (the
 tests); the app has them all.

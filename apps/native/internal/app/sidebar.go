@@ -307,20 +307,21 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 	return o
 }
 
-// sidebarRow is a SidebarRow: an icon and a label, h-8, rounded-lg.
+// sidebarRow is a SidebarRow: an icon and a label, h-7, rounded-lg, as the
+// reference's list rows.
 func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trailing func()) ui.Element {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Label(label).Height(k.Px(32)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(10)).Justify(ui.Start).Cursor(ui.CursorPointer)
+	b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).PaddingX(k.Px(8)).Gap(k.Px(8)).Radius(k.Px(8)).Justify(ui.Start).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
 	switch {
 	case selected:
 		b.Background(t.SidebarAccent)
 	case b.Hovered():
-		b.Background(t.SidebarAccent.Alpha(0.6))
+		b.Background(t.SidebarAccent.Alpha(0.7))
 	}
 	b.Children(func() {
 		k.Icon(c, icon, 16, t.MutedForeground)
-		k.Text(c, label, 13, 19.5).TextColor(t.Foreground)
+		k.Text(c, label, 13, 18).TextColor(t.Foreground)
 		if trailing != nil {
 			trailing()
 		}
@@ -331,10 +332,10 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 // sortMenu is the list-filter button and its menu of orders.
 func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Label(L("Sort")).Tooltip(L("Sort")).Size(k.Px(32), k.Px(32)).Radius(k.Px(10)).Cursor(ui.CursorPointer)
+	b := ui.ButtonBase(c).Label(L("Sort")).Tooltip(L("Sort")).Size(k.Px(28), k.Px(28)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
 	color := t.MutedForeground
 	if b.Hovered() {
-		b.Background(t.SidebarAccent.Alpha(0.6))
+		b.Background(t.SidebarAccent)
 		color = t.Foreground
 	}
 	b.Children(func() { k.Icon(c, "list-filter", 16, color) })
@@ -528,13 +529,13 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 			})
 			wrap.Opacity(1)
 		default:
-			h := ui.Row(c).Role(ui.RoleHeading).Height(k.Px(32)).Radius(k.Px(10)).ContextMenu(menu)
+			h := ui.Row(c).Role(ui.RoleHeading).Height(k.Px(28)).Radius(k.Px(8)).ContextMenu(menu)
 			hovered := h.Hovered()
 			if hovered {
-				h.Background(t.SidebarAccent.Alpha(0.6))
+				h.Background(t.SidebarAccent)
 			}
 			h.Children(func() {
-				b := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().PaddingX(k.Px(8)).Gap(k.Px(8)).Justify(ui.Start).Radius(k.Px(10)).
+				b := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().PaddingX(k.Px(8)).Gap(k.Px(8)).Justify(ui.Start).Radius(k.Px(8)).
 					Expanded(open).Tooltip(g.Path).Cursor(ui.CursorPointer)
 				b.Children(func() {
 					ui.Box(c).Size(k.Px(16), k.Px(16)).Shrink(0).Center().Children(func() {
@@ -611,13 +612,13 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	a.sidebar.numbered = append(a.sidebar.numbered, s.SessionID)
 	n := len(a.sidebar.numbered)
 	b := ui.ButtonBase(c.Key(s.SessionID)).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
-		Gap(k.Px(2)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(indent(flat))).Radius(k.Px(10)).Cursor(ui.CursorPointer)
+		Gap(k.Px(1)).Padding(k.Px(5), k.Px(8), k.Px(5), k.Px(indent(flat))).Radius(k.Px(8)).Cursor(ui.CursorPointer)
 	kit.Selected(b, selected)
 	switch {
 	case selected:
 		b.Background(t.SidebarAccent)
 	case b.Hovered():
-		b.Background(t.SidebarAccent.Alpha(0.6))
+		b.Background(t.SidebarAccent.Alpha(0.7))
 	}
 	acc, elsewhere := a.elsewhere.accounts[s.SessionID]
 	b.Children(func() {

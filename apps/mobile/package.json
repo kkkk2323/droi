@@ -12,8 +12,6 @@
   },
   "dependencies": {
     "@droi/daemon-layer": "workspace:*",
-    "@expo-google-fonts/geist": "^0.4.2",
-    "@expo-google-fonts/geist-mono": "^0.4.3",
     "@expo/metro-runtime": "~57.0.16",
     "@expo/ui": "~57.0.20",
     "@factory/droid-sdk": "0.9.1",

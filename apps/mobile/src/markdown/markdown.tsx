@@ -66,7 +66,8 @@ function block(node: RootContent, key: number, context: Context): ReactNode {
           context={context}
           role="heading"
           style={{
-            fontFamily: fonts.sansSemiBold,
+            fontFamily: fonts.sans,
+            fontWeight: '600',
             fontSize:
               node.depth <= 1 ? fontSize.xl : node.depth === 2 ? fontSize.lg : fontSize.base,
             marginTop: space.xs,
@@ -133,7 +134,7 @@ function inline(nodes: readonly PhrasingContent[], context: Context): ReactNode[
         return node.value
       case 'strong':
         return (
-          <RNText key={keyOf(node, i)} style={{ fontFamily: fonts.sansSemiBold }}>
+          <RNText key={keyOf(node, i)} style={{ fontFamily: fonts.sans, fontWeight: '600' }}>
             {inline(node.children, context)}
           </RNText>
         )

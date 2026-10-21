@@ -399,7 +399,7 @@ func (a *App) automationHeader(c *ui.Context, crumbs []crumb, title string, besi
 			})
 		}
 		ui.Row(c).Gap(k.Px(10)).AlignItems(ui.Center).MinHeight(k.Px(32)).Children(func() {
-			k.Text(c, title, 20, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.5)).SingleLine().Shrink(1).MinWidth(0)
+			k.Text(c, title, 20, 28).Role(ui.RoleHeading).FontWeight(500).LetterSpacing(-k.Px(0.3)).SingleLine().Shrink(1).MinWidth(0)
 			if beside != nil {
 				beside()
 			}
