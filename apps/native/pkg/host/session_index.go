@@ -133,6 +133,146 @@ func (h *Host) SessionsElsewhere() []ElsewhereSession {
 	return out
 }
 
+// TakeSession moves Session id, kept for the organization of another
+// signed-in account, to the organization of the account in use, with the
+// subagents and compaction links kept beside it, so the Daemon lists and
+// opens them without a switch. droid stamps a Session with an organization
+// in the first line of its transcript and refuses any other; the stamp is
+// rewritten there, and the file keeps its time so the Session keeps its
+// place in the list. The Session goes back the same way when opened under
+// the other account.
+func (h *Host) TakeSession(id string) error {
+	var active string
+	signedIn := map[string]bool{}
+	for _, acc := range h.Accounts() {
+		if acc.Login == nil {
+			continue
+		}
+		org := deref(acc.Login.OrgID)
+		if org == "" {
+			continue
+		}
+		signedIn[org] = true
+		if acc.Active {
+			active = org
+		}
+	}
+	if active == "" {
+		return errNoOrganization
+	}
+	h.indexMu.Lock()
+	defer h.indexMu.Unlock()
+	idx := h.loadIndex()
+	from := ""
+	for org, list := range idx.Orgs {
+		if org != active && signedIn[org] && findSummary(list, id) != nil {
+			from = org
+			break
+		}
+	}
+	if from == "" {
+		return errNotElsewhere
+	}
+	moving := relatedSessions(idx.Orgs[from], id)
+	dir := filepath.Join(h.SharedFactoryHome(), "sessions")
+	for _, sid := range moving {
+		path := FindSessionTranscript(dir, sid)
+		if path == "" {
+			if sid == id {
+				return errNoTranscript
+			}
+			continue
+		}
+		if err := restampOrganization(path, from, active); err != nil {
+			return err
+		}
+	}
+	idx.Orgs[from] = slices.DeleteFunc(slices.Clone(idx.Orgs[from]), func(s sessions.Summary) bool { return slices.Contains(moving, s.SessionID) })
+	h.indexRev++
+	return h.saveIndex()
+}
+
+var (
+	errNoOrganization = hostError("the account in use has no organization")
+	errNotElsewhere   = hostError("the session is not kept for another signed-in account")
+	errNoTranscript   = hostError("the session's transcript is not on this computer")
+)
+
+func findSummary(list []sessions.Summary, id string) *sessions.Summary {
+	for i := range list {
+		if list[i].SessionID == id {
+			return &list[i]
+		}
+	}
+	return nil
+}
+
+// relatedSessions is id with every Session of list it reaches through
+// compaction links and subagent callers, either way.
+func relatedSessions(list []sessions.Summary, id string) []string {
+	out := []string{id}
+	for grew := true; grew; {
+		grew = false
+		for _, s := range list {
+			if slices.Contains(out, s.SessionID) {
+				if s.ParentID != "" && !slices.Contains(out, s.ParentID) && findSummary(list, s.ParentID) != nil {
+					out = append(out, s.ParentID)
+					grew = true
+				}
+				continue
+			}
+			if slices.Contains(out, s.ParentID) || slices.Contains(out, s.CallingSessionID) {
+				out = append(out, s.SessionID)
+				grew = true
+			}
+		}
+	}
+	return out
+}
+
+// restampOrganization rewrites the organization in the first line of the
+// transcript at path from one to another, leaving a transcript of any
+// other organization alone. The file keeps its mode and times.
+func restampOrganization(path, from, to string) error {
+	st, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	end := bytes.IndexByte(b, '\n')
+	if end < 0 {
+		end = len(b)
+	}
+	first := b[:end]
+	raw, ok, err := jsonKey(first, "organizationId")
+	if err != nil {
+		return err
+	}
+	var org string
+	if ok {
+		_ = json.Unmarshal(raw, &org)
+	}
+	if org != from {
+		return nil
+	}
+	line, err := setJSONKey(first, "organizationId", to)
+	if err != nil {
+		return err
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, line); err != nil {
+		return err
+	}
+	out := append(compact.Bytes(), b[end:]...)
+	if err := writeFileAtomic(path, out); err != nil {
+		return err
+	}
+	_ = os.Chmod(path, st.Mode().Perm())
+	return os.Chtimes(path, st.ModTime(), st.ModTime())
+}
 func sameSummaries(a, b []sessions.Summary) bool {
 	x, err1 := json.Marshal(a)
 	y, err2 := json.Marshal(b)

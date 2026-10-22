@@ -18,8 +18,9 @@ import (
 // empty the sidebar of the first one's. The Host keeps each organization's
 // list (host.RecordSessions); the sidebar shows the other signed-in
 // accounts' Sessions beside the live ones, muted and marked with their
-// account, and opening one offers to switch to it, as droid opens a Session
-// only under its own organization.
+// account. Opening one moves it to the account in use (host.TakeSession),
+// as droid opens a Session only under its own organization; a switch to
+// its account is offered when the move fails.
 
 // elsewhereState is what the window knows of other accounts' Sessions.
 type elsewhereState struct {
@@ -34,6 +35,10 @@ type elsewhereState struct {
 	// confirm is the Session whose switch was asked for and waits, while
 	// other Sessions work, for "Switch anyway".
 	confirm string
+	// taking are the Sessions being moved to the account in use, until they
+	// open; takeErr why a move failed.
+	taking  map[string]bool
+	takeErr map[string]string
 }
 
 // unopenedSession is a Session waiting for the switch to its account.
@@ -123,6 +128,7 @@ func (a *App) elsewhereOf(id string, listed []sessions.Summary) (host.AccountInf
 		return u.acc, u.sum, true
 	}
 	delete(e.unopened, id)
+	delete(e.taking, id)
 	a.view(id).Open()
 	a.remember(id)
 	return host.AccountInfo{}, nil, false
@@ -143,6 +149,43 @@ func (a *App) elsewhereMark(c *ui.Context, acc host.AccountInfo) {
 		Radius(k.Px(8)).Border(1, t.Border).Background(t.Background).Center().Children(func() {
 		k.Text(c, accountInitial(who), 9, 12).FontWeight(600).TextColor(t.MutedForeground)
 	})
+}
+
+// takeSession moves Session id, another account's, to the account in use;
+// it opens once the Daemon lists it. A move that failed is not tried again
+// until Droi starts again.
+func (a *App) takeSession(id string, acc host.AccountInfo) {
+	e := &a.elsewhere
+	a.noteUnopened(id, acc)
+	if e.taking[id] || e.takeErr[id] != "" {
+		return
+	}
+	if e.taking == nil {
+		e.taking, e.takeErr = map[string]bool{}, map[string]string{}
+	}
+	e.taking[id] = true
+	h := a.cfg.Host
+	go func() {
+		err := h.TakeSession(id)
+		if err == nil {
+			a.reloadList()
+			return
+		}
+		a.cfg.Update(func() {
+			delete(e.taking, id)
+			e.takeErr[id] = err.Error()
+		})
+	}()
+}
+
+// activeWho is who the account in use is signed in as.
+func (a *App) activeWho() string {
+	for _, acc := range a.cfg.Host.Accounts() {
+		if acc.Active {
+			return accountWho(acc)
+		}
+	}
+	return ""
 }
 
 // askSwitchFor asks to switch to the account Session id belongs to: at
@@ -189,6 +232,16 @@ func (a *App) elsewhereView(c *ui.Context, id string, sel *sessions.Summary, acc
 						k.Text(c, L("droid opens a session only under the account it belongs to. Switch to that account to continue it here."), 12, 18).TextColor(t.MutedForeground)
 					})
 				})
+				if e.taking[id] && !switching {
+					ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
+						k.Spinner(c, 14, t.MutedForeground)
+						k.Text(c, L("Opening it under %s…", a.activeWho()), 13, 20).TextColor(t.MutedForeground)
+					})
+					return
+				}
+				if err := e.takeErr[id]; err != "" && !switching {
+					k.Text(c, L("Could not move it to %s: %s", a.activeWho(), err), 13, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
+				}
 				switch {
 				case switching:
 					ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {

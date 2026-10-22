@@ -733,8 +733,8 @@ func (a *App) Go(r Route) {
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
 		a.elsewhere.confirm = ""
 		if acc, ok := a.elsewhere.accounts[r.SessionID]; ok {
-			// droid would refuse to load it; it loads after the switch.
-			a.noteUnopened(r.SessionID, acc)
+			// droid would refuse to load it; it loads once moved here.
+			a.takeSession(r.SessionID, acc)
 		} else {
 			delete(a.elsewhere.unopened, r.SessionID)
 			a.view(r.SessionID).Open()
