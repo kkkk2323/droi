@@ -233,7 +233,7 @@ func (a *App) aboutTab(c *ui.Context) {
 			a.settingRow(c, L("Droi %s", version), "", control, below)
 		},
 		func() {
-			a.settingRow(c, L("Where your data lives"), L("Sessions, settings and the Factory API key stay on this computer; phones reach it through the Gateway. What Droid works on goes to Factory, which runs the models."), nil, nil)
+			a.settingRow(c, L("Data and privacy"), L("Sessions, settings, and your Factory API key stay on this computer; paired phones connect through the Gateway. Prompts and context are sent to Factory to run the models."), nil, nil)
 		},
 	)
 }
@@ -416,7 +416,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 		func() {
 			on := st.MagpieEnabled
 			a.settingRow(c, L("Offer Magpie's models"),
-				L("The Daemon restarts when this changes. A Session already on a Magpie model then runs another model: choose its model again after the restart."),
+				L("Changing this restarts the Daemon. Sessions using a Magpie model fall back to another model; reselect their model after the restart."),
 				func() {
 					if a.toggle(c, L("Offer Magpie's models"), on, false) {
 						next := !on
@@ -453,9 +453,9 @@ func (a *App) magpieGroup(c *ui.Context) {
 			case cat.Running():
 				ok, label = true, L("Running, no models")
 			}
-			desc := L("Droi hands this list to the Daemon when it starts. Refresh reads it again, and restarts the Daemon when the list changed, which interrupts Sessions that are working.")
+			desc := L("Loaded when the Daemon starts. Refresh reloads the list and restarts the Daemon if it changed, which interrupts working Sessions.")
 			if cat.Err != "" {
-				desc = L("Droi could not read the model list at %s. Is Magpie running?", h.MagpieBaseURL())
+				desc = L("Could not read the model list at %s. Make sure Magpie is running, then refresh.", h.MagpieBaseURL())
 			}
 			a.settingRow(c, L("Models"), desc, func() {
 				a.statusPill(c, ok, label)
@@ -470,7 +470,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 		})
 	}
 	a.settingGroup(c, L("Magpie"),
-		L("A local gateway that runs coding agents on the models of many providers behind one endpoint. Its models join the model picker for new Sessions of this computer. Nothing is written to the droid CLI's settings, so the CLI and the Factory App do not see them."),
+		L("Routes coding agents to models from multiple providers through one local endpoint. Its models appear in the model picker for new Sessions on this computer without changing your droid CLI or Factory App settings."),
 		rows...)
 }
 
@@ -480,11 +480,11 @@ func (a *App) newSessionsGroup(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	st := h.Settings.Get()
-	a.settingGroup(c, L("New Sessions in Droi"), L("Droi’s own settings. They apply to new Sessions from every Client of this computer, not to the droid CLI or the Factory App."),
+	a.settingGroup(c, L("New Sessions in Droi"), L("Applies to new Sessions started from this computer or a paired phone, without affecting the droid CLI or the Factory App."),
 		func() {
-			a.settingRow(c, L("Added to the system prompt"), L("Appended to Droid's own system prompt in every new Session, whether it starts here, in a browser or on a phone. Existing Sessions and subagents keep theirs."), nil, func() {
+			a.settingRow(c, L("System prompt addition"), L("Appended to Droid's system prompt in every new Session from this computer or a paired phone. Existing Sessions and subagents keep theirs."), nil, func() {
 				ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
-					k.TextArea(c, &s.prompt, L("Added to the system prompt"), L("e.g. Reply in the language I write in. Prefer small, reviewable commits."),
+					k.TextArea(c, &s.prompt, L("System prompt addition"), L("e.g. Reply in the language I write in. Prefer small, reviewable commits."),
 						kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 4, Color: t.Foreground})
 				})
 				stored := derefOr(st.AppendSystemPrompt)
@@ -500,7 +500,7 @@ func (a *App) newSessionsGroup(c *ui.Context) {
 			})
 		},
 		func() {
-			a.settingRow(c, L("Scratch folder"), L("A session that does not work in a project gets a new folder of its own in %s. Archiving it moves the folder to the Trash. A change applies to new sessions only.", h.ScratchFolder()), nil,
+			a.settingRow(c, L("Scratch folder"), L("Sessions started outside a project get their own folder in %s, which moves to the Trash when archived. Changes apply to new Sessions only.", h.ScratchFolder()), nil,
 				a.saveRow(c, &s.scratch, L("Scratch folder"), "~/.droi/chats", L("Save folder"), true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.ScratchFolder = host.OptString(v) })
 				}))
@@ -538,7 +538,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 			return
 		}
 		a.settingGroup(c, "", "", func() {
-			a.settingRow(c, L("droid was updated"), L("The Daemon still runs the earlier version, so models added since are missing here and on the New session page. Restarting it interrupts Sessions that are working."), func() {
+			a.settingRow(c, L("droid was updated"), L("The Daemon is still running the previous version, so newer models are not shown yet. Restart the Daemon to load them; working Sessions will be interrupted."), func() {
 				if a.smallButton(c, kit.Primary, L("Restart Daemon"), "refresh-cw", false).Clicked() {
 					go h.RestartDaemon()
 				}
@@ -661,11 +661,11 @@ func (a *App) notificationsTab(c *ui.Context) {
 	}
 	a.settingGroup(c, L("When Droid finishes"), "",
 		soundRow(l10n.N("Completion sound"), l10n.N("Completion sound"), L("Plays when Droid finishes and the Session stops."), &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
-		notifyRow(l10n.N("Notify when Droid finishes"), L("Unless you are looking at that Session."), &p.NotifyOnComplete),
+		notifyRow(l10n.N("Notify when Droid finishes"), L("Notifies you when you are not viewing that Session."), &p.NotifyOnComplete),
 	)
 	a.settingGroup(c, L("When Droid needs input"), "",
 		soundRow(l10n.N("Needs-input sound"), l10n.N("Needs-input sound"), L("Plays when Droid stops to ask for permission or an answer."), &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
-		notifyRow(l10n.N("Notify when Droid needs input"), L("When a Session waits for a permission or an answer."), &p.NotifyOnWaitingForInput),
+		notifyRow(l10n.N("Notify when Droid needs input"), L("Notifies you when a Session waits for permission or an answer."), &p.NotifyOnWaitingForInput),
 	)
 	a.settingGroup(c, L("Sounds"), "", func() {
 		opts := []kit.Option{{Value: "always", Label: L("Always")}, {Value: "focused", Label: L("Only when Droi is focused")}, {Value: "unfocused", Label: L("Only when Droi is in the background")}}

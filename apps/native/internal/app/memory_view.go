@@ -110,10 +110,10 @@ func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	if m.pending != nil {
 		next := *m.pending
 		label := L("Turn Memory off")
-		question := L("Turn Memory off? The Daemon restarts to detach it. Sessions that are working stop.")
+		question := L("Turn Memory off? This restarts the Daemon and stops working Sessions.")
 		if next {
 			label = L("Turn Memory on")
-			question = L("Turn Memory on? The Daemon restarts to attach it. Sessions that are working stop.")
+			question = L("Turn Memory on? This restarts the Daemon and stops working Sessions.")
 		}
 		below = func() {
 			ui.Row(c).Role(ui.RoleGroup).Label(label).Wrap().AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
@@ -255,7 +255,7 @@ func (a *App) memoryRow(c *ui.Context, row memorywork.Row, loggedSince string) {
 			if row.OverSoftLimit {
 				ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).Margin(k.Px(4), 0, 0, 0).Children(func() {
 					k.Icon(c, "circle-alert", 14, t.Attention)
-					k.Text(c, L("Over its size; consolidate it to keep writes going."), 13, 20).TextColor(t.Attention)
+					k.Text(c, L("Over the size limit. Consolidate to continue saving new entries."), 13, 20).TextColor(t.Attention)
 				})
 			}
 			if r := m.results[name]; r != "" && r != "\x00" {
@@ -280,7 +280,7 @@ func (a *App) consolidate(workspace, name string) {
 			case res.Rejected == 0:
 				m.results[name] = L("Consolidated %s.", countL(res.Applied, l10n.N("%d category"), l10n.N("%d categories")))
 			default:
-				m.results[name] = L("Consolidated %d; %d left unchanged because the model’s answer did not hold up.", res.Applied, res.Rejected)
+				m.results[name] = L("Consolidated %d; %d kept unchanged because the model’s output failed validation.", res.Applied, res.Rejected)
 			}
 			a.refreshMemory()
 		})

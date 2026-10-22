@@ -79,25 +79,25 @@ export function parseServerForm(
   form: ServerForm,
 ): { ok: true; params: AddMcpServerInput } | { ok: false; error: string } {
   const name = form.name.trim()
-  if (!name) return { ok: false, error: 'Give the server a name.' }
+  if (!name) return { ok: false, error: 'Enter a server name.' }
   if (!NAME.test(name)) {
-    return { ok: false, error: 'A name has letters, digits, "-" and "_" only.' }
+    return { ok: false, error: 'Server name can only contain letters, digits, "-", and "_".' }
   }
   if (form.type === 'stdio') {
     const command = form.command.trim()
-    if (!command) return { ok: false, error: 'Give the command that starts the server.' }
+    if (!command) return { ok: false, error: 'Enter the command that starts the server.' }
     const args = form.args.split(/\s+/).filter(Boolean)
     return { ok: true, params: { name, type: 'stdio', command, ...(args.length ? { args } : {}) } }
   }
   const url = form.url.trim()
   if (!/^https?:\/\//.test(url))
-    return { ok: false, error: 'The URL starts with http:// or https://.' }
+    return { ok: false, error: 'URL must start with http:// or https://.' }
   const headers: Record<string, string> = {}
   for (const line of form.headers.split('\n')) {
     if (!line.trim()) continue
     const colon = line.indexOf(':')
     if (colon <= 0)
-      return { ok: false, error: `A header is "Name: value"; "${line.trim()}" is not.` }
+      return { ok: false, error: `Format headers as "Name: value" (invalid: "${line.trim()}").` }
     headers[line.slice(0, colon).trim()] = line.slice(colon + 1).trim()
   }
   return {

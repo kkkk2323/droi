@@ -77,7 +77,7 @@ export function SettingsScreen() {
       ) : null}
       <ListSection
         title="Alerts"
-        footer="While the app is open, for Sessions other than the one on screen. Sounds follow the silent switch."
+        footer="Plays while the app is open for Sessions not currently on screen. Sounds respect Silent Mode."
       >
         <ListSwitch
           label="Sound when finished"
@@ -102,7 +102,7 @@ export function SettingsScreen() {
       </ListSection>
       <ListSection
         title="About"
-        footer="The app is signed with a free Apple account for seven days. Run pnpm install:phone on the computer with the iPhone connected to sign and install it again."
+        footer="Signed with a free Apple account (valid for 7 days). To renew, connect your iPhone to the computer and run pnpm install:phone."
       >
         <ListRow label="Version" value={version} />
         <ListRow label="Signature" value={signature} />
