@@ -1,3 +1,9 @@
+## 1.64.2 - 2026-10-22
+
+### Changed
+
+- Droi asks before it updates. When it finds a new version, the card in the corner offers Update, Details and Skip this version, and nothing downloads until you choose Update; once the update is installed, Droi waits for you to click Restart now. Before, it downloaded every update on its own and restarted into it while you were away. To have it do that again, turn on Settings → About → Install updates automatically. Versions before this one still install it on their own.
+
 ## 1.64.1 - 2026-10-22
 
 ### Changed
