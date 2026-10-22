@@ -1,3 +1,12 @@
+## 1.63.0 - 2026-10-22
+
+### Changed
+
+- Opening another signed-in account's session opens it under the account in use, with no switch. Droi moves the session, with its subagents and the sessions before and after its compactions, to the account in use; opened later under the first account, it moves back. droid opens a session only under the organization it belongs to, so a moved session belongs to the new one, and with cloud session sync on its later turns sync there. When a session cannot be moved, for example because its transcript is not on this computer, Droi says why and offers the switch as before.
+
+### Fixed
+
+- On the New session page, a command or skill picked from the `/` menu shows as a tag in front of the message, as in a session. Before, it stayed plain text in the message.
 ## 1.62.2 - 2026-10-21
 
 ### Changed
