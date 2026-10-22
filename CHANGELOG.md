@@ -1,3 +1,14 @@
+## 1.64.0 - 2026-10-22
+
+### Added
+
+- The sidebar's search finds workspaces too. Workspaces whose name has the words you type are listed first, with their sessions, as the sidebar shows them; the sessions the search found follow. Before, it found only sessions.
+
+### Changed
+
+- The sidebar is easier to read. Workspace names are dark instead of grey and a little larger, section titles such as "Workspaces" are no longer faded, and the sidebar is a lighter grey. The open session is a white row with a soft shadow instead of a faint grey one.
+- The Reasoning and Tools choices in the model picker, and the choices in Automations' schedule, show clearly which one is picked: the picked one is a white face with a shadow on a darker groove. Before, the two were nearly the same colour.
+
 ## 1.63.2 - 2026-10-22
 
 ### Fixed
