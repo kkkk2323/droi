@@ -240,6 +240,7 @@ func (a *FactoryAuth) poll(ctx context.Context, cancel context.CancelFunc, devic
 				fail(l10n.L("Sign-in failed."))
 				return
 			}
+			t.AccessToken, t.RefreshToken = a.withOrganization(ctx, t.AccessToken, t.RefreshToken)
 			if a.Handoff != nil {
 				if err := a.Handoff(t.AccessToken, t.RefreshToken); err != nil {
 					fail(l10n.L("Could not save the login (%s).", err.Error()))
@@ -288,6 +289,48 @@ func (a *FactoryAuth) poll(ctx context.Context, cancel context.CancelFunc, devic
 		return
 	}
 	fail(l10n.L("The sign-in code expired."))
+}
+
+// withOrganization gives a login the organization its token lacks. The
+// device flow can return a token without one for a user who has an
+// organization (one made after the sign-in session began), and Factory and
+// the Daemon refuse such a token ("User not affiliated with an
+// organization"). As droid does at start, Factory names the user's WorkOS
+// organizations and the token is refreshed into the first; any failure
+// keeps the login as it came.
+func (a *FactoryAuth) withOrganization(ctx context.Context, access, refresh string) (string, string) {
+	if org, _ := DecodeJWT(access)["org_id"].(string); org != "" || a.FactoryAPIBaseURL == "" || refresh == "" {
+		return access, refresh
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(a.FactoryAPIBaseURL, "/")+"/api/cli/org", nil)
+	if err != nil {
+		return access, refresh
+	}
+	req.Header.Set("authorization", "Bearer "+access)
+	res, err := a.client().Do(req)
+	if err != nil {
+		return access, refresh
+	}
+	var orgs struct {
+		WorkosOrgIDs []string `json:"workosOrgIds"`
+	}
+	ok := res.StatusCode/100 == 2 && json.NewDecoder(res.Body).Decode(&orgs) == nil && len(orgs.WorkosOrgIDs) > 0
+	res.Body.Close()
+	if !ok {
+		return access, refresh
+	}
+	res, b, err := a.post(ctx, "/authenticate", url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "organization_id": {orgs.WorkosOrgIDs[0]}})
+	if err != nil || res.StatusCode/100 != 2 {
+		return access, refresh
+	}
+	var t struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+	}
+	if json.Unmarshal(b, &t) != nil || t.AccessToken == "" || t.RefreshToken == "" {
+		return access, refresh
+	}
+	return t.AccessToken, t.RefreshToken
 }
 
 // describe prefers Factory's own ids from whoami, which the Daemon compares,

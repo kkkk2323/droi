@@ -98,7 +98,7 @@ func New(cfg Config) *Host {
 			go h.RestartDaemon()
 		}
 	}
-	h.adding = &FactoryAuth{OnChange: func(LoginState) { h.changed() }, Handoff: h.addAccount}
+	h.adding = &FactoryAuth{OnChange: func(LoginState) { h.changed() }, Handoff: h.addAccount, FactoryAPIBaseURL: h.FactoryAPIBaseURL()}
 	writeCli := func(access, refresh string) error { return WriteCliLogin(h.FactoryHome(), access, refresh) }
 	h.Auth.Handoff = func(access, refresh string) error {
 		if err := writeCli(access, refresh); err != nil {

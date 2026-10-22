@@ -13,7 +13,7 @@ func ownHomeHost(t *testing.T) (h *Host, root, cliHome string) {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
 	cliHome = filepath.Join(home, ".factory")
-	if err := WriteCliLogin(cliHome, jwt(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_a"}), "ra"); err != nil {
+	if err := WriteCliLogin(cliHome, jwt(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_a", "external_org_id": "org_a"}), "ra"); err != nil {
 		t.Fatal(err)
 	}
 	root = filepath.Join(data, "factory")
@@ -31,7 +31,7 @@ func TestAHostWithAnOwnFactoryHomeIgnoresTheCLIsLogin(t *testing.T) {
 		t.Fatalf("signed in with the CLI's login: %+v", h.LoginState())
 	}
 	// Its sign-in goes to its own home, and signing out leaves the CLI's alone.
-	if err := h.Auth.Handoff(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb"); err != nil {
+	if err := h.Auth.Handoff(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb"); err != nil {
 		t.Fatal(err)
 	}
 	if s := h.LoginState(); s.Status != SignedIn || s.Account == nil || s.Account.Email == nil || *s.Account.Email != "b@y.dev" {

@@ -46,7 +46,7 @@ func newUsageServer(t *testing.T) *usageServer {
 				t.Errorf("renewal form %v", r.Form)
 			}
 			s.renewals++
-			w.Write([]byte(`{"access_token":"` + jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "exp": float64(time.Now().Add(time.Hour).Unix())}) + `","refresh_token":"rb2"}`))
+			w.Write([]byte(`{"access_token":"` + jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b", "exp": float64(time.Now().Add(time.Hour).Unix())}) + `","refresh_token":"rb2"}`))
 		default:
 			t.Errorf("unexpected %s", r.URL.Path)
 		}
@@ -169,7 +169,7 @@ func TestUsageSaysWhyItIsMissing(t *testing.T) {
 func TestUsageRenewsTheLoginOfAnAccountNotInUse(t *testing.T) {
 	s := newUsageServer(t)
 	h := usageHost(t, s)
-	expired := jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "exp": float64(time.Now().Add(-time.Hour).Unix())})
+	expired := jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b", "exp": float64(time.Now().Add(-time.Hour).Unix())})
 	if err := h.addAccount(expired, "rb"); err != nil {
 		t.Fatal(err)
 	}

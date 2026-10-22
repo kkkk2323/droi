@@ -396,30 +396,56 @@ func shouldConnect(st controller.Status, following bool, hasCredential func() bo
 // Daemon) and the window is neither connected nor reconnecting, it connects
 // again.
 func connectWhenSignedIn(ctx context.Context, ctl *controller.Controller, h *host.Host, following bool) {
-	poke := make(chan struct{}, 1)
-	wake := func() {
+	poke, hostPoke := make(chan struct{}, 1), make(chan struct{}, 1)
+	wake := func(ch chan struct{}) {
 		select {
-		case poke <- struct{}{}:
+		case ch <- struct{}{}:
 		default:
 		}
 	}
-	defer h.OnChange(wake)()
+	defer h.OnChange(func() { wake(hostPoke) })()
 	defer ctl.Subscribe(func(e controller.Event) {
 		if _, ok := e.(controller.StatusChanged); ok {
-			wake()
+			wake(poke)
 		}
 	})()
+	var delay time.Duration
 	for ctx.Err() == nil {
 		if shouldConnect(ctl.Status(), following, h.HasCredential) {
 			if err := ctl.Connect(ctx); err != nil && ctx.Err() == nil {
 				log.Println("droi: connect:", err)
+				delay = connectRetryDelay(delay)
+			} else {
+				delay = 0
 			}
+		}
+		if delay > 0 {
+			// A failed Connect changes the status, which would only connect
+			// again at once: a Daemon that refuses the login refuses it again,
+			// many times a second. Only a change on the Host (a sign-in, an
+			// API key, a restarted Daemon) is worth trying before the wait ends.
+			select {
+			case <-hostPoke:
+			case <-time.After(delay):
+			case <-ctx.Done():
+			}
+			continue
 		}
 		select {
 		case <-poke:
+		case <-hostPoke:
 		case <-ctx.Done():
 		}
 	}
+}
+
+// connectRetryDelay is the wait after a failed Connect that followed a wait
+// of prev: a second, doubling to half a minute.
+func connectRetryDelay(prev time.Duration) time.Duration {
+	if prev <= 0 {
+		return time.Second
+	}
+	return min(2*prev, 30*time.Second)
 }
 
 // executable is the app's own binary, which the Daemon runs for Memory;

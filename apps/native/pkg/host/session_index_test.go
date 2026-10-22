@@ -24,7 +24,7 @@ func sessionIDs(list []ElsewhereSession) []string {
 // disk, and goes with the account.
 func TestTheSessionsOfAnotherAccountsOrganizationAreKept(t *testing.T) {
 	h, _ := accountsHost(t)
-	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb")
+	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb")
 	b := h.Accounts()[1].ID
 	list := []sessions.Summary{
 		{SessionID: "a1", Title: "On a", OrganizationID: "org_a"},
@@ -97,7 +97,7 @@ func TestDroidIsToldEveryAccountsOrganization(t *testing.T) {
 	if ids, _ := visibleOrgs(t, shared); !slices.Equal(ids, []string{"org_mine"}) {
 		t.Fatalf("one account changed the setting: %v", ids)
 	}
-	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb")
+	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb")
 	if err := h.shareSessionVisibility(); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestSetJSONKeyKeepsTheOrderAndTakesAKeyOut(t *testing.T) {
 // and opens it there. Other Sessions stay where they are.
 func TestASessionIsTakenToTheAccountInUse(t *testing.T) {
 	h, shared := accountsHost(t)
-	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb")
+	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb")
 	dir := filepath.Join(shared, "sessions", "-Users-dev-acme")
 	os.MkdirAll(dir, 0o700)
 	write := func(id, extra string) string {

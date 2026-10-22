@@ -19,7 +19,7 @@ func accountsHost(t *testing.T) (h *Host, shared string) {
 	os.WriteFile(filepath.Join(shared, "mcp.json"), []byte(`{"mcpServers":{}}`), 0o600)
 	os.WriteFile(filepath.Join(shared, "settings.json"), []byte(`{}`), 0o600)
 	os.WriteFile(filepath.Join(shared, "AGENTS.md"), []byte("v1"), 0o600)
-	if err := WriteCliLogin(shared, jwt(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_a"}), "ra"); err != nil {
+	if err := WriteCliLogin(shared, jwt(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_a", "external_org_id": "org_a"}), "ra"); err != nil {
 		t.Fatal(err)
 	}
 	h = New(Config{UserData: data, Home: home, Env: func(string) string { return "" }})
@@ -36,11 +36,11 @@ func emailOf(a AccountInfo) string {
 
 func TestAnAddedAccountJoinsTheListUnused(t *testing.T) {
 	h, _ := accountsHost(t)
-	if err := h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb"); err != nil {
+	if err := h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb"); err != nil {
 		t.Fatal(err)
 	}
 	// The same account again only takes the new login.
-	if err := h.addAccount(jwt(map[string]any{"sub": "ub", "email": "B@y.dev", "org_id": "org_b"}), "rb2"); err != nil {
+	if err := h.addAccount(jwt(map[string]any{"sub": "ub", "email": "B@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb2"); err != nil {
 		t.Fatal(err)
 	}
 	list := h.Accounts()
@@ -54,7 +54,7 @@ func TestAnAddedAccountJoinsTheListUnused(t *testing.T) {
 		t.Fatalf("adding switched accounts: %+v", s)
 	}
 	// The same email in another organization is another account.
-	if err := h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_c"}), "rc"); err != nil {
+	if err := h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_c", "external_org_id": "org_c"}), "rc"); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(h.Accounts()); n != 3 {
@@ -64,7 +64,7 @@ func TestAnAddedAccountJoinsTheListUnused(t *testing.T) {
 
 func TestSwitchingMovesTheLoginTheHostUses(t *testing.T) {
 	h, shared := accountsHost(t)
-	bToken := jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"})
+	bToken := jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"})
 	h.addAccount(bToken, "rb")
 	id := h.Accounts()[1].ID
 	if err := h.SwitchAccount("nope"); !errors.Is(err, errNoAccount) {
@@ -96,7 +96,7 @@ func TestTheDaemonOfAnAddedAccountSharesTheCLIsHome(t *testing.T) {
 		t.Skip("needs a shell")
 	}
 	h, shared := accountsHost(t)
-	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb")
+	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b", "external_org_id": "org_b"}), "rb")
 	id := h.Accounts()[1].ID
 	out := filepath.Join(t.TempDir(), "env")
 	droidPath := filepath.Join(t.TempDir(), "droid")

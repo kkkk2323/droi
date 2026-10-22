@@ -31,11 +31,11 @@ func testJWT(claims map[string]any) string {
 func accountsTestHost(t *testing.T) (*host.Host, string) {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
-	aToken := testJWT(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_acme"})
+	aToken := testJWT(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_acme", "external_org_id": "org_acme"})
 	if err := host.WriteCliLogin(filepath.Join(home, ".factory"), aToken, "r"); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.WriteCliLogin(filepath.Join(data, "accounts", "b1", ".factory"), testJWT(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_side"}), "r"); err != nil {
+	if err := host.WriteCliLogin(filepath.Join(data, "accounts", "b1", ".factory"), testJWT(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_side", "external_org_id": "org_side"}), "r"); err != nil {
 		t.Fatal(err)
 	}
 	ends := time.Now().Add(3 * time.Hour).UTC().Format(time.RFC3339)

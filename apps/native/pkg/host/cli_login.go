@@ -148,8 +148,10 @@ func WriteCliLogin(factoryHome, accessToken, refreshToken string) error {
 		}
 	}
 	creds := map[string]any{"access_token": accessToken, "refresh_token": refreshToken}
-	// The WorkOS organization, which droid refreshes the token in.
-	if org, ok := DecodeJWT(accessToken)["org_id"].(string); ok && org != "" {
+	// droid keeps Factory's own organization id here, the one it sends as
+	// X-Factory-Org-Id; the token's org_id is WorkOS's. Without it droid
+	// finds the organization itself.
+	if org, ok := DecodeJWT(accessToken)["external_org_id"].(string); ok && org != "" {
 		creds["active_organization_id"] = org
 	}
 	plain, err := json.Marshal(creds)

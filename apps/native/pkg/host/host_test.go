@@ -174,7 +174,7 @@ func TestWriteCliLoginIsTheCLIsLogin(t *testing.T) {
 	os.WriteFile(filepath.Join(home, "auth.v2.key"), []byte(base64.StdEncoding.EncodeToString(key)), 0o600)
 	// An earlier login under a key-store key, which droid would read first.
 	os.WriteFile(filepath.Join(home, "auth.v2.keyring"), []byte("old"), 0o600)
-	token := jwt(map[string]any{"sub": "workos_user", "org_id": "org_w"})
+	token := jwt(map[string]any{"sub": "workos_user", "org_id": "org_w", "external_org_id": "fs_w"})
 	if err := WriteCliLogin(home, token, "refresh"); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestWriteCliLoginIsTheCLIsLogin(t *testing.T) {
 	if err := json.Unmarshal([]byte(Decrypt(string(b), key)), &creds); err != nil {
 		t.Fatalf("not under the existing key: %v", err)
 	}
-	if creds["access_token"] != token || creds["refresh_token"] != "refresh" || creds["active_organization_id"] != "org_w" {
+	if creds["access_token"] != token || creds["refresh_token"] != "refresh" || creds["active_organization_id"] != "fs_w" {
 		t.Errorf("%v", creds)
 	}
 	r := &CliLoginReader{FactoryHome: home, ReadSecureKey: func(string) string { return "" }}

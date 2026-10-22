@@ -138,9 +138,11 @@ func (h *Host) CancelAddAccount() { h.adding.CancelSignIn() }
 func (h *Host) addAccount(access, refresh string) error {
 	claims := DecodeJWT(access)
 	email, _ := claims["email"].(string)
-	org, _ := claims["org_id"].(string)
+	org, _ := claims["external_org_id"].(string)
+	// A login an earlier Droi wrote holds the WorkOS organization instead.
+	workosOrg, _ := claims["org_id"].(string)
 	for _, acc := range h.Accounts() {
-		if acc.Login == nil || acc.Login.Email == nil || email == "" || !strings.EqualFold(*acc.Login.Email, email) || deref(acc.Login.OrgID) != org {
+		if acc.Login == nil || acc.Login.Email == nil || email == "" || !strings.EqualFold(*acc.Login.Email, email) || (deref(acc.Login.OrgID) != org && deref(acc.Login.OrgID) != workosOrg) {
 			continue
 		}
 		if err := WriteCliLogin(h.homeOf(acc.ID), access, refresh); err != nil {

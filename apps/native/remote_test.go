@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -148,6 +151,53 @@ func TestKeepingTheWindowConnectedStopsWithTheComputerItConnects(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("still keeping a closed computer's Controller connected")
+	}
+}
+
+func TestAWindowWhoseConnectFailsWaitsBeforeTryingAgain(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	var tries atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			tries.Add(1)
+			c.Close()
+		}
+	}()
+	home := t.TempDir()
+	h := host.New(host.Config{UserData: t.TempDir(), Home: home, Env: func(k string) string {
+		if k == "HOME" {
+			return home
+		}
+		return ""
+	}})
+	ctl := controller.New(controller.Config{URL: "ws://" + ln.Addr().String(), MaxConnectAttempts: 1})
+	t.Cleanup(func() { ctl.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	connectWhenSignedIn(ctx, ctl, h, true)
+	if n := tries.Load(); n == 0 || n > 3 {
+		t.Fatalf("%d connections in 1.5 s", n)
+	}
+}
+
+func TestTheWaitAfterAFailedConnectGrowsToHalfAMinute(t *testing.T) {
+	var got []time.Duration
+	d := time.Duration(0)
+	for range 8 {
+		d = connectRetryDelay(d)
+		got = append(got, d)
+	}
+	want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second, 30 * time.Second, 30 * time.Second}
+	if !slices.Equal(got, want) {
+		t.Fatalf("%v", got)
 	}
 }
 
