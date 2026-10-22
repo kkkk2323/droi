@@ -1,3 +1,10 @@
+## 1.65.0 - 2026-10-23
+
+### Changed
+
+- The Phone App's Session list follows the computer it is connected to. It shows the computer's pinned Sessions and Workspaces under Pinned, then the rest of the Workspaces in the order the computer's sidebar shows them (the ones unused for a month behind Show N older workspaces), and Recents last; Automation runs are left out, as on the computer. Pinning or unpinning on the phone pins or unpins on the computer too. Before, the phone kept its own pins and ordered the list on its own, without a Pinned section.
+- The Phone App's Session list is on a white page instead of a grey one, with a borderless search box, folder icons on the Workspace headers, and each Session's message count and how long ago it changed on a second line, as in the computer's sidebar.
+
 ## 1.64.2 - 2026-10-22
 
 ### Changed
