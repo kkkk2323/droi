@@ -107,7 +107,7 @@ func (s *Settings) General(c *ui.Context, apply func()) {
 			k.SettingRow(c, l10n.L("Theme"), l10n.L("Light is the default. Kept on this device."), pick(prefs.Theme, l10n.N("Theme"), themes), nil)
 		},
 		func() {
-			k.SettingRow(c, l10n.L("Font"), l10n.L("System uses this device's face, San Francisco on a Mac or Segoe UI on Windows. Geist is bundled with Droi."), pick(prefs.Font, l10n.N("Font"), fonts), nil)
+			k.SettingRow(c, l10n.L("Font"), l10n.L("System uses your OS font (San Francisco on macOS, Segoe UI on Windows). Geist is built into Droi."), pick(prefs.Font, l10n.N("Font"), fonts), nil)
 		},
 		func() {
 			k.SettingRow(c, l10n.L("Text size"), l10n.L("Scales every label, message and code block together. ⌘= and ⌘- zoom on top of this."), pick(prefs.TextSize, l10n.N("Text size"), sizes), nil)

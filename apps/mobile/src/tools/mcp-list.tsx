@@ -417,7 +417,7 @@ function SignInNotice({
     >
       <Text size="sm">{message}</Text>
       <Text size="xs" tone="muted">
-        The sign-in finishes on the computer running Droi: open the page there.
+        Copy the sign-in link and open it on the computer running Droi to finish signing in.
       </Text>
       <View style={styles.actions}>
         <SmallButton

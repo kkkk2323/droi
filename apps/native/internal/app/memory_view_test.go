@@ -55,14 +55,14 @@ func TestSettingsMemoryListsEachMemory(t *testing.T) {
 	h.settle()
 	for _, want := range []string{"Global Memory", "3 entries · 420 of 40k characters · never consolidated", "/Users/dev/acme-web",
 		"12 entries · 210k of 200k characters", "5 searches since", "2 found nothing", "4 entries never found",
-		"Over its size; consolidate it to keep writes going."} {
+		"Over the size limit. Consolidate to continue saving new entries."} {
 		if !h.hasText(want) {
 			t.Errorf("missing %q in %q", want, h.tt.Texts())
 		}
 	}
 	h.click("Consolidate /Users/dev/acme-web")
 	h.until("the consolidation's result", func() bool {
-		return h.hasText("Consolidated 2; 1 left unchanged because the model’s answer did not hold up.")
+		return h.hasText("Consolidated 2; 1 kept unchanged because the model’s output failed validation.")
 	})
 	if len(m.consolidated) != 1 || m.consolidated[0] != "/Users/dev/acme-web" {
 		t.Errorf("consolidated %q", m.consolidated)
@@ -114,7 +114,7 @@ func TestTheMemorySwitchAsksBeforeRestarting(t *testing.T) {
 	if !h.hasText("Nothing remembered yet") {
 		t.Errorf("no empty state: %q", h.tt.Texts())
 	}
-	clickMemorySwitch(h, func() bool { return h.hasText("Turn Memory on? The Daemon restarts to attach it.") })
+	clickMemorySwitch(h, func() bool { return h.hasText("Turn Memory on? This restarts the Daemon") })
 	if h0.Settings.Get().MemoryEnabled {
 		t.Fatal("the switch did not ask first")
 	}

@@ -69,21 +69,21 @@ var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 func ParseServerForm(form ServerForm) (protocol.AddMCPServerParams, error) {
 	name := strings.TrimSpace(form.Name)
 	if name == "" {
-		return protocol.AddMCPServerParams{}, errors.New(l10n.L("Give the server a name."))
+		return protocol.AddMCPServerParams{}, errors.New(l10n.L("Enter a server name."))
 	}
 	if !serverName.MatchString(name) {
-		return protocol.AddMCPServerParams{}, errors.New(l10n.L("A name has letters, digits, \"-\" and \"_\" only."))
+		return protocol.AddMCPServerParams{}, errors.New(l10n.L("Server name can only contain letters, digits, \"-\", and \"_\"."))
 	}
 	if form.Type == protocol.MCPServerTypeStdio {
 		command := strings.TrimSpace(form.Command)
 		if command == "" {
-			return protocol.AddMCPServerParams{}, errors.New(l10n.L("Give the command that starts the server."))
+			return protocol.AddMCPServerParams{}, errors.New(l10n.L("Enter the command that starts the server."))
 		}
 		return protocol.AddMCPServerParams{Name: name, Type: form.Type, Command: command, Args: strings.Fields(form.Args)}, nil
 	}
 	url := strings.TrimSpace(form.URL)
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return protocol.AddMCPServerParams{}, errors.New(l10n.L("The URL starts with http:// or https://."))
+		return protocol.AddMCPServerParams{}, errors.New(l10n.L("URL must start with http:// or https://."))
 	}
 	var headers map[string]string
 	for _, line := range strings.Split(form.Headers, "\n") {
@@ -92,7 +92,7 @@ func ParseServerForm(form ServerForm) (protocol.AddMCPServerParams, error) {
 		}
 		colon := strings.Index(line, ":")
 		if colon <= 0 {
-			return protocol.AddMCPServerParams{}, errors.New(l10n.L("A header is \"Name: value\"; \"%s\" is not.", strings.TrimSpace(line)))
+			return protocol.AddMCPServerParams{}, errors.New(l10n.L("Format headers as \"Name: value\" (invalid: \"%s\").", strings.TrimSpace(line)))
 		}
 		if headers == nil {
 			headers = map[string]string{}

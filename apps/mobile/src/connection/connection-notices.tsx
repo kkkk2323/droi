@@ -79,15 +79,12 @@ function Unreachable({
   return (
     <ScrollView style={style} contentContainerStyle={styles.panel}>
       <Heading>Can’t reach {computer.name}</Heading>
-      <Text tone="muted">The phone is trying</Text>
+      <Text tone="muted">Trying to connect to</Text>
       <Text mono size="sm" style={[styles.address, { backgroundColor: colors.muted }]}>
         {computer.address}
       </Text>
       <View role="list" aria-label="What to check" style={styles.checks}>
-        <Check>
-          Remote Access is on in Droi → Settings on the computer. With it off the computer does not
-          listen on the network at all.
-        </Check>
+        <Check>Remote Access is turned on in Droi → Settings on the computer.</Check>
         <Check>
           The iPhone is on the same network as the computer, or Tailscale is on for both.
         </Check>

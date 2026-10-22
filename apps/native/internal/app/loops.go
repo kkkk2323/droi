@@ -205,7 +205,7 @@ func loopErr(err error) string {
 	case errors.Is(err, loops.ErrUneven):
 		return L("A loop runs every 1, 2, 3, 4, 5, 6, 10, 12, 15, 20 or 30 minutes, or every 1, 2, 3, 4, 6, 8, 12 or 24 hours.")
 	}
-	return L("Give the loop an interval: /loop 10m check the build, or /loop check the build every 2h.")
+	return L("Include an interval, e.g. /loop 10m check the build or /loop check the build every 2h.")
 }
 
 // loop runs `/loop args`, true once it started: a loop of this Session, or

@@ -180,7 +180,7 @@ func TestCreatingAnAutomation(t *testing.T) {
 	h.tt.Type("Daily review")
 	h.frame()
 	h.click("Create automation")
-	h.until("the prompt error", func() bool { return h.hasText("cannot be empty") })
+	h.until("the prompt error", func() bool { return h.hasText("Enter a prompt for the automation to run.") })
 	h.click("Automation prompt")
 	h.tt.Type("List open pull requests.")
 	h.frame()

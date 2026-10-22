@@ -942,7 +942,7 @@ func (f *automationForm) schedule(offset int) (string, error) {
 	case automations.Hourly:
 		m, err := strconv.Atoi(strings.TrimSpace(f.minute))
 		if err != nil || m < 0 || m > 59 {
-			return "", errors.New(L("Enter the minute past the hour, from 0 to 59."))
+			return "", errors.New(L("Enter a minute between 0 and 59."))
 		}
 		s.Minute = m
 	case automations.Daily, automations.Weekdays, automations.Weekly:
@@ -1122,9 +1122,9 @@ func (a *App) saveAutomation(e *protocol.AutomationEntry) {
 	expr, err := f.schedule(a.offset())
 	switch {
 	case name == "":
-		f.err, f.errOn = L("Give the automation a name."), "name"
+		f.err, f.errOn = L("Enter an automation name."), "name"
 	case prompt == "":
-		f.err, f.errOn = L("Each run starts from the prompt, so it cannot be empty."), "prompt"
+		f.err, f.errOn = L("Enter a prompt for the automation to run."), "prompt"
 	case err != nil:
 		f.err, f.errOn = err.Error(), "schedule"
 	}

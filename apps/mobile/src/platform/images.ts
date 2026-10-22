@@ -21,7 +21,7 @@ export async function pickImages(source: ImageSource): Promise<ImageAttachment[]
   if (source === 'camera') {
     const permission = await ImagePicker.requestCameraPermissionsAsync()
     if (!permission.granted)
-      throw new ImageSourceError('Droi may not use the camera. Allow it in Settings.')
+      throw new ImageSourceError('Camera access is turned off. Allow camera access in Settings.')
   }
   const result =
     source === 'camera'
