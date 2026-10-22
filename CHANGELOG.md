@@ -1,3 +1,9 @@
+## 1.64.1 - 2026-10-22
+
+### Changed
+
+- The open session in the sidebar is a grey row again, a shade darker than in 1.63, instead of the white row with a shadow 1.64.0 gave it, which stood out too much. A row under the pointer is a lighter grey, so the two read apart.
+
 ## 1.64.0 - 2026-10-22
 
 ### Added
