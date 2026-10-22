@@ -1,3 +1,11 @@
+## 1.63.2 - 2026-10-22
+
+### Fixed
+
+- Signing in with a Factory account that has an organization works even when the browser sign-in hands Droi a login without it. Before, Factory and the background service turned such a login down ("User not affiliated with an organization"), Settings said usage was unavailable with status 401, and signing out and in again did not help. Droi now asks Factory for the account's organization and signs in to it, as droid does; adding an account does the same.
+- Droi records the account's Factory organization for droid where droid expects it. Before, it recorded the sign-in service's id there, and Factory answered usage requests that carried it with 403.
+- When the background service turns the login down, Droi waits before trying again, a second at first and up to half a minute. Before, it tried thousands of times a second, and droid's log grew by about 140 MB a minute.
+
 ## 1.63.1 - 2026-10-22
 
 ### Changed
