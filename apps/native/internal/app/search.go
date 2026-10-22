@@ -291,7 +291,7 @@ func (a *App) searchResults(c *ui.Context, selected string, groups []sessions.Gr
 				Gap(k.Px(2)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 			switch {
 			case h.sessionID == selected:
-				k.Raised(b)
+				b.Background(t.SidebarAccent)
 			case b.Hovered():
 				b.Background(t.SidebarAccent.Alpha(0.6))
 			}

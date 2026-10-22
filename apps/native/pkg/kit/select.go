@@ -94,8 +94,8 @@ func (k *Kit) QuietSelect(c *ui.Context, open *bool, label, icon, value string, 
 	return picked, ok
 }
 
-// Raised gives e the face of the choice in force among its neighbours: a
-// segmented control's thumb, the sidebar's open row.
+// Raised gives e the face of the choice in force among its neighbours, as
+// a segmented control's thumb.
 func (k *Kit) Raised(e ui.Element) ui.Element {
 	t := k.T
 	return e.Background(t.SegmentThumb).Shadow(0, 1, 2, 0, t.SegmentShadow).Shadow(0, 0, 0, 0.5, t.Border.Alpha(0.7))

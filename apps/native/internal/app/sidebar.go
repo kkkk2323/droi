@@ -316,9 +316,9 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 	kit.Selected(b, selected)
 	switch {
 	case selected:
-		k.Raised(b)
+		b.Background(t.SidebarAccent)
 	case b.Hovered():
-		b.Background(t.SidebarAccent.Alpha(0.7))
+		b.Background(t.SidebarAccent.Alpha(0.5))
 	}
 	b.Children(func() {
 		k.IconStroke(c, icon, 1.6, 14, t.SidebarForeground)
@@ -617,9 +617,9 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	kit.Selected(b, selected)
 	switch {
 	case selected:
-		k.Raised(b)
+		b.Background(t.SidebarAccent)
 	case b.Hovered():
-		b.Background(t.SidebarAccent.Alpha(0.7))
+		b.Background(t.SidebarAccent.Alpha(0.5))
 	}
 	acc, elsewhere := a.elsewhere.accounts[s.SessionID]
 	b.Children(func() {

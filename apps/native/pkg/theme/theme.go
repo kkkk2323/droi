@@ -58,8 +58,7 @@ type Tokens struct {
 	Tint ui.Color
 	// SegmentTrack is a segmented control's groove, a step deeper than the
 	// panel so that SegmentThumb, the raised face of the choice in force,
-	// stands off it; SegmentShadow lifts that face. The sidebar's open row
-	// wears the same face.
+	// stands off it; SegmentShadow lifts that face.
 	SegmentTrack, SegmentThumb, SegmentShadow ui.Color
 	// SidebarMutedForeground is muted text inside the sidebar, which
 	// Solarized Light+ sets apart from the conversation's.
@@ -93,7 +92,7 @@ var light = Tokens{
 	SidebarForeground:      ui.Hex("#171717"),
 	SidebarPrimary:         ui.Hex("#171717"),
 	SidebarPrimaryFg:       ui.Hex("#ffffff"),
-	SidebarAccent:          ui.RGBA(0, 0, 0, 0.06),
+	SidebarAccent:          ui.RGBA(0, 0, 0, 0.07),
 	SidebarAccentFg:        ui.Hex("#171717"),
 	SidebarBorder:          ui.RGBA(0, 0, 0, 0.10),
 	SidebarRing:            ui.Hex("#a3a3a3"),
