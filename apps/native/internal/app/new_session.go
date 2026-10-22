@@ -53,6 +53,7 @@ type newSessionState struct {
 	bitmaps map[string]*ui.Bitmap
 	err     string
 	menu    slashMenu
+	tagField
 	// caretToEnd puts the caret after a picked command, on the next build.
 	caretToEnd bool
 
@@ -430,7 +431,8 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 	if dv := a.sessionDefaults(); interaction == "" && dv != nil {
 		interaction = dv.InteractionMode
 	}
-	s.menu.items(s.text, slash.Starters, fromDaemon)
+	s.takeEdit(&s.text)
+	picked, rest, hasPick := s.splitTag(s.text, s.menu.items(s.text, slash.Starters, fromDaemon))
 	accept := func(item slash.Item) {
 		s.text = "/" + item.Name + " "
 		s.caretToEnd = true
@@ -439,6 +441,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		if !enabled {
 			return
 		}
+		s.takeEdit(&s.text)
 		text, images := pasted.Join(s.text, s.pasted), s.images
 		// A `/loop` the new Session could not run would leave it empty.
 		if m := loopCommand.FindStringSubmatch(strings.TrimSpace(text)); m != nil && len(images) == 0 {
@@ -493,13 +496,21 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 			// In a column the text area's Grow(1) would take its height, as
 			// the composer's row gives it the width instead.
 			var in ui.Element
-			ui.Row(c).Children(func() {
-				in = k.TextArea(c, &s.text, L("Message"), L("Do anything…"), kit.AreaStyle{Pad: [4]float32{16, 16, 8, 16}, Size: k.Dense(13, 14), Line: k.Dense(22, 24),
+			ui.Row(c).AlignItems(ui.Start).Children(func() {
+				placeholder, left := L("Do anything…"), float32(16)
+				if hasPick {
+					a.slashTag(c, picked, func() { s.text = rest })
+					left = 8
+					if picked.ArgumentHint != "" {
+						placeholder = l10n.T(picked.ArgumentHint)
+					}
+				}
+				in = k.TextArea(c, &s.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{16, 16, 8, left}, Size: k.Dense(13, 14), Line: k.Dense(22, 24),
 					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
 			})
 			if s.caretToEnd {
 				s.caretToEnd = false
-				n := utf8.RuneCountInString(s.text)
+				n := utf8.RuneCountInString(s.field)
 				in.SetTextSelection(n, n)
 			}
 			paste := func() bool {
@@ -539,8 +550,13 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				if s.menu.key(key, s.text, accept) {
 					return true
 				}
+				if hasPick && key.Key == ui.KeyBackspace && key.Text() == "" {
+					s.text = rest
+					return true
+				}
 				if key.Key == ui.KeyEnter && key.Mods&ui.Shift == 0 {
-					s.text = key.Text()
+					s.field = key.Text()
+					s.takeEdit(&s.text)
 					start()
 					return true
 				}

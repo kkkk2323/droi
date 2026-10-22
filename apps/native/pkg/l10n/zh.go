@@ -919,6 +919,8 @@ var zh = map[string]string{
 	"Belongs to %s":               "属于 %s",
 	"This session belongs to %s.": "该会话属于 %s。",
 	"Switching to %s…":            "正在切换到 %s…",
+	"Opening it under %s…":        "正在移到 %s 下打开…",
+	"Could not move it to %s: %s": "无法移到 %s：%s",
 	"droid opens a session only under the account it belongs to. Switch to that account to continue it here.": "会话只能在所属账号下打开。切换到该账号即可继续对话。",
 	"Usage details for %s":                     "%s 的用量详情",
 	"Shared with droid in the terminal":        "与终端里的 droid 共用登录",

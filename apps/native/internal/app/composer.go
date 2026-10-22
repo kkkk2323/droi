@@ -39,12 +39,8 @@ type composerState struct {
 	text   string
 	images []attachments.Image
 	pasted []pasted.Text
-	// field is the text area's value, the text after a picked command's
-	// tag. MyGo writes an edit into it after the build that made the text
-	// area, so it outlives the build; fieldPrefix is the tag and fieldFrom
-	// the text it was taken from, which tell an edit from a new text.
-	field, fieldPrefix, fieldFrom string
-	menu                          slashMenu
+	tagField
+	menu slashMenu
 
 	modelOpen bool
 	picker    pickerState
@@ -202,15 +198,36 @@ func (v *sessionView) slashItems(loaded bool) []slash.Item {
 	return cs.slash
 }
 
+// tagField is a composer's text area beside a picked command's tag.
+// field is the text area's value, the text after the tag. MyGo writes an
+// edit into it after the build that made the text area, so it outlives the
+// build; prefix is the tag and from the text it was taken from, which tell
+// an edit from a new text.
+type tagField struct {
+	field, prefix, from string
+}
+
 // takeEdit takes the text area's edit into text, unless text changed
 // since the field was taken from it.
-func (cs *composerState) takeEdit() bool {
-	if cs.text != cs.fieldFrom || cs.fieldPrefix+cs.field == cs.text {
+func (f *tagField) takeEdit(text *string) bool {
+	if *text != f.from || f.prefix+f.field == *text {
 		return false
 	}
-	cs.text = cs.fieldPrefix + cs.field
-	cs.fieldFrom = cs.text
+	*text = f.prefix + f.field
+	f.from = *text
 	return true
+}
+
+// splitTag finds the command or skill picked at the start of text among
+// items and gives the text area the text after its tag.
+func (f *tagField) splitTag(text string, items []slash.Item) (picked slash.Item, rest string, ok bool) {
+	picked, rest, ok = slash.Picked(text, items)
+	prefix := ""
+	if ok {
+		prefix = text[:len(text)-len(rest)]
+	}
+	f.field, f.prefix, f.from = text[len(prefix):], prefix, text
+	return picked, rest, ok
 }
 
 // inputBar is the InputBar: attachments and text in a rounded card, the
@@ -221,23 +238,18 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
-	if cs.takeEdit() {
+	if cs.takeEdit(&cs.text) {
 		cs.menu.highlight = 0
 		v.saveDraft()
 	}
 	items := cs.menu.items(cs.text, slash.Builtins, v.slashItems(loaded))
-	picked, rest, hasPick := slash.Picked(cs.text, items)
-	prefix := ""
-	if hasPick {
-		prefix = cs.text[:len(cs.text)-len(rest)]
-	}
-	cs.field, cs.fieldPrefix, cs.fieldFrom = cs.text[len(prefix):], prefix, cs.text
+	picked, rest, hasPick := cs.splitTag(cs.text, items)
 	ready := loaded || v.Ready()
 	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images)+len(cs.pasted) > 0)
 	// submit reports whether it sent. It reads the text again: a key can
 	// come with text typed after this frame was built.
 	submit := func(placement protocol.QueuePlacement) bool {
-		cs.takeEdit()
+		cs.takeEdit(&cs.text)
 		if !ready || strings.TrimSpace(cs.text) == "" && len(cs.images)+len(cs.pasted) == 0 {
 			return false
 		}
@@ -280,7 +292,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 			}
 			ui.Row(c.Key("field")).AlignItems(ui.Start).Children(func() {
 				if hasPick {
-					v.slashTag(c, picked, rest)
+					a.slashTag(c, picked, func() { cs.text = rest })
 				}
 				placeholder := L("Ask anything")
 				switch {
@@ -581,25 +593,26 @@ func appendLines(text, more string) string {
 	return text + "\n" + more
 }
 
-// slashTag is the command or skill the message will run, before its text.
-func (v *sessionView) slashTag(c *ui.Context, item slash.Item, rest string) {
-	k, t := v.a.kit, v.a.kit.T
-	icon, label, remove := "square-slash", L("Command %s", item.Name), L("Remove command %s", item.Name)
+// slashTag is the command or skill the message will run, before its text;
+// its × calls remove.
+func (a *App) slashTag(c *ui.Context, item slash.Item, remove func()) {
+	k, t := a.kit, a.kit.T
+	icon, label, removeLabel := "square-slash", L("Command %s", item.Name), L("Remove command %s", item.Name)
 	if item.Kind == slash.Skill {
-		icon, label, remove = "sparkles", L("Skill %s", item.Name), L("Remove skill %s", item.Name)
+		icon, label, removeLabel = "sparkles", L("Skill %s", item.Name), L("Remove skill %s", item.Name)
 	}
 	ui.Row(c).Role(ui.RoleGroup).Label(label).Tooltip(l10n.T(item.Description)).Height(k.Px(24)).Gap(k.Px(4)).
 		Margin(k.Px(14), 0, 0, k.Px(12)).Padding(0, k.Px(2), 0, k.Px(6)).Radius(k.Px(6)).Background(t.Info.Alpha(0.1)).Shrink(0).Children(func() {
 		k.Icon(c, icon, 14, t.InfoForeground)
 		k.Text(c, item.Name, 13, 19.5).FontWeight(500).TextColor(t.InfoForeground).SingleLine()
-		x := ui.ButtonBase(c).Label(remove).Size(k.Px(20), k.Px(20)).Radius(k.Px(4)).Cursor(ui.CursorPointer)
+		x := ui.ButtonBase(c).Label(removeLabel).Size(k.Px(20), k.Px(20)).Radius(k.Px(4)).Cursor(ui.CursorPointer)
 		op := float32(0.6)
 		if x.Hovered() {
 			op = 1
 		}
 		x.Children(func() { k.Icon(c, "x", 12, t.InfoForeground).Opacity(op) })
 		if x.Clicked() {
-			v.composer.text = rest
+			remove()
 		}
 	})
 }

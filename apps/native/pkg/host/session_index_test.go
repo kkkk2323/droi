@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
@@ -133,5 +134,63 @@ func TestSetJSONKeyKeepsTheOrderAndTakesAKeyOut(t *testing.T) {
 	out, _ = setJSONKey(out, "k", []string{"x"})
 	if string(out) != "{\n  \"a\": {\n    \"c\": true\n  },\n  \"k\": [\n    \"x\"\n  ]\n}\n" {
 		t.Fatalf("%q", out)
+	}
+}
+
+// Opening another account's Session moves it, with its subagents and the
+// Sessions its compaction links to, to the account in use: droid then lists
+// and opens it there. Other Sessions stay where they are.
+func TestASessionIsTakenToTheAccountInUse(t *testing.T) {
+	h, shared := accountsHost(t)
+	h.addAccount(jwt(map[string]any{"sub": "ub", "email": "b@y.dev", "org_id": "org_b"}), "rb")
+	dir := filepath.Join(shared, "sessions", "-Users-dev-acme")
+	os.MkdirAll(dir, 0o700)
+	write := func(id, extra string) string {
+		p := filepath.Join(dir, id+".jsonl")
+		line := `{"type":"session_start","id":"` + id + `","title":"T","organizationId":"org_b"` + extra + `,"version":2}`
+		os.WriteFile(p, []byte(line+"\n"+`{"type":"message","id":"m1","organizationId":"org_b"}`+"\n"), 0o640)
+		old := time.Now().Add(-48 * time.Hour)
+		os.Chtimes(p, old, old)
+		return p
+	}
+	main := write("main", "")
+	sub := write("sub", `,"callingSessionId":"main"`)
+	next := write("next", `,"parentId":"main"`)
+	other := write("other", "")
+	h.RecordSessions("org_b", []sessions.Summary{
+		{SessionID: "main", OrganizationID: "org_b"},
+		{SessionID: "sub", CallingSessionID: "main", OrganizationID: "org_b"},
+		{SessionID: "next", ParentID: "main", OrganizationID: "org_b"},
+		{SessionID: "other", OrganizationID: "org_b"},
+	})
+	before, _ := os.Stat(main)
+
+	if err := h.TakeSession("main"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{main, sub, next} {
+		b, _ := os.ReadFile(p)
+		first, rest, _ := bytes.Cut(b, []byte("\n"))
+		if !bytes.Contains(first, []byte(`"organizationId":"org_a"`)) || !bytes.HasPrefix(first, []byte(`{"type":"session_start","id":`)) {
+			t.Fatalf("%s starts %s", filepath.Base(p), first)
+		}
+		if !bytes.Contains(rest, []byte(`"organizationId":"org_b"`)) {
+			t.Fatalf("%s: the messages changed: %s", filepath.Base(p), rest)
+		}
+	}
+	after, _ := os.Stat(main)
+	if !after.ModTime().Equal(before.ModTime()) || after.Mode().Perm() != 0o640 {
+		t.Fatalf("time %v → %v, mode %v", before.ModTime(), after.ModTime(), after.Mode().Perm())
+	}
+	if b, _ := os.ReadFile(other); !bytes.Contains(b, []byte(`"organizationId":"org_b","version"`)) {
+		t.Fatalf("an unrelated Session moved: %s", b)
+	}
+	h.SwitchAccount(h.Accounts()[1].ID)
+	h.SwitchAccount("")
+	if got := sessionIDs(h.SessionsElsewhere()); !slices.Equal(got, []string{"other@b@y.dev"}) {
+		t.Fatalf("still kept for b@y.dev: %v", got)
+	}
+	if err := h.TakeSession("main"); err == nil {
+		t.Fatal("a Session of the account in use was taken again")
 	}
 }
