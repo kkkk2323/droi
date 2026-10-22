@@ -1,3 +1,9 @@
+## 1.63.1 - 2026-10-22
+
+### Changed
+
+- Simplified Chinese and English wording in Settings, Memory, Automations, MCP servers and connection notices is shorter and more direct, and uses consistent terms across the desktop and Phone apps. On the New session page and in Hourly automations, the Chinese lines around the workspace and minute pickers read as one sentence again.
+
 ## 1.63.0 - 2026-10-22
 
 ### Changed
