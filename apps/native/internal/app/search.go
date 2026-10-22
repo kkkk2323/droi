@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/sessionfile"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
@@ -52,7 +53,7 @@ func (a *App) searchBox(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(k.Dense(28, 32)))
 	box.Children(func() {
-		in := ui.TextInputBase(c, &a.sidebar.query).Label(L("Search sessions")).Placeholder(L("Search sessions")).
+		in := ui.TextInputBase(c, &a.sidebar.query).Label(L("Search sessions and workspaces")).Placeholder(L("Search")).
 			Fill().Radius(k.Px(6)).Padding(0, k.Px(28), 0, k.Px(28)).FontSize(k.Px(k.Dense(12, 13))).TextColor(t.Foreground).Border(1, ui.Transparent)
 		if in.Focused() {
 			in.Background(t.Background).Border(1, t.Ring.Alpha(0.6))
@@ -222,8 +223,26 @@ func snippetRuns(snippet string) []snippetRun {
 	return runs
 }
 
-func (a *App) searchResults(c *ui.Context, selected string) {
+// workspaceHits are the sidebar's Workspaces whose name has the query, in
+// the sidebar's order.
+func workspaceHits(groups []sessions.Group, query string) []sessions.Group {
+	q := strings.ToLower(query)
+	var found []sessions.Group
+	for _, g := range groups {
+		if !g.Scratch && g.Key != sessions.PinnedSessionsGroupKey && strings.Contains(strings.ToLower(g.Label), q) {
+			found = append(found, g)
+		}
+	}
+	return found
+}
+
+// searchResults are the Workspaces whose name has the query, each as the
+// sidebar shows it, then the Sessions the search found.
+func (a *App) searchResults(c *ui.Context, selected string, groups []sessions.Group, order sessions.Order, busy map[string]activity.Activity) {
 	k, t := a.kit, a.kit.T
+	heading := func(text string) {
+		k.Text(c, text, 11, 16.5).Role(ui.RoleHeading).FontWeight(500).TextColor(t.MutedForeground).Padding(k.Px(4), k.Px(8))
+	}
 	s := &a.sidebar.search
 	q := strings.TrimSpace(a.sidebar.query)
 	note := func(text string, spin bool) {
@@ -238,18 +257,32 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 		note(L("Type a little more to search."), false)
 		return
 	}
+	places := workspaceHits(groups, q)
+	if len(places) > 0 {
+		heading(L("Workspaces"))
+		for _, g := range places {
+			a.workspaceSection(c, g, groups, order, selected, busy)
+		}
+	}
 	s.mu.Lock()
 	hits, err, forQuery, pending := s.hits, s.err, s.query, s.pending
 	s.mu.Unlock()
+	failed := err != "" && forQuery == q
+	searching := forQuery == "" || len(hits) == 0 && pending
+	if len(places) > 0 && (failed || searching || len(hits) > 0) {
+		heading(L("Sessions"))
+	}
 	switch {
-	case err != "" && forQuery == q:
+	case failed:
 		k.Text(c, err, 12, 16).TextColor(t.DestructiveForeground).Padding(k.Px(4), k.Px(8))
 		return
-	case forQuery == "", len(hits) == 0 && pending:
+	case searching:
 		note(L("Searching…"), true)
 		return
 	case len(hits) == 0:
-		note(L("No sessions match."), false)
+		if len(places) == 0 {
+			note(L("No sessions or workspaces match."), false)
+		}
 		return
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Search results")).Gap(1).Children(func() {
@@ -258,7 +291,7 @@ func (a *App) searchResults(c *ui.Context, selected string) {
 				Gap(k.Px(2)).Padding(k.Px(6), k.Px(8)).Radius(k.Px(10)).Cursor(ui.CursorPointer)
 			switch {
 			case h.sessionID == selected:
-				b.Background(t.SidebarAccent)
+				k.Raised(b)
 			case b.Hovered():
 				b.Background(t.SidebarAccent.Alpha(0.6))
 			}

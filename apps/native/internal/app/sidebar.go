@@ -77,7 +77,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 		})
 		ui.Scroll(c).Grow(1).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Children(func() {
 			if strings.TrimSpace(a.sidebar.query) != "" {
-				a.searchResults(c, selected)
+				a.searchResults(c, selected, groups, order, busy)
 				return
 			}
 			if listErr != "" {
@@ -316,7 +316,7 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 	kit.Selected(b, selected)
 	switch {
 	case selected:
-		b.Background(t.SidebarAccent)
+		k.Raised(b)
 	case b.Hovered():
 		b.Background(t.SidebarAccent.Alpha(0.7))
 	}
@@ -399,7 +399,7 @@ func (a *App) sectionHeader(c *ui.Context, label, title string, open bool, list 
 		if title != "" {
 			b.Tooltip(title)
 		}
-		color := t.MutedForeground.Alpha(0.8)
+		color := t.MutedForeground
 		if hovered {
 			color = t.Foreground
 		}
@@ -554,7 +554,7 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 							k.IconStroke(c, folder, 1.75, 14, t.MutedForeground)
 						}
 					})
-					k.Text(c, g.Label, k.Dense(11, 12), k.Dense(17, 18)).FontWeight(500).TextColor(t.SidebarMutedForeground).SingleLine().Shrink(1)
+					k.Text(c, g.Label, k.Dense(12, 13), k.Dense(18, 19.5)).FontWeight(500).TextColor(t.SidebarForeground).SingleLine().Shrink(1)
 					if !open {
 						if n, ok := activity.CountBusy(g.Sessions, busy, a.sidebar.subagentsRunning); ok {
 							a.busyMark(c, n)
@@ -617,7 +617,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 	kit.Selected(b, selected)
 	switch {
 	case selected:
-		b.Background(t.SidebarAccent)
+		k.Raised(b)
 	case b.Hovered():
 		b.Background(t.SidebarAccent.Alpha(0.7))
 	}

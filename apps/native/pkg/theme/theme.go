@@ -56,6 +56,11 @@ type Tokens struct {
 	// switch that is on, a field with the focus. Everything else stays
 	// neutral, as the reference does.
 	Tint ui.Color
+	// SegmentTrack is a segmented control's groove, a step deeper than the
+	// panel so that SegmentThumb, the raised face of the choice in force,
+	// stands off it; SegmentShadow lifts that face. The sidebar's open row
+	// wears the same face.
+	SegmentTrack, SegmentThumb, SegmentShadow ui.Color
 	// SidebarMutedForeground is muted text inside the sidebar, which
 	// Solarized Light+ sets apart from the conversation's.
 	SidebarMutedForeground ui.Color
@@ -84,11 +89,11 @@ var light = Tokens{
 	Border:                 ui.RGBA(0, 0, 0, 0.12),
 	Input:                  ui.RGBA(0, 0, 0, 0.15),
 	Ring:                   ui.Hex("#a3a3a3"),
-	Sidebar:                ui.Hex("#ebebeb"),
+	Sidebar:                ui.Hex("#f3f3f3"),
 	SidebarForeground:      ui.Hex("#171717"),
 	SidebarPrimary:         ui.Hex("#171717"),
 	SidebarPrimaryFg:       ui.Hex("#ffffff"),
-	SidebarAccent:          ui.RGBA(0, 0, 0, 0.045),
+	SidebarAccent:          ui.RGBA(0, 0, 0, 0.06),
 	SidebarAccentFg:        ui.Hex("#171717"),
 	SidebarBorder:          ui.RGBA(0, 0, 0, 0.10),
 	SidebarRing:            ui.Hex("#a3a3a3"),
@@ -107,6 +112,9 @@ var light = Tokens{
 	Selection:              ui.RGBA(0, 105, 204, 0.18),
 	SidebarMutedForeground: ui.Hex("#5c5c5c"),
 	Tint:                   ui.Hex("#0169cc"),
+	SegmentTrack:           ui.RGBA(0, 0, 0, 0.08),
+	SegmentThumb:           ui.Hex("#ffffff"),
+	SegmentShadow:          ui.RGBA(0, 0, 0, 0.14),
 }
 
 var dark = Tokens{
@@ -154,6 +162,9 @@ var dark = Tokens{
 	Selection:              ui.RGBA(51, 156, 255, 0.28),
 	SidebarMutedForeground: ui.Hex("#8f8f8f"),
 	Tint:                   ui.Hex("#339cff"),
+	SegmentTrack:           ui.RGBA(255, 255, 255, 0.06),
+	SegmentThumb:           ui.RGBA(255, 255, 255, 0.14),
+	SegmentShadow:          ui.RGBA(0, 0, 0, 0.35),
 }
 
 // Solarized Light+ in the same material: the page a step brighter than its
@@ -202,6 +213,9 @@ var solarized = Tokens{
 	Selection:              ui.RGBA(38, 139, 210, 0.18),
 	SidebarMutedForeground: ui.Hex("#5b6e76"),
 	Tint:                   ui.Hex("#268bd2"),
+	SegmentTrack:           ui.RGBA(88, 110, 117, 0.12),
+	SegmentThumb:           ui.Hex("#fdfaf1"),
+	SegmentShadow:          ui.RGBA(88, 110, 117, 0.24),
 }
 
 // Of returns the tokens of a theme; an unknown name is Light.

@@ -96,7 +96,7 @@ func TestPasteOfTheEditMenuAttachesAnImage(t *testing.T) {
 	if len(v.composer.images) != 1 {
 		t.Fatalf("the Session's composer has %d images", len(v.composer.images))
 	}
-	_ = h.tt.Click("Search sessions")
+	_ = h.tt.Click("Search sessions and workspaces")
 	h.frame()
 	h.tt.Command("paste")
 	h.frame()

@@ -94,13 +94,20 @@ func (k *Kit) QuietSelect(c *ui.Context, open *bool, label, icon, value string, 
 	return picked, ok
 }
 
-// Segmented is every choice named at once, one click each, in a muted
-// track with the chosen one raised. It returns the value picked.
+// Raised gives e the face of the choice in force among its neighbours: a
+// segmented control's thumb, the sidebar's open row.
+func (k *Kit) Raised(e ui.Element) ui.Element {
+	t := k.T
+	return e.Background(t.SegmentThumb).Shadow(0, 1, 2, 0, t.SegmentShadow).Shadow(0, 0, 0, 0.5, t.Border.Alpha(0.7))
+}
+
+// Segmented is every choice named at once, one click each, in a groove
+// with the chosen one raised. It returns the value picked.
 func (k *Kit) Segmented(c *ui.Context, label, value string, options []Option) (string, bool) {
 	t := k.T
 	var picked string
 	ok := false
-	ui.Row(c).Role(ui.RoleRadioGroup).Label(label).Grow(1).MinWidth(0).Gap(k.Px(2)).Padding(k.Px(2)).Radius(k.Px(8)).Background(t.Muted).Children(func() {
+	ui.Row(c).Role(ui.RoleRadioGroup).Label(label).Grow(1).MinWidth(0).Gap(k.Px(2)).Padding(k.Px(2)).Radius(k.Px(8)).Background(t.SegmentTrack).Children(func() {
 		for _, o := range options {
 			checked := o.Value == value
 			b := ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleRadio).Checked(checked).Label(o.Label).Height(k.Px(24)).Grow(1).Basis(0).MinWidth(0).
@@ -108,7 +115,7 @@ func (k *Kit) Segmented(c *ui.Context, label, value string, options []Option) (s
 			color := t.MutedForeground
 			weight := 400
 			if checked {
-				b.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
+				k.Raised(b)
 				color, weight = t.Foreground, 500
 			} else if b.Hovered() {
 				color = t.Foreground
