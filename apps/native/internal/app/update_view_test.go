@@ -79,6 +79,7 @@ func TestTheCornerCardOffersTheUpdate(t *testing.T) {
 func TestAnInstalledUpdateRestartsOnlyWhenIdle(t *testing.T) {
 	focused, relaunched := true, 0
 	h, u := updateHarness(t, &focused, &relaunched)
+	u.SetAutomatic(true)
 	if h.a.RelaunchIfIdle() {
 		t.Fatal("relaunched with nothing installed")
 	}
@@ -90,6 +91,37 @@ func TestAnInstalledUpdateRestartsOnlyWhenIdle(t *testing.T) {
 	focused = false
 	if !h.a.RelaunchIfIdle() || relaunched != 1 {
 		t.Fatal("did not relaunch an idle app in the background")
+	}
+}
+
+// Updates are not automatic until About's switch turns them on: a
+// background check leaves the release on the card for Update or Skip, and
+// an installed one waits for Restart now.
+func TestUpdatesWaitForTheUserUntilTheSwitchIsOn(t *testing.T) {
+	focused, relaunched := false, 0
+	h, u := updateHarness(t, &focused, &relaunched)
+	if u.Automatic() {
+		t.Fatal("updates start automatic")
+	}
+	if s := u.BackgroundCheck(context.Background()); s.Status != updates.Available {
+		t.Fatalf("the background check went to %+v", s)
+	}
+	h.settle()
+	if !h.hasText("Droi 9.9.9 is available") || !h.hasButton("Skip this version") {
+		t.Fatalf("no card asking: %q", h.tt.Texts())
+	}
+	u.Install(context.Background())
+	if h.a.RelaunchIfIdle() || relaunched != 0 {
+		t.Fatal("relaunched without asking")
+	}
+	h.a.Go(Route{Name: "settings", Tab: "about"})
+	h.settle()
+	clickSwitchBeside(h, []string{"When off, Droi asks before it updates"}, func() bool { return prefs.AutoUpdate.Get(h.a.prefs) })
+	if !u.Automatic() {
+		t.Fatal("the switch did not turn automatic updates on")
+	}
+	if !h.a.RelaunchIfIdle() || relaunched != 1 {
+		t.Fatal("did not relaunch once updates are automatic")
 	}
 }
 
@@ -117,7 +149,8 @@ func TestReleaseNotesAndSkipThisVersion(t *testing.T) {
 	}
 	next := updates.New(testSource{rel: testRelease{}})
 	New(Config{Prefs: h.a.prefs, Updater: next})
-	if s := next.CheckAndInstall(context.Background()); s.Status == updates.Ready {
+	next.SetAutomatic(true)
+	if s := next.BackgroundCheck(context.Background()); s.Status == updates.Ready {
 		t.Fatal("the next launch installed the skipped version")
 	}
 }

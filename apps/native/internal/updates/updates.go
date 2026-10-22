@@ -61,8 +61,12 @@ type Updater struct {
 	mu      sync.Mutex
 	state   State
 	release Release
-	// skipped is the version background checks do not install.
-	skipped   string
+	// skipped is the version background checks pass over.
+	skipped string
+	// automatic is whether background checks install what they find, for
+	// the app to restart into once idle. Off, a release waits for the
+	// user's Update or Skip this version.
+	automatic bool
 	listeners []func(State)
 }
 
@@ -146,26 +150,44 @@ func (u *Updater) Install(ctx context.Context) State {
 	return u.State()
 }
 
-// CheckAndInstall installs the release a check finds, as a background
-// check does: the app then restarts into it once idle.
-func (u *Updater) CheckAndInstall(ctx context.Context) State {
+// SetAutomatic turns automatic installs on or off.
+func (u *Updater) SetAutomatic(on bool) {
+	u.mu.Lock()
+	u.automatic = on
+	u.mu.Unlock()
+}
+
+// Automatic is whether background checks install what they find.
+func (u *Updater) Automatic() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.automatic
+}
+
+// BackgroundCheck is a scheduled check. It passes over a skipped version
+// and installs the release it finds only when updates are automatic;
+// otherwise the release waits, Available, for the user.
+func (u *Updater) BackgroundCheck(ctx context.Context) State {
 	s := u.Check(ctx)
 	if s.Status != Available {
 		return s
 	}
 	u.mu.Lock()
-	skipped := s.Version == u.skipped
+	skipped, automatic := s.Version == u.skipped, u.automatic
 	u.mu.Unlock()
 	if skipped {
 		// Idle, so that the next check can find a newer release.
 		u.set(State{Status: Idle})
 		return u.State()
 	}
+	if !automatic {
+		return s
+	}
 	return u.Install(ctx)
 }
 
-// Skip keeps background checks from installing version, as Skip this
-// version asks; a check by hand still offers it.
+// Skip keeps background checks from offering or installing version, as
+// Skip this version asks; a check by hand still offers it.
 func (u *Updater) Skip(version string) {
 	u.mu.Lock()
 	u.skipped = version

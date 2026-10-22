@@ -233,6 +233,18 @@ func (a *App) aboutTab(c *ui.Context) {
 			a.settingRow(c, L("Droi %s", version), "", control, below)
 		},
 		func() {
+			if a.cfg.Updater == nil {
+				return
+			}
+			a.settingRow(c, L("Install updates automatically"), L("When off, Droi asks before it updates: choose Update or Skip this version. When on, it downloads updates and restarts when no session is running and its window is in the background."), func() {
+				on := prefs.AutoUpdate.Get(a.prefs)
+				if a.toggle(c, L("Install updates automatically"), on, false) {
+					prefs.AutoUpdate.Set(a.prefs, !on)
+					a.cfg.Updater.SetAutomatic(!on)
+				}
+			}, nil)
+		},
+		func() {
 			a.settingRow(c, L("Data and privacy"), L("Sessions, settings, and your Factory API key stay on this computer; paired phones connect through the Gateway. Prompts and context are sent to Factory to run the models."), nil, nil)
 		},
 	)

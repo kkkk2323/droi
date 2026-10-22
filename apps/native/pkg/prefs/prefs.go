@@ -287,7 +287,10 @@ var (
 	FavoriteModels = List{Key: "droi.favoriteModels"}
 	LastSessionID  = String{Key: "droi.lastSession"}
 	// SkippedUpdate is the release Skip this version passed over.
-	SkippedUpdate     = String{Key: "droi.skippedUpdate"}
+	SkippedUpdate = String{Key: "droi.skippedUpdate"}
+	// AutoUpdate is About's "Install updates automatically"; off, an update
+	// waits for the user's Update or Skip this version.
+	AutoUpdate        = Bool{Key: "droi.autoUpdate"}
 	FoldedWorkspaces  = List{Key: "droi.foldedWorkspaces"}
 	PinnedWorkspaces  = List{Key: "droi.pinnedWorkspaces"}
 	PinnedSessions    = List{Key: "droi.pinnedSessions"}

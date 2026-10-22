@@ -34,14 +34,14 @@ const (
 	RecheckEvery = time.Hour
 )
 
-// Schedule checks on that schedule until ctx ends, installing what it finds.
+// Schedule checks on that schedule until ctx ends (see BackgroundCheck).
 func (u *Updater) Schedule(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		return
 	case <-time.After(FirstCheck):
 	}
-	u.CheckAndInstall(ctx)
+	u.BackgroundCheck(ctx)
 	t := time.NewTicker(RecheckEvery)
 	defer t.Stop()
 	for {
@@ -50,7 +50,7 @@ func (u *Updater) Schedule(ctx context.Context) {
 			return
 		case <-t.C:
 			if ShouldRecheck(u.State()) {
-				u.CheckAndInstall(ctx)
+				u.BackgroundCheck(ctx)
 			}
 		}
 	}

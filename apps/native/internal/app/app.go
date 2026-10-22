@@ -278,6 +278,7 @@ func New(cfg Config) *App {
 	a.applyPrefs()
 	if cfg.Updater != nil {
 		cfg.Updater.Skip(prefs.SkippedUpdate.Get(cfg.Prefs))
+		cfg.Updater.SetAutomatic(prefs.AutoUpdate.Get(cfg.Prefs))
 	}
 	return a
 }

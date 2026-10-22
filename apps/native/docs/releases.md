@@ -16,10 +16,12 @@ Release: apps read the manifest from `releases/latest/download/`.
 ## How the app updates itself
 
 `internal/updates` walks the update through the Shell's `UpdateState`: check, download,
-restart. It checks 15 seconds after launch, then every hour, and installs what it finds;
-Settings → About and the corner card show where it is, and "Restart to update" or
-"Restart now" start the new version. On its own the app restarts into it once no Session
-works or waits for an answer and the window is in the background, checking every minute.
+restart. It checks 15 seconds after launch, then every hour. By default a release it finds
+waits for the user: the corner card offers Update, Details and Skip this version, and once
+it is installed, "Restart now" (or About's "Restart to update") starts the new version.
+With Settings → About → "Install updates automatically" on, the check installs what it
+finds, and the app restarts into it once no Session works or waits for an answer and the
+window is in the background, checking every minute.
 
 MyGo's updater does the rest: it downloads the delta for the running version when there is
 one (else the whole archive, as an app more than one version behind does), checks the

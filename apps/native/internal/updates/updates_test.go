@@ -63,11 +63,19 @@ func TestUpdaterWalksCheckDownloadReady(t *testing.T) {
 	}
 }
 
-func TestABackgroundCheckInstallsWhatItFinds(t *testing.T) {
-	if s := New(fakeSource{rel: fakeRelease{v: "1.34.0"}}).CheckAndInstall(context.Background()); s.Status != Ready || s.Version != "1.34.0" {
-		t.Errorf("found: %+v", s)
+// A background check installs what it finds only when updates are
+// automatic; otherwise the release waits for the user.
+func TestABackgroundCheckInstallsOnlyWhenAutomatic(t *testing.T) {
+	asks := New(fakeSource{rel: fakeRelease{v: "1.34.0"}})
+	if s := asks.BackgroundCheck(context.Background()); s.Status != Available || s.Version != "1.34.0" {
+		t.Errorf("not automatic: %+v", s)
 	}
-	if s := New(fakeSource{}).CheckAndInstall(context.Background()); s.Status != UpToDate {
+	auto := New(fakeSource{rel: fakeRelease{v: "1.34.0"}})
+	auto.SetAutomatic(true)
+	if s := auto.BackgroundCheck(context.Background()); s.Status != Ready || s.Version != "1.34.0" {
+		t.Errorf("automatic: %+v", s)
+	}
+	if s := New(fakeSource{}).BackgroundCheck(context.Background()); s.Status != UpToDate {
 		t.Errorf("none: %+v", s)
 	}
 }
@@ -86,12 +94,13 @@ func TestUpdaterSaysWhatFailed(t *testing.T) {
 	}
 }
 
-// A skipped version is not installed by the background check, which can
+// A skipped version is passed over by the background check, which can
 // then find a newer one; a check by hand still offers it.
 func TestSkippedVersion(t *testing.T) {
 	u := New(fakeSource{rel: fakeRelease{v: "1.34.0"}})
+	u.SetAutomatic(true)
 	u.Skip("1.34.0")
-	if s := u.CheckAndInstall(context.Background()); s.Status != Idle || !ShouldRecheck(s) {
+	if s := u.BackgroundCheck(context.Background()); s.Status != Idle || !ShouldRecheck(s) {
 		t.Fatalf("the background check went to %+v", s)
 	}
 	if s := u.Check(context.Background()); s.Status != Available || s.Version != "1.34.0" || s.Notes != "- Faster" {
@@ -102,7 +111,7 @@ func TestSkippedVersion(t *testing.T) {
 		t.Fatalf("skipping the available version left %+v", s)
 	}
 	u.Skip("1.33.0")
-	if s := u.CheckAndInstall(context.Background()); s.Status != Ready || s.Notes != "- Faster" {
+	if s := u.BackgroundCheck(context.Background()); s.Status != Ready || s.Notes != "- Faster" {
 		t.Fatalf("another skipped version kept 1.34.0 from installing: %+v", s)
 	}
 }

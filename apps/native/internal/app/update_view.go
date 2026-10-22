@@ -41,11 +41,13 @@ func (a *App) relaunch() {
 	}
 }
 
-// RelaunchIfIdle starts the installed update when nobody would notice: no
-// Session is working or waiting for an answer and the window is in the
-// background. Drafts are saved as they are typed, so none is lost.
+// RelaunchIfIdle starts the installed update when updates are automatic
+// and nobody would notice: no Session is working or waiting for an answer
+// and the window is in the background. Drafts are saved as they are typed,
+// so none is lost. Otherwise the user restarts from the card or About.
 func (a *App) RelaunchIfIdle() bool {
-	if a.cfg.Updater == nil || a.cfg.Updater.State().Status != updates.Ready || a.focused() {
+	u := a.cfg.Updater
+	if u == nil || !u.Automatic() || u.State().Status != updates.Ready || a.focused() {
 		return false
 	}
 	_, _, reported, _, _, _ := a.snapshot()
