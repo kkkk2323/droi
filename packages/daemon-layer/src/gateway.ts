@@ -83,6 +83,41 @@ export function gatewaySessionFileUrl(
   return url.toString()
 }
 
+/**
+ * How the computer's window lists its Sessions, so that a phone lists them the
+ * same way: GET answers a SessionListOrder, or 404 from a Gateway with no
+ * window. POST on the pin path, with kind, key and pinned, pins or unpins on
+ * the computer and answers 204.
+ */
+export const GATEWAY_SESSION_LIST_PATH = '/session-list'
+export const GATEWAY_SESSION_PIN_PATH = '/session-list/pin'
+
+export interface SessionListOrder {
+  pinnedSessions: string[]
+  pinnedWorkspaces: string[]
+  /** The Workspace groups' keys in the order the window last showed them. */
+  workspaceOrder: string[]
+  /** 'recent' or 'created'; '' is 'recent'. */
+  sessionSort: string
+}
+
+export type PinKind = 'session' | 'workspace'
+
+export function gatewaySessionListUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  pin?: { kind: PinKind; key: string; pinned: boolean },
+): string {
+  const url = new URL(pin ? GATEWAY_SESSION_PIN_PATH : GATEWAY_SESSION_LIST_PATH, gatewayHttpUrl)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (pin) {
+    url.searchParams.set('kind', pin.kind)
+    url.searchParams.set('key', pin.key)
+    url.searchParams.set('pinned', String(pin.pinned))
+  }
+  return url.toString()
+}
+
 export function gatewayDaemonUrl(gatewayHttpUrl: string, pairingToken: string): string {
   const url = new URL(GATEWAY_DAEMON_PATH, gatewayHttpUrl)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

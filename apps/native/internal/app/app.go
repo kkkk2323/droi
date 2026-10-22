@@ -111,6 +111,9 @@ type Config struct {
 	Relaunch func()
 	// Memory is the Host's Memory; nil without a Host.
 	Memory Memory
+	// SessionList, optional, hears the Workspace order the window shows for
+	// this computer, for the Gateway to give paired phones.
+	SessionList *SessionListShare
 	// Remote is the Gateway for paired phones; nil without a Host.
 	Remote Remote
 	// FactoryAppRunning reports whether the Factory App's Daemon runs too,

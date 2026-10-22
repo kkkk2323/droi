@@ -13,6 +13,10 @@ import {
   groupByWorkspace,
   moveWorkspace,
   noteFirstSeen,
+  splitStale,
+  STALE_WORKSPACE_MS,
+  withoutAutomationRuns,
+  AUTOMATION_TAG,
   type SortOrder,
   visibleSessions,
   withAnnouncedSubagents,
@@ -368,4 +372,37 @@ describe('withAnnouncedSubagents', () => {
     const [row] = withAnnouncedSubagents([], [announced({ subagentType: '', description: '' })])
     expect(row?.title).toBe('Subagent')
   })
+})
+
+describe('splitStale', () => {
+  test('keeps the order and parts out the Workspaces unused for a month', () => {
+    const now = STALE_WORKSPACE_MS * 2
+    const fresh = (now - 1000) / 1000
+    const old = (now - STALE_WORKSPACE_MS - 1000) / 1000
+    const groups = groupByWorkspace([
+      summary({ cwd: '/w/a', updatedAt: old }),
+      summary({ cwd: '/w/b', updatedAt: fresh }),
+      summary({ cwd: '/w/c', updatedAt: old }),
+      summary({ cwd: '/w/c', updatedAt: fresh - 1 }),
+    ])
+    const { active, stale } = splitStale(groups, now)
+    expect(active.map((g) => g.key)).toEqual(['/w/c', '/w/b'])
+    expect(stale.map((g) => g.key)).toEqual(['/w/a'])
+  })
+})
+
+test('withoutAutomationRuns leaves out runs only', () => {
+  const run = summary({
+    sessionId: 'run',
+    tags: [{ name: AUTOMATION_TAG, metadata: { type: 'run' } }],
+  })
+  const setup = summary({
+    sessionId: 'setup',
+    tags: [{ name: AUTOMATION_TAG, metadata: { type: 'create' } }],
+  })
+  const plain = summary({ sessionId: 'plain' })
+  expect(withoutAutomationRuns([run, setup, plain]).map((s) => s.sessionId)).toEqual([
+    'setup',
+    'plain',
+  ])
 })

@@ -46,41 +46,62 @@ test('archive, unarchive and rename go to the Daemon', async ({ page, fakeDaemon
   await expect(list.getByRole('button', { name: /Release notes/ })).toBeVisible()
 })
 
+// The Fake Daemon's Gateway has no window to take the pins from, so the
+// phone keeps its own; they are laid out as the computer's sidebar.
 test('pins and folds are kept on the phone across a relaunch', async ({ page, fakeDaemon }) => {
   await pairPhone(page, fakeDaemon)
   let actions = await actionsFor(page, /Deploy/)
   await actions.getByRole('button', { name: 'Pin', exact: true }).click()
   let list = await openSessionList(page)
-  const web = list.getByRole('group', { name: 'acme-web' })
+  const pinned = list.getByRole('group', { name: 'Pinned' })
+  await expect(list.getByRole('group').first()).toHaveAccessibleName('Pinned')
   await expect(
-    web.getByRole('button', { name: /Deploy/ }).getByRole('img', { name: 'Pinned' }),
+    pinned.getByRole('button', { name: /Deploy/ }).getByRole('img', { name: 'Pinned' }),
   ).toBeVisible()
+  await expect(
+    list.getByRole('group', { name: 'acme-web' }).getByRole('button', { name: /Deploy/ }),
+  ).toHaveCount(0)
 
   actions = await actionsFor(page, 'finance')
   await expect(actions).toHaveAccessibleName('Actions for finance')
   await actions.getByRole('button', { name: 'Pin workspace' }).click()
   list = await openSessionList(page)
-  await expect(list.getByRole('group').first()).toHaveAccessibleName('finance')
+  await expect(pinned.getByRole('group', { name: 'finance' })).toBeVisible()
+  await expect(
+    list.getByRole('group', { name: 'Workspaces' }).getByRole('group', { name: 'acme-web' }),
+  ).toBeVisible()
 
   await list.getByRole('button', { name: 'acme-web', exact: true }).click()
   await expect(list.getByRole('button', { name: 'acme-web', exact: true })).toHaveAttribute(
     'aria-expanded',
     'false',
   )
-  await expect(list.getByRole('button', { name: /Deploy/ })).toHaveCount(0)
+  await expect(list.getByRole('button', { name: /Notes/ })).toHaveCount(0)
 
   await relaunch(page)
   list = await openSessionList(page)
-  await expect(list.getByRole('group').first()).toHaveAccessibleName('finance')
+  await expect(pinned.getByRole('group', { name: 'finance' })).toBeVisible()
+  await expect(
+    pinned.getByRole('button', { name: /Deploy/ }).getByRole('img', { name: 'Pinned' }),
+  ).toBeVisible()
   await expect(list.getByRole('button', { name: 'acme-web', exact: true })).toHaveAttribute(
     'aria-expanded',
     'false',
   )
   await list.getByRole('button', { name: 'acme-web', exact: true }).click()
-  await expect(
-    list.getByRole('button', { name: /Deploy/ }).getByRole('img', { name: 'Pinned' }),
-  ).toBeVisible()
+  await expect(list.getByRole('button', { name: /Notes/ })).toBeVisible()
   expect(fakeDaemon.requests.map((r) => r.method)).not.toContain('daemon.update_session_settings')
+})
+
+test('a Session row says how many messages it has and when it changed', async ({
+  page,
+  fakeDaemon,
+}) => {
+  await pairPhone(page, fakeDaemon)
+  const list = await openSessionList(page)
+  const row = list.getByRole('button', { name: /Budget/ })
+  await expect(row).toContainText('1 message')
+  await expect(row).toContainText(/now|\d+[mhd]|[A-Z][a-z]{2} \d+/)
 })
 
 test('a Session row is a full-size touch target', async ({ page, fakeDaemon }) => {

@@ -108,6 +108,9 @@ type Options struct {
 	// FindSessionFile, optional, is where the Daemon keeps a Session's
 	// transcript, "" when it has none; nil answers 404.
 	FindSessionFile func(sessionID string) string
+	// SessionList, optional, is the window's Session list order; nil
+	// answers 404.
+	SessionList SessionList
 }
 
 // Meta is the /meta answer.
@@ -345,6 +348,9 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		reply(w, status, body)
 	case SessionFilePath:
 		status, body := g.answerSessionFile(r, q)
+		reply(w, status, body)
+	case SessionListPath, SessionPinPath:
+		status, body := g.answerSessionList(r, path, q)
 		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App

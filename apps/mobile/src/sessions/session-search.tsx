@@ -18,7 +18,7 @@ export function SessionSearchBox({
 }) {
   const colors = useColors()
   return (
-    <View style={[styles.box, { backgroundColor: colors.card, borderColor: colors.sidebarBorder }]}>
+    <View style={[styles.box, { backgroundColor: colors.sidebarAccent }]}>
       <Search size={16} color={colors.mutedForeground} strokeWidth={1.75} />
       <TextInput
         role="searchbox"
@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
     marginBottom: space.xs,
     paddingHorizontal: space.md,
     minHeight: 44,
-    borderWidth: 1,
     borderRadius: radius.md,
   },
   input: {

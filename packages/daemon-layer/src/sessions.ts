@@ -548,6 +548,34 @@ export function moveWorkspace(
   return rest
 }
 
+/** A Workspace none of whose Sessions changed in this long waits behind "Show N older workspaces". */
+export const STALE_WORKSPACE_MS = 30 * 24 * 60 * 60 * 1000
+
+/** Parts groups, in order, into the Workspaces used within STALE_WORKSPACE_MS and the rest. */
+export function splitStale(
+  groups: readonly WorkspaceGroup[],
+  now = Date.now(),
+): { active: WorkspaceGroup[]; stale: WorkspaceGroup[] } {
+  const cutoff = now - STALE_WORKSPACE_MS
+  const active: WorkspaceGroup[] = []
+  const stale: WorkspaceGroup[] = []
+  for (const group of groups) {
+    const used = group.sessions.some((session) => session.updatedAt * 1000 >= cutoff)
+    ;(used ? active : stale).push(group)
+  }
+  return { active, stale }
+}
+
+/** The tag the Daemon gives the Sessions an Automation starts; a run's says type "run". */
+export const AUTOMATION_TAG = 'automation'
+
+/** Leaves out Automation runs, which the computer's Automations page lists. */
+export function withoutAutomationRuns(sessions: readonly SessionSummary[]): SessionSummary[] {
+  return sessions.filter(
+    (s) => !s.tags.some((t) => t.name === AUTOMATION_TAG && t.metadata?.['type'] === 'run'),
+  )
+}
+
 /** Sessions touched within this window always show; older ones sit behind "Show more". */
 export const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
 export const OLDER_BATCH = 30

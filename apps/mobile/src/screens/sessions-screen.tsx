@@ -56,7 +56,7 @@ function Sessions({
         options={{
           headerTitle: () => computerTitle,
           headerRight: () => actions,
-          headerStyle: { backgroundColor: colors.sidebar },
+          headerStyle: { backgroundColor: colors.background },
         }}
       />
       {switching ? (

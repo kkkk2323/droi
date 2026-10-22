@@ -90,7 +90,14 @@ func main() {
 	})
 	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
 	localToken := gateway.NewLocalToken()
-	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem)
+	var win *mygo.Window
+	update := func(fn func()) {
+		if win != nil {
+			win.Update(fn)
+		}
+	}
+	sessionList := &app.SessionListShare{Prefs: userPrefs, Changed: func() { update(func() {}) }}
+	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList)
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}
@@ -108,12 +115,6 @@ func main() {
 	mygo.App.SetLanguages(string(l10n.English), string(l10n.Chinese))
 	mygo.App.RequestSingleInstanceLock()
 
-	var win *mygo.Window
-	update := func(fn func()) {
-		if win != nil {
-			win.Update(fn)
-		}
-	}
 	mem := hostrun.StartMemory(h, home, func() { update(func() {}) })
 	var remote app.Remote
 	if gw != nil {
@@ -164,6 +165,8 @@ func main() {
 			Relaunch:  mygo.App.Relaunch,
 			Remote:    remote,
 			Memory:    mem,
+
+			SessionList: sessionList,
 
 			FactoryAppRunning: host.FactoryAppRunning,
 		})

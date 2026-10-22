@@ -211,6 +211,9 @@ func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order
 	if m.groups == nil || m.groupsKey != key {
 		m.groupsKey = key
 		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
+		if a.cfg.SessionList != nil && a.cfg.Computer == nil {
+			a.cfg.SessionList.show(m.groups)
+		}
 	}
 	return m.groups
 }

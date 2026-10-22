@@ -57,7 +57,7 @@ export function ComputerMenu({
       aria-label="Computers"
       style={[
         styles.menu,
-        { borderBottomColor: colors.sidebarBorder, backgroundColor: colors.sidebar },
+        { borderBottomColor: colors.sidebarBorder, backgroundColor: colors.background },
       ]}
     >
       {computers

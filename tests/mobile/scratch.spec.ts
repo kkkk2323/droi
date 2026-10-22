@@ -68,7 +68,12 @@ test.describe('next to Workspaces', () => {
     await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
 
     const list = await openSessionList(page)
-    await expect(list.getByRole('group')).toHaveCount(2)
+    // As in the computer's sidebar: the Workspaces under their own label, Recents after them.
+    await expect(list.getByRole('group')).toHaveCount(3)
+    await expect(list.getByRole('group').first()).toHaveAccessibleName('Workspaces')
+    await expect(
+      list.getByRole('group', { name: 'Workspaces' }).getByRole('group', { name: 'acme-web' }),
+    ).toBeVisible()
     await expect(list.getByRole('group').last()).toHaveAccessibleName('Recents')
     await pickSession(page, /Fix the build/)
     await expect
