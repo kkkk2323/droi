@@ -773,16 +773,29 @@ func drawRing(p *ui.Painter, cx, cy, rad, width float32, ratio float64, track, c
 	p.StrokePath(arc, width, color)
 }
 
-// speedMeter is the Session's average model speed; a click opens the details:
+// speedMeter is the Session's average model speed, or the speed of the call
+// streaming now; a click opens the details. With the Key Pool, they are what
+// it measured of each call; without, what the Session's notifications show:
 // that call's first token and output, and the Session's means and time in
 // the model and in tools.
 func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 	k, t := v.a.kit, v.a.kit.T
 	st := s.Stats()
-	if st.Calls == 0 || st.Last == nil {
+	calls, live, measured := v.a.modelCalls(v.id)
+	if (st.Calls == 0 || st.Last == nil) && !measured {
 		return
 	}
-	last := *st.Last
+	now := v.a.cfg.Now()
+	if live != nil {
+		c.After(liveRefresh)
+	}
+	rate := st.TokensPerSecond()
+	switch {
+	case liveRate(live, now) > 0:
+		rate = liveRate(live, now)
+	case calls.TokensPerSecond() > 0:
+		rate = calls.TokensPerSecond()
+	}
 	b := ui.ButtonBase(c).Label(L("Model speed")).Height(k.Px(24)).PaddingX(k.Px(6)).Radius(k.Px(6)).Shrink(0).
 		Cursor(ui.CursorPointer).Expanded(v.speedOpen)
 	color := t.MutedForeground
@@ -791,37 +804,53 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 		color = t.Foreground
 	}
 	b.Children(func() {
-		k.Text(c, formatRate(st.TokensPerSecond())+" tok/s", 12, 16).TextColor(color).FontFeatures("tnum").SingleLine()
+		k.Text(c, formatRate(rate)+" tok/s", 12, 16).TextColor(color).FontFeatures("tnum").SingleLine()
 	})
 	if b.Clicked() {
 		v.speedOpen = !v.speedOpen
 	}
+	var sections []speedSection
+	if measured {
+		sections = speedSections(calls, live, st, now)
+	} else {
+		last := *st.Last
+		sections = []speedSection{
+			{L("Last model call"), []speedRow{
+				{L("First token after"), formatSeconds(last.TTFTMs)},
+				{L("Speed"), formatRate(last.TokensPerSecond()) + " tok/s"},
+				{L("Output tokens"), groupDigits(last.OutputTokens)},
+			}},
+			{L("This Session"), []speedRow{
+				{L("Model calls"), itoa(st.Calls)},
+				{L("First token after, on average"), formatSeconds(st.MeanTTFTMs())},
+				{L("Average speed"), formatRate(st.TokensPerSecond()) + " tok/s"},
+				{L("Time in the model"), formatSpan(st.ModelMs)},
+				{L("Time in tools"), formatSpan(st.ToolMs)},
+			}},
+		}
+	}
 	ui.PopoverBase(c, b, &v.speedOpen, func(p ui.Element) {
 		p.AttachTo(b, ui.AnchorTopRight, ui.AnchorBottomRight).Margin(0, 0, k.Px(6), 0).
-			Role(ui.RoleDialog).Label(L("Model speed")).Width(k.Px(240)).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).
+			Role(ui.RoleDialog).Label(L("Model speed")).Width(k.Px(280)).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).
 			Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
 			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).FillWidth().Gap(k.Px(4)).Children(func() {
-			heading := func(text string) {
-				k.Text(c, text, 12, 16).TextColor(t.MutedForeground).SingleLine()
+			for i, sec := range sections {
+				if i > 0 {
+					ui.Box(c).Height(k.Px(6))
+				}
+				k.Text(c, sec.title, 12, 16).TextColor(t.MutedForeground).SingleLine()
+				for _, r := range sec.rows {
+					ui.Row(c).FillWidth().Gap(k.Px(8)).Children(func() {
+						k.Text(c, r.label, 13, 18).SingleLine().Grow(1).MinWidth(0)
+						k.Text(c, r.value, 13, 18).FontFeatures("tnum").SingleLine().Shrink(0)
+					})
+				}
 			}
-			row := func(label, value string) {
-				ui.Row(c).FillWidth().Gap(k.Px(8)).Children(func() {
-					k.Text(c, label, 13, 18).SingleLine().Grow(1).MinWidth(0)
-					k.Text(c, value, 13, 18).FontFeatures("tnum").SingleLine().Shrink(0)
-				})
+			if measured {
+				ui.Box(c).Height(k.Px(4))
+				k.Text(c, L("Measured by the Key Pool since it started."), 12, 16).TextColor(t.MutedForeground)
 			}
-			heading(L("Last model call"))
-			row(L("First token after"), formatSeconds(last.TTFTMs))
-			row(L("Speed"), formatRate(last.TokensPerSecond())+" tok/s")
-			row(L("Output tokens"), groupDigits(last.OutputTokens))
-			ui.Box(c).Height(k.Px(6))
-			heading(L("This Session"))
-			row(L("Model calls"), itoa(st.Calls))
-			row(L("First token after, on average"), formatSeconds(st.MeanTTFTMs()))
-			row(L("Average speed"), formatRate(st.TokensPerSecond())+" tok/s")
-			row(L("Time in the model"), formatSpan(st.ModelMs))
-			row(L("Time in tools"), formatSpan(st.ToolMs))
 		})
 	})
 }

@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,6 +94,13 @@ type Proxy struct {
 	recorder        *diag.Recorder
 	startedAt       time.Time
 	mu              sync.Mutex
+	live            map[*liveCall]struct{}
+}
+
+// liveCall is an LLM request whose reply is streaming through the proxy.
+type liveCall struct {
+	call     diag.LiveCall
+	observer *diag.UsageObserver
 }
 
 // NewProxy forwards to upstreamBaseURL (https://api.factory.ai say).
@@ -138,6 +146,35 @@ func (p *Proxy) cacheWarmer() *CacheWarmer {
 
 // Recorder is the proxy's record of requests and events.
 func (p *Proxy) Recorder() *diag.Recorder { return p.recorder }
+
+// Live is the LLM requests whose replies are coming through now, oldest
+// first.
+func (p *Proxy) Live() []diag.LiveCall {
+	p.mu.Lock()
+	out := make([]diag.LiveCall, 0, len(p.live))
+	for l := range p.live {
+		c := l.call
+		c.FirstToken, c.Output, c.Usage = l.observer.Progress()
+		out = append(out, c)
+	}
+	p.mu.Unlock()
+	slices.SortFunc(out, func(a, b diag.LiveCall) int { return a.Start.Compare(b.Start) })
+	return out
+}
+
+func (p *Proxy) startLive(l *liveCall) func() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.live == nil {
+		p.live = map[*liveCall]struct{}{}
+	}
+	p.live[l] = struct{}{}
+	return func() {
+		p.mu.Lock()
+		delete(p.live, l)
+		p.mu.Unlock()
+	}
+}
 
 // Start listens on host:port (port 0 picks one) and answers the base URL.
 func (p *Proxy) Start(host string, port int) (string, error) {
@@ -261,7 +298,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		p.event(diag.Event{Kind: "upstream_error", Model: model, Key: keys.MaskKey(key), Pool: pool, Detail: err.Error()})
 		if llm {
-			p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, http.StatusBadGateway, start, headersAt, raw, 0, nil, false, false, "upstream_error", "")
+			p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, http.StatusBadGateway, start, headersAt, raw, 0, nil, nil, false, "upstream_error", "")
 		}
 		return
 	}
@@ -305,7 +342,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 				w.Header().Set("Retry-After-Ms", retryAfterSwitch)
 				w.WriteHeader(http.StatusTooManyRequests)
 				_, _ = w.Write([]byte(`{"type":"error","error":{"type":"rate_limit_error","message":"Droi moved to another key of the Key Pool; retrying"}}`))
-				p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, false, true, "", errorDetail)
+				p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, true, "", errorDetail)
 				return
 			}
 			p.event(diag.Event{Kind: "key_exhausted", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "no other key; returning the upstream error"})
@@ -332,6 +369,13 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	if llm {
 		observer = diag.NewUsageObserver(resp.Header.Get("Content-Type"))
 		dst = io.MultiWriter(dst, observer)
+		defer p.startLive(&liveCall{observer: observer, call: diag.LiveCall{
+			SessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),
+			CallType:  strings.TrimSpace(req.Header.Get(messageCallTypeHeader)),
+			Model:     model,
+			Key:       keys.MaskKey(key),
+			Start:     start,
+		}})()
 	}
 	var written int64
 	var copyErr error
@@ -352,7 +396,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	if u, ok := observer.Usage(); ok {
 		usage = &u
 	}
-	p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, written, usage, observer.IsStream(), false, logErr, errorDetail)
+	p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, written, usage, observer, false, logErr, errorDetail)
 	if warmer := p.cacheWarmer(); warmer != nil && resp.StatusCode == http.StatusOK && copyErr == nil && usage != nil {
 		warmer.Observe(warmCapture{
 			sessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),
@@ -384,8 +428,20 @@ func (p *Proxy) switchAway(key, model, why string) string {
 	return next
 }
 
-func (p *Proxy) recordRequest(req *http.Request, path, upstream, model, requestedPool, pool, key string, status int, start, headersAt time.Time, raw []byte, written int64, usage *diag.TokenUsage, stream, switched bool, logErr, errorDetail string) {
+// recordRequest records an LLM request; observer is nil when no reply was
+// copied.
+func (p *Proxy) recordRequest(req *http.Request, path, upstream, model, requestedPool, pool, key string, status int, start, headersAt time.Time, raw []byte, written int64, usage *diag.TokenUsage, observer *diag.UsageObserver, switched bool, logErr, errorDetail string) {
+	stream, ttft := false, int64(0)
+	if observer != nil {
+		stream = observer.IsStream()
+		if first, _, _ := observer.Progress(); !first.IsZero() {
+			ttft = max(first.Sub(start).Milliseconds(), 1)
+		}
+	}
 	p.recorder.RecordRequest(diag.RequestRecord{
+		SessionID:     strings.TrimSpace(req.Header.Get(sessionIDHeader)),
+		CallType:      strings.TrimSpace(req.Header.Get(messageCallTypeHeader)),
+		TTFTMs:        ttft,
 		Time:          time.Now(),
 		Model:         model,
 		Provider:      providerForRequest(req, path),
