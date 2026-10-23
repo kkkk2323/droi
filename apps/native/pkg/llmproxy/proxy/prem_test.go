@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -28,7 +29,7 @@ func startPremTestProxy(t *testing.T, upstreamURL string, apiKeys ...string) (*P
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = px.Shutdown(nil) })
+	t.Cleanup(func() { _ = px.Shutdown(context.Background()) })
 	return px, baseURL
 }
 
