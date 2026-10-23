@@ -115,11 +115,14 @@ func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
 	h.shoot("usage-key-open")
 	h.click("Use " + masked)
 	h.until("the switch", func() bool { return currentMasked(h0) == masked })
+	// The window keeps the switch disabled until it has heard the action end.
+	h.until("the action to end", func() bool { return h.a.usage.acting == "" })
 
 	// Manual keeps the key the user chose; the status bar says so.
 	h.click("Manual")
 	h.until("manual switching", func() bool { return h0.KeyPool().State().Mode == keypool.Manual })
 	h.until("the status bar", func() bool { return h.hasText("Keeps the key you chose") })
+	h.until("the action to end", func() bool { return h.a.usage.acting == "" })
 
 	// The other pages read the proxy's records; it is not running, so they
 	// say so instead of failing.
