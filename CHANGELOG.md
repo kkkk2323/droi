@@ -1,3 +1,15 @@
+## 1.66.0 - 2026-10-23
+
+### Added
+
+- The Key Pool: model requests can use Factory API keys you add instead of your signed-in account, while every other request keeps using the account. Turn it on with Settings → Advanced → Use the Key Pool. The first time, Droi downloads Droi's droid (about 300 MB), a copy of droid that only it runs; the droid you run yourself is not changed. Turning the Key Pool on or off restarts the background service, which interrupts running sessions. It works on macOS and 64-bit Windows, and not while a Factory API base URL is set.
+- While the Key Pool is on, Settings has a Usage tab. It lists the keys with the quota each has left, adds and removes keys, and switches between them, either on its own (when a key runs out, the next request uses another) or by hand. It also shows how much quota the keys use each day, how long they last, and the model requests sent through the pool.
+- Droi's droid does not update itself. When a newer one is available, the card in the corner offers to update it.
+
+### Changed
+
+- The update card's buttons are smaller: Update and Details sit side by side, Skip this version is a quiet link below them, and a line under the title says which version is installed.
+
 ## 1.65.0 - 2026-10-23
 
 ### Changed
