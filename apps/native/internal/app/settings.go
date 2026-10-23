@@ -425,6 +425,10 @@ func (a *App) advancedTab(c *ui.Context) {
 		if inherited != "" {
 			placeholder = inherited
 		}
+		if h.PatchedDroidState().Enabled && st.FactoryAPIBaseURL == nil && inherited == "" {
+			a.settingRow(c, L("Factory API base URL"), L("Model requests go straight to Factory while the Key Pool is on. Turn the Key Pool off to set a URL."), nil, nil)
+			return
+		}
 		a.settingRow(c, L("Factory API base URL"), desc, nil, a.saveRow(c, &s.baseURL, L("Factory API base URL"), placeholder, L("Save URL"), true, func(v string) {
 			a.hostUpdate(true, func(st *host.Settings) { st.FactoryAPIBaseURL = host.OptString(v) })
 		}))

@@ -36,6 +36,8 @@ type Config struct {
 	// ScratchFolder is where Scratch Workspaces go unless Settings names a
 	// folder; "" is ~/.droi/chats.
 	ScratchFolder string
+	// KeyPoolUpstream replaces Factory's API for the Key Pool (for tests).
+	KeyPoolUpstream string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.

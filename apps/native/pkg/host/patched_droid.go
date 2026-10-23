@@ -56,7 +56,7 @@ func (h *Host) patches() *patchState {
 		h.patch.store = droidpatch.NewStore(filepath.Join(h.cfg.UserData, "droid"))
 		h.patch.pool = keypool.Open(keypool.Options{
 			Dir:      filepath.Join(h.cfg.UserData, "llm"),
-			Upstream: h.FactoryAPIBaseURL(),
+			Upstream: h.keyPoolUpstream(),
 			Sessions: daemonSessions{h},
 			OnChange: h.changed,
 		})
@@ -133,6 +133,10 @@ func (h *Host) preparePatchedDroid(restart bool) {
 	p.mu.Unlock()
 	h.changed()
 
+	if msg := h.baseURLConflict(); msg != "" {
+		h.setPatchErr(msg)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	// A failed fetch keeps the recipes already known.
@@ -207,12 +211,38 @@ func (h *Host) RefreshPatchRecipes() {
 	}()
 }
 
+// keyPoolUpstream is the Factory API the Key Pool forwards to and reads
+// quota from: Factory's, never Settings' base URL (baseURLConflict).
+func (h *Host) keyPoolUpstream() string {
+	if h.cfg.KeyPoolUpstream != "" {
+		return h.cfg.KeyPoolUpstream
+	}
+	return defaultFactoryAPIBaseURL
+}
+
+// baseURLConflict says why the Key Pool cannot run while a Factory API base
+// URL is set: a droid-proxy there would put its own keys on the requests the
+// Key Pool chose keys for, and its numbers would no longer be the keys'.
+func (h *Host) baseURLConflict() string {
+	same := func(u string) bool { return u == "" || strings.TrimRight(u, "/") == defaultFactoryAPIBaseURL }
+	if u := deref(h.Settings.Get().FactoryAPIBaseURL); !same(u) {
+		return l10n.L("The Key Pool sends requests straight to Factory. Clear Factory API base URL (%s) below, then turn it on.", u)
+	}
+	if u := h.cfg.Env("FACTORY_API_BASE_URL"); !same(u) {
+		return l10n.L("The Key Pool sends requests straight to Factory, but FACTORY_API_BASE_URL is set to %s. Open Droi without it, then turn it on.", u)
+	}
+	return ""
+}
+
 // patchedEnv is what the Daemon gets on top of its environment when it runs
 // the Patched Droid: the Key Pool's proxy as the Factory API, the key file,
 // and no self-update, which would replace the patched file with Factory's.
 func (h *Host) patchedEnv() ([]string, error) {
 	pool := h.KeyPool()
-	pool.Configure(h.FactoryAPIBaseURL(), h.FactoryHome())
+	if msg := h.baseURLConflict(); msg != "" {
+		return nil, hostError(msg)
+	}
+	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
 	base, err := pool.Start()
 	if errors.Is(err, keypool.ErrNoKeys) {
 		return nil, hostError(l10n.L("The Key Pool has no key. Add one in Settings → Usage to start the Daemon."))

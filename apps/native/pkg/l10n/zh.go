@@ -1055,9 +1055,12 @@ var zh = map[string]string{
 	"Show text":                                                     "展开文本",
 	"[pasted text]":                                                 "[粘贴的文本]",
 
-	"The Key Pool has no key. Add one in Settings → Usage to start the Daemon.": "KEY 池里还没有 key。在“设置 → 用量”里添加一把，后台服务就会启动。",
-	"No Patched Droid exists for this computer (%s) yet.":                       "暂无适配这台电脑（%s）的补丁版 droid。",
-	"The Patched Droid is droid %s; Droi needs %s or newer.":                    "补丁版基于 droid %s，Droi 需要 %s 或更高版本。",
+	"The Key Pool has no key. Add one in Settings → Usage to start the Daemon.":                                                      "KEY 池里还没有 key。在“设置 → 用量”里添加一把，后台服务就会启动。",
+	"The Key Pool sends requests straight to Factory. Clear Factory API base URL (%s) below, then turn it on.":                       "Key 池直接连接 Factory。请先清空下方的 Factory API 基础 URL（%s），再开启。",
+	"The Key Pool sends requests straight to Factory, but FACTORY_API_BASE_URL is set to %s. Open Droi without it, then turn it on.": "Key 池直接连接 Factory，但环境变量 FACTORY_API_BASE_URL 设为了 %s。去掉这个变量后重新打开 Droi，再开启。",
+	"Model requests go straight to Factory while the Key Pool is on. Turn the Key Pool off to set a URL.":                            "Key 池开启时，模型请求直接发给 Factory。要设置 URL，请先关闭 Key 池。",
+	"No Patched Droid exists for this computer (%s) yet.":                                                                            "暂无适配这台电脑（%s）的补丁版 droid。",
+	"The Patched Droid is droid %s; Droi needs %s or newer.":                                                                         "补丁版基于 droid %s，Droi 需要 %s 或更高版本。",
 
 	"%d d %d h":       "%d 天 %d 小时",
 	"%d d":            "%d 天",
