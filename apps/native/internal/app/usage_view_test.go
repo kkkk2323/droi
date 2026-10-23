@@ -284,3 +284,23 @@ func TestUsageTabPages(t *testing.T) {
 		})
 	}
 }
+
+// While the Key Pool runs an older Droi's droid than the newest supported
+// one, a corner card offers the update; closing it hides it.
+func TestANewerDroisDroidShowsACard(t *testing.T) {
+	h0 := keyPoolTestHost(t)
+	p := h0.PatchedDroidState()
+	if !p.UpdateAvailable() {
+		t.Skipf("no newer Droi's droid for this platform: %+v", p)
+	}
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.until("the card", func() bool { return h.hasText("Droi's droid " + p.Latest + " is available") })
+	if !h.hasText("You have " + p.Version + ".") {
+		t.Fatalf("the card does not say which version runs: %q", h.tt.Texts())
+	}
+	if _, ok := h.tt.Find("Update Droi's droid"); !ok {
+		t.Fatalf("no update button: %q", h.tt.Texts())
+	}
+	h.click("Dismiss")
+	h.until("the card to close", func() bool { return !h.hasText("Droi's droid " + p.Latest + " is available") })
+}

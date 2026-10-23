@@ -206,6 +206,9 @@ type App struct {
 	// droidUpdateDismissed closes the "droid was updated" card until the
 	// next update.
 	droidUpdateDismissed bool
+	// patchUpdateDismissed is the Droi's droid version whose update card
+	// was closed.
+	patchUpdateDismissed string
 	signIn               signInState
 	accounts             accountsState
 	elsewhere            elsewhereState
