@@ -1,3 +1,16 @@
+## 1.70.1 - 2026-10-23
+
+### Changed
+
+- Settings → Usage → Observability: the trend and the heat map, and the chart of the last 14 days on Keys and quota, have an axis with round values and lines across, and the dates or hours sit under their bars. Pointing at a bar or a cell shows what it holds at once: the trend's card lists each model's part. A line above the trend says what it counts and in what unit; Speed is now Output speed, in token/s.
+- The model and type filters above the request list, and the bordered buttons of Settings → Usage, have the same rounded corners and height as the tabs. Chinese text writes Credits with a capital C.
+
+### Fixed
+
+- In the breakdown, a second click on the model or type in force lists every request again. The row in force stays the one the list is filtered by when you switch the period or the grouping; before, it could highlight another model. The page no longer shows the last period's numbers when you switch periods quickly.
+- A chosen row of the breakdown or the request list keeps its text readable, and after you close a request's details a click on the same row opens them again.
+- The line beside the period says the number of requests in the whole log, not in the period.
+
 ## 1.70.0 - 2026-10-23
 
 ### Added
