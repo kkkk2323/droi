@@ -180,7 +180,7 @@ func TestHistoryView(t *testing.T) {
 	}
 
 	failed := v.Records[1]
-	if failed.StatusTone != ToneWarning || failed.Input.Text != "—" || failed.Input.Help != "上游没有返回用量" || failed.Retries != (Cell{Text: "×2", Tone: ToneWarning, Help: "额度用完时换 key：这次请求一共试了几把"}) {
+	if failed.StatusTone != ToneWarning || failed.Input.Text != "—" || failed.Input.Help != "Factory 没有返回用量" || failed.Retries != (Cell{Text: "×2", Tone: ToneWarning, Help: "额度用完时换 key：这次请求一共试了几把"}) {
 		t.Errorf("failed row = %+v", failed)
 	}
 	if failed.StatusHelp != "key fk-spent...0001\n{\"detail\":\"limit reached\"}\n请求体 900B · 响应体 60B" {

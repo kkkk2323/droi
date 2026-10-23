@@ -107,7 +107,7 @@ func TestAMissingPatchedDroidIsNotTheOfficialOne(t *testing.T) {
 	if h.DroidPath() != "" {
 		t.Fatal("fell back to another droid")
 	}
-	if _, err := h.spawn(1); err != errNoPatchedDroid {
+	if _, err := h.spawn(1); err == nil || err.Error() != errNoPatchedDroid().Error() {
 		t.Fatalf("spawn: %v", err)
 	}
 }

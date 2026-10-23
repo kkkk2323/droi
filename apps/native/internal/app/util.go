@@ -132,3 +132,7 @@ func formatTokens(n float64) string {
 	}
 	return fmt.Sprintf("%d", int(n))
 }
+
+// clause is a message without its closing full stop, for a template that
+// adds its own.
+func clause(s string) string { return strings.TrimRight(s, ".。") }

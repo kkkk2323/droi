@@ -72,13 +72,13 @@ func (h *harness) scrollUsage() {
 func (h *harness) addKey(key string) {
 	h.t.Helper()
 	h.click("Add key")
-	h.until("the sheet", func() bool { return h.hasText("Droi checks the key first") })
-	h.click("Factory API key")
+	h.until("the sheet", func() bool { return h.hasText("Droi checks the key's quota") })
+	h.click("Factory API key to add")
 	h.tt.Type(key)
 	h.tt.Key(0, ui.KeyEnter)
 	h.frame()
 	masked := keys.MaskKey(key)
-	h.until("the key "+masked, func() bool { return h.hasText(masked) && !h.hasText("Droi checks the key first") })
+	h.until("the key "+masked, func() bool { return h.hasText(masked) && !h.hasText("Droi checks the key's quota") })
 }
 
 // Settings → Usage is the Key Pool's, drawn as droid-proxy's window: it is
@@ -88,8 +88,8 @@ func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
 	h0 := keyPoolTestHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.openUsageTab()
-	h.until("the empty pool", func() bool { return h.hasText("The Key Pool is empty") })
-	if !h.hasText("The LLM proxy starts once the Key Pool has a key.") {
+	h.until("the empty pool", func() bool { return h.hasText("The Key Pool has no key yet") })
+	if !h.hasText("The Key Pool starts once it has a key.") {
 		t.Fatalf("the proxy's state is not shown: %q", h.tt.Texts())
 	}
 
@@ -124,11 +124,11 @@ func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
 	// The other pages read the proxy's records; it is not running, so they
 	// say so instead of failing.
 	h.click("Requests")
-	h.until("the request history", func() bool { return h.hasText("The LLM proxy is not running") })
+	h.until("the request history", func() bool { return h.hasText("The Key Pool is not running") })
 	h.click("Event log")
 	h.until("the event log", func() bool { return h.hasText("No events yet") })
 	h.click("Cache warming")
-	h.until("cache warming", func() bool { return h.hasText("Cache warming runs with the LLM proxy") })
+	h.until("cache warming", func() bool { return h.hasText("Cache warming is not running") })
 
 	h.click("Keys and quota")
 	h.until("the key again", func() bool { return h.hasText("Remove") })
@@ -154,9 +154,9 @@ func TestSettingsOffersThePatchedDroid(t *testing.T) {
 	h.until("the session list", func() bool { return h.hasText("One") })
 	h.click("Settings")
 	h.click("Advanced")
-	h.until("the Patched Droid", func() bool { return h.hasText("Patched Droid") })
+	h.until("the Key Pool", func() bool { return h.hasText("Use the Key Pool") })
 	h.shoot("settings-patched-droid")
-	if !h.hasText("Key Pool") || !h.hasText("The Key Pool is empty") {
+	if !h.hasText("Keys") || !h.hasText("The Key Pool has no key yet") {
 		t.Fatalf("the Key Pool is not in Settings: %q", h.tt.Texts())
 	}
 	h.click("Open Usage")

@@ -25,7 +25,7 @@ func startupProblem(daemon host.DaemonState, status controller.Status, droidVers
 	case daemon.DroidTooOld():
 		return L("droid is too old"), L("Droi needs droid %s or newer; this computer has %s.", host.MinDroid, droidVersion)
 	case daemon.Reason != "":
-		return L("The Daemon did not start"), L("Last attempt: %s.", daemon.Reason)
+		return L("The Daemon did not start"), L("Last attempt: %s.", clause(daemon.Reason))
 	case status.Failure != nil && status.Failure.Reason == controller.ReasonAuthRejected:
 		return L("The Daemon did not accept the login"), L("Sign out and sign in again in Settings, then restart the Daemon. (%s)", failureText(status.Failure))
 	case status.Failure != nil:

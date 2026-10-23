@@ -334,7 +334,7 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	path := h.DroidPath()
 	if path == "" {
 		if patched {
-			return nil, errNoPatchedDroid
+			return nil, errNoPatchedDroid()
 		}
 		return nil, errNoDroid
 	}

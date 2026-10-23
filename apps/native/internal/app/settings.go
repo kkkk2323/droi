@@ -345,7 +345,7 @@ func daemonStatusText(st host.DaemonState) (ok bool, label, detail string) {
 		}
 		return false, L("Starting"), L("Waiting for the Daemon to answer on port %d.", st.Port)
 	case host.DaemonRestarting:
-		return false, L("Not running"), L("Last attempt: %s. Starting again in %ds (attempt %d).", st.Reason, int(st.Delay.Round(time.Second)/time.Second), st.Attempt)
+		return false, L("Not running"), L("Last attempt: %s. Starting again in %ds (attempt %d).", clause(st.Reason), int(st.Delay.Round(time.Second)/time.Second), st.Attempt)
 	}
 	return false, L("Stopped"), L("The Daemon is not running.")
 }
@@ -426,7 +426,7 @@ func (a *App) advancedTab(c *ui.Context) {
 			placeholder = inherited
 		}
 		if h.PatchedDroidState().Enabled && st.FactoryAPIBaseURL == nil && inherited == "" {
-			a.settingRow(c, L("Factory API base URL"), L("Model requests go straight to Factory while the Key Pool is on. Turn the Key Pool off to set a URL."), nil, nil)
+			a.settingRow(c, L("Factory API base URL"), L("Not used while the Key Pool is on: model requests carry the pool's keys straight to Factory. Turn the Key Pool off to set a URL."), nil, nil)
 			return
 		}
 		a.settingRow(c, L("Factory API base URL"), desc, nil, a.saveRow(c, &s.baseURL, L("Factory API base URL"), placeholder, L("Save URL"), true, func(v string) {
