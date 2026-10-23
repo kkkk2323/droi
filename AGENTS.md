@@ -65,8 +65,11 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 
 ## Validation Workflow
 
-Before committing run `pnpm check && pnpm test`, and for Go changes `gofmt -l`,
-`go vet` and `go test` over `./apps/native/...` (as the PR workflow does). Run
+Before committing run `pnpm check && pnpm test`, and for Go changes
+`"$(go env GOROOT)/bin/gofmt" -l apps/native`, `go vet` and `go test` over
+`./apps/native/...` (as the PR workflow does). Format with that gofmt, which is go.mod's
+Go: a `gofmt` on PATH from another Go lays out `pkg/l10n/zh.go` differently, and the PR
+workflow rejects it (`go test ./apps/native` checks this too). Run
 `pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the Fake Daemon
 changed. For what only an iPhone can show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
 
