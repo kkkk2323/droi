@@ -1,3 +1,13 @@
+## 1.69.0 - 2026-10-23
+
+### Added
+
+- With the Key Pool on, Droi can start waiting keys on a schedule. A key's monthly quota counts from its first request, so a key you add waits until a request uses it. Turn on Settings → Usage → Waiting keys → Start on a schedule, and from 8:00 each day Droi starts up to two waiting keys with a one-token Haiku request, also on days you send none. The section shows how many keys started today and how many still wait, and the event log lists each start. It is off by default; off, a waiting key starts on the next request, as before.
+
+### Changed
+
+- Some Chinese text about the model speed and the Key Pool is shorter and reads more naturally.
+
 ## 1.68.1 - 2026-10-23
 
 ### Fixed
