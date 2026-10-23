@@ -1,3 +1,13 @@
+## 1.68.0 - 2026-10-23
+
+### Added
+
+- With the Key Pool on, a ring beside Settings in the sidebar shows how much of the monthly quota the keys have left: green, amber under 30% and red under 10%. Click it to open Settings → Usage.
+
+### Changed
+
+- With the Key Pool on, the speed under the message box shows what the Key Pool measured on each model call, and it updates every half second while the model writes. Click it to see the call under way, the last call and the whole session: the model and key, time to the first token, speed, input tokens with the share read from the prompt cache, output tokens with the reasoning, cache written, and time. An Open Usage link at the bottom opens Settings → Usage. Without the Key Pool, it shows what it showed before.
+
 ## 1.67.1 - 2026-10-23
 
 ### Fixed
