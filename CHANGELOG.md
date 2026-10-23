@@ -3,6 +3,7 @@
 ### Fixed
 
 - Clicking the sidebar's search right after you open a session no longer loses the focus to the message box, so what you type goes into the search.
+
 ## 1.67.0 - 2026-10-23
 
 ### Added
