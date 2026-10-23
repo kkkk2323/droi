@@ -850,6 +850,14 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 			if measured {
 				ui.Box(c).Height(k.Px(4))
 				k.Text(c, L("Measured by the Key Pool since it started."), 12, 16).TextColor(t.MutedForeground)
+				open := ui.ButtonBase(c).Role(ui.RoleLink).Label(L("Open Usage")).AlignSelf(ui.Start).Cursor(ui.CursorPointer)
+				open.Children(func() {
+					k.Text(c, L("Open Usage"), 12, 16).FontWeight(500).Underline()
+				})
+				if open.Clicked() {
+					v.speedOpen = false
+					v.a.OpenUsage()
+				}
 			}
 		})
 	})

@@ -176,6 +176,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			if b.Clicked() {
 				a.Run(CmdSettings)
 			}
+			a.keyPoolRing(c)
 		})
 	})
 }
