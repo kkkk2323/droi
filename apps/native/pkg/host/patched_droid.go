@@ -95,8 +95,9 @@ var errNoPatchedDroid = hostError("the Patched Droid is not ready")
 
 // EnablePatchedDroid prepares the newest Patched Droid (downloading
 // Factory's build when this computer's droid is another version), then
-// starts the Daemon from it. It needs a key in the Key Pool, since the
-// patch never falls back to the signed-in account.
+// starts the Daemon from it. With an empty Key Pool the Daemon waits for a
+// key (AddPoolKey), since the patch never falls back to the signed-in
+// account.
 func (h *Host) EnablePatchedDroid() { go h.preparePatchedDroid(true) }
 
 // UpdatePatchedDroid moves to the newest Patched Droid and restarts the
@@ -132,10 +133,6 @@ func (h *Host) preparePatchedDroid(restart bool) {
 	p.mu.Unlock()
 	h.changed()
 
-	if p.pool.Len() == 0 {
-		h.setPatchErr(l10n.L("Add a key to the Key Pool first: the Patched Droid sends its LLM requests with a key from it."))
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	// A failed fetch keeps the recipes already known.
@@ -175,6 +172,21 @@ func (h *Host) preparePatchedDroid(restart bool) {
 	}
 }
 
+// AddPoolKey adds key to the Key Pool. The first key starts a Daemon that
+// was waiting for one: the Patched Droid can be turned on with an empty
+// pool, and its Daemon retries with a growing delay until then.
+func (h *Host) AddPoolKey(ctx context.Context, key string) error {
+	pool := h.KeyPool()
+	first := pool.Len() == 0
+	if err := pool.Add(ctx, key); err != nil {
+		return err
+	}
+	if first && h.usesPatchedDroid() && h.Daemon.State().Status == DaemonRestarting {
+		go h.RestartDaemon()
+	}
+	return nil
+}
+
 // RefreshPatchRecipes fetches the published recipes at most once an hour,
 // so Settings can offer a newer Patched Droid.
 func (h *Host) RefreshPatchRecipes() {
@@ -202,6 +214,9 @@ func (h *Host) patchedEnv() ([]string, error) {
 	pool := h.KeyPool()
 	pool.Configure(h.FactoryAPIBaseURL(), h.FactoryHome())
 	base, err := pool.Start()
+	if errors.Is(err, keypool.ErrNoKeys) {
+		return nil, hostError(l10n.L("The Key Pool has no key. Add one in Settings → Usage to start the Daemon."))
+	}
 	if err != nil {
 		return nil, err
 	}
