@@ -1,3 +1,9 @@
+## 1.70.0 - 2026-10-23
+
+### Added
+
+- Settings → Usage has an Observability tab in place of Requests. For today, the last 7 or 30 days, or everything, it shows how many model requests the Key Pool sent, how many failed or switched keys, the tokens with the share read from the cache, the credits they cost and the output speed. A chart shows them hour by hour or day by day, split among the five models used most; a heat map shows them by weekday and hour; and a table breaks them down by model, key, type (model request, cache warming, key start) or session. Below, the newest requests can be filtered by model, type or failure, and a click on one shows everything recorded about it. Credits are estimates and count only Opus 5.5, Fable 5.1, Sonnet 5.5 and Haiku 4.5; requests to other models are counted as unpriced. Sessions count only requests that name their session, which older records do not.
+
 ## 1.69.0 - 2026-10-23
 
 ### Added
