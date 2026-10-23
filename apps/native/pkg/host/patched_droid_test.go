@@ -78,7 +78,7 @@ func TestThePatchedDroidRunsWithTheKeyPool(t *testing.T) {
 
 func TestThePatchedDroidNeedsAKey(t *testing.T) {
 	h, _ := patchedHost(t, false)
-	if _, err := h.spawn(1); err == nil || !strings.Contains(err.Error(), "no keys") {
+	if _, err := h.spawn(1); err == nil || !strings.Contains(err.Error(), "Settings → Usage") {
 		t.Fatalf("spawn without keys: %v", err)
 	}
 }

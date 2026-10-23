@@ -1055,9 +1055,9 @@ var zh = map[string]string{
 	"Show text":                                                     "展开文本",
 	"[pasted text]":                                                 "[粘贴的文本]",
 
-	"Add a key to the Key Pool first: the Patched Droid sends its LLM requests with a key from it.": "请先在 KEY 池里添加一个密钥：补丁版 droid 的模型请求只用 KEY 池里的密钥。",
-	"No Patched Droid exists for this computer (%s) yet.":                                           "暂无适配这台电脑（%s）的补丁版 droid。",
-	"The Patched Droid is droid %s; Droi needs %s or newer.":                                        "补丁版基于 droid %s，Droi 需要 %s 或更高版本。",
+	"The Key Pool has no key. Add one in Settings → Usage to start the Daemon.": "KEY 池里还没有 key。在“设置 → 用量”里添加一把，后台服务就会启动。",
+	"No Patched Droid exists for this computer (%s) yet.":                       "暂无适配这台电脑（%s）的补丁版 droid。",
+	"The Patched Droid is droid %s; Droi needs %s or newer.":                    "补丁版基于 droid %s，Droi 需要 %s 或更高版本。",
 
 	"%d d %d h":       "%d 天 %d 小时",
 	"%d d":            "%d 天",

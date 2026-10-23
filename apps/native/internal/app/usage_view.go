@@ -1041,7 +1041,7 @@ func (a *App) submitAddKey() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		err := pool.Add(ctx, key)
+		err := a.cfg.Host.AddPoolKey(ctx, key)
 		a.cfg.Update(func() {
 			s.adding = false
 			if err != nil {
