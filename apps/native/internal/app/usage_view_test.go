@@ -44,11 +44,11 @@ func keyPoolTestHost(t *testing.T) *host.Host {
 	if err := host.WriteCliLogin(filepath.Join(home, ".factory"), token, "r"); err != nil {
 		t.Fatal(err)
 	}
-	settings := `{"factoryApiBaseUrl":"` + factory.URL + `","droidKind":"patched","patchedDroidVersion":"0.247.0"}`
+	settings := `{"droidKind":"patched","patchedDroidVersion":"0.247.0"}`
 	if err := os.WriteFile(filepath.Join(data, "settings.json"), []byte(settings), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }})
+	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }, KeyPoolUpstream: factory.URL})
 	t.Cleanup(h.Stop)
 	t.Cleanup(h.KeyPool().Stop)
 	return h

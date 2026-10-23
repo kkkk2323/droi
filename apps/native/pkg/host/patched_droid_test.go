@@ -39,9 +39,27 @@ func patchedHost(t *testing.T, withKey bool) (*Host, string) {
 	h.Settings.Update(func(s *Settings) {
 		s.DroidKind = DroidPatched
 		s.PatchedDroidVersion = "0.247.0"
-		s.FactoryAPIBaseURL = OptString("http://upstream.example")
 	})
 	return h, out
+}
+
+// A Factory API base URL, such as droid-proxy's, would change the keys the
+// Key Pool chose: the Key Pool refuses to start with one.
+func TestTheKeyPoolRefusesAFactoryAPIBaseURL(t *testing.T) {
+	h, _ := patchedHost(t, true)
+	h.Settings.Update(func(s *Settings) { s.FactoryAPIBaseURL = OptString("http://127.0.0.1:37650") })
+	if _, err := h.spawn(1); err == nil || !strings.Contains(err.Error(), "127.0.0.1:37650") {
+		t.Fatalf("spawn with a base URL: %v", err)
+	}
+	h.Settings.Update(func(s *Settings) { s.DroidKind = "" })
+	h.preparePatchedDroid(false)
+	if st := h.PatchedDroidState(); st.Enabled || !strings.Contains(st.Err, "127.0.0.1:37650") {
+		t.Fatalf("turned on with a base URL: %+v", st)
+	}
+	h.Settings.Update(func(s *Settings) { s.FactoryAPIBaseURL = OptString("https://api.factory.ai/") })
+	if msg := h.baseURLConflict(); msg != "" {
+		t.Fatalf("Factory's own URL is a conflict: %s", msg)
+	}
 }
 
 func TestThePatchedDroidRunsWithTheKeyPool(t *testing.T) {
