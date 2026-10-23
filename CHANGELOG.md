@@ -1,3 +1,10 @@
+## 1.68.1 - 2026-10-23
+
+### Fixed
+
+- With the Key Pool on, the speed under the message box now works for Gemini models too. Before, the Key Pool could not read Gemini's replies: their tokens, time to the first token and speed were missing, and the speed stayed on an old estimate.
+- The live speed waits a second after the first token before it shows. Before, the first half second often showed about twice the real speed.
+
 ## 1.68.0 - 2026-10-23
 
 ### Added
