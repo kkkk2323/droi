@@ -104,6 +104,21 @@ func (a *App) updateNotes(c *ui.Context, s updates.State) {
 	})
 }
 
+// cardButton is a corner card's button: smaller than a settings button, so
+// the card reads as a note beside the sidebar rather than a dialog.
+func (a *App) cardButton(c *ui.Context, v kit.Variant, label string) ui.Element {
+	k, t := a.kit, a.kit.T
+	color := t.Foreground
+	if v == kit.Primary {
+		color = t.PrimaryForeground
+	}
+	b := k.Button(c, v, k.Dense(24, 26), false, label).PaddingX(k.Px(10)).Radius(k.Px(6))
+	b.Children(func() {
+		k.Text(c, label, 12, 16).FontWeight(500).TextColor(color)
+	})
+	return b
+}
+
 // updateCard is the corner card once a release waits, downloads or is
 // installed; closing it hides that one step.
 func (a *App) updateCard(c *ui.Context) {
@@ -127,29 +142,41 @@ func (a *App) updateCard(c *ui.Context) {
 		title = L("Downloading Droi %s…", s.Version)
 	}
 	a.cornerCard(c, L("Update"), icon, func() {
-		k.Text(c, title, 14, 20).FontWeight(500)
+		k.Text(c, title, 13, 18).FontWeight(500)
 		switch s.Status {
 		case updates.Downloading:
 			ui.Box(c).Role(ui.RoleProgress).Label(L("Download progress")).FillWidth().Height(k.Px(4)).Radius(k.Px(2)).Background(t.Muted).Margin(k.Px(8), 0, 0, 0).Clip().Children(func() {
 				ui.Box(c).WidthPercent(float32(s.Percent)).FillHeight().Radius(k.Px(2)).Background(t.Primary)
 			})
 		case updates.Ready:
-			if a.smallButton(c, kit.Primary, L("Restart now"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+			if a.cardButton(c, kit.Primary, L("Restart now")).AlignSelf(ui.Start).Margin(k.Px(10), 0, 0, 0).Clicked() {
 				a.relaunch()
 			}
 		default:
-			ui.Row(c).Wrap().Gap(k.Px(4)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Primary, L("Update"), "", false).Clicked() {
+			if a.cfg.Version != "" {
+				k.Text(c, L("You have %s.", a.cfg.Version), 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+			}
+			ui.Row(c).Gap(k.Px(4)).Margin(k.Px(10), 0, 0, 0).Children(func() {
+				if a.cardButton(c, kit.Primary, L("Update")).Clicked() {
 					a.installUpdate()
 				}
-				if a.smallButton(c, kit.Ghost, L("Details"), "", false).Clicked() {
+				if a.cardButton(c, kit.Ghost, L("Details")).Clicked() {
 					a.Go(Route{Name: "settings", Tab: "about"})
 				}
-				if a.smallButton(c, kit.Ghost, L("Skip this version"), "", false).Clicked() {
-					prefs.SkippedUpdate.Set(a.prefs, s.Version)
-					a.cfg.Updater.Skip(s.Version)
-				}
 			})
+			// A quiet link, not a third button: skipping is the rare choice.
+			skip := ui.ButtonBase(c).Label(L("Skip this version")).AlignSelf(ui.Start).Height(k.Px(24)).Margin(k.Px(4), 0, 0, 0).Cursor(ui.CursorPointer)
+			color := t.MutedForeground
+			if skip.Hovered() {
+				color = t.Foreground
+			}
+			skip.Children(func() {
+				k.Text(c, L("Skip this version"), 12, 16).TextColor(color)
+			})
+			if skip.Clicked() {
+				prefs.SkippedUpdate.Set(a.prefs, s.Version)
+				a.cfg.Updater.Skip(s.Version)
+			}
 		}
 	}, func() { a.updateDismissed = step })
 }

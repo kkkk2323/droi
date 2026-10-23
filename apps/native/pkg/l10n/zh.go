@@ -846,6 +846,7 @@ var zh = map[string]string{
 	"Worktrees let a session work on its own checkout and branch, beside your own. Droid makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer.": "Worktree 让会话在独立的目录和分支中工作，不改动你当前的代码树。Droid 会自动创建和清理它们。此处的设置与这台电脑上的 droid CLI 和 Factory App 共用。",
 	"Writing the plan…": "正在编写计划…",
 	"You":               "你",
+	"You have %s.":      "当前版本 %s。",
 	"Your Factory session expired. Sign in again.":                           "Factory 登录已过期，请重新登录。",
 	"Your browser opened Factory. Enter this code there if it asks for one.": "已在浏览器中打开 Factory。若页面提示输入验证码，请填入此代码。",
 	"Your default model":   "你的默认模型",
