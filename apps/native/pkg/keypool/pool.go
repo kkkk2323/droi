@@ -89,6 +89,10 @@ type State struct {
 	Err          string
 	CacheWarming *proxy.CacheWarmingStatus
 	Events       []diag.Event
+	// ScheduledOpening is whether Droi opens waiting keys' months on its
+	// own; Opening is how today's openings stand, nil while not running.
+	ScheduledOpening bool
+	Opening          *keys.OpeningStatus
 }
 
 type storedKey struct {
@@ -97,9 +101,10 @@ type storedKey struct {
 }
 
 type storedPool struct {
-	Mode    Mode        `json:"mode"`
-	Current string      `json:"current,omitempty"`
-	Keys    []storedKey `json:"keys"`
+	Mode             Mode        `json:"mode"`
+	Current          string      `json:"current,omitempty"`
+	ScheduledOpening bool        `json:"scheduledOpening,omitempty"`
+	Keys             []storedKey `json:"keys"`
 }
 
 // Pool is safe for concurrent use.
@@ -301,6 +306,8 @@ func (p *Pool) Start() (string, error) {
 		}
 	}
 	px.SetCacheWarmer(warmer)
+	px.SetKeyOpening(p.stored.ScheduledOpening)
+	px.StartKeyOpener(ctx)
 	p.rotator, p.px, p.warmer, p.cancel = rotator, px, warmer, cancel
 	go func() {
 		rotator.FetchAllUsages(ctx)
@@ -488,6 +495,21 @@ func (p *Pool) SetMode(m Mode) error {
 	return err
 }
 
+// SetScheduledOpening turns the scheduled opening of waiting keys on or off
+// and keeps it.
+func (p *Pool) SetScheduledOpening(on bool) error {
+	p.mu.Lock()
+	p.stored.ScheduledOpening = on
+	err := p.saveLocked()
+	px := p.px
+	p.mu.Unlock()
+	if px != nil {
+		px.SetKeyOpening(on)
+	}
+	p.changed()
+	return err
+}
+
 // RefreshUsage reads every key's usage now.
 func (p *Pool) RefreshUsage(ctx context.Context) {
 	p.mu.Lock()
@@ -565,13 +587,13 @@ func (p *Pool) Session(id string) (calls diag.SessionCalls, live *diag.LiveCall,
 // State is a snapshot for the window.
 func (p *Pool) State() State {
 	p.mu.Lock()
-	st := State{Running: p.px != nil, Mode: p.stored.Mode, Err: p.err}
+	st := State{Running: p.px != nil, Mode: p.stored.Mode, Err: p.err, ScheduledOpening: p.stored.ScheduledOpening}
 	if cur := p.currentKeyLocked(); cur != "" {
 		// The key the key file gets on the next Start, when none was chosen.
 		st.CurrentID = keyID(cur)
 	}
 	stored := append([]storedKey(nil), p.stored.Keys...)
-	r, px, w := p.readerLocked(), p.px, p.warmer
+	r, px, w, rotator := p.readerLocked(), p.px, p.warmer, p.rotator
 	p.mu.Unlock()
 	byKey := map[string]keys.KeyState{}
 	if r != nil {
@@ -597,6 +619,10 @@ func (p *Pool) State() State {
 	}
 	if px != nil {
 		st.Events = px.Recorder().Events()
+	}
+	if rotator != nil {
+		o := rotator.OpeningStatus()
+		st.Opening = &o
 	}
 	return st
 }

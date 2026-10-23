@@ -167,6 +167,36 @@ func TestStartWritesTheKeyFileAndForwards(t *testing.T) {
 	}
 }
 
+// Scheduled opening is off until it is turned on, and stays as it was set.
+func TestScheduledOpeningIsKept(t *testing.T) {
+	f := newFactory(t)
+	p := openTestPool(t, f)
+	if err := p.Add(context.Background(), "fk-good-0000000000"); err != nil {
+		t.Fatal(err)
+	}
+	if st := p.State(); st.ScheduledOpening || st.Opening != nil {
+		t.Fatalf("a new pool: %+v", st)
+	}
+	if err := p.SetScheduledOpening(true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if st := p.State(); !st.ScheduledOpening || st.Opening == nil || st.Opening.DailyOpens == 0 {
+		t.Fatalf("running: %+v", st)
+	}
+	if !Open(Options{Dir: p.opts.Dir}).State().ScheduledOpening {
+		t.Fatal("the setting was not kept")
+	}
+	if err := p.SetScheduledOpening(false); err != nil {
+		t.Fatal(err)
+	}
+	if Open(Options{Dir: p.opts.Dir}).State().ScheduledOpening {
+		t.Fatal("turning it off was not kept")
+	}
+}
+
 func TestManualModeKeepsTheKey(t *testing.T) {
 	f := newFactory(t)
 	p := openTestPool(t, f)

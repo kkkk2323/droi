@@ -13,8 +13,8 @@ import (
 type RequestRecord struct {
 	Seq  int       `json:"seq"`
 	Time time.Time `json:"time"`
-	// Kind is "cache_warm" for a cache-warming refresh and empty for a
-	// proxied client request.
+	// Kind is "cache_warm" for a cache-warming refresh, "key_open" for the
+	// key opener's request and empty for a proxied client request.
 	Kind     string `json:"kind,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Provider string `json:"provider,omitempty"`

@@ -10,6 +10,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
@@ -379,7 +380,43 @@ func (a *App) keysPage(c *ui.Context, u usageLook, st keypool.State, m *usageMod
 		u.expiring(c, m.expiring)
 		ui.Box(c).Height(u.px(6))
 		a.keyList(c, u, st, m)
+		ui.Box(c).Height(u.px(6))
+		a.keyOpening(c, u, st)
 	})
+}
+
+// keyOpening is whether Droi starts waiting keys' months on its own, and
+// how today's openings stand.
+func (a *App) keyOpening(c *ui.Context, u usageLook, st keypool.State) {
+	p := u.p
+	title := L("Start on a schedule")
+	u.sectionHead(c, L("Waiting keys"), openingNote(st), nil)
+	u.card(c).Padding(u.px(12), u.px(16)).Children(func() {
+		ui.Row(c).Gap(u.px(12)).Children(func() {
+			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(u.px(3)).Children(func() {
+				u.text(c, title, 13).FontWeight(500)
+				u.text(c, L("From 8:00 each day, Droi starts up to %d waiting keys a day, without waiting for your requests. Each start sends a one-token Haiku request, and the key's month counts from then. Off: a waiting key starts on the next request.", config.DailyKeyOpens), 12).TextColor(p.secondary)
+			})
+			if u.k.Toggle(c, title, st.ScheduledOpening, a.usage.acting != "") {
+				pool, on := a.keyPool(), !st.ScheduledOpening
+				a.poolAct("opening", func() error { return pool.SetScheduledOpening(on) })
+			}
+		})
+	})
+}
+
+// openingNote is how many keys opened today and how many wait; empty while
+// the Key Pool is not running.
+func openingNote(st keypool.State) string {
+	o := st.Opening
+	if o == nil {
+		return ""
+	}
+	note := L("%d of %d started today · %d waiting", o.OpenedToday, o.DailyOpens, len(o.Queue))
+	if st.ScheduledOpening && !o.Scheduled && len(o.Queue) > 0 {
+		note = L("%s · starts once droid sends a Haiku request", note)
+	}
+	return note
 }
 
 // runwaySection is today's spend, the last days' spend against the daily

@@ -124,6 +124,14 @@ func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
 	h.until("the status bar", func() bool { return h.hasText("Keeps the key you chose") })
 	h.until("the action to end", func() bool { return h.a.usage.acting == "" })
 
+	// Scheduled opening is off until it is turned on here.
+	if h0.KeyPool().State().ScheduledOpening {
+		t.Fatal("scheduled opening is on in a new pool")
+	}
+	h.scrollUsage()
+	h.clickSwitch("Start on a schedule", func() bool { return h0.KeyPool().State().ScheduledOpening })
+	h.until("the action to end", func() bool { return h.a.usage.acting == "" })
+
 	// The other pages read the proxy's records; it is not running, so they
 	// say so instead of failing.
 	h.click("Requests")
@@ -200,6 +208,8 @@ func usageSample(a *App, now time.Time) {
 			cooling,
 			{ID: "k4", Masked: "fk-dead0...0003", State: keys.KeyState{Index: 4, Key: "fk-dead0...0003", Status: "http_401"}},
 		},
+		ScheduledOpening: true,
+		Opening:          &keys.OpeningStatus{DailyOpens: 2, OpenedToday: 1, Scheduled: true, Queue: []int{3}},
 		CacheWarming: &proxy.CacheWarmingStatus{
 			Mode: proxy.CacheWarmingIdle,
 			Sessions: []proxy.CacheWarmingSession{
@@ -263,7 +273,7 @@ func TestUsageTabPages(t *testing.T) {
 			h.until("the tab's own reads", func() bool { return !h.a.usage.refreshing && !h.a.usage.spendBusy })
 			usageSample(h.a, time.Now())
 			h.until("the sample", func() bool { return h.hasText("fk-4f2a1...91be") })
-			for _, want := range []string{"今天已用", "近 14 天", "即将作废", "可用 3/4 把", "额度更新于"} {
+			for _, want := range []string{"今天已用", "近 14 天", "即将作废", "可用 3/4 把", "额度更新于", "今天已启用 1/2 把 · 还有 1 把等待"} {
 				if !h.hasText(want) {
 					t.Errorf("no %q in %q", want, h.tt.Texts())
 				}

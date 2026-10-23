@@ -91,6 +91,7 @@ type Proxy struct {
 	premUpstream    string
 	transport       http.RoundTripper
 	cacheWarmerRef  *CacheWarmer
+	keyOpener       *keyOpener
 	recorder        *diag.Recorder
 	startedAt       time.Time
 	mu              sync.Mutex
@@ -106,13 +107,15 @@ type liveCall struct {
 // NewProxy forwards to upstreamBaseURL (https://api.factory.ai say).
 // switchKey may be nil: the proxy then only records.
 func NewProxy(upstreamBaseURL string, rotator *keys.KeyRotator, switchKey KeySwitcher) *Proxy {
-	return &Proxy{
+	p := &Proxy{
 		upstreamBaseURL: strings.TrimRight(upstreamBaseURL, "/"),
 		rotator:         rotator,
 		switchKey:       switchKey,
 		recorder:        diag.NewRecorder(diag.DefaultCapacity),
 		startedAt:       time.Now(),
 	}
+	p.keyOpener = &keyOpener{rotator: rotator, recorder: p.recorder, transport: p.outboundTransport, now: time.Now}
+	return p
 }
 
 // SetTransport replaces the transport to the upstreams (for tests).
@@ -397,6 +400,9 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		usage = &u
 	}
 	p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, written, usage, observer, false, logErr, errorDetail)
+	if resp.StatusCode == http.StatusOK && copyErr == nil {
+		p.keyOpener.observe(upstreamURL, outHeaders, req.Header.Get("Content-Encoding"), raw, model, providerForRequest(req, upstreamPath))
+	}
 	if warmer := p.cacheWarmer(); warmer != nil && resp.StatusCode == http.StatusOK && copyErr == nil && usage != nil {
 		warmer.Observe(warmCapture{
 			sessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),

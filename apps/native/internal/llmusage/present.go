@@ -359,6 +359,10 @@ func eventName(kind string) string {
 		return l10n.L("Key ran out")
 	case "key_cooled":
 		return l10n.L("Key paused")
+	case "key_opened":
+		return l10n.L("Started a key")
+	case "key_open_failed":
+		return l10n.L("Could not start a key")
 	case "upstream_error":
 		return l10n.L("Request to Factory failed")
 	case "request_build_error":
