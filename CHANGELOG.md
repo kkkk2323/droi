@@ -1,5 +1,14 @@
-## 1.66.0 - 2026-10-23
+## 1.67.0 - 2026-10-23
 
+### Added
+
+- The Key Pool's quota can show in the menu bar (on Windows, in the notification area): a gauge with the share of quota left, and a click opens a panel with each key's quota, today's use and how long the keys last. Turn it on with Settings → Advanced → Show usage in the menu bar. It is off by default and shows only while the Key Pool is on.
+
+### Changed
+
+- Settings → Usage: the tabs that are not selected are darker, so they read as tabs; the event log names its events in words; and the Today line no longer overlaps its note in a narrow window.
+
+## 1.66.0 - 2026-10-23
 ### Added
 
 - The Key Pool: model requests can use Factory API keys you add instead of your signed-in account, while every other request keeps using the account. Turn it on with Settings → Advanced → Use the Key Pool. The first time, Droi downloads Droi's droid (about 300 MB), a copy of droid that only it runs; the droid you run yourself is not changed. Turning the Key Pool on or off restarts the background service, which interrupts running sessions. It works on macOS and 64-bit Windows, and not while a Factory API base URL is set.
