@@ -1,7 +1,0 @@
-commands:
-  install: pnpm install --frozen-lockfile
-  typecheck: pnpm typecheck
-  lint: pnpm lint
-  test: pnpm test
-  check: pnpm check
-  e2e: pnpm test:e2e:phone
