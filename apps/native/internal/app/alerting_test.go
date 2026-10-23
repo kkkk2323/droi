@@ -27,8 +27,8 @@ func TestCompletionAlertsWhileAnotherSessionIsOpen(t *testing.T) {
 
 	h.openSession("Deploy")
 	h.send("Go")
-	deploy := h.d.Sessions[0].SessionID
-	h.click("Notes")
+	deploy, notesID := h.d.Sessions[0].SessionID, h.d.Sessions[1].SessionID
+	h.openRow("Notes", notesID)
 	h.until("the completion alert", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
@@ -48,10 +48,7 @@ func TestCompletionAlertsWhileAnotherSessionIsOpen(t *testing.T) {
 	if _, ok := h.tt.Find("Unread"); !ok {
 		t.Error("no unread mark in the sidebar")
 	}
-	// The list reorders as the Sessions' times change; a click before it
-	// settles can land on another row.
-	h.settle()
-	h.click("Deploy")
+	h.openRow("Deploy", deploy)
 	if h.a.unread[deploy] {
 		t.Error("opening Deploy did not read it")
 	}

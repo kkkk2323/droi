@@ -385,6 +385,19 @@ func (h *harness) openSession(title string) {
 	h.click(title)
 }
 
+// openRow opens Session id from its row in the sidebar. The list reorders as
+// the Sessions' times change, and a click while a row moves lands on the row
+// that took its place, so it clicks until id is open.
+func (h *harness) openRow(title, id string) {
+	h.t.Helper()
+	h.until(title+" open", func() bool {
+		if h.a.Route().SessionID != id {
+			h.click(title)
+		}
+		return h.a.Route().SessionID == id
+	})
+}
+
 func TestSessionView(t *testing.T) {
 	for _, theme := range []string{"light", "dark", "solarized-light"} {
 		t.Run(theme, func(t *testing.T) {
