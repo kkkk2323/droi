@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -61,7 +62,7 @@ func startProxy(t *testing.T, upstream string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { px.Shutdown(nil) })
+	t.Cleanup(func() { px.Shutdown(context.Background()) })
 	return baseURL
 }
 
