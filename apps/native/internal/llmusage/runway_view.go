@@ -56,6 +56,9 @@ type ChartView struct {
 	LimitLabel string
 	First      string
 	Last       string
+	// Credits is one of the values (a percent of a key's month) in
+	// credits, which the axis counts in round numbers of.
+	Credits float64
 }
 
 type ChartBar struct {
@@ -214,7 +217,7 @@ func Weekday(d time.Weekday) string {
 }
 
 func buildChart(days []DaySpend, limit float64, amount func(float64) string) ChartView {
-	c := ChartView{Limit: limit, LimitLabel: l10n.L("Daily limit %s", amount(limit)), Top: limit}
+	c := ChartView{Limit: limit, LimitLabel: l10n.L("Daily limit %s", amount(limit)), Top: limit, Credits: MonthlyStandardCredits / 100}
 	for i, d := range days {
 		today := i == len(days)-1
 		help := l10n.L("%s %s: %s", d.Day.Format("1/2"), Weekday(d.Day.Weekday()), amount(d.Spent))

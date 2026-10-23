@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -157,6 +158,121 @@ func currentMasked(h *host.Host) string {
 	return ""
 }
 
+// The Observe page answers the pointer: a bar or a cell shows what it
+// holds as the pointer comes, a breakdown row lists only its requests and
+// a second click lists them all again, whatever grouping comes between,
+// and a request's details open again once they were closed.
+func TestObservePageAnswersThePointer(t *testing.T) {
+	h0 := keyPoolTestHost(t)
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.until("the session list", func() bool { return h.hasText("One") })
+	h.click("Settings")
+	h.click("Usage")
+	h.until("the tab's own reads", func() bool { return !h.a.usage.refreshing && !h.a.usage.spendBusy })
+	usageSample(h.a, time.Now())
+	h.click("Observability")
+	h.click("7 days")
+	o := &h.a.usage.observe
+	loaded := func(what string, ok func(q llmusage.ObserveQuery) bool) {
+		t.Helper()
+		h.until(what, func() bool { return o.loaded && !o.busy && o.data.Query == o.query && ok(o.query) })
+	}
+	loaded("the week", func(q llmusage.ObserveQuery) bool { return q.Period == llmusage.PeriodWeek })
+	shows := func(s string) bool { return slices.Contains(h.tt.Texts(), s) }
+	// reveal scrolls the page until s is in the middle of the window.
+	reveal := func(s string) ui.Rect {
+		t.Helper()
+		for range 8 {
+			r, ok := h.tt.Find(s)
+			if !ok {
+				t.Fatalf("no %q in %q", s, h.tt.Texts())
+			}
+			mid := r.Y + r.H/2
+			if mid > 80 && mid < refH-80 {
+				return r
+			}
+			h.tt.Scroll(refW/2, refH/2, 0, mid-refH/2)
+			h.frame()
+		}
+		t.Fatalf("%q does not come into view", s)
+		return ui.Rect{}
+	}
+
+	v := h.a.observeView()
+	bar := v.Trend.Bars[0]
+	r := reveal(bar.Label)
+	if shows(bar.Total) {
+		t.Fatal("a bar's card shows before the pointer comes")
+	}
+	h.tt.Move(r.X+r.W/2, r.Y-40)
+	h.frame()
+	if !shows(bar.Title) || !shows(bar.Total) {
+		t.Fatalf("no card for the bar of %s: %q", bar.Title, h.tt.Texts())
+	}
+	h.tt.Move(refW-1, refH-1)
+	h.frame()
+	if shows(bar.Total) {
+		t.Fatal("the bar's card stays once the pointer leaves")
+	}
+
+	var cell llmusage.HeatCell
+	for _, row := range v.Heat.Rows {
+		for _, c := range row.Cells {
+			if c.Level > 0 && cell.Help == "" {
+				cell = c
+			}
+		}
+	}
+	r = reveal(cell.Help)
+	h.tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	h.frame()
+	if !shows(cell.Title) || !shows(cell.Value) {
+		t.Fatalf("no card for %s: %q", cell.Help, h.tt.Texts())
+	}
+
+	// Output speed's bars are not split by model, so the legend does not
+	// name the models above the breakdown.
+	o.metric = llmusage.MetricSpeed
+	h.frame()
+	const model = "claude-sonnet-5-5"
+	reveal(model)
+	h.click(model)
+	loaded("the model's requests", func(q llmusage.ObserveQuery) bool { return q.Model == model })
+	for _, row := range h.a.observeView().Rows {
+		if row.Model != model {
+			t.Fatalf("the list holds %s", row.Model)
+		}
+	}
+	// Another grouping keeps the model; back on the models, its row lets
+	// it go.
+	h.click("Type")
+	if o.query.Model != model {
+		t.Fatalf("grouping by type dropped the model: %+v", o.query)
+	}
+	h.click("Model")
+	reveal(model)
+	h.click(model)
+	loaded("every request", func(q llmusage.ObserveQuery) bool { return q.Model == "" })
+
+	h.scrollUsage()
+	// Scrolling over the list scrolls it too: a request it shows.
+	var first llmusage.RequestRowView
+	for _, row := range h.a.observeView().Rows {
+		if first.Time == "" && shows(row.Time) {
+			first = row
+		}
+	}
+	h.click(first.Time)
+	h.until("the request's details", func() bool { return h.hasText("Request details") })
+	h.click("Close")
+	h.until("the details to close", func() bool { return !h.hasText("Request details") })
+	if o.reqSel != -1 {
+		t.Fatalf("the request stays chosen: %d", o.reqSel)
+	}
+	h.click(first.Time)
+	h.until("the request's details again", func() bool { return h.hasText("Request details") })
+}
+
 // Settings → Advanced offers the Patched Droid and says where the Key Pool
 // stands; Open Usage goes to the Usage tab.
 func TestSettingsOffersThePatchedDroid(t *testing.T) {
@@ -282,7 +398,7 @@ func usageSample(a *App, now time.Time) {
 		_ = os.MkdirAll(filepath.Dir(pool.RequestLog()), 0o700)
 		_ = os.WriteFile(pool.RequestLog(), b, 0o600)
 	}
-	s.observe = observeState{reqSel: -1, groupSel: -1, inited: true}
+	s.observe = observeState{reqSel: -1, inited: true}
 	s.refreshing = false
 	s.model.built = false
 }
@@ -333,7 +449,7 @@ func TestUsageTabPages(t *testing.T) {
 				o := &h.a.usage.observe
 				return o.data.Query.Period == llmusage.PeriodWeek && !o.busy
 			})
-			for _, want := range []string{"趋势", "活跃时段", "分组", "credits"} {
+			for _, want := range []string{"趋势", "活跃时段", "分组", "Credits"} {
 				if !h.hasText(want) {
 					t.Errorf("no %q in %q", want, h.tt.Texts())
 				}

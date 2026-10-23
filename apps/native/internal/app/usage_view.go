@@ -255,7 +255,7 @@ func (a *App) usageTab(c *ui.Context) {
 		s.section = usageKeys
 	}
 	if !s.observe.inited {
-		s.observe.reqSel, s.observe.groupSel, s.observe.inited = -1, -1, true
+		s.observe.reqSel, s.observe.inited = -1, true
 	}
 	st := a.poolState()
 	a.loadSpend(false)
@@ -840,16 +840,17 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 	columns := []ui.TableColumn{
 		{ID: "time", Title: L("Time"), Width: u.px(126)},
 		{ID: "model", Title: L("Model"), MinWidth: u.px(112)},
-		{ID: "status", Title: L("Status"), Width: u.px(68)},
-		{ID: "input", Title: L("Input"), Width: u.px(64), Align: ui.End},
+		{ID: "status", Title: L("Status"), Width: u.px(64)},
+		{ID: "input", Title: L("Input"), Width: u.px(70), Align: ui.End},
 		{ID: "cache", Title: L("Cache"), Width: u.px(52), Align: ui.End},
 		{ID: "output", Title: L("Output"), Width: u.px(60), Align: ui.End},
 		{ID: "credits", Title: L("Credits"), Width: u.px(76), Align: ui.End},
 		{ID: "duration", Title: L("Time / first byte"), Width: u.px(96), Align: ui.End},
-		{ID: "speed", Title: L("Speed"), Width: u.px(52), Align: ui.End},
+		{ID: "speed", Title: L("Output speed"), Width: u.px(72), Align: ui.End},
 	}
 	s.reqList.Key = func(i int) any { return rows[i].ID }
 	s.reqList.Selected = &s.reqSel
+	defer u.tables(c)()
 	numeric := func(cell llmusage.Cell) {
 		ui.Text(c, cell.Text).TextColor(u.tone(cell.Tone)).FontFeatures("tnum").Tooltip(cell.Help).SingleLine()
 	}
@@ -862,7 +863,7 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 			ui.Row(c).Gap(u.px(6)).Children(func() {
 				u.text(c, r.ProviderMark, 9).FontWeight(700).TextColor(ui.Hex("#ffffff")).TextAlign(ui.Center).
 					Size(u.px(20), u.px(16)).FixedLineHeight(u.px(16)).Radius(u.px(4)).Background(providerColor(r.ProviderClass)).Tooltip(r.ProviderHelp).NoWrap()
-				u.text(c, r.Model, 11).Font(u.k.Mono).SingleLine().Shrink(1)
+				u.text(c, r.Model, 11).Font(u.k.Mono).SingleLine().Shrink(1).Tooltip(r.Model)
 				if r.Kind != "" {
 					u.text(c, r.Kind, 10).TextColor(p.tertiary).NoWrap()
 				}

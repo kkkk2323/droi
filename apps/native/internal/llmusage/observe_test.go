@@ -132,10 +132,88 @@ func TestRequestDetailSaysEverything(t *testing.T) {
 	for label, want := range map[string]string{
 		"服务商": "anthropic · prem", "会话": "Fix the build · s1", "调用用途": "session-title-generation",
 		"Token": "输入 1.0K（缓存读取 600 · 缓存写入 100）· 输出 50（推理 20）", "耗时": "共 3.0s · 首字节 800ms · 首 Token 1.0s",
-		"换 key": "试了 2 把 key", "速度": "25 token/秒",
+		"换 key": "试了 2 把 key", "输出速度": "25 token/s",
 	} {
 		if got[label] != want {
 			t.Errorf("%s = %q, want %q", label, got[label], want)
 		}
+	}
+}
+
+func TestTrendNamesAndDescribesItsBars(t *testing.T) {
+	chinese(t)
+	now := time.Date(2026, 10, 23, 15, 30, 0, 0, time.Local)
+	records := []diag.RequestRecord{
+		{Time: now.Add(-time.Hour), Model: "claude-opus-5-5", Key: "fk-a", Status: 200, DurationMs: 3000, TTFTMs: 1000,
+			Usage: &diag.TokenUsage{Input: 10000, CacheRead: 8000, Output: 200}},
+		{Time: now.Add(-2 * time.Hour), Model: "glm-5.3-flash", Key: "fk-a", Kind: "cache_warm", Status: 200, DurationMs: 1000,
+			Usage: &diag.TokenUsage{Input: 5000, Output: 100}},
+		{Time: now.AddDate(0, 0, -20), Model: "claude-opus-5-5", Key: "fk-a", Status: 200, Usage: &diag.TokenUsage{Input: 100, Output: 1}},
+	}
+	log := NewRequestLog(writeRequestLog(t, records))
+	if err := log.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	none := func(string) string { return "" }
+
+	today := BuildObserve(log.Observe(ObserveQuery{Period: PeriodToday}, now), MetricTokens, ByModel, none)
+	var named []string
+	for _, b := range today.Trend.Bars {
+		if b.Label != "" {
+			named = append(named, b.Label)
+		}
+	}
+	if strings.Join(named, " ") != "00:00 03:00 06:00 09:00 12:00 15:00" {
+		t.Errorf("today's axis = %q", named)
+	}
+	bar := today.Trend.Bars[14]
+	if bar.Title != "14:00–14:59" || bar.Total != "10.2K token · 1 次请求" || len(bar.Lines) != 1 || bar.Lines[0].Name != "claude-opus-5-5" || bar.Lines[0].Part != 0 {
+		t.Errorf("the 14:00 bar = %+v", bar)
+	}
+	if today.Trend.Bars[0].Total != "没有请求" || today.Trend.About != "Token：输入加输出，含缓存" || today.Trend.Metric.Tick(2_000_000) != "2M" {
+		t.Errorf("trend = %+v", today.Trend)
+	}
+	if about := MetricSpeed.About(); !strings.Contains(about, "token/s") {
+		t.Errorf("speed is %q", about)
+	}
+	if MetricSpeed.Label() != "输出速度" {
+		t.Errorf("speed is labeled %q", MetricSpeed.Label())
+	}
+
+	// A month names every fourth day back from today.
+	month := BuildObserve(log.Observe(ObserveQuery{Period: PeriodMonth}, now), MetricCalls, ByModel, none)
+	named = named[:0]
+	for _, b := range month.Trend.Bars {
+		if b.Label != "" {
+			named = append(named, b.Label)
+		}
+	}
+	if len(month.Trend.Bars) != 30 || len(named) != 8 || named[len(named)-1] != "10/23" || named[0] != "9/25" {
+		t.Errorf("the month's axis = %q of %d bars", named, len(month.Trend.Bars))
+	}
+
+	cell := today.Heat.Rows[(int(now.Weekday())+6)%7].Cells[14]
+	if cell.Title != "星期五 14:00–14:59" || cell.Value != "10.2K token · 1 次请求" || cell.Level == 0 {
+		t.Errorf("heat cell = %+v", cell)
+	}
+
+	// A row filters by what the query holds, and a filter the period does
+	// not see stays among the choices.
+	if g := today.Groups; g[0].Filter != "claude-opus-5-5" {
+		t.Errorf("model rows = %+v", g)
+	}
+	kinds := BuildObserve(log.Observe(ObserveQuery{Period: PeriodToday}, now), MetricTokens, ByKind, none).Groups
+	if kinds[0].Filter != "request" || kinds[1].Filter != "cache_warm" {
+		t.Errorf("type rows = %+v", kinds)
+	}
+	if keys := BuildObserve(log.Observe(ObserveQuery{Period: PeriodToday}, now), MetricTokens, ByKey, none).Groups; keys[0].Filter != "" {
+		t.Errorf("key rows filter: %+v", keys)
+	}
+	gone := BuildObserve(log.Observe(ObserveQuery{Period: PeriodToday, Model: "gpt-6-astra", Kind: "key_open"}, now), MetricTokens, ByModel, none)
+	if last := gone.Models[len(gone.Models)-1]; last.Value != "gpt-6-astra" {
+		t.Errorf("models = %+v", gone.Models)
+	}
+	if last := gone.Kinds[len(gone.Kinds)-1]; last.Value != "key_open" || last.Label != "启用 key" {
+		t.Errorf("kinds = %+v", gone.Kinds)
 	}
 }

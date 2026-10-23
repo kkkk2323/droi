@@ -28,9 +28,31 @@ func (m ObserveMetric) Label() string {
 	case MetricCalls:
 		return l10n.L("Request count")
 	case MetricSpeed:
-		return l10n.L("Speed")
+		return l10n.L("Output speed")
 	}
 	return l10n.L("Tokens")
+}
+
+// About says what the metric counts, and in what unit, under the trend.
+func (m ObserveMetric) About() string {
+	switch m {
+	case MetricCredits:
+		return l10n.L("Credits: estimated from each model's credit weight; models without one are left out")
+	case MetricCalls:
+		return l10n.L("Request count: the calls through the Key Pool, failed ones included")
+	case MetricSpeed:
+		return l10n.L("Output speed, in token/s: the output tokens a second once the first token came, over the bar's calls")
+	}
+	return l10n.L("Tokens: input and output, the cache included")
+}
+
+// Tick is v on the trend's axis: short, without the unit, which About
+// gives.
+func (m ObserveMetric) Tick(v float64) string {
+	if m == MetricCalls || m == MetricSpeed {
+		return fmt.Sprintf("%.0f", v)
+	}
+	return FormatCredits(v)
 }
 
 // Value is the metric of t; ok is false when t has none (a speed without a
@@ -147,18 +169,31 @@ type ObserveView struct {
 // TrendView is a bar a bucket, each split among the top models (Legend,
 // "Other" last) unless the metric is a speed.
 type TrendView struct {
+	Metric  ObserveMetric
 	Bars    []TrendBar
 	Legend  []string
 	Stacked bool
 	Top     float64
 	Peak    string
-	Axis    []string
+	About   string
 }
 
+// TrendBar is one bucket: its parts, from the bottom up, and what the
+// card by it says. Label is its name on the axis, empty for the bars
+// between those named.
 type TrendBar struct {
-	Parts   []float64
-	Help    string
-	Current bool
+	Parts        []float64
+	Label, Title string
+	Total        string
+	Lines        []TrendLine
+	Help         string
+	Current      bool
+}
+
+// TrendLine is one model's part of a bar, Part its index in the legend.
+type TrendLine struct {
+	Part        int
+	Name, Value string
 }
 
 // HeatView is the calls by weekday and hour, each cell at one of five
@@ -174,13 +209,16 @@ type HeatRow struct {
 }
 
 type HeatCell struct {
-	Level int
-	Help  string
+	Level        int
+	Title, Value string
+	Help         string
 }
 
-// GroupRowView is one row of the breakdown.
+// GroupRowView is one row of the breakdown. Filter is the query's Model or
+// Kind that lists the row's requests, for the groupings that filter.
 type GroupRowView struct {
 	ID, Name, Help string
+	Filter         string
 	Mono           bool
 	Calls          string
 	Failed         Cell
@@ -198,7 +236,7 @@ type GroupRowView struct {
 func BuildObserve(o Observation, metric ObserveMetric, grouping Grouping, sessionName func(string) string) ObserveView {
 	v := ObserveView{
 		Range:  observeRange(o),
-		Source: l10n.L("From this computer's request log · %d calls in all", o.Records),
+		Source: l10n.L("From this computer's request log · %d calls since it began", o.Records),
 	}
 	if o.Totals.Calls == 0 {
 		v.Empty = true
@@ -220,12 +258,21 @@ func BuildObserve(o Observation, metric ObserveMetric, grouping Grouping, sessio
 	if o.Matching > len(o.Listed) {
 		v.ListNote = l10n.L("%d match · the newest %d shown", o.Matching, len(o.Listed))
 	}
+	// The filters keep a choice the period does not hold, so that they
+	// still show it.
+	models, kinds := o.Models, o.Kinds
+	if m := o.Query.Model; m != "" && !slices.Contains(models, m) {
+		models = append(slices.Clip(models), m)
+	}
+	if k := o.Query.Kind; k != "" && !slices.Contains(kinds, k) {
+		kinds = append(slices.Clip(kinds), k)
+	}
 	v.Models = []Option{{"", l10n.L("All models")}}
-	for _, m := range o.Models {
+	for _, m := range models {
 		v.Models = append(v.Models, Option{m, orDash(m)})
 	}
 	v.Kinds = []Option{{"", l10n.L("All types")}}
-	for _, k := range o.Kinds {
+	for _, k := range kinds {
 		v.Kinds = append(v.Kinds, Option{k, KindLabel(k)})
 	}
 	return v
@@ -269,14 +316,21 @@ func observeSummary(t Totals) []MetricView {
 }
 
 func buildTrend(o Observation, metric ObserveMetric) TrendView {
-	v := TrendView{Stacked: metric.stacked()}
+	v := TrendView{Metric: metric, Stacked: metric.stacked(), About: metric.About()}
 	if v.Stacked {
 		v.Legend = append(append([]string(nil), o.Top...), l10n.L("Other"))
 	}
+	n := len(o.Buckets)
+	// About eight names fit under the bars: hours every three from
+	// midnight, days and weeks counted back from the last.
+	every := max(1, (n+7)/8)
 	peak, peakAt := 0.0, -1
 	for i, b := range o.Buckets {
 		total := b.Total()
-		bar := TrendBar{Current: i == len(o.Buckets)-1}
+		bar := TrendBar{Current: i == n-1, Title: bucketName(o, b)}
+		if o.Hourly && b.Start.Local().Hour()%3 == 0 || !o.Hourly && (n-1-i)%every == 0 {
+			bar.Label = bucketAxis(o, b)
+		}
 		value, _ := metric.Value(total)
 		if v.Stacked {
 			for _, p := range b.Parts {
@@ -286,13 +340,18 @@ func buildTrend(o Observation, metric ObserveMetric) TrendView {
 		} else {
 			bar.Parts = []float64{value}
 		}
-		lines := []string{bucketName(o, b) + " · " + metric.Format(value)}
-		if metric != MetricCalls {
-			lines[0] += " · " + MetricCalls.Format(float64(total.Calls))
+		bar.Total = metric.Format(value)
+		switch {
+		case total.Calls == 0:
+			bar.Total = l10n.L("No requests")
+		case metric != MetricCalls:
+			bar.Total += " · " + MetricCalls.Format(float64(total.Calls))
 		}
+		lines := []string{bar.Title + " · " + bar.Total}
 		if v.Stacked && value > 0 {
 			for j, p := range b.Parts {
 				if pv, ok := metric.Value(p); ok {
+					bar.Lines = append(bar.Lines, TrendLine{Part: j, Name: v.Legend[j], Value: metric.Format(pv)})
 					lines = append(lines, l10n.L("%s: %s", v.Legend[j], metric.Format(pv)))
 				}
 			}
@@ -306,9 +365,6 @@ func buildTrend(o Observation, metric ObserveMetric) TrendView {
 	v.Top = peak
 	if peakAt >= 0 {
 		v.Peak = l10n.L("Peak %s: %s", bucketName(o, o.Buckets[peakAt]), metric.Format(peak))
-	}
-	if n := len(o.Buckets); n > 0 {
-		v.Axis = []string{bucketAxis(o, o.Buckets[0]), bucketAxis(o, o.Buckets[n/2]), bucketAxis(o, o.Buckets[n-1])}
 	}
 	return v
 }
@@ -356,7 +412,7 @@ func buildHeat(o Observation, metric ObserveMetric) HeatView {
 		for h := range 24 {
 			t := o.Heat[d][h]
 			x, ok := metric.Value(t)
-			cell := HeatCell{Help: l10n.L("%s %02d:00 · nothing", days[d], h)}
+			cell := HeatCell{Title: l10n.L("%s %02d:00–%02d:59", days[d], h, h), Value: l10n.L("No requests")}
 			if ok && x > 0 {
 				cell.Level = 1
 				for _, c := range cuts {
@@ -364,11 +420,12 @@ func buildHeat(o Observation, metric ObserveMetric) HeatView {
 						cell.Level++
 					}
 				}
-				cell.Help = l10n.L("%s %02d:00 · %s", days[d], h, metric.Format(x))
+				cell.Value = metric.Format(x)
 				if metric != MetricCalls {
-					cell.Help += " · " + MetricCalls.Format(float64(t.Calls))
+					cell.Value += " · " + MetricCalls.Format(float64(t.Calls))
 				}
 			}
+			cell.Help = cell.Title + " · " + cell.Value
 			row.Cells[h] = cell
 		}
 		v.Rows = append(v.Rows, row)
@@ -387,10 +444,12 @@ func buildGroups(o Observation, g Grouping, sessionName func(string) string) ([]
 		t := grp.Totals
 		row := GroupRowView{ID: grp.ID, Name: orDash(grp.ID), Calls: fmt.Sprintf("%d", t.Calls)}
 		switch g {
-		case ByModel, ByKey:
+		case ByModel:
+			row.Mono, row.Filter = true, grp.ID
+		case ByKey:
 			row.Mono = true
 		case ByKind:
-			row.Name = KindLabel(grp.ID)
+			row.Name, row.Filter = KindLabel(grp.ID), kindID(grp.ID)
 		case BySession:
 			row.Help = grp.ID
 			if name := sessionName(grp.ID); name != "" {
@@ -493,7 +552,7 @@ func RequestDetail(r diag.RequestRecord, sessionName func(string) string) []Deta
 	var t Totals
 	t.add(r)
 	if s, ok := t.Speed(); ok {
-		lines = append(lines, DetailLine{l10n.L("Speed"), l10n.L("%.0f tok/s", s)})
+		lines = append(lines, DetailLine{l10n.L("Output speed"), l10n.L("%.0f tok/s", s)})
 	}
 	if r.Rotated || r.Attempts > 1 {
 		lines = append(lines, DetailLine{l10n.L("Key switches"), l10n.L("Tried %d keys", r.Attempts)})

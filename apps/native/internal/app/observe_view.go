@@ -7,7 +7,6 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
@@ -34,12 +33,13 @@ type observeState struct {
 	view    llmusage.ObserveView
 	viewKey observeViewKey
 
-	// groupSel and reqSel are the rows chosen, -1 for none; inited says
-	// they were set so.
-	groupSel, reqSel   int
-	inited             bool
-	detailOpen         bool
-	groupList, reqList ui.ListState
+	// reqSel is the request whose details show, -1 for none; inited says
+	// it was set so.
+	reqSel              int
+	inited              bool
+	detailOpen          bool
+	modelOpen, kindOpen bool
+	groupList, reqList  ui.ListState
 }
 
 type observeViewKey struct {
@@ -67,16 +67,19 @@ func (a *App) loadObservation(force bool) {
 		err := log.Refresh()
 		o := log.Observe(q, time.Now())
 		a.cfg.Update(func() {
-			s.busy, s.at, s.loaded = false, a.cfg.Now(), true
+			s.busy = false
+			// The query changed while this one ran: what it found is not
+			// what the page asks for now, so it asks again at once.
+			if s.query != q {
+				s.at = time.Time{}
+				return
+			}
+			s.at, s.loaded = a.cfg.Now(), true
 			s.data, s.err = o, ""
 			if err != nil {
 				s.err = err.Error()
 			}
 			s.version++
-			// The query changed while this one ran.
-			if s.query != q {
-				s.at = time.Time{}
-			}
 		})
 	}()
 }
@@ -85,7 +88,7 @@ func (a *App) loadObservation(force bool) {
 func (a *App) changeQuery(fn func(q *llmusage.ObserveQuery)) {
 	s := &a.usage.observe
 	fn(&s.query)
-	s.reqSel = -1
+	s.reqSel, s.detailOpen = -1, false
 	if s.busy {
 		s.at = time.Time{}
 		return
@@ -181,8 +184,9 @@ func (a *App) observePage(c *ui.Context, u usageLook, st keypool.State) {
 				s.metric = llmusage.ObserveMetrics[sel]
 			}
 		})
-		u.card(c).Padding(u.px(14), u.px(16), u.px(12)).Gap(u.px(10)).Children(func() {
-			u.trendChart(c, v.Trend, 132)
+		u.card(c).Padding(u.px(12), u.px(16), u.px(12)).Gap(u.px(10)).Children(func() {
+			u.text(c, v.Trend.About, 11).TextColor(p.secondary)
+			u.trendChart(c, v.Trend, 168)
 			if v.Trend.Stacked {
 				u.legend(c, v.Trend.Legend)
 			}
@@ -198,7 +202,7 @@ func (a *App) observePage(c *ui.Context, u usageLook, st keypool.State) {
 				labels[i] = llmusage.GroupingLabel(g)
 			}
 			if u.segmented(c, &sel, labels, L("Group by"), "", false, false) {
-				s.grouping, s.groupSel = llmusage.Groupings[sel], -1
+				s.grouping = llmusage.Groupings[sel]
 			}
 		})
 		a.groupTable(c, u, v.Groups)
@@ -207,183 +211,122 @@ func (a *App) observePage(c *ui.Context, u usageLook, st keypool.State) {
 	})
 }
 
-// trendColors are the top models' colors, then the other models'.
-func (u usageLook) trendColors() []ui.Color {
-	p := u.p
-	return []ui.Color{p.accent, ui.Hex("#8b5cf6"), ui.Hex("#14a3a3"), ui.Hex("#e08a2c"), ui.Hex("#d6578a"), p.faint}
+// groupColumn is a column of the breakdown, width 0 for the one that takes
+// the room left.
+type groupColumn struct {
+	title string
+	width float32
+	end   bool
 }
 
-func (u usageLook) partColor(i, parts int) ui.Color {
-	colors := u.trendColors()
-	if i == parts-1 {
-		return colors[len(colors)-1]
-	}
-	return colors[min(i, len(colors)-2)]
-}
-
-// trendChart is a bar a bucket, split among the top models from the
-// bottom up; the current bucket is drawn full, the others a little lighter.
-func (u usageLook) trendChart(c *ui.Context, v llmusage.TrendView, height float32) {
-	p := u.p
-	height = u.px(height)
-	top := v.Top
-	if top <= 0 {
-		top = 1
-	}
-	ui.Column(c).Gap(u.px(6)).Children(func() {
-		ui.Row(c).Height(height).Gap(u.px(3)).AlignItems(ui.End).Children(func() {
-			for i, b := range v.Bars {
-				ui.Column(c.Key(i)).Role(ui.RoleMeter).Label(b.Help).Grow(1).Basis(0).MinWidth(1).Height(height).Justify(ui.End).Tooltip(b.Help).Children(func() {
-					drawn := false
-					for j := len(b.Parts) - 1; j >= 0; j-- {
-						h := height * float32(min(max(b.Parts[j]/top, 0), 1))
-						if h <= 0 {
-							continue
-						}
-						color := p.accent
-						if v.Stacked {
-							color = u.partColor(j, len(b.Parts))
-						}
-						if !b.Current {
-							color = color.Alpha(0.82)
-						}
-						ui.Box(c.Key(j)).Height(max(h, 1)).Background(color)
-						drawn = true
-					}
-					if !drawn {
-						ui.Box(c).Height(1).Background(p.track)
-					}
-				})
-			}
-		})
-		ui.Row(c).Children(func() {
-			for i, label := range v.Axis {
-				if i > 0 {
-					ui.Spacer(c)
-				}
-				u.text(c, label, 10).TextColor(p.tertiary).FontFeatures("tnum")
-			}
-		})
-	})
-}
-
-func (u usageLook) legend(c *ui.Context, names []string) {
-	ui.Row(c).Wrap().Gap(u.px(14)).Children(func() {
-		for i, name := range names {
-			ui.Row(c.Key(i)).Gap(u.px(5)).Children(func() {
-				ui.Box(c).Size(u.px(8), u.px(8)).Radius(u.px(2)).Background(u.partColor(i, len(names)))
-				t := u.text(c, name, 11).TextColor(u.p.secondary).NoWrap()
-				if i < len(names)-1 {
-					t.Font(u.k.Mono)
-				}
-			})
-		}
-	})
-}
-
-// heatMap is the weekdays by the hours, each cell darker the more it holds.
-func (u usageLook) heatMap(c *ui.Context, v llmusage.HeatView) {
-	p := u.p
-	levels := []ui.Color{p.track, p.accent.Alpha(0.22), p.accent.Alpha(0.45), p.accent.Alpha(0.7), p.accent}
-	label := u.px(64)
-	ui.Column(c).Gap(u.px(3)).Children(func() {
-		for d, row := range v.Rows {
-			ui.Row(c.Key(d)).Gap(u.px(3)).Children(func() {
-				u.text(c, row.Label, 11).TextColor(p.secondary).Width(label).NoWrap()
-				for h, cell := range row.Cells {
-					ui.Box(c.Key(h)).Role(ui.RoleMeter).Label(cell.Help).Grow(1).Basis(0).Height(u.px(14)).Radius(u.px(3)).Background(levels[cell.Level]).Tooltip(cell.Help)
-				}
-			})
-		}
-		ui.Row(c).Gap(u.px(3)).Children(func() {
-			ui.Box(c).Width(label)
-			for h := range 24 {
-				t := ""
-				if h%6 == 0 {
-					t = itoa(h)
-				}
-				u.text(c.Key(h), t, 10).TextColor(p.tertiary).FontFeatures("tnum").Grow(1).Basis(0).NoWrap()
-			}
-		})
-	})
-}
-
-// groupTable is the breakdown; choosing a model or a type lists its
-// requests below.
+// groupTable is the breakdown. A model's or a type's row lists only its
+// requests below, and a second click lists them all again; the row in
+// force is tinted, whatever period or grouping comes between.
 func (a *App) groupTable(c *ui.Context, u usageLook, rows []llmusage.GroupRowView) {
 	p := u.p
 	s := &a.usage.observe
-	columns := []ui.TableColumn{
-		{ID: "name", Title: llmusage.GroupingLabel(s.grouping), MinWidth: u.px(110)},
-		{ID: "calls", Title: L("Calls"), Width: u.px(52), Align: ui.End},
-		{ID: "failed", Title: L("Failed"), Width: u.px(52), Align: ui.End},
-		{ID: "share", Title: L("Share"), Width: u.px(76)},
-		{ID: "input", Title: L("Input"), Width: u.px(64), Align: ui.End},
-		{ID: "output", Title: L("Output"), Width: u.px(60), Align: ui.End},
-		{ID: "cache", Title: L("Cache"), Width: u.px(52), Align: ui.End},
-		{ID: "credits", Title: L("Credits"), Width: u.px(72), Align: ui.End},
-		{ID: "ttft", Title: L("First token"), Width: u.px(78), Align: ui.End},
-		{ID: "speed", Title: L("Speed"), Width: u.px(48), Align: ui.End},
-	}
 	filters := s.grouping == llmusage.ByModel || s.grouping == llmusage.ByKind
-	s.groupList.Key = func(i int) any { return rows[i].ID }
-	s.groupList.Selected = nil
-	if filters {
-		s.groupList.Selected = &s.groupSel
+	inForce := s.query.Model
+	if s.grouping == llmusage.ByKind {
+		inForce = s.query.Kind
 	}
-	numeric := func(cell llmusage.Cell) {
-		ui.Text(c, cell.Text).TextColor(u.tone(cell.Tone)).FontFeatures("tnum").Tooltip(cell.Help).SingleLine()
+	columns := []groupColumn{
+		{llmusage.GroupingLabel(s.grouping), 0, false},
+		{L("Calls"), 52, true},
+		{L("Failed"), 52, true},
+		{L("Share"), 76, false},
+		{L("Input"), 64, true},
+		{L("Output"), 60, true},
+		{L("Cache"), 52, true},
+		{L("Credits"), 72, true},
+		{L("First token"), 78, true},
+		{L("Output speed"), 72, true},
+	}
+	cell := func(col groupColumn, fn func()) {
+		e := ui.Row(c).Gap(u.px(6)).PaddingX(u.px(10)).AlignItems(ui.Center).Shrink(0)
+		if col.width > 0 {
+			e.Width(u.px(col.width))
+		} else {
+			e.Grow(1).Shrink(1).MinWidth(u.px(110))
+		}
+		if col.end {
+			e.Justify(ui.End)
+		}
+		e.Children(fn)
+	}
+	numeric := func(v llmusage.Cell) {
+		ui.Text(c, v.Text).TextColor(u.tone(v.Tone)).FontFeatures("tnum").Tooltip(v.Help).SingleLine()
 	}
 	shown := min(len(rows), 8)
-	u.card(c).Height(u.px(float32(38 + 30*max(shown, 1)))).Children(func() {
+	u.card(c).Height(u.px(float32(33 + 30*max(shown, 1)))).Children(func() {
 		if len(rows) == 0 {
 			u.unavailable(c, iconList, L("Nothing to group"), L("No call in this period names its session."), nil)
 			return
 		}
-		t := ui.Table(c, &s.groupList, columns, len(rows), func(i, col int) {
+		ui.Row(c).Height(u.px(32)).Shrink(0).AlignItems(ui.Stretch).Children(func() {
+			for _, col := range columns {
+				cell(col, func() { ui.Text(c, col.title).FontWeight(600).TextColor(p.secondary).SingleLine() })
+			}
+		})
+		u.hairline(c)
+		s.groupList.Key = func(i int) any { return rows[i].ID }
+		ui.List(c, &s.groupList, len(rows), func(i int) {
 			r := rows[i]
-			switch col {
-			case 0:
-				name := u.text(c, r.Name, 12).SingleLine().Shrink(1).Tooltip(r.Help)
-				if r.Mono {
-					name.Font(u.k.Mono).FontSize(u.px(11))
-				}
-			case 1:
-				ui.Text(c, r.Calls).FontFeatures("tnum")
-			case 2:
-				numeric(r.Failed)
-			case 3:
-				ui.Row(c).Gap(u.px(6)).Children(func() {
+			on := filters && r.Filter == inForce
+			var row ui.Element
+			if filters {
+				row = ui.ButtonBase(c).Role(ui.RoleToggleButton).Checked(on).Label(r.Name).Justify(ui.Start).Cursor(ui.CursorPointer)
+			} else {
+				row = ui.Row(c)
+			}
+			row.Height(u.px(30)).AlignItems(ui.Stretch)
+			switch {
+			case on:
+				row.Background(p.accent.Alpha(0.1))
+			case filters && row.Hovered():
+				row.Background(p.hover)
+			}
+			row.Children(func() {
+				cell(columns[0], func() {
+					if on {
+						u.icon(c, iconTick, 12, p.accent)
+					}
+					name := u.text(c, r.Name, 12).SingleLine().Shrink(1).Tooltip(r.Help)
+					if r.Mono {
+						name.Font(u.k.Mono).FontSize(u.px(11))
+					}
+					if on {
+						name.FontWeight(600)
+					}
+				})
+				cell(columns[1], func() { ui.Text(c, r.Calls).FontFeatures("tnum") })
+				cell(columns[2], func() { numeric(r.Failed) })
+				cell(columns[3], func() {
 					u.meter(c, r.Share, llmusage.ToneAccent, 4, -1)
 					u.text(c, r.ShareText, 11).TextColor(p.secondary).FontFeatures("tnum").Width(u.px(34)).TextAlign(ui.End).NoWrap()
 				})
-			case 4:
-				numeric(r.Input)
-			case 5:
-				numeric(r.Output)
-			case 6:
-				numeric(r.Cache)
-			case 7:
-				numeric(r.Credits)
-			case 8:
-				numeric(r.TTFT)
-			case 9:
-				numeric(r.Speed)
+				cell(columns[4], func() { numeric(r.Input) })
+				cell(columns[5], func() { numeric(r.Output) })
+				cell(columns[6], func() { numeric(r.Cache) })
+				cell(columns[7], func() { numeric(r.Credits) })
+				cell(columns[8], func() { numeric(r.TTFT) })
+				cell(columns[9], func() { numeric(r.Speed) })
+			})
+			if filters && row.Clicked() {
+				filter := r.Filter
+				if on {
+					filter = ""
+				}
+				byModel := s.grouping == llmusage.ByModel
+				a.changeQuery(func(q *llmusage.ObserveQuery) {
+					if byModel {
+						q.Model = filter
+					} else {
+						q.Kind = filter
+					}
+				})
 			}
 		}).Label(L("Breakdown")).Grow(1)
-		if filters && t.Changed() && s.groupSel >= 0 && s.groupSel < len(rows) {
-			id := rows[s.groupSel].ID
-			a.changeQuery(func(q *llmusage.ObserveQuery) {
-				if s.grouping == llmusage.ByModel {
-					q.Model = id
-				} else {
-					q.Kind = id
-					if id == "" {
-						q.Kind = "request"
-					}
-				}
-			})
-		}
 	})
 }
 
@@ -393,18 +336,10 @@ func (a *App) observeList(c *ui.Context, u usageLook, v llmusage.ObserveView) {
 	p := u.p
 	s := &a.usage.observe
 	u.sectionHead(c, L("Requests"), v.ListNote, func() {
-		models := make([]kit.Option, len(v.Models))
-		for i, o := range v.Models {
-			models[i] = kit.Option{Value: o.Value, Label: o.Label}
-		}
-		if model, ok := a.fieldSelect(c, L("Model"), s.query.Model, models, false); ok {
+		if model, ok := u.dropdown(c, &s.modelOpen, L("Model"), s.query.Model, v.Models); ok {
 			a.changeQuery(func(q *llmusage.ObserveQuery) { q.Model = model })
 		}
-		kinds := make([]kit.Option, len(v.Kinds))
-		for i, o := range v.Kinds {
-			kinds[i] = kit.Option{Value: o.Value, Label: o.Label}
-		}
-		if kind, ok := a.fieldSelect(c, L("Type"), s.query.Kind, kinds, false); ok {
+		if kind, ok := u.dropdown(c, &s.kindOpen, L("Type"), s.query.Kind, v.Kinds); ok {
 			a.changeQuery(func(q *llmusage.ObserveQuery) { q.Kind = kind })
 		}
 		ui.Row(c).Gap(u.px(6)).Children(func() {
@@ -427,7 +362,8 @@ func (a *App) observeList(c *ui.Context, u usageLook, v llmusage.ObserveView) {
 }
 
 // requestDetailSheet is everything the log knows of the request chosen in
-// the list.
+// the list. Closing it lets the row go, so that a click on it opens it
+// again.
 func (a *App) requestDetailSheet(c *ui.Context, u usageLook) {
 	p := u.p
 	s := &a.usage.observe
@@ -459,6 +395,6 @@ func (a *App) requestDetailSheet(c *ui.Context, u usageLook) {
 		})
 	})
 	if !open {
-		s.detailOpen = false
+		s.detailOpen, s.reqSel = false, -1
 	}
 }
