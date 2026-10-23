@@ -61,6 +61,20 @@ jobs:
           # On one CPU, a view test that races the Fake Daemon's answers fails here, not in a Release.
           go test -cpu 1 ./apps/native/internal/app
 
+  # The Patched Droid's patcher, the Key Pool and its LLM Proxy on Windows,
+  # where paths, file locks and process signals differ (ADR 0027).
+  key-pool-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+
+      - run: go test ./apps/native/pkg/droidpatch/... ./apps/native/pkg/keypool ./apps/native/pkg/llmproxy/... ./apps/native/internal/llmusage
+
   phone-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20

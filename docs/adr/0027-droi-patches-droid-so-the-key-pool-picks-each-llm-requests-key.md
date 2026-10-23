@@ -28,7 +28,7 @@ We decided Droi can run the Daemon from a **Patched Droid**, opt-in from Setting
 - **Recipes are data, published and signed.** Droi embeds the Recipes it was released with and reads
   newer ones from the `droid-patch` release of this repository, signed with an ed25519 key whose
   public half is in the app. A scheduled workflow makes and verifies the Recipe of each new droid on
-  macOS arm64 and amd64 and opens an issue when the patch no longer fits.
+  macOS arm64 and amd64 and Windows x64, and opens an issue when the patch no longer fits.
 - **The Key Pool and its LLM Proxy only observe.** The keys live in Droi's own data folder (mode
   0600), not in droid-proxy's files. The Key Pool writes the current key into the key file; the
   Daemon's `FACTORY_API_BASE_URL` points at the Key Pool's local LLM Proxy, which forwards every
@@ -57,7 +57,7 @@ official droid stays the default.
 ## Consequences
 
 - Each droid version needs a Recipe. Until the workflow publishes one, Droi keeps the newest Patched
-  Droid it has. Windows and Linux have no verified Recipe yet.
+  Droid it has. Linux and Windows on Arm have no verified Recipe yet.
 - The workflow needs the `DROI_RECIPE_SIGNING_KEY` secret; a Recipe that does not verify against the
   embedded public key is ignored.
 - A droid that moves or renames `src/llm-proxy/utils.ts` breaks the Recipe generator, not the

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +61,12 @@ func newFactory(t *testing.T) *factory {
 	return f
 }
 
+// private is a file only its owner reads. Windows has no mode bits; the
+// user's profile folder keeps other users out.
+func private(info os.FileInfo) bool {
+	return runtime.GOOS == "windows" || info.Mode().Perm() == 0o600
+}
+
 func openTestPool(t *testing.T, f *factory) *Pool {
 	t.Helper()
 	p := Open(Options{Dir: filepath.Join(t.TempDir(), "llm"), Upstream: f.URL, UsageURL: f.URL + "/billing"})
@@ -83,7 +90,7 @@ func TestAddChecksTheKey(t *testing.T) {
 		t.Fatal("accepted the same key twice")
 	}
 	info, err := os.Stat(p.poolFile())
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil || !private(info) {
 		t.Fatalf("keys.json: %v %v", info, err)
 	}
 	b, _ := os.ReadFile(p.poolFile())
@@ -117,7 +124,7 @@ func TestStartWritesTheKeyFileAndForwards(t *testing.T) {
 	}
 	b, err := os.ReadFile(p.KeyFile())
 	info, _ := os.Stat(p.KeyFile())
-	if err != nil || string(b) != "fk-spent-0000000000" || info.Mode().Perm() != 0o600 {
+	if err != nil || string(b) != "fk-spent-0000000000" || !private(info) {
 		t.Fatalf("key file %q %v %v", b, info.Mode(), err)
 	}
 
