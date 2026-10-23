@@ -5,6 +5,8 @@ status: accepted
 # A release pins its `droid`, and the Host updates itself when idle
 
 > The Pinned Droid is not built yet: ADR 0018 asks for a Minimum Droid instead until it is needed.
+> ADR 0027's Patched Droid downloads Factory's build the same way, but it is opt-in and follows the
+> newest Recipe, not the Droi release.
 
 Droi speaks the Daemon protocol through a pinned `@factory/droid-sdk`, while the Daemon's protocol version comes from whichever `droid` binary is on the computer's PATH, a binary that updates itself. On one computer the two drifted quietly: the SDK in this repo declares protocol 1.201.1 and the installed droid answers with a newer one, and the SDK's answer to a mismatch is to log and drop the notifications it cannot parse. With several Hosts (ADR 0012) the drift multiplies, and a Client that only ever spoke to one Daemon now meets three.
 

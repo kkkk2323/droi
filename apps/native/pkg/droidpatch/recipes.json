@@ -1,0 +1,22 @@
+{
+  "recipes": [
+    {
+      "version": "0.247.0",
+      "moduleSha256": "f6993c4952812049c598cbcc53ed7b02f97f806902230f759a5a6bca47d02b57",
+      "anchor": "return{...f,...R,\"User-Agent\":",
+      "inject": "if(Bun.env.DROI_LLM_KEY_FILE){if(fe(D()))throw Object.assign(new Error(\"Droi LLM key: customer deployments are not supported\"),{status:400});let droiKey;try{droiKey=(await Bun.file(Bun.env.DROI_LLM_KEY_FILE).text()).trim()}catch{}if(!droiKey||!/^fk-\\S+$/.test(droiKey))throw Object.assign(new Error(\"Droi LLM key file is missing or does not hold a Factory key\"),{status:400});f={...f,Authorization:`Bearer ${droiKey}`}}",
+      "platforms": [
+        "darwin/arm64"
+      ]
+    },
+    {
+      "version": "0.247.0",
+      "moduleSha256": "a7f96e8536927dfe854a18e006bbc3eec78588c33a5c0163edc8c7f9ba12b943",
+      "anchor": "return{...c,...R,\"User-Agent\":",
+      "inject": "if(Bun.env.DROI_LLM_KEY_FILE){if(MH(w()))throw Object.assign(new Error(\"Droi LLM key: customer deployments are not supported\"),{status:400});let droiKey;try{droiKey=(await Bun.file(Bun.env.DROI_LLM_KEY_FILE).text()).trim()}catch{}if(!droiKey||!/^fk-\\S+$/.test(droiKey))throw Object.assign(new Error(\"Droi LLM key file is missing or does not hold a Factory key\"),{status:400});c={...c,Authorization:`Bearer ${droiKey}`}}",
+      "platforms": [
+        "darwin/amd64"
+      ]
+    }
+  ]
+}

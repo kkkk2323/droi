@@ -26,6 +26,22 @@ _Avoid_: required droid, droid version (on its own)
 The one `droid` build a Droi release would be made for (ADR 0013); not built yet, deferred in favour of the Minimum Droid (ADR 0018). The Host would fetch it and start the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid could not be fetched the Host would fall back to the computer's own `droid` and say so.
 _Avoid_: bundled droid, vendored CLI, droid version (on its own)
 
+**Patched Droid**:
+Factory's own `droid` build, downloaded by the Host and changed in one place by a Recipe so that each LLM request carries a key from the Key Pool, while everything else keeps the droid's own login (ADR 0027). Opt-in; the Daemon runs it instead of the computer's droid. It does not update itself; Droi offers the newer one when a newer Recipe exists.
+_Avoid_: modified droid, custom droid, Pinned Droid
+
+**Recipe**:
+What patching one droid version takes: the version, the platforms it was verified on, the checksum of the code it changes, where to change it and what to put there. Droi ships some and reads newer signed ones that a scheduled workflow publishes.
+_Avoid_: patch file, patch config
+
+**Key Pool**:
+The Factory API keys Droi keeps for the Patched Droid's LLM requests, one of them current. In Automatic mode Droi moves to another key when the current one runs out; in Manual mode it keeps the one chosen. Kept in Droi's own data, apart from droid-proxy's.
+_Avoid_: key list, key rotation, accounts (a Factory Account is a login, not a key)
+
+**LLM Proxy**:
+The Key Pool's local proxy the Patched Droid sends its Factory traffic through. It forwards requests unchanged and records them, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
+_Avoid_: dp, gateway, MITM
+
 **Desktop Shell**:
 The installed desktop application. It embeds a Host and opens a window for the Local Client. It holds no conversation state.
 _Avoid_: main process, backend, app

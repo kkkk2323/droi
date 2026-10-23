@@ -1,0 +1,100 @@
+{
+  "keys": [
+    {
+      "index": 1,
+      "key": "fk-spent...0001",
+      "status": "ok",
+      "standardPercent": 100,
+      "corePercent": 60,
+      "standardAvailable": false,
+      "coreAvailable": true,
+      "resetsAt": "2026-09-16T06:44:00Z",
+      "limits": {
+        "standard": {
+          "fiveHour": { "usedPercent": 100, "windowEnd": "2026-09-16T06:44:00Z" },
+          "weekly": { "usedPercent": 40, "windowEnd": "2026-09-20T00:00:00Z" },
+          "monthly": { "usedPercent": 12.5, "windowEnd": "2026-10-01T00:00:00Z" }
+        },
+        "core": {
+          "fiveHour": { "usedPercent": 60, "windowEnd": "2026-09-16T06:44:00Z" }
+        }
+      },
+      "usageCheckedAt": "2026-09-16T05:00:00Z",
+      "active": false
+    },
+    {
+      "index": 2,
+      "key": "fk-fresh...0002",
+      "status": "ok",
+      "standardPercent": 10,
+      "corePercent": 0,
+      "standardAvailable": true,
+      "coreAvailable": true,
+      "limits": {
+        "standard": {
+          "fiveHour": { "usedPercent": 10, "windowEnd": "2026-09-16T08:00:00Z" },
+          "weekly": { "usedPercent": 100, "windowEnd": "2026-09-15T00:00:00Z" }
+        }
+      },
+      "active": true
+    },
+    {
+      "index": 3,
+      "key": "fk-dead...0003",
+      "status": "http_403",
+      "standardAvailable": false,
+      "coreAvailable": false,
+      "active": false
+    }
+  ],
+  "requests": [
+    {
+      "seq": 1,
+      "time": "2026-09-16T15:01:21.654012+08:00",
+      "model": "claude-fable-5.1",
+      "provider": "anthropic",
+      "requestedPool": "standard",
+      "key": "fk-fresh...0002",
+      "pool": "standard",
+      "status": 200,
+      "stream": true,
+      "durationMs": 4200,
+      "ttfbMs": 700,
+      "requestBytes": 18000,
+      "bytes": 5100,
+      "usage": { "input": 12000, "output": 350, "cacheRead": 9000, "cacheWrite": 200 },
+      "attempts": 1,
+      "rotated": false
+    },
+    {
+      "seq": 3,
+      "time": "2026-09-16T15:02:01Z",
+      "model": "gpt-6-astra",
+      "provider": "openai",
+      "requestedPool": "standard",
+      "key": "fk-spent...0001",
+      "pool": "standard",
+      "status": 402,
+      "stream": false,
+      "durationMs": 300,
+      "ttfbMs": 280,
+      "requestBytes": 900,
+      "bytes": 60,
+      "attempts": 2,
+      "rotated": true,
+      "errorDetail": "{\"detail\":\"limit reached\"}"
+    }
+  ],
+  "events": [
+    {
+      "seq": 2,
+      "time": "2026-09-16T15:01:20Z",
+      "kind": "key_exhausted",
+      "key": "fk-spent...0001",
+      "pool": "standard",
+      "model": "claude-fable-5.1",
+      "status": 402,
+      "detail": "retrying another key"
+    }
+  ]
+}
