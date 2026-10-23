@@ -1,12 +1,9 @@
 package llmusage
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -145,42 +142,27 @@ func TestEventRows(t *testing.T) {
 	}
 }
 
-func TestHistoryView(t *testing.T) {
+func TestRequestRows(t *testing.T) {
 	chinese(t)
 	records := sample(t).Requests
-	v := BuildHistory(HistoryState{Records: records, NextCursor: "older", PageNumber: 1, IsLatest: true})
-	if v.PageText != "第 1 页 · 本页 2 条" || v.ModeText != "最新记录，自动刷新" || !v.HasNext || len(v.Records) != 2 {
-		t.Errorf("pagination = %+v", v)
+	ok, failed := BuildRequestRow(records[0]), BuildRequestRow(records[1])
+	if ok.Credits.Text != "≈ 20.1K" || ok.Kind != "" {
+		t.Errorf("ok credits = %+v, kind %q", ok.Credits, ok.Kind)
 	}
-	want := []MetricView{
-		{Title: "本页请求", Value: "2", Note: "1 条失败", Tone: ToneDanger},
-		{Title: "成功率", Value: "50%", Tone: ToneWarning},
-		{Title: "输入 Token", Value: "12.0K", Note: "缓存命中 75%", Tone: TonePrimary},
-		{Title: "输出 Token", Value: "350", Note: "1/2 条有用量数据", Tone: TonePrimary},
-		{Title: "平均耗时", Value: "2.2s", Note: "首字节 490ms", Tone: TonePrimary},
-	}
-	for i, m := range want {
-		if v.Summary[i] != m {
-			t.Errorf("summary[%d] = %+v, want %+v", i, v.Summary[i], m)
-		}
-	}
-
-	ok := v.Records[0]
 	if ok.ProviderMark != "AN" || ok.ProviderClass != "anthropic" || ok.Model != "claude-fable-5.1" || ok.Status != "200" || ok.StatusTone != ToneGreen || !ok.Stream {
 		t.Errorf("ok row = %+v", ok)
 	}
 	if ok.Input.Text != "12.0K" || ok.Input.Help != "输入 12000 token（含缓存） · 缓存读取 9000 · 缓存写入 200" || ok.Cache != (Cell{Text: "75%", Tone: ToneGreen, Help: "缓存读取占输入的比例"}) {
 		t.Errorf("ok usage cells = %+v %+v", ok.Input, ok.Cache)
 	}
-	if ok.Output.Text != "350" || ok.Duration != "4.2s" || ok.TTFB != "首 700ms" || ok.TokensPerSec.Text != "100" || ok.Retries.Text != "—" || ok.Retries.Tone != ToneTertiary {
+	if ok.Output.Text != "350" || ok.Duration != "4.2s" || ok.TTFB != "首 700ms" || ok.TokensPerSec.Text != "100" {
 		t.Errorf("ok cells = %+v", ok)
 	}
 	if ok.Time != records[0].Time.Local().Format("01/02 15:04:05") || !strings.Contains(ok.TimeHelp, "年") {
 		t.Errorf("time = %q %q", ok.Time, ok.TimeHelp)
 	}
 
-	failed := v.Records[1]
-	if failed.StatusTone != ToneWarning || failed.Input.Text != "—" || failed.Input.Help != "Factory 没有返回用量" || failed.Retries != (Cell{Text: "×2", Tone: ToneWarning, Help: "额度用完时换 key：这次请求一共试了几把"}) {
+	if failed.StatusTone != ToneWarning || failed.Input.Text != "—" || failed.Input.Help != "Factory 没有返回用量" {
 		t.Errorf("failed row = %+v", failed)
 	}
 	if failed.StatusHelp != "key fk-spent...0001\n{\"detail\":\"limit reached\"}\n请求体 900B · 响应体 60B" {
@@ -188,14 +170,6 @@ func TestHistoryView(t *testing.T) {
 	}
 	if ok.StatusHelp != "key fk-fresh...0002\n请求体 17.6K · 响应体 5.0K · 流式" {
 		t.Errorf("stream status help = %q", ok.StatusHelp)
-	}
-
-	historic := BuildHistory(HistoryState{PageNumber: 3, Error: "read failed"})
-	if historic.ModeText != "正在查看历史记录，已暂停自动刷新" || historic.EmptyTitle != "无法读取请求记录" || historic.Summary != nil || historic.HasNext {
-		t.Errorf("historic = %+v", historic)
-	}
-	if BuildHistory(HistoryState{PageNumber: 1, IsLatest: true}).EmptyTitle != "还没有请求记录" {
-		t.Error("empty title")
 	}
 }
 
@@ -513,136 +487,5 @@ func TestCreditsInWords(t *testing.T) {
 	beyond := now.Add(30 * time.Hour)
 	if got, want := FormatReset(beyond, now), beyond.Local().Format("1/2 15:04")+" 重置"; got != want {
 		t.Errorf("reset beyond a day = %q, want %q", got, want)
-	}
-}
-
-func TestRequestHistoryNavigationAndRefresh(t *testing.T) {
-	records := sample(t).Requests
-	var calls []string
-	h := NewHistory(func(_ context.Context, cursor string) (diag.RequestPage, error) {
-		calls = append(calls, cursor)
-		switch cursor {
-		case "":
-			return diag.RequestPage{Requests: records[:1], NextCursor: "page-2"}, nil
-		case "page-2":
-			return diag.RequestPage{Requests: records[1:], NextCursor: "page-3"}, nil
-		}
-		return diag.RequestPage{}, nil
-	})
-	ctx := context.Background()
-
-	h.RefreshLatest(ctx)
-	s := h.State()
-	if s.PageNumber != 1 || RequestID(s.Records[0]) != RequestID(records[0]) {
-		t.Fatalf("first page = %+v", s)
-	}
-	h.Next(ctx)
-	s = h.State()
-	if s.PageNumber != 2 || s.IsLatest || RequestID(s.Records[0]) != RequestID(records[1]) {
-		t.Fatalf("second page = %+v", s)
-	}
-
-	h.RefreshLatest(ctx)
-	if len(calls) != 2 {
-		t.Errorf("older pages must not refresh by themselves; calls = %q", calls)
-	}
-	h.Next(ctx)
-	if s = h.State(); s.PageNumber != 3 || s.NextCursor != "" {
-		t.Errorf("third page = %+v", s)
-	}
-	h.Next(ctx)
-	if len(calls) != 3 {
-		t.Errorf("next past the end must not load; calls = %q", calls)
-	}
-	h.Previous(ctx)
-	if s = h.State(); s.PageNumber != 2 || calls[len(calls)-1] != "page-2" {
-		t.Errorf("previous = %+v, calls = %q", s, calls)
-	}
-	h.Latest(ctx)
-	if s = h.State(); !s.IsLatest || RequestID(s.Records[0]) != RequestID(records[0]) {
-		t.Errorf("latest = %+v", s)
-	}
-	h.Previous(ctx)
-	if len(calls) != 5 {
-		t.Errorf("previous on the latest page must not load; calls = %q", calls)
-	}
-	if s = h.State(); s.IsLoading || s.Error != "" {
-		t.Errorf("final state = %+v", s)
-	}
-}
-
-func TestRequestHistoryFailureKeepsThePageShown(t *testing.T) {
-	records := sample(t).Requests
-	fail := false
-	h := NewHistory(func(_ context.Context, cursor string) (diag.RequestPage, error) {
-		if fail {
-			return diag.RequestPage{}, errors.New("read failed")
-		}
-		if cursor == "" {
-			return diag.RequestPage{Requests: records[:1], NextCursor: "older"}, nil
-		}
-		return diag.RequestPage{Requests: records[1:]}, nil
-	})
-	ctx := context.Background()
-	h.Latest(ctx)
-	fail = true
-	h.Next(ctx)
-	s := h.State()
-	if s.PageNumber != 1 || RequestID(s.Records[0]) != RequestID(records[0]) || s.NextCursor != "older" || s.Error != "read failed" || s.IsLoading {
-		t.Errorf("after failure = %+v", s)
-	}
-	fail = false
-	h.Next(ctx)
-	if s = h.State(); s.PageNumber != 2 || s.Error != "" {
-		t.Errorf("after recovery = %+v", s)
-	}
-}
-
-func TestRequestHistoryDropsOverlappingLoads(t *testing.T) {
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var mu sync.Mutex
-	calls := 0
-	h := NewHistory(func(context.Context, string) (diag.RequestPage, error) {
-		mu.Lock()
-		calls++
-		mu.Unlock()
-		close(started)
-		<-release
-		return diag.RequestPage{}, nil
-	})
-	ctx := context.Background()
-	done := make(chan struct{})
-	go func() {
-		h.Latest(ctx)
-		close(done)
-	}()
-	<-started
-	if !h.State().IsLoading {
-		t.Errorf("should be loading")
-	}
-	h.Reload(ctx)
-	h.Latest(ctx)
-	mu.Lock()
-	if calls != 1 {
-		t.Errorf("overlapping loads ran: calls = %d", calls)
-	}
-	mu.Unlock()
-	close(release)
-	<-done
-	if h.State().IsLoading {
-		t.Errorf("still loading after completion")
-	}
-}
-
-func TestRequestHistoryIgnoresCancelledLoads(t *testing.T) {
-	h := NewHistory(func(context.Context, string) (diag.RequestPage, error) {
-		return diag.RequestPage{}, errors.New("context canceled")
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	h.Latest(ctx)
-	if s := h.State(); s.Error != "" || s.IsLoading {
-		t.Errorf("a cancelled load should leave no error: %+v", s)
 	}
 }

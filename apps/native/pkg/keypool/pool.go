@@ -278,7 +278,7 @@ func (p *Pool) Start() (string, error) {
 	p.sinks = []*diag.FileSink{usageSink}
 	px := proxy.NewProxy(cfg.UpstreamBaseURL, rotator, p.switchKey)
 	rec := px.Recorder()
-	if sink, err := diag.OpenFileSink(p.logFile("requests.jsonl"), 10<<20, -1); err == nil {
+	if sink, err := diag.OpenFileSink(p.RequestLog(), 10<<20, -1); err == nil {
 		rec.PersistRequests(sink)
 		p.sinks = append(p.sinks, sink)
 	}
@@ -552,16 +552,9 @@ func (p *Pool) SetCacheWarmingMode(mode string) error {
 	return err
 }
 
-// Requests is a page of the request history, newest first.
-func (p *Pool) Requests(limit int, cursor string) (diag.RequestPage, error) {
-	p.mu.Lock()
-	px := p.px
-	p.mu.Unlock()
-	if px == nil {
-		return diag.RequestPage{}, errors.New(l10n.L("The Key Pool is not running"))
-	}
-	return px.Recorder().RequestHistory(limit, cursor)
-}
+// RequestLog is the file the proxy logs every LLM request to, kept across
+// restarts; it is read while the pool is off too.
+func (p *Pool) RequestLog() string { return p.logFile("requests.jsonl") }
 
 // Session is what the Key Pool has seen of Session id's model calls since
 // it started, and the one under way for it (nil when none is); ok is false

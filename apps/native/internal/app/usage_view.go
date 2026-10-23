@@ -11,26 +11,22 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
 
 // The Usage tab's pages, in the order of its segmented control.
 const (
-	usageKeys     = "keys"
-	usageWarming  = "warming"
-	usageRequests = "requests"
-	usageEvents   = "events"
+	usageKeys    = "keys"
+	usageWarming = "warming"
+	usageObserve = "observe"
+	usageEvents  = "events"
 )
 
 // How often the tab reads what is not pushed to it: the Key Pool's
-// snapshot is cheap, the spend log and the request history are files.
+// snapshot is cheap, the spend log is a file.
 const (
-	poolRefresh    = 2 * time.Second
-	spendRefresh   = 30 * time.Second
-	historyRefresh = 3 * time.Second
-	// requestPageSize is one page of the request history.
-	requestPageSize = 100
+	poolRefresh  = 2 * time.Second
+	spendRefresh = 30 * time.Second
 )
 
 // detailMotion opens and closes a key's windows under its row.
@@ -55,15 +51,13 @@ type usageState struct {
 	spendAt   time.Time
 	spendBusy bool
 
-	history      *llmusage.History
-	historyState llmusage.HistoryState
-	historyAt    time.Time
+	observe observeState
 
 	model usageModel
 
 	// expanded holds the keys shown in full, by key ID.
-	expanded         map[string]bool
-	reqList, evtList ui.ListState
+	expanded map[string]bool
+	evtList  ui.ListState
 
 	addOpen        bool
 	addKey, addErr string
@@ -83,11 +77,10 @@ type usageState struct {
 // usageModel is what the tab shows, built again when what it is built from
 // changes.
 type usageModel struct {
-	built       bool
-	poolAt      time.Time
-	spendAt     time.Time
-	lang        l10n.Language
-	historyFrom int
+	built   bool
+	poolAt  time.Time
+	spendAt time.Time
+	lang    l10n.Language
 
 	pools    []llmusage.PoolSummaryView
 	runway   llmusage.RunwayView
@@ -98,7 +91,6 @@ type usageModel struct {
 	checked  string
 	events   []llmusage.EventRowView
 	warming  llmusage.CacheWarmingView
-	history  llmusage.HistoryView
 }
 
 type usageCard struct {
@@ -155,37 +147,11 @@ func (a *App) loadSpend(force bool) {
 	}()
 }
 
-// requestHistory is the request history's pages, made on first use.
-func (a *App) requestHistory() *llmusage.History {
-	s := &a.usage
-	if s.history == nil {
-		pool := a.keyPool()
-		h := llmusage.NewHistory(func(_ context.Context, cursor string) (diag.RequestPage, error) {
-			return pool.Requests(requestPageSize, cursor)
-		})
-		h.OnChange = func() { a.cfg.Update(func() { s.historyState = h.State() }) }
-		s.history, s.historyState = h, h.State()
-	}
-	return s.history
-}
-
-// pollRequests reloads the newest page every historyRefresh while it is
-// shown; an older page stays as it is.
-func (a *App) pollRequests() {
-	s := &a.usage
-	h := a.requestHistory()
-	if !s.historyAt.IsZero() && a.cfg.Now().Sub(s.historyAt) < historyRefresh {
-		return
-	}
-	s.historyAt = a.cfg.Now()
-	go h.RefreshLatest(context.Background())
-}
-
 // enterUsage forgets what the last visit read, so the tab opens on what is
 // true now.
 func (a *App) enterUsage() {
 	s := &a.usage
-	s.poolAt, s.spendAt, s.historyAt = time.Time{}, time.Time{}, time.Time{}
+	s.poolAt, s.spendAt, s.observe.at = time.Time{}, time.Time{}, time.Time{}
 	s.err, s.addErr = "", ""
 	a.refreshQuota()
 }
@@ -241,13 +207,13 @@ func (a *App) buildUsage(st keypool.State) *usageModel {
 	s := &a.usage
 	m := &s.model
 	lang := l10n.Code()
-	if m.built && m.poolAt.Equal(s.poolAt) && m.spendAt.Equal(s.spendAt) && m.lang == lang && m.historyFrom == s.historyState.Version {
+	if m.built && m.poolAt.Equal(s.poolAt) && m.spendAt.Equal(s.spendAt) && m.lang == lang {
 		return m
 	}
 	now := a.cfg.Now()
 	pool := keyStates(st)
 	spend := a.spendOrNil()
-	*m = usageModel{built: true, poolAt: s.poolAt, spendAt: s.spendAt, lang: lang, historyFrom: s.historyState.Version}
+	*m = usageModel{built: true, poolAt: s.poolAt, spendAt: s.spendAt, lang: lang}
 	m.pools = llmusage.PoolSummaries(pool, now)
 	m.runway = llmusage.BuildRunway(pool, spend, now)
 	m.expiring = llmusage.BuildExpiring(pool, now, spend)
@@ -263,7 +229,6 @@ func (a *App) buildUsage(st keypool.State) *usageModel {
 	}
 	m.events = llmusage.EventRows(st.Events)
 	m.warming = llmusage.BuildCacheWarming(st.CacheWarming, now)
-	m.history = llmusage.BuildHistory(s.historyState)
 	return m
 }
 
@@ -273,7 +238,7 @@ func usageSections() []usageSection {
 	return []usageSection{
 		{usageKeys, L("Keys and quota")},
 		{usageWarming, L("Cache warming")},
-		{usageRequests, L("Requests")},
+		{usageObserve, L("Observability")},
 		{usageEvents, L("Event log")},
 	}
 }
@@ -289,11 +254,11 @@ func (a *App) usageTab(c *ui.Context) {
 	if s.section == "" {
 		s.section = usageKeys
 	}
+	if !s.observe.inited {
+		s.observe.reqSel, s.observe.groupSel, s.observe.inited = -1, -1, true
+	}
 	st := a.poolState()
 	a.loadSpend(false)
-	if s.section == usageRequests && st.Running {
-		a.pollRequests()
-	}
 	m := a.buildUsage(st)
 	base := c.Theme()
 	c.SetTheme(u.themed(base))
@@ -310,8 +275,8 @@ func (a *App) usageTab(c *ui.Context) {
 			switch s.section {
 			case usageWarming:
 				a.warmingPage(c, u, m)
-			case usageRequests:
-				a.requestsPage(c, u, st, m)
+			case usageObserve:
+				a.observePage(c, u, st)
 			case usageEvents:
 				a.eventsPage(c, u, m)
 			default:
@@ -340,7 +305,6 @@ func (a *App) usageHeader(c *ui.Context, u usageLook) {
 		}
 		if u.segmented(c, &selected, labels, L("Usage pages"), "", false, false) {
 			s.section = sections[selected].id
-			s.historyAt = time.Time{}
 		}
 		ui.Row(c).Grow(1).Basis(0).Gap(2).Justify(ui.End).Children(func() {
 			if s.section == usageKeys && u.toolButton(c, iconPlus, L("Add key"), L("Add a Factory API key"), false) {
@@ -349,8 +313,8 @@ func (a *App) usageHeader(c *ui.Context, u usageLook) {
 			if u.toolButton(c, iconRefresh, L("Refresh"), L("Read the quota and the records again"), s.refreshing) {
 				a.refreshQuota()
 				a.loadSpend(true)
-				if s.history != nil {
-					go s.history.Reload(context.Background())
+				if s.section == usageObserve {
+					a.loadObservation(true)
 				}
 			}
 		})
@@ -870,85 +834,26 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 	})
 }
 
-func (a *App) requestsPage(c *ui.Context, u usageLook, st keypool.State, m *usageModel) {
+func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestRowView) ui.Element {
 	p := u.p
-	if !st.Running {
-		desc := L("Model requests show here once the Key Pool runs.")
-		if st.Err != "" {
-			desc = st.Err
-		}
-		u.unavailable(c, iconOffline, L("The Key Pool is not running"), desc, nil)
-		return
-	}
-	h := m.history
-	history := a.requestHistory()
-	u.tablePage(c, func() {
-		if len(h.Summary) > 0 {
-			u.metricStrip(c, h.Summary)
-		}
-		if h.Error != "" {
-			ui.Row(c).Role(ui.RoleStatus).Gap(u.px(8)).Padding(0, u.px(4)).Children(func() {
-				u.icon(c, iconWarning, 13, p.danger)
-				u.text(c, h.Error, 12).TextColor(p.danger).Selectable().Shrink(1)
-				ui.Spacer(c)
-				if u.pushButton(c, L("Retry"), "", false, h.IsLoading) {
-					go history.Reload(context.Background())
-				}
-			})
-		}
-		ui.Row(c).Gap(u.px(10)).Padding(0, u.px(4)).Children(func() {
-			u.text(c, h.PageText, 12).FontFeatures("tnum").NoWrap()
-			u.text(c, h.ModeText+" · "+L("%d per page", requestPageSize), 12).TextColor(p.tertiary).SingleLine().Shrink(1)
-			if h.IsLoading {
-				ui.Spinner(c).Label(L("Reading"))
-			}
-			ui.Spacer(c)
-			if u.pushButton(c, L("Back to latest"), "", false, h.IsLoading || h.IsLatest) {
-				go history.Latest(context.Background())
-			}
-			if u.pushButton(c, L("Previous page"), "", false, h.IsLoading || h.IsLatest) {
-				go history.Previous(context.Background())
-			}
-			if u.pushButton(c, L("Next page"), "", false, h.IsLoading || !h.HasNext) {
-				go history.Next(context.Background())
-			}
-		})
-		u.card(c).Grow(1).MinHeight(0).Children(func() {
-			if len(h.Records) == 0 {
-				if h.IsLoading {
-					ui.Column(c).Grow(1).Center().Gap(u.px(8)).Children(func() {
-						ui.Spinner(c)
-						u.text(c, L("Reading the request history…"), 12).TextColor(p.secondary)
-					})
-				} else {
-					u.unavailable(c, iconArrows, h.EmptyTitle, L("Model requests sent through the Key Pool show here. They are logged on this computer and kept across restarts."), nil)
-				}
-				return
-			}
-			a.requestsTable(c, u, h.Records)
-		})
-	})
-}
-
-func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestRowView) {
-	p := u.p
-	s := &a.usage
+	s := &a.usage.observe
 	columns := []ui.TableColumn{
-		{ID: "time", Title: L("Time"), Width: u.px(120)},
-		{ID: "model", Title: L("Model"), MinWidth: u.px(160)},
-		{ID: "status", Title: L("Status"), Width: u.px(80)},
+		{ID: "time", Title: L("Time"), Width: u.px(126)},
+		{ID: "model", Title: L("Model"), MinWidth: u.px(112)},
+		{ID: "status", Title: L("Status"), Width: u.px(68)},
 		{ID: "input", Title: L("Input"), Width: u.px(64), Align: ui.End},
-		{ID: "cache", Title: L("Cache"), Width: u.px(56), Align: ui.End},
-		{ID: "output", Title: L("Output"), Width: u.px(64), Align: ui.End},
+		{ID: "cache", Title: L("Cache"), Width: u.px(52), Align: ui.End},
+		{ID: "output", Title: L("Output"), Width: u.px(60), Align: ui.End},
+		{ID: "credits", Title: L("Credits"), Width: u.px(76), Align: ui.End},
 		{ID: "duration", Title: L("Time / first byte"), Width: u.px(96), Align: ui.End},
-		{ID: "speed", Title: L("Speed"), Width: u.px(56), Align: ui.End},
-		{ID: "switches", Title: L("Key switches"), Width: u.px(64), Align: ui.End},
+		{ID: "speed", Title: L("Speed"), Width: u.px(52), Align: ui.End},
 	}
 	s.reqList.Key = func(i int) any { return rows[i].ID }
+	s.reqList.Selected = &s.reqSel
 	numeric := func(cell llmusage.Cell) {
 		ui.Text(c, cell.Text).TextColor(u.tone(cell.Tone)).FontFeatures("tnum").Tooltip(cell.Help).SingleLine()
 	}
-	ui.Table(c, &s.reqList, columns, len(rows), func(i, col int) {
+	return ui.Table(c, &s.reqList, columns, len(rows), func(i, col int) {
 		r := rows[i]
 		switch col {
 		case 0:
@@ -958,6 +863,9 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 				u.text(c, r.ProviderMark, 9).FontWeight(700).TextColor(ui.Hex("#ffffff")).TextAlign(ui.Center).
 					Size(u.px(20), u.px(16)).FixedLineHeight(u.px(16)).Radius(u.px(4)).Background(providerColor(r.ProviderClass)).Tooltip(r.ProviderHelp).NoWrap()
 				u.text(c, r.Model, 11).Font(u.k.Mono).SingleLine().Shrink(1)
+				if r.Kind != "" {
+					u.text(c, r.Kind, 10).TextColor(p.tertiary).NoWrap()
+				}
 			})
 		case 2:
 			ui.Row(c).Gap(u.px(4)).Tooltip(r.StatusHelp).Children(func() {
@@ -973,16 +881,16 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 		case 5:
 			numeric(r.Output)
 		case 6:
+			numeric(r.Credits)
+		case 7:
 			ui.Column(c).AlignItems(ui.End).Tooltip(L("Top: the total time. Bottom: the time to the first byte, how long Factory took to start answering.")).Children(func() {
 				ui.Text(c, r.Duration).TextColor(u.tone(r.DurationTone)).FontFeatures("tnum")
 				if r.TTFB != "" {
 					u.text(c, r.TTFB, 10).TextColor(p.tertiary).FontFeatures("tnum")
 				}
 			})
-		case 7:
-			numeric(r.TokensPerSec)
 		case 8:
-			numeric(r.Retries)
+			numeric(r.TokensPerSec)
 		}
 	}).Label(L("Requests")).Grow(1)
 }

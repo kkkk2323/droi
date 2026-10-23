@@ -33,19 +33,22 @@ func WindowCredits(w Window, percent float64) (float64, bool) {
 	return 0, false
 }
 
-// TokenWeight is a model's credit weight per input and per output token.
+// TokenWeight is a model's credit weight per input, output and cache-read
+// token; a cache write weighs 1.25 input tokens. ID is the start of the
+// model's ID in requests.
 type TokenWeight struct {
-	Model         string
-	Input, Output float64
+	Model, ID                string
+	Input, Output, CacheRead float64
 }
 
 // StandardTokenWeights are the Factory weights of the common Standard
-// models, from the droid CLI's cost table.
+// models, from the droid CLI's cost table; cache reads are the input weight
+// times the model's cache-read multiplier.
 var StandardTokenWeights = []TokenWeight{
-	{"Opus 5.5", 1.6, 8},
-	{"Fable 5.1", 4, 20},
-	{"Sonnet 5.5", 0.8, 4},
-	{"Haiku 4.5", 0.4, 2},
+	{"Opus 5.5", "claude-opus-5-5", 1.6, 8, 0.08},
+	{"Fable 5.1", "claude-fable-5.1", 4, 20, 0.1},
+	{"Sonnet 5.5", "claude-sonnet-5-5", 0.8, 4, 0.08},
+	{"Haiku 4.5", "claude-haiku-4-5", 0.4, 2, 0.04},
 }
 
 // TokenEquivalents spells out what credits buy on each common model.

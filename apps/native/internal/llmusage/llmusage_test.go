@@ -124,27 +124,7 @@ func TestAKeyReadsAsItsWorstTrouble(t *testing.T) {
 	}
 }
 
-func TestRequestSummaryAveragesThePage(t *testing.T) {
-	s := NewRequestSummary([]diag.RequestRecord{
-		{Status: 200, DurationMs: 1000, TTFBMs: 200, Usage: &diag.TokenUsage{Input: 1000, Output: 100, CacheRead: 800}},
-		{Status: 200, DurationMs: 3000, TTFBMs: 400, Usage: &diag.TokenUsage{Input: 1000, Output: 300, CacheRead: 200}},
-		{Status: 429, DurationMs: 500},
-	})
-	if s.Count != 3 || s.Failures != 1 {
-		t.Fatalf("summary = %+v", s)
-	}
-	if rate := s.SuccessRate(); rate < 66 || rate > 67 {
-		t.Errorf("success rate = %v", rate)
-	}
-	if s.AverageDurationMs() != 1500 {
-		t.Errorf("average duration = %v", s.AverageDurationMs())
-	}
-	if ttfb, ok := s.AverageTTFBMs(); !ok || ttfb != 300 {
-		t.Errorf("average TTFB = %v %v", ttfb, ok)
-	}
-	if cache, ok := s.CacheRate(); !ok || cache != 50 {
-		t.Errorf("cache rate = %v %v", cache, ok)
-	}
+func TestTokensPerSecond(t *testing.T) {
 	tps, ok := TokensPerSecond(diag.RequestRecord{DurationMs: 1200, TTFBMs: 200, Usage: &diag.TokenUsage{Output: 50}})
 	if !ok || tps != 50 {
 		t.Errorf("tokens per second = %v %v", tps, ok)

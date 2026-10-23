@@ -8,20 +8,6 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 )
 
-// HistoryView is the request history page: its summary strip, the paging
-// bar and the table's rows.
-type HistoryView struct {
-	Records    []RequestRowView
-	Summary    []MetricView
-	PageText   string
-	ModeText   string
-	IsLatest   bool
-	IsLoading  bool
-	HasNext    bool
-	Error      string
-	EmptyTitle string
-}
-
 type RequestRowView struct {
 	ID            string
 	Time          string
@@ -30,68 +16,20 @@ type RequestRowView struct {
 	ProviderClass string
 	ProviderHelp  string
 	Model         string
-	Status        string
-	StatusTone    Tone
-	Stream        bool
-	StatusHelp    string
-	Input         Cell
-	Cache         Cell
-	Output        Cell
-	Duration      string
-	DurationTone  Tone
-	TTFB          string
-	TokensPerSec  Cell
-	Retries       Cell
-}
-
-func BuildHistory(s HistoryState) HistoryView {
-	v := HistoryView{
-		Records:   []RequestRowView{},
-		PageText:  l10n.L("Page %d · %d on this page", s.PageNumber, len(s.Records)),
-		ModeText:  l10n.L("Viewing older records; auto-refresh is paused"),
-		IsLatest:  s.IsLatest,
-		IsLoading: s.IsLoading,
-		HasNext:   s.NextCursor != "",
-		Error:     s.Error,
-	}
-	if s.IsLatest {
-		v.ModeText = l10n.L("Latest records, refreshing automatically")
-	}
-	v.EmptyTitle = l10n.L("No requests yet")
-	if s.Error != "" {
-		v.EmptyTitle = l10n.L("Could not read the request history")
-	}
-	if len(s.Records) > 0 {
-		v.Summary = BuildSummary(NewRequestSummary(s.Records))
-	}
-	for _, r := range s.Records {
-		v.Records = append(v.Records, BuildRequestRow(r))
-	}
-	return v
-}
-
-func BuildSummary(s RequestSummary) []MetricView {
-	count := MetricView{Title: l10n.L("Requests on this page"), Value: fmt.Sprintf("%d", s.Count), Note: l10n.L("All succeeded"), Tone: ToneSecondary}
-	if s.Failures > 0 {
-		count.Note, count.Tone = l10n.L("%d failed", s.Failures), ToneDanger
-	}
-	rate := MetricView{Title: l10n.L("Success rate"), Value: FormatPercent(s.SuccessRate()), Tone: TonePrimary}
-	if s.SuccessRate() < 90 {
-		rate.Tone = ToneWarning
-	}
-	input := MetricView{Title: l10n.L("Input tokens"), Value: FormatTokens(s.Input), Tone: TonePrimary}
-	if c, ok := s.CacheRate(); ok {
-		input.Note = l10n.L("Cache hits %s", FormatPercent(c))
-	}
-	output := MetricView{Title: l10n.L("Output tokens"), Value: FormatTokens(s.Output), Tone: TonePrimary}
-	if s.WithUsage < s.Count {
-		output.Note = l10n.L("%d/%d with usage data", s.WithUsage, s.Count)
-	}
-	duration := MetricView{Title: l10n.L("Average time"), Value: FormatDuration(s.AverageDurationMs()), Tone: TonePrimary}
-	if t, ok := s.AverageTTFBMs(); ok {
-		duration.Note = l10n.L("First byte %s", FormatDuration(t))
-	}
-	return []MetricView{count, rate, input, output, duration}
+	// Kind names what a call other than a model request was for.
+	Kind         string
+	Status       string
+	StatusTone   Tone
+	Stream       bool
+	StatusHelp   string
+	Input        Cell
+	Cache        Cell
+	Output       Cell
+	Credits      Cell
+	Duration     string
+	DurationTone Tone
+	TTFB         string
+	TokensPerSec Cell
 }
 
 // RequestID identifies a record across restarts: sequence numbers start
@@ -110,6 +48,9 @@ func BuildRequestRow(r diag.RequestRecord) RequestRowView {
 		Status:   fmt.Sprintf("%d", r.Status),
 		Stream:   r.Stream,
 	}
+	if r.Kind != "" {
+		row.Kind = KindLabel(r.Kind)
+	}
 	row.ProviderMark, row.ProviderClass, row.ProviderHelp = providerMark(r.Provider)
 	row.StatusTone = requestStatusTone(r)
 	row.StatusHelp = requestStatusHelp(r)
@@ -125,10 +66,14 @@ func BuildRequestRow(r diag.RequestRecord) RequestRowView {
 		}
 		row.Cache = numeric(FormatPercent(rate), hasRate, cacheHelp, cacheTone)
 		row.Output = numeric(FormatTokens(u.Output), true, outputHelp(*u), ToneSecondary)
+		var t Totals
+		t.add(r)
+		row.Credits = creditsCell(t)
 	} else {
 		row.Input = numeric("", false, noUsage, ToneSecondary)
 		row.Cache = numeric("", false, cacheHelp, ToneSecondary)
 		row.Output = numeric("", false, noUsage, ToneSecondary)
+		row.Credits = numeric("", false, noUsage, ToneSecondary)
 	}
 
 	row.Duration = FormatDuration(r.DurationMs)
@@ -143,11 +88,6 @@ func BuildRequestRow(r diag.RequestRecord) RequestRowView {
 	}
 	tps, hasTPS := TokensPerSecond(r)
 	row.TokensPerSec = numeric(fmt.Sprintf("%.0f", tps), hasTPS, l10n.L("Output tokens per second: output tokens ÷ the time after the first byte"), ToneSecondary)
-	retryTone := ToneSecondary
-	if r.Rotated {
-		retryTone = ToneWarning
-	}
-	row.Retries = numeric(fmt.Sprintf("×%d", r.Attempts), r.Rotated, l10n.L("Switching keys when a quota runs out: how many keys this request tried"), retryTone)
 	return row
 }
 

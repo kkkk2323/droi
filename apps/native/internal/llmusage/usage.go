@@ -378,68 +378,6 @@ func KeyDisplayOf(key keys.KeyState, now time.Time) KeyDisplay {
 	return KeyDisplay{Kind: KeyOK}
 }
 
-// RequestSummary aggregates a page of request records.
-type RequestSummary struct {
-	Count, Failures int
-	Input, Output   int64
-	CacheRead       int64
-	WithUsage       int
-	TotalDurationMs int64
-	TotalTTFBMs     int64
-	WithTTFB        int
-}
-
-func NewRequestSummary(records []diag.RequestRecord) RequestSummary {
-	var s RequestSummary
-	for _, r := range records {
-		s.Count++
-		if !IsSuccess(r) {
-			s.Failures++
-		}
-		s.TotalDurationMs += r.DurationMs
-		if r.TTFBMs > 0 {
-			s.TotalTTFBMs += r.TTFBMs
-			s.WithTTFB++
-		}
-		if r.Usage != nil {
-			s.WithUsage++
-			s.Input += r.Usage.Input
-			s.Output += r.Usage.Output
-			s.CacheRead += r.Usage.CacheRead
-		}
-	}
-	return s
-}
-
-func (s RequestSummary) SuccessRate() float64 {
-	if s.Count == 0 {
-		return 0
-	}
-	return float64(s.Count-s.Failures) / float64(s.Count) * 100
-}
-
-func (s RequestSummary) AverageDurationMs() int64 {
-	if s.Count == 0 {
-		return 0
-	}
-	return s.TotalDurationMs / int64(s.Count)
-}
-
-func (s RequestSummary) AverageTTFBMs() (int64, bool) {
-	if s.WithTTFB == 0 {
-		return 0, false
-	}
-	return s.TotalTTFBMs / int64(s.WithTTFB), true
-}
-
-// CacheRate is the share of the prompts served from cache.
-func (s RequestSummary) CacheRate() (float64, bool) {
-	if s.Input == 0 {
-		return 0, false
-	}
-	return float64(s.CacheRead) / float64(s.Input) * 100, true
-}
-
 // IsSuccess is a request the upstream answered.
 func IsSuccess(r diag.RequestRecord) bool { return r.Status < 400 && r.Error == "" }
 

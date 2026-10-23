@@ -1,7 +1,7 @@
 package app
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -133,9 +133,9 @@ func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
 	h.until("the action to end", func() bool { return h.a.usage.acting == "" })
 
 	// The other pages read the proxy's records; it is not running, so they
-	// say so instead of failing.
-	h.click("Requests")
-	h.until("the request history", func() bool { return h.hasText("The Key Pool is not running") })
+	// say so instead of failing. The request log is read all the same.
+	h.click("Observability")
+	h.until("the request log", func() bool { return h.hasText("Nothing in this period") })
 	h.click("Event log")
 	h.until("the event log", func() bool { return h.hasText("No events yet") })
 	h.click("Cache warming")
@@ -246,11 +246,43 @@ func usageSample(a *App, now time.Time) {
 		}
 		records = append(records, r)
 	}
-	s.history = llmusage.NewHistory(func(context.Context, string) (diag.RequestPage, error) {
-		return diag.RequestPage{Requests: records, NextCursor: "older"}, nil
-	})
-	s.historyState = llmusage.HistoryState{Records: records, NextCursor: "older", PageNumber: 1, IsLatest: true, Version: 1}
-	s.historyAt = far
+	// A week of calls for the Observe page: models, kinds and sessions
+	// spread over the days and the working hours.
+	session := ""
+	if len(a.listed) > 0 {
+		session = a.listed[0].SessionID
+	}
+	models := []string{"claude-opus-5-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5.1", "gpt-6-astra", "glm-5.3-flash", "claude-haiku-4-5-20251001"}
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	for i := range 420 {
+		at := day.AddDate(0, 0, -(i % 7)).Add(time.Duration(9+(i*7)%11)*time.Hour + time.Duration(i%60)*time.Minute)
+		if !at.Before(now) {
+			continue
+		}
+		in := int64(40000 + (i*7919)%90000)
+		r := diag.RequestRecord{Seq: i, Time: at, Model: models[(i/7)%len(models)], Provider: "anthropic", Key: fmt.Sprintf("fk-%05d...%04d", i%3, i%3), Pool: "standard", Status: 200, Stream: true,
+			DurationMs: int64(2000 + (i*331)%9000), TTFBMs: int64(600 + (i*97)%2400), TTFTMs: int64(900 + (i*97)%2400), Attempts: 1,
+			Usage: &diag.TokenUsage{Input: in, CacheRead: in * 9 / 10, CacheWrite: 1200, Output: int64(200 + (i*37)%1500)}}
+		switch {
+		case i%23 == 0:
+			r.Status, r.Usage, r.ErrorDetail = 429, nil, "rate limited"
+		case i%11 == 0:
+			r.Kind = "cache_warm"
+		case i%5 == 0:
+			r.SessionID = session
+		}
+		records = append(records, r)
+	}
+	var b []byte
+	for _, r := range records {
+		line, _ := json.Marshal(r)
+		b = append(append(b, line...), '\n')
+	}
+	if pool := a.keyPool(); pool != nil {
+		_ = os.MkdirAll(filepath.Dir(pool.RequestLog()), 0o700)
+		_ = os.WriteFile(pool.RequestLog(), b, 0o600)
+	}
+	s.observe = observeState{reqSel: -1, groupSel: -1, inited: true}
 	s.refreshing = false
 	s.model.built = false
 }
@@ -286,7 +318,7 @@ func TestUsageTabPages(t *testing.T) {
 			h.scrollUsage()
 			h.shoot("usage-sample-key-open-" + theme)
 			for _, page := range []struct{ name, label, want string }{
-				{"requests", "请求记录", "本页请求"},
+				{"observe", "观测", "活跃时段"},
 				{"events", "事件日志", "已切换 key"},
 				{"warming", "缓存预热", "续期次数"},
 			} {
@@ -294,6 +326,27 @@ func TestUsageTabPages(t *testing.T) {
 				h.until(page.name, func() bool { return h.hasText(page.want) })
 				h.shoot("usage-sample-" + page.name + "-" + theme)
 			}
+			// A week of the Observe page, then one request's details.
+			h.click("观测")
+			h.click("7 天")
+			h.until("the week", func() bool {
+				o := &h.a.usage.observe
+				return o.data.Query.Period == llmusage.PeriodWeek && !o.busy
+			})
+			for _, want := range []string{"趋势", "活跃时段", "分组", "credits"} {
+				if !h.hasText(want) {
+					t.Errorf("no %q in %q", want, h.tt.Texts())
+				}
+			}
+			h.shoot("usage-sample-observe-week-" + theme)
+			h.tt.Scroll(260, refH/2, 0, 520)
+			h.frame()
+			h.shoot("usage-sample-observe-groups-" + theme)
+			h.scrollUsage()
+			h.a.usage.observe.reqSel, h.a.usage.observe.detailOpen = 1, true
+			h.frame()
+			h.until("a request's details", func() bool { return h.hasText("请求详情") })
+			h.shoot("usage-sample-observe-list-" + theme)
 		})
 	}
 }

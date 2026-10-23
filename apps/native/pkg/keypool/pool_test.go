@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 )
 
 const usageBody = `{"usesTokenRateLimitsBilling": true, "limits": {
@@ -151,14 +153,16 @@ func TestStartWritesTheKeyFileAndForwards(t *testing.T) {
 	if seen := f.auth(); len(seen) != 2 || seen[0] != "Bearer fk-spent-0000000000" || seen[1] != "Bearer fk-fresh-0000000000" {
 		t.Fatalf("Factory saw %v", seen)
 	}
+	// The request log, which the Observe page reads.
+	logged := 0
 	deadline := time.Now().Add(2 * time.Second)
-	for {
-		page, err := p.Requests(10, "")
-		if err == nil && len(page.Requests) == 2 {
-			break
+	reader := diag.NewLogReader(p.RequestLog())
+	for logged < 2 {
+		if err := reader.Read(func(diag.RequestRecord) { logged++ }); err != nil {
+			t.Fatal(err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("request history: %+v %v", page, err)
+		if logged < 2 && time.Now().After(deadline) {
+			t.Fatalf("the request log holds %d requests", logged)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

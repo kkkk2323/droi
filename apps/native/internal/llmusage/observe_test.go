@@ -1,0 +1,141 @@
+package llmusage
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+)
+
+func writeRequestLog(t *testing.T, records []diag.RequestRecord) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "requests.jsonl")
+	var b []byte
+	for _, r := range records {
+		line, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b = append(append(b, line...), '\n')
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestObserveAddsUpThePeriod(t *testing.T) {
+	chinese(t)
+	now := time.Date(2026, 10, 23, 15, 30, 0, 0, time.Local)
+	opus := func(at time.Time, in, read, out int64) diag.RequestRecord {
+		return diag.RequestRecord{Time: at, Model: "claude-opus-5-5", Key: "fk-a...0001", Status: 200, DurationMs: 3000, TTFTMs: 1000,
+			Usage: &diag.TokenUsage{Input: in, CacheRead: read, Output: out}}
+	}
+	records := []diag.RequestRecord{
+		opus(now.Add(-time.Hour), 10000, 8000, 200),
+		opus(now.Add(-2*time.Hour), 20000, 18000, 400),
+		{Time: now.Add(-3 * time.Hour), Model: "glm-5.3-flash", Key: "fk-b...0002", Status: 200, DurationMs: 1000, TTFTMs: 500, SessionID: "s1",
+			Usage: &diag.TokenUsage{Input: 5000, Output: 100}},
+		{Time: now.Add(-4 * time.Hour), Model: "claude-opus-5-5", Key: "fk-a...0001", Status: 429, DurationMs: 400, Rotated: true, Attempts: 2},
+		{Time: now.Add(-5 * time.Hour), Model: "claude-opus-5-5", Key: "fk-a...0001", Kind: "cache_warm", Status: 200, DurationMs: 900, TTFBMs: 900,
+			Usage: &diag.TokenUsage{Input: 30000, CacheRead: 30000, Output: 1}},
+		// Yesterday and last week: outside today, inside 7 and 30 days.
+		opus(now.AddDate(0, 0, -1), 1000, 0, 10),
+		opus(now.AddDate(0, 0, -10), 1000, 0, 10),
+	}
+	log := NewRequestLog(writeRequestLog(t, records))
+	if err := log.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+
+	o := log.Observe(ObserveQuery{Period: PeriodToday}, now)
+	if o.Totals.Calls != 5 || o.Totals.Failed != 1 || o.Totals.Switched != 1 || o.Records != 7 || !o.Hourly || len(o.Buckets) != 16 {
+		t.Fatalf("today = %+v, %d buckets", o.Totals, len(o.Buckets))
+	}
+	// Opus: plain input × 1.6 + cache reads × 0.08 + output × 8.
+	want := 1.6*2000 + 0.08*8000 + 8*200 + 1.6*2000 + 0.08*18000 + 8*400 + 0.08*30000 + 8*1
+	if diff := o.Totals.Credits - want; diff > 0.01 || diff < -0.01 || o.Totals.Unpriced != 1 {
+		t.Errorf("credits = %v, want %v; unpriced %d", o.Totals.Credits, want, o.Totals.Unpriced)
+	}
+	if o.Top[0] != "claude-opus-5-5" || o.Groups[ByKey][0].ID != "fk-a...0001" || len(o.Groups[BySession]) != 1 || len(o.Groups[ByKind]) != 2 {
+		t.Errorf("groups = %+v / %+v", o.Top, o.Groups)
+	}
+	if got := o.Buckets[14].Total().Calls; got != 1 {
+		t.Errorf("the 14:00 bucket holds %d calls", got)
+	}
+	day := (int(now.Weekday()) + 6) % 7
+	if o.Heat[day][14].Calls != 1 || o.Heat[day][10].Calls != 1 {
+		t.Errorf("heat = %+v", o.Heat[day])
+	}
+	if len(o.Listed) != 5 || !o.Listed[0].Time.After(o.Listed[1].Time) {
+		t.Errorf("listed = %+v", o.Listed)
+	}
+
+	if o := log.Observe(ObserveQuery{Period: PeriodWeek}, now); o.Totals.Calls != 6 || len(o.Buckets) != 7 || o.Hourly {
+		t.Errorf("week = %d calls, %d buckets", o.Totals.Calls, len(o.Buckets))
+	}
+	if o := log.Observe(ObserveQuery{Period: PeriodAll}, now); o.Totals.Calls != 7 || len(o.Buckets) != 11 {
+		t.Errorf("all = %d calls, %d buckets", o.Totals.Calls, len(o.Buckets))
+	}
+	// The filters choose the list's rows only.
+	f := log.Observe(ObserveQuery{Period: PeriodToday, Model: "claude-opus-5-5", FailedOnly: true}, now)
+	if f.Totals.Calls != 5 || f.Matching != 1 || f.Listed[0].Status != 429 {
+		t.Errorf("failed opus = %d listed of %d", f.Matching, f.Totals.Calls)
+	}
+	if k := log.Observe(ObserveQuery{Period: PeriodToday, Kind: "request"}, now); k.Matching != 4 {
+		t.Errorf("model requests = %d", k.Matching)
+	}
+
+	v := BuildObserve(o, MetricTokens, BySession, func(id string) string { return map[string]string{"s1": "Fix the build"}[id] })
+	if v.Summary[0].Value != "5" || v.Summary[0].Note != "1 次失败 · 1 次换 key" || v.Summary[3].Note != "1 次未计价" || v.Summary[4].Sub != "token/s" {
+		t.Errorf("summary = %+v", v.Summary)
+	}
+	if len(v.Groups) != 1 || v.Groups[0].Name != "Fix the build" || v.Groups[0].Credits.Text != "未计价" {
+		t.Errorf("sessions = %+v", v.Groups)
+	}
+	if len(v.Trend.Bars) != 16 || !v.Trend.Stacked || v.Trend.Legend[len(v.Trend.Legend)-1] != "其他" || !strings.HasPrefix(v.Trend.Peak, "峰值 ") {
+		t.Errorf("trend = %+v", v.Trend)
+	}
+	levels := 0
+	for _, c := range v.Heat.Rows[day].Cells {
+		if c.Level > 0 {
+			levels++
+		}
+	}
+	if levels != 4 || v.Heat.Rows[day].Cells[10].Level != 4 || v.Heat.Rows[0].Label != "星期一" {
+		t.Errorf("heat row = %+v", v.Heat.Rows[day])
+	}
+	if speed := BuildObserve(o, MetricSpeed, ByModel, func(string) string { return "" }).Trend; speed.Stacked || len(speed.Bars[14].Parts) != 1 {
+		t.Errorf("speed trend = %+v", speed)
+	}
+
+	empty := BuildObserve(NewRequestLog(filepath.Join(t.TempDir(), "none")).Observe(ObserveQuery{}, now), MetricTokens, ByModel, func(string) string { return "" })
+	if !empty.Empty || !strings.HasPrefix(empty.EmptyText, "今天还没有模型请求") {
+		t.Errorf("empty = %+v", empty)
+	}
+}
+
+func TestRequestDetailSaysEverything(t *testing.T) {
+	chinese(t)
+	r := diag.RequestRecord{Time: time.Now(), Model: "claude-opus-5-5", Provider: "anthropic", Upstream: "prem", Key: "fk-a...0001", Pool: "standard",
+		RequestedPool: "standard", Status: 200, Stream: true, DurationMs: 3000, TTFBMs: 800, TTFTMs: 1000, SessionID: "s1", CallType: "session-title-generation",
+		Attempts: 2, Rotated: true, RequestBytes: 2048, Bytes: 512, Usage: &diag.TokenUsage{Input: 1000, CacheRead: 600, CacheWrite: 100, Output: 50, Reasoning: 20}}
+	lines := RequestDetail(r, func(string) string { return "Fix the build" })
+	got := map[string]string{}
+	for _, l := range lines {
+		got[l.Label] = l.Value
+	}
+	for label, want := range map[string]string{
+		"服务商": "anthropic · prem", "会话": "Fix the build · s1", "调用用途": "session-title-generation",
+		"Token": "输入 1.0K（缓存读取 600 · 缓存写入 100）· 输出 50（推理 20）", "耗时": "共 3.0s · 首字节 800ms · 首 Token 1.0s",
+		"换 key": "试了 2 把 key", "速度": "25 token/秒",
+	} {
+		if got[label] != want {
+			t.Errorf("%s = %q, want %q", label, got[label], want)
+		}
+	}
+}
