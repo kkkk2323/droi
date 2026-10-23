@@ -24,6 +24,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
@@ -105,6 +106,9 @@ type Config struct {
 	ReadImage func() []byte
 	// ReadFiles is the paths of the files on the clipboard, nil without any.
 	ReadFiles func() []string
+	// ModelCalls stands in for the Key Pool's measure of a Session's model
+	// calls, in tests; nil reads the Host's Key Pool.
+	ModelCalls func(id string) (diag.SessionCalls, *diag.LiveCall, bool)
 	// Updater is the in-app update, nil where the app cannot update
 	// itself (a development build); Relaunch starts the installed one.
 	Updater  *updates.Updater

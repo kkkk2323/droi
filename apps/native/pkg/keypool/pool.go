@@ -541,6 +541,27 @@ func (p *Pool) Requests(limit int, cursor string) (diag.RequestPage, error) {
 	return px.Recorder().RequestHistory(limit, cursor)
 }
 
+// Session is what the Key Pool has seen of Session id's model calls since
+// it started, and the one under way for it (nil when none is); ok is false
+// when it has seen none.
+func (p *Pool) Session(id string) (calls diag.SessionCalls, live *diag.LiveCall, ok bool) {
+	p.mu.Lock()
+	px := p.px
+	p.mu.Unlock()
+	if px == nil || id == "" {
+		return diag.SessionCalls{}, nil, false
+	}
+	calls, ok = px.Recorder().Session(id)
+	for _, l := range px.Live() {
+		// The newest, the conversation's own call over a side call (a title,
+		// a compaction).
+		if l.SessionID == id && (live == nil || l.CallType == "" || live.CallType != "") {
+			live = &l
+		}
+	}
+	return calls, live, ok || live != nil
+}
+
 // State is a snapshot for the window.
 func (p *Pool) State() State {
 	p.mu.Lock()

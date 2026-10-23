@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"sync"
+	"time"
 )
 
 // TokenUsage is the token accounting reported by an upstream LLM response.
@@ -141,14 +143,22 @@ func UsageFromJSON(body []byte) (TokenUsage, bool) {
 }
 
 // UsageObserver is an io.Writer tap over a proxied response body. It never
-// alters the bytes; it collects token usage as they stream past. Bodies are
-// bounded so a runaway response cannot pin memory.
+// alters the bytes; it collects token usage as they stream past, and when the
+// first generated token came and how many have come since. Bodies are
+// bounded so a runaway response cannot pin memory. Progress may be read
+// while another goroutine writes.
 type UsageObserver struct {
+	mu    sync.Mutex
 	sse   bool
 	buf   bytes.Buffer
 	usage TokenUsage
 	found bool
 	over  bool
+	now   func() time.Time
+	// first is when the first generated text, thinking or tool input came;
+	// generated estimates the tokens generated since, from their text.
+	first     time.Time
+	generated float64
 }
 
 // Per-line cap for SSE frames and total cap for buffered JSON bodies.
@@ -156,13 +166,15 @@ const usageBufferLimit = 4 << 20
 
 // NewUsageObserver picks the parsing mode from the upstream Content-Type.
 func NewUsageObserver(contentType string) *UsageObserver {
-	return &UsageObserver{sse: strings.HasPrefix(strings.ToLower(contentType), "text/event-stream")}
+	return &UsageObserver{sse: strings.HasPrefix(strings.ToLower(contentType), "text/event-stream"), now: time.Now}
 }
 
 // IsStream reports whether the response was server-sent events.
 func (o *UsageObserver) IsStream() bool { return o.sse }
 
 func (o *UsageObserver) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	if o.over {
 		return len(p), nil
 	}
@@ -206,11 +218,19 @@ func (o *UsageObserver) consumeLine(line []byte) {
 		o.usage.merge(u)
 		o.found = true
 	}
+	if text := generatedText(payload); text != "" {
+		if o.first.IsZero() {
+			o.first = o.now()
+		}
+		o.generated += EstimateTokens(text)
+	}
 }
 
 // Usage returns the merged token usage and whether any was seen. Call after
 // the body has been fully copied.
 func (o *UsageObserver) Usage() (TokenUsage, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	if o.sse {
 		if o.buf.Len() > 0 {
 			o.consumeLine(o.buf.Bytes())
@@ -222,4 +242,79 @@ func (o *UsageObserver) Usage() (TokenUsage, bool) {
 		return TokenUsage{}, false
 	}
 	return UsageFromJSON(o.buf.Bytes())
+}
+
+// Progress is a stream so far: when its first generated token came (zero
+// before one did, and for a body that is not a stream), the tokens generated
+// since (the upstream's count once it gave one, an estimate from the text
+// until then) and the usage reported so far.
+func (o *UsageObserver) Progress() (first time.Time, generated float64, usage TokenUsage) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.first, max(o.generated, float64(o.usage.Output)), o.usage
+}
+
+// deltaFrame is the generated text an SSE frame carries, in Anthropic's
+// (content_block_delta), OpenAI's chat completions (choices[].delta) or
+// OpenAI's responses (response.*.delta) shape.
+type deltaFrame struct {
+	Type    string          `json:"type"`
+	Delta   json.RawMessage `json:"delta"`
+	Choices []struct {
+		Delta struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			Reasoning        string `json:"reasoning"`
+			ToolCalls        []struct {
+				Function struct {
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
+func generatedText(payload []byte) string {
+	var f deltaFrame
+	if json.Unmarshal(payload, &f) != nil {
+		return ""
+	}
+	var b strings.Builder
+	switch {
+	case f.Type == "content_block_delta" && len(f.Delta) > 0:
+		var d struct {
+			Text        string `json:"text"`
+			Thinking    string `json:"thinking"`
+			PartialJSON string `json:"partial_json"`
+		}
+		if json.Unmarshal(f.Delta, &d) == nil {
+			b.WriteString(d.Text + d.Thinking + d.PartialJSON)
+		}
+	case strings.HasPrefix(f.Type, "response.") && strings.HasSuffix(f.Type, ".delta") && len(f.Delta) > 0:
+		var s string
+		if json.Unmarshal(f.Delta, &s) == nil {
+			b.WriteString(s)
+		}
+	}
+	for _, c := range f.Choices {
+		b.WriteString(c.Delta.Content + c.Delta.ReasoningContent + c.Delta.Reasoning)
+		for _, tc := range c.Delta.ToolCalls {
+			b.WriteString(tc.Function.Arguments)
+		}
+	}
+	return b.String()
+}
+
+// EstimateTokens guesses how many tokens text is, as the common tokenizers
+// split it: about four characters of ASCII a token, and one for any other.
+func EstimateTokens(text string) float64 {
+	var n float64
+	for _, r := range text {
+		if r < 0x80 {
+			n += 0.25
+		} else {
+			n++
+		}
+	}
+	return n
 }
