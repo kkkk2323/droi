@@ -47,10 +47,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
 
       - name: Go checks
         run: |
-          test -z "$(gofmt -l apps/native)" || { gofmt -l apps/native; exit 1; }
+          gofmt="$(go env GOROOT)/bin/gofmt"
+          test -z "$("$gofmt" -l apps/native)" || { "$gofmt" -l apps/native; echo "::error::Not formatted: run \"\$(go env GOROOT)/bin/gofmt\" -w apps/native (a gofmt from another Go formats differently)"; exit 1; }
           go vet ./apps/native/...
           GOOS=windows go vet ./apps/native/...
           GOOS=linux CGO_ENABLED=0 go vet ./apps/native/...
@@ -72,6 +74,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
 
       - run: go test ./apps/native/pkg/droidpatch/... ./apps/native/pkg/keypool ./apps/native/pkg/llmproxy/... ./apps/native/internal/llmusage
 

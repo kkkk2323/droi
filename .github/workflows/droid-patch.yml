@@ -37,6 +37,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
       - name: Published recipes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -62,6 +63,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
       - uses: actions/download-artifact@v4
         with:
           name: recipes-arm64
@@ -88,6 +90,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
       - uses: actions/download-artifact@v4
         with:
           name: recipes-amd64
