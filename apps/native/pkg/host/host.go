@@ -13,6 +13,7 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
@@ -70,6 +71,8 @@ type Host struct {
 	indexMu  sync.Mutex
 	index    *sessionIndex
 	indexRev uint64
+
+	patch patchState
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -235,6 +238,9 @@ func (h *Host) DaemonLogPath() string {
 
 // DroidPath is the droid the next Daemon starts from; "" when none.
 func (h *Host) DroidPath() string {
+	if h.usesPatchedDroid() {
+		return h.patchedDroidPath()
+	}
 	return LocateDroid(deref(h.Settings.Get().DroidPath), h.cfg.Env("PATH"), h.cfg.Home)
 }
 
@@ -262,6 +268,12 @@ func (h *Host) DroidUpdateState() DroidUpdate {
 // UpdateDroid runs `droid update` on DroidPath and, once droid is at least
 // MinDroid, starts the Daemon from it.
 func (h *Host) UpdateDroid() {
+	// The Patched Droid is replaced by preparing a newer one, never by
+	// droid's own update.
+	if h.usesPatchedDroid() {
+		h.UpdatePatchedDroid()
+		return
+	}
 	h.mu.Lock()
 	if h.updating.Running {
 		h.mu.Unlock()
@@ -316,12 +328,25 @@ func (h *Host) DroidUpdated() bool {
 }
 
 func (h *Host) spawn(port int) (*exec.Cmd, error) {
+	patched := h.usesPatchedDroid()
 	path := h.DroidPath()
 	if path == "" {
+		if patched {
+			return nil, errNoPatchedDroid
+		}
 		return nil, errNoDroid
 	}
 	if v, _ := h.droidClient(); OlderThanMinDroid(v) {
 		return nil, errDroidTooOld
+	}
+	var patchEnv []string
+	if patched {
+		var err error
+		if patchEnv, err = h.patchedEnv(); err != nil {
+			return nil, err
+		}
+	} else {
+		h.KeyPool().Stop()
 	}
 	// Signed in: the Daemon runs as the account's login. Without one an API
 	// key serves both sides.
@@ -368,11 +393,14 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	cmd := exec.Command(path, DaemonArgs(port, liveness, h.runtimeOverlay())...)
 	cmd.ExtraFiles = extra
 	hideConsole(cmd)
-	env := os.Environ()
+	env := withoutEnv(os.Environ(), droidpatch.KeyFileEnv)
 	if apiKey != "" {
 		env = append(env, "FACTORY_API_KEY="+apiKey)
 	}
-	if baseURL != "" {
+	if patched {
+		// The proxy forwards to baseURL.
+		env = append(withoutEnv(env, "FACTORY_API_BASE_URL", "FACTORY_DROID_AUTO_UPDATE_ENABLED"), patchEnv...)
+	} else if baseURL != "" {
 		env = append(env, "FACTORY_API_BASE_URL="+baseURL)
 	}
 	if override != "" {

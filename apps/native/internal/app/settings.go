@@ -35,6 +35,7 @@ var settingsTabs = []settingsTab{
 	{"worktrees", l10n.N("Worktrees"), "git-fork", false, l10n.N("Sessions")},
 	{"computer", l10n.N("Computer"), "laptop", false, l10n.N("Devices")},
 	{"remote", l10n.N("Remote Access"), "smartphone", true, l10n.N("Devices")},
+	{"usage", l10n.N("Usage"), "key-round", true, l10n.N("System")},
 	{"advanced", l10n.N("Advanced"), "wrench", true, l10n.N("System")},
 	{"about", l10n.N("About"), "info", false, l10n.N("System")},
 }
@@ -65,6 +66,9 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	s := &a.settings
 	var tabs []settingsTab
 	for _, tab := range settingsTabs {
+		if tab.id == "usage" && !a.usageTabShown() {
+			continue
+		}
 		if a.cfg.Host != nil || !tab.needsHost {
 			tabs = append(tabs, tab)
 		}
@@ -82,9 +86,15 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 		s.magpieURL = derefOr(st.MagpieBaseURL)
 		s.loaded = true
 	}
-	if c.Shortcut(0, ui.KeyEscape) {
+	// Escape in the Usage tab's sheet closes the sheet, not Settings.
+	if !a.usage.addOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.Go(s.back)
 	}
+	usage := current.id == "usage"
+	if usage && !a.usage.shown {
+		a.enterUsage()
+	}
+	a.usage.shown = usage
 	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
 		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(a.sidebarWidth()).Shrink(0).Gap(k.Px(2)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
 			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
@@ -132,6 +142,10 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					TextColor(t.MutedForeground).Padding(k.Px(8), k.Px(8), 0, k.Px(8))
 			}
 		})
+		if usage {
+			a.usageTab(c)
+			return
+		}
 		ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Children(func() {
 			ui.Box(c).Height(44).DragWindow()
 			ui.Column(c).FillWidth().MaxWidth(k.Px(760)).AlignSelf(ui.Center).Gap(k.Px(28)).Padding(0, k.Px(32), k.Px(48), k.Px(32)).Children(func() {
@@ -394,6 +408,7 @@ func (a *App) advancedTab(c *ui.Context) {
 				}))
 		},
 	)
+	a.patchedDroidGroup(c)
 	a.settingGroup(c, L("Factory API"), "", func() {
 		desc := L("Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).")
 		inherited := ""

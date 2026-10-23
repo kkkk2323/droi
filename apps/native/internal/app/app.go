@@ -213,6 +213,7 @@ type App struct {
 	updateDismissed string
 	memory          memoryState
 	automations     automationsState
+	usage           usageState
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
 	narrow, drawerOpen bool
@@ -730,6 +731,7 @@ func (a *App) Go(r Route) {
 		a.settings.back = a.route
 	}
 	a.route = r
+	a.usage.shown = false
 	// Picking anything in the drawer is the end of the drawer's job.
 	a.drawerOpen = false
 	if r.Name == "session" {

@@ -1,0 +1,286 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+
+	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/proxy"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+)
+
+// keyPoolTestHost is a Host that runs the Patched Droid, with a stand-in
+// Factory billing endpoint: the first key added has nearly spent its week,
+// every later one is fresh.
+func keyPoolTestHost(t *testing.T) *host.Host {
+	t.Helper()
+	home, data := t.TempDir(), t.TempDir()
+	ends := time.Now().Add(3 * time.Hour).UTC().Format(time.RFC3339)
+	monthEnds := time.Now().Add(12 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	factory := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		five, week := 5, 12
+		if strings.HasSuffix(r.Header.Get("Authorization"), "1111") {
+			five, week = 88, 94
+		}
+		fmt.Fprintf(w, `{"usesTokenRateLimitsBilling":true,"limits":{"standard":{"fiveHour":{"usedPercent":%d,"windowEnd":%q},"weekly":{"usedPercent":%d,"windowEnd":%q},"monthly":{"usedPercent":30,"windowEnd":%q}}}}`,
+			five, ends, week, ends, monthEnds)
+	}))
+	t.Cleanup(factory.Close)
+	token := testJWT(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_acme", "external_org_id": "org_acme"})
+	if err := host.WriteCliLogin(filepath.Join(home, ".factory"), token, "r"); err != nil {
+		t.Fatal(err)
+	}
+	settings := `{"factoryApiBaseUrl":"` + factory.URL + `","droidKind":"patched","patchedDroidVersion":"0.247.0"}`
+	if err := os.WriteFile(filepath.Join(data, "settings.json"), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }})
+	t.Cleanup(h.Stop)
+	t.Cleanup(h.KeyPool().Stop)
+	return h
+}
+
+func (h *harness) openUsageTab() {
+	h.t.Helper()
+	h.until("the session list", func() bool { return h.hasText("One") })
+	h.click("Settings")
+	h.until("the Usage tab", func() bool { _, ok := h.tt.Find("Usage"); return ok })
+	h.click("Usage")
+	h.until("the Usage tab's pages", func() bool { return h.hasText("Keys and quota") })
+}
+
+// scrollUsage scrolls the Usage tab's page to its end, where the keys are.
+func (h *harness) scrollUsage() {
+	h.tt.Scroll(refW-200, refH/2, 0, 4000)
+	h.frame()
+}
+
+func (h *harness) addKey(key string) {
+	h.t.Helper()
+	h.click("Add key")
+	h.until("the sheet", func() bool { return h.hasText("Droi checks the key first") })
+	h.click("Factory API key")
+	h.tt.Type(key)
+	h.tt.Key(0, ui.KeyEnter)
+	h.frame()
+	masked := keys.MaskKey(key)
+	h.until("the key "+masked, func() bool { return h.hasText(masked) && !h.hasText("Droi checks the key first") })
+}
+
+// Settings → Usage is the Key Pool's, drawn as droid-proxy's window: it is
+// a tab once the Patched Droid runs the Daemon, keys are added and switched
+// on it, and each key shows what its windows have left.
+func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
+	h0 := keyPoolTestHost(t)
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.openUsageTab()
+	h.until("the empty pool", func() bool { return h.hasText("The Key Pool is empty") })
+	if !h.hasText("The LLM proxy starts once the Key Pool has a key.") {
+		t.Fatalf("the proxy's state is not shown: %q", h.tt.Texts())
+	}
+
+	first := "fk-" + strings.Repeat("a", 20) + "1111"
+	h.addKey(first)
+	// The first key has 6% of its week left, and droid holds it.
+	h.until("the key's quota", func() bool { return h.hasText("6%") && h.hasText("Current") })
+	for _, want := range []string{"Standard", "Core", "No monthly quota is lost in the next 7 days.", "No quota log yet"} {
+		if !h.hasText(want) {
+			t.Fatalf("no %q in %q", want, h.tt.Texts())
+		}
+	}
+	second := "fk-" + strings.Repeat("b", 20) + "2222"
+	h.addKey(second)
+	h.until("the second key's quota", func() bool { return h.hasText("88%") })
+	h.shoot("usage-keys")
+
+	masked := keys.MaskKey(second)
+	h.scrollUsage()
+	h.click(masked)
+	h.until("the key in full", func() bool { return h.hasText("Use this key") })
+	h.scrollUsage()
+	h.shoot("usage-key-open")
+	h.click("Use " + masked)
+	h.until("the switch", func() bool { return currentMasked(h0) == masked })
+
+	// Manual keeps the key the user chose; the status bar says so.
+	h.click("Manual")
+	h.until("manual switching", func() bool { return h0.KeyPool().State().Mode == keypool.Manual })
+	h.until("the status bar", func() bool { return h.hasText("Keeps the key you chose") })
+
+	// The other pages read the proxy's records; it is not running, so they
+	// say so instead of failing.
+	h.click("Requests")
+	h.until("the request history", func() bool { return h.hasText("The LLM proxy is not running") })
+	h.click("Event log")
+	h.until("the event log", func() bool { return h.hasText("No events yet") })
+	h.click("Cache warming")
+	h.until("cache warming", func() bool { return h.hasText("Cache warming runs with the LLM proxy") })
+
+	h.click("Keys and quota")
+	h.until("the key again", func() bool { return h.hasText("Remove") })
+	h.scrollUsage()
+	h.click("Remove " + masked)
+	h.until("the key to go", func() bool { return len(h0.KeyPool().State().Keys) == 1 })
+}
+
+func currentMasked(h *host.Host) string {
+	for _, key := range h.KeyPool().State().Keys {
+		if key.Current {
+			return key.Masked
+		}
+	}
+	return ""
+}
+
+// Settings → Advanced offers the Patched Droid and says where the Key Pool
+// stands; Open Usage goes to the Usage tab.
+func TestSettingsOffersThePatchedDroid(t *testing.T) {
+	h0 := keyPoolTestHost(t)
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.until("the session list", func() bool { return h.hasText("One") })
+	h.click("Settings")
+	h.click("Advanced")
+	h.until("the Patched Droid", func() bool { return h.hasText("Patched Droid") })
+	h.shoot("settings-patched-droid")
+	if !h.hasText("Key Pool") || !h.hasText("The Key Pool is empty") {
+		t.Fatalf("the Key Pool is not in Settings: %q", h.tt.Texts())
+	}
+	h.click("Open Usage")
+	h.until("the Usage tab", func() bool { return h.hasText("Keys and quota") })
+}
+
+// usageSample fills the Usage tab with what a running Key Pool reports, so
+// its pages can be seen with data in them.
+func usageSample(a *App, now time.Time) {
+	at := func(d time.Duration) string { return now.Add(d).UTC().Format(time.RFC3339) }
+	pct := func(v float64) *float64 { return &v }
+	checked := now.Add(-2 * time.Minute)
+	cool := now.Add(3 * time.Minute)
+	std := func(five, week, month float64, monthEnd time.Duration) *keys.KeyLimits {
+		return &keys.KeyLimits{
+			Standard: &keys.PoolLimits{
+				FiveHour: &keys.BucketLimit{UsedPercent: five, WindowEnd: at(2*time.Hour + 14*time.Minute)},
+				Weekly:   &keys.BucketLimit{UsedPercent: week, WindowEnd: at(3*24*time.Hour + 5*time.Hour)},
+				Monthly:  &keys.BucketLimit{UsedPercent: month, WindowEnd: at(monthEnd)},
+			},
+			Core: &keys.PoolLimits{FiveHour: &keys.BucketLimit{UsedPercent: five / 2, WindowEnd: at(2 * time.Hour)}},
+		}
+	}
+	mk := func(i int, key string, current bool, five, week, month float64, end time.Duration) keypool.Key {
+		ks := keys.KeyState{Index: i, Key: key, Status: "ok", StandardPercent: pct(max(five, week, month)), CorePercent: pct(five / 2),
+			StandardAvailable: true, CoreAvailable: true, Limits: std(five, week, month, end), UsageCheckedAt: &checked, Active: current}
+		return keypool.Key{ID: fmt.Sprintf("k%d", i), Masked: key, Current: current, State: ks}
+	}
+	cooling := mk(3, "fk-cool9...7c21", false, 100, 64, 40, 20*time.Hour)
+	cooling.State.StandardCooldownUntil = &cool
+	cooling.State.StandardAvailable = false
+	st := keypool.State{
+		Running: true,
+		Mode:    keypool.Auto,
+		Keys: []keypool.Key{
+			mk(1, "fk-4f2a1...91be", true, 42, 58, 35, 9*24*time.Hour),
+			mk(2, "fk-b7d03...0a4e", false, 12, 20, 12, 2*24*time.Hour+6*time.Hour),
+			cooling,
+			{ID: "k4", Masked: "fk-dead0...0003", State: keys.KeyState{Index: 4, Key: "fk-dead0...0003", Status: "http_401"}},
+		},
+		CacheWarming: &proxy.CacheWarmingStatus{
+			Mode: proxy.CacheWarmingIdle,
+			Sessions: []proxy.CacheWarmingSession{
+				{SessionID: "b558a03e-40a4-4d50", Model: "claude-opus-5-5", PromptTokens: 63752, Refreshes: 2, NextWarmAt: now.Add(90 * time.Second), State: "scheduled"},
+				{SessionID: "7f00c1d2-9e8a-4b11", Model: "gpt-6-astra", PromptTokens: 118400, Refreshes: 5, State: "refreshing"},
+			},
+			Totals: proxy.CacheWarmingTotals{Refreshes: 7, Failures: 1, CacheReadTokens: 512000, CacheWriteTokens: 9000, SpentUnits: 51200, SavedUnits: 640000},
+		},
+		Events: []diag.Event{
+			{Seq: 1, Time: now.Add(-40 * time.Minute), Kind: "key_cooldown", Key: "fk-cool9...7c21", Pool: "standard", Model: "claude-opus-5-5", Status: 429, Detail: "rate limited"},
+			{Seq: 2, Time: now.Add(-12 * time.Minute), Kind: "key_switched", Key: "fk-4f2a1...91be", Detail: "the current key cannot serve"},
+		},
+	}
+	s := &a.usage
+	far := now.Add(time.Hour)
+	s.pool, s.poolAt = st, far
+	var daily []llmusage.DaySpend
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	for k := 13; k >= 0; k-- {
+		daily = append(daily, llmusage.DaySpend{Day: midnight.AddDate(0, 0, -k), Spent: float64(8 + (k*7)%9)})
+	}
+	s.spend = llmusage.Spend{Today: 6, UsualByNow: 5, UsualDay: 11, Days: 7, Recent: 10.5, HasRecent: true, Daily: daily}
+	s.hasSpend, s.spendAt = true, far
+	var records []diag.RequestRecord
+	for i := range 24 {
+		r := diag.RequestRecord{Seq: 100 - i, Time: now.Add(-time.Duration(i) * 47 * time.Second), Model: "claude-opus-5-5", Provider: "anthropic", Key: "fk-4f2a1...91be",
+			Pool: "standard", RequestedPool: "standard", Status: 200, Stream: true, DurationMs: int64(1800 + i*730), TTFBMs: int64(420 + i*13),
+			RequestBytes: 180000, Bytes: 5100, Usage: &diag.TokenUsage{Input: int64(62000 + i*900), Output: int64(350 + i*40), CacheRead: int64(58000 + i*800)}, Attempts: 1}
+		switch i % 6 {
+		case 2:
+			r.Model, r.Provider = "gpt-6-astra", "openai"
+		case 4:
+			r.Status, r.Usage, r.Attempts, r.Rotated, r.ErrorDetail = 402, nil, 2, true, `{"detail":"limit reached"}`
+		}
+		records = append(records, r)
+	}
+	s.history = llmusage.NewHistory(func(context.Context, string) (diag.RequestPage, error) {
+		return diag.RequestPage{Requests: records, NextCursor: "older"}, nil
+	})
+	s.historyState = llmusage.HistoryState{Records: records, NextCursor: "older", PageNumber: 1, IsLatest: true, Version: 1}
+	s.historyAt = far
+	s.refreshing = false
+	s.model.built = false
+}
+
+// The Usage tab's pages with data in them, in Chinese, as droid-proxy's
+// window shows them.
+func TestUsageTabPages(t *testing.T) {
+	h0 := keyPoolTestHost(t)
+	for _, theme := range []string{"light", "dark"} {
+		t.Run(theme, func(t *testing.T) {
+			h := newHarnessWith(t, oneSession(), theme, func(cfg *Config) {
+				cfg.Host = h0
+				prefs.Language.Set(cfg.Prefs, string(l10n.Chinese))
+			})
+			t.Cleanup(func() { l10n.Set("", "") })
+			h.until("the session list", func() bool { return h.hasText("One") })
+			h.click(l10n.T("Settings"))
+			h.click(l10n.T("Usage"))
+			// What the tab reads on entering would replace the sample.
+			h.until("the tab's own reads", func() bool { return !h.a.usage.refreshing && !h.a.usage.spendBusy })
+			usageSample(h.a, time.Now())
+			h.until("the sample", func() bool { return h.hasText("fk-4f2a1...91be") })
+			for _, want := range []string{"今天已用", "近 14 天", "即将作废", "可用 3/4 把", "额度更新于"} {
+				if !h.hasText(want) {
+					t.Errorf("no %q in %q", want, h.tt.Texts())
+				}
+			}
+			h.shoot("usage-sample-keys-" + theme)
+			h.scrollUsage()
+			h.shoot("usage-sample-keys-end-" + theme)
+			h.click("fk-b7d03...0a4e")
+			h.until("the key in full", func() bool { return h.hasText("使用这把 key") })
+			h.scrollUsage()
+			h.shoot("usage-sample-key-open-" + theme)
+			for _, page := range []struct{ name, label, want string }{
+				{"requests", "请求记录", "本页请求"},
+				{"events", "事件日志", "key_switched"},
+				{"warming", "缓存预热", "续期次数"},
+			} {
+				h.click(page.label)
+				h.until(page.name, func() bool { return h.hasText(page.want) })
+				h.shoot("usage-sample-" + page.name + "-" + theme)
+			}
+		})
+	}
+}

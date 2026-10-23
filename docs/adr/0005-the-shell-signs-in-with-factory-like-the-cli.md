@@ -20,7 +20,7 @@ While signed in, the Shell starts the Daemon **without** `FACTORY_API_KEY`, so t
 - **Own device-flow login with the CLI's WorkOS client id (chosen).** Same identity system and same token type the Daemon already verifies; no undocumented storage to decode.
 - **Same-account API key.** Works and is kept as the fallback, but the product goal was no API key at all.
 - **SDK `trusted` authentication mode.** Only exists for in-process / IPC transports; the Gateway bridges WebSockets, and the Daemon is a separate process by design (ADR 0001).
-- **Key rotation inside Droi.** Rejected: droid-proxy already does it, including usage probing, pool cooldowns and 402/429 retries; Droi stays a thin Client and points `FACTORY_API_BASE_URL` at it.
+- **Key rotation inside Droi.** Rejected: droid-proxy already does it, including usage probing, pool cooldowns and 402/429 retries; Droi stays a thin Client and points `FACTORY_API_BASE_URL` at it. (ADR 0027 brings a Key Pool into Droi for the Patched Droid; droid-proxy still works as before.)
 
 ## Consequences
 
