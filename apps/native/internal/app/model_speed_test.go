@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 )
 
@@ -65,6 +67,40 @@ func TestTheSpeedUnderTheComposerIsTheKeyPoolsLiveMeasure(t *testing.T) {
 	h.click("Model speed")
 	streaming = false
 	h.until("the Session's measured average once the call ended", func() bool { return h.hasText("60 tok/s") })
+	h.click("Model speed")
+	h.click("Open Usage")
+	if r := h.a.Route(); r.Name != "settings" || r.Tab != "usage" {
+		t.Fatalf("the details' link opened %+v, want Settings → Usage", r)
+	}
+}
+
+// While the Key Pool serves the Daemon, a ring beside Settings shows its
+// monthly quota left, and opens Usage.
+func TestTheKeyPoolRingBesideSettingsOpensUsage(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", nil)
+	h.until("the session list", func() bool { return h.hasText("One") })
+	if h.hasButton("Open Usage") {
+		t.Fatal("the ring shows without the Key Pool")
+	}
+	h0 := keyPoolTestHost(t)
+	h = newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.until("the ring beside Settings", func() bool { return h.hasButton("Open Usage") })
+	if err := h0.KeyPool().Add(context.Background(), "fk-"+strings.Repeat("b", 20)+"2222"); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the key's monthly quota in the ring", func() bool {
+		left, ok := llmusage.MonthlyRemaining(keyStates(h.a.poolState()), h.a.cfg.Now())
+		return ok && left == 70
+	})
+	if dir := os.Getenv("DROI_NATIVE_SHOTS"); dir != "" {
+		h.settle()
+		_ = os.MkdirAll(dir, 0o755)
+		writePNG(filepath.Join(dir, "key-pool-ring.png"), h.tt.Image())
+	}
+	h.click("Open Usage")
+	if r := h.a.Route(); r.Name != "settings" || r.Tab != "usage" {
+		t.Fatalf("the ring opened %+v, want Settings → Usage", r)
+	}
 }
 
 func TestSpeedSectionsWaitForTheFirstToken(t *testing.T) {
