@@ -124,10 +124,23 @@ func TestCatalog(t *testing.T) {
 	}
 }
 
+// setZh gives key a translation for the test, then puts back the table's own;
+// deleting it instead would leave the catalog without it for later tests.
+func setZh(t *testing.T, key, text string) {
+	old, had := zh[key]
+	zh[key] = text
+	t.Cleanup(func() {
+		if had {
+			zh[key] = old
+		} else {
+			delete(zh, key)
+		}
+	})
+}
+
 func TestL(t *testing.T) {
 	defer Set("", "en-US")
-	zh["Droi %s is available"] = "Droi %s 可以更新了"
-	defer delete(zh, "Droi %s is available")
+	setZh(t, "Droi %s is available", "Droi %s 可以更新了")
 	if got := L("Droi %s is available", "1.2"); got != "Droi 1.2 is available" {
 		t.Errorf("English: %q", got)
 	}
@@ -154,8 +167,7 @@ func TestL(t *testing.T) {
 func TestAdd(t *testing.T) {
 	defer Set("", "en-US")
 	defer added.Store(added.Load())
-	zh["Settings"] = "设置"
-	defer delete(zh, "Settings")
+	setZh(t, "Settings", "设置")
 	Add(map[string]string{"Bot %s": "机器人 %s", "Settings": "另一个"})
 	Add(map[string]string{"Posts": "帖子"})
 	if got := L("Bot %s", "A"); got != "Bot A" {

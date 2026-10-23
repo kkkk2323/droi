@@ -28,7 +28,7 @@ func TestTheSidebarMarksASessionLeftWithADraft(t *testing.T) {
 	h.until("the draft back in the composer", func() bool { return h.sessionText() == "half a thought" })
 	h.click("Send")
 	h.until("the reply", func() bool { return h.hasText("Noted.") })
-	h.click("Two")
+	h.openRow("Two", h.d.Sessions[1].SessionID)
 	h.until("the other Session", func() bool { return h.hasText("second") })
 	if h.hasButton("Draft") {
 		t.Fatal("a sent draft is still marked")
