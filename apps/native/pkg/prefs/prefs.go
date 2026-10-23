@@ -308,6 +308,9 @@ var (
 	// LargeMemoriesNoticed are the large Project Memories the corner card
 	// announced, each as workspace + "\n" + its last consolidation.
 	LargeMemoriesNoticed = List{Key: "droi.largeMemoriesNoticed"}
+	// MenuBarUsage is Advanced's "Show usage in the menu bar": the Key
+	// Pool's quota as a menu bar item, while the Key Pool is on.
+	MenuBarUsage = Bool{Key: "droi.menuBarUsage"}
 )
 
 // Drafts keep the composer's text per Session, as drafts.ts does.

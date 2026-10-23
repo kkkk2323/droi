@@ -312,8 +312,10 @@ func paceText(pace float64) (string, Tone) {
 }
 
 type EventRowView struct {
-	ID         string
-	Time       string
+	ID   string
+	Time string
+	// Name says what happened; Kind is the event's name in the logs.
+	Name       string
 	Kind       string
 	Key        string
 	Pool       string
@@ -327,6 +329,7 @@ func BuildEventRow(e diag.Event) EventRowView {
 	row := EventRowView{
 		ID:     fmt.Sprintf("%d@%d", e.Seq, e.Time.UnixNano()),
 		Time:   FormatClock(e.Time),
+		Name:   eventName(e.Kind),
 		Kind:   e.Kind,
 		Key:    orDash(e.Key),
 		Pool:   orDash(e.Pool),
@@ -341,6 +344,29 @@ func BuildEventRow(e diag.Event) EventRowView {
 		}
 	}
 	return row
+}
+
+// eventName says what an event of kind means; an unknown kind is its name.
+func eventName(kind string) string {
+	switch kind {
+	case "prem_host_rewritten":
+		// The proxy points droid's Prem host at itself, so that model
+		// requests reach the Key Pool; the requests are not changed.
+		return l10n.L("Model requests go through the Key Pool")
+	case "key_switched":
+		return l10n.L("Switched keys")
+	case "key_exhausted":
+		return l10n.L("Key ran out")
+	case "key_cooled":
+		return l10n.L("Key paused")
+	case "upstream_error":
+		return l10n.L("Request to Factory failed")
+	case "request_build_error":
+		return l10n.L("Request could not be made")
+	case "body_read_error":
+		return l10n.L("Request could not be read")
+	}
+	return kind
 }
 
 // EventRows are the events newest first.

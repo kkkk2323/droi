@@ -71,6 +71,12 @@ type usageState struct {
 	// acting is what an action runs on, err what the last one said.
 	acting, err string
 	refreshing  bool
+
+	// bar is the menu bar item, built from the snapshot at barAt.
+	bar               llmusage.MenuBarView
+	barBuilt          bool
+	barAt, barSpendAt time.Time
+	barLang           l10n.Language
 }
 
 // usageModel is what the tab shows, built again when what it is built from
@@ -86,6 +92,7 @@ type usageModel struct {
 	runway   llmusage.RunwayView
 	expiring llmusage.ExpiringView
 	cards    []usageCard
+	rows     []llmusage.KeyRowView
 	problems int
 	checked  string
 	events   []llmusage.EventRowView
@@ -238,17 +245,14 @@ func (a *App) buildUsage(st keypool.State) *usageModel {
 	}
 	now := a.cfg.Now()
 	pool := keyStates(st)
-	var spend *llmusage.Spend
-	if s.hasSpend {
-		sp := s.spend
-		spend = &sp
-	}
+	spend := a.spendOrNil()
 	*m = usageModel{built: true, poolAt: s.poolAt, spendAt: s.spendAt, lang: lang, historyFrom: s.historyState.Version}
 	m.pools = llmusage.PoolSummaries(pool, now)
 	m.runway = llmusage.BuildRunway(pool, spend, now)
 	m.expiring = llmusage.BuildExpiring(pool, now, spend)
 	for _, k := range st.Keys {
 		m.cards = append(m.cards, usageCard{id: k.ID, masked: k.Masked, current: k.Current, view: llmusage.BuildKeyCard(k.State, now)})
+		m.rows = append(m.rows, llmusage.BuildKeyRow(k.State, now))
 		if llmusage.KeyDisplayOf(k.State, now).IsProblem() {
 			m.problems++
 		}
@@ -409,8 +413,8 @@ func (u usageLook) runwaySection(c *ui.Context, r llmusage.RunwayView) {
 			ui.Row(c.Key(i)).Gap(u.px(8)).Children(func() {
 				u.text(c, l.Label, 12).TextColor(p.secondary).FontFeatures("tnum").SingleLine().Shrink(1)
 				ui.Spacer(c)
-				u.text(c, l.Note, 12).TextColor(p.tertiary).FontFeatures("tnum").NoWrap()
-				u.text(c, l.Value, 12).FontWeight(600).TextColor(u.tone(l.Tone)).FontFeatures("tnum").NoWrap().Width(u.px(150)).TextAlign(ui.End)
+				u.text(c, l.Note, 12).TextColor(p.tertiary).FontFeatures("tnum").SingleLine().Shrink(1).Tooltip(l.Note)
+				u.text(c, l.Value, 12).FontWeight(600).TextColor(u.tone(l.Tone)).FontFeatures("tnum").NoWrap().Shrink(0).MinWidth(u.px(150)).TextAlign(ui.End)
 			})
 		}
 	})
@@ -959,7 +963,7 @@ func (a *App) eventsPage(c *ui.Context, u usageLook, m *usageModel) {
 			}
 			columns := []ui.TableColumn{
 				{ID: "time", Title: L("Time"), Width: u.px(80)},
-				{ID: "kind", Title: L("Type"), Width: u.px(160)},
+				{ID: "kind", Title: L("Type"), Width: u.px(200)},
 				{ID: "key", Title: L("Key"), Width: u.px(140)},
 				{ID: "pool", Title: L("Pool"), Width: u.px(70)},
 				{ID: "model", Title: L("Model"), MinWidth: u.px(100)},
@@ -973,7 +977,7 @@ func (a *App) eventsPage(c *ui.Context, u usageLook, m *usageModel) {
 				case 0:
 					ui.Text(c, e.Time).TextColor(p.secondary).FontFeatures("tnum")
 				case 1:
-					u.text(c, e.Kind, 11).Font(u.k.Mono).SingleLine()
+					ui.Text(c, e.Name).SingleLine().Tooltip(e.Kind)
 				case 2:
 					u.text(c, e.Key, 11).Font(u.k.Mono).TextColor(p.secondary).SingleLine()
 				case 3:

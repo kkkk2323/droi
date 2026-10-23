@@ -18,8 +18,24 @@ type RunwayView struct {
 	// Metrics are, in order: today so far, today's projection, what is left
 	// for today, and how long today's spend lasts.
 	Metrics []MetricView
+	Budget  BudgetView
 	Lines   []RunwayLine
 	Chart   ChartView
+}
+
+// BudgetView is today's spend as a share of the daily limit, for the menu
+// bar panel.
+type BudgetView struct {
+	Spent      string
+	SpentShare string
+	Limit      string
+	Bar        Bar
+	// Usual marks what is usually spent by this hour, 0…100 of the limit;
+	// HasUsual is false without a whole day of log.
+	Usual    float64
+	HasUsual bool
+	Note     string
+	NoteTone Tone
 }
 
 // RunwayLine is a pace and what the pool holds after RunwayDays at it, with
@@ -109,6 +125,20 @@ func BuildRunway(pool []keys.KeyState, spend *Spend, now time.Time) RunwayView {
 	lasts.Value, lasts.Note, lasts.Tone = runwayOutcome(r, rate, now, amount)
 	v.Metrics = []MetricView{today, whole, left, lasts}
 
+	v.Budget = BudgetView{Spent: monthCredits(s.Today), SpentShare: share(s.Today), Limit: amount(limit), Bar: Bar{Value: percentOf(s.Today, limit), Tone: ToneAccent}}
+	if s.Days > 0 {
+		v.Budget.Usual, v.Budget.HasUsual = percentOf(s.UsualByNow, limit), true
+	}
+	v.Budget.Note, v.Budget.NoteTone = l10n.L("%s left for today", amount(room)), ToneSecondary
+	switch {
+	case s.Today > limit:
+		v.Budget.Bar.Tone = ToneDanger
+		v.Budget.Note, v.Budget.NoteTone = l10n.L("%s over today's limit", amount(room)), ToneDanger
+	case hasProjection && projected > limit:
+		v.Budget.Bar.Tone = ToneWarning
+		v.Budget.Note, v.Budget.NoteTone = l10n.L("%s left for today; at the usual pace you will go over", amount(room)), ToneWarning
+	}
+
 	line := func(label string, perDay float64) RunwayLine {
 		l := RunwayLine{Label: l10n.L("%s (%s a day · %s)", label, monthCredits(perDay), share(perDay))}
 		var date string
@@ -129,6 +159,14 @@ func BuildRunway(pool []keys.KeyState, spend *Spend, now time.Time) RunwayView {
 
 	v.Chart = buildChart(s.Daily, limit, amount)
 	return v
+}
+
+// percentOf is v as a percent of of; a limit of zero is reached at once.
+func percentOf(v, of float64) float64 {
+	if of <= 0 {
+		return 100
+	}
+	return v / of * 100
 }
 
 // shareText is a share of the pool's month (0.012 is 1.2% of it): one

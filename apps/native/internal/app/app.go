@@ -119,6 +119,9 @@ type Config struct {
 	// FactoryAppRunning reports whether the Factory App's Daemon runs too,
 	// for the Automations page's notice; nil never tells.
 	FactoryAppRunning func() bool
+	// MenuBar is the shell's menu bar item of the Key Pool; nil where there
+	// is none, which leaves its setting out.
+	MenuBar *MenuBar
 }
 
 // App is the window's state, which lasts from frame to frame.
