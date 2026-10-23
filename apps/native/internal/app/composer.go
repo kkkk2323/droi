@@ -310,7 +310,11 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				in := k.TextArea(c.Key("message"), &cs.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{14, 16, 6, left / k.Px(1)}, Size: k.Dense(13, 14), Line: k.Dense(22, 24),
 					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!ready)
 				if !v.focused {
-					in.AutoFocus()
+					// The composer appears a moment after its Session opens, when a
+					// click may have put the focus in the sidebar's search.
+					if !c.Focused(a.sidebar.searchBox) {
+						in.AutoFocus()
+					}
 					v.focused = true
 				}
 				in.OnPaste(func(s string) bool { return v.pasteImage() || v.pasteText(s) })

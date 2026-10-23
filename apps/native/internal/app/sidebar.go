@@ -40,6 +40,8 @@ type sidebarState struct {
 	// subagentsRunning is how many subagents run under each listed row, this frame.
 	subagentsRunning map[string]int
 	runningKey       string
+	// searchBox is the search's text field, for the composer to leave the focus in.
+	searchBox ui.Handle
 }
 
 // sidebarView is the web Client's SessionSidebar.

@@ -121,3 +121,27 @@ func TestTypingGoesOnAfterAPermissionIsAnswered(t *testing.T) {
 		t.Fatalf("text after the permission: %q", got)
 	}
 }
+
+func TestOpeningASessionPutsTheFocusInTheComposer(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSession("Refactor invoice generator")
+	h.until("the Session loaded", func() bool { return h.hasText("Context used") })
+	if !h.tt.Focused("Message") {
+		t.Fatal("the composer does not have the focus")
+	}
+}
+
+// The composer takes the focus when it appears, a moment after its Session
+// opens; by then a click may have put the focus in the sidebar's search.
+func TestTheComposerLeavesTheFocusInTheSidebarsSearch(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Refactor invoice generator") })
+	id := h.d.Sessions[0].SessionID
+	h.click("Search sessions and workspaces")
+	h.a.Go(Route{Name: "session", SessionID: id})
+	h.until("the Session loaded", func() bool { return h.hasText("Context used") })
+	h.typeInto("zzzz")
+	if h.a.sidebar.query != "zzzz" || !h.tt.Focused("Search sessions and workspaces") {
+		t.Fatalf("the search has %q and the composer %q", h.a.sidebar.query, h.a.views[id].composer.field)
+	}
+}
