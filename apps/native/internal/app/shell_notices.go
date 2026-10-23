@@ -5,6 +5,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
+	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
@@ -56,12 +57,48 @@ func (a *App) droidUpdatedCard(c *ui.Context) {
 	}, func() { a.droidUpdateDismissed = true })
 }
 
+// patchedDroidUpdateCard offers a newer Droi's droid while the Key Pool is
+// on: droid cannot update that build itself. Closing it hides it until a
+// newer version.
+func (a *App) patchedDroidUpdateCard(c *ui.Context) {
+	h := a.cfg.Host
+	if h == nil {
+		return
+	}
+	p := h.PatchedDroidState()
+	if !p.UpdateAvailable() || a.patchUpdateDismissed == p.Latest {
+		return
+	}
+	k, t := a.kit, a.kit.T
+	a.cornerCard(c, L("Droi's droid update"), "arrow-down-to-line", func() {
+		k.Text(c, L("Droi's droid %s is available", p.Latest), 14, 20).FontWeight(500)
+		note := func(s string, color ui.Color) {
+			k.Text(c, s, 12, 16).TextColor(color).Margin(k.Px(2), 0, 0, 0)
+		}
+		switch {
+		case p.Preparing && p.Total > 0:
+			note(L("Downloading droid: %s of %s", llmusage.FormatBytes(p.Done), llmusage.FormatBytes(p.Total)), t.MutedForeground)
+		case p.Preparing:
+			note(L("Preparing Droi's droid…"), t.MutedForeground)
+		default:
+			note(L("You have %s. Updating restarts the Daemon, which interrupts running sessions.", p.Version), t.MutedForeground)
+			if p.Err != "" {
+				note(p.Err, t.DestructiveForeground)
+			}
+			if a.smallButton(c, kit.Primary, L("Update"), "", false).Label(L("Update Droi's droid")).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+				h.UpdatePatchedDroid()
+			}
+		}
+	}, func() { a.patchUpdateDismissed = p.Latest })
+}
+
 // cornerCards stack the corner cards above the sidebar's footer, whose
 // Settings button a card would cover.
 func (a *App) cornerCards(c *ui.Context) {
 	k := a.kit
 	ui.Column(c).Absolute().Left(k.Px(16)).Bottom(k.Px(48)).Gap(k.Px(8)).Children(func() {
 		a.droidUpdatedCard(c)
+		a.patchedDroidUpdateCard(c)
 		a.memoryFullCard(c)
 		a.updateCard(c)
 	})

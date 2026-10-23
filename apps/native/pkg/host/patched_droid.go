@@ -49,6 +49,10 @@ type patchState struct {
 	progress  droidpatch.Progress
 	err       string
 	refreshed time.Time
+	// watch starts the hourly read of the published recipes once; stop
+	// ends it.
+	watch, stopped, stopMade sync.Once
+	stop                     chan struct{}
 }
 
 func (h *Host) patches() *patchState {
@@ -211,6 +215,41 @@ func (h *Host) RefreshPatchRecipes() {
 			h.changed()
 		}
 	}()
+}
+
+// watchPatchRecipes reads the published recipes every hour while the
+// Patched Droid runs, so the window offers a newer one without Settings
+// being open.
+func (h *Host) watchPatchRecipes() {
+	p := h.patches()
+	stop := p.stopChan()
+	p.watch.Do(func() {
+		go func() {
+			t := time.NewTicker(time.Hour)
+			defer t.Stop()
+			for {
+				if h.usesPatchedDroid() {
+					h.RefreshPatchRecipes()
+				}
+				select {
+				case <-t.C:
+				case <-stop:
+					return
+				}
+			}
+		}()
+	})
+}
+
+func (h *Host) stopWatchingPatchRecipes() {
+	p := &h.patch
+	stop := p.stopChan()
+	p.stopped.Do(func() { close(stop) })
+}
+
+func (p *patchState) stopChan() chan struct{} {
+	p.stopMade.Do(func() { p.stop = make(chan struct{}) })
+	return p.stop
 }
 
 // keyPoolUpstream is the Factory API the Key Pool forwards to and reads

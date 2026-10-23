@@ -124,10 +124,16 @@ func New(cfg Config) *Host {
 }
 
 // Start launches the Daemon.
-func (h *Host) Start() { h.Daemon.Start() }
+func (h *Host) Start() {
+	h.Daemon.Start()
+	h.watchPatchRecipes()
+}
 
 // Stop ends the Daemon.
-func (h *Host) Stop() { h.Daemon.Stop() }
+func (h *Host) Stop() {
+	h.stopWatchingPatchRecipes()
+	h.Daemon.Stop()
+}
 
 // RestartDaemon starts a new Daemon from the droid on disk.
 func (h *Host) RestartDaemon() {
