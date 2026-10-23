@@ -28,14 +28,15 @@ func (a *App) modelCalls(id string) (calls diag.SessionCalls, live *diag.LiveCal
 	return pool.Session(id)
 }
 
-// liveRate is the speed of a call under way since its first token; 0 before
-// it has one.
+// liveRate is the speed of a call under way since its first token; 0 in
+// its first second, when the burst that comes with the first token would
+// read as twice the speed.
 func liveRate(l *diag.LiveCall, now time.Time) float64 {
 	if l == nil || l.FirstToken.IsZero() || l.Output <= 0 {
 		return 0
 	}
 	d := now.Sub(l.FirstToken)
-	if d < 300*time.Millisecond {
+	if d < time.Second {
 		return 0
 	}
 	return l.Output / d.Seconds()

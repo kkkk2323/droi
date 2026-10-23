@@ -109,7 +109,8 @@ func deref(p *int64) int64 {
 }
 
 // usageEnvelope finds a usage object at the top level or nested under
-// "message" (Anthropic message_start) or "response" (OpenAI responses).
+// "message" (Anthropic message_start) or "response" (OpenAI responses), or
+// Gemini's usageMetadata.
 type usageEnvelope struct {
 	Usage   *rawUsage `json:"usage"`
 	Message *struct {
@@ -118,6 +119,26 @@ type usageEnvelope struct {
 	Response *struct {
 		Usage *rawUsage `json:"usage"`
 	} `json:"response"`
+	UsageMetadata *geminiUsage `json:"usageMetadata"`
+}
+
+// geminiUsage is Gemini's usageMetadata. Its prompt count includes the
+// cached tokens, and its candidates count leaves the thoughts out; droid
+// counts the two together as the output, as this does.
+type geminiUsage struct {
+	PromptTokenCount        int64 `json:"promptTokenCount"`
+	CandidatesTokenCount    int64 `json:"candidatesTokenCount"`
+	CachedContentTokenCount int64 `json:"cachedContentTokenCount"`
+	ThoughtsTokenCount      int64 `json:"thoughtsTokenCount"`
+}
+
+func (g geminiUsage) toTokenUsage() TokenUsage {
+	return TokenUsage{
+		Input:     g.PromptTokenCount,
+		Output:    g.CandidatesTokenCount + g.ThoughtsTokenCount,
+		CacheRead: g.CachedContentTokenCount,
+		Reasoning: g.ThoughtsTokenCount,
+	}
 }
 
 // UsageFromJSON extracts token usage from one JSON object (a full non-stream
@@ -135,6 +156,9 @@ func UsageFromJSON(body []byte) (TokenUsage, bool) {
 		raw = env.Message.Usage
 	case env.Response != nil && env.Response.Usage != nil:
 		raw = env.Response.Usage
+	case env.UsageMetadata != nil:
+		u := env.UsageMetadata.toTokenUsage()
+		return u, !u.IsZero()
 	default:
 		return TokenUsage{}, false
 	}
@@ -255,10 +279,19 @@ func (o *UsageObserver) Progress() (first time.Time, generated float64, usage To
 }
 
 // deltaFrame is the generated text an SSE frame carries, in Anthropic's
-// (content_block_delta), OpenAI's chat completions (choices[].delta) or
-// OpenAI's responses (response.*.delta) shape.
+// (content_block_delta), OpenAI's chat completions (choices[].delta),
+// OpenAI's responses (response.*.delta) or Gemini's (candidates[].content.
+// parts: text, thoughts and function calls) shape.
 type deltaFrame struct {
-	Type    string          `json:"type"`
+	Type       string `json:"type"`
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text         string          `json:"text"`
+				FunctionCall json.RawMessage `json:"functionCall"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
 	Delta   json.RawMessage `json:"delta"`
 	Choices []struct {
 		Delta struct {
@@ -300,6 +333,12 @@ func generatedText(payload []byte) string {
 		b.WriteString(c.Delta.Content + c.Delta.ReasoningContent + c.Delta.Reasoning)
 		for _, tc := range c.Delta.ToolCalls {
 			b.WriteString(tc.Function.Arguments)
+		}
+	}
+	for _, c := range f.Candidates {
+		for _, part := range c.Content.Parts {
+			b.WriteString(part.Text)
+			b.Write(part.FunctionCall)
 		}
 	}
 	return b.String()

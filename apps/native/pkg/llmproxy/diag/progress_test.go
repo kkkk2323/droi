@@ -89,3 +89,28 @@ func TestRecorderForgetsTheSessionUpdatedLongestAgo(t *testing.T) {
 		t.Fatalf("%d Sessions kept, want %d", len(r.sessions), maxSessions)
 	}
 }
+
+// Gemini's usageMetadata: the prompt count includes the cached tokens, and
+// the output is the candidates and the thoughts, as droid counts it.
+func TestUsageFromJSON_GeminiUsageMetadata(t *testing.T) {
+	frame := `{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"finishReason":"STOP"}],` +
+		`"usageMetadata":{"promptTokenCount":1200,"candidatesTokenCount":30,"cachedContentTokenCount":1000,"thoughtsTokenCount":50,"totalTokenCount":1280}}`
+	u, ok := UsageFromJSON([]byte(frame))
+	if !ok || u != (TokenUsage{Input: 1200, Output: 80, CacheRead: 1000, Reasoning: 50}) {
+		t.Fatalf("got %+v ok=%v", u, ok)
+	}
+	// A frame before the end reports the prompt alone.
+	u, ok = UsageFromJSON([]byte(`{"candidates":[],"usageMetadata":{"promptTokenCount":1200,"totalTokenCount":1200}}`))
+	if !ok || u != (TokenUsage{Input: 1200}) {
+		t.Fatalf("mid-stream got %+v ok=%v", u, ok)
+	}
+}
+
+// Gemini's parts carry text, thoughts and function calls; each is generated.
+func TestGeneratedTextOfGeminiParts(t *testing.T) {
+	frame := `{"candidates":[{"content":{"parts":[{"text":"plan","thought":true},{"text":"answer"},` +
+		`{"functionCall":{"name":"Read","args":{"p":1}}}],"role":"model"}}]}`
+	if got, want := generatedText([]byte(frame)), `plananswer{"name":"Read","args":{"p":1}}`; got != want {
+		t.Fatalf("generatedText = %q, want %q", got, want)
+	}
+}
