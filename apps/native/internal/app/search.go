@@ -53,7 +53,7 @@ func (a *App) searchBox(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(k.Dense(28, 32)))
 	box.Children(func() {
-		in := ui.TextInputBase(c, &a.sidebar.query).Label(L("Search sessions and workspaces")).Placeholder(L("Search")).
+		in := ui.TextInputBase(c, &a.sidebar.query).Bind(&a.sidebar.searchBox).Label(L("Search sessions and workspaces")).Placeholder(L("Search")).
 			Fill().Radius(k.Px(6)).Padding(0, k.Px(28), 0, k.Px(28)).FontSize(k.Px(k.Dense(12, 13))).TextColor(t.Foreground).Border(1, ui.Transparent)
 		if in.Focused() {
 			in.Background(t.Background).Border(1, t.Ring.Alpha(0.6))
