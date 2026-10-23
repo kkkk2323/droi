@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
@@ -248,7 +249,7 @@ func (p *Pool) Start() (string, error) {
 	}
 	current := p.currentKeyLocked()
 	if current == "" {
-		p.err = ErrNoKeys.Error()
+		p.err = l10n.L("The Key Pool has no key yet. It starts once you add one.")
 		return "", ErrNoKeys
 	}
 	if err := p.useLocked(current); err != nil {
@@ -382,17 +383,21 @@ func (p *Pool) Stop() {
 func (p *Pool) Add(ctx context.Context, key string) error {
 	key = strings.TrimSpace(key)
 	if !strings.HasPrefix(key, "fk-") || strings.ContainsAny(key, " \t\r\n") {
-		return errors.New("not a Factory API key (fk-…)")
+		return errors.New(l10n.L("A Factory API key starts with fk- and has no spaces."))
 	}
 	p.mu.Lock()
 	if p.keyByIDLocked(keyID(key)) != "" {
 		p.mu.Unlock()
-		return errors.New("the key is already in the pool")
+		return errors.New(l10n.L("This key is already in the Key Pool."))
 	}
 	r := p.readerLocked()
 	p.mu.Unlock()
 	if err := r.AddKey(ctx, key); err != nil {
-		return err
+		code := strings.TrimPrefix(err.Error(), "key probe failed: ")
+		if keys.IsInvalidKeyError(code) {
+			return errors.New(l10n.L("Factory does not accept this key. Check that you copied the whole key."))
+		}
+		return errors.New(l10n.L("Droi could not check this key's quota (%s). Check the key and try again.", code))
 	}
 	p.mu.Lock()
 	p.stored.Keys = append(p.stored.Keys, storedKey{Key: key, AddedAt: time.Now().UTC()})
@@ -414,7 +419,7 @@ func (p *Pool) Remove(id string) error {
 	}
 	if p.px != nil && len(p.stored.Keys) == 1 {
 		p.mu.Unlock()
-		return errors.New("the Patched Droid needs at least one key")
+		return errors.New(l10n.L("The Key Pool needs at least one key while it is on. Add another key before removing this one."))
 	}
 	kept := p.stored.Keys[:0:0]
 	for _, k := range p.stored.Keys {
@@ -456,7 +461,7 @@ func (p *Pool) Use(id string) error {
 	key := p.keyByIDLocked(id)
 	if key == "" {
 		p.mu.Unlock()
-		return errors.New("no such key")
+		return errors.New(l10n.L("This key is no longer in the Key Pool."))
 	}
 	var err error
 	if p.px != nil {
@@ -518,7 +523,7 @@ func (p *Pool) SetCacheWarmingMode(mode string) error {
 	w := p.warmer
 	p.mu.Unlock()
 	if w == nil {
-		return errors.New("the LLM proxy is not running")
+		return errors.New(l10n.L("The Key Pool is not running"))
 	}
 	err := w.SetMode(mode)
 	p.changed()
@@ -531,7 +536,7 @@ func (p *Pool) Requests(limit int, cursor string) (diag.RequestPage, error) {
 	px := p.px
 	p.mu.Unlock()
 	if px == nil {
-		return diag.RequestPage{}, errors.New("the LLM proxy is not running")
+		return diag.RequestPage{}, errors.New(l10n.L("The Key Pool is not running"))
 	}
 	return px.Recorder().RequestHistory(limit, cursor)
 }

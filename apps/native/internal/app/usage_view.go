@@ -575,7 +575,7 @@ func (a *App) keyList(c *ui.Context, u usageLook, st keypool.State, m *usageMode
 	})
 	u.card(c).Children(func() {
 		if len(m.cards) == 0 {
-			u.unavailable(c, iconKey, L("The Key Pool is empty"), L("Add a Factory API key: the Patched Droid sends its LLM requests with the keys of the pool."), nil)
+			u.unavailable(c, iconKey, L("The Key Pool has no key yet"), L("Model requests are sent with the keys you add here. Add a Factory API key to start."), nil)
 			return
 		}
 		for i, k := range m.cards {
@@ -606,9 +606,9 @@ func (a *App) keyModePicker(c *ui.Context, u usageLook, st keypool.State) {
 
 func modeDescription(mode keypool.Mode) string {
 	if mode == keypool.Manual {
-		return L("Manual: droid keeps the key you chose, and its errors reach the session when the key runs out.")
+		return L("Manual: Droi keeps the key you chose. When it runs out, the session shows the error.")
 	}
-	return L("Automatic: Droi moves droid to another key when the one it holds runs out.")
+	return L("Automatic: when a key runs out, Droi switches to the next one and the request is retried.")
 }
 
 // keyRow is one key. Collapsed, it is one line ending with the week and
@@ -641,7 +641,7 @@ func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 			u.text(c, itoa(k.Index), 11).TextColor(p.tertiary).FontFeatures("tnum").Width(u.px(18)).TextAlign(ui.End)
 			u.text(c, k.Key, 12).Font(u.k.Mono).SingleLine().Shrink(1)
 			if k.Active {
-				ui.Row(c).Gap(u.px(3)).Tooltip(L("droid sends its requests with this key")).Children(func() {
+				ui.Row(c).Gap(u.px(3)).Tooltip(L("Model requests use this key")).Children(func() {
 					u.icon(c, iconStar, 10, p.warning)
 					u.text(c, L("Current"), 11).FontWeight(500).TextColor(p.warning)
 				})
@@ -722,7 +722,7 @@ func (u usageLook) poolWindows(c *ui.Context, pool llmusage.PoolWindowsView) {
 			u.text(c, pool.Title, 12).FontWeight(600).TextColor(p.secondary)
 			ui.Spacer(c)
 			if pool.Available != "" {
-				u.text(c, pool.Available, 11).TextColor(u.tone(pool.AvailableTone)).Tooltip(L("The least left of the windows. The Key Pool uses this number to decide whether to use the key."))
+				u.text(c, pool.Available, 11).TextColor(u.tone(pool.AvailableTone)).Tooltip(L("The lowest quota left across the windows. The Key Pool uses it to decide whether to use this key."))
 			}
 		})
 		if !pool.HasLimits {
@@ -762,7 +762,7 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 	p := u.p
 	v := m.warming
 	if !v.Available {
-		u.unavailable(c, iconWaveform, L("Cache warming runs with the LLM proxy"), L("It starts with the Patched Droid once the Key Pool has a key."), nil)
+		u.unavailable(c, iconWaveform, L("Cache warming is not running"), L("Cache warming runs with the Key Pool, which starts once it has a key."), nil)
 		return
 	}
 	u.page(c, func() {
@@ -832,11 +832,11 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 func (a *App) requestsPage(c *ui.Context, u usageLook, st keypool.State, m *usageModel) {
 	p := u.p
 	if !st.Running {
-		desc := L("Requests show here once the Patched Droid sends them through the Key Pool.")
+		desc := L("Model requests show here once the Key Pool runs.")
 		if st.Err != "" {
 			desc = st.Err
 		}
-		u.unavailable(c, iconOffline, L("The LLM proxy is not running"), desc, nil)
+		u.unavailable(c, iconOffline, L("The Key Pool is not running"), desc, nil)
 		return
 	}
 	h := m.history
@@ -880,7 +880,7 @@ func (a *App) requestsPage(c *ui.Context, u usageLook, st keypool.State, m *usag
 						u.text(c, L("Reading the request history…"), 12).TextColor(p.secondary)
 					})
 				} else {
-					u.unavailable(c, iconArrows, h.EmptyTitle, L("Requests the LLM proxy forwards show here. They are kept in a log on this computer and stay after a restart."), nil)
+					u.unavailable(c, iconArrows, h.EmptyTitle, L("Model requests sent through the Key Pool show here. They are logged on this computer and kept across restarts."), nil)
 				}
 				return
 			}
@@ -932,7 +932,7 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 		case 5:
 			numeric(r.Output)
 		case 6:
-			ui.Column(c).AlignItems(ui.End).Tooltip(L("Above, the whole time; below, the time to the first byte: how long the upstream took to start answering")).Children(func() {
+			ui.Column(c).AlignItems(ui.End).Tooltip(L("Top: the total time. Bottom: the time to the first byte, how long Factory took to start answering.")).Children(func() {
 				ui.Text(c, r.Duration).TextColor(u.tone(r.DurationTone)).FontFeatures("tnum")
 				if r.TTFB != "" {
 					u.text(c, r.TTFB, 10).TextColor(p.tertiary).FontFeatures("tnum")
@@ -954,7 +954,7 @@ func (a *App) eventsPage(c *ui.Context, u usageLook, m *usageModel) {
 		u.sectionHead(c, L("Events"), countL(len(events), l10n.N("%d event"), l10n.N("%d events")), nil)
 		u.card(c).Grow(1).MinHeight(0).Children(func() {
 			if len(events) == 0 {
-				u.unavailable(c, iconList, L("No events yet"), L("Key switches, key cooldowns, upstream errors and the like are logged here."), nil)
+				u.unavailable(c, iconList, L("No events yet"), L("Key switches, key cooldowns, and errors from Factory are logged here."), nil)
 				return
 			}
 			columns := []ui.TableColumn{
@@ -990,12 +990,12 @@ func (a *App) eventsPage(c *ui.Context, u usageLook, m *usageModel) {
 	})
 }
 
-// usageStatusBar is whether the LLM proxy runs and with which key, and how
+// usageStatusBar is whether the Key Pool runs and with which key, and how
 // the Key Pool switches keys.
 func (a *App) usageStatusBar(c *ui.Context, u usageLook, st keypool.State) {
 	p := u.p
 	symbol, tone := iconClock, llmusage.ToneWarning
-	text := L("The LLM proxy starts once the Key Pool has a key.")
+	text := L("The Key Pool starts once it has a key.")
 	switch {
 	case st.Running:
 		current := "—"
@@ -1004,11 +1004,11 @@ func (a *App) usageStatusBar(c *ui.Context, u usageLook, st keypool.State) {
 				current = k.Masked
 			}
 		}
-		symbol, tone, text = iconCheck, llmusage.ToneGreen, L("Running · current key %s", current)
+		symbol, tone, text = iconCheck, llmusage.ToneGreen, L("Key Pool running · current key %s", current)
 	case st.Err != "" && len(st.Keys) > 0:
-		symbol, tone, text = iconWarning, llmusage.ToneDanger, L("The LLM proxy is not running: %s", st.Err)
+		symbol, tone, text = iconWarning, llmusage.ToneDanger, L("The Key Pool is not running: %s", st.Err)
 	case len(st.Keys) > 0:
-		symbol, tone, text = iconWarning, llmusage.ToneDanger, L("The LLM proxy is not running")
+		symbol, tone, text = iconWarning, llmusage.ToneDanger, L("The Key Pool is not running")
 	}
 	mode := L("Switches keys automatically")
 	if st.Mode == keypool.Manual {
@@ -1062,9 +1062,9 @@ func (a *App) addKeySheet(c *ui.Context, u usageLook) {
 		ui.Column(c).Width(u.px(380)).Gap(u.px(12)).Children(func() {
 			ui.Column(c).Gap(u.px(4)).Children(func() {
 				u.text(c, L("Add key"), 14).Role(ui.RoleHeading).FontWeight(600)
-				u.text(c, L("Droi checks the key first and adds it to the Key Pool once it passes."), 12).TextColor(p.secondary)
+				u.text(c, L("Droi checks the key's quota with Factory first, then adds it to the Key Pool."), 12).TextColor(p.secondary)
 			})
-			submitted := ui.TextInput(c, &s.addKey).Password().AutoFocus().Placeholder("fk-…").Label(L("Factory API key")).Disabled(s.adding).Submitted()
+			submitted := ui.TextInput(c, &s.addKey).Password().AutoFocus().Placeholder("fk-…").Label(L("Factory API key to add")).Disabled(s.adding).Submitted()
 			if s.addErr != "" {
 				ui.Row(c).Role(ui.RoleStatus).Gap(u.px(4)).Children(func() {
 					u.icon(c, iconWarning, 13, p.danger)
@@ -1075,7 +1075,7 @@ func (a *App) addKeySheet(c *ui.Context, u usageLook) {
 			ui.Row(c).Gap(u.px(8)).Children(func() {
 				if s.adding {
 					ui.Spinner(c)
-					u.text(c, L("Checking the key…"), 12).TextColor(p.secondary)
+					u.text(c, L("Checking the key's quota…"), 12).TextColor(p.secondary)
 				}
 				ui.Spacer(c)
 				if u.pushButton(c, L("Cancel"), "", false, s.adding) {

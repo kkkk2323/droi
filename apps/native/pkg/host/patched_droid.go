@@ -91,7 +91,9 @@ func (h *Host) patchedDroidPath() string {
 	return h.patches().store.Path(v)
 }
 
-var errNoPatchedDroid = hostError("the Patched Droid is not ready")
+func errNoPatchedDroid() error {
+	return hostError(l10n.L("Droi's droid is missing. Turn the Key Pool off and on again in Settings → Advanced."))
+}
 
 // EnablePatchedDroid prepares the newest Patched Droid (downloading
 // Factory's build when this computer's droid is another version), then
@@ -143,12 +145,12 @@ func (h *Host) preparePatchedDroid(restart bool) {
 	_ = p.store.RefreshRecipes(ctx)
 	rs := p.store.Recipes()
 	if len(rs) == 0 {
-		h.setPatchErr(l10n.L("No Patched Droid exists for this computer (%s) yet.", p.store.Platform))
+		h.setPatchErr(l10n.L("The Key Pool is not available on this computer (%s) yet. It works on macOS and 64-bit Windows for now.", p.store.Platform))
 		return
 	}
 	r := rs[0]
 	if OlderThanMinDroid(r.Version) {
-		h.setPatchErr(l10n.L("The Patched Droid is droid %s; Droi needs %s or newer.", r.Version, MinDroid))
+		h.setPatchErr(l10n.L("Droi's droid is only available as droid %s, but Droi needs %s or newer. Try again once a newer version is supported.", r.Version, MinDroid))
 		return
 	}
 	local := LocateDroid(deref(h.Settings.Get().DroidPath), h.cfg.Env("PATH"), h.cfg.Home)
@@ -159,7 +161,7 @@ func (h *Host) preparePatchedDroid(restart bool) {
 		h.changed()
 	})
 	if err != nil {
-		h.setPatchErr(err.Error())
+		h.setPatchErr(l10n.L("Droi's droid is not ready: %s", strings.TrimPrefix(err.Error(), "droidpatch: ")))
 		return
 	}
 	old := h.Settings.Get().PatchedDroidVersion
@@ -226,10 +228,10 @@ func (h *Host) keyPoolUpstream() string {
 func (h *Host) baseURLConflict() string {
 	same := func(u string) bool { return u == "" || strings.TrimRight(u, "/") == defaultFactoryAPIBaseURL }
 	if u := deref(h.Settings.Get().FactoryAPIBaseURL); !same(u) {
-		return l10n.L("The Key Pool sends requests straight to Factory. Clear Factory API base URL (%s) below, then turn it on.", u)
+		return l10n.L("The Key Pool cannot be used while Factory API base URL is set (%s). Clear it below, then turn the Key Pool on.", u)
 	}
 	if u := h.cfg.Env("FACTORY_API_BASE_URL"); !same(u) {
-		return l10n.L("The Key Pool sends requests straight to Factory, but FACTORY_API_BASE_URL is set to %s. Open Droi without it, then turn it on.", u)
+		return l10n.L("The Key Pool cannot be used while FACTORY_API_BASE_URL is set (%s). Open Droi without that variable, then turn the Key Pool on.", u)
 	}
 	return ""
 }
@@ -245,7 +247,7 @@ func (h *Host) patchedEnv() ([]string, error) {
 	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
 	base, err := pool.Start()
 	if errors.Is(err, keypool.ErrNoKeys) {
-		return nil, hostError(l10n.L("The Key Pool has no key. Add one in Settings → Usage to start the Daemon."))
+		return nil, hostError(l10n.L("The Key Pool has no key yet. Add one in Settings → Usage, and the Daemon starts."))
 	}
 	if err != nil {
 		return nil, err

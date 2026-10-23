@@ -22,25 +22,25 @@ func (a *App) patchedDroidGroup(c *ui.Context) {
 	if p.Enabled || a.keyPool().Len() > 0 {
 		rows = append(rows, func() { a.keyPoolRow(c, p) })
 	}
-	a.settingGroup(c, L("Patched Droid"),
-		L("Droi downloads Factory's own droid of a version it has a recipe for, checks its SHA-256, and patches the one place that reads the LLM key, so each request can be sent with a key from the Key Pool. Your Factory login and everything else about droid stay as they are."),
+	a.settingGroup(c, L("Key Pool"),
+		L("Model requests use the Factory API keys you add to the Key Pool instead of your signed-in account. Every other request keeps using your account."),
 		rows...)
 }
 
 func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
-	desc := L("No recipe fits this computer yet, so Droi cannot patch droid here.")
+	desc := L("The Key Pool is not available on this computer yet. It works on macOS and 64-bit Windows for now.")
 	switch {
 	case p.Enabled && p.Version != "":
-		desc = L("The Daemon runs the Patched Droid, droid %s.", p.Version)
+		desc = L("The Daemon runs Droi's droid %s. Turning this off restarts the Daemon and interrupts running sessions.", p.Version)
 	case p.Supported && p.Latest != "":
-		desc = L("Droi can patch droid %s for this computer. The Daemon restarts, which stops working sessions.", p.Latest)
+		desc = L("Turning this on prepares Droi's droid %s (the first time, a download of about 300 MB) and restarts the Daemon, which interrupts running sessions.", p.Latest)
 	case p.Supported:
-		desc = L("Droi can patch droid for this computer.")
+		desc = L("Turning this on prepares Droi's droid (the first time, a download of about 300 MB) and restarts the Daemon, which interrupts running sessions.")
 	}
-	label := L("Use the Patched Droid")
-	a.settingRow(c, L("Patched Droid"), desc, func() {
+	label := L("Use the Key Pool")
+	a.settingRow(c, label, desc, func() {
 		if p.Preparing {
 			k.Spinner(c, 16, t.MutedForeground)
 			return
@@ -63,8 +63,8 @@ func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
 			return
 		}
 		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(8), 0, 0, 0).Children(func() {
-			k.Text(c, L("droid %s has a recipe; this Patched Droid is %s.", p.Latest, p.Version), 12, 18).TextColor(t.MutedForeground).Shrink(1).MinWidth(0)
-			if a.smallButton(c, kit.Outline, L("Update"), "refresh-cw", p.Preparing).Label(L("Update the Patched Droid")).Clicked() {
+			k.Text(c, L("Droi's droid %s is available; you have %s. Updating restarts the Daemon.", p.Latest, p.Version), 12, 18).TextColor(t.MutedForeground).Shrink(1).MinWidth(0)
+			if a.smallButton(c, kit.Outline, L("Update"), "refresh-cw", p.Preparing).Label(L("Update Droi's droid")).Clicked() {
 				h.UpdatePatchedDroid()
 			}
 		})
@@ -76,7 +76,7 @@ func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
 func (a *App) patchProgress(c *ui.Context, p host.PatchedDroid) {
 	k, t := a.kit, a.kit.T
 	if p.Total <= 0 {
-		k.Text(c, L("Preparing the Patched Droid…"), 12, 18).Role(ui.RoleStatus).TextColor(t.MutedForeground).Margin(k.Px(8), 0, 0, 0)
+		k.Text(c, L("Preparing Droi's droid…"), 12, 18).Role(ui.RoleStatus).TextColor(t.MutedForeground).Margin(k.Px(8), 0, 0, 0)
 		return
 	}
 	share := float32(float64(p.Done) / float64(p.Total) * 100)
@@ -96,11 +96,11 @@ func (a *App) patchProgress(c *ui.Context, p host.PatchedDroid) {
 func (a *App) keyPoolRow(c *ui.Context, p host.PatchedDroid) {
 	k, t := a.kit, a.kit.T
 	st := a.poolState()
-	desc := L("The Patched Droid sends every LLM request with a key from the Key Pool, whatever account Droi is signed in as. Add and switch keys on the Usage page.")
+	desc := L("Add and switch keys, and see their quota, on the Usage tab.")
 	if len(st.Keys) == 0 {
-		desc = L("The Key Pool is empty. The Patched Droid cannot send a request without a key: add one on the Usage page.")
+		desc = L("The Key Pool has no key yet. The Daemon starts once you add one on the Usage tab.")
 	}
-	a.settingRow(c, L("Key Pool"), desc, func() {
+	a.settingRow(c, L("Keys"), desc, func() {
 		a.statusPill(c, len(st.Keys) > 0, countL(len(st.Keys), l10n.N("%d key"), l10n.N("%d keys")))
 		if a.smallButton(c, kit.Outline, L("Open Usage"), "", false).Clicked() {
 			a.route.Tab = "usage"
@@ -109,15 +109,15 @@ func (a *App) keyPoolRow(c *ui.Context, p host.PatchedDroid) {
 		if len(st.Keys) == 0 {
 			return
 		}
-		current := L("No key is in use yet.")
+		current := L("No key in use yet")
 		for _, key := range st.Keys {
 			if key.Current {
 				current = L("In use: %s", key.Masked)
 			}
 		}
-		mode := L("Keys switch automatically when one runs out.")
+		mode := L("Switches keys automatically")
 		if st.Mode == keypool.Manual {
-			mode = L("Manual: droid keeps the key you chose.")
+			mode = L("Keeps the key you chose")
 		}
 		k.Text(c, current+" · "+mode, 12, 18).TextColor(t.MutedForeground).Margin(k.Px(8), 0, 0, 0)
 	})

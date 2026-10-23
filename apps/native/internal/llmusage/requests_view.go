@@ -115,7 +115,7 @@ func BuildRequestRow(r diag.RequestRecord) RequestRowView {
 	row.StatusHelp = requestStatusHelp(r)
 
 	cacheHelp := l10n.L("Share of the input read from cache")
-	noUsage := l10n.L("The upstream returned no usage")
+	noUsage := l10n.L("Factory returned no usage")
 	if u := r.Usage; u != nil {
 		rate, hasRate := cacheRate(*u)
 		row.Input = numeric(FormatTokens(u.Input), true, inputHelp(*u), ToneSecondary)
