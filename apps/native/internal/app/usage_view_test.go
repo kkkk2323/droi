@@ -277,7 +277,7 @@ func TestUsageTabPages(t *testing.T) {
 			h.shoot("usage-sample-key-open-" + theme)
 			for _, page := range []struct{ name, label, want string }{
 				{"requests", "请求记录", "本页请求"},
-				{"events", "事件日志", "key_switched"},
+				{"events", "事件日志", "已切换 key"},
 				{"warming", "缓存预热", "续期次数"},
 			} {
 				h.click(page.label)

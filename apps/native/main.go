@@ -91,9 +91,14 @@ func main() {
 	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
 	localToken := gateway.NewLocalToken()
 	var win *mygo.Window
+	bar := &menuBar{win: func() *mygo.Window { return win }}
 	update := func(fn func()) {
 		if win != nil {
-			win.Update(fn)
+			win.Update(func() {
+				fn()
+				bar.sync()
+				bar.invalidate()
+			})
 		}
 	}
 	sessionList := &app.SessionListShare{Prefs: userPrefs, Changed: func() { update(func() {}) }}
@@ -169,6 +174,7 @@ func main() {
 			SessionList: sessionList,
 
 			FactoryAppRunning: host.FactoryAppRunning,
+			MenuBar:           bar.shell(),
 		})
 		a.SetLanguageChanged(func() {
 			mygo.App.SetLocale(string(l10n.Code()))
@@ -188,6 +194,7 @@ func main() {
 		update(func() {})
 	}
 	current := func() *app.App { return shown.app }
+	bar.current = current
 
 	if updater != nil {
 		var waiting sync.Once
@@ -247,6 +254,8 @@ func main() {
 		if updater != nil {
 			go updater.Schedule(context.Background())
 		}
+		update(func() {})
+		go bar.tick(update)
 	})
 	mygo.App.OnActivate(func(visible bool) {
 		if win != nil && !visible {
@@ -260,6 +269,7 @@ func main() {
 		}
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		bar.remove()
 		if gw != nil {
 			gw.Close()
 		}

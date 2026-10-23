@@ -13,7 +13,7 @@ import (
 // colors rather than the theme's.
 type usagePalette struct {
 	bg, card, text, secondary, tertiary, faint, line, track, hover, selected ui.Color
-	segTrack, segThumb                                                       ui.Color
+	segTrack, segThumb, segText                                              ui.Color
 	accent, green, warning, danger                                           ui.Color
 }
 
@@ -23,7 +23,7 @@ var (
 		secondary: ui.Hex("#66666e"), tertiary: ui.Hex("#9a9aa3"), faint: ui.Hex("#c6c6ce"),
 		line: ui.Hex("#e4e4e9"), track: ui.Hex("#ececf0"),
 		hover: ui.RGBA(20, 20, 30, 0.045), selected: ui.RGBA(20, 20, 30, 0.075),
-		segTrack: ui.Hex("#e8e8ed"), segThumb: ui.Hex("#ffffff"),
+		segTrack: ui.Hex("#e0e0e6"), segThumb: ui.Hex("#ffffff"), segText: ui.Hex("#3f3f46"),
 		accent: ui.Hex("#2f6fe4"), green: ui.Hex("#189a58"), warning: ui.Hex("#c2710c"), danger: ui.Hex("#d64545"),
 	}
 	usageDark = usagePalette{
@@ -31,7 +31,7 @@ var (
 		secondary: ui.Hex("#a3a3ad"), tertiary: ui.Hex("#74747e"), faint: ui.Hex("#56565f"),
 		line: ui.Hex("#333339"), track: ui.Hex("#303036"),
 		hover: ui.RGBA(255, 255, 255, 0.05), selected: ui.RGBA(255, 255, 255, 0.085),
-		segTrack: ui.Hex("#2a2a2f"), segThumb: ui.Hex("#45454c"),
+		segTrack: ui.Hex("#2a2a2f"), segThumb: ui.Hex("#4a4a52"), segText: ui.Hex("#c9c9d1"),
 		accent: ui.Hex("#7ea6ff"), green: ui.Hex("#6fd99b"), warning: ui.Hex("#f2b544"), danger: ui.Hex("#f28b82"),
 	}
 )
@@ -360,10 +360,10 @@ func (u usageLook) segmented(c *ui.Context, selected *int, labels []string, labe
 			if fill {
 				s.Grow(1).Basis(0).PaddingX(u.px(6))
 			}
-			color, weight := p.secondary, 400
+			color, weight := p.segText, 400
 			switch {
 			case i == *selected:
-				s.Background(p.segThumb).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.12))
+				s.Background(p.segThumb).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).Shadow(0, 0, 0, 0.5, p.line)
 				color, weight = p.text, 500
 			case disabled:
 				s.Opacity(0.5)

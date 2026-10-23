@@ -1,6 +1,7 @@
 package app
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -10,6 +11,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // patchedDroidGroup is Settings → Advanced's Patched Droid (ADR 0027): the
@@ -21,6 +23,9 @@ func (a *App) patchedDroidGroup(c *ui.Context) {
 	rows := []func(){func() { a.patchedDroidRow(c, p) }}
 	if p.Enabled || a.keyPool().Len() > 0 {
 		rows = append(rows, func() { a.keyPoolRow(c, p) })
+	}
+	if p.Enabled && a.cfg.MenuBar != nil {
+		rows = append(rows, func() { a.menuBarRow(c) })
 	}
 	a.settingGroup(c, L("Key Pool"),
 		L("Model requests use the Factory API keys you add to the Key Pool instead of your signed-in account. Every other request keeps using your account."),
@@ -88,6 +93,22 @@ func (a *App) patchProgress(c *ui.Context, p host.PatchedDroid) {
 			fill.WidthPercent(min(fill.Animate("patch", share, 240*time.Millisecond), 100))
 		})
 	})
+}
+
+// menuBarRow turns the Key Pool's menu bar item on and off.
+func (a *App) menuBarRow(c *ui.Context) {
+	label := L("Show usage in the menu bar")
+	desc := L("The menu bar shows how much monthly quota the keys have left. Click it to see today's use, the Standard and Core pools, and each key.")
+	if runtime.GOOS == "windows" {
+		label = L("Show usage in the notification area")
+		desc = L("The notification area of the taskbar shows the Key Pool's icon. Click it to see the monthly quota left, today's use, the Standard and Core pools, and each key.")
+	}
+	a.settingRow(c, label, desc, func() {
+		on := prefs.MenuBarUsage.Get(a.prefs)
+		if a.toggle(c, label, on, false) {
+			prefs.MenuBarUsage.Set(a.prefs, !on)
+		}
+	}, nil)
 }
 
 // keyPoolRow is the Key Pool in Settings: how many keys it holds, which one
