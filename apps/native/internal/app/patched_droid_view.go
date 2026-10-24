@@ -27,9 +27,7 @@ func (a *App) patchedDroidGroup(c *ui.Context) {
 	if p.Enabled && a.cfg.MenuBar != nil {
 		rows = append(rows, func() { a.menuBarRow(c) })
 	}
-	a.settingGroup(c, L("Key Pool"),
-		L("Model requests use the Factory API keys you add to the Key Pool instead of your signed-in account. Every other request keeps using your account."),
-		rows...)
+	a.settingGroup(c, L("Key Pool"), "", rows...)
 }
 
 func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
@@ -64,15 +62,61 @@ func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
 		if p.Err != "" {
 			k.Text(c, p.Err, 12, 18).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).Margin(k.Px(8), 0, 0, 0)
 		}
-		if !p.UpdateAvailable() {
-			return
+		if p.UpdateAvailable() {
+			ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(8), 0, 0, 0).Children(func() {
+				k.Text(c, L("Droi's droid %s is available; you have %s. Updating restarts the Daemon.", p.Latest, p.Version), 12, 18).TextColor(t.MutedForeground).Shrink(1).MinWidth(0)
+				if a.smallButton(c, kit.Outline, L("Update"), "refresh-cw", p.Preparing).Label(L("Update Droi's droid")).Clicked() {
+					h.UpdatePatchedDroid()
+				}
+			})
 		}
-		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(8), 0, 0, 0).Children(func() {
-			k.Text(c, L("Droi's droid %s is available; you have %s. Updating restarts the Daemon.", p.Latest, p.Version), 12, 18).TextColor(t.MutedForeground).Shrink(1).MinWidth(0)
-			if a.smallButton(c, kit.Outline, L("Update"), "refresh-cw", p.Preparing).Label(L("Update Droi's droid")).Clicked() {
-				h.UpdatePatchedDroid()
+	})
+}
+
+// patchedDroidAboutRow is About's row for Droi's droid while the Key Pool is
+// on: Check for updates reads the published recipes at once, without waiting
+// for the hourly read, and Update moves to the newer one.
+func (a *App) patchedDroidAboutRow(c *ui.Context, p host.PatchedDroid) {
+	h := a.cfg.Host
+	k, t := a.kit, a.kit.T
+	desc := ""
+	if p.UpdateAvailable() {
+		desc = L("Updating restarts the Daemon, which interrupts running sessions.")
+	}
+	a.settingRow(c, L("Droi's droid %s", p.Version), desc, func() {
+		ui.Row(c).Gap(k.Px(12)).AlignItems(ui.Center).Children(func() {
+			status, color := "", t.MutedForeground
+			switch {
+			case p.Preparing:
+			case p.Checking:
+				status = L("Checking…")
+			case p.CheckErr != "":
+				status, color = p.CheckErr, t.DestructiveForeground
+			case p.UpdateAvailable():
+				status = L("%s is available", p.Latest)
+			case p.Checked:
+				status = L("Up to date")
+			}
+			if status != "" {
+				k.Text(c, status, 12, 16).Role(ui.RoleStatus).TextColor(color).MaxWidth(k.Px(260)).MaxLines(2)
+			}
+			if p.UpdateAvailable() {
+				if a.smallButton(c, kit.Primary, L("Update to %s", p.Latest), "arrow-down-to-line", p.Preparing).Label(L("Update Droi's droid")).Clicked() {
+					h.UpdatePatchedDroid()
+				}
+				return
+			}
+			if a.smallButton(c, kit.Outline, L("Check for updates"), "", p.Checking || p.Preparing).Label(L("Check for Droi's droid updates")).Clicked() {
+				h.CheckPatchedDroid()
 			}
 		})
+	}, func() {
+		if p.Preparing {
+			a.patchProgress(c, p)
+		}
+		if p.Err != "" {
+			k.Text(c, p.Err, 12, 18).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).Margin(k.Px(8), 0, 0, 0)
+		}
 	})
 }
 

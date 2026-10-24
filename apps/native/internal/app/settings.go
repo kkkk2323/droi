@@ -235,17 +235,22 @@ func (a *App) generalTab(c *ui.Context) {
 
 func (a *App) aboutTab(c *ui.Context) {
 	version := a.cfg.Version
-	a.settingGroup(c, "", "",
-		func() {
-			var control, below func()
-			if a.cfg.Updater != nil {
-				control = func() { a.updateControl(c) }
-				if s := a.cfg.Updater.State(); showsNotes(s) {
-					below = func() { a.updateNotes(c, s) }
-				}
+	rows := []func(){func() {
+		var control, below func()
+		if a.cfg.Updater != nil {
+			control = func() { a.updateControl(c) }
+			if s := a.cfg.Updater.State(); showsNotes(s) {
+				below = func() { a.updateNotes(c, s) }
 			}
-			a.settingRow(c, L("Droi %s", version), "", control, below)
-		},
+		}
+		a.settingRow(c, L("Droi %s", version), "", control, below)
+	}}
+	if h := a.cfg.Host; h != nil && h.PatchedDroidState().Enabled {
+		h.RefreshPatchRecipes()
+		p := h.PatchedDroidState()
+		rows = append(rows, func() { a.patchedDroidAboutRow(c, p) })
+	}
+	a.settingGroup(c, "", "", append(rows,
 		func() {
 			if a.cfg.Updater == nil {
 				return
@@ -261,7 +266,7 @@ func (a *App) aboutTab(c *ui.Context) {
 		func() {
 			a.settingRow(c, L("Data and privacy"), L("Sessions, settings, and your Factory API key stay on this computer; paired phones connect through the Gateway. Prompts and context are sent to Factory to run the models."), nil, nil)
 		},
-	)
+	)...)
 }
 
 // hostUpdate saves Shell settings and restarts the Daemon when they change

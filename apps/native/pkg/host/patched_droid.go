@@ -33,6 +33,10 @@ type PatchedDroid struct {
 	Preparing   bool
 	Done, Total int64
 	Err         string
+	// Checking: a check for newer recipes runs (CheckPatchedDroid);
+	// Checked: the last one read them; CheckErr says why it did not.
+	Checking, Checked bool
+	CheckErr          string
 }
 
 // UpdateAvailable reports a newer Patched Droid than the one in use.
@@ -49,6 +53,9 @@ type patchState struct {
 	progress  droidpatch.Progress
 	err       string
 	refreshed time.Time
+	checking  bool
+	checked   bool
+	checkErr  string
 	// watch starts the hourly read of the published recipes once; stop
 	// ends it.
 	watch, stopped, stopMade sync.Once
@@ -83,6 +90,7 @@ func (h *Host) PatchedDroidState() PatchedDroid {
 	}
 	p.mu.Lock()
 	out.Preparing, out.Done, out.Total, out.Err = p.preparing, p.progress.Done, p.progress.Total, p.err
+	out.Checking, out.Checked, out.CheckErr = p.checking, p.checked, p.checkErr
 	p.mu.Unlock()
 	return out
 }
@@ -214,6 +222,33 @@ func (h *Host) RefreshPatchRecipes() {
 		if p.store.RefreshRecipes(ctx) == nil {
 			h.changed()
 		}
+	}()
+}
+
+// CheckPatchedDroid fetches the published recipes now, however recently
+// they were read, so Settings can say whether a newer Patched Droid exists.
+func (h *Host) CheckPatchedDroid() {
+	p := h.patches()
+	p.mu.Lock()
+	if p.checking {
+		p.mu.Unlock()
+		return
+	}
+	p.checking, p.checked, p.checkErr = true, false, ""
+	p.refreshed = time.Now()
+	p.mu.Unlock()
+	h.changed()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		err := p.store.RefreshRecipes(ctx)
+		p.mu.Lock()
+		p.checking, p.checked = false, err == nil
+		if err != nil {
+			p.checkErr = l10n.L("Droi could not check for a newer droid: %s", strings.TrimPrefix(err.Error(), "droidpatch: "))
+		}
+		p.mu.Unlock()
+		h.changed()
 	}()
 }
 

@@ -286,8 +286,33 @@ func TestSettingsOffersThePatchedDroid(t *testing.T) {
 	if !h.hasText("Keys") || !h.hasText("The Key Pool has no key yet") {
 		t.Fatalf("the Key Pool is not in Settings: %q", h.tt.Texts())
 	}
+	if h.hasText("Model requests use the Factory API keys") {
+		t.Fatalf("the Key Pool group still has its footer: %q", h.tt.Texts())
+	}
 	h.click("Open Usage")
 	h.until("the Usage tab", func() bool { return h.hasText("Keys and quota") })
+}
+
+// About has a row for Droi's droid while the Key Pool is on: its version and
+// Check for updates, or Update once a newer one has a recipe.
+func TestAboutOffersDroisDroidUpdates(t *testing.T) {
+	h0 := keyPoolTestHost(t)
+	_ = h0.Settings.Update(func(s *host.Settings) { s.PatchedDroidVersion = "9.9.9" })
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.until("the session list", func() bool { return h.hasText("One") })
+	h.click("Settings")
+	h.click("About")
+	h.until("Droi's droid's row", func() bool { return h.hasText("Droi's droid 9.9.9") })
+	if _, ok := h.tt.Find("Check for Droi's droid updates"); !ok {
+		t.Fatalf("no Check for updates for Droi's droid: %q", h.tt.Texts())
+	}
+	_ = h0.Settings.Update(func(s *host.Settings) { s.PatchedDroidVersion = "0.1.0" })
+	h0.Changed()
+	h.until("the update", func() bool { _, ok := h.tt.Find("Update Droi's droid"); return ok })
+	if !h.hasText("Updating restarts the Daemon, which interrupts running sessions.") {
+		t.Fatalf("the row does not say what updating does: %q", h.tt.Texts())
+	}
+	h.shoot("settings-about-patched-droid")
 }
 
 // usageSample fills the Usage tab with what a running Key Pool reports, so

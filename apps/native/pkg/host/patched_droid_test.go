@@ -1,11 +1,17 @@
 package host
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
@@ -122,5 +128,45 @@ func TestPatchedDroidStateNamesTheNewestRecipe(t *testing.T) {
 	h.patch.store.Platform = "plan9/mips"
 	if st := h.PatchedDroidState(); st.Supported {
 		t.Fatalf("supported on plan9: %+v", st)
+	}
+}
+
+// Checking for updates reads the published recipes at once, even within the
+// hour of the last read, and says why when it cannot.
+func TestCheckingForANewerPatchedDroid(t *testing.T) {
+	h, _ := patchedHost(t, true)
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	body := droidpatch.Marshal([]droidpatch.Recipe{{Version: "9.9.9", Platforms: []string{h.patch.store.Platform}}})
+	var published atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case !published.Load():
+			http.NotFound(w, r)
+		case strings.HasSuffix(r.URL.Path, ".sig"):
+			w.Write([]byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, body))))
+		default:
+			w.Write(body)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	h.patch.store.RecipesURL, h.patch.store.PublicKey = srv.URL+"/recipes.json", pub
+	h.patch.refreshed = time.Now()
+	check := func() PatchedDroid {
+		t.Helper()
+		h.CheckPatchedDroid()
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			if st := h.PatchedDroidState(); !st.Checking {
+				return st
+			}
+		}
+		t.Fatal("the check did not end")
+		return PatchedDroid{}
+	}
+	if st := check(); st.Checked || !strings.Contains(st.CheckErr, "404") {
+		t.Fatalf("a missing release: %+v", st)
+	}
+	published.Store(true)
+	if st := check(); !st.Checked || st.CheckErr != "" || st.Latest != "9.9.9" || !st.UpdateAvailable() {
+		t.Fatalf("a published recipe: %+v", st)
 	}
 }
