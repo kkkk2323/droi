@@ -11,6 +11,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // SessionDefaults is Settings' Session defaults section: what a new
@@ -120,6 +121,42 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 				defaults.SetDefaultToolMode(s.env.Prefs, defaults.ToolMode(next))
 			}
 		}, nil)
+		func() {
+			added := prefs.ScriptModels.Get(s.env.Prefs)
+			name := func(id string) string {
+				if i := slices.IndexFunc(dv.Models, func(m models.Choice) bool { return m.ID == id }); i >= 0 {
+					return dv.Models[i].Label
+				}
+				return id
+			}
+			var addable []models.Choice
+			for _, m := range defaults.PickableModels(dv.Models, true) {
+				if !slices.Contains(added, m.ID) {
+					addable = append(addable, m)
+				}
+			}
+			store := func(next []string) { prefs.ScriptModels.Set(s.env.Prefs, next) }
+			k.SettingRow(c, l10n.L("Script models"), l10n.L("Factory lists the models that may use Script. A model added here may use it too, with the Key Pool on; restart the Daemon in Advanced to apply."), nil, func() {
+				ui.Column(c).Role(ui.RoleList).Label(l10n.L("Script models")).Gap(k.Px(8)).Children(func() {
+					for _, id := range added {
+						label := name(id)
+						ui.Row(c.Key(id)).Role(ui.RoleListItem).Label(label).Gap(k.Px(8)).Children(func() {
+							k.Text(c, label, 14, 20).TextColor(t.Foreground).SingleLine().Grow(1).MinWidth(0)
+							if k.IconButton(c, "x", l10n.L("Remove the %s Script model", label), 32).Clicked() {
+								store(slices.DeleteFunc(slices.Clone(added), func(v string) bool { return v == id }))
+							}
+						})
+					}
+					if len(addable) > 0 {
+						ui.Row(c).Children(func() {
+							ModelField(c, k, s.env.Prefs, l10n.L("Add a Script model"), false, s.Flag("model:script-models"), &s.picker, addable, "", func(id string) {
+								store(append(slices.Clone(added), id))
+							})
+						})
+					}
+				})
+			})
+		}()
 	})
 	const sameAsMain = "same-as-main"
 	k.SettingGroup(c, l10n.L("Spec mode"), "",

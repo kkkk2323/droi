@@ -299,6 +299,9 @@ var (
 	ManualWorkspaces  = List{Key: "droi.workspaceOrder"}
 	SessionsFirstSeen = Map{Key: "droi.sessionsFirstSeen"}
 	DefaultToolMode   = String{Key: "droi.toolExecutionMode"}
+	// ScriptModels are the models Settings lets use Script in addition to
+	// the ones Factory names in its feature flags.
+	ScriptModels = List{Key: "droi.scriptModels"}
 	// NewSessionWorktree: new Sessions start in a worktree of their
 	// repository; WorktreeLifecycle is the lifecycle picked last.
 	NewSessionWorktree = Bool{Key: "droi.newSessionWorktree"}

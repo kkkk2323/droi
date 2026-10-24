@@ -39,7 +39,7 @@ The Factory API keys Droi keeps for the Patched Droid's LLM requests, one of the
 _Avoid_: key list, key rotation, accounts (a Factory Account is a login, not a key)
 
 **LLM Proxy**:
-The Key Pool's local proxy the Patched Droid sends its Factory traffic through. It forwards requests unchanged and records them, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
+The Key Pool's local proxy the Patched Droid sends its Factory traffic through. It forwards requests unchanged, except that the reply at `/api/feature-flags` also names the models Settings lets use Script (ADR 0028). It records requests, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
 _Avoid_: dp, gateway, MITM
 
 **Desktop Shell**:

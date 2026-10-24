@@ -2,9 +2,12 @@ package app
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
 // openSessionDefaults opens Settings on the Session defaults page.
@@ -55,6 +58,24 @@ func TestSessionDefaultsSetsACompactionLimitForAModel(t *testing.T) {
 		t.Fatalf("update_session_defaults %v", p)
 	}
 	h.until("the row to go", func() bool { _, ok := h.tt.Find("GPT-5 compaction limit"); return !ok })
+}
+
+// A model can be added to the Script list, and removed again.
+func TestSessionDefaultsAddsAScriptModel(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.openSessionDefaults()
+	h.click("Add a Script model")
+	h.until("the model list", func() bool { _, ok := h.tt.Find("Choose a model"); return ok })
+	h.click("GPT-5")
+	h.until("the GPT-5 row", func() bool { _, ok := h.tt.Find("Remove the GPT-5 Script model"); return ok })
+	if got := prefs.ScriptModels.Get(h.a.prefs); !slices.Equal(got, []string{"gpt-5"}) {
+		t.Fatalf("Script models %v", got)
+	}
+	h.click("Remove the GPT-5 Script model")
+	h.until("the row to go", func() bool { _, ok := h.tt.Find("Remove the GPT-5 Script model"); return !ok })
+	if got := prefs.ScriptModels.Get(h.a.prefs); len(got) != 0 {
+		t.Fatalf("Script models %v", got)
+	}
 }
 
 // The spec folder is the user's, the project's or one picked.

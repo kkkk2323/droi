@@ -66,10 +66,11 @@ func (h *Host) patches() *patchState {
 	h.patch.once.Do(func() {
 		h.patch.store = droidpatch.NewStore(filepath.Join(h.cfg.UserData, "droid"))
 		h.patch.pool = keypool.Open(keypool.Options{
-			Dir:      filepath.Join(h.cfg.UserData, "llm"),
-			Upstream: h.keyPoolUpstream(),
-			Sessions: daemonSessions{h},
-			OnChange: h.changed,
+			Dir:          filepath.Join(h.cfg.UserData, "llm"),
+			Upstream:     h.keyPoolUpstream(),
+			Sessions:     daemonSessions{h},
+			OnChange:     h.changed,
+			ScriptModels: h.cfg.ScriptModels,
 		})
 	})
 	return &h.patch

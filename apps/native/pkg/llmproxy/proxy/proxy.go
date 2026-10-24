@@ -91,6 +91,7 @@ type Proxy struct {
 	premUpstream    string
 	transport       http.RoundTripper
 	cacheWarmerRef  *CacheWarmer
+	scriptModels    func() []string
 	keyOpener       *keyOpener
 	recorder        *diag.Recorder
 	startedAt       time.Time
@@ -317,6 +318,35 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	upstreamBody, decoder, plainBody := decodeUpstreamBody(upstreamEncoding, resp.Body)
 	if decoder != nil {
 		defer decoder.Close()
+	}
+
+	// Factory names the models whose Sessions may use Script. Settings may
+	// add more, which this reply carries to droid; nothing else in it changes.
+	if !llm && plainBody && resp.StatusCode == http.StatusOK && isFeatureFlags(req.Method, upstreamPath) {
+		body, err := io.ReadAll(io.LimitReader(upstreamBody, maxFeatureFlagsBody+1))
+		switch {
+		case err != nil:
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			p.event(diag.Event{Kind: "feature_flags_read_error", Detail: err.Error()})
+			return
+		case len(body) > maxFeatureFlagsBody:
+			upstreamBody = io.MultiReader(bytes.NewReader(body), upstreamBody)
+		default:
+			out, added := addScriptModels(body, p.scriptModelsNow())
+			upstreamBody = bytes.NewReader(body)
+			if len(added) > 0 {
+				for name, vals := range copyResponseHeaders(resp.Header) {
+					for _, v := range vals {
+						w.Header().Add(name, v)
+					}
+				}
+				w.Header().Set("Content-Length", strconv.Itoa(len(out)))
+				w.WriteHeader(resp.StatusCode)
+				_, _ = w.Write(out)
+				p.event(diag.Event{Kind: "script_models_added", Detail: strings.Join(added, ", ")})
+				return
+			}
+		}
 	}
 
 	errorDetail := ""

@@ -38,6 +38,9 @@ type Config struct {
 	ScratchFolder string
 	// KeyPoolUpstream replaces Factory's API for the Key Pool (for tests).
 	KeyPoolUpstream string
+	// ScriptModels reports the models Settings lets use Script in addition
+	// to Factory's list; nil adds none.
+	ScriptModels func() []string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.

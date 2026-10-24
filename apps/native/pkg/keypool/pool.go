@@ -38,6 +38,9 @@ type Options struct {
 	Sessions proxy.SessionStates
 	// OnChange hears every change of State.
 	OnChange func()
+	// ScriptModels reports the model IDs Settings lets use Script in
+	// addition to Factory's list; nil adds none.
+	ScriptModels func() []string
 	// UsageURL replaces Factory's billing endpoint (for tests).
 	UsageURL string
 }
@@ -277,6 +280,7 @@ func (p *Pool) Start() (string, error) {
 	rotator.SetUsageLog(usageSink)
 	p.sinks = []*diag.FileSink{usageSink}
 	px := proxy.NewProxy(cfg.UpstreamBaseURL, rotator, p.switchKey)
+	px.SetScriptModels(p.opts.ScriptModels)
 	rec := px.Recorder()
 	if sink, err := diag.OpenFileSink(p.RequestLog(), 10<<20, -1); err == nil {
 		rec.PersistRequests(sink)

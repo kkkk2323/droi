@@ -81,14 +81,17 @@ func main() {
 		}
 	}
 
+	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
 	h := host.New(host.Config{
 		UserData:   userData,
 		Home:       home,
 		Version:    version,
 		Env:        os.Getenv,
 		Executable: executable(),
+		ScriptModels: func() []string {
+			return prefs.ScriptModels.Get(userPrefs)
+		},
 	})
-	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
 	localToken := gateway.NewLocalToken()
 	var win *mygo.Window
 	bar := &menuBar{win: func() *mygo.Window { return win }}
