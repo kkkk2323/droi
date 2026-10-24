@@ -1,3 +1,13 @@
+## 1.71.0 - 2026-10-24
+
+### Added
+
+- With the Key Pool on, Settings → About has a row for Droi's droid. Check for updates looks for a newer Droi's droid at once, instead of waiting for the hourly check, and says whether it is up to date or why it could not check. Once a newer one is available, the button updates to it; updating restarts the Daemon, which interrupts running sessions.
+
+### Changed
+
+- The Key Pool group in Settings → Advanced no longer has the line under it about which requests use the Key Pool's keys.
+
 ## 1.70.1 - 2026-10-23
 
 ### Changed
