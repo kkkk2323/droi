@@ -1,3 +1,9 @@
+## 1.73.0 - 2026-10-24
+
+### Added
+
+- Another app can now be built on Droi: the same window and Host under its own name, port and mark, with MCP servers and hooks of its own for the Daemon, words added to the System Prompt, MCP servers inside its own executable, pages in the sidebar under Automations, Settings sections, and its own way to show a tool's results or a json-render element. It runs Droi's `droiapp.Run` with its brand and extensions, and takes each Droi release with a new tag of the Go module (ADR 0029). Droi itself looks and works as before.
+
 ## 1.72.1 - 2026-10-24
 
 ### Fixed
