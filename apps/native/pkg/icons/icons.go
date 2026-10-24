@@ -22,7 +22,27 @@ type key struct {
 var (
 	mu    sync.Mutex
 	cache = map[key]*ui.SVG{}
+	added = map[string][]byte{}
 )
+
+// Register adds an icon of another app's own under name, an SVG drawn as
+// Lucide's are: a 24×24 viewBox, stroke="currentColor" and
+// stroke-width="2". A name Droi has keeps Droi's icon.
+func Register(name string, svg []byte) {
+	mu.Lock()
+	defer mu.Unlock()
+	added[name] = svg
+}
+
+func source(name string) ([]byte, error) {
+	b, err := files.ReadFile("svg/" + name + ".svg")
+	if err != nil {
+		if a, ok := added[name]; ok {
+			return a, nil
+		}
+	}
+	return b, err
+}
 
 // Get returns the icon of a Lucide file name, such as "panel-left". It
 // panics on a name that has no file: icons are part of the program.
@@ -37,7 +57,7 @@ func Stroked(name string, width float32) *ui.SVG {
 	if s, ok := cache[k]; ok {
 		return s
 	}
-	b, err := files.ReadFile("svg/" + name + ".svg")
+	b, err := source(name)
 	if err != nil {
 		panic("icons: no " + name)
 	}

@@ -2,27 +2,38 @@ package host
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 )
+
+// systemPromptAddition is Settings' System Prompt Addition, then the app's
+// own (Config.AppendSystemPrompt), a blank line between them.
+func (h *Host) systemPromptAddition() string {
+	var parts []string
+	if p := h.Settings.Get().AppendSystemPrompt; p != nil && strings.TrimSpace(*p) != "" {
+		parts = append(parts, *p)
+	}
+	if h.cfg.AppendSystemPrompt != nil {
+		if p := h.cfg.AppendSystemPrompt(); strings.TrimSpace(p) != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
 
 // GatewayOptions is the Gateway of h's computer, as the app and `droi host`
 // both run it. The caller sets what differs: Port, RemoteAccess, LocalToken
 // and App.
 func (h *Host) GatewayOptions(version string, moveToTrash func(string) error) gateway.Options {
 	return gateway.Options{
-		DaemonURL:    func() string { return h.Daemon.State().URL() },
-		PairingToken: func() string { return h.Settings.Get().PairingToken },
-		Credential:   h.Credential,
-		AppendSystemPrompt: func() string {
-			if p := h.Settings.Get().AppendSystemPrompt; p != nil {
-				return *p
-			}
-			return ""
-		},
-		Version:      version,
-		ComputerName: gateway.ComputerName(),
-		ComputerID:   h.Settings.Get().ComputerID,
+		DaemonURL:          func() string { return h.Daemon.State().URL() },
+		PairingToken:       func() string { return h.Settings.Get().PairingToken },
+		Credential:         h.Credential,
+		AppendSystemPrompt: h.systemPromptAddition,
+		Version:            version,
+		ComputerName:       gateway.ComputerName(),
+		ComputerID:         h.Settings.Get().ComputerID,
 		// Its refusal of a folder outside the Scratch folder answers 400.
 		Scratch: &gateway.ScratchFolders{Root: h.ScratchFolder, MoveToTrash: moveToTrash},
 		FindSessionFile: func(id string) string {

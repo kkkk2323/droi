@@ -46,6 +46,13 @@ _Avoid_: dp, gateway, MITM
 The installed desktop application. It embeds a Host and opens a window for the Local Client. It holds no conversation state.
 _Avoid_: main process, backend, app
 
+**Brand**:
+What names the app built from Droi's packages: its name, the short id of its folders, the Gateway's port and its mark. Droi's own brand is Droi; another app runs `droiapp.Run` with its own (ADR 0029). The Gateway answers `/meta` as Droi whatever the brand.
+_Avoid_: white label, skin, theme
+
+**Extension**:
+What an app built on Droi adds to it through `droiapp.Run`: MCP servers and hooks for the Runtime Overlay, words for the System Prompt Addition, subcommands, pages, Settings sections, and how tool calls and json-render elements show (ADR 0029). It plugs into seams Droi has; it does not patch Droi.
+_Avoid_: plugin, add-on, module
 **Gateway**:
 The part of the Host that lets a Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Host's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Host's System Prompt Addition to every Session a Client starts, creates and trashes Scratch Workspaces, and answers a Client's requests to restart the Daemon or update the Host.
 _Avoid_: proxy, API server, Hono server, web server

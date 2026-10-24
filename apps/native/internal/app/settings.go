@@ -11,6 +11,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
@@ -65,7 +66,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	var tabs []settingsTab
-	for _, tab := range settingsTabs {
+	for _, tab := range withExtensionTabs(settingsTabs, a.cfg.SettingsTabs) {
 		if tab.id == "usage" && !a.usageTabShown() {
 			continue
 		}
@@ -174,6 +175,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.advancedTab(c)
 				case "about":
 					a.aboutTab(c)
+				default:
+					a.extensionTab(c, current.id)
 				}
 			})
 		})
@@ -537,7 +540,7 @@ func (a *App) newSessionsGroup(c *ui.Context) {
 		},
 		func() {
 			a.settingRow(c, L("Scratch folder"), L("Sessions started outside a project get their own folder in %s, which moves to the Trash when archived. Changes apply to new Sessions only.", h.ScratchFolder()), nil,
-				a.saveRow(c, &s.scratch, L("Scratch folder"), "~/.droi/chats", L("Save folder"), true, func(v string) {
+				a.saveRow(c, &s.scratch, L("Scratch folder"), "~/."+brand.Current().ID+"/chats", L("Save folder"), true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.ScratchFolder = host.OptString(v) })
 				}))
 		},

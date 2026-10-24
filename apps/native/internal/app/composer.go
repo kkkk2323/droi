@@ -22,6 +22,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/slash"
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
@@ -745,32 +746,10 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session) {
 		ring := ui.Box(c).Size(k.Px(14), k.Px(14))
 		ring.Draw(func(p *ui.Painter, r ui.Rect) {
 			scale := r.W / 14
-			drawRing(p, r.X+7*scale, r.Y+7*scale, 5.5*scale, 2*scale, ratio, t.Border, color)
+			dashkit.DrawRing(p, r.X+7*scale, r.Y+7*scale, 5.5*scale, 2*scale, ratio, t.Border, color)
 		})
 		k.Text(c, label, 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum")
 	})
-}
-
-// drawRing strokes a ring around (cx, cy) in track, and over it, in color,
-// the arc of ratio of it, clockwise from the top.
-func drawRing(p *ui.Painter, cx, cy, rad, width float32, ratio float64, track, color ui.Color) {
-	p.StrokePath(new(ui.Path).Circle(cx, cy, rad), width, track)
-	if ratio <= 0 {
-		return
-	}
-	ratio = math.Min(ratio, 1)
-	arc := new(ui.Path)
-	steps := max(2, int(48*ratio))
-	for i := 0; i <= steps; i++ {
-		a := -math.Pi/2 + 2*math.Pi*ratio*float64(i)/float64(steps)
-		x, y := cx+rad*float32(math.Cos(a)), cy+rad*float32(math.Sin(a))
-		if i == 0 {
-			arc.MoveTo(x, y)
-		} else {
-			arc.LineTo(x, y)
-		}
-	}
-	p.StrokePath(arc, width, color)
 }
 
 // speedMeter is the Session's average model speed, or the speed of the call

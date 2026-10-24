@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package droiapp
 
 import "os/exec"
 

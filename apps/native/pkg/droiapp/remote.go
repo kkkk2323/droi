@@ -1,4 +1,4 @@
-package main
+package droiapp
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -16,7 +17,7 @@ import (
 func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error, list gateway.SessionList) (*gateway.Gateway, error) {
 	opts := h.GatewayOptions(version, moveToTrash)
 	opts.SessionList = list
-	opts.Port = gateway.PreferredPort
+	opts.Port = brand.Current().Port
 	opts.RemoteAccess = h.Settings.Get().RemoteAccess
 	opts.LocalToken = func() string { return localToken }
 	return gateway.Start(opts)
@@ -45,7 +46,7 @@ func windowURL(followed *computer.Paired, gw *gateway.Gateway, gwErr error, loca
 func gatewayURL(gw *gateway.Gateway, gwErr error, localToken string, daemonUp func(context.Context) (string, error)) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
 		if gw == nil {
-			return "", fmt.Errorf("Droi's Gateway could not listen, so the window cannot reach the Daemon: %w", gwErr)
+			return "", fmt.Errorf("%s's Gateway could not listen, so the window cannot reach the Daemon: %w", brand.Name(), gwErr)
 		}
 		if _, err := daemonUp(ctx); err != nil {
 			return "", err

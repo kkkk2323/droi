@@ -17,6 +17,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/loops"
 	"github.com/kkkk2323/droi/apps/native/internal/slash"
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
@@ -713,15 +714,20 @@ func (a *App) validWorkspace(cl *droid.Client, workspace string) (string, error)
 	return workspace, nil
 }
 
-// droiMark is the app's mark, drawn as the web Client's DroiMark.
+// droiMark is the app's mark, drawn as the web Client's DroiMark: the
+// brand's, or Droi's.
 func droiMark(c *ui.Context, k *kit.Kit, size float32) {
 	if logo := droiLogo(); logo != nil {
-		ui.Image(c, logo).Size(k.Px(size), k.Px(size)).Label("Droi").TextColor(k.T.Foreground)
+		ui.Image(c, logo).Size(k.Px(size), k.Px(size)).Label(brand.Name()).TextColor(k.T.Foreground)
 	}
 }
 
 var droiLogo = sync.OnceValue(func() *ui.SVG {
-	s, _ := ui.ParseSVG([]byte(droiMarkSVG))
+	svg := brand.Current().Mark
+	if svg == nil {
+		svg = []byte(droiMarkSVG)
+	}
+	s, _ := ui.ParseSVG(svg)
 	return s
 })
 

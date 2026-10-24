@@ -1,11 +1,15 @@
 package hostrun
 
-import "path/filepath"
+import (
+	"path/filepath"
 
-// ConfigDir holds the Host's settings, Memory and logs: $XDG_CONFIG_HOME/droi,
-// ~/.config/droi by default.
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+)
+
+// ConfigDir holds the Host's settings, Memory and logs: $XDG_CONFIG_HOME/<the
+// brand's ID>, ~/.config/droi by default.
 func ConfigDir(env func(string) string, home string) string {
-	return filepath.Join(xdgDir(env, "XDG_CONFIG_HOME", home, ".config"), "droi")
+	return filepath.Join(xdgDir(env, "XDG_CONFIG_HOME", home, ".config"), brand.Current().ID)
 }
 
 // TrashDir is the freedesktop Trash: $XDG_DATA_HOME/Trash.

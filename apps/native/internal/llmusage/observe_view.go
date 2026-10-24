@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 )
@@ -144,9 +145,6 @@ func KindLabel(id string) string {
 	return id
 }
 
-// Option is one choice of a filter.
-type Option struct{ Value, Label string }
-
 // ObserveView is the Observe page.
 type ObserveView struct {
 	Range     string
@@ -154,64 +152,20 @@ type ObserveView struct {
 	Empty     bool
 	EmptyText string
 	Summary   []MetricView
-	Trend     TrendView
-	Heat      HeatView
-	Groups    []GroupRowView
+	// Trend is a bar a bucket, each split among the top models (Legend,
+	// "Other" last) unless the metric is a speed.
+	Trend dashkit.TrendView
+	// Heat is the calls by weekday and hour, each cell at one of five
+	// levels: 0 for none, then the quartiles of the cells with any.
+	Heat   dashkit.HeatView
+	Groups []GroupRowView
 	// GroupsNote says what the breakdown counts, and why sessions may be
 	// missing.
 	GroupsNote string
 	Rows       []RequestRowView
 	ListNote   string
-	Models     []Option
-	Kinds      []Option
-}
-
-// TrendView is a bar a bucket, each split among the top models (Legend,
-// "Other" last) unless the metric is a speed.
-type TrendView struct {
-	Metric  ObserveMetric
-	Bars    []TrendBar
-	Legend  []string
-	Stacked bool
-	Top     float64
-	Peak    string
-	About   string
-}
-
-// TrendBar is one bucket: its parts, from the bottom up, and what the
-// card by it says. Label is its name on the axis, empty for the bars
-// between those named.
-type TrendBar struct {
-	Parts        []float64
-	Label, Title string
-	Total        string
-	Lines        []TrendLine
-	Help         string
-	Current      bool
-}
-
-// TrendLine is one model's part of a bar, Part its index in the legend.
-type TrendLine struct {
-	Part        int
-	Name, Value string
-}
-
-// HeatView is the calls by weekday and hour, each cell at one of five
-// levels: 0 for none, then the quartiles of the cells with any.
-type HeatView struct {
-	Rows []HeatRow
-	Note string
-}
-
-type HeatRow struct {
-	Label string
-	Cells [24]HeatCell
-}
-
-type HeatCell struct {
-	Level        int
-	Title, Value string
-	Help         string
+	Models     []dashkit.Option
+	Kinds      []dashkit.Option
 }
 
 // GroupRowView is one row of the breakdown. Filter is the query's Model or
@@ -267,13 +221,13 @@ func BuildObserve(o Observation, metric ObserveMetric, grouping Grouping, sessio
 	if k := o.Query.Kind; k != "" && !slices.Contains(kinds, k) {
 		kinds = append(slices.Clip(kinds), k)
 	}
-	v.Models = []Option{{"", l10n.L("All models")}}
+	v.Models = []dashkit.Option{{Label: l10n.L("All models")}}
 	for _, m := range models {
-		v.Models = append(v.Models, Option{m, orDash(m)})
+		v.Models = append(v.Models, dashkit.Option{Value: m, Label: orDash(m)})
 	}
-	v.Kinds = []Option{{"", l10n.L("All types")}}
+	v.Kinds = []dashkit.Option{{Label: l10n.L("All types")}}
 	for _, k := range kinds {
-		v.Kinds = append(v.Kinds, Option{k, KindLabel(k)})
+		v.Kinds = append(v.Kinds, dashkit.Option{Value: k, Label: KindLabel(k)})
 	}
 	return v
 }
@@ -315,8 +269,8 @@ func observeSummary(t Totals) []MetricView {
 	return []MetricView{calls, tokens, cache, credits, speed}
 }
 
-func buildTrend(o Observation, metric ObserveMetric) TrendView {
-	v := TrendView{Metric: metric, Stacked: metric.stacked(), About: metric.About()}
+func buildTrend(o Observation, metric ObserveMetric) dashkit.TrendView {
+	v := dashkit.TrendView{Tick: metric.Tick, Stacked: metric.stacked(), About: metric.About(), Label: l10n.L("Trend")}
 	if v.Stacked {
 		v.Legend = append(append([]string(nil), o.Top...), l10n.L("Other"))
 	}
@@ -327,7 +281,7 @@ func buildTrend(o Observation, metric ObserveMetric) TrendView {
 	peak, peakAt := 0.0, -1
 	for i, b := range o.Buckets {
 		total := b.Total()
-		bar := TrendBar{Current: i == n-1, Title: bucketName(o, b)}
+		bar := dashkit.TrendBar{Current: i == n-1, Title: bucketName(o, b)}
 		if o.Hourly && b.Start.Local().Hour()%3 == 0 || !o.Hourly && (n-1-i)%every == 0 {
 			bar.Label = bucketAxis(o, b)
 		}
@@ -351,7 +305,7 @@ func buildTrend(o Observation, metric ObserveMetric) TrendView {
 		if v.Stacked && value > 0 {
 			for j, p := range b.Parts {
 				if pv, ok := metric.Value(p); ok {
-					bar.Lines = append(bar.Lines, TrendLine{Part: j, Name: v.Legend[j], Value: metric.Format(pv)})
+					bar.Lines = append(bar.Lines, dashkit.TrendLine{Part: j, Name: v.Legend[j], Value: metric.Format(pv)})
 					lines = append(lines, l10n.L("%s: %s", v.Legend[j], metric.Format(pv)))
 				}
 			}
@@ -388,8 +342,8 @@ func bucketAxis(o Observation, b Bucket) string {
 	return t.Format("1/2")
 }
 
-func buildHeat(o Observation, metric ObserveMetric) HeatView {
-	v := HeatView{Note: l10n.L("%s by weekday and hour", metric.Label())}
+func buildHeat(o Observation, metric ObserveMetric) dashkit.HeatView {
+	v := dashkit.HeatView{Note: l10n.L("%s by weekday and hour", metric.Label()), Label: l10n.L("Active hours")}
 	var values []float64
 	for d := range 7 {
 		for h := range 24 {
@@ -408,11 +362,11 @@ func buildHeat(o Observation, metric ObserveMetric) HeatView {
 	cuts := []float64{quartile(0.25), quartile(0.5), quartile(0.75)}
 	days := []string{l10n.L("Monday"), l10n.L("Tuesday"), l10n.L("Wednesday"), l10n.L("Thursday"), l10n.L("Friday"), l10n.L("Saturday"), l10n.L("Sunday")}
 	for d := range 7 {
-		row := HeatRow{Label: days[d]}
+		row := dashkit.HeatRow{Label: days[d]}
 		for h := range 24 {
 			t := o.Heat[d][h]
 			x, ok := metric.Value(t)
-			cell := HeatCell{Title: l10n.L("%s %02d:00–%02d:59", days[d], h, h), Value: l10n.L("No requests")}
+			cell := dashkit.HeatCell{Title: l10n.L("%s %02d:00–%02d:59", days[d], h, h), Value: l10n.L("No requests")}
 			if ok && x > 0 {
 				cell.Level = 1
 				for _, c := range cuts {

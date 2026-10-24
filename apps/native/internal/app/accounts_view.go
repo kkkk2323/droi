@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 )
@@ -357,7 +358,7 @@ func (a *App) usageRing(c *ui.Context, key, label, name string, w host.UsageWind
 		ratio := float64(ring.Animate("ring", float32(left), 240*time.Millisecond)) / 100
 		ring.Draw(func(p *ui.Painter, r ui.Rect) {
 			s := r.W / 16
-			drawRing(p, r.X+8*s, r.Y+8*s, 6.5*s, 2.5*s, ratio, t.Foreground.Alpha(0.1), fill)
+			dashkit.DrawRing(p, r.X+8*s, r.Y+8*s, 6.5*s, 2.5*s, ratio, t.Foreground.Alpha(0.1), fill)
 		})
 		k.Text(c, label, 12, 16).TextColor(t.MutedForeground)
 		k.Text(c, strconv.Itoa(left)+"%", 12, 16).FontWeight(500).TextColor(pct).FontFeatures("tnum")

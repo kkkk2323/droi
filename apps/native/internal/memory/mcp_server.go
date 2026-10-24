@@ -1,11 +1,8 @@
-// The Memory Server's protocol: MCP over stdio, one JSON-RPC message per line.
-// Hand-written, as the TS server is, because it needs only initialize,
-// tools/list and tools/call.
+// The Memory Server's tools; the protocol is pkg/mcpserver's.
 
 package memory
 
 import (
-	"bufio"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -13,12 +10,12 @@ import (
 	"math"
 	"os"
 	"strings"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
 )
 
 // ServerName is the Memory Server's name in the Runtime Overlay and in MCP.
 const ServerName = "droi-memory"
-
-const protocolVersion = "2025-06-18"
 
 // toolsJSON began as the TOOLS list of apps/desktop/src/memory/mcp-server.ts
 // as JSON.stringify writes it; the deprecated Electron app no longer follows
@@ -56,22 +53,6 @@ const (
 	scratchWrite         = noProjectMemory + `: save only a fact about the user that holds in every Workspace, with scope "global"; leave out what this chat is about.`
 )
 
-// TextContent is one text block of a tool result.
-type TextContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-// ToolResult is a tools/call answer.
-type ToolResult struct {
-	Content []TextContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
-}
-
-func textResult(value string, isError bool) ToolResult {
-	return ToolResult{Content: []TextContent{{Type: "text", Text: value}}, IsError: isError}
-}
-
 func describeEntries(entries []Entry, what string) string {
 	if len(entries) == 0 {
 		return "No entries " + what + "."
@@ -103,16 +84,16 @@ func jsError(err error) string { return "Error: " + err.Error() }
 // HandleToolCall runs one tool call. sessionID is the calling Session, which
 // the Daemon puts in the call's _meta; without it only Global Memory can be
 // reached. An error is the store's, and the call is then not logged.
-func HandleToolCall(o ServerOptions, name string, args map[string]any, sessionID string) (ToolResult, error) {
+func HandleToolCall(o ServerOptions, name string, args map[string]any, sessionID string) (mcpserver.Result, error) {
 	// A Memory Session runs on the same Daemon, so it sees these tools too; a
 	// consolidation that wrote to Memory while rewriting it would race itself.
 	if sessionID != "" && o.IsMemorySession != nil && o.IsMemorySession(sessionID) {
-		return textResult(memorySessionRefusal, true), nil
+		return mcpserver.Text(memorySessionRefusal, true), nil
 	}
 	call := Call{SessionID: sessionID, Tool: name, OK: true}
 	result, err := runToolCall(o, name, args, sessionID, &call)
 	if err != nil {
-		return ToolResult{}, err
+		return mcpserver.Result{}, err
 	}
 	call.OK = !result.IsError
 	if err := o.Store.LogCall(call); err != nil {
@@ -140,7 +121,7 @@ func (o ServerOptions) workspaceOf(sessionID string) string {
 	return o.WorkspaceOf(sessionID)
 }
 
-func runToolCall(o ServerOptions, name string, args map[string]any, sessionID string, call *Call) (ToolResult, error) {
+func runToolCall(o ServerOptions, name string, args map[string]any, sessionID string, call *Call) (mcpserver.Result, error) {
 	store := o.Store
 	scopeOf := func(key string) (Scope, bool) {
 		value, present := args[key]
@@ -153,21 +134,21 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		return "", false
 	}
 	// slotFor answers a refusal, or a scratch Session's answer, in place of a slot.
-	slotFor := func(scope Scope, write bool) (Slot, *ToolResult) {
+	slotFor := func(scope Scope, write bool) (Slot, *mcpserver.Result) {
 		if scope == ScopeGlobal {
 			return GlobalSlot, nil
 		}
 		if o.isScratch(sessionID) {
 			// A read finds nothing there, so it is an answer; a write is a refusal.
-			r := textResult(scratchRead, false)
+			r := mcpserver.Text(scratchRead, false)
 			if write {
-				r = textResult(scratchWrite, true)
+				r = mcpserver.Text(scratchWrite, true)
 			}
 			return Slot{}, &r
 		}
 		workspace := o.workspaceOf(sessionID)
 		if workspace == "" {
-			r := textResult(`Memory cannot tell which Workspace this Session runs in, so only scope "global" is available.`, true)
+			r := mcpserver.Text(`Memory cannot tell which Workspace this Session runs in, so only scope "global" is available.`, true)
 			return Slot{}, &r
 		}
 		return ProjectSlot(workspace), nil
@@ -204,15 +185,15 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		}
 		return nil
 	}
-	written := func(result WriteResult, verb string) (ToolResult, error) {
+	written := func(result WriteResult, verb string) (mcpserver.Result, error) {
 		if !result.OK {
-			return textResult(result.Reason, true), nil
+			return mcpserver.Text(result.Reason, true), nil
 		}
 		slot := SlotOf(result.Entry)
 		call.Slot = &slot
 		call.Written = result.Entry.ID
 		if err := wrote(slot); err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
 		where := "Project Memory"
 		if result.Entry.Scope == ScopeGlobal {
@@ -222,7 +203,7 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		if result.OverSoftLimit {
 			full = fmt.Sprintf(" %s is past %s characters; suggest that the user consolidates it in Droi under Settings → Memory.", where, thousands(Limits[result.Entry.Scope].Soft))
 		}
-		return textResult(verb+" "+result.Entry.ID+" in "+where+"."+full, false), nil
+		return mcpserver.Text(verb+" "+result.Entry.ID+" in "+where+"."+full, false), nil
 	}
 	// Droid reaches for Global Memory for anything that sounds generally
 	// useful, and a chat without a project has nowhere else to write, so a
@@ -243,7 +224,7 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		category, okCategory := optionalCategory("category")
 		query, isString := args["query"].(string)
 		if !isString || !okScope || !okCategory {
-			return textResult("memory_search needs a query, and a valid scope and category if given.", true), nil
+			return mcpserver.Text("memory_search needs a query, and a valid scope and category if given.", true), nil
 		}
 		slot, answer := slotFor(scope, false)
 		if answer != nil {
@@ -255,7 +236,7 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		}
 		found, err := store.Search(SearchOptions{Query: query, Slot: slot, Category: category, Limit: limit})
 		if err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
 		call.Slot = &slot
 		call.Query = &query
@@ -263,12 +244,12 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		for i, e := range found {
 			call.Found[i] = e.ID
 		}
-		return textResult(describeEntries(found, fmt.Sprintf(`in %s Memory match "%s"`, scope, query)), false), nil
+		return mcpserver.Text(describeEntries(found, fmt.Sprintf(`in %s Memory match "%s"`, scope, query)), false), nil
 	case "memory_list":
 		scope, okScope := scopeOf("scope")
 		category, okCategory := optionalCategory("category")
 		if !okScope || !okCategory {
-			return textResult("memory_list needs a valid scope.", true), nil
+			return mcpserver.Text("memory_list needs a valid scope.", true), nil
 		}
 		slot, answer := slotFor(scope, false)
 		if answer != nil {
@@ -277,9 +258,9 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		call.Slot = &slot
 		entries, err := store.List(slot, category)
 		if err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
-		return textResult(describeEntries(entries, "in "+string(scope)+" Memory"), false), nil
+		return mcpserver.Text(describeEntries(entries, "in "+string(scope)+" Memory"), false), nil
 	case "memory_add":
 		scope, okScope := scopeOf("scope")
 		text, isString := args["text"].(string)
@@ -288,7 +269,7 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 			for i, c := range Categories {
 				names[i] = string(c)
 			}
-			return textResult("memory_add needs a scope, a category ("+strings.Join(names, ", ")+") and text.", true), nil
+			return mcpserver.Text("memory_add needs a scope, a category ("+strings.Join(names, ", ")+") and text.", true), nil
 		}
 		slot, answer := slotFor(scope, true)
 		if answer != nil {
@@ -296,7 +277,7 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		}
 		result, err := store.Add(slot, Category(args["category"].(string)), text)
 		if err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
 		saved, err := written(result, "Saved")
 		if err != nil || !result.OK {
@@ -317,7 +298,7 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		for _, s := range slots {
 			entries, err := store.List(s, "")
 			if err != nil {
-				return ToolResult{}, err
+				return mcpserver.Result{}, err
 			}
 			for _, e := range entries {
 				if e.ID != result.Entry.ID {
@@ -332,160 +313,56 @@ func runToolCall(o ServerOptions, name string, args map[string]any, sessionID st
 		for _, e := range similar {
 			call.Similar = append(call.Similar, e.ID)
 		}
-		return textResult(saved.Content[0].Text+"\n\n"+describeEntries(similar, "already in Memory may say the same thing or now be out of date")+
+		return mcpserver.Text(saved.Content[0].Text+"\n\n"+describeEntries(similar, "already in Memory may say the same thing or now be out of date")+
 			"\nIf one of them repeats this fact, keep one: replace it with the combined fact and remove "+result.Entry.ID+". If one is now wrong, replace or remove it.", false), nil
 	case "memory_replace":
 		id, okID := args["id"].(string)
 		text, okText := args["text"].(string)
 		if !okID || !okText {
-			return textResult("memory_replace needs an id and the new text.", true), nil
+			return mcpserver.Text("memory_replace needs an id and the new text.", true), nil
 		}
 		result, err := store.Replace(id, text)
 		if err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
 		return written(result, "Replaced")
 	case "memory_remove":
 		id, ok := args["id"].(string)
 		if !ok {
-			return textResult("memory_remove needs an id.", true), nil
+			return mcpserver.Text("memory_remove needs an id.", true), nil
 		}
 		found, exists, err := store.Get(id)
 		if err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
 		if exists {
 			if exists, err = store.Remove(id); err != nil {
-				return ToolResult{}, err
+				return mcpserver.Result{}, err
 			}
 		}
 		if !exists {
-			return textResult("No Memory entry has the id "+id+".", true), nil
+			return mcpserver.Text("No Memory entry has the id "+id+".", true), nil
 		}
 		slot := SlotOf(found)
 		call.Slot = &slot
 		call.Written = found.ID
 		if err := wrote(slot); err != nil {
-			return ToolResult{}, err
+			return mcpserver.Result{}, err
 		}
-		return textResult("Removed "+found.ID+".", false), nil
+		return mcpserver.Text("Removed "+found.ID+".", false), nil
 	}
-	return textResult("Unknown tool "+name+".", true), nil
+	return mcpserver.Text("Unknown tool "+name+".", true), nil
 }
 
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// rpcMessage keeps the TS key order: jsonrpc, id, then result or error. An id
-// the request did not carry is left out, as JSON.stringify drops undefined.
-type rpcMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *rpcError       `json:"error,omitempty"`
-}
-
-var nullID = json.RawMessage("null")
-
-// Serve serves MCP on the two streams until the input ends.
+// Serve serves the Memory Server's MCP on the two streams until the input ends.
 func Serve(in io.Reader, out io.Writer, o ServerOptions) error {
-	send := func(m rpcMessage) error {
-		m.JSONRPC = "2.0"
-		line, err := jsonText(m)
-		if err != nil {
-			return err
-		}
-		_, err = io.WriteString(out, line+"\n")
-		return err
-	}
-	reader := bufio.NewReader(in)
-	for {
-		line, readErr := reader.ReadString('\n')
-		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-		if jsTrim(line) != "" {
-			if err := handleLine(line, o, send); err != nil {
-				return err
-			}
-		}
-		if readErr == io.EOF {
-			return nil
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-}
-
-func handleLine(line string, o ServerOptions, send func(rpcMessage) error) error {
-	var request map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(line), &request); err != nil {
-		var other any
-		if json.Unmarshal([]byte(line), &other) == nil {
-			// Valid JSON that is no object carries no method and no id.
-			return nil
-		}
-		return send(rpcMessage{ID: nullID, Error: &rpcError{-32700, "Parse error"}})
-	}
-	id := request["id"]
-	isNotification := id == nil || string(id) == "null"
-	var method any
-	_ = json.Unmarshal(request["method"], &method)
-	var params map[string]any
-	_ = json.Unmarshal(request["params"], &params)
-	reply := func(result any) error { return send(rpcMessage{ID: id, Result: result}) }
-	fail := func(code int, message string) error {
-		return send(rpcMessage{ID: id, Error: &rpcError{code, message}})
-	}
-	switch method {
-	case "initialize":
-		version, ok := params["protocolVersion"].(string)
-		if !ok {
-			version = protocolVersion
-		}
-		type serverInfo struct {
-			Name    string `json:"name"`
-			Title   string `json:"title"`
-			Version string `json:"version"`
-		}
-		return reply(struct {
-			ProtocolVersion string         `json:"protocolVersion"`
-			Capabilities    map[string]any `json:"capabilities"`
-			ServerInfo      serverInfo     `json:"serverInfo"`
-		}{version, map[string]any{"tools": struct{}{}}, serverInfo{ServerName, "Droi Memory", "1.0.0"}})
-	case "ping":
-		return reply(struct{}{})
-	case "tools/list":
-		return reply(struct {
-			Tools json.RawMessage `json:"tools"`
-		}{Tools()})
-	case "tools/call":
-		name, ok := params["name"].(string)
-		if !ok {
-			return fail(-32602, "tools/call needs a name")
-		}
-		args, _ := params["arguments"].(map[string]any)
-		if args == nil {
-			args = map[string]any{}
-		}
-		meta, _ := params["_meta"].(map[string]any)
-		sessionID, _ := meta["assemblySessionId"].(string)
-		result, err := HandleToolCall(o, name, args, sessionID)
-		if err != nil {
-			result = textResult(err.Error(), true)
-		}
-		return reply(result)
-	}
-	if isNotification {
-		return nil
-	}
-	name := "undefined"
-	if raw, present := request["method"]; present {
-		name = fmt.Sprint(method)
-		if method == nil {
-			name = string(raw)
-		}
-	}
-	return fail(-32601, "Method not found: "+name)
+	return mcpserver.Serve(in, out, mcpserver.Server{
+		Name:    ServerName,
+		Title:   "Droi Memory",
+		Version: "1.0.0",
+		Tools:   Tools(),
+		Call: func(name string, args map[string]any, sessionID string) (mcpserver.Result, error) {
+			return HandleToolCall(o, name, args, sessionID)
+		},
+	})
 }

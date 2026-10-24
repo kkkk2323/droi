@@ -29,7 +29,8 @@ apps/
 │   └── pkg/...         # Public, for WeCom Droi (ADR 0022): host, gateway (Remote Access),
 │                       # sessionview (a Session's transcript, Prompts, plain composer),
 │                       # settingsview (Settings' Appearance, Session defaults, model picker),
-│                       # l10n, kit, theme, transcript, ...
+│                       # l10n, kit, theme, transcript, ...; and for apps built on Droi
+│                       # (ADR 0029): droiapp (the app), brand, extension, mcpserver, dashkit
 └── mobile/     # Phone App: Expo SDK 57 iPhone Client (expo-router under src/app,
                 # screens under src/screens, hardware behind src/platform with
                 # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md

@@ -250,7 +250,12 @@ func (r treeRenderer) node(c *ui.Context, id string, seen map[string]bool) {
 	case "Timeline":
 		r.timeline(c, p)
 	default:
-		ui.Column(c).Gap(k.Px(8)).Children(func() { r.children(c, id, below) })
+		children := func() { r.children(c, id, below) }
+		if draw := componentOf(el.Type); draw != nil {
+			draw(c, k, p, children)
+			return
+		}
+		ui.Column(c).Gap(k.Px(8)).Children(children)
 	}
 }
 

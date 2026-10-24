@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 )
 
 // keyPoolRing sits beside Settings while the Key Pool serves the Daemon: a
@@ -40,7 +41,7 @@ func (a *App) keyPoolRing(c *ui.Context) {
 		ring := ui.Box(c).Size(k.Px(20), k.Px(20)).Center()
 		ring.Draw(func(p *ui.Painter, r ui.Rect) {
 			s := r.W / 20
-			drawRing(p, r.X+10*s, r.Y+10*s, 8.75*s, 2.5*s, remaining/100, t.Border, color)
+			dashkit.DrawRing(p, r.X+10*s, r.Y+10*s, 8.75*s, 2.5*s, remaining/100, t.Border, color)
 		})
 		ring.Children(func() { k.IconStroke(c, "key-round", 1.6, 10, icon) })
 	})

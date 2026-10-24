@@ -355,7 +355,11 @@ func (v *View) rowTrigger(c *ui.Context, open *bool, label string) ui.Collapsibl
 func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 	k, t := v.look()
 	server, name := transcript.ToolName(call.Use.Name)
+	custom, hasCustom := toolViewOf(call.Use.Name)
 	icon := toolIcons[call.Use.Name]
+	if hasCustom && custom.Icon != "" {
+		icon = custom.Icon
+	}
 	if icon == "" {
 		icon = "wrench"
 		if server != "" {
@@ -363,7 +367,7 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 		}
 	}
 	res := v.result(call)
-	open := v.flag("tool:"+call.Use.ID, false)
+	open := v.flag("tool:"+call.Use.ID, hasCustom && custom.Open)
 	target, targetTitle := v.taskTarget(call)
 	parts := transcript.SummaryParts(call)
 	summary := transcript.Summary(call)
@@ -434,8 +438,21 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 			})
 		}
 		p.Panel(func() {
+			if hasCustom && custom.Detail != nil {
+				v.customToolDetail(c, custom, call, res)
+				return
+			}
 			v.toolDetail(c, call, res)
 		})
+	})
+}
+
+// customToolDetail is a row's panel drawn by a registered ToolView, in the
+// card toolDetail draws.
+func (v *View) customToolDetail(c *ui.Context, tv ToolView, call *transcript.ToolCall, res transcript.ToolResultView) {
+	k, t := v.look()
+	ui.Column(c).Margin(k.Px(2), 0, k.Px(4), 0).Padding(k.Px(10)).Radius(k.Px(10)).Border(1, t.Border).Background(t.Card.Alpha(0.6)).Clip().Children(func() {
+		tv.Detail(c, ToolContext{Kit: k, Call: call, Result: res})
 	})
 }
 

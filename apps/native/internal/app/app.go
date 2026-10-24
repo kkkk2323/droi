@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
 	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
+	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
@@ -41,8 +42,10 @@ const sessionPage = 100
 
 // Route is the page the main panel shows.
 type Route struct {
-	Name      string // "home", "new", "session", "settings", "automations"
+	Name      string // "home", "new", "session", "settings", "automations", "page"
 	SessionID string
+	// Page is the id of the extension's Page that "page" shows.
+	Page      string
 	Workspace string
 	Scratch   bool
 	Tab       string
@@ -126,6 +129,10 @@ type Config struct {
 	// MenuBar is the shell's menu bar item of the Key Pool; nil where there
 	// is none, which leaves its setting out.
 	MenuBar *MenuBar
+	// Pages are an app's own pages, in the sidebar under Automations.
+	Pages []extension.Page
+	// SettingsTabs are an app's own Settings sections.
+	SettingsTabs []extension.SettingsTab
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -842,6 +849,8 @@ func (a *App) View(c *ui.Context) {
 				a.view(id).build(c, a, findSummary(listed, id), listed)
 			case a.route.Name == "automations":
 				a.automationsPage(c)
+			case a.route.Name == "page" && a.extensionPage(a.route.Page) != nil:
+				a.extensionPageView(c, a.extensionPage(a.route.Page))
 			case starting && a.following():
 				a.followingStartView(c, status)
 			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():

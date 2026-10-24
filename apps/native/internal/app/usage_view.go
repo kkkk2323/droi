@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
@@ -261,14 +262,14 @@ func (a *App) usageTab(c *ui.Context) {
 	a.loadSpend(false)
 	m := a.buildUsage(st)
 	base := c.Theme()
-	c.SetTheme(u.themed(base))
+	c.SetTheme(u.Themed(base))
 	defer c.SetTheme(base)
-	ui.Column(c).Role(ui.RoleGroup).Label(L("Usage")).Grow(1).MinWidth(0).FillHeight().Background(u.p.bg).TextColor(u.p.text).FontSize(u.px(13)).Children(func() {
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Usage")).Grow(1).MinWidth(0).FillHeight().Background(u.P.Bg).TextColor(u.P.Text).FontSize(u.Px(13)).Children(func() {
 		a.usageHeader(c, u)
 		if s.err != "" {
-			ui.Row(c).Role(ui.RoleStatus).Shrink(0).Gap(u.px(8)).Padding(0, u.px(24), u.px(6)).Children(func() {
-				u.icon(c, iconWarning, 13, u.p.danger)
-				u.text(c, s.err, 12).TextColor(u.p.danger).Selectable().Shrink(1)
+			ui.Row(c).Role(ui.RoleStatus).Shrink(0).Gap(u.Px(8)).Padding(0, u.Px(24), u.Px(6)).Children(func() {
+				u.Icon(c, dashkit.IconWarning, 13, u.P.Danger)
+				u.Text(c, s.err, 12).TextColor(u.P.Danger).Selectable().Shrink(1)
 			})
 		}
 		ui.Column(c).Grow(1).Basis(0).MinHeight(0).Children(func() {
@@ -292,7 +293,7 @@ func (a *App) usageTab(c *ui.Context) {
 // right.
 func (a *App) usageHeader(c *ui.Context, u usageLook) {
 	s := &a.usage
-	ui.Row(c).Height(u.px(52)).Shrink(0).Padding(0, u.px(14)).Gap(u.px(12)).DragWindow().Children(func() {
+	ui.Row(c).Height(u.Px(52)).Shrink(0).Padding(0, u.Px(14)).Gap(u.Px(12)).DragWindow().Children(func() {
 		ui.Box(c).Grow(1).Basis(0)
 		sections := usageSections()
 		selected := 0
@@ -303,14 +304,14 @@ func (a *App) usageHeader(c *ui.Context, u usageLook) {
 				selected = i
 			}
 		}
-		if u.segmented(c, &selected, labels, L("Usage pages"), "", false, false) {
+		if u.Segmented(c, &selected, labels, L("Usage pages"), "", false, false) {
 			s.section = sections[selected].id
 		}
 		ui.Row(c).Grow(1).Basis(0).Gap(2).Justify(ui.End).Children(func() {
-			if s.section == usageKeys && u.toolButton(c, iconPlus, L("Add key"), L("Add a Factory API key"), false) {
+			if s.section == usageKeys && u.ToolButton(c, dashkit.IconPlus, L("Add key"), L("Add a Factory API key"), false) {
 				a.openAddKey()
 			}
-			if u.toolButton(c, iconRefresh, L("Refresh"), L("Read the quota and the records again"), s.refreshing) {
+			if u.ToolButton(c, dashkit.IconRefresh, L("Refresh"), L("Read the quota and the records again"), s.refreshing) {
 				a.refreshQuota()
 				a.loadSpend(true)
 				if s.section == usageObserve {
@@ -325,26 +326,26 @@ func (a *App) usageHeader(c *ui.Context, u usageLook) {
 // most.
 func (u usageLook) page(c *ui.Context, fn func()) {
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(u.px(960)).AlignSelf(ui.Center).Padding(u.px(4), u.px(20), u.px(20)).Gap(u.px(10)).Children(fn)
+		ui.Column(c).FillWidth().MaxWidth(u.Px(960)).AlignSelf(ui.Center).Padding(u.Px(4), u.Px(20), u.Px(20)).Gap(u.Px(10)).Children(fn)
 	})
 }
 
 // tablePage is a page whose table grows to the room left.
 func (u usageLook) tablePage(c *ui.Context, fn func()) {
-	ui.Column(c).Grow(1).MinHeight(0).FillWidth().MaxWidth(u.px(960)).AlignSelf(ui.Center).Padding(u.px(4), u.px(20), u.px(16)).Gap(u.px(10)).Children(fn)
+	ui.Column(c).Grow(1).MinHeight(0).FillWidth().MaxWidth(u.Px(960)).AlignSelf(ui.Center).Padding(u.Px(4), u.Px(20), u.Px(16)).Gap(u.Px(10)).Children(fn)
 }
 
 func (a *App) keysPage(c *ui.Context, u usageLook, st keypool.State, m *usageModel) {
 	u.page(c, func() {
 		u.runwaySection(c, m.runway)
-		ui.Box(c).Height(u.px(6))
-		u.sectionHead(c, L("Quota"), m.checked, nil)
+		ui.Box(c).Height(u.Px(6))
+		u.SectionHead(c, L("Quota"), m.checked, nil)
 		u.poolCards(c, m.pools)
-		ui.Box(c).Height(u.px(6))
+		ui.Box(c).Height(u.Px(6))
 		u.expiring(c, m.expiring)
-		ui.Box(c).Height(u.px(6))
+		ui.Box(c).Height(u.Px(6))
 		a.keyList(c, u, st, m)
-		ui.Box(c).Height(u.px(6))
+		ui.Box(c).Height(u.Px(6))
 		a.keyOpening(c, u, st)
 	})
 }
@@ -352,16 +353,16 @@ func (a *App) keysPage(c *ui.Context, u usageLook, st keypool.State, m *usageMod
 // keyOpening is whether Droi starts waiting keys' months on its own, and
 // how today's openings stand.
 func (a *App) keyOpening(c *ui.Context, u usageLook, st keypool.State) {
-	p := u.p
+	p := u.P
 	title := L("Start on a schedule")
-	u.sectionHead(c, L("Waiting keys"), openingNote(st), nil)
-	u.card(c).Padding(u.px(12), u.px(16)).Children(func() {
-		ui.Row(c).Gap(u.px(12)).Children(func() {
-			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(u.px(3)).Children(func() {
-				u.text(c, title, 13).FontWeight(500)
-				u.text(c, L("From 8:00 each day, Droi starts up to %d waiting keys a day, without waiting for your requests. Each start sends a one-token Haiku request, and the key's month counts from then. Off: a waiting key starts on the next request.", config.DailyKeyOpens), 12).TextColor(p.secondary)
+	u.SectionHead(c, L("Waiting keys"), openingNote(st), nil)
+	u.Card(c).Padding(u.Px(12), u.Px(16)).Children(func() {
+		ui.Row(c).Gap(u.Px(12)).Children(func() {
+			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(u.Px(3)).Children(func() {
+				u.Text(c, title, 13).FontWeight(500)
+				u.Text(c, L("From 8:00 each day, Droi starts up to %d waiting keys a day, without waiting for your requests. Each start sends a one-token Haiku request, and the key's month counts from then. Off: a waiting key starts on the next request.", config.DailyKeyOpens), 12).TextColor(p.Secondary)
 			})
-			if u.k.Toggle(c, title, st.ScheduledOpening, a.usage.acting != "") {
+			if u.K.Toggle(c, title, st.ScheduledOpening, a.usage.acting != "") {
 				pool, on := a.keyPool(), !st.ScheduledOpening
 				a.poolAct("opening", func() error { return pool.SetScheduledOpening(on) })
 			}
@@ -386,36 +387,36 @@ func openingNote(st keypool.State) string {
 // runwaySection is today's spend, the last days' spend against the daily
 // limit, and how long the pool lasts.
 func (u usageLook) runwaySection(c *ui.Context, r llmusage.RunwayView) {
-	p := u.p
-	u.sectionHead(c, L("Today"), "", func() { u.info(c, L("About the forecast"), r.Help, 12) })
+	p := u.P
+	u.SectionHead(c, L("Today"), "", func() { u.Info(c, L("About the forecast"), r.Help, 12) })
 	if !r.Available {
-		u.card(c).Padding(u.px(16)).Children(func() {
-			u.text(c, r.Empty, 12).TextColor(p.secondary)
+		u.Card(c).Padding(u.Px(16)).Children(func() {
+			u.Text(c, r.Empty, 12).TextColor(p.Secondary)
 		})
 		return
 	}
-	u.metricStrip(c, r.Metrics)
-	u.card(c).Padding(u.px(14), u.px(16), u.px(12)).Gap(u.px(12)).Children(func() {
-		ui.Row(c).Gap(u.px(8)).Children(func() {
-			u.text(c, L("Last %d days", llmusage.SpendChartDays), 12).FontWeight(600).TextColor(p.secondary)
+	u.MetricStrip(c, r.Metrics)
+	u.Card(c).Padding(u.Px(14), u.Px(16), u.Px(12)).Gap(u.Px(12)).Children(func() {
+		ui.Row(c).Gap(u.Px(8)).Children(func() {
+			u.Text(c, L("Last %d days", llmusage.SpendChartDays), 12).FontWeight(600).TextColor(p.Secondary)
 			ui.Spacer(c)
-			ui.Row(c).Gap(u.px(6)).Children(func() {
-				ui.Box(c).Width(u.px(14)).Height(u.px(8)).Draw(func(pt *ui.Painter, rc ui.Rect) {
+			ui.Row(c).Gap(u.Px(6)).Children(func() {
+				ui.Box(c).Width(u.Px(14)).Height(u.Px(8)).Draw(func(pt *ui.Painter, rc ui.Rect) {
 					y := rc.Y + rc.H/2
-					pt.Line(rc.X, y, rc.X+5, y, 1, p.secondary)
-					pt.Line(rc.X+8, y, rc.X+13, y, 1, p.secondary)
+					pt.Line(rc.X, y, rc.X+5, y, 1, p.Secondary)
+					pt.Line(rc.X+8, y, rc.X+13, y, 1, p.Secondary)
 				})
-				u.text(c, r.Chart.LimitLabel, 11).TextColor(p.secondary).FontFeatures("tnum")
+				u.Text(c, r.Chart.LimitLabel, 11).TextColor(p.Secondary).FontFeatures("tnum")
 			})
 		})
-		u.chart(c, r.Chart, 96)
-		u.hairline(c)
+		u.Chart(c, r.Chart, 96)
+		u.Hairline(c)
 		for i, l := range r.Lines {
-			ui.Row(c.Key(i)).Gap(u.px(8)).Children(func() {
-				u.text(c, l.Label, 12).TextColor(p.secondary).FontFeatures("tnum").SingleLine().Shrink(1)
+			ui.Row(c.Key(i)).Gap(u.Px(8)).Children(func() {
+				u.Text(c, l.Label, 12).TextColor(p.Secondary).FontFeatures("tnum").SingleLine().Shrink(1)
 				ui.Spacer(c)
-				u.text(c, l.Note, 12).TextColor(p.tertiary).FontFeatures("tnum").SingleLine().Shrink(1).Tooltip(l.Note)
-				u.text(c, l.Value, 12).FontWeight(600).TextColor(u.tone(l.Tone)).FontFeatures("tnum").NoWrap().Shrink(0).MinWidth(u.px(150)).TextAlign(ui.End)
+				u.Text(c, l.Note, 12).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine().Shrink(1).Tooltip(l.Note)
+				u.Text(c, l.Value, 12).FontWeight(600).TextColor(u.Tone(l.Tone)).FontFeatures("tnum").NoWrap().Shrink(0).MinWidth(u.Px(150)).TextAlign(ui.End)
 			})
 		}
 	})
@@ -424,20 +425,20 @@ func (u usageLook) runwaySection(c *ui.Context, r llmusage.RunwayView) {
 // poolCard is one pool: its name, how many keys it routes, then a row per
 // window with what is left on average and the soonest reset.
 func (u usageLook) poolCard(c *ui.Context, pool llmusage.PoolSummaryView) {
-	p := u.p
-	pad := u.px(14)
-	ui.Column(c.Key(pool.Title)).Role(ui.RoleGroup).Label(pool.Title).Grow(1).Basis(0).MinWidth(0).Gap(u.px(10)).Padding(pad-2, pad, pad).Children(func() {
-		ui.Row(c).Gap(u.px(6)).Children(func() {
-			u.text(c, pool.Title, 13).FontWeight(600)
+	p := u.P
+	pad := u.Px(14)
+	ui.Column(c.Key(pool.Title)).Role(ui.RoleGroup).Label(pool.Title).Grow(1).Basis(0).MinWidth(0).Gap(u.Px(10)).Padding(pad-2, pad, pad).Children(func() {
+		ui.Row(c).Gap(u.Px(6)).Children(func() {
+			u.Text(c, pool.Title, 13).FontWeight(600)
 			ui.Spacer(c)
-			u.text(c, pool.Note, 11).TextColor(p.tertiary).FontFeatures("tnum").SingleLine()
+			u.Text(c, pool.Note, 11).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine()
 		})
 		for _, w := range pool.Windows {
-			ui.Row(c.Key(w.Label)).Gap(u.px(8)).Tooltip(w.Help).Children(func() {
-				u.text(c, w.Label, 11).TextColor(p.secondary).Width(u.px(36)).NoWrap()
-				u.meter(c, w.Bar.Value, w.Bar.Tone, 5, -1).Label(w.Name)
-				u.text(c, w.Percent, 12).FontWeight(600).TextColor(u.tone(primaryTone(w.PercentTone))).FontFeatures("tnum").Width(u.px(38)).TextAlign(ui.End)
-				u.text(c, w.Reset, 11).TextColor(p.tertiary).FontFeatures("tnum").Width(u.px(150)).SingleLine()
+			ui.Row(c.Key(w.Label)).Gap(u.Px(8)).Tooltip(w.Help).Children(func() {
+				u.Text(c, w.Label, 11).TextColor(p.Secondary).Width(u.Px(36)).NoWrap()
+				u.Meter(c, w.Bar.Value, w.Bar.Tone, 5, -1).Label(w.Name)
+				u.Text(c, w.Percent, 12).FontWeight(600).TextColor(u.Tone(dashkit.PrimaryTone(w.PercentTone))).FontFeatures("tnum").Width(u.Px(38)).TextAlign(ui.End)
+				u.Text(c, w.Reset, 11).TextColor(p.Tertiary).FontFeatures("tnum").Width(u.Px(150)).SingleLine()
 			})
 		}
 	})
@@ -445,11 +446,11 @@ func (u usageLook) poolCard(c *ui.Context, pool llmusage.PoolSummaryView) {
 
 // poolCards puts the pools side by side in one card.
 func (u usageLook) poolCards(c *ui.Context, pools []llmusage.PoolSummaryView) {
-	u.card(c).Children(func() {
+	u.Card(c).Children(func() {
 		ui.Row(c).AlignItems(ui.Stretch).Children(func() {
 			for i, pool := range pools {
 				if i > 0 {
-					u.vhairline(c)
+					u.VHairline(c)
 				}
 				u.poolCard(c, pool)
 			}
@@ -461,36 +462,36 @@ func (u usageLook) poolCards(c *ui.Context, pools []llmusage.PoolSummaryView) {
 // key counts by urgency first, then one group per deadline with its keys
 // as chips, the most left first.
 func (u usageLook) expiring(c *ui.Context, v llmusage.ExpiringView) {
-	p := u.p
-	u.sectionHead(c, L("Expiring"), v.Summary, func() { u.info(c, L("About expiring quota"), v.Help, 12) })
-	u.card(c).Padding(u.px(14), u.px(16)).Gap(u.px(14)).Children(func() {
+	p := u.P
+	u.SectionHead(c, L("Expiring"), v.Summary, func() { u.Info(c, L("About expiring quota"), v.Help, 12) })
+	u.Card(c).Padding(u.Px(14), u.Px(16)).Gap(u.Px(14)).Children(func() {
 		if len(v.Pools) == 0 {
-			ui.Row(c).Gap(u.px(6)).Children(func() {
-				u.icon(c, iconCheck, 13, p.green)
-				u.text(c, v.Empty, 12).TextColor(p.secondary)
+			ui.Row(c).Gap(u.Px(6)).Children(func() {
+				u.Icon(c, dashkit.IconCheck, 13, p.Green)
+				u.Text(c, v.Empty, 12).TextColor(p.Secondary)
 			})
 			return
 		}
 		for i, pool := range v.Pools {
 			if i > 0 {
-				u.hairline(c)
+				u.Hairline(c)
 			}
-			ui.Column(c.Key(pool.Title)).Gap(u.px(12)).Children(func() {
-				ui.Row(c).Gap(u.px(8)).AlignItems(ui.End).Children(func() {
-					u.text(c, v.Credits, 20).FontWeight(600).LetterSpacing(-0.3).FontFeatures("tnum")
-					u.text(c, L("credits expire"), 11).TextColor(p.tertiary).Padding(0, 0, u.px(3))
+			ui.Column(c.Key(pool.Title)).Gap(u.Px(12)).Children(func() {
+				ui.Row(c).Gap(u.Px(8)).AlignItems(ui.End).Children(func() {
+					u.Text(c, v.Credits, 20).FontWeight(600).LetterSpacing(-0.3).FontFeatures("tnum")
+					u.Text(c, L("credits expire"), 11).TextColor(p.Tertiary).Padding(0, 0, u.Px(3))
 					if v.Loss != "" {
-						u.text(c, v.Loss, 11).FontWeight(500).TextColor(p.danger).FontFeatures("tnum").Padding(0, 0, u.px(3))
+						u.Text(c, v.Loss, 11).FontWeight(500).TextColor(p.Danger).FontFeatures("tnum").Padding(0, 0, u.Px(3))
 					}
 					ui.Spacer(c)
 					ui.Column(c).AlignItems(ui.End).Gap(2).Tooltip(pool.PaceHelp).Children(func() {
-						u.text(c, pool.Pace, 12).FontWeight(500).TextColor(u.tone(primaryTone(pool.PaceTone))).FontFeatures("tnum")
+						u.Text(c, pool.Pace, 12).FontWeight(500).TextColor(u.Tone(dashkit.PrimaryTone(pool.PaceTone))).FontFeatures("tnum")
 						if pool.Recent != "" {
-							u.text(c, pool.Recent, 11).TextColor(p.tertiary).FontFeatures("tnum")
+							u.Text(c, pool.Recent, 11).TextColor(p.Tertiary).FontFeatures("tnum")
 						}
 					})
 				})
-				ui.Row(c).Gap(u.px(8)).Children(func() {
+				ui.Row(c).Gap(u.Px(8)).Children(func() {
 					for _, b := range pool.Buckets {
 						u.expiringBucket(c, b)
 					}
@@ -504,26 +505,26 @@ func (u usageLook) expiring(c *ui.Context, v llmusage.ExpiringView) {
 }
 
 func (u usageLook) expiringBucket(c *ui.Context, b llmusage.ExpiringBucketView) {
-	p := u.p
-	ui.Column(c.Key(b.Label)).Role(ui.RoleGroup).Label(b.Label).Grow(1).Basis(0).MinWidth(0).Gap(2).Padding(u.px(9), u.px(12)).Radius(u.px(8)).Background(p.bg).Children(func() {
-		u.text(c, b.Label, 11).TextColor(p.secondary)
-		u.text(c, b.Value, 17).FontWeight(600).TextColor(u.tone(b.Tone)).FontFeatures("tnum")
-		u.text(c, b.Note, 10).TextColor(p.tertiary).FontFeatures("tnum").SingleLine()
+	p := u.P
+	ui.Column(c.Key(b.Label)).Role(ui.RoleGroup).Label(b.Label).Grow(1).Basis(0).MinWidth(0).Gap(2).Padding(u.Px(9), u.Px(12)).Radius(u.Px(8)).Background(p.Bg).Children(func() {
+		u.Text(c, b.Label, 11).TextColor(p.Secondary)
+		u.Text(c, b.Value, 17).FontWeight(600).TextColor(u.Tone(b.Tone)).FontFeatures("tnum")
+		u.Text(c, b.Note, 10).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine()
 	})
 }
 
 // expiringGroup is one deadline: when, how many keys, then the keys.
 func (u usageLook) expiringGroup(c *ui.Context, key int, g llmusage.ExpiringGroupView) {
-	p := u.p
-	ui.Column(c.Key(key)).Gap(u.px(8)).Children(func() {
-		ui.Row(c).Gap(u.px(8)).Children(func() {
-			ui.Box(c).Size(u.px(6), u.px(6)).Radius(999).Background(u.tone(g.Tone))
-			u.text(c, g.Countdown, 13).FontWeight(600).TextColor(u.tone(primaryTone(quietTone(g.Tone)))).FontFeatures("tnum")
-			u.text(c, g.At, 11).TextColor(p.tertiary).FontFeatures("tnum")
+	p := u.P
+	ui.Column(c.Key(key)).Gap(u.Px(8)).Children(func() {
+		ui.Row(c).Gap(u.Px(8)).Children(func() {
+			ui.Box(c).Size(u.Px(6), u.Px(6)).Radius(999).Background(u.Tone(g.Tone))
+			u.Text(c, g.Countdown, 13).FontWeight(600).TextColor(u.Tone(dashkit.PrimaryTone(dashkit.QuietTone(g.Tone)))).FontFeatures("tnum")
+			u.Text(c, g.At, 11).TextColor(p.Tertiary).FontFeatures("tnum")
 			ui.Spacer(c)
-			u.text(c, g.Note, 11).TextColor(p.secondary).FontFeatures("tnum")
+			u.Text(c, g.Note, 11).TextColor(p.Secondary).FontFeatures("tnum")
 		})
-		ui.Grid(c).Columns(6).Gap(u.px(6)).Children(func() {
+		ui.Grid(c).Columns(6).Gap(u.Px(6)).Children(func() {
 			for _, k := range g.Keys {
 				u.expiringChip(c, k)
 			}
@@ -534,20 +535,20 @@ func (u usageLook) expiringGroup(c *ui.Context, key int, g llmusage.ExpiringGrou
 // expiringChip is one key: its number and what is left, a bar under them,
 // then what needs attention.
 func (u usageLook) expiringChip(c *ui.Context, k llmusage.ExpiringChipView) {
-	p := u.p
-	ui.Column(c.Key(k.Index)).MinWidth(0).Gap(u.px(6)).Padding(u.px(7), u.px(9)).Radius(u.px(8)).Background(p.bg).Tooltip(k.Help).Children(func() {
-		ui.Row(c).Gap(u.px(4)).Children(func() {
-			u.text(c, "#"+itoa(k.Index), 12).FontWeight(600).FontFeatures("tnum")
+	p := u.P
+	ui.Column(c.Key(k.Index)).MinWidth(0).Gap(u.Px(6)).Padding(u.Px(7), u.Px(9)).Radius(u.Px(8)).Background(p.Bg).Tooltip(k.Help).Children(func() {
+		ui.Row(c).Gap(u.Px(4)).Children(func() {
+			u.Text(c, "#"+itoa(k.Index), 12).FontWeight(600).FontFeatures("tnum")
 			if k.Active {
-				u.icon(c, iconStar, 9, p.warning)
+				u.Icon(c, dashkit.IconStar, 9, p.Warning)
 			}
 			ui.Spacer(c)
-			u.text(c, k.Credits, 11).TextColor(p.secondary).FontFeatures("tnum").SingleLine().Shrink(1)
+			u.Text(c, k.Credits, 11).TextColor(p.Secondary).FontFeatures("tnum").SingleLine().Shrink(1)
 			u.tokensInfo(c, k.Tokens)
 		})
-		u.meter(c, k.Bar.Value, k.Bar.Tone, 3, -1).Label(k.Percent)
+		u.Meter(c, k.Bar.Value, k.Bar.Tone, 3, -1).Label(k.Percent)
 		if k.Note != "" {
-			u.text(c, k.Note, 10).FontWeight(500).TextColor(u.tone(k.NoteTone)).FontFeatures("tnum").SingleLine()
+			u.Text(c, k.Note, 10).FontWeight(500).TextColor(u.Tone(k.NoteTone)).FontFeatures("tnum").SingleLine()
 		}
 	})
 }
@@ -563,7 +564,7 @@ func (a *App) keyList(c *ui.Context, u usageLook, st keypool.State, m *usageMode
 	if m.problems > 0 {
 		note = L("%s · %d need attention", note, m.problems)
 	}
-	u.sectionHead(c, L("Keys"), note, func() {
+	u.SectionHead(c, L("Keys"), note, func() {
 		a.keyModePicker(c, u, st)
 		if len(m.cards) == 0 {
 			return
@@ -572,20 +573,20 @@ func (a *App) keyList(c *ui.Context, u usageLook, st keypool.State, m *usageMode
 		if allOpen {
 			label = L("Collapse all")
 		}
-		if u.textButton(c, label) {
+		if u.TextButton(c, label) {
 			for _, k := range m.cards {
 				s.expanded[k.id] = !allOpen
 			}
 		}
 	})
-	u.card(c).Children(func() {
+	u.Card(c).Children(func() {
 		if len(m.cards) == 0 {
-			u.unavailable(c, iconKey, L("The Key Pool has no key yet"), L("Model requests are sent with the keys you add here. Add a Factory API key to start."), nil)
+			u.Unavailable(c, dashkit.IconKey, L("The Key Pool has no key yet"), L("Model requests are sent with the keys you add here. Add a Factory API key to start."), nil)
 			return
 		}
 		for i, k := range m.cards {
 			if i > 0 {
-				u.hairline(c)
+				u.Hairline(c)
 			}
 			a.keyRow(c, u, k)
 		}
@@ -599,7 +600,7 @@ func (a *App) keyModePicker(c *ui.Context, u usageLook, st keypool.State) {
 	if st.Mode == keypool.Manual {
 		selected = 1
 	}
-	if u.segmented(c, &selected, []string{L("Automatic"), L("Manual")}, L("Key switching"), modeDescription(st.Mode), a.usage.acting != "", false) {
+	if u.Segmented(c, &selected, []string{L("Automatic"), L("Manual")}, L("Key switching"), modeDescription(st.Mode), a.usage.acting != "", false) {
 		mode := keypool.Auto
 		if selected == 1 {
 			mode = keypool.Manual
@@ -621,11 +622,11 @@ func modeDescription(mode keypool.Mode) string {
 // with the key.
 func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 	s := &a.usage
-	p := u.p
+	p := u.P
 	k := card.view
 	open := s.expanded[card.id]
 	ui.Column(c.Key(card.id)).Children(func() {
-		head := ui.ButtonBase(c).Justify(ui.Start).Gap(u.px(8)).Padding(u.px(9), u.px(16), u.px(9), u.px(12)).Label(k.Key).Expanded(open)
+		head := ui.ButtonBase(c).Justify(ui.Start).Gap(u.Px(8)).Padding(u.Px(9), u.Px(16), u.Px(9), u.Px(12)).Label(k.Key).Expanded(open)
 		if !open {
 			var tip []string
 			for _, t := range []string{k.Cooldown, k.Checked} {
@@ -637,31 +638,31 @@ func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 				head.Tooltip(strings.Join(tip, "\n"))
 			}
 		}
-		u.pressable(head, false)
+		u.Pressable(head, false)
 		head.Children(func() {
-			chevron := u.icon(c, iconChevron, 10, p.tertiary)
+			chevron := u.Icon(c, dashkit.IconChevron, 10, p.Tertiary)
 			if open {
 				chevron.Rotate(90)
 			}
-			u.text(c, itoa(k.Index), 11).TextColor(p.tertiary).FontFeatures("tnum").Width(u.px(18)).TextAlign(ui.End)
-			u.text(c, k.Key, 12).Font(u.k.Mono).SingleLine().Shrink(1)
+			u.Text(c, itoa(k.Index), 11).TextColor(p.Tertiary).FontFeatures("tnum").Width(u.Px(18)).TextAlign(ui.End)
+			u.Text(c, k.Key, 12).Font(u.K.Mono).SingleLine().Shrink(1)
 			if k.Active {
-				ui.Row(c).Gap(u.px(3)).Tooltip(L("Model requests use this key")).Children(func() {
-					u.icon(c, iconStar, 10, p.warning)
-					u.text(c, L("Current"), 11).FontWeight(500).TextColor(p.warning)
+				ui.Row(c).Gap(u.Px(3)).Tooltip(L("Model requests use this key")).Children(func() {
+					u.Icon(c, dashkit.IconStar, 10, p.Warning)
+					u.Text(c, L("Current"), 11).FontWeight(500).TextColor(p.Warning)
 				})
 			}
-			u.badge(c, k.Badge, false)
+			u.Badge(c, k.Badge, false)
 			ui.Spacer(c)
 			if open {
 				if k.Cooldown != "" {
-					ui.Row(c).Gap(u.px(4)).Children(func() {
-						u.icon(c, iconSnowflake, 11, p.warning)
-						u.text(c, k.Cooldown, 11).TextColor(p.warning)
+					ui.Row(c).Gap(u.Px(4)).Children(func() {
+						u.Icon(c, dashkit.IconSnowflake, 11, p.Warning)
+						u.Text(c, k.Cooldown, 11).TextColor(p.Warning)
 					})
 				}
 				if k.Checked != "" {
-					u.text(c, k.Checked, 11).TextColor(p.tertiary)
+					u.Text(c, k.Checked, 11).TextColor(p.Tertiary)
 				}
 				return
 			}
@@ -675,19 +676,19 @@ func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 		if !open {
 			return
 		}
-		ui.Column(c.Key("detail")).Transition(detailMotion).Gap(u.px(12)).Padding(u.px(2), u.px(16), u.px(14), u.px(42)).Children(func() {
-			ui.Row(c).Gap(u.px(28)).AlignItems(ui.Start).Children(func() {
+		ui.Column(c.Key("detail")).Transition(detailMotion).Gap(u.Px(12)).Padding(u.Px(2), u.Px(16), u.Px(14), u.Px(42)).Children(func() {
+			ui.Row(c).Gap(u.Px(28)).AlignItems(ui.Start).Children(func() {
 				for _, pool := range k.Pools {
 					u.poolWindows(c, pool)
 				}
 			})
-			ui.Row(c).Gap(u.px(8)).Children(func() {
+			ui.Row(c).Gap(u.Px(8)).Children(func() {
 				busy := s.acting != ""
-				if !card.current && u.pushButton(c, L("Use this key"), L("Use %s", card.masked), false, busy) {
+				if !card.current && u.PushButton(c, L("Use this key"), L("Use %s", card.masked), false, busy) {
 					pool := a.keyPool()
 					a.poolAct(card.id, func() error { return pool.Use(card.id) })
 				}
-				if u.pushButton(c, L("Remove"), L("Remove %s", card.masked), false, busy) {
+				if u.PushButton(c, L("Remove"), L("Remove %s", card.masked), false, busy) {
 					pool := a.keyPool()
 					a.poolAct(card.id, func() error { return pool.Remove(card.id) })
 				}
@@ -698,22 +699,22 @@ func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 
 // collapsedPool is a pool's week and month left on a collapsed key row.
 func (u usageLook) collapsedPool(c *ui.Context, pool llmusage.PoolWindowsView) {
-	p := u.p
-	ui.Row(c.Key(pool.Title)).Gap(u.px(6)).Padding(0, 0, 0, u.px(10)).Children(func() {
-		u.text(c, pool.Title, 10).FontWeight(600).TextColor(p.tertiary).Width(u.px(52)).NoWrap()
+	p := u.P
+	ui.Row(c.Key(pool.Title)).Gap(u.Px(6)).Padding(0, 0, 0, u.Px(10)).Children(func() {
+		u.Text(c, pool.Title, 10).FontWeight(600).TextColor(p.Tertiary).Width(u.Px(52)).NoWrap()
 		if !pool.HasLimits {
-			u.text(c, L("No data yet"), 11).TextColor(p.tertiary).Width(u.px(118)).TextAlign(ui.End)
+			u.Text(c, L("No data yet"), 11).TextColor(p.Tertiary).Width(u.Px(118)).TextAlign(ui.End)
 			return
 		}
 		for _, w := range []llmusage.Window{llmusage.Weekly, llmusage.Monthly} {
 			text, tone := "—", llmusage.ToneTertiary
 			for _, row := range pool.Rows {
 				if row.Label == w.Label() && row.Live {
-					text, tone = row.Percent, primaryTone(row.PercentTone)
+					text, tone = row.Percent, dashkit.PrimaryTone(row.PercentTone)
 				}
 			}
-			u.text(c, w.Label(), 10).TextColor(p.tertiary)
-			u.text(c, text, 12).TextColor(u.tone(tone)).FontFeatures("tnum").Width(u.px(36)).TextAlign(ui.End)
+			u.Text(c, w.Label(), 10).TextColor(p.Tertiary)
+			u.Text(c, text, 12).TextColor(u.Tone(tone)).FontFeatures("tnum").Width(u.Px(36)).TextAlign(ui.End)
 		}
 	})
 }
@@ -721,58 +722,58 @@ func (u usageLook) collapsedPool(c *ui.Context, pool llmusage.PoolWindowsView) {
 // poolWindows is a pool's windows in full: what is left against an even
 // pace (the tick), in credits, and when it resets.
 func (u usageLook) poolWindows(c *ui.Context, pool llmusage.PoolWindowsView) {
-	p := u.p
-	ui.Column(c.Key(pool.Title)).Role(ui.RoleGroup).Label(pool.Title).Grow(1).Basis(0).MinWidth(0).Gap(u.px(7)).Children(func() {
+	p := u.P
+	ui.Column(c.Key(pool.Title)).Role(ui.RoleGroup).Label(pool.Title).Grow(1).Basis(0).MinWidth(0).Gap(u.Px(7)).Children(func() {
 		ui.Row(c).Children(func() {
-			u.text(c, pool.Title, 12).FontWeight(600).TextColor(p.secondary)
+			u.Text(c, pool.Title, 12).FontWeight(600).TextColor(p.Secondary)
 			ui.Spacer(c)
 			if pool.Available != "" {
-				u.text(c, pool.Available, 11).TextColor(u.tone(pool.AvailableTone)).Tooltip(L("The lowest quota left across the windows. The Key Pool uses it to decide whether to use this key."))
+				u.Text(c, pool.Available, 11).TextColor(u.Tone(pool.AvailableTone)).Tooltip(L("The lowest quota left across the windows. The Key Pool uses it to decide whether to use this key."))
 			}
 		})
 		if !pool.HasLimits {
-			u.text(c, L("No quota data"), 11).TextColor(p.tertiary)
+			u.Text(c, L("No quota data"), 11).TextColor(p.Tertiary)
 			return
 		}
 		for _, row := range pool.Rows {
-			r := ui.Row(c.Key(row.Label)).Gap(u.px(8))
+			r := ui.Row(c.Key(row.Label)).Gap(u.Px(8))
 			if row.HasPace {
 				r.Tooltip(L("The tick is where an even pace would be. %s", row.Pace))
 			}
 			r.Children(func() {
-				u.text(c, row.Label, 11).TextColor(p.secondary).Width(u.px(36)).NoWrap()
+				u.Text(c, row.Label, 11).TextColor(p.Secondary).Width(u.Px(36)).NoWrap()
 				mark := -1.0
 				if row.HasPace {
 					mark = row.Even
 				}
-				u.meter(c, row.Bar.Value, row.Bar.Tone, 5, mark).Label(row.Label).MinWidth(u.px(64))
-				u.text(c, row.Percent, 11).FontWeight(500).TextColor(u.tone(primaryTone(row.PercentTone))).FontFeatures("tnum").Width(u.px(36)).TextAlign(ui.End)
-				ui.Row(c).Width(u.px(80)).Gap(u.px(4)).Children(func() {
+				u.Meter(c, row.Bar.Value, row.Bar.Tone, 5, mark).Label(row.Label).MinWidth(u.Px(64))
+				u.Text(c, row.Percent, 11).FontWeight(500).TextColor(u.Tone(dashkit.PrimaryTone(row.PercentTone))).FontFeatures("tnum").Width(u.Px(36)).TextAlign(ui.End)
+				ui.Row(c).Width(u.Px(80)).Gap(u.Px(4)).Children(func() {
 					if row.Credits == "" {
 						return
 					}
-					u.text(c, row.Credits, 11).TextColor(p.tertiary).FontFeatures("tnum").SingleLine()
+					u.Text(c, row.Credits, 11).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine()
 					ui.Spacer(c)
 					u.tokensInfo(c, row.Tokens)
 				})
 				// The note gives way first when the column is narrower than
 				// droid-proxy's window, which has no Settings sections beside it.
-				u.text(c, row.Note, 11).TextColor(p.tertiary).FontFeatures("tnum").Width(u.px(120)).Shrink(1).MinWidth(0).SingleLine()
+				u.Text(c, row.Note, 11).TextColor(p.Tertiary).FontFeatures("tnum").Width(u.Px(120)).Shrink(1).MinWidth(0).SingleLine()
 			})
 		}
 	})
 }
 
 func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
-	p := u.p
+	p := u.P
 	v := m.warming
 	if !v.Available {
-		u.unavailable(c, iconWaveform, L("Cache warming is not running"), L("Cache warming runs with the Key Pool, which starts once it has a key."), nil)
+		u.Unavailable(c, dashkit.IconWaveform, L("Cache warming is not running"), L("Cache warming runs with the Key Pool, which starts once it has a key."), nil)
 		return
 	}
 	u.page(c, func() {
-		u.sectionHead(c, L("Mode"), v.Summary, nil)
-		u.card(c).Padding(u.px(12), u.px(14)).Gap(u.px(10)).Children(func() {
+		u.SectionHead(c, L("Mode"), v.Summary, nil)
+		u.Card(c).Padding(u.Px(12), u.Px(14)).Gap(u.Px(10)).Children(func() {
 			selected := 0
 			labels := make([]string, len(v.Options))
 			for i, o := range v.Options {
@@ -781,18 +782,18 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 					selected = i
 				}
 			}
-			if u.segmented(c, &selected, labels, L("Cache warming mode"), v.Help, a.usage.acting != "", true) {
+			if u.Segmented(c, &selected, labels, L("Cache warming mode"), v.Help, a.usage.acting != "", true) {
 				pool, mode := a.keyPool(), v.Options[selected].Value
 				a.poolAct("warming", func() error { return pool.SetCacheWarmingMode(mode) })
 			}
-			u.text(c, v.Help, 12).TextColor(p.secondary)
+			u.Text(c, v.Help, 12).TextColor(p.Secondary)
 		})
-		u.metricStrip(c, v.Metrics)
-		ui.Box(c).Height(u.px(6))
-		u.sectionHead(c, L("Sessions"), v.SessionsNote, nil)
+		u.MetricStrip(c, v.Metrics)
+		ui.Box(c).Height(u.Px(6))
+		u.SectionHead(c, L("Sessions"), v.SessionsNote, nil)
 		if len(v.Sessions) == 0 {
-			u.card(c).Padding(u.px(16)).Children(func() {
-				u.text(c, v.EmptyText, 12).TextColor(p.secondary)
+			u.Card(c).Padding(u.Px(16)).Children(func() {
+				u.Text(c, v.EmptyText, 12).TextColor(p.Secondary)
 			})
 			return
 		}
@@ -802,9 +803,9 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 			end   bool
 		}{{L("Session"), 90, false}, {L("Model"), 0, false}, {L("Context"), 72, true}, {L("Renewed"), 56, true}, {L("Next check"), 96, true}, {L("Status"), 64, false}}
 		cell := func(i int, s string, color ui.Color) ui.Element {
-			t := u.text(c, s, 12).TextColor(color).SingleLine()
+			t := u.Text(c, s, 12).TextColor(color).SingleLine()
 			if cols[i].width > 0 {
-				t.Width(u.px(cols[i].width))
+				t.Width(u.Px(cols[i].width))
 			} else {
 				t.Grow(1).Basis(0)
 			}
@@ -813,21 +814,21 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 			}
 			return t
 		}
-		u.card(c).Padding(2, u.px(16)).Children(func() {
-			ui.Row(c).Gap(u.px(10)).Height(u.px(32)).Children(func() {
+		u.Card(c).Padding(2, u.Px(16)).Children(func() {
+			ui.Row(c).Gap(u.Px(10)).Height(u.Px(32)).Children(func() {
 				for i, col := range cols {
-					cell(i, col.title, p.tertiary).FontWeight(600).FontSize(u.px(11))
+					cell(i, col.title, p.Tertiary).FontWeight(600).FontSize(u.Px(11))
 				}
 			})
 			for _, s := range v.Sessions {
-				u.hairline(c)
-				ui.Row(c.Key(s.ID)).Gap(u.px(10)).Height(u.px(32)).Children(func() {
-					cell(0, s.Session, p.text).Font(u.k.Mono).Tooltip(s.ID)
-					cell(1, s.Model, p.text)
-					cell(2, s.Context, p.text).FontFeatures("tnum")
-					cell(3, s.Refreshes, p.text).FontFeatures("tnum")
-					cell(4, s.Next, p.secondary).FontFeatures("tnum")
-					cell(5, s.State, u.tone(s.StateTone))
+				u.Hairline(c)
+				ui.Row(c.Key(s.ID)).Gap(u.Px(10)).Height(u.Px(32)).Children(func() {
+					cell(0, s.Session, p.Text).Font(u.K.Mono).Tooltip(s.ID)
+					cell(1, s.Model, p.Text)
+					cell(2, s.Context, p.Text).FontFeatures("tnum")
+					cell(3, s.Refreshes, p.Text).FontFeatures("tnum")
+					cell(4, s.Next, p.Secondary).FontFeatures("tnum")
+					cell(5, s.State, u.Tone(s.StateTone))
 				})
 			}
 		})
@@ -835,44 +836,44 @@ func (a *App) warmingPage(c *ui.Context, u usageLook, m *usageModel) {
 }
 
 func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestRowView) ui.Element {
-	p := u.p
+	p := u.P
 	s := &a.usage.observe
 	columns := []ui.TableColumn{
-		{ID: "time", Title: L("Time"), Width: u.px(126)},
-		{ID: "model", Title: L("Model"), MinWidth: u.px(112)},
-		{ID: "status", Title: L("Status"), Width: u.px(64)},
-		{ID: "input", Title: L("Input"), Width: u.px(70), Align: ui.End},
-		{ID: "cache", Title: L("Cache"), Width: u.px(52), Align: ui.End},
-		{ID: "output", Title: L("Output"), Width: u.px(60), Align: ui.End},
-		{ID: "credits", Title: L("Credits"), Width: u.px(76), Align: ui.End},
-		{ID: "duration", Title: L("Time / first byte"), Width: u.px(96), Align: ui.End},
-		{ID: "speed", Title: L("Output speed"), Width: u.px(72), Align: ui.End},
+		{ID: "time", Title: L("Time"), Width: u.Px(126)},
+		{ID: "model", Title: L("Model"), MinWidth: u.Px(112)},
+		{ID: "status", Title: L("Status"), Width: u.Px(64)},
+		{ID: "input", Title: L("Input"), Width: u.Px(70), Align: ui.End},
+		{ID: "cache", Title: L("Cache"), Width: u.Px(52), Align: ui.End},
+		{ID: "output", Title: L("Output"), Width: u.Px(60), Align: ui.End},
+		{ID: "credits", Title: L("Credits"), Width: u.Px(76), Align: ui.End},
+		{ID: "duration", Title: L("Time / first byte"), Width: u.Px(96), Align: ui.End},
+		{ID: "speed", Title: L("Output speed"), Width: u.Px(72), Align: ui.End},
 	}
 	s.reqList.Key = func(i int) any { return rows[i].ID }
 	s.reqList.Selected = &s.reqSel
-	defer u.tables(c)()
+	defer u.Tables(c)()
 	numeric := func(cell llmusage.Cell) {
-		ui.Text(c, cell.Text).TextColor(u.tone(cell.Tone)).FontFeatures("tnum").Tooltip(cell.Help).SingleLine()
+		ui.Text(c, cell.Text).TextColor(u.Tone(cell.Tone)).FontFeatures("tnum").Tooltip(cell.Help).SingleLine()
 	}
 	return ui.Table(c, &s.reqList, columns, len(rows), func(i, col int) {
 		r := rows[i]
 		switch col {
 		case 0:
-			ui.Text(c, r.Time).TextColor(p.secondary).FontFeatures("tnum").Tooltip(r.TimeHelp).SingleLine()
+			ui.Text(c, r.Time).TextColor(p.Secondary).FontFeatures("tnum").Tooltip(r.TimeHelp).SingleLine()
 		case 1:
-			ui.Row(c).Gap(u.px(6)).Children(func() {
-				u.text(c, r.ProviderMark, 9).FontWeight(700).TextColor(ui.Hex("#ffffff")).TextAlign(ui.Center).
-					Size(u.px(20), u.px(16)).FixedLineHeight(u.px(16)).Radius(u.px(4)).Background(providerColor(r.ProviderClass)).Tooltip(r.ProviderHelp).NoWrap()
-				u.text(c, r.Model, 11).Font(u.k.Mono).SingleLine().Shrink(1).Tooltip(r.Model)
+			ui.Row(c).Gap(u.Px(6)).Children(func() {
+				u.Text(c, r.ProviderMark, 9).FontWeight(700).TextColor(ui.Hex("#ffffff")).TextAlign(ui.Center).
+					Size(u.Px(20), u.Px(16)).FixedLineHeight(u.Px(16)).Radius(u.Px(4)).Background(providerColor(r.ProviderClass)).Tooltip(r.ProviderHelp).NoWrap()
+				u.Text(c, r.Model, 11).Font(u.K.Mono).SingleLine().Shrink(1).Tooltip(r.Model)
 				if r.Kind != "" {
-					u.text(c, r.Kind, 10).TextColor(p.tertiary).NoWrap()
+					u.Text(c, r.Kind, 10).TextColor(p.Tertiary).NoWrap()
 				}
 			})
 		case 2:
-			ui.Row(c).Gap(u.px(4)).Tooltip(r.StatusHelp).Children(func() {
-				u.badge(c, llmusage.Badge{Label: r.Status, Tone: r.StatusTone}, true).FontWeight(600)
+			ui.Row(c).Gap(u.Px(4)).Tooltip(r.StatusHelp).Children(func() {
+				u.Badge(c, llmusage.Badge{Label: r.Status, Tone: r.StatusTone}, true).FontWeight(600)
 				if r.Stream {
-					u.icon(c, iconWaveform, 10, p.tertiary).Label(L("Streamed response"))
+					u.Icon(c, dashkit.IconWaveform, 10, p.Tertiary).Label(L("Streamed response"))
 				}
 			})
 		case 3:
@@ -885,9 +886,9 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 			numeric(r.Credits)
 		case 7:
 			ui.Column(c).AlignItems(ui.End).Tooltip(L("Top: the total time. Bottom: the time to the first byte, how long Factory took to start answering.")).Children(func() {
-				ui.Text(c, r.Duration).TextColor(u.tone(r.DurationTone)).FontFeatures("tnum")
+				ui.Text(c, r.Duration).TextColor(u.Tone(r.DurationTone)).FontFeatures("tnum")
 				if r.TTFB != "" {
-					u.text(c, r.TTFB, 10).TextColor(p.tertiary).FontFeatures("tnum")
+					u.Text(c, r.TTFB, 10).TextColor(p.Tertiary).FontFeatures("tnum")
 				}
 			})
 		case 8:
@@ -897,43 +898,43 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 }
 
 func (a *App) eventsPage(c *ui.Context, u usageLook, m *usageModel) {
-	p := u.p
+	p := u.P
 	s := &a.usage
 	events := m.events
 	u.tablePage(c, func() {
-		u.sectionHead(c, L("Events"), countL(len(events), l10n.N("%d event"), l10n.N("%d events")), nil)
-		u.card(c).Grow(1).MinHeight(0).Children(func() {
+		u.SectionHead(c, L("Events"), countL(len(events), l10n.N("%d event"), l10n.N("%d events")), nil)
+		u.Card(c).Grow(1).MinHeight(0).Children(func() {
 			if len(events) == 0 {
-				u.unavailable(c, iconList, L("No events yet"), L("Key switches, key cooldowns, and errors from Factory are logged here."), nil)
+				u.Unavailable(c, dashkit.IconList, L("No events yet"), L("Key switches, key cooldowns, and errors from Factory are logged here."), nil)
 				return
 			}
 			columns := []ui.TableColumn{
-				{ID: "time", Title: L("Time"), Width: u.px(80)},
-				{ID: "kind", Title: L("Type"), Width: u.px(200)},
-				{ID: "key", Title: L("Key"), Width: u.px(140)},
-				{ID: "pool", Title: L("Pool"), Width: u.px(70)},
-				{ID: "model", Title: L("Model"), MinWidth: u.px(100)},
-				{ID: "status", Title: L("Status"), Width: u.px(56)},
-				{ID: "details", Title: L("Details"), MinWidth: u.px(120)},
+				{ID: "time", Title: L("Time"), Width: u.Px(80)},
+				{ID: "kind", Title: L("Type"), Width: u.Px(200)},
+				{ID: "key", Title: L("Key"), Width: u.Px(140)},
+				{ID: "pool", Title: L("Pool"), Width: u.Px(70)},
+				{ID: "model", Title: L("Model"), MinWidth: u.Px(100)},
+				{ID: "status", Title: L("Status"), Width: u.Px(56)},
+				{ID: "details", Title: L("Details"), MinWidth: u.Px(120)},
 			}
 			s.evtList.Key = func(i int) any { return events[i].ID }
 			ui.Table(c, &s.evtList, columns, len(events), func(i, col int) {
 				e := events[i]
 				switch col {
 				case 0:
-					ui.Text(c, e.Time).TextColor(p.secondary).FontFeatures("tnum")
+					ui.Text(c, e.Time).TextColor(p.Secondary).FontFeatures("tnum")
 				case 1:
 					ui.Text(c, e.Name).SingleLine().Tooltip(e.Kind)
 				case 2:
-					u.text(c, e.Key, 11).Font(u.k.Mono).TextColor(p.secondary).SingleLine()
+					u.Text(c, e.Key, 11).Font(u.K.Mono).TextColor(p.Secondary).SingleLine()
 				case 3:
 					ui.Text(c, e.Pool).SingleLine()
 				case 4:
 					ui.Text(c, e.Model).SingleLine()
 				case 5:
-					ui.Text(c, e.Status).TextColor(u.tone(e.StatusTone)).FontFeatures("tnum")
+					ui.Text(c, e.Status).TextColor(u.Tone(e.StatusTone)).FontFeatures("tnum")
 				case 6:
-					ui.Text(c, e.Detail).TextColor(p.secondary).SingleLine().Tooltip(e.Detail)
+					ui.Text(c, e.Detail).TextColor(p.Secondary).SingleLine().Tooltip(e.Detail)
 				}
 			}).Label(L("Event log")).Grow(1)
 		})
@@ -943,8 +944,8 @@ func (a *App) eventsPage(c *ui.Context, u usageLook, m *usageModel) {
 // usageStatusBar is whether the Key Pool runs and with which key, and how
 // the Key Pool switches keys.
 func (a *App) usageStatusBar(c *ui.Context, u usageLook, st keypool.State) {
-	p := u.p
-	symbol, tone := iconClock, llmusage.ToneWarning
+	p := u.P
+	symbol, tone := dashkit.IconClock, llmusage.ToneWarning
 	text := L("The Key Pool starts once it has a key.")
 	switch {
 	case st.Running:
@@ -954,21 +955,21 @@ func (a *App) usageStatusBar(c *ui.Context, u usageLook, st keypool.State) {
 				current = k.Masked
 			}
 		}
-		symbol, tone, text = iconCheck, llmusage.ToneGreen, L("Key Pool running · current key %s", current)
+		symbol, tone, text = dashkit.IconCheck, llmusage.ToneGreen, L("Key Pool running · current key %s", current)
 	case st.Err != "" && len(st.Keys) > 0:
-		symbol, tone, text = iconWarning, llmusage.ToneDanger, L("The Key Pool is not running: %s", st.Err)
+		symbol, tone, text = dashkit.IconWarning, llmusage.ToneDanger, L("The Key Pool is not running: %s", st.Err)
 	case len(st.Keys) > 0:
-		symbol, tone, text = iconWarning, llmusage.ToneDanger, L("The Key Pool is not running")
+		symbol, tone, text = dashkit.IconWarning, llmusage.ToneDanger, L("The Key Pool is not running")
 	}
 	mode := L("Switches keys automatically")
 	if st.Mode == keypool.Manual {
 		mode = L("Keeps the key you chose")
 	}
-	ui.Row(c).Role(ui.RoleStatus).Shrink(0).Gap(u.px(8)).Padding(u.px(7), u.px(20)).BorderWidth(1, 0, 0, 0).BorderColor(p.line).Children(func() {
-		u.icon(c, symbol, 13, u.tone(tone))
-		u.text(c, text, 12).TextColor(p.secondary).SingleLine().Shrink(1)
+	ui.Row(c).Role(ui.RoleStatus).Shrink(0).Gap(u.Px(8)).Padding(u.Px(7), u.Px(20)).BorderWidth(1, 0, 0, 0).BorderColor(p.Line).Children(func() {
+		u.Icon(c, symbol, 13, u.Tone(tone))
+		u.Text(c, text, 12).TextColor(p.Secondary).SingleLine().Shrink(1)
 		ui.Spacer(c)
-		u.text(c, mode, 12).TextColor(p.tertiary).NoWrap()
+		u.Text(c, mode, 12).TextColor(p.Tertiary).NoWrap()
 	})
 }
 
@@ -1006,32 +1007,32 @@ func (a *App) submitAddKey() {
 
 func (a *App) addKeySheet(c *ui.Context, u usageLook) {
 	s := &a.usage
-	p := u.p
+	p := u.P
 	open := s.addOpen
 	ui.Modal(c, &open, func() {
-		ui.Column(c).Width(u.px(380)).Gap(u.px(12)).Children(func() {
-			ui.Column(c).Gap(u.px(4)).Children(func() {
-				u.text(c, L("Add key"), 14).Role(ui.RoleHeading).FontWeight(600)
-				u.text(c, L("Droi checks the key's quota with Factory first, then adds it to the Key Pool."), 12).TextColor(p.secondary)
+		ui.Column(c).Width(u.Px(380)).Gap(u.Px(12)).Children(func() {
+			ui.Column(c).Gap(u.Px(4)).Children(func() {
+				u.Text(c, L("Add key"), 14).Role(ui.RoleHeading).FontWeight(600)
+				u.Text(c, L("Droi checks the key's quota with Factory first, then adds it to the Key Pool."), 12).TextColor(p.Secondary)
 			})
 			submitted := ui.TextInput(c, &s.addKey).Password().AutoFocus().Placeholder("fk-…").Label(L("Factory API key to add")).Disabled(s.adding).Submitted()
 			if s.addErr != "" {
-				ui.Row(c).Role(ui.RoleStatus).Gap(u.px(4)).Children(func() {
-					u.icon(c, iconWarning, 13, p.danger)
-					u.text(c, s.addErr, 12).TextColor(p.danger).Shrink(1)
+				ui.Row(c).Role(ui.RoleStatus).Gap(u.Px(4)).Children(func() {
+					u.Icon(c, dashkit.IconWarning, 13, p.Danger)
+					u.Text(c, s.addErr, 12).TextColor(p.Danger).Shrink(1)
 				})
 			}
 			empty := strings.TrimSpace(s.addKey) == ""
-			ui.Row(c).Gap(u.px(8)).Children(func() {
+			ui.Row(c).Gap(u.Px(8)).Children(func() {
 				if s.adding {
 					ui.Spinner(c)
-					u.text(c, L("Checking the key's quota…"), 12).TextColor(p.secondary)
+					u.Text(c, L("Checking the key's quota…"), 12).TextColor(p.Secondary)
 				}
 				ui.Spacer(c)
-				if u.pushButton(c, L("Cancel"), "", false, s.adding) {
+				if u.PushButton(c, L("Cancel"), "", false, s.adding) {
 					open = false
 				}
-				if u.pushButton(c, L("Add key"), "", true, empty || s.adding) || (submitted && !empty && !s.adding) {
+				if u.PushButton(c, L("Add key"), "", true, empty || s.adding) || (submitted && !empty && !s.adding) {
 					a.submitAddKey()
 				}
 			})

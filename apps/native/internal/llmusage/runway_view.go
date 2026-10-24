@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
@@ -20,7 +21,9 @@ type RunwayView struct {
 	Metrics []MetricView
 	Budget  BudgetView
 	Lines   []RunwayLine
-	Chart   ChartView
+	// Chart is the spend of the last days, one bar each, against the daily
+	// limit; its values are percent of one key's month.
+	Chart dashkit.ChartView
 }
 
 // BudgetView is today's spend as a share of the daily limit, for the menu
@@ -45,27 +48,6 @@ type RunwayLine struct {
 	Value string
 	Note  string
 	Tone  Tone
-}
-
-// ChartView is the spend of the last days, one bar each, against the daily
-// limit. Values are percent of one key's month; Top is the scale's top.
-type ChartView struct {
-	Bars       []ChartBar
-	Limit      float64
-	Top        float64
-	LimitLabel string
-	First      string
-	Last       string
-	// Credits is one of the values (a percent of a key's month) in
-	// credits, which the axis counts in round numbers of.
-	Credits float64
-}
-
-type ChartBar struct {
-	Value float64
-	Today bool
-	Over  bool
-	Help  string
 }
 
 // hotFactor: today is "more than usual" past this multiple of the usual
@@ -216,8 +198,10 @@ func Weekday(d time.Weekday) string {
 	return l10n.L("Sunday")
 }
 
-func buildChart(days []DaySpend, limit float64, amount func(float64) string) ChartView {
-	c := ChartView{Limit: limit, LimitLabel: l10n.L("Daily limit %s", amount(limit)), Top: limit, Credits: MonthlyStandardCredits / 100}
+func buildChart(days []DaySpend, limit float64, amount func(float64) string) dashkit.ChartView {
+	// The axis counts credits: one of the values, a percent of a key's
+	// month, is Scale of them.
+	c := dashkit.ChartView{Limit: limit, LimitLabel: l10n.L("Daily limit %s", amount(limit)), Top: limit, Scale: MonthlyStandardCredits / 100, Tick: FormatCredits}
 	for i, d := range days {
 		today := i == len(days)-1
 		help := l10n.L("%s %s: %s", d.Day.Format("1/2"), Weekday(d.Day.Weekday()), amount(d.Spent))
@@ -228,10 +212,11 @@ func buildChart(days []DaySpend, limit float64, amount func(float64) string) Cha
 		if over {
 			help = l10n.L("%s, over the daily limit", help)
 		}
-		c.Bars = append(c.Bars, ChartBar{Value: d.Spent, Today: today, Over: over, Help: help})
+		c.Bars = append(c.Bars, dashkit.ChartBar{Value: d.Spent, Today: today, Over: over, Help: help})
 		c.Top = math.Max(c.Top, d.Spent)
 	}
 	c.Top *= 1.1
+	c.Label = l10n.L("Last %d days", len(days))
 	if len(days) > 0 {
 		c.First, c.Last = days[0].Day.Format("1/2"), l10n.L("Today")
 	}

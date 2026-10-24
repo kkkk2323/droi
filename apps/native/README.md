@@ -115,7 +115,7 @@ the others listed; the trash button forgets one. When the followed computer cann
 link or forget it. Once another computer is remembered, the top left of the sidebar, beside its
 toggle, names the computer shown; its menu switches to any other or opens Settings → Computer.
 
-A switch does not relaunch the app. `main.go` keeps the window open and builds its insides
+A switch does not relaunch the app. `pkg/droiapp` keeps the window open and builds its insides
 again (`inside.go`): a new Controller to the computer's Gateway, a new Gateway Client and a new
 `app.App`, started and connected; the old App stops hearing its Controller and its calls end
 (`App.Close`), then the old Controller closes. The menu, zoom, notification clicks and the
@@ -131,7 +131,11 @@ no split.
 
 | Path                                                                                      | What                                                                                                  |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `main.go`                                                                                 | the app: window, menus, the Host                                                                      |
+| `main.go`                                                                                 | Droi's main: `droiapp.Run` with Droi's version                                                        |
+| `pkg/droiapp/`                                                                            | the app as a library (ADR 0029): window, menus, the Host, subcommands, an app's extensions            |
+| `pkg/brand/`, `pkg/extension/`                                                            | what another app built on Droi names itself and adds: MCP, prompts, pages, Settings, tool views       |
+| `pkg/mcpserver/`                                                                          | MCP over stdio for tool servers in the app's own executable, as the Memory Server                     |
+| `pkg/dashkit/`                                                                            | the Usage tab's dashboard kit: cards, metrics, controls and charts                                    |
 | `assets/`                                                                                 | the vendored JetBrains Mono and Geist fonts, embedded                                                 |
 | `pkg/theme/`                                                                              | the design tokens (ADR 0025): the three themes, fonts, text sizes, the one tint                       |
 | `pkg/icons/`                                                                              | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |

@@ -9,6 +9,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/mcp"
 	"github.com/kkkk2323/droi/apps/native/internal/skills"
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	droid "github.com/kkkk2323/droid-sdk-go"
@@ -527,7 +528,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 						v.toolBadge(c, L("Project"))
 					}
 					if droi {
-						v.toolBadge(c, "Droi")
+						v.toolBadge(c, brand.Name())
 					}
 				})
 				line := label

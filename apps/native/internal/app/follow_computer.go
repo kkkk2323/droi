@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
@@ -103,18 +105,18 @@ func (a *App) forgetComputer(id string) {
 	}
 }
 
-// sidebarHeader is the sidebar's top row, the Droi mark. Once another
+// sidebarHeader is the sidebar's top row, the app's mark. Once another
 // computer is remembered the row also names the computer the window shows
 // and switches between them; with none there is nothing to switch to.
 func (a *App) sidebarHeader(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	brand := func() {
+	mark := func() {
 		droiMark(c, k, 16)
-		k.Text(c, "Droi", 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
+		k.Text(c, brand.Name(), 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
 	}
 	remembered := computer.Remembered(a.prefs)
 	if len(remembered) == 0 {
-		ui.Row(c).Height(k.Px(32)).Gap(k.Px(7)).PaddingX(k.Px(16)).Shrink(0).Children(brand)
+		ui.Row(c).Height(k.Px(32)).Gap(k.Px(7)).PaddingX(k.Px(16)).Shrink(0).Children(mark)
 		return
 	}
 	name := L("This computer")
@@ -130,7 +132,7 @@ func (a *App) sidebarHeader(c *ui.Context) {
 			color = t.Foreground
 		}
 		b.Children(func() {
-			brand()
+			mark()
 			ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).MinWidth(0).Shrink(1).Margin(0, 0, 0, k.Px(2)).Children(func() {
 				k.Text(c, name, 13, 18).TextColor(color).SingleLine().Shrink(1)
 				k.Icon(c, "chevron-down", 12, color)
@@ -228,7 +230,7 @@ func (a *App) computerTab(c *ui.Context) {
 			}
 			a.settingRow(c, L("Another computer"), L("Paste the pairing link of the other computer, the one a phone scans. Droi checks it, remembers it and switches to it."), nil, func() {
 				ui.Row(c).Gap(k.Px(8)).Children(func() {
-					in := a.field(c, &s.computerLink, L("Pairing link"), "http://ubuntu:41417/#pair=…", true, false)
+					in := a.field(c, &s.computerLink, L("Pairing link"), "http://ubuntu:"+strconv.Itoa(brand.Current().Port)+"/#pair=…", true, false)
 					if in.Submitted() {
 						follow()
 					}

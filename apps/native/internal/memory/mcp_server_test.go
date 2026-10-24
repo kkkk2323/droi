@@ -448,11 +448,9 @@ func TestToolsAreTheElectronServersToTheByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, len(tools), 5)
-	line, err := jsonText(rpcMessage{JSONRPC: "2.0", ID: json.RawMessage("7"), Result: struct {
-		Tools json.RawMessage `json:"tools"`
-	}{Tools()}})
-	if err != nil {
+	var out strings.Builder
+	if err := Serve(strings.NewReader(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`+"\n"), &out, ServerOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	eq(t, line, `{"jsonrpc":"2.0","id":7,"result":{"tools":`+strings.TrimSpace(string(toolsJSON))+`}}`)
+	eq(t, out.String(), `{"jsonrpc":"2.0","id":7,"result":{"tools":`+strings.TrimSpace(string(toolsJSON))+`}}`+"\n")
 }

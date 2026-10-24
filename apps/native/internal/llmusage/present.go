@@ -6,23 +6,30 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
 
-// Tone is a semantic colour the Usage page maps to its palette.
-type Tone uint8
+// The Tones and view models the Usage page draws are dashkit's.
+type (
+	Tone       = dashkit.Tone
+	Bar        = dashkit.Bar
+	Badge      = dashkit.Badge
+	MetricView = dashkit.MetricView
+	Cell       = dashkit.Cell
+)
 
 const (
-	ToneSecondary Tone = iota
-	TonePrimary
-	ToneTertiary
-	ToneAccent
-	ToneGreen
-	ToneWarning
-	ToneDanger
-	ToneTrack
+	ToneSecondary = dashkit.ToneSecondary
+	TonePrimary   = dashkit.TonePrimary
+	ToneTertiary  = dashkit.ToneTertiary
+	ToneAccent    = dashkit.ToneAccent
+	ToneGreen     = dashkit.ToneGreen
+	ToneWarning   = dashkit.ToneWarning
+	ToneDanger    = dashkit.ToneDanger
+	ToneTrack     = dashkit.ToneTrack
 )
 
 // RemainingTone is a bar's fill: danger under DangerRemaining, warning
@@ -45,18 +52,7 @@ func RemainingTextTone(remaining float64) Tone {
 	return ToneSecondary
 }
 
-// Bar is a capacity bar filled to Value (0…100).
-type Bar struct {
-	Value float64
-	Tone  Tone
-}
-
 func remainingBar(v float64) Bar { return Bar{Value: v, Tone: RemainingTone(v)} }
-
-type Badge struct {
-	Label string
-	Tone  Tone
-}
 
 func stateBadge(s KeyDisplay) Badge {
 	tone := ToneDanger
@@ -69,20 +65,6 @@ func stateBadge(s KeyDisplay) Badge {
 		tone = ToneWarning
 	}
 	return Badge{Label: s.Label(), Tone: tone}
-}
-
-// MetricView is one figure of a strip: Value, a smaller Sub after it
-// ("1.2%"), its Title, then a Note.
-type MetricView struct {
-	Title, Value, Sub, Note string
-	Tone                    Tone
-}
-
-// Cell is a right-aligned numeric table cell; Text "—" means no value.
-type Cell struct {
-	Text string
-	Tone Tone
-	Help string
 }
 
 func numeric(text string, ok bool, help string, tone Tone) Cell {

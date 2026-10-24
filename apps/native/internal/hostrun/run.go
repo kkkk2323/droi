@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -28,8 +29,12 @@ type Options struct {
 	Env func(string) string
 	// Executable runs the Memory Server and the hook; "" leaves Memory out.
 	Executable string
-	// Port is the Gateway's preferred port, gateway.PreferredPort when 0.
+	// Port is the Gateway's preferred port, the brand's when 0.
 	Port int
+	// Overlay and AppendSystemPrompt are the app's additions to the Host:
+	// host.Config's fields of the same names, Overlay given the Host.
+	Overlay            func(h *host.Host) host.OverlayOptions
+	AppendSystemPrompt func() string
 	// Out gets the pairing link and, when Terminal is set, its QR code.
 	Out      io.Writer
 	Terminal bool
@@ -48,20 +53,28 @@ func Run(ctx context.Context, o Options) error {
 	}
 	port := o.Port
 	if port == 0 {
-		port = gateway.PreferredPort
+		port = brand.Current().Port
 	}
 	if hostAnswers(ctx, port) {
 		return fmt.Errorf("%w (its Gateway answers on port %d); stop it first", ErrHostRunning, port)
 	}
 
 	trash := &host.FreedesktopTrash{Dir: TrashDir(env, o.Home)}
-	h := host.New(host.Config{
+	var h *host.Host
+	cfg := host.Config{
 		UserData:   ConfigDir(env, o.Home),
 		Home:       o.Home,
 		Version:    o.Version,
 		Env:        env,
 		Executable: o.Executable,
-	})
+
+		AppendSystemPrompt: o.AppendSystemPrompt,
+	}
+	if o.Overlay != nil {
+		// Read when the Daemon starts, which is after New.
+		cfg.Overlay = func() host.OverlayOptions { return o.Overlay(h) }
+	}
+	h = host.New(cfg)
 	if err := checkDroid(h); err != nil {
 		return err
 	}
@@ -109,7 +122,7 @@ func checkDroid(h *host.Host) error {
 		return errors.New("droid was not found; install it and run `droid login`")
 	}
 	if v := h.DroidVersion(); host.OlderThanMinDroid(v) {
-		return fmt.Errorf("droid %s is too old: Droi needs droid %s or newer; run `droid update`", v, host.MinDroid)
+		return fmt.Errorf("droid %s is too old: %s needs droid %s or newer; run `droid update`", v, brand.Name(), host.MinDroid)
 	}
 	return nil
 }
@@ -130,7 +143,7 @@ func announce(out io.Writer, terminal bool, gw *gateway.Gateway, h *host.Host, v
 	s := h.Settings.Get()
 	info := gw.Pairing(pairingHost(s), s.PairingToken)
 	link := info.Link
-	fmt.Fprintf(out, "Droi Host %s on %s\n", version, gateway.ComputerName())
+	fmt.Fprintf(out, "%s Host %s on %s\n", brand.Name(), version, gateway.ComputerName())
 	if link == "" {
 		// Only loopback: reachable through a tunnel, not from the network.
 		link = gateway.Pairing([]string{"127.0.0.1"}, info.Port, "", s.PairingToken).Link

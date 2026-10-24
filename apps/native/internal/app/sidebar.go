@@ -72,6 +72,12 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}).Clicked() {
 				a.Go(Route{Name: "automations"})
 			}
+			for _, p := range a.cfg.Pages {
+				label := l10n.T(p.Label)
+				if a.sidebarRow(c, p.Icon, label, a.route.Name == "page" && a.route.Page == p.ID, nil).Key("page:" + p.ID).Clicked() {
+					a.Go(Route{Name: "page", Page: p.ID})
+				}
+			}
 			ui.Row(c).Gap(k.Px(4)).Children(func() {
 				a.searchBox(c)
 				a.sortMenu(c, groups)

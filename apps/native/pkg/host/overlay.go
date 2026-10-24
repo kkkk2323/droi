@@ -2,10 +2,13 @@ package host
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"time"
 )
 
 // MemoryServerName is the Memory Server's name in the Daemon's MCP list.
@@ -55,6 +58,76 @@ type OverlayOptions struct {
 	// CustomModels are droid's customModels entries: the models the Daemon may
 	// run that are not Factory's, such as a Magpie gateway's.
 	CustomModels []any
+	// MCPServers are the MCP servers the Daemon loads for every Session,
+	// beside Memory's, by name. A name Memory's server has is left out.
+	MCPServers map[string]MCPServer
+	// BlockOnMCPLoad holds a Session's first turn until its MCP servers are
+	// connected, as Memory does.
+	BlockOnMCPLoad bool
+	// Hooks are droid's hooks by event, such as "PreToolUse": lists of
+	// {"matcher": ..., "hooks": [...]} entries, run after Memory's.
+	Hooks map[string][]any
+	// Env is added to the environment of the Daemon's Sessions.
+	Env map[string]string
+	// ApprovedAt is the time the approvals of MCPServers record, as the
+	// Daemon writes it; "" is now.
+	ApprovedAt string
+}
+
+// MCPServer is one MCP server of the Runtime Overlay.
+type MCPServer struct {
+	// Config is droid's mcpServers entry: {"type": "stdio", "command": ...,
+	// "args": [...], "env": {...}} or {"type": "http", "url": ..., "headers": {...}}.
+	Config map[string]any
+	// Approved records the server as approved, as a user's approval does, so
+	// that no Session asks before loading it.
+	Approved bool
+	// Autonomy, optional, is the autonomy level its tools run at without
+	// asking ("low", "medium" or "high"). The Daemon treats an unknown MCP
+	// tool as high impact, so "low" lets every Session run them, as Memory's.
+	Autonomy string
+}
+
+// Add is o with more's: lists appended, maps merged, a name o has kept.
+func (o OverlayOptions) Add(more OverlayOptions) OverlayOptions {
+	o.CustomModels = append(slices.Clip(o.CustomModels), more.CustomModels...)
+	o.MCPServers = mergeNew(o.MCPServers, more.MCPServers)
+	o.BlockOnMCPLoad = o.BlockOnMCPLoad || more.BlockOnMCPLoad
+	if len(more.Hooks) > 0 {
+		hooks := make(map[string][]any, len(o.Hooks)+len(more.Hooks))
+		for e, l := range o.Hooks {
+			hooks[e] = slices.Clip(l)
+		}
+		for e, l := range more.Hooks {
+			hooks[e] = append(hooks[e], l...)
+		}
+		o.Hooks = hooks
+	}
+	o.Env = mergeNew(o.Env, more.Env)
+	if o.ApprovedAt == "" {
+		o.ApprovedAt = more.ApprovedAt
+	}
+	return o
+}
+
+// empty says whether o adds nothing.
+func (o OverlayOptions) empty() bool {
+	return len(o.CustomModels) == 0 && len(o.MCPServers) == 0 && !o.BlockOnMCPLoad && len(o.Hooks) == 0 && len(o.Env) == 0
+}
+
+// mergeNew is a copy of a with what of b's a has no key for.
+func mergeNew[V any](a, b map[string]V) map[string]V {
+	if len(b) == 0 {
+		return a
+	}
+	out := make(map[string]V, len(a)+len(b))
+	for k, v := range b {
+		out[k] = v
+	}
+	for k, v := range a {
+		out[k] = v
+	}
+	return out
 }
 
 // BuildRuntimeOverlay is the settings file the Daemon merges for its own
@@ -77,7 +150,52 @@ func BuildRuntimeOverlayWith(m MemoryAttachment, o OverlayOptions) map[string]an
 	if len(o.CustomModels) > 0 {
 		overlay["customModels"] = o.CustomModels
 	}
+	if len(o.Env) > 0 {
+		env, _ := overlay["env"].(map[string]string)
+		overlay["env"] = mergeNew(env, o.Env)
+	}
+	if o.BlockOnMCPLoad {
+		overlay["blockOnMcpLoad"] = true
+	}
+	if len(o.MCPServers) > 0 {
+		approvedAt := o.ApprovedAt
+		if approvedAt == "" {
+			approvedAt = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+		}
+		mcp := subMap(overlay, "mcp")
+		servers := subMap(mcp, "mcpServers")
+		for _, name := range slices.Sorted(maps.Keys(o.MCPServers)) {
+			if _, taken := servers[name]; taken {
+				continue
+			}
+			s := o.MCPServers[name]
+			servers[name] = s.Config
+			if s.Approved {
+				subMap(subMap(mcp, "persistentPermissions"), "servers")[name] = map[string]any{"approvedAt": approvedAt, "impactLevel": "high"}
+			}
+			if s.Autonomy != "" {
+				subMap(overlay, "mcpAutonomyOverrides")[name] = map[string]any{"defaultLevel": s.Autonomy}
+			}
+		}
+	}
+	if len(o.Hooks) > 0 {
+		hooks := subMap(overlay, "hooks")
+		for e, l := range o.Hooks {
+			before, _ := hooks[e].([]any)
+			hooks[e] = append(slices.Clip(before), l...)
+		}
+	}
 	return overlay
+}
+
+// subMap is m[key] as a map, made when m has none.
+func subMap(m map[string]any, key string) map[string]any {
+	if c, ok := m[key].(map[string]any); ok {
+		return c
+	}
+	c := map[string]any{}
+	m[key] = c
+	return c
 }
 
 // memoryOverlay is Memory's part of the overlay.

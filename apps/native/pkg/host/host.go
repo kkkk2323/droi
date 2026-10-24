@@ -13,6 +13,7 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
@@ -34,13 +35,20 @@ type Config struct {
 	// droid CLI's ~/.factory.
 	FactoryRoot string
 	// ScratchFolder is where Scratch Workspaces go unless Settings names a
-	// folder; "" is ~/.droi/chats.
+	// folder; "" is the brand's, ~/.droi/chats for Droi.
 	ScratchFolder string
 	// KeyPoolUpstream replaces Factory's API for the Key Pool (for tests).
 	KeyPoolUpstream string
 	// ScriptModels reports the models Settings lets use Script in addition
 	// to Factory's list; nil adds none.
 	ScriptModels func() []string
+	// Overlay, optional, is what else the Runtime Overlay attaches, read each
+	// time the Daemon starts: MCP servers, hooks, environment and models.
+	// RestartDaemon applies a change.
+	Overlay func() OverlayOptions
+	// AppendSystemPrompt, optional, follows the System Prompt Addition of
+	// Settings, read at every Session start.
+	AppendSystemPrompt func() string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.
@@ -199,23 +207,32 @@ func (h *Host) ScratchFolder() string {
 	if h.cfg.ScratchFolder != "" {
 		return h.cfg.ScratchFolder
 	}
-	return filepath.Join(h.cfg.Home, ".droi", "chats")
+	return brand.ScratchFolder(h.cfg.Home)
 }
+
+// Executable is the app's own executable, which the Runtime Overlay runs as
+// the Memory Server and the hook; "" under go run.
+func (h *Host) Executable() string { return h.cfg.Executable }
+
+// UserData is the app's data directory: settings.json and logs.
+func (h *Host) UserData() string { return h.cfg.UserData }
 
 // MemoryDir holds Memory's database, Markdown export and prompts (ADR
 // 0010), the Electron Shell's folder.
 func (h *Host) MemoryDir() string { return filepath.Join(h.cfg.UserData, "memory") }
 
-// runtimeOverlay writes the Runtime Overlay when Memory or Magpie is on and
-// answers its path; "" starts the Daemon with neither.
+// runtimeOverlay writes the Runtime Overlay when Memory or Magpie is on, or
+// Config.Overlay adds something, and answers its path; "" starts the Daemon
+// with none.
 func (h *Host) runtimeOverlay() string {
 	st := h.Settings.Get()
+	approvedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	var m MemoryAttachment
 	if st.MemoryEnabled && h.cfg.Executable != "" {
 		m = MemoryAttachment{
 			Executable: h.cfg.Executable,
 			MemoryDir:  h.MemoryDir(),
-			ApprovedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+			ApprovedAt: approvedAt,
 		}
 	}
 	var models []any
@@ -224,9 +241,13 @@ func (h *Host) runtimeOverlay() string {
 		given = h.magpieModels()
 		models = MagpieCustomModels(given)
 	}
-	if m.Executable != "" || len(models) > 0 {
+	o := OverlayOptions{CustomModels: models, ApprovedAt: approvedAt}
+	if h.cfg.Overlay != nil {
+		o = o.Add(h.cfg.Overlay())
+	}
+	if m.Executable != "" || !o.empty() {
 		path := filepath.Join(h.cfg.UserData, "runtime-overlay.json")
-		if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, OverlayOptions{CustomModels: models})); err != nil {
+		if err := WriteRuntimeOverlay(path, BuildRuntimeOverlayWith(m, o)); err != nil {
 			// Nothing reached the Daemon, models included, so a Refresh has
 			// something to hand it.
 			h.rememberMagpieGiven(MagpieCatalog{})

@@ -170,7 +170,7 @@ func TestTrendNamesAndDescribesItsBars(t *testing.T) {
 	if bar.Title != "14:00–14:59" || bar.Total != "10.2K token · 1 次请求" || len(bar.Lines) != 1 || bar.Lines[0].Name != "claude-opus-5-5" || bar.Lines[0].Part != 0 {
 		t.Errorf("the 14:00 bar = %+v", bar)
 	}
-	if today.Trend.Bars[0].Total != "没有请求" || today.Trend.About != "Token：输入加输出，含缓存" || today.Trend.Metric.Tick(2_000_000) != "2M" {
+	if today.Trend.Bars[0].Total != "没有请求" || today.Trend.About != "Token：输入加输出，含缓存" || today.Trend.Tick(2_000_000) != "2M" {
 		t.Errorf("trend = %+v", today.Trend)
 	}
 	if about := MetricSpeed.About(); !strings.Contains(about, "token/s") {

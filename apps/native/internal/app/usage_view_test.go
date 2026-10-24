@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
@@ -215,7 +216,7 @@ func TestObservePageAnswersThePointer(t *testing.T) {
 		t.Fatal("the bar's card stays once the pointer leaves")
 	}
 
-	var cell llmusage.HeatCell
+	var cell dashkit.HeatCell
 	for _, row := range v.Heat.Rows {
 		for _, c := range row.Cells {
 			if c.Level > 0 && cell.Help == "" {

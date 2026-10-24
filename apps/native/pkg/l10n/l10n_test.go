@@ -180,3 +180,31 @@ func TestAdd(t *testing.T) {
 		}
 	}
 }
+
+func TestSetAppName(t *testing.T) {
+	defer SetAppName("")
+	defer Set("", "en-US")
+	setZh(t, "Quit Droi", "退出 Droi")
+	SetAppName("Acme Agent")
+	for key, want := range map[string]string{
+		"Quit Droi":                   "Quit Acme Agent",
+		"Droi’s Memory, Droi's droid": "Acme Agent’s Memory, Acme Agent's droid",
+		"Droid runs droi-memory":      "Droid runs droi-memory",
+		"DroiX and XDroi":             "DroiX and XDroi",
+	} {
+		if got := T(key); got != want {
+			t.Errorf("T(%q) = %q, want %q", key, got, want)
+		}
+	}
+	if got := L("Droi %s", "Droi"); got != "Acme Agent Droi" {
+		t.Errorf("a value was renamed: %q", got)
+	}
+	Set("zh-Hans", "")
+	if got := T("Quit Droi"); got != "退出 Acme Agent" {
+		t.Errorf("Chinese: %q", got)
+	}
+	SetAppName("")
+	if got := T("Quit Droi"); got != "退出 Droi" || AppName() != "Droi" {
+		t.Errorf("back to Droi: %q, %q", got, AppName())
+	}
+}
