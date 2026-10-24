@@ -1,3 +1,9 @@
+## 1.72.0 - 2026-10-24
+
+### Added
+
+- Settings → Session defaults → Tool calls has Script models. Factory lists the models whose Sessions may use Script, and a model it does not list yet, such as DeepSeek V4.1 Flash 1017, silently ran in Direct whatever the Session asked for. A model added here can use Script too: with the Key Pool on, Droi adds it to the feature flags droid reads and leaves every other flag as Factory sent it. Restart the Daemon in Advanced to apply it to new Sessions.
+
 ## 1.71.0 - 2026-10-24
 
 ### Added
