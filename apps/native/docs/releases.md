@@ -40,6 +40,34 @@ with it, so losing it means they no longer update. Give it to the workflow once:
 gh secret set MYGO_UPDATER_PRIVATE_KEY < ~/Library/Application\ Support/mygo/update-keys/mygo-update.key
 ```
 
+## The code signing certificate
+
+The macOS app is signed with "Droi Code Signing", a self-signed certificate, not an Apple
+Developer ID, so Gatekeeper still blocks it at first (the release notes say to run
+`xattr -cr`). It is there so that macOS keeps what users grant Droi, such as Full Disk
+Access, across updates: macOS remembers a grant by the app's designated requirement. Signed
+ad hoc, that requirement is the hash of the build, so every version was a new app and lost
+its grants; signed with the certificate it is `identifier "com.droi.app" and certificate
+leaf = H"b4654063…"`, the same for every release.
+
+The certificate, its private key and the password of the `.p12` are in
+`~/Library/Application Support/mygo/signing` on the computer that made it
+(`droi-code-signing.p12`, `droi-code-signing.password`). Keep a copy in a password manager:
+a new certificate makes every installed Droi a new app again, and users grant it once more.
+The workflow imports it into a keychain of its own before `mygo build -sign "Droi Code
+Signing"`; give it to the workflow once:
+
+```sh
+base64 -i ~/Library/Application\ Support/mygo/signing/droi-code-signing.p12 | gh secret set MACOS_CERTIFICATE
+gh secret set MACOS_CERTIFICATE_PASSWORD < ~/Library/Application\ Support/mygo/signing/droi-code-signing.password
+```
+
+macOS turns a grant off as soon as another build with the same bundle identifier runs,
+wherever it is, if that build does not meet the requirement. A local `mygo build` signs ad
+hoc unless `-sign` names the certificate: running that `Droi.app` turns Full Disk Access off
+for the installed one, and it has to be granted again. `mygo dev` builds `com.droi.app.dev`,
+and `go run` no bundle, so neither touches it.
+
 ## From the Electron app
 
 The Electron Shell checks for `update-darwin-universal.json` in the latest Release before its

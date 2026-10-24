@@ -119,6 +119,30 @@ jobs:
             exit 1
           fi
 
+      # Every release is signed with the same self-signed certificate, so macOS sees each
+      # version as the same app and keeps what users granted it, such as Full Disk Access.
+      # Signed ad hoc, a new build is a new app to macOS and loses them.
+      - name: Import the code signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ] || [ -z "$MACOS_CERTIFICATE_PASSWORD" ]; then
+            echo "::error::the MACOS_CERTIFICATE or MACOS_CERTIFICATE_PASSWORD secret is missing"
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain
+
       # One app for both chips, so one update manifest (update-darwin-universal.json).
       - name: Build, sign the update and upload
         env:
@@ -129,7 +153,7 @@ jobs:
             echo "::error::the MYGO_UPDATER_PRIVATE_KEY secret is missing"
             exit 1
           fi
-          go tool mygo build -platform darwin/universal -upload
+          go tool mygo build -platform darwin/universal -sign "Droi Code Signing" -upload
 
   # MyGo needs no cgo, so Ubuntu builds the Windows app; NSIS makes its installer.
   build-native-windows:
