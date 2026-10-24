@@ -45,10 +45,12 @@ func (s *scratchTrash) folder(t *testing.T, name string) string {
 
 func (s *scratchTrash) options(o *gateway.Options) {
 	o.Scratch = &gateway.ScratchFolders{Root: func() string { return s.root }, MoveToTrash: func(path string) error {
+		// Listed once it is gone: a test that sees it listed checks that it is.
+		err := os.RemoveAll(path)
 		s.mu.Lock()
 		s.trashed = append(s.trashed, path)
 		s.mu.Unlock()
-		return os.RemoveAll(path)
+		return err
 	}}
 }
 
