@@ -1,3 +1,9 @@
+## 1.73.1 - 2026-10-25
+
+### Changed
+
+- The reasoning effort names stay in English in every language: Off, Low, Medium, High, Extra high and Max. They are the Daemon's own names for the levels, and the Chinese app showed them translated.
+
 ## 1.73.0 - 2026-10-24
 
 ### Added
