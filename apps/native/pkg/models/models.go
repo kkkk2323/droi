@@ -178,16 +178,18 @@ func FormatMultiplier(multiplier float64) string {
 	return strconv.FormatFloat(rounded, 'f', -1, 64) + "×"
 }
 
+// EffortLabels names the reasoning efforts the Daemon offers. The names stay
+// in English in every language: they are the levels' own names.
 var EffortLabels = map[string]string{
-	"none":    l10n.N("None"),
-	"dynamic": l10n.N("Dynamic"),
-	"off":     l10n.N("Off"),
-	"minimal": l10n.N("Minimal"),
-	"low":     l10n.N("Low"),
-	"medium":  l10n.N("Medium"),
-	"high":    l10n.N("High"),
-	"xhigh":   l10n.N("Extra high"),
-	"max":     l10n.N("Max"),
+	"none":    "None",
+	"dynamic": "Dynamic",
+	"off":     "Off",
+	"minimal": "Minimal",
+	"low":     "Low",
+	"medium":  "Medium",
+	"high":    "High",
+	"xhigh":   "Extra high",
+	"max":     "Max",
 }
 
 var AutonomyLabels = map[string]string{

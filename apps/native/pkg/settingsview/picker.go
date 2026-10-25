@@ -380,10 +380,10 @@ func modelRow(c *ui.Context, k *kit.Kit, store *prefs.Store, row models.Row, hig
 	}
 }
 
-// EffortLabel is how a reasoning effort reads, in the language in force.
+// EffortLabel is how a reasoning effort reads, in English in every language.
 func EffortLabel(e string) string {
 	if l, ok := models.EffortLabels[e]; ok {
-		return l10n.T(l)
+		return l
 	}
 	return e
 }
