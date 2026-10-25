@@ -1,3 +1,10 @@
+## 1.73.2 - 2026-10-26
+
+### Fixed
+
+- Settings → Usage → Observability estimates Credits for every model the requests went to, not only Opus 5.5, Fable 5.1, Sonnet 5.5 and Haiku 4.5: DeepSeek, GLM, GPT-6, Opus 5, Haiku 5.5, Kimi K3, Gemini, Qwen and Muse Spark have Factory's weights now, so the 4813 calls of the last 30 days that showed as Unpriced have a number. Only image models, which have no chat price, stay unpriced.
+- Credits count a Sonnet 5.5 cache read at Factory's current price: its cache-read multiplier is 0.05 of an input token, not 0.1, so its credits fall by about 11% and match the CLI's own count.
+
 ## 1.73.1 - 2026-10-25
 
 ### Changed
