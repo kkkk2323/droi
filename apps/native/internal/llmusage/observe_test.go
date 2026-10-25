@@ -38,7 +38,7 @@ func TestObserveAddsUpThePeriod(t *testing.T) {
 	records := []diag.RequestRecord{
 		opus(now.Add(-time.Hour), 10000, 8000, 200),
 		opus(now.Add(-2*time.Hour), 20000, 18000, 400),
-		{Time: now.Add(-3 * time.Hour), Model: "glm-5.3-flash", Key: "fk-b...0002", Status: 200, DurationMs: 1000, TTFTMs: 500, SessionID: "s1",
+		{Time: now.Add(-3 * time.Hour), Model: "custom:mine-0", Key: "***********", Status: 200, DurationMs: 1000, TTFTMs: 500, SessionID: "s1",
 			Usage: &diag.TokenUsage{Input: 5000, Output: 100}},
 		{Time: now.Add(-4 * time.Hour), Model: "claude-opus-5-5", Key: "fk-a...0001", Status: 429, DurationMs: 400, Rotated: true, Attempts: 2},
 		{Time: now.Add(-5 * time.Hour), Model: "claude-opus-5-5", Key: "fk-a...0001", Kind: "cache_warm", Status: 200, DurationMs: 900, TTFBMs: 900,

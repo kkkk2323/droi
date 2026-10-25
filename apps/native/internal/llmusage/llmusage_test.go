@@ -283,3 +283,35 @@ func TestNumbersReadCompactly(t *testing.T) {
 		t.Error("the 5-hour window reports credits")
 	}
 }
+
+// The weights price the models the request log has shown, the longer ID
+// first: Opus 5.5 and Opus 5, GLM-5.3-Flash and GLM-5.3, and a dated variant
+// at its base model's price.
+func TestWeightsPriceTheLogsModels(t *testing.T) {
+	for model, want := range map[string]string{
+		"claude-opus-5-5":           "claude-opus-5-5",
+		"claude-opus-5":             "claude-opus-5",
+		"claude-sonnet-5-5":         "claude-sonnet-5-5",
+		"claude-haiku-4-5-20251001": "claude-haiku-4-5",
+		"glm-5.3-flash":             "glm-5.3-flash",
+		"glm-5.3":                   "glm-5.3",
+		"deepseek-v4.1-flash-1017":  "deepseek-v4.1-flash",
+		"GPT-6-Astra":               "gpt-6-astra",
+	} {
+		if w, ok := weightOf(model); !ok || w.ID != want {
+			t.Errorf("weight of %s = %q, %v; want %q", model, w.ID, ok, want)
+		}
+	}
+	if _, ok := weightOf("gpt-image-2.5-sunburst"); ok {
+		t.Error("an image model is priced as a chat model")
+	}
+	// GLM-5.3-Flash: 1000 input at 0.06 and 100 output at 0.2004.
+	if c, ok := Credits("glm-5.3-flash", diag.TokenUsage{Input: 1000, Output: 100}); !ok || c < 80.03 || c > 80.05 {
+		t.Errorf("glm credits = %v, %v", c, ok)
+	}
+	// A cache write weighs 1.25 input tokens, a cache read its own weight:
+	// 1000 plain input, 800 written and 100000 read at DeepSeek's weights.
+	if c, ok := Credits("deepseek-v4.1-flash", diag.TokenUsage{Input: 101_800, CacheRead: 100_000, CacheWrite: 800, Output: 500}); !ok || c < 767.99 || c > 768.01 {
+		t.Errorf("deepseek credits = %v, %v", c, ok)
+	}
+}
