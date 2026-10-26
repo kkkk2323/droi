@@ -3,6 +3,8 @@ package droiapp
 import (
 	"strings"
 
+	"github.com/egoist/mygo/ui"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/icons"
@@ -16,6 +18,8 @@ type extensions struct {
 	list         []extension.Extension
 	pages        []extension.Page
 	settingsTabs []extension.SettingsTab
+	// signIn is the first extension's sign-in page, nil when none has one.
+	signIn func(*ui.Context, extension.Env)
 }
 
 func newExtensions(list []extension.Extension) *extensions {
@@ -23,6 +27,9 @@ func newExtensions(list []extension.Extension) *extensions {
 	for _, e := range list {
 		x.pages = append(x.pages, e.Pages...)
 		x.settingsTabs = append(x.settingsTabs, e.SettingsTabs...)
+		if x.signIn == nil {
+			x.signIn = e.SignIn
+		}
 	}
 	return x
 }

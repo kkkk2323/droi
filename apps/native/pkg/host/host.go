@@ -528,6 +528,20 @@ func (h *Host) SignOut() error {
 	return err
 }
 
+// SetAPIKey stores key, "" removing it, and starts the Daemon again on it
+// unless a login is in use: an app that hands the Host its own key, from its
+// own sign-in page, say.
+func (h *Host) SetAPIKey(key string) error {
+	if err := h.Settings.Update(func(st *Settings) { st.APIKey = OptString(key) }); err != nil {
+		return err
+	}
+	h.changed()
+	if h.LoginState().Status != SignedIn {
+		go h.RestartDaemon()
+	}
+	return nil
+}
+
 // HasCredential reports that there is something to authenticate with.
 func (h *Host) HasCredential() bool {
 	return h.LoginState().Status == SignedIn || h.Settings.APIKey() != ""

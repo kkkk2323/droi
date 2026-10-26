@@ -46,6 +46,12 @@ func TestStandInDroid(t *testing.T) {
 			port = args[i+1]
 		}
 	}
+	// Before the pid, which tells the test the Daemon has started.
+	if file := os.Getenv("DROI_STAND_IN_FACTORY_HOME"); file != "" {
+		if err := os.WriteFile(file, []byte(os.Getenv("FACTORY_HOME_OVERRIDE")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile(os.Getenv("DROI_STAND_IN_PID"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -304,6 +310,23 @@ func TestHostPrintsThePairingLinkServesMetaAndTakesAClient(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(b.env["XDG_CONFIG_HOME"], "droi", "logs", "daemon.log")); err != nil {
 		t.Fatalf("the Daemon's log is not under the data folder: %v", err)
+	}
+}
+
+// With a Factory home of its own, the Host's Daemon runs in the Host's
+// folder, not on the droid CLI's ~/.factory.
+func TestHostRunsTheDaemonOnItsOwnFactoryHome(t *testing.T) {
+	b := newBox(t, "0.240.0")
+	seen := filepath.Join(t.TempDir(), "factory-home")
+	t.Setenv("DROI_STAND_IN_FACTORY_HOME", seen)
+	r := b.start(func(o *Options) { o.OwnFactoryHome = true })
+	r.waitForDaemon()
+	got, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(b.env["XDG_CONFIG_HOME"], "droi", "factory"); string(got) != want {
+		t.Fatalf("FACTORY_HOME_OVERRIDE %q, want %q", got, want)
 	}
 }
 

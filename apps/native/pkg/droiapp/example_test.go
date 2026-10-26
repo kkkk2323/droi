@@ -1,6 +1,7 @@
 package droiapp_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,9 +14,14 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/droiapp"
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
+
+// acmeKey signs the person in with Acme's identity provider and asks Acme's
+// service for their Factory API key.
+func acmeKey(ctx context.Context) (string, error) { return "", ctx.Err() }
 
 // A company's build of Droi is a main package of its own, with its own
 // mygo.json (name, identifier, update key): Droi's app under its brand,
@@ -65,10 +71,28 @@ func ExampleRun() {
 			}},
 		},
 		Chinese: map[string]string{"Orders": "订单"},
+		// People sign in with Acme's own identity provider, which hands out
+		// their Factory API key, instead of with Factory.
+		SignIn: func(c *ui.Context, env extension.Env) {
+			ui.Column(c).Fill().Center().Gap(env.Kit.Px(16)).Children(func() {
+				env.Kit.Text(c, "Sign in to Acme Agent", 20, 28)
+				if env.Kit.SmallButton(c, kit.Primary, "Sign in with Acme SSO", "", false).Clicked() {
+					go func() {
+						if key, err := acmeKey(env.Ctx); err == nil {
+							_ = env.Host.SetAPIKey(key)
+						}
+					}()
+				}
+			})
+		},
 	}
 	droiapp.Run(droiapp.Options{
 		DevVersion: "0.1.0",
 		Brand:      brand.Brand{Name: "Acme Agent", ID: "acme-agent", Port: 41517},
 		Extensions: []extension.Extension{acme},
+		// Its own Sessions and login, apart from the droid CLI's, and no
+		// Factory sign-in in Settings.
+		OwnFactoryHome: true,
+		HiddenSettings: []string{"account"},
 	})
 }

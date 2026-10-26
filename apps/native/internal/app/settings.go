@@ -66,8 +66,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	var tabs []settingsTab
-	for _, tab := range withExtensionTabs(settingsTabs, a.cfg.SettingsTabs) {
-		if tab.id == "usage" && !a.usageTabShown() {
+	for _, tab := range withExtensionTabs(a.droiSettingsTabs(), a.cfg.SettingsTabs) {
+		if tab.id == "usage" && !a.settingHidden("usage") && !a.usageTabShown() {
 			continue
 		}
 		if a.cfg.Host != nil || !tab.needsHost {
@@ -91,7 +91,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	if !a.usage.addOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.Go(s.back)
 	}
-	usage := current.id == "usage"
+	usage := current.id == "usage" && !a.settingHidden("usage")
 	if usage && !a.usage.shown {
 		a.enterUsage()
 	}
@@ -154,7 +154,12 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 				if s.err != "" {
 					k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 				}
-				switch current.id {
+				// A section of an app's own may have taken a hidden one's id.
+				id := current.id
+				if a.settingHidden(id) {
+					id = ""
+				}
+				switch id {
 				case "account":
 					a.accountTab(c)
 				case "general":

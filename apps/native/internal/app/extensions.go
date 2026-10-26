@@ -1,6 +1,8 @@
 package app
 
 import (
+	"slices"
+
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
@@ -56,6 +58,26 @@ func (a *App) extensionTab(c *ui.Context, id string) {
 			return
 		}
 	}
+}
+
+// settingHidden: the app leaves Droi's Settings section id out. About
+// always stays, so Settings is never empty.
+func (a *App) settingHidden(id string) bool {
+	return id != "about" && slices.Contains(a.cfg.HiddenSettings, id)
+}
+
+// droiSettingsTabs are Droi's Settings sections the app keeps.
+func (a *App) droiSettingsTabs() []settingsTab {
+	if len(a.cfg.HiddenSettings) == 0 {
+		return settingsTabs
+	}
+	var tabs []settingsTab
+	for _, tab := range settingsTabs {
+		if !a.settingHidden(tab.id) {
+			tabs = append(tabs, tab)
+		}
+	}
+	return tabs
 }
 
 // withExtensionTabs is Droi's Settings sections with an app's own: each

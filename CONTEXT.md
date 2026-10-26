@@ -51,7 +51,7 @@ What names the app built from Droi's packages: its name, the short id of its fol
 _Avoid_: white label, skin, theme
 
 **Extension**:
-What an app built on Droi adds to it through `droiapp.Run`: MCP servers and hooks for the Runtime Overlay, words for the System Prompt Addition, subcommands, pages, Settings sections, and how tool calls and json-render elements show (ADR 0029). It plugs into seams Droi has; it does not patch Droi.
+What an app built on Droi adds to it through `droiapp.Run`: MCP servers and hooks for the Runtime Overlay, words for the System Prompt Addition, subcommands, pages, Settings sections, a sign-in page of its own, and how tool calls and json-render elements show (ADR 0029). It plugs into seams Droi has; it does not patch Droi.
 _Avoid_: plugin, add-on, module
 **Gateway**:
 The part of the Host that lets a Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Host's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Host's System Prompt Addition to every Session a Client starts, creates and trashes Scratch Workspaces, and answers a Client's requests to restart the Daemon or update the Host.

@@ -48,6 +48,12 @@ type Extension struct {
 	Icons map[string][]byte
 	// Chinese are the Chinese words of its own texts, by English key (l10n.Add).
 	Chinese map[string]string
+	// SignIn draws the window, in place of Droi's sign-in page, while this
+	// computer's Host has nothing to authenticate with: no Factory login and
+	// no API key. It fills the window between the top strip and the Settings
+	// button; once it hands the Host a credential (env.Host.SetAPIKey), the
+	// app shows. The first extension's is used.
+	SignIn func(c *ui.Context, env Env)
 }
 
 // Page is a page of the main panel, opened from the sidebar.
