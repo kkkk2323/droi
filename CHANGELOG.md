@@ -1,3 +1,15 @@
+## 1.74.0 - 2026-10-26
+
+### Added
+
+- Global Memory has topics. A fact about one subject outside any project, such as a service you run, a client, a home network or a hobby, is filed under a topic: Droid finds it by search instead of being shown it in every Session, and every Session starts with one line naming the topics. The first time Memory work runs after this update, Droi sorts the Global Memory into topics once, after a backup of the database, without changing or removing an entry, and a corner card says so. Settings → Memory shows the core, its corrections against their budget, and the largest topics.
+
+### Changed
+
+- A Session is shown the corrections of the Global Memory's core within 3,000 characters of their own, and the Project Memory's within their own 2,000, instead of 2,000 shared. On one heavy user's Memory, all 13 corrections of the core now reach a Session, where 8 of 23 did before.
+- Consolidating the Global Memory looks at its core with every category together, then at each topic, so the same fact saved as a preference and as a correction becomes one entry. It never moves a correction or a preference to a project, and moves another entry only to a project the entry names.
+- A chat without a project can save what it is about, under a topic.
+- Memory Sessions ask the model for low reasoning effort, so a model that defaults to high, such as Gemini 3.8 Flash, answers in seconds instead of thinking for minutes.
 ## 1.73.4 - 2026-10-26
 
 ### Changed
