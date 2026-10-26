@@ -1,3 +1,12 @@
+## 1.73.3 - 2026-10-26
+
+### Fixed
+
+- On some Macs, letters drawn next to a small rounded shape lost pieces, as the composer's MCP label beside its status dot did. Droi now uses MyGo 0.6.4, whose Metal renderer fixes this.
+- On macOS, Droi no longer starts the AutoFill helper process, which used CPU and could make scrolling stall.
+- In Chinese text, each character counts as its own word: deleting a word, moving by words and double-click selection in the composer no longer take a whole clause.
+- On Windows, short labels, such as a four-character Chinese button, are no longer cut off with an ellipsis.
+
 ## 1.73.2 - 2026-10-26
 
 ### Fixed

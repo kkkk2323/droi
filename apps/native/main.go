@@ -4,7 +4,7 @@ package main
 import "github.com/kkkk2323/droi/apps/native/pkg/droiapp"
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
-const devVersion = "1.73.2"
+const devVersion = "1.73.3"
 
 func main() {
 	droiapp.Run(droiapp.Options{DevVersion: devVersion})
