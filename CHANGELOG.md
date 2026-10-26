@@ -1,3 +1,10 @@
+## 1.73.4 - 2026-10-26
+
+### Changed
+
+- An automation's page shows only the first four lines of a long prompt, so its runs stay in view. Show full prompt opens the rest, and Show less folds it again.
+- The Phone App rounds its corners as the desktop app does: the composer's card is 18px again, cards, bubbles and pictures 12, a tool's detail 10 and a control 8, and every border is a full pixel instead of a mix of hairlines. Its text sizes and touch targets are unchanged.
+
 ## 1.73.3 - 2026-10-26
 
 ### Fixed
