@@ -1,3 +1,9 @@
+## 1.75.0 - 2026-10-26
+
+### Added
+
+- An app built on Droi can sign its people in its own way, such as with the company's single sign-on: its own page takes the place of "Sign in with Factory" until it hands the Host a Factory API key. It can also run the Daemon on a Factory home of its own, so a droid CLI signed in on the same computer does not take the place of that key and the app's Sessions and settings stay apart, and it can leave Droi's Settings sections out, such as Account (ADR 0029). Droi itself looks and works as before.
+
 ## 1.74.0 - 2026-10-26
 
 ### Added
