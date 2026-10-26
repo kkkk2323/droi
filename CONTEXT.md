@@ -105,15 +105,19 @@ The Memory that belongs to one Workspace. A Scratch Workspace has none: only Glo
 _Avoid_: project notes, repo memory
 
 **Global Memory**:
-The Memory that applies in every Workspace on the computer, such as how the user likes to be answered.
+The Memory that applies in every Workspace on the computer, such as how the user likes to be answered. Its entries without a Memory Topic are its core, whose corrections every Session is shown.
 _Avoid_: user profile, USER.md, preferences
+
+**Memory Topic**:
+One subject outside any project that Global Memory entries are filed under, such as a service the user runs or a hobby. Its entries are found by search, not shown in every Session.
+_Avoid_: tag, label, category (a category is what kind of fact an entry is)
 
 **Memory Server**:
 The MCP Server Droi carries and attaches only to its own Daemon, through which Droid reads and writes Memory. It is not one of the user's MCP Servers: the Memory setting is its only switch.
 _Avoid_: memory MCP, memory plugin, memory tool (a tool is one of the things it offers)
 
 **Memory Session**:
-A Session the Host opens on the Daemon for Memory work of its own, consolidating a Project Memory or extracting entries from a finished Session, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
+A Session the Host opens on the Daemon for Memory work of its own, consolidating a Memory, sorting the Global Memory into Memory Topics or extracting entries from a finished Session, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
 _Avoid_: hidden session, background session, consolidation job
 
 ### Testing

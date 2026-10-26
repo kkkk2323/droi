@@ -100,6 +100,7 @@ func (a *App) cornerCards(c *ui.Context) {
 		a.droidUpdatedCard(c)
 		a.patchedDroidUpdateCard(c)
 		a.memoryFullCard(c)
+		a.memoryTopicsCard(c)
 		a.updateCard(c)
 	})
 }

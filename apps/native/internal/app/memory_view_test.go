@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -145,5 +146,57 @@ func TestALargeProjectMemoryIsAnnouncedOnce(t *testing.T) {
 	h.settle()
 	if h.hasText("Memory is large") {
 		t.Fatal("announced again")
+	}
+}
+
+func TestSettingsMemoryShowsTheGlobalMemorysCoreAndTopics(t *testing.T) {
+	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
+		{Workspace: "", Entries: 134, Chars: 39000, SoftLimit: 40000, Layers: &memory.Layers{
+			CoreEntries: 52, CoreChars: 14000, CoreCorrectionChars: 2600, Filed: 82,
+			Topics: []memory.TopicSummary{{Topic: "Anlan cloud", Entries: 18, Chars: 7000}, {Topic: "Home network", Entries: 15, Chars: 5000}, {Topic: "Fortune telling", Entries: 6, Chars: 1500}, {Topic: "Writing", Entries: 5, Chars: 900}, {Topic: "Games", Entries: 2, Chars: 400}},
+		}},
+	}}}
+	h, _ := memoryHarness(t, m, true)
+	h.a.Go(Route{Name: "settings", Tab: "memory"})
+	h.settle()
+	want := "Core: 52 entries, corrections 2.6k of 3k characters · Topics: Anlan cloud 18, Home network 15, Fortune telling 6, Writing 5 and 1 more"
+	if !h.hasText(want) {
+		t.Errorf("missing %q in %q", want, h.tt.Texts())
+	}
+	h.click("Consolidate Global Memory")
+	h.until("the consolidation's result", func() bool {
+		return h.hasText("Consolidated 2 groups; 1 kept unchanged because the model’s output failed validation.")
+	})
+}
+
+func TestTheSortIntoTopicsIsAnnouncedOnce(t *testing.T) {
+	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
+		{Workspace: "", Entries: 134, Chars: 39000, SoftLimit: 40000, Layers: &memory.Layers{CoreEntries: 52, Filed: 82, SortedAt: "2026-10-26T12:00:00Z",
+			Topics: []memory.TopicSummary{{Topic: "Anlan cloud", Entries: 18, Chars: 7000}, {Topic: "Home network", Entries: 15, Chars: 5000}}}},
+	}}}
+	h, _ := memoryHarness(t, m, true)
+	h.until("the card", func() bool { return h.hasText("Global Memory is sorted into topics") })
+	if !h.hasText("52 entries stay in the core; 82 entries went to 2 topics. A topic’s entries are found by search instead of shown in every Session.") {
+		t.Errorf("texts %q", h.tt.Texts())
+	}
+	h.click("Open Memory settings")
+	if r := h.a.Route(); r.Name != "settings" || r.Tab != "memory" {
+		t.Fatalf("went to %+v", r)
+	}
+	h.a.Go(Route{Name: "new"})
+	h.settle()
+	if h.hasText("Global Memory is sorted into topics") {
+		t.Fatal("announced again")
+	}
+}
+
+func TestASortThatFiledNothingIsNotAnnounced(t *testing.T) {
+	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
+		{Workspace: "", Entries: 3, Chars: 400, SoftLimit: 40000, Layers: &memory.Layers{CoreEntries: 3, SortedAt: "2026-10-26T12:00:00Z", Topics: []memory.TopicSummary{}}},
+	}}}
+	h, _ := memoryHarness(t, m, true)
+	h.settle()
+	if h.hasText("Global Memory is sorted into topics") {
+		t.Fatal("announced a sort that filed nothing")
 	}
 }

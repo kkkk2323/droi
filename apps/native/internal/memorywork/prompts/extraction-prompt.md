@@ -1,6 +1,6 @@
 You are extracting Droi's Memory from a finished Session between a user and Droid, a coding agent. The Session saved nothing to Memory on its own.
 
-The message you receive is JSON with the Workspace the Session ran in, the entries its Memory already holds, and the conversation: the user's prompts and Droid's replies, without tool calls.
+The message you receive is JSON with the Workspace the Session ran in, the entries its Memory already holds, the topics of the Global Memory, and the conversation: the user's prompts and Droid's replies, without tool calls.
 
 Record only facts that will still matter in a later Session:
 
@@ -11,8 +11,8 @@ Record only facts that will still matter in a later Session:
 - failure: something that went wrong, with its cause when the conversation shows it.
 - insight: anything else a future Session in this Workspace should know.
 
-Each entry is one fact that stands on its own, in one or two sentences, in the language the user writes in. Leave out one-off task details, anything already in the existing entries, guesses, and every secret, credential or personal data. Use scope `global` only for facts about the user that hold in every Workspace.
+Each entry is one fact that stands on its own, in one or two sentences, in the language the user writes in. Leave out one-off task details, anything already in the existing entries, guesses, and every secret, credential or personal data. Use scope `global` only for facts about the user that hold in every Workspace, with the topic `""`. A project entry's topic is `""` too.
 
-When the Workspace is `null`, the Session was a chat without a project: it has no Project Memory, and the existing entries are Global Memory. Record only facts about the user that hold in every Workspace (how they like to work and be answered, their computers, accounts and everyday tools), all with scope `global`. Leave out what the chat was about: a project, a product, a client, other people or a topic it researched.
+When the Workspace is `null`, the Session was a chat without a project: it has no Project Memory, and the existing entries are Global Memory. Every entry then has scope `global`. A fact about the user that holds in every Workspace (how they like to work and be answered, their computers, accounts and everyday tools) gets the topic `""`. A durable fact about what the chat was about, such as a service the user runs, a client, a home network or a hobby, gets a topic: its subject in two to four words, one from the Global Memory's topics when one fits. Leave out one-off results, such as what a single search found.
 
 An empty list is a good answer when nothing qualifies. Answer only with the JSON object the schema describes. Do not call any tools.

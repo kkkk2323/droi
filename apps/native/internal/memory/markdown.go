@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -54,16 +55,36 @@ func RenderMarkdown(slot Slot, entries []Entry) string {
 		title = "Memory: " + slot.Workspace
 	}
 	var sections []string
+	topics := map[string][]Entry{}
 	for _, h := range headings {
 		var lines []string
 		for _, e := range entries {
-			if e.Category == h.category {
-				lines = append(lines, fmt.Sprintf("- %s (`%s`, %s)", newlines.ReplaceAllString(e.Text, " "), e.ID, e.Day))
+			if e.Category != h.category {
+				continue
 			}
+			if e.Topic != "" {
+				topics[e.Topic] = append(topics[e.Topic], e)
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("- %s (`%s`, %s)", newlines.ReplaceAllString(e.Text, " "), e.ID, e.Day))
 		}
 		if len(lines) > 0 {
 			sections = append(sections, "## "+h.title+"\n\n"+strings.Join(lines, "\n")+"\n")
 		}
+	}
+	// A Global Memory topic is found by search rather than shown in every
+	// Session, so it gets a section of its own after the core.
+	names := make([]string, 0, len(topics))
+	for name := range topics {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		var lines []string
+		for _, e := range topics[name] {
+			lines = append(lines, fmt.Sprintf("- %s: %s (`%s`, %s)", e.Category, newlines.ReplaceAllString(e.Text, " "), e.ID, e.Day))
+		}
+		sections = append(sections, "## Topic: "+name+"\n\n"+strings.Join(lines, "\n")+"\n")
 	}
 	if len(sections) == 0 {
 		sections = []string{"No entries yet.\n"}

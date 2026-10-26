@@ -49,6 +49,8 @@ type Controller struct {
 	drained   chan struct{}
 	again     bool
 	stopWatch chan struct{}
+	// sortTried is set once SortTopics ran in this launch.
+	sortTried bool
 }
 
 // New makes a Controller; nothing is opened until it is first used.
@@ -119,10 +121,19 @@ func (c *Controller) Overview() (Overview, error) {
 		if err != nil {
 			return Overview{}, err
 		}
+		var layers *memory.Layers
+		if s.Scope == memory.ScopeGlobal {
+			l, err := store.GlobalLayers()
+			if err != nil {
+				return Overview{}, err
+			}
+			layers = &l
+		}
 		c.mu.Lock()
 		busy := c.consolidating[s.Workspace]
 		c.mu.Unlock()
 		rows = append(rows, Row{
+			Layers:           layers,
 			Workspace:        s.Workspace,
 			Entries:          s.Entries,
 			Chars:            s.Chars,
@@ -167,6 +178,17 @@ func (c *Controller) Consolidate(workspace string) (Result, error) {
 		c.mu.Unlock()
 		c.o.OnChange()
 	}()
+	// The core is consolidated in slices, each knowing only the topics that
+	// exist, so a Global Memory never sorted is sorted first.
+	if workspace == "" {
+		sorting, ctx, err := c.work(PromptSorting, run)
+		if err != nil {
+			return Result{}, err
+		}
+		if _, err := SortTopics(ctx, sorting); err != nil {
+			c.o.Log("sorting Global Memory into topics failed: " + err.Error())
+		}
+	}
 	w, ctx, err := c.work(PromptConsolidation, run)
 	if err != nil {
 		return Result{}, err
@@ -181,10 +203,61 @@ func (c *Controller) Consolidate(workspace string) (Result, error) {
 			result.Applied++
 		} else {
 			result.Rejected++
-			c.o.Log(fmt.Sprintf("consolidation of %s rejected: %s", o.Category, o.Reason))
+			c.o.Log(fmt.Sprintf("consolidation of %s rejected: %s", o.Group, o.Reason))
 		}
 	}
 	return result, nil
+}
+
+// SortTopics sorts the Global Memory's core into topics (ADR 0030) if it
+// was never sorted, once per launch: the first call with a Daemon to run on
+// does the work, every later one returns at once. A sort that fails is tried
+// again at the next launch.
+func (c *Controller) SortTopics() {
+	c.mu.Lock()
+	if c.sortTried || c.consolidating[""] {
+		c.mu.Unlock()
+		return
+	}
+	run := c.o.Runner()
+	if run == nil {
+		c.mu.Unlock()
+		return
+	}
+	c.sortTried = true
+	c.mu.Unlock()
+	store, _, err := c.open()
+	if err != nil {
+		return
+	}
+	if layers, err := store.GlobalLayers(); err != nil || layers.SortedAt != "" {
+		return
+	}
+	c.mu.Lock()
+	if c.consolidating[""] {
+		c.mu.Unlock()
+		return
+	}
+	c.consolidating[""] = true
+	c.mu.Unlock()
+	c.o.OnChange()
+	defer func() {
+		c.mu.Lock()
+		delete(c.consolidating, "")
+		c.mu.Unlock()
+		c.o.OnChange()
+	}()
+	w, ctx, err := c.work(PromptSorting, run)
+	if err != nil {
+		c.o.Log("sorting Global Memory into topics failed: " + err.Error())
+		return
+	}
+	filed, err := SortTopics(ctx, w)
+	if err != nil {
+		c.o.Log("sorting Global Memory into topics failed: " + err.Error())
+		return
+	}
+	c.o.Log(fmt.Sprintf("sorted Global Memory: %d entries filed under topics", filed))
 }
 
 // ResetPrompts copies the shipped prompts into the Memory folder again.
