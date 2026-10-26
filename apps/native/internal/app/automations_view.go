@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -74,6 +75,8 @@ type automationsState struct {
 	noticeErr                bool
 	noticeAt                 time.Time
 	menuOpen, confirmDelete  bool
+	// promptOpen shows all of a long prompt.
+	promptOpen bool
 
 	factoryApp       bool
 	factoryCheckedAt time.Time
@@ -157,7 +160,7 @@ func (a *App) offset() int {
 // enterAutomations starts a page of Automations afresh.
 func (a *App) enterAutomations(r Route) {
 	s := &a.automations
-	s.confirmDelete, s.menuOpen, s.notice = false, false, ""
+	s.confirmDelete, s.menuOpen, s.promptOpen, s.notice = false, false, false, ""
 	if r.Tab != "" {
 		s.formFor = ""
 	}
@@ -773,11 +776,56 @@ func (a *App) automationView(c *ui.Context, e *protocol.AutomationEntry) {
 	})
 	ui.Column(c).Gap(k.Px(8)).Children(func() {
 		a.sectionTitle(c, L("Prompt"), "")
+		long := longPrompt(e.Prompt)
 		ui.Column(c).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).Background(t.Muted.Alpha(0.5)).Children(func() {
-			k.Text(c, e.Prompt, 13, 20).TextColor(t.Foreground)
+			text := k.Text(c, e.Prompt, 13, 20).TextColor(t.Foreground)
+			if long && !s.promptOpen {
+				text.MaxLines(promptLines)
+			}
 		})
+		if long {
+			a.promptToggle(c)
+		}
 	})
 	a.runsList(c, id)
+}
+
+// promptLines is how much of a long prompt an Automation's page shows
+// until it is opened, so that its runs stay in view.
+const promptLines = 4
+
+// longPrompt is whether the prompt may need more than promptLines. Text
+// reports no lines it cut, so this counts: 160 characters of Chinese fill
+// four lines down to a 520px column.
+func longPrompt(p string) bool {
+	return strings.Count(p, "\n") >= promptLines || utf8.RuneCountInString(p) > 160
+}
+
+// promptToggle shows the whole prompt of the Automation, or its first lines.
+func (a *App) promptToggle(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	s := &a.automations
+	label := L("Show full prompt")
+	if s.promptOpen {
+		label = L("Show less")
+	}
+	b := ui.ButtonBase(c).Label(label).Expanded(s.promptOpen).AlignSelf(ui.Start).Height(k.Px(24)).Gap(k.Px(4)).PaddingX(k.Px(6)).
+		Margin(-k.Px(4), 0, 0, -k.Px(6)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+	color := t.MutedForeground
+	if b.Hovered() {
+		color = t.Foreground
+	}
+	b.Children(func() {
+		k.Text(c, label, 12, 16).TextColor(color)
+		rot := float32(90)
+		if s.promptOpen {
+			rot = -90
+		}
+		k.Icon(c, "chevron-right", 12, color).Rotate(rot)
+	})
+	if b.Clicked() {
+		s.promptOpen = !s.promptOpen
+	}
 }
 
 // setPaused pauses the Automation id, or resumes it.

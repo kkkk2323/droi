@@ -672,6 +672,8 @@ var zh = map[string]string{
 	"Show %d older workspaces":           "显示更早的 %d 个工作区",
 	"Show 1 older workspace":             "显示更早的 1 个工作区",
 	"Show All":                           "全部显示",
+	"Show full prompt":                   "展开完整 Prompt",
+	"Show less":                          "收起",
 	"Show archived sessions":             "显示已归档的会话",
 	"Show diagram":                       "显示图表",
 	"Show log file":                      "显示日志文件",

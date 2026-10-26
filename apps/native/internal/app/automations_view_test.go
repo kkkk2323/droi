@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +113,9 @@ func TestTheAutomationsPageRunsPausesAndOpensAnAutomation(t *testing.T) {
 	if !h.hasText("Review yesterday's commits.") {
 		t.Fatal("no prompt")
 	}
+	if h.hasText("Show full prompt") {
+		t.Fatal("a short prompt folds")
+	}
 	h.click("Run now")
 	req, err := h.d.WaitForRequest("daemon.dispatch_automation_run", 1)
 	if err != nil {
@@ -201,4 +205,33 @@ func TestCreatingAnAutomation(t *testing.T) {
 	h.until("the new automation's page", func() bool {
 		return h.a.Route().Automation == "daily-review-2" && h.hasText("Created.") && h.hasText("No runs yet")
 	})
+}
+
+// A long prompt shows its first lines until it is opened, so the runs
+// below it stay in view.
+func TestALongPromptFoldsUntilOpened(t *testing.T) {
+	sc := automationsScenario()
+	prompt := strings.TrimSpace(strings.Repeat("Check one more thing in yesterday's commits.\n", 12))
+	sc.Input["automations"].([]map[string]any)[0]["prompt"] = prompt
+	h := newHarness(t, sc, "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("Automations")
+	h.until("the list", func() bool { return h.hasText("Daily review") })
+	h.click("Daily review")
+	h.until("the run", func() bool { return h.hasText("Succeeded") })
+	folded, ok := h.tt.Find(prompt)
+	if !ok {
+		t.Fatalf("no prompt in %q", h.tt.Texts())
+	}
+	h.click("Show full prompt")
+	h.settle()
+	open, _ := h.tt.Find(prompt)
+	if open.H < folded.H*2 {
+		t.Fatalf("the prompt is %v high opened, %v folded", open.H, folded.H)
+	}
+	h.click("Show less")
+	h.settle()
+	if again, _ := h.tt.Find(prompt); again.H != folded.H {
+		t.Fatalf("the prompt is %v high folded again, %v at first", again.H, folded.H)
+	}
 }
