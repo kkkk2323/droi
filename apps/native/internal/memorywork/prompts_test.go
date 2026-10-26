@@ -73,8 +73,9 @@ func TestPromptsReplaceAnUneditedCopyOfAnEarlierReleaseOnly(t *testing.T) {
 // shippedHashes pin the prompts this release ships, so a change to one
 // cannot leave its old hash out of earlierPrompts.
 var shippedHashes = map[PromptName]string{
-	PromptConsolidation: "faf60cf205c7bbdec46d9938e6734ccccff2693cc7a6cfbaee10db7a8931a17c",
-	PromptExtraction:    "c3ae72bfe21ece1e4d2d94b25fd25e3efdf23f258049d8882aa7de616d4a978f",
+	PromptConsolidation: "bda207b95eba007226c9340d87a04c27f7589a2c8b85a53749e50f7525bd1d53",
+	PromptExtraction:    "f2bc2aaf09745007d9b07f03d450fdc78cf75ab320a761c00be57b5006855a2f",
+	PromptSorting:       "23f81df63257fc622369b1187f2fe1b0401b7633e1a4535142aa3ae4d32a773d",
 }
 
 func TestPromptsListEveryEarlierReleasesPrompt(t *testing.T) {

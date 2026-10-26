@@ -137,7 +137,7 @@ func TestControllerListsEveryProjectMemoryAndTheGlobalMemoryWithItsLimits(t *tes
 	}
 	want := Overview{Rows: []Row{
 		{Workspace: "/Users/dev/app", Entries: 3, Chars: 18, SoftLimit: 200_000, NeverFound: 3},
-		{Workspace: "", SoftLimit: 40_000},
+		{Workspace: "", SoftLimit: 40_000, Layers: &memory.Layers{Topics: []memory.TopicSummary{}}},
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("overview %+v", got)
@@ -231,5 +231,67 @@ func TestControllerLeavesRequestsWaitingWhileThereIsNoDaemon(t *testing.T) {
 	f.c.ProcessRequests()
 	if !gone(file) {
 		t.Error("the request is still waiting")
+	}
+}
+
+func TestControllerSortsTheGlobalMemoryOnceALaunch(t *testing.T) {
+	f := newControllerFixture(t)
+	store, err := memory.OpenStore(f.memoryDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := store.Add(memory.GlobalSlot, "insight", "win.myhome runs WSL2")
+	store.Close()
+	f.c.o.Runner = func() Run {
+		return func(_ context.Context, req Request) (json.RawMessage, error) {
+			f.mu.Lock()
+			f.requests = append(f.requests, req)
+			f.mu.Unlock()
+			return json.Marshal(map[string]any{"topics": []any{map[string]any{"id": r.Entry.ID, "topic": "Home network"}}})
+		}
+	}
+	f.c.SortTopics()
+	f.c.SortTopics()
+	if got := f.titles(); !reflect.DeepEqual(got, []string{"Memory: sort Global Memory into topics"}) {
+		t.Fatalf("titles %q", got)
+	}
+	if r := f.requests[0]; !strings.Contains(r.Prompt, "sorting the core") {
+		t.Errorf("prompt %q", r.Prompt)
+	}
+	o, err := f.c.Overview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	global := o.Rows[len(o.Rows)-1]
+	if global.Layers == nil || global.Layers.Filed != 1 || global.Layers.CoreEntries != 0 || global.Consolidating {
+		t.Errorf("global %+v %+v", global, global.Layers)
+	}
+}
+
+func TestControllerWaitsForADaemonToSort(t *testing.T) {
+	f := newControllerFixture(t)
+	f.daemonUp.Store(false)
+	f.c.SortTopics()
+	f.daemonUp.Store(true)
+	f.c.SortTopics()
+	o, _ := f.c.Overview()
+	if l := o.Rows[len(o.Rows)-1].Layers; l == nil || l.SortedAt == "" {
+		t.Errorf("layers %+v", l)
+	}
+}
+
+func TestControllerSortsTheGlobalMemoryBeforeConsolidatingIt(t *testing.T) {
+	f := newControllerFixture(t)
+	store, err := memory.OpenStore(f.memoryDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = store.Add(memory.GlobalSlot, "insight", "win.myhome runs WSL2")
+	store.Close()
+	if _, err := f.c.Consolidate(""); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.titles(); len(got) < 2 || got[0] != "Memory: sort Global Memory into topics" || got[1] != "Memory: consolidate Global Memory / core" {
+		t.Errorf("titles %q", got)
 	}
 }

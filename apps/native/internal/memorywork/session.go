@@ -64,6 +64,10 @@ func NewRunner(dial Dial) Run {
 			SystemPrompt:                 system,
 			AutoRejectPermissionRequests: &yes,
 			StructuredOutputFormat:       &protocol.OutputFormat{Type: "json_schema", Schema: schema},
+			// A model's default effort may be high: gemini-3.8-flash thought
+			// for five minutes over 33 entries to sort. The Daemon falls back
+			// to the default for a model without low.
+			ReasoningEffort: protocol.ReasoningEffortLow,
 		})
 		if err != nil {
 			return nil, err

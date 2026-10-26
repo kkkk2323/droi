@@ -1,6 +1,8 @@
 // Memory's source of truth: one SQLite database in the Memory folder (ADR
-// 0010), shared with the Electron Desktop Shell, so its schema and the SQL
-// text that creates it are those of apps/desktop/src/memory/store.ts. Every
+// 0010). It began shared with the Electron Desktop Shell, so the SQL text of
+// its first tables is that of apps/desktop/src/memory/store.ts; the topics
+// (ADR 0030) came later, in tables of their own that the Electron app's
+// store never reads. Every
 // Session runs its own Memory Server process and the hooks open it too, so it
 // runs in WAL mode with a busy timeout and every write is one short
 // transaction.
@@ -79,6 +81,9 @@ type Entry struct {
 	// Day is the UTC day the entry was recorded or last rewritten, YYYY-MM-DD.
 	Day  string
 	Text string
+	// Topic is the topic of a Global Memory entry (ADR 0030); "" for one in
+	// its core, and for every Project Memory entry.
+	Topic string
 }
 
 // Limit is a Memory's size limits in characters of entry text: past Soft,
@@ -169,8 +174,35 @@ type SearchOptions struct {
 	Slot  Slot
 	// Category limits the search to one category; "" searches every one.
 	Category Category
+	// Topic limits the search to one topic of the Global Memory; "" searches
+	// the core and every topic.
+	Topic string
 	// Limit defaults to 10.
 	Limit int
+}
+
+// TopicChars is the longest topic name.
+const TopicChars = 40
+
+// TopicSummary is one topic of the Global Memory.
+type TopicSummary struct {
+	Topic          string
+	Entries, Chars int
+}
+
+// Layers are how the Global Memory divides into its core, the entries
+// without a topic, and its topics (ADR 0030).
+type Layers struct {
+	CoreEntries, CoreChars int
+	// CoreCorrectionChars are the characters of the core's corrections, which
+	// the SessionStart hook injects within a budget of their own.
+	CoreCorrectionChars int
+	// Topics, the largest first.
+	Topics []TopicSummary
+	// SortedAt is when the core was first sorted into topics; "" before.
+	SortedAt string
+	// Filed is how many entries the automatic sort gave a topic.
+	Filed int
 }
 
 // SliceChanges is a consolidation's answer for one slice: what becomes of
@@ -183,6 +215,14 @@ type SliceChanges struct {
 	Merge []Merge `json:"merge"`
 	// Move gives Global Memory entries to a Project Memory.
 	Move []Move `json:"move"`
+	// Topic gives Global Memory entries a topic, or puts them back in the core.
+	Topic []TopicChange `json:"topic"`
+}
+
+// TopicChange files a Global Memory entry under Topic; "" puts it in the core.
+type TopicChange struct {
+	ID    string `json:"id"`
+	Topic string `json:"topic"`
 }
 
 // Move gives an entry to the Project Memory of Workspace, keeping its id,
@@ -198,10 +238,12 @@ type Rewrite struct {
 	Text string `json:"text"`
 }
 
-// Merge replaces the entries IDs with one entry of Text.
+// Merge replaces the entries IDs with one entry of Text, of Category or, when
+// that is "", of the first entry's category, and in the first entry's topic.
 type Merge struct {
-	IDs  []string `json:"ids"`
-	Text string   `json:"text"`
+	IDs      []string `json:"ids"`
+	Text     string   `json:"text"`
+	Category Category `json:"category,omitempty"`
 }
 
 // Call is one Memory Server call as the call log keeps it.
@@ -227,8 +269,8 @@ type Usage struct {
 	Searches int
 	// EmptySearches returned nothing.
 	EmptySearches int
-	// NeverFound counts entries no search has returned; corrections are left
-	// out, the hook injects them.
+	// NeverFound counts entries no search has returned; the corrections the
+	// hook injects are left out.
 	NeverFound int
 }
 
@@ -288,6 +330,16 @@ const schema = `
       role TEXT NOT NULL CHECK (role IN ('found', 'written', 'similar'))
     );
     CREATE INDEX IF NOT EXISTS call_entries_entry ON call_entries(entry, role);
+    CREATE TABLE IF NOT EXISTS entry_topics (
+      entry TEXT PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+      topic TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS entry_topics_topic ON entry_topics(topic);
+    CREATE TABLE IF NOT EXISTS topic_sorts (
+      slot TEXT PRIMARY KEY REFERENCES slots(key),
+      at TEXT NOT NULL,
+      filed INTEGER NOT NULL
+    );
     CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts
       USING fts5(text, content='entries', content_rowid='rowid', tokenize='trigram');
     CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
@@ -302,8 +354,8 @@ const schema = `
     END;
   `
 
-const selectEntries = `SELECT e.id, e.slot, e.category, e.day, e.text, s.workspace
-    FROM entries e JOIN slots s ON s.key = e.slot`
+const selectEntries = `SELECT e.id, e.slot, e.category, e.day, e.text, s.workspace, t.topic
+    FROM entries e JOIN slots s ON s.key = e.slot LEFT JOIN entry_topics t ON t.entry = e.id`
 
 // OpenStore opens the Memory database in dir, creating both if need be.
 func OpenStore(dir string) (*Store, error) {
@@ -382,11 +434,12 @@ func (s *Store) rows(q string, args ...any) ([]Entry, error) {
 	for r.Next() {
 		var e Entry
 		var key, category string
-		var workspace sql.NullString
-		if err := r.Scan(&e.ID, &key, &category, &e.Day, &e.Text, &workspace); err != nil {
+		var workspace, topic sql.NullString
+		if err := r.Scan(&e.ID, &key, &category, &e.Day, &e.Text, &workspace, &topic); err != nil {
 			return nil, err
 		}
 		e.Category = Category(category)
+		e.Topic = topic.String
 		if key == globalKey {
 			e.Scope = ScopeGlobal
 		} else {
@@ -471,11 +524,45 @@ func (s *Store) insert(key string, category Category, text string) (string, erro
 	return id, err
 }
 
+// cleanTopic is a topic as it is kept, its spaces collapsed, or why it is
+// refused. A model asked for "" sometimes writes the quotes themselves.
+func cleanTopic(raw string) (string, string) {
+	topic := strings.Join(strings.Fields(strings.Trim(strings.TrimSpace(raw), "\"'“”")), " ")
+	if utf8.RuneCountInString(topic) > TopicChars {
+		return "", fmt.Sprintf("A topic is a short name of at most %d characters.", TopicChars)
+	}
+	return topic, ""
+}
+
+const topicOnlyGlobal = "Only Global Memory entries have a topic."
+
+func (s *Store) fileUnder(id, topic string) error {
+	if topic == "" {
+		_, err := s.exec("DELETE FROM entry_topics WHERE entry = ?", id)
+		return err
+	}
+	_, err := s.exec("INSERT OR REPLACE INTO entry_topics (entry, topic) VALUES (?, ?)", id, topic)
+	return err
+}
+
 // Add records one entry in a Memory, refusing empty text, a secret and a
 // write past the Memory's hard limit.
 func (s *Store) Add(slot Slot, category Category, rawText string) (WriteResult, error) {
+	return s.AddWithTopic(slot, category, rawText, "")
+}
+
+// AddWithTopic records one entry as Add does, in a topic of the Global
+// Memory; topic "" puts it in the core.
+func (s *Store) AddWithTopic(slot Slot, category Category, rawText, rawTopic string) (WriteResult, error) {
 	text := jsTrim(rawText)
 	if refused := checkText(text); refused != "" {
+		return WriteResult{Reason: refused}, nil
+	}
+	topic, refused := cleanTopic(rawTopic)
+	if refused == "" && topic != "" && slot.Scope != ScopeGlobal {
+		refused = topicOnlyGlobal
+	}
+	if refused != "" {
 		return WriteResult{Reason: refused}, nil
 	}
 	limits := Limits[slot.Scope]
@@ -503,8 +590,48 @@ func (s *Store) Add(slot Slot, category Category, rawText string) (WriteResult, 
 		if err != nil {
 			return err
 		}
+		if err := s.fileUnder(id, topic); err != nil {
+			return err
+		}
 		entry, _, err := s.get(id)
 		result = WriteResult{OK: true, Entry: entry, OverSoftLimit: size+jsLength(text) > limits.Soft}
+		return err
+	})
+	return result, err
+}
+
+// SetTopic files a Global Memory entry under a topic, or in the core when
+// topic is "", keeping its text and day.
+func (s *Store) SetTopic(id, rawTopic string) (WriteResult, error) {
+	topic, refused := cleanTopic(rawTopic)
+	if refused != "" {
+		return WriteResult{Reason: refused}, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var result WriteResult
+	err := s.transaction(func() error {
+		found, ok, err := s.get(id)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			result = WriteResult{Reason: "No Memory entry has the id " + id + "."}
+			return nil
+		}
+		if found.Scope != ScopeGlobal {
+			result = WriteResult{Reason: topicOnlyGlobal}
+			return nil
+		}
+		if err := s.fileUnder(id, topic); err != nil {
+			return err
+		}
+		entry, _, err := s.get(id)
+		if err != nil {
+			return err
+		}
+		size, err := s.sizeOf(globalKey)
+		result = WriteResult{OK: true, Entry: entry, OverSoftLimit: size > Limits[ScopeGlobal].Soft}
 		return err
 	})
 	return result, err
@@ -565,13 +692,27 @@ func (s *Store) Get(id string) (Entry, bool, error) {
 // List is every entry of a Memory, by category, oldest first; or those of one
 // category when category is not "".
 func (s *Store) List(slot Slot, category Category) ([]Entry, error) {
+	return s.ListTopic(slot, category, "")
+}
+
+// ListTopic lists as List does, only the entries of one topic of the Global
+// Memory when topic is not "", its corrections first.
+func (s *Store) ListTopic(slot Slot, category Category, topic string) ([]Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := slotKey(slot)
+	where, args := " WHERE e.slot = ?", []any{slotKey(slot)}
+	order := " ORDER BY e.category, e.rowid"
 	if category != "" {
-		return s.rows(selectEntries+" WHERE e.slot = ? AND e.category = ? ORDER BY e.rowid", key, string(category))
+		where += " AND e.category = ?"
+		args = append(args, string(category))
+		order = " ORDER BY e.rowid"
 	}
-	return s.rows(selectEntries+" WHERE e.slot = ? ORDER BY e.category, e.rowid", key)
+	if topic != "" {
+		where += " AND t.topic = ?"
+		args = append(args, topic)
+		order = " ORDER BY e.category != 'correction', e.category, e.rowid"
+	}
+	return s.rows(selectEntries+where+order, args...)
 }
 
 var termPattern = jsRegexp(`"([^"]*)"|(\S+)`)
@@ -619,6 +760,10 @@ func (s *Store) Search(o SearchOptions) ([]Entry, error) {
 	if o.Category != "" {
 		byCategory = " AND e.category = ?"
 		extra = []any{string(o.Category)}
+	}
+	if o.Topic != "" {
+		byCategory += " AND t.topic = ?"
+		extra = append(extra, o.Topic)
 	}
 	terms := SearchTerms(o.Query)
 	if len(terms) == 0 {
@@ -703,7 +848,8 @@ func (s *Store) Search(o SearchOptions) ([]Entry, error) {
 }
 
 // Corrections are the correction entries of these Memories together, newest
-// first, within both caps.
+// first, within both caps; a Global Memory topic's corrections are left out,
+// a search finds them.
 func (s *Store) Corrections(slots []Slot, caps CorrectionCaps) ([]Entry, error) {
 	if len(slots) == 0 {
 		return []Entry{}, nil
@@ -717,7 +863,7 @@ func (s *Store) Corrections(slots []Slot, caps CorrectionCaps) ([]Entry, error) 
 	args = append(args, caps.Entries)
 	s.mu.Lock()
 	found, err := s.rows(selectEntries+` WHERE e.slot IN (`+strings.Join(marks, ", ")+`) AND e.category = 'correction'
-          ORDER BY e.day DESC, e.rowid DESC LIMIT ?`, args...)
+          AND t.topic IS NULL ORDER BY e.day DESC, e.rowid DESC LIMIT ?`, args...)
 	s.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -732,6 +878,98 @@ func (s *Store) Corrections(slots []Slot, caps CorrectionCaps) ([]Entry, error) 
 		kept = append(kept, e)
 	}
 	return kept, nil
+}
+
+// GlobalLayers says how the Global Memory divides into its core and its
+// topics.
+func (s *Store) GlobalLayers() (Layers, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var l Layers
+	var entries, chars, corrections int64
+	err := s.queryRow(`SELECT COUNT(*), COALESCE(SUM(LENGTH(e.text)), 0),
+             COALESCE(SUM(CASE WHEN e.category = 'correction' THEN LENGTH(e.text) ELSE 0 END), 0)
+           FROM entries e LEFT JOIN entry_topics t ON t.entry = e.id
+           WHERE e.slot = ? AND t.topic IS NULL`, globalKey).Scan(&entries, &chars, &corrections)
+	if err != nil {
+		return Layers{}, err
+	}
+	l.CoreEntries, l.CoreChars, l.CoreCorrectionChars = int(entries), int(chars), int(corrections)
+	r, err := s.conn.QueryContext(context.Background(), `SELECT t.topic, COUNT(*), SUM(LENGTH(e.text))
+           FROM entries e JOIN entry_topics t ON t.entry = e.id
+           WHERE e.slot = ? GROUP BY t.topic ORDER BY COUNT(*) DESC, t.topic`, globalKey)
+	if err != nil {
+		return Layers{}, err
+	}
+	defer r.Close()
+	l.Topics = []TopicSummary{}
+	for r.Next() {
+		var t TopicSummary
+		if err := r.Scan(&t.Topic, &t.Entries, &t.Chars); err != nil {
+			return Layers{}, err
+		}
+		l.Topics = append(l.Topics, t)
+	}
+	if err := r.Err(); err != nil {
+		return Layers{}, err
+	}
+	var at sql.NullString
+	var filed sql.NullInt64
+	err = s.queryRow("SELECT at, filed FROM topic_sorts WHERE slot = ?", globalKey).Scan(&at, &filed)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Layers{}, err
+	}
+	l.SortedAt, l.Filed = at.String, int(filed.Int64)
+	return l, nil
+}
+
+// MarkSorted records that the Global Memory's core was sorted into topics,
+// filed of its entries getting one; only the first sort is recorded.
+func (s *Store) MarkSorted(filed int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureSlot(GlobalSlot); err != nil {
+		return err
+	}
+	_, err := s.exec("INSERT OR IGNORE INTO topic_sorts (slot, at, filed) VALUES (?, ?, ?)", globalKey, isoNow(), filed)
+	return err
+}
+
+// FoundCounts are how many searches returned each entry of a Memory since
+// calls were first logged.
+func (s *Store) FoundCounts(slot Slot) (map[string]int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, err := s.conn.QueryContext(context.Background(), `SELECT e.id, COUNT(h.entry) FROM entries e
+           LEFT JOIN call_entries h ON h.entry = e.id AND h.role = 'found'
+           WHERE e.slot = ? GROUP BY e.id`, slotKey(slot))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	counts := map[string]int{}
+	for r.Next() {
+		var id string
+		var n int
+		if err := r.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		counts[id] = n
+	}
+	return counts, r.Err()
+}
+
+// Backup copies the database beside it as memory.backup-<day>.sqlite and
+// answers its path; a backup already made that day is kept as it is.
+func (s *Store) Backup() (string, error) {
+	path := filepath.Join(s.dir, "memory.backup-"+today()+".sqlite")
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.exec("VACUUM INTO ?", path)
+	return path, err
 }
 
 // Size is a Memory's size in characters of entry text.
@@ -799,6 +1037,9 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 	for _, m := range changes.Move {
 		named = append(named, m.ID)
 	}
+	for _, c := range changes.Topic {
+		named = append(named, c.ID)
+	}
 	namedSet := map[string]bool{}
 	for _, id := range named {
 		if !sentIDs[id] {
@@ -823,6 +1064,12 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 		if refused := checkText(m.Text); refused != "" {
 			return refused, nil
 		}
+		if len(m.IDs) == 0 {
+			return "A merge names no entries.", nil
+		}
+		if m.Category != "" && !IsCategory(string(m.Category)) {
+			return "The answer merges into " + string(m.Category) + ", which is not a category.", nil
+		}
 	}
 	if len(sent) == 0 {
 		return "", nil
@@ -832,9 +1079,22 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 	if len(changes.Move) > 0 && first.Scope != ScopeGlobal {
 		return "Only Global Memory entries can move to a project.", nil
 	}
+	if len(changes.Topic) > 0 && first.Scope != ScopeGlobal {
+		return topicOnlyGlobal, nil
+	}
+	topics := make([]TopicChange, len(changes.Topic))
+	for i, c := range changes.Topic {
+		topic, refused := cleanTopic(c.Topic)
+		if refused != "" {
+			return refused, nil
+		}
+		topics[i] = TopicChange{ID: c.ID, Topic: topic}
+	}
 	texts := map[string]string{}
+	byID := map[string]Entry{}
 	for _, e := range sent {
 		texts[e.ID] = e.Text
+		byID[e.ID] = e
 	}
 	for _, m := range changes.Move {
 		if !filepath.IsAbs(m.Workspace) {
@@ -885,12 +1145,26 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 			}
 		}
 		for _, m := range changes.Merge {
+			head := byID[m.IDs[0]]
+			category := head.Category
+			if m.Category != "" {
+				category = m.Category
+			}
 			for _, id := range m.IDs {
 				if _, err := s.exec("DELETE FROM entries WHERE id = ?", id); err != nil {
 					return err
 				}
 			}
-			if _, err := s.insert(key, first.Category, jsTrim(m.Text)); err != nil {
+			id, err := s.insert(key, category, jsTrim(m.Text))
+			if err != nil {
+				return err
+			}
+			if err := s.fileUnder(id, head.Topic); err != nil {
+				return err
+			}
+		}
+		for _, c := range topics {
+			if err := s.fileUnder(c.ID, c.Topic); err != nil {
 				return err
 			}
 		}
@@ -900,6 +1174,10 @@ func (s *Store) ApplySlice(sent []Entry, changes SliceChanges) (string, error) {
 				return err
 			}
 			if _, err := s.exec("UPDATE entries SET slot = ? WHERE id = ?", slotKey(slot), m.ID); err != nil {
+				return err
+			}
+			// A Project Memory has no topics.
+			if err := s.fileUnder(m.ID, ""); err != nil {
 				return err
 			}
 		}
@@ -999,8 +1277,8 @@ func (s *Store) Usage(slot Slot) (Usage, error) {
 	if err != nil {
 		return Usage{}, err
 	}
-	err = s.queryRow(`SELECT COUNT(*) AS n FROM entries e
-           WHERE e.slot = ? AND e.category != 'correction' AND NOT EXISTS (
+	err = s.queryRow(`SELECT COUNT(*) AS n FROM entries e LEFT JOIN entry_topics t ON t.entry = e.id
+           WHERE e.slot = ? AND NOT (e.category = 'correction' AND t.topic IS NULL) AND NOT EXISTS (
              SELECT 1 FROM call_entries h WHERE h.entry = e.id AND h.role = 'found'
            )`, key).Scan(&never)
 	return Usage{Searches: int(searches), EmptySearches: int(empty), NeverFound: int(never)}, err

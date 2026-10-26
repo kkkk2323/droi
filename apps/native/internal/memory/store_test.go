@@ -3,6 +3,7 @@ package memory
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -511,4 +512,169 @@ func TestProjectSlotKeysByTheRealPath(t *testing.T) {
 	real := must[string](t)(evalSymlinks(dir))
 	eq(t, ProjectSlot(dir), Slot{Scope: ScopeProject, Workspace: real})
 	eq(t, ProjectSlot("/nowhere/gone"), Slot{Scope: ScopeProject, Workspace: "/nowhere/gone"})
+}
+
+func addIn(t *testing.T, s *Store, topic, text string, category Category) Entry {
+	t.Helper()
+	r := must[WriteResult](t)(s.AddWithTopic(GlobalSlot, category, text, topic))
+	if !r.OK {
+		t.Fatal(r.Reason)
+	}
+	return r.Entry
+}
+
+func TestStoreFilesGlobalEntriesUnderTopics(t *testing.T) {
+	s, _ := openTestStore(t)
+	core := add(t, s, GlobalSlot, "answer in Chinese", CategoryPreference)
+	quirk := addIn(t, s, "  Anlan \n cloud ", "aliyun CLI needs --PriceUnit Year", CategoryToolQuirk)
+	rule := addIn(t, s, "Anlan cloud", "never run kubectl on production", CategoryCorrection)
+	addIn(t, s, "Home network", "win.myhome runs WSL2", CategoryInsight)
+	eq(t, quirk.Topic, "Anlan cloud")
+	eq(t, core.Topic, "")
+
+	eq(t, must[WriteResult](t)(s.AddWithTopic(project, CategoryInsight, "x", "Anlan cloud")).Reason, "Only Global Memory entries have a topic.")
+	if r := must[WriteResult](t)(s.AddWithTopic(GlobalSlot, CategoryInsight, "x", strings.Repeat("t", TopicChars+1))); r.OK {
+		t.Fatal("a long topic was taken")
+	}
+	// A topic's corrections come first.
+	eq(t, texts(must[[]Entry](t)(s.ListTopic(GlobalSlot, "", "Anlan cloud"))), []string{rule.Text, quirk.Text})
+	eq(t, len(must[[]Entry](t)(s.List(GlobalSlot, ""))), 4)
+	eq(t, texts(search(t, s, SearchOptions{Query: "WSL2", Slot: GlobalSlot, Topic: "Anlan cloud"})), []string{})
+	eq(t, texts(search(t, s, SearchOptions{Query: "WSL2", Slot: GlobalSlot})), []string{"win.myhome runs WSL2"})
+
+	moved := must[WriteResult](t)(s.SetTopic(core.ID, "Writing"))
+	eq(t, moved.Entry.Topic, "Writing")
+	eq(t, must[WriteResult](t)(s.SetTopic(core.ID, "")).Entry.Topic, "")
+	eq(t, must[WriteResult](t)(s.SetTopic("nope0000", "x")).OK, false)
+	eq(t, must[WriteResult](t)(s.SetTopic(add(t, s, project, "p").ID, "x")).Reason, "Only Global Memory entries have a topic.")
+	// Replacing the text keeps the topic; removing the entry drops it.
+	eq(t, must[WriteResult](t)(s.Replace(quirk.ID, "aliyun CLI: multi-year prices need --PriceUnit Year")).Entry.Topic, "Anlan cloud")
+	must[bool](t)(s.Remove(rule.ID))
+	layers := must[Layers](t)(s.GlobalLayers())
+	eq(t, layers.Topics, []TopicSummary{{Topic: "Anlan cloud", Entries: 1, Chars: len("aliyun CLI: multi-year prices need --PriceUnit Year")}, {Topic: "Home network", Entries: 1, Chars: 20}})
+}
+
+func TestStoreReadsATopicOfQuotesAsTheCore(t *testing.T) {
+	s, _ := openTestStore(t)
+	eq(t, addIn(t, s, `""`, "the topic was written as two quotes", CategoryInsight).Topic, "")
+	eq(t, addIn(t, s, ` "Home network" `, "quoted", CategoryInsight).Topic, "Home network")
+}
+
+func TestStoreInjectsOnlyTheCoresCorrections(t *testing.T) {
+	s, _ := openTestStore(t)
+	add(t, s, GlobalSlot, "do not add emojis", CategoryCorrection)
+	addIn(t, s, "Anlan cloud", "never run kubectl on production", CategoryCorrection)
+	eq(t, texts(must[[]Entry](t)(s.Corrections([]Slot{GlobalSlot}, GlobalCorrectionCaps))), []string{"do not add emojis"})
+	// A topic's corrections are not injected, so a search has to find them.
+	eq(t, must[Usage](t)(s.Usage(GlobalSlot)), Usage{NeverFound: 1})
+}
+
+func TestStoreSaysHowTheGlobalMemoryDivides(t *testing.T) {
+	s, _ := openTestStore(t)
+	eq(t, must[Layers](t)(s.GlobalLayers()), Layers{Topics: []TopicSummary{}})
+	add(t, s, GlobalSlot, "abc", CategoryCorrection)
+	add(t, s, GlobalSlot, "de", CategoryPreference)
+	addIn(t, s, "b", "1", CategoryInsight)
+	addIn(t, s, "a", "22", CategoryInsight)
+	addIn(t, s, "a", "333", CategoryInsight)
+	if err := s.MarkSorted(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkSorted(0); err != nil {
+		t.Fatal(err)
+	}
+	got := must[Layers](t)(s.GlobalLayers())
+	if !isoTime.MatchString(got.SortedAt) {
+		t.Fatalf("sortedAt %q", got.SortedAt)
+	}
+	got.SortedAt = ""
+	eq(t, got, Layers{CoreEntries: 2, CoreChars: 5, CoreCorrectionChars: 3, Topics: []TopicSummary{{"a", 2, 5}, {"b", 1, 1}}, Filed: 3})
+}
+
+func TestStoreCountsTheSearchesThatFoundEachEntry(t *testing.T) {
+	s, _ := openTestStore(t)
+	a, b := add(t, s, GlobalSlot, "a"), add(t, s, GlobalSlot, "b")
+	q := "q"
+	for range 2 {
+		if err := s.LogCall(Call{Tool: "memory_search", Slot: &GlobalSlot, Query: &q, OK: true, Found: []string{a.ID}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eq(t, must[map[string]int](t)(s.FoundCounts(GlobalSlot)), map[string]int{a.ID: 2, b.ID: 0})
+}
+
+func TestStoreBacksUpTheDatabaseOnceADay(t *testing.T) {
+	s, dir := openTestStore(t)
+	a := add(t, s, GlobalSlot, "kept in the backup")
+	path := must[string](t)(s.Backup())
+	eq(t, path, filepath.Join(dir, "memory.backup-"+today()+".sqlite"))
+	add(t, s, GlobalSlot, "after the backup")
+	eq(t, must[string](t)(s.Backup()), path)
+	db := must[*Store](t)(openFile(t, path))
+	got, ok := getEntry(t, db, a.ID)
+	if !ok || got.Text != a.Text || len(must[[]Entry](t)(db.List(GlobalSlot, ""))) != 1 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// openFile opens a database file that is not named memory.sqlite.
+func openFile(t *testing.T, path string) (*Store, error) {
+	t.Helper()
+	dir := t.TempDir()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, DatabaseFile), b, 0o666); err != nil {
+		return nil, err
+	}
+	s, err := OpenStore(dir)
+	if err == nil {
+		t.Cleanup(func() { s.Close() })
+	}
+	return s, err
+}
+
+func TestApplySliceFilesEntriesUnderTopicsAndMergesAcrossCategories(t *testing.T) {
+	s, _ := openTestStore(t)
+	pref := add(t, s, GlobalSlot, "replies in Chinese", CategoryPreference)
+	rule := add(t, s, GlobalSlot, "always reply in Chinese", CategoryCorrection)
+	cloud := add(t, s, GlobalSlot, "aliyun CLI is configured", CategoryToolQuirk)
+	app := add(t, s, GlobalSlot, "app deploys with fly", CategoryInsight)
+	sent := []Entry{pref, rule, cloud, app}
+	eq(t, applySlice(t, s, sent, SliceChanges{
+		Merge: []Merge{{IDs: []string{pref.ID, rule.ID}, Text: "Always reply in Chinese.", Category: CategoryCorrection}},
+		Topic: []TopicChange{{ID: cloud.ID, Topic: " Anlan  cloud "}},
+		Move:  []Move{{ID: app.ID, Workspace: project.Workspace}},
+	}), "")
+	core := must[[]Entry](t)(s.ListTopic(GlobalSlot, "", ""))
+	byText := map[string]Entry{}
+	for _, e := range core {
+		byText[e.Text] = e
+	}
+	if e := byText["Always reply in Chinese."]; e.Category != CategoryCorrection || e.Topic != "" {
+		t.Fatalf("merged %+v", e)
+	}
+	if e := byText[cloud.Text]; e.Topic != "Anlan cloud" || e.ID != cloud.ID || e.Day != cloud.Day {
+		t.Fatalf("filed %+v", e)
+	}
+	moved, _ := getEntry(t, s, app.ID)
+	eq(t, moved.Scope, ScopeProject)
+
+	// A merge inside a topic stays in the topic.
+	other := addIn(t, s, "Anlan cloud", "aliyun CLI is a RAM user", CategoryToolQuirk)
+	filed, _ := getEntry(t, s, cloud.ID)
+	eq(t, applySlice(t, s, []Entry{filed, other}, SliceChanges{Merge: []Merge{{IDs: []string{cloud.ID, other.ID}, Text: "aliyun CLI is configured as a RAM user"}}}), "")
+	eq(t, texts(must[[]Entry](t)(s.ListTopic(GlobalSlot, "", "Anlan cloud"))), []string{"aliyun CLI is configured as a RAM user"})
+}
+
+func TestApplySliceFilesOnlyGlobalEntriesAndOnlyIntoRealCategories(t *testing.T) {
+	s, _ := openTestStore(t)
+	p := add(t, s, project, "p")
+	eq(t, applySlice(t, s, []Entry{p}, SliceChanges{Topic: []TopicChange{{ID: p.ID, Topic: "x"}}}), "Only Global Memory entries have a topic.")
+	a, b := add(t, s, GlobalSlot, "a"), add(t, s, GlobalSlot, "b")
+	if reason := applySlice(t, s, []Entry{a, b}, SliceChanges{Merge: []Merge{{IDs: []string{a.ID, b.ID}, Text: "ab", Category: "gossip"}}}); !strings.Contains(reason, "not a category") {
+		t.Fatalf("reason %q", reason)
+	}
+	eq(t, applySlice(t, s, []Entry{a, b}, SliceChanges{Keep: []string{b.ID}, Merge: []Merge{{IDs: []string{a.ID}, Text: "a"}, {Text: "nothing"}}}), "A merge names no entries.")
 }

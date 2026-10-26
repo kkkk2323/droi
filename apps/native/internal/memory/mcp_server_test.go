@@ -314,7 +314,7 @@ func TestServerAsksWhetherAGlobalEntryBelongsThere(t *testing.T) {
 	writeFile(t, filepath.Join(s.sessionsFolder, scratch+".settings.json"), `{"tags":[{"name":"droi.scratch"}]}`)
 	r = s.call(t, "memory_add", map[string]any{"scope": "global", "category": "insight", "text": "Project Zomboid needs Java 17"}, scratch)
 	id = regexp.MustCompile(`Saved ([0-9a-f]{8}) in Global Memory\.`).FindStringSubmatch(r.text)[1]
-	if !strings.Contains(r.text, "This chat has no project") || !strings.HasSuffix(r.text, "remove "+id+".") {
+	if !strings.Contains(r.text, "This chat has no project") || !strings.Contains(r.text, "give it a topic with memory_replace") || !strings.HasSuffix(r.text, "remove "+id+".") {
 		t.Fatal(r.text)
 	}
 
@@ -453,4 +453,70 @@ func TestToolsAreTheElectronServersToTheByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, out.String(), `{"jsonrpc":"2.0","id":7,"result":{"tools":`+strings.TrimSpace(string(toolsJSON))+`}}`+"\n")
+}
+
+func TestServerFilesGlobalEntriesUnderTopics(t *testing.T) {
+	s := startServer(t)
+	saved := regexp.MustCompile(`Saved ([0-9a-f]{8}) in Global Memory\.`)
+	first := s.call(t, "memory_add", map[string]any{"scope": "global", "category": "tool-quirk", "text": "aliyun CLI is configured as a RAM user", "topic": "Anlan cloud"})
+	firstID := saved.FindStringSubmatch(first.text)[1]
+	// A topic is not a project fact, so no steer to scope project.
+	if strings.Contains(first.text, "new topic") {
+		t.Fatal(first.text)
+	}
+	second := s.call(t, "memory_add", map[string]any{"scope": "global", "category": "insight", "text": "win.myhome runs WSL2", "topic": "Home network"})
+	if !strings.Contains(second.text, "Home network is a new topic. Global Memory already has: Anlan cloud (1).") {
+		t.Fatal(second.text)
+	}
+	if r := s.call(t, "memory_list", map[string]any{"scope": "global", "topic": "Anlan cloud"}); !strings.Contains(r.text, "1 entry in global Memory under Anlan cloud:\n- "+firstID+" [global/tool-quirk · Anlan cloud,") {
+		t.Fatal(r.text)
+	}
+	if r := s.call(t, "memory_search", map[string]any{"query": "WSL2", "scope": "global", "topic": "Anlan cloud"}); !strings.HasPrefix(r.text, "No entries") {
+		t.Fatal(r.text)
+	}
+	if r := s.call(t, "memory_add", map[string]any{"scope": "project", "category": "insight", "text": "x", "topic": "Anlan cloud"}); !r.isError || !strings.Contains(r.text, "Only Global Memory entries have a topic.") {
+		t.Fatalf("%+v", r)
+	}
+	if r := s.call(t, "memory_search", map[string]any{"query": "x", "topic": "Anlan cloud"}); !r.isError {
+		t.Fatalf("%+v", r)
+	}
+
+	// Only the topic changes; the text stays.
+	eq(t, s.call(t, "memory_replace", map[string]any{"id": firstID, "topic": ""}).text, "Replaced "+firstID+" in Global Memory.")
+	got, _ := getEntry(t, s.openStore(t), firstID)
+	if got.Topic != "" || got.Text != "aliyun CLI is configured as a RAM user" {
+		t.Fatalf("%+v", got)
+	}
+	if r := s.call(t, "memory_replace", map[string]any{"id": firstID}); !r.isError {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestServerSaysWhenTheCoresCorrectionsOutgrowTheirBudget(t *testing.T) {
+	s := startServer(t)
+	long := strings.Repeat("Never do this. ", 200)
+	s.call(t, "memory_add", map[string]any{"scope": "global", "category": "correction", "text": long}, "")
+	r := s.call(t, "memory_add", map[string]any{"scope": "global", "category": "correction", "text": "Do not add emojis"}, "")
+	if !strings.Contains(r.text, "Global corrections without a topic now take 3,016 of the 3,000 characters shown at the start of a Session") {
+		t.Fatal(r.text)
+	}
+	if !strings.Contains(r.text, "2 entries are corrections without a topic:") {
+		t.Fatal(r.text)
+	}
+	// A correction filed under a topic does not count.
+	r = s.call(t, "memory_add", map[string]any{"scope": "global", "category": "correction", "text": "Never run kubectl on production", "topic": "Anlan cloud"}, "")
+	if strings.Contains(r.text, "corrections without a topic") {
+		t.Fatal(r.text)
+	}
+}
+
+func TestServerAsksAChatToFileWhatItIsAboutUnderATopic(t *testing.T) {
+	s := startServer(t)
+	scratch := "9b1f2c3d-0000-4000-8000-000000000004"
+	writeFile(t, filepath.Join(s.sessionsFolder, scratch+".jsonl"), `{"type":"session_start","id":"`+scratch+`","cwd":"`+s.workspace+`"}`+"\n")
+	writeFile(t, filepath.Join(s.sessionsFolder, scratch+".settings.json"), `{"tags":[{"name":"droi.scratch"}]}`)
+	r := s.call(t, "memory_add", map[string]any{"scope": "global", "category": "insight", "text": "Project Zomboid needs Java 17", "topic": "Project Zomboid"}, scratch)
+	if !regexp.MustCompile(`^Saved [0-9a-f]{8} in Global Memory\.$`).MatchString(r.text) {
+		t.Fatal(r.text)
+	}
 }

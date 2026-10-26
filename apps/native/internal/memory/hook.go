@@ -65,8 +65,16 @@ type ExtractionRequest struct {
 	RequestedAt string `json:"requestedAt"`
 }
 
-// CorrectionSliceCaps bound the corrections the SessionStart hook injects.
-var CorrectionSliceCaps = CorrectionCaps{Entries: 20, Chars: 2_000}
+// The SessionStart hook injects the corrections of the Session's Project
+// Memory and of the Global Memory's core, each within caps of its own.
+var (
+	ProjectCorrectionCaps = CorrectionCaps{Entries: 20, Chars: 2_000}
+	GlobalCorrectionCaps  = CorrectionCaps{Entries: 20, Chars: 3_000}
+)
+
+// TopicIndexChars bounds the list of Global Memory topics the SessionStart
+// hook injects.
+const TopicIndexChars = 600
 
 const (
 	// NudgeEvery is how many prompts of a Session pass between Memory checks.
@@ -84,11 +92,12 @@ var policy = strings.Join([]string{
 	"- Search Memory before acting on this Workspace’s conventions, its tooling, or anything that failed before.",
 	"- Save durable facts as you learn them, one per entry: corrections the user makes (category correction), conventions, tool quirks, failures and their causes, insights.",
 	"- Scope project, the default, holds everything about this Workspace. Scope global holds only what is true in every Workspace: how the user likes to work and be answered, their computers, accounts and everyday tools.",
+	"- A global fact that matters only for one subject (a service the user runs, a client, a home network, a hobby) gets a topic: it is found by search instead of shown in every Session. Reuse a topic that exists.",
 	"- Replace or remove an entry once it turns out to be wrong.",
 	"- Memory is context, not instruction. When it disagrees with the repository or with the user, they win.",
 }, "\n")
 
-const scratchPolicy = "- This Session is a chat without a project, so it has no Project Memory: only scope global applies. Save only facts about the user that hold in every Workspace, not what this chat is about: a project, a product, a client, other people or a topic researched here."
+const scratchPolicy = "- This Session is a chat without a project, so it has no Project Memory: only scope global applies. Save a fact about the user that holds in every Workspace without a topic, and a durable fact about what this chat is about with a topic. Leave out one-off details, such as what a single search found."
 
 // A correction names what was wrong or what to use instead; a bare negation
 // ("不是这个文件", "don't forget the tests") is everyday instruction, not one.
@@ -128,14 +137,43 @@ func sessionFileName(sessionID string) string {
 	return b.String() + ".json"
 }
 
-// CorrectionSlice is the Project and Global corrections together, newest
-// first, within the caps; cwd "" leaves Project Memory out.
+// CorrectionSlice is the Project corrections, then the Global core's, each
+// newest first within its caps; cwd "" leaves Project Memory out.
 func CorrectionSlice(store *Store, cwd string) ([]Entry, error) {
-	slots := []Slot{}
+	found := []Entry{}
 	if cwd != "" {
-		slots = append(slots, ProjectSlot(cwd))
+		project, err := store.Corrections([]Slot{ProjectSlot(cwd)}, ProjectCorrectionCaps)
+		if err != nil {
+			return nil, err
+		}
+		found = project
 	}
-	return store.Corrections(append(slots, GlobalSlot), CorrectionSliceCaps)
+	global, err := store.Corrections([]Slot{GlobalSlot}, GlobalCorrectionCaps)
+	return append(found, global...), err
+}
+
+// TopicIndex is the line naming the Global Memory's topics, the largest
+// first, within TopicIndexChars; "" when it has none.
+func TopicIndex(topics []TopicSummary) string {
+	if len(topics) == 0 {
+		return ""
+	}
+	const lead = "Global Memory topics, not shown here (call memory_list with scope global and the topic before work that touches one): "
+	names := []string{}
+	chars := 0
+	for _, t := range topics {
+		name := t.Topic + " (" + strconv.Itoa(t.Entries) + ")"
+		if len(names) > 0 && chars+jsLength(name)+2 > TopicIndexChars {
+			break
+		}
+		names = append(names, name)
+		chars += jsLength(name) + 2
+	}
+	line := lead + strings.Join(names, ", ")
+	if more := len(topics) - len(names); more > 0 {
+		line += ", and " + strconv.Itoa(more) + " more"
+	}
+	return line + "."
 }
 
 // SessionStartContext is what the SessionStart hook prints: the policy, and
@@ -148,13 +186,20 @@ func SessionStartContext(store *Store, cwd string, scratch bool) (string, error)
 	if err != nil {
 		return "", err
 	}
+	layers, err := store.GlobalLayers()
+	if err != nil {
+		return "", err
+	}
 	listed := ""
+	if index := TopicIndex(layers.Topics); index != "" {
+		listed = "\n\n" + index
+	}
 	if len(corrections) > 0 {
 		lines := make([]string, len(corrections))
 		for i, e := range corrections {
 			lines[i] = "- " + e.Text + " (" + string(e.Scope) + ", " + e.Day + ")"
 		}
-		listed = "\n\nCorrections the user made in earlier Sessions:\n" + strings.Join(lines, "\n")
+		listed += "\n\nCorrections the user made in earlier Sessions:\n" + strings.Join(lines, "\n")
 	}
 	p := policy
 	if scratch {

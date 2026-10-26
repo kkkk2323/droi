@@ -3,11 +3,13 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
@@ -252,6 +254,17 @@ func (a *App) memoryRow(c *ui.Context, row memorywork.Row, loggedSince string) {
 				line = L("%s · %s never found", line, countL(row.NeverFound, l10n.N("%d entry"), l10n.N("%d entries")))
 				k.Text(c, line, 13, 20).TextColor(t.MutedForeground).Margin(-k.Px(10), 0, 0, 0)
 			}
+			if l := row.Layers; l != nil && (l.CoreEntries > 0 || len(l.Topics) > 0) {
+				color := t.MutedForeground
+				if l.CoreCorrectionChars > memory.GlobalCorrectionCaps.Chars {
+					color = t.Attention
+				}
+				top := -k.Px(10)
+				if loggedSince != "" {
+					top = 0
+				}
+				k.Text(c, memoryLayersLine(*l), 13, 20).TextColor(color).Margin(top, 0, 0, 0)
+			}
 			if row.OverSoftLimit {
 				ui.Row(c).Gap(k.Px(4)).AlignItems(ui.Center).Margin(k.Px(4), 0, 0, 0).Children(func() {
 					k.Icon(c, "circle-alert", 14, t.Attention)
@@ -265,6 +278,37 @@ func (a *App) memoryRow(c *ui.Context, row memorywork.Row, loggedSince string) {
 	})
 }
 
+// formatTenths is a number of characters to a tenth of a thousand: "2.6k".
+func formatTenths(n int) string {
+	if n < 1000 {
+		return itoa(n)
+	}
+	return strings.TrimSuffix(strconv.FormatFloat(float64(n)/1000, 'f', 1, 64), ".0") + "k"
+}
+
+// memoryLayersLine is the Global Memory's core and its largest topics in one
+// line (ADR 0030).
+func memoryLayersLine(l memory.Layers) string {
+	line := L("Core: %s, corrections %s of %s characters", countL(l.CoreEntries, l10n.N("%d entry"), l10n.N("%d entries")),
+		formatTenths(l.CoreCorrectionChars), formatTenths(memory.GlobalCorrectionCaps.Chars))
+	if len(l.Topics) == 0 {
+		return line
+	}
+	shown := l.Topics
+	if len(shown) > 4 {
+		shown = shown[:4]
+	}
+	names := make([]string, len(shown))
+	for i, t := range shown {
+		names[i] = t.Topic + " " + itoa(t.Entries)
+	}
+	list := strings.Join(names, L(", "))
+	if more := len(l.Topics) - len(shown); more > 0 {
+		list = L("%s and %d more", list, more)
+	}
+	return line + " · " + L("Topics: %s", list)
+}
+
 func (a *App) consolidate(workspace, name string) {
 	m := &a.memory
 	if m.results == nil {
@@ -274,17 +318,57 @@ func (a *App) consolidate(workspace, name string) {
 	go func() {
 		res, err := a.cfg.Memory.Consolidate(workspace)
 		a.cfg.Update(func() {
-			switch {
+			// The Global Memory is consolidated by its core and topics, a
+			// Project Memory by category.
+			switch global := workspace == ""; {
 			case err != nil:
 				m.results[name] = err.Error()
+			case res.Rejected == 0 && global:
+				m.results[name] = L("Consolidated %s.", countL(res.Applied, l10n.N("%d group"), l10n.N("%d groups")))
 			case res.Rejected == 0:
 				m.results[name] = L("Consolidated %s.", countL(res.Applied, l10n.N("%d category"), l10n.N("%d categories")))
+			case global:
+				m.results[name] = L("Consolidated %d groups; %d kept unchanged because the model’s output failed validation.", res.Applied, res.Rejected)
 			default:
 				m.results[name] = L("Consolidated %d; %d kept unchanged because the model’s output failed validation.", res.Applied, res.Rejected)
 			}
 			a.refreshMemory()
 		})
 	}()
+}
+
+// memoryTopicsCard is the corner card, once, after the Global Memory's core
+// was first sorted into topics (ADR 0030).
+func (a *App) memoryTopicsCard(c *ui.Context) {
+	h := a.cfg.Host
+	if a.cfg.Memory == nil || h == nil || !h.Settings.Get().MemoryEnabled || prefs.MemoryTopicsNoticed.Get(a.prefs) {
+		return
+	}
+	ov, _ := a.memoryOverview()
+	if ov == nil {
+		return
+	}
+	var l *memory.Layers
+	for _, r := range ov.Rows {
+		if r.Workspace == "" {
+			l = r.Layers
+		}
+	}
+	if l == nil || l.Filed == 0 {
+		return
+	}
+	notice := func() { prefs.MemoryTopicsNoticed.Set(a.prefs, true) }
+	k, t := a.kit, a.kit.T
+	a.cornerCard(c, L("Memory topics"), "brain", func() {
+		k.Text(c, L("Global Memory is sorted into topics"), 14, 20).FontWeight(500)
+		k.Text(c, L("%s stay in the core; %s went to %s. A topic’s entries are found by search instead of shown in every Session.",
+			countL(l.CoreEntries, l10n.N("%d entry"), l10n.N("%d entries")), countL(l.Filed, l10n.N("%d entry"), l10n.N("%d entries")),
+			countL(len(l.Topics), l10n.N("%d topic"), l10n.N("%d topics"))), 12, 16).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
+		if a.smallButton(c, kit.Primary, L("Open Memory settings"), "", false).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
+			notice()
+			a.Go(Route{Name: "settings", Tab: "memory"})
+		}
+	}, notice)
 }
 
 // memoryFullCard is the corner card, once per crossing, when a Project

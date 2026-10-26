@@ -133,13 +133,51 @@ func TestSessionStartCapsTheCorrections(t *testing.T) {
 	}
 	eq(t, len(rules(h.hook(t, map[string]any{"hook_event_name": "SessionStart", "cwd": h.workspace}).stdout)), 20)
 
-	z := strings.Repeat("z", 1_990)
+	// The Global Memory's core has a budget of its own.
+	z := strings.Repeat("z", 2_990)
 	add(t, h.store, GlobalSlot, z, CategoryCorrection)
-	capped := h.hook(t, map[string]any{"hook_event_name": "SessionStart", "cwd": h.workspace}).stdout
-	if !strings.Contains(capped, "- "+z+" (global,") {
+	both := h.hook(t, map[string]any{"hook_event_name": "SessionStart", "cwd": h.workspace}).stdout
+	if !strings.Contains(both, "- "+z+" (global,") {
 		t.Fatal("long correction missing")
 	}
-	eq(t, rules(capped), []string{"- rule 29 (project, " + today() + ")"})
+	eq(t, len(rules(both)), 20)
+	add(t, h.store, GlobalSlot, "Answer in Chinese", CategoryCorrection)
+	capped := h.hook(t, map[string]any{"hook_event_name": "SessionStart", "cwd": h.workspace}).stdout
+	if !strings.Contains(capped, "- Answer in Chinese (global,") || strings.Contains(capped, z) {
+		t.Fatalf("%q", capped)
+	}
+}
+
+func TestSessionStartNamesTheTopicsButLeavesTheirCorrectionsOut(t *testing.T) {
+	h := newHookEnv(t)
+	add(t, h.store, GlobalSlot, "Do not add emojis", CategoryCorrection)
+	for _, text := range []string{"Never run kubectl on the production cluster", "The ECS fe-server can be retired"} {
+		if r := must[WriteResult](t)(h.store.AddWithTopic(GlobalSlot, CategoryCorrection, text, "Anlan cloud")); !r.OK {
+			t.Fatal(r.Reason)
+		}
+	}
+	if r := must[WriteResult](t)(h.store.AddWithTopic(GlobalSlot, CategoryInsight, "win.myhome runs WSL2", "Home network")); !r.OK {
+		t.Fatal(r.Reason)
+	}
+	out := h.hook(t, map[string]any{"hook_event_name": "SessionStart", "cwd": h.workspace}).stdout
+	if !strings.Contains(out, "- Do not add emojis (global,") || strings.Contains(out, "kubectl") {
+		t.Fatalf("%q", out)
+	}
+	if !strings.Contains(out, "(call memory_list with scope global and the topic before work that touches one): Anlan cloud (2), Home network (1).\n") {
+		t.Fatalf("%q", out)
+	}
+}
+
+func TestTopicIndexStaysWithinItsBudget(t *testing.T) {
+	eq(t, TopicIndex(nil), "")
+	var topics []TopicSummary
+	for i := 0; i < 60; i++ {
+		topics = append(topics, TopicSummary{Topic: "topic number " + strconv.Itoa(i), Entries: 1})
+	}
+	line := TopicIndex(topics)
+	if !strings.HasSuffix(line, " more.") || jsLength(line) > TopicIndexChars+200 {
+		t.Fatalf("%d: %q", jsLength(line), line)
+	}
 }
 
 func TestUserPromptSubmitSaysNothingForAnOrdinaryPrompt(t *testing.T) {

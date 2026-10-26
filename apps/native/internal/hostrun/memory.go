@@ -63,6 +63,9 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 		if back && !start {
 			go m.ProcessRequests()
 		}
+		if on && up {
+			go m.SortTopics()
+		}
 	}
 	h.OnChange(follow)
 	follow()

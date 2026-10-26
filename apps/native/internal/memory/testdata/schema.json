@@ -85,6 +85,18 @@
   },
   {
     "type": "table",
+    "name": "entry_topics",
+    "tbl_name": "entry_topics",
+    "sql": "CREATE TABLE entry_topics (\n      entry TEXT PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,\n      topic TEXT NOT NULL\n    )"
+  },
+  {
+    "type": "index",
+    "name": "entry_topics_topic",
+    "tbl_name": "entry_topics",
+    "sql": "CREATE INDEX entry_topics_topic ON entry_topics(topic)"
+  },
+  {
+    "type": "table",
     "name": "session_writes",
     "tbl_name": "session_writes",
     "sql": "CREATE TABLE session_writes (\n      session_id TEXT PRIMARY KEY,\n      at TEXT NOT NULL\n    )"
@@ -103,6 +115,12 @@
   },
   {
     "type": "index",
+    "name": "sqlite_autoindex_entry_topics_1",
+    "tbl_name": "entry_topics",
+    "sql": null
+  },
+  {
+    "type": "index",
     "name": "sqlite_autoindex_session_writes_1",
     "tbl_name": "session_writes",
     "sql": null
@@ -112,5 +130,17 @@
     "name": "sqlite_autoindex_slots_1",
     "tbl_name": "slots",
     "sql": null
+  },
+  {
+    "type": "index",
+    "name": "sqlite_autoindex_topic_sorts_1",
+    "tbl_name": "topic_sorts",
+    "sql": null
+  },
+  {
+    "type": "table",
+    "name": "topic_sorts",
+    "tbl_name": "topic_sorts",
+    "sql": "CREATE TABLE topic_sorts (\n      slot TEXT PRIMARY KEY REFERENCES slots(key),\n      at TEXT NOT NULL,\n      filed INTEGER NOT NULL\n    )"
   }
 ]

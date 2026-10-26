@@ -20,7 +20,8 @@ type masterRow struct {
 }
 
 // testdata/schema.json is sqlite_master of a database the Electron app's
-// store created (node:sqlite, SQLite 3.53).
+// store created (node:sqlite, SQLite 3.53), with the topic tables added
+// since (ADR 0030).
 func TestTheSchemaIsTheElectronApps(t *testing.T) {
 	var want []masterRow
 	if err := json.Unmarshal(must[[]byte](t)(os.ReadFile("testdata/schema.json")), &want); err != nil {
@@ -212,7 +213,7 @@ console.log(JSON.stringify({ listed, found, usage, summaries, added: added.entry
 
 	ts := must[*Store](t)(OpenStore(tsDir))
 	defer ts.Close()
-	corrections := must[[]Entry](t)(ts.Corrections([]Slot{project, GlobalSlot}, CorrectionSliceCaps))
+	corrections := must[[]Entry](t)(ts.Corrections([]Slot{project, GlobalSlot}, ProjectCorrectionCaps))
 	if len(corrections) != 1 || corrections[0].ID != got.Added.ID || corrections[0].Text != "Use pnpm, not npm" {
 		t.Fatalf("%+v", corrections)
 	}

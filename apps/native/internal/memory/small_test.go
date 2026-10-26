@@ -145,6 +145,21 @@ func TestMarkdownRendersTheWholeFile(t *testing.T) {
 	eq(t, got, want)
 }
 
+func TestMarkdownListsEachTopicAfterTheCore(t *testing.T) {
+	got := RenderMarkdown(GlobalSlot, []Entry{
+		{ID: "aaaaaaaa", Scope: ScopeGlobal, Category: CategoryInsight, Day: "2026-10-01", Text: "WSL2 on win.myhome", Topic: "Home network"},
+		{ID: "bbbbbbbb", Scope: ScopeGlobal, Category: CategoryPreference, Day: "2026-10-02", Text: "terse"},
+		{ID: "cccccccc", Scope: ScopeGlobal, Category: CategoryInsight, Day: "2026-10-03", Text: "PolarDB is 1.7 TiB", Topic: "Anlan cloud"},
+		{ID: "dddddddd", Scope: ScopeGlobal, Category: CategoryCorrection, Day: "2026-10-04", Text: "no kubectl on production", Topic: "Anlan cloud"},
+	})
+	want := "## Preferences\n\n- terse (`bbbbbbbb`, 2026-10-02)\n\n" +
+		"## Topic: Anlan cloud\n\n- correction: no kubectl on production (`dddddddd`, 2026-10-04)\n- insight: PolarDB is 1.7 TiB (`cccccccc`, 2026-10-03)\n\n" +
+		"## Topic: Home network\n\n- insight: WSL2 on win.myhome (`aaaaaaaa`, 2026-10-01)\n"
+	if !strings.HasSuffix(got, want) {
+		t.Fatalf("%s", got)
+	}
+}
+
 func TestParseTranscriptKeepsPromptsAndProseOnly(t *testing.T) {
 	jsonl := strings.Join([]string{
 		`{"type":"session_start","id":"s","cwd":"/w"}`,
