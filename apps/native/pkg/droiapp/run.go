@@ -44,6 +44,16 @@ type Options struct {
 	Brand brand.Brand
 	// Extensions are what the app adds to Droi.
 	Extensions []extension.Extension
+	// OwnFactoryHome runs the Daemon on a Factory home in the app's data
+	// folder, <data>/factory/.factory, instead of the droid CLI's ~/.factory:
+	// the CLI's login does not count as the app's, and the app's Sessions,
+	// settings, skills and MCP servers are its own.
+	OwnFactoryHome bool
+	// HiddenSettings are the ids of Droi's Settings sections the app leaves
+	// out: "account", "general", "notifications", "defaults", "memory",
+	// "worktrees", "computer", "remote", "usage" or "advanced". About stays.
+	// A link to a section left out opens the first one shown.
+	HiddenSettings []string
 }
 
 // hostUnsupported is why `droi host` does not run on goos, "" where it does:
@@ -85,6 +95,7 @@ func Run(o Options) {
 				Executable:         executable(),
 				Overlay:            exts.overlay,
 				AppendSystemPrompt: exts.systemPrompt,
+				OwnFactoryHome:     o.OwnFactoryHome,
 			}))
 		}
 		if cmd := exts.command(os.Args[1]); cmd != nil {
@@ -109,13 +120,18 @@ func Run(o Options) {
 	}
 
 	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
+	factoryRoot := ""
+	if o.OwnFactoryHome {
+		factoryRoot = filepath.Join(userData, "factory")
+	}
 	var h *host.Host
 	h = host.New(host.Config{
-		UserData:   userData,
-		Home:       home,
-		Version:    version,
-		Env:        os.Getenv,
-		Executable: executable(),
+		UserData:    userData,
+		Home:        home,
+		Version:     version,
+		Env:         os.Getenv,
+		Executable:  executable(),
+		FactoryRoot: factoryRoot,
 		ScriptModels: func() []string {
 			return prefs.ScriptModels.Get(userPrefs)
 		},
@@ -210,8 +226,10 @@ func Run(o Options) {
 			FactoryAppRunning: host.FactoryAppRunning,
 			MenuBar:           bar.shell(),
 
-			Pages:        exts.pages,
-			SettingsTabs: exts.settingsTabs,
+			Pages:          exts.pages,
+			SettingsTabs:   exts.settingsTabs,
+			SignIn:         exts.signIn,
+			HiddenSettings: o.HiddenSettings,
 		})
 		a.SetLanguageChanged(func() {
 			mygo.App.SetLocale(string(l10n.Code()))

@@ -103,7 +103,7 @@ type usageCard struct {
 // usageTabShown: Settings has the Usage tab once the Patched Droid runs the
 // Daemon, since only then does the Key Pool serve its requests.
 func (a *App) usageTabShown() bool {
-	return a.cfg.Host != nil && a.cfg.Host.PatchedDroidState().Enabled
+	return a.cfg.Host != nil && !a.settingHidden("usage") && a.cfg.Host.PatchedDroidState().Enabled
 }
 
 func (a *App) keyPool() *keypool.Pool {

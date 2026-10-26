@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -35,6 +36,9 @@ type Options struct {
 	// host.Config's fields of the same names, Overlay given the Host.
 	Overlay            func(h *host.Host) host.OverlayOptions
 	AppendSystemPrompt func() string
+	// OwnFactoryHome runs the Daemon on a Factory home of the Host's own,
+	// <ConfigDir>/factory/.factory, instead of the droid CLI's ~/.factory.
+	OwnFactoryHome bool
 	// Out gets the pairing link and, when Terminal is set, its QR code.
 	Out      io.Writer
 	Terminal bool
@@ -69,6 +73,9 @@ func Run(ctx context.Context, o Options) error {
 		Executable: o.Executable,
 
 		AppendSystemPrompt: o.AppendSystemPrompt,
+	}
+	if o.OwnFactoryHome {
+		cfg.FactoryRoot = filepath.Join(cfg.UserData, "factory")
 	}
 	if o.Overlay != nil {
 		// Read when the Daemon starts, which is after New.

@@ -33,8 +33,13 @@ func TestExtensionsJoin(t *testing.T) {
 		Pages:        []extension.Page{{ID: "p2"}},
 		SettingsTabs: []extension.SettingsTab{{ID: "s"}},
 	}
-	c := extension.Extension{SystemPrompt: func() string { return "Wiki has the runbooks." }}
-	x := newExtensions([]extension.Extension{a, b, c})
+	signedIn := ""
+	c := extension.Extension{
+		SystemPrompt: func() string { return "Wiki has the runbooks." },
+		SignIn:       func(*ui.Context, extension.Env) { signedIn = "c" },
+	}
+	d := extension.Extension{SignIn: func(*ui.Context, extension.Env) { signedIn = "d" }}
+	x := newExtensions([]extension.Extension{a, b, c, d})
 	o := x.overlay(nil)
 	if len(o.MCPServers) != 2 || o.MCPServers["db"].Autonomy != "low" {
 		t.Errorf("overlay %+v", o)
@@ -50,6 +55,15 @@ func TestExtensionsJoin(t *testing.T) {
 	}
 	if len(x.pages) != 2 || x.pages[1].ID != "p2" || len(x.settingsTabs) != 1 {
 		t.Errorf("pages %v, tabs %v", x.pages, x.settingsTabs)
+	}
+	if x.signIn == nil {
+		t.Fatal("no sign-in page")
+	}
+	if x.signIn(nil, extension.Env{}); signedIn != "c" {
+		t.Errorf("sign-in page of %q, want the first's", signedIn)
+	}
+	if newExtensions(nil).signIn != nil {
+		t.Error("a sign-in page without an extension")
 	}
 }
 

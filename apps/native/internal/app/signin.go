@@ -62,6 +62,10 @@ func (a *App) signInPage(c *ui.Context) {
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Sign in")).Fill().Background(t.Background).TextColor(t.Foreground).Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).DragWindow()
 		ui.Column(c).Grow(1).MinHeight(0).ClipY().Children(func() {
+			if a.cfg.SignIn != nil {
+				a.cfg.SignIn(c, a.extensionEnv())
+				return
+			}
 			ui.Column(c).Fill().Center().PaddingX(k.Px(24)).Children(func() {
 				ui.Column(c).FillWidth().MaxWidth(k.Px(340)).Gap(k.Px(24)).Children(func() {
 					ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {

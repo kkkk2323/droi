@@ -18,8 +18,11 @@ We decided:
   - `Pages`: sidebar rows under Automations that open a page in the main panel; `SettingsTabs`: Settings sections in Droi's groups or one of their own. Both draw with an `extension.Env` (the Kit, the Controller, the Host, preferences).
   - `ToolViews` and `Components`: how a tool's calls and a json-render element type of its own show in a Session (`sessionview.RegisterToolView`, `sessionview.RegisterComponent`), for query results as tables and charts.
   - `Icons` (`icons.Register`) and `Chinese` (`l10n.Add`).
+  - `SignIn`: the page that fills the window while the Host has nothing to authenticate with, in place of Droi's "Sign in with Factory" page, between its top strip and its Settings button. A company build signs its people in its own way (its own identity provider, say) and hands the Host a credential, an API key through `Host.SetAPIKey`. The first extension's is used.
+- **A company build can keep its Factory data apart** (`Options.OwnFactoryHome`), as WeCom Droi does (ADR 0022): the Daemon runs on `<data>/factory/.factory`. The droid CLI's login, which the Host prefers to an API key, then does not stand in for the credential the app hands the Host, and the app's Sessions, settings, skills and MCP servers are not the CLI's or Droi's.
+- **It can leave Droi's Settings sections out** (`Options.HiddenSettings`, by id): Account, say, where a Factory sign-in would take the place of the key the app handed the Host. About stays; a link to a section left out opens the first one shown, and an extension's section may take its id.
 - **Dashboards draw with `pkg/dashkit`,** the Usage tab's cards, metrics, meters, controls and charts, moved out of `internal/app`.
-- `droi host` takes the same brand and the extensions' Overlay and SystemPrompt.
+- `droi host` takes the same brand, the extensions' Overlay and SystemPrompt, and `OwnFactoryHome`.
 
 ## Considered Options
 
@@ -32,4 +35,4 @@ We decided:
 - `pkg/droiapp`, `pkg/extension`, `pkg/brand`, `pkg/mcpserver` and `pkg/dashkit` are an API, tagged with each release as ADR 0022's packages are.
 - Registrations (`RegisterToolView`, `RegisterComponent`, `icons.Register`, `l10n.Add`, `brand.Set`) are process-wide and happen in `droiapp.Run`, before anything is drawn.
 - A new page, section or tool view needs no change to Droi; a new kind of seam does, and is added here first.
-- Key Pool, Patched Droid and Magpie stay Droi's; a company build that wants none of them leaves them off in Settings.
+- Key Pool, Patched Droid and Magpie stay Droi's; a company build that wants none of them leaves them off in Settings, or leaves Advanced and Usage out.

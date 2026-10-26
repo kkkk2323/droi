@@ -133,6 +133,12 @@ type Config struct {
 	Pages []extension.Page
 	// SettingsTabs are an app's own Settings sections.
 	SettingsTabs []extension.SettingsTab
+	// SignIn, optional, is an app's own sign-in page, drawn in place of
+	// Droi's (extension.Extension.SignIn).
+	SignIn func(c *ui.Context, env extension.Env)
+	// HiddenSettings are the ids of Droi's Settings sections the app leaves
+	// out; About stays.
+	HiddenSettings []string
 }
 
 // App is the window's state, which lasts from frame to frame.
