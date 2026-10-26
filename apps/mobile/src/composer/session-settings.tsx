@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: space.lg,
     marginLeft: space.sm,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
   },
   star: { padding: space.sm },
 })

@@ -189,6 +189,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: space.lg,
     marginHorizontal: space.sm,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
   },
 })

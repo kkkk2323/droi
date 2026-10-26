@@ -52,5 +52,5 @@ export function ThinkingSection({
 
 const styles = StyleSheet.create({
   trigger: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
-  panel: { borderLeftWidth: 1, paddingLeft: space.md, paddingBottom: space.sm },
+  panel: { borderLeftWidth: 2, paddingLeft: space.md, paddingBottom: space.sm },
 })

@@ -119,8 +119,13 @@ export const COLORS: Record<ThemeName, Colors> = {
   'solarized-light': solarizedLight,
 }
 
-/** The reference's --radius is a 10px basis: lg 10, md 8, sm 6. */
-export const radius = { sm: 6, md: 8, lg: 10, xl: 14, full: 999 } as const
+/**
+ * Corner radii by what they round, the same roles the desktop app's views
+ * use (pkg/theme, pkg/kit): a badge 6, a control 8, a block such as a
+ * tool's detail or a code listing 10, a card, group or bubble 12, the
+ * composer 18. A circle or a full pill takes full.
+ */
+export const radius = { sm: 6, md: 8, lg: 10, xl: 12, composer: 18, full: 999 } as const
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const
 

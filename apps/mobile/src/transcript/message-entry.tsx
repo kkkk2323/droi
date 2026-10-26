@@ -130,8 +130,8 @@ const styles = StyleSheet.create({
   user: { alignItems: 'flex-end', gap: space.sm, paddingTop: space.xl, paddingBottom: space.md },
   bubble: {
     maxWidth: '92%',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.xl,
+    borderWidth: 1,
     paddingHorizontal: space.md,
     paddingVertical: space.md,
   },
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   // Blocks stay close; a new turn gets a little more room above it.
   assistant: { gap: space.sm, paddingBottom: space.sm },
@@ -149,6 +149,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 240,
     borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
 })

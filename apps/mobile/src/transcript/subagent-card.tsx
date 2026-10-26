@@ -179,7 +179,7 @@ function plural(count: number, word: string): string {
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: radius.md, overflow: 'hidden' },
+  card: { borderWidth: 1, borderRadius: radius.xl, overflow: 'hidden' },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   badge: {
     width: 32,
     height: 32,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -212,10 +212,10 @@ const styles = StyleSheet.create({
     gap: space.sm,
     minHeight: 44,
     paddingHorizontal: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
   },
   details: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     gap: space.sm,

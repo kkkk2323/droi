@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   },
   detail: {
     borderWidth: 1,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     marginVertical: space.xs,
     overflow: 'hidden',
     paddingBottom: space.xs,
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   line: { flexDirection: 'row', paddingRight: space.md },
   gutter: { paddingHorizontal: space.sm, opacity: 0.6 },
   footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     paddingHorizontal: space.sm,
     paddingTop: space.xs,
     gap: 2,
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     height: 220,
     marginHorizontal: space.sm,
     marginBottom: space.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
+    borderWidth: 1,
+    borderRadius: radius.xl,
   },
 })

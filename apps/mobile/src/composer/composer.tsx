@@ -23,7 +23,7 @@ import { useColors } from '../ui/use-colors'
 const NO_ITEMS: SlashItem[] = []
 
 /** The composer card's corner radius; the shelf above it sits inside the corners. */
-export const COMPOSER_RADIUS = radius.lg
+export const COMPOSER_RADIUS = radius.composer
 
 export interface Submission {
   text: string
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     marginLeft: space.md,
     marginTop: 2,
     paddingLeft: 6,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
   },
   tagRemove: { paddingHorizontal: 5, height: 26, justifyContent: 'center' },
   inputAfterTag: { paddingLeft: space.sm },
@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
   spacer: { flex: 1 },
   suggestions: {
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     paddingVertical: space.xs,
   },
   option: {
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   menu: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     marginTop: space.xs,
     paddingVertical: space.xs,
   },
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   round: {
     width: 40,
     height: 40,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },

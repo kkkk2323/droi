@@ -328,9 +328,7 @@ function MarkdownTable({ table, context }: { table: Table; context: Context }) {
             role="row"
             style={[
               styles.tableRow,
-              r > 0
-                ? { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }
-                : null,
+              r > 0 ? { borderTopColor: colors.border, borderTopWidth: 1 } : null,
             ]}
           >
             {row.children.map((cell, c) => (
@@ -354,13 +352,13 @@ function MarkdownTable({ table, context }: { table: Table; context: Context }) {
 const styles = StyleSheet.create({
   blocks: { gap: space.sm },
   prose: { lineHeight: 22 },
-  quote: { borderLeftWidth: 2, paddingLeft: space.md, gap: space.sm },
+  quote: { borderLeftWidth: 3, paddingLeft: space.md, gap: space.sm },
   list: { gap: space.xs },
   listItem: { flexDirection: 'row', gap: space.sm },
   bullet: { minWidth: 14, lineHeight: 22 },
   listBody: { flex: 1, gap: space.xs },
-  rule: { height: StyleSheet.hairlineWidth, marginVertical: space.sm },
-  code: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  rule: { height: 1, marginVertical: space.sm },
+  code: { borderRadius: radius.lg, borderWidth: 1, overflow: 'hidden' },
   codeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -370,7 +368,7 @@ const styles = StyleSheet.create({
   },
   codeText: { padding: space.md, lineHeight: 18 },
   mathBlock: { flexGrow: 1, justifyContent: 'center', paddingVertical: space.xs },
-  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md },
+  table: { borderWidth: 1, borderRadius: radius.sm },
   tableRow: { flexDirection: 'row' },
   tableCell: { paddingHorizontal: space.sm, paddingVertical: space.xs },
 })

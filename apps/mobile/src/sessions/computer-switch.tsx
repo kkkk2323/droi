@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   menu: {
     paddingHorizontal: space.md,
     paddingBottom: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   row: {
     flexDirection: 'row',

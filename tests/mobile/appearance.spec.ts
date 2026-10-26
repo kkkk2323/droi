@@ -74,3 +74,14 @@ test('text size changes the transcript and persists', async ({ page, fakeDaemon 
   await relaunch(page)
   await expect(message).toHaveCSS('font-size', '17.8125px')
 })
+
+// The geometry the native app shares: the composer's 18px corners and the
+// 1px hairline of its card. The Synara pass (ADR 0025) once rounded the
+// phone's composer to 10px while the desktop app kept 18.
+test('the composer takes the desktop radius and hairline', async ({ page, fakeDaemon }) => {
+  await pairPhone(page, fakeDaemon)
+  await pickSession(page, /Deploy/)
+  const composer = page.getByRole('form', { name: 'Message composer' })
+  await expect(composer).toHaveCSS('border-top-left-radius', '18px')
+  await expect(composer).toHaveCSS('border-top-width', '1px')
+})

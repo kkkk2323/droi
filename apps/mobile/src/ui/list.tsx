@@ -208,8 +208,8 @@ const styles = StyleSheet.create({
   switchLabel: { flex: 1, lineHeight: 21, paddingVertical: space.sm },
   section: { gap: space.sm },
   title: { paddingHorizontal: space.md, lineHeight: 18 },
-  group: { borderRadius: radius.md, borderWidth: 1, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: space.md },
+  group: { borderRadius: radius.xl, borderWidth: 1, overflow: 'hidden' },
+  divider: { height: 1, marginHorizontal: space.md },
   footer: { paddingHorizontal: space.md, lineHeight: 19 },
   row: {
     flexDirection: 'row',

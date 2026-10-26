@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -305,6 +305,6 @@ const styles = StyleSheet.create({
     gap: space.sm,
     paddingVertical: space.md,
   },
-  line: { flex: 1, height: StyleSheet.hairlineWidth },
+  line: { flex: 1, height: 1 },
   boundaryText: { flexShrink: 1, textAlign: 'center' },
 })

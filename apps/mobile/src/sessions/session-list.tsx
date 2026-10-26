@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: space.lg,
     marginHorizontal: space.sm,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
   },
   row: {
     gap: 3,
@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: space.sm,
     paddingVertical: space.sm,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
   },
   indent: { paddingLeft: space.md },
   more: { minHeight: 36, justifyContent: 'center', paddingHorizontal: space.sm },

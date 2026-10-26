@@ -155,6 +155,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: space.sm,
     paddingVertical: space.sm,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
   },
 })
