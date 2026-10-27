@@ -57,7 +57,19 @@ npx expo prebuild --platform ios --no-install
 xcodebuild -workspace ios/Droi.xcworkspace -scheme Droi -configuration Release \
   -destination "id=$device" -derivedDataPath build -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic -quiet build
-xcrun devicectl device install app --device "$device" build/Build/Products/Release-iphoneos/Droi.app
+app=build/Build/Products/Release-iphoneos/Droi.app
+# When pod install cannot reach React Native's prebuilt core, it builds React Native
+# from source without a word, but Expo's precompiled modules still load React.framework:
+# that app quits at launch. Refuse to install a build missing a framework it loads.
+missing=$(for fw in "$app"/Frameworks/*.framework; do otool -L "$fw/$(basename "$fw" .framework)"; done |
+  sed -n 's|^[[:space:]]*@rpath/\([^/]*\.framework\)/.*|\1|p' | sort -u |
+  while read -r name; do [ -d "$app/Frameworks/$name" ] || echo "$name"; done)
+if [ -n "$missing" ]; then
+  echo "The build lacks $(echo $missing), which its frameworks load, so it would quit at launch." >&2
+  echo "pod install likely could not reach React Native's prebuilt core; check the network and run this again." >&2
+  exit 1
+fi
+xcrun devicectl device install app --device "$device" "$app"
 xcrun devicectl device process launch --device "$device" com.kkkk2323.droi >/dev/null ||
   echo "Installed but not launched: is the iPhone locked, or the developer not trusted yet?"
 echo "Installed Droi $(node -p 'require("../native/mygo.json").version') on the iPhone."
