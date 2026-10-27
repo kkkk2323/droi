@@ -71,10 +71,10 @@ func (v *View) answerFailed(err error) {
 }
 
 // promptCard is the frame both cards share: rounded-xl, a hairline, and the
-// faint ink fill the reference gives a raised card.
+// card colour of the composer they stand in for.
 func (v *View) promptCard(c *ui.Context, key, label string, fn func()) {
 	k, t := v.look()
-	ui.Column(c.Key(key)).Role(ui.RoleGroup).Label(label).Radius(k.Px(12)).Border(1, t.Border).Background(t.Foreground.Alpha(0.02)).
+	ui.Column(c.Key(key)).Role(ui.RoleGroup).Label(label).Radius(k.Px(12)).Border(1, t.Border).Background(t.Card).
 		Padding(k.Px(10), k.Px(12), k.Px(8), k.Px(12)).Children(fn)
 }
 
