@@ -190,8 +190,8 @@ importers:
         specifier: workspace:*
         version: link:../packages/daemon-layer
       '@droi/fake-daemon':
-        specifier: github:kkkk2323/droid-sdk-go#v0.3.0&path:/fake-daemon
-        version: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/7e456a4a121086dfe5cd378f6e811a084eab783b#path:/fake-daemon
+        specifier: github:kkkk2323/droid-sdk-go#v0.3.1&path:/fake-daemon
+        version: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/826d5605493dccc0a37349d738ac5eb446efb48e#path:/fake-daemon
       '@factory/droid-sdk':
         specifier: 0.9.1
         version: 0.9.1(patch_hash=caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7)
@@ -664,8 +664,8 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/7e456a4a121086dfe5cd378f6e811a084eab783b#path:/fake-daemon':
-    resolution: {path: /fake-daemon, tarball: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/7e456a4a121086dfe5cd378f6e811a084eab783b}
+  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/826d5605493dccc0a37349d738ac5eb446efb48e#path:/fake-daemon':
+    resolution: {path: /fake-daemon, tarball: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/826d5605493dccc0a37349d738ac5eb446efb48e}
     version: 0.1.0
 
   '@egjs/hammerjs@2.0.17':
@@ -5068,7 +5068,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/7e456a4a121086dfe5cd378f6e811a084eab783b#path:/fake-daemon':
+  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/826d5605493dccc0a37349d738ac5eb446efb48e#path:/fake-daemon':
     dependencies:
       '@factory/droid-sdk': 0.9.1(patch_hash=caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7)
       '@types/ws': 8.18.1
@@ -6081,9 +6081,7 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
