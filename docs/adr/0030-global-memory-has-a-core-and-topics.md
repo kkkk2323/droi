@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0031
 ---
 
 # Global Memory has a core and topics
+
+_Superseded by ADR 0031: Memory is one folder of Session Summaries, Memory Notes and a Memory Summary, with no Global Memory, core or topics._
 
 Global Memory filled up with facts that are not about the user. On 2026-10-26 one heavy user's had 134 entries in 39k of its 40k characters; a consolidation took it from 41k to 39k. About half the entries were about one subject each (a company's cloud accounts, a home network, a hobby), saved from chats without a project, which have no Project Memory to write to. ADR 0010's consolidation could only move such an entry to a Project Memory that already existed, or remove it, and its prompt said to keep an entry when unsure, so it kept them. It also compared entries only within one category, so the same fact saved as a preference and as a correction survived. Worse, the user's 23 Global corrections took 5.5k characters, and the SessionStart hook injected the newest within 2,000 characters shared with the Project Memory: 8 of them reached a Session, and the other 15 never did.
 

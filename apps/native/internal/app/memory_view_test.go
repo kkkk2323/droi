@@ -1,38 +1,38 @@
 package app
 
 import (
+	"errors"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 type fakeMemory struct {
-	mu           sync.Mutex
-	ov           memorywork.Overview
-	consolidated []string
-	reset        int
-	fail         error
+	mu      sync.Mutex
+	status  memorywork.Status
+	updates int
+	reset   int
+	fail    error
 }
 
-func (m *fakeMemory) Overview() (memorywork.Overview, error) {
+func (m *fakeMemory) Status() (memorywork.Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.ov, nil
+	return m.status, nil
 }
-func (m *fakeMemory) Consolidate(w string) (memorywork.Result, error) {
+func (m *fakeMemory) UpdateNow() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.consolidated = append(m.consolidated, w)
-	if m.fail != nil {
-		return memorywork.Result{}, m.fail
-	}
-	return memorywork.Result{Applied: 2, Rejected: 1}, nil
+	m.updates++
+	return m.fail
 }
 func (m *fakeMemory) ResetPrompts() error { m.reset++; return nil }
 func (m *fakeMemory) Folder() string      { return "/tmp/memory" }
@@ -46,40 +46,82 @@ func memoryHarness(t *testing.T, m *fakeMemory, on bool) (*harness, *host.Host) 
 	return h, h0
 }
 
-func TestSettingsMemoryListsEachMemory(t *testing.T) {
-	m := &fakeMemory{ov: memorywork.Overview{LoggedSince: "2026-09-01T10:00:00Z", Rows: []memorywork.Row{
-		{Workspace: "", Entries: 3, Chars: 420, SoftLimit: 40000},
-		{Workspace: "/Users/dev/acme-web", Entries: 12, Chars: 210000, SoftLimit: 200000, OverSoftLimit: true, Searches: 5, EmptySearches: 2, NeverFound: 4},
-	}}}
-	h, _ := memoryHarness(t, m, true)
+func TestSettingsMemoryShowsTheMemorySummaryAndUpdatesNow(t *testing.T) {
+	m := &fakeMemory{status: memorywork.Status{SummaryBytes: 6_240, SummaryUpdatedAt: "2026-10-27T09:00:00Z", Summaries: 42, Waiting: 3, Notes: 1}}
+	h, h0 := memoryHarness(t, m, true)
+	_ = h0.Settings.Update(func(s *host.Settings) { s.MemoryModel = host.OptString("gemini-3.8-flash") })
 	h.a.Go(Route{Name: "settings", Tab: "memory"})
 	h.settle()
-	for _, want := range []string{"Global Memory", "3 entries · 420 of 40k characters · never consolidated", "/Users/dev/acme-web",
-		"12 entries · 210k of 200k characters", "5 searches since", "2 found nothing", "4 entries never found",
-		"Over the size limit. Consolidate to continue saving new entries."} {
+	for _, want := range []string{"Session summary model", "Memory Summary model", "Memory Summary", "6.2 KB of 10 KB · updated " + localTime("2026-10-27T09:00:00Z"),
+		"42 Session summaries · 3 Sessions waiting · 1 Memory Note", "No Memory Sessions yet"} {
 		if !h.hasText(want) {
 			t.Errorf("missing %q in %q", want, h.tt.Texts())
 		}
 	}
-	h.click("Consolidate /Users/dev/acme-web")
-	h.until("the consolidation's result", func() bool {
-		return h.hasText("Consolidated 2; 1 kept unchanged because the model’s output failed validation.")
-	})
-	if len(m.consolidated) != 1 || m.consolidated[0] != "/Users/dev/acme-web" {
-		t.Errorf("consolidated %q", m.consolidated)
+	h.click("Update Memory now")
+	h.until("the update's result", func() bool { return h.hasText("Memory is up to date.") })
+	if m.updates != 1 {
+		t.Errorf("%d updates", m.updates)
 	}
+	m.fail = errors.New("The Daemon is not running.")
+	h.click("Update Memory now")
+	h.until("the failure", func() bool { return h.hasText("The Daemon is not running.") })
 	h.tt.Scroll(refW/2, refH/2, 0, 2000)
 	h.settle()
 	h.click("Reset prompts to default")
 	h.frame()
-	if m.reset != 1 || !h.hasText("back to Droi’s") {
+	if m.reset != 1 || !h.hasText("The prompts are back to Droi’s.") {
 		t.Error("Reset prompts did nothing")
+	}
+}
+
+func TestSettingsMemorySaysWhyThereIsNoSummaryAndWhenAnUpdateFailed(t *testing.T) {
+	m := &fakeMemory{status: memorywork.Status{LastError: "The Memory Summary must start with the line v1.", LastErrorAt: "2026-10-27T09:00:00Z"}}
+	h, _ := memoryHarness(t, m, true)
+	h.a.Go(Route{Name: "settings", Tab: "memory"})
+	h.settle()
+	if !h.hasText("Not written yet. Droi writes it from Sessions once they have been left for a while; Update now takes the ones left for ten minutes.") {
+		t.Errorf("no empty state: %q", h.tt.Texts())
+	}
+	if !h.hasText("The last update failed (" + localTime("2026-10-27T09:00:00Z") + "): The Memory Summary must start with the line v1. Droi tries again within the hour.") {
+		t.Errorf("no failure: %q", h.tt.Texts())
+	}
+}
+
+func TestAMemorySessionOpensFromSettings(t *testing.T) {
+	m := &fakeMemory{status: memorywork.Status{SummaryBytes: 100, Runs: []memory.RunRecord{
+		{SessionID: "11111111-1111-4111-8111-111111111111", Title: "Memory: update the Memory Summary", Kind: memory.RunMemorySummary, Model: "gemini-3.8-flash", StartedAt: "2026-10-27T09:00:00Z", EndedAt: "2026-10-27T09:01:00Z"},
+		{SessionID: "22222222-2222-4222-8222-222222222222", Title: "Memory: summarize Fix login", Kind: memory.RunSessionSummary, Model: "gemini-3.8-flash", StartedAt: "2026-10-27T08:59:00Z", EndedAt: "2026-10-27T09:00:00Z", Error: "The reply did not match the schema."},
+	}}}
+	h, _ := memoryHarness(t, m, true)
+	h.a.Go(Route{Name: "settings", Tab: "memory"})
+	h.settle()
+	h.tt.Scroll(refW/2, refH/2, 0, 2000)
+	h.settle()
+	for _, want := range []string{"Memory Sessions", "Memory: summarize Fix login", "gemini-3.8-flash · " + localTime("2026-10-27T08:59:00Z"), "Failed: The reply did not match the schema."} {
+		if !h.hasText(want) {
+			t.Errorf("missing %q in %q", want, h.tt.Texts())
+		}
+	}
+	h.click("Open Memory: summarize Fix login")
+	if r := h.a.Route(); r.Name != "session" || r.SessionID != "22222222-2222-4222-8222-222222222222" {
+		t.Fatalf("went to %+v", r)
+	}
+}
+
+func TestTheSessionListLeavesOutMemorySessions(t *testing.T) {
+	got := summariesOf([]protocol.DaemonAvailableSessionInfo{
+		{SessionID: "work", Title: "Fix login"},
+		{SessionID: "memory", Title: "Memory: summarize Fix login", Tags: []protocol.SessionTag{{Name: sessions.MemoryTag}}},
+	})
+	if len(got) != 1 || got[0].SessionID != "work" {
+		t.Fatalf("listed %+v", got)
 	}
 }
 
 func clickMemorySwitch(h *harness, asked func() bool) {
 	h.t.Helper()
-	clickSwitchBeside(h, []string{"Off: Droid starts", "On: Droid can record"}, asked)
+	clickSwitchBeside(h, []string{"Off: Droid starts", "On: Droi summarizes"}, asked)
 }
 
 // clickSwitchBeside clicks a settings switch named like its section in the
@@ -112,9 +154,6 @@ func TestTheMemorySwitchAsksBeforeRestarting(t *testing.T) {
 	h, h0 := memoryHarness(t, &fakeMemory{}, false)
 	h.a.Go(Route{Name: "settings", Tab: "memory"})
 	h.settle()
-	if !h.hasText("Nothing remembered yet") {
-		t.Errorf("no empty state: %q", h.tt.Texts())
-	}
 	clickMemorySwitch(h, func() bool { return h.hasText("Turn Memory on? This restarts the Daemon") })
 	if h0.Settings.Get().MemoryEnabled {
 		t.Fatal("the switch did not ask first")
@@ -132,71 +171,13 @@ func TestTheMemorySwitchAsksBeforeRestarting(t *testing.T) {
 	}
 }
 
-func TestALargeProjectMemoryIsAnnouncedOnce(t *testing.T) {
-	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
-		{Workspace: "/Users/dev/acme-web", Entries: 12, Chars: 210000, SoftLimit: 200000, OverSoftLimit: true},
-	}}}
-	h, _ := memoryHarness(t, m, true)
-	h.until("the card", func() bool { return h.hasText("acme-web’s Memory is large") })
-	h.click("Open Memory settings")
-	if r := h.a.Route(); r.Name != "settings" || r.Tab != "memory" {
-		t.Fatalf("went to %+v", r)
+func TestTheMemorySummaryModelIsTheSessionSummaryModelUntilPicked(t *testing.T) {
+	st := host.Settings{MemoryModel: host.OptString("gemini-3.8-flash")}
+	if st.MemorySummaryModelOrDefault() != "gemini-3.8-flash" {
+		t.Fatal(st.MemorySummaryModelOrDefault())
 	}
-	h.a.Go(Route{Name: "new"})
-	h.settle()
-	if h.hasText("Memory is large") {
-		t.Fatal("announced again")
-	}
-}
-
-func TestSettingsMemoryShowsTheGlobalMemorysCoreAndTopics(t *testing.T) {
-	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
-		{Workspace: "", Entries: 134, Chars: 39000, SoftLimit: 40000, Layers: &memory.Layers{
-			CoreEntries: 52, CoreChars: 14000, CoreCorrectionChars: 2600, Filed: 82,
-			Topics: []memory.TopicSummary{{Topic: "Anlan cloud", Entries: 18, Chars: 7000}, {Topic: "Home network", Entries: 15, Chars: 5000}, {Topic: "Fortune telling", Entries: 6, Chars: 1500}, {Topic: "Writing", Entries: 5, Chars: 900}, {Topic: "Games", Entries: 2, Chars: 400}},
-		}},
-	}}}
-	h, _ := memoryHarness(t, m, true)
-	h.a.Go(Route{Name: "settings", Tab: "memory"})
-	h.settle()
-	want := "Core: 52 entries, corrections 2.6k of 3k characters · Topics: Anlan cloud 18, Home network 15, Fortune telling 6, Writing 5 and 1 more"
-	if !h.hasText(want) {
-		t.Errorf("missing %q in %q", want, h.tt.Texts())
-	}
-	h.click("Consolidate Global Memory")
-	h.until("the consolidation's result", func() bool {
-		return h.hasText("Consolidated 2 groups; 1 kept unchanged because the model’s output failed validation.")
-	})
-}
-
-func TestTheSortIntoTopicsIsAnnouncedOnce(t *testing.T) {
-	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
-		{Workspace: "", Entries: 134, Chars: 39000, SoftLimit: 40000, Layers: &memory.Layers{CoreEntries: 52, Filed: 82, SortedAt: "2026-10-26T12:00:00Z",
-			Topics: []memory.TopicSummary{{Topic: "Anlan cloud", Entries: 18, Chars: 7000}, {Topic: "Home network", Entries: 15, Chars: 5000}}}},
-	}}}
-	h, _ := memoryHarness(t, m, true)
-	h.until("the card", func() bool { return h.hasText("Global Memory is sorted into topics") })
-	if !h.hasText("52 entries stay in the core; 82 entries went to 2 topics. A topic’s entries are found by search instead of shown in every Session.") {
-		t.Errorf("texts %q", h.tt.Texts())
-	}
-	h.click("Open Memory settings")
-	if r := h.a.Route(); r.Name != "settings" || r.Tab != "memory" {
-		t.Fatalf("went to %+v", r)
-	}
-	h.a.Go(Route{Name: "new"})
-	h.settle()
-	if h.hasText("Global Memory is sorted into topics") {
-		t.Fatal("announced again")
-	}
-}
-
-func TestASortThatFiledNothingIsNotAnnounced(t *testing.T) {
-	m := &fakeMemory{ov: memorywork.Overview{Rows: []memorywork.Row{
-		{Workspace: "", Entries: 3, Chars: 400, SoftLimit: 40000, Layers: &memory.Layers{CoreEntries: 3, SortedAt: "2026-10-26T12:00:00Z", Topics: []memory.TopicSummary{}}},
-	}}}
-	h, _ := memoryHarness(t, m, true)
-	h.settle()
-	if h.hasText("Global Memory is sorted into topics") {
-		t.Fatal("announced a sort that filed nothing")
+	st.MemorySummaryModel = host.OptString("claude-haiku-5.5")
+	if st.MemorySummaryModelOrDefault() != "claude-haiku-5.5" || st.MemoryModelOrDefault() != "gemini-3.8-flash" {
+		t.Fatal(st)
 	}
 }

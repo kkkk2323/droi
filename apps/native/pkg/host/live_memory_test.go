@@ -21,10 +21,10 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
-// TestLiveMemory is tests/live/memory.spec.ts against the native app: a
-// real Daemon started with the Runtime Overlay, the app's own binary as the
-// Memory Server and the hook. Only with FACTORY_API_KEY set; DROI_LIVE_MODEL
-// picks the model and FACTORY_API_BASE_URL the proxy.
+// TestLiveMemory runs Memory against a real Daemon started with the Runtime
+// Overlay, the app's own binary as the Memory Server and the hook. Only with
+// FACTORY_API_KEY set; DROI_LIVE_MODEL picks the model and
+// FACTORY_API_BASE_URL the proxy.
 func TestLiveMemory(t *testing.T) {
 	key := os.Getenv("FACTORY_API_KEY")
 	if key == "" {
@@ -81,9 +81,12 @@ func TestLiveMemory(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
+	dial := func(ctx context.Context) (*droid.Client, error) {
+		return droid.Dial(ctx, droid.Options{URL: fmt.Sprintf("ws://127.0.0.1:%d", port), Credential: &droid.Credential{APIKey: key}})
+	}
 	var c *droid.Client
 	for i := 0; i < 150 && c == nil; i++ {
-		c, _ = droid.Dial(ctx, droid.Options{URL: fmt.Sprintf("ws://127.0.0.1:%d", port), Credential: &droid.Credential{APIKey: key}})
+		c, _ = dial(ctx)
 		if c == nil {
 			time.Sleep(200 * time.Millisecond)
 		}
@@ -93,7 +96,6 @@ func TestLiveMemory(t *testing.T) {
 	}
 	defer c.Close()
 
-	sawState := false
 	ask := func(prompt string) string {
 		t.Helper()
 		// At Off the Daemon asks before every tool call, Memory's included; nobody answers here.
@@ -139,20 +141,29 @@ func TestLiveMemory(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal("the turn did not end")
 		}
-		// SessionEnd removes the hook's per-Session prompt count; look before closing.
-		if st, _ := os.ReadDir(filepath.Join(memDir, "state")); len(st) > 0 {
-			sawState = true
-		}
 		_, _ = c.CloseSession(ctx, protocol.CloseSessionParams{SessionID: init.SessionID})
 		return text.String()
 	}
+	otter := regexp.MustCompile(`(?i)otter`)
 
+	// Asked to remember, Droid writes a Memory Note.
 	reply := ask(`From now on I want every answer to end with the word "otter". Remember this preference for future sessions, then reply "ok".`)
 	t.Logf("reply: %q", reply)
+	notes, _ := filepath.Glob(filepath.Join(memDir, memory.NotesDir, "*.md"))
+	var noted []string
+	for _, f := range notes {
+		b, _ := os.ReadFile(f)
+		noted = append(noted, string(b))
+	}
+	if !otter.MatchString(strings.Join(noted, "\n")) {
+		t.Fatalf("the preference was not noted: %q", noted)
+	}
+	if started, _ := memory.ReadStarted(memDir); len(started) == 0 {
+		t.Error("the SessionStart hook recorded no Session")
+	}
 
 	// The list dates a Session by its file, which gets every hook run the
-	// Daemon records: opening the Session again must not move it. The wait
-	// lets the SessionEnd of the close land first.
+	// Daemon records: opening the Session again must not move it.
 	time.Sleep(2 * time.Second)
 	listed, err := c.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{})
 	if err != nil || len(listed.Sessions) == 0 {
@@ -171,69 +182,71 @@ func TestLiveMemory(t *testing.T) {
 			t.Errorf("opening the Session moved its date from %v to %v", before, s.UpdatedAt)
 		}
 	}
-	store, err := memory.OpenStore(memDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	global, _ := store.List(memory.GlobalSlot, "")
-	project, _ := store.List(memory.ProjectSlot(workspace), "")
-	var all []string
-	for _, e := range append(global, project...) {
-		all = append(all, e.Text)
-	}
-	if !regexp.MustCompile(`(?i)otter`).MatchString(strings.Join(all, "\n")) {
-		t.Fatalf("the preference was not saved: %q", all)
-	}
-	if _, err := store.Add(memory.ProjectSlot(workspace), memory.CategoryCorrection, "The staging database is called stage-db, never prod."); err != nil {
-		t.Fatal(err)
-	}
-	store.Close()
 
+	// A new Session starts with the Memory Summary and the Memory Notes it
+	// has not taken in yet.
+	summary := "v1\n\n## User Profile\n\nA developer.\n\n## User preferences\n\n- The staging database is called stage-db, never prod.\n\n## General Tips\n\n## What's in Memory\n"
+	if reason := memory.CheckSummary(summary); reason != "" {
+		t.Fatal(reason)
+	}
+	if err := os.WriteFile(filepath.Join(memDir, memory.SummaryFile), []byte(summary), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	quoted := ask("Without calling any tools, quote verbatim the <memory-context> block you were given when this session started.")
 	if !strings.Contains(quoted, "stage-db") {
-		t.Errorf("the SessionStart hook did not inject the correction: %q", quoted)
+		t.Errorf("the SessionStart hook did not show the Memory Summary: %q", quoted)
 	}
-	nudged := ask("不对。Without calling any tools, quote verbatim every <memory-context> block attached to this message of mine, not the one from the start of the session.")
-	if !strings.Contains(nudged, "record the correction") {
-		t.Errorf("no UserPromptSubmit nudge: %q", nudged)
-	}
-	if !sawState {
-		t.Error("the hook kept no per-Session state")
+	if !otter.MatchString(quoted) {
+		t.Errorf("the SessionStart hook did not show the new Memory Note: %q", quoted)
 	}
 
-	// A Memory Session consolidates on the real Daemon and is archived.
-	slot := memory.ProjectSlot(workspace)
-	store, err = memory.OpenStore(memDir)
+	// A pass on the real Daemon summarizes those Sessions and folds the
+	// summaries and the note into the Memory Summary, in archived Memory
+	// Sessions.
+	sessionPrompt, err := memorywork.ReadPrompt(memDir, memorywork.PromptSessionSummary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Tests run with pnpm test.", "Run the tests with `pnpm test`."} {
-		if _, err := store.Add(slot, memory.CategoryConvention, text); err != nil {
-			t.Fatal(err)
+	memoryPrompt, err := memorywork.ReadPrompt(memDir, memorywork.PromptMemorySummary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := memorywork.Work{
+		Dir:           memDir,
+		Run:           memorywork.NewRunner(dial),
+		Models:        memorywork.Models{SessionSummary: model, MemorySummary: model},
+		SessionPrompt: sessionPrompt,
+		MemoryPrompt:  memoryPrompt,
+		Home:          fake,
+		Log:           func(s string) { t.Log(s) },
+	}
+	if err := w.Pass(ctx, 0, true); err != nil {
+		t.Fatal(err)
+	}
+	st := memory.LoadState(memDir)
+	for _, r := range st.Runs {
+		t.Logf("Memory Session %q on %s: %s", r.Title, r.Model, r.Error)
+		if r.Error != "" {
+			t.Errorf("%s failed: %s", r.Title, r.Error)
 		}
 	}
-	prompt, err := memorywork.ReadPrompt(memDir, memorywork.PromptConsolidation)
-	if err != nil {
-		t.Fatal(err)
+	if written, _ := filepath.Glob(filepath.Join(memDir, memory.SessionSummariesDir, "*.md")); len(written) == 0 {
+		t.Error("no Session Summary was written")
 	}
-	run := memorywork.NewRunner(func(ctx context.Context) (*droid.Client, error) {
-		return droid.Dial(ctx, droid.Options{URL: fmt.Sprintf("ws://127.0.0.1:%d", port), Credential: &droid.Credential{APIKey: key}})
-	})
-	outcomes, err := memorywork.Consolidate(ctx, memorywork.Work{Store: store, Run: run, ModelID: model, Prompt: prompt, Home: fake}, slot)
-	store.Close()
-	if err != nil {
-		t.Fatal(err)
+	got := memory.ReadSummary(memDir)
+	t.Logf("Memory Summary:\n%s", got)
+	if reason := memory.CheckSummary(got); reason != "" {
+		t.Errorf("the Memory Summary is not valid: %s", reason)
 	}
-	t.Logf("consolidation: %+v", outcomes)
-	if len(outcomes) != 1 || !outcomes[0].OK {
-		t.Errorf("the convention slice was not consolidated: %+v", outcomes)
+	if !otter.MatchString(got) {
+		t.Error("the Memory Summary left out the Memory Note")
 	}
 	yes := true
 	list, err := c.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{IncludeArchived: &yes})
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
+	archived := map[string]bool{}
 	for _, s := range list.Sessions {
 		var v struct {
 			Title      string
@@ -243,13 +256,18 @@ func TestLiveMemory(t *testing.T) {
 		b, _ := json.Marshal(s)
 		_ = json.Unmarshal(b, &v)
 		for _, tag := range v.Tags {
-			if tag.Name == "droi.memory" && strings.Contains(v.Title, "Memory: consolidate") && v.ArchivedAt != nil {
-				found = true
+			if tag.Name == "droi.memory" && v.ArchivedAt != nil {
+				switch {
+				case strings.HasPrefix(v.Title, "Memory: summarize"):
+					archived[memory.RunSessionSummary] = true
+				case strings.HasPrefix(v.Title, "Memory: update the Memory Summary"):
+					archived[memory.RunMemorySummary] = true
+				}
 			}
 		}
 	}
-	if !found {
+	if !archived[memory.RunSessionSummary] || !archived[memory.RunMemorySummary] {
 		b, _ := json.Marshal(list.Sessions)
-		t.Errorf("no archived Memory Session: %.1500s", b)
+		t.Errorf("archived Memory Sessions %v: %.1500s", archived, b)
 	}
 }

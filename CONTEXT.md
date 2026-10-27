@@ -93,31 +93,27 @@ _Avoid_: settings override, daemon config, `--settings` file
 ### Memory
 
 **Memory**:
-The durable facts Droi keeps on a computer for Droid to recall in later Sessions: what the user prefers, what a Workspace's conventions are, what went wrong before. The Daemon knows nothing of it; the Host supplies it, and each Host keeps its own.
-_Avoid_: context, notes, knowledge base, history
+What Droi keeps on a computer of the user's earlier Sessions for Droid to draw on in later ones: the Memory Summary, the Session Summaries and the Memory Notes, in one folder. The Daemon knows nothing of it; the Host keeps it, and each Host keeps its own.
+_Avoid_: context, knowledge base, history, Project Memory, Global Memory
 
-**Memory Entry**:
-One fact in Memory, with a category (failure, correction, insight, preference, convention or tool-quirk) and the day it was recorded.
-_Avoid_: observation, note, record
+**Memory Summary**:
+The short document every Session on Droi's Daemon starts with: who the user is, how they like to work, and pointers to the Session Summaries of recent work.
+_Avoid_: memory file, profile, MEMORY.md
 
-**Project Memory**:
-The Memory that belongs to one Workspace. A Scratch Workspace has none: only Global Memory applies in a Scratch Session.
-_Avoid_: project notes, repo memory
+**Session Summary**:
+The record of one earlier Session, written from its transcript once the Session has been left for a while.
+_Avoid_: rollout summary, recap, extraction
 
-**Global Memory**:
-The Memory that applies in every Workspace on the computer, such as how the user likes to be answered. Its entries without a Memory Topic are its core, whose corrections every Session is shown.
-_Avoid_: user profile, USER.md, preferences
-
-**Memory Topic**:
-One subject outside any project that Global Memory entries are filed under, such as a service the user runs or a hobby. Its entries are found by search, not shown in every Session.
-_Avoid_: tag, label, category (a category is what kind of fact an entry is)
+**Memory Note**:
+What the user explicitly asked Droid to remember, forget or correct, kept as they asked it until the Memory Summary takes it in.
+_Avoid_: memory entry, fact, correction
 
 **Memory Server**:
-The MCP Server Droi carries and attaches only to its own Daemon, through which Droid reads and writes Memory. It is not one of the user's MCP Servers: the Memory setting is its only switch.
+The MCP Server Droi carries and attaches only to its own Daemon, through which Droid reads Memory and saves Memory Notes. It is not one of the user's MCP Servers: the Memory setting is its only switch.
 _Avoid_: memory MCP, memory plugin, memory tool (a tool is one of the things it offers)
 
 **Memory Session**:
-A Session the Host opens on the Daemon for Memory work of its own, consolidating a Memory, sorting the Global Memory into Memory Topics or extracting entries from a finished Session, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
+A Session the Host opens on the Daemon for Memory work of its own, writing a Session Summary or updating the Memory Summary, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
 _Avoid_: hidden session, background session, consolidation job
 
 ### Testing

@@ -4,6 +4,8 @@ status: accepted
 
 # Memory is Droi's own capability, attached to its Daemon through the Runtime Overlay
 
+_Partly superseded by ADR 0031: Memory is one folder of Session Summaries, Memory Notes and a Memory Summary, written by the Host from finished Sessions. There is no SQLite store, Project or Global Memory, category, size limit or consolidation; Droid writes only a Memory Note, when the user asks; and the only hook is SessionStart. Memory as Droi's own capability, attached to its Daemon alone through the Runtime Overlay, stands._
+
 Users wanted Droid to remember across Sessions: what they prefer, what a Workspace's conventions are, what went wrong before. The Daemon has no such feature. Existing tools (claude-mem, pi-hermes-memory, memem, pmb) all converge on the same shape, a local store plus lifecycle hooks, but each is bound to another agent's plugin layout and none targets the Daemon.
 
 We make Memory a Droi feature that ships with the Desktop Shell and applies only to Droi's Daemon. `droid daemon --settings <path>` takes a Runtime Overlay: a settings file merged for that process alone, which accepts `mcp.mcpServers`, `mcp.persistentPermissions`, `hooks` and general keys such as `blockOnMcpLoad` and `mcpAutonomyOverrides` (droid 0.229.0, `RuntimeSettingsOverlay.ts`). The Shell writes that file when the Memory setting is on and passes it at spawn; the droid CLI's `~/.factory/mcp.json` and `hooks.json` are never touched, and a Daemon started without the overlay has no Memory at all. Turning the setting off or on restarts the Daemon, the same path a credential change already takes.

@@ -13,16 +13,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
-const (
-	// MemorySessionTag marks a Memory Session (ADR 0011), as
-	// packages/daemon-layer/src/memory-session.ts names it.
-	MemorySessionTag = "droi.memory"
-	// ScratchTag marks a Session in a Scratch Workspace (ADR 0008).
-	ScratchTag = "droi.scratch"
-)
+// MemorySessionTag marks a Memory Session (ADR 0011), as
+// packages/daemon-layer/src/memory-session.ts names it.
+const MemorySessionTag = "droi.memory"
 
 // SessionsDir is ~/.factory/sessions, or .factory/sessions in
 // FACTORY_HOME_OVERRIDE, which droid takes for the home folder. A nil
@@ -71,38 +68,32 @@ func SessionSettingsFile(transcriptFile string) string {
 	return transcriptFile
 }
 
-// hasSessionTag reads the Session's tags from its settings file; none when the
-// file is absent or unreadable.
-func hasSessionTag(transcriptFile, tag string) bool {
+// SessionTags are the names of the Session's tags, from its settings file;
+// none when the file is absent or unreadable.
+func SessionTags(transcriptFile string) []string {
 	b, err := os.ReadFile(SessionSettingsFile(transcriptFile))
 	if err != nil {
-		return false
+		return nil
 	}
-	var parsed map[string]any
+	var parsed struct {
+		Tags []struct {
+			Name string `json:"name"`
+		} `json:"tags"`
+	}
 	if json.Unmarshal(b, &parsed) != nil {
-		return false
+		return nil
 	}
-	tags, _ := parsed["tags"].([]any)
-	for _, t := range tags {
-		if m, ok := t.(map[string]any); ok && m["name"] == tag {
-			return true
-		}
+	var out []string
+	for _, t := range parsed.Tags {
+		out = append(out, t.Name)
 	}
-	return false
+	return out
 }
 
 // IsMemorySessionTranscript says whether the transcript belongs to a Memory
 // Session, from the tags in its settings file.
 func IsMemorySessionTranscript(transcriptFile string) bool {
-	return hasSessionTag(transcriptFile, MemorySessionTag)
-}
-
-// IsScratchSessionTranscript says whether the transcript belongs to a Session
-// in a Scratch Workspace. Such a Session has no Project Memory: its folder is
-// made for it and trashed with it, so nothing saved under that path would be
-// found again.
-func IsScratchSessionTranscript(transcriptFile string) bool {
-	return hasSessionTag(transcriptFile, ScratchTag)
+	return slices.Contains(SessionTags(transcriptFile), MemorySessionTag)
 }
 
 var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
@@ -122,15 +113,6 @@ func FindSessionTranscript(dir, sessionID string) string {
 		if _, err := os.Stat(file); err == nil {
 			return file
 		}
-	}
-	return ""
-}
-
-// FindSessionWorkspace is the Workspace of a Session the Daemon keeps files
-// for; "" when unknown.
-func FindSessionWorkspace(dir, sessionID string) string {
-	if file := FindSessionTranscript(dir, sessionID); file != "" {
-		return ReadSessionWorkspace(file)
 	}
 	return ""
 }

@@ -21,9 +21,6 @@ const (
 	MemoryHookCommand   = "memory-hook"
 )
 
-// HookEvents are the Session events Memory's hook runs at.
-var HookEvents = []string{"SessionStart", "UserPromptSubmit", "PreCompact", "SessionEnd"}
-
 const hookTimeoutSeconds = 10
 
 // sessionStartMatcher leaves out "resume": the Daemon writes every hook run
@@ -132,7 +129,7 @@ func mergeNew[V any](a, b map[string]V) map[string]V {
 
 // BuildRuntimeOverlay is the settings file the Daemon merges for its own
 // process with --settings: the Memory Server pre-approved and loaded before
-// the first turn, and the hook at every Session event but a resume. Shape as droid
+// the first turn, and the hook at SessionStart but a resume. Shape as droid
 // 0.229.0 reads it: MCP under "mcp", general keys at the top level.
 func BuildRuntimeOverlay(m MemoryAttachment) map[string]any {
 	return BuildRuntimeOverlayWith(m, OverlayOptions{})
@@ -205,11 +202,8 @@ func memoryOverlay(m MemoryAttachment) map[string]any {
 	// so it does not depend on the Daemon passing the overlay's env to them.
 	hookCommand := hookCommandLine(runtime.GOOS, m.MemoryDir, m.Executable)
 	command := []any{map[string]any{"type": "command", "command": hookCommand, "timeout": hookTimeoutSeconds}}
-	hooks := map[string]any{}
-	for _, e := range HookEvents {
-		hooks[e] = []any{map[string]any{"hooks": command}}
-	}
-	hooks["SessionStart"] = []any{map[string]any{"matcher": sessionStartMatcher, "hooks": command}}
+	// Memory's hook runs at SessionStart only (ADR 0031).
+	hooks := map[string]any{"SessionStart": []any{map[string]any{"matcher": sessionStartMatcher, "hooks": command}}}
 	return map[string]any{
 		"env": env,
 		// Otherwise a Session's first turn can start before the Memory Server is connected.
@@ -224,7 +218,7 @@ func memoryOverlay(m MemoryAttachment) map[string]any {
 				},
 			},
 			// The Daemon classifies an unknown MCP tool as high impact, so anything
-			// lower would make every Session stop and ask before a Memory write.
+			// lower would make every Session stop and ask before a Memory call.
 			"persistentPermissions": map[string]any{
 				"servers": map[string]any{MemoryServerName: map[string]any{"approvedAt": m.ApprovedAt, "impactLevel": "high"}},
 			},

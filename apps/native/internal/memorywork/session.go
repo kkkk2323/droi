@@ -1,7 +1,7 @@
-// Package memorywork is the Host's side of Memory (ADR 0011): the Memory
-// Sessions that consolidate a Memory or extract entries from a finished
-// Session, run on the Host's own Daemon in hidden Sessions, and what
-// Settings → Memory shows.
+// Package memorywork is the Host's side of Memory (ADR 0031): the Memory
+// Sessions that summarize a finished Session and keep the Memory Summary,
+// run on the Host's own Daemon in Sessions no Client lists (ADR 0011), and
+// what Settings → Memory shows.
 package memorywork
 
 import (
@@ -28,23 +28,35 @@ type Request struct {
 	Input string
 	// Schema is the JSON Schema of the reply.
 	Schema map[string]any
+	// ReasoningEffort is what the Session asks of the model; "" is low. The
+	// Daemon uses the model's default where the model has no such effort.
+	ReasoningEffort protocol.ReasoningEffort
 }
 
-// Run runs one Memory Session and answers its structured reply, still
-// unvalidated.
-type Run func(ctx context.Context, r Request) (json.RawMessage, error)
+// Reply is a Memory Session's structured reply, still unvalidated, the
+// Session, which the user can open, and the model it ran on: the Daemon runs
+// a model it does not know as its default instead.
+type Reply struct {
+	JSON      json.RawMessage
+	SessionID string
+	Model     string
+}
+
+// Run runs one Memory Session. A Session that started and failed still
+// answers its id.
+type Run func(ctx context.Context, r Request) (Reply, error)
 
 // Dial connects to the Daemon.
 type Dial func(ctx context.Context) (*droid.Client, error)
 
 // NewRunner runs Memory Sessions on the Daemon that dial reaches: tagged so
-// no Client lists them, never waiting on a permission prompt, answering in
-// JSON, and archived once their one turn has ended.
+// no Client lists them, with no tool but the structured answer, answering in
+// JSON, and archived and closed once their one turn has ended.
 func NewRunner(dial Dial) Run {
-	return func(ctx context.Context, r Request) (json.RawMessage, error) {
+	return func(ctx context.Context, r Request) (Reply, error) {
 		c, err := dial(ctx)
 		if err != nil {
-			return nil, err
+			return Reply{}, err
 		}
 		defer c.Close()
 		schema := map[string]json.RawMessage{}
@@ -54,6 +66,12 @@ func NewRunner(dial Dial) Run {
 		}
 		system, _ := json.Marshal(map[string]string{"type": "preset", "preset": "droid", "append": r.Prompt})
 		yes := true
+		effort := r.ReasoningEffort
+		if effort == "" {
+			// A model's default effort may be high: gemini-3.8-flash thought
+			// for five minutes over 33 entries to sort.
+			effort = protocol.ReasoningEffortLow
+		}
 		init, err := c.InitializeSession(ctx, protocol.InitializeSessionParams{
 			MachineID:                    "local",
 			Cwd:                          r.Cwd,
@@ -64,17 +82,22 @@ func NewRunner(dial Dial) Run {
 			SystemPrompt:                 system,
 			AutoRejectPermissionRequests: &yes,
 			StructuredOutputFormat:       &protocol.OutputFormat{Type: "json_schema", Schema: schema},
-			// A model's default effort may be high: gemini-3.8-flash thought
-			// for five minutes over 33 entries to sort. The Daemon falls back
-			// to the default for a model without low.
-			ReasoningEffort: protocol.ReasoningEffortLow,
+			ReasoningEffort:              effort,
+			// Asked not to, gemini-3.8-flash still tried to count bytes with
+			// Script and Execute, and the refused call ended its turn.
+			RestrictToolIDs: []string{"StructuredOutput"},
 		})
 		if err != nil {
-			return nil, err
+			return Reply{}, err
 		}
 		id := init.SessionID
 		defer func() {
-			_, _ = c.ArchiveSession(context.WithoutCancel(ctx), protocol.ArchiveSessionParams{SessionID: id})
+			bg := context.WithoutCancel(ctx)
+			_, _ = c.ArchiveSession(bg, protocol.ArchiveSessionParams{SessionID: id})
+			// An open Session keeps its place in the Daemon, which runs only so
+			// many at once: a pass of Memory Sessions left open would keep the
+			// user's own from starting.
+			_, _ = c.CloseSession(bg, protocol.CloseSessionParams{SessionID: id})
 		}()
 
 		done := make(chan turnEnd, 1)
@@ -95,19 +118,21 @@ func NewRunner(dial Dial) Run {
 			}
 		})
 		defer unsub()
+		started := Reply{SessionID: id, Model: init.Settings.ModelID}
 		if _, err := c.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: r.Input}); err != nil {
-			return nil, err
+			return started, err
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return started, ctx.Err()
 		case <-c.Done():
-			return nil, errors.New(l10n.L("Memory Session failed: the Daemon went away"))
+			return started, errors.New(l10n.L("Memory Session failed: the Daemon went away"))
 		case end := <-done:
 			if end.failure != "" {
-				return nil, errors.New(l10n.L("Memory Session failed: %s", end.failure))
+				return started, errors.New(l10n.L("Memory Session failed: %s", end.failure))
 			}
-			return end.reply, nil
+			started.JSON = end.reply
+			return started, nil
 		}
 	}
 }

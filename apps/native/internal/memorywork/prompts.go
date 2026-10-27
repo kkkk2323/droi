@@ -1,17 +1,20 @@
 package memorywork
 
 import (
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 )
 
 // The Memory Sessions' prompts. The app ships them embedded and copies them
 // into the Memory folder on first use; from then on the copies are read, so a
-// user can edit them, and "Reset prompts to default" copies them again.
+// user can edit them, and "Reset prompts to default" copies them again. They
+// adapt Codex's memory v2 prompts (openai/codex, codex-rs/memories/write/
+// templates/memories, Apache-2.0): stage_one_system_v2.md and
+// consolidation_v2.md, answering JSON instead of editing files.
 //
 //go:embed prompts/*.md
 var shippedPrompts embed.FS
@@ -19,37 +22,24 @@ var shippedPrompts embed.FS
 // earlierPrompts are the SHA-256 of every prompt an earlier release shipped.
 // A copy that still matches one was never edited, so it gets the shipped
 // prompt in its place; add the old hash here whenever a prompt changes.
-var earlierPrompts = map[PromptName][]string{
-	PromptConsolidation: {
-		"4bb5601ee72d78e6bda5dc963e473bf1c50f1f569b9f953766352641f281336f",
-		"faf60cf205c7bbdec46d9938e6734ccccff2693cc7a6cfbaee10db7a8931a17c",
-	},
-	PromptExtraction: {
-		"9ebfdf21dc5443d17547dd9468e50f8652eb12694ea29f6cc7eff16a17e06dee",
-		"4598bd35c89e1c67c7d3a41a53003e6089416ae7cd2ce89ba1cde7307303e0ae",
-		"c3ae72bfe21ece1e4d2d94b25fd25e3efdf23f258049d8882aa7de616d4a978f",
-	},
-}
+var earlierPrompts = map[PromptName][]string{}
 
 func isEarlierPrompt(name PromptName, text []byte) bool {
-	sum := sha256.Sum256(text)
-	return slices.Contains(earlierPrompts[name], hex.EncodeToString(sum[:]))
+	return slices.Contains(earlierPrompts[name], memory.Hash(text))
 }
 
 // PromptName names one Memory Session prompt.
 type PromptName string
 
 const (
-	PromptConsolidation PromptName = "consolidation"
-	PromptExtraction    PromptName = "extraction"
-	PromptSorting       PromptName = "sorting"
+	PromptSessionSummary PromptName = "session-summary"
+	PromptMemorySummary  PromptName = "memory-summary"
 )
 
 // PromptFiles are the prompts' file names in the Memory folder.
 var PromptFiles = map[PromptName]string{
-	PromptConsolidation: "consolidation-prompt.md",
-	PromptExtraction:    "extraction-prompt.md",
-	PromptSorting:       "sorting-prompt.md",
+	PromptSessionSummary: "session-summary-prompt.md",
+	PromptMemorySummary:  "memory-summary-prompt.md",
 }
 
 func copyPrompt(memoryDir string, name PromptName) error {
@@ -87,7 +77,7 @@ func ResetPrompts(memoryDir string) error {
 	if err := os.MkdirAll(memoryDir, 0o777); err != nil {
 		return err
 	}
-	for _, name := range []PromptName{PromptConsolidation, PromptExtraction, PromptSorting} {
+	for _, name := range []PromptName{PromptSessionSummary, PromptMemorySummary} {
 		if err := copyPrompt(memoryDir, name); err != nil {
 			return err
 		}

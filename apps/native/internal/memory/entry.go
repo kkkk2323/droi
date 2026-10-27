@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// ServeMain is the Memory Server's entry (ADR 0010): the stdio MCP Server the
+// ServeMain is the Memory Server's entry (ADR 0031): the stdio MCP Server the
 // Runtime Overlay registers as droi-memory, serving the Memory folder named by
 // DROI_MEMORY_DIR. It answers the process's exit code.
 func ServeMain() int {
@@ -32,47 +32,24 @@ func serveMain(lookupEnv func(string) (string, bool), stdin io.Reader, stdout, s
 		}
 		return known
 	}
-	store, err := OpenStore(dir)
-	if err != nil {
-		fmt.Fprintf(stderr, "droi-memory: %s\n", jsError(err))
-		return 1
-	}
-	defer store.Close()
-	err = Serve(stdin, stdout, ServerOptions{
-		Store: store,
-		WorkspaceOf: func(sessionID string) string {
-			if t := transcriptOf(sessionID); t != "" {
-				return ReadSessionWorkspace(t)
-			}
-			return ""
-		},
+	err := Serve(stdin, stdout, ServerOptions{
+		Dir: dir,
 		IsMemorySession: func(sessionID string) bool {
 			t := transcriptOf(sessionID)
 			return t != "" && IsMemorySessionTranscript(t)
 		},
-		IsScratchSession: func(sessionID string) bool {
-			t := transcriptOf(sessionID)
-			return t != "" && IsScratchSessionTranscript(t)
-		},
-		OnWrite: func(slot Slot) {
-			if _, err := ExportMarkdown(store, slot); err != nil {
-				// The database has the write; a stale export is only cosmetic.
-				fmt.Fprintf(stderr, "droi-memory: export failed: %s\n", jsError(err))
-			}
-		},
 		Stderr: stderr,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "droi-memory: %s\n", jsError(err))
+		fmt.Fprintf(stderr, "droi-memory: Error: %s\n", err)
 		return 1
 	}
 	return 0
 }
 
-// HookMain is Memory's hook entry (ADR 0010): the Runtime Overlay runs it for
-// SessionStart, UserPromptSubmit, PreCompact and SessionEnd with the event as
-// JSON on stdin. A hook must never break a Session, so it always answers 0
-// and a failure only goes to stderr.
+// HookMain is Memory's hook entry (ADR 0031): the Runtime Overlay runs it at
+// SessionStart with the event as JSON on stdin. A hook must never break a
+// Session, so it always answers 0 and a failure only goes to stderr.
 func HookMain() int {
 	return hookMain(os.LookupEnv, os.Stdin, os.Stdout, os.Stderr)
 }
@@ -97,15 +74,10 @@ func runHookEntry(lookupEnv func(string) (string, bool), stdin io.Reader, stdout
 	if err != nil {
 		return err
 	}
-	store, err := OpenStore(dir)
-	if err != nil {
-		return err
+	// What the hook prints still reaches the Session when the record failed.
+	out, err := RunHook(dir, input)
+	if _, werr := io.WriteString(stdout, out); werr != nil && err == nil {
+		err = werr
 	}
-	defer store.Close()
-	out, err := RunHook(store, input)
-	if err != nil {
-		return err
-	}
-	_, err = io.WriteString(stdout, out)
 	return err
 }

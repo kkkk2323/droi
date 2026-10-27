@@ -1,6 +1,8 @@
-// Every Memory write is scanned first: Memory is plain text on disk, exported
-// to Markdown and shown to the model in later Sessions, so a credential that
-// slipped into an entry would leak everywhere at once.
+// Memory is plain text on disk, shown to the model in later Sessions, so a
+// credential that slipped into it would leak everywhere at once: a Memory
+// Note with one is refused, and Session Summaries and the Memory Summary
+// have theirs redacted, as does the conversation a Session Summary is
+// written from.
 
 package memory
 
@@ -22,6 +24,17 @@ var secretPatterns = []struct {
 	{"a bearer token", jsRegexp(`(?i)\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*`)},
 	{"a password", jsRegexp(`(?i)\b(?:password|passwd|pwd)\s*[=:]\s*\S+`)},
 	{"an API key or secret", jsRegexp(`(?i)\b(?:api[_-]?key|secret|access[_-]?token|auth[_-]?token)\s*[=:]\s*['"]?[A-Za-z0-9_\-./+]{16,}`)},
+}
+
+// Redacted stands in for a secret in what Memory writes.
+const Redacted = "[REDACTED_SECRET]"
+
+// RedactSecrets replaces every secret in text with Redacted.
+func RedactSecrets(text string) string {
+	for _, p := range secretPatterns {
+		text = p.pattern.ReplaceAllString(text, Redacted)
+	}
+	return text
 }
 
 // FindSecret says why the text may not be stored, or "" when it looks clean.
