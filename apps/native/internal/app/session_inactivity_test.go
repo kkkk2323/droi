@@ -21,6 +21,13 @@ func TestASessionTheDaemonCleanedUpTakesTheNextMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.until("the Session not loaded", func() bool { return h.ctl.Store().LoadState(id) == session.NotLoaded })
+	h.frame()
+	if !h.hasText("Context used") {
+		t.Fatal("the context meter went with the Session's worker")
+	}
+	if reqs, _ := h.d.Requests(); countMethod(reqs, "daemon.load_session") != 1 {
+		t.Fatal("drawing the footer loaded the Session again")
+	}
 
 	h.click("Message")
 	h.typeInto("still there?")
@@ -32,6 +39,16 @@ func TestASessionTheDaemonCleanedUpTakesTheNextMessage(t *testing.T) {
 	if _, err := h.d.WaitForRequest("daemon.load_session", 2); err != nil {
 		t.Fatalf("the Session was not loaded again: %v", err)
 	}
+}
+
+func countMethod(reqs []fakedaemon.Request, method string) int {
+	n := 0
+	for _, r := range reqs {
+		if r.Method == method {
+			n++
+		}
+	}
+	return n
 }
 
 // A Session whose view was dropped is forgotten by the Store, but the

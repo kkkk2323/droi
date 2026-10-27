@@ -687,23 +687,27 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 			})
 		}
 		ui.Spacer(c)
-		if loaded {
+		// A Session the Daemon cleaned up keeps its figures until the next
+		// message loads it again.
+		if loaded || v.Ready() {
 			v.speedMeter(c, s)
-			v.contextMeter(c, s)
+			v.contextMeter(c, s, loaded)
 		}
 	})
 }
 
 // contextMeter is the context window's fill as a ring and figures: what
 // the last model call sent, over the budget of the model's breakdown.
-func (v *sessionView) contextMeter(c *ui.Context, s *session.Session) {
+// The breakdown is read only while loaded: a call about a Session the
+// Daemon cleaned up loads it again.
+func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
 	model := s.Settings().ModelID
 	cs.mu.Lock()
 	budget, forModel := cs.budget, cs.budgetM
-	if forModel != model || (budget == nil && forModel == "") {
+	if loaded && (forModel != model || budget == nil && forModel == "") {
 		cs.budgetM = model
 		go func() {
 			cl, err := a.ctl.Client()
