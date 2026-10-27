@@ -140,8 +140,8 @@ no split.
 | `pkg/theme/`                                                                              | the design tokens (ADR 0025): the three themes, fonts, text sizes, the one tint                       |
 | `pkg/icons/`                                                                              | the Lucide icons the app draws (`scripts/gen-icons.mjs`)                                              |
 | `pkg/host/`                                                                               | the Host: Shell settings, Daemon supervisor, Factory sign-in, the droid CLI's login, Magpie's models  |
-| `internal/memory/`                                                                        | Memory's store (SQLite, the Electron app's schema), Memory Server, hook, Markdown export              |
-| `internal/memorywork/`                                                                    | Memory Sessions: consolidation, extraction, prompts, what Settings → Memory shows                     |
+| `internal/memory/`                                                                        | Memory's folder: the Memory Summary, Session Summaries, Memory Notes; Memory Server, hook             |
+| `internal/memorywork/`                                                                    | Memory Sessions: Session Summaries, the Memory Summary, the import, Settings → Memory's status        |
 | `pkg/gateway/`                                                                            | the Gateway for paired phones: proxy to the Daemon, pairing link, Scratch and session-file endpoints  |
 | `internal/computer/`                                                                      | the Computer preference: the Paired Computers remembered, the one followed, and checking a link       |
 | `internal/updates/`                                                                       | the in-app update: check, download, restart (MyGo's signed updates)                                   |

@@ -38,7 +38,7 @@ Droi is a Client of `droid daemon`, the Daemon in the Droid CLI. It shows and dr
 - **Magpie models**: with [Magpie](https://usemagpie.ai) running on this computer, its models join the model picker in a tab of their own, with no settings file to edit. Droi reads the gateway's model list and hands it to this computer's Daemon alone; the `droid` CLI keeps its own.
 - **New Sessions**: in a recent Workspace, another folder, or a new folder of its own; paste or drop images into the message.
 - **Around the Session**: slash commands, Skills and MCP Servers, the Workspace's Git changes, and "Open in" Finder or your editor.
-- **Memory**: Droi keeps what Droid learns about you and your Workspaces (conventions, tool quirks, past failures) and gives it back in later Sessions.
+- **Memory**: Droi summarizes your Sessions once you leave them and keeps a short Memory Summary that every new Session starts with: how you like to work and what you did before. There is nothing to tidy; ask Droid to remember something and it notes it.
 - **Phone access**: turn on Remote Access, scan the QR code with the Phone App. The phone talks to the Gateway on your Mac; your Factory credentials never leave it.
 - **Alerts**: a sound, a notification and an unread mark when a Session finishes or waits for you.
 - **Updates itself**: it checks every hour, downloads only what changed, checks the signature, and restarts once no Session is working.
@@ -88,7 +88,7 @@ Droi adds no agent of its own. All the work is done by Droid; Droi gives it a wi
 - **The Daemon**: Droi starts `droid daemon` from the Droid CLI and talks to it over the Daemon's own protocol through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go), a Go SDK for the Daemon. The Daemon owns every Session, so Sessions started in the CLI show up in Droi and the other way round.
 - **The login**: Droi hands its sign-in to the `droid` CLI, so both share one Factory login. More accounts get their own folder through `FACTORY_HOME_OVERRIDE` and still share your Skills, droids, MCP Servers, settings and Sessions.
 - **Droid's features**: the model list, reasoning effort, autonomy and tool mode come from the Daemon. Slash commands, Skills, MCP Servers, tool permission prompts, Droid's questions, Scripts, subagents and the task list all appear in the window.
-- **Memory**: Droi's own binary runs as an MCP Server for Droid, and Droid hooks (`PreCompact`, `SessionEnd`) ask it to save what the Session taught. Later Sessions get those facts back.
+- **Memory**: Droi's own binary runs as an MCP Server for Droid and as a `SessionStart` hook that gives each Session the Memory Summary. The Host summarizes finished Sessions in Sessions of its own on the Daemon and folds the summaries into the Memory Summary.
 - **Factory API base URL**: Droi passes `FACTORY_API_BASE_URL` to the Daemon, so you can route Droid's traffic through a local proxy.
 
 ## How it fits together

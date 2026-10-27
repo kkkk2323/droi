@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,49 +70,21 @@ func resolve(base, path string) string {
 	return filepath.Clean(path)
 }
 
-// MergeWorktrees moves the Project Memory recorded under a linked worktree,
-// before worktrees shared their main checkout's, into the main checkout's.
-// A worktree that is gone can no longer be traced and stays as it is.
-func (s *Store) MergeWorktrees() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r, err := s.conn.QueryContext(context.Background(), "SELECT key, workspace FROM slots WHERE key != ? AND workspace IS NOT NULL", globalKey)
+// WorkspaceOf is the Workspace a folder belongs to: the folder itself, or,
+// inside a linked git worktree, the same place in the main checkout, so that
+// a worktree's Sessions are summarized under their repository. A folder that
+// is gone keeps its path.
+func WorkspaceOf(cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(cwd)
 	if err != nil {
-		return err
+		return cwd
 	}
-	type move struct {
-		from string
-		to   Slot
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
 	}
-	var moves []move
-	for r.Next() {
-		var key, workspace string
-		if err := r.Scan(&key, &workspace); err != nil {
-			r.Close()
-			return err
-		}
-		if main := mainCheckout(workspace); main != workspace {
-			moves = append(moves, move{key, Slot{Scope: ScopeProject, Workspace: main}})
-		}
-	}
-	r.Close()
-	if err := r.Err(); err != nil {
-		return err
-	}
-	for _, m := range moves {
-		err := s.transaction(func() error {
-			if err := s.ensureSlot(m.to); err != nil {
-				return err
-			}
-			if _, err := s.exec("UPDATE entries SET slot = ? WHERE slot = ?", slotKey(m.to), m.from); err != nil {
-				return err
-			}
-			_, err := s.exec("DELETE FROM slots WHERE key = ?", m.from)
-			return err
-		})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return mainCheckout(real)
 }

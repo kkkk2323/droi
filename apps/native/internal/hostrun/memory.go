@@ -7,15 +7,14 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
-// StartMemory is the Host's side of Memory (ADR 0011): Settings → Memory,
-// consolidation, and the extractions the hook asks for, handled only while
-// Memory is on and the Daemon runs. Memory Sessions dial the Daemon
-// directly with the Host's credential, as this window does.
+// StartMemory is the Host's side of Memory (ADR 0031): Settings → Memory,
+// and the passes that summarize Sessions and keep the Memory Summary, run
+// only while Memory is on and the Daemon runs. Memory Sessions dial the
+// Daemon directly with the Host's credential, as this window does.
 func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controller {
 	dial := func(ctx context.Context) (*droid.Client, error) {
 		url, err := h.WaitForDaemonURL(ctx)
@@ -37,34 +36,31 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 			}
 			return run
 		},
-		ModelID:  func() string { return h.Settings.Get().MemoryModelOrDefault() },
+		Models: func() memorywork.Models {
+			st := h.Settings.Get()
+			return memorywork.Models{SessionSummary: st.MemoryModelOrDefault(), MemorySummary: st.MemorySummaryModelOrDefault()}
+		},
 		OnChange: changed,
 		Log:      func(s string) { log.Println("[memory]", s) },
 		Home:     home,
-		Sessions: memory.SessionsDir(nil),
 	})
 	var mu sync.Mutex
-	watching, running := false, false
+	on, up := false, false
 	follow := func() {
-		on := h.Settings.Get().MemoryEnabled
-		up := h.Daemon.State().URL() != ""
+		nowOn := h.Settings.Get().MemoryEnabled
+		nowUp := h.Daemon.State().URL() != ""
 		mu.Lock()
-		start, stop := on && !watching, !on && watching
-		back := on && up && !running
-		watching, running = on, up
+		start, stop, back := nowOn && !on, !nowOn && on, nowOn && nowUp && !up
+		on, up = nowOn, nowUp
 		mu.Unlock()
 		switch {
 		case stop:
-			m.Stop()
+			go m.Stop()
 		case start:
-			m.WatchRequests()
-		}
-		// Requests that waited while the Daemon was down.
-		if back && !start {
-			go m.ProcessRequests()
-		}
-		if on && up {
-			go m.SortTopics()
+			m.Start()
+		case back:
+			// The pass that waited for the Daemon.
+			m.Poke()
 		}
 	}
 	h.OnChange(follow)

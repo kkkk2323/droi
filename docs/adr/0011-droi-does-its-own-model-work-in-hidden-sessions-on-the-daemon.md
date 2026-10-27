@@ -4,6 +4,8 @@ status: accepted
 
 # Droi does its own model work in hidden Sessions on the Daemon
 
+_The Memory work changed with ADR 0031: Memory Sessions write Session Summaries and the Memory Summary instead of consolidating and extracting entries, and Settings → Memory can open them. How they run on the Daemon stands._
+
 Memory needs a model twice without a user in the loop: to consolidate a Project Memory that has grown past its soft limit, and to extract entries from a transcript when a Session ended without writing any (ADR 0010). The obvious tools were a `droid exec` child process, which starts a whole agent in a few seconds and leaves a session record, or a direct HTTP call to droid-proxy, which means reproducing the client signature and provider paths the proxy exists to hide.
 
 We use the Daemon Droi already runs. The Desktop Shell opens a Session with `daemon.initialize_session`, tagged `droi.memory`, with a `title`, `privacyLevel: "private"`, the model chosen in Settings → Memory, the task's prompt as the system prompt `append`, `autoRejectPermissionRequests: true` so it can never wait on a Prompt nobody will answer, and `structuredOutputFormat` so the result is JSON the Shell validates rather than prose it parses. Consolidation works one category slice at a time and the Shell accepts changes only to the ids it sent, so a wrong answer is a rejected slice, not lost data (pi-hermes lost eleven entries this way before adding the same guard). When the turn ends the Shell archives the Session with `daemon.archive_session`.

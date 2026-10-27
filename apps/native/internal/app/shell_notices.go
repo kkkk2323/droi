@@ -99,8 +99,6 @@ func (a *App) cornerCards(c *ui.Context) {
 	ui.Column(c).Absolute().Left(k.Px(16)).Bottom(k.Px(48)).Gap(k.Px(8)).Children(func() {
 		a.droidUpdatedCard(c)
 		a.patchedDroidUpdateCard(c)
-		a.memoryFullCard(c)
-		a.memoryTopicsCard(c)
 		a.updateCard(c)
 	})
 }

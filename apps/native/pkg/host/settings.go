@@ -17,8 +17,10 @@ import (
 	"sync"
 )
 
-// DefaultMemoryModel is the model Memory Sessions run on (ADR 0011).
-const DefaultMemoryModel = "glm-5.3-flash"
+// DefaultMemoryModel is the model Memory Sessions run on (ADR 0011, 0031):
+// of the four compared on real Sessions, the one whose summaries kept the
+// most of what the user said, at the lowest price.
+const DefaultMemoryModel = "claude-haiku-5-5"
 
 // Settings are the Shell settings, in the layout of the Desktop Shell's
 // settings.json (apps/desktop/src/main/shell-settings.ts).
@@ -38,7 +40,10 @@ type Settings struct {
 	PairingHost        *string `json:"pairingHost"`
 	ScratchFolder      *string `json:"scratchFolder"`
 	MemoryEnabled      bool    `json:"memoryEnabled"`
+	// MemoryModel writes Session Summaries; MemorySummaryModel keeps the
+	// Memory Summary, and is MemoryModel's when unset (ADR 0031).
 	MemoryModel        *string `json:"memoryModel"`
+	MemorySummaryModel *string `json:"memorySummaryModel,omitempty"`
 	PairingToken       string  `json:"pairingToken"`
 	ComputerID         string  `json:"computerId"`
 	APIKey             *string `json:"apiKey"`
@@ -131,12 +136,20 @@ func (s *SettingsStore) APIKey() string {
 	return deref(s.cur.APIKey)
 }
 
-// MemoryModel is the model Memory Sessions run on.
+// MemoryModelOrDefault is the model that writes Session Summaries.
 func (s Settings) MemoryModelOrDefault() string {
 	if m := deref(s.MemoryModel); m != "" {
 		return m
 	}
 	return DefaultMemoryModel
+}
+
+// MemorySummaryModelOrDefault is the model that keeps the Memory Summary.
+func (s Settings) MemorySummaryModelOrDefault() string {
+	if m := deref(s.MemorySummaryModel); m != "" {
+		return m
+	}
+	return s.MemoryModelOrDefault()
 }
 
 func deref(p *string) string {
