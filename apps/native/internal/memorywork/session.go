@@ -42,6 +42,15 @@ type Reply struct {
 	Model     string
 }
 
+// ErrDaemonGone is a Memory Session's failure when the Daemon went away
+// during its turn, as when the Host restarts it for another droid: nothing
+// was wrong with what the Session was given.
+var ErrDaemonGone error = daemonGone{}
+
+type daemonGone struct{}
+
+func (daemonGone) Error() string { return l10n.L("Memory Session failed: the Daemon went away") }
+
 // Run runs one Memory Session. A Session that started and failed still
 // answers its id.
 type Run func(ctx context.Context, r Request) (Reply, error)
@@ -126,7 +135,7 @@ func NewRunner(dial Dial) Run {
 		case <-ctx.Done():
 			return started, ctx.Err()
 		case <-c.Done():
-			return started, errors.New(l10n.L("Memory Session failed: the Daemon went away"))
+			return started, ErrDaemonGone
 		case end := <-done:
 			if end.failure != "" {
 				return started, errors.New(l10n.L("Memory Session failed: %s", end.failure))
