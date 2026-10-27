@@ -404,9 +404,10 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 			return
 		}
 		finish(func(rec *memory.SessionRecord) {
-			if reply.SessionID == "" {
+			if reply.SessionID == "" || errors.Is(err, ErrDaemonGone) {
 				// The Daemon did not start the Memory Session, as when it runs
-				// all the Sessions it can: nothing was learned of this one.
+				// all the Sessions it can, or went away during it: nothing was
+				// learned of this one.
 				rec.RetryAt = iso(now.Add(RetryAfter))
 				return
 			}
@@ -740,8 +741,15 @@ func (p *pass) updateMemorySummary(ctx context.Context, force bool) error {
 		}
 		if err != nil {
 			p.mu.Lock()
+			// A Daemon that went away, as when the Host restarts it for another
+			// droid, is no fault of the batch: the pass its return starts tries
+			// again. Once only, so a Daemon that keeps going away waits the hour.
+			again := errors.Is(err, ErrDaemonGone) && p.st.Phase2.LastError != err.Error()
 			p.st.Phase2.LastError, p.st.Phase2.LastErrorAt = err.Error(), iso(p.w.now())
 			p.st.Phase2.RetryAt = iso(p.w.now().Add(RetryAfter))
+			if again {
+				p.st.Phase2.RetryAt = ""
+			}
 			p.save()
 			p.mu.Unlock()
 			return err

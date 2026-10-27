@@ -270,6 +270,51 @@ func TestAMemorySessionTheDaemonCouldNotStartIsNoFailureOfTheSession(t *testing.
 	rec := memory.LoadState(f.dir).Sessions["s1"]
 	eq(t, []any{rec.Failures, rec.RetryAt, rec.SummarizedMtime}, []any{0, "2026-10-27T13:00:00Z", int64(0)})
 }
+func TestAMemorySessionTheDaemonLeftIsNoFailureOfTheSession(t *testing.T) {
+	f := newFixture(t)
+	f.session("s1", f.root, 7*time.Hour, "first")
+	w := f.work()
+	w.Run = func(context.Context, Request) (Reply, error) {
+		return Reply{SessionID: "memory-1"}, ErrDaemonGone
+	}
+	_ = w.Pass(context.Background(), MinIdle, false)
+	rec := memory.LoadState(f.dir).Sessions["s1"]
+	eq(t, []any{rec.Failures, rec.RetryAt, rec.SummarizedMtime}, []any{0, "2026-10-27T13:00:00Z", int64(0)})
+}
+func TestAnUpdateTheDaemonLeftIsTriedAgainWhenItIsBackOnce(t *testing.T) {
+	f := newFixture(t)
+	_, _ = memory.WriteNote(f.dir, "The user asked to remember: tabs", "", f.now)
+	gone := 0
+	f.memory = func(Request, memoryInput) (string, error) {
+		if gone > 0 {
+			gone--
+			return "", ErrDaemonGone
+		}
+		b, _ := json.Marshal(map[string]string{"memory_summary": validSummary})
+		return string(b), nil
+	}
+	gone = 1
+	if err := f.pass(MinIdle); !errors.Is(err, ErrDaemonGone) {
+		t.Fatalf("error %v", err)
+	}
+	st := memory.LoadState(f.dir)
+	eq(t, []string{st.Phase2.LastError, st.Phase2.RetryAt}, []string{ErrDaemonGone.Error(), ""})
+	f.reset()
+	if err := f.pass(MinIdle); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, f.titles(), []string{"Memory: update the Memory Summary"})
+	eq(t, memory.LoadState(f.dir).Phase2.LastError, "")
+
+	_, _ = memory.WriteNote(f.dir, "The user asked to remember: spaces", "", f.now)
+	gone = 2
+	_ = f.pass(MinIdle)
+	_ = f.pass(MinIdle)
+	eq(t, memory.LoadState(f.dir).Phase2.RetryAt, "2026-10-27T13:00:00Z")
+	f.reset()
+	_ = f.pass(MinIdle)
+	eq(t, len(f.titles()), 0)
+}
 func TestARunRecordsTheModelTheDaemonRan(t *testing.T) {
 	f := newFixture(t)
 	f.session("s1", f.root, 7*time.Hour, "first")
