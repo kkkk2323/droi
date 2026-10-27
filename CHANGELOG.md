@@ -1,3 +1,21 @@
+## 1.76.0 - 2026-10-27
+
+### Changed
+
+- Memory looks after itself. Droi now summarizes each Session once it has been left for six hours and folds those summaries into one short Memory Summary, under 10,000 bytes, that every new Session starts with: who you are, how you like to work, and pointers to recent work by project. Droid saves something itself only when you ask it to remember, forget or correct it. There is nothing to consolidate, no size limit that refuses a write, and no corner card asking you to tidy up (ADR 0031).
+- The first time it runs, Memory brings in what the earlier Memory kept: your corrections and preferences as notes that stay until you remove them, and everything else as summaries that age out unless a Session reads them. `memory.sqlite` is left as it was, so an older Droi still finds it.
+- Settings → Memory has two models, one that summarizes Sessions and one that keeps the Memory Summary. Both default to Claude Haiku 5.5 instead of GLM 5.3 Flash: compared on real Sessions with Gemini 3.8 Flash, DeepSeek V4.1 Flash and GPT-6 Luna, it kept the most of what you said, and it costs less than GLM 5.3 Flash. It shows the Memory Summary's size and when it was updated, how many Sessions wait, and the last failure, and Update now takes the Sessions left for ten minutes. It lists the latest Memory Sessions, and each opens like any other Session.
+
+### Removed
+
+- Project and Global Memory, topics, categories, the consolidate buttons and Memory's corner cards. Droid's `memory_add`, `memory_replace` and `memory_remove` give way to `memory_note`, `memory_read`, `memory_list` and `memory_search`.
+
+### Fixed
+
+- A Session the Daemon cleaned up after it sat idle keeps its speed and context meters under the composer. They went away until the next message.
+- Sending a message to a Session the Daemon cleaned up no longer plays the completion sound before the message goes out. Droi now uses droid-sdk-go 0.3.1.
+- The AskUser and permission cards, which stand where the composer was, have the composer's white instead of a faint grey.
+
 ## 1.75.0 - 2026-10-26
 
 ### Added
