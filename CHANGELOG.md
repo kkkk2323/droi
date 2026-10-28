@@ -1,3 +1,11 @@
+## 1.76.1 - 2026-10-28
+
+### Fixed
+
+- The Key Pool moves droid onto a key whose Standard month ends within 7 days. Before, droid stayed on the key it was using until one of that key's windows was full, so on a light day another key's month could end with quota left. On one computer, 30.1M credits were at risk this way. Droid now changes to the key whose month ends first, as long as that key's 5-hour window is not nearly full. Otherwise it keeps its key as before.
+- Settings → Usage → Expiring counts only the keys it lists in "Use at least … a day to lose none". The figure used to cover every running month up to 30 days out. It showed 64.9M a day next to a single key that needed 8.26M a day.
+- When updating the Patched Droid restarts the Daemon, the Memory Summary tries again on the next pass instead of waiting an hour, and a Session Summary that was cut off does not count as a failure.
+
 ## 1.76.0 - 2026-10-27
 
 ### Changed
