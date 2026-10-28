@@ -86,13 +86,15 @@ func (h *Host) PatchedDroidState() PatchedDroid {
 	p := h.patches()
 	st := h.Settings.Get()
 	out := PatchedDroid{Enabled: st.DroidKind == DroidPatched, Version: st.PatchedDroidVersion}
-	if rs := p.store.Recipes(); len(rs) > 0 {
-		out.Supported, out.Latest = true, rs[0].Version
-	}
 	p.mu.Lock()
 	out.Preparing, out.Done, out.Total, out.Err = p.preparing, p.progress.Done, p.progress.Total, p.err
 	out.Checking, out.Checked, out.CheckErr = p.checking, p.checked, p.checkErr
 	p.mu.Unlock()
+	// After the status: a check marks itself done only once it has written
+	// the recipes, so a finished check is never shown with the old ones.
+	if rs := p.store.Recipes(); len(rs) > 0 {
+		out.Supported, out.Latest = true, rs[0].Version
+	}
 	return out
 }
 
