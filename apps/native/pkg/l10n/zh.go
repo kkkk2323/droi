@@ -1174,7 +1174,7 @@ var zh = map[string]string{
 	"All cache reads: about %s tokens on Opus 5.5":                                        "全部是缓存读取时：Opus 5.5 约 %s token",
 	"All succeeded": "全部成功",
 	"Asked for the %s pool, used the %s pool": "请求 %s 池，实际使用 %s 池",
-	"At least a day: add up what the keys can still use before they are lost, deadline by deadline from the earliest, divide by the days until each deadline, and take the largest.\nLast 7 days: the monthly quota all keys spent each day, from the Key Pool's quota log.\nCredits are converted from monthly quota percentages and are estimates.": "每天至少用：把每把 key 作废前还能用掉的额度，按作废时间从早到晚累加，再除以距离作废的天数，取最大值。\n近 7 天平均：根据 Key 池的额度记录，把所有 key 每天用掉的月额度相加。\ncredits 由月额度百分比换算，是估算值。",
+	"At least a day: add up what the listed keys can still use before they are lost, deadline by deadline from the earliest, divide by the days until each deadline, and take the largest.\nLast 7 days: the monthly quota all keys spent each day, from the Key Pool's quota log.\nCredits are converted from monthly quota percentages and are estimates.": "每天至少用：把列出的每把 key 作废前还能用掉的额度，按作废时间从早到晚累加，再除以距离作废的天数，取最大值。\n近 7 天平均：根据 Key 池的额度记录，把所有 key 每天用掉的月额度相加。\ncredits 由月额度百分比换算，是估算值。",
 	"At the last 7 days' average":    "按近 7 天平均",
 	"At today's pace":                "按今天的量",
 	"At today's use so far":          "按今天已用的量",

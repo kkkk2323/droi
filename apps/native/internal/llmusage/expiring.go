@@ -16,7 +16,7 @@ const (
 	minExpiringPercent = 2.0
 	// expiringHorizon lists months that end this soon, plus any key that
 	// needs attention earlier.
-	expiringHorizon = 7 * 24 * time.Hour
+	expiringHorizon = keys.ExpiringWithin
 	// alertRest is the warning lead: a key is flagged when resting it this
 	// long would lose part of its month.
 	alertRest = 48 * time.Hour
@@ -128,7 +128,7 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 		Help:  l10n.L("What each key's monthly quota still holds before it is lost. Spending a key lowers it; a key leaves the list once it is used up or its month is over.\nThe weekly quota caps what a key can spend each week, so a key with much left has to start early. A key that loses part of its month unless it is used within 2 days is marked.\nOnly the Standard pool is counted."),
 		Empty: l10n.L("No monthly quota is lost in the next 7 days."),
 	}
-	var all, items []expiringItem
+	var items []expiringItem
 	alerts := 0
 	for _, key := range pool {
 		if key.Status != "ok" {
@@ -139,7 +139,6 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 			continue
 		}
 		it := expiringItem{key, o}
-		all = append(all, it)
 		if it.atRisk() {
 			alerts++
 		}
@@ -150,21 +149,17 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 	if len(items) == 0 {
 		return v
 	}
-	byEnd := func(s []expiringItem) {
-		sort.SliceStable(s, func(i, j int) bool { return s[i].o.End.Before(s[j].o.End) })
-	}
-	byEnd(all)
-	byEnd(items)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].o.End.Before(items[j].o.End) })
 	first := items[0].o.End
 	p := ExpiringPoolView{
 		Title:    Standard.Title(),
 		Note:     KeyCount(len(items)),
 		PaceTone: ToneSecondary,
-		PaceHelp: l10n.L("At least a day: add up what the keys can still use before they are lost, deadline by deadline from the earliest, divide by the days until each deadline, and take the largest.\nLast 7 days: the monthly quota all keys spent each day, from the Key Pool's quota log.\nCredits are converted from monthly quota percentages and are estimates."),
+		PaceHelp: l10n.L("At least a day: add up what the listed keys can still use before they are lost, deadline by deadline from the earliest, divide by the days until each deadline, and take the largest.\nLast 7 days: the monthly quota all keys spent each day, from the Key Pool's quota log.\nCredits are converted from monthly quota percentages and are estimates."),
 		Buckets:  expiringBuckets(items, now),
 		Groups:   expiringGroups(items, now),
 	}
-	need := requiredPace(all, now)
+	need := requiredPace(items, now)
 	p.Pace = l10n.L("Use at least %s a day to lose none", monthCredits(need))
 	if spend != nil && spend.HasRecent {
 		p.Recent = l10n.L("Last 7 days: %s a day on average", monthCredits(spend.Recent))
@@ -194,8 +189,8 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 	return v
 }
 
-// requiredPace is the least spend per day that uses every key's usable rest
-// before its month ends: for each deadline, everything due by then over the
+// requiredPace is the least spend per day that uses every listed key's usable
+// rest before its month ends: for each deadline, everything due by then over the
 // days until then; the largest wins. items are sorted by end.
 func requiredPace(items []expiringItem, now time.Time) float64 {
 	need, due := 0.0, 0.0
