@@ -740,7 +740,8 @@ func (r *KeyRotator) isPoolCooledDown(usage *KeyUsage, pool string) bool {
 }
 
 // ResolveKeyForRequest keeps the original model-agnostic behaviour: it prefers
-// the presented key and rotates only on exhaustion or cooldown. Retained for
+// the presented key and rotates only on exhaustion, cooldown or an expiring
+// month (see expiringKeyFor). Retained for
 // callers that do not know the model; LLM requests should use SelectKeyForModel.
 func (r *KeyRotator) ResolveKeyForRequest(presentedKey string) string {
 	key, _ := r.SelectKeyForModel(presentedKey, "", nil)
@@ -775,6 +776,9 @@ func (r *KeyRotator) selectKeyForModel(presentedKey, modelID string, excluded ma
 			if usage != nil && usage.Error == "" {
 				if chosen := r.usablePoolFor(usage, pool); chosen != "" {
 					if usage.poolRatio(chosen) < config.SpilloverThreshold && usage.poolRemaining(chosen) > 0 {
+						if expiring := r.expiringKeyFor(presentedKey, usage, chosen, pool, excluded); expiring != "" {
+							return expiring, PoolStandard
+						}
 						return presentedKey, chosen
 					}
 				}
@@ -805,6 +809,42 @@ func (r *KeyRotator) selectKeyForModel(presentedKey, modelID string, excluded ma
 		return r.keys[0], pool
 	}
 	return "", pool
+}
+
+// ExpiringWithin is how soon a Standard month has to end for its key to be
+// expiring: the Key Pool moves droid onto it, and the Usage page lists it.
+const ExpiringWithin = 7 * 24 * time.Hour
+
+// expiringKeyFor is the key droid should leave the presented key for, or "":
+// the routable key whose Standard month ends first within ExpiringWithin and
+// before the presented key's. Droid otherwise stays on the key it sent until
+// that one runs out, while another month ends and loses what is left of it. A
+// key with a nearly full 5-hour bucket is passed over, so droid comes back to
+// it once the bucket resets. A presented key that serves Core stays.
+func (r *KeyRotator) expiringKeyFor(presented string, presentedUsage *KeyUsage, presentedPool, requestPool string, excluded map[string]struct{}) string {
+	if presentedPool != PoolStandard {
+		return ""
+	}
+	now := r.nowTime()
+	limit := now.Add(ExpiringWithin)
+	if end, ok := presentedUsage.standardMonthEnd(); ok && end.After(now) && end.Before(limit) {
+		limit = end
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	r.openMu.Lock()
+	defer r.openMu.Unlock()
+	best := ""
+	for _, c := range r.buildCandidatesForPool(requestPool, excluded) {
+		if c.key == presented || c.pool != PoolStandard || c.hot() || c.unopened || c.usedRatio >= config.SpilloverThreshold {
+			continue
+		}
+		end, ok := r.usages[c.key].standardMonthEnd()
+		if ok && end.After(now) && end.Before(limit) {
+			best, limit = c.key, end
+		}
+	}
+	return best
 }
 
 func (r *KeyRotator) MarkKeyError(key string) {

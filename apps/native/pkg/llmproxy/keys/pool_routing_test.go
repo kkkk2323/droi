@@ -234,3 +234,77 @@ func TestFetchAllUsages_PreservesPoolCooldownAcrossRefresh(t *testing.T) {
 		t.Fatalf("billing Error should stay empty, got %q", u.Error)
 	}
 }
+
+// usageWithMonth is a Standard usage entry whose month ends after monthLeft
+// at monthlyPct used, with a live 5-hour bucket at fiveHourPct.
+func usageWithMonth(key string, monthlyPct float64, monthLeft time.Duration, fiveHourPct float64) *KeyUsage {
+	u := usageWithPools(key, max(monthlyPct, fiveHourPct), 0)
+	u.StandardLimits = &PoolLimits{
+		FiveHour: &BucketLimit{UsedPercent: fiveHourPct, WindowEnd: time.Now().Add(3 * time.Hour).UTC().Format(time.RFC3339)},
+		Monthly:  &BucketLimit{UsedPercent: monthlyPct, WindowEnd: time.Now().Add(monthLeft).UTC().Format(time.RFC3339)},
+	}
+	return u
+}
+
+// Droid stays on the key it sent, except for a key whose month ends within
+// ExpiringWithin: what is left of that month is lost unless droid moves to it.
+func TestSelectKeyForModel_PresentedKeyYieldsToExpiringMonth(t *testing.T) {
+	day := 24 * time.Hour
+	for _, c := range []struct {
+		name  string
+		usage []*KeyUsage
+		want  string
+	}{
+		{"an expiring month wins", []*KeyUsage{
+			usageWithMonth("key-sent", 4, 25*day, 30),
+			usageWithMonth("key-later", 50, 6*day, 0),
+			usageWithMonth("key-expiring", 61, 3*day+16*time.Hour, 0),
+		}, "key-expiring"},
+		{"a month beyond the horizon does not", []*KeyUsage{
+			usageWithMonth("key-sent", 4, 25*day, 30),
+			usageWithMonth("key-other", 53, 8*day, 0),
+		}, "key-sent"},
+		{"a nearly full 5-hour bucket waits", []*KeyUsage{
+			usageWithMonth("key-sent", 4, 25*day, 30),
+			usageWithMonth("key-expiring", 61, 3*day, 92),
+		}, "key-sent"},
+		{"an expiring key that is sent stays", []*KeyUsage{
+			usageWithMonth("key-sent", 61, 2*day, 30),
+			usageWithMonth("key-expiring", 40, 5*day, 0),
+		}, "key-sent"},
+		{"a sooner expiring month wins over the sent one", []*KeyUsage{
+			usageWithMonth("key-sent", 40, 5*day, 30),
+			usageWithMonth("key-expiring", 61, 2*day, 0),
+		}, "key-expiring"},
+		{"a spent month is left", []*KeyUsage{
+			usageWithMonth("key-sent", 4, 25*day, 30),
+			usageWithMonth("key-expiring", 98, 2*day, 0),
+		}, "key-sent"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var names []string
+			for _, u := range c.usage {
+				names = append(names, u.Key)
+			}
+			r := testRotator(names...)
+			for _, u := range c.usage {
+				r.usages[u.Key] = u
+			}
+			for _, model := range []string{"claude-opus-5-5", "glm-5.3", ""} {
+				if key, pool := r.SelectKeyForModel("key-sent", model, nil); key != c.want || pool != PoolStandard {
+					t.Errorf("%q: got %s/%s, want %s/standard", model, key, pool, c.want)
+				}
+			}
+		})
+	}
+}
+
+// A sent key that already bills Core stays on Core for a Core-capable model.
+func TestSelectKeyForModel_PresentedCoreKeyIgnoresExpiringMonth(t *testing.T) {
+	r := testRotator("key-sent", "key-expiring")
+	r.usages["key-sent"] = usageWithPools("key-sent", 100, 10)
+	r.usages["key-expiring"] = usageWithMonth("key-expiring", 61, 48*time.Hour, 0)
+	if key, pool := r.SelectKeyForModel("key-sent", "glm-5.3", nil); key != "key-sent" || pool != PoolCore {
+		t.Fatalf("got %s/%s, want key-sent/core", key, pool)
+	}
+}
