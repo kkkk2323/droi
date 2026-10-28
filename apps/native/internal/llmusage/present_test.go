@@ -271,6 +271,11 @@ func TestExpiringAlertAndPace(t *testing.T) {
 		// Ends within the two days: idle, all of it is lost.
 		{Index: 2, Key: "b", Status: "ok", Limits: month(80, 24*time.Hour)},
 	}
+	// Fresh months beyond the horizon are not listed, so the pace leaves
+	// them out: counted, they would need 60% a day.
+	for i := 3; i <= 7; i++ {
+		pool = append(pool, keys.KeyState{Index: i, Key: string(rune('a' + i - 1)), Status: "ok", Limits: month(1, 10*24*time.Hour)})
+	}
 	spend := &Spend{Recent: 15, HasRecent: true}
 	v := BuildExpiring(pool, now, spend)
 	if !v.Alert || v.Summary != "2 把 key 要在 2 天内开始用" || v.SummaryTone != ToneDanger {
