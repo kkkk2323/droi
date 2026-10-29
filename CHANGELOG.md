@@ -1,3 +1,16 @@
+## 1.77.0 - 2026-10-29
+
+### Added
+
+- The sidebar can list Sessions by time. Sort → View → By time shows one list: the Sessions that are working or have a result you have not seen under Right now, then Today, Yesterday and Earlier, each row naming its Workspace. By workspace stays the default. The Phone App lists the Sessions the way the computer's window does.
+
+### Changed
+
+- The list dates a Session by the last message you sent it, from the window or the phone, instead of by the time its file last changed. Opening an old Session, a hook run or a step of a turn no longer moves it, Loops and Automation runs do not move it either, and a Session keeps its place after a restart. The first time it starts, Droi reads from each transcript when you last wrote in it, in the background: about 5,000 Sessions take a few seconds (ADR 0032).
+- Inside a group, a Session that is working or waits for an answer comes first, then one with a result you have not seen, then the rest by when you last wrote in them. An old Session with news no longer hides behind "Show older" or among the older Workspaces.
+- Unread marks are the computer's, so every Client shows the same ones: a Session you read in the window is read on the phone, and the other way round.
+- While the pointer is over the sidebar's list, the rows stay where they are, so a row cannot move just before you click it. They take their new places once the pointer leaves the list.
+
 ## 1.76.1 - 2026-10-28
 
 ### Fixed
