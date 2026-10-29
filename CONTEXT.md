@@ -132,6 +132,18 @@ _Avoid_: fixture data, recording, replay log
 One conversation with the agent, owned and persisted by the Daemon and identified by the Daemon's session id.
 _Avoid_: chat, thread, worker, droi session file
 
+**Session Times**:
+What the Host keeps of each Session on its computer apart from the Daemon: when the user last sent it a message from a Client, when its last turn ended, and when a Client last showed it. Every Client orders its Session list by them and marks Sessions Unread by them.
+_Avoid_: updatedAt, last activity, timestamps
+
+**Unread**:
+A Session whose last turn ended after any Client of its computer last showed it. Showing it on one Client reads it on all of them.
+_Avoid_: new, unseen, notification
+
+**Time View**:
+The Session list as one list by when each Session was last used, under Pinned, Right now (working or Unread), Today, Yesterday and Earlier, in place of the groups by Workspace. The window's Sort menu chooses it, and the Phone App follows the window.
+_Avoid_: recent view, Recents (that is the group of Scratch Workspace Sessions), flat list
+
 **Draft Session**:
 A Session the New session page opens as soon as it knows the Workspace, so the composer can offer that Workspace's skills and commands before anything is sent. It carries the `droi.draft` tag, which keeps it out of every Client's session list, until the first send takes it over; an abandoned draft is closed, and the Daemon deletes it.
 _Avoid_: pre-init session, placeholder session

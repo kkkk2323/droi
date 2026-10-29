@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -42,16 +43,34 @@ type sidebarState struct {
 	runningKey       string
 	// searchBox is the search's text field, for the composer to leave the focus in.
 	searchBox ui.Handle
+	// hovered is the pointer over the list in the last frame; while it is,
+	// the rows keep the places held (sessions.Order.HoldKeys), and heldGen
+	// counts the holds.
+	hovered bool
+	held    map[string]sessions.Key
+	heldGen uint64
+	// times and unread are this frame's, for the rows.
+	times  map[string]sessions.Times
+	unread map[string]bool
 }
 
 // sidebarView is the web Client's SessionSidebar.
 func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map[string]string, listErr string, listDone bool) {
 	k, t := a.kit, a.kit.T
 	pins := sessions.Pins{Workspaces: set(a.pinnedWorkspaces().Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
-	order := a.sortOrder(listed)
-	groups := a.sidebarGroups(listed, pins, order)
 	busy := a.activity(reported)
 	a.noteSubagentsRunning(listed, busy)
+	order := a.sortOrder(listed, busy)
+	a.holdOrder(&order, listed)
+	a.sidebar.times, a.sidebar.unread = order.Times, order.Unread
+	byTime := sessions.View(prefs.SessionView.Get(a.prefs)) == sessions.ViewTime
+	workspaces := func() []sessions.Group { return a.sidebarGroups(listed, pins, order) }
+	var groups []sessions.Group
+	if byTime {
+		groups = a.timeGroups(listed, pins, order)
+	} else {
+		groups = workspaces()
+	}
 	selected := ""
 	if a.route.Name == "session" {
 		selected = a.route.SessionID
@@ -80,12 +99,14 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 			ui.Row(c).Gap(k.Px(4)).Children(func() {
 				a.searchBox(c)
-				a.sortMenu(c, groups)
+				a.sortMenu(c, workspaces)
 			})
 		})
-		ui.Scroll(c).Grow(1).Padding(0, k.Px(8), k.Px(8), k.Px(8)).Children(func() {
+		list := ui.Scroll(c).Grow(1).Padding(0, k.Px(8), k.Px(8), k.Px(8))
+		a.sidebar.hovered = list.Hovered()
+		list.Children(func() {
 			if strings.TrimSpace(a.sidebar.query) != "" {
-				a.searchResults(c, selected, groups, order, busy)
+				a.searchResults(c, selected, workspaces(), order, busy)
 				return
 			}
 			if listErr != "" {
@@ -96,6 +117,11 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 			if listDone && len(groups) == 0 && listErr == "" {
 				k.Text(c, L("No sessions yet."), 12, 16).TextColor(t.MutedForeground).Padding(k.Px(4), k.Px(8))
+			}
+			if byTime {
+				a.runningAutomations(c, selected, busy)
+				a.timeSections(c, groups, selected, busy)
+				return
 			}
 			var recents, loose *sessions.Group
 			var pinned, rest []sessions.Group
@@ -112,17 +138,9 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 					rest = append(rest, *g)
 				}
 			}
-			if live := a.automations.live; len(live) > 0 {
-				a.foldable(c, L("Running automations"), liveRunsSectionKey, []sessions.Group{{Sessions: live}}, busy, func() {
-					ui.Column(c).Role(ui.RoleGroup).Label(L("Running automations")).Gap(1).Margin(0, 0, k.Px(8), 0).Children(func() {
-						for _, s := range live {
-							a.sessionRow(c, s, true, s.SessionID == selected, busy[s.SessionID], false)
-						}
-					})
-				})
-			}
+			a.runningAutomations(c, selected, busy)
 			section := func(g sessions.Group) { a.workspaceSection(c, g, groups, order, selected, busy) }
-			active, stale := sessions.SplitStale(rest, a.cfg.Now().UnixMilli(), selected)
+			active, stale := sessions.SplitStale(rest, a.cfg.Now().UnixMilli(), selected, order)
 			restSections := func() {
 				for _, g := range active {
 					section(g)
@@ -193,9 +211,17 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 type listMemo struct {
 	groupsKey string
 	groups    []sessions.Group
-	recentRev uint64
-	recentOK  bool
-	recent    []sessions.RecentWorkspace
+	// timeKey and timeGroups are the time view's, as groupsKey and groups.
+	timeKey    string
+	timeGroups []sessions.Group
+	recentKey  string
+	recent     []sessions.RecentWorkspace
+	// times and timesGen are the Session Times merged with this window's
+	// views; unread and unreadGen the Sessions unread by them.
+	times     map[string]sessions.Times
+	timesGen  uint64
+	unread    map[string]bool
+	unreadGen uint64
 	// firstSeen is decoded from firstSeenRaw, the stored sessionsFirstSeen,
 	// which holds every Session ever listed: decoding it takes about a
 	// millisecond with thousands of them.
@@ -216,7 +242,7 @@ type listMemo struct {
 // the list, the pins, the order or the language changed.
 func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order sessions.Order) []sessions.Group {
 	m := &a.listMemo
-	key := fmt.Sprint(a.shownRev, l10n.Code(), a.pinnedWorkspaces().Get(a.prefs), prefs.PinnedSessions.Get(a.prefs), order.Workspaces, order.Sessions, order.Manual, len(order.FirstSeen))
+	key := a.orderKey(order, a.pinnedWorkspaces().Get(a.prefs), order.Workspaces, order.Manual)
 	if m.groups == nil || m.groupsKey != key {
 		m.groupsKey = key
 		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
@@ -227,13 +253,49 @@ func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order
 	return m.groups
 }
 
+// timeGroups is the time view's sections, built again only when the list,
+// the pins, the order or the language changed.
+func (a *App) timeGroups(listed []sessions.Summary, pins sessions.Pins, order sessions.Order) []sessions.Group {
+	m := &a.listMemo
+	now := a.cfg.Now()
+	// The day turns too.
+	key := a.orderKey(order, now.Format(time.DateOnly))
+	if m.timeGroups == nil || m.timeKey != key {
+		m.timeKey = key
+		m.timeGroups = sessions.GroupByTime(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, now)
+	}
+	return m.timeGroups
+}
+
+// orderKey names the list shown and all that orders it, with more, for
+// what is built from them.
+func (a *App) orderKey(order sessions.Order, more ...any) string {
+	_, _, timesGen := a.sessionTimes()
+	return fmt.Sprint(a.shownRev, l10n.Code(), prefs.PinnedSessions.Get(a.prefs), order.Sessions, len(order.FirstSeen),
+		timesGen, idsKey(order.Busy), idsKey(order.Unread), a.sidebar.heldGen, more)
+}
+
+// idsKey is the ids of a set, in order.
+func idsKey(ids map[string]bool) string {
+	keys := make([]string, 0, len(ids))
+	for id, ok := range ids {
+		if ok {
+			keys = append(keys, id)
+		}
+	}
+	slices.Sort(keys)
+	return strings.Join(keys, ",")
+}
+
 // recentWorkspaces is sessions.RecentWorkspaces of the list, built again
-// only when the list changed.
+// only when the list or the Session Times changed.
 func (a *App) recentWorkspaces(listed []sessions.Summary) []sessions.RecentWorkspace {
 	m := &a.listMemo
-	if !m.recentOK || m.recentRev != a.shownRev {
-		m.recentRev, m.recentOK = a.shownRev, true
-		m.recent = sessions.RecentWorkspaces(listed)
+	times, _, gen := a.sessionTimes()
+	key := fmt.Sprint(a.shownRev, gen)
+	if m.recent == nil || m.recentKey != key {
+		m.recentKey = key
+		m.recent = sessions.RecentWorkspaces(listed, times)
 	}
 	return m.recent
 }
@@ -298,7 +360,9 @@ func (a *App) firstSeen() map[string]float64 {
 	return m.firstSeen
 }
 
-func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
+// sortOrder is how the list is ordered: the preferences, the first-seen
+// times, the Session Times and, for a frame's list, the busy Sessions.
+func (a *App) sortOrder(listed []sessions.Summary, busy map[string]activity.Activity) sessions.Order {
 	seen := a.firstSeen()
 	if m := &a.listMemo; len(listed) > 0 && (!m.noted || m.notedRev != a.shownRev || m.notedRaw != m.firstSeenRaw) {
 		if next := sessions.NoteFirstSeen(seen, listed, float64(a.cfg.Now().UnixMilli())); next != nil {
@@ -317,7 +381,30 @@ func (a *App) sortOrder(listed []sessions.Summary) sessions.Order {
 	}
 	o.Manual = a.manualWorkspaces().Get(a.prefs)
 	o.FirstSeen = seen
+	o.Times, _, _ = a.sessionTimes()
+	o.Unread = a.unreadSessions()
+	if len(busy) > 0 {
+		o.Busy = make(map[string]bool, len(busy))
+		for id, doing := range busy {
+			o.Busy[id] = doing != ""
+		}
+	}
 	return o
+}
+
+// holdOrder holds the rows' places while the pointer is over the list, as
+// it was in the last frame: a row never moves between the pointer aiming
+// at it and the click.
+func (a *App) holdOrder(order *sessions.Order, listed []sessions.Summary) {
+	switch {
+	case a.sidebar.hovered && a.sidebar.held == nil:
+		a.sidebar.held = order.HoldKeys(listed)
+		a.sidebar.heldGen++
+	case !a.sidebar.hovered && a.sidebar.held != nil:
+		a.sidebar.held = nil
+		a.sidebar.heldGen++
+	}
+	order.Held = a.sidebar.held
 }
 
 // sidebarRow is a SidebarRow: an icon and a label, h-7, rounded-lg, as the
@@ -342,8 +429,8 @@ func (a *App) sidebarRow(c *ui.Context, icon, label string, selected bool, trail
 	return b
 }
 
-// sortMenu is the list-filter button and its menu of orders.
-func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
+// sortMenu is the list-filter button and its menu of views and orders.
+func (a *App) sortMenu(c *ui.Context, workspaces func() []sessions.Group) {
 	k, t := a.kit, a.kit.T
 	b := ui.ButtonBase(c).Label(L("Sort")).Tooltip(L("Sort")).Size(k.Px(k.Dense(28, 32)), k.Px(k.Dense(28, 32))).Radius(k.Px(8)).Cursor(ui.CursorPointer)
 	color := t.MutedForeground
@@ -352,14 +439,29 @@ func (a *App) sortMenu(c *ui.Context, groups []sessions.Group) {
 		color = t.Foreground
 	}
 	b.Children(func() { k.Icon(c, "list-filter", 16, color) })
-	o := a.sortOrder(nil)
+	o := a.sortOrder(nil, nil)
+	view := sessions.View(prefs.SessionView.Get(a.prefs))
+	if view != sessions.ViewTime {
+		view = sessions.ViewWorkspaces
+	}
 	b.Menu(func(m *ui.Menu) {
+		m.Item(L("View")).Disabled(true)
+		for _, v := range sessions.Views {
+			if m.Item(l10n.T(sessions.ViewLabels[v])).Checked(view == v).Chosen() {
+				if v == sessions.ViewWorkspaces {
+					prefs.SessionView.Set(a.prefs, "")
+				} else {
+					prefs.SessionView.Set(a.prefs, string(v))
+				}
+			}
+		}
+		m.Separator()
 		m.Item(L("Sort workspaces")).Disabled(true)
 		for _, w := range sessions.WorkspaceSorts {
 			if m.Item(l10n.T(sessions.WorkspaceSortLabels[w])).Checked(o.Workspaces == w).Chosen() {
 				if w == sessions.SortManual && len(o.Manual) == 0 {
 					var keys []string
-					for _, g := range groups {
+					for _, g := range workspaces() {
 						if !g.Scratch && g.Key != sessions.PinnedSessionsGroupKey {
 							keys = append(keys, g.Key)
 						}
@@ -585,25 +687,80 @@ func (a *App) workspaceSection(c *ui.Context, g sessions.Group, all []sessions.G
 		if a.sidebar.revealed == nil {
 			a.sidebar.revealed = map[string]int{}
 		}
-		visible, hidden := sessions.VisibleSessions(g.Sessions, a.sidebar.revealed[g.Key], a.cfg.Now().UnixMilli(), pinnedIDs)
+		visible, hidden := sessions.VisibleSessions(g.Sessions, a.sidebar.revealed[g.Key], a.cfg.Now().UnixMilli(), pinnedIDs, order)
 		ui.Column(c).Gap(1).Children(func() {
 			for _, s := range visible {
-				a.sessionRow(c, s, flat, s.SessionID == selected, busy[s.SessionID], pinnedIDs[s.SessionID])
+				a.sessionRow(c, s, flat, s.SessionID == selected, busy[s.SessionID], pinnedIDs[s.SessionID], "")
 			}
 		})
-		if hidden > 0 {
-			b := ui.ButtonBase(c).Height(k.Px(28)).Radius(k.Px(10)).Justify(ui.Start).Padding(0, k.Px(8), 0, k.Px(indent(flat))).Cursor(ui.CursorPointer)
-			color := t.MutedForeground
-			if b.Hovered() {
-				b.Background(t.SidebarAccent.Alpha(0.6))
-				color = t.Foreground
-			}
-			b.Children(func() { k.Text(c, L("Show %d older", hidden), 11, 16.5).TextColor(color) })
-			if b.Clicked() {
-				a.sidebar.revealed[g.Key] += sessions.OlderBatch
-			}
-		}
+		a.showOlder(c, g.Key, hidden, flat)
 	})
+}
+
+// showOlder is the button under a section that shows OlderBatch more of
+// its hidden rows, when it hides any.
+func (a *App) showOlder(c *ui.Context, key string, hidden int, flat bool) {
+	if hidden <= 0 {
+		return
+	}
+	k, t := a.kit, a.kit.T
+	b := ui.ButtonBase(c).Height(k.Px(28)).Radius(k.Px(10)).Justify(ui.Start).Padding(0, k.Px(8), 0, k.Px(indent(flat))).Cursor(ui.CursorPointer)
+	color := t.MutedForeground
+	if b.Hovered() {
+		b.Background(t.SidebarAccent.Alpha(0.6))
+		color = t.Foreground
+	}
+	b.Children(func() { k.Text(c, L("Show %d older", hidden), 11, 16.5).TextColor(color) })
+	if b.Clicked() {
+		if a.sidebar.revealed == nil {
+			a.sidebar.revealed = map[string]int{}
+		}
+		a.sidebar.revealed[key] += sessions.OlderBatch
+	}
+}
+
+// runningAutomations is the running Automations' section, while any runs.
+func (a *App) runningAutomations(c *ui.Context, selected string, busy map[string]activity.Activity) {
+	live := a.automations.live
+	if len(live) == 0 {
+		return
+	}
+	k := a.kit
+	a.foldable(c, L("Running automations"), liveRunsSectionKey, []sessions.Group{{Sessions: live}}, busy, func() {
+		ui.Column(c).Role(ui.RoleGroup).Label(L("Running automations")).Gap(1).Margin(0, 0, k.Px(8), 0).Children(func() {
+			for _, s := range live {
+				a.sessionRow(c, s, true, s.SessionID == selected, busy[s.SessionID], false, "")
+			}
+		})
+	})
+}
+
+// timeSections is the time view: each section a label that folds it, its
+// rows naming their Workspaces, and Earlier OlderBatch rows at a time.
+func (a *App) timeSections(c *ui.Context, groups []sessions.Group, selected string, busy map[string]activity.Activity) {
+	k := a.kit
+	pinnedIDs := set(prefs.PinnedSessions.Get(a.prefs))
+	for _, g := range groups {
+		open := !a.foldedWorkspaces().Has(a.prefs, g.Key)
+		key := g.Key
+		ui.Column(c.Key(g.Key)).Role(ui.RoleGroup).Label(g.Label).Margin(0, 0, k.Px(12), 0).Children(func() {
+			a.sectionHeader(c, g.Label, "", open, g.Sessions, busy, func() { a.foldedWorkspaces().Toggle(a.prefs, key) }, nil)
+			if !open {
+				return
+			}
+			rows, hidden := g.Sessions, 0
+			if g.Key == sessions.EarlierGroupKey {
+				shown := min(len(rows), sessions.OlderBatch+a.sidebar.revealed[g.Key])
+				rows, hidden = rows[:shown], len(rows)-shown
+			}
+			ui.Column(c).Gap(1).Children(func() {
+				for _, s := range rows {
+					a.sessionRow(c, s, true, s.SessionID == selected, busy[s.SessionID], pinnedIDs[s.SessionID], g.Places[s.SessionID])
+				}
+			})
+			a.showOlder(c, g.Key, hidden, true)
+		})
+	}
 }
 
 func indent(flat bool) float32 {
@@ -614,9 +771,9 @@ func indent(flat bool) float32 {
 }
 
 // sessionRow is one Session in the sidebar: title, then whether it holds an
-// unsent draft, what it is doing or its message count, and how long ago it
-// changed.
-func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool, doing activity.Activity, pinned bool) {
+// unsent draft, what it is doing, its Workspace (place, in the time view)
+// or its message count, and how long ago it was last used.
+func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool, doing activity.Activity, pinned bool, place string) {
 	k, t := a.kit, a.kit.T
 	if a.sidebar.renaming == s.SessionID {
 		a.renameField(c, s, flat)
@@ -644,7 +801,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			if elsewhere {
 				a.elsewhereMark(c, acc)
 			}
-			if a.unread[s.SessionID] {
+			if a.sidebar.unread[s.SessionID] {
 				title.FontWeight(500)
 				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
 			}
@@ -683,6 +840,11 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				status("", t.Info, L("Working"), true)
 			case a.jobsRunning(s.SessionID) > 0:
 				status("", t.Info, countL(a.jobsRunning(s.SessionID), l10n.N("%d background task running"), l10n.N("%d background tasks running")), true)
+			case place != "":
+				ui.Row(c).Role(ui.RoleImage).Label(L("In %s", place)).Gap(k.Px(4)).Shrink(1).MinWidth(0).Children(func() {
+					k.IconStroke(c, "folder", 1.75, 12, t.MutedForeground)
+					k.Text(c, place, k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).SingleLine()
+				})
 			case s.Worktree != nil && s.Worktree.Branch != "":
 				label := L("Worktree on %s", s.Worktree.Branch)
 				if s.Worktree.Ephemeral() {
@@ -702,7 +864,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			if n <= 9 && c.Modifiers() == ui.Cmd {
 				k.Text(c, shortcut(sessionCommand(n)), 11, k.Dense(15, 16.5)).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
 			} else {
-				k.Text(c, relativeTime(time.Unix(s.UpdatedAt, 0), a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
+				k.Text(c, relativeTime(time.UnixMilli(sessions.UsedAt(s, a.sidebar.times)), a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
 			}
 		})
 	})

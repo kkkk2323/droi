@@ -299,6 +299,9 @@ var (
 	ManualWorkspaces  = List{Key: "droi.workspaceOrder"}
 	SessionsFirstSeen = Map{Key: "droi.sessionsFirstSeen"}
 	DefaultToolMode   = String{Key: "droi.toolExecutionMode"}
+	// SessionView is how the sidebar lists the Sessions: "time", or by
+	// Workspace for "" (sessions.View).
+	SessionView = String{Key: "droi.sessionView"}
 	// ScriptModels are the models Settings lets use Script in addition to
 	// the ones Factory names in its feature flags.
 	ScriptModels = List{Key: "droi.scriptModels"}

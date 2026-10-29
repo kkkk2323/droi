@@ -16,6 +16,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
 )
 
 const defaultFactoryAPIBaseURL = "https://api.factory.ai"
@@ -57,6 +58,9 @@ type Host struct {
 	Settings *SettingsStore
 	Auth     *FactoryAuth
 	Daemon   *Supervisor
+	// Times are the Session Times (ADR 0032), which the Gateway writes and
+	// serves.
+	Times *sessiontimes.Store
 
 	adding *FactoryAuth
 
@@ -95,6 +99,11 @@ func New(cfg Config) *Host {
 	}
 	h := &Host{cfg: cfg, listeners: map[int]func(){}, readers: map[string]*CliLoginReader{}, usage: map[string]*usageEntry{}}
 	h.Settings = OpenSettings(filepath.Join(cfg.UserData, "settings.json"), cfg.Env)
+	timesFile := ""
+	if cfg.UserData != "" {
+		timesFile = filepath.Join(cfg.UserData, "session-times.json")
+	}
+	h.Times = sessiontimes.Open(timesFile, nil)
 	h.Auth = &FactoryAuth{
 		Load: func() string { return deref(h.Settings.Get().Login) },
 		Save: func(s string) {
@@ -134,16 +143,19 @@ func New(cfg Config) *Host {
 	return h
 }
 
-// Start launches the Daemon.
+// Start launches the Daemon, and the first time dates the Sessions by the
+// messages sent before the Session Times were kept.
 func (h *Host) Start() {
 	h.Daemon.Start()
 	h.watchPatchRecipes()
+	go func() { _ = h.Times.Backfill(filepath.Join(h.SharedFactoryHome(), "sessions")) }()
 }
 
-// Stop ends the Daemon.
+// Stop ends the Daemon and writes what the Session Times still hold.
 func (h *Host) Stop() {
 	h.stopWatchingPatchRecipes()
 	h.Daemon.Stop()
+	h.Times.Flush()
 }
 
 // RestartDaemon starts a new Daemon from the droid on disk.

@@ -1,7 +1,8 @@
-// How the Session list is ordered and what is pinned. The computer's window
-// decides both, through its Gateway, so the phone lists the Sessions as the
-// computer does, and a pin made here is made there. A Gateway with no window
-// to follow leaves them to this phone's own preferences.
+// How the Session list is ordered, how it is laid out and what is pinned. The
+// computer's window decides them, through its Gateway, so the phone lists the
+// Sessions as the computer does, and a pin made here is made there. A Gateway
+// with no window to follow leaves them to this phone's own preferences. The
+// computer's Session Times date the Sessions (session-times.ts).
 import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
 import type { PinKind, SessionListOrder } from '@droi/daemon-layer/gateway'
 import {
@@ -10,8 +11,9 @@ import {
   sessionsFirstSeen,
   usePreference,
 } from '@droi/daemon-layer/local-preference'
-import { sortOrderOf, withPin } from '@droi/daemon-layer/session-list-order'
-import type { Pins, SortOrder } from '@droi/daemon-layer/sessions'
+import { sortOrderOf, viewOf, withPin } from '@droi/daemon-layer/session-list-order'
+import { useSessionTimes } from '@droi/daemon-layer/session-times'
+import type { Pins, SessionView, SortOrder } from '@droi/daemon-layer/sessions'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFocusEffect } from 'expo-router'
 import { useCallback } from 'react'
@@ -21,6 +23,8 @@ const LIST_ORDER_KEY = ['session-list-order'] as const
 export interface ListOrder {
   pins: Pins
   order: SortOrder
+  /** By Workspace or by time, as the computer's window shows it. */
+  view: SessionView
   setPinned: (kind: PinKind, key: string, pinned: boolean) => void
 }
 
@@ -30,6 +34,7 @@ export function useListOrder(): ListOrder {
   const [localWorkspaces, setLocalWorkspaces] = usePreference(pinnedWorkspaces)
   const [localSessions, setLocalSessions] = usePreference(pinnedSessions)
   const [firstSeen] = usePreference(sessionsFirstSeen)
+  const { times } = useSessionTimes()
   const query = useQuery({
     queryKey: LIST_ORDER_KEY,
     queryFn: () => connection.sessionListOrder.read(),
@@ -48,7 +53,8 @@ export function useListOrder(): ListOrder {
       workspaces: new Set(shared ? shared.pinnedWorkspaces : localWorkspaces),
       sessions: new Set(shared ? shared.pinnedSessions : localSessions),
     },
-    order: sortOrderOf(shared, firstSeen),
+    order: { ...sortOrderOf(shared, firstSeen), times },
+    view: viewOf(shared),
     setPinned: (kind, key, pinned) => {
       if (!shared) {
         const [list, set] =

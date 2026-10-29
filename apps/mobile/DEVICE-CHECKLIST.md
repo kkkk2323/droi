@@ -70,6 +70,9 @@ Droi on the computer must be a build with the computer name and id in its
       needs-input sound and a warning haptic.
 - [ ] With the silent switch on, the haptic is still felt but no sound plays.
 - [ ] Music from another app keeps playing under the alert sound.
+- [ ] A Session that finished while the iPhone was locked shows its unread dot
+      after unlocking; opening it in Droi on the computer clears the dot here
+      within a few seconds, and opening it here clears it on the computer.
 
 ## Appearance
 

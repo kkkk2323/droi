@@ -1,8 +1,18 @@
 import { describe, expect, test } from 'vitest'
 import {
   CONTINUES_TAG,
+  EARLIER_GROUP_KEY,
+  NOW_GROUP_KEY,
+  RANK_BUSY,
+  RANK_REST,
+  RANK_UNREAD,
   RECENT_WINDOW_MS,
   SCRATCH_TAG,
+  TODAY_GROUP_KEY,
+  YESTERDAY_GROUP_KEY,
+  groupByTime,
+  sortKey,
+  usedAt,
   continuationChain,
   continuationParent,
   continuationTags,
@@ -405,4 +415,145 @@ test('withoutAutomationRuns leaves out runs only', () => {
     'setup',
     'plain',
   ])
+})
+
+describe('Session Times in the order', () => {
+  const day = 24 * 60 * 60 * 1000
+  // Noon, local time: the time view's days are the phone's.
+  const now = new Date(2026, 5, 15, 12, 0)
+  const at = (offsetMs: number) => now.getTime() + offsetMs
+
+  test('a Session is dated by its last message sent, else by the Daemon', () => {
+    const times = new Map([['a', { sentAt: 5_000 }]])
+    expect(usedAt(summary({ sessionId: 'a', updatedAt: 9 }), times)).toBe(5_000)
+    expect(usedAt(summary({ sessionId: 'b', updatedAt: 9 }), times)).toBe(9_000)
+    expect(usedAt(summary({ sessionId: 'b', updatedAt: 9 }))).toBe(9_000)
+  })
+
+  test('working Sessions rank first, then unread; the Created order has no ranks', () => {
+    const order: SortOrder = {
+      ...DEFAULT_SORT,
+      busy: new Set(['w']),
+      unread: new Set(['w', 'u']),
+    }
+    expect(sortKey(summary({ sessionId: 'w', updatedAt: 1 }), order)).toEqual({
+      rank: RANK_BUSY,
+      at: 1_000,
+    })
+    expect(sortKey(summary({ sessionId: 'u' }), order).rank).toBe(RANK_UNREAD)
+    expect(sortKey(summary({ sessionId: 'r' }), order).rank).toBe(RANK_REST)
+    expect(sortKey(summary({ sessionId: 'w' }), { ...order, sessions: 'created' }).rank).toBe(
+      RANK_REST,
+    )
+  })
+
+  test('inside a Workspace: working, unread, then by the last message sent', () => {
+    const groups = groupByWorkspace(
+      [
+        summary({ sessionId: 'hooked', cwd: '/w/a', updatedAt: 900 }),
+        summary({ sessionId: 'sent', cwd: '/w/a', updatedAt: 100 }),
+        summary({ sessionId: 'unread', cwd: '/w/a', updatedAt: 50 }),
+        summary({ sessionId: 'working', cwd: '/w/a', updatedAt: 10 }),
+      ],
+      NO_PINS,
+      {
+        ...DEFAULT_SORT,
+        times: new Map([
+          ['sent', { sentAt: 950_000 }],
+          ['hooked', { sentAt: 200_000 }],
+        ]),
+        busy: new Set(['working']),
+        unread: new Set(['unread']),
+      },
+    )
+    expect(groups[0]!.sessions.map((s) => s.sessionId)).toEqual([
+      'working',
+      'unread',
+      'sent',
+      'hooked',
+    ])
+  })
+
+  test('Recently active ranks the Workspaces by their last message sent', () => {
+    const labels = groupByWorkspace(
+      [
+        summary({ sessionId: 'a', cwd: '/w/alpha', updatedAt: 900 }),
+        summary({ sessionId: 'b', cwd: '/w/beta', updatedAt: 100 }),
+      ],
+      NO_PINS,
+      { ...DEFAULT_SORT, workspaces: 'recent', times: new Map([['b', { sentAt: 950_000 }]]) },
+    ).map((g) => g.label)
+    expect(labels).toEqual(['beta', 'alpha'])
+  })
+
+  test('the time view: pinned, right now, then by day, each naming its Workspace', () => {
+    const scratch = [{ name: SCRATCH_TAG }]
+    const sessions = [
+      summary({ sessionId: 'early', cwd: '/w/alpha', updatedAt: at(-3 * day) / 1000 }),
+      summary({ sessionId: 'yday', cwd: '/w/beta', updatedAt: at(-day) / 1000 }),
+      summary({ sessionId: 'sent', cwd: '/w/alpha', updatedAt: at(-day) / 1000 }),
+      summary({ sessionId: 'note', cwd: '/c/x', tags: scratch, updatedAt: at(-2e6) / 1000 }),
+      summary({ sessionId: 'unread', cwd: '/w/beta', updatedAt: at(-5 * day) / 1000 }),
+      summary({ sessionId: 'working', cwd: '/w/alpha', updatedAt: at(-9 * day) / 1000 }),
+      summary({ sessionId: 'pinned', cwd: '/w/beta', updatedAt: at(-9 * day) / 1000 }),
+    ]
+    const groups = groupByTime(
+      sessions,
+      { workspaces: new Set(), sessions: new Set(['pinned']) },
+      {
+        ...DEFAULT_SORT,
+        times: new Map([['sent', { sentAt: at(-1e6) }]]),
+        busy: new Set(['working', 'pinned']),
+        unread: new Set(['unread']),
+      },
+      now,
+    )
+    expect(groups.map((g) => [g.key, g.sessions.map((s) => s.sessionId)])).toEqual([
+      [PINNED_SESSIONS_GROUP_KEY, ['pinned']],
+      [NOW_GROUP_KEY, ['working', 'unread']],
+      [TODAY_GROUP_KEY, ['sent', 'note']],
+      [YESTERDAY_GROUP_KEY, ['yday']],
+      [EARLIER_GROUP_KEY, ['early']],
+    ])
+    expect(groups[0]!.places.get('sent')).toBe('alpha')
+    expect(groups[0]!.places.has('note')).toBe(false)
+  })
+
+  test('the time view in the Created order goes by when each Session was first seen', () => {
+    const groups = groupByTime(
+      [
+        summary({ sessionId: 'old', updatedAt: at(0) / 1000 }),
+        summary({ sessionId: 'new', updatedAt: at(-3 * day) / 1000 }),
+      ],
+      NO_PINS,
+      {
+        ...DEFAULT_SORT,
+        sessions: 'created',
+        firstSeen: { old: at(-3 * day), new: at(-1000) },
+        busy: new Set(['old']),
+      },
+      now,
+    )
+    expect(groups.map((g) => [g.key, g.sessions.map((s) => s.sessionId)])).toEqual([
+      [TODAY_GROUP_KEY, ['new']],
+      [EARLIER_GROUP_KEY, ['old']],
+    ])
+  })
+
+  test('an old Session working or unread is neither hidden nor stale', () => {
+    const old = (now.getTime() - STALE_WORKSPACE_MS - day) / 1000
+    const order: SortOrder = { ...DEFAULT_SORT, busy: new Set(['w']), unread: new Set(['u']) }
+    const list = [
+      summary({ sessionId: 'w', cwd: '/w/a', updatedAt: old }),
+      summary({ sessionId: 'u', cwd: '/w/b', updatedAt: old }),
+      summary({ sessionId: 'r', cwd: '/w/c', updatedAt: old }),
+    ]
+    expect(visibleSessions(list, 0, now.getTime(), NO_PINS.sessions, order)).toEqual({
+      visible: [list[0], list[1]],
+      hidden: 1,
+    })
+    const { active, stale } = splitStale(groupByWorkspace(list), now.getTime(), order)
+    expect(active.map((g) => g.key).sort()).toEqual(['/w/a', '/w/b'])
+    expect(stale.map((g) => g.key)).toEqual(['/w/c'])
+  })
 })

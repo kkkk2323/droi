@@ -52,8 +52,11 @@ const (
 const PreferredPort = 41417
 
 const (
-	loopback          = "127.0.0.1"
-	initializeSession = "daemon.initialize_session"
+	loopback            = "127.0.0.1"
+	initializeSession   = "daemon.initialize_session"
+	addUserMessage      = "daemon.add_user_message"
+	sessionNotification = "daemon.session_notification"
+	workingStateChanged = "droid_working_state_changed"
 	// The ws library's default maxPayload, which the Electron Gateway ran with.
 	maxMessage = 100 << 20
 )
@@ -111,6 +114,9 @@ type Options struct {
 	// SessionList, optional, is the window's Session list order; nil
 	// answers 404.
 	SessionList SessionList
+	// SessionTimes, optional, is the Host's Session Times, which the
+	// bridges write and SessionTimesPath serves; nil answers 404.
+	SessionTimes SessionTimes
 }
 
 // Meta is the /meta answer.
@@ -137,6 +143,9 @@ type Gateway struct {
 	closed  bool
 	lan     []lanListener
 	bridges map[*bridge]struct{}
+	// done closes with the Gateway, which ends the long polls at once:
+	// shutting a listener down waits for every request to end.
+	done chan struct{}
 }
 
 type lanListener struct {
@@ -154,7 +163,7 @@ func Start(opts Options) (*Gateway, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := &Gateway{opts: opts, port: ln.Addr().(*net.TCPAddr).Port, bridges: map[*bridge]struct{}{}}
+	g := &Gateway{opts: opts, port: ln.Addr().(*net.TCPAddr).Port, bridges: map[*bridge]struct{}{}, done: make(chan struct{})}
 	g.loopback = g.serve(ln)
 	if opts.RemoteAccess {
 		g.bindLAN()
@@ -225,6 +234,7 @@ func (g *Gateway) Close() error {
 		return nil
 	}
 	g.closed = true
+	close(g.done)
 	ending := g.bridges
 	g.bridges = map[*bridge]struct{}{}
 	g.mu.Unlock()
@@ -351,6 +361,9 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		reply(w, status, body)
 	case SessionListPath, SessionPinPath:
 		status, body := g.answerSessionList(r, path, q)
+		reply(w, status, body)
+	case SessionTimesPath, SessionViewedPath:
+		status, body := g.answerSessionTimes(r, path, q)
 		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App
@@ -548,7 +561,7 @@ func (g *Gateway) runBridge(client *websocket.Conn, daemonURL string, kind Token
 	b.mu.Unlock()
 
 	var wg sync.WaitGroup
-	wg.Go(func() { b.toClient(ctx, upstream) })
+	wg.Go(func() { b.toClient(ctx, upstream, g.opts) })
 	b.toDaemon(ctx, upstream, g.opts)
 	wg.Wait()
 }
@@ -573,6 +586,7 @@ func (b *bridge) toDaemon(ctx context.Context, upstream *websocket.Conn, opts Op
 			if startsSession && opts.AppendSystemPrompt != nil {
 				data = InjectSystemPrompt(data, opts.AppendSystemPrompt())
 			}
+			noteTimes(opts.SessionTimes, data, true)
 		}
 		if err := upstream.Write(ctx, typ, data); err != nil {
 			b.closeBoth()
@@ -581,12 +595,17 @@ func (b *bridge) toDaemon(ctx context.Context, upstream *websocket.Conn, opts Op
 	}
 }
 
-func (b *bridge) toClient(ctx context.Context, upstream *websocket.Conn) {
+func (b *bridge) toClient(ctx context.Context, upstream *websocket.Conn, opts Options) {
 	for {
 		typ, data, err := upstream.Read(ctx)
 		if err != nil {
 			b.closeBoth()
 			return
+		}
+		// Noted before the Client hears it, so a Client that shows the
+		// Session as its turn ends reads it after the end.
+		if typ == websocket.MessageText {
+			noteTimes(opts.SessionTimes, data, false)
 		}
 		if err := b.client.Write(ctx, typ, data); err != nil {
 			b.closeBoth()

@@ -22,6 +22,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
@@ -45,6 +46,8 @@ type harness struct {
 	// transcripts are the Gateway's answers for the session-file endpoint.
 	scratchRoot string
 	transcripts map[string]string
+	// times are the Session Times the Gateway keeps, as the Host's.
+	times *sessiontimes.Store
 
 	// localToken is the window's token for the harness's own Gateway; cfg
 	// is the Config the window was made with, which switchTo makes the next
@@ -83,7 +86,7 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	t.Helper()
 	theme.RegisterFonts()
 	d := fakedaemon.Start(t, sc)
-	h := &harness{t: t, d: d, addition: addition, scratchRoot: filepath.Join(t.TempDir(), "chats"), transcripts: map[string]string{}}
+	h := &harness{t: t, d: d, addition: addition, scratchRoot: filepath.Join(t.TempDir(), "chats"), transcripts: map[string]string{}, times: sessiontimes.Open("", nil)}
 	localToken := gateway.NewLocalToken()
 	opts := gateway.Options{
 		DaemonURL:    func() string { return d.URL },
@@ -103,6 +106,7 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 			defer h.mu.Unlock()
 			return h.transcripts[id]
 		},
+		SessionTimes: h.times,
 	}
 	if withGateway != nil {
 		withGateway(&opts)
@@ -149,6 +153,9 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	}
 	h.cfg, h.window = cfg, cfg.Controller
 	h.a = New(cfg)
+	// Before the Gateway closes: the App's long poll of the Session Times
+	// ends with it.
+	t.Cleanup(func() { h.a.Close() })
 	h.a.Start()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

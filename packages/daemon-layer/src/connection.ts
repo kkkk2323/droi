@@ -14,6 +14,7 @@ import { GATEWAY_API_KEY_PLACEHOLDER, gatewayDaemonUrl, gatewayPairingCheckUrl }
 import { createScratchWorkspaces, type ScratchWorkspaces } from './scratch-workspaces'
 import { createSessionFileLookup } from './session-file'
 import { createSessionListOrder, type SessionListOrderSource } from './session-list-order'
+import { createSessionTimes, type SessionTimesSource } from './session-times'
 
 /** Where a Client reaches the Gateway, and whether it is the Desktop Shell's own window. */
 export interface ClientConfig {
@@ -44,6 +45,8 @@ export interface DaemonConnection {
   sessionFile(sessionId: string): Promise<string | null>
   /** How the computer's window lists its Sessions (see session-list-order.ts). */
   readonly sessionListOrder: SessionListOrderSource
+  /** The computer's Session Times (see session-times.ts). */
+  readonly sessionTimes: SessionTimesSource
   getState(): ConnectionState
   subscribe(listener: () => void): () => void
   start(): void
@@ -224,6 +227,7 @@ export function createDaemonConnection(
     scratch: createScratchWorkspaces(config, fetchImpl),
     sessionFile: createSessionFileLookup(config, fetchImpl),
     sessionListOrder: createSessionListOrder(config, fetchImpl),
+    sessionTimes: createSessionTimes(config, fetchImpl),
     getState: () => state,
     subscribe(listener) {
       listeners.add(listener)

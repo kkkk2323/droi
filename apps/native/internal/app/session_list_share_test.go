@@ -33,4 +33,9 @@ func TestTheSessionListShareFollowsTheSidebar(t *testing.T) {
 	if got := share.Order().PinnedWorkspaces; !slices.Equal(got, prefs.PinnedWorkspaces.Get(h.a.prefs)) {
 		t.Fatalf("pinned %v", got)
 	}
+	// The phone lists by time when the sidebar does.
+	prefs.SessionView.Set(h.a.prefs, "time")
+	if got := share.Order().SessionView; got != "time" {
+		t.Fatalf("view %q", got)
+	}
 }

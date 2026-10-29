@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createSessionListOrder, sortOrderOf, withPin } from './session-list-order'
+import { createSessionListOrder, sortOrderOf, viewOf, withPin } from './session-list-order'
 
 const config = { gatewayUrl: 'http://127.0.0.1:4000', pairingToken: 'tok' }
 const ORDER = {
@@ -7,6 +7,7 @@ const ORDER = {
   pinnedWorkspaces: [],
   workspaceOrder: ['/w/b', '/w/a'],
   sessionSort: 'created',
+  sessionView: '',
 }
 
 describe('createSessionListOrder', () => {
@@ -63,6 +64,13 @@ describe('sortOrderOf', () => {
       sessions: 'recent',
     })
   })
+})
+
+test('viewOf follows the window’s view, by Workspace when it names none', () => {
+  expect(viewOf({ ...ORDER, sessionView: 'time' })).toBe('time')
+  expect(viewOf(ORDER)).toBe('workspaces')
+  expect(viewOf({ ...ORDER, sessionView: 'tiles' })).toBe('workspaces')
+  expect(viewOf(null)).toBe('workspaces')
 })
 
 test('withPin adds or takes out one key', () => {

@@ -188,13 +188,17 @@ func MainSessions(list []Summary) []Summary {
 	return out
 }
 
-// Group is a Workspace's Sessions, or Recents, or the pinned ones.
+// Group is a Workspace's Sessions, or Recents, or the pinned ones, or a
+// section of the time view.
 type Group struct {
 	Key      string
 	Label    string
 	Path     string
 	Scratch  bool
 	Sessions []Summary
+	// Places, in the time view, is each Session's Workspace label, "" for
+	// a Scratch Session.
+	Places map[string]string
 }
 
 // Pins are the pinned Workspaces and Sessions.
@@ -235,6 +239,16 @@ type Order struct {
 	// FirstSeen is when each Session was first seen, in ms; the Daemon
 	// lists no creation time.
 	FirstSeen map[string]float64
+	// Times are the Session Times, which date a Session by its last
+	// message sent (UsedAt).
+	Times map[string]Times
+	// Busy are the Sessions whose turn runs, waiting for an answer
+	// included; Unread those with a result nobody has seen. Both rank a
+	// Session above the time order (LiveKey).
+	Busy, Unread map[string]bool
+	// Held are the Keys the Sessions keep while the pointer is over the
+	// list (HoldKeys).
+	Held map[string]Key
 }
 
 var DefaultOrder = Order{Workspaces: SortMostSessions, Sessions: SessionsRecent}
@@ -260,9 +274,10 @@ func NoteFirstSeen(firstSeen map[string]float64, list []Summary, nowMs float64) 
 
 // GroupByWorkspace groups and sorts the list: by default the Workspace with
 // the most conversations first, ties to the newest, and inside each the
-// Sessions newest first. Pinned Workspaces and Sessions come first; with
-// pinnedApart pinned Sessions leave their groups for one of their own.
-// Scratch Sessions share one Recents group, always last.
+// Sessions busy first, then unread, then newest first (Order.KeyOf).
+// Pinned Workspaces and Sessions come first; with pinnedApart pinned
+// Sessions leave their groups for one of their own. Scratch Sessions share
+// one Recents group, always last.
 func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) []Group {
 	groups := map[string]*Group{}
 	var keys []string
@@ -304,24 +319,8 @@ func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) 
 			g.Label = l
 		}
 	}
-	created := func(s Summary) float64 {
-		if v, ok := order.FirstSeen[s.SessionID]; ok {
-			return v
-		}
-		return float64(s.UpdatedAt) * 1000
-	}
 	sortSessions := func(g *Group) {
-		slices.SortStableFunc(g.Sessions, func(a, b Summary) int {
-			if c := cmp.Compare(b2i(pins.Sessions[b.SessionID]), b2i(pins.Sessions[a.SessionID])); c != 0 {
-				return c
-			}
-			if order.Sessions == SessionsCreated {
-				if c := cmp.Compare(created(b), created(a)); c != 0 {
-					return c
-				}
-			}
-			return cmp.Compare(b.UpdatedAt, a.UpdatedAt)
-		})
+		slices.SortStableFunc(g.Sessions, func(a, b Summary) int { return order.compare(pins, a, b) })
 	}
 	for _, g := range result {
 		sortSessions(g)
@@ -335,7 +334,7 @@ func GroupByWorkspace(list []Summary, pins Pins, order Order, pinnedApart bool) 
 	newest := func(g *Group) int64 {
 		var n int64
 		for _, s := range g.Sessions {
-			n = max(n, s.UpdatedAt)
+			n = max(n, order.KeyOf(s).At)
 		}
 		return n
 	}
@@ -417,8 +416,8 @@ func MoveWorkspace(shown []string, key, target string, after bool) []string {
 	return slices.Insert(rest, at, key)
 }
 
-// Sessions touched within RecentWindowMs always show; older ones wait
-// behind "Show N older", OlderBatch at a time.
+// Sessions used within RecentWindowMs always show, as do the busy and the
+// unread; older ones wait behind "Show N older", OlderBatch at a time.
 const (
 	RecentWindowMs = 3 * 24 * 60 * 60 * 1000
 	OlderBatch     = 30
@@ -426,7 +425,7 @@ const (
 
 // VisibleSessions are the rows a section shows: every pinned or recent
 // Session plus the first revealed older ones, and how many stay hidden.
-func VisibleSessions(list []Summary, revealed int, nowMs int64, pinned map[string]bool) ([]Summary, int) {
+func VisibleSessions(list []Summary, revealed int, nowMs int64, pinned map[string]bool, order Order) ([]Summary, int) {
 	cutoff := nowMs - RecentWindowMs
 	var visible []Summary
 	older := 0
@@ -435,7 +434,8 @@ func VisibleSessions(list []Summary, revealed int, nowMs int64, pinned map[strin
 			visible = append(visible, s)
 			continue
 		}
-		recent := s.UpdatedAt*1000 >= cutoff
+		k := order.KeyOf(s)
+		recent := k.At >= cutoff || k.Rank > RankRest
 		if recent || older < revealed {
 			visible = append(visible, s)
 		}
@@ -451,11 +451,15 @@ func VisibleSessions(list []Summary, revealed int, nowMs int64, pinned map[strin
 const StaleWorkspaceMs = 30 * 24 * 60 * 60 * 1000
 
 // SplitStale parts groups, in order, into the Workspaces used within
-// StaleWorkspaceMs or holding the Session keep, and the rest.
-func SplitStale(groups []Group, nowMs int64, keep string) (active, stale []Group) {
+// StaleWorkspaceMs or holding the Session keep or a busy or unread one,
+// and the rest.
+func SplitStale(groups []Group, nowMs int64, keep string, order Order) (active, stale []Group) {
 	cutoff := nowMs - StaleWorkspaceMs
 	for _, g := range groups {
-		used := slices.ContainsFunc(g.Sessions, func(s Summary) bool { return s.UpdatedAt*1000 >= cutoff || (keep != "" && s.SessionID == keep) })
+		used := slices.ContainsFunc(g.Sessions, func(s Summary) bool {
+			k := order.KeyOf(s)
+			return k.At >= cutoff || k.Rank > RankRest || (keep != "" && s.SessionID == keep)
+		})
 		if used {
 			active = append(active, g)
 		} else {
@@ -537,12 +541,13 @@ func WorkspaceLabels(paths []string) map[string]string {
 // RecentWorkspace is a Workspace the New session page offers.
 type RecentWorkspace struct {
 	Path, Label string
-	LastUsedAt  int64
+	// LastUsedAt is in Unix seconds (UsedAt).
+	LastUsedAt int64
 }
 
 // RecentWorkspaces: most recent first, one per path, Scratch and
 // Automation runs left out.
-func RecentWorkspaces(list []Summary) []RecentWorkspace {
+func RecentWorkspaces(list []Summary, times map[string]Times) []RecentWorkspace {
 	byPath := map[string]*RecentWorkspace{}
 	var order []string
 	for _, s := range list {
@@ -553,11 +558,12 @@ func RecentWorkspaces(list []Summary) []RecentWorkspace {
 		if path == "" {
 			continue
 		}
+		used := UsedAt(s, times) / 1000
 		if w, ok := byPath[path]; !ok {
-			byPath[path] = &RecentWorkspace{Path: path, LastUsedAt: s.UpdatedAt}
+			byPath[path] = &RecentWorkspace{Path: path, LastUsedAt: used}
 			order = append(order, path)
-		} else if w.LastUsedAt < s.UpdatedAt {
-			w.LastUsedAt = s.UpdatedAt
+		} else if w.LastUsedAt < used {
+			w.LastUsedAt = used
 		}
 	}
 	named := WorkspaceLabels(order)

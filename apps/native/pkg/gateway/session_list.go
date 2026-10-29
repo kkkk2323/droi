@@ -31,6 +31,8 @@ type SessionListOrder struct {
 	WorkspaceOrder []string `json:"workspaceOrder"`
 	// SessionSort is "recent" or "created"; "" is the default, "recent".
 	SessionSort string `json:"sessionSort"`
+	// SessionView is "time", or "" for the Workspaces (sessions.View).
+	SessionView string `json:"sessionView"`
 }
 
 // SessionList is the Host's side of the Session list endpoints.

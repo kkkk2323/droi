@@ -99,6 +99,8 @@ export interface SessionListOrder {
   workspaceOrder: string[]
   /** 'recent' or 'created'; '' is 'recent'. */
   sessionSort: string
+  /** 'time', or '' for the Workspaces. */
+  sessionView: string
 }
 
 export type PinKind = 'session' | 'workspace'
@@ -115,6 +117,52 @@ export function gatewaySessionListUrl(
     url.searchParams.set('key', pin.key)
     url.searchParams.set('pinned', String(pin.pinned))
   }
+  return url.toString()
+}
+
+/**
+ * The Session Times (ADR 0032): when the user last sent each Session a message, when its last
+ * turn ended and when a Client last showed it, in Unix ms. GET answers a SessionTimesSnapshot:
+ * every Session's (`full`), or with `after` those changed after that revision, once one
+ * changes or the Gateway's long poll (25 s) has passed. POST on the viewed path, with the
+ * Session id, notes a Client showing the Session and answers 204. A Gateway that keeps none
+ * answers 404.
+ */
+export const GATEWAY_SESSION_TIMES_PATH = '/session-times'
+export const GATEWAY_SESSION_VIEWED_PATH = '/session-times/viewed'
+export const GATEWAY_AFTER_QUERY = 'after'
+
+export interface SessionTimes {
+  sentAt?: number
+  endedAt?: number
+  viewedAt?: number
+}
+
+export interface SessionTimesSnapshot {
+  rev: number
+  full?: boolean
+  sessions: Record<string, SessionTimes>
+}
+
+export function gatewaySessionTimesUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  after: number,
+): string {
+  const url = new URL(GATEWAY_SESSION_TIMES_PATH, gatewayHttpUrl)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (after) url.searchParams.set(GATEWAY_AFTER_QUERY, String(after))
+  return url.toString()
+}
+
+export function gatewaySessionViewedUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  const url = new URL(GATEWAY_SESSION_VIEWED_PATH, gatewayHttpUrl)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
   return url.toString()
 }
 

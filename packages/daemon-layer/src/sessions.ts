@@ -2,10 +2,11 @@
 // the Daemon on demand, so it lives in TanStack Query; the open Session's
 // transcript lives in the SDK state manager (see use-session.ts).
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { DaemonSessionController } from '@factory/droid-sdk'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import { SESSION_EVENT } from './sdk-enums'
+import type { SessionTimes } from './gateway'
 import { isMemorySession } from './memory-session'
 import type { SessionWorktree } from './worktree'
 
@@ -156,6 +157,8 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
   const connected = useConnectionState().status === 'connected'
   const queryClient = useQueryClient()
 
+  // A Session's place comes from the Session Times (session-times.ts), not from the
+  // Daemon's date, so a working Session needs no date of its own here.
   useEffect(() => {
     const invalidate = () => void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
     connection.controller.on('connected', invalidate)
@@ -178,30 +181,6 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
       unsubscribe()
     }
   }, [connection, queryClient])
-
-  // The list is read now and then, so a Session that starts working after a
-  // read would keep its old time (and its place far down) until the next one.
-  // Its working-state notifications say it is active: they count as a change
-  // now. Only a Session's work does, not an idle report alone, which loading
-  // an old Session could bring.
-  const [activeAt, setActiveAt] = useState<ReadonlyMap<string, number>>(() => new Map())
-  useEffect(() => {
-    const working = new Set<string>()
-    const onWorkingState = ({ sessionId, newState }: { sessionId: string; newState: string }) => {
-      const busy = newState !== 'idle'
-      if (!busy && !working.has(sessionId)) return
-      if (busy) working.add(sessionId)
-      else working.delete(sessionId)
-      const now = Math.floor(Date.now() / 1000)
-      setActiveAt((prev) =>
-        prev.get(sessionId) === now ? prev : new Map(prev).set(sessionId, now),
-      )
-    }
-    connection.controller.on('droidWorkingStateChanged', onWorkingState)
-    return () => {
-      connection.controller.off('droidWorkingStateChanged', onWorkingState)
-    }
-  }, [connection])
 
   const query = useInfiniteQuery({
     queryKey: [...SESSIONS_QUERY_KEY, { includeArchived }],
@@ -226,14 +205,9 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
   const announced = useAnnouncedSubagents()
   const pages = query.data?.pages
   const data = useMemo(() => {
-    const listed = pages?.flatMap((page) =>
-      page.sessions.map((session) => {
-        const at = activeAt.get(session.sessionId) ?? 0
-        return at > session.updatedAt ? { ...session, updatedAt: at } : session
-      }),
-    )
+    const listed = pages?.flatMap((page) => page.sessions)
     return listed && withAnnouncedSubagents(listed, announced)
-  }, [pages, activeAt, announced])
+  }, [pages, announced])
   const { fetchNextPage } = query
   return {
     data,
@@ -410,6 +384,125 @@ export interface SortOrder {
    * creation time, so the Client keeps its own (see noteFirstSeen).
    */
   firstSeen: Readonly<Record<string, number>>
+  /** The Session Times (session-times.ts), which date a Session by its last message sent. */
+  times?: ReadonlyMap<string, SessionTimes>
+  /** The Sessions whose turn runs, waiting for an answer included. */
+  busy?: ReadonlySet<string>
+  /** The Sessions with a result nobody has seen. */
+  unread?: ReadonlySet<string>
+}
+
+/**
+ * When the Session was last used, in ms: when the user last sent it a message, else the
+ * Daemon's date for it. The Daemon dates a Session by its file, which every hook run and
+ * every step of a turn writes, so only a Session sent nothing through a Gateway since Droi
+ * kept the Session Times (one used in the droid CLI) is dated that way.
+ */
+export function usedAt(
+  session: Pick<SessionSummary, 'sessionId' | 'updatedAt'>,
+  times?: ReadonlyMap<string, SessionTimes>,
+): number {
+  return times?.get(session.sessionId)?.sentAt || session.updatedAt * 1000
+}
+
+/** Ranks float a Session above the time order: one whose turn runs, then one unread. */
+export const RANK_REST = 0
+export const RANK_UNREAD = 1
+export const RANK_BUSY = 2
+
+/** What places a Session in the list: its rank, then when it was last used, in ms. */
+export interface SortKey {
+  rank: number
+  at: number
+}
+
+/** The Session's key; the Created order has no ranks, a plain list by creation. */
+export function sortKey(session: SessionSummary, order: SortOrder): SortKey {
+  const at = usedAt(session, order.times)
+  if (order.sessions === 'created') return { rank: RANK_REST, at }
+  const rank = order.busy?.has(session.sessionId)
+    ? RANK_BUSY
+    : order.unread?.has(session.sessionId)
+      ? RANK_UNREAD
+      : RANK_REST
+  return { rank, at }
+}
+
+const created = (order: SortOrder, session: SessionSummary) =>
+  order.firstSeen[session.sessionId] ?? session.updatedAt * 1000
+
+/** Two Sessions of a list: pinned ones first, then by the order chosen, newest first. */
+function compareSessions(pins: Pins, order: SortOrder, a: SessionSummary, b: SessionSummary) {
+  const pinned = Number(pins.sessions.has(b.sessionId)) - Number(pins.sessions.has(a.sessionId))
+  if (pinned !== 0) return pinned
+  if (order.sessions === 'created') {
+    const byCreation = created(order, b) - created(order, a)
+    if (byCreation !== 0) return byCreation
+  }
+  const ka = sortKey(a, order)
+  const kb = sortKey(b, order)
+  return kb.rank - ka.rank || kb.at - ka.at
+}
+
+/** How the list shows the Sessions: grouped by Workspace, or one list by time. */
+export type SessionView = 'workspaces' | 'time'
+
+/** The time view's sections. */
+export const NOW_GROUP_KEY = 'droi:time:now'
+export const TODAY_GROUP_KEY = 'droi:time:today'
+export const YESTERDAY_GROUP_KEY = 'droi:time:yesterday'
+export const EARLIER_GROUP_KEY = 'droi:time:earlier'
+
+export interface TimeGroup {
+  key: string
+  label: string
+  sessions: SessionSummary[]
+  /** Each Session's Workspace label; none for a Scratch Session. */
+  places: ReadonlyMap<string, string>
+}
+
+/**
+ * The time view, one list of every Session: the pinned ones, then those working or with an
+ * unseen result (Right now), then the rest by the local day they were last used (created, in
+ * the Created order), today, yesterday and earlier. Each section is in the list's order.
+ */
+export function groupByTime(
+  sessions: readonly SessionSummary[],
+  pins: Pins = NO_PINS,
+  order: SortOrder = DEFAULT_SORT,
+  now: Date = new Date(),
+): TimeGroup[] {
+  const places = new Map<string, string>()
+  for (const session of sessions) {
+    if (!isScratchSession(session)) {
+      places.set(session.sessionId, workspaceLabel(workspaceOf(session) ?? ''))
+    }
+  }
+  const sorted = [...sessions].sort((a, b) => compareSessions(NO_PINS, order, a, b))
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime()
+  const sections: TimeGroup[] = [
+    { key: PINNED_SESSIONS_GROUP_KEY, label: 'Pinned', sessions: [], places },
+    { key: NOW_GROUP_KEY, label: 'Right now', sessions: [], places },
+    { key: TODAY_GROUP_KEY, label: 'Today', sessions: [], places },
+    { key: YESTERDAY_GROUP_KEY, label: 'Yesterday', sessions: [], places },
+    { key: EARLIER_GROUP_KEY, label: 'Earlier', sessions: [], places },
+  ]
+  for (const session of sorted) {
+    const key = sortKey(session, order)
+    const at = order.sessions === 'created' ? created(order, session) : key.at
+    const section = pins.sessions.has(session.sessionId)
+      ? sections[0]
+      : key.rank > RANK_REST
+        ? sections[1]
+        : at >= today
+          ? sections[2]
+          : at >= yesterday
+            ? sections[3]
+            : sections[4]
+    section!.sessions.push(session)
+  }
+  return sections.filter((section) => section.sessions.length > 0)
 }
 
 export const DEFAULT_SORT: SortOrder = {
@@ -443,14 +536,11 @@ export function noteFirstSeen(
 /**
  * The Workspace groups in the chosen order (by default the one with the most
  * conversations first, ties broken by the newest), and inside each the
- * Sessions newest first or by when they were first seen. Pinned Workspaces and
- * Sessions come before the rest, in the same order among themselves. With
- * `pinnedApart` (the computer's sidebar) pinned Sessions instead leave their
- * groups for one of their own, first.
- *
- * The default does not rank Workspaces by recency alone because the Daemon's
- * `updatedAt` is the file's modified time, which moves when a Session is
- * merely loaded. Scratch Sessions share one Recents group, always last.
+ * Sessions busy first, then unread, then newest first (sortKey), or by when
+ * they were first seen. Pinned Workspaces and Sessions come before the rest,
+ * in the same order among themselves. With `pinnedApart` (the computer's
+ * sidebar) pinned Sessions instead leave their groups for one of their own,
+ * first. Scratch Sessions share one Recents group, always last.
  */
 export function groupByWorkspace(
   sessions: readonly SessionSummary[],
@@ -494,18 +584,11 @@ export function groupByWorkspace(
     group.sessions.push(session)
   }
   const result = [...groups.values()]
-  const created = (session: SessionSummary) =>
-    order.firstSeen[session.sessionId] ?? session.updatedAt * 1000
   for (const group of [...result, ...(recents ? [recents] : []), ...(pinned ? [pinned] : [])]) {
-    group.sessions.sort(
-      (a, b) =>
-        Number(pins.sessions.has(b.sessionId)) - Number(pins.sessions.has(a.sessionId)) ||
-        (order.sessions === 'created' ? created(b) - created(a) : 0) ||
-        b.updatedAt - a.updatedAt,
-    )
+    group.sessions.sort((a, b) => compareSessions(pins, order, a, b))
   }
   const newest = (group: WorkspaceGroup) =>
-    Math.max(0, ...group.sessions.map((session) => session.updatedAt))
+    Math.max(0, ...group.sessions.map((session) => sortKey(session, order).at))
   const conversations = (group: WorkspaceGroup) =>
     group.sessions.filter((session) => (session.messagesCount ?? 1) > 0).length
   const byDefault = (a: WorkspaceGroup, b: WorkspaceGroup) =>
@@ -551,16 +634,23 @@ export function moveWorkspace(
 /** A Workspace none of whose Sessions changed in this long waits behind "Show N older workspaces". */
 export const STALE_WORKSPACE_MS = 30 * 24 * 60 * 60 * 1000
 
-/** Parts groups, in order, into the Workspaces used within STALE_WORKSPACE_MS and the rest. */
+/**
+ * Parts groups, in order, into the Workspaces used within STALE_WORKSPACE_MS or holding a busy
+ * or unread Session, and the rest.
+ */
 export function splitStale(
   groups: readonly WorkspaceGroup[],
   now = Date.now(),
+  order: SortOrder = DEFAULT_SORT,
 ): { active: WorkspaceGroup[]; stale: WorkspaceGroup[] } {
   const cutoff = now - STALE_WORKSPACE_MS
   const active: WorkspaceGroup[] = []
   const stale: WorkspaceGroup[] = []
   for (const group of groups) {
-    const used = group.sessions.some((session) => session.updatedAt * 1000 >= cutoff)
+    const used = group.sessions.some((session) => {
+      const key = sortKey(session, order)
+      return key.at >= cutoff || key.rank > RANK_REST
+    })
     ;(used ? active : stale).push(group)
   }
   return { active, stale }
@@ -576,7 +666,7 @@ export function withoutAutomationRuns(sessions: readonly SessionSummary[]): Sess
   )
 }
 
-/** Sessions touched within this window always show; older ones sit behind "Show more". */
+/** Sessions used within this window always show, as do the busy and unread; older ones sit behind "Show more". */
 export const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
 export const OLDER_BATCH = 30
 
@@ -589,6 +679,7 @@ export function visibleSessions(
   revealed: number,
   now = Date.now(),
   pinned: ReadonlySet<string> = NO_PINS.sessions,
+  order: SortOrder = DEFAULT_SORT,
 ): { visible: SessionSummary[]; hidden: number } {
   const cutoff = now - RECENT_WINDOW_MS
   const visible: SessionSummary[] = []
@@ -598,7 +689,8 @@ export function visibleSessions(
       visible.push(session)
       continue
     }
-    const recent = session.updatedAt * 1000 >= cutoff
+    const key = sortKey(session, order)
+    const recent = key.at >= cutoff || key.rank > RANK_REST
     if (recent || older < revealed) visible.push(session)
     if (!recent) older += 1
   }

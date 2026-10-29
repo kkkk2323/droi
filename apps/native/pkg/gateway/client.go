@@ -8,7 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // ErrNotFound is a Gateway that does not serve the endpoint asked: it has no
@@ -39,6 +42,8 @@ type Client struct {
 	base  url.URL
 	token string
 	http  *http.Client
+	// poll has no timeout of its own: a long poll's context bounds it.
+	poll *http.Client
 }
 
 // NewClient is the Client for the Gateway behind socketURL, a Daemon socket
@@ -56,7 +61,37 @@ func NewClient(socketURL string) (*Client, error) {
 	if u.Scheme == "wss" {
 		scheme = "https"
 	}
-	return &Client{base: url.URL{Scheme: scheme, Host: u.Host}, token: token, http: &http.Client{Timeout: requestTimeout}}, nil
+	return &Client{base: url.URL{Scheme: scheme, Host: u.Host}, token: token, http: &http.Client{Timeout: requestTimeout}, poll: &http.Client{}}, nil
+}
+
+// maxTimes bounds an answer of the Session Times, every Session's of a
+// computer with tens of thousands of them.
+const maxTimes = 64 << 20
+
+// SessionTimes is the Gateway's Session Times: every Session's for after
+// 0, else what changed after that revision, once something has or the
+// Gateway's long poll has passed. ErrNotFound is a Gateway that keeps none.
+func (c *Client) SessionTimes(ctx context.Context, after uint64) (sessions.TimesSnapshot, error) {
+	var snap sessions.TimesSnapshot
+	var query url.Values
+	if after != 0 {
+		query = url.Values{AfterQuery: {strconv.FormatUint(after, 10)}}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, longPoll+requestTimeout)
+		defer cancel()
+	} else {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		defer cancel()
+	}
+	err := c.send(ctx, c.poll, maxTimes, http.MethodGet, SessionTimesPath, query, &snap)
+	return snap, err
+}
+
+// SessionViewed tells the Gateway that the Session is on screen, which
+// reads it on every Client.
+func (c *Client) SessionViewed(ctx context.Context, sessionID string) error {
+	return c.call(ctx, http.MethodPost, SessionViewedPath, url.Values{SessionIDQuery: {sessionID}}, nil)
 }
 
 // CreateScratch makes a Scratch Workspace on the Gateway's computer and
@@ -95,6 +130,11 @@ func (c *Client) SessionFile(ctx context.Context, sessionID string) (string, err
 // call sends one request with the token and decodes a JSON answer into out
 // when there is one; any status but 2xx is an error.
 func (c *Client) call(ctx context.Context, method, path string, query url.Values, out any) error {
+	return c.send(ctx, c.http, 1<<20, method, path, query, out)
+}
+
+// send is call through hc, with an answer of up to limit bytes.
+func (c *Client) send(ctx context.Context, hc *http.Client, limit int64, method, path string, query url.Values, out any) error {
 	u := c.base
 	u.Path = path
 	q := url.Values{TokenQuery: {c.token}}
@@ -106,12 +146,12 @@ func (c *Client) call(ctx context.Context, method, path string, query url.Values
 	if err != nil {
 		return err
 	}
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	if err != nil {
 		return err
 	}

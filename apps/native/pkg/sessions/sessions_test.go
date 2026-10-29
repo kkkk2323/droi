@@ -54,7 +54,7 @@ func TestWorktreeSessionsGroupUnderTheirRepository(t *testing.T) {
 	gs := GroupByWorkspace(list, Pins{}, DefaultOrder, false)
 	eq(t, labels(gs), []string{"alpha"})
 	eq(t, ids(gs[0].Sessions), []string{"t", "a"})
-	recent := RecentWorkspaces(list)
+	recent := RecentWorkspaces(list, nil)
 	if len(recent) != 1 || recent[0].Path != "/w/alpha" || recent[0].LastUsedAt != 20 {
 		t.Fatalf("recent = %+v", recent)
 	}
@@ -178,7 +178,7 @@ func TestWorkspacesOfOneNameReadApart(t *testing.T) {
 		{SessionID: "b", Cwd: "/private/tmp", UpdatedAt: 10},
 	}
 	eq(t, labels(GroupByWorkspace(list, Pins{}, DefaultOrder, false)), []string{"tmp (dev)", "tmp (private)"})
-	recent := RecentWorkspaces(list)
+	recent := RecentWorkspaces(list, nil)
 	if len(recent) != 2 || recent[0].Label != "tmp (dev)" || recent[1].Label != "tmp (private)" {
 		t.Fatalf("recent = %+v", recent)
 	}
@@ -195,7 +195,7 @@ func TestSplitStale(t *testing.T) {
 		{SessionID: "mixed-old", Cwd: "/w/mixed", UpdatedAt: now/1000 - 90*day},
 		{SessionID: "mixed-new", Cwd: "/w/mixed", UpdatedAt: now/1000 - 29*day},
 	}, Pins{}, Order{Workspaces: SortName}, false)
-	active, stale := SplitStale(groups, now, "open")
+	active, stale := SplitStale(groups, now, "open", Order{})
 	eq(t, labels(active), []string{"mixed", "new", "open"})
 	eq(t, labels(stale), []string{"old"})
 }
@@ -208,15 +208,19 @@ func TestVisibleSessions(t *testing.T) {
 		{SessionID: "lastWeek", UpdatedAt: now/1000 - 7*day},
 		{SessionID: "lastMonth", UpdatedAt: now/1000 - 30*day},
 	}
-	v, h := VisibleSessions(list, 0, now, nil)
+	v, h := VisibleSessions(list, 0, now, nil, Order{})
 	eq(t, ids(v), []string{"today"})
 	eq(t, h, 2)
-	v, h = VisibleSessions(list, 1, now, nil)
+	v, h = VisibleSessions(list, 1, now, nil, Order{})
 	eq(t, ids(v), []string{"today", "lastWeek"})
 	eq(t, h, 1)
-	v, h = VisibleSessions(list, 0, now, map[string]bool{"lastMonth": true})
+	v, h = VisibleSessions(list, 0, now, map[string]bool{"lastMonth": true}, Order{})
 	eq(t, ids(v), []string{"today", "lastMonth"})
 	eq(t, h, 1)
+	// A Session used last week but working now, or with a result nobody saw, shows.
+	v, h = VisibleSessions(list, 0, now, nil, Order{Busy: map[string]bool{"lastWeek": true}, Unread: map[string]bool{"lastMonth": true}})
+	eq(t, ids(v), []string{"today", "lastWeek", "lastMonth"})
+	eq(t, h, 0)
 }
 
 func TestContinuations(t *testing.T) {

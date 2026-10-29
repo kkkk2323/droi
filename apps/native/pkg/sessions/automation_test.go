@@ -15,7 +15,7 @@ func TestAutomationRunsLeaveTheListAndTheRecentWorkspaces(t *testing.T) {
 	}
 	eq(t, ids(WithoutAutomationRuns(list)), []string{"a", "s"})
 	var paths []string
-	for _, w := range RecentWorkspaces(list) {
+	for _, w := range RecentWorkspaces(list, nil) {
 		paths = append(paths, w.Path)
 	}
 	eq(t, paths, []string{"/w/beta", "/w/alpha"})

@@ -1,7 +1,7 @@
 // The computer's Session list order, through its Gateway: the pins and the
 // Workspace order its window shows, which a phone lists its Sessions by.
 import { gatewaySessionListUrl, type PinKind, type SessionListOrder } from './gateway'
-import { DEFAULT_SORT, type SortOrder } from './sessions'
+import { DEFAULT_SORT, type SessionView, type SortOrder } from './sessions'
 
 export interface SessionListOrderSource {
   /** Null from a Gateway that has no window to follow, or none to reach. */
@@ -47,7 +47,13 @@ function parseOrder(body: unknown): SessionListOrder | null {
     pinnedWorkspaces: strings(b['pinnedWorkspaces']),
     workspaceOrder: strings(b['workspaceOrder']),
     sessionSort: typeof b['sessionSort'] === 'string' ? b['sessionSort'] : '',
+    sessionView: typeof b['sessionView'] === 'string' ? b['sessionView'] : '',
   }
+}
+
+/** How the window lists the Sessions: by time, or by Workspace (the default). */
+export function viewOf(shared: SessionListOrder | null): SessionView {
+  return shared?.sessionView === 'time' ? 'time' : 'workspaces'
 }
 
 /** The window's order: its Workspaces as it shows them, the rest after. */

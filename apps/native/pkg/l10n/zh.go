@@ -1422,4 +1422,11 @@ var zh = map[string]string{
 	"%s written to cache": "缓存写入 %s",
 	"Calls":               "次数",
 	"Share":               "占比",
+
+	"By workspace": "按工作区",
+	"By time":      "按时间",
+	"Right now":    "现在",
+	"Yesterday":    "昨天",
+	"Earlier":      "更早",
+	"In %s":        "位于 %s",
 }

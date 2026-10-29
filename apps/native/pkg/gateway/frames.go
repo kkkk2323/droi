@@ -175,6 +175,12 @@ func (o object) bytes() []byte {
 	return b.Bytes()
 }
 
+// containsString reports whether a frame holds s as a JSON string, the
+// cheap test before one is parsed.
+func containsString(frame []byte, s string) bool {
+	return bytes.Contains(frame, []byte(`"`+s+`"`))
+}
+
 func isString(v json.RawMessage, want string) bool {
 	var s string
 	return json.Unmarshal(v, &s) == nil && s == want

@@ -55,7 +55,11 @@ func (a *App) watchAlerts() (unsubscribe func()) {
 // raise is one alert, on the main thread.
 func (a *App) raise(id, title string, ev alerts.Event) {
 	open := a.route.Name == "session" && a.route.SessionID == id
-	if !open {
+	if open {
+		// Seen as it ends, here; the Gateway noted the end before this
+		// window heard of it.
+		a.viewed(id)
+	} else {
 		if a.unread == nil {
 			a.unread = map[string]bool{}
 		}

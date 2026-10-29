@@ -10,8 +10,8 @@ import (
 )
 
 // SessionListShare is this computer's Session list order, which the Gateway
-// gives a paired phone: the pins and the Session sort kept here, and the
-// Workspace order the window last showed for this computer. Its methods are
+// gives a paired phone: the pins, the Session sort and the view kept here,
+// and the Workspace order the window last showed for this computer. Its methods are
 // safe from any goroutine.
 type SessionListShare struct {
 	Prefs *prefs.Store
@@ -31,6 +31,7 @@ func (s *SessionListShare) Order() gateway.SessionListOrder {
 		PinnedWorkspaces: prefs.PinnedWorkspaces.On("").Get(s.Prefs),
 		WorkspaceOrder:   shown,
 		SessionSort:      prefs.SessionSort.Get(s.Prefs),
+		SessionView:      prefs.SessionView.Get(s.Prefs),
 	}
 }
 

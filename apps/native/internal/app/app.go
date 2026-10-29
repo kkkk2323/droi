@@ -186,9 +186,8 @@ type App struct {
 	olderGen uint64
 	busy     map[string]string // working states the Daemon reported
 	dirty    bool
-	// turnAt is when each working Session's turn began, in Unix seconds:
-	// it keeps the Session's place in the list until the turn ends.
-	turnAt map[string]int64
+	// times are the Session Times the window follows.
+	times timesState
 	// unlisted are the Sessions that started working before the list had
 	// them, a run of an Automation or a subagent, that readUntilListed reads
 	// the list for.
@@ -218,7 +217,8 @@ type App struct {
 	pending     drafts.Pending
 	compactions *compaction.Log
 	// unread are the Sessions that finished or started waiting while
-	// another one was open; opening one reads it. Main thread only.
+	// another one was open; opening one reads it. The Session Times say
+	// instead, when the Gateway keeps them (unreadSessions). Main thread only.
 	unread map[string]bool
 	// everConnected: the Controller connected once; until then the Daemon
 	// is starting up. Guarded by mu.
@@ -281,7 +281,6 @@ func New(cfg Config) *App {
 		cancel: cancel,
 		route:  Route{Name: "home"},
 		busy:   map[string]string{},
-		turnAt: map[string]int64{},
 		views:  map[string]*sessionView{},
 
 		drafts:      drafts.New(cfg.Prefs),
@@ -345,10 +344,6 @@ func (a *App) Start() {
 				stats.put(e.SessionID, s.Stats())
 			}
 		}
-		if e.Kind == session.EventWorkingStateChanged {
-			s := a.ctl.Store().Session(e.SessionID)
-			a.touch(e.SessionID, s != nil && s.WorkingState() != protocol.DroidWorkingStateIdle)
-		}
 		a.redraw()
 	}))
 	a.mu.Lock()
@@ -357,6 +352,9 @@ func (a *App) Start() {
 	if a.status.Connected {
 		go a.refreshList()
 		go a.readLoops()
+	}
+	if a.cfg.Gateway != nil {
+		go a.followTimes()
 	}
 }
 
@@ -459,51 +457,6 @@ func (a *App) onEvent(e controller.Event) {
 	a.redraw()
 }
 
-// touch moves a Session whose turn begins to the top of its group, as the
-// web Client's activeAt does. The working states inside one turn leave it
-// where it is: two working Sessions would otherwise swap places on every
-// step either takes.
-func (a *App) touch(id string, working bool) {
-	now := a.cfg.Now().Unix()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !working {
-		delete(a.turnAt, id)
-		return
-	}
-	if _, ok := a.turnAt[id]; ok {
-		return
-	}
-	a.turnAt[id] = now
-	a.listRev++
-	for i := range a.listed {
-		if a.listed[i].SessionID == id && a.listed[i].UpdatedAt < now {
-			a.listed[i].UpdatedAt = now
-		}
-	}
-}
-
-// holdTurns keeps working Sessions where their turn put them when the
-// list is read again: the Daemon's date for one moves with every message
-// its turn writes. Call with mu held.
-func (a *App) holdTurns(list []sessions.Summary) {
-	for i := range list {
-		id := list[i].SessionID
-		at, ok := a.turnAt[id]
-		if !ok {
-			continue
-		}
-		// The list may be read for the end of the turn before touch hears of it.
-		if a.ctl != nil {
-			if s := a.ctl.Store().Session(id); s == nil || s.WorkingState() == protocol.DroidWorkingStateIdle {
-				delete(a.turnAt, id)
-				continue
-			}
-		}
-		list[i].UpdatedAt = at
-	}
-}
-
 type olderState int
 
 const (
@@ -604,7 +557,6 @@ func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err
 	a.listErr = ""
 	go a.redraw()
 	page := summariesOf(res.Sessions)
-	a.holdTurns(page)
 	a.pageIDs = make(map[string]bool, len(page))
 	for _, s := range page {
 		a.pageIDs[s.SessionID] = true
@@ -677,7 +629,6 @@ func (a *App) readOlder(p olderPages, show bool) {
 	if a.olderGen != p.gen {
 		return
 	}
-	a.holdTurns(older)
 	var list []sessions.Summary
 	kept := map[string]bool{}
 	for _, s := range a.listed {
@@ -759,6 +710,7 @@ func (a *App) Go(r Route) {
 	a.drawerOpen = false
 	if r.Name == "session" {
 		delete(a.unread, r.SessionID)
+		a.viewed(r.SessionID)
 		prefs.LastSessionID.Set(a.prefs, r.SessionID)
 		a.elsewhere.confirm = ""
 		if acc, ok := a.elsewhere.accounts[r.SessionID]; ok {

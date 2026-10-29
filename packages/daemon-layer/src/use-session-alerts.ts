@@ -1,12 +1,18 @@
 // Turns Session working states into alerts (see alerts.ts). Every Client
-// keeps unread marks for Sessions that finished or started waiting while
-// another one was open; what else an alert does is the Client's `onAlert`.
-// A `/compact` this Client ran counts as a completion when it finishes.
-import { useEffect, useRef, useState } from 'react'
+// marks unread the Sessions that finished or started waiting while another
+// one was open; what else an alert does is the Client's `onAlert`. A
+// `/compact` this Client ran counts as a completion when it finishes.
+//
+// The marks are the computer's when it keeps the Session Times
+// (session-times.ts): a Session shown on any Client reads on every one, and
+// this Client tells the computer when it shows one, as it opens or as its
+// turn ends on screen. Without them the marks are this Client's own.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTracker, type AlertEvent } from './alerts'
 import { compactions } from './compaction'
 import { useDaemonConnection } from './connection-context'
 import { LOAD_STATE, SESSION_EVENT } from './sdk-enums'
+import { isUnread, useSessionTimes } from './session-times'
 
 const NONE: ReadonlySet<string> = new Set()
 
@@ -18,17 +24,20 @@ export function useSessionAlerts({
   onAlert: (sessionId: string, alert: AlertEvent) => void
 }): ReadonlySet<string> {
   const { sessionState } = useDaemonConnection()
+  const { times, kept, viewed } = useSessionTimes()
   const [unread, setUnread] = useState<ReadonlySet<string>>(NONE)
   // The subscription outlives renders; it reads the latest values from here.
-  const latest = useRef({ selectedId, onAlert })
+  const latest = useRef({ selectedId, onAlert, viewed })
   useEffect(() => {
-    latest.current = { selectedId, onAlert }
+    latest.current = { selectedId, onAlert, viewed }
   })
 
   useEffect(() => {
     const raise = (sessionId: string, alert: AlertEvent) => {
       const now = latest.current
-      if (now.selectedId !== sessionId) {
+      if (now.selectedId === sessionId) {
+        now.viewed(sessionId)
+      } else {
         setUnread((prev) => (prev.has(sessionId) ? prev : new Set(prev).add(sessionId)))
       }
       now.onAlert(sessionId, alert)
@@ -59,11 +68,22 @@ export function useSessionAlerts({
     }
   }, [sessionState])
 
-  // Opening a Session reads it.
+  // Opening a Session reads it, here and on the computer.
+  useEffect(() => {
+    if (selectedId) viewed(selectedId)
+  }, [selectedId, viewed])
   if (selectedId && unread.has(selectedId)) {
     const next = new Set(unread)
     next.delete(selectedId)
     setUnread(next)
   }
-  return unread
+
+  // The Session on screen is never unread: the end of its turn can reach the
+  // Session Times before this Client notes it seen.
+  const shared = useMemo(() => {
+    const out = new Set<string>()
+    for (const [id, t] of times) if (id !== selectedId && isUnread(t)) out.add(id)
+    return out.size > 0 ? out : NONE
+  }, [times, selectedId])
+  return kept ? shared : unread
 }

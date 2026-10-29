@@ -1,17 +1,24 @@
 // The Session list, the first page of a connected computer, laid out as the
 // computer's sidebar: the pinned Sessions and Workspaces first, then the
 // Workspaces in the order the computer shows them, the ones unused for a
-// month behind a button, and Recents last (see use-list-order.ts).
+// month behind a button, and Recents last; or, when the computer lists them
+// by time, one list from the Sessions working or unread down to the oldest
+// (see use-list-order.ts).
 import {
+  EARLIER_GROUP_KEY,
   foldContinued,
+  groupByTime,
   groupByWorkspace,
   OLDER_BATCH,
   PINNED_SESSIONS_GROUP_KEY,
   splitStale,
+  usedAt,
   visibleSessions,
   withoutAutomationRuns,
   type Pins,
   type SessionSummary,
+  type SortOrder,
+  type TimeGroup,
   type WorkspaceGroup,
 } from '@droi/daemon-layer/sessions'
 import { mainSessions } from '@droi/daemon-layer/subagents'
@@ -47,6 +54,7 @@ const WORKSPACES_SECTION_KEY = 'droi:workspaces'
 
 interface RowContext {
   pins: Pins
+  order: SortOrder
   unread: ReadonlySet<string>
   activity: ReadonlyMap<string, SessionActivity>
   subagentsRunning: ReadonlyMap<string, number>
@@ -85,13 +93,12 @@ export function SessionList({
   const [staleShown, setStaleShown] = useState(false)
   const activity = useSessionActivity()
   const [query, setQuery] = useState('')
-  const { pins, order, setPinned } = useListOrder()
-  const groups = groupByWorkspace(
-    foldContinued(withoutAutomationRuns(mainSessions(sessions.sessions))),
-    pins,
-    order,
-    { pinnedApart: true },
-  )
+  const { pins, order: listOrder, view, setPinned } = useListOrder()
+  const order: SortOrder = { ...listOrder, busy: new Set(activity.keys()), unread }
+  const listed = foldContinued(withoutAutomationRuns(mainSessions(sessions.sessions)))
+  const byTime = view === 'time'
+  const timeGroups = byTime ? groupByTime(listed, pins, order) : []
+  const groups = byTime ? [] : groupByWorkspace(listed, pins, order, { pinnedApart: true })
   let loose: WorkspaceGroup | null = null
   let recents: WorkspaceGroup | null = null
   const pinned: WorkspaceGroup[] = []
@@ -102,9 +109,10 @@ export function SessionList({
     else if (pins.workspaces.has(group.key)) pinned.push(group)
     else rest.push(group)
   }
-  const { active, stale } = splitStale(rest)
+  const { active, stale } = splitStale(rest, undefined, order)
   const rows: RowContext = {
     pins,
+    order,
     unread,
     activity,
     subagentsRunning,
@@ -176,11 +184,17 @@ export function SessionList({
                 {sessions.error.message}
               </Text>
             ) : null}
-            {!sessions.isPending && sessions.live && groups.length === 0 && !sessions.error ? (
+            {!sessions.isPending &&
+            sessions.live &&
+            (byTime ? timeGroups : groups).length === 0 &&
+            !sessions.error ? (
               <Text tone="muted" size="xs" style={styles.empty}>
                 No sessions yet.
               </Text>
             ) : null}
+            {timeGroups.map((group) => (
+              <TimeSection key={group.key} group={group} rows={rows} />
+            ))}
             {loose || pinned.length > 0 ? (
               <Foldable label="Pinned" foldKey={PINNED_SECTION_KEY}>
                 {loose ? (
@@ -272,7 +286,7 @@ export function SessionList({
   )
 }
 
-/** The Pinned or Workspaces section: a label folding what is under it. */
+/** The Pinned or Workspaces section, or one of the time view's: a label folding what is under it. */
 function Foldable({
   label,
   foldKey,
@@ -306,6 +320,38 @@ function Foldable({
       </Pressable>
       {open ? children : null}
     </View>
+  )
+}
+
+/** A section of the time view; Earlier shows OLDER_BATCH rows at a time. */
+function TimeSection({ group, rows }: { group: TimeGroup; rows: RowContext }) {
+  const [revealed, setRevealed] = useState(0)
+  const all = group.sessions
+  const shown =
+    group.key === EARLIER_GROUP_KEY ? Math.min(all.length, OLDER_BATCH + revealed) : all.length
+  const hidden = all.length - shown
+  return (
+    <Foldable label={group.label} foldKey={group.key}>
+      {all.slice(0, shown).map((session) => (
+        <SessionRow
+          key={session.sessionId}
+          session={session}
+          rows={rows}
+          place={group.places.get(session.sessionId)}
+        />
+      ))}
+      {hidden > 0 ? (
+        <Pressable
+          role="button"
+          onPress={() => setRevealed(revealed + OLDER_BATCH)}
+          style={styles.more}
+        >
+          <Text size="xs" tone="muted">
+            Show {Math.min(hidden, OLDER_BATCH)} more
+          </Text>
+        </Pressable>
+      ) : null}
+    </Foldable>
   )
 }
 
@@ -431,6 +477,7 @@ function WorkspaceSection({ group, rows }: { group: WorkspaceGroup; rows: RowCon
     revealed,
     undefined,
     rows.pins.sessions,
+    rows.order,
   )
   const FolderIcon = open ? FolderOpen : Folder
   return (
@@ -496,15 +543,20 @@ function WorkspaceSection({ group, rows }: { group: WorkspaceGroup; rows: RowCon
   )
 }
 
-/** One Session: its title, then what it is doing or its message count, and how long ago it changed. */
+/**
+ * One Session: its title, then what it is doing, its Workspace (place, in the time view) or
+ * its message count, and how long ago it was last used.
+ */
 function SessionRow({
   session,
   rows,
   indent = false,
+  place,
 }: {
   session: SessionSummary
   rows: RowContext
   indent?: boolean
+  place?: string | undefined
 }) {
   const colors = useColors()
   const isUnread = rows.unread.has(session.sessionId)
@@ -549,6 +601,7 @@ function SessionRow({
             session={session}
             activity={rows.activity.get(session.sessionId)}
             subagents={rows.subagentsRunning.get(session.sessionId) ?? 0}
+            place={place}
           />
           {session.archivedAt ? (
             <Text size="xs" tone="muted">
@@ -557,7 +610,7 @@ function SessionRow({
           ) : null}
         </View>
         <Text size="xs" tone="muted" style={styles.time}>
-          {relativeTime(session.updatedAt)}
+          {relativeTime(usedAt(session, rows.order.times) / 1000)}
         </Text>
       </View>
     </Pressable>
@@ -568,10 +621,12 @@ function SessionMeta({
   session,
   activity,
   subagents,
+  place,
 }: {
   session: SessionSummary
   activity: SessionActivity | undefined
   subagents: number
+  place: string | undefined
 }) {
   const colors = useColors()
   const status = (label: string, color: string, spin: boolean, name = label) => (
@@ -593,6 +648,16 @@ function SessionMeta({
     return status(label, colors.working, true)
   }
   if (activity === 'working') return status('Working', colors.working, true)
+  if (place) {
+    return (
+      <View role="img" aria-label={`In ${place}`} style={styles.mark}>
+        <Folder size={12} color={colors.mutedForeground} strokeWidth={2} />
+        <Text size="xs" tone="muted" numberOfLines={1} style={styles.markText}>
+          {place}
+        </Text>
+      </View>
+    )
+  }
   if (session.worktree) {
     return (
       <View style={styles.mark}>
