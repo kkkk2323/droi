@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
@@ -43,6 +44,24 @@ func TestMergeHitsKeepsTheFirstAndTakesSnippets(t *testing.T) {
 	}
 }
 
+// The Daemon searches Memory Sessions too, and gives no tags with its hits:
+// a hit titled as Droi titles them is one, unless the list has it.
+func TestContentHitsLeaveOutMemorySessions(t *testing.T) {
+	res := &protocol.SearchSessionsResult{Sessions: []protocol.DaemonSearchSessionsSessionResult{
+		{SessionID: "work", Title: "Evaluate enterprise version"},
+		{SessionID: "memory", Title: sessions.MemoryTitlePrefix + "update the Memory Summary"},
+		{SessionID: "named", Title: sessions.MemoryTitlePrefix + "notes I keep"},
+	}}
+	listed := []sessions.Summary{{SessionID: "named", Title: sessions.MemoryTitlePrefix + "notes I keep"}}
+	var got []string
+	for _, h := range contentHits(res, listed) {
+		got = append(got, h.sessionID)
+	}
+	if len(got) != 2 || got[0] != "work" || got[1] != "named" {
+		t.Fatalf("content hits %v", got)
+	}
+}
+
 func TestWorkspaceHitsMatchTheNameOnly(t *testing.T) {
 	groups := []sessions.Group{
 		{Key: "/w/acme-web", Label: "acme-web", Path: "/w/acme-web"},
@@ -62,6 +81,24 @@ func TestWorkspaceHitsMatchTheNameOnly(t *testing.T) {
 	}
 	if hits := workspaceHits(groups, "re"); len(hits) != 0 {
 		t.Fatalf("Recents or Pinned matched: %+v", hits)
+	}
+}
+
+// The search box's icons sit in the middle of its height, at each density.
+func TestTheSearchBoxCentersItsIcons(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	for _, compact := range []bool{false, true} {
+		h.a.kit.Compact = compact
+		h.click("Search sessions and workspaces")
+		h.tt.Key(ui.Cmd, ui.KeyA)
+		h.tt.Type("zz")
+		h.until("the clear button", func() bool { _, ok := h.tt.Find("Clear search"); return ok })
+		box, _ := h.tt.Find("Search sessions and workspaces")
+		x, _ := h.tt.Find("Clear search")
+		if d := (box.Y + box.H/2) - (x.Y + x.H/2); d > 0.5 || d < -0.5 {
+			t.Fatalf("compact %v: the clear button %+v is off the middle of the box %+v", compact, x, box)
+		}
 	}
 }
 

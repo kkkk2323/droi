@@ -124,10 +124,14 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 		if *open {
 			// Open where the current model lives: Magpie's models are not in
 			// the list the picker opens on, so a Session on one would look
-			// like it had none.
+			// like it had none. Otherwise the starred models, when the Daemon
+			// offers any of them, are the ones picked most.
 			*st = PickerState{filter: models.FilterAll}
-			if models.IsMagpie(value) {
+			switch {
+			case models.IsMagpie(value):
 				st.filter = models.FilterMagpie
+			case len(models.VisibleModels(choices, prefs.FavoriteModels.Get(store), models.FilterFavorites, "")) > 0:
+				st.filter = models.FilterFavorites
 			}
 		}
 	}
@@ -141,7 +145,7 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 	}
 	rows := models.VisibleModels(choices, favorites, filter, st.query)
 	searching := st.query != ""
-	if fallback != "" && !searching && filter == models.FilterAll {
+	if fallback != "" && !searching && (filter == models.FilterAll || filter == models.FilterFavorites) {
 		rows = append([]models.Row{{Choice: models.Choice{Label: fallback}}}, rows...)
 	}
 	active := min(st.highlight, max(len(rows)-1, 0))
