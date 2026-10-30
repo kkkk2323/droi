@@ -128,7 +128,10 @@ func NewRunner(dial Dial) Run {
 		})
 		defer unsub()
 		started := Reply{SessionID: id, Model: init.Settings.ModelID}
-		if _, err := c.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: r.Input}); err != nil {
+		// droid 1.0 runs a skill named anywhere in a user message as /name, and
+		// the material quotes the user's Sessions, which name skills: an
+		// llm_only message is never read for them.
+		if _, err := c.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: id, Text: r.Input, Visibility: protocol.MessageVisibilityLLMOnly}); err != nil {
 			return started, err
 		}
 		select {

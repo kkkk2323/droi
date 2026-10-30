@@ -9,6 +9,7 @@ package sessionview
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -219,7 +220,18 @@ func (v *View) Open() {
 	v.mu.Unlock()
 	go func() {
 		limit := int64(LoadedMessageLimit)
-		_, err := ctl.LoadSession(v.env.Ctx, protocol.LoadSessionParams{SessionID: v.id, MessageLimit: &limit})
+		err := loadKeepingArchived(v.env.Ctx, v.id, func() error {
+			// A load the Daemon refused marked the Session unknown.
+			ctl.Store().ClearNotFound(v.id)
+			_, err := ctl.LoadSession(v.env.Ctx, protocol.LoadSessionParams{SessionID: v.id, MessageLimit: &limit})
+			return err
+		}, func() (archiver, error) {
+			c, err := ctl.Client()
+			if err != nil {
+				return nil, err
+			}
+			return c, nil
+		})
 		v.mu.Lock()
 		v.loading = false
 		if err != nil {
@@ -228,6 +240,37 @@ func (v *View) Open() {
 		v.mu.Unlock()
 		v.redraw()
 	}()
+}
+
+// archiver is what loadKeepingArchived needs of the Daemon besides the load.
+type archiver interface {
+	UnarchiveSession(ctx context.Context, params protocol.UnarchiveSessionParams) (*protocol.UnarchiveSessionResult, error)
+	ArchiveSession(ctx context.Context, params protocol.ArchiveSessionParams) (*protocol.ArchiveSessionResult, error)
+}
+
+// loadKeepingArchived loads Session id with load. The Daemon refuses to load
+// an archived Session, answering as for one it does not know (droid 1.0's
+// handleLoadSession), so a refused Session is unarchived, loaded and archived
+// again: opening a Session to read it leaves it archived, and a Memory Session
+// stays out of the droid CLI's list. An unarchive that fails means the
+// Session is unknown indeed.
+func loadKeepingArchived(ctx context.Context, id string, load func() error, daemon func() (archiver, error)) error {
+	err := load()
+	if !errors.Is(err, controller.ErrSessionNotFound) {
+		return err
+	}
+	c, cerr := daemon()
+	if cerr != nil {
+		return err
+	}
+	if _, uerr := c.UnarchiveSession(ctx, protocol.UnarchiveSessionParams{SessionID: id}); uerr != nil {
+		return err
+	}
+	err = load()
+	if _, aerr := c.ArchiveSession(ctx, protocol.ArchiveSessionParams{SessionID: id}); aerr != nil && err == nil {
+		err = aerr
+	}
+	return err
 }
 
 // loadOlder brings the page of messages before the first one shown.
