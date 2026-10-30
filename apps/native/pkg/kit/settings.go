@@ -59,7 +59,7 @@ func (k *Kit) SettingRowWith(c *ui.Context, title func(), description string, co
 // FieldSelect is a compact, framed select for a settings row. The label and
 // option labels are l10n keys, or words already translated. It returns the
 // value picked, if one other than value was.
-func (k *Kit) FieldSelect(c *ui.Context, open *bool, label, value string, options []Option, disabled bool) (string, bool) {
+func (k *Kit) FieldSelect(c *ui.Context, label, value string, options []Option, disabled bool) (string, bool) {
 	t := k.T
 	label = l10n.T(label)
 	current := value
@@ -68,7 +68,7 @@ func (k *Kit) FieldSelect(c *ui.Context, open *bool, label, value string, option
 			current = l10n.T(o.Label)
 		}
 	}
-	tr := ui.ButtonBase(c).Role(ui.RoleComboBox).Label(label).Expanded(*open).Height(k.Px(k.Dense(28, 32))).MinWidth(k.Px(144)).Gap(k.Px(8)).
+	tr := ui.ButtonBase(c).Label(label).Height(k.Px(k.Dense(28, 32))).MinWidth(k.Px(144)).Gap(k.Px(8)).
 		PaddingX(k.Px(8)).Radius(k.Px(5)).Border(1, t.Border).Background(ui.Color{}).Justify(ui.SpaceBetween).Disabled(disabled).Cursor(ui.CursorPointer)
 	if tr.Hovered() {
 		tr.Background(t.Muted)
@@ -77,40 +77,9 @@ func (k *Kit) FieldSelect(c *ui.Context, open *bool, label, value string, option
 		k.Text(c, current, k.Dense(12, 14), k.Dense(18, 20)).TextColor(t.Foreground).SingleLine()
 		k.Icon(c, "chevron-down", 12, t.MutedForeground).Opacity(0.9)
 	})
-	if tr.Clicked() {
-		*open = !*open
-	}
 	var picked string
 	ok := false
-	ui.PopoverBase(c, tr, open, func(p ui.Element) {
-		p.Role(ui.RoleList).Label(label).Margin(k.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(k.Px(4)).Radius(k.Px(6)).
-			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).Children(func() {
-			for _, o := range options {
-				it := Selected(ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleListItem).Label(l10n.T(o.Label)), o.Value == value).
-					Gap(k.Px(6)).Padding(k.Px(6), k.Px(12), k.Px(6), k.Px(6)).Radius(k.Px(4)).Justify(ui.Start).Cursor(ui.CursorPointer)
-				color := t.PopoverForeground
-				if it.Hovered() {
-					it.Background(t.Accent)
-					color = t.AccentForeground
-				}
-				it.Children(func() {
-					ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Children(func() {
-						if o.Value == value {
-							k.Icon(c, "check", 14, color)
-						}
-					})
-					k.Text(c, l10n.T(o.Label), 13, 19.5).TextColor(color).SingleLine()
-				})
-				if it.Clicked() {
-					*open = false
-					if o.Value != value {
-						picked, ok = o.Value, true
-					}
-				}
-			}
-		})
-	})
+	k.popoverMenuButton(c, tr, optionMenu(options, value, l10n.T, &picked, &ok))
 	return picked, ok
 }
 

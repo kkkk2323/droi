@@ -59,7 +59,7 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 	for i, l := range autonomyLevels {
 		opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
 	}
-	if next, ok := a.kit.QuietSelect(c, &cs.autoOpen, L("Autonomy"), "shield-check", string(set.AutonomyLevel), opts); ok {
+	if next, ok := a.kit.QuietSelect(c, L("Autonomy"), "shield-check", string(set.AutonomyLevel), opts); ok {
 		update(protocol.UpdateSessionSettingsParams{AutonomyLevel: protocol.AutonomyLevel(next)})
 	}
 }

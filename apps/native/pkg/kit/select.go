@@ -22,9 +22,9 @@ func (k *Kit) QuietTrigger(c *ui.Context, label string, open bool) ui.Element {
 }
 
 // QuietSelect is the web Client's Select with quiet: an icon, the chosen
-// label and a chevron, opening a list of the options with a check by the
-// chosen one. It returns the value picked in this frame.
-func (k *Kit) QuietSelect(c *ui.Context, open *bool, label, icon, value string, options []Option) (string, bool) {
+// label and a chevron, opening a menu of the options with the chosen one
+// marked. It returns the value picked in this frame.
+func (k *Kit) QuietSelect(c *ui.Context, label, icon, value string, options []Option) (string, bool) {
 	t := k.T
 	known := false
 	for _, o := range options {
@@ -42,9 +42,9 @@ func (k *Kit) QuietSelect(c *ui.Context, open *bool, label, icon, value string, 
 			current = o.Label
 		}
 	}
-	tr := k.QuietTrigger(c, label, *open).Role(ui.RoleComboBox).Gap(k.Px(4)).MaxWidth(k.Px(208)).Disabled(len(items) == 0)
+	tr := k.QuietTrigger(c, label, false).Gap(k.Px(4)).MaxWidth(k.Px(208)).Disabled(len(items) == 0)
 	fg := t.Foreground.Alpha(0.75)
-	if tr.Hovered() || *open {
+	if tr.Hovered() {
 		fg = t.Foreground
 	}
 	tr.Children(func() {
@@ -54,43 +54,9 @@ func (k *Kit) QuietSelect(c *ui.Context, open *bool, label, icon, value string, 
 		k.Text(c, current, 13, 19.5).TextColor(fg).SingleLine().Shrink(1)
 		k.Icon(c, "chevron-down", 12, fg).Opacity(0.6)
 	})
-	if tr.Clicked() {
-		*open = !*open
-	}
 	var picked string
 	ok := false
-	ui.PopoverBase(c, tr, open, func(p ui.Element) {
-		p.Role(ui.RoleList).Label(label).Margin(k.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(k.Px(4)).Radius(k.Px(8)).
-			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).Children(func() {
-			for _, o := range items {
-				it := Selected(ui.ButtonBase(c.Key(o.Value)).Role(ui.RoleListItem).Label(o.Label), o.Value == value).Disabled(o.Disabled).
-					Gap(k.Px(6)).Padding(k.Px(6), k.Px(12), k.Px(6), k.Px(6)).Radius(k.Px(6)).Justify(ui.Start).Cursor(ui.CursorPointer)
-				color := t.PopoverForeground
-				if it.Hovered() || it.Focused() {
-					it.Background(t.Accent)
-					color = t.AccentForeground
-				}
-				if o.Disabled {
-					it.Opacity(0.5)
-				}
-				it.Children(func() {
-					ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Children(func() {
-						if o.Value == value {
-							k.Icon(c, "check", 14, color)
-						}
-					})
-					k.Text(c, o.Label, 13, 19.5).TextColor(color).SingleLine()
-				})
-				if it.Clicked() {
-					*open = false
-					if o.Value != value {
-						picked, ok = o.Value, true
-					}
-				}
-			}
-		})
-	})
+	k.popoverMenuButton(c, tr, optionMenu(items, value, func(s string) string { return s }, &picked, &ok))
 	return picked, ok
 }
 
