@@ -18,6 +18,33 @@ func (k *Kit) MenuPopup(c *ui.Context, anchor ui.Element, open *bool, end bool, 
 	})
 }
 
+// popoverMenuButton makes e a menu button whose menu MyGo draws in the
+// window (ui.PopoverMenuButton), in MenuPopup's look: the window's theme
+// gives MyGo's highlights the primary color, which would fill the item
+// under the pointer black.
+func (k *Kit) popoverMenuButton(c *ui.Context, e ui.Element, build func(m *ui.Menu)) {
+	base := c.Theme()
+	t := *base
+	t.Background, t.Text, t.TextMuted = k.T.Popover, k.T.PopoverForeground, k.T.MutedForeground
+	t.Accent, t.AccentText = k.T.Accent, k.T.AccentForeground
+	t.Radius = k.Px(6)
+	c.SetTheme(&t)
+	defer c.SetTheme(base)
+	e.PopoverMenuButton(build)
+}
+
+// optionMenu fills a select's menu with options, value's checked, and
+// reports the other one chosen in picked.
+func optionMenu(options []Option, value string, label func(string) string, picked *string, ok *bool) func(m *ui.Menu) {
+	return func(m *ui.Menu) {
+		for _, o := range options {
+			if m.Item(label(o.Label)).Radio(o.Value == value).Disabled(o.Disabled).Chosen() && o.Value != value {
+				*picked, *ok = o.Value, true
+			}
+		}
+	}
+}
+
 // MenuItem is an item of a MenuPopup: an icon in the muted color and a
 // label, highlighted under the pointer. A click closes the menu.
 func (k *Kit) MenuItem(c *ui.Context, open *bool, icon, label string) ui.Element {

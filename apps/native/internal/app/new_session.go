@@ -60,7 +60,6 @@ type newSessionState struct {
 
 	modelOpen bool
 	picker    pickerState
-	autoOpen  bool
 
 	// worktree is the page's choice once worktreeSet; until then the
 	// preference decides. lifecycle, base and profile are "" for the
@@ -612,7 +611,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 					for i, l := range autonomyLevels {
 						opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
 					}
-					if next, ok := k.QuietSelect(c, &s.autoOpen, L("Autonomy"), "shield-check", autonomy, opts); ok {
+					if next, ok := k.QuietSelect(c, L("Autonomy"), "shield-check", autonomy, opts); ok {
 						s.autonomy = next
 					}
 				})

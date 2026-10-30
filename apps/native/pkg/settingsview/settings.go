@@ -62,9 +62,9 @@ func (s *Settings) Flag(key string) *bool {
 // is open at a time.
 func (s *Settings) Picker() *PickerState { return &s.picker }
 
-// Select is a settings row's Select, its list kept open by its label.
+// Select is a settings row's Select.
 func (s *Settings) Select(c *ui.Context, label, value string, options []kit.Option, disabled bool) (string, bool) {
-	return s.env.Kit().FieldSelect(c, s.Flag("select:"+label), label, value, options, disabled)
+	return s.env.Kit().FieldSelect(c, label, value, options, disabled)
 }
 
 // SaveDefaults shows dv patched with p at once and has the Daemon save p.

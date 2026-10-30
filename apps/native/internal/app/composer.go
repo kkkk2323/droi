@@ -45,7 +45,6 @@ type composerState struct {
 
 	modelOpen bool
 	picker    pickerState
-	autoOpen  bool
 	toolsOpen bool
 	toolsTab  string
 

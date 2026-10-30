@@ -110,7 +110,6 @@ type specAnswer struct {
 	level      string
 	newSession bool
 	comment    *string
-	levelOpen  bool
 }
 
 // isSpecReview tells a permission that asks to approve Spec mode's plan.
@@ -202,7 +201,7 @@ func (v *View) specReview(c *ui.Context, p controller.Permission) {
 				}
 			}
 			if len(opts) > 0 {
-				if next, ok := k.QuietSelect(c, &st.levelOpen, l10n.L("Autonomy after approval"), "shield-check", st.level, opts); ok {
+				if next, ok := k.QuietSelect(c, l10n.L("Autonomy after approval"), "shield-check", st.level, opts); ok {
 					st.level = next
 				}
 			}
