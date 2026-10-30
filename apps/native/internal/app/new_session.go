@@ -33,7 +33,7 @@ import (
 // settings changed on the page, and the composer.
 type newSessionState struct {
 	// pick is "" until the user picks (the most recent Workspace is the
-	// target), "scratch" for None, or a path.
+	// target, or None without one), "scratch" for None, or a path.
 	pick     string
 	picked   bool
 	menuOpen bool
@@ -100,14 +100,21 @@ func (s *newSessionState) reset(r Route) {
 func (a *App) sessionDefaults() *defaults.View { return a.defaults.Get() }
 
 // newSessionPage groups the Workspace question and composer in one centred
-// start surface. The first message rides along into the Session.
-func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status controller.Status) {
+// start surface. The first message rides along into the Session. Until the
+// user picks, the most recent Workspace is the target, and with none at all,
+// as on a new install, no project: listDone tells none from not read yet.
+func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status controller.Status, listDone bool) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
 	recent := a.recentWorkspaces(listed)
 	workspace := s.pick
-	if !s.picked && len(recent) > 0 {
-		workspace = recent[0].Path
+	if !s.picked {
+		switch {
+		case len(recent) > 0:
+			workspace = recent[0].Path
+		case listDone:
+			workspace = scratchPick
+		}
 	}
 	scratch := workspace == scratchPick
 	repo := a.repoOf(workspace)

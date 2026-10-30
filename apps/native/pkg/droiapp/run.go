@@ -27,6 +27,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
@@ -62,6 +63,11 @@ type Options struct {
 	// <version>/<os>/<arch>/droid with its .sha256 under DroidDownloads.
 	// The recipes are still checked against Droi's key.
 	RecipesURL, DroidDownloads string
+	// Presets, optional, are the app's defaults for a new install: Session
+	// Defaults, such as the model, and the tool mode of new Sessions. The
+	// window gives them to this computer's Daemon once per Version, so what
+	// the user changes afterwards stays.
+	Presets *defaults.Presets
 }
 
 // useDroidMirror points the Patched Droid at the app's mirror, if it has one.
@@ -251,6 +257,7 @@ func Run(o Options) {
 			SettingsTabs:   exts.settingsTabs,
 			SignIn:         exts.signIn,
 			HiddenSettings: o.HiddenSettings,
+			Presets:        o.Presets,
 		})
 		a.SetLanguageChanged(func() {
 			mygo.App.SetLocale(string(l10n.Code()))

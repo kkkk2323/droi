@@ -19,6 +19,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
@@ -139,6 +140,9 @@ type Config struct {
 	// HiddenSettings are the ids of Droi's Settings sections the app leaves
 	// out; About stays.
 	HiddenSettings []string
+	// Presets, optional, are an app's defaults for a new install, given to
+	// this computer's Daemon and this device once per Version.
+	Presets *defaults.Presets
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -202,6 +206,8 @@ type App struct {
 	// defaults are the Session Defaults, which Settings and the New session
 	// page share.
 	defaults *settingsview.Defaults
+	// presetting is held while applyPresets saves the Presets.
+	presetting sync.Mutex
 	// shownRev is the listRev of the list this frame shows; listMemo
 	// keeps what is built from it.
 	shownRev uint64
@@ -352,6 +358,7 @@ func (a *App) Start() {
 	if a.status.Connected {
 		go a.refreshList()
 		go a.readLoops()
+		go a.applyPresets()
 	}
 	if a.cfg.Gateway != nil {
 		go a.followTimes()
@@ -385,6 +392,7 @@ func (a *App) onEvent(e controller.Event) {
 		if ev.Status.Connected {
 			go a.reloadList()
 			go a.readLoops()
+			go a.applyPresets()
 		}
 	case controller.SpecHandoffStarted:
 		// The plan goes on in a new Session: follow it there, unless the
@@ -815,7 +823,7 @@ func (a *App) View(c *ui.Context) {
 				// Home with nothing to show yet; the New session page would flash.
 				a.startingUpView(c, status)
 			default:
-				a.newSessionPage(c, listed, status)
+				a.newSessionPage(c, listed, status, listDone)
 			}
 		})
 		a.cornerCards(c)
