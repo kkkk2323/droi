@@ -77,6 +77,16 @@ func (d *Defaults) Get() *defaults.View {
 	return d.view
 }
 
+// Reload has the next Get read the defaults again, as another saved them;
+// a read under way answers with the ones before.
+func (d *Defaults) Reload() {
+	d.mu.Lock()
+	d.readAt = time.Time{}
+	d.saves++
+	d.mu.Unlock()
+	d.Update(func() {})
+}
+
 // Save shows dv patched with p at once and has the Daemon save p; failed
 // hears why it did not, on the UI thread. The next Get reads them again.
 func (d *Defaults) Save(dv defaults.View, p defaults.Patch, failed func(error)) {

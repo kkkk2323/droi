@@ -299,6 +299,9 @@ var (
 	ManualWorkspaces  = List{Key: "droi.workspaceOrder"}
 	SessionsFirstSeen = Map{Key: "droi.sessionsFirstSeen"}
 	DefaultToolMode   = String{Key: "droi.toolExecutionMode"}
+	// PresetsVersion is the Version of the app's Presets (defaults.Presets)
+	// this device has, 0 for none.
+	PresetsVersion = Number{Key: "droi.presetsVersion"}
 	// SessionView is how the sidebar lists the Sessions: "time", or by
 	// Workspace for "" (sessions.View).
 	SessionView = String{Key: "droi.sessionView"}
