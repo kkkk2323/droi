@@ -94,6 +94,11 @@ func TestTheSessionOnScreenIsNeverUnread(t *testing.T) {
 	h := newHarness(t, timesScenario(), "")
 	h.until("the list", func() bool { return h.hasText("Add dark mode toggle") })
 	h.openRow("Add dark mode toggle", "s-dark")
+	// The window tells the Gateway of the view on a goroutine of its own,
+	// and a turn that ends in the view's millisecond is no news: wait for the
+	// view, then end the turn after it.
+	h.until("the view in the Gateway's times", func() bool { return h.times.Snapshot().Sessions["s-dark"].ViewedAt != 0 })
+	time.Sleep(2 * time.Millisecond)
 	h.times.Working("s-dark")
 	h.times.Ended("s-dark")
 	h.until("the end in the window's times", func() bool {
