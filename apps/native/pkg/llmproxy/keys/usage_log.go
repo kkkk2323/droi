@@ -13,6 +13,7 @@ type UsageSnapshot struct {
 	Time     time.Time   `json:"time"`
 	Index    int         `json:"index"`
 	Key      string      `json:"key"` // masked
+	Plan     string      `json:"plan,omitempty"`
 	Standard *PoolLimits `json:"standard,omitempty"`
 	Core     *PoolLimits `json:"core,omitempty"`
 }
@@ -52,6 +53,7 @@ func (r *KeyRotator) changedSnapshotsLocked(fetched []*KeyUsage) []UsageSnapshot
 			Time:     u.LastCheckedAt,
 			Index:    index[u.Key],
 			Key:      MaskKey(u.Key),
+			Plan:     u.Plan,
 			Standard: u.StandardLimits,
 			Core:     u.CoreLimits,
 		})

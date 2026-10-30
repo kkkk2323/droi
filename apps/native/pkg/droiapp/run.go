@@ -28,7 +28,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
+	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
@@ -56,13 +56,16 @@ type Options struct {
 	// "worktrees", "computer", "remote", "usage" or "advanced". About stays.
 	// A link to a section left out opens the first one shown.
 	HiddenSettings []string
-	// RecipesURL and DroidDownloads, optional, are where the Patched Droid
-	// (ADR 0027) reads its recipes and Factory's droid builds instead of
-	// Droi's GitHub release and Factory's downloads: a mirror the app keeps,
-	// with recipes.json and recipes.json.sig at RecipesURL, and
-	// <version>/<os>/<arch>/droid with its .sha256 under DroidDownloads.
-	// The recipes are still checked against Droi's key.
-	RecipesURL, DroidDownloads string
+	// DroidDownloads, optional, is where Droi's droid (ADR 0033) downloads
+	// Factory's droid builds instead of Factory's releases: a mirror the app
+	// keeps, with <version>/<os>/<arch>/droid and its .sha256 under it, and
+	// the newest version in LATEST next to it (droidhook.LatestURLFor). Each
+	// build is still checked against its checksum and with the hook.
+	DroidDownloads string
+	// RecipesURL was where the Patched Droid (ADR 0027) read its recipes.
+	//
+	// Deprecated: Droi no longer patches droid; it is ignored.
+	RecipesURL string
 	// Presets, optional, are the app's defaults for a new install: Session
 	// Defaults, such as the model, and the tool mode of new Sessions. The
 	// window gives them to this computer's Daemon once per Version, so what
@@ -70,13 +73,10 @@ type Options struct {
 	Presets *defaults.Presets
 }
 
-// useDroidMirror points the Patched Droid at the app's mirror, if it has one.
+// useDroidMirror points Droi's droid at the app's mirror, if it has one.
 func useDroidMirror(o Options) {
-	if o.RecipesURL != "" {
-		droidpatch.RecipesURL = o.RecipesURL
-	}
 	if o.DroidDownloads != "" {
-		droidpatch.DownloadBase = o.DroidDownloads
+		droidhook.DownloadBase = o.DroidDownloads
 	}
 }
 

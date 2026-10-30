@@ -1,9 +1,11 @@
-// Package proxy is Droi's LLM proxy (ADR 0027): the Daemon's Factory
+// Package proxy is Droi's LLM proxy (ADR 0027, 0033): the Daemon's Factory
 // traffic goes through it so Droi can record every LLM request, keep the
-// prompt caches of idle Sessions warm and move the Patched Droid to another
-// key of the Key Pool. It never changes a request's Authorization: which key
-// an LLM request carries is decided inside droid, by the key file the patch
-// reads. Ported from droid-proxy, which rotates keys itself.
+// prompt caches of idle Sessions warm and move Droi's droid to another key
+// of the Key Pool. It never changes a request's Authorization: which key an
+// LLM request carries is decided inside droid, by the key file the hook
+// reads. It refuses an LLM request that carries no key of the pool, which
+// would bill the signed-in account. Ported from droid-proxy, which rotates
+// keys itself.
 package proxy
 
 import (
@@ -46,6 +48,21 @@ func isLLMEndpoint(method string, path string) bool {
 	return len(parts) >= 6 && parts[1] == "api" && parts[2] == "llm" && parts[4] == "v1"
 }
 
+// isFactoryLLMPath is a request Factory bills to the key it carries: every
+// LLM route but a BYOK model's (/api/llm/custom/), whatever its method.
+func isFactoryLLMPath(path string) bool {
+	return strings.HasPrefix(path, "/api/llm/") && !strings.HasPrefix(path, "/api/llm/custom/")
+}
+
+// writeLLMError answers an LLM request with an error droid shows, in the
+// shape both Anthropic's and OpenAI's clients read.
+func writeLLMError(w http.ResponseWriter, status int, kind, message string) {
+	b, _ := json.Marshal(map[string]any{"type": "error", "error": map[string]string{"type": kind, "message": message}})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(b)
+}
+
 func copyRequestHeaders(src http.Header) http.Header {
 	out := make(http.Header)
 	for name, vals := range src {
@@ -74,8 +91,8 @@ func copyResponseHeaders(src http.Header) http.Header {
 	return out
 }
 
-// KeySwitcher moves the Patched Droid to another key: it writes the key
-// file the patch reads. It answers false when it did not (the Key Pool is
+// KeySwitcher moves Droi's droid to another key: it writes the key file the
+// hook reads. It answers false when it did not (the Key Pool is
 // in manual mode, or the file could not be written).
 type KeySwitcher func(key, reason string) bool
 
@@ -243,6 +260,13 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	}
 
 	p.rotator.NoteClientHeaders(req.Header)
+	if isFactoryLLMPath(upstreamPath) && !p.rotator.Has(keys.NormalizeBearerToken(req.Header.Get("Authorization"))) {
+		// The hook did not choose the key: the request carries droid's login,
+		// or a key that is no longer in the pool.
+		p.event(diag.Event{Kind: "llm_blocked", Detail: req.Method + " " + upstreamPath})
+		writeLLMError(w, http.StatusBadRequest, "invalid_request_error", "Droi stopped a model request that did not carry a Key Pool key, so that it is not billed to the signed-in account. Restart the Daemon in Droi's Settings → Advanced.")
+		return
+	}
 	outHeaders := copyRequestHeaders(req.Header)
 	llm := isLLMEndpoint(req.Method, upstreamPath)
 	if req.Body != nil {
@@ -364,8 +388,20 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 			p.rotator.MarkKeyHTTPError(key, resp.StatusCode)
-			p.event(diag.Event{Kind: "key_cooled", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "credential rejected; key cooled down"})
-			p.switchAway(key, model, "credential rejected")
+			_, _ = io.Copy(io.Discard, io.LimitReader(respBody, 1<<16))
+			// droid reads a 401 or 403 as its own login having expired, and asks
+			// to sign in again; this one is about the pool's key.
+			if next := p.switchAway(key, model, "credential rejected"); next != "" {
+				p.event(diag.Event{Kind: "key_cooled", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "credential rejected; switched to " + keys.MaskKey(next) + "; droid retries"})
+				w.Header().Set("Retry-After-Ms", retryAfterSwitch)
+				writeLLMError(w, http.StatusTooManyRequests, "rate_limit_error", "Factory rejected a Key Pool key; Droi moved to another key and retries")
+				p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, true, "", errorDetail)
+				return
+			}
+			p.event(diag.Event{Kind: "key_cooled", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "credential rejected; no other key"})
+			writeLLMError(w, http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Factory rejected the Key Pool key %s (HTTP %d). Your Factory login is fine: choose another key on Droi's Usage tab, or check this one.", keys.MaskKey(key), resp.StatusCode))
+			p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, false, "", errorDetail)
+			return
 		case isCapacityStatus(resp.StatusCode):
 			p.rotator.MarkKeyPoolError(key, pool, resp.StatusCode)
 			if next := p.switchAway(key, model, fmt.Sprintf("HTTP %d", resp.StatusCode)); next != "" {

@@ -71,7 +71,7 @@ func postLLM(t *testing.T, base, key string) (*http.Response, string) {
 	return resp, string(b)
 }
 
-// The proxy never rewrites a credential: the patch decides the key.
+// The proxy never rewrites a credential: the hook decides the key.
 func TestProxyKeepsTheKeyDroidSent(t *testing.T) {
 	var seen []string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +139,88 @@ func TestProxyPassesTheErrorThroughWhenItCannotSwitch(t *testing.T) {
 			px := startSwitchProxy(t, upstream.URL, sw, usages...)
 			resp, body := postLLM(t, px.BaseURL(), "fk-a")
 			if resp.StatusCode != http.StatusPaymentRequired || !strings.Contains(body, "limit") {
+				t.Fatalf("status %d %q", resp.StatusCode, body)
+			}
+		})
+	}
+}
+
+// An LLM request without a key of the pool, such as one with droid's login
+// when the hook did not run, never reaches Factory: it would bill the
+// signed-in account. A BYOK model's and every other request pass.
+func TestProxyStopsAnLLMRequestWithoutAPoolKey(t *testing.T) {
+	var seen []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-pool", 0, 0))
+	for _, key := range []string{"login-jwt", "fk-removed", ""} {
+		resp, body := postLLM(t, px.BaseURL(), key)
+		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "Key Pool key") {
+			t.Fatalf("%q: %d %s", key, resp.StatusCode, body)
+		}
+	}
+	get := func(path string) int {
+		req, _ := http.NewRequest("GET", px.BaseURL()+path, nil)
+		req.Header.Set("Authorization", "Bearer login-jwt")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if s := get("/api/llm/decision/route"); s != http.StatusBadRequest {
+		t.Fatalf("an LLM GET passed: %d", s)
+	}
+	if s := get("/api/cli/whoami"); s != 200 {
+		t.Fatalf("whoami: %d", s)
+	}
+	req, _ := http.NewRequest("POST", px.BaseURL()+"/api/llm/custom/v1/messages", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer byok-key")
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("a BYOK request: %v %v", resp, err)
+	}
+	if want := []string{"GET /api/cli/whoami", "POST /api/llm/custom/v1/messages"}; strings.Join(seen, ",") != strings.Join(want, ",") {
+		t.Fatalf("upstream saw %v", seen)
+	}
+	if resp, _ := postLLM(t, px.BaseURL(), "fk-pool"); resp.StatusCode != 200 {
+		t.Fatalf("a pool key: %d", resp.StatusCode)
+	}
+}
+
+// droid reads a 401 as its login having expired. When Factory rejects a pool
+// key, droid retries on another key, or sees why from Droi.
+func TestProxyAnswersARejectedPoolKey(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer fk-a" {
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"detail":"Invalid API key"}`)
+			return
+		}
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+	sw := &switches{ok: true}
+	px := startSwitchProxy(t, upstream.URL, sw, poolUsage("fk-a", 10, 10), poolUsage("fk-b", 20, 20))
+	resp, body := postLLM(t, px.BaseURL(), "fk-a")
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After-Ms") == "" {
+		t.Fatalf("status %d %q", resp.StatusCode, body)
+	}
+	if got := sw.got(); len(got) == 0 || got[len(got)-1] != "fk-b" {
+		t.Fatalf("switched to %v", got)
+	}
+	for name, sw := range map[string]*switches{"manual": {ok: false}, "alone": {ok: true}} {
+		t.Run(name, func(t *testing.T) {
+			usages := []*keys.KeyUsage{poolUsage("fk-a", 10, 10)}
+			if name == "manual" {
+				usages = append(usages, poolUsage("fk-b", 10, 10))
+			}
+			px := startSwitchProxy(t, upstream.URL, sw, usages...)
+			resp, body := postLLM(t, px.BaseURL(), "fk-a")
+			if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "fk-a") || !strings.Contains(body, "login is fine") {
 				t.Fatalf("status %d %q", resp.StatusCode, body)
 			}
 		})

@@ -14,15 +14,15 @@ const RunwayDays = 30
 const monthDays = 30
 
 // runwayMonth is one key's Standard month as the runway sees it: left
-// percent until end days from now, or, when !live, a whole month that
-// starts on the key's next request.
+// until end days from now, or, when !live, a whole month that starts on the
+// key's next request. size is the whole month, 100 times the key's Scale.
 type runwayMonth struct {
-	left, end float64
-	live      bool
+	left, end, size float64
+	live            bool
 }
 
 // Runway answers how long the Standard pool lasts at a steady spend per day,
-// in percent of one key's monthly quota. A month that has not started, or
+// in percent of a Pro key's monthly quota. A month that has not started, or
 // has ended, starts on the key's next request: it is a whole month waiting.
 // A live month ends at its reset and what is left of it then is lost. Live
 // months are spent soonest end first, and a waiting one starts only when
@@ -42,10 +42,11 @@ func NewRunway(pool []keys.KeyState, now time.Time) (Runway, bool) {
 		if k.Status != "ok" || monthly == nil {
 			continue
 		}
-		m := runwayMonth{}
+		scale := Scale(k)
+		m := runwayMonth{size: 100 * scale}
 		if IsLive(monthly, now) {
 			end, _ := ResetAt(monthly)
-			m = runwayMonth{left: Remaining(monthly), end: end.Sub(now).Hours() / 24, live: true}
+			m = runwayMonth{left: Remaining(monthly) * scale, end: end.Sub(now).Hours() / 24, size: 100 * scale, live: true}
 		}
 		r.months = append(r.months, m)
 	}
@@ -55,6 +56,15 @@ func NewRunway(pool []keys.KeyState, now time.Time) (Runway, bool) {
 // Keys is how many keys' months the runway counts: together they are the
 // pool's whole month.
 func (r Runway) Keys() int { return len(r.months) }
+
+// Capacity is the pool's whole month, in percent of a Pro key's month.
+func (r Runway) Capacity() float64 {
+	total := 0.0
+	for _, m := range r.months {
+		total += m.size
+	}
+	return total
+}
 
 // Lasts is how many days the pool lasts at perDay, and whether it lasts all
 // RunwayDays.
@@ -77,7 +87,7 @@ func (r Runway) simulate(perDay float64) (days float64, lasts bool, left float64
 	for d := 0; d < RunwayDays; d++ {
 		for i := range months {
 			if months[i].live && months[i].end <= float64(d) {
-				months[i] = runwayMonth{}
+				months[i] = runwayMonth{size: months[i].size}
 			}
 		}
 		sort.SliceStable(months, func(i, j int) bool {
@@ -92,7 +102,7 @@ func (r Runway) simulate(perDay float64) (days float64, lasts bool, left float64
 				break
 			}
 			if !months[i].live {
-				months[i] = runwayMonth{left: 100, end: float64(d + monthDays), live: true}
+				months[i] = runwayMonth{left: months[i].size, end: float64(d + monthDays), size: months[i].size, live: true}
 			}
 			take := min(months[i].left, need)
 			months[i].left -= take
@@ -105,7 +115,7 @@ func (r Runway) simulate(perDay float64) (days float64, lasts bool, left float64
 	for _, m := range months {
 		switch {
 		case !m.live:
-			left += 100
+			left += m.size
 		case m.end > RunwayDays:
 			left += m.left
 		}
@@ -116,7 +126,7 @@ func (r Runway) simulate(perDay float64) (days float64, lasts bool, left float64
 // DailyLimit is the most the pool can give every day for RunwayDays.
 func (r Runway) DailyLimit() float64 {
 	// No key gives more than what is left of its month and one more month.
-	lo, hi := 0.0, float64(len(r.months))*200
+	lo, hi := 0.0, r.Capacity()*2
 	for range 50 {
 		mid := (lo + hi) / 2
 		if _, ok := r.Lasts(mid); ok {

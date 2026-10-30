@@ -72,7 +72,7 @@ func BuildRunway(pool []keys.KeyState, spend *Spend, now time.Time) RunwayView {
 	projected, hasProjection := s.ProjectedToday()
 	// share is v as a part of the whole pool's month; amount is v in
 	// credits with that share after it.
-	share := func(v float64) string { return shareText(v / 100 / float64(r.Keys())) }
+	share := func(v float64) string { return shareText(v / r.Capacity()) }
 	amount := func(v float64) string { return l10n.L("%s (%s)", monthCredits(v), share(v)) }
 
 	today := MetricView{Title: l10n.L("Used today"), Value: monthCredits(s.Today), Sub: share(s.Today), Tone: TonePrimary, Note: l10n.L("Compares once the log holds a whole day")}

@@ -100,10 +100,10 @@ type usageCard struct {
 	view       llmusage.KeyCardView
 }
 
-// usageTabShown: Settings has the Usage tab once the Patched Droid runs the
+// usageTabShown: Settings has the Usage tab once Droi's droid runs the
 // Daemon, since only then does the Key Pool serve its requests.
 func (a *App) usageTabShown() bool {
-	return a.cfg.Host != nil && !a.settingHidden("usage") && a.cfg.Host.PatchedDroidState().Enabled
+	return a.cfg.Host != nil && !a.settingHidden("usage") && a.cfg.Host.DroiDroidState().Enabled
 }
 
 func (a *App) keyPool() *keypool.Pool {
@@ -360,7 +360,7 @@ func (a *App) keyOpening(c *ui.Context, u usageLook, st keypool.State) {
 		ui.Row(c).Gap(u.Px(12)).Children(func() {
 			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(u.Px(3)).Children(func() {
 				u.Text(c, title, 13).FontWeight(500)
-				u.Text(c, L("From 8:00 each day, Droi starts up to %d waiting keys a day, without waiting for your requests. Each start sends a one-token Haiku request, and the key's month counts from then. Off: a waiting key starts on the next request.", config.DailyKeyOpens), 12).TextColor(p.Secondary)
+				u.Text(c, L("From 8:00 each day, Droi starts up to %d waiting Pro keys a day, without waiting for your requests; a Plus key counts as 5 and a Max key as 10, and the first key of a day always starts. Each start sends a one-token Haiku request, and the key's month counts from then. Off: a waiting key starts on the next request.", config.DailyKeyOpens), 12).TextColor(p.Secondary)
 			})
 			if u.K.Toggle(c, title, st.ScheduledOpening, a.usage.acting != "") {
 				pool, on := a.keyPool(), !st.ScheduledOpening
@@ -377,7 +377,7 @@ func openingNote(st keypool.State) string {
 	if o == nil {
 		return ""
 	}
-	note := L("%d of %d started today · %d waiting", o.OpenedToday, o.DailyOpens, len(o.Queue))
+	note := L("%d of %d started today · %d waiting", int(o.OpenedToday), o.DailyOpens, len(o.Queue))
 	if st.ScheduledOpening && !o.Scheduled && len(o.Queue) > 0 {
 		note = L("%s · starts once droid sends a Haiku request", note)
 	}
@@ -629,7 +629,7 @@ func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 		head := ui.ButtonBase(c).Justify(ui.Start).Gap(u.Px(8)).Padding(u.Px(9), u.Px(16), u.Px(9), u.Px(12)).Label(k.Key).Expanded(open)
 		if !open {
 			var tip []string
-			for _, t := range []string{k.Cooldown, k.Checked} {
+			for _, t := range []string{k.PlanHelp, k.Cooldown, k.Checked} {
 				if t != "" {
 					tip = append(tip, t)
 				}
@@ -646,6 +646,9 @@ func (a *App) keyRow(c *ui.Context, u usageLook, card usageCard) {
 			}
 			u.Text(c, itoa(k.Index), 11).TextColor(p.Tertiary).FontFeatures("tnum").Width(u.Px(18)).TextAlign(ui.End)
 			u.Text(c, k.Key, 12).Font(u.K.Mono).SingleLine().Shrink(1)
+			if k.Plan != "" {
+				u.Badge(c, llmusage.Badge{Label: k.Plan, Tone: llmusage.ToneSecondary}, true)
+			}
 			if k.Active {
 				ui.Row(c).Gap(u.Px(3)).Tooltip(L("Model requests use this key")).Children(func() {
 					u.Icon(c, dashkit.IconStar, 10, p.Warning)

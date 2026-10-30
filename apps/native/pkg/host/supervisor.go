@@ -56,6 +56,9 @@ type Supervisor struct {
 	Spawn func(port int) (*exec.Cmd, error)
 	// OnState hears every change, in order, on a goroutine of its own.
 	OnState func(DaemonState)
+	// Check, optional, runs once the Daemon of process pid answers its
+	// health check; an error stops it, and is why the next attempt waits.
+	Check func(pid int) error
 
 	Backoff      []time.Duration
 	ReadyTimeout time.Duration
@@ -208,6 +211,12 @@ func (s *Supervisor) launch(gen int) {
 	s.mu.Unlock()
 
 	ready := waitForHealth(port, orDefault(s.ReadyTimeout, 30*time.Second), ch.done)
+	failed := ""
+	if ready && s.Check != nil {
+		if err := s.Check(cmd.Process.Pid); err != nil {
+			ready, failed = false, err.Error()
+		}
+	}
 	s.mu.Lock()
 	if s.child == ch {
 		if ready {
@@ -233,6 +242,9 @@ func (s *Supervisor) launch(gen int) {
 	reason := l10n.L("exited")
 	if ch.err != nil {
 		reason = l10n.L("exited with %s", ch.err.Error())
+	}
+	if failed != "" {
+		reason = failed
 	}
 	s.scheduleRestart(gen, reason)
 }

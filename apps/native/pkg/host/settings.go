@@ -27,11 +27,12 @@ const DefaultMemoryModel = "claude-haiku-5-5"
 type Settings struct {
 	RemoteAccess bool    `json:"remoteAccess"`
 	DroidPath    *string `json:"droidPath"`
-	// DroidKind "patched" starts the Daemon from the Patched Droid of
-	// PatchedDroidVersion (ADR 0027); "" from DroidPath or the installed droid.
-	DroidKind           string  `json:"droidKind,omitempty"`
-	PatchedDroidVersion string  `json:"patchedDroidVersion,omitempty"`
-	FactoryAPIBaseURL   *string `json:"factoryApiBaseUrl"`
+	// DroidKind "droi" starts the Daemon from Droi's droid of
+	// DroiDroidVersion with the Key Pool (ADR 0033), as does the Patched
+	// Droid's "patched" (ADR 0027); "" from DroidPath or the installed droid.
+	DroidKind         string  `json:"droidKind,omitempty"`
+	DroiDroidVersion  string  `json:"droiDroidVersion,omitempty"`
+	FactoryAPIBaseURL *string `json:"factoryApiBaseUrl"`
 	// MagpieEnabled offers the models of a Magpie gateway running on this
 	// computer to its Daemon, as custom models in the Runtime Overlay.
 	MagpieEnabled      bool    `json:"magpieEnabled"`

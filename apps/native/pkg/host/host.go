@@ -14,7 +14,7 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
+	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
 )
@@ -40,6 +40,9 @@ type Config struct {
 	ScratchFolder string
 	// KeyPoolUpstream replaces Factory's API for the Key Pool (for tests).
 	KeyPoolUpstream string
+	// DroidDownloads replaces Factory's droid releases for Droi's droid
+	// (for tests); LATEST is read next to it (droidhook.LatestURLFor).
+	DroidDownloads string
 	// ScriptModels reports the models Settings lets use Script in addition
 	// to Factory's list; nil adds none.
 	ScriptModels func() []string
@@ -64,9 +67,12 @@ type Host struct {
 
 	adding *FactoryAuth
 
-	mu        sync.Mutex
-	readers   map[string]*CliLoginReader
-	build     *DroidBuild
+	mu      sync.Mutex
+	readers map[string]*CliLoginReader
+	build   *DroidBuild
+	// hookReady is the file the running Daemon's hook checks in at, "" for
+	// a Daemon without the hook.
+	hookReady string
 	updating  DroidUpdate
 	listeners map[int]func()
 	next      int
@@ -89,7 +95,7 @@ type Host struct {
 	index    *sessionIndex
 	indexRev uint64
 
-	patch patchState
+	droiDroid droiDroidState
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -139,7 +145,7 @@ func New(cfg Config) *Host {
 		h.Auth.handOver(writeCli)
 	}
 	h.wasIn = h.Auth.State().Status == SignedIn
-	h.Daemon = &Supervisor{Spawn: h.spawn, OnState: func(DaemonState) { h.changed() }}
+	h.Daemon = &Supervisor{Spawn: h.spawn, Check: h.checkDaemon, OnState: func(DaemonState) { h.changed() }}
 	return h
 }
 
@@ -147,13 +153,13 @@ func New(cfg Config) *Host {
 // messages sent before the Session Times were kept.
 func (h *Host) Start() {
 	h.Daemon.Start()
-	h.watchPatchRecipes()
+	h.watchDroiDroid()
 	go func() { _ = h.Times.Backfill(filepath.Join(h.SharedFactoryHome(), "sessions")) }()
 }
 
 // Stop ends the Daemon and writes what the Session Times still hold.
 func (h *Host) Stop() {
-	h.stopWatchingPatchRecipes()
+	h.stopWatchingDroiDroid()
 	h.Daemon.Stop()
 	h.Times.Flush()
 }
@@ -282,8 +288,8 @@ func (h *Host) DaemonLogPath() string {
 
 // DroidPath is the droid the next Daemon starts from; "" when none.
 func (h *Host) DroidPath() string {
-	if h.usesPatchedDroid() {
-		return h.patchedDroidPath()
+	if h.usesDroiDroid() {
+		return h.droiDroidPath()
 	}
 	return LocateDroid(deref(h.Settings.Get().DroidPath), h.cfg.Env("PATH"), h.cfg.Home)
 }
@@ -312,10 +318,10 @@ func (h *Host) DroidUpdateState() DroidUpdate {
 // UpdateDroid runs `droid update` on DroidPath and, once droid is at least
 // MinDroid, starts the Daemon from it.
 func (h *Host) UpdateDroid() {
-	// The Patched Droid is replaced by preparing a newer one, never by
-	// droid's own update.
-	if h.usesPatchedDroid() {
-		h.UpdatePatchedDroid()
+	// Droi's droid is replaced by preparing a newer one, never by droid's
+	// own update.
+	if h.usesDroiDroid() {
+		h.UpdateDroiDroid()
 		return
 	}
 	h.mu.Lock()
@@ -372,21 +378,22 @@ func (h *Host) DroidUpdated() bool {
 }
 
 func (h *Host) spawn(port int) (*exec.Cmd, error) {
-	patched := h.usesPatchedDroid()
+	droi := h.usesDroiDroid()
 	path := h.DroidPath()
 	if path == "" {
-		if patched {
-			return nil, errNoPatchedDroid()
+		if droi {
+			return nil, h.errNoDroiDroid()
 		}
 		return nil, errNoDroid
 	}
 	if v, _ := h.droidClient(); OlderThanMinDroid(v) {
 		return nil, errDroidTooOld
 	}
-	var patchEnv []string
-	if patched {
+	var droiEnv []string
+	ready := ""
+	if droi {
 		var err error
-		if patchEnv, err = h.patchedEnv(); err != nil {
+		if droiEnv, ready, err = h.droiDroidEnv(); err != nil {
 			return nil, err
 		}
 	} else {
@@ -416,6 +423,7 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	}
 	h.mu.Lock()
 	h.build = BuildOf(path)
+	h.hookReady = ready
 	h.mu.Unlock()
 
 	var liveness []string
@@ -437,13 +445,12 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	cmd := exec.Command(path, DaemonArgs(port, liveness, h.runtimeOverlay())...)
 	cmd.ExtraFiles = extra
 	hideConsole(cmd)
-	env := withoutEnv(os.Environ(), droidpatch.KeyFileEnv)
+	env := withoutEnv(os.Environ(), droidhook.KeyFileEnv, droidhook.ReadyEnv)
 	if apiKey != "" {
 		env = append(env, "FACTORY_API_KEY="+apiKey)
 	}
-	if patched {
-		// The proxy forwards to baseURL.
-		env = append(withoutEnv(env, "FACTORY_API_BASE_URL", "FACTORY_DROID_AUTO_UPDATE_ENABLED"), patchEnv...)
+	if droi {
+		env = append(withoutEnv(env, "FACTORY_API_BASE_URL", "FACTORY_DROID_AUTO_UPDATE_ENABLED", "BUN_OPTIONS"), droiEnv...)
 	} else if baseURL != "" {
 		env = append(env, "FACTORY_API_BASE_URL="+baseURL)
 	}

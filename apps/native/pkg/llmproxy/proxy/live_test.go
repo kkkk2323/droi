@@ -34,6 +34,7 @@ func TestProxy_ShowsAStreamingCallLiveThenSumsIt(t *testing.T) {
 	px, baseURL := startPremTestProxy(t, upstream.URL)
 
 	req, _ := http.NewRequest("POST", baseURL+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"claude-test","stream":true}`))
+	req.Header.Set("Authorization", "Bearer fk-pool")
 	req.Header.Set("X-Session-Id", "s-live")
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
@@ -164,6 +165,7 @@ func TestProxy_MeasuresEachProvidersStream(t *testing.T) {
 			session := "s-" + strings.ReplaceAll(tc.name, " ", "-")
 
 			req, _ := http.NewRequest("POST", baseURL+tc.path, strings.NewReader(`{"model":"m-test","stream":true}`))
+			req.Header.Set("Authorization", "Bearer fk-pool")
 			req.Header.Set("X-Session-Id", session)
 			resp, err := http.DefaultTransport.RoundTrip(req)
 			if err != nil {

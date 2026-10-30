@@ -26,20 +26,20 @@ _Avoid_: required droid, droid version (on its own)
 The one `droid` build a Droi release would be made for (ADR 0013); not built yet, deferred in favour of the Minimum Droid (ADR 0018). The Host would fetch it and start the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid could not be fetched the Host would fall back to the computer's own `droid` and say so.
 _Avoid_: bundled droid, vendored CLI, droid version (on its own)
 
-**Patched Droid**:
-Factory's own `droid` build, downloaded by the Host and changed in one place by a Recipe so that each LLM request carries a key from the Key Pool, while everything else keeps the droid's own login (ADR 0027). Opt-in; the Daemon runs it instead of the computer's droid. It does not update itself; Droi offers the newer one when a newer Recipe exists.
-_Avoid_: modified droid, custom droid, Pinned Droid
+**Droi's droid**:
+Factory's own `droid` build, downloaded unchanged by the Host into its data folder, which the Daemon runs with the Key Hook while the Key Pool is on (ADR 0033). Opt-in; the official droid stays the default. It does not update itself; Droi offers Factory's newest one, after checking that the Key Hook runs in it. It replaced the Patched Droid (ADR 0027), which changed the build by a Recipe.
+_Avoid_: Patched Droid, modified droid, custom droid, Pinned Droid
 
-**Recipe**:
-What patching one droid version takes: the version, the platforms it was verified on, the checksum of the code it changes, where to change it and what to put there. Droi ships some and reads newer signed ones that a scheduled workflow publishes.
-_Avoid_: patch file, patch config
+**Key Hook**:
+The script Bun preloads into Droi's droid through `BUN_OPTIONS`: inside droid, each Factory LLM request gets the key the Key Pool's key file holds, and everything else keeps droid's own login. With no key it fails the request; it never falls back to the login. It checks in at each start, and a Daemon whose hook did not is stopped (ADR 0033).
+_Avoid_: patch, recipe, preload (on its own)
 
 **Key Pool**:
-The Factory API keys Droi keeps for the Patched Droid's LLM requests, one of them current. In Automatic mode Droi moves to another key when the current one runs out; in Manual mode it keeps the one chosen. Kept in Droi's own data, apart from droid-proxy's.
+The Factory API keys Droi keeps for the LLM requests of Droi's droid, one of them current. In Automatic mode Droi moves to another key when the current one runs out; in Manual mode it keeps the one chosen. A key's Factory plan (Pro, Plus, Max, Ultra) sets the size of its quota, and the Usage tab counts a Max key's percent as ten of a Pro key's. Kept in Droi's own data, apart from droid-proxy's.
 _Avoid_: key list, key rotation, accounts (a Factory Account is a login, not a key)
 
 **LLM Proxy**:
-The Key Pool's local proxy the Patched Droid sends its Factory traffic through. It forwards requests unchanged, except that the reply at `/api/feature-flags` also names the models Settings lets use Script (ADR 0028). It records requests, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
+The Key Pool's local proxy Droi's droid sends its Factory traffic through. It forwards requests unchanged, except that the reply at `/api/feature-flags` also names the models Settings lets use Script (ADR 0028), and it refuses an LLM request whose key is not in the Key Pool (ADR 0033). It records requests, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
 _Avoid_: dp, gateway, MITM
 
 **Desktop Shell**:

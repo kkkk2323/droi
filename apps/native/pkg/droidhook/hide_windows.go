@@ -1,4 +1,4 @@
-package droidpatch
+package droidhook
 
 import (
 	"os/exec"

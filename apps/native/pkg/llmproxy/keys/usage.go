@@ -67,6 +67,10 @@ type KeyUsage struct {
 	StandardPoolCooldownUntil time.Time `json:"-"`
 	CorePoolCooldownUntil     time.Time `json:"-"`
 
+	// Plan is the key's Factory tier ("team_annual", "max", ...), "" until
+	// read (see plan.go).
+	Plan string
+
 	// Absolute token values (legacy billing only, for display)
 	StandardUsedTokens  *float64
 	StandardTotalTokens *float64
@@ -378,6 +382,7 @@ type KeyRotator struct {
 	// orgMu guards orgIDs, each key's own org from whoami.
 	orgMu  sync.Mutex
 	orgIDs map[string]orgLookup
+	plans  map[string]planLookup
 	// lastActivity and lastRound are UnixNano times of the last LLM request
 	// and the last full usage round; wake and recheck feed the refresh loop.
 	lastActivity atomic.Int64
@@ -462,6 +467,9 @@ func (r *KeyRotator) FetchAllUsages(ctx context.Context) {
 // not clear a cooldown set by MarkKeyHTTPError or MarkKeyPoolError.
 func (r *KeyRotator) storeUsageLocked(usage *KeyUsage) {
 	if existing, ok := r.usages[usage.Key]; ok {
+		if usage.Plan == "" {
+			usage.Plan = existing.Plan
+		}
 		usage.LLMHTTPError = existing.LLMHTTPError
 		usage.LLMErrorAt = existing.LLMErrorAt
 		usage.StandardPoolCooldownUntil = existing.StandardPoolCooldownUntil
@@ -658,6 +666,21 @@ func (r *KeyRotator) RemoveKey(key string) {
 		r.activeKey.Store(nil)
 	}
 	r.reselectActiveKey()
+}
+
+// Has reports whether key is in the rotation.
+func (r *KeyRotator) Has(key string) bool {
+	if key == "" {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, k := range r.keys {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 // Keys are the keys in the rotation, in the order they were added.
@@ -913,7 +936,7 @@ func (r *KeyRotator) selectActiveKey() string {
 
 // selectActiveKeyForPool returns the best key that can serve requestPool and the
 // billing pool that key will serve. A key whose month is not running is
-// chosen first while today's openings are below config.DailyKeyOpens (unless
+// chosen first while today's openings leave room (mayOpenLocked; unless
 // mode is openNone), otherwise only when no open key has room; see opening.go.
 func (r *KeyRotator) selectActiveKeyForPool(requestPool string, excluded map[string]struct{}, mode openMode) (string, string) {
 	r.mu.RLock()
@@ -945,7 +968,7 @@ func (r *KeyRotator) selectActiveKeyForPool(requestPool string, excluded map[str
 		}
 		return c.key, c.pool
 	}
-	if mode != openNone && !r.scheduledOpening.Load() && len(waiting) > 0 && r.openedTodayLocked(now) < config.DailyKeyOpens {
+	if mode != openNone && !r.scheduledOpening.Load() && len(waiting) > 0 && r.mayOpenLocked(now) {
 		return opening(waiting[0])
 	}
 	for _, c := range open {
@@ -1108,6 +1131,15 @@ func poolTier(requestPool, pool string) int {
 }
 
 func (r *KeyRotator) fetchKeyUsage(ctx context.Context, key string) *KeyUsage {
+	usage := r.fetchKeyLimits(ctx, key)
+	if usage.Error == "" {
+		ua, version := r.clientHeaders()
+		usage.Plan = r.plan(ctx, key, ua, version, r.orgID(ctx, key, ua))
+	}
+	return usage
+}
+
+func (r *KeyRotator) fetchKeyLimits(ctx context.Context, key string) *KeyUsage {
 	usage := r.fetchJSON(ctx, key, r.cfg.UsageAPIURL)
 	if usage.Error != "" {
 		return usage

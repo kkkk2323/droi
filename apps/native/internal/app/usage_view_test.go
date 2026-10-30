@@ -25,9 +25,10 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
-// keyPoolTestHost is a Host that runs the Patched Droid, with a stand-in
-// Factory billing endpoint: the first key added has nearly spent its week,
-// every later one is fresh.
+// keyPoolTestHost is a Host that runs Droi's droid, with a stand-in Factory
+// billing endpoint, where the first key added has nearly spent its week and
+// every later one is fresh, and stand-in droid releases whose newest is
+// 1.0.0.
 func keyPoolTestHost(t *testing.T) *host.Host {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
@@ -46,11 +47,19 @@ func keyPoolTestHost(t *testing.T) *host.Host {
 	if err := host.WriteCliLogin(filepath.Join(home, ".factory"), token, "r"); err != nil {
 		t.Fatal(err)
 	}
-	settings := `{"droidKind":"patched","patchedDroidVersion":"0.247.0"}`
+	settings := `{"droidKind":"droi","droiDroidVersion":"0.247.0"}`
 	if err := os.WriteFile(filepath.Join(data, "settings.json"), []byte(settings), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }, KeyPoolUpstream: factory.URL})
+	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/LATEST" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintln(w, "1.0.0")
+	}))
+	t.Cleanup(releases.Close)
+	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }, KeyPoolUpstream: factory.URL, DroidDownloads: releases.URL + "/releases"})
 	t.Cleanup(h.Stop)
 	t.Cleanup(h.KeyPool().Stop)
 	return h
@@ -84,7 +93,7 @@ func (h *harness) addKey(key string) {
 }
 
 // Settings → Usage is the Key Pool's, drawn as droid-proxy's window: it is
-// a tab once the Patched Droid runs the Daemon, keys are added and switched
+// a tab once Droi's droid runs the Daemon, keys are added and switched
 // on it, and each key shows what its windows have left.
 func TestTheUsageTabHoldsTheKeyPool(t *testing.T) {
 	h0 := keyPoolTestHost(t)
@@ -274,16 +283,16 @@ func TestObservePageAnswersThePointer(t *testing.T) {
 	h.until("the request's details again", func() bool { return h.hasText("Request details") })
 }
 
-// Settings → Advanced offers the Patched Droid and says where the Key Pool
+// Settings → Advanced offers Droi's droid and says where the Key Pool
 // stands; Open Usage goes to the Usage tab.
-func TestSettingsOffersThePatchedDroid(t *testing.T) {
+func TestSettingsOffersDroisDroid(t *testing.T) {
 	h0 := keyPoolTestHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the session list", func() bool { return h.hasText("One") })
 	h.click("Settings")
 	h.click("Advanced")
 	h.until("the Key Pool", func() bool { return h.hasText("Use the Key Pool") })
-	h.shoot("settings-patched-droid")
+	h.shoot("settings-droi-droid")
 	if !h.hasText("Keys") || !h.hasText("The Key Pool has no key yet") {
 		t.Fatalf("the Key Pool is not in Settings: %q", h.tt.Texts())
 	}
@@ -295,10 +304,10 @@ func TestSettingsOffersThePatchedDroid(t *testing.T) {
 }
 
 // About has a row for Droi's droid while the Key Pool is on: its version and
-// Check for updates, or Update once a newer one has a recipe.
+// Check for updates, or Update once Factory offers a newer droid.
 func TestAboutOffersDroisDroidUpdates(t *testing.T) {
 	h0 := keyPoolTestHost(t)
-	_ = h0.Settings.Update(func(s *host.Settings) { s.PatchedDroidVersion = "9.9.9" })
+	_ = h0.Settings.Update(func(s *host.Settings) { s.DroiDroidVersion = "9.9.9" })
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the session list", func() bool { return h.hasText("One") })
 	h.click("Settings")
@@ -307,13 +316,13 @@ func TestAboutOffersDroisDroidUpdates(t *testing.T) {
 	if _, ok := h.tt.Find("Check for Droi's droid updates"); !ok {
 		t.Fatalf("no Check for updates for Droi's droid: %q", h.tt.Texts())
 	}
-	_ = h0.Settings.Update(func(s *host.Settings) { s.PatchedDroidVersion = "0.1.0" })
+	_ = h0.Settings.Update(func(s *host.Settings) { s.DroiDroidVersion = "0.1.0" })
 	h0.Changed()
 	h.until("the update", func() bool { _, ok := h.tt.Find("Update Droi's droid"); return ok })
 	if !h.hasText("Updating restarts the Daemon, which interrupts running sessions.") {
 		t.Fatalf("the row does not say what updating does: %q", h.tt.Texts())
 	}
-	h.shoot("settings-about-patched-droid")
+	h.shoot("settings-about-droi-droid")
 }
 
 // usageSample fills the Usage tab with what a running Key Pool reports, so
@@ -493,13 +502,18 @@ func TestUsageTabPages(t *testing.T) {
 	}
 }
 
-// While the Key Pool runs an older Droi's droid than the newest supported
-// one, a corner card offers the update; closing it hides it.
+// While the Key Pool runs an older droid than Factory's newest, a corner card
+// offers the update; closing it hides it.
 func TestANewerDroisDroidShowsACard(t *testing.T) {
 	h0 := keyPoolTestHost(t)
-	p := h0.PatchedDroidState()
+	h0.CheckDroiDroid()
+	deadline := time.Now().Add(5 * time.Second)
+	for !h0.DroiDroidState().Checked && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	p := h0.DroiDroidState()
 	if !p.UpdateAvailable() {
-		t.Skipf("no newer Droi's droid for this platform: %+v", p)
+		t.Fatalf("no newer droid: %+v", p)
 	}
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the card", func() bool { return h.hasText("Droi's droid " + p.Latest + " is available") })

@@ -20,9 +20,9 @@ const (
 	UsageRecheckMinSec = 30
 	SpilloverThreshold = 0.98
 
-	// DailyKeyOpens is how many keys' Standard months the rotator starts per
-	// local day before it would rather wait, so the months end on different
-	// days.
+	// DailyKeyOpens is how many Pro keys' Standard months the rotator starts
+	// per local day before it would rather wait, so the months end on
+	// different days; a bigger plan's month counts as several (PlanScale).
 	DailyKeyOpens = 2
 
 	// DefaultLLMErrorCooldownSec is how long a key that received an HTTP 4xx

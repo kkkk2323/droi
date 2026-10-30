@@ -4,6 +4,8 @@ status: accepted
 
 # Droi runs as a library under another app's brand, with extensions
 
+_Partly superseded by ADR 0033: a mirror holds Factory's droid builds and `LATEST` only, for Droi's droid; there are no recipes, and `Options.RecipesURL` is ignored._
+
 A company wants its own build of Droi: everything Droi does, under its own name, plus its private MCP servers and tools, ways to query its data, and dashboards. WeCom Droi (ADR 0022) reuses Droi's packages but draws a window of its own; a company build wants Droi's window as it is, and every Droi release with it, so redrawing it, or forking the repository, is the wrong cost. Go does not let another module import `apps/native/internal`, and until now Droi's window was put together in `package main`, which no module can import.
 
 We decided:

@@ -81,7 +81,7 @@ func TestTheMenuBarItemShowsTheKeyPool(t *testing.T) {
 	h.until("the Usage tab", func() bool { return h.hasText("Keys and quota") })
 
 	// Turning the Key Pool off takes the item away with it.
-	h0.DisablePatchedDroid()
+	h0.DisableDroiDroid()
 	h.until("the item to go", func() bool { return !h.a.MenuBarShown() })
 }
 

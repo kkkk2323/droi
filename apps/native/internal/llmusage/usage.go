@@ -89,6 +89,10 @@ const (
 
 func clampPercent(v float64) float64 { return math.Min(math.Max(v, 0), 100) }
 
+// Scale is the size of a key's quota in Pro quotas: a percent of a Max key's
+// window holds ten of a Pro key's. Sums over keys are in Pro quotas.
+func Scale(k keys.KeyState) float64 { return keys.PlanScale(k.Plan) }
+
 // PoolOf is the per-window breakdown of one pool of a key, or nil.
 func PoolOf(k keys.KeyState, pool Pool) *keys.PoolLimits {
 	if k.Limits == nil {
@@ -195,20 +199,24 @@ type WindowSummary struct {
 	// Unmeasured those whose window is missing, not started or
 	// stale-exhausted, counted at a full 100.
 	Measured, Unmeasured int
-	TotalRemaining       float64
-	SoonestReset         *time.Time
+	// TotalRemaining and Capacity are what the keys have left and hold, in
+	// percent of a Pro key's window (Scale).
+	TotalRemaining, Capacity float64
+	SoonestReset             *time.Time
 }
 
 func (s WindowSummary) KeyCount() int { return s.Measured + s.Unmeasured }
 
+// AverageRemaining is the share of the keys' windows left, a bigger plan's
+// weighing more.
 func (s WindowSummary) AverageRemaining() float64 {
-	if s.KeyCount() == 0 {
+	if s.Capacity <= 0 {
 		return 0
 	}
-	return s.TotalRemaining / float64(s.KeyCount())
+	return s.TotalRemaining / s.Capacity * 100
 }
 
-// KeyEquivalent is the remaining capacity as whole-key equivalents.
+// KeyEquivalent is the remaining capacity as whole Pro keys.
 func (s WindowSummary) KeyEquivalent() float64 { return s.TotalRemaining / 100 }
 
 // SummarizeWindow aggregates one window of one pool. Keys the pool cannot
@@ -220,13 +228,15 @@ func SummarizeWindow(pool []keys.KeyState, p Pool, w Window, now time.Time) Wind
 			continue
 		}
 		limit := WindowOf(PoolOf(key, p), w)
+		scale := Scale(key)
+		s.Capacity += 100 * scale
 		if !IsLive(limit, now) {
 			s.Unmeasured++
-			s.TotalRemaining += 100
+			s.TotalRemaining += 100 * scale
 			continue
 		}
 		s.Measured++
-		s.TotalRemaining += Remaining(limit)
+		s.TotalRemaining += Remaining(limit) * scale
 		if reset, ok := ResetAt(limit); ok && reset.After(now) {
 			if s.SoonestReset == nil || reset.Before(*s.SoonestReset) {
 				r := reset

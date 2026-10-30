@@ -15,7 +15,8 @@ import (
 const SpendChartDays = 14
 
 // Spend is the Standard quota the keys spent, read from the Key Pool's usage
-// log, in percent of one key's monthly quota (a sum over keys can pass 100).
+// log, in percent of a Pro key's monthly quota (a sum over keys can pass
+// 100, and a percent of a bigger plan's month counts as several).
 type Spend struct {
 	// Today is what was spent since local midnight.
 	Today float64
@@ -134,7 +135,7 @@ func readSpendDeltas(path string) (deltas []spendDelta, first time.Time, ok bool
 		series := fmt.Sprintf("%d@%d", line.Index, end.Unix()/60)
 		if prev, seen := last[series]; seen {
 			if m.UsedPercent > prev {
-				deltas = append(deltas, spendDelta{line.Time, m.UsedPercent - prev})
+				deltas = append(deltas, spendDelta{line.Time, (m.UsedPercent - prev) * keys.PlanScale(line.Plan)})
 			}
 			if m.UsedPercent < prev {
 				continue
