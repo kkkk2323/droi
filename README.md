@@ -23,7 +23,7 @@ Droi is a Client of `droid daemon`, the Daemon in the Droid CLI. It shows and dr
    curl -fsSL https://app.factory.ai/cli | sh            # macOS
    irm https://app.factory.ai/cli/windows | iex          # Windows (PowerShell)
    ```
-2. Download Droi from the [latest Release](https://github.com/kkkk2323/droi/releases/latest): `Droi <version>.dmg` for macOS, `Droi Setup <version> amd64.exe` for Windows. If the system refuses to open it, see [Install](#install).
+2. Download Droi from the [latest Release](https://github.com/kkkk2323/droi/releases/latest): `droi-<version>.dmg` for macOS, `droi-setup-<version>-amd64.exe` for Windows. If the system refuses to open it, see [Install](#install).
 3. Open Droi and sign in with Factory. If `droid` is already signed in, Droi opens straight away.
 4. Click **New session**, pick a Workspace folder, type a task and send it. Droid starts working, and the reply streams into the window.
 5. Optional: build the Phone App (`pnpm install:phone`), turn on **Settings → Remote Access** and scan the QR code with the phone.
@@ -63,13 +63,13 @@ How we measured: [apps/native/docs/performance.md](./apps/native/docs/performanc
 
 ## Install
 
-Download `Droi <version>.dmg` from the [latest Release](https://github.com/kkkk2323/droi/releases/latest) and drag Droi into Applications. The app is not signed with an Apple Developer certificate, so if macOS refuses to open it, run:
+Download `droi-<version>.dmg` from the [latest Release](https://github.com/kkkk2323/droi/releases/latest) and drag Droi into Applications. The app is not signed with an Apple Developer certificate, so if macOS refuses to open it, run:
 
 ```bash
 xattr -cr /Applications/Droi.app
 ```
 
-On Windows, run `Droi Setup <version> amd64.exe` from the same Release. It installs Droi for your user only, with no administrator rights. The installer is not code-signed either: if SmartScreen stops it, choose **More info** → **Run anyway**.
+On Windows, run `droi-setup-<version>-amd64.exe` from the same Release. It installs Droi for your user only, with no administrator rights. The installer is not code-signed either: if SmartScreen stops it, choose **More info** → **Run anyway**.
 
 When Droi opens, sign in with Factory (the same device-code login as `/login` in `droid`), or paste a Factory API key. Droi gives the login to the `droid` CLI, so the two share it; if `droid` is already signed in, Droi opens straight away. Under **Settings** → **Advanced** you can set a Factory API base URL (a local `droid-proxy`, say). `FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
 

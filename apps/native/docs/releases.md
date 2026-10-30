@@ -3,7 +3,7 @@
 Droi is the native app. A tag `v<version>` runs `.github/workflows/release.yml`,
 which puts in one GitHub Release:
 
-- `Droi <version>.dmg`, one app for both Apple chips (`darwin/universal`), for new installs;
+- `droi-<version>.dmg`, one app for both Apple chips (`darwin/universal`), for new installs;
 - `droi-<version>-linux-amd64.tar.gz` and `-linux-arm64.tar.gz` (with a `.deb` and the
   `install.sh` each), the program for `droi host` on Linux and its signed update;
 - `droi-<version>-darwin-universal.tar.gz`, the signed update, a delta update from the
