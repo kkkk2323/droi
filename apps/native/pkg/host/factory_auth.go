@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egoist/mygo/netproxy"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
@@ -100,11 +102,16 @@ func (a *FactoryAuth) init() {
 	}
 }
 
+// proxied follows the proxy set in the system's settings, as the browser
+// the sign-in opens does: on a network that needs one, Go's default client
+// reaches Factory only when HTTP_PROXY is set.
+var proxied = &http.Client{Transport: netproxy.Transport()}
+
 func (a *FactoryAuth) client() *http.Client {
 	if a.HTTP != nil {
 		return a.HTTP
 	}
-	return http.DefaultClient
+	return proxied
 }
 
 func (a *FactoryAuth) workos() string {

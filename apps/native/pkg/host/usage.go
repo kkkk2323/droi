@@ -294,7 +294,7 @@ func (h *Host) http() *http.Client {
 	if h.adding.HTTP != nil {
 		return h.adding.HTTP
 	}
-	return http.DefaultClient
+	return proxied
 }
 
 // droidClient is the X-Client-Version and User-Agent droid's own requests

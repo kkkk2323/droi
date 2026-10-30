@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/egoist/mygo/netproxy"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
@@ -224,7 +226,7 @@ func NewCacheWarmer(cfg CacheWarmingConfig, rotator *keys.KeyRotator, states Ses
 		states:   states,
 		lock:     lock,
 		recorder: recorder,
-		client:   &http.Client{},
+		client:   &http.Client{Transport: netproxy.Transport()},
 		now:      time.Now,
 		afterFunc: func(d time.Duration, f func()) timerHandle {
 			return time.AfterFunc(d, f)

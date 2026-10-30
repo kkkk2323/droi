@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/egoist/mygo/netproxy"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/contentenc"
 )
@@ -396,7 +398,7 @@ func NewKeyRotator(cfg *config.Config, keys []string) *KeyRotator {
 		cfg:      cfg,
 		keys:     keys,
 		usages:   make(map[string]*KeyUsage),
-		client:   &http.Client{Timeout: time.Duration(config.UsageFetchTimeoutSec) * time.Second},
+		client:   &http.Client{Transport: netproxy.Transport(), Timeout: time.Duration(config.UsageFetchTimeoutSec) * time.Second},
 		stopCh:   make(chan struct{}),
 		openedAt: make(map[string]time.Time),
 		wake:     make(chan struct{}, 1),
