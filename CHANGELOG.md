@@ -1,3 +1,9 @@
+## 1.78.0 - 2026-10-30
+
+### Added
+
+- An app built on Droi can start background work of its own once the Host has started, in the window and in `<app> host` alike, such as keeping the Factory API key it handed the Host current. It can download the Patched Droid's recipes and Factory's droid builds from a mirror of its own, for networks where GitHub or Factory's downloads are slow; the recipes are still checked against Droi's key. An app that puts keys of its own in the Key Pool can find them again by the id the pool gives them (ADR 0029). Droi itself looks and works as before.
+
 ## 1.77.0 - 2026-10-29
 
 ### Added
