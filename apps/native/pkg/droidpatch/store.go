@@ -43,7 +43,10 @@ func mustKey(s string) ed25519.PublicKey {
 	return b
 }
 
-const (
+// An app built on Droi may point these at a mirror of its own before a
+// Store is made (droiapp.Options); the recipes are still checked against
+// PublicKey.
+var (
 	// RecipesURL is where CI publishes recipes for new droid versions.
 	RecipesURL = "https://github.com/kkkk2323/droi/releases/download/droid-patch/recipes.json"
 	// DownloadBase is Factory's versioned release path.

@@ -1,6 +1,7 @@
 package droiapp
 
 import (
+	"context"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -73,6 +74,15 @@ func (x *extensions) overlay(h *host.Host) host.OverlayOptions {
 		}
 	}
 	return o
+}
+
+// start runs the extensions' Start, each on a goroutine of its own.
+func (x *extensions) start(ctx context.Context, h *host.Host) {
+	for _, e := range x.list {
+		if e.Start != nil {
+			go e.Start(ctx, h)
+		}
+	}
 }
 
 // systemPrompt is the extensions' additions to the System Prompt Addition,

@@ -106,6 +106,9 @@ func TestAddChecksTheKey(t *testing.T) {
 	if st := reopened.State(); strings.Contains(st.Keys[0].Masked, "0000000000") {
 		t.Fatalf("State shows the key: %+v", st.Keys[0])
 	}
+	if id := KeyID(" fk-good-0000000000 "); id != reopened.State().Keys[0].ID {
+		t.Fatalf("KeyID %q, State's id %q", id, reopened.State().Keys[0].ID)
+	}
 }
 
 func TestStartWritesTheKeyFileAndForwards(t *testing.T) {

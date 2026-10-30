@@ -36,6 +36,9 @@ type Options struct {
 	// host.Config's fields of the same names, Overlay given the Host.
 	Overlay            func(h *host.Host) host.OverlayOptions
 	AppendSystemPrompt func() string
+	// Start, optional, is called once the Host has started, with Run's ctx;
+	// it returns at once and leaves its work to goroutines of its own.
+	Start func(ctx context.Context, h *host.Host)
 	// OwnFactoryHome runs the Daemon on a Factory home of the Host's own,
 	// <ConfigDir>/factory/.factory, instead of the droid CLI's ~/.factory.
 	OwnFactoryHome bool
@@ -99,6 +102,9 @@ func Run(ctx context.Context, o Options) error {
 		mem.Stop()
 		h.Stop()
 	}()
+	if o.Start != nil {
+		o.Start(ctx, h)
+	}
 
 	if !h.HasCredential() {
 		fmt.Fprintln(out, "Warning: no login. Run `droid login` on this computer, or set FACTORY_API_KEY, then restart.")
