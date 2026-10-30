@@ -330,6 +330,32 @@ func TestHostRunsTheDaemonOnItsOwnFactoryHome(t *testing.T) {
 	}
 }
 
+// The app's Start runs once the Host has started, given the Host, and its
+// context ends with the Host.
+func TestTheAppsStartRunsWithTheHost(t *testing.T) {
+	b := newBox(t, "0.240.0")
+	started := make(chan context.Context, 1)
+	r := b.start(func(o *Options) {
+		o.Start = func(ctx context.Context, h *host.Host) {
+			if h != nil && h.Daemon != nil {
+				started <- ctx
+			}
+		}
+	})
+	var ctx context.Context
+	select {
+	case ctx = <-started:
+	case <-time.After(30 * time.Second):
+		t.Fatal("Start was not called with the Host")
+	}
+	if err := r.stop(); err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() == nil {
+		t.Fatal("Start's context outlived the Host")
+	}
+}
+
 func TestHostPrintsThePairingLinkBeforeTheDaemonIsUp(t *testing.T) {
 	b := newBox(t, "0.240.0")
 	gate := filepath.Join(t.TempDir(), "daemon-may-start")

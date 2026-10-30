@@ -26,6 +26,11 @@ type Extension struct {
 	// h.Executable(), "args": [a command of Commands]}; h.Executable() is ""
 	// under go run. h.RestartDaemon() applies a change.
 	Overlay func(h *host.Host) host.OverlayOptions
+	// Start runs once this computer's Host has started, in the app and in
+	// `<app> host`, on a goroutine of its own: the app's background work,
+	// such as keeping the credential it handed the Host current. ctx ends
+	// when the app quits.
+	Start func(ctx context.Context, h *host.Host)
 	// SystemPrompt is added to the System Prompt Addition at every Session
 	// start, after the one Settings holds: how to use its tools, say.
 	SystemPrompt func() string

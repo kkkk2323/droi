@@ -27,6 +27,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
@@ -54,6 +55,23 @@ type Options struct {
 	// "worktrees", "computer", "remote", "usage" or "advanced". About stays.
 	// A link to a section left out opens the first one shown.
 	HiddenSettings []string
+	// RecipesURL and DroidDownloads, optional, are where the Patched Droid
+	// (ADR 0027) reads its recipes and Factory's droid builds instead of
+	// Droi's GitHub release and Factory's downloads: a mirror the app keeps,
+	// with recipes.json and recipes.json.sig at RecipesURL, and
+	// <version>/<os>/<arch>/droid with its .sha256 under DroidDownloads.
+	// The recipes are still checked against Droi's key.
+	RecipesURL, DroidDownloads string
+}
+
+// useDroidMirror points the Patched Droid at the app's mirror, if it has one.
+func useDroidMirror(o Options) {
+	if o.RecipesURL != "" {
+		droidpatch.RecipesURL = o.RecipesURL
+	}
+	if o.DroidDownloads != "" {
+		droidpatch.DownloadBase = o.DroidDownloads
+	}
 }
 
 // hostUnsupported is why `droi host` does not run on goos, "" where it does:
@@ -70,6 +88,7 @@ func hostUnsupported(goos string) string {
 // not return.
 func Run(o Options) {
 	brand.Set(o.Brand)
+	useDroidMirror(o)
 	exts := newExtensions(o.Extensions)
 	exts.register()
 	version := mygo.App.Version()
@@ -94,6 +113,7 @@ func Run(o Options) {
 				Version:            version,
 				Executable:         executable(),
 				Overlay:            exts.overlay,
+				Start:              exts.start,
 				AppendSystemPrompt: exts.systemPrompt,
 				OwnFactoryHome:     o.OwnFactoryHome,
 			}))
@@ -139,6 +159,7 @@ func Run(o Options) {
 		Overlay:            func() host.OverlayOptions { return exts.overlay(h) },
 		AppendSystemPrompt: exts.systemPrompt,
 	})
+	extCtx, stopExtensions := context.WithCancel(context.Background())
 	localToken := gateway.NewLocalToken()
 	var win *mygo.Window
 	bar := &menuBar{win: func() *mygo.Window { return win }}
@@ -305,6 +326,7 @@ func Run(o Options) {
 		}
 		win = mygo.NewWindow(opts)
 		h.Start()
+		exts.start(extCtx, h)
 		shown.start(h)
 		if updater != nil {
 			go updater.Schedule(context.Background())
@@ -324,6 +346,7 @@ func Run(o Options) {
 		}
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		stopExtensions()
 		bar.remove()
 		if gw != nil {
 			gw.Close()
