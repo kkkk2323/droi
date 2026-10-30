@@ -87,7 +87,9 @@ func TestTheMenuBarItemShowsTheKeyPool(t *testing.T) {
 
 // clickSwitch clicks the switch on the row titled title: the row's title
 // shows the same words as the switch's name, so it is found by moving along
-// the row from the right until on says it turned.
+// the row from the right until on says it turned. A switch whose action runs
+// in the background may turn only after the last click: the clicks never
+// yield, so on one CPU that action waits for the scheduler to preempt them.
 func (h *harness) clickSwitch(title string, on func() bool) {
 	h.t.Helper()
 	r, ok := h.tt.Find(title)
@@ -112,7 +114,7 @@ func (h *harness) clickSwitch(title string, on func() bool) {
 			}
 		}
 	}
-	h.t.Fatalf("no switch on the row %q", title)
+	h.until("the switch on the row "+title+" to turn", on)
 }
 
 // The panel with a running Key Pool in it, in Chinese, as droid-proxy's

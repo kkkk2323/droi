@@ -28,7 +28,8 @@ import (
 // keyPoolTestHost is a Host that runs Droi's droid, with a stand-in Factory
 // billing endpoint, where the first key added has nearly spent its week and
 // every later one is fresh, and stand-in droid releases whose newest is
-// 1.0.0.
+// 1.0.0. It has already checked for that newest droid: the update row and
+// card it brings would otherwise appear while a test clicks or shoots.
 func keyPoolTestHost(t *testing.T) *host.Host {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
@@ -62,6 +63,12 @@ func keyPoolTestHost(t *testing.T) *host.Host {
 	h := host.New(host.Config{UserData: data, Home: home, Env: func(string) string { return "" }, KeyPoolUpstream: factory.URL, DroidDownloads: releases.URL + "/releases"})
 	t.Cleanup(h.Stop)
 	t.Cleanup(h.KeyPool().Stop)
+	h.CheckDroiDroid()
+	for deadline := time.Now().Add(5 * time.Second); !h.DroiDroidState().Checked; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the check for a newer droid did not end: %+v", h.DroiDroidState())
+		}
+	}
 	return h
 }
 
@@ -506,11 +513,6 @@ func TestUsageTabPages(t *testing.T) {
 // offers the update; closing it hides it.
 func TestANewerDroisDroidShowsACard(t *testing.T) {
 	h0 := keyPoolTestHost(t)
-	h0.CheckDroiDroid()
-	deadline := time.Now().Add(5 * time.Second)
-	for !h0.DroiDroidState().Checked && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
 	p := h0.DroiDroidState()
 	if !p.UpdateAvailable() {
 		t.Fatalf("no newer droid: %+v", p)
