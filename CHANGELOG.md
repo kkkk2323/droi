@@ -1,3 +1,13 @@
+## 1.80.0 - 2026-10-30
+
+### Changed
+
+- The model picker opens on your favorites when you have starred models the Daemon offers. Click the star in the picker's rail to see every model. A Session on a Magpie model still opens on the Magpie tab.
+
+### Fixed
+
+- The sidebar's search no longer lists Droi's own Memory Sessions, such as "Memory: update the Memory Summary". The Daemon's search found them in their messages.
+- The search box's icons sit in the middle of the box at both densities. At Comfortable they were 2 pixels too high.
 ## 1.79.0 - 2026-10-30
 
 ### Added
