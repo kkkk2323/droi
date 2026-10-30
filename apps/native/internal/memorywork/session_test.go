@@ -55,6 +55,17 @@ func TestAMemorySessionAnswersInJSONAndIsArchivedAndClosed(t *testing.T) {
 	if _, err := d.WaitForRequest("daemon.archive_session", 1); err != nil {
 		t.Error("the Memory Session was not archived")
 	}
+	// droid 1.0 runs a skill named anywhere in a user message as /name, and the
+	// material quotes the user's Sessions, which name skills; it skips an
+	// llm_only message.
+	msg, err := d.WaitForRequest("daemon.add_user_message", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct{ Visibility string }
+	if _ = json.Unmarshal(msg.Params, &m); m.Visibility != "llm_only" {
+		t.Errorf("add_user_message %s", msg.Params)
+	}
 	// A Session left open keeps its place in the Daemon, which takes only so
 	// many at once.
 	if _, err := d.WaitForRequest("daemon.close_session", 1); err != nil {

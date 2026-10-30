@@ -3,6 +3,7 @@ package host_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -47,6 +48,13 @@ func TestLiveMemory(t *testing.T) {
 	fake, workspace, memDir := filepath.Join(root, "home"), filepath.Join(root, "workspace"), filepath.Join(root, "memory")
 	_ = os.Mkdir(fake, 0o755)
 	_ = os.Mkdir(workspace, 0o755)
+	// A skill a Memory Session's material names, as Sessions name the skills
+	// the user ran.
+	probeSkill := filepath.Join(fake, ".factory", "skills", "droi-probe")
+	_ = os.MkdirAll(probeSkill, 0o755)
+	if err := os.WriteFile(filepath.Join(probeSkill, "SKILL.md"), []byte("---\nname: droi-probe\ndescription: A skill for Droi's live test.\n---\nReply with the word probe.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	overlay := filepath.Join(root, "runtime-overlay.json")
 	if err := host.WriteRuntimeOverlay(overlay, host.BuildRuntimeOverlay(host.MemoryAttachment{Executable: bin, MemoryDir: memDir, ApprovedAt: time.Now().UTC().Format(time.RFC3339)})); err != nil {
 		t.Fatal(err)
@@ -95,6 +103,57 @@ func TestLiveMemory(t *testing.T) {
 		t.Fatal("the Daemon did not start")
 	}
 	defer c.Close()
+
+	// The skill the material names stays words, and an archived Memory Session,
+	// which the Daemon refuses to load, opens as the Session view opens it:
+	// unarchived, loaded and archived again.
+	probe, err := memorywork.NewRunner(dial)(ctx, memorywork.Request{
+		Title: "Memory: probe", Cwd: fake, ModelID: model, Prompt: `Answer {"ok": true}.`,
+		Input:  "The user ran /droi-probe in a Session. Answer the JSON.",
+		Schema: map[string]any{"type": "object", "properties": map[string]any{"ok": map[string]any{"type": "boolean"}}, "required": []string{"ok"}, "additionalProperties": false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rpcErr *droid.RPCError
+	if _, err := c.LoadSession(ctx, protocol.LoadSessionParams{SessionID: probe.SessionID}); !errors.As(err, &rpcErr) || rpcErr.Code != -32004 {
+		t.Errorf("loading the archived Memory Session: %v", err)
+	}
+	if _, err := c.UnarchiveSession(ctx, protocol.UnarchiveSessionParams{SessionID: probe.SessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.LoadSession(ctx, protocol.LoadSessionParams{SessionID: probe.SessionID}); err != nil {
+		t.Errorf("loading the unarchived Memory Session: %v", err)
+	}
+	if _, err := c.ArchiveSession(ctx, protocol.ArchiveSessionParams{SessionID: probe.SessionID}); err != nil {
+		t.Errorf("archiving the loaded Memory Session again: %v", err)
+	}
+	hundred := float64(100)
+	page, err := c.GetSessionMessages(ctx, protocol.GetSessionMessagesParams{SessionID: probe.SessionID, Limit: &hundred})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	for _, m := range page.Messages {
+		for _, b := range m.Content {
+			if v, _ := b.Value(); v != nil {
+				if tb, ok := v.(*protocol.TextBlock); ok {
+					said = append(said, string(m.Role)+": "+tb.Text)
+				}
+			}
+		}
+	}
+	if all := strings.Join(said, "\n"); !strings.Contains(all, "The user ran /droi-probe") || strings.Contains(all, "Reply with the word probe") {
+		t.Errorf("the probe Memory Session's messages: %.2000s", all)
+	}
+	yes := true
+	if listed, err := c.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{IncludeArchived: &yes}); err == nil {
+		for _, s := range listed.Sessions {
+			if s.SessionID == probe.SessionID && s.ArchivedAt == "" {
+				t.Error("the probe Memory Session is no longer archived")
+			}
+		}
+	}
 
 	ask := func(prompt string) string {
 		t.Helper()
@@ -241,7 +300,6 @@ func TestLiveMemory(t *testing.T) {
 	if !otter.MatchString(got) {
 		t.Error("the Memory Summary left out the Memory Note")
 	}
-	yes := true
 	list, err := c.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{IncludeArchived: &yes})
 	if err != nil {
 		t.Fatal(err)
