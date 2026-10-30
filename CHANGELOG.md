@@ -1,3 +1,12 @@
+## 1.81.0 - 2026-10-30
+
+### Changed
+
+- Droi runs on MyGo 0.7.3. On Windows, a window that is hidden or off screen no longer holds the app up for a second on each frame, and resizing a window no longer shows its content magnified and cut off. On macOS, an update keeps a single Dock icon, Cmd-Q always quits, and a dialog opened by a click shows at once. Spinners and pulses redraw only themselves.
+- Droi's own requests follow the proxy set in the system's settings, PAC files included, as a browser does: downloads of droid and the Patched Droid's recipes, the Factory sign-in and usage, the Key Pool's usage reads and the Patched Droid's model requests. Before, only `HTTP_PROXY` and `HTTPS_PROXY` reached them. A proxy set in those variables still wins.
+- The Autonomy select and every select in Settings open as menus. Up and Down move through the options, Enter chooses one, Escape closes the menu, and typing a letter jumps to an option. A dot marks the current choice.
+- The pulses move 30 times a second. On a Mac with a ProMotion display, the display then refreshes less often while nothing else moves.
+- The release's files have new names: `droi-<version>.dmg` for macOS and `droi-setup-<version>-amd64.exe` for Windows. Installed apps update as before.
 ## 1.80.0 - 2026-10-30
 
 ### Changed
