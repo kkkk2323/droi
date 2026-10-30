@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egoist/mygo/netproxy"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
@@ -132,7 +134,7 @@ func (p *Proxy) outboundTransport() http.RoundTripper {
 	if p.transport != nil {
 		return p.transport
 	}
-	return http.DefaultTransport
+	return netproxy.Transport()
 }
 
 // SetCacheWarmer attaches the cache warmer; call it before Start.

@@ -20,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo/netproxy"
 )
 
 // Recipes is the file of recipes, embedded and published.
@@ -71,7 +73,7 @@ func NewStore(dir string) *Store {
 	return &Store{
 		Dir:          dir,
 		Platform:     Platform(),
-		HTTP:         &http.Client{Timeout: 30 * time.Minute},
+		HTTP:         &http.Client{Transport: netproxy.Transport(), Timeout: 30 * time.Minute},
 		RecipesURL:   RecipesURL,
 		DownloadBase: DownloadBase,
 		PublicKey:    PublicKey,
