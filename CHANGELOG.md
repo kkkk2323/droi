@@ -1,3 +1,8 @@
+## 1.82.0 - 2026-10-30
+
+### Added
+
+- An app built on Droi can give single tools of its MCP servers an autonomy level of their own, over the server's (ADR 0029): a server whose tools run without asking can still have a Session ask before each call of one of them, such as a tool that runs a deploy. Droi itself looks and works as before.
 ## 1.81.1 - 2026-10-30
 
 ### Fixed
