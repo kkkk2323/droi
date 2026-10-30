@@ -1,3 +1,16 @@
+## 1.84.0 - 2026-10-30
+
+### Changed
+
+- The Key Pool runs Factory's own droid, unchanged, instead of a patched one (ADR 0033). Droi downloads Factory's newest droid (or copies yours when it is the same build), checks on this computer that its key hook works in it, and starts the Daemon with the hook. A new droid works the day Factory ships it: there are no recipes to wait for. If you used the Key Pool before, Droi moves to the new droid on its own the first time it starts.
+- The Usage tab knows each key's Factory plan. A key shows Pro, Plus, Max or Ultra next to it, and a Plus key's quota counts as 5 Pro keys', a Max key's as 10 and an Ultra key's as 100: in the totals, the averages, the credits, how long the pool lasts and how many waiting keys start a day.
+
+### Fixed
+
+- A model request can no longer be billed to your signed-in account while the Key Pool is on. If the key hook did not load, the Daemon stops and says why, and the Key Pool's proxy refuses any model request that does not carry one of its keys.
+- When Factory rejects a Key Pool key, droid no longer says that your login has expired. In Automatic mode Droi moves to another key and the request is retried; in Manual mode the session says which key was rejected.
+- On Windows, switching keys while a session runs no longer fails now and then with "Access is denied".
+
 ## 1.83.0 - 2026-10-30
 
 ### Added
