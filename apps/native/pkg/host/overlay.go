@@ -84,8 +84,8 @@ type MCPServer struct {
 	// tool as high impact, so "low" lets every Session run them, as Memory's.
 	Autonomy string
 	// Tools, optional, are the autonomy levels of single tools, by their
-	// name on the server, over Autonomy: {"run_pipeline": "high"} has a
-	// Session ask before each run but at autonomy High, while the server's
+	// name on the server, over Autonomy: {"run_pipeline": "high"} has every
+	// Session below autonomy High ask before each run, while the server's
 	// other tools run at Autonomy.
 	Tools map[string]string
 }
