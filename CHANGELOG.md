@@ -1,3 +1,9 @@
+## 1.81.1 - 2026-10-30
+
+### Fixed
+
+- Opening an archived Session no longer shows "droid: session not found", including a Memory Session opened from Settings → Memory. droid 1.0 refuses to load an archived Session, so Droi now unarchives it, loads it and archives it again: the Session opens and stays archived.
+- A Memory Session no longer runs a skill that its material names. When a Session or the Memory Summary mentioned a skill as `/name`, such as `/retro`, droid 1.0 activated that skill in the Memory Session and told the model to follow it.
 ## 1.81.0 - 2026-10-30
 
 ### Changed
