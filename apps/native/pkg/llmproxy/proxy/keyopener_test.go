@@ -145,32 +145,28 @@ func TestKeyOpenerDropsAFailingTemplate(t *testing.T) {
 }
 
 func TestProxyKeepsHaikuRequestAsOpeningTemplate(t *testing.T) {
-	px, _, upstream, _, _ := openerFixture(t, http.StatusOK)
-	px.keyOpener.observe(upstream.URL+"/api/llm/a/v1/messages", http.Header{}, "", []byte(`{"model":"claude-opus-5-5","max_tokens":50,"messages":[]}`), "claude-opus-5-5", "anthropic")
-	if tmpl := px.keyOpener.template(); tmpl != nil {
-		t.Fatalf("an Opus request became the template: %+v", tmpl)
-	}
+	px, _, _, _, _ := openerFixture(t, http.StatusOK)
 	baseURL, err := px.Start("127.0.0.1", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = px.Shutdown(context.Background()) })
-	req, _ := http.NewRequest("POST", baseURL+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"`+haikuModel+`","max_tokens":50,"messages":[]}`))
-	req.Header.Set("Authorization", "Bearer fk-open")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
+	for _, model := range []string{"claude-opus-5-5", haikuModel} {
+		req, _ := http.NewRequest("POST", baseURL+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"`+model+`","max_tokens":50,"messages":[]}`))
+		req.Header.Set("Authorization", "Bearer fk-open")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The handler keeps the template after writing the answer; the
+		// answer's end comes once the handler is done.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if tmpl := px.keyOpener.template(); (tmpl != nil) != (model == haikuModel) {
+			t.Fatalf("after %s template = %+v", model, tmpl)
+		}
 	}
-	resp.Body.Close()
-	// The handler keeps the template after the client has the whole answer.
-	var tmpl *openTemplate
-	for deadline := time.Now().Add(5 * time.Second); tmpl == nil && time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		tmpl = px.keyOpener.template()
-	}
-	if tmpl == nil || tmpl.model != haikuModel {
-		t.Fatalf("after a Haiku request template = %+v", tmpl)
-	}
-	if auth := tmpl.header.Get("Authorization"); auth != "" {
+	if auth := px.keyOpener.template().header.Get("Authorization"); auth != "" {
 		t.Fatalf("the template keeps no key: %q", auth)
 	}
 }

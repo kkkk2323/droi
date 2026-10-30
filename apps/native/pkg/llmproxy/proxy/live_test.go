@@ -12,6 +12,17 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 )
 
+// waitLive answers the live calls once ok takes them, or after five seconds:
+// the proxy hands a chunk to the observer after writing it to the client, so
+// the client can read a line before the live call counts it.
+func waitLive(px *Proxy, ok func([]diag.LiveCall) bool) []diag.LiveCall {
+	live := px.Live()
+	for deadline := time.Now().Add(5 * time.Second); !ok(live) && time.Now().Before(deadline); live = px.Live() {
+		time.Sleep(5 * time.Millisecond)
+	}
+	return live
+}
+
 // While a reply streams, the proxy shows it as a live call of its Session,
 // with its first token and the tokens so far; once it ends, the Session's
 // sums have it, with its time to the first token.
@@ -51,12 +62,15 @@ func TestProxy_ShowsAStreamingCallLiveThenSumsIt(t *testing.T) {
 			break
 		}
 	}
-	live := px.Live()
+	liveOK := func(l diag.LiveCall) bool {
+		return l.SessionID == "s-live" && l.Model == "claude-test" && !l.FirstToken.IsZero() && l.Output == 3 && l.Usage.Input == 100
+	}
+	live := waitLive(px, func(live []diag.LiveCall) bool { return len(live) == 1 && liveOK(live[0]) })
 	if len(live) != 1 {
 		t.Fatalf("live calls %+v, want the one streaming", live)
 	}
 	l := live[0]
-	if l.SessionID != "s-live" || l.Model != "claude-test" || l.FirstToken.IsZero() || l.Output != 3 || l.Usage.Input != 100 {
+	if !liveOK(l) {
 		t.Fatalf("live call %+v", l)
 	}
 
@@ -182,8 +196,11 @@ func TestProxy_MeasuresEachProvidersStream(t *testing.T) {
 					break
 				}
 			}
-			live := px.Live()
-			if len(live) != 1 || live[0].SessionID != session || live[0].FirstToken.IsZero() || live[0].Output < 5 {
+			liveOK := func(live []diag.LiveCall) bool {
+				return len(live) == 1 && live[0].SessionID == session && !live[0].FirstToken.IsZero() && live[0].Output >= 5
+			}
+			live := waitLive(px, liveOK)
+			if !liveOK(live) {
 				t.Fatalf("mid-stream live calls %+v, want this one with its first token and ~8 tokens so far", live)
 			}
 			if live[0].Usage.Input != 0 && live[0].Usage.Input != tc.input {
