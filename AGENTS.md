@@ -111,11 +111,13 @@ installed types before using an Expo module, and add Expo packages with
 
 ## Testing
 
-- The native app has no end-to-end suite that opens a window. Its view tests run `App.View`
-  in MyGo's `ui.NewTester` (no window; click, type and read by text or label) against the
-  real Fake Daemon, through the real SDK, so they cover everything but the window and the
-  operating system. MyGo's own GUI tests (`internal/e2e`) cover only the framework. Check
-  windows, menus, installers and Windows behavior by hand, or drive the app with Cua Driver.
+- The native app's view tests run `App.View` in MyGo's `ui.NewTester` (no window; click,
+  type and read by text or label) against the real Fake Daemon, through the real SDK, so they
+  cover everything but the window and the operating system. One test opens the window:
+  `DROI_E2E=1 go test ./apps/native -run TestTheWindow -v` (macOS, a desktop session) builds
+  the app with `-tags e2e`, which links MyGo's automation plugin, and drives the menu bar, a key
+  and Quit through its socket, with no Daemon. Check installers and Windows behavior by hand,
+  or drive the app with Cua Driver.
 - Reference screens: `DROI_NATIVE_SHOTS=/tmp/shots go test ./apps/native/internal/app -v`
   writes each screen and its pixel diff against the recorded reference
 - README screenshot: `DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots`
