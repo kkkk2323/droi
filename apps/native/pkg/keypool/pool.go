@@ -152,6 +152,10 @@ func (p *Pool) logFile(name string) string { return filepath.Join(p.opts.Dir, "l
 // UsageLog is where the billing window snapshots go, for the spend history.
 func (p *Pool) UsageLog() string { return p.logFile("usage.jsonl") }
 
+// KeyID is the id State gives key, which Remove and Use take: for an app
+// that puts keys of its own in the pool and takes them out again.
+func KeyID(key string) string { return keyID(strings.TrimSpace(key)) }
+
 func keyID(key string) string {
 	s := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(s[:6])
