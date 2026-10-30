@@ -18,6 +18,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // What the Host does with Memory (ADR 0031), Codex's memory v2 in files.
@@ -391,7 +392,7 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 	workspace := memory.WorkspaceOf(cmp.Or(t.Cwd, c.rec.Cwd))
 	title := oneLine(cmp.Or(t.Title, shortID(c.id)))
 	reply, err := p.run(ctx, Request{
-		Title:   "Memory: summarize " + clipRunes(title, 60),
+		Title:   sessions.MemoryTitlePrefix + "summarize " + clipRunes(title, 60),
 		Cwd:     existingDir(workspace, p.w.Home),
 		ModelID: p.w.Models.SessionSummary,
 		Prompt:  p.w.SessionPrompt,
@@ -702,9 +703,9 @@ func (p *pass) updateMemorySummary(ctx context.Context, force bool) error {
 		}
 		title := func(verb string) string {
 			if len(todo) > 1 {
-				return fmt.Sprintf("Memory: %s the Memory Summary (%d of %d)", verb, i+1, len(todo))
+				return fmt.Sprintf("%s%s the Memory Summary (%d of %d)", sessions.MemoryTitlePrefix, verb, i+1, len(todo))
 			}
-			return "Memory: " + verb + " the Memory Summary"
+			return sessions.MemoryTitlePrefix + verb + " the Memory Summary"
 		}
 		req := Request{
 			Title:           title("update"),

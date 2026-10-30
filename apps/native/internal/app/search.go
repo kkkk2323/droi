@@ -51,7 +51,8 @@ type searchState struct {
 
 func (a *App) searchBox(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(k.Dense(28, 32)))
+	height := k.Dense(28, 32)
+	box := ui.Row(c).Grow(1).MinWidth(0).Height(k.Px(height))
 	box.Children(func() {
 		in := ui.TextInputBase(c, &a.sidebar.query).Bind(&a.sidebar.searchBox).Label(L("Search sessions and workspaces")).Placeholder(L("Search")).
 			Fill().Radius(k.Px(6)).Padding(0, k.Px(28), 0, k.Px(28)).FontSize(k.Px(k.Dense(12, 13))).TextColor(t.Foreground).Border(1, ui.Transparent)
@@ -66,9 +67,9 @@ func (a *App) searchBox(c *ui.Context) {
 		if a.sidebar.query != "" && in.Shortcut(0, ui.KeyEscape) {
 			a.sidebar.query = ""
 		}
-		k.IconStroke(c, "search", 1.6, 14, t.SidebarMutedForeground).Absolute().Left(k.Px(8)).Top(k.Px(7)).PassThrough()
+		k.IconStroke(c, "search", 1.6, 14, t.SidebarMutedForeground).Absolute().Left(k.Px(8)).Top(k.Px((height - 14) / 2)).PassThrough()
 		if a.sidebar.query != "" {
-			x := k.IconButton(c, "x", L("Clear search"), 24).Absolute().Right(k.Px(2)).Top(k.Px(2))
+			x := k.IconButton(c, "x", L("Clear search"), 24).Absolute().Right(k.Px(2)).Top(k.Px((height - 24) / 2))
 			if x.Clicked() {
 				a.sidebar.query = ""
 			}
@@ -128,7 +129,7 @@ func (a *App) search(query string) {
 			if err != nil {
 				return nil, err
 			}
-			return contentHits(res), nil
+			return contentHits(res, listed), nil
 		}
 		// The Daemon reads only its best few hundred candidates, and with thousands
 		// of Sessions a short query ranks them all alike, so a search of all of them
@@ -166,9 +167,16 @@ func titleHits(listed []sessions.Summary, query string) []searchHit {
 	return hits
 }
 
-func contentHits(res *protocol.SearchSessionsResult) []searchHit {
+// contentHits are the Sessions the Daemon found, without Memory Sessions,
+// which the Daemon searches too: its hits carry no tags, so one is told by
+// the title Droi gives it, and a listed Session titled so is kept.
+func contentHits(res *protocol.SearchSessionsResult, listed []sessions.Summary) []searchHit {
 	var hits []searchHit
 	for _, r := range res.Sessions {
+		if strings.HasPrefix(r.Title, sessions.MemoryTitlePrefix) &&
+			!slices.ContainsFunc(listed, func(s sessions.Summary) bool { return s.SessionID == r.SessionID }) {
+			continue
+		}
 		h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, L("Untitled session"))}
 		if r.UpdatedAt != nil {
 			h.updatedAt = int64(*r.UpdatedAt / 1000)

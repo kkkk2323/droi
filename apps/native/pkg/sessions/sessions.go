@@ -74,6 +74,9 @@ const (
 	MemoryTag    = "droi.memory"
 )
 
+// MemoryTitlePrefix starts every Memory Session's title.
+const MemoryTitlePrefix = "Memory: "
+
 func hasTag(tags []Tag, name string) bool {
 	return slices.ContainsFunc(tags, func(t Tag) bool { return t.Name == name })
 }
