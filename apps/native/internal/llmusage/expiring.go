@@ -107,18 +107,27 @@ func expiringTone(deadline, now time.Time) Tone {
 	return ToneSecondary
 }
 
+// expiringItem is a key's month: o in percent of the key's own month, the
+// methods in percent of a Pro key's (Scale).
 type expiringItem struct {
-	key keys.KeyState
-	o   MonthlyOutlook
+	key   keys.KeyState
+	o     MonthlyOutlook
+	scale float64
 }
 
+func (it expiringItem) left() float64   { return it.o.Left * it.scale }
+func (it expiringItem) usable() float64 { return it.o.Usable * it.scale }
+
 // loss is what is lost even if use starts now.
-func (it expiringItem) loss() float64 { return it.o.Left - it.o.Usable }
+func (it expiringItem) loss() float64 { return (it.o.Left - it.o.Usable) * it.scale }
+
+// restLoss is what resting the key for alertRest would lose.
+func (it expiringItem) restLoss() float64 { return (it.o.Left - it.o.UsableAfterRest) * it.scale }
 
 // atRisk: nothing is lost yet, but resting the key for alertRest would lose
 // some.
 func (it expiringItem) atRisk() bool {
-	return it.loss() < minLossPercent && it.o.Left-it.o.UsableAfterRest >= minLossPercent
+	return it.loss() < minLossPercent && it.restLoss() >= minLossPercent
 }
 
 // BuildExpiring lists the keys whose month ends soon. spend, when known,
@@ -138,7 +147,7 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 		if !ok || o.Left <= minExpiringPercent {
 			continue
 		}
-		it := expiringItem{key, o}
+		it := expiringItem{key, o, Scale(key)}
 		if it.atRisk() {
 			alerts++
 		}
@@ -170,7 +179,7 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 	v.Pools = []ExpiringPoolView{p}
 	left, loss := 0.0, 0.0
 	for _, it := range items {
-		left += it.o.Left
+		left += it.left()
 		if it.loss() >= minLossPercent {
 			loss += it.loss()
 		}
@@ -195,7 +204,7 @@ func BuildExpiring(pool []keys.KeyState, now time.Time, spend *Spend) ExpiringVi
 func requiredPace(items []expiringItem, now time.Time) float64 {
 	need, due := 0.0, 0.0
 	for _, it := range items {
-		due += it.o.Usable
+		due += it.usable()
 		days := math.Max(it.o.End.Sub(now).Hours(), 1) / 24
 		need = math.Max(need, due/days)
 	}
@@ -223,7 +232,7 @@ func expiringBuckets(items []expiringItem, now time.Time) []ExpiringBucketView {
 					first = it.o.End
 				}
 				n++
-				sum += it.o.Left
+				sum += it.left()
 				if it.loss() >= minLossPercent {
 					loss += it.loss()
 				}
@@ -269,11 +278,11 @@ func expiringGroups(items []expiringItem, now time.Time) []ExpiringGroupView {
 			end++
 		}
 		members := append([]expiringItem(nil), items[start:end]...)
-		sort.SliceStable(members, func(i, j int) bool { return members[i].o.Left > members[j].o.Left })
+		sort.SliceStable(members, func(i, j int) bool { return members[i].left() > members[j].left() })
 		left := first.Sub(now)
 		sum := 0.0
 		for _, it := range members {
-			sum += it.o.Left
+			sum += it.left()
 		}
 		g := ExpiringGroupView{
 			Countdown: first.Local().Format("1/2"),
@@ -296,7 +305,7 @@ func expiringGroups(items []expiringItem, now time.Time) []ExpiringGroupView {
 
 func expiringChip(it expiringItem) ExpiringChipView {
 	o := it.o
-	credits, tokens := standardCredits(Standard, Monthly, o.Left)
+	credits, tokens := standardCredits(Standard, Monthly, it.left())
 	chip := ExpiringChipView{
 		Index:   it.key.Index,
 		Key:     it.key.Key,
@@ -308,8 +317,8 @@ func expiringChip(it expiringItem) ExpiringChipView {
 	}
 	help := []string{
 		it.key.Key,
-		l10n.L("%s of the monthly quota left (about %s credits), lost %s", FormatPercent(o.Left), monthCredits(o.Left), o.End.Local().Format("1/2 15:04")),
-		l10n.L("The weekly and 5-hour quotas let at most %s through before then", monthCredits(o.Usable)),
+		l10n.L("%s of the monthly quota left (about %s credits), lost %s", FormatPercent(o.Left), monthCredits(it.left()), o.End.Local().Format("1/2 15:04")),
+		l10n.L("The weekly and 5-hour quotas let at most %s through before then", monthCredits(it.usable())),
 	}
 	switch {
 	case it.loss() >= minLossPercent:
@@ -318,7 +327,7 @@ func expiringChip(it expiringItem) ExpiringChipView {
 	case it.atRisk():
 		chip.Note, chip.NoteTone = l10n.L("Start within 2 days"), ToneWarning
 		chip.Bar.Tone = ToneWarning
-		help = append(help, l10n.L("Unless used within 2 days, %s will be lost", monthCredits(o.Left-o.UsableAfterRest)))
+		help = append(help, l10n.L("Unless used within 2 days, %s will be lost", monthCredits(it.restLoss())))
 	}
 	chip.Help = strings.Join(help, "\n")
 	return chip

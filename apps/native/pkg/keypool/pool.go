@@ -1,8 +1,8 @@
-// Package keypool is the Key Pool (ADR 0027): the Factory API keys Droi owns
-// for the Patched Droid's LLM requests, the key file the patch reads, and the
-// LLM proxy that records those requests and moves droid to another key when
-// one runs out. Everything lives in Droi's own data folder (Dir); nothing is
-// shared with droid-proxy.
+// Package keypool is the Key Pool (ADR 0027, 0033): the Factory API keys
+// Droi owns for the LLM requests of Droi's droid, the key file its hook
+// reads, and the LLM proxy that records those requests and moves droid to
+// another key when one runs out. Everything lives in Droi's own data folder
+// (Dir); nothing is shared with droid-proxy.
 package keypool
 
 import (
@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
@@ -144,7 +145,7 @@ func Open(opts Options) *Pool {
 
 func (p *Pool) poolFile() string { return filepath.Join(p.opts.Dir, "keys.json") }
 
-// KeyFile is the file the Patched Droid reads its LLM key from.
+// KeyFile is the file the hook of Droi's droid reads the LLM key from.
 func (p *Pool) KeyFile() string { return filepath.Join(p.opts.Dir, "llm-key") }
 
 func (p *Pool) logFile(name string) string { return filepath.Join(p.opts.Dir, "logs", name) }
@@ -167,38 +168,12 @@ func (p *Pool) changed() {
 	}
 }
 
-// writePrivate writes b to path through a rename in the same folder, mode
-// 0600, so a reader never sees half a file.
-func writePrivate(path string, b []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	defer os.Remove(name)
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
-}
-
 func (p *Pool) saveLocked() error {
 	b, err := json.MarshalIndent(p.stored, "", "  ")
 	if err != nil {
 		return err
 	}
-	return writePrivate(p.poolFile(), b)
+	return droidhook.WritePrivate(p.poolFile(), b)
 }
 
 func (p *Pool) keyByIDLocked(id string) string {
@@ -222,7 +197,7 @@ func (p *Pool) currentKeyLocked() string {
 
 // useLocked makes key the one the key file holds.
 func (p *Pool) useLocked(key string) error {
-	if err := writePrivate(p.KeyFile(), []byte(key)); err != nil {
+	if err := droidhook.WritePrivate(p.KeyFile(), []byte(key)); err != nil {
 		p.err = err.Error()
 		return err
 	}
@@ -337,7 +312,12 @@ func (p *Pool) afterUsage() {
 	}
 	cur := p.currentKeyLocked()
 	if want, _ := r.SelectKeyForModel(cur, "", nil); want != "" && want != cur {
-		_ = p.useLocked(want)
+		// droid keeps the old key when the key file was not replaced.
+		if p.useLocked(want) != nil {
+			p.mu.Unlock()
+			p.changed()
+			return
+		}
 		p.mu.Unlock()
 		r.NoteKeyUsed(want)
 		p.px.Recorder().RecordEvent(diag.Event{Time: time.Now(), Kind: "key_switched", Key: keys.MaskKey(want), Detail: "the current key cannot serve"})
@@ -424,7 +404,7 @@ func (p *Pool) Add(ctx context.Context, key string) error {
 
 // Remove takes the key out of the pool. Removing the current key moves the
 // key file to another key; the last key cannot be removed while the proxy
-// runs, since the Patched Droid would have none.
+// runs, since Droi's droid would have none.
 func (p *Pool) Remove(id string) error {
 	p.mu.Lock()
 	key := p.keyByIDLocked(id)

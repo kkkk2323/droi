@@ -57,16 +57,16 @@ func (a *App) droidUpdatedCard(c *ui.Context) {
 	}, func() { a.droidUpdateDismissed = true })
 }
 
-// patchedDroidUpdateCard offers a newer Droi's droid while the Key Pool is
+// droiDroidUpdateCard offers a newer Droi's droid while the Key Pool is
 // on: droid cannot update that build itself. Closing it hides it until a
 // newer version.
-func (a *App) patchedDroidUpdateCard(c *ui.Context) {
+func (a *App) droiDroidUpdateCard(c *ui.Context) {
 	h := a.cfg.Host
 	if h == nil {
 		return
 	}
-	p := h.PatchedDroidState()
-	if !p.UpdateAvailable() || a.patchUpdateDismissed == p.Latest {
+	p := h.DroiDroidState()
+	if !p.UpdateAvailable() || a.droiUpdateDismissed == p.Latest {
 		return
 	}
 	k, t := a.kit, a.kit.T
@@ -86,10 +86,10 @@ func (a *App) patchedDroidUpdateCard(c *ui.Context) {
 				note(p.Err, t.DestructiveForeground)
 			}
 			if a.smallButton(c, kit.Primary, L("Update"), "", false).Label(L("Update Droi's droid")).AlignSelf(ui.Start).Margin(k.Px(8), 0, 0, 0).Clicked() {
-				h.UpdatePatchedDroid()
+				h.UpdateDroiDroid()
 			}
 		}
-	}, func() { a.patchUpdateDismissed = p.Latest })
+	}, func() { a.droiUpdateDismissed = p.Latest })
 }
 
 // cornerCards stack the corner cards above the sidebar's footer, whose
@@ -98,7 +98,7 @@ func (a *App) cornerCards(c *ui.Context) {
 	k := a.kit
 	ui.Column(c).Absolute().Left(k.Px(16)).Bottom(k.Px(48)).Gap(k.Px(8)).Children(func() {
 		a.droidUpdatedCard(c)
-		a.patchedDroidUpdateCard(c)
+		a.droiDroidUpdateCard(c)
 		a.updateCard(c)
 	})
 }

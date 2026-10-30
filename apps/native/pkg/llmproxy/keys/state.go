@@ -5,9 +5,11 @@ import "time"
 // KeyState is a display-safe snapshot of one key's routing state, exposed over
 // the local debug endpoint. It never contains a full key.
 type KeyState struct {
-	Index                 int        `json:"index"`
-	Key                   string     `json:"key"` // masked
-	Status                string     `json:"status"`
+	Index  int    `json:"index"`
+	Key    string `json:"key"` // masked
+	Status string `json:"status"`
+	// Plan is the key's Factory tier, "" while unknown (PlanName, PlanScale).
+	Plan                  string     `json:"plan,omitempty"`
 	StandardPercent       *float64   `json:"standardPercent,omitempty"`
 	CorePercent           *float64   `json:"corePercent,omitempty"`
 	StandardAvailable     bool       `json:"standardAvailable"`
@@ -54,6 +56,7 @@ func (r *KeyRotator) Snapshot() []KeyState {
 			continue
 		}
 		ks.Status = "ok"
+		ks.Plan = usage.Plan
 		if usage.Error != "" {
 			ks.Status = usage.Error
 		}

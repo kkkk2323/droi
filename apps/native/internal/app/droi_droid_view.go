@@ -14,13 +14,13 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
-// patchedDroidGroup is Settings → Advanced's Patched Droid (ADR 0027): the
-// droid the Daemon runs, and the Key Pool its LLM requests are sent with.
-func (a *App) patchedDroidGroup(c *ui.Context) {
+// droiDroidGroup is Settings → Advanced's Droi's droid (ADR 0033): the droid
+// the Daemon runs, and the Key Pool its LLM requests are sent with.
+func (a *App) droiDroidGroup(c *ui.Context) {
 	h := a.cfg.Host
-	h.RefreshPatchRecipes()
-	p := h.PatchedDroidState()
-	rows := []func(){func() { a.patchedDroidRow(c, p) }}
+	h.RefreshDroiDroid()
+	p := h.DroiDroidState()
+	rows := []func(){func() { a.droiDroidRow(c, p) }}
 	if p.Enabled || a.keyPool().Len() > 0 {
 		rows = append(rows, func() { a.keyPoolRow(c, p) })
 	}
@@ -30,7 +30,7 @@ func (a *App) patchedDroidGroup(c *ui.Context) {
 	a.settingGroup(c, L("Key Pool"), "", rows...)
 }
 
-func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
+func (a *App) droiDroidRow(c *ui.Context, p host.DroiDroid) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
 	desc := L("The Key Pool is not available on this computer yet. It works on macOS and 64-bit Windows for now.")
@@ -50,14 +50,14 @@ func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
 		}
 		if a.toggle(c, label, p.Enabled, !p.Supported) {
 			if p.Enabled {
-				h.DisablePatchedDroid()
+				h.DisableDroiDroid()
 			} else {
-				h.EnablePatchedDroid()
+				h.EnableDroiDroid()
 			}
 		}
 	}, func() {
 		if p.Preparing {
-			a.patchProgress(c, p)
+			a.droiDroidProgress(c, p)
 		}
 		if p.Err != "" {
 			k.Text(c, p.Err, 12, 18).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).Margin(k.Px(8), 0, 0, 0)
@@ -66,17 +66,17 @@ func (a *App) patchedDroidRow(c *ui.Context, p host.PatchedDroid) {
 			ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(8), 0, 0, 0).Children(func() {
 				k.Text(c, L("Droi's droid %s is available; you have %s. Updating restarts the Daemon.", p.Latest, p.Version), 12, 18).TextColor(t.MutedForeground).Shrink(1).MinWidth(0)
 				if a.smallButton(c, kit.Outline, L("Update"), "refresh-cw", p.Preparing).Label(L("Update Droi's droid")).Clicked() {
-					h.UpdatePatchedDroid()
+					h.UpdateDroiDroid()
 				}
 			})
 		}
 	})
 }
 
-// patchedDroidAboutRow is About's row for Droi's droid while the Key Pool is
-// on: Check for updates reads the published recipes at once, without waiting
-// for the hourly read, and Update moves to the newer one.
-func (a *App) patchedDroidAboutRow(c *ui.Context, p host.PatchedDroid) {
+// droiDroidAboutRow is About's row for Droi's droid while the Key Pool is
+// on: Check for updates asks Factory for its newest droid at once, without
+// waiting for the hourly check, and Update moves to the newer one.
+func (a *App) droiDroidAboutRow(c *ui.Context, p host.DroiDroid) {
 	h := a.cfg.Host
 	k, t := a.kit, a.kit.T
 	desc := ""
@@ -102,17 +102,17 @@ func (a *App) patchedDroidAboutRow(c *ui.Context, p host.PatchedDroid) {
 			}
 			if p.UpdateAvailable() {
 				if a.smallButton(c, kit.Primary, L("Update to %s", p.Latest), "arrow-down-to-line", p.Preparing).Label(L("Update Droi's droid")).Clicked() {
-					h.UpdatePatchedDroid()
+					h.UpdateDroiDroid()
 				}
 				return
 			}
 			if a.smallButton(c, kit.Outline, L("Check for updates"), "", p.Checking || p.Preparing).Label(L("Check for Droi's droid updates")).Clicked() {
-				h.CheckPatchedDroid()
+				h.CheckDroiDroid()
 			}
 		})
 	}, func() {
 		if p.Preparing {
-			a.patchProgress(c, p)
+			a.droiDroidProgress(c, p)
 		}
 		if p.Err != "" {
 			k.Text(c, p.Err, 12, 18).Role(ui.RoleStatus).TextColor(t.DestructiveForeground).Margin(k.Px(8), 0, 0, 0)
@@ -120,9 +120,9 @@ func (a *App) patchedDroidAboutRow(c *ui.Context, p host.PatchedDroid) {
 	})
 }
 
-// patchProgress is the download and patch under way: a bar of the bytes
+// droiDroidProgress is the download and check under way: a bar of the bytes
 // fetched, or a line while the size is unknown.
-func (a *App) patchProgress(c *ui.Context, p host.PatchedDroid) {
+func (a *App) droiDroidProgress(c *ui.Context, p host.DroiDroid) {
 	k, t := a.kit, a.kit.T
 	if p.Total <= 0 {
 		k.Text(c, L("Preparing Droi's droid…"), 12, 18).Role(ui.RoleStatus).TextColor(t.MutedForeground).Margin(k.Px(8), 0, 0, 0)
@@ -134,7 +134,7 @@ func (a *App) patchProgress(c *ui.Context, p host.PatchedDroid) {
 		k.Text(c, L("Downloading droid: %s of %s", llmusage.FormatBytes(p.Done), llmusage.FormatBytes(p.Total)), 12, 18).TextColor(t.MutedForeground)
 		ui.Box(c).FillWidth().Height(k.Px(4)).Radius(k.Px(2)).Background(t.Foreground.Alpha(0.08)).Clip().Children(func() {
 			fill := ui.Box(c).FillHeight().Radius(k.Px(2)).Background(t.Primary)
-			fill.WidthPercent(min(fill.Animate("patch", share, 240*time.Millisecond), 100))
+			fill.WidthPercent(min(fill.Animate("droid", share, 240*time.Millisecond), 100))
 		})
 	})
 }
@@ -158,7 +158,7 @@ func (a *App) menuBarRow(c *ui.Context) {
 // keyPoolRow is the Key Pool in Settings: how many keys it holds, which one
 // droid is sending with, and the way to the Usage page, where keys are
 // added and switched.
-func (a *App) keyPoolRow(c *ui.Context, p host.PatchedDroid) {
+func (a *App) keyPoolRow(c *ui.Context, p host.DroiDroid) {
 	k, t := a.kit, a.kit.T
 	st := a.poolState()
 	desc := L("Add and switch keys, and see their quota, on the Usage tab.")

@@ -9,9 +9,10 @@ import (
 
 // A Standard month runs this long from the first request after the last one
 // ended. Keys are bought by the year, so a key whose month is not running is
-// idle quota. The rotator opens at most config.DailyKeyOpens months per local
-// day so the months end on different days, and opens more only when every
-// open key is spent.
+// idle quota. The rotator opens months worth at most config.DailyKeyOpens Pro
+// months per local day (a Max key's counts ten, see PlanScale), so the months
+// end on different days, and opens more only when every open key is spent.
+// The first key of a day opens whatever its plan.
 const monthlyWindow = 30 * 24 * time.Hour
 
 // openMode says what a key selection is for.
@@ -74,20 +75,25 @@ func startOfDay(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }
 
-// openedTodayLocked counts the months that started today. Caller holds r.mu
-// (read) and r.openMu.
-func (r *KeyRotator) openedTodayLocked(now time.Time) int {
+// openedTodayLocked is what the months that started today are worth, in
+// Pro months. Caller holds r.mu (read) and r.openMu.
+func (r *KeyRotator) openedTodayLocked(now time.Time) float64 {
 	day := startOfDay(now)
-	n := 0
+	n := 0.0
 	for _, key := range r.keys {
 		usage := r.usages[key]
 		if start, ok := usage.standardMonth(now); ok && !start.Before(day) {
-			n++
+			n += PlanScale(usage.Plan)
 		} else if r.pendingOpenLocked(key, usage) && !r.openedAt[key].Before(day) {
-			n++
+			n += PlanScale(usage.Plan)
 		}
 	}
 	return n
+}
+
+// mayOpenLocked reports whether today's openings leave room for another.
+func (r *KeyRotator) mayOpenLocked(now time.Time) bool {
+	return r.openedTodayLocked(now) < float64(config.DailyKeyOpens)
 }
 
 // sortOpeningQueue orders keys waiting to open: longest wait first, then
@@ -106,14 +112,14 @@ func sortOpeningQueue(c []candidate) {
 func (r *KeyRotator) SetScheduledOpening(on bool) { r.scheduledOpening.Store(on) }
 
 // ClaimNextOpening returns the next key to open while today's openings are
-// below config.DailyKeyOpens, and counts it as opened.
+// worth less than config.DailyKeyOpens Pro months, and counts it as opened.
 func (r *KeyRotator) ClaimNextOpening() (string, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	r.openMu.Lock()
 	defer r.openMu.Unlock()
 	now := r.nowTime()
-	if r.openedTodayLocked(now) >= config.DailyKeyOpens {
+	if !r.mayOpenLocked(now) {
 		return "", false
 	}
 	var waiting []candidate
@@ -143,8 +149,10 @@ func (r *KeyRotator) ReleaseOpening(key string) {
 
 // OpeningStatus is the month-opening plan for /debug/state.
 type OpeningStatus struct {
-	DailyOpens  int `json:"dailyOpens"`
-	OpenedToday int `json:"openedToday"`
+	// DailyOpens is how many Pro months open a day; OpenedToday what the
+	// months opened today are worth in Pro months.
+	DailyOpens  int     `json:"dailyOpens"`
+	OpenedToday float64 `json:"openedToday"`
 	// Scheduled: a scheduled opener starts the months with a small request.
 	Scheduled bool `json:"scheduled"`
 	// Queue lists the keys waiting to open, next first, as 1-based indices

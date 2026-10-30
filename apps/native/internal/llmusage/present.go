@@ -155,10 +155,14 @@ func PoolSummaries(pool []keys.KeyState, now time.Time) []PoolSummaryView {
 // KeyCardView is one key of the list: identity and state on its line, one
 // column per pool below it with every window spelled out.
 type KeyCardView struct {
-	Index    int
-	Key      string
-	Active   bool
-	Badge    Badge
+	Index  int
+	Key    string
+	Active bool
+	Badge  Badge
+	// Plan is the key's plan ("Max"), "" while unknown; PlanHelp says what
+	// its quota holds.
+	Plan     string
+	PlanHelp string
 	Cooldown string
 	Checked  string
 	Pools    []PoolWindowsView
@@ -191,8 +195,8 @@ type WindowRowView struct {
 	PaceTone Tone
 }
 
-// standardCredits renders percent of a Standard weekly or monthly window as
-// credits and per-model tokens; empty for windows of unknown size.
+// standardCredits renders percent of a Pro key's Standard weekly or monthly
+// window as credits and per-model tokens; empty for windows of unknown size.
 func standardCredits(p Pool, w Window, percent float64) (credits, tokens string) {
 	if p != Standard {
 		return "", ""
@@ -204,8 +208,8 @@ func standardCredits(p Pool, w Window, percent float64) (credits, tokens string)
 	return "≈ " + FormatCredits(c), TokenEquivalents(c)
 }
 
-// monthCredits renders percent of one Standard monthly quota, or a sum of
-// such percents over keys, as credits.
+// monthCredits renders percent of a Pro key's Standard monthly quota, or a
+// sum of such percents over keys, as credits.
 func monthCredits(percent float64) string {
 	c, _ := WindowCredits(Monthly, percent)
 	return FormatCredits(c)
@@ -217,6 +221,10 @@ func BuildKeyCard(key keys.KeyState, now time.Time) KeyCardView {
 		Key:    key.Key,
 		Active: key.Active,
 		Badge:  stateBadge(KeyDisplayOf(key, now)),
+		Plan:   keys.PlanName(key.Plan),
+	}
+	if card.Plan != "" {
+		card.PlanHelp = planHelp(key)
 	}
 	var cooldowns []string
 	for _, p := range Pools {
@@ -232,6 +240,15 @@ func BuildKeyCard(key keys.KeyState, now time.Time) KeyCardView {
 		card.Pools = append(card.Pools, buildPoolWindows(key, p, now))
 	}
 	return card
+}
+
+// planHelp says how big the key's quota is next to a Pro key's.
+func planHelp(key keys.KeyState) string {
+	name, scale := keys.PlanName(key.Plan), Scale(key)
+	if scale == 1 {
+		return l10n.L("Factory plan: %s. Its quota counts as one Pro key's.", name)
+	}
+	return l10n.L("Factory plan: %s. Its quota holds %d Pro keys' quota, and the totals count it so.", name, int(scale))
 }
 
 func buildPoolWindows(key keys.KeyState, p Pool, now time.Time) PoolWindowsView {
@@ -254,7 +271,7 @@ func buildPoolWindows(key keys.KeyState, p Pool, now time.Time) PoolWindowsView 
 			row.Bar = remainingBar(remaining)
 			row.Percent = FormatPercent(remaining)
 			row.PercentTone = RemainingTextTone(remaining)
-			row.Credits, row.Tokens = standardCredits(p, w, remaining)
+			row.Credits, row.Tokens = standardCredits(p, w, remaining*Scale(key))
 			if reset, ok := ResetAt(limit); ok {
 				row.Note = FormatReset(reset, now)
 			}

@@ -158,6 +158,9 @@ func TestProxyKeepsHaikuRequestAsOpeningTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// The handler keeps the template after writing the answer; the
+		// answer's end comes once the handler is done.
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		if tmpl := px.keyOpener.template(); (tmpl != nil) != (model == haikuModel) {
 			t.Fatalf("after %s template = %+v", model, tmpl)

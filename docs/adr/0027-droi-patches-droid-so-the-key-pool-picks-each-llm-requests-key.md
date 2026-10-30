@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0033
 ---
 
 # Droi patches droid so the Key Pool picks each LLM request's key
+
+_Superseded by ADR 0033: Droi runs Factory's own droid, unchanged, with a key hook Bun preloads through `BUN_OPTIONS`. There are no Recipes, no signed releases and no ad-hoc signature. The Key Pool, its key file and its LLM Proxy stand, and the proxy now refuses an LLM request without a pool key._
 
 ADR 0005 left key rotation to droid-proxy (`dp`): Droi pointed `FACTORY_API_BASE_URL` at it, and
 `dp` rewrote the `Authorization` of every LLM request. That needs a second program installed and

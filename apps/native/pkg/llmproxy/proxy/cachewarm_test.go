@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/smartwarm"
@@ -577,8 +578,7 @@ func TestSetModeSwitchesAndSaves(t *testing.T) {
 
 func TestProxyCapturesOnlyMainConversation(t *testing.T) {
 	upstream := usageServer(t, `{"input_tokens":10,"cache_read_input_tokens":99000,"cache_creation_input_tokens":990,"output_tokens":5}`, nil, nil)
-	rotator := &keys.KeyRotator{}
-	rotator.SetActiveKeyForTest("pool-key")
+	rotator := keys.NewKeyRotator(config.New(), []string{"pool-key"})
 	px := NewProxy(upstream.URL, rotator, nil)
 	w, _ := newTestWarmer(CacheWarmingIdle, working())
 	px.SetCacheWarmer(w)
@@ -591,6 +591,7 @@ func TestProxyCapturesOnlyMainConversation(t *testing.T) {
 	post := func(session, callType string) {
 		req, _ := http.NewRequest(http.MethodPost, baseURL+"/api/llm/a/v1/messages", strings.NewReader(agentRequestJSON))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer pool-key")
 		req.Header.Set(sessionIDHeader, session)
 		if callType != "" {
 			req.Header.Set(messageCallTypeHeader, callType)

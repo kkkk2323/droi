@@ -1,4 +1,4 @@
-package droidpatch
+package droidhook
 
 import (
 	"context"
@@ -23,12 +23,12 @@ const (
 	verifyLLM   = "fk-droi-verify-llm"
 )
 
-// Verify runs exe, a patched droid, against a local receiver with made-up
-// keys and checks that the patch runs: public requests carry the login,
-// LLM requests the key file's key, and without a key file an LLM request
-// fails at once instead of falling back to the login. No request leaves
-// this computer.
-func Verify(ctx context.Context, exe string) error {
+// Verify runs exe, Factory's droid, with the hook at hook against a local
+// receiver and made-up keys, and checks that the hook runs: it checks in,
+// public requests carry the login, LLM requests the key file's key, and
+// without a key file an LLM request fails at once instead of falling back to
+// the login. No request leaves this computer.
+func Verify(ctx context.Context, exe, hook string) error {
 	var mu sync.Mutex
 	type seen struct{ path, cred string }
 	var got []seen
@@ -60,7 +60,7 @@ func Verify(ctx context.Context, exe string) error {
 			return nil, err
 		}
 		defer os.RemoveAll(home)
-		keyFile := filepath.Join(home, "llm-key")
+		keyFile, ready := filepath.Join(home, "llm-key"), filepath.Join(home, "hook-ready")
 		if withKey {
 			if err := os.WriteFile(keyFile, []byte(verifyLLM), 0o600); err != nil {
 				return nil, err
@@ -72,16 +72,27 @@ func Verify(ctx context.Context, exe string) error {
 		cctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		cmd := exec.CommandContext(cctx, exe, "exec", "-m", VerifyModel, "--cwd", home, "Reply DONE")
-		cmd.Env = []string{
+		cmd.Env = append([]string{
 			"PATH=" + os.Getenv("PATH"), "HOME=" + home, "USERPROFILE=" + home, "TMPDIR=" + home,
-			"FACTORY_HOME_OVERRIDE=" + home, "FACTORY_API_KEY=" + verifyLogin,
-			KeyFileEnv + "=" + keyFile, "FACTORY_DISABLE_KEYRING=1",
+			"FACTORY_HOME_OVERRIDE=" + home, "FACTORY_API_KEY=" + verifyLogin, "FACTORY_DISABLE_KEYRING=1",
 			"FACTORY_DROID_AUTO_UPDATE_ENABLED=false", "FACTORY_API_BASE_URL=" + base,
+		}, Env(hook, keyFile, ready, "")...)
+		// Windows' droid needs these to start; they hold no credential.
+		for _, name := range []string{"SystemRoot", "SYSTEMROOT", "windir", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA"} {
+			if v, ok := os.LookupEnv(name); ok {
+				cmd.Env = append(cmd.Env, name+"="+v)
+			}
 		}
 		hideConsole(cmd)
-		_ = cmd.Run()
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		_ = cmd.Wait()
 		if cctx.Err() != nil && ctx.Err() == nil {
 			return nil, errTimedOut
+		}
+		if err := CheckReady(ready, cmd.Process.Pid); err != nil {
+			return nil, err
 		}
 		mu.Lock()
 		defer mu.Unlock()
@@ -94,18 +105,18 @@ func Verify(ctx context.Context, exe string) error {
 			isLLM := strings.Contains(s.path, "/api/llm/")
 			switch {
 			case isLLM && s.cred != "llm":
-				return fmt.Errorf("droidpatch: an LLM request carried the %s credential", s.cred)
+				return fmt.Errorf("droidhook: an LLM request carried the %s credential", s.cred)
 			case !isLLM && s.cred != "login":
-				return fmt.Errorf("droidpatch: %s carried the %s credential", s.path, s.cred)
+				return fmt.Errorf("droidhook: %s carried the %s credential", s.path, s.cred)
 			case isLLM:
 				llm++
 			}
 		}
 		if wantLLM && llm == 0 {
-			return errors.New("droidpatch: droid sent no LLM request")
+			return errors.New("droidhook: droid sent no LLM request")
 		}
 		if !wantLLM && llm > 0 {
-			return errors.New("droidpatch: droid sent an LLM request without a key file")
+			return errors.New("droidhook: droid sent an LLM request without a key file")
 		}
 		return nil
 	}
@@ -119,7 +130,7 @@ func Verify(ctx context.Context, exe string) error {
 	}
 	rows, err = run(false, 30*time.Second)
 	if errors.Is(err, errTimedOut) {
-		return errors.New("droidpatch: without a key file droid kept retrying instead of failing")
+		return errors.New("droidhook: without a key file droid kept retrying instead of failing")
 	}
 	if err != nil {
 		return err

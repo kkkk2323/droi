@@ -129,6 +129,7 @@ func TestPrem_LLMResponseNotRewritten(t *testing.T) {
 	_, baseURL := startPremTestProxy(t, upstream.URL)
 
 	req, _ := http.NewRequest("POST", baseURL+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"claude-fable-5.1","messages":[]}`))
+	req.Header.Set("Authorization", "Bearer fk-pool")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

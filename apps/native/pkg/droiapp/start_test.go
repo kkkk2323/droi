@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/droidpatch"
+	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -35,18 +35,18 @@ func TestExtensionsStartWithTheHost(t *testing.T) {
 	}
 }
 
-// An app's mirror takes the place of Droi's GitHub release and Factory's
-// downloads for the Patched Droid; without one they stay.
+// An app's mirror takes the place of Factory's downloads for Droi's droid,
+// LATEST included; without one they stay.
 func TestAnAppsDroidMirror(t *testing.T) {
-	recipes, downloads := droidpatch.RecipesURL, droidpatch.DownloadBase
-	t.Cleanup(func() { droidpatch.RecipesURL, droidpatch.DownloadBase = recipes, downloads })
-	useDroidMirror(Options{})
-	if droidpatch.RecipesURL != recipes || droidpatch.DownloadBase != downloads {
-		t.Fatalf("no mirror moved them: %q %q", droidpatch.RecipesURL, droidpatch.DownloadBase)
+	downloads := droidhook.DownloadBase
+	t.Cleanup(func() { droidhook.DownloadBase = downloads })
+	useDroidMirror(Options{RecipesURL: "https://mirror.example/droi/recipes.json"})
+	if droidhook.DownloadBase != downloads {
+		t.Fatalf("no mirror moved it: %q", droidhook.DownloadBase)
 	}
-	useDroidMirror(Options{RecipesURL: "https://mirror.example/droi/recipes.json", DroidDownloads: "https://mirror.example/droid"})
-	s := droidpatch.NewStore(t.TempDir())
-	if s.RecipesURL != "https://mirror.example/droi/recipes.json" || s.DownloadBase != "https://mirror.example/droid" {
-		t.Fatalf("store reads %q and %q", s.RecipesURL, s.DownloadBase)
+	useDroidMirror(Options{DroidDownloads: "https://mirror.example/factory-cli/releases"})
+	s := droidhook.NewStore(t.TempDir())
+	if s.DownloadBase != "https://mirror.example/factory-cli/releases" || s.LatestURL != "https://mirror.example/factory-cli/LATEST" {
+		t.Fatalf("store reads %q and %q", s.DownloadBase, s.LatestURL)
 	}
 }

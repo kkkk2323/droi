@@ -253,10 +253,10 @@ func (a *App) aboutTab(c *ui.Context) {
 		}
 		a.settingRow(c, L("Droi %s", version), "", control, below)
 	}}
-	if h := a.cfg.Host; h != nil && h.PatchedDroidState().Enabled {
-		h.RefreshPatchRecipes()
-		p := h.PatchedDroidState()
-		rows = append(rows, func() { a.patchedDroidAboutRow(c, p) })
+	if h := a.cfg.Host; h != nil && h.DroiDroidState().Enabled {
+		h.RefreshDroiDroid()
+		p := h.DroiDroidState()
+		rows = append(rows, func() { a.droiDroidAboutRow(c, p) })
 	}
 	a.settingGroup(c, "", "", append(rows,
 		func() {
@@ -421,7 +421,7 @@ func (a *App) advancedTab(c *ui.Context) {
 				}))
 		},
 	)
-	a.patchedDroidGroup(c)
+	a.droiDroidGroup(c)
 	a.settingGroup(c, L("Factory API"), "", func() {
 		desc := L("Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).")
 		inherited := ""
@@ -438,7 +438,7 @@ func (a *App) advancedTab(c *ui.Context) {
 		if inherited != "" {
 			placeholder = inherited
 		}
-		if h.PatchedDroidState().Enabled && st.FactoryAPIBaseURL == nil && inherited == "" {
+		if h.DroiDroidState().Enabled && st.FactoryAPIBaseURL == nil && inherited == "" {
 			a.settingRow(c, L("Factory API base URL"), L("Not used while the Key Pool is on: model requests carry the pool's keys straight to Factory. Turn the Key Pool off to set a URL."), nil, nil)
 			return
 		}

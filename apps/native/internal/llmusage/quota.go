@@ -10,9 +10,10 @@ import (
 //
 //	credits = mult × (input + 1.25×cacheWrite + crMult×cacheRead + outMult×output)
 //
-// Factory does not publish the size of a window. These sizes were fitted
-// from droid-proxy's request log against the keys' usedPercent snapshots
-// (2026-10, 9 to 15 windows each, error under 4%). The same traffic moves
+// Factory does not publish the size of a window. These sizes, a Pro key's,
+// were fitted from droid-proxy's request log against the keys' usedPercent
+// snapshots (2026-10, 9 to 15 windows each, error under 4%); a bigger plan's
+// are its keys.PlanScale times them. The same traffic moves
 // the weekly window twice as far as the monthly one, so a month holds about
 // two weeks of quota, not four.
 const (
@@ -85,6 +86,6 @@ func TokenEquivalents(credits float64) string {
 		lines = append(lines, l10n.L("%s: %s input tokens, or %s output tokens", w.Model, FormatCredits(credits/w.Input), FormatCredits(credits/w.Output)))
 	}
 	lines = append(lines, l10n.L("All cache reads: about %s tokens on Opus 5.5", FormatCredits(credits/0.08)))
-	lines = append(lines, l10n.L("One key's weekly quota is about %s credits, estimated from the request log.", FormatCredits(WeeklyStandardCredits)))
+	lines = append(lines, l10n.L("A Pro key's weekly quota is about %s credits, estimated from the request log; a Plus key's holds 5 times that, a Max key's 10.", FormatCredits(WeeklyStandardCredits)))
 	return strings.Join(lines, "\n")
 }
