@@ -179,27 +179,10 @@ func (k *Kit) IconButton(c *ui.Context, icon, label string, size float32) ui.Ele
 	return b
 }
 
-// AnimationSteps is how many frames a second the pulses ask for. They all
-// move in frames that only paint (Painter.After), which repaint the last
-// frame built without running the view, and at the same instants of each
-// second, so that pulses shown together cost one such frame a step. One
-// out of view asks for none.
-const AnimationSteps = 24
-
-// AnimationStep is how far into its second the frame p paints is, in ms,
-// and asks for the frame of the next step.
-func AnimationStep(p *ui.Painter) int {
-	ms := int(p.Now().UnixMilli() % 1000)
-	p.After(time.Duration(stepDelay(ms)) * time.Millisecond)
-	return ms
-}
-
-// stepDelay is how many ms after ms of its second the next step starts: at
-// least 1, so that a frame on a step does not ask for itself again.
-func stepDelay(ms int) int {
-	next := ms*AnimationSteps/1000 + 1
-	return (next*1000+AnimationSteps-1)/AnimationSteps - ms
-}
+// pulseRate is how many frames a second a pulse asks for: a 2 s wave looks
+// as smooth at 30 as at the display's 120, and on macOS the display then
+// refreshes less often too.
+const pulseRate = 30
 
 // Spinner is loading.dev's Arc, one open stroke turning, for work under way.
 func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
@@ -241,7 +224,7 @@ func Arc(c *ui.Context, size float32, color ui.Color) ui.Element {
 // 2 s.
 func Pulse(e ui.Element, radius float32, color func(wave float32) ui.Color) ui.Element {
 	return e.Draw(func(p *ui.Painter, r ui.Rect) {
-		AnimationStep(p)
+		p.AnimationFrameRate(pulseRate)
 		x := float32(p.Now().UnixMilli()%2000) / 1000
 		if x > 1 {
 			x = 2 - x

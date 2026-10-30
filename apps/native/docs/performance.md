@@ -68,11 +68,12 @@ logs how long each frame's build, layout, paint and present took.
 
 A frame should cost what is on screen, not what the history holds. Work done in `View`
 runs on every frame it builds. Animations move in `Draw`, so their frames only paint: the
-pulses (`kit.Pulse`) 24 times a second (`kit.AnimationSteps`), and MyGo's loading
+pulses (`kit.Pulse`) 30 times a second (`Painter.AnimationFrameRate`; on macOS the display
+then refreshes as often while nothing else moves), and MyGo's loading
 indicators (`kit.Spinner`, the transcript's activity row, the waits for the Daemon, a
 followed computer and the browser) once each display refresh. In October 2026 such a
 frame of a Session at work painted in about 0.16 ms in a `ui.Tester`, about 1% of a core
-at 60 Hz (0.3% while the spinners stepped 24 times a second). Anything built from the
+at 60 Hz. Anything built from the
 Session list is read once per change of the list (`listRev`, `listMemo`), not decoded or
 copied per frame.
 
