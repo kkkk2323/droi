@@ -3,6 +3,7 @@ package sessionview
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
@@ -279,5 +281,62 @@ func TestQuoteText(t *testing.T) {
 		if got := QuoteText(c.message, " a\nb "); got != c.want {
 			t.Errorf("QuoteText(%q) = %q, want %q", c.message, got, c.want)
 		}
+	}
+}
+
+// archiverCalls records the Daemon calls loadKeepingArchived makes, the
+// loads included.
+type archiverCalls struct {
+	calls      []string
+	loads      []error
+	unarchive  error
+	archiveErr error
+}
+
+func (a *archiverCalls) load() error {
+	a.calls = append(a.calls, "load")
+	err := a.loads[0]
+	a.loads = a.loads[1:]
+	return err
+}
+
+func (a *archiverCalls) UnarchiveSession(_ context.Context, p protocol.UnarchiveSessionParams) (*protocol.UnarchiveSessionResult, error) {
+	a.calls = append(a.calls, "unarchive "+p.SessionID)
+	return &protocol.UnarchiveSessionResult{Success: a.unarchive == nil}, a.unarchive
+}
+
+func (a *archiverCalls) ArchiveSession(_ context.Context, p protocol.ArchiveSessionParams) (*protocol.ArchiveSessionResult, error) {
+	a.calls = append(a.calls, "archive "+p.SessionID)
+	return &protocol.ArchiveSessionResult{Success: a.archiveErr == nil}, a.archiveErr
+}
+
+func TestAnArchivedSessionOpensAndStaysArchived(t *testing.T) {
+	refused := errors.New("load failed")
+	for _, tc := range []struct {
+		name      string
+		loads     []error
+		unarchive error
+		archive   error
+		want      []string
+		wantErr   error
+	}{
+		// droid 1.0 refuses to load an archived Session as if it did not know it.
+		{"archived", []error{controller.ErrSessionNotFound, nil}, nil, nil, []string{"load", "unarchive s", "load", "archive s"}, nil},
+		{"loaded at once", []error{nil}, nil, nil, []string{"load"}, nil},
+		{"unknown", []error{controller.ErrSessionNotFound}, errors.New("Session not found"), nil, []string{"load", "unarchive s"}, controller.ErrSessionNotFound},
+		{"other failure", []error{refused}, nil, nil, []string{"load"}, refused},
+		{"archived, then the load fails", []error{controller.ErrSessionNotFound, refused}, nil, nil, []string{"load", "unarchive s", "load", "archive s"}, refused},
+		{"archived, then archiving it again fails", []error{controller.ErrSessionNotFound, nil}, nil, refused, []string{"load", "unarchive s", "load", "archive s"}, refused},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &archiverCalls{loads: tc.loads, unarchive: tc.unarchive, archiveErr: tc.archive}
+			err := loadKeepingArchived(context.Background(), "s", a.load, func() (archiver, error) { return a, nil })
+			if !errors.Is(err, tc.wantErr) || (tc.wantErr == nil && err != nil) {
+				t.Errorf("error %v, want %v", err, tc.wantErr)
+			}
+			if strings.Join(a.calls, ", ") != strings.Join(tc.want, ", ") {
+				t.Errorf("calls %q, want %q", a.calls, tc.want)
+			}
+		})
 	}
 }
