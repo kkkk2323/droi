@@ -1,3 +1,9 @@
+## 1.83.0 - 2026-10-30
+
+### Added
+
+- An app built on Droi can show a shorter name in the sidebar's top row than its full name (ADR 0029). The window title, the menus and the texts keep the full name. Droi itself looks as before.
+
 ## 1.82.0 - 2026-10-30
 
 ### Added
