@@ -50,6 +50,22 @@ func TestTheRuntimeOverlayCarriesAnAppsOwnServers(t *testing.T) {
 	}
 }
 
+// A server's tools can have levels of their own over the server's, as
+// droid's mcpAutonomyOverrides takes them; a tool's alone makes an entry.
+func TestTheRuntimeOverlayCarriesToolAutonomy(t *testing.T) {
+	o := OverlayOptions{MCPServers: map[string]MCPServer{
+		"corp":   {Config: map[string]any{"type": "stdio", "command": "/bin/corp"}, Autonomy: "low", Tools: map[string]string{"run_pipeline": "high"}},
+		"deploy": {Config: map[string]any{"type": "stdio", "command": "/bin/deploy"}, Tools: map[string]string{"deploy": "high"}},
+	}}
+	autonomy := roundTrip(t, BuildRuntimeOverlayWith(MemoryAttachment{}, o)).(map[string]any)["mcpAutonomyOverrides"].(map[string]any)
+	if !reflect.DeepEqual(autonomy["corp"], map[string]any{"defaultLevel": "low", "tools": map[string]any{"run_pipeline": "high"}}) {
+		t.Errorf("corp %v", autonomy["corp"])
+	}
+	if !reflect.DeepEqual(autonomy["deploy"], map[string]any{"tools": map[string]any{"deploy": "high"}}) {
+		t.Errorf("deploy %v", autonomy["deploy"])
+	}
+}
+
 // Without Memory, an app's server alone makes an overlay, with no hooks.
 func TestTheRuntimeOverlayCarriesAnAppsServersWithoutMemory(t *testing.T) {
 	got := BuildRuntimeOverlayWith(MemoryAttachment{}, OverlayOptions{MCPServers: map[string]MCPServer{"corp-db": {Config: map[string]any{"type": "http", "url": "u"}, Approved: true}}})

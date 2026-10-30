@@ -83,6 +83,11 @@ type MCPServer struct {
 	// asking ("low", "medium" or "high"). The Daemon treats an unknown MCP
 	// tool as high impact, so "low" lets every Session run them, as Memory's.
 	Autonomy string
+	// Tools, optional, are the autonomy levels of single tools, by their
+	// name on the server, over Autonomy: {"run_pipeline": "high"} has every
+	// Session below autonomy High ask before each run, while the server's
+	// other tools run at Autonomy.
+	Tools map[string]string
 }
 
 // Add is o with more's: lists appended, maps merged, a name o has kept.
@@ -170,8 +175,15 @@ func BuildRuntimeOverlayWith(m MemoryAttachment, o OverlayOptions) map[string]an
 			if s.Approved {
 				subMap(subMap(mcp, "persistentPermissions"), "servers")[name] = map[string]any{"approvedAt": approvedAt, "impactLevel": "high"}
 			}
+			level := map[string]any{}
 			if s.Autonomy != "" {
-				subMap(overlay, "mcpAutonomyOverrides")[name] = map[string]any{"defaultLevel": s.Autonomy}
+				level["defaultLevel"] = s.Autonomy
+			}
+			if len(s.Tools) > 0 {
+				level["tools"] = maps.Clone(s.Tools)
+			}
+			if len(level) > 0 {
+				subMap(overlay, "mcpAutonomyOverrides")[name] = level
 			}
 		}
 	}
