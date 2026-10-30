@@ -1,3 +1,13 @@
+## 1.79.0 - 2026-10-30
+
+### Added
+
+- An app built on Droi can preset what new Sessions start with: Session Defaults such as the model, the reasoning effort and the compaction limit, and the tool mode (ADR 0029). The window gives them to the computer's Daemon the first time it connects, once for each version of the presets, so what you change in Settings afterwards stays. Droi itself sets none.
+
+### Fixed
+
+- With no Workspace at all, as on a new install or an app built on Droi with a Factory home of its own, the New session page starts without a project instead of waiting for one to be chosen, so you can type at once.
+
 ## 1.78.0 - 2026-10-30
 
 ### Added
