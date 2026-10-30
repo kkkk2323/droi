@@ -22,4 +22,11 @@ func TestSetFillsInDroisAndNamesTheTexts(t *testing.T) {
 	if got := l10n.L("Quit Droi"); got != "Quit Acme Agent" {
 		t.Errorf("texts: %q", got)
 	}
+	if got := ShortName(); got != "Acme Agent" {
+		t.Errorf("short name without Short: %q", got)
+	}
+	Set(Brand{Name: "Acme Agent", Short: "Acme"})
+	if got, name := ShortName(), Name(); got != "Acme" || name != "Acme Agent" {
+		t.Errorf("short name %q, name %q", got, name)
+	}
 }

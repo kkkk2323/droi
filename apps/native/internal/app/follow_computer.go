@@ -112,7 +112,7 @@ func (a *App) sidebarHeader(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	mark := func() {
 		droiMark(c, k, 16)
-		k.Text(c, brand.Name(), 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
+		k.Text(c, brand.ShortName(), 14, 20).FontWeight(600).LetterSpacing(-k.Px(0.3))
 	}
 	remembered := computer.Remembered(a.prefs)
 	if len(remembered) == 0 {

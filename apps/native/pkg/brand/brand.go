@@ -14,6 +14,9 @@ import (
 type Brand struct {
 	// Name is what the window, the menus and every text call the app.
 	Name string
+	// Short, optional, is the name the sidebar's top row shows beside the
+	// mark, where a long Name reads as clutter; Name when empty.
+	Short string
 	// ID is the short, lowercase name of its folders: ~/.<ID>/chats for
 	// Scratch Workspaces and, for `<app> host` on Linux, $XDG_CONFIG_HOME/<ID>.
 	ID string
@@ -56,6 +59,15 @@ func Current() Brand { return *current.Load() }
 
 // Name is the app's name.
 func Name() string { return current.Load().Name }
+
+// ShortName is the name the sidebar's top row shows: Short, or Name.
+func ShortName() string {
+	b := current.Load()
+	if b.Short != "" {
+		return b.Short
+	}
+	return b.Name
+}
 
 // ScratchFolder is where Scratch Workspaces go under home unless Settings
 // names a folder: ~/.<ID>/chats.
