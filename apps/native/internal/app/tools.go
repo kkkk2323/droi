@@ -384,7 +384,7 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 					return err
 				}
 				_, err = cl.SetSkillDisabled(a.ctx, protocol.SetSkillDisabledParams{SessionID: v.id, SkillName: name, Disabled: !off,
-					SettingsLevel: protocol.EditableSkillSettingsLevel(level)})
+					SettingsLevel: protocol.ConfigItemsParamsLevel(level)})
 				return err
 			}, nil)
 		}

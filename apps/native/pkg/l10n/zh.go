@@ -1445,4 +1445,11 @@ var zh = map[string]string{
 	"dismissed":                                       "已忽略",
 	"Approved plan":                                   "已批准的计划",
 	"Planning details are in %s":                      "规划详情见 %s",
+
+	"checked": "已查看",
+	"Retrying the model request (attempt %d)…": "正在重试模型请求（第 %d 次）…",
+	"Stop":                  "停止",
+	"Stop %s":               "停止 %s",
+	"Could not stop %s: %s": "无法停止 %s：%s",
+	"it is not running, or droid could not signal it": "它没有在运行，或 droid 无法向它发送信号",
 }

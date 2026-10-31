@@ -535,8 +535,14 @@ func ScriptToolNames(script string) []string {
 // ScriptSummary is what a Script or WaitForScript row says after its name.
 func ScriptSummary(c *ToolCall) string {
 	if c.Use.Name == WaitForScriptTool {
-		if k, _ := c.Input["kill"].(bool); k {
+		// droid 0.245 took kill: true and timeoutMs to action; older
+		// transcripts still hold kill.
+		action, _ := c.Input["action"].(string)
+		if k, _ := c.Input["kill"].(bool); k || action == "kill" {
 			return l10n.L("stopped")
+		}
+		if action == "status" {
+			return l10n.L("checked")
 		}
 		return l10n.L("continued")
 	}

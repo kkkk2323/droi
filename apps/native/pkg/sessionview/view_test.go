@@ -227,6 +227,19 @@ func TestAQueuedQuestionSitsAboveThePlainComposer(t *testing.T) {
 	}
 }
 
+// While droid retries the model request, the activity row says so, until
+// the turn makes progress again.
+func TestTheActivityRowSaysTheModelRequestIsRetried(t *testing.T) {
+	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "reply", Deltas: []string{"One. ", "Two."}, DelayMs: 1500}))
+	h.send("Go")
+	h.until("the turn", func() bool { return h.ctl.Store().Session(h.v.ID()).WorkingState() != protocol.DroidWorkingStateIdle })
+	if err := h.d.Notify(h.v.ID(), map[string]any{"type": "llm_retry", "attempt": 2, "reason": "rate_limited"}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the retry", func() bool { return h.hasText("Retrying the model request (attempt 2)…") })
+	h.until("the reply goes on", func() bool { return h.hasText("One.") && !h.hasText("Retrying the model request") })
+}
+
 func TestWaitsOnUser(t *testing.T) {
 	queued, blocking := controller.AskUser{Queued: true}, controller.AskUser{}
 	for _, c := range []struct {

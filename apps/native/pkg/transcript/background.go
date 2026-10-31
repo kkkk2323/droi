@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"strconv"
@@ -33,6 +34,16 @@ type Job struct {
 	// Status is a Script's end as its run reported it: completed, failed,
 	// cancelled; "" while unknown.
 	Status string
+	// ProcessID is the Daemon's id of the command's process while it lists
+	// it among the Session's background processes (droid 1.0), which
+	// daemon.kill_background_process stops; "" otherwise.
+	ProcessID string
+}
+
+// ProcessJob is a running background process as the Daemon lists it.
+func ProcessJob(p protocol.SessionBackgroundProcess) Job {
+	return Job{ID: cmp.Or(p.ToolUseID, p.ID), ProcessID: p.ID, Summary: firstLine(p.Command, 120), Command: p.Command,
+		PID: int(p.Pid), OutputFile: p.OutputFile, StartedAt: p.StartedAtMs}
 }
 
 // Failed is whether the job ended badly, as far as is known.

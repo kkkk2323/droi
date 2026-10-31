@@ -582,6 +582,13 @@ var workingLabels = map[string]string{
 	"compacting_conversation":       l10n.N("Compacting"),
 }
 
+// RetryLabel is what the activity row says while droid retries the model
+// request, after an overload, a rate limit or a dropped connection: the same
+// words as Factory's own clients.
+func RetryLabel(attempt int) string {
+	return l10n.L("Retrying the model request (attempt %d)…", attempt)
+}
+
 // WorkingLabel is what the activity row under the transcript says for a working state.
 func WorkingLabel(state string) string {
 	if l, ok := workingLabels[state]; ok {

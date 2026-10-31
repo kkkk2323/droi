@@ -1,12 +1,16 @@
 package sessionview
 
 import (
+	"cmp"
+	"errors"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
@@ -34,6 +38,8 @@ type jobsState struct {
 	gone    map[string]bool
 	checked time.Time
 	tails   map[string]*jobTail
+	// stopping are the jobs StopJob waits on the Daemon to stop.
+	stopping map[string]bool
 }
 
 type jobTail struct {
@@ -82,8 +88,71 @@ func (v *View) Jobs() []transcript.Job {
 			js.list[i].Done = true
 		}
 	}
-	return js.list
+	return withProcesses(js.list, js.byID, js.gone, s.BackgroundProcesses())
 }
+
+// withProcesses are jobs with the Daemon's list of the Session's background
+// processes: a job it lists can be stopped, and one whose start is not among
+// the messages read (a load brings only the last ones) is added.
+func withProcesses(jobs []transcript.Job, byID map[string]int, gone map[string]bool, procs []protocol.SessionBackgroundProcess) []transcript.Job {
+	if len(procs) == 0 {
+		return jobs
+	}
+	out := slices.Clone(jobs)
+	for _, p := range procs {
+		id := cmp.Or(p.ToolUseID, p.ID)
+		if i, ok := byID[id]; ok {
+			if !out[i].Done {
+				out[i].ProcessID = p.ID
+			}
+			continue
+		}
+		if gone[id] {
+			continue
+		}
+		out = append(out, transcript.ProcessJob(p))
+	}
+	return out
+}
+
+// StopJob asks the Daemon to stop a background command it lists. UI thread.
+func (v *View) StopJob(j transcript.Job) {
+	ctl := v.env.Controller
+	js := &v.jobs
+	if ctl == nil || j.ProcessID == "" || js.stopping[j.ID] {
+		return
+	}
+	if js.stopping == nil {
+		js.stopping = map[string]bool{}
+	}
+	js.stopping[j.ID] = true
+	go func() {
+		cl, err := ctl.Client()
+		var res *protocol.KillBackgroundProcessResult
+		if err == nil {
+			res, err = cl.KillBackgroundProcess(v.env.Ctx, protocol.KillBackgroundProcessParams{SessionID: v.id, ProcessID: j.ProcessID})
+		}
+		if err == nil && !res.Killed {
+			err = errors.New(l10n.L("it is not running, or droid could not signal it"))
+		}
+		v.env.Update(func() {
+			delete(js.stopping, j.ID)
+			if err != nil {
+				v.err = l10n.L("Could not stop %s: %s", j.Summary, err.Error())
+				return
+			}
+			// The Daemon tells the end as the process exits; until then
+			// the job reads as ended, so it is not stopped twice.
+			if js.gone == nil {
+				js.gone = map[string]bool{}
+			}
+			js.gone[j.ID] = true
+		})
+	}()
+}
+
+// Stopping is whether StopJob waits on the Daemon for j.
+func (v *View) Stopping(j transcript.Job) bool { return v.jobs.stopping[j.ID] }
 
 // RunningCommands are the Session's background commands still running.
 // A Script still going is not one: it is the run of a call Droid waits on.

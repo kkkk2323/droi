@@ -125,6 +125,15 @@ describe('scriptSummary', () => {
     expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', kill: true }))).toBe(
       'stopped',
     )
+    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'kill' }))).toBe(
+      'stopped',
+    )
+    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'status' }))).toBe(
+      'checked',
+    )
+    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'wait' }))).toBe(
+      'continued',
+    )
   })
 })
 

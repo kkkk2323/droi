@@ -456,6 +456,9 @@ func TestScriptSource(t *testing.T) {
 	eq(t, ScriptSummary(call("Script", `{"script":"await tools.Grep({}); await tools.Edit({})"}`)), "Grep · Edit")
 	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1"}`)), "continued")
 	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","kill":true}`)), "stopped")
+	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","action":"kill"}`)), "stopped")
+	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","action":"status"}`)), "checked")
+	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","action":"wait"}`)), "continued")
 }
 
 func TestReplyTextJoinsTheTurnsTextOnly(t *testing.T) {

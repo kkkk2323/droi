@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/controller"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 )
@@ -57,7 +58,7 @@ func (d *Defaults) Get() *defaults.View {
 				failed()
 				return
 			}
-			res, err := cl.GetDefaultSettings(d.ctx())
+			res, err := cl.GetDefaultSettings(d.ctx(), protocol.GetDefaultSettingsParams{})
 			if err != nil {
 				failed()
 				return
