@@ -512,7 +512,7 @@ func ScriptSource(c *ToolCall) (script string, inputs []ScriptInput, ok bool) {
 var toolCallPattern = regexp.MustCompile(`\btools\.([A-Za-z_$][\w$]*)(?:\.([A-Za-z_$][\w$]*))?\s*\(`)
 
 // ScriptToolNames are the tools a program calls, in the order they first
-// appear; an MCP tool (`tools.droi_memory.memory_search`) by its own name.
+// appear; an MCP tool (`tools.memory.memory_search`) by its own name.
 func ScriptToolNames(script string) []string {
 	names := []string{}
 	seen := map[string]bool{}

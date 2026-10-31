@@ -17,7 +17,7 @@ test.use({
     sessions: [work, memorySession],
     mcpServers: [
       { name: 'files', type: 'stdio', tools: [{ name: 'read_file' }] },
-      { name: 'droi-memory', type: 'stdio', tools: [{ name: 'memory_search' }] },
+      { name: 'memory', source: 'runtime', type: 'stdio', tools: [{ name: 'memory_search' }] },
     ],
   },
 })
@@ -38,7 +38,7 @@ test('the Memory Server shows as Droi’s, with no switch and a pointer to the c
   await page.getByRole('button', { name: 'Skills and MCP servers' }).click()
   const sheet = page.getByRole('dialog', { name: 'Skills and MCP servers' })
   await sheet.getByRole('tab', { name: 'MCP servers' }).click()
-  const memory = sheet.getByRole('listitem', { name: 'droi-memory' })
+  const memory = sheet.getByRole('listitem', { name: 'memory' })
   await expect(memory).toContainText('Droi')
   await expect(memory).toContainText('Settings → Memory')
   await expect(memory.getByRole('switch')).toHaveCount(0)

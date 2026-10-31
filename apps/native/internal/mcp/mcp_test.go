@@ -137,12 +137,21 @@ func TestOrganizationServersAreReadOnlyAndLast(t *testing.T) {
 }
 
 func TestDroiMemoryServerIsTheShells(t *testing.T) {
-	memory := server("droi-memory", protocol.SettingsLevelUser)
+	memory := server("memory", protocol.SettingsLevelRuntime)
 	if !IsDroiMemory(memory) || !IsReadOnly(memory) || CanRemove(memory) {
 		t.Error("Droi's Memory Server should be read-only and never removed from here")
 	}
-	if IsDroiMemory(server("memory", protocol.SettingsLevelUser)) {
+	if IsDroiMemory(server("droi-memory", protocol.SettingsLevelRuntime)) {
 		t.Error("only the Shell's name is Droi's Memory Server")
+	}
+	// A memory server of the user's own, such as the reference one.
+	for _, level := range []protocol.SettingsLevel{protocol.SettingsLevelUser, protocol.SettingsLevelProject, protocol.SettingsLevelFolder} {
+		if mine := server("memory", level); IsDroiMemory(mine) {
+			t.Errorf("a %s memory server read as Droi's", level)
+		}
+	}
+	if !CanRemove(server("memory", protocol.SettingsLevelUser)) {
+		t.Error("the user's own memory server cannot be removed")
 	}
 }
 

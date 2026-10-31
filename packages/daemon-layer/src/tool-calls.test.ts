@@ -17,8 +17,8 @@ const call = (name: string, input: Record<string, unknown>): ToolCall =>
 
 describe('toolDisplayName', () => {
   test('splits an MCP tool into its server and tool', () => {
-    expect(toolDisplayName('droi-memory___memory_list')).toEqual({
-      server: 'droi-memory',
+    expect(toolDisplayName('memory___memory_list')).toEqual({
+      server: 'memory',
       tool: 'memory_list',
     })
     expect(toolDisplayName('exa___web_search_exa')).toEqual({
@@ -48,12 +48,12 @@ describe('toolSummaryParts', () => {
   })
 
   test('any other tool shows its first short inputs as key: value', () => {
-    expect(toolSummaryParts(call('droi-memory___memory_list', { scope: 'project' }))).toEqual([
+    expect(toolSummaryParts(call('memory___memory_list', { scope: 'project' }))).toEqual([
       { key: 'scope', value: 'project' },
     ])
     expect(
       toolSummaryParts(
-        call('droi-memory___memory_add', {
+        call('memory___memory_add', {
           scope: 'project',
           category: 'insight',
           text: `${'x'.repeat(70)}\nsecond line`,
@@ -82,7 +82,7 @@ describe('toolSummary', () => {
   test('joins the parts into one line for labels and the Phone App', () => {
     expect(toolSummary(call('Execute', { command: 'ls' }))).toBe('ls')
     expect(
-      toolSummary(call('droi-memory___memory_list', { scope: 'project', category: 'insight' })),
+      toolSummary(call('memory___memory_list', { scope: 'project', category: 'insight' })),
     ).toBe('scope: project · category: insight')
     expect(toolSummary(call('t', {}))).toBe('')
   })
@@ -195,7 +195,7 @@ describe('scriptPermission', () => {
         },
       },
       {
-        toolName: 'droi-memory___memory_add',
+        toolName: 'memory___memory_add',
         line: 5,
         column: 1,
         toolInput: { text: 'x' },

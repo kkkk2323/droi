@@ -27,11 +27,21 @@ var StatusLabels = map[string]string{
 
 // DroiMemoryServer is Droi's Memory Server (ADR 0010), which the Desktop Shell
 // attaches through the Runtime Overlay. The name is the one the Shell
-// registers it under.
-const DroiMemoryServer = "droi-memory"
+// registers it under (host.MemoryServerName).
+const DroiMemoryServer = "memory"
 
 // IsDroiMemory: its only switch is the Memory setting in the Desktop Shell.
-func IsDroiMemory(server protocol.MCPServerStatusInfo) bool { return server.Name == DroiMemoryServer }
+// The name is a common one, so a server of that name in the user's or the
+// Workspace's mcp.json is theirs: the Daemon names the overlay's level
+// runtime.
+func IsDroiMemory(server protocol.MCPServerStatusInfo) bool {
+	return server.Name == DroiMemoryServer && !userConfigured(server.Source)
+}
+
+// userConfigured tells the levels of the mcp.json files a user edits.
+func userConfigured(level protocol.SettingsLevel) bool {
+	return level == protocol.SettingsLevelUser || level == protocol.SettingsLevelProject || level == protocol.SettingsLevelFolder
+}
 
 // IsReadOnly: the organization's servers are policy and Droi's Memory is the
 // Shell's; nothing here changes them.

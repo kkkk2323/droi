@@ -156,7 +156,7 @@ export function scriptSource(call: ToolCall): ScriptSource | null {
 
 /**
  * The tools a program calls, in the order they first appear: `Read`,
- * `Execute`, `memory_search` (an MCP tool, `tools.droi_memory.memory_search`).
+ * `Execute`, `memory_search` (an MCP tool, `tools.memory.memory_search`).
  */
 export function scriptToolNames(script: string): string[] {
   const names: string[] = []

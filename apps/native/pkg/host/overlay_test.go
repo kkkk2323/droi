@@ -39,10 +39,10 @@ func TestTheRuntimeOverlayAttachesMemory(t *testing.T) {
 		"env": {"DROI_MEMORY_DIR": ` + mustJSON(attachment.MemoryDir) + `},
 		"blockOnMcpLoad": true,
 		"mcp": {
-			"mcpServers": {"droi-memory": {"type": "stdio", "command": ` + mustJSON(attachment.Executable) + `, "args": ["memory-server"], "env": {"DROI_MEMORY_DIR": ` + mustJSON(attachment.MemoryDir) + `}}},
-			"persistentPermissions": {"servers": {"droi-memory": {"approvedAt": "2026-09-29T12:00:00.000Z", "impactLevel": "high"}}}
+			"mcpServers": {"memory": {"type": "stdio", "command": ` + mustJSON(attachment.Executable) + `, "args": ["memory-server"], "env": {"DROI_MEMORY_DIR": ` + mustJSON(attachment.MemoryDir) + `}}},
+			"persistentPermissions": {"servers": {"memory": {"approvedAt": "2026-09-29T12:00:00.000Z", "impactLevel": "high"}}}
 		},
-		"mcpAutonomyOverrides": {"droi-memory": {"defaultLevel": "low"}},
+		"mcpAutonomyOverrides": {"memory": {"defaultLevel": "low"}},
 		"hooks": {"SessionStart": ` + start + `}
 	}`
 	var w any

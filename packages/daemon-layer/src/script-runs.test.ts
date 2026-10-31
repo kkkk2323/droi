@@ -110,7 +110,7 @@ describe('scriptToolNames', () => {
   test('each tool once, in order, MCP tools by their own name', () => {
     expect(
       scriptToolNames(
-        'const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.droi_memory.memory_search({})\nawait tools.Read({})',
+        'const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.memory.memory_search({})\nawait tools.Read({})',
       ),
     ).toEqual(['Read', 'Execute', 'memory_search'])
   })
