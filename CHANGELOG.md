@@ -2,7 +2,7 @@
 
 ### Added
 
-- An MCP server inside an app built on Droi can answer a tool call with a structured result (MCP's `structuredContent`) next to its text (ADR 0029). A tool that declares an output schema needs it: droid fails a call of such a tool that answers without one, and in a Script the result is then an object to read instead of text to parse. Droi itself looks and works as before.
+- An app built on Droi can answer a tool call of its MCP servers with a structured result (MCP's `structuredContent`) next to its text (ADR 0029). A tool that declares an output schema needs one, and a Script then reads the result as an object. Droi itself looks and works as before.
 
 ## 1.85.1 - 2026-10-31
 

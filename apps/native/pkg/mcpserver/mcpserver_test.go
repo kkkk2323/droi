@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -34,6 +35,10 @@ func testServer(calls *[]call) Server {
 				return Result{}, errors.New("the store is busy")
 			case "refuse":
 				return Text("not here", true), nil
+			case "nil-map", "null", "list", "broken":
+				r := Text("none", false)
+				r.StructuredContent = map[string]any{"nil-map": map[string]any(nil), "null": json.RawMessage("null"), "list": []int{1}, "broken": json.RawMessage{}}[name]
+				return r, nil
 			case "count":
 				r := Text("3 pods", false)
 				r.StructuredContent = map[string]any{"pods": 3, "note": "<all>"}
@@ -102,6 +107,14 @@ func TestToolsCallAnswersStructuredContentAfterTheText(t *testing.T) {
 	var calls []call
 	got := serve(t, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"count"}}`+"\n", testServer(&calls))
 	eq(t, got, `{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"3 pods"}],"structuredContent":{"note":"<all>","pods":3}}}`+"\n")
+}
+
+func TestStructuredContentThatIsNoObjectIsLeftOut(t *testing.T) {
+	for _, name := range []string{"nil-map", "null", "list", "broken"} {
+		var calls []call
+		got := serve(t, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"`+name+`"}}`+"\n", testServer(&calls))
+		eq(t, got, `{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"none"}]}}`+"\n")
+	}
 }
 
 func TestACallErrorBecomesAnErrorResult(t *testing.T) {

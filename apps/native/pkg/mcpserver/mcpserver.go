@@ -48,7 +48,8 @@ type Server struct {
 	// Name, Title and Version are the serverInfo of the initialize answer.
 	Name, Title, Version string
 	// Tools is the "tools" of the tools/list answer: a JSON array of names,
-	// descriptions and input schemas.
+	// descriptions, input schemas and, for a tool whose Result carries
+	// StructuredContent, output schemas.
 	Tools json.RawMessage
 	// Call runs one tool. sessionID is the calling Session, which the Daemon
 	// puts in the call's _meta; it is "" when the call carries none. An error
@@ -66,10 +67,11 @@ type Content struct {
 type Result struct {
 	Content []Content `json:"content"`
 	// StructuredContent is the result as a JSON object, for a tool whose
-	// tools/list entry declares an outputSchema; it is left out when nil. A
-	// Daemon fails a call of such a tool that answers without it, unless the
-	// call failed (IsError). Content should still carry the same result as
-	// text, for clients that read only that.
+	// tools/list entry declares an outputSchema; a value that is no object
+	// once marshaled (nil, a nil map, null) is left out. A Daemon fails a
+	// call of such a tool that answers without it, unless the call failed
+	// (IsError). Content should still carry the same result as text, for
+	// clients that read only that.
 	StructuredContent any  `json:"structuredContent,omitempty"`
 	IsError           bool `json:"isError,omitempty"`
 }
@@ -181,6 +183,7 @@ func handleLine(line string, s Server, send func(rpcMessage) error) error {
 		if err != nil {
 			result = Text(err.Error(), true)
 		}
+		result.StructuredContent = jsonObject(result.StructuredContent)
 		return reply(result)
 	}
 	if isNotification {
@@ -194,6 +197,20 @@ func handleLine(line string, s Server, send func(rpcMessage) error) error {
 		}
 	}
 	return fail(-32601, "Method not found: "+name)
+}
+
+// jsonObject is v as JSON when it marshals to an object, else nil: a typed
+// nil would go out as null, which a Daemon refuses, and a value that does not
+// marshal would end Serve.
+func jsonObject(v any) any {
+	if v == nil {
+		return nil
+	}
+	text, err := jsonText(v)
+	if err != nil || !strings.HasPrefix(text, "{") {
+		return nil
+	}
+	return json.RawMessage(text)
 }
 
 // jsonText is JSON.stringify, which leaves <, > and & alone.
