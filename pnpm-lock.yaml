@@ -167,6 +167,9 @@ importers:
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.18
+      abort-controller:
+        specifier: 3.0.0
+        version: 3.0.0
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
@@ -6111,7 +6114,9 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
