@@ -1,0 +1,98 @@
+diff --git a/dist/chunk-OBPHU4RT.js b/dist/chunk-OBPHU4RT.js
+index 7999212bfb8f9bab44f3a43a088e0cfc2382954e..56276e13a1e60982a950691d6ab86de251aed6a2 100644
+--- a/dist/chunk-OBPHU4RT.js
++++ b/dist/chunk-OBPHU4RT.js
+@@ -2625,7 +2625,9 @@ var FactoryDroidMessageSchema = _zod2.default.object({
+    * the org behind the route that issued it, so a blob is only replayable to
+    * the same `apiProvider`.
+    */
+-  apiProvider: _zod2.default.nativeEnum(ApiProvider).optional(),
++  // Droi patch: the Daemon may name a provider this SDK does not list yet, and one
++  // unknown name made every live create_message fail to parse.
++  apiProvider: _zod2.default.string().optional(),
+   /**
+    * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
+    * active slot was router-configured. Unset for non-router turns.
+@@ -23021,30 +23023,9 @@ var DaemonSessionController = (_class14 = class _DaemonSessionController extends
+           );
+           surfacedPermissionCount += 1;
+         }
+-        if (invalidPermissions.length > 0) {
+-          await Promise.allSettled(
+-            invalidPermissions.map(async (invalid) => {
+-              try {
+-                await this.daemonClient.sendPermissionResponse(
+-                  invalid.requestId,
+-                  {
+-                    sessionId: params.sessionId,
+-                    selectedOption: "cancel" /* Cancel */
+-                  }
+-                );
+-              } catch (error) {
+-                logException(
+-                  error,
+-                  "[DaemonSessionController] Failed to auto-reject invalid permission - daemon will timeout",
+-                  {
+-                    sessionId: params.sessionId,
+-                    requestId: invalid.requestId
+-                  }
+-                );
+-              }
+-            })
+-          );
+-        }
++        // Droi patch: a request this SDK cannot parse stays with the Daemon for
++        // another Client to answer; answering "cancel" here would decide a Prompt
++        // the user never saw.
+         logInfo(
+           "[DaemonSessionController] Restored pending permissions on load",
+           {
+diff --git a/dist/chunk-TWAVPIPS.mjs b/dist/chunk-TWAVPIPS.mjs
+index f2ab6b8d4ff4e23ee4bd2d14bd0f75ecd094de80..e750cc4c54f865bc16af194f0f5ce911787ea32b 100644
+--- a/dist/chunk-TWAVPIPS.mjs
++++ b/dist/chunk-TWAVPIPS.mjs
+@@ -2625,7 +2625,9 @@ var FactoryDroidMessageSchema = z2.object({
+    * the org behind the route that issued it, so a blob is only replayable to
+    * the same `apiProvider`.
+    */
+-  apiProvider: z2.nativeEnum(ApiProvider).optional(),
++  // Droi patch: the Daemon may name a provider this SDK does not list yet, and one
++  // unknown name made every live create_message fail to parse.
++  apiProvider: z2.string().optional(),
+   /**
+    * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
+    * active slot was router-configured. Unset for non-router turns.
+@@ -23021,30 +23023,9 @@ var DaemonSessionController = class _DaemonSessionController extends EventEmitte
+           );
+           surfacedPermissionCount += 1;
+         }
+-        if (invalidPermissions.length > 0) {
+-          await Promise.allSettled(
+-            invalidPermissions.map(async (invalid) => {
+-              try {
+-                await this.daemonClient.sendPermissionResponse(
+-                  invalid.requestId,
+-                  {
+-                    sessionId: params.sessionId,
+-                    selectedOption: "cancel" /* Cancel */
+-                  }
+-                );
+-              } catch (error) {
+-                logException(
+-                  error,
+-                  "[DaemonSessionController] Failed to auto-reject invalid permission - daemon will timeout",
+-                  {
+-                    sessionId: params.sessionId,
+-                    requestId: invalid.requestId
+-                  }
+-                );
+-              }
+-            })
+-          );
+-        }
++        // Droi patch: a request this SDK cannot parse stays with the Daemon for
++        // another Client to answer; answering "cancel" here would decide a Prompt
++        // the user never saw.
+         logInfo(
+           "[DaemonSessionController] Restored pending permissions on load",
+           {

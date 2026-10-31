@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -24,6 +25,59 @@ type SpecPlan struct {
 	NewSession bool
 	// Comment is what the user added to the approval.
 	Comment string
+}
+
+// SpecHandoff is the first message of a Session started from an approved
+// spec, as droid writes it: the plan, the note the user approved it with,
+// and the file that holds the planning Session's transcript or the spec.
+type SpecHandoff struct {
+	Note, Plan, Source string
+}
+
+const (
+	specHandoffOpening = "Implement the following plan:\n\n"
+	specHandoffNote    = "User note: "
+)
+
+var specHandoffClosing = regexp.MustCompile(`\n\nIf you need specific details from the planning session[^\n]*, read the full (?:transcript|spec) at: ([^\n]+)$`)
+
+// ReadSpecHandoff reads a message's text as a spec handoff. Both its opening
+// line and its closing pointer have to be there, as droid's own check asks,
+// so a typed message that only starts the same way stays text.
+func ReadSpecHandoff(text string) (SpecHandoff, bool) {
+	rest, ok := strings.CutPrefix(text, specHandoffOpening)
+	if !ok {
+		return SpecHandoff{}, false
+	}
+	at := specHandoffClosing.FindStringSubmatchIndex(rest)
+	if at == nil {
+		return SpecHandoff{}, false
+	}
+	h := SpecHandoff{Source: rest[at[2]:at[3]]}
+	body := rest[:at[0]]
+	if note, plan, ok := strings.Cut(body, "\n\n"); ok && strings.HasPrefix(note, specHandoffNote) {
+		h.Note, body = strings.TrimPrefix(note, specHandoffNote), plan
+	}
+	h.Plan = strings.TrimSpace(body)
+	return h, true
+}
+
+// PlanTitle is a plan's first heading, else its first line.
+func PlanTitle(plan string) string {
+	first := ""
+	for _, line := range strings.Split(plan, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if heading := strings.TrimLeft(line, "#"); heading != line {
+			return strings.TrimSpace(heading)
+		}
+		if first == "" {
+			first = line
+		}
+	}
+	return first
 }
 
 // ReadSpec reads an ExitSpecMode call: its plan and title, and from its

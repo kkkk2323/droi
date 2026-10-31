@@ -59,10 +59,16 @@ type Supervisor struct {
 	// Check, optional, runs once the Daemon of process pid answers its
 	// health check; an error stops it, and is why the next attempt waits.
 	Check func(pid int) error
+	// Terminate, optional, asks the Daemon of cmd to shut down in order in
+	// place of terminateSignal; Exited, optional, hears that it is gone.
+	Terminate func(cmd *exec.Cmd)
+	Exited    func(cmd *exec.Cmd)
 
 	Backoff      []time.Duration
 	ReadyTimeout time.Duration
 	StableAfter  time.Duration
+	// StopGrace is how long Stop waits before it kills the Daemon.
+	StopGrace time.Duration
 
 	mu      sync.Mutex
 	state   DaemonState
@@ -79,6 +85,12 @@ type child struct {
 	done chan struct{}
 	err  error
 }
+
+// stopGrace leaves droid's shutdown the time it takes: it flushes the cloud
+// sync (up to 5 s), stops the in-process agents (5 s) and the MCP servers
+// (3 s and 2 s), and writes its exit spool; killed earlier, that is lost. On
+// Windows the Daemon also takes up to 2 s to see its anchor go.
+const stopGrace = 12 * time.Second
 
 func (s *Supervisor) backoff() []time.Duration {
 	if len(s.Backoff) > 0 {
@@ -143,10 +155,14 @@ func (s *Supervisor) Stop() {
 	s.child = nil
 	s.mu.Unlock()
 	if ch != nil {
-		_ = ch.cmd.Process.Signal(terminateSignal())
+		if s.Terminate != nil {
+			s.Terminate(ch.cmd)
+		} else {
+			_ = ch.cmd.Process.Signal(terminateSignal())
+		}
 		select {
 		case <-ch.done:
-		case <-time.After(3 * time.Second):
+		case <-time.After(orDefault(s.StopGrace, stopGrace)):
 			_ = ch.cmd.Process.Kill()
 			<-ch.done
 		}
@@ -198,7 +214,13 @@ func (s *Supervisor) launch(gen int) {
 		return
 	}
 	ch := &child{cmd: cmd, done: make(chan struct{})}
-	go func() { ch.err = cmd.Wait(); close(ch.done) }()
+	go func() {
+		ch.err = cmd.Wait()
+		if s.Exited != nil {
+			s.Exited(cmd)
+		}
+		close(ch.done)
+	}()
 	started := time.Now()
 
 	s.mu.Lock()

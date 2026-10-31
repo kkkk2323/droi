@@ -11,8 +11,11 @@ import (
 	"time"
 )
 
-// MemoryServerName is the Memory Server's name in the Daemon's MCP list.
-const MemoryServerName = "droi-memory"
+// MemoryServerName is the Memory Server's name in the Daemon's MCP list, and
+// so its tools' prefix (memory___memory_search). The Runtime Overlay outranks
+// the user's and the Workspace's mcp.json, so while Memory is on it takes the
+// place of a server of theirs with the same name.
+const MemoryServerName = "memory"
 
 // The app's own executable runs the Memory Server and the hook as these
 // subcommands, where the Electron Shell ran its own Node.

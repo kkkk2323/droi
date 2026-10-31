@@ -37,9 +37,12 @@ func TestASpecHandoffOpensTheNewSession(t *testing.T) {
 	h.click("Proceed in a new session")
 	h.until("the new Session", func() bool { r := h.a.Route(); return r.Name == "session" && r.SessionID != from })
 	h.until("the work in the new Session", func() bool { return h.hasText("Created hello.txt.") })
-	if !h.hasText("Implement the following plan") {
-		t.Errorf("the new Session does not show the plan it was given: %q", h.tt.Texts())
+	// The plan it was given shows as a card, folded under its title.
+	if !h.hasText("Approved plan") || !h.hasText("Steps") || h.hasText("Implement the following plan") || h.hasText("Read it back to check it") {
+		t.Errorf("the new Session's first message: %q", h.tt.Texts())
 	}
+	h.click("Approved plan")
+	h.until("the plan", func() bool { return h.hasText("Read it back to check it") && h.hasText("Planning details are in ") })
 }
 
 // The Spec switch beside the composer turns Spec mode on and off.

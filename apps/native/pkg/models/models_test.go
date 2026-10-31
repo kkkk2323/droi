@@ -59,6 +59,28 @@ func TestBrandOf(t *testing.T) {
 	}
 }
 
+// A custom model's id that names no company takes the brand of the built-in
+// model droid 1.1 says it behaves like; an id that does name one keeps it.
+func TestABehavesLikeModelGivesTheBrand(t *testing.T) {
+	custom := true
+	choices := ToChoices([]protocol.ModelMetadata{
+		{ID: "custom:magpie-raccoon-sn-sensenova-6-8-flash-999999", ModelProvider: "generic-chat-completion-api", IsCustom: &custom, BehavesLikeModelID: "glm-5.3-flash"},
+		{ID: "custom:my-coder", ModelProvider: "anthropic", IsCustom: &custom, BehavesLikeModelID: "kimi-k3"},
+		{ID: "custom:kimi-k3-0", ModelProvider: "generic-chat-completion-api", IsCustom: &custom, BehavesLikeModelID: "glm-5"},
+		{ID: "custom:my-coder-2", ModelProvider: "openai", IsCustom: &custom},
+	})
+	var got []Brand
+	for _, c := range choices {
+		got = append(got, c.Brand())
+	}
+	if want := []Brand{Zhipu, Moonshot, Moonshot, OpenAI}; !reflect.DeepEqual(got, want) {
+		t.Errorf("brands %v, want %v", got, want)
+	}
+	if choices[0].BehavesLike != "glm-5.3-flash" || choices[0].Multiplier != nil {
+		t.Errorf("choice %+v", choices[0])
+	}
+}
+
 func TestBrandsOf(t *testing.T) {
 	want := []Brand{Anthropic, OpenAI, Google, Zhipu, Other}
 	if got := BrandsOf(list); !reflect.DeepEqual(got, want) {

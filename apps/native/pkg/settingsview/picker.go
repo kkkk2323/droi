@@ -95,7 +95,7 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 	tr.Children(func() {
 		label := value
 		if current != nil {
-			brandIcon(c, k, models.BrandOf(current.ID, current.Provider), 14, fg)
+			brandIcon(c, k, current.Brand(), 14, fg)
 			label = current.Label
 		}
 		switch {

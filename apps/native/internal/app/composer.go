@@ -60,7 +60,8 @@ type composerState struct {
 }
 
 // composerArea is everything under the transcript: the shelf, the
-// composer or the Prompts standing in for it, and the footer row.
+// composer or the Prompts standing in for it (queued question sets above
+// it), and the footer row.
 func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace string, loaded bool) {
 	a := v.a
 	k := a.kit
@@ -71,13 +72,19 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 		v.takePending(s)
 	}
 	perms, asks := a.ctl.PendingPermissions(v.id), a.ctl.PendingAskUsers(v.id)
+	waits := sessionview.WaitsOnUser(perms, asks)
 	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.Compacting()
-	if running && len(perms)+len(asks) == 0 && c.Shortcut(0, ui.KeyEscape) {
+	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
 	}
 	sessionview.Column(c, k).Shrink(0).Padding(0, k.Px(20), k.Px(8), k.Px(20)).Children(func() {
+		// Queued question sets alone leave the composer to the user, above
+		// the shelf tucked against its top edge.
+		if !waits && len(asks) > 0 {
+			ui.Box(c.Key("queued-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.Prompts(c, nil, asks) })
+		}
 		v.shelf(c, s)
-		if len(perms)+len(asks) > 0 {
+		if waits {
 			v.Prompts(c, perms, asks)
 			// The prompt takes the focus; the composer gets it back after.
 			v.focused = false

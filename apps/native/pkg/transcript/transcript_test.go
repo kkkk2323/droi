@@ -345,8 +345,8 @@ func call(name, input string, result ...string) *ToolCall {
 }
 
 func TestToolNameAndSummary(t *testing.T) {
-	s, n := ToolName("droi-memory___memory_list")
-	eq(t, []string{s, n}, []string{"droi-memory", "memory_list"})
+	s, n := ToolName("memory___memory_list")
+	eq(t, []string{s, n}, []string{"memory", "memory_list"})
 	for _, name := range []string{"Execute", "___odd", "odd___"} {
 		s, n = ToolName(name)
 		eq(t, []string{s, n}, []string{"", name})
@@ -389,7 +389,7 @@ func TestPermissions(t *testing.T) {
 	eq(t, PermissionDetail(nil, j(`{"command":"ls"}`)), "$ ls")
 	eq(t, PermissionDetail(j(`null`), j(`{"url": "https://x"}`)), `{"url":"https://x"}`)
 
-	details := j(`{"type":"script","impactLevel":"medium","calls":[{"toolName":"Execute","line":3,"toolInput":{"command":"sleep 70 && echo slept"},"confirmation":{"type":"exec","fullCommand":"sleep 70 && echo slept","impactLevel":"low"}},{"toolName":"droi-memory___memory_add","line":5,"toolInput":{"text":"x"},"confirmation":{"type":"mcp_tool"}}]}`)
+	details := j(`{"type":"script","impactLevel":"medium","calls":[{"toolName":"Execute","line":3,"toolInput":{"command":"sleep 70 && echo slept"},"confirmation":{"type":"exec","fullCommand":"sleep 70 && echo slept","impactLevel":"low"}},{"toolName":"memory___memory_add","line":5,"toolInput":{"text":"x"},"confirmation":{"type":"mcp_tool"}}]}`)
 	eq(t, ParseScriptPermission(details), &ScriptPermission{Impact: "medium", Calls: []ScriptPermissionCall{
 		{3, "Execute", "$ sleep 70 && echo slept", "low"}, {5, "memory_add", `{"text":"x"}`, ""},
 	}})
@@ -452,10 +452,13 @@ func TestScriptSource(t *testing.T) {
 	eq(t, []any{script, ins, ok}, []any{"text(inputs.body)", []ScriptInput{{"body", "hi"}}, true})
 	_, _, ok = ScriptSource(call("WaitForScript", `{"toolCallId":"run-1"}`))
 	eq(t, ok, false)
-	eq(t, ScriptToolNames("const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.droi_memory.memory_search({})\nawait tools.Read({})"), []string{"Read", "Execute", "memory_search"})
+	eq(t, ScriptToolNames("const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.memory.memory_search({})\nawait tools.Read({})"), []string{"Read", "Execute", "memory_search"})
 	eq(t, ScriptSummary(call("Script", `{"script":"await tools.Grep({}); await tools.Edit({})"}`)), "Grep · Edit")
 	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1"}`)), "continued")
 	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","kill":true}`)), "stopped")
+	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","action":"kill"}`)), "stopped")
+	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","action":"status"}`)), "checked")
+	eq(t, ScriptSummary(call("WaitForScript", `{"toolCallId":"run-1","action":"wait"}`)), "continued")
 }
 
 func TestReplyTextJoinsTheTurnsTextOnly(t *testing.T) {

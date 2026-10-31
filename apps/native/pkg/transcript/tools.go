@@ -150,6 +150,9 @@ var headlineKeys = []string{"summary", "command", "file_path", "path", "pattern"
 // stands alone; any other tool shows its first few short inputs as
 // `key: value` pairs.
 func SummaryParts(c *ToolCall) []SummaryPart {
+	if c.Queued != NotQueued {
+		return queuedParts(c)
+	}
 	for _, k := range headlineKeys {
 		if v, ok := c.Input[k].(string); ok && strings.TrimSpace(v) != "" {
 			return []SummaryPart{{Value: firstLine(v, 120)}}
@@ -512,7 +515,7 @@ func ScriptSource(c *ToolCall) (script string, inputs []ScriptInput, ok bool) {
 var toolCallPattern = regexp.MustCompile(`\btools\.([A-Za-z_$][\w$]*)(?:\.([A-Za-z_$][\w$]*))?\s*\(`)
 
 // ScriptToolNames are the tools a program calls, in the order they first
-// appear; an MCP tool (`tools.droi_memory.memory_search`) by its own name.
+// appear; an MCP tool (`tools.memory.memory_search`) by its own name.
 func ScriptToolNames(script string) []string {
 	names := []string{}
 	seen := map[string]bool{}
@@ -532,8 +535,14 @@ func ScriptToolNames(script string) []string {
 // ScriptSummary is what a Script or WaitForScript row says after its name.
 func ScriptSummary(c *ToolCall) string {
 	if c.Use.Name == WaitForScriptTool {
-		if k, _ := c.Input["kill"].(bool); k {
+		// droid 0.245 took kill: true and timeoutMs to action; older
+		// transcripts still hold kill.
+		action, _ := c.Input["action"].(string)
+		if k, _ := c.Input["kill"].(bool); k || action == "kill" {
 			return l10n.L("stopped")
+		}
+		if action == "status" {
+			return l10n.L("checked")
 		}
 		return l10n.L("continued")
 	}

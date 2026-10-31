@@ -177,7 +177,7 @@ func TestTheHookEntryPrintsAndAlwaysExitsZero(t *testing.T) {
 	}
 	out.Reset()
 	eq(t, hookMain(env, strings.NewReader("not json"), &out, &errOut), 0)
-	if out.String() != "" || !strings.HasPrefix(errOut.String(), "droi-memory hook: ") {
+	if out.String() != "" || !strings.HasPrefix(errOut.String(), "memory hook: ") {
 		t.Fatalf("%q %q", out.String(), errOut.String())
 	}
 }

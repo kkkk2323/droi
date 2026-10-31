@@ -22,7 +22,8 @@ type plainComposer struct {
 // transcript, as Droi's looks without its attachments, slash menu and
 // settings: Enter sends and Shift+Enter breaks the line; while a turn runs
 // Enter queues the message, Cmd+Enter hands it to the running turn and
-// Escape stops the turn. The Session's open Prompts stand in for it.
+// Escape stops the turn. The Session's open Prompts stand in for it, or sit
+// above it when all are queued question sets.
 func (v *View) Composer(c *ui.Context, s *session.Session) {
 	ctl := v.env.Controller
 	if s == nil || ctl == nil {
@@ -30,17 +31,21 @@ func (v *View) Composer(c *ui.Context, s *session.Session) {
 	}
 	k := v.kit()
 	perms, asks := ctl.PendingPermissions(v.id), ctl.PendingAskUsers(v.id)
+	waits := WaitsOnUser(perms, asks)
 	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.compacting
-	if running && len(perms)+len(asks) == 0 && c.Shortcut(0, ui.KeyEscape) {
+	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
 	}
 	ready := s.LoadState() == session.Loaded || v.hasLoaded
 	Column(c, k).Shrink(0).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Children(func() {
-		if len(perms)+len(asks) > 0 {
+		if waits {
 			v.Prompts(c, perms, asks)
 			// The prompt takes the focus; the composer gets it back after.
 			v.plain.focused = false
 			return
+		}
+		if len(asks) > 0 {
+			ui.Box(c.Key("queued-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.Prompts(c, nil, asks) })
 		}
 		v.plainComposer(c, running, ready)
 	})

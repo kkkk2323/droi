@@ -110,7 +110,7 @@ describe('scriptToolNames', () => {
   test('each tool once, in order, MCP tools by their own name', () => {
     expect(
       scriptToolNames(
-        'const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.droi_memory.memory_search({})\nawait tools.Read({})',
+        'const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.memory.memory_search({})\nawait tools.Read({})',
       ),
     ).toEqual(['Read', 'Execute', 'memory_search'])
   })
@@ -124,6 +124,15 @@ describe('scriptSummary', () => {
     expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1' }))).toBe('continued')
     expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', kill: true }))).toBe(
       'stopped',
+    )
+    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'kill' }))).toBe(
+      'stopped',
+    )
+    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'status' }))).toBe(
+      'checked',
+    )
+    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'wait' }))).toBe(
+      'continued',
     )
   })
 })

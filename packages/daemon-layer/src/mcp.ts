@@ -30,11 +30,18 @@ export const STATUS_LABELS: Record<string, string> = {
  * Droi's Memory Server (ADR 0010), which the Desktop Shell attaches through
  * the Runtime Overlay. The name is the one the Shell registers it under.
  */
-export const DROI_MEMORY_SERVER = 'droi-memory'
+export const DROI_MEMORY_SERVER = 'memory'
 
-/** Its only switch is the Memory setting in the Desktop Shell. */
+/** The levels of the mcp.json files a user edits. */
+const USER_CONFIGURED = new Set(['user', 'project', 'folder'])
+
+/**
+ * Its only switch is the Memory setting in the Desktop Shell. The name is a
+ * common one, so a server of that name in the user's or the Workspace's
+ * mcp.json is theirs: the Daemon names the overlay's level runtime.
+ */
 export function isDroiMemory(server: McpServer): boolean {
-  return server.name === DROI_MEMORY_SERVER
+  return server.name === DROI_MEMORY_SERVER && !USER_CONFIGURED.has(String(server.source))
 }
 
 /** The organization's servers are policy and Droi's Memory is the Shell's; nothing here changes them. */

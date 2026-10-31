@@ -48,8 +48,8 @@ func init() {
 	appName.Store(&name)
 }
 
-// SetAppName names the app in every text: the word Droi, but not droid or
-// droi-memory, reads as name. "" is Droi.
+// SetAppName names the app in every text: the word Droi, but not droid or a
+// lowercase droi in a name, reads as name. "" is Droi.
 func SetAppName(name string) {
 	if name == "" {
 		name = droi

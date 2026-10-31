@@ -55,3 +55,19 @@ func TestABackgroundCommandShowsWhileItRuns(t *testing.T) {
 		t.Fatalf("the row does not say it finished: %q", h.tt.Texts())
 	}
 }
+
+// The Daemon lists the command among the Session's background processes,
+// so its row has Stop, which ends it through the Daemon.
+func TestABackgroundProcessStopsFromTheList(t *testing.T) {
+	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "backgroundProcess", Command: "npm run dev", Reply: "The dev server runs.", Pid: os.Getpid()}), "")
+	h.openSession("Deploy")
+	h.send("Start the dev server")
+	h.until("the header's count", func() bool { return h.hasText("1 background task") && h.hasText("The dev server runs.") })
+	h.click("1 background task")
+	h.until("Stop", func() bool { return h.hasButton("Stop Run in the background") })
+	h.click("Stop Run in the background")
+	id := h.a.Route().SessionID
+	h.until("the task stopped", func() bool {
+		return !h.hasText("1 background task") && h.a.ctl.Store().Session(id).BackgroundProcesses() == nil
+	})
+}

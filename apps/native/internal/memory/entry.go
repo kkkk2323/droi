@@ -7,7 +7,7 @@ import (
 )
 
 // ServeMain is the Memory Server's entry (ADR 0031): the stdio MCP Server the
-// Runtime Overlay registers as droi-memory, serving the Memory folder named by
+// Runtime Overlay registers as memory, serving the Memory folder named by
 // DROI_MEMORY_DIR. It answers the process's exit code.
 func ServeMain() int {
 	return serveMain(os.LookupEnv, os.Stdin, os.Stdout, os.Stderr)
@@ -16,7 +16,7 @@ func ServeMain() int {
 func serveMain(lookupEnv func(string) (string, bool), stdin io.Reader, stdout, stderr io.Writer) int {
 	dir, _ := lookupEnv("DROI_MEMORY_DIR")
 	if dir == "" {
-		fmt.Fprint(stderr, "droi-memory: DROI_MEMORY_DIR is not set\n")
+		fmt.Fprint(stderr, "memory: DROI_MEMORY_DIR is not set\n")
 		return 1
 	}
 	sessions := SessionsDir(lookupEnv)
@@ -41,7 +41,7 @@ func serveMain(lookupEnv func(string) (string, bool), stdin io.Reader, stdout, s
 		Stderr: stderr,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "droi-memory: Error: %s\n", err)
+		fmt.Fprintf(stderr, "memory: Error: %s\n", err)
 		return 1
 	}
 	return 0
@@ -56,7 +56,7 @@ func HookMain() int {
 
 func hookMain(lookupEnv func(string) (string, bool), stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := runHookEntry(lookupEnv, stdin, stdout); err != nil {
-		fmt.Fprintf(stderr, "droi-memory hook: %s\n", err)
+		fmt.Fprintf(stderr, "memory hook: %s\n", err)
 	}
 	return 0
 }

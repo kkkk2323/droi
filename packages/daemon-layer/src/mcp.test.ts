@@ -150,11 +150,20 @@ test('the organization’s servers are read-only and last; only the user’s can
 })
 
 test('Droi’s Memory Server is the Shell’s: read-only and never removed from here', () => {
-  const memory = server({ name: 'droi-memory', source: 'user' } as Partial<McpServer>)
+  const memory = server({ name: 'memory', source: 'runtime' } as Partial<McpServer>)
   expect(isDroiMemory(memory)).toBe(true)
   expect(isReadOnly(memory)).toBe(true)
   expect(canRemove(memory)).toBe(false)
-  expect(isDroiMemory(server({ name: 'memory' }))).toBe(false)
+  expect(
+    isDroiMemory(server({ name: 'droi-memory', source: 'runtime' } as Partial<McpServer>)),
+  ).toBe(false)
+  // A memory server of the user's own, such as the reference one.
+  const mine = server({ name: 'memory', source: 'user' } as Partial<McpServer>)
+  expect(isDroiMemory(mine)).toBe(false)
+  expect(canRemove(mine)).toBe(true)
+  expect(isDroiMemory(server({ name: 'memory', source: 'project' } as Partial<McpServer>))).toBe(
+    false,
+  )
 })
 
 test('a server wants signing in when it needs auth and has no tokens', () => {

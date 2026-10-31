@@ -385,7 +385,7 @@ func TestTheMemoryServerAnswersOverStdio(t *testing.T) {
 	writeFile(t, filepath.Join(dir, SummaryFile), validSummary)
 	c := startServer(t, map[string]string{"DROI_MEMORY_DIR": dir})
 	init := c.call(t, 1, "initialize", map[string]any{"protocolVersion": "2025-06-18"})
-	eq(t, init["result"].(map[string]any)["serverInfo"].(map[string]any)["name"], any("droi-memory"))
+	eq(t, init["result"].(map[string]any)["serverInfo"].(map[string]any)["name"], any("memory"))
 	list := c.call(t, 2, "tools/list", map[string]any{})
 	var names []string
 	for _, tool := range list["result"].(map[string]any)["tools"].([]any) {

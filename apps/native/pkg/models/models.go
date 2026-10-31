@@ -25,6 +25,9 @@ type Choice struct {
 	// Multiplier is Factory's usage multiplier for the model; nil for custom
 	// (BYOK) models.
 	Multiplier *float64
+	// BehavesLike is the built-in model a custom model behaves like, as droid
+	// 1.1 reports it; "" for the rest and from an older Daemon.
+	BehavesLike string
 }
 
 func choiceOf(m protocol.ModelMetadata, disabled bool) Choice {
@@ -36,7 +39,9 @@ func choiceOf(m protocol.ModelMetadata, disabled bool) Choice {
 	if m.Kind != "router" {
 		c.Provider = string(m.ModelProvider)
 	}
-	if !(m.IsCustom != nil && *m.IsCustom) {
+	if m.IsCustom != nil && *m.IsCustom {
+		c.BehavesLike = m.BehavesLikeModelID
+	} else {
 		c.Multiplier = m.TokenMultiplier
 	}
 	return c
@@ -95,7 +100,7 @@ type Row struct {
 func VisibleModels(models []Choice, favorites []string, filter PickerFilter, query string) []Row {
 	rows := make([]Row, len(models))
 	for i, m := range models {
-		rows[i] = Row{Choice: m, Brand: BrandOf(m.ID, m.Provider)}
+		rows[i] = Row{Choice: m, Brand: m.Brand()}
 	}
 	inScope := func(row Row) bool {
 		switch filter {
@@ -160,7 +165,7 @@ func BrandsOf(models []Choice) []Brand {
 	present := map[Brand]bool{}
 	for _, m := range models {
 		if !IsMagpie(m.ID) {
-			present[BrandOf(m.ID, m.Provider)] = true
+			present[m.Brand()] = true
 		}
 	}
 	var out []Brand

@@ -308,7 +308,7 @@ func (a *App) activity(reported map[string]string) map[string]activity.Activity 
 		store := a.ctl.Store()
 		for _, id := range store.SessionIDs() {
 			if s := store.Session(id); s != nil && s.LoadState() == "LOADED" {
-				loaded[id] = string(s.WorkingState())
+				loaded[id] = string(a.attentionState(s))
 			}
 		}
 	}

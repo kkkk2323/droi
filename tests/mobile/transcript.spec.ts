@@ -399,7 +399,7 @@ test.describe('tool calls and reasoning', () => {
         {
           type: 'tool_use',
           id: 'list',
-          name: 'droi-memory___memory_list',
+          name: 'memory___memory_list',
           input: { scope: 'project', category: 'insight' },
         },
       ],
@@ -424,11 +424,11 @@ test.describe('tool calls and reasoning', () => {
     await pickSession(page, /Remember how we test/)
     const transcript = page.getByRole('log', { name: 'Transcript' })
     const list = transcript.getByRole('button', {
-      name: 'droi-memory___memory_list: scope: project · category: insight',
+      name: 'memory___memory_list: scope: project · category: insight',
     })
     await expect(list).toBeVisible()
     await expect(list).not.toContainText('___')
-    await expect(list.getByText('droi-memory', { exact: true })).toBeVisible()
+    await expect(list.getByText('memory', { exact: true })).toBeVisible()
     await expect(list.getByText('memory_list', { exact: true })).toBeVisible()
     await expect(list).toContainText('scope: project · category: insight')
     await expect(transcript.getByRole('button', { name: 'Skill: grilling' })).toBeVisible()

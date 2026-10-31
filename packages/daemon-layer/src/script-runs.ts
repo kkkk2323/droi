@@ -156,7 +156,7 @@ export function scriptSource(call: ToolCall): ScriptSource | null {
 
 /**
  * The tools a program calls, in the order they first appear: `Read`,
- * `Execute`, `memory_search` (an MCP tool, `tools.droi_memory.memory_search`).
+ * `Execute`, `memory_search` (an MCP tool, `tools.memory.memory_search`).
  */
 export function scriptToolNames(script: string): string[] {
   const names: string[] = []
@@ -172,7 +172,11 @@ export function scriptToolNames(script: string): string[] {
 /** What a Script or WaitForScript row says after its name. */
 export function scriptSummary(call: ToolCall): string {
   if (call.use.name === WAIT_FOR_SCRIPT_TOOL) {
-    return call.use.input['kill'] === true ? 'stopped' : 'continued'
+    // droid 0.245 took kill: true and timeoutMs to action; older transcripts
+    // still hold kill.
+    const action = call.use.input['action']
+    if (call.use.input['kill'] === true || action === 'kill') return 'stopped'
+    return action === 'status' ? 'checked' : 'continued'
   }
   const source = scriptSource(call)
   return source ? scriptToolNames(source.script).join(' · ') : ''

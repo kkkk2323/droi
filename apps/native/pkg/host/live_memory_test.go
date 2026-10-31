@@ -78,7 +78,7 @@ func TestLiveMemory(t *testing.T) {
 				}
 				b, _ := os.ReadFile(p)
 				for _, line := range strings.Split(string(b), "\n") {
-					if strings.Contains(line, "droi-memory") || strings.Contains(strings.ToLower(line), "mcp") && strings.Contains(strings.ToLower(line), "fail") {
+					if strings.Contains(line, host.MemoryServerName) || strings.Contains(strings.ToLower(line), "mcp") && strings.Contains(strings.ToLower(line), "fail") {
 						t.Logf("%s: %.600s", filepath.Base(p), line)
 					}
 				}

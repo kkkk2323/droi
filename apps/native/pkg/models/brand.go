@@ -77,7 +77,15 @@ var providerBrands = map[string]Brand{
 }
 
 // BrandOf reads the brand off the model id; provider is "" for the Auto router.
-func BrandOf(modelID, provider string) Brand {
+func BrandOf(modelID, provider string) Brand { return brandOf(modelID, "", provider) }
+
+// Brand is the choice's brand: off its id, else off the built-in model a
+// custom model behaves like, else off its provider. A custom model's own id
+// wins over the Daemon's closest match, which can be another company's.
+func (c Choice) Brand() Brand { return brandOf(c.ID, c.BehavesLike, c.Provider) }
+
+func brandOf(modelID, behavesLike, provider string) Brand {
+	like, likeOK := idBrand(strings.ToLower(behavesLike))
 	id := strings.ToLower(modelID)
 	// Droi names a Magpie model "custom:magpie-<provider>-<model>-<hash>", and
 	// the Daemon reports that id, not the gateway's "provider/model": the
@@ -89,14 +97,17 @@ func BrandOf(modelID, provider string) Brand {
 		// A gateway provider Droi does not know: the model's own name may still
 		// say, as in "workbuddy-glm-5-3-…".
 		if _, name, ok := strings.Cut(rest, "-"); ok {
-			for _, p := range idPrefixes {
-				if strings.HasPrefix(name, p.prefix) {
-					return p.brand
-				}
+			if b, ok := idBrand(name); ok {
+				return b
 			}
+		}
+		if likeOK {
+			return like
 		}
 		return Other
 	}
+	// droid names a custom model "custom:<its name>-<index>".
+	id = strings.TrimPrefix(id, "custom:")
 	// "provider/model", as a gateway names one: the provider names the company,
 	// and the model keeps its own name after the last slash.
 	if i := strings.Index(id, "/"); i > 0 {
@@ -105,15 +116,26 @@ func BrandOf(modelID, provider string) Brand {
 		}
 		id = id[strings.LastIndex(id, "/")+1:]
 	}
-	for _, p := range idPrefixes {
-		if strings.HasPrefix(id, p.prefix) {
-			return p.brand
-		}
+	if b, ok := idBrand(id); ok {
+		return b
+	}
+	if likeOK {
+		return like
 	}
 	if b, ok := providerBrands[provider]; ok {
 		return b
 	}
 	return Other
+}
+
+// idBrand reads the brand off the start of a model's name.
+func idBrand(name string) (Brand, bool) {
+	for _, p := range idPrefixes {
+		if strings.HasPrefix(name, p.prefix) {
+			return p.brand, true
+		}
+	}
+	return "", false
 }
 
 // magpieIDPrefix starts the id Droi gives a Magpie model (package host builds

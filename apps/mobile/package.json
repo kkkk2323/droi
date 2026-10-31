@@ -14,7 +14,7 @@
     "@droi/daemon-layer": "workspace:*",
     "@expo/metro-runtime": "~57.0.16",
     "@expo/ui": "~57.0.20",
-    "@factory/droid-sdk": "0.9.1",
+    "@factory/droid-sdk": "0.10.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.103.1",
     "expo": "~57.0.25",

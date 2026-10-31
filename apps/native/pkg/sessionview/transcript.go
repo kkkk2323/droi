@@ -46,6 +46,11 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	}
 	ends := transcript.TurnEnds(entries, running)
 	activity := transcript.WorkingLabel(ws)
+	// The status can outlive a turn that ended without progress, so it only
+	// shows while one runs.
+	if r := s.LLMRetry(); r != nil && running && !v.compacting {
+		activity = transcript.RetryLabel(r.Attempt)
+	}
 	v.links = v.subagentLinks(listed)
 	v.streamingID = streamingID
 	rows := v.rows(entries, streamingID, ends)

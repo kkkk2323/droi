@@ -41,8 +41,11 @@ const (
 func entryText(e *transcript.Entry) string {
 	var parts []string
 	for _, b := range e.Blocks {
-		if b.Kind == transcript.Text {
+		switch b.Kind {
+		case transcript.Text:
 			parts = append(parts, b.Text)
+		case transcript.QueuedAnswers:
+			parts = append(parts, transcript.QueuedSummary(b.Records))
 		}
 	}
 	text, texts := pasted.Split(strings.Join(parts, "\n"))

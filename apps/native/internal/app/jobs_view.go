@@ -60,23 +60,44 @@ func (v *sessionView) jobList(c *ui.Context, jobs []transcript.Job) {
 			}
 		})
 	}
+	// stop sits beside the row, not in it: the row may be the button that
+	// opens the output.
+	stop := func(j transcript.Job) {
+		if j.ProcessID == "" {
+			return
+		}
+		if v.Stopping(j) {
+			ui.Box(c).Size(k.Px(24), k.Px(24)).Center().Shrink(0).Children(func() { k.Spinner(c, 12, t.MutedForeground) })
+			return
+		}
+		if k.IconButton(c, "square", L("Stop %s", j.Summary), 24).Tooltip(L("Stop")).Clicked() {
+			v.StopJob(j)
+		}
+	}
 	ui.Column(c).Role(ui.RoleList).Label(L("Background tasks")).FillWidth().Children(func() {
 		for _, j := range jobs {
 			c := c.Key(j.ID)
 			if !v.ShowsOutput(j) {
-				row(ui.Row(c), j, nil)
+				ui.Row(c).FillWidth().Gap(k.Px(2)).Children(func() {
+					row(ui.Row(c).Grow(1).Shrink(1).MinWidth(0), j, nil)
+					stop(j)
+				})
 				continue
 			}
 			open := v.Flag("job:"+j.ID, false)
-			p := ui.CollapsibleBase(c, open)
-			tr := p.Trigger.Label(L("Output of %s", j.Summary)).FillWidth().Cursor(ui.CursorPointer)
-			if tr.Hovered() {
-				tr.Background(t.Accent)
-			}
-			row(tr, j, func() {
-				ui.Box(c).Size(k.Px(24), k.Px(24)).Center().Shrink(0).Children(func() {
-					k.Icon(c, "chevron-down", 12, t.MutedForeground).Rotate(180 * p.Progress())
+			var p ui.CollapsibleParts
+			ui.Row(c).FillWidth().Gap(k.Px(2)).Children(func() {
+				p = ui.CollapsibleBase(c, open)
+				tr := p.Trigger.Label(L("Output of %s", j.Summary)).Grow(1).Shrink(1).MinWidth(0).Cursor(ui.CursorPointer)
+				if tr.Hovered() {
+					tr.Background(t.Accent)
+				}
+				row(tr, j, func() {
+					ui.Box(c).Size(k.Px(24), k.Px(24)).Center().Shrink(0).Children(func() {
+						k.Icon(c, "chevron-down", 12, t.MutedForeground).Rotate(180 * p.Progress())
+					})
 				})
+				stop(j)
 			})
 			p.Panel(func() {
 				ui.Column(c).Margin(k.Px(2), 0, k.Px(4), 0).Radius(k.Px(6)).Border(1, t.Border).Background(t.Card.Alpha(0.6)).Clip().

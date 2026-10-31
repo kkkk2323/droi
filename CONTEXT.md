@@ -204,3 +204,7 @@ _Avoid_: branch (on its own), sandbox, checkout
 A question the Daemon asks the human mid-turn: a permission request for a tool call, or an ask-user questionnaire. The Daemon sends it to every Client attached to the Session; the first answer wins and the Daemon then tells every Client the Prompt is resolved.
 _Avoid_: confirmation, approval dialog, permission request (when the ask-user case is included)
 
+**Queued Question**:
+An ask-user Prompt droid 1.1 asks without stopping the agent (AskUser with `blocking: false`): the agent works on, and the answers, or the dismissal, reach it at a later turn as a record message. Clients show it above the composer, which stays usable, and count it as waiting for the human only once the agent rests.
+_Avoid_: non-blocking prompt, async question, deferred question
+

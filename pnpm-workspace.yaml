@@ -7,4 +7,5 @@ onlyBuiltDependencies:
   - esbuild
 
 patchedDependencies:
+  '@factory/droid-sdk@0.10.0': patches/@factory__droid-sdk@0.10.0.patch
   '@factory/droid-sdk@0.9.1': patches/@factory__droid-sdk@0.9.1.patch

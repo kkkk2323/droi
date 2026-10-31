@@ -35,3 +35,19 @@ func TestReadSpec(t *testing.T) {
 	// declined plan comes back as an error.
 	eq(t, ReadSpec(specCall(t, `[{"type":"tool_result","toolUseId":"spec","content":"Spec mode exited."}]`)).State, SpecApproved)
 }
+
+// The first message of a Session a spec handoff started, as droid 1.1's
+// buildSpecHandoffPrompt writes it, with and without the user's note.
+func TestReadSpecHandoff(t *testing.T) {
+	const details = "If you need specific details from the planning session (like exact code snippets, error messages, or content generated), read the full transcript at: /Users/dev/.factory/sessions/a.jsonl"
+	got, ok := ReadSpecHandoff("Implement the following plan:\n\nUser note: Keep it short\n\n## Steps\n\n1. Add hello.txt\n\n" + details)
+	eq(t, []any{got, ok}, []any{SpecHandoff{Note: "Keep it short", Plan: "## Steps\n\n1. Add hello.txt", Source: "/Users/dev/.factory/sessions/a.jsonl"}, true})
+	got, ok = ReadSpecHandoff("Implement the following plan:\n\n1. Add hello.txt\n\nIf you need specific details from the planning session, read the full spec at: /repo/specs/hello.md")
+	eq(t, []any{got, ok}, []any{SpecHandoff{Plan: "1. Add hello.txt", Source: "/repo/specs/hello.md"}, true})
+	for _, text := range []string{"Implement the following plan:\n\n1. Add hello.txt", "Please implement the following plan:\n\n1.\n\n" + details} {
+		if _, ok := ReadSpecHandoff(text); ok {
+			t.Errorf("%q read as a handoff", text)
+		}
+	}
+	eq(t, []string{PlanTitle("## Steps\n\n1. Add"), PlanTitle("\n1. Add hello.txt\n2. Check"), PlanTitle("")}, []string{"Steps", "1. Add hello.txt", ""})
+}

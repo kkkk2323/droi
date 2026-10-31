@@ -22,7 +22,7 @@ import (
 )
 
 // ServerName is the Memory Server's name in the Runtime Overlay and in MCP.
-const ServerName = "droi-memory"
+const ServerName = "memory"
 
 //go:embed tools.json
 var toolsJSON []byte
@@ -87,7 +87,7 @@ func HandleToolCall(o ServerOptions, name string, args map[string]any, sessionID
 			if err := RecordRead(o.Dir, rel); err != nil {
 				// Reads only keep a Session Summary from aging out; a lost one
 				// must not fail the call.
-				fmt.Fprintf(o.stderr(), "droi-memory: read log failed: %s\n", err)
+				fmt.Fprintf(o.stderr(), "memory: read log failed: %s\n", err)
 			}
 		}
 		return mcpserver.Text(numbered(rel, string(b), intArg(args, "offset", 1, math.MaxInt32), intArg(args, "limit", 2_000, 2_000)), false), nil

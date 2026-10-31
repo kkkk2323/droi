@@ -4,7 +4,9 @@
 import { describe, expect, test } from 'vitest'
 import {
   DaemonRequestPermissionSchema,
+  DaemonSessionController,
   LOCAL_MACHINE_ID,
+  MachineType,
   SessionNotificationPayloadSchema,
 } from '@factory/droid-sdk'
 import type { FactoryDroidMessage } from '@factory/droid-sdk'
@@ -131,6 +133,7 @@ describe('SDK state manager as the turn reducer', () => {
                   confirmation: {
                     type: 'exec',
                     fullCommand: 'touch probe.txt',
+                    command: 'touch',
                     impactLevel: 'medium',
                   },
                 },
@@ -142,6 +145,61 @@ describe('SDK state manager as the turn reducer', () => {
       },
     })
     expect(parsed.success).toBe(true)
+  })
+
+  // The SDK answers "cancel" for a restored request it cannot parse (a type or
+  // option newer than it), deciding a Prompt the user never saw. Patched out.
+  test('opening a Session never answers a pending request the SDK cannot parse', async () => {
+    const sent: Array<[string, unknown]> = []
+    const controller = new DaemonSessionController({
+      sessionStateManager: createSessionState(),
+      config: {
+        machineId: LOCAL_MACHINE_ID,
+        machineType: MachineType.Local,
+        url: 'ws://127.0.0.1:1',
+        clientType: 'web',
+        getCredential: async () => ({ apiKey: 'test' }),
+        supportsTerminalRestoreOnLoad: false,
+      },
+    })
+    const toolUse = (id: string) => ({ type: 'tool_use', id, name: 'Execute', input: {} })
+    const daemonClient = {
+      loadSession: async () => ({
+        session: { messages: [] },
+        pendingPermissions: [
+          {
+            requestId: 'unknown-type',
+            toolUses: [
+              { toolUse: toolUse('call-1'), confirmationType: 'newer', details: { type: 'newer' } },
+            ],
+            options: [{ label: 'Yes', value: 'proceed_once' }],
+          },
+          {
+            requestId: 'known',
+            toolUses: [
+              {
+                toolUse: toolUse('call-2'),
+                confirmationType: 'exec',
+                details: { type: 'exec', fullCommand: 'ls', command: 'ls' },
+              },
+            ],
+            options: [{ label: 'Yes', value: 'proceed_once' }],
+          },
+        ],
+      }),
+      sendPermissionResponse: (id: string, result: unknown) => void sent.push([id, result]),
+    }
+    Object.assign(controller, {
+      daemonClient: new Proxy(daemonClient, {
+        get: (target, prop) =>
+          prop in target ? target[prop as keyof typeof target] : () => undefined,
+      }),
+    })
+    await controller.loadSession({ sessionId: SESSION })
+    expect(sent).toEqual([])
+    expect(controller.getPendingPermissionsForSession(SESSION).map((p) => p.requestId)).toEqual([
+      'known',
+    ])
   })
 
   test("a Script's calls arrive after it, tagged with the run", () => {
