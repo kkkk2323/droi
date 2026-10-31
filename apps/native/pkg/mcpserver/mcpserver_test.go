@@ -34,6 +34,10 @@ func testServer(calls *[]call) Server {
 				return Result{}, errors.New("the store is busy")
 			case "refuse":
 				return Text("not here", true), nil
+			case "count":
+				r := Text("3 pods", false)
+				r.StructuredContent = map[string]any{"pods": 3, "note": "<all>"}
+				return r, nil
 			}
 			return Text("<ok>", false), nil
 		},
@@ -92,6 +96,12 @@ func TestToolsCallMarksAnErrorResult(t *testing.T) {
 	var calls []call
 	got := serve(t, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"refuse"}}`+"\n", testServer(&calls))
 	eq(t, got, `{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"not here"}],"isError":true}}`+"\n")
+}
+
+func TestToolsCallAnswersStructuredContentAfterTheText(t *testing.T) {
+	var calls []call
+	got := serve(t, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"count"}}`+"\n", testServer(&calls))
+	eq(t, got, `{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"3 pods"}],"structuredContent":{"note":"<all>","pods":3}}}`+"\n")
 }
 
 func TestACallErrorBecomesAnErrorResult(t *testing.T) {

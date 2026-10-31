@@ -65,7 +65,13 @@ type Content struct {
 // Result is a tools/call answer.
 type Result struct {
 	Content []Content `json:"content"`
-	IsError bool      `json:"isError,omitempty"`
+	// StructuredContent is the result as a JSON object, for a tool whose
+	// tools/list entry declares an outputSchema; it is left out when nil. A
+	// Daemon fails a call of such a tool that answers without it, unless the
+	// call failed (IsError). Content should still carry the same result as
+	// text, for clients that read only that.
+	StructuredContent any  `json:"structuredContent,omitempty"`
+	IsError           bool `json:"isError,omitempty"`
 }
 
 // Text is a Result of one text block; isError marks it as the tool's failure.
