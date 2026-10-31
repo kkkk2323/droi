@@ -277,6 +277,50 @@ func TestSupervisorRestartsAfterCrash(t *testing.T) {
 	}
 }
 
+// Stop asks through Terminate and waits StopGrace before it kills; Exited
+// hears of the end either way.
+func TestSupervisorStopsThroughTerminate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sleep")
+	}
+	var mu sync.Mutex
+	var terminated, exited []*exec.Cmd
+	spawned := make(chan *exec.Cmd, 1)
+	s := &Supervisor{
+		ReadyTimeout: 10 * time.Second,
+		StopGrace:    200 * time.Millisecond,
+		Spawn: func(int) (*exec.Cmd, error) {
+			cmd := exec.Command("/bin/sleep", "30")
+			err := cmd.Start()
+			spawned <- cmd
+			return cmd, err
+		},
+		Terminate: func(cmd *exec.Cmd) { mu.Lock(); terminated = append(terminated, cmd); mu.Unlock() },
+		Exited:    func(cmd *exec.Cmd) { mu.Lock(); exited = append(exited, cmd); mu.Unlock() },
+	}
+	s.Start()
+	cmd := <-spawned
+	// The child is the Supervisor's once launch took it.
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		s.mu.Lock()
+		taken := s.child != nil
+		s.mu.Unlock()
+		if taken {
+			break
+		}
+	}
+	start := time.Now()
+	s.Stop()
+	if took := time.Since(start); took < 200*time.Millisecond || took > 5*time.Second {
+		t.Errorf("Stop took %v, want the grace and then a kill", took)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(terminated) != 1 || terminated[0] != cmd || len(exited) != 1 || exited[0] != cmd {
+		t.Fatalf("terminated %v, exited %v", terminated, exited)
+	}
+}
+
 func TestSupervisorKeepsWhyTheLastAttemptFailed(t *testing.T) {
 	var mu sync.Mutex
 	var states []DaemonState

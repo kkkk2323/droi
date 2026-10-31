@@ -36,7 +36,8 @@ type Extension struct {
 	SystemPrompt func() string
 	// Commands are subcommands of the app's executable, by name, run in
 	// place of the window with what follows the name; each returns the exit
-	// code. Droi's own (memory-server, memory-hook, host) cannot be taken.
+	// code. Droi's own (memory-server, memory-hook, daemon-anchor, host)
+	// cannot be taken.
 	Commands map[string]func(args []string) int
 	// Pages are shown in the sidebar under Automations, in this order.
 	Pages []Page

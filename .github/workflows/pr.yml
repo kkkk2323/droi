@@ -78,6 +78,8 @@ jobs:
 
       - run: go test ./apps/native/pkg/droidhook/... ./apps/native/pkg/keypool ./apps/native/pkg/llmproxy/... ./apps/native/internal/llmusage
 
+      - run: go test ./apps/native/pkg/host -run 'TestTheDaemonSeesItsAnchorGo|TestTheDaemonAnchorEndsWhenItsInputCloses'
+
   phone-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -73,6 +73,8 @@ type Host struct {
 	// hookReady is the file the running Daemon's hook checks in at, "" for
 	// a Daemon without the hook.
 	hookReady string
+	// anchors are the Daemons' anchors on Windows, by the Daemon's process.
+	anchors   map[*exec.Cmd]*anchor
 	updating  DroidUpdate
 	listeners map[int]func()
 	next      int
@@ -145,7 +147,8 @@ func New(cfg Config) *Host {
 		h.Auth.handOver(writeCli)
 	}
 	h.wasIn = h.Auth.State().Status == SignedIn
-	h.Daemon = &Supervisor{Spawn: h.spawn, Check: h.checkDaemon, OnState: func(DaemonState) { h.changed() }}
+	h.Daemon = &Supervisor{Spawn: h.spawn, Check: h.checkDaemon, OnState: func(DaemonState) { h.changed() },
+		Terminate: h.terminateDaemon, Exited: h.daemonExited}
 	return h
 }
 
@@ -429,8 +432,14 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 	var liveness []string
 	var extra []*os.File
 	var pipeW *os.File
+	var anch *anchor
 	if runtime.GOOS == "windows" {
 		liveness = []string{"--parent-pid", itoaPID()}
+		if h.cfg.Executable != "" {
+			if a, err := startAnchor(h.cfg.Executable, DaemonAnchorCommand); err == nil {
+				anch, liveness = a, []string{"--parent-pid", a.pid()}
+			}
+		}
 	} else {
 		// The Daemon exits when the Host dies: fd 3 closes the moment this
 		// process ends, which PID polling can mistake through PID reuse.
@@ -463,6 +472,9 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 		defer log.Close()
 	}
 	if err := cmd.Start(); err != nil {
+		if anch != nil {
+			anch.end()
+		}
 		if pipeW != nil {
 			pipeW.Close()
 		}
@@ -478,7 +490,40 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 		// Held for the life of the process; it closes when the Host exits.
 		keepAlive(pipeW)
 	}
+	if anch != nil {
+		h.mu.Lock()
+		if h.anchors == nil {
+			h.anchors = map[*exec.Cmd]*anchor{}
+		}
+		h.anchors[cmd] = anch
+		h.mu.Unlock()
+	}
 	return cmd, nil
+}
+
+// terminateDaemon asks the Daemon of cmd to shut down in order: SIGTERM, or
+// on Windows the end of its anchor. A Windows Daemon without one is killed.
+func (h *Host) terminateDaemon(cmd *exec.Cmd) {
+	if a := h.takeAnchor(cmd); a != nil {
+		a.end()
+		return
+	}
+	_ = cmd.Process.Signal(terminateSignal())
+}
+
+// daemonExited ends the anchor of a Daemon that is gone.
+func (h *Host) daemonExited(cmd *exec.Cmd) {
+	if a := h.takeAnchor(cmd); a != nil {
+		a.end()
+	}
+}
+
+func (h *Host) takeAnchor(cmd *exec.Cmd) *anchor {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	a := h.anchors[cmd]
+	delete(h.anchors, cmd)
+	return a
 }
 
 var (

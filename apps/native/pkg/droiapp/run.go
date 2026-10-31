@@ -102,7 +102,8 @@ func Run(o Options) {
 		version = o.DevVersion
 	}
 	// The Runtime Overlay runs the app's own executable as the Memory Server
-	// and the hook; neither starts the app. `droi host` is a Host with no
+	// and the hook, and the Host runs it as a Windows Daemon's anchor; none
+	// starts the app. `droi host` is a Host with no
 	// window.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -110,6 +111,8 @@ func Run(o Options) {
 			os.Exit(memory.ServeMain())
 		case host.MemoryHookCommand:
 			os.Exit(memory.HookMain())
+		case host.DaemonAnchorCommand:
+			os.Exit(host.AnchorMain())
 		case "host":
 			if msg := hostUnsupported(runtime.GOOS); msg != "" {
 				fmt.Fprintln(os.Stderr, msg)
