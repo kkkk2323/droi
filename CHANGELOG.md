@@ -1,3 +1,9 @@
+## 1.85.1 - 2026-10-31
+
+### Fixed
+
+- The Phone App no longer quits as soon as it opens. 1.85.0's droid SDK loaded a cryptography library that the iPhone's JavaScript engine cannot run. The Phone App does not need it, so it no longer loads it.
+
 ## 1.85.0 - 2026-10-31
 
 ### Added
