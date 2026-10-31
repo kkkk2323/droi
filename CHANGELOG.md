@@ -1,3 +1,9 @@
+## 1.87.1 - 2026-10-31
+
+### Fixed
+
+- The Phone App connects to the computer again. Since 1.85.0 it said "Can't reach" the computer although Remote Access worked: 1.85.0's droid SDK uses a part of the cancel signal that the iPhone's JavaScript engine does not have, so every connection failed before it started. The Phone App now adds that part itself.
+
 ## 1.87.0 - 2026-10-31
 
 ### Changed
