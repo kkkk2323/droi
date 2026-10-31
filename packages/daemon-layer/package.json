@@ -12,7 +12,7 @@
     "@types/react": "^19.3.0"
   },
   "peerDependencies": {
-    "@factory/droid-sdk": "0.9.1",
+    "@factory/droid-sdk": "0.10.0",
     "@tanstack/react-query": "^5.103.1",
     "react": ">=19.2"
   }

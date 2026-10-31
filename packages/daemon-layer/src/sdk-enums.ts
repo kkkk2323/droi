@@ -1,5 +1,5 @@
 // The SDK types these enums but does not export their runtime values, so the
-// Client carries the string literals. Verified against @factory/droid-sdk 0.9.1.
+// Client carries the string literals. Verified against @factory/droid-sdk 0.10.0.
 import type { DaemonSessionController, MultiSessionStateManager } from '@factory/droid-sdk'
 
 export type SessionEventName = Parameters<
