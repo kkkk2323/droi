@@ -25,11 +25,14 @@ type MarkdownStyle struct {
 	Roomy float32
 	Muted bool
 	Err   bool
+	// Wide lets a table wider than the reading column grow past it, as
+	// far as Markdown.SetRoom allows.
+	Wide bool
 }
 
 var (
-	mdReply    = MarkdownStyle{Size: 13, Roomy: 15}
-	mdError    = MarkdownStyle{Size: 13, Roomy: 15, Err: true}
+	mdReply    = MarkdownStyle{Size: 13, Roomy: 15, Wide: true}
+	mdError    = MarkdownStyle{Size: 13, Roomy: 15, Err: true, Wide: true}
 	mdThinking = MarkdownStyle{Size: 13, Roomy: 14, Muted: true}
 	mdReport   = MarkdownStyle{Size: 13}
 )
@@ -49,9 +52,51 @@ type Markdown struct {
 
 	kit      *kit.Kit
 	opts     map[MarkdownStyle]*markdown.Options
+	tables   map[tableOptionsKey]*markdown.Options
+	measured map[tableKey]tableLayout
 	images   sync.Map // url → *mdImage
 	diagrams map[diagramKey]*diagram
+	// textW is the reading column's width inside its padding, and wideW
+	// how wide a Wide style's table may be, centered on the column.
+	textW, wideW float32
 }
+
+// tableOptionsKey keys the options of the tables a Wide style lays out
+// itself: open while one is still being written, and col the widest its
+// columns' text may be, in quarter ems.
+type tableOptionsKey struct {
+	style MarkdownStyle
+	open  bool
+	col   int
+}
+
+// tableKey keys a table's measures: its source, at a theme's sizes.
+type tableKey struct {
+	src string
+	th  *markdown.Theme
+}
+
+// wideTableScroll keys the sideways scrolling of a table wider than the
+// room there is.
+type wideTableScroll struct{}
+
+const (
+	// wideTableMax is how wide, in px of the default text size, a table
+	// grows past the reading column at most.
+	wideTableMax = 1200
+	// wideTableMargin is the room, in px of the default text size, a
+	// table past the column keeps from the transcript list's sides,
+	// clear of what Env.Overlay draws along them (Droi's TurnRail).
+	wideTableMargin = 40
+	// tableMinColumn is the narrowest, in ems, a column's text wraps at
+	// for its table to fit: narrower, the table scrolls sideways instead.
+	tableMinColumn = 10
+)
+
+// SetRoom sets the width the reading column's text takes and how wide a
+// table may grow past it, centered on it; a table stays in the column
+// while wide is not the larger.
+func (m *Markdown) SetRoom(text, wide float32) { m.textW, m.wideW = text, wide }
 
 // mdImage is an image a reply names, loading or loaded.
 type mdImage struct {
@@ -63,7 +108,7 @@ type mdImage struct {
 // changes (the theme, the font, the text size, the density or the zoom).
 func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 	if m.kit != k || m.opts == nil {
-		m.kit, m.opts = k, map[MarkdownStyle]*markdown.Options{}
+		m.kit, m.opts, m.tables, m.measured = k, map[MarkdownStyle]*markdown.Options{}, map[tableOptionsKey]*markdown.Options{}, nil
 	}
 	if o := m.opts[s]; o != nil {
 		return o
@@ -89,17 +134,213 @@ func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 	o.Code = map[string]func(c *ui.Context, b *markdown.CodeBlockView){
 		"mermaid": func(c *ui.Context, b *markdown.CodeBlockView) { m.mermaidBlock(c, k, b, em) },
 	}
-	if m.Load != nil && m.Enlarge != nil {
+	images := m.Load != nil && m.Enlarge != nil
+	if images || s.Wide {
 		o.Block = func(c *ui.Context, d *parser.Document, i int) bool {
-			if d.Block(i).Kind != parser.Paragraph || !imagesOnly(d.Inlines(i)) {
-				return false
+			switch b := d.Block(i); {
+			case s.Wide && b.Kind == parser.Table:
+				return m.wideTable(c, k, d, i, s)
+			case images && b.Kind == parser.Paragraph && imagesOnly(d.Inlines(i)):
+				m.imageRow(c, k, d.Inlines(i), em)
+				return true
 			}
-			m.imageRow(c, k, d.Inlines(i), em)
-			return true
+			return false
 		}
 	}
 	m.opts[s] = o
 	return o
+}
+
+// wideTable lays out a top-level table wider than the reading column:
+// past the column, centered on it, as wide as its columns ask up to the
+// room there is. Where they ask for more, its widest columns wrap
+// sooner, down to tableMinColumn ems, and beyond that it scrolls
+// sideways, faded at the edges that hide more of it. markdown.View lays a
+// table out within its own column, so such a table is a view of its own.
+func (m *Markdown) wideTable(c *ui.Context, k *kit.Kit, d *parser.Document, i int, s MarkdownStyle) bool {
+	b := d.Block(i)
+	if b.Parent != 0 || m.textW <= 0 {
+		return false
+	}
+	src := tableSource(d, b)
+	l := m.measure(c, src, d, i, m.opts[s].Theme)
+	if l.width(l.maxCol) <= m.textW {
+		return false
+	}
+	room := max(m.textW, m.wideW)
+	col := l.fit(room)
+	w := l.width(col)
+	o := m.tableOptions(k, s, b.Open, col)
+	show := func() {
+		// The outer view reveals the table as it streams in: this one shows
+		// what it is given at once, and carries on its parse once it ends.
+		if b.Open {
+			markdown.Stream(c, src, o)
+		} else {
+			markdown.View(c, src, o)
+		}
+	}
+	box := ui.Column(c).Width(min(w, room)).Shrink(0).AlignSelf(ui.Center)
+	box.Children(func() {
+		if w <= room {
+			show()
+			return
+		}
+		st := *ui.Local(box, wideTableScroll{}, func() *ui.ScrollState { return new(ui.ScrollState) })
+		ui.ScrollHorizontal(c).TrackScroll(st).FillWidth().Children(func() {
+			ui.Column(c).Width(w).Shrink(0).Children(show)
+		})
+		bg, fade := k.T.Background, k.Px(32)
+		if st.X > 0 {
+			ui.Box(c).Absolute().Top(0).Bottom(0).Left(0).Width(fade).Gradient(bg, bg.Alpha(0), 90).PassThrough()
+		}
+		if st.X < st.MaxX {
+			ui.Box(c).Absolute().Top(0).Bottom(0).Right(0).Width(fade).Gradient(bg.Alpha(0), bg, 90).PassThrough()
+		}
+	})
+	return true
+}
+
+// tableSource is table b's source for a view of its own. A table at the
+// end of a source stays open, its columns only growing, as while it is
+// written: one that is done ends in a blank line, so that its columns
+// narrow again when the room does.
+func tableSource(d *parser.Document, b *parser.Block) string {
+	src := d.Source()
+	if b.Open {
+		return src[b.Start:b.End]
+	}
+	end := b.End
+	for end < len(src) && end < b.End+2 && src[end] == '\n' {
+		end++
+	}
+	if strings.HasSuffix(src[b.Start:end], "\n\n") {
+		return src[b.Start:end]
+	}
+	return strings.TrimRight(src[b.Start:end], "\n") + "\n\n"
+}
+
+// tableOptions are style s's options for a table it lays out itself,
+// open while the table is still being written, its columns' text wrapping
+// at col ems.
+func (m *Markdown) tableOptions(k *kit.Kit, s MarkdownStyle, open bool, col float32) *markdown.Options {
+	key := tableOptionsKey{s, open, int(col * 4)}
+	if o := m.tables[key]; o != nil {
+		return o
+	}
+	th := *m.Options(k, s).Theme
+	th.TableMaxColumn = col
+	o := &markdown.Options{Theme: &th, LoadImage: m.Load, ShareSelection: !m.Own}
+	if open {
+		o.Reveal = &markdown.Reveal{Unit: markdown.AtOnce, Fade: -1}
+	}
+	m.tables[key] = o
+	return o
+}
+
+// tableLayout is how markdown.View lays a table's columns out: the width
+// of the widest cell's text in each, and the room around a column's text,
+// in DIPs; em is the theme's, and maxCol its TableMaxColumn.
+type tableLayout struct {
+	text       []float32
+	pad        float32
+	em, maxCol float32
+}
+
+// width is the table's width with its columns' text wrapping at col ems,
+// inside its border.
+func (l tableLayout) width(col float32) float32 {
+	w := float32(2)
+	for _, t := range l.text {
+		w += min(t, col*l.em) + l.pad
+	}
+	return w
+}
+
+// fit is the widest, in quarter ems, that the columns' text may be for the
+// table to fit in room, from maxCol down to tableMinColumn.
+func (l tableLayout) fit(room float32) float32 {
+	for col := l.maxCol; col > tableMinColumn; col -= 0.25 {
+		if l.width(col) <= room {
+			return col
+		}
+	}
+	return tableMinColumn
+}
+
+// measure measures table i, whose source is src, as markdown.View draws
+// it with theme th, once for each source and theme.
+func (m *Markdown) measure(c *ui.Context, src string, d *parser.Document, i int, th *markdown.Theme) tableLayout {
+	key := tableKey{src, th}
+	if l, ok := m.measured[key]; ok {
+		return l
+	}
+	if m.measured == nil || len(m.measured) >= 64 {
+		m.measured = map[tableKey]tableLayout{}
+	}
+	l := measureTable(c, d, i, th)
+	m.measured[key] = l
+	return l
+}
+
+// measureTable measures each cell's text in the fonts markdown.View draws
+// it with: the header's and strong text bold, code in the code font, with
+// the room its background takes past the glyphs.
+func measureTable(c *ui.Context, d *parser.Document, i int, th *markdown.Theme) tableLayout {
+	em := th.FontSize
+	maxCol, padX, code := th.TableMaxColumn, th.TableCellPadding[0], th.CodeSize
+	if maxCol == 0 {
+		maxCol = 24
+	}
+	if padX == 0 {
+		padX = 0.6
+	}
+	if code == 0 {
+		code = 0.875
+	}
+	l := tableLayout{text: make([]float32, len(d.Block(i).Align)), pad: 2*em*padX + 1, em: em, maxCol: maxCol}
+	var spans []ui.Span
+	for r := i + 1; r < d.Block(i).Next; r = d.Block(r).Next {
+		weight := 400
+		if d.Block(r).Header {
+			weight = 600
+		}
+		col := 0
+		for cell := r + 1; cell < d.Block(r).Next && col < len(l.text); cell = d.Block(cell).Next {
+			spans = spans[:0]
+			slack := float32(1)
+			in := d.Inlines(cell)
+			// strongTo is the end of the strong text the inlines are in: a
+			// node's children follow it, up to its Next.
+			strongTo := 0
+			for j := range in {
+				n := &in[j]
+				if n.Kind == parser.Strong {
+					strongTo = max(strongTo, n.Next)
+				}
+				wt := weight
+				if j < strongTo {
+					wt = 600
+				}
+				switch n.Kind {
+				case parser.Text, parser.HTML, parser.Math:
+					spans = append(spans, ui.Span{Text: n.Text, Font: th.Font, Size: em, Weight: wt})
+				case parser.Code:
+					spans = append(spans, ui.Span{Text: n.Text, Font: th.CodeFont, Size: em * code, Weight: wt})
+					slack += em * 0.3
+				case parser.SoftBreak, parser.LineBreak:
+					spans = append(spans, ui.Span{Text: " ", Font: th.Font, Size: em, Weight: wt})
+				}
+			}
+			var tw float32
+			if len(spans) > 0 {
+				tw, _ = c.MeasureText(0, spans...)
+			}
+			l.text[col] = max(l.text[col], tw+slack)
+			col++
+		}
+	}
+	return l
 }
 
 // imageRow shows a paragraph of images alone as markdown.View does, each
