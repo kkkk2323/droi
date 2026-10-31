@@ -1,3 +1,24 @@
+## 1.85.0 - 2026-10-31
+
+### Added
+
+- Droid's queued questions (droid 1.1) sit above the composer, which stays usable: you can keep typing, and Escape still stops the turn. A queued question counts as needing input only once Droid rests, and its answers show in the transcript as one card. You can fold a question or dismiss it.
+- The background tasks list has Stop for each command droid runs in the background (droid 1.0 or newer), also for a Session on another computer. The list also shows a command whose start is older than the messages Droi loaded.
+- While droid retries a model request, the session's activity row says "Retrying the model request (attempt N)…", so a retry no longer looks like a hang. This happens, for example, when the Key Pool moves to another key.
+- A Session started from an approved spec shows the plan as a folded "Approved plan" card instead of the long first message.
+
+### Changed
+
+- Droi's Memory Server is now named `memory`. Sessions from before still show their `droi-memory` calls. A `memory` server in your own `mcp.json` stays yours.
+- When Droi stops or restarts the Daemon, it waits up to 12 seconds (before, 3) so that droid can save its work. On Windows Droi asks the Daemon to stop instead of ending it at once.
+- A custom model whose id names no company shows the brand of the model it behaves like.
+- The Phone App runs on Factory's droid SDK 0.10.0. Opening a Session on the phone no longer cancels a permission request that the phone cannot read: the request waits for a Client that can answer it.
+
+### Fixed
+
+- After the connection to the Daemon drops, a queued message is no longer lost or sent twice. Droi keeps it and checks the Daemon's queue when it connects again. Messages show in the order the Daemon stored them.
+- A WaitForScript row says "stopped" when the model stopped a Script and "checked" when it only checked on one. Before, it always said "continued".
+- A subagent's card shows that it ended as soon as droid 1.1 says so in the parent Session.
 ## 1.84.0 - 2026-10-30
 
 ### Changed
