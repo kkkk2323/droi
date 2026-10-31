@@ -1,3 +1,9 @@
+## 1.86.0 - 2026-10-31
+
+### Added
+
+- An app built on Droi can answer a tool call of its MCP servers with a structured result (MCP's `structuredContent`) next to its text (ADR 0029). A tool that declares an output schema needs one, and a Script then reads the result as an object. Droi itself looks and works as before.
+
 ## 1.85.1 - 2026-10-31
 
 ### Fixed
