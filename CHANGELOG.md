@@ -1,3 +1,9 @@
+## 1.87.0 - 2026-10-31
+
+### Changed
+
+- A table in a reply that is wider than the text grows past the text column, up to the room in the transcript, and stays centered on the text. If it still does not fit, its longest columns wrap sooner. Only a table with many columns in a narrow window still scrolls sideways, and then a fade at its edge shows that more is there. The text keeps its width, so lines stay easy to read.
+
 ## 1.86.0 - 2026-10-31
 
 ### Added

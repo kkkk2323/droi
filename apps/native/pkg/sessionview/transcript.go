@@ -67,6 +67,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 		}
 		return rows[i-1].key
 	}
+	v.setRoom(k)
 	ui.Box(c).Fill().Children(func() {
 		list := ui.List(c, &v.list, n, func(i int) {
 			switch {
@@ -78,6 +79,11 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 				v.row(c, rows[i-1])
 			}
 		}).Fill().Label(l10n.L("Transcript")).PaddingX(scrollGutter)
+		if w := list.Bounds().W; w > 0 && w != transcriptWidth {
+			// The rows were built for the width before: build them again.
+			transcriptWidth = w
+			c.AnimationFrame()
+		}
 		if v.pendingJump != "" {
 			for i, e := range entries {
 				if e.ID == v.pendingJump {
@@ -108,6 +114,23 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 			}
 		}
 	})
+}
+
+// transcriptWidth is the transcript list's width in the frame before,
+// shared by the Sessions' views, so that a page just opened lays its rows
+// out for the width the list will have. Only the UI thread reads it.
+var transcriptWidth float32
+
+// setRoom tells the Markdown of the replies how wide the reading column's
+// text is in the transcript list, and how wide a table may grow past it:
+// as the list, but for wideTableMargin on each side, up to wideTableMax.
+func (v *View) setRoom(k *kit.Kit) {
+	inner := transcriptWidth - 2*scrollGutter
+	if inner <= 0 {
+		v.md.SetRoom(0, 0)
+		return
+	}
+	v.md.SetRoom(min(k.Px(ColumnWidth), inner)-2*k.Px(24), min(inner-2*k.Px(wideTableMargin), k.Px(wideTableMax)))
 }
 
 // scrollGutter is the room the web Client's transcript keeps for its
