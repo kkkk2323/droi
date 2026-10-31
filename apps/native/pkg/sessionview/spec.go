@@ -65,6 +65,52 @@ func (v *View) specCard(c *ui.Context, call *transcript.ToolCall) {
 	})
 }
 
+// handoffCard is the first message of a Session an approved spec started:
+// the plan it carries out, folded under its title as the spec's card is,
+// with the user's note and the file that holds the planning.
+func (v *View) handoffCard(c *ui.Context, id string, h transcript.SpecHandoff) {
+	k, t := v.look()
+	title := transcript.PlanTitle(h.Plan)
+	open := v.flag("handoff:"+id, false)
+	v.column(c).Role(ui.RoleGroup).Label(l10n.L("You")).AlignItems(ui.End).PaddingY(k.Px(12)).Children(func() {
+		ui.Column(c).Role(ui.RoleGroup).Label(l10n.L("Approved plan")).FillWidth().MaxWidthPercent(85).Radius(k.Px(12)).Border(1, t.Border).
+			Background(t.Card.Alpha(0.6)).Clip().Children(func() {
+			p := ui.CollapsibleBase(c, open)
+			v.holdOnToggle(p.Trigger)
+			tr := p.Trigger.Label(l10n.L("Approved plan")).FillWidth().Gap(k.Px(10)).Padding(k.Px(8), k.Px(10)).Cursor(ui.CursorPointer)
+			if tr.Hovered() {
+				tr.Background(t.Muted.Alpha(0.6))
+			}
+			tr.Children(func() {
+				ui.Box(c).Size(k.Px(28), k.Px(28)).Radius(k.Px(8)).Background(t.Muted).Center().Shrink(0).Children(func() {
+					k.Icon(c, "list-checks", 14, t.MutedForeground)
+				})
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					k.Text(c, l10n.L("Approved plan"), 13, 19.5).FontWeight(500).TextColor(t.Foreground)
+					if title != "" {
+						k.Text(c, title, 11.5, 17.25).TextColor(t.MutedForeground).SingleLine()
+					}
+				})
+				k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
+			})
+			p.Panel(func() {
+				ui.Column(c).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Padding(k.Px(10), k.Px(14), k.Px(12), k.Px(14)).Gap(k.Px(8)).Children(func() {
+					if h.Note != "" {
+						ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Start).Padding(k.Px(6), k.Px(10)).Radius(k.Px(8)).Background(t.Muted.Alpha(0.6)).Children(func() {
+							k.Icon(c, "message-square", 12, t.MutedForeground).Margin(k.Px(3), 0, 0, 0)
+							k.Text(c, h.Note, 12.5, 19).TextColor(t.Foreground).Selectable().Grow(1).MinWidth(0)
+						})
+					}
+					ui.Column(c).Selectable().Children(func() {
+						markdownText(c, h.Plan, v.md.Options(k, mdSpec), false)
+					})
+					k.Text(c, l10n.L("Planning details are in %s", h.Source), 11.5, 17.25).TextColor(t.MutedForeground).Selectable()
+				})
+			})
+		})
+	})
+}
+
 // specState is the line under a spec's title: waiting, approved (here or
 // in a new Session), or sent back to plan further.
 func specState(c *ui.Context, k *kit.Kit, spec transcript.SpecPlan) {

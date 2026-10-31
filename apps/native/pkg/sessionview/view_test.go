@@ -202,6 +202,49 @@ func TestAPermissionIsAnsweredFromItsCard(t *testing.T) {
 	h.until("the composer back", func() bool { _, ok := h.tt.Find("Message"); return ok })
 }
 
+// A queued question sits above the plain composer, which stays; answering
+// it shows the record and not the receipt.
+func TestAQueuedQuestionSitsAboveThePlainComposer(t *testing.T) {
+	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "queuedAskUser", Question: "Which region?", Options: []string{"eu-west", "us-east"},
+		Context: "The region decides the CDN.", Reply: "Building meanwhile."}))
+	h.send("Ship it")
+	h.until("the queued question", func() bool { return h.hasText("Which region?") && h.hasText("Building meanwhile.") })
+	card, ok := h.tt.Find("Droid has a queued question")
+	composer, hasComposer := h.tt.Find("Message")
+	if !ok || !hasComposer || card.Y+card.H > composer.Y {
+		t.Fatalf("the card %v (%v) is not above the composer %v (%v)", card, ok, composer, hasComposer)
+	}
+	if err := h.tt.Click("eu-west"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if err := h.tt.Click("Answer"); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the record", func() bool { return h.hasText("Answered queued questions") && h.hasText("Noted: eu-west.") })
+	if _, ok := h.tt.Find("Droid has a queued question"); ok {
+		t.Error("the card stays after the answer")
+	}
+}
+
+func TestWaitsOnUser(t *testing.T) {
+	queued, blocking := controller.AskUser{Queued: true}, controller.AskUser{}
+	for _, c := range []struct {
+		perms []controller.Permission
+		asks  []controller.AskUser
+		want  bool
+	}{
+		{nil, nil, false},
+		{nil, []controller.AskUser{queued}, false},
+		{nil, []controller.AskUser{queued, blocking}, true},
+		{[]controller.Permission{{}}, []controller.AskUser{queued}, true},
+	} {
+		if got := WaitsOnUser(c.perms, c.asks); got != c.want {
+			t.Errorf("WaitsOnUser(%d perms, %+v) = %v", len(c.perms), c.asks, got)
+		}
+	}
+}
+
 func TestAPermissionCancelsOnTheLeftAndAllowsOnTheRight(t *testing.T) {
 	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "permission", Command: "rm -rf build", Reply: "Build directory removed."}))
 	h.send("Clean the build dir")

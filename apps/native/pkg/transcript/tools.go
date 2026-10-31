@@ -150,6 +150,9 @@ var headlineKeys = []string{"summary", "command", "file_path", "path", "pattern"
 // stands alone; any other tool shows its first few short inputs as
 // `key: value` pairs.
 func SummaryParts(c *ToolCall) []SummaryPart {
+	if c.Queued != NotQueued {
+		return queuedParts(c)
+	}
 	for _, k := range headlineKeys {
 		if v, ok := c.Input[k].(string); ok && strings.TrimSpace(v) != "" {
 			return []SummaryPart{{Value: firstLine(v, 120)}}

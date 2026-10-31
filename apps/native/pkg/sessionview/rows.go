@@ -1,6 +1,7 @@
 package sessionview
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -214,6 +215,10 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 // userEntry is the user's bubble on the right.
 func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
 	k, t := v.look()
+	if len(e.Blocks) == 1 && e.Blocks[0].Kind == transcript.QueuedAnswers {
+		v.queuedRecord(c, e.Blocks[0].Records)
+		return
+	}
 	var parts []string
 	var images []transcript.Block
 	for _, b := range e.Blocks {
@@ -223,6 +228,10 @@ func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
 		case transcript.Picture:
 			images = append(images, b)
 		}
+	}
+	if h, ok := transcript.ReadSpecHandoff(strings.Join(parts, "\n")); ok && len(images) == 0 {
+		v.handoffCard(c, e.ID, h)
+		return
 	}
 	text, texts := pasted.Split(strings.Join(parts, "\n"))
 	v.column(c).Role(ui.RoleGroup).Label(l10n.L("You")).AlignItems(ui.End).Gap(k.Px(6)).PaddingY(k.Px(12)).Children(func() {
@@ -255,6 +264,43 @@ func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
 			k.Text(c, text, k.Dense(13, 15), k.Dense(21, 24)).Selectable().MaxWidthPercent(85).Padding(k.Px(10), k.Px(14)).Radius(k.Px(12)).
 				Background(t.Secondary).TextColor(t.SecondaryForeground)
 		}
+	})
+}
+
+// queuedRecord is the user's answers to queued question sets, or their
+// dismissal, as the agent got them: a compact card in the bubble's place,
+// each question over its answer.
+func (v *View) queuedRecord(c *ui.Context, records []transcript.QueuedRecord) {
+	k, t := v.look()
+	title := transcript.QueuedTitle(records)
+	answered := slices.ContainsFunc(records, func(r transcript.QueuedRecord) bool { return !r.Dismissed })
+	v.column(c).Role(ui.RoleGroup).Label(l10n.L("You")).AlignItems(ui.End).PaddingY(k.Px(12)).Children(func() {
+		ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(6)).MaxWidthPercent(85).Padding(k.Px(8), k.Px(14), k.Px(10), k.Px(14)).
+			Radius(k.Px(12)).Background(t.Secondary).Children(func() {
+			ui.Row(c).Gap(k.Px(6)).Children(func() {
+				k.Icon(c, "message-circle-question-mark", 12, t.MutedForeground)
+				k.Text(c, title, 11, 16.5).FontWeight(600).TextColor(t.MutedForeground)
+			})
+			for _, r := range records {
+				for _, a := range r.Answers {
+					ui.Column(c).Gap(k.Px(2)).Children(func() {
+						k.Text(c, a.Question, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.MutedForeground).Selectable()
+						// A set dismissed among answered ones says so; alone, the title does.
+						if r.Dismissed && !answered {
+							return
+						}
+						answer, color := a.Answer, t.SecondaryForeground
+						if r.Dismissed {
+							answer, color = l10n.L("dismissed"), t.MutedForeground
+						}
+						ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Start).Children(func() {
+							k.Text(c, "↳", k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.MutedForeground).Shrink(0)
+							k.Text(c, answer, k.Dense(12, 13), k.Dense(18, 19.5)).FontWeight(500).TextColor(color).Selectable().Grow(1).MinWidth(0)
+						})
+					})
+				}
+			}
+		})
 	})
 }
 

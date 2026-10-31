@@ -35,9 +35,17 @@ func (st *askState) customAnswer(idx int) *string {
 	return p
 }
 
+// WaitsOnUser reports that the agent waits for one of the Prompts to be
+// answered: a permission, or a question set other than a queued one, past
+// which the agent keeps working. Those stand in for the composer; queued
+// sets alone sit above it.
+func WaitsOnUser(perms []controller.Permission, asks []controller.AskUser) bool {
+	return len(perms) > 0 || slices.ContainsFunc(asks, func(a controller.AskUser) bool { return !a.Queued })
+}
+
 // Prompts are the Session's open Prompts, perms and asks as the Controller
-// has them pending, drawn in the composer's place: a card each, which
-// answers the Daemon.
+// has them pending, drawn in the composer's place, or above it when all are
+// queued question sets: a card each, which answers the Daemon.
 func (v *View) Prompts(c *ui.Context, perms []controller.Permission, asks []controller.AskUser) {
 	k, t := v.look()
 	ui.Column(c).Gap(k.Px(8)).Shrink(0).Children(func() {
@@ -345,8 +353,13 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 			v.answerFailed(v.env.Controller.RespondToAskUser(v.env.Ctx, id, protocol.AskUserResult{Answers: answers}))
 		}()
 	}
-	v.promptCard(c, q.RequestID, l10n.L("Droid has a question"), func() {
-		if c.Shortcut(0, ui.KeyEscape) {
+	label, dismiss := l10n.L("Droid has a question"), l10n.L("Cancel")
+	if q.Queued {
+		label, dismiss = l10n.L("Droid has a queued question"), l10n.L("Dismiss")
+	}
+	v.promptCard(c, q.RequestID, label, func() {
+		// Escape stops the turn past a queued set, as without it.
+		if !q.Queued && c.Shortcut(0, ui.KeyEscape) {
 			cancel()
 		}
 		fold := l10n.L("Hide options")
@@ -363,6 +376,11 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 				k.Icon(c, "message-circle-question-mark", 12, t.MutedForeground)
 				k.Text(c, question.Topic, 11, 16.5).FontWeight(600).TextColor(t.MutedForeground)
 			})
+			if q.Queued {
+				ui.Row(c).Height(k.Px(18)).PaddingX(k.Px(6)).Radius(k.Px(5)).Background(t.Muted).Tooltip(l10n.L("Droid keeps working and reads your answer later")).Children(func() {
+					k.Text(c, l10n.L("Not blocking"), 10, 15).FontWeight(500).TextColor(t.MutedForeground)
+				})
+			}
 			if len(q.Questions) > 1 {
 				ui.Row(c).Height(k.Px(18)).PaddingX(k.Px(6)).Radius(k.Px(5)).Background(t.Muted).Children(func() {
 					k.Text(c, strconv.Itoa(st.step+1)+" / "+strconv.Itoa(len(q.Questions)), 10, 15).FontWeight(500).FontFeatures("tnum").TextColor(t.MutedForeground)
@@ -377,6 +395,9 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 		})
 		if header.Clicked() {
 			st.folded = !st.folded
+		}
+		if ctx := strings.TrimSpace(q.Context); ctx != "" && !st.folded {
+			k.Text(c, ctx, 12, 18).TextColor(t.MutedForeground).Margin(k.Px(6), 0, 0, 0).Selectable()
 		}
 		text := k.Text(c, question.Question, 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0).Selectable()
 		if st.folded {
@@ -444,7 +465,7 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 				st.step--
 			}
 			ui.Spacer(c)
-			if v.smallButton(c, kit.Ghost, l10n.L("Cancel")).Clicked() {
+			if v.smallButton(c, kit.Ghost, dismiss).Clicked() {
 				cancel()
 			}
 			next := l10n.L("Next")

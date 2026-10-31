@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
@@ -39,7 +40,7 @@ func (a *App) watchAlerts() (unsubscribe func()) {
 			if caller, _ := s.CallingSession(); caller != "" {
 				return
 			}
-			if ev := tracker.Update(e.SessionID, string(s.WorkingState())); ev != "" {
+			if ev := tracker.Update(e.SessionID, string(a.attentionState(s))); ev != "" {
 				id, title := e.SessionID, s.Title()
 				a.cfg.Update(func() { a.raise(id, title, ev) })
 			}
@@ -50,6 +51,17 @@ func (a *App) watchAlerts() (unsubscribe func()) {
 		a.cfg.Update(func() { a.raise(id, "", alerts.Completion) })
 	})
 	return unsubscribe
+}
+
+// attentionState is a Session's working state as its alerts and its mark in
+// the list read it: a queued question set waits on the user once the agent
+// rests, as the Daemon counts it, and not while it works past it.
+func (a *App) attentionState(s *session.Session) protocol.DroidWorkingState {
+	state := s.WorkingState()
+	if state == protocol.DroidWorkingStateIdle && len(a.ctl.PendingAskUsers(s.ID())) > 0 {
+		return protocol.DroidWorkingStateWaitingForToolConfirmation
+	}
+	return state
 }
 
 // raise is one alert, on the main thread.

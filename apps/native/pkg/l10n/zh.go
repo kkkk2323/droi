@@ -1434,4 +1434,15 @@ var zh = map[string]string{
 	"Yesterday":    "昨天",
 	"Earlier":      "更早",
 	"In %s":        "位于 %s",
+
+	"Droid has a queued question":                     "Droid 有一个排队问题",
+	"Not blocking":                                    "不阻塞",
+	"Droid keeps working and reads your answer later": "Droid 会继续工作，稍后读取你的回答",
+	"Answered queued questions":                       "已回答的排队问题",
+	"Dismissed queued questions":                      "已忽略的排队问题",
+	"waiting for your answer":                         "等待你回答",
+	"answered":                                        "已回答",
+	"dismissed":                                       "已忽略",
+	"Approved plan":                                   "已批准的计划",
+	"Planning details are in %s":                      "规划详情见 %s",
 }

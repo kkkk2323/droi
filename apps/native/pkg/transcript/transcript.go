@@ -46,6 +46,8 @@ type ToolCall struct {
 	// while this call was the latest one watching it.
 	Nested    []*ToolCall
 	Lifecycle bool
+	// Queued is where an AskUser call that queued its questions stands.
+	Queued QueuedState
 }
 
 type BlockKind uint8
@@ -60,6 +62,9 @@ const (
 	Subagent
 	// An ExitSpecMode call: the plan Spec mode made, shown on its own.
 	Spec
+	// The records of queued AskUser sets the user answered or dismissed,
+	// in a user entry: one block for records that follow each other.
+	QueuedAnswers
 )
 
 type Block struct {
@@ -71,6 +76,7 @@ type Block struct {
 	Streaming  bool
 	Calls      []*ToolCall
 	Call       *ToolCall
+	Records    []QueuedRecord
 }
 
 type Entry struct {
@@ -281,11 +287,27 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 		}
 	}
 
+	records, resolved := queuedRecords(messages)
+
 	// A call a Script made goes under the latest call watching its run, so the
 	// calls a WaitForScript saw show where that wait sits in the turn.
 	watching := map[string]*ToolCall{}
 	var entries []*Entry
 	for _, m := range messages {
+		if isReceipt(m) {
+			continue
+		}
+		if recs := records[m.ID]; recs != nil {
+			if n := len(entries); n > 0 && isRecordEntry(entries[n-1]) {
+				prev := entries[n-1]
+				prev.Blocks[0].Records = append(prev.Blocks[0].Records, recs...)
+				prev.CreatedAt = m.CreatedAt
+				continue
+			}
+			entries = append(entries, &Entry{ID: m.ID, User: true, CreatedAt: m.CreatedAt,
+				Blocks: []Block{{Kind: QueuedAnswers, ID: m.ID + ":0", Records: recs}}})
+			continue
+		}
 		role := m.Role
 		// A user-only message is the Daemon telling the user something (a
 		// usage limit, a model swap): a system message live, a user message
@@ -314,6 +336,7 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			case protocol.ContentBlockTypeToolUse:
 				use := d.use
 				call := &ToolCall{Use: use, Input: d.input, RawInput: d.rawInput, Keys: d.keys, Result: results[use.ID]}
+				call.Queued = queuedStateOf(call, resolved)
 				if use.ScriptExecution != nil {
 					if owner := watching[use.ScriptExecution.OuterToolUseID]; owner != nil {
 						owner.Nested = append(owner.Nested, call)
@@ -365,6 +388,10 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 		entries = append(entries, &Entry{ID: m.ID, User: user, Blocks: blocks, CreatedAt: m.CreatedAt, IsError: isError})
 	}
 	return entries
+}
+
+func isRecordEntry(e *Entry) bool {
+	return e.User && len(e.Blocks) == 1 && e.Blocks[0].Kind == QueuedAnswers
 }
 
 // ReuseUnchanged keeps the previous build's entries wherever nothing
