@@ -6,151 +6,127 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go)](https://go.dev/)
-[![MyGo](https://img.shields.io/badge/MyGo-0.5.1-6E56CF)](https://mygo.egoist.dev)
+[![MyGo](https://img.shields.io/badge/MyGo-0.7.3-6E56CF)](https://mygo.egoist.dev)
 [![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo)](https://expo.dev/)
 [![Release](https://img.shields.io/github/v/release/kkkk2323/droi)](https://github.com/kkkk2323/droi/releases/latest)
 
-A native Mac, Windows and iPhone app for the [Factory Droid](https://docs.factory.com) coding agent.
+A native macOS, Windows and iPhone client for the [Factory Droid](https://docs.factory.ai) coding agent.
 
-Droi is a Client of `droid daemon`, the Daemon in the Droid CLI. It shows and drives the same Sessions as the CLI, with the same login, Skills, MCP Servers and settings. Turn on Remote Access and you can carry on a Session from your iPhone.
+Droi is a thin Client of `droid daemon`, the Daemon built into the Droid CLI. It shows and drives the same Sessions as the CLI with the same login, Skills, MCP Servers and settings. Turn on Remote Access to continue a Session from your iPhone, or point the desktop window at `droi host` on another machine.
 
 ![A Session in Droi](./docs/screenshot.png)
 
-## Quickstart
+## Highlights
 
-1. Install the [Droid CLI](https://docs.factory.com/droid-cli/quickstart.md) and check that `droid` runs:
-   ```bash
-   curl -fsSL https://app.factory.ai/cli | sh            # macOS
-   irm https://app.factory.ai/cli/windows | iex          # Windows (PowerShell)
-   ```
-2. Download Droi from the [latest Release](https://github.com/kkkk2323/droi/releases/latest): `droi-<version>.dmg` for macOS, `droi-setup-<version>-amd64.exe` for Windows. If the system refuses to open it, see [Install](#install).
-3. Open Droi and sign in with Factory. If `droid` is already signed in, Droi opens straight away.
-4. Click **New session**, pick a Workspace folder, type a task and send it. Droid starts working, and the reply streams into the window.
-5. Optional: build the Phone App (`pnpm install:phone`), turn on **Settings → Remote Access** and scan the QR code with the phone.
-
-## What it does
-
-- **Every Session, one list**: all the Sessions the Daemon knows, grouped by Workspace, with search and sorting, including Sessions started from the `droid` CLI.
-- **Full transcripts**: your messages, Droid's replies with code and tables, reasoning, tool calls with their results, Scripts, subagents and the task list.
-- **Live turns**: watch the reply stream, queue the next message while Droid works (⌘↩ hands it to the running turn), cancel at any time.
-- **Prompts**: allow or deny a tool call and answer Droid's questions. When a Session is open on the Mac and on the phone, both show the prompt and the first answer wins.
-- **Per-Session settings**: model, reasoning effort, autonomy and tool mode (Direct, Both, Script), from the Daemon's own model list.
-- **Magpie models**: with [Magpie](https://usemagpie.ai) running on this computer, its models join the model picker in a tab of their own, with no settings file to edit. Droi reads the gateway's model list and hands it to this computer's Daemon alone; the `droid` CLI keeps its own.
-- **New Sessions**: in a recent Workspace, another folder, or a new folder of its own; paste or drop images into the message.
-- **Around the Session**: slash commands, Skills and MCP Servers, the Workspace's Git changes, and "Open in" Finder or your editor.
-- **Memory**: Droi summarizes your Sessions once you leave them and keeps a short Memory Summary that every new Session starts with: how you like to work and what you did before. There is nothing to tidy; ask Droid to remember something and it notes it.
-- **Phone access**: turn on Remote Access, scan the QR code with the Phone App. The phone talks to the Gateway on your Mac; your Factory credentials never leave it.
-- **Alerts**: a sound, a notification and an unread mark when a Session finishes or waits for you.
-- **Updates itself**: it checks every hour, downloads only what changed, checks the signature, and restarts once no Session is working.
-- **Local proxy support**: point the Daemon at a Factory API base URL such as a local `droid-proxy`.
+- **Unified Sessions & Worktrees**: every Session the Daemon knows (including Sessions started in the `droid` CLI), grouped by Workspace or ordered by time and unread state, with one-click Git Worktree isolation.
+- **Full Agent Surface**: streaming replies, reasoning, tool calls and diffs, Script runs, subagent trails, mid-turn permission prompts, non-blocking Queued Questions (`droid 1.1`), Automations, Loops and native Mermaid diagrams.
+- **Per-Session & Workspace Controls**: model picker, reasoning effort, autonomy and tool mode (`Direct`, `Both`, `Script`), slash commands, Skills, MCP Servers, Workspace Git status and "Open in" your editor.
+- **Cross-Device & Multi-Host**: scan a QR code in **Settings → Remote Access** to pair the iPhone Phone App, or paste a pairing link in **Settings → Computer** to follow a headless `droi host` on Linux, macOS or Windows. Your Factory credentials never leave the Host computer.
+- **Automatic Memory**: Droi summarizes finished Sessions in the background and injects a concise Memory Summary into new Sessions through its own MCP Server and `SessionStart` hook. Ask Droid to remember or correct something and it records a Memory Note.
+- **Extensible Go Library**: build custom distributions on top of `pkg/droiapp` and `pkg/extension` with your own brand, pre-approved MCP servers, custom tool views, dashboards and Settings tabs.
 
 ## Performance
 
-The Mac app is written in Go on [MyGo](https://mygo.egoist.dev)'s native UI, with no Electron and no webview. Compared with the Electron app it replaces, on our test Mac:
+The desktop app is written in Go on [MyGo](https://mygo.egoist.dev)'s native UI: no Electron, no webview and no Node at runtime.
 
-| | Native | Electron |
+| Metric | Native (MyGo) | Electron |
 |---|---|---|
-| Launch to the Session list | 0.95 s | 2.9 s |
-| Memory when idle | 103 MB | 526 MB |
+| Launch to Session list | 0.95 s | 2.9 s |
+| Idle memory | 103 MB | 526 MB |
 
-How we measured: [apps/native/docs/performance.md](./apps/native/docs/performance.md).
+Measurement methodology: [apps/native/docs/performance.md](./apps/native/docs/performance.md).
 
-## Requirements
+## Quickstart
 
-- macOS (one app for Apple silicon and Intel), or Windows 10 or 11 (x64); on Linux (x64 or arm64) only the windowless Host, `droi host` ([how](./apps/native/README.md#droi-host-on-linux))
-- The [Droid CLI](https://docs.factory.ai) (`droid` on PATH, in `~/.local/bin`, or in `%USERPROFILE%\bin` on Windows)
-- A Factory account: Droi shares its login with the `droid` CLI, and the Daemon runs as it
+1. **Install the [Droid CLI](https://docs.factory.ai/droid-cli/quickstart.md)** and check that `droid` runs on `PATH` (or in `~/.local/bin` on macOS/Linux, `%USERPROFILE%\bin` on Windows):
+   ```bash
+   curl -fsSL https://app.factory.ai/cli | sh            # macOS / Linux
+   irm https://app.factory.ai/cli/windows | iex          # Windows (PowerShell)
+   ```
+2. **Install Droi** from the [latest Release](https://github.com/kkkk2323/droi/releases/latest):
+   - **macOS** (Apple silicon & Intel): open `droi-<version>.dmg` and drag **Droi** to Applications. Since the build is not notarized with an Apple Developer ID, clear quarantine if macOS blocks first launch:
+     ```bash
+     xattr -cr /Applications/Droi.app
+     ```
+   - **Windows 10/11 (x64)**: run `droi-setup-<version>-amd64.exe` (installs per-user without administrator rights; if SmartScreen prompts, choose **More info → Run anyway**).
+   - **Linux (`x64` / `arm64`, headless Host)**: install `droi-<version>-linux-<arch>.tar.gz` and run `droi host` ([setup guide](./apps/native/README.md#droi-host-on-linux)).
+3. **Sign in**: if `droid` is already signed in, Droi opens straight to your Sessions. Otherwise, sign in with Factory in the window (shared with the `droid` CLI) or paste a `FACTORY_API_KEY`. Additional Factory accounts can be added under **Settings → Account**.
+4. **Optional (iPhone Phone App)**: build and install the Expo client on a connected iPhone with `pnpm install:phone`, enable **Settings → Remote Access** on your computer and scan the QR code.
 
-## Install
+Droi checks for signed delta updates every hour and restarts automatically once no Session is working ([how releases work](./apps/native/docs/releases.md)).
 
-Download `droi-<version>.dmg` from the [latest Release](https://github.com/kkkk2323/droi/releases/latest) and drag Droi into Applications. The app is not signed with an Apple Developer certificate, so if macOS refuses to open it, run:
+## How Droi Works with Factory Droid
 
-```bash
-xattr -cr /Applications/Droi.app
-```
-
-On Windows, run `droi-setup-<version>-amd64.exe` from the same Release. It installs Droi for your user only, with no administrator rights. The installer is not code-signed either: if SmartScreen stops it, choose **More info** → **Run anyway**.
-
-When Droi opens, sign in with Factory (the same device-code login as `/login` in `droid`), or paste a Factory API key. Droi gives the login to the `droid` CLI, so the two share it; if `droid` is already signed in, Droi opens straight away. Under **Settings** → **Advanced** you can set a Factory API base URL (a local `droid-proxy`, say). `FACTORY_API_KEY` and `FACTORY_API_BASE_URL` in the environment are honoured too.
-
-To use more than one Factory account, add them under **Settings** → **Account**. Each keeps its own login and shows its usage; all of them share your skills, droids, MCP servers, settings and sessions. Switching restarts the Daemon.
-
-Droi keeps its settings, Memory and the Pairing Token in `~/Library/Application Support/Droi` (`%APPDATA%\Droi` on Windows), readable only by your user. It replaces the old Electron app in place: same bundle identifier and data folder, so your settings and paired phones carry over.
-
-### The Phone App
-
-The iPhone Client is built from source and installed on a connected iPhone with Xcode: `pnpm install:phone`. Then turn on **Settings → Remote Access** on the Mac and scan the QR code with the Phone App. See [apps/mobile/DEVICE-CHECKLIST.md](./apps/mobile/DEVICE-CHECKLIST.md) for what to try on the device.
-
-## How Droi uses Factory Droid
-
-Droi adds no agent of its own. All the work is done by Droid; Droi gives it a window.
-
-- **The Daemon**: Droi starts `droid daemon` from the Droid CLI and talks to it over the Daemon's own protocol through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go), a Go SDK for the Daemon. The Daemon owns every Session, so Sessions started in the CLI show up in Droi and the other way round.
-- **The login**: Droi hands its sign-in to the `droid` CLI, so both share one Factory login. More accounts get their own folder through `FACTORY_HOME_OVERRIDE` and still share your Skills, droids, MCP Servers, settings and Sessions.
-- **Droid's features**: the model list, reasoning effort, autonomy and tool mode come from the Daemon. Slash commands, Skills, MCP Servers, tool permission prompts, Droid's questions, Scripts, subagents and the task list all appear in the window.
-- **Memory**: Droi's own binary runs as an MCP Server for Droid and as a `SessionStart` hook that gives each Session the Memory Summary. The Host summarizes finished Sessions in Sessions of its own on the Daemon and folds the summaries into the Memory Summary.
-- **Factory API base URL**: Droi passes `FACTORY_API_BASE_URL` to the Daemon, so you can route Droid's traffic through a local proxy.
-
-## How it fits together
+Droi adds no agent runtime of its own. All file, shell and Git work happens inside `droid daemon`; Droi supervises the process and renders the conversations.
 
 ```
-Droi window (Go) ── Go SDK ──────────────────────────┐
-                                                        ├── droid daemon (loopback)
-Phone App ── Gateway (Pairing Token check, credential) ─┘
+Desktop window (Go) ── Local token ───┐
+                                      ├── Host Gateway ── droid-sdk-go ── droid daemon
+Phone App / Remote ─── Pairing Token ─┘
 ```
 
-- **Daemon**: `droid daemon`. It owns every Session, its transcript and all file and Git work.
-- **Host**: inside the Mac app. It starts and watches the Daemon, supplies the Factory credential, runs the Gateway and keeps Memory.
-- **Desktop Shell**: the Mac app itself. Its window is a Client that talks to the Daemon directly through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) and holds no conversation state.
-- **Gateway**: lets a Remote Client reach the Daemon. It checks the Pairing Token and adds your Factory credential, so the credential never leaves the Mac. It listens on your network only while Remote Access is on.
-- **Phone App**: the iPhone Client (Expo), a Remote Client through the Gateway.
+- **Daemon (`droid daemon`)**: owns every Session, its transcript, Worktrees, Automations, Skills and MCP connections.
+- **Host**: runs inside the desktop app (or standalone as `droi host`). It supervises the Daemon, shares the `droid` CLI login (and manages multi-account folders via `FACTORY_HOME_OVERRIDE`), attaches the Runtime Overlay for Memory and extensions, and runs the Gateway.
+- **Gateway**: authenticates Clients with a per-launch local token or a Pairing Token, attaches the Host's Factory credential so secrets never travel to remote devices, and proxies the Daemon protocol over WebSocket.
+- **Clients**: the native desktop window (`apps/native`) and the iPhone Phone App (`apps/mobile`). Neither holds conversation state; both speak the Daemon protocol through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) and `@droi/daemon-layer`.
 
-The vocabulary is in [CONTEXT.md](./CONTEXT.md); the decisions are in [docs/adr](./docs/adr). How releases and in-app updates work: [apps/native/docs/releases.md](./apps/native/docs/releases.md).
+Domain vocabulary is documented in [CONTEXT.md](./CONTEXT.md), and architecture decisions live in [docs/adr](./docs/adr).
 
 ## Built with Droid
 
-Droi is built with Droid. From the first commit (February 2026) to v1.56.3 (October 2026), the repository has 850 commits, 448 of them co-authored by Droid, and 162 Releases. Check it yourself with `git log --grep='factory-droid' --oneline`.
+Droi is built with Factory Droid. From the first commit in February 2026 through `v1.87.1`, the repository has **1,037 commits (633 of them co-authored by Droid) and 187 releases**:
 
-The repository is set up so Droid can work on it on its own and check its own work:
+```bash
+git log --grep='factory-droid' --oneline
+```
 
-- [AGENTS.md](./AGENTS.md) says what is maintained, which commands to run and how to validate a change.
-- [CONTEXT.md](./CONTEXT.md) and [docs/adr](./docs/adr) give Droid the project's vocabulary and the reasons behind its decisions.
-- Skills in [.agents/skills](./.agents/skills) and [.factory/skills](./.factory/skills) (TDD, diagnosing bugs, code review, domain modeling and more) and commands in [.factory/commands](./.factory/commands).
-- The Fake Daemon: Droid checks a change with view tests that draw the app against a scripted Daemon, with no Factory API key. Live tests run against a real Daemon with a cheap model through `droid-proxy`.
+The repository is structured so Droid can plan, implement and verify changes end to end:
+
+- **[AGENTS.md](./AGENTS.md) & [CLAUDE.md](./CLAUDE.md)** define the maintained packages, design system constraints and validation workflow.
+- **[CONTEXT.md](./CONTEXT.md) & [docs/adr](./docs/adr)** record the ubiquitous language and 33 architecture decision records.
+- **Skills in [.agents/skills](./.agents/skills)** guide TDD, bug diagnosis, code review and domain modeling.
+- **Deterministic Fake Daemon testing ([ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md))**: both Go view tests (`ui.NewTester`) and mobile Playwright E2E tests drive the real Clients against a scripted Fake Daemon from [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) without needing a live Factory API key. Even the screenshot in this README is rendered from a Fake Daemon scenario:
+  ```bash
+  DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots
+  ```
 
 ## Development
 
-Run these from the repository root.
+Run all commands from the repository root:
 
-| Command | What it does |
-|---------|--------------|
-| `go run ./apps/native` | run the Mac app (needs `droid` on PATH) |
-| `go test ./apps/native/...` | unit tests, and view tests that draw the app against the Fake Daemon |
-| `go tool -modfile=apps/native/go.mod mygo build apps/native` | build `Droi.app` and the DMG into `apps/native/build` |
-| `pnpm check` | format check, lint and typecheck of the TypeScript packages |
-| `pnpm test` | unit tests (vitest) |
-| `pnpm test:e2e:phone` | Playwright: the Phone App's web build against the Fake Daemon |
-| `pnpm install:phone` | build a signed Release of the Phone App and install it on the connected iPhone |
-| `go test ./apps/native/pkg/host ./apps/native/pkg/gateway -run Live -v` | live tests against a real Daemon; they run only with `FACTORY_API_KEY` |
+| Command | Description |
+|---------|-------------|
+| `go run ./apps/native` | Run the desktop app (requires `droid` on `PATH`) |
+| `go test ./apps/native/...` | Run Go unit tests and native view tests against the Fake Daemon |
+| `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build `Droi.app` / `.dmg` (or `-platform windows/amd64` for Windows) |
+| `pnpm check` | Run format check, lint and TypeScript typecheck |
+| `pnpm test` | Run TypeScript unit tests (vitest) |
+| `pnpm test:e2e:phone` | Run Playwright E2E suite for the Phone App against the Fake Daemon |
+| `pnpm install:phone` | Build a signed Release of the Phone App and install it on a connected iPhone |
+| `FACTORY_API_KEY=... go test ./apps/native/pkg/host ./apps/native/pkg/gateway -run Live -v` | Run live integration tests against a real Daemon |
 
-The tests never need a Factory key: they run the real Clients against a scripted Fake Daemon that checks its own messages with the SDK's schemas (see [ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md)). The Go SDK and the Fake Daemon live in [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go). The screenshot in this README comes from the Fake Daemon too:
-
-```bash
-DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots
-```
-
-More on the Mac app (its layout, how it matches the Electron app, how to re-record the reference screens) is in [apps/native/README.md](./apps/native/README.md).
-
-## Project structure
+## Project Structure
 
 ```
-apps/native/                 the Mac app: Go on MyGo (Host, Gateway, Memory, the window)
-apps/mobile/                 the Phone App (Expo SDK 57, iPhone)
-packages/daemon-layer/       the TypeScript daemon layer the Phone App uses
-tests/mobile/                Playwright: the Phone App's web build against the Fake Daemon
-docs/adr/                    architecture decisions
+apps/
+├── native/                  # Desktop app & Host in Go on MyGo (macOS, Windows, Linux host)
+│   ├── internal/app/        # Native window views and Fake Daemon view tests
+│   ├── pkg/host/            # Daemon supervisor, CLI login, multi-account, Runtime Overlay
+│   ├── pkg/gateway/         # Remote Access Gateway and Pairing Token verification
+│   ├── pkg/droiapp/         # App-as-a-library entrypoint (ADR 0029)
+│   ├── pkg/extension/       # Extension seams (Overlay, Pages, SettingsTabs, ToolViews)
+│   └── pkg/...              # Public UI and protocol packages (sessionview, settingsview, kit, theme)
+└── mobile/                  # iPhone Phone App (Expo SDK 57, React Native)
+packages/
+└── daemon-layer/            # Shared TypeScript Daemon connection and Session state layer
+tests/
+└── mobile/                  # Playwright E2E tests for the Phone App against the Fake Daemon
+docs/
+└── adr/                     # Architecture Decision Records (ADR 0001–0033)
 ```
+
+More details on the native package layout and reference screen testing are in [apps/native/README.md](./apps/native/README.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)
