@@ -280,6 +280,9 @@ var (
 	// Zoom is ⌘= and ⌘-, kept as Chromium keeps a page's zoom.
 	Zoom           = Number{Key: "droi.zoom", Fallback: 1}
 	SidebarVisible = Bool{Key: "droi.sidebar", Fallback: true}
+	// SidebarWidth is the sidebar's width in px of the default text size,
+	// as its edge was dragged.
+	SidebarWidth = Number{Key: "droi.sidebarWidth", Fallback: 224}
 	// Language is "en" or "zh-Hans", "" to follow the system.
 	Language       = String{Key: "droi.language"}
 	OpenInApp      = String{Key: "droi.openInApp"}

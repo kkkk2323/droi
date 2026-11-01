@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -450,6 +451,93 @@ func TestSidebarHidden(t *testing.T) {
 	h.until("the reply", func() bool { return h.hasText("regression test") })
 	h.click("Hide sidebar")
 	h.shoot("sidebar-hidden")
+}
+
+// The sidebar's edge resizes the sidebar: a drag saves its width once, as it
+// ends, between the narrowest and the widest; the arrows move it once the edge
+// has the focus, and a double click puts back the default.
+func TestTheSidebarEdgeResizesTheSidebar(t *testing.T) {
+	h := newHarness(t, sessionsScenario(), "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.settle()
+	saved := func() (float64, bool) {
+		if _, ok := h.a.prefs.Get(prefs.SidebarWidth.Key); !ok {
+			return 0, false
+		}
+		return prefs.SidebarWidth.Get(h.a.prefs), true
+	}
+	edgeAt := func() (float32, float32) {
+		h.t.Helper()
+		r, ok := h.tt.Find("Resize sidebar")
+		if !ok {
+			h.t.Fatalf("no sidebar edge; texts %q", h.tt.Texts())
+		}
+		return r.X + r.W/2, r.Y + r.H/2
+	}
+	px := func() float32 { return h.a.sidebarWidth() * 16 / h.a.kit.Rem }
+	if got := px(); got != 224 {
+		t.Fatalf("the sidebar starts %v px wide, want 224", got)
+	}
+
+	x, y := edgeAt()
+	h.tt.Press(x, y)
+	h.frame()
+	for _, dx := range []float32{20, 40, 60} {
+		h.tt.Move(x+dx, y)
+		h.frame()
+	}
+	if w, ok := saved(); ok {
+		t.Fatalf("the drag saved %v before it ended", w)
+	}
+	if got := px(); got < 283 || got > 285 {
+		t.Fatalf("the sidebar is %v px wide during the drag, want about 284", got)
+	}
+	h.tt.Release(x+60, y)
+	h.frame()
+	if w, ok := saved(); !ok || w != math.Round(float64(px())) {
+		t.Fatalf("saved %v (%v) after the drag, the sidebar %v px", w, ok, px())
+	}
+	if nx, _ := edgeAt(); nx < x+59 || nx > x+61 {
+		t.Fatalf("the edge is at %v after the drag, want about %v", nx, x+60)
+	}
+
+	x, y = edgeAt()
+	h.tt.Press(x, y)
+	h.frame()
+	h.tt.Move(x-600, y)
+	h.frame()
+	h.tt.Release(x-600, y)
+	h.frame()
+	if w, _ := saved(); w != sidebarMinWidth {
+		t.Fatalf("dragged far left, the sidebar is %v px, want %v", w, sidebarMinWidth)
+	}
+
+	x, y = edgeAt()
+	h.tt.ClickAt(x, y)
+	h.frame()
+	h.tt.Key(0, ui.KeyRight)
+	h.frame()
+	if w, _ := saved(); w != sidebarMinWidth+16 {
+		t.Fatalf("after the right arrow the sidebar is %v px, want %v", w, sidebarMinWidth+16)
+	}
+
+	x, y = edgeAt()
+	h.tt.ClickAt(x, y)
+	h.tt.ClickAt(x, y)
+	h.frame()
+	if w, ok := saved(); ok {
+		t.Fatalf("a double click left %v saved", w)
+	}
+	if got := px(); got != 224 {
+		t.Fatalf("after a double click the sidebar is %v px, want 224", got)
+	}
+
+	// Hidden, the sidebar has no edge to drag.
+	h.click("Hide sidebar")
+	h.settle()
+	if _, ok := h.tt.Find("Resize sidebar"); ok {
+		t.Fatal("the hidden sidebar still has an edge")
+	}
 }
 
 func TestNewSessionPage(t *testing.T) {

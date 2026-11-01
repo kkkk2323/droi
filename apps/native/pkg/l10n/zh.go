@@ -580,6 +580,7 @@ var zh = map[string]string{
 	"Require approval for all actions": "每次操作前均需你批准",
 	"Reset pairing token":              "重置配对 Token",
 	"Reset prompts to default":         "恢复默认 Prompt",
+	"Resize sidebar":                   "调整侧边栏宽度",
 	"Responding":                       "正在回复",
 	"Restart Daemon":                   "重启后台服务",
 	"Restart now":                      "立即重启",
