@@ -52,6 +52,9 @@ type sidebarState struct {
 	// times and unread are this frame's, for the rows.
 	times  map[string]sessions.Times
 	unread map[string]bool
+	// width is what a drag of the sidebar's edge has made its width, in px
+	// of the default text size, until the drag ends and saves it; 0 for none.
+	width float32
 }
 
 // sidebarView is the web Client's SessionSidebar.

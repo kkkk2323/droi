@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"math"
 	"slices"
 	"sync"
 	"time"
@@ -774,22 +775,30 @@ func (a *App) View(c *ui.Context) {
 	t := a.kit.T
 	shown := a.sidebarShown()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
+		// edge is where the sidebar ends once it has slid all the way open.
+		edge := float32(0)
 		if !a.narrow {
 			target := float32(0)
 			if shown {
-				target = a.sidebarWidth()
+				target = 1
 			}
 			// Animated here, not with a Transition: that moves the box after
-			// the layout, so the main panel would jump to its new width.
+			// the layout, so the main panel would jump to its new width. The
+			// share shown animates, not the width, so that the width follows
+			// a drag of the edge at once.
 			side := ui.Column(c).FillHeight().ClipX().Shrink(0)
-			w := side.Animate("width", target, 200*time.Millisecond)
-			side.Width(w)
+			open := side.Animate("open", target, 200*time.Millisecond)
+			width := a.sidebarWidth()
+			side.Width(open * width)
 			// As the web Client's visibility flip: once the slide is done.
-			if w == 0 {
+			if open == 0 {
 				side.Invisible()
 			}
+			if open == 1 {
+				edge = width
+			}
 			side.Children(func() {
-				ui.Column(c).Width(a.sidebarWidth()).FillHeight().Children(func() {
+				ui.Column(c).Width(width).FillHeight().Children(func() {
 					a.sidebarView(c, listed, busy, listErr, listDone)
 				})
 			})
@@ -827,6 +836,9 @@ func (a *App) View(c *ui.Context) {
 			}
 		})
 		a.cornerCards(c)
+		if edge > 0 {
+			a.sidebarEdge(c, edge)
+		}
 	})
 	// After the sidebar, which numbers this frame's Sessions.
 	for n, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
@@ -854,9 +866,72 @@ func (a *App) View(c *ui.Context) {
 	})
 }
 
+// The sidebar's edge resizes it between these widths, in px of the default
+// text size, as prefs.SidebarWidth keeps it.
+const (
+	sidebarMinWidth = 180
+	sidebarMaxWidth = 480
+)
+
 // sidebarWidth is the width of the sidebar and of Settings' list of
-// sections, so going to Settings and back moves nothing.
-func (a *App) sidebarWidth() float32 { return a.kit.Px(224) }
+// sections, so going to Settings and back moves nothing: the one its edge
+// is being dragged to, else the one saved.
+func (a *App) sidebarWidth() float32 {
+	w := a.sidebar.width
+	if w == 0 {
+		w = float32(prefs.SidebarWidth.Get(a.prefs))
+	}
+	return a.kit.Px(min(max(w, sidebarMinWidth), sidebarMaxWidth))
+}
+
+// sidebarEdge is the line between the sidebar, w DIPs wide, and the page.
+// Dragged, or moved with the arrows once it has the focus, it resizes the
+// sidebar; a double click puts back the default width. A drag is saved as it
+// ends, not at each move: the preferences are one file, written whole.
+func (a *App) sidebarEdge(c *ui.Context, w float32) {
+	k, t := a.kit, a.kit.T
+	grip := k.Px(6)
+	px := w * 16 / k.Rem
+	edge := ui.Box(c).Absolute().Left(w-grip/2).Top(0).Bottom(0).Width(grip).Cursor(ui.CursorResizeEW).
+		Role(ui.RoleSplitter).Label(L("Resize sidebar")).Focusable().FocusRing(false).
+		Range(sidebarMinWidth, sidebarMaxWidth, math.Round(float64(px))).Step(16)
+	// The drag adds up unclamped, so the edge comes back only with the
+	// pointer once it was dragged past either end.
+	dx, _, held := edge.Dragged()
+	switch {
+	case held && dx != 0:
+		if a.sidebar.width == 0 {
+			a.sidebar.width = px
+		}
+		a.sidebar.width += dx * 16 / k.Rem
+	case !held && a.sidebar.width != 0:
+		a.saveSidebarWidth(a.sidebar.width)
+		a.sidebar.width = 0
+	}
+	if edge.Shortcut(0, ui.KeyLeft) {
+		a.saveSidebarWidth(px - 16)
+	}
+	if edge.Shortcut(0, ui.KeyRight) {
+		a.saveSidebarWidth(px + 16)
+	}
+	if edge.DoubleClicked() {
+		a.sidebar.width = 0
+		a.prefs.Remove(prefs.SidebarWidth.Key)
+	}
+	if held || edge.Hovered() || edge.FocusVisible() {
+		// Over the main panel's left border, which starts at w.
+		edge.Draw(func(p *ui.Painter, r ui.Rect) {
+			p.Fill(ui.Rect{X: r.X + grip/2 - 0.5, Y: r.Y, W: 2, H: r.H}, t.Tint, 0)
+		})
+	}
+}
+
+// saveSidebarWidth keeps px, in px of the default text size, as the
+// sidebar's width.
+func (a *App) saveSidebarWidth(px float32) {
+	px = min(max(px, sidebarMinWidth), sidebarMaxWidth)
+	prefs.SidebarWidth.Set(a.prefs, math.Round(float64(px)))
+}
 
 // restoreLast reopens the Session that was open last, once the first list
 // confirms it still exists; going home on purpose afterwards sticks.

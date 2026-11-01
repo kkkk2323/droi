@@ -1,3 +1,9 @@
+## 1.88.0 - 2026-11-01
+
+### Added
+
+- You can resize the sidebar: drag its right edge, from 180 to 480 px. Droi keeps the width for the next launch, and Settings' list of sections has the same width. A double click on the edge restores the default width. When the edge has the focus, the Left and Right arrow keys move it.
+
 ## 1.87.1 - 2026-10-31
 
 ### Fixed
