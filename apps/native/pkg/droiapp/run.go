@@ -69,7 +69,8 @@ type Options struct {
 	// Presets, optional, are the app's defaults for a new install: Session
 	// Defaults, such as the model, and the tool mode of new Sessions. The
 	// window gives them to this computer's Daemon once per Version, so what
-	// the user changes afterwards stays.
+	// the user changes afterwards stays. Their AutoUpdate turns automatic
+	// updates on until the user sets About's switch.
 	Presets *defaults.Presets
 }
 

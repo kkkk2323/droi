@@ -264,7 +264,7 @@ func (a *App) aboutTab(c *ui.Context) {
 				return
 			}
 			a.settingRow(c, L("Install updates automatically"), L("When off, Droi asks before it updates: choose Update or Skip this version. When on, it downloads updates and restarts when no session is running and its window is in the background."), func() {
-				on := prefs.AutoUpdate.Get(a.prefs)
+				on := autoUpdate(a.cfg)
 				if a.toggle(c, L("Install updates automatically"), on, false) {
 					prefs.AutoUpdate.Set(a.prefs, !on)
 					a.cfg.Updater.SetAutomatic(!on)

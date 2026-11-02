@@ -11,4 +11,8 @@ type Presets struct {
 	Session Patch
 	// ToolMode, "" for none, becomes this device's default (DefaultToolMode).
 	ToolMode ToolMode
+	// AutoUpdate turns About's "Install updates automatically" on wherever
+	// the user has not set the switch, installs from before it included.
+	// It needs no Version: once the user sets the switch, theirs is kept.
+	AutoUpdate bool
 }
