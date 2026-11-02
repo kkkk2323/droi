@@ -167,10 +167,10 @@ func UsageFromJSON(body []byte) (TokenUsage, bool) {
 }
 
 // UsageObserver is an io.Writer tap over a proxied response body. It never
-// alters the bytes; it collects token usage as they stream past, and when the
-// first generated token came and how many have come since. Bodies are
-// bounded so a runaway response cannot pin memory. Progress may be read
-// while another goroutine writes.
+// alters the bytes; it collects token usage as they stream past, when the
+// first generated token came and how many have come since, and whether a
+// frame said the stream failed. Bodies are bounded so a runaway response
+// cannot pin memory. Progress may be read while another goroutine writes.
 type UsageObserver struct {
 	mu    sync.Mutex
 	sse   bool
@@ -183,6 +183,8 @@ type UsageObserver struct {
 	// generated estimates the tokens generated since, from their text.
 	first     time.Time
 	generated float64
+	failure   string
+	failed    bool
 }
 
 // Per-line cap for SSE frames and total cap for buffered JSON bodies.
@@ -248,6 +250,9 @@ func (o *UsageObserver) consumeLine(line []byte) {
 		}
 		o.generated += EstimateTokens(text)
 	}
+	if !o.failed {
+		o.failure, o.failed = streamFailure(payload)
+	}
 }
 
 // Usage returns the merged token usage and whether any was seen. Call after
@@ -256,16 +261,33 @@ func (o *UsageObserver) Usage() (TokenUsage, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.sse {
-		if o.buf.Len() > 0 {
-			o.consumeLine(o.buf.Bytes())
-			o.buf.Reset()
-		}
+		o.consumeRestLocked()
 		return o.usage, o.found
 	}
 	if o.over || o.buf.Len() == 0 {
 		return TokenUsage{}, false
 	}
 	return UsageFromJSON(o.buf.Bytes())
+}
+
+// Failure describes the first frame that said the stream failed, and
+// whether one did. Call after the body has been fully copied.
+func (o *UsageObserver) Failure() (string, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if !o.sse {
+		return "", false
+	}
+	o.consumeRestLocked()
+	return o.failure, o.failed
+}
+
+// consumeRestLocked reads a last frame that no newline ended.
+func (o *UsageObserver) consumeRestLocked() {
+	if o.buf.Len() > 0 {
+		o.consumeLine(o.buf.Bytes())
+		o.buf.Reset()
+	}
 }
 
 // Progress is a stream so far: when its first generated token came (zero
@@ -356,4 +378,76 @@ func EstimateTokens(text string) float64 {
 		}
 	}
 	return n
+}
+
+// failureFrame is a stream frame that says the reply failed after a 200:
+// OpenAI's response.failed, an error event (OpenAI's responses, Anthropic's)
+// or an error object in a chat completions chunk.
+type failureFrame struct {
+	Type     string          `json:"type"`
+	Code     json.RawMessage `json:"code"`
+	Message  string          `json:"message"`
+	Error    *frameError     `json:"error"`
+	Response *struct {
+		Error *frameError `json:"error"`
+	} `json:"response"`
+}
+
+type frameError struct {
+	Type    string          `json:"type"`
+	Code    json.RawMessage `json:"code"`
+	Message string          `json:"message"`
+}
+
+func (e *frameError) code() string {
+	if c := rawCode(e.Code); c != "" {
+		return c
+	}
+	return e.Type
+}
+
+// rawCode is an error code, which is a string or a number.
+func rawCode(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	return string(raw)
+}
+
+func joinNonEmpty(parts ...string) string {
+	kept := parts[:0]
+	for _, p := range parts {
+		if p != "" {
+			kept = append(kept, p)
+		}
+	}
+	return strings.Join(kept, ": ")
+}
+
+// streamFailure describes a failure frame: its kind, then the code and
+// message it gives. Only those are kept, never the partial reply.
+func streamFailure(payload []byte) (string, bool) {
+	if !bytes.Contains(payload, []byte("error")) && !bytes.Contains(payload, []byte("response.failed")) {
+		return "", false
+	}
+	var f failureFrame
+	if json.Unmarshal(payload, &f) != nil {
+		return "", false
+	}
+	switch {
+	case f.Type == "response.failed":
+		if f.Response != nil && f.Response.Error != nil {
+			return joinNonEmpty("response.failed", f.Response.Error.code(), f.Response.Error.Message), true
+		}
+		return "response.failed", true
+	case f.Error != nil:
+		return joinNonEmpty("error", f.Error.code(), f.Error.Message), true
+	case f.Type == "error":
+		return joinNonEmpty("error", rawCode(f.Code), f.Message), true
+	}
+	return "", false
 }

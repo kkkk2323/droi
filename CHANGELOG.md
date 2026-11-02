@@ -1,3 +1,8 @@
+## 1.88.1 - 2026-11-02
+
+### Fixed
+
+- The Usage tab shows a model request as failed when Factory answered 200 but then ended the stream with a failure, such as OpenAI's `response.failed` or a mid-stream error from Anthropic. It said such a request had succeeded, with no tokens. The request's status now says `stream_failed`, with the code and message the stream gave, when it gave one.
 ## 1.88.0 - 2026-11-02
 
 ### Added

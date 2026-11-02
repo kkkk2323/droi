@@ -90,3 +90,55 @@ func TestUsageObserver_JSONBodyAndOversize(t *testing.T) {
 		t.Fatal("oversize body must not yield usage")
 	}
 }
+
+// A stream that ends in a failure frame answers HTTP 200, so only the frame
+// says it failed.
+func TestUsageObserver_ReportsAStreamThatFailed(t *testing.T) {
+	cases := map[string]struct {
+		frames string
+		want   string
+	}{
+		"responses without an error": {
+			frames: `data: {"type":"response.output_text.delta","delta":"a"}` + "\n\n" +
+				"event: response.failed\n" +
+				`data: {"type":"response.failed","response":{"id":"r1","status":"failed","error":null,"output":[{"type":"function_call","arguments":"secret"}]}}`,
+			want: "response.failed",
+		},
+		"responses with an error": {
+			frames: `data: {"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"The model failed"}}}` + "\n\n",
+			want:   "response.failed: server_error: The model failed",
+		},
+		"responses error event": {
+			frames: `data: {"type":"error","code":"rate_limit_exceeded","message":"Slow down","param":null}` + "\n\n",
+			want:   "error: rate_limit_exceeded: Slow down",
+		},
+		"anthropic error event": {
+			frames: "event: error\n" + `data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}` + "\n\n",
+			want:   "error: overloaded_error: Overloaded",
+		},
+		"chat completions error": {
+			frames: `data: {"error":{"code":502,"message":"Provider returned error"}}` + "\n\n",
+			want:   "error: 502: Provider returned error",
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			o := NewUsageObserver("text/event-stream")
+			o.Write([]byte(c.frames))
+			if got, failed := o.Failure(); !failed || got != c.want {
+				t.Fatalf("got %q failed=%v, want %q", got, failed, c.want)
+			}
+		})
+	}
+
+	ok := NewUsageObserver("text/event-stream")
+	ok.Write([]byte(`data: {"type":"response.completed","response":{"status":"completed","error":null,"usage":{"input_tokens":3,"output_tokens":1}}}` + "\n\n"))
+	if got, failed := ok.Failure(); failed {
+		t.Fatalf("a completed stream failed: %q", got)
+	}
+	body := NewUsageObserver("application/json")
+	body.Write([]byte(`{"type":"error","error":{"type":"x","message":"y"}}`))
+	if _, failed := body.Failure(); failed {
+		t.Fatal("a JSON body is not a stream")
+	}
+}
