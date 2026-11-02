@@ -113,7 +113,7 @@ func (a *App) MenuBarPanel(c *ui.Context) {
 				u.Text(c, L("The Key Pool has no key yet. Open Usage to add one."), 12).TextColor(p.Secondary).TextAlign(ui.Center)
 			})
 		} else {
-			u.budgetCard(c, m.runway)
+			u.budgetCard(c, m.runway, m.cycle)
 			u.panelPools(c, m.pools)
 			if e := m.expiring; e.Summary != "" {
 				u.expiringLine(c, e)
@@ -188,10 +188,12 @@ func (a *App) panelHeader(c *ui.Context, u usageLook, st keypool.State) {
 }
 
 // budgetCard is today's spend against the daily limit, with a tick at what
-// is usual by now, and how long the pool lasts at today's spend.
-func (u usageLook) budgetCard(c *ui.Context, r llmusage.RunwayView) {
+// is usual by now, how long the pool lasts at today's spend, and whether
+// to speed up or slow down before the monthly resets.
+func (u usageLook) budgetCard(c *ui.Context, r llmusage.RunwayView, cycle llmusage.CycleView) {
 	p := u.P
 	u.Card(c).Padding(u.Px(12), u.Px(14)).Gap(u.Px(8)).Tooltip(r.Help).Children(func() {
+		defer u.cycleLine(c, cycle)
 		if !r.Available {
 			u.Text(c, r.Empty, 12).TextColor(p.Secondary)
 			return
@@ -225,8 +227,30 @@ func (u usageLook) budgetCard(c *ui.Context, r llmusage.RunwayView) {
 	})
 }
 
-// panelPools are the pools side by side, without the resets, which their
-// tooltips say.
+// cycleLine is the even pace to the monthly resets and, once the log holds
+// the last days, whether to speed up or slow down; the tooltip says why.
+func (u usageLook) cycleLine(c *ui.Context, v llmusage.CycleView) {
+	if !v.Available {
+		return
+	}
+	p := u.P
+	tip := v.Stage
+	for _, s := range []string{v.Verdict, v.Advice} {
+		if s != "" {
+			tip += "\n" + s
+		}
+	}
+	ui.Row(c).Gap(u.Px(6)).Tooltip(tip).Children(func() {
+		u.Text(c, v.Target, 11).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine().Shrink(1)
+		ui.Spacer(c)
+		if v.Short != "" {
+			u.Text(c, v.Short, 11).FontWeight(600).TextColor(u.Tone(dashkit.PrimaryTone(v.Tone))).FontFeatures("tnum").NoWrap()
+		}
+	})
+}
+
+// panelPools are the pools side by side, with the even-pace tick but
+// without the resets and the pace in words, which their tooltips say.
 func (u usageLook) panelPools(c *ui.Context, pools []llmusage.PoolSummaryView) {
 	p := u.P
 	u.Card(c).Children(func() {
@@ -245,7 +269,7 @@ func (u usageLook) panelPools(c *ui.Context, pools []llmusage.PoolSummaryView) {
 					for _, w := range pool.Windows {
 						ui.Row(c.Key(w.Label)).Gap(u.Px(8)).Tooltip(w.Help + "\n" + w.Reset).Children(func() {
 							u.Text(c, w.Label, 11).TextColor(p.Secondary).Width(u.Px(36)).NoWrap()
-							u.Meter(c, w.Bar.Value, w.Bar.Tone, 5, -1).Label(w.Name)
+							u.Meter(c, w.Bar.Value, w.Bar.Tone, 5, paceMark(w)).Label(w.Name)
 							u.Text(c, w.Percent, 12).FontWeight(600).TextColor(u.Tone(dashkit.PrimaryTone(w.PercentTone))).FontFeatures("tnum").Width(u.Px(38)).TextAlign(ui.End)
 						})
 					}

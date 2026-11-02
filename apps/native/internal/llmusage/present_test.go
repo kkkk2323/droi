@@ -2,6 +2,7 @@ package llmusage
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -67,6 +68,42 @@ func TestPoolSummaries(t *testing.T) {
 	}
 	if checked := UsageCheckedAt(sample(t).Keys); checked == nil || !checked.Equal(time.Date(2026, 9, 16, 5, 0, 0, 0, time.UTC)) {
 		t.Errorf("usage checked at = %v", checked)
+	}
+}
+
+// The pool's rows are paced by the keys under way alone: a key counted as
+// full does not hide how fast the others are spent, and the tick is where
+// the whole pool would be at that even pace.
+func TestPoolSummaryPace(t *testing.T) {
+	chinese(t)
+	near := func(a, b float64) bool { return math.Abs(a-b) < 0.01 }
+	pools := PoolSummaries(sample(t).Keys, sampleNow)
+	std := pools[0].Windows
+	// 5 h: 75.3% and 50% of the windows gone, 100% and 10% used.
+	if w := std[0]; !w.HasPace || w.Pace != "少用 8%" || w.PaceTone != ToneSecondary || !near(w.Even, 37.33) {
+		t.Errorf("5h pace = %+v", w)
+	}
+	// 7 d: one key under way, 40% used with 46% of its week gone; the
+	// other is counted as full on the bar and left out of the pace.
+	w := std[1]
+	if !w.HasPace || w.Pace != "少用 6%" || !near(w.Even, 76.93) || w.Bar.Value != 80 {
+		t.Errorf("weekly pace = %+v", w)
+	}
+	for _, want := range []string{"有数据的 key：时间过了 46%，额度用了 40%。比匀速少用了 6% 的额度", "快慢只按有数据的 key 计算。", "竖线是匀速消耗时整个池应剩的位置。"} {
+		if !strings.Contains(w.Help, want) {
+			t.Errorf("weekly help %q lacks %q", w.Help, want)
+		}
+	}
+	if core := pools[1].Windows; core[0].Pace != "少用 15%" || core[2].HasPace || core[2].Pace != "" {
+		t.Errorf("core pace = %+v", core)
+	}
+
+	at := func(d time.Duration) string { return sampleNow.Add(d).Format(time.RFC3339) }
+	fast := []keys.KeyState{{Index: 1, Status: "ok", Limits: &keys.KeyLimits{Standard: &keys.PoolLimits{
+		FiveHour: &keys.BucketLimit{UsedPercent: 90, WindowEnd: at(150 * time.Minute)},
+	}}}}
+	if w := BuildPoolSummary(Standard, fast, sampleNow).Windows[0]; w.Pace != "多用 40%" || w.PaceTone != ToneWarning || !near(w.Even, 50) {
+		t.Errorf("fast pace = %+v", w)
 	}
 }
 
@@ -492,5 +529,69 @@ func TestCreditsInWords(t *testing.T) {
 	beyond := now.Add(30 * time.Hour)
 	if got, want := FormatReset(beyond, now), beyond.Local().Format("1/2 15:04")+" 重置"; got != want {
 		t.Errorf("reset beyond a day = %q, want %q", got, want)
+	}
+}
+
+// The live months until they reset: how far through them the pool is, the
+// even pace to the resets, and whether the last week's spend should speed
+// up or slow down.
+func TestCycle(t *testing.T) {
+	chinese(t)
+	now := sampleNow
+	at := func(d time.Duration) string { return now.Add(d).Format(time.RFC3339) }
+	month := func(used float64, end time.Duration) *keys.KeyLimits {
+		return &keys.KeyLimits{Standard: &keys.PoolLimits{Monthly: &keys.BucketLimit{UsedPercent: used, WindowEnd: at(end)}}}
+	}
+	day := 24 * time.Hour
+	pool := []keys.KeyState{
+		// Half its month gone, 40% used.
+		{Index: 1, Status: "ok", Limits: month(40, 15*day)},
+		// A fifth of its month gone, 20% used.
+		{Index: 2, Status: "ok", Limits: month(20, 24*day)},
+		{Index: 3, Status: "ok", Limits: &keys.KeyLimits{Standard: &keys.PoolLimits{Monthly: &keys.BucketLimit{}}}},
+		{Index: 4, Status: "http_403", Limits: month(0, day)},
+	}
+	v := BuildCycle(pool, nil, now)
+	if !v.Available || v.Stage != "计时中的月额度：时间过了 35%，额度用了 30%" || v.Waiting != "1 把 key 等待中，不计入" || v.Bar.Value != 70 || math.Abs(v.Even-65) > 0.01 {
+		t.Fatalf("stage = %+v", v)
+	}
+	// The first key needs 4% a day, both 140% over 24 days.
+	even := 140.0 / 24
+	if v.Target != "到重置前匀速每天 "+monthCredits(even) || v.Verdict != "记录满 1 天后可以对比" || v.Short != "" || v.Advice != "" {
+		t.Errorf("without a log = %+v", v)
+	}
+
+	// 3% a day spends 45% of the first month and 27% of the second before
+	// they reset.
+	v = BuildCycle(pool, &Spend{Recent: 3, HasRecent: true}, now)
+	if v.Verdict != "按近 7 天平均（每天 "+monthCredits(3)+"）：重置时会作废 "+monthCredits(68) || v.Tone != ToneWarning {
+		t.Errorf("slow verdict = %q %v", v.Verdict, v.Tone)
+	}
+	if v.Advice != "可以加快到每天 "+monthCredits(even)+"（近 7 天平均的 1.9×，每天多用 "+monthCredits(even-3)+"）" || v.Short != "可加快到 1.9×" {
+		t.Errorf("slow advice = %q %q", v.Advice, v.Short)
+	}
+
+	// 10% a day spends the 140% in 14 days, before the second month ends.
+	v = BuildCycle(pool, &Spend{Recent: 10, HasRecent: true}, now)
+	runsOut, last := now.Add(14*day).Local().Format("1/2"), now.Add(24*day).Local().Format("1/2")
+	if v.Verdict != "按近 7 天平均（每天 "+monthCredits(10)+"）：计时中的月额度约 "+runsOut+" 用完，早于最后一次重置（"+last+"）" || v.Tone != ToneWarning {
+		t.Errorf("fast verdict = %q %v", v.Verdict, v.Tone)
+	}
+	if v.Advice != "放慢到每天 "+monthCredits(even)+"（近 7 天平均的 0.6×，每天少用 "+monthCredits(10-even)+"），才能用到重置" || v.Short != "需放慢到 0.6×" {
+		t.Errorf("fast advice = %q %q", v.Advice, v.Short)
+	}
+
+	if v = BuildCycle(pool, &Spend{Recent: 6, HasRecent: true}, now); v.Short != "匀速" || v.Tone != ToneGreen || v.Advice != "" || !strings.HasSuffix(v.Verdict, "：和匀速持平") {
+		t.Errorf("on pace = %+v", v)
+	}
+	if v = BuildCycle(pool, &Spend{HasRecent: true}, now); v.Short != "可以多用" || v.Advice != "每天至少用 "+monthCredits(even)+" 才不作废" {
+		t.Errorf("nothing spent = %+v", v)
+	}
+
+	if v = BuildCycle(runwayKeys(2), nil, now); v.Available {
+		t.Errorf("no month under way = %+v", v)
+	}
+	if v = BuildCycle([]keys.KeyState{{Status: "ok", Limits: month(99, 5*day)}}, &Spend{Recent: 3, HasRecent: true}, now); !v.Available || v.Target != "计时中的月额度已用完" || v.Verdict != "" {
+		t.Errorf("used up = %+v", v)
 	}
 }

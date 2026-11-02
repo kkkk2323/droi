@@ -110,6 +110,13 @@ type PoolSummaryWindow struct {
 	// Reset is the soonest reset among the keys.
 	Reset string
 	Help  string
+	// Even is where Bar would be were the keys under way at an even pace,
+	// and HasPace whether any is; Pace says in short how far off they are,
+	// counting only them.
+	HasPace  bool
+	Even     float64
+	Pace     string
+	PaceTone Tone
 }
 
 func BuildPoolSummary(p Pool, pool []keys.KeyState, now time.Time) PoolSummaryView {
@@ -127,6 +134,10 @@ func BuildPoolSummary(p Pool, pool []keys.KeyState, now time.Time) PoolSummaryVi
 		if s.SoonestReset != nil {
 			row.Reset = l10n.L("first %s", FormatReset(*s.SoonestReset, now))
 		}
+		if pace, ok := s.Pace(); ok {
+			row.HasPace, row.Even = true, s.EvenRemaining()
+			row.Pace, row.PaceTone = paceShort(pace)
+		}
 		v.Windows = append(v.Windows, row)
 	}
 	return v
@@ -136,6 +147,14 @@ func poolHelp(w Window, s WindowSummary) string {
 	parts := []string{l10n.L("%s averages %s left", w.Name(), FormatPercent(s.AverageRemaining()))}
 	if s.Unmeasured > 0 {
 		parts = append(parts, l10n.L("%d keys have data, %d have not started it: counted as full", s.Measured, s.Unmeasured))
+	}
+	if pace, ok := s.Pace(); ok {
+		sentence, _ := paceText(pace)
+		parts = append(parts, l10n.L("Keys with data: %s of the window gone, %s used. %s", FormatPercent(s.Elapsed()), FormatPercent(s.PacedUsed()), sentence))
+		if s.Unmeasured > 0 {
+			parts = append(parts, l10n.L("The pace counts only the keys with data."))
+		}
+		parts = append(parts, l10n.L("The tick is where the pool would be at an even pace."))
 	}
 	if s.SoonestReset != nil {
 		parts = append(parts, l10n.L("The first resets at %s", FormatShortDate(*s.SoonestReset)))
@@ -308,6 +327,18 @@ func paceText(pace float64) (string, Tone) {
 		return l10n.L("%d points ahead of an even pace", n), ToneWarning
 	}
 	return l10n.L("%d points behind an even pace", n), ToneSecondary
+}
+
+// paceShort is paceText in a column's width.
+func paceShort(pace float64) (string, Tone) {
+	n := int(math.Round(math.Abs(pace)))
+	switch {
+	case n == 0:
+		return l10n.L("On pace"), ToneSecondary
+	case pace > 0:
+		return l10n.L("%d pts fast", n), ToneWarning
+	}
+	return l10n.L("%d pts slow", n), ToneSecondary
 }
 
 type EventRowView struct {

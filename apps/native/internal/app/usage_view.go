@@ -85,6 +85,7 @@ type usageModel struct {
 
 	pools    []llmusage.PoolSummaryView
 	runway   llmusage.RunwayView
+	cycle    llmusage.CycleView
 	expiring llmusage.ExpiringView
 	cards    []usageCard
 	rows     []llmusage.KeyRowView
@@ -217,6 +218,7 @@ func (a *App) buildUsage(st keypool.State) *usageModel {
 	*m = usageModel{built: true, poolAt: s.poolAt, spendAt: s.spendAt, lang: lang}
 	m.pools = llmusage.PoolSummaries(pool, now)
 	m.runway = llmusage.BuildRunway(pool, spend, now)
+	m.cycle = llmusage.BuildCycle(pool, spend, now)
 	m.expiring = llmusage.BuildExpiring(pool, now, spend)
 	for _, k := range st.Keys {
 		m.cards = append(m.cards, usageCard{id: k.ID, masked: k.Masked, current: k.Current, view: llmusage.BuildKeyCard(k.State, now)})
@@ -341,6 +343,7 @@ func (a *App) keysPage(c *ui.Context, u usageLook, st keypool.State, m *usageMod
 		ui.Box(c).Height(u.Px(6))
 		u.SectionHead(c, L("Quota"), m.checked, nil)
 		u.poolCards(c, m.pools)
+		u.cycleCard(c, m.cycle)
 		ui.Box(c).Height(u.Px(6))
 		u.expiring(c, m.expiring)
 		ui.Box(c).Height(u.Px(6))
@@ -423,7 +426,8 @@ func (u usageLook) runwaySection(c *ui.Context, r llmusage.RunwayView) {
 }
 
 // poolCard is one pool: its name, how many keys it routes, then a row per
-// window with what is left on average and the soonest reset.
+// window with what is left on average against an even pace (the tick), how
+// far off that pace the keys under way are, and the soonest reset.
 func (u usageLook) poolCard(c *ui.Context, pool llmusage.PoolSummaryView) {
 	p := u.P
 	pad := u.Px(14)
@@ -433,13 +437,60 @@ func (u usageLook) poolCard(c *ui.Context, pool llmusage.PoolSummaryView) {
 			ui.Spacer(c)
 			u.Text(c, pool.Note, 11).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine()
 		})
+		paced := false
+		for _, w := range pool.Windows {
+			paced = paced || w.HasPace
+		}
 		for _, w := range pool.Windows {
 			ui.Row(c.Key(w.Label)).Gap(u.Px(8)).Tooltip(w.Help).Children(func() {
 				u.Text(c, w.Label, 11).TextColor(p.Secondary).Width(u.Px(36)).NoWrap()
-				u.Meter(c, w.Bar.Value, w.Bar.Tone, 5, -1).Label(w.Name)
+				u.Meter(c, w.Bar.Value, w.Bar.Tone, 5, paceMark(w)).Label(w.Name).MinWidth(u.Px(48))
 				u.Text(c, w.Percent, 12).FontWeight(600).TextColor(u.Tone(dashkit.PrimaryTone(w.PercentTone))).FontFeatures("tnum").Width(u.Px(38)).TextAlign(ui.End)
-				u.Text(c, w.Reset, 11).TextColor(p.Tertiary).FontFeatures("tnum").Width(u.Px(150)).SingleLine()
+				if paced {
+					u.Text(c, w.Pace, 11).TextColor(u.Tone(w.PaceTone)).FontFeatures("tnum").Width(u.Px(64)).SingleLine()
+				}
+				// The reset gives way first: it is in the tooltip too.
+				u.Text(c, w.Reset, 11).TextColor(p.Tertiary).FontFeatures("tnum").Width(u.Px(150)).Shrink(1).MinWidth(0).SingleLine()
 			})
+		}
+	})
+}
+
+// paceMark is where a pool row's meter draws its even-pace tick, or -1 for
+// none.
+func paceMark(w llmusage.PoolSummaryWindow) float64 {
+	if !w.HasPace {
+		return -1
+	}
+	return w.Even
+}
+
+// cycleCard is the Standard pool's live months until they reset: how far
+// through them it is, the even pace to the resets, and whether the last
+// days' spend should speed up or slow down.
+func (u usageLook) cycleCard(c *ui.Context, v llmusage.CycleView) {
+	if !v.Available {
+		return
+	}
+	p := u.P
+	u.Card(c).Role(ui.RoleGroup).Label(L("Before the monthly resets")).Padding(u.Px(12), u.Px(16)).Gap(u.Px(8)).Tooltip(v.Help).Children(func() {
+		ui.Row(c).Gap(u.Px(8)).Children(func() {
+			u.Text(c, L("Before the monthly resets"), 12).FontWeight(600).TextColor(p.Secondary).NoWrap()
+			u.Text(c, v.Stage, 11).TextColor(p.Tertiary).FontFeatures("tnum").SingleLine().Shrink(1)
+			ui.Spacer(c)
+			if v.Waiting != "" {
+				u.Text(c, v.Waiting, 11).TextColor(p.Tertiary).FontFeatures("tnum").NoWrap()
+			}
+		})
+		ui.Row(c).Gap(u.Px(10)).Children(func() {
+			u.Meter(c, v.Bar.Value, v.Bar.Tone, 5, v.Even).Label(L("Before the monthly resets"))
+			u.Text(c, v.Target, 12).FontWeight(600).FontFeatures("tnum").NoWrap()
+		})
+		if v.Verdict != "" {
+			u.Text(c, v.Verdict, 12).TextColor(u.Tone(v.Tone)).FontFeatures("tnum")
+		}
+		if v.Advice != "" {
+			u.Text(c, v.Advice, 12).FontWeight(500).FontFeatures("tnum")
 		}
 	})
 }

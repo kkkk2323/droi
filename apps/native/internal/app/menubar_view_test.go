@@ -62,7 +62,7 @@ func TestTheMenuBarItemShowsTheKeyPool(t *testing.T) {
 	h.until("the item's quota", func() bool { return h.a.MenuBarItem().Title == "70%" })
 	panel.Frame()
 	panel.Frame()
-	for _, want := range []string{"Key Pool", keys.MaskKey(first), keys.MaskKey(second), "Standard", "Core", "2 keys"} {
+	for _, want := range []string{"Key Pool", keys.MaskKey(first), keys.MaskKey(second), "Standard", "Core", "2 keys", "Even pace to the resets"} {
 		if !hasAny(panel.Texts(), want) {
 			t.Fatalf("no %q in the panel: %q", want, panel.Texts())
 		}
@@ -135,7 +135,7 @@ func TestTheMenuBarPanelWithData(t *testing.T) {
 			for range 5 {
 				panel.Frame()
 			}
-			for _, want := range []string{"Key 池", "今天已用", "每天上限", "即将作废", "fk-4f2a1...91be", "4 把 key · 2 把需处理", "缓存预热", "额度更新于"} {
+			for _, want := range []string{"Key 池", "今天已用", "每天上限", "到重置前匀速每天", "可加快到", "即将作废", "fk-4f2a1...91be", "4 把 key · 2 把需处理", "缓存预热", "额度更新于"} {
 				if !hasAny(panel.Texts(), want) {
 					t.Errorf("no %q in the panel: %q", want, panel.Texts())
 				}
