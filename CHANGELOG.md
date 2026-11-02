@@ -1,4 +1,9 @@
-## 1.88.1 - 2026-11-02
+## 1.89.0 - 2026-11-02
+
+### Added
+
+- Settings → Usage and the menu bar panel show how each quota window stands against an even pace. Every Quota row has a tick where an even pace would put it, and the Usage tab says how much more or less of the window the keys in use have spent than that ("6 pts slow"). A key whose window has not started still counts as full in the bar, but it no longer hides how fast the others are spent.
+- A "Before the monthly resets" card on the Usage tab reads the Standard pool's running months: how much of their time and quota is gone, the spend a day that uses what they hold before they reset, and how the last 7 days' average compares. When it is slower, the card says how much is lost at the resets and how much faster to go; when it is faster, when the months run out and how much to slow down. The menu bar panel shows the same in one line.
 
 ### Fixed
 
