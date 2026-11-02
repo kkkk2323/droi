@@ -463,15 +463,23 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	if copyErr != nil {
 		logErr = "response_copy_error"
 	}
+	if detail, failed := observer.Failure(); failed {
+		if logErr == "" {
+			logErr = "stream_failed"
+		}
+		if errorDetail == "" {
+			errorDetail = snippetForLog([]byte(detail))
+		}
+	}
 	var usage *diag.TokenUsage
 	if u, ok := observer.Usage(); ok {
 		usage = &u
 	}
 	p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, written, usage, observer, false, logErr, errorDetail)
-	if resp.StatusCode == http.StatusOK && copyErr == nil {
+	if resp.StatusCode == http.StatusOK && logErr == "" {
 		p.keyOpener.observe(upstreamURL, outHeaders, req.Header.Get("Content-Encoding"), raw, model, providerForRequest(req, upstreamPath))
 	}
-	if warmer := p.cacheWarmer(); warmer != nil && resp.StatusCode == http.StatusOK && copyErr == nil && usage != nil {
+	if warmer := p.cacheWarmer(); warmer != nil && resp.StatusCode == http.StatusOK && logErr == "" && usage != nil {
 		warmer.Observe(warmCapture{
 			sessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),
 			upstream:  upstreamBase,

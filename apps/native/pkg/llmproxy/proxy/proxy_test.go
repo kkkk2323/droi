@@ -226,3 +226,24 @@ func TestProxyAnswersARejectedPoolKey(t *testing.T) {
 		})
 	}
 }
+
+// Factory answers 200 and then ends the stream with a failure frame: the
+// record says so, and droid gets the stream as it came.
+func TestProxyRecordsAStreamThatFailed(t *testing.T) {
+	stream := `data: {"type":"response.created","response":{"output":[]}}` + "\n\n" +
+		`data: {"type":"response.failed","response":{"status":"failed","error":null}}` + "\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, stream)
+	}))
+	defer upstream.Close()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+	resp, body := postLLM(t, px.BaseURL(), "fk-a")
+	if resp.StatusCode != 200 || body != stream {
+		t.Fatalf("status %d %q", resp.StatusCode, body)
+	}
+	recs := px.Recorder().Requests()
+	if len(recs) != 1 || recs[0].Error != "stream_failed" || recs[0].ErrorDetail != "response.failed" {
+		t.Fatalf("record = %+v", recs)
+	}
+}
