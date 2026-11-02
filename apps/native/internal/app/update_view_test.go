@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
@@ -122,6 +123,37 @@ func TestUpdatesWaitForTheUserUntilTheSwitchIsOn(t *testing.T) {
 	}
 	if !h.a.RelaunchIfIdle() || relaunched != 1 {
 		t.Fatal("did not relaunch once updates are automatic")
+	}
+}
+
+// An app's Presets can turn automatic updates on, here and after an
+// update, until the user turns them off: then they stay off.
+func TestPresetsTurnAutomaticUpdatesOnUntilTheUserTurnsThemOff(t *testing.T) {
+	focused, relaunched := false, 0
+	u := updates.New(testSource{rel: testRelease{}})
+	presets := &defaults.Presets{AutoUpdate: true}
+	h := newHarnessWith(t, fakedaemon.Scenario{}, "", func(cfg *Config) {
+		cfg.Updater = u
+		cfg.Relaunch = func() { relaunched++ }
+		cfg.Focused = func() bool { return focused }
+		cfg.Presets = presets
+	})
+	if !u.Automatic() {
+		t.Fatal("the presets did not turn automatic updates on")
+	}
+	if _, ok := h.cfg.Prefs.Get(prefs.AutoUpdate.Key); ok {
+		t.Fatal("the presets were saved as the user's choice")
+	}
+	h.a.Go(Route{Name: "settings", Tab: "about"})
+	h.settle()
+	clickSwitchBeside(h, []string{"When off, Droi asks before it updates"}, func() bool { return !u.Automatic() })
+	if prefs.AutoUpdate.Get(h.cfg.Prefs) {
+		t.Fatal("the switch did not keep automatic updates off")
+	}
+	next := updates.New(testSource{rel: testRelease{}})
+	New(Config{Prefs: h.cfg.Prefs, Updater: next, Presets: presets})
+	if next.Automatic() {
+		t.Fatal("the presets overrode the user's choice")
 	}
 }
 

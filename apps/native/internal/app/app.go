@@ -311,9 +311,17 @@ func New(cfg Config) *App {
 	a.applyPrefs()
 	if cfg.Updater != nil {
 		cfg.Updater.Skip(prefs.SkippedUpdate.Get(cfg.Prefs))
-		cfg.Updater.SetAutomatic(prefs.AutoUpdate.Get(cfg.Prefs))
+		cfg.Updater.SetAutomatic(autoUpdate(cfg))
 	}
 	return a
+}
+
+// autoUpdate is About's "Install updates automatically": the user's own
+// choice, else the app's Presets.
+func autoUpdate(cfg Config) bool {
+	p := prefs.AutoUpdate
+	p.Fallback = cfg.Presets != nil && cfg.Presets.AutoUpdate
+	return p.Get(cfg.Prefs)
 }
 
 func (a *App) applyPrefs() {

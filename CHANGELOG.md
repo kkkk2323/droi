@@ -1,8 +1,9 @@
-## 1.88.0 - 2026-11-01
+## 1.88.0 - 2026-11-02
 
 ### Added
 
 - You can resize the sidebar: drag its right edge, from 180 to 480 px. Droi keeps the width for the next launch, and Settings' list of sections has the same width. A double click on the edge restores the default width. When the edge has the focus, the Left and Right arrow keys move it.
+- An app built on Droi can turn on About's "Install updates automatically" for its users (`Presets.AutoUpdate`, ADR 0029). It applies wherever the user has not set the switch, including existing installs; once a user sets the switch, their setting stays. Droi itself still asks before it updates.
 
 ## 1.87.1 - 2026-10-31
 
