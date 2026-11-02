@@ -176,10 +176,9 @@ func IsLive(b *keys.BucketLimit, now time.Time) bool {
 	return started && !IsStaleExhausted(b, now)
 }
 
-// Pace is how far a live window is from an even pace, in points of the
-// window: +12 is twelve points ahead, so at this rate it runs out before it
-// resets; -8 is eight points to spare.
-func Pace(b *keys.BucketLimit, w Window, now time.Time) (float64, bool) {
+// Elapsed is how far through a live window now is, 0…100: what an even
+// pace would have used of it by now.
+func Elapsed(b *keys.BucketLimit, w Window, now time.Time) (float64, bool) {
 	if !IsLive(b, now) {
 		return 0, false
 	}
@@ -188,8 +187,18 @@ func Pace(b *keys.BucketLimit, w Window, now time.Time) (float64, bool) {
 	if !end.After(now) || now.Before(start) {
 		return 0, false
 	}
-	even := 100 * float64(now.Sub(start)) / float64(end.Sub(start))
-	return clampPercent(b.UsedPercent) - even, true
+	return 100 * float64(now.Sub(start)) / float64(end.Sub(start)), true
+}
+
+// Pace is how far a live window is from an even pace, in points of the
+// window: +12 is twelve points ahead, so at this rate it runs out before it
+// resets; -8 is eight points to spare.
+func Pace(b *keys.BucketLimit, w Window, now time.Time) (float64, bool) {
+	elapsed, ok := Elapsed(b, w, now)
+	if !ok {
+		return 0, false
+	}
+	return clampPercent(b.UsedPercent) - elapsed, true
 }
 
 // WindowSummary aggregates one window of one pool across the keys the pool
@@ -203,6 +212,12 @@ type WindowSummary struct {
 	// percent of a Pro key's window (Scale).
 	TotalRemaining, Capacity float64
 	SoonestReset             *time.Time
+	// Paced counts the measured keys whose window is under way, and
+	// PacedCapacity, PacedRemaining and PacedElapsed (Elapsed times Scale)
+	// are theirs alone: keys counted as full would hide how fast the
+	// started ones are spent.
+	Paced                                       int
+	PacedCapacity, PacedRemaining, PacedElapsed float64
 }
 
 func (s WindowSummary) KeyCount() int { return s.Measured + s.Unmeasured }
@@ -214,6 +229,41 @@ func (s WindowSummary) AverageRemaining() float64 {
 		return 0
 	}
 	return s.TotalRemaining / s.Capacity * 100
+}
+
+// Elapsed is how far through their windows the paced keys are, 0…100, a
+// bigger plan weighing more.
+func (s WindowSummary) Elapsed() float64 {
+	if s.PacedCapacity <= 0 {
+		return 0
+	}
+	return s.PacedElapsed / s.PacedCapacity * 100
+}
+
+// PacedUsed is the share of the paced keys' windows used, 0…100.
+func (s WindowSummary) PacedUsed() float64 {
+	if s.PacedCapacity <= 0 {
+		return 0
+	}
+	return 100 - s.PacedRemaining/s.PacedCapacity*100
+}
+
+// Pace is how far the paced keys are from an even pace, in points of their
+// windows, as Pace is for one key; ok is false when no key is paced.
+func (s WindowSummary) Pace() (float64, bool) {
+	if s.Paced == 0 {
+		return 0, false
+	}
+	return s.PacedUsed() - s.Elapsed(), true
+}
+
+// EvenRemaining is what AverageRemaining would be were the paced keys at an
+// even pace, the others as they are.
+func (s WindowSummary) EvenRemaining() float64 {
+	if s.Capacity <= 0 {
+		return 0
+	}
+	return clampPercent((s.TotalRemaining - s.PacedRemaining + s.PacedCapacity - s.PacedElapsed) / s.Capacity * 100)
 }
 
 // KeyEquivalent is the remaining capacity as whole Pro keys.
@@ -237,6 +287,12 @@ func SummarizeWindow(pool []keys.KeyState, p Pool, w Window, now time.Time) Wind
 		}
 		s.Measured++
 		s.TotalRemaining += Remaining(limit) * scale
+		if elapsed, ok := Elapsed(limit, w, now); ok {
+			s.Paced++
+			s.PacedCapacity += 100 * scale
+			s.PacedRemaining += Remaining(limit) * scale
+			s.PacedElapsed += elapsed * scale
+		}
 		if reset, ok := ResetAt(limit); ok && reset.After(now) {
 			if s.SoonestReset == nil || reset.Before(*s.SoonestReset) {
 				r := reset
