@@ -221,6 +221,9 @@ function AskUserCard({
 
   const question = request.questions[step]
   if (!question) return null
+  // droid 1.2 says what each option means, index-aligned; the SDK's type
+  // predates it (Droi's patch keeps the field when the request is parsed).
+  const descriptions = (question as { optionDescriptions?: string[] }).optionDescriptions
   const selected = chosen[question.index] ?? []
   const typed = custom[question.index] ?? ''
   const canContinue = selected.length > 0 || typed.trim().length > 0
@@ -289,26 +292,36 @@ function AskUserCard({
           aria-label={question.question}
           style={styles.options}
         >
-          {question.options.map((option) => {
+          {question.options.map((option, i) => {
             const checked = selected.includes(option)
+            const description = descriptions?.[i]
             return (
               <Pressable
                 key={option}
                 role={question.multiSelect ? 'checkbox' : 'radio'}
                 aria-checked={checked}
                 aria-label={option}
+                accessibilityHint={description}
                 onPress={() => select(option)}
                 style={[
                   styles.option,
+                  description ? styles.described : null,
                   {
                     backgroundColor: checked ? colors.accent : colors.card,
                     borderColor: checked ? colors.ring : 'transparent',
                   },
                 ]}
               >
-                <Text size="sm" weight="medium" style={styles.fill}>
-                  {option}
-                </Text>
+                <View style={styles.fill}>
+                  <Text size="sm" weight="medium">
+                    {option}
+                  </Text>
+                  {description ? (
+                    <Text size="xs" tone="muted">
+                      {description}
+                    </Text>
+                  ) : null}
+                </View>
                 {checked ? <Check size={14} color={colors.foreground} /> : null}
               </Pressable>
             )
@@ -381,6 +394,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
+  described: { paddingVertical: space.sm },
   own: {
     flexDirection: 'row',
     alignItems: 'center',

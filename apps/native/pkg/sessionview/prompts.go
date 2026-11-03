@@ -102,10 +102,13 @@ func (v *View) smallButton(c *ui.Context, variant kit.Variant, label string) ui.
 // framed like a field, so that it reads as a control on the card (whose
 // white matches the page's), with a radio or a check box in front when it
 // is one.
-func (v *View) optionRow(c *ui.Context, key, label string, checked bool, role ui.Role, trailing func()) ui.Element {
+func (v *View) optionRow(c *ui.Context, key, label, detail string, checked bool, role ui.Role, trailing func()) ui.Element {
 	k, t := v.look()
 	b := ui.ButtonBase(c.Key(key)).Role(role).Label(label).MinHeight(k.Px(36)).FillWidth().Gap(k.Px(8)).Padding(k.Px(6), k.Px(10)).
 		Radius(k.Px(8)).Border(1, t.Input).Background(t.Background).Justify(ui.Start).Cursor(ui.CursorPointer)
+	if detail != "" {
+		b.Description(detail)
+	}
 	choice := role == ui.RoleRadio || role == ui.RoleCheckBox
 	if choice {
 		b.Checked(checked)
@@ -122,7 +125,14 @@ func (v *View) optionRow(c *ui.Context, key, label string, checked bool, role ui
 		if choice {
 			v.choiceMark(c, role == ui.RoleCheckBox, checked)
 		}
-		k.Text(c, label, k.Dense(12, 13), k.Dense(16, 18)).FontWeight(500).Grow(1).MinWidth(0)
+		if detail == "" {
+			k.Text(c, label, k.Dense(12, 13), k.Dense(16, 18)).FontWeight(500).Grow(1).MinWidth(0)
+		} else {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(1)).Children(func() {
+				k.Text(c, label, k.Dense(12, 13), k.Dense(16, 18)).FontWeight(500)
+				k.Text(c, detail, k.Dense(11, 12), k.Dense(15, 17)).TextColor(t.MutedForeground)
+			})
+		}
 		trailing()
 	})
 	return b
@@ -410,9 +420,13 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 				role, group = ui.RoleCheckBox, ui.RoleGroup
 			}
 			ui.Column(c).Role(group).Label(question.Question).Gap(k.Px(4)).Margin(k.Px(10), 0, 0, 0).Children(func() {
-				for _, opt := range question.Options {
+				for i, opt := range question.Options {
 					checked := slices.Contains(selected, opt)
-					row := v.optionRow(c, opt, opt, checked, role, func() {})
+					detail := ""
+					if i < len(question.OptionDescriptions) {
+						detail = question.OptionDescriptions[i]
+					}
+					row := v.optionRow(c, opt, opt, detail, checked, role, func() {})
 					if row.Clicked() {
 						*st.customAnswer(idx) = ""
 						switch {

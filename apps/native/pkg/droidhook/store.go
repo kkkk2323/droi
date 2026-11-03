@@ -308,7 +308,10 @@ func validVersion(v string) bool {
 
 func semver(s string) ([3]int, bool) {
 	var v [3]int
-	core, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(s), "v"), "-")
+	// Build metadata (droid 1.2's updater keeps "+build" in a release's
+	// folder name) does not order versions.
+	core, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(s), "v"), "+")
+	core, _, _ = strings.Cut(core, "-")
 	parts := strings.Split(core, ".")
 	if len(parts) != 3 {
 		return v, false

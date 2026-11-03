@@ -498,6 +498,8 @@ var zh = map[string]string{
 	"Open in another app":                 "在其他 App 中打开",
 	"Open memory folder":                  "打开记忆文件夹",
 	"Open run from %s":                    "打开 %s 的运行记录",
+	"changed by %s":                       "由 %s 改判",
+	"Recorded as %s":                      "原记录为%s",
 	"Open sessions":                       "打开会话列表",
 	"Open sign-in page":                   "打开登录页面",
 	"Open subagent session":               "打开 Subagent 会话",

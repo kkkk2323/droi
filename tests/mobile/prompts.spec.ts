@@ -118,3 +118,35 @@ test.describe('ask-user questions', () => {
     await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible()
   })
 })
+
+test.describe('ask-user questions with option descriptions', () => {
+  test.use({
+    scenario: {
+      sessions: [deploy],
+      handlers: {
+        'daemon.add_user_message': askUserTurn({
+          question: 'Which environment?',
+          options: ['staging', 'production'],
+          optionDescriptions: ['Only the team sees it.', 'Every customer gets it.'],
+        }),
+      },
+    },
+  })
+
+  test('each option shows what it means', async ({ page, fakeDaemon }) => {
+    await pairPhone(page, fakeDaemon)
+    await openAndSend(page, 'Deploy it')
+    const card = page.getByRole('group', { name: 'Droid has a question' })
+    await expect(card.getByRole('radio', { name: 'staging' })).toContainText(
+      'Only the team sees it.',
+    )
+    await expect(card.getByRole('radio', { name: 'production' })).toContainText(
+      'Every customer gets it.',
+    )
+    await card.getByRole('radio', { name: 'production' }).click()
+    await card.getByRole('button', { name: 'Answer' }).click()
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText(
+      'You chose production.',
+    )
+  })
+})
