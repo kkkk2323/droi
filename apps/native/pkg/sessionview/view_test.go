@@ -126,6 +126,9 @@ func (h *harness) hasText(sub string) bool {
 func (h *harness) send(text string) {
 	h.t.Helper()
 	h.until("the Session loaded", func() bool { return h.ctl.Store().LoadState(h.v.ID()) == session.Loaded })
+	// The load can land after the frame until drew last; a click on that
+	// frame's composer can miss the one the loaded Session draws.
+	h.frame()
 	if err := h.tt.Click("Message"); err != nil {
 		h.t.Fatal(err)
 	}
