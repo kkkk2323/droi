@@ -220,10 +220,8 @@ func TestARunWhoseOutcomeWasChangedSaysWho(t *testing.T) {
 	h.click("Automations")
 	h.until("the list", func() bool { return h.hasText("Daily review") })
 	h.click("Daily review")
-	h.until("the run", func() bool { return h.hasText("Succeeded") })
-	if !h.hasText("changed by ana@acme.dev") {
-		t.Fatalf("no change note in %q", h.tt.Texts())
-	}
+	// "Succeeded" is also the last run's status, shown before the runs load.
+	h.until("the changed run", func() bool { return h.hasText("changed by ana@acme.dev") })
 	if dir := os.Getenv("DROI_NATIVE_SHOTS"); dir != "" {
 		h.settle()
 		_ = os.MkdirAll(dir, 0o755)
