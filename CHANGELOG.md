@@ -1,3 +1,15 @@
+## 1.90.0 - 2026-11-03
+
+### Added
+
+- Droi works with droid 1.2.0. When droid 1.2 asks with Claude Code's question shape (Anthropic models, as Factory turns it on), each option of the question card says what it means, under the option, on the computer and on the Phone App. Before, the card showed the option names alone.
+- An automation run whose outcome someone changed says who changed it ("changed by …") next to the changed outcome, and its tooltip names the recorded outcome and the reason given.
+
+### Changed
+
+- The Go SDK is droid-sdk-go 0.5.0, which reads what droid 1.2 adds: option descriptions, the older messages of a Session started from another one's history, and a run's failure reason and changed outcome.
+- Droi's droid accepts a version with build metadata, such as `1.2.0+mirror.1`, which droid 1.2's updater keeps in a release's name. Before, Droi did not offer such a version.
+
 ## 1.89.0 - 2026-11-02
 
 ### Added
@@ -8,6 +20,7 @@
 ### Fixed
 
 - The Usage tab shows a model request as failed when Factory answered 200 but then ended the stream with a failure, such as OpenAI's `response.failed` or a mid-stream error from Anthropic. It said such a request had succeeded, with no tokens. The request's status now says `stream_failed`, with the code and message the stream gave, when it gave one.
+
 ## 1.88.0 - 2026-11-02
 
 ### Added

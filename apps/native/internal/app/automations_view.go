@@ -952,6 +952,13 @@ func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 			}
 		})
 		k.Text(c, label, 13, 20).SingleLine().Shrink(0)
+		if o := r.OutcomeOverride; o != nil {
+			why := L("Recorded as %s", strings.ToLower(l10n.T(automations.RunLabel(o.OriginalStatus))))
+			if note := strings.TrimSpace(o.Note); note != "" {
+				why += "\n" + note
+			}
+			k.Text(c, L("changed by %s", o.ChangedBy), 12, 16).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0).Tooltip(why)
+		}
 		if r.ErrorMessage != "" {
 			k.Text(c, r.ErrorMessage, 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
 		}

@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -205,6 +207,28 @@ func TestCreatingAnAutomation(t *testing.T) {
 	h.until("the new automation's page", func() bool {
 		return h.a.Route().Automation == "daily-review-2" && h.hasText("Created.") && h.hasText("No runs yet")
 	})
+}
+
+// A run whose outcome a user changed (droid 1.2) shows the changed outcome
+// and who changed it.
+func TestARunWhoseOutcomeWasChangedSaysWho(t *testing.T) {
+	sc := automationsScenario()
+	run := sc.Input["automations"].([]map[string]any)[0]["runs"].([]map[string]any)[0]
+	run["outcomeOverride"] = map[string]any{"originalStatus": "failure", "changedBy": "ana@acme.dev", "note": "The check was flaky."}
+	h := newHarness(t, sc, "")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.click("Automations")
+	h.until("the list", func() bool { return h.hasText("Daily review") })
+	h.click("Daily review")
+	h.until("the run", func() bool { return h.hasText("Succeeded") })
+	if !h.hasText("changed by ana@acme.dev") {
+		t.Fatalf("no change note in %q", h.tt.Texts())
+	}
+	if dir := os.Getenv("DROI_NATIVE_SHOTS"); dir != "" {
+		h.settle()
+		_ = os.MkdirAll(dir, 0o755)
+		writePNG(filepath.Join(dir, "automation-run-changed.png"), h.tt.Image())
+	}
 }
 
 // A long prompt shows its first lines until it is opened, so the runs

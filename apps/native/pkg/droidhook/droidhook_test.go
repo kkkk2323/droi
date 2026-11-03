@@ -205,6 +205,10 @@ func TestCompareVersions(t *testing.T) {
 	if CompareVersions("0.247.0", "0.99.1") <= 0 || CompareVersions("1.0.0", "1.0.0") != 0 || CompareVersions("x", "0.1.0") >= 0 {
 		t.Fatal("version order")
 	}
+	// droid 1.2's updater keeps build metadata in a release's name.
+	if !validVersion("1.2.0+mirror.1") || CompareVersions("1.2.0+mirror.1", "1.2.0") != 0 || CompareVersions("1.2.1+b", "1.2.0") <= 0 {
+		t.Fatal("build metadata")
+	}
 }
 
 // DROI_HOOK_LIVE=1 runs Verify against the droid on PATH: the hook must

@@ -233,7 +233,7 @@ func (v *View) specReview(c *ui.Context, p controller.Permission) {
 		})
 		for _, o := range extra {
 			opt := o
-			row := v.optionRow(c, string(opt.Value), opt.Label, false, ui.RoleButton, func() { k.Icon(c, "check", 12, t.Primary) })
+			row := v.optionRow(c, string(opt.Value), opt.Label, "", false, ui.RoleButton, func() { k.Icon(c, "check", 12, t.Primary) })
 			row.Margin(k.Px(4), 0, 0, 0)
 			if row.Clicked() {
 				answer(controller.PermissionAnswer{SelectedOption: opt.Value, Comment: strings.TrimSpace(*st.comment)}, nil)

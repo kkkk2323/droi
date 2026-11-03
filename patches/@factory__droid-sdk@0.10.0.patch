@@ -1,5 +1,5 @@
 diff --git a/dist/chunk-OBPHU4RT.js b/dist/chunk-OBPHU4RT.js
-index 7999212bfb8f9bab44f3a43a088e0cfc2382954e..56276e13a1e60982a950691d6ab86de251aed6a2 100644
+index 7999212bfb8f9bab44f3a43a088e0cfc2382954e..5343023e9b4bf8d8d36b74486132942b05dbb49c 100644
 --- a/dist/chunk-OBPHU4RT.js
 +++ b/dist/chunk-OBPHU4RT.js
 @@ -2625,7 +2625,9 @@ var FactoryDroidMessageSchema = _zod2.default.object({
@@ -13,7 +13,17 @@ index 7999212bfb8f9bab44f3a43a088e0cfc2382954e..56276e13a1e60982a950691d6ab86de2
    /**
     * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
     * active slot was router-configured. Unset for non-router turns.
-@@ -23021,30 +23023,9 @@ var DaemonSessionController = (_class14 = class _DaemonSessionController extends
+@@ -4036,6 +4038,9 @@ var AskUserQuestionSchema = _zod2.default.object({
+   options: _zod2.default.array(_zod2.default.string()),
+   /** If true, the user can select multiple options for this question */
+   multiSelect: _zod2.default.boolean().optional(),
++  // Droi patch: droid 1.2 says what each option means, index-aligned with
++  // options; parsing without it dropped the descriptions.
++  optionDescriptions: _zod2.default.array(_zod2.default.string()).optional(),
+   /** Editable workstream proposal; clients without the card use the question. */
+   workstreamProposal: SoftwareFactoryWorkstreamProposalSchema.optional()
+ });
+@@ -23021,30 +23026,9 @@ var DaemonSessionController = (_class14 = class _DaemonSessionController extends
            );
            surfacedPermissionCount += 1;
          }
@@ -48,7 +58,7 @@ index 7999212bfb8f9bab44f3a43a088e0cfc2382954e..56276e13a1e60982a950691d6ab86de2
            "[DaemonSessionController] Restored pending permissions on load",
            {
 diff --git a/dist/chunk-TWAVPIPS.mjs b/dist/chunk-TWAVPIPS.mjs
-index f2ab6b8d4ff4e23ee4bd2d14bd0f75ecd094de80..e750cc4c54f865bc16af194f0f5ce911787ea32b 100644
+index f2ab6b8d4ff4e23ee4bd2d14bd0f75ecd094de80..01c6602310130e0627ba2307853e36f7e84f5f8b 100644
 --- a/dist/chunk-TWAVPIPS.mjs
 +++ b/dist/chunk-TWAVPIPS.mjs
 @@ -2625,7 +2625,9 @@ var FactoryDroidMessageSchema = z2.object({
@@ -62,7 +72,17 @@ index f2ab6b8d4ff4e23ee4bd2d14bd0f75ecd094de80..e750cc4c54f865bc16af194f0f5ce911
    /**
     * Router pseudo-model id (e.g. "auto") that picked `modelId` when the
     * active slot was router-configured. Unset for non-router turns.
-@@ -23021,30 +23023,9 @@ var DaemonSessionController = class _DaemonSessionController extends EventEmitte
+@@ -4036,6 +4038,9 @@ var AskUserQuestionSchema = z12.object({
+   options: z12.array(z12.string()),
+   /** If true, the user can select multiple options for this question */
+   multiSelect: z12.boolean().optional(),
++  // Droi patch: droid 1.2 says what each option means, index-aligned with
++  // options; parsing without it dropped the descriptions.
++  optionDescriptions: z12.array(z12.string()).optional(),
+   /** Editable workstream proposal; clients without the card use the question. */
+   workstreamProposal: SoftwareFactoryWorkstreamProposalSchema.optional()
+ });
+@@ -23021,30 +23026,9 @@ var DaemonSessionController = class _DaemonSessionController extends EventEmitte
            );
            surfacedPermissionCount += 1;
          }
