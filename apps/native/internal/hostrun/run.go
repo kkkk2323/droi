@@ -102,6 +102,7 @@ func Run(ctx context.Context, o Options) error {
 	opts := h.GatewayOptions(o.Version, trash.Move)
 	opts.Port, opts.RemoteAccess = port, true
 	opts.Automations = svc.GatewayAutomations()
+	opts.Workstreams = svc.GatewayWorkstreams()
 	var (
 		gw     *gateway.Gateway
 		last   gateway.RelayState

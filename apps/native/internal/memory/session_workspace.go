@@ -71,23 +71,41 @@ func SessionSettingsFile(transcriptFile string) string {
 // SessionTags are the names of the Session's tags, from its settings file;
 // none when the file is absent or unreadable.
 func SessionTags(transcriptFile string) []string {
+	var out []string
+	for _, t := range sessionTags(transcriptFile) {
+		out = append(out, t.Name)
+	}
+	return out
+}
+
+// SessionTagMetadata is the metadata of the Session's tag name, from its
+// settings file; ok is false without the tag.
+func SessionTagMetadata(transcriptFile, name string) (metadata map[string]string, ok bool) {
+	for _, t := range sessionTags(transcriptFile) {
+		if t.Name == name {
+			return t.Metadata, true
+		}
+	}
+	return nil, false
+}
+
+type sessionTag struct {
+	Name     string            `json:"name"`
+	Metadata map[string]string `json:"metadata"`
+}
+
+func sessionTags(transcriptFile string) []sessionTag {
 	b, err := os.ReadFile(SessionSettingsFile(transcriptFile))
 	if err != nil {
 		return nil
 	}
 	var parsed struct {
-		Tags []struct {
-			Name string `json:"name"`
-		} `json:"tags"`
+		Tags []sessionTag `json:"tags"`
 	}
 	if json.Unmarshal(b, &parsed) != nil {
 		return nil
 	}
-	var out []string
-	for _, t := range parsed.Tags {
-		out = append(out, t.Name)
-	}
-	return out
+	return parsed.Tags
 }
 
 // IsMemorySessionTranscript says whether the transcript belongs to a Memory

@@ -238,6 +238,12 @@ func (p *pass) summarizeSessions(ctx context.Context, minIdle time.Duration) {
 			rec.Skipped = memory.SessionTags(rec.Transcript)[i]
 			continue
 		}
+		// A Workstream agent's work reaches its orchestrator in reports, and
+		// Memory has it from there (ADR 0036).
+		if md, ok := memory.SessionTagMetadata(rec.Transcript, sessions.WorkstreamTag); ok && md["role"] == sessions.WorkstreamAgent {
+			rec.Skipped = sessions.WorkstreamTag
+			continue
+		}
 		info, err := os.Stat(rec.Transcript)
 		if err != nil {
 			continue

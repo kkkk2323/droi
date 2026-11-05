@@ -215,6 +215,22 @@ func TestASessionStillGoingOnOrTooOldOrNotTheUsersIsLeftAlone(t *testing.T) {
 	eq(t, f.titles()[0], "Memory: summarize Session recent")
 }
 
+func TestAWorkstreamAgentIsLeftAloneAndItsOrchestratorSummarized(t *testing.T) {
+	f := newFixture(t)
+	agent := f.session("agent", f.root, 7*time.Hour, "do x")
+	f.write(strings.TrimSuffix(agent, ".jsonl")+".settings.json", `{"tags":[{"name":"droi.workstream","metadata":{"workstreamId":"w1","role":"agent","orchestratorId":"lead"}}]}`)
+	lead := f.session("lead", f.root, 7*time.Hour, "plan y")
+	f.write(strings.TrimSuffix(lead, ".jsonl")+".settings.json", `{"tags":[{"name":"droi.workstream","metadata":{"workstreamId":"w1","role":"orchestrator"}}]}`)
+	if err := f.pass(MinIdle); err != nil {
+		t.Fatal(err)
+	}
+	st := memory.LoadState(f.dir)
+	eq(t, st.Sessions["agent"].Skipped, "droi.workstream")
+	eq(t, st.Sessions["lead"].Skipped, "")
+	eq(t, slices.Contains(f.titles(), "Memory: summarize Session lead"), true)
+	eq(t, slices.Contains(f.titles(), "Memory: summarize Session agent"), false)
+}
+
 func TestASessionThatWentOnIsSummarizedAgainInPlaceOfItsLastSummary(t *testing.T) {
 	f := newFixture(t)
 	file := f.session("s1", f.root, 7*time.Hour, "first")

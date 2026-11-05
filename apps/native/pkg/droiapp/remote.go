@@ -14,12 +14,13 @@ import (
 )
 
 // startGateway starts the Gateway that paired phones and this window connect
-// through, with svc's Automations. The window presents localToken, which a
+// through, with svc's Automations and Workstreams. The window presents localToken, which a
 // Pairing Token reset or turning Remote Access off does not revoke.
 func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error, list gateway.SessionList, svc *hostrun.Services, changed func()) (*gateway.Gateway, error) {
 	opts := h.GatewayOptions(version, moveToTrash)
 	opts.SessionList = list
 	opts.Automations = svc.GatewayAutomations()
+	opts.Workstreams = svc.GatewayWorkstreams()
 	opts.Changed = changed
 	opts.Port = brand.Current().Port
 	opts.RemoteAccess = h.Settings.Get().RemoteAccess

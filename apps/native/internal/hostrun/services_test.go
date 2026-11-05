@@ -26,9 +26,17 @@ func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	if s.Tools == nil || s.Sessions == nil {
 		t.Fatalf("%+v", s)
 	}
-	// Droi's Automations are there from the start.
-	if o := s.Overlay(host.OverlayOptions{}); len(o.MCPServers) != 1 || o.MCPServers[automationwork.ServerName].Autonomy != "medium" {
-		t.Fatalf("the overlay of the Services' own servers: %+v", o)
+	// Droi's Automations and the Workstreams' tool server are there from the
+	// start; the Workstreams' is hidden from every Client's Session.
+	own := s.Overlay(host.OverlayOptions{})
+	if len(own.MCPServers) != 2 || own.MCPServers[automationwork.ServerName].Autonomy != "medium" {
+		t.Fatalf("the overlay of the Services' own servers: %+v", own)
+	}
+	if ws := own.MCPServers["droi-workstream"]; ws.Autonomy != "low" || !ws.Approved {
+		t.Fatalf("droi-workstream %+v", ws)
+	}
+	if s.Workstreams == nil || s.GatewayWorkstreams() == nil {
+		t.Fatal("no Workstreams")
 	}
 	s.Tools.Register("droi-test", hosttools.Server{Autonomy: "low"})
 	// An extension's server cannot take the name of one of Droi's.
@@ -80,7 +88,7 @@ func TestOneDroiRunsTheAutomationsOfAFolder(t *testing.T) {
 func TestNoServicesAddNothing(t *testing.T) {
 	var none *Services
 	ext := host.OverlayOptions{Env: map[string]string{"A": "1"}}
-	if none.ClientHiddenTools() != nil || none.Overlay(ext).Env["A"] != "1" || len(none.Overlay(ext).MCPServers) != 0 {
+	if none.ClientHiddenTools() != nil || none.Overlay(ext).Env["A"] != "1" || len(none.Overlay(ext).MCPServers) != 0 || none.GatewayWorkstreams() != nil {
 		t.Fatal("nil Services add something")
 	}
 	none.Stop()

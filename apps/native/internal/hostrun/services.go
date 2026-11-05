@@ -14,14 +14,16 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
 	"github.com/kkkk2323/droi/apps/native/internal/keepawake"
+	"github.com/kkkk2323/droi/apps/native/internal/workstream"
 	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // Services are the Host's own features beside Memory, which the app and
-// `droi host` both run: the tool servers Droi carries for them, and the
-// Sessions the Host starts and follows (ADR 0035, ADR 0036).
+// `droi host` both run: the tool servers Droi carries for them, the
+// Sessions the Host starts and follows, and its Workstreams (ADR 0035, ADR
+// 0036).
 type Services struct {
 	// Tools carries the Host features' tool servers; nil when it could not
 	// listen. Register them before the Host starts its Daemon.
@@ -30,6 +32,8 @@ type Services struct {
 	Sessions *hostsession.Runner
 	// held answers the Gateway's Automation endpoints.
 	held *heldAutomations
+	// Workstreams runs the Host's Workstreams (ADR 0036).
+	Workstreams *workstream.Coordinator
 
 	// lockTried is whether takeAutomations ran before; it runs first at
 	// start, then on the one goroutine that retries.
@@ -65,10 +69,20 @@ func StartServices(h *host.Host) *Services {
 	// Factory's own Automation tools make an Automation that syncs to
 	// Factory: Droi's Sessions use Droi's.
 	s.HideFromClients(automationwork.FactoryAutomationTools...)
+	s.HideFromClients(hosttools.Selector(workstream.ServerName)...)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel
 	s.Sessions.Start(ctx)
 	s.startAutomations(ctx, h, filepath.Join(h.UserData(), "automations"))
+	s.Workstreams = workstream.New(workstream.Config{
+		Dir:      filepath.Join(h.UserData(), "workstreams"),
+		Sessions: s.Sessions,
+		Log:      func(m string) { log.Println("[workstreams]", m) },
+	})
+	if s.Tools != nil {
+		s.Tools.Register(workstream.ServerName, s.Workstreams.Server())
+	}
+	s.Workstreams.Start(ctx)
 	return s
 }
 
@@ -332,6 +346,14 @@ func (h *heldAutomations) Zone(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return au.Zone(ctx)
+}
+
+// GatewayWorkstreams is gateway.Options.Workstreams: nil without Services.
+func (s *Services) GatewayWorkstreams() gateway.Workstreams {
+	if s == nil || s.Workstreams == nil {
+		return nil
+	}
+	return s.Workstreams
 }
 
 // Overlay is the Runtime Overlay's additions: the Services' tool servers,

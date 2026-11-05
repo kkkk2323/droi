@@ -124,6 +124,8 @@ type Options struct {
 	SessionTimes SessionTimes
 	// Automations, optional, are the Host's Automations; nil answers 404.
 	Automations Automations
+	// Workstreams, optional, are the Host's Workstreams; nil answers 404.
+	Workstreams Workstreams
 	// Relay, optional, is where Remote Access also meets phones away from
 	// this computer's network (ADR 0034). It is read when Remote Access
 	// turns on and at every ReconcileRelay.
@@ -497,6 +499,9 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 	case AutomationsPath, AutomationRunsPath, AutomationSavePath, AutomationPausePath, AutomationRunPath,
 		AutomationDeletePath, FactoryAutomationsPath, FactoryAutomationMovePath, AutomationZonePath:
 		status, body := g.answerAutomations(w, r, path, q)
+		reply(w, status, body)
+	case WorkstreamsPath, WorkstreamCreatePath, WorkstreamSettingsPath, WorkstreamArchivePath:
+		status, body := g.answerWorkstreams(w, r, path, q)
 		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App
