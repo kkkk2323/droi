@@ -69,11 +69,14 @@ function activityStore(connection: DaemonConnection): ActivityStore {
   return store
 }
 
-function createActivityStore(connection: DaemonConnection): ActivityStore {
+export function createActivityStore(connection: DaemonConnection): ActivityStore {
   const { controller, sessionState } = connection
   /** Working states the Daemon reported for Sessions, loaded here or not. */
   const reported = new Map<string, string>()
-  /** The ask-user Prompts each opened Session held at connect (`pendingAskUserRequestCount`). */
+  /**
+   * The ask-user Prompts each opened Session held when the Daemon last listed
+   * them (`pendingAskUserRequestCount`), for the Sessions not followed.
+   */
   const listedAskUser = new Map<string, number>()
   /**
    * Sessions whose ask-user Prompts this Client follows itself: a loaded one
@@ -87,24 +90,60 @@ function createActivityStore(connection: DaemonConnection): ActivityStore {
     snapshot = null
     for (const listener of listeners) listener()
   }
+  // One read of the opened Sessions at a time. A rest (or a reconnect) that
+  // comes while one is in flight reads once more after it, since the answer
+  // in flight may predate it.
+  let reading = false
+  let again = false
+  let fresh = false
+  const read = () => {
+    if (reading) {
+      again = true
+      return
+    }
+    reading = true
+    const reset = fresh
+    fresh = false
+    void controller
+      .listOpenedSessions()
+      .then((opened) => {
+        if (reset) {
+          reported.clear()
+          followed.clear()
+          for (const session of opened) reported.set(session.sessionId, session.workingState)
+        }
+        listedAskUser.clear()
+        for (const session of opened) {
+          if (session.pendingAskUserRequestCount && !followed.has(session.sessionId)) {
+            listedAskUser.set(session.sessionId, session.pendingAskUserRequestCount)
+          }
+        }
+        changed()
+      }, console.error)
+      .finally(() => {
+        reading = false
+        if (again) {
+          again = false
+          read()
+        }
+      })
+  }
+  // The Daemon tells this Client of every Session's working state, but of a
+  // Prompt only for the Sessions it loaded, and counts the Prompts only when
+  // asked. A listed count is stale once the Session works, and a Queued
+  // Question counts only once the agent rests, so each rest asks again.
   const onWorkingState = ({ sessionId, newState }: { sessionId: string; newState: string }) => {
     reported.set(sessionId, newState)
+    if (!followed.has(sessionId)) {
+      listedAskUser.delete(sessionId)
+      if (newState === 'idle') read()
+    }
     changed()
   }
   // Events missed while disconnected are made up for by asking what is open now.
   const onConnected = () => {
-    void controller.listOpenedSessions().then((opened) => {
-      reported.clear()
-      listedAskUser.clear()
-      followed.clear()
-      for (const session of opened) {
-        reported.set(session.sessionId, session.workingState)
-        if (session.pendingAskUserRequestCount) {
-          listedAskUser.set(session.sessionId, session.pendingAskUserRequestCount)
-        }
-      }
-      changed()
-    }, console.error)
+    fresh = true
+    read()
   }
   const onAskUserRequested = ({ sessionId }: { sessionId: string }) => {
     followed.add(sessionId)

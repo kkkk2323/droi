@@ -2,7 +2,7 @@
 // the connection is not up yet (a switch, a cold start, the computer away).
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { useSessionList, type SessionSummary } from '@droi/daemon-layer/sessions'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { sessionSummaries, type SessionSummaryCache } from '../computers/store'
 
 export interface ComputerSessions {
@@ -19,11 +19,13 @@ export function useComputerSessions(computerId: string): ComputerSessions {
   const [showArchived] = usePreference(showArchivedSessions)
   const list = useSessionList({ includeArchived: showArchived })
   const [cached] = usePreference(sessionSummaries(computerId))
+  // One array per cached list, so what is memoized on the list holds while offline.
+  const offline = useMemo(() => cached.map(fromCache), [cached])
   useEffect(() => {
     if (list.data) sessionSummaries(computerId).set(list.data.map(toCache))
   }, [list.data, computerId])
   return {
-    sessions: list.data ?? cached.map(fromCache),
+    sessions: list.data ?? offline,
     live: list.data !== undefined,
     isPending: list.isPending && cached.length === 0,
     error: list.error,
