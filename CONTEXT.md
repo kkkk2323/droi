@@ -202,7 +202,7 @@ _Avoid_: mission, project, swarm, team
 
 **Orchestrator**:
 The Session that leads a Workstream: it plans, starts Workstream Agents, sends them work and hears their reports; it does not edit code. The user talks to it like any Session, and it stays in the session list.
-_Avoid_: lead, manager, coordinator, parent session
+_Avoid_: lead, manager, parent session
 
 **Workstream Agent**:
 A Session an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.

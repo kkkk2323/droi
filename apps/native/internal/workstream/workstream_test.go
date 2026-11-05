@@ -22,6 +22,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
 )
@@ -56,6 +57,7 @@ type fixture struct {
 	// loads or archives them.
 	gone    map[string]bool
 	refused []string
+	logs    []string
 }
 
 func run(t *testing.T, dir string, args ...string) string {
@@ -233,9 +235,17 @@ func (f *fixture) start() {
 		SystemPromptAddition: func() string { return addition },
 		Log:                  func(s string) { t.Log(s) },
 	})
-	f.c = New(Config{Dir: f.dir, SessionsDir: f.sessionsDir, Sessions: f.r, Log: func(s string) { t.Log(s) }})
+	f.c = New(Config{Dir: f.dir, SessionsDir: f.sessionsDir, Sessions: f.r, Log: func(s string) {
+		t.Log(s)
+		f.mu.Lock()
+		f.logs = append(f.logs, s)
+		f.mu.Unlock()
+	}})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	// Closed before the Runner goes, so that no line of work outlives the
+	// test.
+	t.Cleanup(f.c.Close)
 	f.r.Start(ctx)
 	f.c.Start(ctx)
 	f.waitFor("the Runner to connect", func() bool { _, err := f.r.Client(); return err == nil })
@@ -1000,7 +1010,7 @@ func TestSettledWaitsForTheSettingsAskedOrNewsOfOthers(t *testing.T) {
 	current := func() (string, string) { mu.Lock(); defer mu.Unlock(); return model, effort }
 	// The model is there already; the effort comes a little later.
 	time.AfterFunc(100*time.Millisecond, func() { mu.Lock(); effort = "low"; mu.Unlock() })
-	if m, e := settled(t.Context(), current, nil, "glm-5.3-flash", "low", 3*time.Second); m != "glm-5.3-flash" || e != "low" {
+	if m, e := settled(t.Context(), current, nil, "glm-5.3-flash", "high", "glm-5.3-flash", "low", 3*time.Second); m != "glm-5.3-flash" || e != "low" {
 		t.Fatalf("took %s/%s", m, e)
 	}
 	// The Daemon fits the effort to the model: the news says so.
@@ -1010,13 +1020,21 @@ func TestSettledWaitsForTheSettingsAskedOrNewsOfOthers(t *testing.T) {
 	mu.Unlock()
 	time.AfterFunc(50*time.Millisecond, func() { news <- struct{}{} })
 	start := time.Now()
-	if m, e := settled(t.Context(), current, news, "glm-5.3-flash", "xhigh", 3*time.Second); m != "glm-5.3-flash" || e != "medium" || time.Since(start) > time.Second {
+	if m, e := settled(t.Context(), current, news, "glm-5.3-flash", "low", "glm-5.3-flash", "xhigh", 3*time.Second); m != "glm-5.3-flash" || e != "medium" || time.Since(start) > time.Second {
 		t.Fatalf("took %s/%s after %v", m, e, time.Since(start))
 	}
 	// No news: the wait ends.
 	start = time.Now()
-	if _, e := settled(t.Context(), current, nil, "glm-5.3-flash", "xhigh", 100*time.Millisecond); e != "medium" || time.Since(start) > time.Second {
+	if _, e := settled(t.Context(), current, nil, "glm-5.3-flash", "medium", "glm-5.3-flash", "xhigh", 100*time.Millisecond); e != "medium" || time.Since(start) > time.Second {
 		t.Fatalf("took %s after %v", e, time.Since(start))
+	}
+	// News of settings as they were, such as of an earlier change, is not
+	// the answer: the wait goes on for the change.
+	stale := make(chan struct{}, 1)
+	stale <- struct{}{}
+	time.AfterFunc(200*time.Millisecond, func() { mu.Lock(); effort = "low"; mu.Unlock() })
+	if m, e := settled(t.Context(), current, stale, "glm-5.3-flash", "medium", "glm-5.3-flash", "low", 3*time.Second); m != "glm-5.3-flash" || e != "low" {
+		t.Fatalf("took %s/%s", m, e)
 	}
 }
 
@@ -1332,6 +1350,13 @@ func TestAnOldRecordStillReads(t *testing.T) {
 // names the old one as its parent, beside the old one's.
 func (f *fixture) handOff(old string) string {
 	f.t.Helper()
+	return f.handOffTo(old, filepath.Join(f.sessionsDir, "-w-pay"))
+}
+
+// handOffTo hands old off as handOff does, writing the new transcript in
+// dir: the folder of the Session's cwd, which /cwd may have changed.
+func (f *fixture) handOffTo(old, dir string) string {
+	f.t.Helper()
 	cl, err := f.r.Client()
 	if err != nil {
 		f.t.Fatal(err)
@@ -1341,10 +1366,10 @@ func (f *fixture) handOff(old string) string {
 		f.t.Fatal(err)
 	}
 	tags := f.initialized(old).Tags
-	if _, err := os.Stat(filepath.Join(f.sessionsDir, "-w-pay", old+".jsonl")); err != nil {
+	if memory.FindSessionTranscript(f.sessionsDir, old) == "" {
 		f.writeTranscript(old, "", tags)
 	}
-	f.writeTranscript(res.NewSessionID, old, tags)
+	f.writeTranscriptIn(dir, res.NewSessionID, old, false, tags)
 	return res.NewSessionID
 }
 
@@ -1352,13 +1377,22 @@ func (f *fixture) handOff(old string) string {
 // transcript's first line and its settings.
 func (f *fixture) writeTranscript(id, parent string, tags []protocol.SessionTag) {
 	f.t.Helper()
-	dir := filepath.Join(f.sessionsDir, "-w-pay")
+	f.writeTranscriptIn(filepath.Join(f.sessionsDir, "-w-pay"), id, parent, false, tags)
+}
+
+// writeTranscriptIn writes a Session's files in dir; a fork's first line
+// names where it forked, as droid's /fork and rewind write it.
+func (f *fixture) writeTranscriptIn(dir, id, parent string, fork bool, tags []protocol.SessionTag) {
+	f.t.Helper()
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		f.t.Fatal(err)
 	}
 	start := map[string]any{"type": "session_start", "id": id, "title": "New Session", "version": 2, "cwd": f.repo}
 	if parent != "" {
 		start["parent"] = parent
+	}
+	if fork {
+		start["forkedAtMessageId"] = nil
 	}
 	line, _ := json.Marshal(start)
 	settings, _ := json.Marshal(map[string]any{"model": "auto", "tags": tags})
@@ -1386,6 +1420,9 @@ func TestAnOrchestratorHandedOffGoesOnInItsNewSession(t *testing.T) {
 	}
 	if f.r.Following(made.OrchestratorID) || !f.r.Following(next) {
 		t.Fatal("the Runner follows the old link")
+	}
+	if got := f.loadedHiding(next); !reflect.DeepEqual(got, orchestratorHidden()) {
+		t.Fatalf("the new link was loaded hiding %v", got)
 	}
 	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": agent, "message": "Now /refund."}, next); err != nil {
 		t.Fatal(err)
@@ -1442,6 +1479,9 @@ func TestAnAgentHandedOffHearsAndReportsInItsNewSession(t *testing.T) {
 	if a := loadAll(f.dir, func(string) {})[made.WorkstreamID].Agents[0]; a.SessionID != nextAPI {
 		t.Fatalf("recorded agent %+v", a)
 	}
+	if got := f.loadedHiding(nextAPI); !reflect.DeepEqual(got, agentHidden()) {
+		t.Fatalf("the new link was loaded hiding %v", got)
+	}
 
 	// A report from a link the Host has not heard of yet.
 	nextWeb := f.handOff(web)
@@ -1491,6 +1531,153 @@ func TestASessionWithACopiedTagButNoLinkToTheRecordIsRefused(t *testing.T) {
 	}
 }
 
+// loadedHiding are the tools the last load_session of id hid.
+func (f *fixture) loadedHiding(id string) []string {
+	f.t.Helper()
+	var hidden []string
+	for _, p := range f.requests("daemon.load_session") {
+		var lp struct {
+			SessionID       string   `json:"sessionId"`
+			DisabledToolIDs []string `json:"disabledToolIds"`
+		}
+		_ = json.Unmarshal(p, &lp)
+		if lp.SessionID == id {
+			hidden = lp.DisabledToolIDs
+		}
+	}
+	return hidden
+}
+
+func TestAForkOfAWorkstreamSessionIsNoHandoff(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	agent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.idle(agent)
+	next := f.handOff(made.OrchestratorID)
+	// A fork copies the tags and names its source as parent, beside it and
+	// newer than the handoff.
+	fork := "11111111-2222-3333-4444-555555555555"
+	f.writeTranscriptIn(filepath.Join(f.sessionsDir, "-w-pay"), fork, made.OrchestratorID, true, f.initialized(made.OrchestratorID).Tags)
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(filepath.Join(f.sessionsDir, "-w-pay", fork+".jsonl"), later, later); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := f.c.List(f.ctx); list[0].OrchestratorID != next {
+		t.Fatalf("the orchestrator is %s, want the handoff %s", list[0].OrchestratorID, next)
+	}
+	if _, err := f.call(ToolListAgents, nil, fork); err == nil || !strings.Contains(err.Error(), "Only the orchestrator") {
+		t.Fatalf("list_agents from the fork: %v", err)
+	}
+}
+
+func TestAHandoffAfterTheSessionMovedFolderIsFollowed(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	// /cwd moved the orchestrator: droid writes the handoff's transcript in
+	// the folder of where it works now.
+	moved := t.TempDir()
+	f.r.Session(made.OrchestratorID).SetCwd(moved)
+	next := f.handOffTo(made.OrchestratorID, memory.SessionFolder(f.sessionsDir, moved))
+	if list, _ := f.c.List(f.ctx); list[0].OrchestratorID != next {
+		t.Fatalf("the orchestrator is %s, want %s", list[0].OrchestratorID, next)
+	}
+}
+
+func TestArchivingAWorkstreamArchivesTheSessionsItsSessionsWereHandedOffFrom(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	agent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the agent's turn to end", func() bool { return !f.agent(made.WorkstreamID, agent).Awaiting })
+	f.idle(agent)
+	nextOrch := f.handOff(made.OrchestratorID)
+	nextAgent := f.handOff(agent)
+	f.c.List(f.ctx)
+	if w := loadAll(f.dir, func(string) {})[made.WorkstreamID]; !reflect.DeepEqual(w.PreviousOrchestratorIDs, []string{made.OrchestratorID}) {
+		t.Fatalf("record %+v", w)
+	}
+	// The old orchestrator was archived from a Client already.
+	f.archiveFromClient(made.OrchestratorID)
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err != nil {
+		t.Fatal(err)
+	}
+	archived := f.sessionIDs("daemon.archive_session")
+	for _, id := range []string{agent, nextAgent, nextOrch} {
+		if !slices.Contains(archived, id) {
+			t.Errorf("%s is not archived: %v", id, archived)
+		}
+	}
+}
+
+func TestAnArchiveCutShortStillTellsOfTheAgentsItCouldNotStop(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: long(6)})
+	made := f.create("", "")
+	a := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	b := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
+	f.waitFor("both agents to work", func() bool { return working(f.r.Session(a)) && working(f.r.Session(b)) })
+	f.setRefuse(func(method, id string) *droid.RPCError {
+		if method == "daemon.interrupt_session" && id == b {
+			return &droid.RPCError{Code: -32603, Message: "busy"}
+		}
+		return nil
+	})
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err == nil {
+		t.Fatal("no error")
+	}
+	prefix := `[From agent "Web" (` + b + `)] Its turn ended`
+	f.waitFor("the notice of the agent still working", func() bool {
+		return slices.ContainsFunc(f.messages(made.OrchestratorID), func(m string) bool { return strings.HasPrefix(m, prefix) })
+	})
+	if got := f.messages(made.OrchestratorID); len(got) != 2 {
+		t.Fatalf("orchestrator messages %q", got)
+	}
+}
+
+func TestACreateThatFailsLeavesNoFolderAndNamesItsWorkstream(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	f.setRefuse(func(method, id string) *droid.RPCError {
+		if method == "daemon.initialize_session" {
+			return &droid.RPCError{Code: -32603, Message: "busy"}
+		}
+		return nil
+	})
+	if _, err := f.c.Create(f.ctx, gateway.NewWorkstream{Title: "Payments", Workspace: f.repo, Goal: "Move it."}); err == nil {
+		t.Fatal("no error")
+	}
+	if entries, _ := os.ReadDir(f.dir); len(entries) != 0 {
+		t.Fatalf("left %v", entries)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !slices.ContainsFunc(f.logs, func(s string) bool { return strings.Contains(s, "workstream payments-") }) {
+		t.Fatalf("logs %q", f.logs)
+	}
+}
+
+func TestCloseEndsTheLinesOfWorkAndTakesNoMore(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.idle(id)
+	_, a := f.c.agentOf(id)
+	started := make(chan struct{})
+	var ended bool
+	go f.c.inOrder(f.ctx, a, func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		ended = true
+		return ctx.Err()
+	})
+	<-started
+	f.c.Close()
+	if !ended {
+		t.Fatal("Close did not wait for the line of work")
+	}
+	ran := false
+	if err := f.c.inOrder(f.ctx, a, func(context.Context) error { ran = true; return nil }); err == nil || ran {
+		t.Fatalf("a closed Coordinator ran more work: %v", err)
+	}
+}
+
 // The Host looks for a newer link before each message it sends: in one
 // Workspace folder of the Daemon's, reading each transcript's first line
 // once.
@@ -1507,11 +1694,11 @@ func BenchmarkFindingANewerLinkInAFolderOf1000Sessions(b *testing.B) {
 		}
 	}
 	l := newLineage(dir)
-	if l.successor("s0") != "" {
+	if l.successor("s0", "") != "" {
 		b.Fatal("a successor")
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		l.successor("s0")
+		l.successor("s0", "")
 	}
 }

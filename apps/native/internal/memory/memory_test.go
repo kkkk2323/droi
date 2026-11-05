@@ -414,12 +414,33 @@ func TestATranscriptNamesTheSessionItWasHandedOffFrom(t *testing.T) {
 	child := writeSessionFile(t, dir, "-w", "child", `{"type":"session_start","id":"child","parent":"lead","cwd":"/w"}`, `{"type":"message"}`)
 	root := writeSessionFile(t, dir, "-w", "root", `{"type":"session_start","id":"root","cwd":"/w"}`, ``)
 	half := writeSessionFile(t, dir, "-w", "half", `{"type":"session_start","id":"half","parent":"le`)
+	// A fork (/fork, a rewind) names its source too, and always says where
+	// it forked, if only null.
+	fork := writeSessionFile(t, dir, "-w", "fork", `{"type":"session_start","id":"fork","parent":"lead","forkedAtMessageId":"m1","cwd":"/w"}`, ``)
+	emptyFork := writeSessionFile(t, dir, "-w", "empty-fork", `{"type":"session_start","id":"empty-fork","parent":"lead","forkedAtMessageId":null,"cwd":"/w"}`, ``)
 	for _, c := range []struct {
 		file, parent string
 		whole        bool
-	}{{child, "lead", true}, {root, "", true}, {half, "", false}, {filepath.Join(dir, "-w", "none.jsonl"), "", false}} {
+	}{{child, "lead", true}, {root, "", true}, {half, "", false}, {filepath.Join(dir, "-w", "none.jsonl"), "", false}, {fork, "", true}, {emptyFork, "", true}} {
 		parent, whole := ReadSessionParent(c.file)
 		eq(t, parent, c.parent)
 		eq(t, whole, c.whole)
 	}
+}
+
+func TestASessionsFolderIsNamedAfterItsWorkspaceAsDroidNamesIt(t *testing.T) {
+	eq(t, sessionFolderName("/Users/dev/app/", false), "-Users-dev-app")
+	eq(t, sessionFolderName("/Users/dev/.my app", false), "-Users-dev-.my app")
+	eq(t, sessionFolderName(`C:\Users\dev\app`, true), "-C-Users-dev-app")
+	dir := tempDir(t)
+	real := filepath.Join(dir, "real")
+	if err := os.MkdirAll(real, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	eq(t, SessionFolder("/s", link), SessionFolder("/s", real))
+	eq(t, filepath.Dir(SessionFolder("/s", real)), filepath.FromSlash("/s"))
 }

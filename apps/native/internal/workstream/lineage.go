@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +33,8 @@ type lineage struct {
 	// folders are the folders of the transcripts found.
 	folders map[string]string
 	// parents are the Sessions transcripts were handed off from, "" for
-	// none; a transcript's first line never changes.
+	// none or a fork. Droid rewrites a transcript's first line for its title
+	// and lastCwd, but never its parent.
 	parents map[string]string
 }
 
@@ -93,37 +95,46 @@ func (l *lineage) tag(id string) (map[string]string, bool) {
 	return memory.SessionTagMetadata(file, sessions.WorkstreamTag)
 }
 
-// successor is the Session id was last handed off to; "" for none.
-func (l *lineage) successor(id string) string {
-	file := l.transcript(id)
-	if file == "" {
-		return ""
+// successor is the Session id was last handed off to; "" for none. droid
+// writes the new transcript in the folder of the Session's cwd as it is
+// then, so cwd, when the Host knows it, is looked in too: /cwd may have
+// moved the Session from the folder of its own transcript.
+func (l *lineage) successor(id, cwd string) string {
+	var folders []string
+	if file := l.transcript(id); file != "" {
+		folders = append(folders, filepath.Dir(file))
 	}
-	folder := filepath.Dir(file)
-	entries, err := os.ReadDir(folder)
-	if err != nil {
-		return ""
+	if cwd != "" && l.dir != "" {
+		if folder := memory.SessionFolder(l.dir, cwd); !slices.Contains(folders, folder) {
+			folders = append(folders, folder)
+		}
 	}
 	var (
-		next   string
-		newest time.Time
+		next, nextFolder string
+		newest           time.Time
 	)
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(name, ".jsonl") || name == id+".jsonl" || l.parentIn(filepath.Join(folder, name)) != id {
-			continue
-		}
-		info, err := e.Info()
+	for _, folder := range folders {
+		entries, err := os.ReadDir(folder)
 		if err != nil {
 			continue
 		}
-		if next == "" || info.ModTime().After(newest) {
-			next, newest = strings.TrimSuffix(name, ".jsonl"), info.ModTime()
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".jsonl") || name == id+".jsonl" || l.parentIn(filepath.Join(folder, name)) != id {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			if next == "" || info.ModTime().After(newest) {
+				next, nextFolder, newest = strings.TrimSuffix(name, ".jsonl"), folder, info.ModTime()
+			}
 		}
 	}
 	if next != "" {
 		l.mu.Lock()
-		l.folders[next] = folder
+		l.folders[next] = nextFolder
 		l.mu.Unlock()
 	}
 	return next
@@ -133,7 +144,11 @@ func (l *lineage) successor(id string) string {
 // wsID in role, as far as they go; id when there are none.
 func (c *Coordinator) newestLink(wsID, id, role string) string {
 	for range maxLinks {
-		next := c.links.successor(id)
+		cwd := ""
+		if s := c.cfg.Sessions.Session(id); s != nil {
+			cwd = s.Cwd()
+		}
+		next := c.links.successor(id, cwd)
 		if next == "" {
 			break
 		}
@@ -145,32 +160,22 @@ func (c *Coordinator) newestLink(wsID, id, role string) string {
 	return id
 }
 
-// newestOrchestrator is w's orchestrator, taken over first from the Session
-// it was handed off to, if any.
-func (c *Coordinator) newestOrchestrator(ctx context.Context, w *Workstream) string {
+// newest is the Session of w's agent a, or of its orchestrator when a is
+// nil, taken over first from the Session it was handed off to, if any.
+func (c *Coordinator) newest(ctx context.Context, w *Workstream, a *Agent) string {
+	role, current := sessions.WorkstreamOrchestrator, func() string { return w.OrchestratorID }
+	if a != nil {
+		role, current = sessions.WorkstreamAgent, func() string { return a.SessionID }
+	}
 	c.mu.Lock()
-	id := w.OrchestratorID
+	id := current()
 	c.mu.Unlock()
-	if next := c.newestLink(w.ID, id, sessions.WorkstreamOrchestrator); next != id {
+	if next := c.newestLink(w.ID, id, role); next != id {
 		c.takeOver(ctx, w, id, next)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return w.OrchestratorID
-}
-
-// newestAgent is the Session of w's agent a, taken over first from the
-// Session it was handed off to, if any.
-func (c *Coordinator) newestAgent(ctx context.Context, w *Workstream, a *Agent) string {
-	c.mu.Lock()
-	id := a.SessionID
-	c.mu.Unlock()
-	if next := c.newestLink(w.ID, id, sessions.WorkstreamAgent); next != id {
-		c.takeOver(ctx, w, id, next)
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return a.SessionID
+	return current()
 }
 
 // adopt takes over, for a tool call from the Session id the Host has no
@@ -212,15 +217,20 @@ func activeAgent(w *Workstream, id string) *Agent {
 }
 
 // takeOver records the Session next, which prev was handed off to, in
-// prev's place, and follows it instead.
+// prev's place, and follows it instead, without the tools its role does
+// without: droid hands off with none hidden.
 func (c *Coordinator) takeOver(ctx context.Context, w *Workstream, prev, next string) {
+	var hidden []string
 	c.mu.Lock()
 	switch a := agentIn(w, prev); {
 	case w.OrchestratorID == prev:
+		w.PreviousOrchestratorIDs = append(w.PreviousOrchestratorIDs, prev)
 		w.OrchestratorID = next
+		hidden = orchestratorHidden()
 	case a != nil:
 		a.PreviousSessionIDs = append(a.PreviousSessionIDs, prev)
 		a.SessionID = next
+		hidden = agentHidden()
 	default:
 		c.mu.Unlock()
 		return
@@ -229,7 +239,7 @@ func (c *Coordinator) takeOver(ctx context.Context, w *Workstream, prev, next st
 	c.save(w)
 	c.mu.Unlock()
 	c.cfg.Log("following " + prev + ", handed off to " + next)
-	if err := c.cfg.Sessions.Load(ctx, next); err != nil {
+	if err := c.cfg.Sessions.Load(ctx, next, hidden...); err != nil {
 		c.cfg.Log("following " + next + ": " + err.Error())
 	}
 	c.cfg.Sessions.Unfollow(prev)

@@ -419,10 +419,12 @@ func (r *Runner) systemPrompt(spec string) string {
 }
 
 // Load follows a Session that exists, such as one the Host opened before it
-// restarted.
-func (r *Runner) Load(ctx context.Context, sessionID string) error {
+// restarted. disabledTools, when given, are the disabledToolIds its worker
+// gets, as Spec's DisabledTools: for a Session the Host did not open, such
+// as one a Session of its was handed off to.
+func (r *Runner) Load(ctx context.Context, sessionID string, disabledTools ...string) error {
 	added := r.follow(sessionID, true)
-	if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID}); err != nil {
+	if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID, DisabledToolIDs: disabledTools}); err != nil {
 		if added {
 			r.follow(sessionID, false)
 		}

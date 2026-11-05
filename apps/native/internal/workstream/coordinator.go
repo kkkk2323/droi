@@ -48,12 +48,20 @@ type Coordinator struct {
 	// branches is held while a new agent's branch is chosen.
 	branches sync.Mutex
 
-	mu  sync.Mutex
-	all map[string]*Workstream
+	// life ends with Close, which waits for work to finish.
+	life        context.Context
+	end         context.CancelFunc
+	work        sync.WaitGroup
+	unsubscribe func()
+
+	mu     sync.Mutex
+	closed bool
+	all    map[string]*Workstream
 	// activity is when the Host last saw each Session do something.
 	activity map[string]time.Time
-	// queue is the end of each agent's line of work (see serial).
-	queue map[string]chan struct{}
+	// queue is the end of each agent's line of work (see serial), by agent:
+	// its Session changes when it is handed off.
+	queue map[*Agent]chan struct{}
 	// news hears of an agent's new settings while moveAgent waits for them.
 	news map[string]chan struct{}
 	// claimed are the branches of agents being started.
@@ -77,17 +85,52 @@ func New(cfg Config) *Coordinator {
 	}
 	c := &Coordinator{
 		cfg: cfg, links: newLineage(cfg.SessionsDir), all: loadAll(cfg.Dir, cfg.Log), activity: map[string]time.Time{},
-		queue: map[string]chan struct{}{}, news: map[string]chan struct{}{}, claimed: map[string]bool{},
+		queue: map[*Agent]chan struct{}{}, news: map[string]chan struct{}{}, claimed: map[string]bool{},
 	}
-	cfg.Sessions.Subscribe(c.hear)
+	c.life, c.end = context.WithCancel(context.Background())
+	c.unsubscribe = cfg.Sessions.Subscribe(c.hear)
 	return c
+}
+
+// errClosed is work refused by a closed Coordinator.
+var errClosed = errors.New("Droi is quitting")
+
+// Close stops the Coordinator: it takes no more work, ends what runs and
+// waits for it.
+func (c *Coordinator) Close() {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	c.unsubscribe()
+	c.end()
+	c.work.Wait()
+}
+
+// begin counts a goroutine Close waits for; false once closed. Called
+// without c.mu.
+func (c *Coordinator) begin() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return false
+	}
+	c.work.Add(1)
+	return true
 }
 
 // Start waits, until ctx ends, for the Runner to reach the Daemon, then
 // tells each orchestrator of an agent it waited on that Droi's restart left
 // idle.
 func (c *Coordinator) Start(ctx context.Context) {
+	if !c.begin() {
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(c.life, cancel)
 	go func() {
+		defer c.work.Done()
+		defer stop()
+		defer cancel()
 		for {
 			if _, err := c.cfg.Sessions.Client(); err == nil {
 				break
@@ -120,22 +163,33 @@ func (c *Coordinator) update(w *Workstream, fn func()) {
 }
 
 // serial runs fn on a goroutine of its own once the work queued before it
-// for the agent id has run, so that an agent's turn ends, messages,
-// settings and archiving never overlap; done closes when fn has run.
-func (c *Coordinator) serial(id string, fn func()) (done <-chan struct{}) {
-	c.mu.Lock()
-	prev := c.queue[id]
+// for the agent a has run, so that an agent's turn ends, messages,
+// settings and archiving never overlap; done closes when fn has run, or
+// once Close has kept it from running.
+func (c *Coordinator) serial(a *Agent, fn func()) (done <-chan struct{}) {
 	ch := make(chan struct{})
-	c.queue[id] = ch
+	if !c.begin() {
+		close(ch)
+		return ch
+	}
+	c.mu.Lock()
+	prev := c.queue[a]
+	c.queue[a] = ch
 	c.mu.Unlock()
 	go func() {
+		defer c.work.Done()
 		if prev != nil {
-			<-prev
+			select {
+			case <-prev:
+			case <-c.life.Done():
+			}
 		}
-		fn()
+		if c.life.Err() == nil {
+			fn()
+		}
 		c.mu.Lock()
-		if c.queue[id] == ch {
-			delete(c.queue, id)
+		if c.queue[a] == ch {
+			delete(c.queue, a)
 		}
 		c.mu.Unlock()
 		close(ch)
@@ -143,11 +197,24 @@ func (c *Coordinator) serial(id string, fn func()) (done <-chan struct{}) {
 	return ch
 }
 
-// inOrder runs fn in the agent id's line of work and waits for it.
-func (c *Coordinator) inOrder(id string, fn func() error) error {
-	var err error
-	<-c.serial(id, func() { err = fn() })
+// inOrder runs fn in the agent a's line of work and waits for it; fn's
+// context also ends with Close.
+func (c *Coordinator) inOrder(ctx context.Context, a *Agent, fn func(ctx context.Context) error) error {
+	err := errClosed
+	<-c.serial(a, func() {
+		ctx, cancel := context.WithCancel(ctx)
+		defer context.AfterFunc(c.life, cancel)()
+		defer cancel()
+		err = fn(ctx)
+	})
 	return err
+}
+
+// sessionOf is the agent a's Session now.
+func (c *Coordinator) sessionOf(a *Agent) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return a.SessionID
 }
 
 // SharedFolder is a Workstream's Shared Folder.
@@ -235,9 +302,16 @@ func (c *Coordinator) Create(ctx context.Context, in gateway.NewWorkstream) (gat
 		DisabledTools:   orchestratorHidden(),
 	})
 	if err != nil {
-		if opened.SessionID == "" {
-			_ = os.RemoveAll(filepath.Join(c.cfg.Dir, w.ID))
+		// The Daemon may have started the orchestrator all the same, say
+		// when the bound on Create ended the wait for its answer.
+		if opened.SessionID != "" {
+			if err := c.cfg.Sessions.Archive(context.WithoutCancel(ctx), opened.SessionID); err != nil {
+				c.cfg.Log("archiving the orchestrator " + opened.SessionID + " of workstream " + w.ID + ", which did not start: " + err.Error())
+			}
+		} else {
+			c.cfg.Log("the orchestrator of workstream " + w.ID + " did not start (" + err.Error() + "); a Session tagged with the workstream may be left")
 		}
+		_ = os.RemoveAll(filepath.Join(c.cfg.Dir, w.ID))
 		return gateway.WorkstreamCreated{}, err
 	}
 	c.mu.Lock()
@@ -370,11 +444,7 @@ func (c *Coordinator) followHandoffs(ctx context.Context) {
 	}
 	c.mu.Unlock()
 	for _, l := range links {
-		if l.a == nil {
-			c.newestOrchestrator(ctx, l.w)
-		} else {
-			c.newestAgent(ctx, l.w, l.a)
-		}
+		c.newest(ctx, l.w, l.a)
 	}
 }
 
@@ -405,7 +475,7 @@ func (c *Coordinator) SetAgentSettings(ctx context.Context, s gateway.Workstream
 	c.update(w, func() {
 		w.AgentModel, w.AgentReasoningEffort = strings.TrimSpace(s.AgentModel), strings.TrimSpace(s.AgentReasoningEffort)
 	})
-	orch := c.newestOrchestrator(ctx, w)
+	orch := c.newest(ctx, w, nil)
 	c.mu.Lock()
 	tag := orchestratorTag(w)
 	c.mu.Unlock()
@@ -419,19 +489,19 @@ func (c *Coordinator) SetAgentSettings(ctx context.Context, s gateway.Workstream
 	if err != nil {
 		return err
 	}
-	var agents []string
+	var agents []*Agent
 	c.mu.Lock()
 	for _, a := range w.Agents {
 		if a.ArchivedAt == "" {
 			a.PendingModel, a.PendingReasoningEffort = model, effort
-			agents = append(agents, a.SessionID)
+			agents = append(agents, a)
 		}
 	}
 	c.save(w)
 	c.mu.Unlock()
-	for _, id := range agents {
-		if err := c.inOrder(id, func() error { return c.moveAgent(ctx, w, id) }); err != nil {
-			c.cfg.Log("moving agent " + id + " to the workstream's settings: " + err.Error())
+	for _, a := range agents {
+		if err := c.inOrder(ctx, a, func(ctx context.Context) error { return c.moveAgent(ctx, w, a) }); err != nil {
+			c.cfg.Log("moving agent " + a.Title + " to the workstream's settings: " + err.Error())
 		}
 	}
 	return nil
@@ -468,11 +538,11 @@ func (c *Coordinator) agentSettings(ctx context.Context, w *Workstream) (model, 
 	if model != "" && effort != "" {
 		return model, effort, nil
 	}
-	lead, err := c.follow(ctx, c.newestOrchestrator(ctx, w))
+	orch, err := c.follow(ctx, c.newest(ctx, w, nil))
 	if err != nil {
 		return "", "", err
 	}
-	set := lead.Settings()
+	set := orch.Settings()
 	return cmp.Or(model, set.ModelID), cmp.Or(effort, string(set.ReasoningEffort)), nil
 }
 
@@ -483,14 +553,8 @@ const settleWait = 3 * time.Second
 // moveAgent moves an idle agent to the settings it is to take, unless the
 // user switched its model or effort in its own Session; the settings it then
 // takes go on its record and tag. Run in the agent's line of work.
-func (c *Coordinator) moveAgent(ctx context.Context, w *Workstream, id string) error {
-	c.mu.Lock()
-	a := agentIn(w, id)
-	c.mu.Unlock()
-	if a == nil {
-		return nil
-	}
-	id = c.newestAgent(ctx, w, a)
+func (c *Coordinator) moveAgent(ctx context.Context, w *Workstream, a *Agent) error {
+	id := c.newest(ctx, w, a)
 	c.mu.Lock()
 	if a.PendingModel == "" && a.PendingReasoningEffort == "" {
 		c.mu.Unlock()
@@ -530,7 +594,7 @@ func (c *Coordinator) moveAgent(ctx context.Context, w *Workstream, id string) e
 	tookModel, tookEffort := settled(ctx, func() (string, string) {
 		set := s.Settings()
 		return set.ModelID, string(set.ReasoningEffort)
-	}, news, model, effort, settleWait)
+	}, news, takenModel, takenEffort, model, effort, settleWait)
 	tookModel, tookEffort = cmp.Or(tookModel, model), cmp.Or(tookEffort, effort)
 	c.update(w, func() {
 		a.Model, a.ReasoningEffort = tookModel, tookEffort
@@ -540,9 +604,10 @@ func (c *Coordinator) moveAgent(ctx context.Context, w *Workstream, id string) e
 }
 
 // settled waits, up to timeout, until current holds model and
-// effort, or news of new settings comes; it answers what current holds
+// effort, or news of settings other than wasModel and wasEffort, which it
+// held before they were asked for, comes; it answers what current holds
 // then, which may be an effort the Daemon fitted to the model.
-func settled(ctx context.Context, current func() (string, string), news <-chan struct{}, model, effort string, timeout time.Duration) (string, string) {
+func settled(ctx context.Context, current func() (string, string), news <-chan struct{}, wasModel, wasEffort, model, effort string, timeout time.Duration) (string, string) {
 	deadline := time.After(timeout)
 	for {
 		if m, e := current(); m == model && e == effort {
@@ -550,7 +615,10 @@ func settled(ctx context.Context, current func() (string, string), news <-chan s
 		}
 		select {
 		case <-news:
-			return current()
+			// News of the settings as they were is of an earlier change.
+			if m, e := current(); m != wasModel || e != wasEffort {
+				return m, e
+			}
 		case <-deadline:
 			return current()
 		case <-ctx.Done():
@@ -621,13 +689,13 @@ func (c *Coordinator) spawn(ctx context.Context, w *Workstream, title, task stri
 	if err != nil {
 		return nil, err
 	}
-	orch := c.newestOrchestrator(ctx, w)
+	orch := c.newest(ctx, w, nil)
 	c.mu.Lock()
 	wsTitle, workspace := w.Title, w.Workspace
 	c.mu.Unlock()
 	var autonomy protocol.AutonomyLevel
-	if lead := c.cfg.Sessions.Session(orch); lead != nil {
-		autonomy = lead.Settings().AutonomyLevel
+	if s := c.cfg.Sessions.Session(orch); s != nil {
+		autonomy = s.Settings().AutonomyLevel
 	}
 	at := Place{Workspace: workspace}
 	repo := isGitRepo(ctx, workspace)
@@ -665,19 +733,21 @@ func (c *Coordinator) spawn(ctx context.Context, w *Workstream, title, task stri
 	if a.WorktreePath != "" {
 		a.BaseBranch = base
 	}
+	// Once recorded, a is shared: a handoff may change it.
+	id, took, tookEffort := a.SessionID, a.Model, a.ReasoningEffort
 	c.mu.Lock()
 	w.Agents = append(w.Agents, a)
-	c.activity[a.SessionID] = c.cfg.Now()
+	c.activity[id] = c.cfg.Now()
 	c.save(w)
 	c.mu.Unlock()
-	if a.Model != model || a.ReasoningEffort != effort {
-		tags := withTag(c.tagsOf(a.SessionID), agentTag(w.ID, orch, a.Model, a.ReasoningEffort))
-		if err := c.cfg.Sessions.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: a.SessionID, Tags: tags}); err != nil {
-			c.cfg.Log("tagging agent " + a.SessionID + ": " + err.Error())
+	if took != model || tookEffort != effort {
+		tags := withTag(c.tagsOf(id), agentTag(w.ID, orch, took, tookEffort))
+		if err := c.cfg.Sessions.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: id, Tags: tags}); err != nil {
+			c.cfg.Log("tagging agent " + id + ": " + err.Error())
 		}
 	}
 	// Recorded first, so that a report in its first turn finds it.
-	if err := c.cfg.Sessions.Send(ctx, a.SessionID, fromOrchestrator(task)); err != nil {
+	if err := c.cfg.Sessions.Send(ctx, id, fromOrchestrator(task)); err != nil {
 		c.update(w, func() { a.Awaiting = false })
 		return a, err
 	}
@@ -687,8 +757,8 @@ func (c *Coordinator) spawn(ctx context.Context, w *Workstream, title, task stri
 // message sends an agent more work, moving it to the settings it is to take
 // first. Run in the agent's line of work.
 func (c *Coordinator) message(ctx context.Context, w *Workstream, a *Agent, text string) error {
-	id := c.newestAgent(ctx, w, a)
-	if err := c.moveAgent(ctx, w, id); err != nil {
+	id := c.newest(ctx, w, a)
+	if err := c.moveAgent(ctx, w, a); err != nil {
 		c.cfg.Log("moving agent " + id + " to the workstream's settings: " + err.Error())
 	}
 	c.update(w, func() { a.Awaiting, a.ReportedSinceMessage = true, false })
@@ -708,29 +778,28 @@ func (c *Coordinator) report(ctx context.Context, w *Workstream, a *Agent, kind,
 	c.save(w)
 	title, id := a.Title, a.SessionID
 	c.mu.Unlock()
-	return c.cfg.Sessions.Send(ctx, c.newestOrchestrator(ctx, w), reportMessage(title, id, kind, text))
+	return c.cfg.Sessions.Send(ctx, c.newest(ctx, w, nil), reportMessage(title, id, kind, text))
 }
 
 // interrupt stops an agent's turn, which the orchestrator then no longer
 // waits on. Run in the agent's line of work.
 func (c *Coordinator) interrupt(ctx context.Context, w *Workstream, a *Agent) error {
 	c.update(w, func() { a.Awaiting = false })
-	return c.cfg.Sessions.Interrupt(ctx, c.newestAgent(ctx, w, a))
+	return c.cfg.Sessions.Interrupt(ctx, c.newest(ctx, w, a))
 }
 
 // archiveAgent archives an agent: it stops its turn, removes its worktree
 // and branch when they hold nothing its base branch does not, which
-// archives the Session with them, else archives the Session alone; kept
-// says why a worktree stays. A Session archived already, say from a Client,
-// counts as archived. Run in the agent's line of work.
+// archives the Session with them, else archives the Session alone, then
+// the Sessions it was handed off from; kept says why a worktree stays. A
+// Session archived already, say from a Client, counts as archived. Run in
+// the agent's line of work.
 func (c *Coordinator) archiveAgent(ctx context.Context, w *Workstream, a *Agent) (removed bool, kept string, err error) {
-	c.update(w, func() { a.Awaiting = false })
-	id := c.newestAgent(ctx, w, a)
-	err = c.cfg.Sessions.StopTurn(ctx, id)
-	gone := hostsession.IsSessionNotFound(err)
-	if err != nil && !gone {
+	gone, err := c.stopAgent(ctx, w, a)
+	if err != nil {
 		return false, "", err
 	}
+	id := c.sessionOf(a)
 	c.mu.Lock()
 	path, base := a.WorktreePath, a.BaseBranch
 	c.mu.Unlock()
@@ -750,8 +819,39 @@ func (c *Coordinator) archiveAgent(ctx context.Context, w *Workstream, a *Agent)
 			return removed, kept, err
 		}
 	}
+	c.mu.Lock()
+	earlier := slices.Clone(a.PreviousSessionIDs)
+	c.mu.Unlock()
+	if err := c.archiveLinks(ctx, earlier); err != nil {
+		return removed, kept, err
+	}
 	c.update(w, func() { a.ArchivedAt = c.now() })
 	return removed, kept, nil
+}
+
+// stopAgent stops an agent's turn, whose end the orchestrator then no
+// longer waits on; gone reports a Session the Daemon no longer has. Run in
+// the agent's line of work, so that the end of the stopped turn comes
+// after it.
+func (c *Coordinator) stopAgent(ctx context.Context, w *Workstream, a *Agent) (gone bool, err error) {
+	err = c.cfg.Sessions.StopTurn(ctx, c.newest(ctx, w, a))
+	gone = hostsession.IsSessionNotFound(err)
+	if err != nil && !gone {
+		return false, err
+	}
+	c.update(w, func() { a.Awaiting = false })
+	return gone, nil
+}
+
+// archiveLinks archives the Sessions a Session was handed off from; one
+// archived already counts as archived.
+func (c *Coordinator) archiveLinks(ctx context.Context, ids []string) error {
+	for _, id := range ids {
+		if err := c.cfg.Sessions.Archive(ctx, id); err != nil && !hostsession.IsSessionNotFound(err) {
+			return fmt.Errorf("archiving %s, which was handed off: %w", id, err)
+		}
+	}
+	return nil
 }
 
 // removeWorktree has the Daemon remove an agent's worktree and its branch,
@@ -795,20 +895,22 @@ func (c *Coordinator) Archive(ctx context.Context, id string) ([]string, error) 
 	var agents []*Agent
 	for _, a := range w.Agents {
 		if a.ArchivedAt == "" {
-			a.Awaiting = false
 			agents = append(agents, a)
 		}
 	}
-	c.save(w)
 	c.mu.Unlock()
 	// Every working agent is stopped at once, so that archiving many of them
-	// fits in the time a Gateway request has.
+	// fits in the time a Gateway request has. One that does not stop is
+	// still waited on, should the archive stop before it.
 	var wg sync.WaitGroup
 	for _, a := range agents {
 		wg.Go(func() {
-			id := c.newestAgent(ctx, w, a)
-			if err := c.cfg.Sessions.StopTurn(ctx, id); err != nil && !hostsession.IsSessionNotFound(err) {
-				c.cfg.Log("stopping agent " + id + ": " + err.Error())
+			err := c.inOrder(ctx, a, func(ctx context.Context) error {
+				_, err := c.stopAgent(ctx, w, a)
+				return err
+			})
+			if err != nil {
+				c.cfg.Log("stopping agent " + a.Title + ": " + err.Error())
 			}
 		})
 	}
@@ -816,7 +918,7 @@ func (c *Coordinator) Archive(ctx context.Context, id string) ([]string, error) 
 	kept := []string{}
 	for _, a := range agents {
 		var why string
-		err := c.inOrder(a.SessionID, func() (err error) {
+		err := c.inOrder(ctx, a, func(ctx context.Context) (err error) {
 			_, why, err = c.archiveAgent(ctx, w, a)
 			return err
 		})
@@ -827,7 +929,13 @@ func (c *Coordinator) Archive(ctx context.Context, id string) ([]string, error) 
 			kept = append(kept, a.WorktreePath)
 		}
 	}
-	if err := c.cfg.Sessions.Archive(ctx, c.newestOrchestrator(ctx, w)); err != nil && !hostsession.IsSessionNotFound(err) {
+	if err := c.cfg.Sessions.Archive(ctx, c.newest(ctx, w, nil)); err != nil && !hostsession.IsSessionNotFound(err) {
+		return kept, fmt.Errorf("archiving the orchestrator: %w", err)
+	}
+	c.mu.Lock()
+	earlier := slices.Clone(w.PreviousOrchestratorIDs)
+	c.mu.Unlock()
+	if err := c.archiveLinks(ctx, earlier); err != nil {
 		return kept, fmt.Errorf("archiving the orchestrator: %w", err)
 	}
 	c.update(w, func() { w.ArchivedAt = c.now() })
@@ -854,7 +962,7 @@ func (c *Coordinator) hear(e hostsession.Event) {
 		}
 	case hostsession.TurnEnded:
 		if _, a := c.agentOf(e.SessionID); a != nil {
-			c.serial(e.SessionID, func() { c.turnEnded(e) })
+			c.serial(a, func() { c.turnEnded(e) })
 		}
 	}
 }
@@ -872,7 +980,11 @@ func (c *Coordinator) turnEnded(e hostsession.TurnEnded) {
 	c.activity[e.SessionID] = c.cfg.Now()
 	c.mu.Unlock()
 	for deadline := time.Now().Add(settleWait); working(c.cfg.Sessions.Session(e.SessionID)) && time.Now().Before(deadline); {
-		time.Sleep(20 * time.Millisecond)
+		select {
+		case <-c.life.Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	if working(c.cfg.Sessions.Session(e.SessionID)) {
 		return
@@ -883,15 +995,15 @@ func (c *Coordinator) turnEnded(e hostsession.TurnEnded) {
 	c.save(w)
 	title := a.Title
 	c.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(c.life, time.Minute)
 	defer cancel()
 	failed := e.Reason != protocol.AgentTurnCompletionReasonCompleted
 	if msg := endNotice(title, e.SessionID, turnReason(e), failed, reported, e.LastReply); awaiting && msg != "" {
-		if err := c.cfg.Sessions.Send(ctx, c.newestOrchestrator(ctx, w), msg); err != nil {
+		if err := c.cfg.Sessions.Send(ctx, c.newest(ctx, w, nil), msg); err != nil {
 			c.cfg.Log("telling the orchestrator of agent " + e.SessionID + ": " + err.Error())
 		}
 	}
-	if err := c.moveAgent(ctx, w, e.SessionID); err != nil {
+	if err := c.moveAgent(ctx, w, a); err != nil {
 		c.cfg.Log("moving agent " + e.SessionID + " to the workstream's settings: " + err.Error())
 	}
 }
@@ -927,7 +1039,7 @@ func (c *Coordinator) resume(ctx context.Context) {
 	}
 	c.mu.Unlock()
 	for _, t := range todo {
-		_ = c.inOrder(t.a.SessionID, func() error {
+		_ = c.inOrder(ctx, t.a, func(ctx context.Context) error {
 			c.resumeAgent(ctx, t.w, t.a)
 			return nil
 		})
@@ -938,7 +1050,7 @@ func (c *Coordinator) resume(ctx context.Context) {
 // on, unless it works or is gone: archived from a Client meanwhile, it is
 // recorded archived.
 func (c *Coordinator) resumeAgent(ctx context.Context, w *Workstream, a *Agent) {
-	id := c.newestAgent(ctx, w, a)
+	id := c.newest(ctx, w, a)
 	s, err := c.follow(ctx, id)
 	switch {
 	case hostsession.IsSessionNotFound(err):
@@ -959,7 +1071,7 @@ func (c *Coordinator) resumeAgent(ctx context.Context, w *Workstream, a *Agent) 
 	if !still {
 		return
 	}
-	orch := c.newestOrchestrator(ctx, w)
+	orch := c.newest(ctx, w, nil)
 	reply := ""
 	if s != nil {
 		reply = lastReply(s)

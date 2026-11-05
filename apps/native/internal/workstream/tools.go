@@ -148,7 +148,7 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 		}
 		a, err := c.spawn(ctx, w, title, prompt)
 		if err != nil && a != nil {
-			return mcpserver.Result{}, fmt.Errorf("Started agent %q (%s), but it did not get its task: %v. Send it with send_message.", a.Title, a.SessionID, err)
+			return mcpserver.Result{}, fmt.Errorf("Started agent %q (%s), but it did not get its task: %v. Send it with send_message.", a.Title, c.sessionOf(a), err)
 		}
 		if err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The agent was not started: %v", err)
@@ -157,7 +157,7 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 		if a.WorktreePath != "" {
 			where = "It works in the worktree " + a.WorktreePath + " on the branch " + a.Branch + "."
 		}
-		return mcpserver.Text(fmt.Sprintf("Started agent %q (%s). %s Its report arrives as a message in this session; end your turn now.", a.Title, a.SessionID, where), false), nil
+		return mcpserver.Text(fmt.Sprintf("Started agent %q (%s). %s Its report arrives as a message in this session; end your turn now.", a.Title, c.sessionOf(a), where), false), nil
 	case ToolListAgents:
 		all, _ := args["include_archived"].(bool)
 		return c.listAgents(ctx, w, all)
@@ -172,28 +172,28 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 		if text == "" {
 			return mcpserver.Result{}, errors.New("message is empty.")
 		}
-		if err := c.inOrder(a.SessionID, func() error { return c.message(ctx, w, a, text) }); err != nil {
+		if err := c.inOrder(ctx, a, func(ctx context.Context) error { return c.message(ctx, w, a, text) }); err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The message did not reach the agent: %v", err)
 		}
-		return mcpserver.Text(fmt.Sprintf("Sent to agent %q (%s). Its report arrives as a message in this session; end your turn now.", a.Title, a.SessionID), false), nil
+		return mcpserver.Text(fmt.Sprintf("Sent to agent %q (%s). Its report arrives as a message in this session; end your turn now.", a.Title, c.sessionOf(a)), false), nil
 	case ToolInterruptAgent:
-		if err := c.inOrder(a.SessionID, func() error { return c.interrupt(ctx, w, a) }); err != nil {
+		if err := c.inOrder(ctx, a, func(ctx context.Context) error { return c.interrupt(ctx, w, a) }); err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The agent was not interrupted: %v", err)
 		}
-		return mcpserver.Text(fmt.Sprintf("Interrupted agent %q (%s).", a.Title, a.SessionID), false), nil
+		return mcpserver.Text(fmt.Sprintf("Interrupted agent %q (%s).", a.Title, c.sessionOf(a)), false), nil
 	default:
 		var (
 			removed bool
 			kept    string
 		)
-		err := c.inOrder(a.SessionID, func() (err error) {
+		err := c.inOrder(ctx, a, func(ctx context.Context) (err error) {
 			removed, kept, err = c.archiveAgent(ctx, w, a)
 			return err
 		})
 		if err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The agent was not archived: %v", err)
 		}
-		msg := fmt.Sprintf("Archived agent %q (%s).", a.Title, a.SessionID)
+		msg := fmt.Sprintf("Archived agent %q (%s).", a.Title, c.sessionOf(a))
 		switch {
 		case removed:
 			msg += " Removed its worktree " + a.WorktreePath + "."

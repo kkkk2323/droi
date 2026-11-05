@@ -189,10 +189,10 @@ func TestAnArchiveCutShortByTheHostsBoundAnswers504AndTheClientSaysSo(t *testing
 	g, c, ws := workstreamsGateway(t)
 	ws.slow = true
 	status, body := do(t, "POST", workstreamURL(g.URL(), testToken, WorkstreamArchivePath, url.Values{WorkstreamIDQuery: {"w"}}), "")
-	if status != 504 || body != `{"error":"Archiving took too long and stopped partway. Archive the workstream again to finish."}` {
+	if status != 504 || body != `{"error":"Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish."}` {
 		t.Fatal(status, body)
 	}
-	if _, err := c.ArchiveWorkstream(t.Context(), "w"); !errors.Is(err, ErrWorkstreamArchiveUnfinished) || err.Error() != "Archiving took too long and stopped partway. Archive the workstream again to finish." {
+	if _, err := c.ArchiveWorkstream(t.Context(), "w"); !errors.Is(err, ErrWorkstreamArchiveUnfinished) || err.Error() != "Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish." {
 		t.Fatalf("%#v", err)
 	}
 }

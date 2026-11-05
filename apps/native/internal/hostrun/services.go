@@ -390,11 +390,14 @@ func (s *Services) ClientHiddenTools() []string {
 	return slices.Clone(s.hidden)
 }
 
-// Stop stops the Automations, disconnects the Runner and closes the
-// Bridge.
+// Stop ends the Workstreams' work, stops the Automations, disconnects the
+// Runner and closes the Bridge.
 func (s *Services) Stop() {
 	if s == nil {
 		return
+	}
+	if s.Workstreams != nil {
+		s.Workstreams.Close()
 	}
 	s.stop()
 	s.mu.Lock()

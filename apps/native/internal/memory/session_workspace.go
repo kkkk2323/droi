@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -61,8 +62,11 @@ func ReadSessionWorkspace(file string) string {
 }
 
 // ReadSessionParent is the Session the transcript's Session was handed off
-// from (/handoff), as its session_start line names it; "" for none. whole is
-// false when the transcript has no whole session_start line yet.
+// from (/handoff), as its session_start line names it; "" for none. A fork
+// (/fork, a rewind) names its source as parent too, but its line always
+// has forkedAtMessageId, null when the source had no message, and counts as
+// none. whole is false when the transcript has no whole session_start line
+// yet.
 func ReadSessionParent(file string) (parent string, whole bool) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -73,14 +77,46 @@ func ReadSessionParent(file string) (parent string, whole bool) {
 	if err != nil {
 		return "", false
 	}
-	var start struct {
-		Type   string `json:"type"`
-		Parent string `json:"parent"`
-	}
-	if json.Unmarshal(line, &start) != nil || start.Type != "session_start" {
+	var start map[string]json.RawMessage
+	var typ string
+	if json.Unmarshal(line, &start) != nil || json.Unmarshal(start["type"], &typ) != nil || typ != "session_start" {
 		return "", false
 	}
-	return start.Parent, true
+	if _, fork := start["forkedAtMessageId"]; fork {
+		return "", true
+	}
+	_ = json.Unmarshal(start["parent"], &parent)
+	return parent, true
+}
+
+// SessionFolder is the folder of dir, the Daemon's sessions folder, where
+// droid writes the transcripts of Sessions working in cwd
+// (sanitizePathToDirectoryName).
+func SessionFolder(dir, cwd string) string {
+	path, err := filepath.Abs(cwd)
+	if err != nil {
+		path = cwd
+	}
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	return filepath.Join(dir, sessionFolderName(path, runtime.GOOS == "windows"))
+}
+
+var (
+	slashes    = regexp.MustCompile(`/+`)
+	separators = regexp.MustCompile(`[\\/]+`)
+)
+
+func sessionFolderName(path string, windows bool) string {
+	path = strings.TrimRight(path, `\/`)
+	if windows {
+		if len(path) >= 2 && path[1] == ':' && ('a' <= path[0]|0x20 && path[0]|0x20 <= 'z') {
+			path = path[:1] + path[2:]
+		}
+		return "-" + separators.ReplaceAllString(path, "-")
+	}
+	return "-" + slashes.ReplaceAllString(strings.TrimLeft(path, "/"), "-")
 }
 
 // SessionSettingsFile is the Session's settings file, which the Daemon keeps

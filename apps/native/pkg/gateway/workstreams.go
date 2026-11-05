@@ -121,7 +121,7 @@ var workstreamTimeout = 100 * time.Second
 // ErrWorkstreamArchiveUnfinished is an archive the Host's bound cut short,
 // which WorkstreamArchivePath answers with 504: archiving the Workstream
 // again goes on where it stopped.
-var ErrWorkstreamArchiveUnfinished = errors.New("Archiving took too long and stopped partway. Archive the workstream again to finish.")
+var ErrWorkstreamArchiveUnfinished = errors.New("Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish.")
 
 // maxWorkstreamBody bounds a request's JSON.
 const maxWorkstreamBody = 1 << 20

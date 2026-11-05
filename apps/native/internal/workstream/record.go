@@ -17,6 +17,9 @@ type Workstream struct {
 	Title          string `json:"title"`
 	Workspace      string `json:"workspace"`
 	OrchestratorID string `json:"orchestratorId"`
+	// PreviousOrchestratorIDs are the Sessions the orchestrator was handed
+	// off from, archived with the Workstream.
+	PreviousOrchestratorIDs []string `json:"previousOrchestratorIds,omitempty"`
 	// AgentModel and AgentReasoningEffort are the agents' settings the user
 	// picked; "" is the orchestrator's.
 	AgentModel           string   `json:"agentModel,omitempty"`
@@ -30,7 +33,7 @@ type Workstream struct {
 type Agent struct {
 	SessionID string `json:"sessionId"`
 	// PreviousSessionIDs are the Sessions it was handed off from, by which
-	// the orchestrator may still name it.
+	// the orchestrator may still name it, archived with it.
 	PreviousSessionIDs []string `json:"previousSessionIds,omitempty"`
 	Title              string   `json:"title"`
 	// WorktreePath and Branch are "" for an agent in a Workspace that is no

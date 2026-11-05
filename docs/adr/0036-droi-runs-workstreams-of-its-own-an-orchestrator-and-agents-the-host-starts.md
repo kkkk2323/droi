@@ -35,6 +35,7 @@ We decided:
 - Each working agent keeps a worker process, and each agent keeps a Worktree until it is archived; Settings → Worktrees shows any that a crash left behind.
 - Memory summarizes the Orchestrator like any Session the user works in, and skips Workstream Agents, whose work reaches the Orchestrator in reports.
 - Away from the computer, the phone hears of a waiting agent only while the Phone App is open: pushes are a later decision.
+- The Host reads Droid's session files (a transcript's first line and its settings file, as Memory does) to follow a Session the user hands off, because the Daemon tells no other connection.
 - `CONTEXT.md` gains Workstream, Orchestrator, Workstream Agent and Shared Folder when this lands.
 
 ## Open points (before this is accepted)
