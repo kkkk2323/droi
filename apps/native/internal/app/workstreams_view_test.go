@@ -22,6 +22,8 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
@@ -204,6 +206,19 @@ func TestTheSidebarLeavesWorkstreamAgentsOutAndCountsTheWaitingOnes(t *testing.T
 	h.until("the waiting count", func() bool { return h.finds("Workstreams, 1 waiting on you") })
 	h.notifyState("agent-1", "idle")
 	h.until("no waiting count", func() bool { return !h.finds("Workstreams, 1 waiting on you") })
+}
+
+// In Chinese the accessible names of the sidebar row and a Workstream's row
+// are joined with a Chinese comma.
+func TestWorkstreamLabelsJoinWithAChineseCommaInChinese(t *testing.T) {
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}
+	h := workstreamsHarness(t, fake, func(cfg *Config) { prefs.Language.Set(cfg.Prefs, string(l10n.Chinese)) })
+	t.Cleanup(func() { l10n.Set("", "") })
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+	h.notifyState("agent-1", "waiting_for_tool_confirmation")
+	h.until("the sidebar row", func() bool { return h.finds("Workstream，1 个等你处理") })
+	h.click("Workstream，1 个等你处理")
+	h.until("the row", func() bool { return h.finds("Payment migration，2 个 Agent，1 个等你处理") })
 }
 
 // Search finds no agent either, by title or by what it says.

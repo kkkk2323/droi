@@ -722,13 +722,22 @@ func (a *App) listRow(c *ui.Context, key, label string, height float32, body fun
 	return clicked
 }
 
+// listName joins the parts of an accessible name with the language's comma.
+func listName(parts ...string) string {
+	name := parts[0]
+	for _, p := range parts[1:] {
+		name = L("%s, %s", name, p)
+	}
+	return name
+}
+
 func (a *App) workstreamRow(c *ui.Context, w gateway.Workstream) {
 	k, t := a.kit, a.kit.T
 	title := trimOr(w.Title, w.ID)
 	count, waiting := agentsCount(w), a.waitingAgents(w)
-	label := title + ", " + count
+	label := listName(title, count)
 	if waiting > 0 {
-		label += ", " + L("%d waiting on you", waiting)
+		label = listName(label, L("%d waiting on you", waiting))
 	}
 	if a.listRow(c, w.ID, label, k.Dense(48, 56), func(hover bool) {
 		k.Icon(c, "git-fork", 14, t.MutedForeground)
@@ -898,13 +907,13 @@ func (a *App) agentRow(c *ui.Context, ag gateway.WorkstreamAgent, status, group,
 	k, t := a.kit, a.kit.T
 	title := trimOr(ag.Title, ag.SessionID)
 	state, color := group, t.MutedForeground
-	label := title + ", " + group
+	label := listName(title, group)
 	if status == "waiting" {
 		state, color = L("Needs approval"), t.AttentionForeground
 		if waits == waitsQuestion {
 			state = L("Has a question")
 		}
-		label += ", " + state
+		label = listName(label, state)
 	}
 	if a.listRow(c, ag.SessionID, label, k.Dense(44, 48), func(hover bool) {
 		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {

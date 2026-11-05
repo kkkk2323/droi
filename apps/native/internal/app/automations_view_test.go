@@ -942,9 +942,13 @@ func TestAFactoryAutomationThatCannotMoveForItsScheduleSaysWhy(t *testing.T) {
 		t.Fatalf("the row offers a move: %q", h.tt.Texts())
 	}
 	h.click("Odd hours")
-	h.until("its page", func() bool {
-		return h.hasText(`Can’t move to Droi: the schedule "0 9 L * *" never ran in Factory: L is not a number`)
-	})
+	h.until("its page", func() bool { return h.hasText("Factory automation") && h.hasText("Details") })
+	if !h.finds("Its schedule never ran in Factory, so it can’t move to Droi") {
+		t.Fatalf("the page does not say it in the window's language: %q", h.tt.Texts())
+	}
+	if h.hasText("Can’t move to Droi") || h.hasText("L is not a number") {
+		t.Fatalf("the page shows the Host's English reason: %q", h.tt.Texts())
+	}
 	if h.hasButton("Move Odd hours to Droi") {
 		t.Fatal("the page offers a move")
 	}

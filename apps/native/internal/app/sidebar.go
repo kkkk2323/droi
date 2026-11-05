@@ -103,7 +103,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 					}
 				})
 				if waiting > 0 {
-					row.Label(L("Workstreams") + ", " + L("%d waiting on you", waiting))
+					row.Label(listName(L("Workstreams"), L("%d waiting on you", waiting)))
 				}
 				if row.Clicked() {
 					a.Go(Route{Name: "workstreams"})

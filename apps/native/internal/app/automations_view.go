@@ -748,7 +748,7 @@ func (a *App) summary(e gateway.Automation) string {
 	parts := []string{scheduleWords(e.Schedule, e.Timezone)}
 	if e.LastRun != nil {
 		if w := automations.When(e.LastRun.StartedAt, a.cfg.Now()); w != "" {
-			parts = append(parts, L("last run %s", w)+", "+strings.ToLower(l10n.T(automations.RunLabel(e.LastRun.Status))))
+			parts = append(parts, listName(L("last run %s", w), strings.ToLower(l10n.T(automations.RunLabel(e.LastRun.Status)))))
 		}
 	}
 	return strings.Join(parts, " · ")
@@ -975,10 +975,11 @@ func (a *App) factoryView(c *ui.Context, id string) {
 	})
 	a.automationNotice(c)
 	if why := f.NotMovable; why != "" && !f.TargetsSession {
-		msg := L("Can’t move to Droi: %s", why)
+		// The Host's reason is English: it is the tooltip, not the line.
+		msg := L("Its schedule never ran in Factory, so it can’t move to Droi")
 		ui.Row(c).Role(ui.RoleStatus).Label(msg).Gap(k.Px(8)).AlignItems(ui.Start).Children(func() {
 			k.Icon(c, "circle-alert", 14, t.MutedForeground).Margin(k.Px(3), 0, 0, 0)
-			k.Text(c, msg, 13, 20).TextColor(t.Foreground).Grow(1).MinWidth(0)
+			k.Text(c, msg, 13, 20).TextColor(t.Foreground).Grow(1).MinWidth(0).Tooltip(why)
 		})
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
