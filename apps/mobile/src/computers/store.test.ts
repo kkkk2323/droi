@@ -53,6 +53,13 @@ describe('Paired Computer store', () => {
     expect(keychain.secrets.get(tokenKey('c-home'))).toBe('new')
   })
 
+  test('pairing again keeps the relay the new link names, and drops one it no longer names', () => {
+    const relay = 'https://relay.example.com/c/abcdefghijklmnop'
+    const withRelay = mergeComputer([home], { ...home, relay })
+    expect(withRelay).toEqual([{ ...home, relay }])
+    expect(mergeComputer(withRelay, home)).toEqual([home])
+  })
+
   test('another id is another computer', () => {
     const office = { id: 'c-office', name: 'Office', address: 'http://10.0.0.5:41417' }
     expect(mergeComputer([home], office)).toEqual([home, office])

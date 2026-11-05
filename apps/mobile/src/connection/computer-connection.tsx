@@ -26,8 +26,9 @@ export function ComputerConnection({
   if (token.isPending) return null
   return (
     <Connected
-      key={`${computer.id} ${computer.address} ${token.data ?? ''}`}
+      key={`${computer.id} ${computer.address} ${computer.relay ?? ''} ${token.data ?? ''}`}
       address={computer.address}
+      relay={computer.relay ?? null}
       token={token.data ?? null}
     >
       {children}
@@ -37,10 +38,12 @@ export function ComputerConnection({
 
 function Connected({
   address,
+  relay,
   token,
   children,
 }: {
   address: string
+  relay: string | null
   token: string | null
   children: ReactNode
 }) {
@@ -51,6 +54,7 @@ function Connected({
     connection: createDaemonConnection({
       kind: 'remote',
       gatewayUrl: address,
+      relayUrl: relay,
       pairingToken: token,
     }),
     queries: createQueryClient(),

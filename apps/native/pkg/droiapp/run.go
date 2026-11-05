@@ -25,6 +25,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/internal/relay"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
@@ -105,7 +106,7 @@ func Run(o Options) {
 	// The Runtime Overlay runs the app's own executable as the Memory Server
 	// and the hook, and the Host runs it as a Windows Daemon's anchor; none
 	// starts the app. `droi host` is a Host with no
-	// window.
+	// window, and `droi relay` a Relay (ADR 0034).
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case host.MemoryServerCommand:
@@ -114,6 +115,9 @@ func Run(o Options) {
 			os.Exit(memory.HookMain())
 		case host.DaemonAnchorCommand:
 			os.Exit(host.AnchorMain())
+		case "relay":
+			b := brand.Current()
+			os.Exit(relay.Main(os.Args[2:], relay.Options{ID: b.ID, Name: b.Name, Version: version}))
 		case "host":
 			if msg := hostUnsupported(runtime.GOOS); msg != "" {
 				fmt.Fprintln(os.Stderr, msg)
@@ -134,7 +138,7 @@ func Run(o Options) {
 	}
 	if runtime.GOOS == "linux" {
 		b := brand.Current()
-		fmt.Fprintf(os.Stderr, "%s: only `%s host` is supported on Linux.\n", b.ID, b.ID)
+		fmt.Fprintf(os.Stderr, "%s: only `%s host` and `%s relay` are supported on Linux.\n", b.ID, b.ID, b.ID)
 		os.Exit(2)
 	}
 	home, err := os.UserHomeDir()
@@ -183,7 +187,7 @@ func Run(o Options) {
 		}
 	}
 	sessionList := &app.SessionListShare{Prefs: userPrefs, Changed: func() { update(func() {}) }}
-	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList)
+	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList, func() { update(func() {}) })
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}
@@ -215,8 +219,9 @@ func Run(o Options) {
 	var shown *inside
 	var switchTo func(to *computer.Paired)
 	open := func(followed *computer.Paired) *inside {
+		via := newRoute(followed)
 		ctl := controller.New(controller.Config{
-			ResolveURL: windowURL(followed, gw, gwErr, localToken, h.WaitForDaemonURL),
+			ResolveURL: windowURL(via, gw, gwErr, localToken, h.WaitForDaemonURL),
 			Credential: gateway.PlaceholderCredential,
 			Caller:     "droi-native",
 			// The Daemon restarts on its own (the Host's Supervisor); keep trying.
@@ -234,7 +239,7 @@ func Run(o Options) {
 			OpenPath:     mygo.Shell.OpenPath,
 			ShowInFolder: mygo.Shell.ShowItemInFolder,
 			FileIcon:     mygo.Shell.FileIcon,
-			Gateway:      windowClient(followed, gw, localToken),
+			Gateway:      windowClient(via, gw, localToken),
 			Host:         h,
 			Version:      version,
 			Env:          os.Getenv,

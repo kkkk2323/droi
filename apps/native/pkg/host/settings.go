@@ -47,8 +47,14 @@ type Settings struct {
 	MemorySummaryModel *string `json:"memorySummaryModel,omitempty"`
 	PairingToken       string  `json:"pairingToken"`
 	ComputerID         string  `json:"computerId"`
-	APIKey             *string `json:"apiKey"`
-	Login              *string `json:"login"`
+	// RelayURL is the Relay Remote Access also meets phones at (ADR 0034),
+	// RelayKey its registration key, and RelayID how phones address this
+	// computer there.
+	RelayURL *string `json:"relayUrl"`
+	RelayKey *string `json:"relayKey,omitempty"`
+	RelayID  string  `json:"relayId"`
+	APIKey   *string `json:"apiKey"`
+	Login    *string `json:"login"`
 	// Accounts are the ids of the Factory accounts added beside the droid
 	// CLI's own; ActiveAccount is the one the Daemon runs as, "" the CLI's.
 	Accounts      []string `json:"accounts,omitempty"`
@@ -83,6 +89,10 @@ func OpenSettings(file string, env func(string) string) *SettingsStore {
 	}
 	if s.cur.ComputerID == "" {
 		s.cur.ComputerID = randomUUID()
+		changed = true
+	}
+	if s.cur.RelayID == "" {
+		s.cur.RelayID = randomToken()
 		changed = true
 	}
 	if !loaded || changed {
@@ -187,6 +197,25 @@ func PairingHostOf(text string) *string {
 	}
 	h := u.Hostname()
 	return &h
+}
+
+// RelayURLOf is the Relay address in what the user typed:
+// "relay.example.com", "https://relay.example.com/" or one with a path;
+// https unless it says http. Nil for empty or not an address.
+func RelayURLOf(text string) *string {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return nil
+	}
+	if !regexp.MustCompile(`(?i)^[a-z][a-z0-9+.-]*://`).MatchString(t) {
+		t = "https://" + t
+	}
+	u, err := url.Parse(t)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !hostName.MatchString(u.Hostname()) || u.RawQuery != "" || u.Fragment != "" {
+		return nil
+	}
+	out := u.Scheme + "://" + u.Host + strings.TrimRight(u.EscapedPath(), "/")
+	return &out
 }
 
 // ScratchFolderOf is what the user typed for the Scratch folder as an

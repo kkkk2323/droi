@@ -19,7 +19,8 @@ Runs a %[2]s Host without a window: the Daemon, the Gateway (Remote Access
 always on) and Memory. Prints a pairing link and QR code, and stops on
 Ctrl-C or SIGTERM. Settings, Memory and logs live in
 $XDG_CONFIG_HOME/%[1]s (default ~/.config/%[1]s). Sign in with "droid login",
-or set FACTORY_API_KEY.
+or set FACTORY_API_KEY. To reach it from anywhere through a Relay, set "relayUrl"
+and "relayKey" in settings.json (see "%[1]s relay --help").
 
   --port N   the Gateway's port (default %[3]d)
 `

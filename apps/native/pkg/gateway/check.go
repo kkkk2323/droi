@@ -48,8 +48,9 @@ func CheckToken(ctx context.Context, gatewayURL, token string) error {
 	return nil
 }
 
-// SocketURL is the Daemon socket of the Gateway at gatewayURL, presenting
-// token: where a Client that is not on the Gateway's computer connects.
+// SocketURL is the Daemon socket of the Gateway at gatewayURL (an origin,
+// or a Relay address with its path), presenting token: where a Client that
+// is not on the Gateway's computer connects.
 func SocketURL(gatewayURL, token string) (string, error) {
 	u, err := url.Parse(gatewayURL)
 	if err != nil || u.Host == "" {
@@ -59,7 +60,7 @@ func SocketURL(gatewayURL, token string) (string, error) {
 	if u.Scheme == "https" {
 		scheme = "wss"
 	}
-	return scheme + "://" + u.Host + DaemonPath + "?" + TokenQuery + "=" + url.QueryEscape(token), nil
+	return scheme + "://" + u.Host + strings.TrimRight(u.EscapedPath(), "/") + DaemonPath + "?" + TokenQuery + "=" + url.QueryEscape(token), nil
 }
 
 func get(ctx context.Context, gatewayURL, path, token string) (int, []byte, error) {

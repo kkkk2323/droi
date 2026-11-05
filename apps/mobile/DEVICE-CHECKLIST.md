@@ -39,6 +39,13 @@ Droi on the computer must be a build with the computer name and id in its
       Session on screen; it reconnects on its own (a Reconnecting banner at most).
 - [ ] With Remote Access turned off on the computer, the app says it cannot
       reach it, lists what to check, and connects once it is back on.
+- [ ] With a Relay set in Droi → Settings → Remote Access and shown as
+      connected, scanning the new code pairs; with Wi-Fi off, on cellular, the
+      Session list loads through the relay and a reply streams in.
+- [ ] Back on the computer's Wi-Fi, bringing the app to the foreground connects
+      directly again: the relay's log shows no new connection for it.
+- [ ] After the computer slept and woke, the Relay row is connected again within
+      half a minute, and the app reconnects on its own.
 
 ## Composer
 

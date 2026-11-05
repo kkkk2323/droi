@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
@@ -39,29 +40,44 @@ const requestTimeout = 15 * time.Second
 // Workspaces, session files). It is made from the Daemon socket URL the Client
 // already connects with, so one address and token reach both.
 type Client struct {
-	base  url.URL
-	token string
-	http  *http.Client
+	socket func() string
+	http   *http.Client
 	// poll has no timeout of its own: a long poll's context bounds it.
 	poll *http.Client
 }
 
 // NewClient is the Client for the Gateway behind socketURL, a Daemon socket
-// URL as DaemonSocketURL makes it.
+// URL as DaemonSocketURL or SocketURL makes it.
 func NewClient(socketURL string) (*Client, error) {
-	u, err := url.Parse(socketURL)
-	if err != nil {
+	if _, _, err := splitSocketURL(socketURL); err != nil {
 		return nil, err
 	}
+	return NewClientFunc(func() string { return socketURL }), nil
+}
+
+// NewClientFunc is the Client for whichever Daemon socket URL socketURL
+// returns at each call: a Paired Computer's network address or its Relay,
+// whichever the window connected through last.
+func NewClientFunc(socketURL func() string) *Client {
+	return &Client{socket: socketURL, http: &http.Client{Timeout: requestTimeout}, poll: &http.Client{}}
+}
+
+// splitSocketURL is the http base (with a Relay address's path) and token
+// of a Daemon socket URL.
+func splitSocketURL(socketURL string) (url.URL, string, error) {
+	u, err := url.Parse(socketURL)
+	if err != nil {
+		return url.URL{}, "", err
+	}
 	token := u.Query().Get(TokenQuery)
-	if (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" || u.Path != DaemonPath || token == "" {
-		return nil, fmt.Errorf("%q is not a Gateway's Daemon socket URL", socketURL)
+	if (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" || !strings.HasSuffix(u.Path, DaemonPath) || token == "" {
+		return url.URL{}, "", fmt.Errorf("%q is not a Gateway's Daemon socket URL", socketURL)
 	}
 	scheme := "http"
 	if u.Scheme == "wss" {
 		scheme = "https"
 	}
-	return &Client{base: url.URL{Scheme: scheme, Host: u.Host}, token: token, http: &http.Client{Timeout: requestTimeout}, poll: &http.Client{}}, nil
+	return url.URL{Scheme: scheme, Host: u.Host, Path: strings.TrimSuffix(u.Path, DaemonPath)}, token, nil
 }
 
 // maxTimes bounds an answer of the Session Times, every Session's of a
@@ -135,9 +151,12 @@ func (c *Client) call(ctx context.Context, method, path string, query url.Values
 
 // send is call through hc, with an answer of up to limit bytes.
 func (c *Client) send(ctx context.Context, hc *http.Client, limit int64, method, path string, query url.Values, out any) error {
-	u := c.base
-	u.Path = path
-	q := url.Values{TokenQuery: {c.token}}
+	u, token, err := splitSocketURL(c.socket())
+	if err != nil {
+		return err
+	}
+	u.Path += path
+	q := url.Values{TokenQuery: {token}}
 	for k, v := range query {
 		q[k] = v
 	}

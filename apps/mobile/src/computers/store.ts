@@ -14,6 +14,8 @@ export interface PairedComputer {
   name: string
   /** The Gateway's address, e.g. http://192.168.1.10:41417 or a Tailscale name. */
   address: string
+  /** Its Relay's address (ADR 0034), used when the address above does not answer. */
+  relay?: string
 }
 
 export interface Keychain {
@@ -28,7 +30,10 @@ export const pairedComputers = createPreference<PairedComputer[]>('droi.pairedCo
     if (!Array.isArray(value)) return []
     return value.filter(
       (c): c is PairedComputer =>
-        typeof c?.id === 'string' && typeof c.name === 'string' && typeof c.address === 'string',
+        typeof c?.id === 'string' &&
+        typeof c.name === 'string' &&
+        typeof c.address === 'string' &&
+        (c.relay === undefined || typeof c.relay === 'string'),
     )
   },
   serialize: JSON.stringify,
@@ -41,8 +46,8 @@ export function tokenKey(computerId: string): string {
 }
 
 /**
- * Adds a computer, or updates the one with the same id: its address moves to
- * the new one and the name the user may have given it stays.
+ * Adds a computer, or updates the one with the same id: its address and Relay
+ * move to the new ones and the name the user may have given it stays.
  */
 export function mergeComputer(
   list: readonly PairedComputer[],
@@ -50,7 +55,11 @@ export function mergeComputer(
 ): PairedComputer[] {
   const known = list.find((c) => c.id === next.id)
   if (!known) return [...list, next]
-  return list.map((c) => (c.id === next.id ? { ...c, address: next.address } : c))
+  return list.map((c) => {
+    if (c.id !== next.id) return c
+    const { relay: _old, ...rest } = c
+    return { ...rest, address: next.address, ...(next.relay ? { relay: next.relay } : {}) }
+  })
 }
 
 /** Stores a freshly paired computer and selects it. */
@@ -64,6 +73,7 @@ export async function savePairing(
       id: pairing.id,
       name: pairing.name,
       address: pairing.address,
+      ...(pairing.relay ? { relay: pairing.relay } : {}),
     }),
   )
   selectedComputerId.set(pairing.id)

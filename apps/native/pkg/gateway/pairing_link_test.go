@@ -26,6 +26,21 @@ func TestParsePairingLinkReadsTheGatewayAndTokenFromAPastedLink(t *testing.T) {
 	}
 }
 
+func TestParsePairingLinkReadsTheRelay(t *testing.T) {
+	for _, tc := range []struct {
+		in, gateway, relay string
+	}{
+		{"http://192.168.5.123:41417/#pair=t&relay=https%3A%2F%2Fr.example.com%2Fc%2Fabcdefghijklmnop", "http://192.168.5.123:41417", "https://r.example.com/c/abcdefghijklmnop"},
+		{"https://r.example.com/c/abcdefghijklmnop/#pair=t", "https://r.example.com/c/abcdefghijklmnop", ""},
+		{"http://a:1/#pair=t&relay=nonsense", "http://a:1", ""},
+	} {
+		got, err := ParsePairingLink(tc.in)
+		if err != nil || got.Gateway != tc.gateway || got.Relay != tc.relay || got.Token != "t" {
+			t.Errorf("%q: %+v, %v", tc.in, got, err)
+		}
+	}
+}
+
 func TestParsePairingLinkNeedsTheGatewayAddress(t *testing.T) {
 	for _, in := range []string{"#pair=t", "t0k_en", "http://a:1/#pair=t&gateway=ftp://b:2", "http://a:1/#pair=t&gateway=nonsense"} {
 		if _, err := ParsePairingLink(in); !errors.Is(err, ErrNoGatewayAddress) {

@@ -13,6 +13,18 @@ export const GATEWAY_DAEMON_PATH = '/daemon'
 /** Query parameter carrying the Pairing Token on the WebSocket upgrade. */
 export const GATEWAY_TOKEN_QUERY = 'token'
 
+/**
+ * An endpoint of the Gateway at gatewayHttpUrl: an origin, or a Relay's address with its path
+ * (https://relay.example.com/c/<Relay Id>, ADR 0034), which the endpoint's path goes after.
+ */
+export function gatewayEndpoint(gatewayHttpUrl: string, path: string): URL {
+  const url = new URL(gatewayHttpUrl)
+  url.pathname = url.pathname.replace(/\/+$/, '') + path
+  url.search = ''
+  url.hash = ''
+  return url
+}
+
 /** Read-only endpoint describing the Desktop Shell. Never contains secrets. */
 export const GATEWAY_META_PATH = '/meta'
 
@@ -54,7 +66,7 @@ export function gatewayScratchUrl(
   endpoint: string,
   path?: string,
 ): string {
-  const url = new URL(endpoint, gatewayHttpUrl)
+  const url = gatewayEndpoint(gatewayHttpUrl, endpoint)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   if (path !== undefined) url.searchParams.set(GATEWAY_SCRATCH_PATH_QUERY, path)
   return url.toString()
@@ -77,7 +89,7 @@ export function gatewaySessionFileUrl(
   pairingToken: string,
   sessionId: string,
 ): string {
-  const url = new URL(GATEWAY_SESSION_FILE_PATH, gatewayHttpUrl)
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_SESSION_FILE_PATH)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
   return url.toString()
@@ -110,7 +122,10 @@ export function gatewaySessionListUrl(
   pairingToken: string,
   pin?: { kind: PinKind; key: string; pinned: boolean },
 ): string {
-  const url = new URL(pin ? GATEWAY_SESSION_PIN_PATH : GATEWAY_SESSION_LIST_PATH, gatewayHttpUrl)
+  const url = gatewayEndpoint(
+    gatewayHttpUrl,
+    pin ? GATEWAY_SESSION_PIN_PATH : GATEWAY_SESSION_LIST_PATH,
+  )
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   if (pin) {
     url.searchParams.set('kind', pin.kind)
@@ -149,7 +164,7 @@ export function gatewaySessionTimesUrl(
   pairingToken: string,
   after: number,
 ): string {
-  const url = new URL(GATEWAY_SESSION_TIMES_PATH, gatewayHttpUrl)
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_SESSION_TIMES_PATH)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   if (after) url.searchParams.set(GATEWAY_AFTER_QUERY, String(after))
   return url.toString()
@@ -160,21 +175,21 @@ export function gatewaySessionViewedUrl(
   pairingToken: string,
   sessionId: string,
 ): string {
-  const url = new URL(GATEWAY_SESSION_VIEWED_PATH, gatewayHttpUrl)
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_SESSION_VIEWED_PATH)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
   return url.toString()
 }
 
 export function gatewayDaemonUrl(gatewayHttpUrl: string, pairingToken: string): string {
-  const url = new URL(GATEWAY_DAEMON_PATH, gatewayHttpUrl)
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_DAEMON_PATH)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   return url.toString()
 }
 
 export function gatewayPairingCheckUrl(gatewayHttpUrl: string, pairingToken: string): string {
-  const url = new URL(GATEWAY_DAEMON_PATH, gatewayHttpUrl)
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_DAEMON_PATH)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   return url.toString()
 }

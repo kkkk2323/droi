@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
@@ -91,10 +92,29 @@ func Run(ctx context.Context, o Options) error {
 
 	opts := h.GatewayOptions(o.Version, trash.Move)
 	opts.Port, opts.RemoteAccess = port, true
-	gw, err := gateway.Start(opts)
+	var (
+		gw     *gateway.Gateway
+		last   gateway.RelayState
+		lastMu sync.Mutex
+	)
+	opts.Changed = func() {
+		lastMu.Lock()
+		defer lastMu.Unlock()
+		if gw == nil {
+			return
+		}
+		if s := gw.RelayState(); s.Status != last.Status || s.Err != last.Err {
+			last = s
+			reportRelay(out, s)
+		}
+	}
+	started, err := gateway.Start(opts)
 	if err != nil {
 		return fmt.Errorf("the Gateway cannot listen: %w", err)
 	}
+	lastMu.Lock()
+	gw = started
+	lastMu.Unlock()
 	mem := StartMemory(h, o.Home, func() {})
 	h.Start()
 	defer func() {
@@ -159,14 +179,36 @@ func announce(out io.Writer, terminal bool, gw *gateway.Gateway, h *host.Host, v
 	fmt.Fprintf(out, "%s Host %s on %s\n", brand.Name(), version, gateway.ComputerName())
 	if link == "" {
 		// Only loopback: reachable through a tunnel, not from the network.
-		link = gateway.Pairing([]string{"127.0.0.1"}, info.Port, "", s.PairingToken).Link
+		link = gateway.Pairing([]string{"127.0.0.1"}, info.Port, "", s.PairingToken, "").Link
 		fmt.Fprintln(out, "No network address found; the Gateway listens on this computer only.")
+	}
+	if info.Relay != "" {
+		fmt.Fprintf(out, "Relay: %s\n", deref(s.RelayURL))
 	}
 	fmt.Fprintf(out, "Pairing link: %s\n", link)
 	if terminal {
 		fmt.Fprint(out, renderQR(link))
 	}
 	fmt.Fprintln(out, "Press Ctrl-C to stop.")
+}
+
+// reportRelay prints where the Relay's Agent stands when that changes.
+func reportRelay(out io.Writer, s gateway.RelayState) {
+	switch s.Status {
+	case gateway.RelayConnected:
+		fmt.Fprintln(out, "Relay: connected")
+	case gateway.RelayRetrying:
+		fmt.Fprintf(out, "Relay: not connected (%s); trying again at %s\n", s.Err, s.Next.Format("15:04:05"))
+	case gateway.RelayRefused:
+		fmt.Fprintf(out, "Relay: refused (%s); trying again at %s\n", s.Err, s.Next.Format("15:04:05"))
+	}
+}
+
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func pairingHost(s host.Settings) string {

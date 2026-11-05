@@ -47,6 +47,9 @@ func TestSettingsReadsDesktopShellFile(t *testing.T) {
 	if g.MemoryModelOrDefault() != DefaultMemoryModel {
 		t.Fatal(g.MemoryModelOrDefault())
 	}
+	if len(g.RelayID) < 16 || OpenSettings(file, nil).Get().RelayID != g.RelayID {
+		t.Fatalf("Relay Id %q is not made once and kept", g.RelayID)
+	}
 	env := OpenSettings(file, func(k string) string {
 		if k == "FACTORY_API_KEY" {
 			return "fk-env"
@@ -66,6 +69,23 @@ func TestPairingHostAndScratchFolderParsing(t *testing.T) {
 	}
 	for in, want := range map[string]string{"~": "/h", "~/x/../y": "/h/y", "/abs/": "/abs", "rel": "", "": ""} {
 		if got := deref(ScratchFolderOf(in, "/h")); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRelayURLParsing(t *testing.T) {
+	for in, want := range map[string]string{
+		"relay.example.com":              "https://relay.example.com",
+		" https://relay.example.com/ ":   "https://relay.example.com",
+		"http://10.0.0.5:8787":           "http://10.0.0.5:8787",
+		"https://example.com/droi/":      "https://example.com/droi",
+		"ftp://relay.example.com":        "",
+		"https://relay.example.com/?a=1": "",
+		"":                               "",
+		"not a host!":                    "",
+	} {
+		if got := deref(RelayURLOf(in)); got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)
 		}
 	}

@@ -96,7 +96,56 @@ computer and speaks plain HTTP, so a Pairing Token is the only protection. Reach
 private network such as [Tailscale](https://tailscale.com), and do not expose its port to the
 internet. The link names the computer's first LAN address; to have it name another, for
 instance the Tailscale machine name, set `"pairingHost": "my-box"` in `settings.json` and
-restart.
+restart. To reach it from anywhere without a private network, use a Relay (below).
+
+## A Relay: reaching a computer from anywhere
+
+A phone on the computer's network connects to its Gateway directly. Away from it, the phone
+can go through a Relay (ADR 0034): a server the computer keeps one WebSocket open to while
+Remote Access is on, which passes the phone's requests and sockets on. There is nothing to
+forward on the router and no VPN on the phone; everything is TCP and HTTPS. The pairing link
+carries both addresses (`…/#pair=<token>&relay=<Relay>/c/<Relay Id>`). The phone asks the
+network address first and uses the Relay when it does not answer within two seconds, at every
+connect and whenever the app comes back to the foreground, so at home the traffic stays on the
+network.
+
+**Run a Relay** on a server both the computer and the phone reach. For mainland China a Hong
+Kong server is close and needs no ICP filing (`*.workers.dev` is blocked there). It is the same
+program, `droi relay`, from any release (the Linux tarball above, or the app's own binary):
+
+```sh
+DROI_RELAY_KEY=$(openssl rand -hex 24) /opt/droi/droi relay --listen 127.0.0.1:8787
+```
+
+`DROI_RELAY_KEY` is the registration key a computer must present; keep it, Droi asks for it.
+Serve it over HTTPS: with `--tls-cert` and `--tls-key`, or behind Caddy, which also gets the
+certificate:
+
+```
+relay.example.com {
+	reverse_proxy 127.0.0.1:8787 {
+		flush_interval -1
+	}
+}
+```
+
+Behind nginx, allow WebSockets (`Upgrade`, `Connection "upgrade"`), turn `proxy_buffering`
+off and set `proxy_read_timeout 1h`. `curl https://relay.example.com/healthz` answers
+`{"ok":true,...}`. As a systemd service it is the unit above with `ExecStart=/opt/droi/droi relay
+--listen 127.0.0.1:8787` and `DROI_RELAY_KEY=...` in its `EnvironmentFile`. It keeps nothing on
+disk; on SIGTERM it closes every computer's socket, and they dial again.
+
+**Point Droi at it.** Settings → Remote Access → Relay takes the address and the key; the row
+then says whether the computer is connected, and the pairing link gains `&relay=`. Phones
+paired before need to scan the new link once. For `droi host`, set `"relayUrl":
+"https://relay.example.com"` and `"relayKey": "..."` in `settings.json` and restart; it prints
+the Relay's state as it changes. alma-relay's servers ([yetone/alma-relay](https://github.com/yetone/alma-relay),
+Node, Docker or Cloudflare) speak the same protocol and work as well, with their
+`RELAY_REGISTRATION_KEY` as the key.
+
+**What a Relay sees.** The requests in clear inside its TLS, the Pairing Token included: whoever
+runs it could drive the computer, so run your own. A computer that sleeps cannot be reached
+through it either.
 
 ## Following another computer
 
@@ -105,7 +154,9 @@ marks the current one and switches to any other with one click. A computer is ad
 the pairing link a phone would scan (the link `droi host` prints, or the one in Settings →
 Remote Access of another Droi): Droi checks that the link reaches a Droi Gateway that accepts
 its Pairing Token, remembers it as a Client preference (`droi.computers` in `preferences.json`,
-which takes over the single `droi.computer` of earlier versions) and switches to it. A new link
+which takes over the single `droi.computer` of earlier versions) and switches to it. A link
+that names a Relay works the same way: the window connects to the network address when it
+answers within two seconds, and through the Relay otherwise. A new link
 for a computer already listed replaces its address and token. The window then connects to that
 Gateway instead of its own, lists that computer's Sessions and hides the Account, Memory,
 Remote Access and Advanced settings, which belong to this computer's Host. This computer's

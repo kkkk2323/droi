@@ -11,6 +11,7 @@ import {
   MultiSessionStateManager,
 } from '@factory/droid-sdk'
 import { GATEWAY_API_KEY_PLACEHOLDER, gatewayDaemonUrl, gatewayPairingCheckUrl } from './gateway'
+import { DIRECT_WAIT_MS } from './pairing'
 import { createScratchWorkspaces, type ScratchWorkspaces } from './scratch-workspaces'
 import { createSessionFileLookup } from './session-file'
 import { createSessionListOrder, type SessionListOrderSource } from './session-list-order'
@@ -21,6 +22,11 @@ export interface ClientConfig {
   kind: 'local' | 'remote'
   gatewayUrl: string
   pairingToken: string | null
+  /**
+   * The computer's Relay address (ADR 0034), if it has one: used when gatewayUrl, its
+   * network address, does not answer within a moment.
+   */
+  relayUrl?: string | null
 }
 
 export type ConnectionState =
@@ -48,6 +54,8 @@ export interface DaemonConnection {
   /** The computer's Session Times (see session-times.ts). */
   readonly sessionTimes: SessionTimesSource
   getState(): ConnectionState
+  /** The address the connection goes through now: the network's, or the Relay's. */
+  gatewayUrl(): string
   subscribe(listener: () => void): () => void
   start(): void
   /**
@@ -85,13 +93,21 @@ export function createDaemonConnection(
   fetchImpl: typeof fetch = (input, init) => fetch(input, init),
 ): DaemonConnection {
   const sessionState = createSessionState()
+  // The address in use: the network's, or the Relay's once the network's did not answer.
+  let route = config.gatewayUrl
+  const live = {
+    get gatewayUrl() {
+      return route
+    },
+    pairingToken: config.pairingToken,
+  }
   const makeController = () =>
     new DaemonSessionController({
       sessionStateManager: sessionState,
       config: {
         machineId: LOCAL_MACHINE_ID,
         machineType: MachineType.Local,
-        url: gatewayDaemonUrl(config.gatewayUrl, config.pairingToken ?? ''),
+        url: gatewayDaemonUrl(route, config.pairingToken ?? ''),
         clientType: config.kind === 'local' ? 'desktop' : 'web',
         getCredential: async () => ({ apiKey: GATEWAY_API_KEY_PLACEHOLDER }),
         connectionTimeoutMs: 5_000,
@@ -159,24 +175,52 @@ export function createDaemonConnection(
     for (const listener of listeners) listener()
   }
 
-  const checkPairing = async (): Promise<'ok' | 'rejected' | 'unreachable'> => {
+  const checkPairing = async (
+    gatewayUrl: string,
+    waitMs?: number,
+  ): Promise<'ok' | 'rejected' | 'unreachable'> => {
+    const abort = waitMs === undefined ? null : new AbortController()
+    const timer = abort ? setTimeout(() => abort.abort(), waitMs) : null
     try {
       const response = await fetchImpl(
-        gatewayPairingCheckUrl(config.gatewayUrl, config.pairingToken ?? ''),
-        { cache: 'no-store' },
+        gatewayPairingCheckUrl(gatewayUrl, config.pairingToken ?? ''),
+        { cache: 'no-store', ...(abort ? { signal: abort.signal } : {}) },
       )
       if (response.status === 204) return 'ok'
       if (response.status === 401) return 'rejected'
       return 'unreachable'
     } catch {
       return 'unreachable'
+    } finally {
+      if (timer) clearTimeout(timer)
     }
+  }
+
+  /**
+   * The network address first, then the Relay: the Relay when the network's does not answer,
+   * or answers as another computer would, by refusing the token. The Relay's answer then
+   * stands, except that it cannot reach a computer whose network address refused the token.
+   */
+  const choose = async (): Promise<{ via: string; pairing: 'ok' | 'rejected' | 'unreachable' }> => {
+    const relay = config.relayUrl
+    if (!relay) return { via: config.gatewayUrl, pairing: await checkPairing(config.gatewayUrl) }
+    const direct = await checkPairing(config.gatewayUrl, DIRECT_WAIT_MS)
+    if (direct === 'ok') return { via: config.gatewayUrl, pairing: direct }
+    const viaRelay = await checkPairing(relay)
+    if (viaRelay === 'unreachable' && direct === 'rejected') {
+      return { via: config.gatewayUrl, pairing: direct }
+    }
+    return { via: relay, pairing: viaRelay }
   }
 
   const connect = async () => {
     if (disposed || suspended) return
-    const pairing = await checkPairing()
+    const { via, pairing } = await choose()
     if (disposed || suspended) return
+    if (via !== route) {
+      route = via
+      replaceController()
+    }
     if (pairing === 'rejected') {
       setState({ status: 'unpaired', reason: 'rejected-token' })
       return
@@ -224,11 +268,12 @@ export function createDaemonConnection(
   return {
     controller,
     sessionState,
-    scratch: createScratchWorkspaces(config, fetchImpl),
-    sessionFile: createSessionFileLookup(config, fetchImpl),
-    sessionListOrder: createSessionListOrder(config, fetchImpl),
-    sessionTimes: createSessionTimes(config, fetchImpl),
+    scratch: createScratchWorkspaces(live, fetchImpl),
+    sessionFile: createSessionFileLookup(live, fetchImpl),
+    sessionListOrder: createSessionListOrder(live, fetchImpl),
+    sessionTimes: createSessionTimes(live, fetchImpl),
     getState: () => state,
+    gatewayUrl: () => route,
     subscribe(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
