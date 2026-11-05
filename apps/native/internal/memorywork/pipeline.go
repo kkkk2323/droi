@@ -202,7 +202,7 @@ func (p *pass) fold(now time.Time) {
 }
 
 // skippedTags are the tags of Sessions no user worked in.
-var skippedTags = []string{memory.MemorySessionTag, "subagent", "exec", "exec-mission", "mission-worker", "automation"}
+var skippedTags = []string{memory.MemorySessionTag, "subagent", "exec", "exec-mission", "mission-worker", "automation", sessions.DroiAutomationTag}
 
 // Waiting counts the Sessions that changed since they were last summarized
 // and are not too old.

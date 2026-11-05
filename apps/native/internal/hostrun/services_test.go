@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -16,8 +17,9 @@ func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	if s.Tools == nil || s.Sessions == nil {
 		t.Fatalf("%+v", s)
 	}
-	if o := s.Overlay(host.OverlayOptions{}); len(o.MCPServers) != 0 {
-		t.Fatalf("an overlay before any server: %+v", o)
+	// Droi's Automations are there from the start.
+	if o := s.Overlay(host.OverlayOptions{}); len(o.MCPServers) != 1 || o.MCPServers[automationwork.ServerName].Autonomy != "medium" {
+		t.Fatalf("the overlay of the Services' own servers: %+v", o)
 	}
 	s.Tools.Register("droi-test", hosttools.Server{Autonomy: "low"})
 	// An extension's server cannot take the name of one of Droi's.
@@ -36,12 +38,36 @@ func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	s.HideFromClients("CreateAutomation", "mcp:droi-workstream")
 	s.HideFromClients("CreateAutomation")
 	got := s.ClientHiddenTools()
-	if !slices.Equal(got, []string{"CreateAutomation", "mcp:droi-workstream"}) {
-		t.Fatalf("hidden %v", got)
+	if want := append(slices.Clone(automationwork.FactoryAutomationTools), "mcp:droi-workstream"); !slices.Equal(got, want) {
+		t.Fatalf("hidden %v, want %v", got, want)
 	}
 	got[0] = "changed"
 	if s.ClientHiddenTools()[0] != "CreateAutomation" {
 		t.Fatal("the list given out is the Services' own")
+	}
+}
+
+func TestOneDroiRunsTheAutomationsOfAFolder(t *testing.T) {
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})
+	first := StartServices(h)
+	defer first.Stop()
+	if first.Automations == nil || first.GatewayAutomations() == nil {
+		t.Fatal("no Automations")
+	}
+	second := StartServices(h)
+	if second.Automations != nil || second.GatewayAutomations() != nil {
+		t.Fatal("a second Scheduler of the same folder")
+	}
+	if _, ok := second.Overlay(host.OverlayOptions{}).MCPServers[automationwork.ServerName]; ok {
+		t.Fatal("the second carries the Automation tools")
+	}
+	second.Stop()
+	first.Stop()
+	third := StartServices(h)
+	defer third.Stop()
+	if third.Automations == nil {
+		t.Fatal("the folder stayed locked after Stop")
 	}
 }
 

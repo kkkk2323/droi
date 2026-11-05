@@ -189,7 +189,7 @@ func Run(o Options) {
 		}
 	}
 	sessionList := &app.SessionListShare{Prefs: userPrefs, Changed: func() { update(func() {}) }}
-	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList, func() { update(func() {}) })
+	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList, svc.GatewayAutomations(), func() { update(func() {}) })
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}

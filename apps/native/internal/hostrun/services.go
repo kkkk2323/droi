@@ -3,11 +3,15 @@ package hostrun
 import (
 	"context"
 	"log"
+	"path/filepath"
 	"slices"
 	"sync"
 
+	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/internal/keepawake"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
@@ -20,10 +24,16 @@ type Services struct {
 	Tools *hosttools.Bridge
 	// Sessions starts and follows the Host's own Sessions.
 	Sessions *hostsession.Runner
+	// Automations runs the Host's Automations (ADR 0035); nil when another
+	// Droi runs those of the same data folder.
+	Automations *automationwork.Scheduler
 
-	mu     sync.Mutex
-	hidden []string
-	stop   context.CancelFunc
+	mu        sync.Mutex
+	hidden    []string
+	changed   map[int]func()
+	nextSub   int
+	stop      context.CancelFunc
+	stopAutos func()
 }
 
 // StartServices starts h's Services, after host.New and before h.Start;
@@ -47,7 +57,87 @@ func StartServices(h *host.Host) *Services {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel
 	s.Sessions.Start(ctx)
+	s.startAutomations(ctx, filepath.Join(h.UserData(), "automations"))
+	// Factory's own Automation tools make an Automation that syncs to
+	// Factory: Droi's Sessions use Droi's.
+	s.HideFromClients(automationwork.FactoryAutomationTools...)
 	return s
+}
+
+// startAutomations runs the Automations in dir, unless another Droi does.
+func (s *Services) startAutomations(ctx context.Context, dir string) {
+	release, err := automationwork.Lock(dir)
+	if err != nil {
+		log.Println("droi: automations:", err)
+		return
+	}
+	logf := func(m string) { log.Println("[automations]", m) }
+	starter := automationwork.NewSessionStarter(s.Sessions, logf)
+	sched := automationwork.New(automationwork.Config{
+		Dir:     dir,
+		Starter: starter,
+		Hold:    keepawake.Hold,
+		Changed: s.automationsChanged,
+		Log:     logf,
+	})
+	starter.Attach(sched)
+	s.Automations = sched
+	if s.Tools != nil {
+		s.Tools.Register(automationwork.ServerName, automationwork.ToolServer(sched, automationwork.LocalZone))
+	}
+	go sched.Run(ctx)
+	s.stopAutos = func() {
+		starter.Close()
+		release()
+	}
+}
+
+// OnAutomationsChanged calls fn, on a goroutine of the Scheduler's, when an
+// Automation or a run changes; the returned function unsubscribes.
+func (s *Services) OnAutomationsChanged(fn func()) (unsubscribe func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.changed == nil {
+		s.changed = map[int]func(){}
+	}
+	id := s.nextSub
+	s.nextSub++
+	s.changed[id] = fn
+	return func() {
+		s.mu.Lock()
+		delete(s.changed, id)
+		s.mu.Unlock()
+	}
+}
+
+func (s *Services) automationsChanged() {
+	s.mu.Lock()
+	fns := make([]func(), 0, len(s.changed))
+	for _, fn := range s.changed {
+		fns = append(fns, fn)
+	}
+	s.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
+
+// GatewayAutomations is gateway.Options.Automations: nil without the
+// Automations.
+func (s *Services) GatewayAutomations() gateway.Automations {
+	if s == nil || s.Automations == nil {
+		return nil
+	}
+	return &automationwork.GatewayHost{
+		Scheduler: s.Automations,
+		Daemon: func() (automationwork.FactoryDaemon, error) {
+			cl, err := s.Sessions.Client()
+			if err != nil {
+				return nil, err
+			}
+			return cl, nil
+		},
+	}
 }
 
 // Overlay is the Runtime Overlay's additions: the Services' tool servers,
@@ -83,12 +173,17 @@ func (s *Services) ClientHiddenTools() []string {
 	return slices.Clone(s.hidden)
 }
 
-// Stop disconnects the Runner and closes the Bridge.
+// Stop stops the Automations, disconnects the Runner and closes the
+// Bridge.
 func (s *Services) Stop() {
 	if s == nil {
 		return
 	}
 	s.stop()
+	if s.stopAutos != nil {
+		s.stopAutos()
+		s.stopAutos = nil
+	}
 	if s.Tools != nil {
 		_ = s.Tools.Close()
 	}

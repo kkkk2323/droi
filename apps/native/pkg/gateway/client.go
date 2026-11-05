@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -151,6 +152,11 @@ func (c *Client) call(ctx context.Context, method, path string, query url.Values
 
 // send is call through hc, with an answer of up to limit bytes.
 func (c *Client) send(ctx context.Context, hc *http.Client, limit int64, method, path string, query url.Values, out any) error {
+	return c.sendBody(ctx, hc, limit, method, path, query, nil, out)
+}
+
+// sendBody is send with in, when it is not nil, as the request's JSON body.
+func (c *Client) sendBody(ctx context.Context, hc *http.Client, limit int64, method, path string, query url.Values, in, out any) error {
 	u, token, err := splitSocketURL(c.socket())
 	if err != nil {
 		return err
@@ -161,9 +167,20 @@ func (c *Client) send(ctx context.Context, hc *http.Client, limit int64, method,
 		q[k] = v
 	}
 	u.RawQuery = q.Encode()
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), nil)
+	var payload io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		payload = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), payload)
 	if err != nil {
 		return err
+	}
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

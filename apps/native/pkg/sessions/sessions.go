@@ -107,10 +107,15 @@ func ContinuationTags(parentID string, inherited []Tag) []Tag {
 // starts: metadata names the Automation and says "run" for a run.
 const AutomationTag = "automation"
 
-// AutomationRun is the Automation whose run a Session is, "" for none.
+// DroiAutomationTag is on a run of one of Droi's own Automations (ADR 0035),
+// with the Automation's id and name, the trigger and the run's id.
+const DroiAutomationTag = "droi.automation"
+
+// AutomationRun is the Automation whose run a Session is, the Daemon's or
+// Droi's own; "" for none.
 func AutomationRun(tags []Tag) (id, name string) {
 	for _, t := range tags {
-		if t.Name == AutomationTag && t.Metadata["type"] == "run" {
+		if t.Name == AutomationTag && t.Metadata["type"] == "run" || t.Name == DroiAutomationTag {
 			return t.Metadata["automationId"], t.Metadata["automationName"]
 		}
 	}

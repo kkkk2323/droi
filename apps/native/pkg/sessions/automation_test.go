@@ -20,3 +20,12 @@ func TestAutomationRunsLeaveTheListAndTheRecentWorkspaces(t *testing.T) {
 	}
 	eq(t, paths, []string{"/w/beta", "/w/alpha"})
 }
+
+func TestARunOfDroisOwnAutomationIsARun(t *testing.T) {
+	run := []Tag{{Name: DroiAutomationTag, Metadata: map[string]string{"automationId": "daily-report", "automationName": "Daily report", "trigger": "schedule", "runId": "r1"}}}
+	if id, name := AutomationRun(run); id != "daily-report" || name != "Daily report" {
+		t.Fatalf("AutomationRun: %q %q", id, name)
+	}
+	list := []Summary{{SessionID: "a", Cwd: "/w/alpha"}, {SessionID: "r", Cwd: "/w/report", Tags: run}}
+	eq(t, ids(WithoutAutomationRuns(list)), []string{"a"})
+}

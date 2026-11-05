@@ -17,11 +17,12 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
 	"github.com/kkkk2323/droi/apps/native/internal/keepawake"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // TagName tags a run's Session, with the Automation's id and name, the
 // trigger and the run's id as its metadata.
-const TagName = "droi.automation"
+const TagName = sessions.DroiAutomationTag
 
 // FactoryAutomationTools are the llm ids of Factory's own Automation tools.
 // An Automation they make syncs to Factory, so Droi's Sessions leave them
@@ -588,6 +589,10 @@ func (s *Scheduler) item(a automations.Automation, now time.Time) Item {
 	}
 	return it
 }
+
+// Folder is an Automation's own folder, its runs' Workspace when it has
+// no working directory.
+func (s *Scheduler) Folder(id string) string { return s.store.Folder(id) }
 
 // Runs are an Automation's runs, newest first, at most limit (all when
 // limit is 0 or less).
