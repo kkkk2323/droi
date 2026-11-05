@@ -125,8 +125,10 @@ installed types before using an Expo module, and add Expo packages with
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
 - Live tests against a real Daemon, through the local droid-proxy (`dp`) with a cheap model:
-  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/pkg/host ./apps/native/pkg/gateway -run Live -v`
-  (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration)
+  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/pkg/host ./apps/native/pkg/gateway ./apps/native/internal/hostrun -run Live -v -timeout 30m`
+  (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration).
+  `internal/hostrun`'s run the Host's Automations and Workstreams through its Gateway on Droi's droid
+  (`~/Library/Application Support/Droi/droid/1.4.1/droid`; `DROID_PATH` picks another), macOS and Linux only
 
 ## Factory login
 
