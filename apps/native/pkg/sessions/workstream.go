@@ -21,6 +21,18 @@ func Workstream(tags []Tag) (id, role, orchestratorID string) {
 	return "", "", ""
 }
 
+// WithoutWorkstreamAgents leaves out the agents, which their Workstream's
+// page lists; the orchestrator stays.
+func WithoutWorkstreamAgents(list []Summary) []Summary {
+	var out []Summary
+	for _, s := range list {
+		if !IsWorkstreamAgent(s.Tags) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // IsWorkstreamAgent reports a Workstream agent's Session.
 func IsWorkstreamAgent(tags []Tag) bool {
 	id, role, _ := Workstream(tags)

@@ -553,13 +553,13 @@ type RecentWorkspace struct {
 	LastUsedAt int64
 }
 
-// RecentWorkspaces: most recent first, one per path, Scratch and
-// Automation runs left out.
+// RecentWorkspaces: most recent first, one per path, Scratch, Automation
+// runs and Workstream agents, in worktrees of their own, left out.
 func RecentWorkspaces(list []Summary, times map[string]Times) []RecentWorkspace {
 	byPath := map[string]*RecentWorkspace{}
 	var order []string
 	for _, s := range list {
-		if id, _ := AutomationRun(s.Tags); IsScratchSession(s) || id != "" {
+		if id, _ := AutomationRun(s.Tags); IsScratchSession(s) || id != "" || IsWorkstreamAgent(s.Tags) {
 			continue
 		}
 		path := WorkspaceOf(s)

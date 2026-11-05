@@ -154,7 +154,7 @@ func (a *App) search(query string) {
 func titleHits(listed []sessions.Summary, query string) []searchHit {
 	q := strings.ToLower(query)
 	var found []sessions.Summary
-	for _, s := range sessions.MainSessions(listed) {
+	for _, s := range sessions.WithoutWorkstreamAgents(sessions.MainSessions(listed)) {
 		if strings.Contains(strings.ToLower(s.Title), q) {
 			found = append(found, s)
 		}
@@ -175,6 +175,9 @@ func contentHits(res *protocol.SearchSessionsResult, listed []sessions.Summary) 
 	for _, r := range res.Sessions {
 		if strings.HasPrefix(r.Title, sessions.MemoryTitlePrefix) &&
 			!slices.ContainsFunc(listed, func(s sessions.Summary) bool { return s.SessionID == r.SessionID }) {
+			continue
+		}
+		if slices.ContainsFunc(listed, func(s sessions.Summary) bool { return s.SessionID == r.SessionID && sessions.IsWorkstreamAgent(s.Tags) }) {
 			continue
 		}
 		h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, L("Untitled session"))}

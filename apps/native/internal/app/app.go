@@ -44,7 +44,7 @@ const sessionPage = 100
 
 // Route is the page the main panel shows.
 type Route struct {
-	Name      string // "home", "new", "session", "settings", "automations", "page"
+	Name      string // "home", "new", "session", "settings", "automations", "workstreams", "page"
 	SessionID string
 	// Page is the id of the extension's Page that "page" shows.
 	Page      string
@@ -55,6 +55,8 @@ type Route struct {
 	Automation string
 	// Factory is the Factory automation the Automations page shows.
 	Factory string
+	// Workstream is the one the Workstreams page shows, "" for the list.
+	Workstream string
 }
 
 // Config is what the window needs from main: a Controller to the Daemon,
@@ -246,6 +248,7 @@ type App struct {
 	updateDismissed string
 	memory          memoryState
 	automations     automationsState
+	workstreams     workstreamsState
 	usage           usageState
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
@@ -762,6 +765,9 @@ func (a *App) Go(r Route) {
 	if r.Name == "automations" {
 		a.enterAutomations(r)
 	}
+	if r.Name == "workstreams" {
+		a.enterWorkstreams(r)
+	}
 }
 
 // Route is the page shown.
@@ -779,7 +785,9 @@ func (a *App) View(c *ui.Context) {
 	listed, rev = a.withElsewhere(listed, rev)
 	a.shownRev = rev
 	a.restoreLast(listed, listDone)
-	a.noteLiveRuns(listed, a.activity(busy))
+	doing := a.activity(busy)
+	a.noteLiveRuns(listed, doing)
+	a.noteWorkstreams(listed, doing)
 	a.narrow = a.isNarrow(c)
 	// A drawer only exists on narrow screens; widening the window closes it.
 	if !a.narrow {
@@ -847,6 +855,8 @@ func (a *App) View(c *ui.Context) {
 				a.view(id).build(c, a, findSummary(listed, id), listed)
 			case a.route.Name == "automations":
 				a.automationsPage(c)
+			case a.route.Name == "workstreams":
+				a.workstreamsPage(c)
 			case a.route.Name == "page" && a.extensionPage(a.route.Page) != nil:
 				a.extensionPageView(c, a.extensionPage(a.route.Page))
 			case starting && a.following():

@@ -16,3 +16,20 @@ func TestTheWorkstreamTagNamesTheWorkstreamAndTheRole(t *testing.T) {
 		t.Fatal("a Session of no Workstream")
 	}
 }
+
+func TestWorkstreamAgentsLeaveTheListAndTheRecentWorkspaces(t *testing.T) {
+	tag := func(role string) []Tag {
+		return []Tag{{Name: WorkstreamTag, Metadata: map[string]string{"workstreamId": "w1", "role": role}}}
+	}
+	list := []Summary{
+		{SessionID: "lead", Cwd: "/w/pay", UpdatedAt: 10, Tags: tag(WorkstreamOrchestrator)},
+		{SessionID: "agent", Cwd: "/w/pay-worktrees/grpc", UpdatedAt: 30, Tags: tag(WorkstreamAgent)},
+		{SessionID: "plain", Cwd: "/w/beta", UpdatedAt: 20},
+	}
+	eq(t, ids(WithoutWorkstreamAgents(list)), []string{"lead", "plain"})
+	var paths []string
+	for _, w := range RecentWorkspaces(list, nil) {
+		paths = append(paths, w.Path)
+	}
+	eq(t, paths, []string{"/w/beta", "/w/pay"})
+}
