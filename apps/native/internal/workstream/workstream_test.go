@@ -1548,6 +1548,39 @@ func (f *fixture) loadedHiding(id string) []string {
 	return hidden
 }
 
+func TestAfterARestartHandedOffSessionsAreLoadedHidingTheirRolesTools(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	agent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the agent's turn to end", func() bool { return !f.agent(made.WorkstreamID, agent).Awaiting })
+	f.idle(agent)
+	nextOrch, nextAgent := f.handOff(made.OrchestratorID), f.handOff(agent)
+	f.c.List(f.ctx)
+	before := len(f.requests("daemon.load_session"))
+	f.start()
+	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": agent, "message": "Now /refund."}, nextOrch); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.call(ToolReport, map[string]any{"kind": "done", "message": "Moved /refund."}, nextAgent); err != nil {
+		t.Fatal(err)
+	}
+	loads := map[string][]string{}
+	for _, p := range f.requests("daemon.load_session")[before:] {
+		var lp struct {
+			SessionID       string   `json:"sessionId"`
+			DisabledToolIDs []string `json:"disabledToolIds"`
+		}
+		_ = json.Unmarshal(p, &lp)
+		loads[lp.SessionID] = lp.DisabledToolIDs
+	}
+	if got, ok := loads[nextAgent]; !ok || !reflect.DeepEqual(got, agentHidden()) {
+		t.Errorf("the agent was loaded hiding %v (loaded: %t)", got, ok)
+	}
+	if got, ok := loads[nextOrch]; !ok || !reflect.DeepEqual(got, orchestratorHidden()) {
+		t.Errorf("the orchestrator was loaded hiding %v (loaded: %t)", got, ok)
+	}
+}
+
 func TestAForkOfAWorkstreamSessionIsNoHandoff(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
 	made := f.create("", "")

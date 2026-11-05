@@ -534,6 +534,59 @@ func TestFollowedSessionsAreLoadedAgainAfterTheRunnersOwnConnect(t *testing.T) {
 	reconnectsAndKeepsFollowing(t, func(c *Config) { c.maxReconnectAttempts = -1 })
 }
 
+// hiddenOnLoads are the disabledToolIds of each load_session of id.
+func hiddenOnLoads(t *testing.T, d *fakedaemon.Daemon, id string) [][]string {
+	t.Helper()
+	reqs, err := d.Requests()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out [][]string
+	for _, q := range reqs {
+		var p struct {
+			SessionID       string   `json:"sessionId"`
+			DisabledToolIDs []string `json:"disabledToolIds"`
+		}
+		if q.Method == "daemon.load_session" && json.Unmarshal(q.Params, &p) == nil && p.SessionID == id {
+			out = append(out, p.DisabledToolIDs)
+		}
+	}
+	return out
+}
+
+func TestTheReloadAfterTheRunnersOwnConnectHidesWhatTheSessionHid(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Agent", Cwd: repo}}})
+	r, _ := start(t, d, "", func(c *Config) { c.maxReconnectAttempts = -1 })
+	ctx := testContext(t)
+	opened, err := r.Open(ctx, Spec{Cwd: repo, DisabledTools: []string{"RunAutomation"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := d.Sessions[0].SessionID
+	if err := r.Load(ctx, loaded, "RunAutomation", "mcp:droi-workstream/report"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.GoDown(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ComeBack(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for len(hiddenOnLoads(t, d, opened.SessionID)) < 1 || len(hiddenOnLoads(t, d, loaded)) < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("not loaded again: %v", methods(t, d))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := hiddenOnLoads(t, d, opened.SessionID); !reflect.DeepEqual(got, [][]string{{"RunAutomation"}}) {
+		t.Errorf("the opened Session was loaded again hiding %v", got)
+	}
+	if got := hiddenOnLoads(t, d, loaded); !reflect.DeepEqual(got[1], []string{"RunAutomation", "mcp:droi-workstream/report"}) {
+		t.Errorf("the loaded Session was loaded again hiding %v", got)
+	}
+}
+
 func TestArchiveLoadsASessionTheRunnerDoesNotFollow(t *testing.T) {
 	d := fakedaemon.Start(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Agent", Cwd: repo}}})
 	r, _ := start(t, d, "")
@@ -735,6 +788,23 @@ func TestAGoneSessionIsFollowedUntilItsEndIsHeard(t *testing.T) {
 	r.see(controller.SessionNotFound{SessionID: "s"})
 	if !slices.Equal(followedThen, []bool{true}) || r.Following("s") {
 		t.Fatalf("followed while heard %v, after %v", followedThen, r.Following("s"))
+	}
+}
+
+// A Session no longer followed, gone from the Daemon or unfollowed, leaves
+// no hidden tools for a later reload.
+func TestASessionNoLongerFollowedForgetsItsHiddenTools(t *testing.T) {
+	r := New(Config{})
+	for _, id := range []string{"gone", "unfollowed"} {
+		r.follow(id, true)
+		r.hide(id, []string{"mcp:droi-workstream"})
+	}
+	r.see(controller.SessionNotFound{SessionID: "gone"})
+	r.Unfollow("unfollowed")
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.hidden) != 0 {
+		t.Fatalf("hidden %v", r.hidden)
 	}
 }
 

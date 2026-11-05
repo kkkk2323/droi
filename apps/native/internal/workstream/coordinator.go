@@ -479,7 +479,7 @@ func (c *Coordinator) SetAgentSettings(ctx context.Context, s gateway.Workstream
 	c.mu.Lock()
 	tag := orchestratorTag(w)
 	c.mu.Unlock()
-	if _, err := c.follow(ctx, orch); err != nil {
+	if _, err := c.follow(ctx, orch, orchestratorHidden()); err != nil {
 		return err
 	}
 	if err := c.cfg.Sessions.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: orch, Tags: withTag(c.tagsOf(orch), tag)}); err != nil {
@@ -507,10 +507,12 @@ func (c *Coordinator) SetAgentSettings(ctx context.Context, s gateway.Workstream
 	return nil
 }
 
-// follow is a Session the Runner follows, loaded first when it does not.
-func (c *Coordinator) follow(ctx context.Context, id string) (*session.Session, error) {
+// follow is a Session the Runner follows, loaded first when it does not
+// with hidden, the tools its role does without: a Session handed off hides
+// none of its own.
+func (c *Coordinator) follow(ctx context.Context, id string, hidden []string) (*session.Session, error) {
 	if !c.cfg.Sessions.Following(id) {
-		if err := c.cfg.Sessions.Load(ctx, id); err != nil {
+		if err := c.cfg.Sessions.Load(ctx, id, hidden...); err != nil {
 			return nil, err
 		}
 	}
@@ -519,6 +521,14 @@ func (c *Coordinator) follow(ctx context.Context, id string) (*session.Session, 
 		return nil, fmt.Errorf("session %s is not loaded", id)
 	}
 	return s, nil
+}
+
+// send sends a Session a user message, loading it first as follow does.
+func (c *Coordinator) send(ctx context.Context, id string, hidden []string, text string) error {
+	if _, err := c.follow(ctx, id, hidden); err != nil {
+		return err
+	}
+	return c.cfg.Sessions.Send(ctx, id, text)
 }
 
 func working(s *session.Session) bool {
@@ -538,7 +548,7 @@ func (c *Coordinator) agentSettings(ctx context.Context, w *Workstream) (model, 
 	if model != "" && effort != "" {
 		return model, effort, nil
 	}
-	orch, err := c.follow(ctx, c.newest(ctx, w, nil))
+	orch, err := c.follow(ctx, c.newest(ctx, w, nil), orchestratorHidden())
 	if err != nil {
 		return "", "", err
 	}
@@ -562,7 +572,7 @@ func (c *Coordinator) moveAgent(ctx context.Context, w *Workstream, a *Agent) er
 	}
 	model, effort, takenModel, takenEffort, orch := a.PendingModel, a.PendingReasoningEffort, a.Model, a.ReasoningEffort, w.OrchestratorID
 	c.mu.Unlock()
-	s, err := c.follow(ctx, id)
+	s, err := c.follow(ctx, id, agentHidden())
 	if err != nil {
 		return err
 	}
@@ -762,7 +772,7 @@ func (c *Coordinator) message(ctx context.Context, w *Workstream, a *Agent, text
 		c.cfg.Log("moving agent " + id + " to the workstream's settings: " + err.Error())
 	}
 	c.update(w, func() { a.Awaiting, a.ReportedSinceMessage = true, false })
-	if err := c.cfg.Sessions.Send(ctx, id, fromOrchestrator(text)); err != nil {
+	if err := c.send(ctx, id, agentHidden(), fromOrchestrator(text)); err != nil {
 		c.update(w, func() { a.Awaiting = false })
 		return err
 	}
@@ -778,7 +788,7 @@ func (c *Coordinator) report(ctx context.Context, w *Workstream, a *Agent, kind,
 	c.save(w)
 	title, id := a.Title, a.SessionID
 	c.mu.Unlock()
-	return c.cfg.Sessions.Send(ctx, c.newest(ctx, w, nil), reportMessage(title, id, kind, text))
+	return c.send(ctx, c.newest(ctx, w, nil), orchestratorHidden(), reportMessage(title, id, kind, text))
 }
 
 // interrupt stops an agent's turn, which the orchestrator then no longer
@@ -999,7 +1009,7 @@ func (c *Coordinator) turnEnded(e hostsession.TurnEnded) {
 	defer cancel()
 	failed := e.Reason != protocol.AgentTurnCompletionReasonCompleted
 	if msg := endNotice(title, e.SessionID, turnReason(e), failed, reported, e.LastReply); awaiting && msg != "" {
-		if err := c.cfg.Sessions.Send(ctx, c.newest(ctx, w, nil), msg); err != nil {
+		if err := c.send(ctx, c.newest(ctx, w, nil), orchestratorHidden(), msg); err != nil {
 			c.cfg.Log("telling the orchestrator of agent " + e.SessionID + ": " + err.Error())
 		}
 	}
@@ -1051,7 +1061,7 @@ func (c *Coordinator) resume(ctx context.Context) {
 // recorded archived.
 func (c *Coordinator) resumeAgent(ctx context.Context, w *Workstream, a *Agent) {
 	id := c.newest(ctx, w, a)
-	s, err := c.follow(ctx, id)
+	s, err := c.follow(ctx, id, agentHidden())
 	switch {
 	case hostsession.IsSessionNotFound(err):
 		c.update(w, func() { a.Awaiting, a.ArchivedAt = false, c.now() })
@@ -1076,7 +1086,7 @@ func (c *Coordinator) resumeAgent(ctx context.Context, w *Workstream, a *Agent) 
 	if s != nil {
 		reply = lastReply(s)
 	}
-	if err := c.cfg.Sessions.Send(ctx, orch, endNotice(title, id, restartReason, true, reported, reply)); err != nil {
+	if err := c.send(ctx, orch, orchestratorHidden(), endNotice(title, id, restartReason, true, reported, reply)); err != nil {
 		c.cfg.Log("telling the orchestrator of agent " + id + ": " + err.Error())
 	}
 }

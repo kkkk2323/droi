@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -168,13 +169,16 @@ type Runner struct {
 
 	mu        sync.Mutex
 	following map[string]*followed
-	subs      map[int]func(Event)
-	next      int
+	// hidden are the disabledToolIds each followed Session was opened or
+	// loaded with, which a worker the Daemon spawns again does not keep.
+	hidden map[string][]string
+	subs   map[int]func(Event)
+	next   int
 }
 
 // New makes a Runner; Start connects it.
 func New(cfg Config) *Runner {
-	r := &Runner{cfg: cfg, following: map[string]*followed{}, subs: map[int]func(Event){}}
+	r := &Runner{cfg: cfg, following: map[string]*followed{}, hidden: map[string][]string{}, subs: map[int]func(Event){}}
 	reconnects := cfg.maxReconnectAttempts
 	if reconnects == 0 {
 		// The Daemon restarts on its own (the Host's Supervisor); keep trying.
@@ -260,28 +264,29 @@ func (r *Runner) keepConnected(ctx context.Context) {
 }
 
 // reloadFollowed loads every followed Session again on a new connection, so
-// their notifications reach it.
+// their notifications reach it, with the tools it hid.
 func (r *Runner) reloadFollowed(ctx context.Context) {
 	r.mu.Lock()
-	ids := make([]string, 0, len(r.following))
+	loads := make([]protocol.LoadSessionParams, 0, len(r.following))
 	for id := range r.following {
-		ids = append(ids, id)
+		loads = append(loads, protocol.LoadSessionParams{SessionID: id, DisabledToolIDs: r.hidden[id]})
 	}
 	r.mu.Unlock()
-	for _, id := range ids {
-		go r.reload(ctx, id)
+	for _, p := range loads {
+		go r.reload(ctx, p)
 	}
 }
 
 // reload loads a followed Session again, trying again a while when that
 // fails other than for a Session the Daemon does not have (seeGone).
-func (r *Runner) reload(ctx context.Context, sessionID string) {
+func (r *Runner) reload(ctx context.Context, p protocol.LoadSessionParams) {
+	sessionID := p.SessionID
 	wait := r.cfg.reloadRetry
 	if wait <= 0 {
 		wait = time.Minute
 	}
 	for try := 1; ; try++ {
-		_, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID})
+		_, err := r.ctl.LoadSession(ctx, p)
 		if err == nil || errors.Is(err, controller.ErrSessionNotFound) || ctx.Err() != nil {
 			return
 		}
@@ -357,6 +362,7 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 	// Followed before it starts, so no notification of its first turn is
 	// missed.
 	r.follow(p.SessionID, true)
+	r.hide(p.SessionID, s.DisabledTools)
 	res, err := r.ctl.InitializeSession(ctx, p)
 	if err != nil {
 		r.follow(p.SessionID, false)
@@ -365,6 +371,7 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 	if res.SessionID != p.SessionID {
 		r.follow(p.SessionID, false)
 		r.follow(res.SessionID, true)
+		r.hide(res.SessionID, s.DisabledTools)
 	}
 	o := Opened{SessionID: res.SessionID, ModelID: res.Settings.ModelID, ReasoningEffort: string(res.Settings.ReasoningEffort)}
 	if w := res.Worktree; w != nil {
@@ -424,6 +431,7 @@ func (r *Runner) systemPrompt(spec string) string {
 // as one a Session of its was handed off to.
 func (r *Runner) Load(ctx context.Context, sessionID string, disabledTools ...string) error {
 	added := r.follow(sessionID, true)
+	r.hide(sessionID, disabledTools)
 	if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID, DisabledToolIDs: disabledTools}); err != nil {
 		if added {
 			r.follow(sessionID, false)
@@ -582,6 +590,7 @@ func (r *Runner) follow(sessionID string, on bool) bool {
 	defer r.mu.Unlock()
 	if !on {
 		delete(r.following, sessionID)
+		delete(r.hidden, sessionID)
 		return false
 	}
 	if r.following[sessionID] != nil {
@@ -589,6 +598,16 @@ func (r *Runner) follow(sessionID string, on bool) bool {
 	}
 	r.following[sessionID] = &followed{}
 	return true
+}
+
+// hide records the disabledToolIds a followed Session was opened or loaded
+// with; none keeps those recorded before.
+func (r *Runner) hide(sessionID string, disabledTools []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(disabledTools) > 0 && r.following[sessionID] != nil {
+		r.hidden[sessionID] = slices.Clone(disabledTools)
+	}
 }
 
 func (r *Runner) forget(sessionID string) {
@@ -618,6 +637,7 @@ func (r *Runner) see(e controller.Event) {
 		r.mu.Lock()
 		if f != nil && r.following[e.SessionID] == f {
 			delete(r.following, e.SessionID)
+			delete(r.hidden, e.SessionID)
 		}
 		r.mu.Unlock()
 	}
