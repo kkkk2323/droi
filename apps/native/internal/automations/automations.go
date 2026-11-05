@@ -1,9 +1,11 @@
 // Package automations keeps Droi's own Automations (ADR 0035): the Store
 // of their folders, HEARTBEAT.md, runs.jsonl and state.json, and the cron
 // expressions their schedules are, read in a time zone. It also has what
-// the Automations page needs: schedules between the local clock and the
-// Daemon's UTC cron, the words a schedule and a run read as, and an id for
-// a new Automation.
+// the Automations page needs: a schedule between the presets the page offers
+// and its cron expression, read at a given offset from UTC (Factory's
+// schedules, which the Daemon reads in UTC, are converted at the local
+// offset when one moves), the words a schedule and a run read as, and an id
+// for a new Automation.
 //
 // A HEARTBEAT.md keeps Factory's key names, so one moved from
 // ~/.factory/automations reads the same; the keys Droi does not use, such
@@ -29,7 +31,7 @@ const (
 	Daily    Repeat = "daily"
 	Weekdays Repeat = "weekdays"
 	Weekly   Repeat = "weekly"
-	// Custom is a cron expression, or words the Daemon turns into one.
+	// Custom is any other cron expression.
 	Custom Repeat = "custom"
 )
 
@@ -40,17 +42,19 @@ var RepeatLabels = map[Repeat]string{
 	Hourly: l10n.N("Hourly"), Daily: l10n.N("Daily"), Weekdays: l10n.N("Weekdays"), Weekly: l10n.N("Weekly"), Custom: l10n.N("Custom"),
 }
 
-// Schedule is a schedule as the user picks it, in local time.
+// Schedule is a schedule as the user picks it, in the time its expression
+// is read in.
 type Schedule struct {
 	Repeat Repeat
-	// Hour and Minute are local; Hourly uses only Minute.
+	// Hour and Minute are in that time; Hourly uses only Minute.
 	Hour, Minute int
 	Weekday      time.Weekday
 	Custom       string
 }
 
-// The Daemon reads every cron expression in UTC; offset is the local
-// zone's, in seconds east of UTC.
+// An offset is the seconds east of UTC of the time a Schedule is in,
+// counted from the time its expression is read in: 0 when both are the
+// same, the local zone's for a Factory schedule the Daemon reads in UTC.
 
 func floorDiv(a, b int) int {
 	q := a / b
@@ -62,7 +66,8 @@ func floorDiv(a, b int) int {
 
 func mod(a, b int) int { return a - floorDiv(a, b)*b }
 
-// Expression is the cron expression, in UTC, the Daemon is given.
+// Expression is the cron expression of s, read offset seconds west of the
+// time s is in.
 func (s Schedule) Expression(offset int) string {
 	off := offset / 60
 	switch s.Repeat {
@@ -88,8 +93,8 @@ func number(field string, lo, hi int) (int, bool) {
 	return n, err == nil && n >= lo && n <= hi && strconv.Itoa(n) == field
 }
 
-// Parse reads a schedule the Daemon reports back into local time; what
-// the presets cannot say stays Custom.
+// Parse reads an expression as a Schedule offset seconds east of the time
+// it is read in; what the presets cannot say stays Custom.
 func Parse(expr string, offset int) Schedule {
 	expr = strings.TrimSpace(expr)
 	custom := Schedule{Repeat: Custom, Custom: expr, Hour: 9}

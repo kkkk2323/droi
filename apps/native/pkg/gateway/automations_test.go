@@ -90,8 +90,8 @@ func (f *fakeAutomations) Delete(_ context.Context, id string) error {
 
 func (f *fakeAutomations) Factory(context.Context) ([]FactoryAutomation, error) {
 	return []FactoryAutomation{
-		{ID: "droid", Name: "Droid二进制逆向", Schedule: "0 1 * * *", Path: "/Users/dev/.factory/automations/droid"},
-		{ID: "digest", Name: "Digest", Schedule: "daily", TargetsSession: true},
+		{ID: "droid", Name: "Droid二进制逆向", Schedule: "0 1 * * *", Path: "/Users/dev/.factory/automations/droid", LocalSchedule: "0 9 * * *"},
+		{ID: "digest", Name: "Digest", Schedule: "daily", TargetsSession: true, LocalSchedule: "0 9 * * *", LocalTimezone: "UTC"},
 	}, nil
 }
 
@@ -195,6 +195,8 @@ func TestTheAutomationEndpointsAskForTheTokenTheMethodAndTheID(t *testing.T) {
 		{http.MethodPost, AutomationPausePath, "token&id=a&paused=maybe", http.StatusBadRequest},
 		{http.MethodPost, AutomationSavePath, "token", http.StatusBadRequest},
 		{http.MethodGet, FactoryAutomationsPath, "token", http.StatusOK},
+		{http.MethodGet, AutomationZonePath, "token", http.StatusOK},
+		{http.MethodPost, AutomationZonePath, "token", http.StatusMethodNotAllowed},
 	} {
 		q := ""
 		if c.query != "" {
@@ -256,5 +258,26 @@ func TestASaveBodyMustBeJSONOfAModestSize(t *testing.T) {
 		if resp.StatusCode != c.status || body.Error != c.wantReason {
 			t.Errorf("%.20s: %d %q, want %d %q", c.body, resp.StatusCode, body.Error, c.status, c.wantReason)
 		}
+	}
+}
+
+func (f *fakeAutomations) Zone(context.Context) (string, error) { return "Asia/Shanghai", nil }
+
+func TestTheHostsZoneAndTheZonesOfItsSchedulesReachTheClient(t *testing.T) {
+	f := &fakeAutomations{list: []Automation{{ID: "monthly", Name: "Monthly", Schedule: "0 9 1 * *", Timezone: "UTC", Zone: "UTC"}}, paused: map[string]bool{}}
+	c := automationsClient(t, f)
+	ctx := context.Background()
+	if z, err := c.AutomationZone(ctx); err != nil || z != "Asia/Shanghai" {
+		t.Fatalf("zone %q %v", z, err)
+	}
+	if list, err := c.Automations(ctx); err != nil || list[0].Zone != "UTC" {
+		t.Fatalf("list %+v %v", list, err)
+	}
+	factory, err := c.FactoryAutomations(ctx)
+	if err != nil || factory[0].LocalSchedule != "0 9 * * *" || factory[0].LocalTimezone != "" || factory[1].LocalSchedule != "0 9 * * *" || factory[1].LocalTimezone != "UTC" {
+		t.Fatalf("factory %+v %v", factory, err)
+	}
+	if _, err := automationsClient(t, nil).AutomationZone(ctx); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an older Host: %v", err)
 	}
 }

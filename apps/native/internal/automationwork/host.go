@@ -30,6 +30,9 @@ type GatewayHost struct {
 	// Offset, optional, is this computer's zone's offset now, in seconds
 	// east of UTC; time.Now's when nil.
 	Offset func() int
+	// LocalZone, optional, names this computer's time zone; the package's
+	// LocalZone when nil.
+	LocalZone func() string
 
 	// moving serialises moves, so that one Factory automation is copied
 	// once.
@@ -52,12 +55,35 @@ func gatewayRun(r automations.Run) gateway.AutomationRun {
 	}
 }
 
+func (h *GatewayHost) offset() int {
+	if h.Offset != nil {
+		return h.Offset()
+	}
+	_, offset := time.Now().Zone()
+	return offset
+}
+
+func (h *GatewayHost) localZone() string {
+	if h.LocalZone != nil {
+		return h.LocalZone()
+	}
+	return LocalZone()
+}
+
+// Zone is this computer's time zone, which a schedule without one of its
+// own is read in.
+func (h *GatewayHost) Zone(context.Context) (string, error) { return h.localZone(), nil }
+
 func (h *GatewayHost) gatewayItem(it Item) gateway.Automation {
 	a := gateway.Automation{
 		ID: it.ID, Name: it.Name, Prompt: it.Prompt, Schedule: it.Schedule, Timezone: it.Timezone,
 		Model: it.Model, ReasoningEffort: it.ReasoningEffort, Autonomy: it.Autonomy,
 		WorkingDirectory: it.WorkingDirectory, Paused: it.Paused, CreatedAt: rfc3339(it.CreatedAt), ForkedFrom: it.ForkedFrom,
 		Folder: h.Scheduler.Folder(it.ID), NextRunAt: rfc3339(it.NextRunAt), Running: it.Running, Invalid: it.Invalid,
+		Zone: it.Timezone,
+	}
+	if a.Zone == "" {
+		a.Zone = h.localZone()
 	}
 	if it.LastRun != nil {
 		r := gatewayRun(*it.LastRun)
@@ -187,8 +213,15 @@ func (h *GatewayHost) Factory(ctx context.Context) ([]gateway.FactoryAutomation,
 		return nil, err
 	}
 	out := make([]gateway.FactoryAutomation, 0, len(entries))
+	offset := h.offset()
 	for _, e := range entries {
-		out = append(out, factoryAutomation(e))
+		f := factoryAutomation(e)
+		// What a move would keep, so that a Client never reads a Host's
+		// schedule at its own offset.
+		if schedule, zone, err := automations.FactorySchedule(f.Schedule, offset); err == nil {
+			f.LocalSchedule, f.LocalTimezone = schedule, zone
+		}
+		out = append(out, f)
 	}
 	return out, nil
 }
@@ -242,13 +275,7 @@ func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.Autom
 
 // copyFactory copies f into Droi's Automations.
 func (h *GatewayHost) copyFactory(f gateway.FactoryAutomation) (gateway.Automation, error) {
-	offset := 0
-	if h.Offset != nil {
-		offset = h.Offset()
-	} else {
-		_, offset = time.Now().Zone()
-	}
-	schedule, zone, err := automations.FactorySchedule(f.Schedule, offset)
+	schedule, zone, err := automations.FactorySchedule(f.Schedule, h.offset())
 	if err != nil {
 		return gateway.Automation{}, &gateway.RefusedRequest{Reason: err.Error()}
 	}

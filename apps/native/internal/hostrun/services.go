@@ -3,10 +3,12 @@ package hostrun
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
@@ -26,15 +28,11 @@ type Services struct {
 	Tools *hosttools.Bridge
 	// Sessions starts and follows the Host's own Sessions.
 	Sessions *hostsession.Runner
-	// Automations runs the Host's Automations (ADR 0035); nil when another
-	// Droi runs those of the same data folder.
-	Automations *automationwork.Scheduler
-
-	// gatewayAutomations answers the Gateway's Automation endpoints: nil
-	// without the Automations, elsewhere when another Droi runs them.
-	gatewayAutomations gateway.Automations
+	// held answers the Gateway's Automation endpoints.
+	held *heldAutomations
 
 	mu        sync.Mutex
+	sched     *automationwork.Scheduler
 	hidden    []string
 	changed   map[int]func()
 	nextSub   int
@@ -46,7 +44,7 @@ type Services struct {
 // h's Config reads their Overlay and ClientHiddenTools. Stop them before
 // h.Stop.
 func StartServices(h *host.Host) *Services {
-	s := &Services{}
+	s := &Services{held: &heldAutomations{err: gateway.ErrAutomationsElsewhere}}
 	if b, err := hosttools.New(h.Executable()); err != nil {
 		log.Println("droi: host tools:", err)
 	} else {
@@ -82,16 +80,57 @@ func runHiddenTools(version string) []string {
 	return automationwork.RunHiddenTools()
 }
 
-// startAutomations runs the Automations in dir, unless another Droi does;
-// then it registers their tool server.
+// lockRetry is how often a Droi without the Automations' lock tries to
+// take it again.
+var lockRetry = time.Minute
+
+// startAutomations registers the Automations' tool server, then runs the
+// Automations in dir once this Droi holds their lock: at once, or when
+// another Droi that held it quits.
 func (s *Services) startAutomations(ctx context.Context, h *host.Host, dir string) {
-	release, err := automationwork.Lock(dir)
-	if errors.Is(err, automationwork.ErrLocked) {
-		s.gatewayAutomations = elsewhere{}
+	if s.Tools != nil {
+		s.Tools.Register(automationwork.ServerName, s.automationTools())
 	}
-	if err != nil {
-		log.Println("droi: automations:", err)
+	if s.takeAutomations(ctx, h, dir) {
 		return
+	}
+	every := lockRetry
+	go func() {
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				if s.takeAutomations(ctx, h, dir) {
+					s.automationsChanged()
+					return
+				}
+			}
+		}
+	}()
+}
+
+// automationTools is the droi-automations server over the Scheduler, which
+// says another Droi runs them while this one has none.
+func (s *Services) automationTools() hosttools.Server {
+	return automationwork.ToolServerOf(s.Scheduler, automationwork.LocalZone)
+}
+
+// takeAutomations takes the Automations' lock and starts their Scheduler,
+// or notes why not; it reports whether it is done trying.
+func (s *Services) takeAutomations(ctx context.Context, h *host.Host, dir string) bool {
+	release, err := automationwork.Lock(dir)
+	if err != nil {
+		why := gateway.ErrAutomationsElsewhere
+		if !errors.Is(err, automationwork.ErrLocked) {
+			why = fmt.Errorf("Droi could not open its automations: %w", err)
+		}
+		if s.held.set(nil, why) {
+			log.Println("droi: automations:", err)
+		}
+		return false
 	}
 	logf := func(m string) { log.Println("[automations]", m) }
 	starter := automationwork.NewSessionStarter(s.Sessions, logf)
@@ -106,8 +145,21 @@ func (s *Services) startAutomations(ctx context.Context, h *host.Host, dir strin
 		Log:         logf,
 	})
 	starter.Attach(sched)
-	s.Automations = sched
-	s.gatewayAutomations = &automationwork.GatewayHost{
+	s.mu.Lock()
+	if ctx.Err() != nil {
+		// Stopped while the lock was taken.
+		s.mu.Unlock()
+		starter.Close()
+		release()
+		return true
+	}
+	s.sched = sched
+	s.stopAutos = func() {
+		starter.Close()
+		release()
+	}
+	s.mu.Unlock()
+	s.held.set(&automationwork.GatewayHost{
 		Scheduler: sched,
 		Daemon: func() (automationwork.FactoryDaemon, error) {
 			cl, err := s.Sessions.Client()
@@ -116,15 +168,20 @@ func (s *Services) startAutomations(ctx context.Context, h *host.Host, dir strin
 			}
 			return cl, nil
 		},
-	}
-	if s.Tools != nil {
-		s.Tools.Register(automationwork.ServerName, automationwork.ToolServer(sched, automationwork.LocalZone))
-	}
+	}, nil)
 	go sched.Run(ctx)
-	s.stopAutos = func() {
-		starter.Close()
-		release()
+	return true
+}
+
+// Scheduler runs the Host's Automations (ADR 0035); nil while another Droi
+// runs those of the same data folder.
+func (s *Services) Scheduler() *automationwork.Scheduler {
+	if s == nil {
+		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sched
 }
 
 // OnAutomationsChanged calls fn, on a goroutine of the Scheduler's, when an
@@ -157,48 +214,112 @@ func (s *Services) automationsChanged() {
 	}
 }
 
-// GatewayAutomations is gateway.Options.Automations: nil without the
-// Automations; when another Droi runs them, one that answers
-// gateway.ErrAutomationsElsewhere.
+// GatewayAutomations is gateway.Options.Automations: the Automations once
+// this Droi runs them; until then, ErrAutomationsElsewhere while another
+// Droi does, or why their lock could not be taken.
 func (s *Services) GatewayAutomations() gateway.Automations {
 	if s == nil {
 		return nil
 	}
-	return s.gatewayAutomations
+	return s.held
 }
 
-// elsewhere are the Automations of a Host whose Automations another Droi on
-// its computer runs.
-type elsewhere struct{}
-
-func (elsewhere) List(context.Context) ([]gateway.Automation, error) {
-	return nil, gateway.ErrAutomationsElsewhere
+// heldAutomations answers the Gateway's Automation endpoints with the
+// Automations this Droi runs, or with why it runs none.
+type heldAutomations struct {
+	mu  sync.Mutex
+	au  gateway.Automations
+	err error
 }
 
-func (elsewhere) Runs(context.Context, string, int) ([]gateway.AutomationRun, error) {
-	return nil, gateway.ErrAutomationsElsewhere
+// set reports whether what it answers changed.
+func (h *heldAutomations) set(au gateway.Automations, err error) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	same := h.au == au && (h.err == nil) == (err == nil) && (err == nil || h.err.Error() == err.Error())
+	h.au, h.err = au, err
+	return !same
 }
 
-func (elsewhere) Save(context.Context, gateway.Automation) (gateway.Automation, error) {
-	return gateway.Automation{}, gateway.ErrAutomationsElsewhere
+func (h *heldAutomations) get() (gateway.Automations, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.au == nil {
+		return nil, h.err
+	}
+	return h.au, nil
 }
 
-func (elsewhere) SetPaused(context.Context, string, bool) error {
-	return gateway.ErrAutomationsElsewhere
+func (h *heldAutomations) List(ctx context.Context) ([]gateway.Automation, error) {
+	au, err := h.get()
+	if err != nil {
+		return nil, err
+	}
+	return au.List(ctx)
 }
 
-func (elsewhere) Run(context.Context, string) (gateway.AutomationRun, error) {
-	return gateway.AutomationRun{}, gateway.ErrAutomationsElsewhere
+func (h *heldAutomations) Runs(ctx context.Context, id string, limit int) ([]gateway.AutomationRun, error) {
+	au, err := h.get()
+	if err != nil {
+		return nil, err
+	}
+	return au.Runs(ctx, id, limit)
 }
 
-func (elsewhere) Delete(context.Context, string) error { return gateway.ErrAutomationsElsewhere }
-
-func (elsewhere) Factory(context.Context) ([]gateway.FactoryAutomation, error) {
-	return nil, gateway.ErrAutomationsElsewhere
+func (h *heldAutomations) Save(ctx context.Context, a gateway.Automation) (gateway.Automation, error) {
+	au, err := h.get()
+	if err != nil {
+		return gateway.Automation{}, err
+	}
+	return au.Save(ctx, a)
 }
 
-func (elsewhere) MoveFactory(context.Context, string) (gateway.AutomationMoved, error) {
-	return gateway.AutomationMoved{}, gateway.ErrAutomationsElsewhere
+func (h *heldAutomations) SetPaused(ctx context.Context, id string, paused bool) error {
+	au, err := h.get()
+	if err != nil {
+		return err
+	}
+	return au.SetPaused(ctx, id, paused)
+}
+
+func (h *heldAutomations) Run(ctx context.Context, id string) (gateway.AutomationRun, error) {
+	au, err := h.get()
+	if err != nil {
+		return gateway.AutomationRun{}, err
+	}
+	return au.Run(ctx, id)
+}
+
+func (h *heldAutomations) Delete(ctx context.Context, id string) error {
+	au, err := h.get()
+	if err != nil {
+		return err
+	}
+	return au.Delete(ctx, id)
+}
+
+func (h *heldAutomations) Factory(ctx context.Context) ([]gateway.FactoryAutomation, error) {
+	au, err := h.get()
+	if err != nil {
+		return nil, err
+	}
+	return au.Factory(ctx)
+}
+
+func (h *heldAutomations) MoveFactory(ctx context.Context, id string) (gateway.AutomationMoved, error) {
+	au, err := h.get()
+	if err != nil {
+		return gateway.AutomationMoved{}, err
+	}
+	return au.MoveFactory(ctx, id)
+}
+
+func (h *heldAutomations) Zone(ctx context.Context) (string, error) {
+	au, err := h.get()
+	if err != nil {
+		return "", err
+	}
+	return au.Zone(ctx)
 }
 
 // Overlay is the Runtime Overlay's additions: the Services' tool servers,
@@ -241,9 +362,12 @@ func (s *Services) Stop() {
 		return
 	}
 	s.stop()
-	if s.stopAutos != nil {
-		s.stopAutos()
-		s.stopAutos = nil
+	s.mu.Lock()
+	stopAutos := s.stopAutos
+	s.stopAutos = nil
+	s.mu.Unlock()
+	if stopAutos != nil {
+		stopAutos()
 	}
 	if s.Tools != nil {
 		_ = s.Tools.Close()

@@ -3,8 +3,11 @@ package hostrun
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
@@ -55,21 +58,18 @@ func TestOneDroiRunsTheAutomationsOfAFolder(t *testing.T) {
 	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})
 	first := StartServices(h)
 	defer first.Stop()
-	if first.Automations == nil || first.GatewayAutomations() == nil {
+	if first.Scheduler() == nil || first.GatewayAutomations() == nil {
 		t.Fatal("no Automations")
 	}
 	second := StartServices(h)
-	if second.Automations != nil {
+	if second.Scheduler() != nil {
 		t.Fatal("a second Scheduler of the same folder")
-	}
-	if _, ok := second.Overlay(host.OverlayOptions{}).MCPServers[automationwork.ServerName]; ok {
-		t.Fatal("the second carries the Automation tools")
 	}
 	second.Stop()
 	first.Stop()
 	third := StartServices(h)
 	defer third.Stop()
-	if third.Automations == nil {
+	if third.Scheduler() == nil {
 		t.Fatal("the folder stayed locked after Stop")
 	}
 }
@@ -111,5 +111,65 @@ func TestARunHidesToolsFromADroidThatTakesThem(t *testing.T) {
 		if want := automationwork.RunHiddenTools(); c.hides && !slices.Equal(got, want) || !c.hides && got != nil {
 			t.Errorf("%q: %v", c.version, got)
 		}
+	}
+}
+
+// A second Droi on the same data carries the Automation tools, which say
+// another Droi runs them, and takes the Automations once the first quits.
+func TestTheSecondDroiTakesTheAutomationsOnceTheFirstQuits(t *testing.T) {
+	old := lockRetry
+	lockRetry = 20 * time.Millisecond
+	t.Cleanup(func() { lockRetry = old })
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})
+	first := StartServices(h)
+	second := StartServices(h)
+	defer second.Stop()
+	if _, ok := second.Overlay(host.OverlayOptions{}).MCPServers[automationwork.ServerName]; !ok {
+		t.Fatal("the second does not carry the Automation tools")
+	}
+	if _, err := second.automationTools().Call(context.Background(), automationwork.ToolList, map[string]any{}, "s1"); err == nil || err.Error() != "Another Droi on this computer runs the automations." {
+		t.Fatalf("a tool of the second: %v", err)
+	}
+	if _, err := second.GatewayAutomations().List(context.Background()); !errors.Is(err, gateway.ErrAutomationsElsewhere) {
+		t.Fatalf("list of the second: %v", err)
+	}
+	changed := make(chan struct{}, 1)
+	second.OnAutomationsChanged(func() {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	})
+	first.Stop()
+	select {
+	case <-changed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second never took the Automations")
+	}
+	if second.Scheduler() == nil {
+		t.Fatal("no Scheduler")
+	}
+	if list, err := second.GatewayAutomations().List(context.Background()); err != nil || list == nil {
+		t.Fatalf("list %v %v", list, err)
+	}
+	if _, err := second.automationTools().Call(context.Background(), automationwork.ToolList, map[string]any{}, "s1"); err != nil {
+		t.Fatalf("a tool: %v", err)
+	}
+}
+
+// A lock that fails for another reason than another Droi answers that
+// reason, not that another Droi runs them.
+func TestALockThatFailsOtherwiseSaysWhy(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "automations"), []byte("not a folder"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})
+	s := StartServices(h)
+	defer s.Stop()
+	_, err := s.GatewayAutomations().List(context.Background())
+	if err == nil || errors.Is(err, gateway.ErrAutomationsElsewhere) {
+		t.Fatalf("list: %v", err)
 	}
 }

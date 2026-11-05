@@ -37,6 +37,10 @@ const (
 	// AutomationIDQuery names into Droi's and deletes it from Factory's, to
 	// a POST; it answers an AutomationMoved.
 	FactoryAutomationMovePath = "/automations/factory/move"
+	// AutomationZonePath answers the time zone of the Host's computer, which
+	// a schedule without one of its own is read in, as AutomationZone, to a
+	// GET.
+	AutomationZonePath = "/automations/zone"
 
 	AutomationIDQuery     = "id"
 	AutomationPausedQuery = "paused"
@@ -75,6 +79,9 @@ type Automation struct {
 	CreatedAt string `json:"createdAt,omitempty"`
 	// ForkedFrom is the Factory automation it was moved from.
 	ForkedFrom string `json:"forkedFrom,omitempty"`
+	// Zone is the time zone its Schedule is read in: Timezone, else the
+	// Host's computer's.
+	Zone string `json:"zone,omitempty"`
 	// Folder is the Automation's own folder on the Host's computer.
 	Folder string `json:"folder,omitempty"`
 	// NextRunAt is its next scheduled time, "" when paused or Invalid.
@@ -116,6 +123,16 @@ type FactoryAutomation struct {
 	// TargetsSession is set for one that posts into an existing Session,
 	// which Droi's cannot: it does not move.
 	TargetsSession bool `json:"targetsSession,omitempty"`
+	// LocalSchedule and LocalTimezone are its schedule as Droi keeps it
+	// once moved (an Automation's Schedule and Timezone); LocalSchedule is
+	// "" for one that cannot move for its schedule.
+	LocalSchedule string `json:"localSchedule,omitempty"`
+	LocalTimezone string `json:"localTimezone,omitempty"`
+}
+
+// AutomationZone is AutomationZonePath's answer.
+type AutomationZone struct {
+	Zone string `json:"zone"`
 }
 
 // AutomationMoved is a Factory automation copied into the Host's: the copy,
@@ -139,6 +156,8 @@ type Automations interface {
 	Delete(ctx context.Context, id string) error
 	Factory(ctx context.Context) ([]FactoryAutomation, error)
 	MoveFactory(ctx context.Context, id string) (AutomationMoved, error)
+	// Zone is the time zone of the Host's computer.
+	Zone(ctx context.Context) (string, error)
 }
 
 // automationTimeout bounds what an Automation request does on the Host
@@ -158,7 +177,7 @@ func (g *Gateway) answerAutomations(w http.ResponseWriter, r *http.Request, endp
 		return http.StatusNotFound, nil
 	}
 	want := http.MethodPost
-	if endpoint == AutomationsPath || endpoint == AutomationRunsPath || endpoint == FactoryAutomationsPath {
+	if endpoint == AutomationsPath || endpoint == AutomationRunsPath || endpoint == FactoryAutomationsPath || endpoint == AutomationZonePath {
 		want = http.MethodGet
 	}
 	if r.Method != want {
@@ -167,7 +186,7 @@ func (g *Gateway) answerAutomations(w http.ResponseWriter, r *http.Request, endp
 	ctx, cancel := context.WithTimeout(r.Context(), automationTimeout)
 	defer cancel()
 	id := q.Get(AutomationIDQuery)
-	if id == "" && endpoint != AutomationsPath && endpoint != FactoryAutomationsPath && endpoint != AutomationSavePath {
+	if id == "" && endpoint != AutomationsPath && endpoint != FactoryAutomationsPath && endpoint != AutomationSavePath && endpoint != AutomationZonePath {
 		return http.StatusBadRequest, errorBody{Error: "No automation given"}
 	}
 	var err error
@@ -217,6 +236,11 @@ func (g *Gateway) answerAutomations(w http.ResponseWriter, r *http.Request, endp
 		var moved AutomationMoved
 		if moved, err = au.MoveFactory(ctx, id); err == nil {
 			return http.StatusOK, moved
+		}
+	case AutomationZonePath:
+		var zone string
+		if zone, err = au.Zone(ctx); err == nil {
+			return http.StatusOK, AutomationZone{Zone: zone}
 		}
 	}
 	var refused *RefusedRequest
@@ -295,6 +319,14 @@ func (c *Client) MoveFactoryAutomation(ctx context.Context, id string) (Automati
 	var moved AutomationMoved
 	err := c.automationCall(ctx, http.MethodPost, FactoryAutomationMovePath, url.Values{AutomationIDQuery: {id}}, nil, &moved)
 	return moved, err
+}
+
+// AutomationZone is the time zone of the Gateway's computer, which a
+// schedule without one of its own is read in.
+func (c *Client) AutomationZone(ctx context.Context) (string, error) {
+	var z AutomationZone
+	err := c.automationCall(ctx, http.MethodGet, AutomationZonePath, nil, nil, &z)
+	return z.Zone, err
 }
 
 // automationCall is an Automation request, which the Host may take up to

@@ -53,6 +53,8 @@ type Route struct {
 	Tab       string
 	// Automation is the one the Automations page shows, "" for the list.
 	Automation string
+	// Factory is the Factory automation the Automations page shows.
+	Factory string
 }
 
 // Config is what the window needs from main: a Controller to the Daemon,

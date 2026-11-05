@@ -300,3 +300,65 @@ func TestTheGatewayHostRefusesWhatItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTheHostAnswersEachAutomationsZone(t *testing.T) {
+	h := newHarness(t, "08:00")
+	g := gatewayHost(h, &fakeFactory{})
+	g.LocalZone = func() string { return "Asia/Shanghai" }
+	for _, a := range []automations.Automation{
+		{Name: "Local", Prompt: "p", Schedule: "0 9 * * *"},
+		{Name: "Monthly", Prompt: "p", Schedule: "0 9 1 * *", Timezone: "UTC"},
+	} {
+		if _, err := h.s.Save(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := g.List(context.Background())
+	if err != nil || len(list) != 2 {
+		t.Fatalf("%+v %v", list, err)
+	}
+	zones := map[string]string{}
+	for _, a := range list {
+		zones[a.Name] = a.Zone
+	}
+	if zones["Local"] != "Asia/Shanghai" || zones["Monthly"] != "UTC" {
+		t.Fatalf("zones %v", zones)
+	}
+	if z, err := g.Zone(context.Background()); err != nil || z != "Asia/Shanghai" {
+		t.Fatalf("zone %q %v", z, err)
+	}
+	// A save does not keep what the Host answers.
+	saved, err := g.Save(context.Background(), gateway.Automation{Name: "Zoned", Prompt: "p", Schedule: "0 9 * * *", Zone: "Europe/Paris"})
+	if err != nil || saved.Timezone != "" || saved.Zone != "Asia/Shanghai" {
+		t.Fatalf("saved %+v %v", saved, err)
+	}
+}
+
+func TestFactoryAutomationsComeWithTheScheduleDroiWouldKeep(t *testing.T) {
+	h := newHarness(t, "08:00")
+	f := &fakeFactory{entries: []protocol.AutomationEntry{
+		{ID: "daily", Name: "Daily", Schedule: "0 1 * * *", Path: t.TempDir()},
+		{ID: "monthly", Name: "Monthly", Schedule: "monthly", Path: t.TempDir()},
+		{ID: "odd", Name: "Odd", Schedule: "0 9 L * *", Path: t.TempDir()},
+	}}
+	listed, err := gatewayHost(h, f).Factory(context.Background())
+	if err != nil || len(listed) != 3 {
+		t.Fatalf("%+v %v", listed, err)
+	}
+	for i, want := range [][2]string{{"0 9 * * *", ""}, {"0 9 1 * *", "UTC"}, {"", ""}} {
+		if got := [2]string{listed[i].LocalSchedule, listed[i].LocalTimezone}; got != want {
+			t.Errorf("%s: %q, want %q", listed[i].ID, got, want)
+		}
+	}
+}
+
+func TestToolsWithoutTheAutomationsSayAnotherDroiRunsThem(t *testing.T) {
+	srv := ToolServerOf(func() *Scheduler { return nil }, func() string { return "Asia/Shanghai" })
+	if len(srv.Tools()) == 0 {
+		t.Fatal("no tools listed")
+	}
+	_, err := srv.Call(context.Background(), ToolList, map[string]any{}, "s1")
+	if err == nil || err.Error() != "Another Droi on this computer runs the automations." {
+		t.Fatalf("call: %v", err)
+	}
+}

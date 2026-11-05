@@ -100,7 +100,7 @@ func TestThisComputersPathsAreAbbreviatedWithItsHome(t *testing.T) {
 }
 
 func TestTheAutomationFormsFolderPickerIsThisComputersOnly(t *testing.T) {
-	local := automationsHarness(t, newFakeAutomations(), nil)
+	local := automationsHarness(t, newFakeAutomations(t), nil)
 	local.openAutomations()
 	local.click("New automation")
 	local.until("the form", func() bool { _, ok := local.tt.Find("Automation workspace"); return ok })
@@ -108,7 +108,7 @@ func TestTheAutomationFormsFolderPickerIsThisComputersOnly(t *testing.T) {
 		t.Fatal("no folder picker on this computer")
 	}
 
-	o := startOtherComputerWith(t, automationsScenario(), "", func(opts *gateway.Options) { opts.Automations = newFakeAutomations() })
+	o := startOtherComputerWith(t, automationsScenario(), "", func(opts *gateway.Options) { opts.Automations = newFakeAutomations(t) })
 	h := followHarness(t, localSessions(), o.paired(), nil, nil)
 	h.until("the other computer's Session", func() bool { return h.hasText("Fix the login race") })
 	h.click("Automations")

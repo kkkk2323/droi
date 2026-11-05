@@ -99,12 +99,25 @@ func toolList(zone string) []map[string]any {
 // are read when the Daemon starts the server. Listing runs without asking
 // from autonomy low, the others from medium.
 func ToolServer(s *Scheduler, zone func() string) hosttools.Server {
+	return ToolServerOf(func() *Scheduler { return s }, zone)
+}
+
+// notHeld answers a tool while this Droi does not run the Automations.
+const notHeld = "Another Droi on this computer runs the automations."
+
+// ToolServerOf is ToolServer over the Scheduler current gives, nil while
+// another Droi runs the Automations, whose tools then say so.
+func ToolServerOf(current func() *Scheduler, zone func() string) hosttools.Server {
 	return hosttools.Server{
 		Tools: func() json.RawMessage {
 			b, _ := json.Marshal(toolList(zone()))
 			return b
 		},
 		Call: func(ctx context.Context, tool string, args map[string]any, _ string) (mcpserver.Result, error) {
+			s := current()
+			if s == nil {
+				return mcpserver.Result{}, errors.New(notHeld)
+			}
 			return callTool(ctx, s, zone(), tool, args)
 		},
 		Autonomy:     string(protocol.AutonomyLevelMedium),

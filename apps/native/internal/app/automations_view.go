@@ -14,7 +14,6 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
@@ -63,6 +62,8 @@ type automationsState struct {
 	// factory are the Factory automations on the Host's computer, read
 	// with the list; nil when the Host could not list them.
 	factory []gateway.FactoryAutomation
+	// zone is the time zone of the Host's computer, "" until read.
+	zone string
 
 	runs     map[string][]gateway.AutomationRun
 	runsErr  map[string]string
@@ -94,6 +95,11 @@ type automationsState struct {
 	liveKey string
 	// waiting are the runs, by Session, that wait for the user's approval.
 	waiting map[string]bool
+	// daemonRuns are the Sessions the Daemon started as runs of Factory
+	// automations, newest first; busy is every Session's activity, this
+	// frame.
+	daemonRuns []sessions.Summary
+	busy       map[string]activity.Activity
 }
 
 // noteLiveRuns finds the Automations' runs at work among the listed
@@ -101,9 +107,14 @@ type automationsState struct {
 func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.Activity) {
 	s := &a.automations
 	s.live = s.live[:0]
+	s.daemonRuns = s.daemonRuns[:0]
+	s.busy = busy
 	clear(s.waiting)
 	var ids []string
 	for _, x := range listed {
+		if x.CallingSessionID == "" && daemonRun(x.Tags) != "" {
+			s.daemonRuns = append(s.daemonRuns, x)
+		}
 		if x.CallingSessionID != "" || busy[x.SessionID] == "" {
 			continue
 		}
@@ -118,7 +129,9 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 			}
 		}
 	}
-	slices.SortStableFunc(s.live, func(p, q sessions.Summary) int { return int(q.UpdatedAt - p.UpdatedAt) })
+	newestFirst := func(p, q sessions.Summary) int { return int(q.UpdatedAt - p.UpdatedAt) }
+	slices.SortStableFunc(s.live, newestFirst)
+	slices.SortStableFunc(s.daemonRuns, newestFirst)
 	key := strings.Join(ids, ",")
 	if key == s.liveKey {
 		return
@@ -127,6 +140,29 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 	if a.route.Name == "automations" {
 		a.automationsChanged()
 	}
+}
+
+// daemonRun is the Factory automation the Daemon started the Session as a
+// run of (sessions.AutomationTag), "" for none.
+func daemonRun(tags []sessions.Tag) string {
+	for _, t := range tags {
+		if t.Name == sessions.AutomationTag && t.Metadata["type"] == "run" {
+			return t.Metadata["automationId"]
+		}
+	}
+	return ""
+}
+
+// daemonRunsOf are the Daemon's runs of the Factory automation id, newest
+// first.
+func (a *App) daemonRunsOf(id string) []sessions.Summary {
+	var out []sessions.Summary
+	for _, x := range a.automations.daemonRuns {
+		if daemonRun(x.Tags) == id {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // automationsChanged reads the list, and the runs of the Automation shown,
@@ -177,11 +213,6 @@ type automationForm struct {
 	err, errOn string
 }
 
-func (a *App) offset() int {
-	_, off := a.cfg.Now().Zone()
-	return off
-}
-
 // enterAutomations starts a page of Automations afresh.
 func (a *App) enterAutomations(r Route) {
 	s := &a.automations
@@ -204,17 +235,30 @@ func (a *App) loadAutomations(force bool) {
 		return
 	}
 	s.loading = true
+	needZone := s.zone == ""
 	go func() {
 		list, err := gw.Automations(a.ctx)
 		var factory []gateway.FactoryAutomation
+		zone := ""
 		if err == nil {
 			// Without them (the Daemon not up yet) the section stays out.
 			factory, _ = gw.FactoryAutomations(a.ctx)
+			if needZone {
+				zone, _ = gw.AutomationZone(a.ctx)
+			}
 		}
 		a.cfg.Update(func() {
 			s.loading = false
 			s.listAt = a.cfg.Now()
-			switch trouble := troubleOf(err); {
+			trouble := troubleOf(err)
+			if trouble == troubleOlderHost && !a.following() {
+				// This computer's Host is this Droi: a 404 is no older one.
+				trouble = troubleOther
+			}
+			if zone != "" {
+				s.zone = zone
+			}
+			switch {
 			case trouble == troubleOlderHost || trouble == troubleElsewhere:
 				s.unavailable, s.listErr = trouble, ""
 			case err != nil:
@@ -235,18 +279,24 @@ func (a *App) loadAutomations(force bool) {
 	}()
 }
 
+// runsEvery is how often the runs of the Automation id are read again:
+// more often while one is running.
+func (a *App) runsEvery(id string) time.Duration {
+	for _, r := range a.automations.runs[id] {
+		if r.Status == "running" {
+			return runningRefresh
+		}
+	}
+	return runsRefresh
+}
+
 func (a *App) loadRuns(id string, force bool) {
 	s := &a.automations
 	if s.runs == nil {
 		s.runs, s.runsErr, s.runsAt, s.runsBusy = map[string][]gateway.AutomationRun{}, map[string]string{}, map[string]time.Time{}, map[string]bool{}
 		s.runsAgain = map[string]bool{}
 	}
-	every := runsRefresh
-	for _, r := range s.runs[id] {
-		if r.Status == "running" {
-			every = runningRefresh
-		}
-	}
+	every := a.runsEvery(id)
 	if s.runsBusy[id] {
 		s.runsAgain[id] = s.runsAgain[id] || force
 		return
@@ -321,8 +371,10 @@ func troubleOf(err error) automationTrouble {
 
 // failure is what the page says of an action on the Automation called name
 // that the Host did not carry out.
-func failure(action, name string, err error) string {
+func (a *App) failure(action, name string, err error) string {
 	switch troubleOf(err) {
+	case troubleElsewhere:
+		return a.elsewhereText()
 	case troubleGone:
 		return L("It may have been deleted.")
 	case troubleRunning:
@@ -342,10 +394,7 @@ func (a *App) act(id, action, done string, fn func() error, then func()) {
 	}
 	a.actWith(id, action, func() (string, bool) {
 		if err := fn(); err != nil {
-			if troubleOf(err) == troubleElsewhere {
-				return a.elsewhereText(), true
-			}
-			return failure(action, name, err), true
+			return a.failure(action, name, err), true
 		}
 		return done, false
 	}, then)
@@ -398,6 +447,8 @@ func (a *App) automationsPage(c *ui.Context) {
 					a.unavailableAutomations(c)
 				case a.route.Tab == newAutomationTab:
 					a.automationEditor(c, nil)
+				case a.route.Factory != "":
+					a.factoryView(c, a.route.Factory)
 				case id == "":
 					a.automationList(c)
 				case a.findAutomation(id) == nil:
@@ -641,9 +692,19 @@ func lastRunStatus(e gateway.Automation) string {
 	return e.LastRun.Status
 }
 
+// scheduleWords is a schedule in words, with the zone of its own when it
+// has one.
+func scheduleWords(expr, ownZone string) string {
+	words := automations.Describe(expr, 0)
+	if ownZone != "" {
+		words = strings.TrimRight(L("%s, in the %s time zone.", words, ownZone), ".。")
+	}
+	return words
+}
+
 // summary is an Automation's schedule and its last run, in words.
 func (a *App) summary(e gateway.Automation) string {
-	parts := []string{automations.Describe(e.Schedule, 0)}
+	parts := []string{scheduleWords(e.Schedule, e.Timezone)}
 	if e.LastRun != nil {
 		if w := automations.When(e.LastRun.StartedAt, a.cfg.Now()); w != "" {
 			parts = append(parts, L("last run %s", w)+", "+strings.ToLower(l10n.T(automations.RunLabel(e.LastRun.Status))))
@@ -720,7 +781,7 @@ func (a *App) automationRow(c *ui.Context, e gateway.Automation) {
 		}
 		ui.Box(c).Size(k.Px(28), k.Px(28)).Center().Shrink(0).Children(func() {
 			if s.acting == "run" && s.actingOn == e.ID {
-				k.Spinner(c, 14, t.MutedForeground)
+				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleImage).Label(L("Starting…"))
 				return
 			}
 			run := k.IconButton(c, "play", L("Run %s now", name), 28).Disabled(s.acting != "")
@@ -735,7 +796,8 @@ func (a *App) automationRow(c *ui.Context, e gateway.Automation) {
 }
 
 // factorySection lists the Factory automations on the Host's computer,
-// each with a way to move it to Droi; nothing when there are none.
+// each opening its page, with a way to move it to Droi; nothing when there
+// are none.
 func (a *App) factorySection(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
@@ -743,6 +805,9 @@ func (a *App) factorySection(c *ui.Context) {
 		return
 	}
 	title := L("Factory automations on this computer")
+	if a.following() {
+		title = L("Factory automations on %s", a.computerName())
+	}
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(4)).Children(func() {
 		a.sectionTitle(c, title, strconv.Itoa(len(s.factory)))
 		k.Text(c, L("The Daemon runs these and syncs them to Factory, which can pause one it counts as missed. Move one to Droi to run it here without the sync."), 13, 20).
@@ -755,87 +820,231 @@ func (a *App) factorySection(c *ui.Context) {
 	})
 }
 
-// factorySchedule is a Factory automation's schedule, which the Daemon
-// reads in UTC, in words: in local time when a preset says it, else the
-// expression.
-func (a *App) factorySchedule(expr string) string {
-	if automations.Parse(expr, a.offset()).Repeat == automations.Custom {
-		return strings.TrimSpace(expr) + " UTC"
+// factorySchedule is a Factory automation's schedule as Droi keeps it once
+// moved, which the Host gives: the expression and its own zone, "" for the
+// Host's. One Droi cannot keep is as the Daemon has it.
+func factorySchedule(f gateway.FactoryAutomation) (expr, ownZone string) {
+	if f.LocalSchedule == "" {
+		return f.Schedule, ""
 	}
-	return automations.Describe(expr, a.offset())
+	return f.LocalSchedule, f.LocalTimezone
 }
 
-func (a *App) factoryRow(c *ui.Context, f gateway.FactoryAutomation) {
+// factoryMark is a Factory automation's state at a glance: paused or not.
+func (a *App) factoryMark(c *ui.Context, f gateway.FactoryAutomation) {
 	k, t := a.kit, a.kit.T
-	s := &a.automations
-	name := trimOr(f.Name, f.ID)
-	ui.Row(c.Key(f.ID)).Role(ui.RoleListItem).Label(name).Transition(rowMotion).Height(k.Px(56)).PaddingX(k.Px(12)).Gap(k.Px(12)).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Children(func() {
-		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
-			if f.Paused {
-				k.Icon(c, "circle-pause", 14, t.MutedForeground)
-			} else {
-				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.6))
-			}
-		})
-		ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(2)).Children(func() {
-			k.Text(c, name, 14, 20).FontWeight(500).SingleLine()
-			k.Text(c, a.factorySchedule(f.Schedule), 12, 16).TextColor(t.MutedForeground).SingleLine()
-		})
-		if f.TargetsSession {
-			k.Text(c, L("Posts into an existing session, so it can’t move to Droi yet"), 12, 16).TextColor(t.MutedForeground).
-				MaxWidth(k.Px(220)).Shrink(1)
-			return
-		}
-		if s.acting == "move" && s.moving.ID == f.ID {
-			k.Spinner(c, 14, t.MutedForeground)
-			return
-		}
-		if a.smallButton(c, kit.Outline, L("Move to Droi"), "", s.acting != "").Label(L("Move %s to Droi", name)).Clicked() {
-			s.moving, s.confirmMove = f, true
+	ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
+		if f.Paused {
+			k.Icon(c, "circle-pause", 14, t.MutedForeground).Role(ui.RoleImage).Label(L("Paused"))
+		} else {
+			kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.6))
 		}
 	})
 }
 
-// moveDialog asks before the Factory automation s.moving moves to Droi.
-func (a *App) moveDialog(c *ui.Context) {
+// factoryMove is a Factory automation's Move to Droi button, a spinner
+// while it moves, or why it cannot move.
+func (a *App) factoryMove(c *ui.Context, f gateway.FactoryAutomation, v kit.Variant) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
-	w, _ := c.Size()
-	f := s.moving
 	name := trimOr(f.Name, f.ID)
-	ui.DialogBase(c, &s.confirmMove, func(backdrop, panel ui.Element) {
+	switch {
+	case f.TargetsSession:
+		k.Text(c, L("Posts into an existing session, so it can’t move to Droi yet"), 12, 16).TextColor(t.MutedForeground).
+			MaxWidth(k.Px(220)).Shrink(1)
+	case s.acting == "move" && s.moving.ID == f.ID:
+		k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleImage).Label(L("Moving…"))
+	default:
+		if a.smallButton(c, v, L("Move to Droi"), "", s.acting != "").Label(L("Move %s to Droi", name)).Clicked() {
+			s.moving, s.confirmMove = f, true
+		}
+	}
+}
+
+// factoryRow opens the Factory automation's page, with its Move to Droi
+// button beside.
+func (a *App) factoryRow(c *ui.Context, f gateway.FactoryAutomation) {
+	k, t := a.kit, a.kit.T
+	name := trimOr(f.Name, f.ID)
+	row := ui.Row(c.Key(f.ID)).Transition(rowMotion).Height(k.Px(56)).PaddingX(k.Px(12)).Gap(k.Px(12)).AlignItems(ui.Center).
+		BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6))
+	if row.Hovered() {
+		row.Background(t.Muted.Alpha(0.5))
+	}
+	row.Children(func() {
+		open := ui.ButtonBase(c).Role(ui.RoleListItem).Label(name).Grow(1).MinWidth(0).AlignSelf(ui.Stretch).Gap(k.Px(12)).Justify(ui.Start).Cursor(ui.CursorPointer)
+		open.Children(func() {
+			a.factoryMark(c, f)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(2)).Children(func() {
+				k.Text(c, name, 14, 20).FontWeight(500).SingleLine()
+				k.Text(c, scheduleWords(factorySchedule(f)), 12, 16).TextColor(t.MutedForeground).SingleLine()
+			})
+		})
+		if open.Clicked() {
+			a.Go(Route{Name: "automations", Factory: f.ID})
+		}
+		a.factoryMove(c, f, kit.Outline)
+	})
+}
+
+func (a *App) findFactory(id string) *gateway.FactoryAutomation {
+	for i := range a.automations.factory {
+		if a.automations.factory[i].ID == id {
+			return &a.automations.factory[i]
+		}
+	}
+	return nil
+}
+
+// factoryView is a Factory automation's page: what it is, Move to Droi,
+// and its runs, which the Daemon tagged.
+func (a *App) factoryView(c *ui.Context, id string) {
+	k, t := a.kit, a.kit.T
+	s := &a.automations
+	f := a.findFactory(id)
+	if f == nil {
+		a.missingAutomation(c)
+		return
+	}
+	name := trimOr(f.Name, f.ID)
+	a.automationHeader(c, []crumb{allAutomations(), {label: name}}, name, func() {
+		a.statusPill(c, false, L("Factory automation"))
+		if f.Paused {
+			a.statusPill(c, false, L("Paused"))
+		}
+	}, func() { a.factoryMove(c, *f, kit.Primary) })
+	a.automationNotice(c)
+	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
+		expr, zone := factorySchedule(*f)
+		if zone == "" && f.LocalSchedule != "" {
+			zone = s.zone
+		}
+		a.scheduleFact(c, expr, zone)
+		if w := trimOr(f.WorkingDirectory, f.Path); w != "" {
+			a.fact(c, L("Workspace"), func() { k.Text(c, w, 12, 20).Font(k.Mono).SingleLine().Shrink(1).MinWidth(0) })
+		}
+	})
+	a.promptSection(c, f.Prompt)
+	runs := a.daemonRunsOf(id)
+	ui.Column(c).Gap(k.Px(4)).Children(func() {
+		count := ""
+		if len(runs) > 0 {
+			count = strconv.Itoa(len(runs))
+		}
+		a.sectionTitle(c, L("Runs"), count)
+		if len(runs) == 0 {
+			k.Text(c, L("No runs yet."), 13, 20).TextColor(t.MutedForeground).Padding(k.Px(8), 0)
+			return
+		}
+		a.daemonRunList(c, L("Runs"), runs)
+	})
+}
+
+// daemonRunList lists runs the Daemon made, each opening its Session.
+func (a *App) daemonRunList(c *ui.Context, label string, runs []sessions.Summary) {
+	ui.Column(c).Role(ui.RoleList).Label(label).Children(func() {
+		for _, x := range runs {
+			a.daemonRunRow(c, x)
+		}
+	})
+}
+
+// daemonRunRow is one of the Daemon's runs: its Session's title, what it
+// is doing, and when it was last at work.
+func (a *App) daemonRunRow(c *ui.Context, x sessions.Summary) {
+	k, t := a.kit, a.kit.T
+	when := automations.When(time.Unix(x.UpdatedAt, 0).UTC().Format(time.RFC3339), a.cfg.Now())
+	doing := a.automations.busy[x.SessionID]
+	b := ui.ButtonBase(c.Key(x.SessionID)).Transition(rowMotion).Role(ui.RoleListItem).Label(L("Open run from %s", when)).Height(k.Px(40)).Gap(k.Px(10)).
+		PaddingX(k.Px(12)).Justify(ui.Start).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Cursor(ui.CursorPointer)
+	hover := b.Hovered()
+	if hover {
+		b.Background(t.Muted.Alpha(0.5))
+	}
+	b.Children(func() {
+		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
+			switch doing {
+			case activity.NeedsInput:
+				k.Icon(c, "circle-alert", 14, t.Attention)
+			case "":
+				k.Icon(c, "circle", 14, t.MutedForeground)
+			default:
+				k.Spinner(c, 14, t.Info)
+			}
+		})
+		k.Text(c, x.Title, 13, 20).SingleLine().Shrink(1).MinWidth(0)
+		switch doing {
+		case activity.NeedsInput:
+			k.Text(c, L("Waiting for your approval"), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(0)
+		case "":
+		default:
+			k.Text(c, L("Running"), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(0)
+		}
+		ui.Spacer(c)
+		k.Text(c, when, 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
+		chevron := k.Icon(c, "chevron-right", 14, t.MutedForeground)
+		if !hover {
+			chevron.Opacity(0)
+		}
+	})
+	if b.Clicked() {
+		a.Go(Route{Name: "session", SessionID: x.SessionID})
+	}
+}
+
+// confirmDialog asks before an action: its title, what it does, Cancel,
+// and the button button draws, whose click closes it and calls confirmed.
+func (a *App) confirmDialog(c *ui.Context, open *bool, title, body string, button func() ui.Element, confirmed func()) {
+	k, t := a.kit, a.kit.T
+	w, _ := c.Size()
+	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
-		panel.Role(ui.RoleAlertDialog).Label(L("Move “%s” to Droi?", name)).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
+		panel.Role(ui.RoleAlertDialog).Label(title).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
-			k.Text(c, L("Move “%s” to Droi?", name), 15, 22).Role(ui.RoleHeading).FontWeight(600)
-			k.Text(c, L("Droi copies it, with its schedule in this computer’s time, and deletes it from Factory’s automations. The sessions of its past runs stay."), 13, 20).
-				TextColor(t.MutedForeground)
+			k.Text(c, title, 15, 22).Role(ui.RoleHeading).FontWeight(600)
+			k.Text(c, body, 13, 20).TextColor(t.MutedForeground)
 			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Margin(k.Px(14), 0, 0, 0).Children(func() {
 				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
-					s.confirmMove = false
+					*open = false
 				}
-				if a.smallButton(c, kit.Primary, L("Move to Droi"), "", s.acting != "").Clicked() {
-					s.confirmMove = false
-					a.moveFactory(f)
+				if button().Clicked() {
+					*open = false
+					confirmed()
 				}
 			})
 		})
 	})
 }
 
+// moveDialog asks before the Factory automation s.moving moves to Droi.
+func (a *App) moveDialog(c *ui.Context) {
+	s := &a.automations
+	f := s.moving
+	body := L("Droi copies it, with its schedule in this computer’s time, and deletes it from Factory’s automations. The sessions of its past runs stay.")
+	if a.following() {
+		body = L("Droi copies it, with its schedule in %s’s time, and deletes it from Factory’s automations. The sessions of its past runs stay.", a.computerName())
+	}
+	a.confirmDialog(c, &s.confirmMove, L("Move “%s” to Droi?", trimOr(f.Name, f.ID)), body,
+		func() ui.Element { return a.smallButton(c, kit.Primary, L("Move to Droi"), "", s.acting != "") },
+		func() { a.moveFactory(f) })
+}
+
 // moveFactory has the Host copy the Factory automation f into Droi's and
-// delete it from Factory's, then reads both lists again.
+// delete it from Factory's, then reads both lists again; moved from its
+// page, the copy's page opens.
 func (a *App) moveFactory(f gateway.FactoryAutomation) {
 	gw := a.cfg.Gateway
 	name := trimOr(f.Name, f.ID)
+	var moved gateway.AutomationMoved
 	a.actWith("", "move", func() (string, bool) {
-		moved, err := gw.MoveFactoryAutomation(a.ctx, f.ID)
+		var err error
+		moved, err = gw.MoveFactoryAutomation(a.ctx, f.ID)
 		switch {
-		case troubleOf(err) == troubleElsewhere:
-			return a.elsewhereText(), true
 		case err != nil:
+			if tr := troubleOf(err); tr == troubleElsewhere || tr == troubleGone {
+				return a.failure("", name, err), true
+			}
 			return L("Could not move “%s”: %s", name, err), true
 		case moved.DeleteError != "":
 			return L("Copied “%s” to Droi, but it is still in Factory’s automations: %s. Delete it there so it does not run twice.", name, strings.TrimRight(moved.DeleteError, ".")), true
@@ -843,9 +1052,13 @@ func (a *App) moveFactory(f gateway.FactoryAutomation) {
 			return L("Moved “%s” to Droi. It stays paused.", name), false
 		}
 		return L("Moved “%s” to Droi.", name), false
-	}, nil)
+	}, func() {
+		if a.route.Factory == f.ID && moved.Automation.ID != "" {
+			a.putAutomation(moved.Automation)
+			a.Go(Route{Name: "automations", Automation: moved.Automation.ID})
+		}
+	})
 }
-
 func (a *App) findAutomation(id string) *gateway.Automation {
 	for i := range a.automations.list {
 		if a.automations.list[i].ID == id {
@@ -915,14 +1128,22 @@ func (a *App) modelName(id string) string {
 	return id
 }
 
-// zoneName is the time zone a schedule is read in: tz, or else the Host's
-// computer's, which the window knows only for this computer ("" for
-// another).
-func (a *App) zoneName(tz string) string {
-	if tz != "" || a.following() {
-		return tz
-	}
-	return automationwork.LocalZone()
+// scheduleFact is a page's Schedule: the schedule in words, unless the
+// words are the expression itself, then the expression and the zone it is
+// read in.
+func (a *App) scheduleFact(c *ui.Context, expr, zone string) {
+	k, t := a.kit, a.kit.T
+	expr = strings.TrimSpace(expr)
+	a.fact(c, L("Schedule"), func() {
+		if words := automations.Describe(expr, 0); words != expr {
+			k.Text(c, words, 13, 20).SingleLine().Shrink(0)
+		}
+		shown := expr
+		if zone != "" {
+			shown += "  " + zone
+		}
+		k.Text(c, shown, 12, 20).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+	})
 }
 
 // permissionsLabel is what an Automation's runs may do without asking.
@@ -941,6 +1162,13 @@ func (a *App) automationView(c *ui.Context, e *gateway.Automation) {
 	s := &a.automations
 	id, name := e.ID, trimOr(e.Name, e.ID)
 	a.loadRuns(id, false)
+	if a.following() {
+		// Another computer's Host tells of no change: read the runs again
+		// when due, often while one is running.
+		if left := a.runsEvery(id) - a.cfg.Now().Sub(s.runsAt[id]); left > 0 {
+			c.After(left)
+		}
+	}
 	busy := s.acting != ""
 	status := automationStatus(*e)
 	a.automationHeader(c, []crumb{allAutomations(), {label: name}}, name, func() {
@@ -981,14 +1209,7 @@ func (a *App) automationView(c *ui.Context, e *gateway.Automation) {
 		})
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
-		a.fact(c, L("Schedule"), func() {
-			k.Text(c, automations.Describe(e.Schedule, 0), 13, 20).SingleLine().Shrink(0)
-			expr := strings.TrimSpace(e.Schedule)
-			if zone := a.zoneName(e.Timezone); zone != "" {
-				expr += "  " + zone
-			}
-			k.Text(c, expr, 12, 20).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
-		})
+		a.scheduleFact(c, e.Schedule, trimOr(e.Zone, e.Timezone))
 		a.fact(c, L("Next run"), func() { k.Text(c, a.nextRun(*e), 13, 20).FontFeatures("tnum").SingleLine() })
 		if e.LastRun != nil {
 			if w := automations.When(e.LastRun.StartedAt, a.cfg.Now()); w != "" {
@@ -1013,11 +1234,28 @@ func (a *App) automationView(c *ui.Context, e *gateway.Automation) {
 			}
 		})
 	})
+	a.promptSection(c, e.Prompt)
+	a.runsList(c, id)
+	if e.ForkedFrom != "" {
+		if runs := a.daemonRunsOf(e.ForkedFrom); len(runs) > 0 {
+			ui.Column(c).Gap(k.Px(4)).Children(func() {
+				a.sectionTitle(c, L("Earlier runs in Factory"), strconv.Itoa(len(runs)))
+				a.daemonRunList(c, L("Earlier runs in Factory"), runs)
+			})
+		}
+	}
+}
+
+// promptSection is a page's prompt, its first lines while it is long and
+// folded.
+func (a *App) promptSection(c *ui.Context, prompt string) {
+	k, t := a.kit, a.kit.T
+	s := &a.automations
 	ui.Column(c).Gap(k.Px(8)).Children(func() {
 		a.sectionTitle(c, L("Prompt"), "")
-		long := longPrompt(e.Prompt)
+		long := longPrompt(prompt)
 		ui.Column(c).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).Background(t.Muted.Alpha(0.5)).Children(func() {
-			text := k.Text(c, e.Prompt, 13, 20).TextColor(t.Foreground)
+			text := k.Text(c, prompt, 13, 20).TextColor(t.Foreground)
 			if long && !s.promptOpen {
 				text.MaxLines(promptLines)
 			}
@@ -1026,7 +1264,6 @@ func (a *App) automationView(c *ui.Context, e *gateway.Automation) {
 			a.promptToggle(c)
 		}
 	})
-	a.runsList(c, id)
 }
 
 // promptLines is how much of a long prompt an Automation's page shows
@@ -1079,31 +1316,16 @@ func (a *App) setPaused(id string, pause bool) {
 
 // deleteDialog asks before the Automation e goes.
 func (a *App) deleteDialog(c *ui.Context, e *gateway.Automation) {
-	k, t := a.kit, a.kit.T
 	s := &a.automations
-	w, _ := c.Size()
 	id, name := e.ID, trimOr(e.Name, e.ID)
 	gw := a.cfg.Gateway
-	ui.DialogBase(c, &s.confirmDelete, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
-		panel.Role(ui.RoleAlertDialog).Label(L("Delete automation")).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
-		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
-			k.Text(c, L("Delete “%s”?", name), 15, 22).Role(ui.RoleHeading).FontWeight(600)
-			k.Text(c, L("It stops running and its folder in Droi’s data is removed. The sessions of its past runs stay."), 13, 20).
-				TextColor(t.MutedForeground)
-			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Margin(k.Px(14), 0, 0, 0).Children(func() {
-				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
-					s.confirmDelete = false
-				}
-				if a.dangerButton(c, L("Delete"), s.acting != "").Clicked() {
-					s.confirmDelete = false
-					a.act("", l10n.N("delete"), L("Deleted “%s”.", name), func() error { return gw.DeleteAutomation(a.ctx, id) },
-						func() { a.Go(Route{Name: "automations"}) })
-				}
-			})
+	a.confirmDialog(c, &s.confirmDelete, L("Delete “%s”?", name),
+		L("It stops running and its folder in Droi’s data is removed. The sessions of its past runs stay."),
+		func() ui.Element { return a.dangerButton(c, L("Delete"), s.acting != "") },
+		func() {
+			a.act("", l10n.N("delete"), L("Deleted “%s”.", name), func() error { return gw.DeleteAutomation(a.ctx, id) },
+				func() { a.Go(Route{Name: "automations"}) })
 		})
-	})
 }
 
 func (a *App) runsList(c *ui.Context, id string) {
@@ -1219,7 +1441,7 @@ func (f *automationForm) zone() string {
 	return ""
 }
 
-// schedule is the form's schedule as five cron fields, in local time.
+// schedule is the form's schedule as five cron fields, read in its zone.
 func (f *automationForm) schedule() (string, error) {
 	s := automations.Schedule{Repeat: f.repeat, Weekday: f.weekday, Custom: f.custom}
 	switch f.repeat {
@@ -1268,23 +1490,43 @@ func (a *App) formField(c *ui.Context, label, help, problem string, body func())
 
 // schedulePreview is the form's schedule in words, with the zone it is
 // read in, or the help of a Custom one not yet understood.
-func (a *App) schedulePreview(f *automationForm) string {
+// hostZone is the time zone of the Host's computer, which a schedule
+// without one of its own is read in: as the Host answered it, else as it
+// gave it with e; "" until known.
+func (a *App) hostZone(e *gateway.Automation) string {
+	if z := a.automations.zone; z != "" {
+		return z
+	}
+	if e != nil && e.Timezone == "" {
+		return e.Zone
+	}
+	return ""
+}
+
+func (a *App) schedulePreview(f *automationForm, hostZone string) string {
+	own := f.zone()
 	expr, err := f.schedule()
 	if err != nil {
-		if f.repeat == automations.Custom {
-			return L("Five cron fields, in this computer’s time, such as 0 9 * * 1-5.")
+		switch {
+		case f.repeat != automations.Custom:
+			return ""
+		case own != "":
+			return L("Five cron fields, in the %s time zone, such as 0 9 * * 1-5.", own)
+		case a.following():
+			return L("Five cron fields, in %s’s time, such as 0 9 * * 1-5.", a.computerName())
 		}
-		return ""
+		return L("Five cron fields, in this computer’s time, such as 0 9 * * 1-5.")
 	}
 	words := automations.Describe(expr, 0)
-	switch zone := a.zoneName(f.zone()); {
-	case f.zone() != "":
-		return L("%s, in the %s time zone.", words, zone)
-	case zone == "":
-		return L("%s, in this computer’s time.", words)
-	default:
-		return L("%s, in this computer’s time (%s).", words, zone)
+	switch {
+	case own != "":
+		return L("%s, in the %s time zone.", words, own)
+	case hostZone == "":
+		return ""
+	case a.following():
+		return L("%s, in %s’s time (%s).", words, a.computerName(), hostZone)
 	}
+	return L("%s, in this computer’s time (%s).", words, hostZone)
 }
 
 // permissionOptions are the choices of what a run may do without asking.
@@ -1370,7 +1612,7 @@ func (a *App) automationEditor(c *ui.Context, e *gateway.Automation) {
 					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 5, Color: t.Foreground})
 			})
 		})
-		a.formField(c, L("Schedule"), a.schedulePreview(f), problem("schedule"), func() {
+		a.formField(c, L("Schedule"), a.schedulePreview(f, a.hostZone(e)), problem("schedule"), func() {
 			ui.Row(c).Children(func() {
 				if next, ok := k.Segmented(c, L("Repeat"), string(f.repeat), repeats); ok {
 					f.repeat, f.err, f.errOn = automations.Repeat(next), "", ""
@@ -1384,6 +1626,15 @@ func (a *App) automationEditor(c *ui.Context, e *gateway.Automation) {
 					k.Text(c, L("past each hour"), 13, 20).TextColor(t.MutedForeground).Shrink(0)
 				case automations.Custom:
 					a.field(c, &f.custom, L("Cron expression"), "0 9 * * 1-5", true, false)
+					if f.timezone != "" {
+						label := L("Use this computer’s time")
+						if a.following() {
+							label = L("Use %s’s time", a.computerName())
+						}
+						if a.smallButton(c, kit.Ghost, label, "", false).Height(k.Px(36)).Shrink(0).Clicked() {
+							f.timezone = ""
+						}
+					}
 				default:
 					if f.repeat == automations.Weekly {
 						days := make([]kit.Option, 7)
