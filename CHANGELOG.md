@@ -1,3 +1,19 @@
+## Unreleased
+
+### Added
+
+- Droi runs automations itself (ADR 0035). An automation is kept in Droi's data and the Host runs it on this computer, so Factory's sync no longer pauses one it counts as missed. Schedules are five-field cron expressions or presets in this computer's time, and stay put across a daylight-saving change. Each run is a new session with the automation's model, reasoning effort and permissions: Don't ask, or an autonomy level, where a run that needs approval waits in its session until you answer. Runs missed while Droi was not running make one catch-up run, a second run never starts while one works, and the computer stays awake while a run works. The window of another computer manages its automations through the Gateway.
+- The Automations page lists the Factory automations on this computer, with Move to Droi. Moving copies the automation's folder with its files, turns its UTC schedule into this computer's time and deletes it from Factory's automations; its earlier runs stay on its page. One that posts into an existing session, or whose schedule Factory never ran, stays in Factory, and the page says why.
+- Droid can list, create, edit, pause and run Droi's automations with tools. One it creates asks before tools above High autonomy, and a tool cannot change the prompt, folder or model of an automation that runs without asking. Sessions no longer get Factory's own automation tools, so Droid does not make an automation that syncs.
+- Workstreams (ADR 0036). New workstream starts an orchestrator session in a workspace with a goal. The orchestrator splits the work among agents: each has its own session and its own worktree on a `droid/<name>` branch, and reports back when it is done, blocked, or has news; when an agent's turn ends without a report, Droi tells the orchestrator. The Workstreams page groups a Workstream's agents as Waiting on you, Working, Idle and Archived, with each one's branch and last report. One agent model and reasoning effort serve each Workstream (by default the orchestrator's); a change applies before each agent's next turn, except for an agent whose model you changed in its own session. Archiving a Workstream deletes the worktrees without changes and names the ones it keeps.
+- The sidebar has a Workstreams row with the number of agents waiting on you. Agents leave the session list, the orchestrator moves up while one of its agents waits or works, and a Workstream's sessions link to its page from their header. After a `/handoff` in an orchestrator or an agent, the Workstream goes on in the new session.
+- The Phone App shows a Workstream on its orchestrator's row ("Workstream · 3 agents · 1 waiting"), lists the agents from the orchestrator's header as Waiting on you, Working and Idle, and links an agent back to its orchestrator.
+
+### Changed
+
+- The Phone App counts a queued question as waiting on you once Droid rests, also in a session the phone has not opened, and stops counting it once it is answered elsewhere.
+- Memory skips automation runs and Workstream agents.
+- For apps built on Droi (ADR 0029): the Gateway takes `Options.Automations` and `Options.Workstreams` (new interfaces) and hides the tools of `Options.DisabledTools` from Client sessions; `host.FactoryAppRunning` is gone, since the Factory App's Daemon no longer runs Droi's automations.
 ## 1.90.0 - 2026-11-03
 
 ### Added

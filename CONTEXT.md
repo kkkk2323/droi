@@ -185,11 +185,15 @@ A tool server the Daemon connects a Session to, from the user's `~/.factory/mcp.
 _Avoid_: connector (Factory's hosted integrations are something else), tool, integration
 
 **Automation**:
-A prompt the Daemon runs on a schedule on its computer, kept in `~/.factory/automations/<id>/` and shared with the droid CLI and the Factory App. Droi lists, runs, pauses, edits and creates the local ones; the Factory App's cloud kinds (Slack, webhook, a droid computer) are not Droi's.
+A prompt Droi's Host runs on a schedule on its computer, each run in a new Session (ADR 0035). It is kept in Droi's own data, out of Factory's sync; the window, the Gateway and Droid's tools create, edit, pause and run it.
 _Avoid_: cron, job, scheduled task, workflow
 
+**Factory Automation**:
+An Automation the Daemon keeps in `~/.factory/automations/<id>/` and syncs to Factory, as the droid CLI and the Factory App make them. Droi lists the local ones and moves one into its own Automations on request; it no longer edits them.
+_Avoid_: Automation (on its own), local automation, Daemon automation
+
 **Automation Run**:
-One run of an Automation: a Session the Daemon starts with the `automation` tag, without asking for permission, and closes once idle. Clients list it on the Automations page, not with the other Sessions.
+One run of an Automation: a Session the Host starts with the `droi.automation` tag and closes when its turn ends. Clients list it on the Automations page, not with the other Sessions; a Factory Automation's runs (the Daemon's, tagged `automation`) are listed on that Factory Automation's page.
 _Avoid_: job run, execution, automation session
 
 **Loop**:
