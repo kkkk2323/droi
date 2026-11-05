@@ -44,7 +44,7 @@ func TestAPhoneReachesTheDaemonThroughTheRelay(t *testing.T) {
 	g.SetRemoteAccess(true)
 	eventually(t, func() bool { return g.RelayState().Status == RelayConnected })
 	base := g.RelayAddress()
-	if base != relaySrv.URL+"/c/"+testRelayID || g.Pairing("", testToken).Relay != base {
+	if base != relaySrv.URL+"/c/"+testRelayID || g.Pairing(testToken).Relay != base {
 		t.Fatalf("Relay address %q", base)
 	}
 	if changes.Load() == 0 {
@@ -53,7 +53,8 @@ func TestAPhoneReachesTheDaemonThroughTheRelay(t *testing.T) {
 
 	ctx := context.Background()
 	meta, err := FetchMeta(ctx, base)
-	if err != nil || meta.ComputerID != baseOptions(nil).ComputerID {
+	// /meta names the Relay, which a phone paired before it follows.
+	if err != nil || meta.ComputerID != baseOptions(nil).ComputerID || meta.Relay != base {
 		t.Fatalf("meta %+v, %v", meta, err)
 	}
 	if err := CheckToken(ctx, base, testToken); err != nil {
@@ -104,7 +105,7 @@ func TestTheRelayFollowsItsSettings(t *testing.T) {
 	g.ReconcileRelay()
 	eventually(t, func() bool { return g.RelayState().Status == RelayConnected })
 	base := relaySrv.URL + "/c/" + testRelayID
-	if link := g.Pairing("", testToken).Link; link != base+"/#pair="+testToken && !strings.HasSuffix(link, "&relay="+url.QueryEscape(base)) {
+	if link := g.Pairing(testToken).Link; link != base+"/#pair="+testToken && !strings.HasSuffix(link, "&relay="+url.QueryEscape(base)) {
 		t.Fatalf("link %q", link)
 	}
 	mu.Lock()

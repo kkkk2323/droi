@@ -36,6 +36,11 @@ export interface GatewayMeta {
   name: string
   /** Stable id of the computer; survives restarts, Pairing Token resets and address changes. */
   computerId: string
+  /**
+   * Where a phone reaches the computer through its Relay (ADR 0034), "" without one. Absent
+   * from a Droi older than the Relay.
+   */
+  relay?: string
 }
 
 /**

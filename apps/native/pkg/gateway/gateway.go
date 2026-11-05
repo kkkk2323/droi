@@ -135,6 +135,9 @@ type Meta struct {
 	Name string `json:"name"`
 	// ComputerID survives restarts, Pairing Token resets and address changes.
 	ComputerID string `json:"computerId"`
+	// Relay is where a phone reaches this Gateway through the Relay, "" without
+	// one; a paired phone follows it (ADR 0034).
+	Relay string `json:"relay"`
 }
 
 // Gateway keeps one listener on loopback and, only while Remote Access is
@@ -495,6 +498,7 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 			RemoteAccess: g.RemoteAccess(),
 			Name:         g.opts.ComputerName,
 			ComputerID:   g.opts.ComputerID,
+			Relay:        g.RelayAddress(),
 		})
 	default:
 		w.WriteHeader(http.StatusNotFound)

@@ -42,6 +42,9 @@ Droi on the computer must be a build with the computer name and id in its
 - [ ] With a Relay set in Droi → Settings → Remote Access and shown as
       connected, scanning the new code pairs; with Wi-Fi off, on cellular, the
       Session list loads through the relay and a reply streams in.
+- [ ] A phone paired before the Relay was set, opened once on the computer's
+      Wi-Fi, then on cellular, loads the Session list through the relay without
+      scanning again.
 - [ ] Back on the computer's Wi-Fi, bringing the app to the foreground connects
       directly again: the relay's log shows no new connection for it.
 - [ ] After the computer slept and woke, the Relay row is connected again within

@@ -38,7 +38,6 @@ type Settings struct {
 	MagpieEnabled      bool    `json:"magpieEnabled"`
 	MagpieBaseURL      *string `json:"magpieBaseUrl"`
 	AppendSystemPrompt *string `json:"appendSystemPrompt"`
-	PairingHost        *string `json:"pairingHost"`
 	ScratchFolder      *string `json:"scratchFolder"`
 	MemoryEnabled      bool    `json:"memoryEnabled"`
 	// MemoryModel writes Session Summaries; MemorySummaryModel keeps the
@@ -181,41 +180,31 @@ func OptString(s string) *string {
 
 var hostName = regexp.MustCompile(`(?i)^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)$`)
 
-// PairingHostOf is the host name in what the user typed for the pairing
-// address: "laptop.myhome", "laptop.myhome:41417" or a full URL.
-func PairingHostOf(text string) *string {
+// RelayAddressOf reads a relay address as droi-relay prints it,
+// "https://relay.example.com/#key=<key>": the Relay's address, https unless
+// it says http, and its registration key, nil without one. "relay.example.com"
+// or one with a path is an address too. Both are nil for empty text and for
+// what is not a relay address.
+func RelayAddressOf(text string) (address, key *string) {
 	t := strings.TrimSpace(text)
 	if t == "" {
-		return nil
-	}
-	if !regexp.MustCompile(`(?i)^[a-z][a-z0-9+.-]*://`).MatchString(t) {
-		t = "http://" + t
-	}
-	u, err := url.Parse(t)
-	if err != nil || !hostName.MatchString(u.Hostname()) {
-		return nil
-	}
-	h := u.Hostname()
-	return &h
-}
-
-// RelayURLOf is the Relay address in what the user typed:
-// "relay.example.com", "https://relay.example.com/" or one with a path;
-// https unless it says http. Nil for empty or not an address.
-func RelayURLOf(text string) *string {
-	t := strings.TrimSpace(text)
-	if t == "" {
-		return nil
+		return nil, nil
 	}
 	if !regexp.MustCompile(`(?i)^[a-z][a-z0-9+.-]*://`).MatchString(t) {
 		t = "https://" + t
 	}
 	u, err := url.Parse(t)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !hostName.MatchString(u.Hostname()) || u.RawQuery != "" || u.Fragment != "" {
-		return nil
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !hostName.MatchString(u.Hostname()) || u.RawQuery != "" {
+		return nil, nil
+	}
+	if f := u.EscapedFragment(); f != "" {
+		v, err := url.ParseQuery(f)
+		if key = OptString(v.Get("key")); err != nil || key == nil {
+			return nil, nil
+		}
 	}
 	out := u.Scheme + "://" + u.Host + strings.TrimRight(u.EscapedPath(), "/")
-	return &out
+	return &out, key
 }
 
 // ScratchFolderOf is what the user typed for the Scratch folder as an

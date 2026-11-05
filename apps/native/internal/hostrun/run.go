@@ -174,16 +174,17 @@ func waitForDaemon(ctx context.Context, h *host.Host) error {
 
 func announce(out io.Writer, terminal bool, gw *gateway.Gateway, h *host.Host, version string) {
 	s := h.Settings.Get()
-	info := gw.Pairing(pairingHost(s), s.PairingToken)
+	info := gw.Pairing(s.PairingToken)
 	link := info.Link
 	fmt.Fprintf(out, "%s Host %s on %s\n", brand.Name(), version, gateway.ComputerName())
 	if link == "" {
 		// Only loopback: reachable through a tunnel, not from the network.
-		link = gateway.Pairing([]string{"127.0.0.1"}, info.Port, "", s.PairingToken, "").Link
+		link = gateway.Pairing([]string{"127.0.0.1"}, info.Port, s.PairingToken, "").Link
 		fmt.Fprintln(out, "No network address found; the Gateway listens on this computer only.")
 	}
 	if info.Relay != "" {
-		fmt.Fprintf(out, "Relay: %s\n", deref(s.RelayURL))
+		address, _ := host.RelayAddressOf(deref(s.RelayURL))
+		fmt.Fprintf(out, "Relay: %s\n", deref(address))
 	}
 	fmt.Fprintf(out, "Pairing link: %s\n", link)
 	if terminal {
@@ -209,11 +210,4 @@ func deref(p *string) string {
 		return ""
 	}
 	return *p
-}
-
-func pairingHost(s host.Settings) string {
-	if s.PairingHost != nil {
-		return *s.PairingHost
-	}
-	return ""
 }

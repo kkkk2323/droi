@@ -37,10 +37,11 @@ const (
 )
 
 // State is an Agent's Status, why the last attempt failed and when it
-// tries again.
+// tries again; Code is the Relay's close code when it refused the Host.
 type State struct {
 	Status Status
 	Err    string
+	Code   int
 	Next   time.Time
 }
 
@@ -166,9 +167,9 @@ func (a *Agent) Run(ctx context.Context) {
 		}
 		var refused *RefusedError
 		var wait time.Duration
-		status := Retrying
+		status, code := Retrying, 0
 		if errors.As(err, &refused) {
-			status, wait = Refused, 5*time.Minute
+			status, code, wait = Refused, refused.Code, 5*time.Minute
 			if refused.Code == CloseReplaced {
 				wait = time.Minute
 			}
@@ -183,7 +184,7 @@ func (a *Agent) Run(ctx context.Context) {
 		if err != nil {
 			msg = err.Error()
 		}
-		a.set(State{Status: status, Err: msg, Next: time.Now().Add(wait)})
+		a.set(State{Status: status, Err: msg, Code: code, Next: time.Now().Add(wait)})
 		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():

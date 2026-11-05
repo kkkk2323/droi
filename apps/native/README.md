@@ -49,9 +49,9 @@ refuses to start while another Droi Host (the app, or another `droi host`) answe
 computer, or when `droid` is missing or older than Droi needs.
 
 The Gateway listens on port 41417; `droi host --port N` picks another, for instance when the
-computer already runs a Host there. In a container, publish the same port on both sides
-(`docker run -p 41418:41418 ... /opt/droi/droi host --port 41418`) and set `pairingHost` (see
-below) so the link names a port and an address other computers reach.
+computer already runs a Host there. In a container, run it on the host's network
+(`docker run --network host ... /opt/droi/droi host`) so the link names an address other
+computers reach, or use a Relay (below).
 
 Its settings (`settings.json`, mode 0600, with the Pairing Token), Memory and logs are in
 `$XDG_CONFIG_HOME/droi` (`~/.config/droi` by default). Scratch folders a Client trashes go to
@@ -94,9 +94,9 @@ it: it makes a new token, prints the new link and every phone paired before has 
 **Keep it on a private network.** The Gateway listens on every network interface of the
 computer and speaks plain HTTP, so a Pairing Token is the only protection. Reach the Host over a
 private network such as [Tailscale](https://tailscale.com), and do not expose its port to the
-internet. The link names the computer's first LAN address; to have it name another, for
-instance the Tailscale machine name, set `"pairingHost": "my-box"` in `settings.json` and
-restart. To reach it from anywhere without a private network, use a Relay (below).
+internet. The link names the computer's first LAN address; a phone that reaches it by another name,
+such as its Tailscale machine name, can change the computer's address after pairing. To reach
+it from anywhere without a private network, use a Relay (below).
 
 ## A Relay: reaching a computer from anywhere
 
@@ -104,22 +104,47 @@ A phone on the computer's network connects to its Gateway directly. Away from it
 can go through a Relay (ADR 0034): a server the computer keeps one WebSocket open to while
 Remote Access is on, which passes the phone's requests and sockets on. There is nothing to
 forward on the router and no VPN on the phone; everything is TCP and HTTPS. The pairing link
-carries both addresses (`…/#pair=<token>&relay=<Relay>/c/<Relay Id>`). The phone asks the
-network address first and uses the Relay when it does not answer within two seconds, at every
-connect and whenever the app comes back to the foreground, so at home the traffic stays on the
-network.
+carries both addresses (`…/#pair=<token>&relay=<Relay>/c/<Relay Id>`), and the Gateway's
+`/meta` names the Relay too, so a phone paired before the Relay was set, or changed, picks it
+up the next time it connects. The phone asks the network address first and uses the Relay
+when it does not answer within two seconds, at every connect and whenever the app comes back
+to the foreground, so at home the traffic stays on the network.
 
-**Run a Relay** on a server both the computer and the phone reach. For mainland China a Hong
-Kong server is close and needs no ICP filing (`*.workers.dev` is blocked there). It is the same
-program, `droi relay`, from any release (the Linux tarball above, or the app's own binary):
+**Install a Relay.** Settings → Remote Access → Set up relay walks through it. The Relay is
+`droi-relay`, a program of its own (a 3.5 MB download), for a Linux server with systemd that both
+the computer and the phone reach, with a domain name whose A record points to it and TCP port
+443 open. For mainland China a Hong Kong server is close and needs no ICP filing
+(`*.workers.dev` is blocked there). On the server:
 
 ```sh
-DROI_RELAY_KEY=$(openssl rand -hex 24) /opt/droi/droi relay --listen 127.0.0.1:8787
+curl -fsSL https://github.com/kkkk2323/droi/releases/latest/download/install-relay.sh | sudo sh -s -- --domain relay.example.com
 ```
 
-`DROI_RELAY_KEY` is the registration key a computer must present; keep it, Droi asks for it.
-Serve it over HTTPS: with `--tls-cert` and `--tls-key`, or behind Caddy, which also gets the
-certificate:
+It downloads the latest `droi-relay` to `/usr/local/bin`, makes a registration key, gets a
+certificate from Let's Encrypt (tls-alpn-01 on port 443, asked once: fix the DNS record or the
+firewall and run it again), installs the `droi-relay` systemd service and prints the relay
+address, `https://relay.example.com/#key=<key>`. The key stays on the computer: the pairing
+link carries the Relay without it. The key, the settings and the certificate are in
+`/var/lib/droi-relay`; the service renews the certificate on its own while port 443 stays open.
+
+- `sudo droi-relay address` prints the relay address again.
+- `sudo droi-relay reset-key` makes a new key; every computer then needs the new address.
+- Running the install command again, without `--domain`, upgrades it and keeps the key.
+- `sudo droi-relay uninstall` removes the service, the key and the certificate.
+- `curl https://relay.example.com/healthz` answers `{"ok":true,...}`; `journalctl -u droi-relay -f` is its log.
+
+**Point Droi at it.** Paste the relay address in Settings → Remote Access → Set up relay (step 3) and click Connect relay, which also turns Remote Access on. The row then says whether the
+computer is connected, why not when it is not, and the pairing link gains `&relay=`. For
+`droi host`, set `"relayUrl"` in `settings.json` to the relay address and restart; it prints the
+Relay's state as it changes.
+
+### Behind a reverse proxy
+
+A server that already runs Caddy or nginx on port 443 keeps it, and the Relay listens behind it:
+
+```sh
+sudo droi-relay install --listen 127.0.0.1:8787 --public-url https://relay.example.com
+```
 
 ```
 relay.example.com {
@@ -130,18 +155,11 @@ relay.example.com {
 ```
 
 Behind nginx, allow WebSockets (`Upgrade`, `Connection "upgrade"`), turn `proxy_buffering`
-off and set `proxy_read_timeout 1h`. `curl https://relay.example.com/healthz` answers
-`{"ok":true,...}`. As a systemd service it is the unit above with `ExecStart=/opt/droi/droi relay
---listen 127.0.0.1:8787` and `DROI_RELAY_KEY=...` in its `EnvironmentFile`. It keeps nothing on
-disk; on SIGTERM it closes every computer's socket, and they dial again.
-
-**Point Droi at it.** Settings → Remote Access → Relay takes the address and the key; the row
-then says whether the computer is connected, and the pairing link gains `&relay=`. Phones
-paired before need to scan the new link once. For `droi host`, set `"relayUrl":
-"https://relay.example.com"` and `"relayKey": "..."` in `settings.json` and restart; it prints
-the Relay's state as it changes. alma-relay's servers ([yetone/alma-relay](https://github.com/yetone/alma-relay),
-Node, Docker or Cloudflare) speak the same protocol and work as well, with their
-`RELAY_REGISTRATION_KEY` as the key.
+off and set `proxy_read_timeout 1h`. `droi-relay serve` runs a Relay in the foreground with the
+same flags, or with `--tls-cert` and `--tls-key`; `droi-relay help` lists them.
+alma-relay's servers ([yetone/alma-relay](https://github.com/yetone/alma-relay), Node, Docker
+or Cloudflare) speak the same protocol and work as well: their address with
+`#key=<RELAY_REGISTRATION_KEY>` is the relay address.
 
 **What a Relay sees.** The requests in clear inside its TLS, the Pairing Token included: whoever
 runs it could drive the computer, so run your own. A computer that sleeps cannot be reached

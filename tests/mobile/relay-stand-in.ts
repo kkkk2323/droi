@@ -19,7 +19,14 @@ export interface RelayStandIn {
 
 export async function startRelayStandIn(
   target: string,
-  { prefix = `/c/${RELAY_ID}` }: { prefix?: string } = {},
+  {
+    prefix = `/c/${RELAY_ID}`,
+    relayInMeta,
+  }: {
+    prefix?: string
+    /** The Relay the Gateway's /meta names through this stand-in, as a computer with one does. */
+    relayInMeta?: () => string
+  } = {},
 ): Promise<RelayStandIn> {
   const t = new URL(target)
   const requests: string[] = []
@@ -47,6 +54,17 @@ export async function startRelayStandIn(
         headers: { ...req.headers, host: t.host },
       },
       (answer) => {
+        if (relayInMeta && path === '/meta') {
+          const chunks: Buffer[] = []
+          answer.on('data', (chunk: Buffer) => chunks.push(chunk))
+          answer.on('end', () => {
+            const meta = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>
+            const body = JSON.stringify({ ...meta, relay: relayInMeta() })
+            const { 'content-length': _length, ...headers } = answer.headers
+            res.writeHead(answer.statusCode ?? 502, headers).end(body)
+          })
+          return
+        }
         res.writeHead(answer.statusCode ?? 502, answer.headers)
         answer.pipe(res)
       },

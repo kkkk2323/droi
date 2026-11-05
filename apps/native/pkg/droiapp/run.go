@@ -25,7 +25,6 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/internal/relay"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
@@ -106,7 +105,7 @@ func Run(o Options) {
 	// The Runtime Overlay runs the app's own executable as the Memory Server
 	// and the hook, and the Host runs it as a Windows Daemon's anchor; none
 	// starts the app. `droi host` is a Host with no
-	// window, and `droi relay` a Relay (ADR 0034).
+	// window.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case host.MemoryServerCommand:
@@ -115,9 +114,6 @@ func Run(o Options) {
 			os.Exit(memory.HookMain())
 		case host.DaemonAnchorCommand:
 			os.Exit(host.AnchorMain())
-		case "relay":
-			b := brand.Current()
-			os.Exit(relay.Main(os.Args[2:], relay.Options{ID: b.ID, Name: b.Name, Version: version}))
 		case "host":
 			if msg := hostUnsupported(runtime.GOOS); msg != "" {
 				fmt.Fprintln(os.Stderr, msg)
@@ -138,7 +134,7 @@ func Run(o Options) {
 	}
 	if runtime.GOOS == "linux" {
 		b := brand.Current()
-		fmt.Fprintf(os.Stderr, "%s: only `%s host` and `%s relay` are supported on Linux.\n", b.ID, b.ID, b.ID)
+		fmt.Fprintf(os.Stderr, "%s: only `%s host` is supported on Linux.\n", b.ID, b.ID)
 		os.Exit(2)
 	}
 	home, err := os.UserHomeDir()

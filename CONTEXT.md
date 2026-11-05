@@ -87,7 +87,7 @@ The Host setting that decides whether the Gateway accepts Remote Clients at all,
 _Avoid_: LAN mode, web mode, mobile mode, `DROID_WEB_ENABLED`
 
 **Relay**:
-A server both a Host and a Remote Client dial out to, so that a phone away from the computer's network reaches its Gateway (ADR 0034). The Host keeps one socket open to it while Remote Access is on and registers its Relay Id; a phone addresses the Host as `<Relay>/c/<Relay Id>`, and the Gateway still checks the Pairing Token. `droi relay` runs one; it speaks alma-relay's protocol.
+A server both a Host and a Remote Client dial out to, so that a phone away from the computer's network reaches its Gateway (ADR 0034). The Host keeps one socket open to it while Remote Access is on and registers its Relay Id; a phone addresses the Host as `<Relay>/c/<Relay Id>`, and the Gateway still checks the Pairing Token. `droi-relay` runs one; it speaks alma-relay's protocol. Its **relay address**, `https://<Relay>/#key=<registration key>`, is what a Host is given; the key never reaches a phone.
 _Avoid_: tunnel, proxy, Ponte, droid's Remote Control (Factory's relay, which Droi does not use)
 
 **Relay Id**:

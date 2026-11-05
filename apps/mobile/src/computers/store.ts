@@ -6,6 +6,7 @@ import {
   createStringPreference,
   type LocalPreference,
 } from '@droi/daemon-layer/local-preference'
+import type { GatewayMeta } from '@droi/daemon-layer/gateway'
 import type { SessionWorktree } from '@droi/daemon-layer/worktree'
 
 export interface PairedComputer {
@@ -85,6 +86,25 @@ export function selectedComputer(
   selectedId: string | null,
 ): PairedComputer | null {
   return list.find((c) => c.id === selectedId) ?? list[0] ?? null
+}
+
+/**
+ * Keeps a computer's Relay as its Gateway's /meta names it (ADR 0034), so a phone paired before
+ * the Relay was set, or changed, follows it without pairing again. A /meta without the field,
+ * from an older Droi, or of another computer changes nothing.
+ */
+export function followRelay(computerId: string, meta: Partial<GatewayMeta>): void {
+  if (meta.computerId !== computerId || typeof meta.relay !== 'string') return
+  const relay = meta.relay
+  const known = pairedComputers.get().find((c) => c.id === computerId)
+  if (!known || (known.relay ?? '') === relay) return
+  pairedComputers.set(
+    pairedComputers.get().map((c) => {
+      if (c.id !== computerId) return c
+      const { relay: _old, ...rest } = c
+      return relay ? { ...rest, relay } : rest
+    }),
+  )
 }
 
 export function updateComputer(id: string, patch: Partial<Omit<PairedComputer, 'id'>>): void {

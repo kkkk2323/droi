@@ -57,7 +57,8 @@ test('an unreachable computer shows its address and what to check, then connects
   await expect(page.getByText(fakeDaemon.url, { exact: true })).toBeVisible()
   const checks = page.getByRole('list', { name: 'What to check' }).getByRole('listitem')
   await expect(checks.first()).toContainText('Remote Access')
-  await expect(checks).toHaveCount(3)
+  await expect(checks).toHaveCount(4)
+  await expect(checks.nth(2)).toContainText('Set up a relay')
 
   fakeDaemon.comeBack()
   await expect(sessionList(page)).toBeVisible({

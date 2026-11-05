@@ -61,12 +61,7 @@ func TestSettingsReadsDesktopShellFile(t *testing.T) {
 	}
 }
 
-func TestPairingHostAndScratchFolderParsing(t *testing.T) {
-	for in, want := range map[string]string{"laptop.myhome": "laptop.myhome", "laptop.myhome:41417": "laptop.myhome", "http://a.b:1/x": "a.b", "  ": "", "bad host!": ""} {
-		if got := deref(PairingHostOf(in)); got != want {
-			t.Errorf("%q: %q, want %q", in, got, want)
-		}
-	}
+func TestScratchFolderParsing(t *testing.T) {
 	for in, want := range map[string]string{"~": "/h", "~/x/../y": "/h/y", "/abs/": "/abs", "rel": "", "": ""} {
 		if got := deref(ScratchFolderOf(in, "/h")); got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)
@@ -74,20 +69,37 @@ func TestPairingHostAndScratchFolderParsing(t *testing.T) {
 	}
 }
 
-func TestRelayURLParsing(t *testing.T) {
-	for in, want := range map[string]string{
-		"relay.example.com":              "https://relay.example.com",
-		" https://relay.example.com/ ":   "https://relay.example.com",
-		"http://10.0.0.5:8787":           "http://10.0.0.5:8787",
-		"https://example.com/droi/":      "https://example.com/droi",
-		"ftp://relay.example.com":        "",
-		"https://relay.example.com/?a=1": "",
-		"":                               "",
-		"not a host!":                    "",
+func TestRelayAddressParsing(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"https://relay.example.com/#key=Zk3-x_9": {"https://relay.example.com", "Zk3-x_9"},
+		" https://relay.example.com#key=Zk3 ":    {"https://relay.example.com", "Zk3"},
+		"relay.example.com":                      {"https://relay.example.com", ""},
+		" https://relay.example.com/ ":           {"https://relay.example.com", ""},
+		"http://10.0.0.5:8787/#key=k":            {"http://10.0.0.5:8787", "k"},
+		"https://example.com/droi/":              {"https://example.com/droi", ""},
+		"https://relay.example.com/#key=":        {"", ""},
+		"https://relay.example.com/#other":       {"", ""},
+		"ftp://relay.example.com":                {"", ""},
+		"https://relay.example.com/?a=1":         {"", ""},
+		"":                                       {"", ""},
+		"not a host!":                            {"", ""},
 	} {
-		if got := deref(RelayURLOf(in)); got != want {
+		address, key := RelayAddressOf(in)
+		if got := [2]string{deref(address), deref(key)}; got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestTheRelayAddressInRelayURLCarriesItsKey(t *testing.T) {
+	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" }})
+	_ = h.Settings.Update(func(s *Settings) {
+		s.RelayURL = OptString("https://relay.example.com/#key=from-the-address")
+		s.RelayKey = OptString("ignored")
+	})
+	got := h.GatewayOptions("1.0.0", nil).Relay()
+	if got.URL != "https://relay.example.com" || got.Key != "from-the-address" || got.ID == "" {
+		t.Fatalf("%+v", got)
 	}
 }
 

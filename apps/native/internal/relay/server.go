@@ -100,7 +100,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = io.WriteString(w, "Droi Relay "+s.o.Version+" is running.\nUse this address in Droi → Settings → Remote Access → Relay.\n")
+		_, _ = io.WriteString(w, "Droi Relay "+s.o.Version+" is running.\nOn the server, run sudo droi-relay address and paste the relay address it prints into Droi → Settings → Remote Access on your computer.\n")
 		return
 	case "/agent":
 		s.serveAgent(w, r)

@@ -105,6 +105,32 @@ test('leaving the computer’s network moves the connection to the relay', async
   }
 })
 
+test('a phone paired before the relay was set follows the relay the computer names', async ({
+  page,
+  fakeDaemon,
+}) => {
+  const relay = await startRelayStandIn(fakeDaemon.url)
+  const network = await startRelayStandIn(fakeDaemon.url, {
+    prefix: '',
+    relayInMeta: () => relay.base,
+  })
+  try {
+    await page.goto('/')
+    // A link from before the relay: the network address alone.
+    await pasteLink(page, `${network.base}/#pair=${fakeDaemon.token}`)
+    await pickSession(page, /Deploy/)
+    expect(daemonSockets(relay)).toBe(0)
+
+    await network.close()
+    await expect.poll(() => daemonSockets(relay), { timeout: 20_000 }).toBeGreaterThan(0)
+    const transcript = page.getByRole('log', { name: 'Transcript' })
+    playTurn(fakeDaemon, deploy.sessionId, 'away?', ['Through the relay.'])
+    await expect(transcript).toContainText('Through the relay.')
+  } finally {
+    await relay.close()
+  }
+})
+
 test('an unreachable computer with a relay names both ways it tried', async ({
   page,
   fakeDaemon,

@@ -11,7 +11,7 @@ import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { PulsingDot, Spinner } from '../ui/activity'
 import { PairingForm } from '../computers/pairing-form'
-import type { PairedComputer } from '../computers/store'
+import { followRelay, type PairedComputer } from '../computers/store'
 import { versionMismatch } from '../lib/version'
 import { Heading, IconButton, Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
@@ -98,9 +98,15 @@ function Unreachable({
             Droi → Settings → Remote Access on the computer shows the relay as connected.
           </Check>
         ) : (
-          <Check>
-            The iPhone is on the same network as the computer, or Tailscale is on for both.
-          </Check>
+          <>
+            <Check>
+              The iPhone is on the same network as the computer, or Tailscale is on for both.
+            </Check>
+            <Check>
+              Away from the computer’s network? Set up a relay in Droi → Settings → Remote Access on
+              the computer, then connect once on its network or scan its new code.
+            </Check>
+          </>
         )}
         <Check>The computer is awake and Droi is running.</Check>
       </View>
@@ -134,7 +140,9 @@ function Notices({ computer, reconnecting }: { computer: PairedComputer; reconne
     queryKey: ['meta', via],
     queryFn: async (): Promise<GatewayMeta> => {
       const response = await fetch(gatewayEndpoint(via, GATEWAY_META_PATH).toString())
-      return (await response.json()) as GatewayMeta
+      const answer = (await response.json()) as GatewayMeta
+      followRelay(computer.id, answer)
+      return answer
     },
     staleTime: Infinity,
   })
