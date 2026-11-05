@@ -20,6 +20,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
@@ -66,13 +67,6 @@ type Coordinator struct {
 	news map[string]chan struct{}
 	// claimed are the branches of agents being started.
 	claimed map[string]bool
-}
-
-// factoryAutomationTools are Factory's Automation tools, which Droi's
-// Workstream Sessions do without (ADR 0035).
-var factoryAutomationTools = []string{
-	"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation",
-	"DeleteAutomation", "RunAutomation", "ListAutomationTemplates",
 }
 
 // New makes a Coordinator of the Workstreams in cfg.Dir; Start resumes them.
@@ -345,11 +339,11 @@ func (c *Coordinator) sendGoal(ctx context.Context, orch, goal string) error {
 }
 
 func orchestratorHidden() []string {
-	return append(slices.Clone(factoryAutomationTools), hostToolsSelector(ToolReport)...)
+	return append(slices.Clone(automationwork.FactoryAutomationTools), hostToolsSelector(ToolReport)...)
 }
 
 func agentHidden() []string {
-	return append(slices.Clone(factoryAutomationTools), hostToolsSelector(orchestratorTools...)...)
+	return append(slices.Clone(automationwork.FactoryAutomationTools), hostToolsSelector(orchestratorTools...)...)
 }
 
 // orchestratorTag is w's orchestrator's droi.workstream tag; under c.mu or
@@ -986,6 +980,10 @@ func (c *Coordinator) turnEnded(e hostsession.TurnEnded) {
 	if a == nil {
 		return
 	}
+	if e.Error == hostsession.SessionGone {
+		c.agentGone(w, a, e.SessionID)
+		return
+	}
 	c.mu.Lock()
 	c.activity[e.SessionID] = c.cfg.Now()
 	c.mu.Unlock()
@@ -1016,6 +1014,19 @@ func (c *Coordinator) turnEnded(e hostsession.TurnEnded) {
 	if err := c.moveAgent(ctx, w, a); err != nil {
 		c.cfg.Log("moving agent " + e.SessionID + " to the workstream's settings: " + err.Error())
 	}
+}
+
+// agentGone records an agent whose Session id the Daemon no longer has,
+// such as one archived from a Client, as archived, as resumeAgent does: its
+// turn ended with no reply to tell of. One handed off from id goes on in
+// the Session it was handed off to.
+func (c *Coordinator) agentGone(w *Workstream, a *Agent, id string) {
+	ctx, cancel := context.WithTimeout(c.life, time.Minute)
+	defer cancel()
+	if c.newest(ctx, w, a) != id {
+		return
+	}
+	c.update(w, func() { a.Awaiting, a.ArchivedAt = false, c.now() })
 }
 
 // turnReason is why a turn ended, as the orchestrator is told.

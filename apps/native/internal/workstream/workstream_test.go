@@ -852,6 +852,51 @@ func TestATurnWhoseWorkerWasLostIsNoticedAndSaysWhetherItReported(t *testing.T) 
 	f.waitFor("the notice after the report", func() bool { return slices.Contains(f.messages(made.OrchestratorID), want) })
 }
 
+// A Session the Daemon no longer has, such as one a Client archived while
+// the Host was away, is found gone when the Host loads it again: an agent
+// then counts as archived, without a notice to the orchestrator, and an
+// orchestrator's Workstream still archives its agents when asked.
+func TestASessionTheDaemonNoLongerHasCountsAsArchived(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	f.quietAgents(made.OrchestratorID)
+	gone := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	other := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
+	if !f.agent(made.WorkstreamID, gone).Awaiting {
+		t.Fatal("the agent is not waited on")
+	}
+	reload := func() {
+		t.Helper()
+		if err := f.d.GoDown(); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.d.ComeBack(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.archiveFromClient(gone)
+	reload()
+	f.waitFor("the agent to count as archived", func() bool { return f.agent(made.WorkstreamID, gone).ArchivedAt != "" })
+	if f.agent(made.WorkstreamID, gone).Awaiting {
+		t.Fatal("the archived agent is still waited on")
+	}
+	time.Sleep(300 * time.Millisecond)
+	for _, m := range f.messages(made.OrchestratorID) {
+		if strings.HasPrefix(m, "[From agent") {
+			t.Fatalf("the orchestrator was told %q", m)
+		}
+	}
+
+	f.archiveFromClient(made.OrchestratorID)
+	reload()
+	f.waitFor("the orchestrator to be found gone", func() bool { return !f.r.Following(made.OrchestratorID) })
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err != nil {
+		t.Fatal(err)
+	}
+	if f.agent(made.WorkstreamID, other).ArchivedAt == "" || !slices.Contains(f.sessionIDs("daemon.archive_session"), other) {
+		t.Fatal("the other agent is not archived")
+	}
+}
 func TestInterruptAgentStopsItsTurnWithoutANotice(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: long(10)})
 	made := f.create("", "")
