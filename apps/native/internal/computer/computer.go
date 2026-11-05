@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
@@ -105,22 +106,42 @@ func Forget(s *prefs.Store, id string) {
 	write(s, r)
 }
 
-// Paired is a Paired Computer: the Gateway's origin, the Pairing Token, and
-// the name and id the Gateway's /meta reported when it was added.
+// Paired is a Paired Computer: the Gateway's address, the Pairing Token,
+// the name and id the Gateway's /meta reported when it was added, and the
+// Relay address its pairing link named, if any (ADR 0034).
 type Paired struct {
 	Gateway string `json:"gateway"`
 	Token   string `json:"token"`
 	Name    string `json:"name"`
 	ID      string `json:"id"`
+	Relay   string `json:"relay,omitempty"`
 }
 
-// SocketURL is the Daemon socket the window connects to.
+// SocketURL is the Daemon socket at the Gateway's address.
 func (p Paired) SocketURL() string {
 	u, err := gateway.SocketURL(p.Gateway, p.Token)
 	if err != nil {
 		return ""
 	}
 	return u
+}
+
+// directWait is how long the Gateway's own address has to answer before a
+// computer with a Relay is reached through the Relay instead.
+var directWait = 2 * time.Second
+
+// Route is the address to reach p at now: the Gateway's own when it
+// accepts the token within directWait, else the Relay, when there is one.
+func (p Paired) Route(ctx context.Context) string {
+	if p.Relay == "" {
+		return p.Gateway
+	}
+	cctx, cancel := context.WithTimeout(ctx, directWait)
+	defer cancel()
+	if gateway.CheckToken(cctx, p.Gateway, p.Token) == nil {
+		return p.Gateway
+	}
+	return p.Relay
 }
 
 var (
@@ -141,7 +162,18 @@ func Verify(ctx context.Context, link, thisComputerID string) (Paired, error) {
 	if err != nil {
 		return Paired{}, err
 	}
-	meta, err := gateway.FetchMeta(ctx, l.Gateway)
+	// The network address first, then the Relay, as Route does later.
+	reached := l.Gateway
+	mctx, cancel := ctx, context.CancelFunc(func() {})
+	if l.Relay != "" {
+		mctx, cancel = context.WithTimeout(ctx, directWait)
+	}
+	meta, err := gateway.FetchMeta(mctx, l.Gateway)
+	cancel()
+	if err != nil && l.Relay != "" {
+		reached = l.Relay
+		meta, err = gateway.FetchMeta(ctx, l.Relay)
+	}
 	if err != nil {
 		return Paired{}, err
 	}
@@ -151,8 +183,8 @@ func Verify(ctx context.Context, link, thisComputerID string) (Paired, error) {
 	if meta.ComputerID == thisComputerID {
 		return Paired{}, ErrThisComputer
 	}
-	if err := gateway.CheckToken(ctx, l.Gateway, l.Token); err != nil {
+	if err := gateway.CheckToken(ctx, reached, l.Token); err != nil {
 		return Paired{}, err
 	}
-	return Paired{Gateway: l.Gateway, Token: l.Token, Name: meta.Name, ID: meta.ComputerID}, nil
+	return Paired{Gateway: l.Gateway, Token: l.Token, Name: meta.Name, ID: meta.ComputerID, Relay: l.Relay}, nil
 }

@@ -16,10 +16,12 @@ var (
 )
 
 // PairingLink is what a Client needs to reach a Paired Computer: the
-// Gateway's origin and the Pairing Token.
+// Gateway's address, the Pairing Token, and the Relay address when the link
+// has one (ADR 0034). An address is an origin, or a Relay's with its path.
 type PairingLink struct {
 	Gateway string
 	Token   string
+	Relay   string
 }
 
 var bareToken = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -50,17 +52,24 @@ func ParsePairingLink(text string) (PairingLink, error) {
 	if address == "" {
 		address = text[:strings.Index(text, "#")]
 	}
-	origin, ok := originOf(address)
+	base, ok := BaseOf(address)
 	if !ok {
 		return PairingLink{}, ErrNoGatewayAddress
 	}
-	return PairingLink{Gateway: origin, Token: token}, nil
+	link := PairingLink{Gateway: base, Token: token}
+	if relay, ok := BaseOf(values.Get(RelayFragment)); ok && relay != base {
+		link.Relay = relay
+	}
+	return link, nil
 }
 
-func originOf(address string) (string, bool) {
-	u, err := url.Parse(address)
+// BaseOf is a Gateway address as Clients keep it: the scheme, the host and
+// the path without its trailing slash, which a Relay address has
+// (https://relay.example.com/c/<Relay Id>); no query or fragment.
+func BaseOf(address string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(address))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return "", false
 	}
-	return u.Scheme + "://" + u.Host, true
+	return u.Scheme + "://" + u.Host + strings.TrimRight(u.EscapedPath(), "/"), true
 }

@@ -117,6 +117,13 @@ type Options struct {
 	// SessionTimes, optional, is the Host's Session Times, which the
 	// bridges write and SessionTimesPath serves; nil answers 404.
 	SessionTimes SessionTimes
+	// Relay, optional, is where Remote Access also meets phones away from
+	// this computer's network (ADR 0034). It is read when Remote Access
+	// turns on and at every ReconcileRelay.
+	Relay func() RelayConfig
+	// Changed, optional, hears that the LAN addresses or the Relay's state
+	// changed, for what shows them. It is called on a goroutine of its own.
+	Changed func()
 }
 
 // Meta is the /meta answer.
@@ -128,10 +135,14 @@ type Meta struct {
 	Name string `json:"name"`
 	// ComputerID survives restarts, Pairing Token resets and address changes.
 	ComputerID string `json:"computerId"`
+	// Relay is where a phone reaches this Gateway through the Relay, "" without
+	// one; a paired phone follows it (ADR 0034).
+	Relay string `json:"relay"`
 }
 
 // Gateway keeps one listener on loopback and, only while Remote Access is
-// on, one per LAN interface address. Binding interface addresses rather than
+// on, one per LAN interface address, following the interfaces as they come
+// and go, and the Relay's Agent. Binding interface addresses rather than
 // 0.0.0.0 leaves the loopback listener untouched when Remote Access toggles
 // and keeps the port closed to the network otherwise.
 type Gateway struct {
@@ -139,8 +150,14 @@ type Gateway struct {
 	port     int
 	loopback *http.Server
 
-	mu      sync.Mutex
-	closed  bool
+	mu        sync.Mutex
+	closed    bool
+	remote    bool
+	watchStop chan struct{}
+	relay     *relayRun
+	// addrs and poll are lanAddresses and lanPoll as Start found them.
+	addrs   func() []string
+	poll    time.Duration
 	lan     []lanListener
 	bridges map[*bridge]struct{}
 	// done closes with the Gateway, which ends the long polls at once:
@@ -163,10 +180,10 @@ func Start(opts Options) (*Gateway, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := &Gateway{opts: opts, port: ln.Addr().(*net.TCPAddr).Port, bridges: map[*bridge]struct{}{}, done: make(chan struct{})}
+	g := &Gateway{opts: opts, port: ln.Addr().(*net.TCPAddr).Port, bridges: map[*bridge]struct{}{}, done: make(chan struct{}), addrs: lanAddresses, poll: lanPoll}
 	g.loopback = g.serve(ln)
 	if opts.RemoteAccess {
-		g.bindLAN()
+		g.SetRemoteAccess(true)
 	}
 	return g, nil
 }
@@ -178,11 +195,12 @@ func (g *Gateway) URL() string { return "http://" + net.JoinHostPort(loopback, s
 // Port is the port every listener uses.
 func (g *Gateway) Port() int { return g.port }
 
-// RemoteAccess reports that LAN listeners are up.
+// RemoteAccess reports that Remote Access is on: the Gateway listens on
+// the LAN addresses there are and runs the Relay's Agent.
 func (g *Gateway) RemoteAccess() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return len(g.lan) > 0
+	return g.remote
 }
 
 // LANAddresses are the LAN addresses listening, in the order they were
@@ -197,16 +215,39 @@ func (g *Gateway) LANAddresses() []string {
 	return out
 }
 
-// SetRemoteAccess binds or unbinds the LAN listeners. Turning it off
-// revokes every Pairing Token bridge at once; the loopback listener never
-// moves.
+// SetRemoteAccess binds or unbinds the LAN listeners and starts or stops
+// the Relay's Agent. Turning it off revokes every Pairing Token bridge at
+// once; the loopback listener never moves.
 func (g *Gateway) SetRemoteAccess(enabled bool) {
-	if enabled {
-		g.bindLAN()
+	g.mu.Lock()
+	if g.closed {
+		g.mu.Unlock()
 		return
 	}
-	g.Revoke(TokenPairing)
-	g.unbindLAN()
+	g.remote = enabled
+	if enabled && g.watchStop == nil {
+		g.watchStop = make(chan struct{})
+		go g.watchLAN(g.watchStop)
+	}
+	if !enabled && g.watchStop != nil {
+		close(g.watchStop)
+		g.watchStop = nil
+	}
+	g.mu.Unlock()
+	if enabled {
+		g.bindLAN()
+	} else {
+		g.Revoke(TokenPairing)
+		g.unbindLAN()
+	}
+	g.ReconcileRelay()
+	g.changed()
+}
+
+func (g *Gateway) changed() {
+	if g.opts.Changed != nil {
+		go g.opts.Changed()
+	}
 }
 
 // Revoke ends every bridge that authenticated with this kind of token, as
@@ -234,6 +275,11 @@ func (g *Gateway) Close() error {
 		return nil
 	}
 	g.closed = true
+	g.remote = false
+	if g.watchStop != nil {
+		close(g.watchStop)
+		g.watchStop = nil
+	}
 	close(g.done)
 	ending := g.bridges
 	g.bridges = map[*bridge]struct{}{}
@@ -241,6 +287,7 @@ func (g *Gateway) Close() error {
 	for b := range ending {
 		b.terminate()
 	}
+	g.stopRelay()
 	g.unbindLAN()
 	return shutdown(g.loopback)
 }
@@ -260,15 +307,19 @@ func shutdown(srv *http.Server) error {
 	return nil
 }
 
-func (g *Gateway) bindLAN() {
+// bindLAN listens on every LAN address not listened on yet and reports
+// whether it added any.
+func (g *Gateway) bindLAN() bool {
+	addrs := g.addrs()
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.closed {
-		return
+	if g.closed || !g.remote {
+		return false
 	}
 	port := strconv.Itoa(g.port)
+	added := false
 next:
-	for _, addr := range LANInterfaceAddresses() {
+	for _, addr := range addrs {
 		for _, l := range g.lan {
 			if l.addr == addr {
 				continue next
@@ -280,7 +331,78 @@ next:
 			continue
 		}
 		g.lan = append(g.lan, lanListener{addr: addr, srv: g.serve(ln)})
+		added = true
 	}
+	return added
+}
+
+// lanAddresses are the addresses bindLAN listens on; tests replace it.
+var lanAddresses = LANInterfaceAddresses
+
+// lanPoll is how often the Gateway checks the interfaces while Remote
+// Access is on.
+var lanPoll = 3 * time.Second
+
+// watchLAN follows the interfaces until stop closes: a computer that
+// moved to another network, or woke from sleep, listens on its new
+// address, lets go of the old one, and has the Relay's Agent check its
+// socket at once.
+func (g *Gateway) watchLAN(stop chan struct{}) {
+	t := time.NewTicker(g.poll)
+	defer t.Stop()
+	last := time.Now().Round(0)
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+		}
+		now := time.Now().Round(0)
+		woke := slept(last, now, g.poll)
+		last = now
+		changed := g.syncLAN()
+		if changed || woke {
+			g.kickRelay()
+		}
+		if changed {
+			g.changed()
+		}
+	}
+}
+
+// slept reports that the computer slept between two ticks poll apart, read
+// on the wall clock: the monotonic one stops while macOS sleeps, so the
+// ticker alone does not show it. The Relay's socket rarely survives a sleep.
+func slept(prev, now time.Time, poll time.Duration) bool {
+	return now.Sub(prev) > poll+15*time.Second
+}
+
+// syncLAN lets go of the LAN listeners whose address is gone and binds the
+// new ones; it reports whether anything changed.
+func (g *Gateway) syncLAN() bool {
+	present := map[string]bool{}
+	for _, a := range g.addrs() {
+		present[a] = true
+	}
+	g.mu.Lock()
+	if g.closed || !g.remote {
+		g.mu.Unlock()
+		return false
+	}
+	var keep, gone []lanListener
+	for _, l := range g.lan {
+		if present[l.addr] {
+			keep = append(keep, l)
+		} else {
+			gone = append(gone, l)
+		}
+	}
+	g.lan = keep
+	g.mu.Unlock()
+	for _, l := range gone {
+		go func() { _ = shutdown(l.srv) }()
+	}
+	return g.bindLAN() || len(gone) > 0
 }
 
 func (g *Gateway) unbindLAN() {
@@ -376,6 +498,7 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 			RemoteAccess: g.RemoteAccess(),
 			Name:         g.opts.ComputerName,
 			ComputerID:   g.opts.ComputerID,
+			Relay:        g.RelayAddress(),
 		})
 	default:
 		w.WriteHeader(http.StatusNotFound)

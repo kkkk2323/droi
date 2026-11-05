@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -13,33 +14,42 @@ import (
 // PairingInfo is what Settings → Remote Access shows.
 type PairingInfo struct {
 	// Link is what a phone opens, and the QR code's content:
-	// http://<pairing host or first LAN address>:<port>/#pair=<Pairing Token>.
-	// "" while the Gateway listens on no LAN address.
+	// http://<first LAN address>:<port>/#pair=<Pairing Token>,
+	// with &relay=<Relay address> when there is a Relay (ADR 0034), or the
+	// Relay address alone, <Relay address>/#pair=<Pairing Token>, when the
+	// Gateway listens on no LAN address. "" with neither.
 	Link string
 	// LANAddresses are where the Gateway listens; empty while Remote Access is off.
 	LANAddresses []string
 	Port         int
+	// Relay is where a phone reaches the Gateway through the Relay, "" without one.
+	Relay string
 }
 
-// Pairing builds the pairing link. pairingHost (the PairingHost setting, ""
-// for none) replaces the LAN address in the link, but still needs the
-// Gateway on a LAN address to answer it.
-func Pairing(lanAddresses []string, port int, pairingHost, token string) PairingInfo {
-	info := PairingInfo{LANAddresses: lanAddresses, Port: port}
+// Pairing builds the pairing link on the first LAN address. relay is the
+// Relay address, "" for none.
+func Pairing(lanAddresses []string, port int, token, relay string) PairingInfo {
+	info := PairingInfo{LANAddresses: lanAddresses, Port: port, Relay: relay}
 	if len(lanAddresses) == 0 {
+		if relay != "" {
+			info.Link = relay + "/#pair=" + token
+		}
 		return info
 	}
-	host := pairingHost
-	if host == "" {
-		host = lanAddresses[0]
+	info.Link = "http://" + lanAddresses[0] + ":" + strconv.Itoa(port) + "/#pair=" + token
+	if relay != "" {
+		info.Link += "&" + RelayFragment + "=" + url.QueryEscape(relay)
 	}
-	info.Link = "http://" + host + ":" + strconv.Itoa(port) + "/#pair=" + token
 	return info
 }
 
-// Pairing is the PairingInfo for this Gateway's listeners.
-func (g *Gateway) Pairing(pairingHost, token string) PairingInfo {
-	return Pairing(g.LANAddresses(), g.port, pairingHost, token)
+// RelayFragment is the pairing link's fragment parameter that carries the
+// Relay address.
+const RelayFragment = "relay"
+
+// Pairing is the PairingInfo for this Gateway's listeners and Relay.
+func (g *Gateway) Pairing(token string) PairingInfo {
+	return Pairing(g.LANAddresses(), g.port, token, g.RelayAddress())
 }
 
 // ComputerName is the name a phone shows for this computer: macOS's

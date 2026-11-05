@@ -18,6 +18,18 @@ describe('parsePairingInput', () => {
     expect(parsePairingInput('t0k_en')).toEqual({ token: 't0k_en', gateway: null })
   })
 
+  test('a Relay address comes along, and a link to the Relay alone keeps its path', () => {
+    const relay = 'https://relay.example.com/c/abcdefghijklmnop'
+    expect(
+      parsePairingInput(`http://192.168.5.123:41417/#pair=t&relay=${encodeURIComponent(relay)}`),
+    ).toEqual({ token: 't', gateway: 'http://192.168.5.123:41417', relay })
+    expect(parsePairingInput(`${relay}/#pair=t`)).toEqual({ token: 't', gateway: relay })
+    expect(parsePairingInput('http://a:1/#pair=t&relay=nonsense')).toEqual({
+      token: 't',
+      gateway: 'http://a:1',
+    })
+  })
+
   test('anything else is rejected', () => {
     expect(parsePairingInput('')).toBeNull()
     expect(parsePairingInput('http://a:1/#/settings')).toBeNull()

@@ -33,9 +33,8 @@ export function PairingScreen({ firstLaunch }: { firstLaunch: boolean }) {
       </Text>
       <PairingForm onPaired={() => backToMain(router)} />
       <Text tone="muted" size="sm">
-        To reach the computer away from home too, use a name that reaches it from anywhere, such as
-        a Tailscale or Surge Ponte name: set it as the pairing address in Droi before scanning, or
-        change the computer’s address here after pairing.
+        To reach the computer away from its network too, set up a relay in Droi → Settings → Remote
+        Access. A phone paired before picks the relay up the next time it connects to the computer.
       </Text>
       {firstLaunch ? (
         <View style={styles.footer}>

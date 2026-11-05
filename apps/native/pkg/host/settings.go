@@ -38,7 +38,6 @@ type Settings struct {
 	MagpieEnabled      bool    `json:"magpieEnabled"`
 	MagpieBaseURL      *string `json:"magpieBaseUrl"`
 	AppendSystemPrompt *string `json:"appendSystemPrompt"`
-	PairingHost        *string `json:"pairingHost"`
 	ScratchFolder      *string `json:"scratchFolder"`
 	MemoryEnabled      bool    `json:"memoryEnabled"`
 	// MemoryModel writes Session Summaries; MemorySummaryModel keeps the
@@ -47,8 +46,14 @@ type Settings struct {
 	MemorySummaryModel *string `json:"memorySummaryModel,omitempty"`
 	PairingToken       string  `json:"pairingToken"`
 	ComputerID         string  `json:"computerId"`
-	APIKey             *string `json:"apiKey"`
-	Login              *string `json:"login"`
+	// RelayURL is the Relay Remote Access also meets phones at (ADR 0034),
+	// RelayKey its registration key, and RelayID how phones address this
+	// computer there.
+	RelayURL *string `json:"relayUrl"`
+	RelayKey *string `json:"relayKey,omitempty"`
+	RelayID  string  `json:"relayId"`
+	APIKey   *string `json:"apiKey"`
+	Login    *string `json:"login"`
 	// Accounts are the ids of the Factory accounts added beside the droid
 	// CLI's own; ActiveAccount is the one the Daemon runs as, "" the CLI's.
 	Accounts      []string `json:"accounts,omitempty"`
@@ -83,6 +88,10 @@ func OpenSettings(file string, env func(string) string) *SettingsStore {
 	}
 	if s.cur.ComputerID == "" {
 		s.cur.ComputerID = randomUUID()
+		changed = true
+	}
+	if s.cur.RelayID == "" {
+		s.cur.RelayID = randomToken()
 		changed = true
 	}
 	if !loaded || changed {
@@ -171,22 +180,31 @@ func OptString(s string) *string {
 
 var hostName = regexp.MustCompile(`(?i)^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)$`)
 
-// PairingHostOf is the host name in what the user typed for the pairing
-// address: "laptop.myhome", "laptop.myhome:41417" or a full URL.
-func PairingHostOf(text string) *string {
+// RelayAddressOf reads a relay address as droi-relay prints it,
+// "https://relay.example.com/#key=<key>": the Relay's address, https unless
+// it says http, and its registration key, nil without one. "relay.example.com"
+// or one with a path is an address too. Both are nil for empty text and for
+// what is not a relay address.
+func RelayAddressOf(text string) (address, key *string) {
 	t := strings.TrimSpace(text)
 	if t == "" {
-		return nil
+		return nil, nil
 	}
 	if !regexp.MustCompile(`(?i)^[a-z][a-z0-9+.-]*://`).MatchString(t) {
-		t = "http://" + t
+		t = "https://" + t
 	}
 	u, err := url.Parse(t)
-	if err != nil || !hostName.MatchString(u.Hostname()) {
-		return nil
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !hostName.MatchString(u.Hostname()) || u.RawQuery != "" {
+		return nil, nil
 	}
-	h := u.Hostname()
-	return &h
+	if f := u.EscapedFragment(); f != "" {
+		v, err := url.ParseQuery(f)
+		if key = OptString(v.Get("key")); err != nil || key == nil {
+			return nil, nil
+		}
+	}
+	out := u.Scheme + "://" + u.Host + strings.TrimRight(u.EscapedPath(), "/")
+	return &out, key
 }
 
 // ScratchFolderOf is what the user typed for the Scratch folder as an

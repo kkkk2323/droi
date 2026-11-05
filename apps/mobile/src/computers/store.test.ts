@@ -1,6 +1,7 @@
 import { preferenceStorage } from '@droi/daemon-layer/local-preference'
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
+  followRelay,
   mergeComputer,
   pairedComputers,
   removeComputer,
@@ -51,6 +52,29 @@ describe('Paired Computer store', () => {
       { id: 'c-home', name: 'My desk', address: 'http://mac.tail1.ts.net:41417' },
     ])
     expect(keychain.secrets.get(tokenKey('c-home'))).toBe('new')
+  })
+
+  test('pairing again keeps the relay the new link names, and drops one it no longer names', () => {
+    const relay = 'https://relay.example.com/c/abcdefghijklmnop'
+    const withRelay = mergeComputer([home], { ...home, relay })
+    expect(withRelay).toEqual([{ ...home, relay }])
+    expect(mergeComputer(withRelay, home)).toEqual([home])
+  })
+
+  test('a computer follows the relay its /meta names', () => {
+    const relay = 'https://relay.example.com/c/abcdefghijklmnop'
+    pairedComputers.set([home])
+    followRelay('c-home', { computerId: 'c-home', relay })
+    expect(pairedComputers.get()).toEqual([{ ...home, relay }])
+    const moved = 'https://other.example.com/c/abcdefghijklmnop'
+    followRelay('c-home', { computerId: 'c-home', relay: moved })
+    expect(pairedComputers.get()).toEqual([{ ...home, relay: moved }])
+    // Another computer's /meta, or an older Droi's without the field, changes nothing.
+    followRelay('c-home', { computerId: 'c-other', relay: '' })
+    followRelay('c-home', { computerId: 'c-home' })
+    expect(pairedComputers.get()).toEqual([{ ...home, relay: moved }])
+    followRelay('c-home', { computerId: 'c-home', relay: '' })
+    expect(pairedComputers.get()).toEqual([home])
   })
 
   test('another id is another computer', () => {

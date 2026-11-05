@@ -183,7 +183,7 @@ func Run(o Options) {
 		}
 	}
 	sessionList := &app.SessionListShare{Prefs: userPrefs, Changed: func() { update(func() {}) }}
-	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList)
+	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList, func() { update(func() {}) })
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}
@@ -215,8 +215,9 @@ func Run(o Options) {
 	var shown *inside
 	var switchTo func(to *computer.Paired)
 	open := func(followed *computer.Paired) *inside {
+		via := newRoute(followed)
 		ctl := controller.New(controller.Config{
-			ResolveURL: windowURL(followed, gw, gwErr, localToken, h.WaitForDaemonURL),
+			ResolveURL: windowURL(via, gw, gwErr, localToken, h.WaitForDaemonURL),
 			Credential: gateway.PlaceholderCredential,
 			Caller:     "droi-native",
 			// The Daemon restarts on its own (the Host's Supervisor); keep trying.
@@ -234,7 +235,7 @@ func Run(o Options) {
 			OpenPath:     mygo.Shell.OpenPath,
 			ShowInFolder: mygo.Shell.ShowItemInFolder,
 			FileIcon:     mygo.Shell.FileIcon,
-			Gateway:      windowClient(followed, gw, localToken),
+			Gateway:      windowClient(via, gw, localToken),
 			Host:         h,
 			Version:      version,
 			Env:          os.Getenv,

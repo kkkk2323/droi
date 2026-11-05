@@ -54,7 +54,7 @@ func TestAGatewayThatCannotListenIsAnErrorNotADirectConnection(t *testing.T) {
 func TestAWindowFollowingAnotherComputerConnectsToItsGatewayWithoutWaitingForThisDaemon(t *testing.T) {
 	other := &computer.Paired{Gateway: "http://box:41417", Token: "box-token", Name: "Ubuntu box", ID: "box-1"}
 	waiting := errors.New("this computer's Daemon is not up")
-	got, err := windowURL(other, nil, errors.New("address in use"), "local-token", func(context.Context) (string, error) { return "", waiting })(context.Background())
+	got, err := windowURL(newRoute(other), nil, errors.New("address in use"), "local-token", func(context.Context) (string, error) { return "", waiting })(context.Background())
 	if err != nil || got != "ws://box:41417/daemon?token=box-token" {
 		t.Fatalf("%q, %v", got, err)
 	}
@@ -69,6 +69,22 @@ func TestAWindowFollowingNothingConnectsThroughItsOwnGateway(t *testing.T) {
 	got, err := windowURL(nil, gw, nil, "local-token", daemonUp)(context.Background())
 	if err != nil || got != gw.DaemonSocketURL("local-token") {
 		t.Fatalf("%q, %v", got, err)
+	}
+}
+
+func TestAWindowFollowingAComputerAwayFromItsNetworkGoesThroughItsRelay(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := "http://" + ln.Addr().String()
+	ln.Close()
+	relay := "https://relay.example.com/c/abcdefghijklmnopqrstuvwx"
+	via := newRoute(&computer.Paired{Gateway: gone, Relay: relay, Token: "box-token", Name: "Mac", ID: "mac-1"})
+	got, err := windowURL(via, nil, nil, "local-token", daemonUp)(context.Background())
+	want := "wss://relay.example.com/c/abcdefghijklmnopqrstuvwx/daemon?token=box-token"
+	if err != nil || got != want || via.socketURL() != want {
+		t.Fatalf("%q, %v; the client follows %q", got, err, via.socketURL())
 	}
 }
 
@@ -103,18 +119,18 @@ func TestThisComputersLoginIsNotLookedAtWhileFollowingAnother(t *testing.T) {
 
 func TestASavedAddressThatCannotBeUsedIsAnErrorTheWindowShowsAndLeavesNoGatewayClient(t *testing.T) {
 	bad := &computer.Paired{Gateway: "not an address", Token: "box-token", Name: "Ubuntu box", ID: "box-1"}
-	got, err := windowURL(bad, nil, nil, "local-token", daemonUp)(context.Background())
+	got, err := windowURL(newRoute(bad), nil, nil, "local-token", daemonUp)(context.Background())
 	if got != "" || err == nil || !strings.Contains(err.Error(), "Ubuntu box") {
 		t.Fatalf("%q, %v", got, err)
 	}
-	if c := windowClient(bad, nil, "local-token"); c != nil {
+	if c := windowClient(newRoute(bad), nil, "local-token"); c != nil {
 		t.Fatalf("a Gateway Client for an address that cannot be used: %+v", c)
 	}
 }
 
 func TestTheWindowsGatewayClientReachesTheFollowedComputerOrThisOne(t *testing.T) {
 	other := &computer.Paired{Gateway: "http://box:41417", Token: "box-token", Name: "Ubuntu box", ID: "box-1"}
-	if windowClient(other, nil, "local-token") == nil {
+	if windowClient(newRoute(other), nil, "local-token") == nil {
 		t.Fatal("no Gateway Client for the followed computer")
 	}
 	gw, err := gateway.Start(gateway.Options{})

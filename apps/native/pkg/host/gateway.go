@@ -40,5 +40,14 @@ func (h *Host) GatewayOptions(version string, moveToTrash func(string) error) ga
 			return FindSessionTranscript(filepath.Join(h.SharedFactoryHome(), "sessions"), id)
 		},
 		SessionTimes: h.Times,
+		Relay: func() gateway.RelayConfig {
+			s := h.Settings.Get()
+			// relayUrl may hold the whole relay address, key and all.
+			address, key := RelayAddressOf(deref(s.RelayURL))
+			if key == nil {
+				key = s.RelayKey
+			}
+			return gateway.RelayConfig{URL: deref(address), Key: deref(key), ID: s.RelayID}
+		},
 	}
 }

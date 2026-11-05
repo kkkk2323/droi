@@ -3,8 +3,13 @@ package computer
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
+	"github.com/kkkk2323/droi/apps/native/internal/relay"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
@@ -179,5 +184,47 @@ func TestVerifyRefusesALinkToThisComputersOwnGateway(t *testing.T) {
 	gw := startGateway(t)
 	if _, err := Verify(context.Background(), gw.URL()+"/#pair=pairing-token", "box-1"); !errors.Is(err, ErrThisComputer) {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestVerifyGoesThroughTheRelayWhenTheNetworkAddressDoesNotAnswer(t *testing.T) {
+	srv := httptest.NewServer(relay.NewServer(relay.ServerOptions{Logf: t.Logf}))
+	t.Cleanup(srv.Close)
+	const id = "abcdefghijklmnopqrstuvwx"
+	gw, err := gateway.Start(gateway.Options{
+		PairingToken: func() string { return "pairing-token" },
+		ComputerName: "Mac",
+		ComputerID:   "mac-1",
+		RemoteAccess: true,
+		Relay:        func() gateway.RelayConfig { return gateway.RelayConfig{URL: srv.URL, ID: id} },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { gw.Close() })
+	deadline := time.Now().Add(10 * time.Second)
+	for gw.RelayState().Status != gateway.RelayConnected {
+		if time.Now().After(deadline) {
+			t.Fatal("the Relay did not connect")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	gone := "http://" + ln.Addr().String()
+	ln.Close()
+	base := srv.URL + "/c/" + id
+	link := gone + "/#pair=pairing-token&relay=" + url.QueryEscape(base)
+	got, err := Verify(context.Background(), link, "this-computer")
+	if err != nil || got.ID != "mac-1" || got.Gateway != gone || got.Relay != base {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	if r := got.Route(context.Background()); r != base {
+		t.Fatalf("route %q", r)
+	}
+	// At home, the network address.
+	home := got
+	home.Gateway = gw.URL()
+	if r := home.Route(context.Background()); r != gw.URL() {
+		t.Fatalf("route at home %q", r)
 	}
 }

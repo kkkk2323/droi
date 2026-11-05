@@ -1,8 +1,8 @@
 // What a page of the connected computer shows when the connection is not simply up: the
 // computer is no longer paired, it cannot be reached, it is reconnecting, or
 // it runs another Droi version than the one this app was built from.
-import { useConnectionState } from '@droi/daemon-layer/connection-context'
-import { GATEWAY_META_PATH, type GatewayMeta } from '@droi/daemon-layer/gateway'
+import { useConnectionState, useDaemonConnection } from '@droi/daemon-layer/connection-context'
+import { GATEWAY_META_PATH, gatewayEndpoint, type GatewayMeta } from '@droi/daemon-layer/gateway'
 import { createStringPreference, usePreference } from '@droi/daemon-layer/local-preference'
 import { useQuery } from '@tanstack/react-query'
 import Constants from 'expo-constants'
@@ -11,7 +11,7 @@ import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { PulsingDot, Spinner } from '../ui/activity'
 import { PairingForm } from '../computers/pairing-form'
-import type { PairedComputer } from '../computers/store'
+import { followRelay, type PairedComputer } from '../computers/store'
 import { versionMismatch } from '../lib/version'
 import { Heading, IconButton, Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
@@ -83,11 +83,31 @@ function Unreachable({
       <Text mono size="sm" style={[styles.address, { backgroundColor: colors.muted }]}>
         {computer.address}
       </Text>
+      {computer.relay ? (
+        <>
+          <Text tone="muted">and through its relay</Text>
+          <Text mono size="sm" style={[styles.address, { backgroundColor: colors.muted }]}>
+            {computer.relay}
+          </Text>
+        </>
+      ) : null}
       <View role="list" aria-label="What to check" style={styles.checks}>
         <Check>Remote Access is turned on in Droi → Settings on the computer.</Check>
-        <Check>
-          The iPhone is on the same network as the computer, or Tailscale is on for both.
-        </Check>
+        {computer.relay ? (
+          <Check>
+            Droi → Settings → Remote Access on the computer shows the relay as connected.
+          </Check>
+        ) : (
+          <>
+            <Check>
+              The iPhone is on the same network as the computer, or Tailscale is on for both.
+            </Check>
+            <Check>
+              Away from the computer’s network? Set up a relay in Droi → Settings → Remote Access on
+              the computer, then connect once on its network or scan its new code.
+            </Check>
+          </>
+        )}
         <Check>The computer is awake and Droi is running.</Check>
       </View>
       <View style={styles.retrying}>
@@ -114,11 +134,15 @@ const dismissedVersionNotice = createStringPreference('droi.versionNoticeDismiss
 function Notices({ computer, reconnecting }: { computer: PairedComputer; reconnecting: boolean }) {
   const colors = useColors()
   const appVersion = Constants.expoConfig?.version ?? ''
+  const connection = useDaemonConnection()
+  const via = connection.gatewayUrl()
   const meta = useQuery({
-    queryKey: ['meta', computer.address],
+    queryKey: ['meta', via],
     queryFn: async (): Promise<GatewayMeta> => {
-      const response = await fetch(new URL(GATEWAY_META_PATH, computer.address).toString())
-      return (await response.json()) as GatewayMeta
+      const response = await fetch(gatewayEndpoint(via, GATEWAY_META_PATH).toString())
+      const answer = (await response.json()) as GatewayMeta
+      followRelay(computer.id, answer)
+      return answer
     },
     staleTime: Infinity,
   })

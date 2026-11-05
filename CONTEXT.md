@@ -79,12 +79,20 @@ The secret a Remote Client presents to the Gateway to prove it was authorised on
 _Avoid_: API key or login token (those are Factory credentials, which Clients never hold), device token
 
 **Paired Computer**:
-A Host a Client has been paired with and remembers: one Gateway address, the Pairing Token, and the computer's name and id as the Gateway reports them. Pairing the same computer again updates it rather than adding another. A Client is connected to one Paired Computer at a time. The Desktop Shell's own Host is the first Paired Computer of its Local Client and cannot be forgotten.
+A Host a Client has been paired with and remembers: one Gateway address, the Relay address when its pairing link names one, the Pairing Token, and the computer's name and id as the Gateway reports them. A Client reaches it at the Gateway address when that answers within a moment, and through the Relay otherwise. Pairing the same computer again updates it rather than adding another. A Client is connected to one Paired Computer at a time. The Desktop Shell's own Host is the first Paired Computer of its Local Client and cannot be forgotten.
 _Avoid_: host (that is the process; this is a Client's record of one), daemon profile, server, device
 
 **Remote Access**:
-The Host setting that decides whether the Gateway accepts Remote Clients at all. Off by default in a Desktop Shell; always on in a Host running on its own, which has no Local Client.
+The Host setting that decides whether the Gateway accepts Remote Clients at all, on the computer's network addresses and through the Relay. Off by default in a Desktop Shell; always on in a Host running on its own, which has no Local Client.
 _Avoid_: LAN mode, web mode, mobile mode, `DROID_WEB_ENABLED`
+
+**Relay**:
+A server both a Host and a Remote Client dial out to, so that a phone away from the computer's network reaches its Gateway (ADR 0034). The Host keeps one socket open to it while Remote Access is on and registers its Relay Id; a phone addresses the Host as `<Relay>/c/<Relay Id>`, and the Gateway still checks the Pairing Token. `droi-relay` runs one; it speaks alma-relay's protocol. Its **relay address**, `https://<Relay>/#key=<registration key>`, is what a Host is given; the key never reaches a phone.
+_Avoid_: tunnel, proxy, Ponte, droid's Remote Control (Factory's relay, which Droi does not use)
+
+**Relay Id**:
+The random id a Host is addressed by on a Relay, kept in its settings. Only its hash reaches the Relay's memory; it is not a secret that lets anyone in, which the Pairing Token is.
+_Avoid_: connect code, routing token
 
 **Runtime Overlay**:
 The settings the Host hands its Daemon at start, which apply to that Daemon alone and never reach the droid CLI's own files.

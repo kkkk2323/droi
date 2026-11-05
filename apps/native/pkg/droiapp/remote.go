@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync/atomic"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
@@ -14,28 +15,56 @@ import (
 // startGateway starts the Gateway that paired phones and this window connect
 // through. The window presents localToken, which a Pairing Token reset or
 // turning Remote Access off does not revoke.
-func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error, list gateway.SessionList) (*gateway.Gateway, error) {
+func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error, list gateway.SessionList, changed func()) (*gateway.Gateway, error) {
 	opts := h.GatewayOptions(version, moveToTrash)
 	opts.SessionList = list
+	opts.Changed = changed
 	opts.Port = brand.Current().Port
 	opts.RemoteAccess = h.Settings.Get().RemoteAccess
 	opts.LocalToken = func() string { return localToken }
 	return gateway.Start(opts)
 }
 
+// route is how the window reaches the computer it follows: its network
+// address, or its Relay when that does not answer (ADR 0034), chosen at
+// every connect. The Gateway client follows the choice.
+type route struct {
+	p   computer.Paired
+	cur atomic.Value // string: the Daemon socket URL last chosen
+}
+
+func newRoute(p *computer.Paired) *route {
+	if p == nil {
+		return nil
+	}
+	r := &route{p: *p}
+	r.cur.Store(p.SocketURL())
+	return r
+}
+
+func (r *route) resolve(ctx context.Context) (string, error) {
+	url, err := gateway.SocketURL(r.p.Route(ctx), r.p.Token)
+	if err != nil {
+		return "", err
+	}
+	r.cur.Store(url)
+	return url, nil
+}
+
+func (r *route) socketURL() string { return r.cur.Load().(string) }
+
 // windowURL is the controller's ResolveURL: the Gateway of the computer the
 // window follows, which needs nothing of this computer's Daemon, or this
 // computer's own.
-func windowURL(followed *computer.Paired, gw *gateway.Gateway, gwErr error, localToken string, daemonUp func(context.Context) (string, error)) func(context.Context) (string, error) {
+func windowURL(followed *route, gw *gateway.Gateway, gwErr error, localToken string, daemonUp func(context.Context) (string, error)) func(context.Context) (string, error) {
 	if followed != nil {
-		url := followed.SocketURL()
-		if url == "" {
+		if followed.socketURL() == "" {
 			// A saved address that cannot be used still shows the way back
 			// to this computer; the app must not stop at launch.
-			err := fmt.Errorf("the saved address of %s, %q, cannot be used", followed.Name, followed.Gateway)
+			err := fmt.Errorf("the saved address of %s, %q, cannot be used", followed.p.Name, followed.p.Gateway)
 			return func(context.Context) (string, error) { return "", err }
 		}
-		return func(context.Context) (string, error) { return url, nil }
+		return followed.resolve
 	}
 	return gatewayURL(gw, gwErr, localToken, daemonUp)
 }
@@ -58,11 +87,11 @@ func gatewayURL(gw *gateway.Gateway, gwErr error, localToken string, daemonUp fu
 // windowClient is the window's side of the Gateway's plain endpoints: the
 // followed computer's, or this computer's own. Nil when there is none to
 // reach, which the window answers as a computer without a Scratch folder.
-func windowClient(followed *computer.Paired, gw *gateway.Gateway, localToken string) *gateway.Client {
+func windowClient(followed *route, gw *gateway.Gateway, localToken string) *gateway.Client {
 	var socketURL string
 	switch {
 	case followed != nil:
-		socketURL = followed.SocketURL()
+		socketURL = followed.socketURL()
 	case gw != nil:
 		socketURL = gw.DaemonSocketURL(localToken)
 	default:
@@ -72,6 +101,9 @@ func windowClient(followed *computer.Paired, gw *gateway.Gateway, localToken str
 	if err != nil {
 		log.Println("droi: gateway client:", err)
 		return nil
+	}
+	if followed != nil {
+		return gateway.NewClientFunc(followed.socketURL)
 	}
 	return c
 }

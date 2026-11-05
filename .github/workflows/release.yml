@@ -91,6 +91,8 @@ jobs:
           On Windows the installer is not code-signed either: if SmartScreen stops it, choose **More info → Run anyway**.
 
           On Linux only `droi host` is supported: extract `droi-<version>-linux-<amd64|arm64>.tar.gz` and run `droi host` (see apps/native/README.md).
+
+          To install a Relay on a Linux server with systemd, follow Droi → Settings → Remote Access → Set up relay, or run `curl -fsSL https://github.com/kkkk2323/droi/releases/latest/download/install-relay.sh | sudo sh -s -- --domain relay.example.com`.
           EOF
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
@@ -210,8 +212,34 @@ jobs:
           fi
           go tool mygo build -platform linux/amd64,linux/arm64 -upload
 
+  # Droi Relay (ADR 0034), a program of its own for a server, and the script that installs it.
+  # The asset names carry no version, so releases/latest/download/ always has the newest.
+  build-relay:
+    needs: draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
+
+      - name: Build and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=$VERSION" -o droi-relay ./apps/native/cmd/droi-relay
+            gzip -9c droi-relay > droi-relay-linux-$arch.gz
+          done
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
+            droi-relay-linux-amd64.gz droi-relay-linux-arm64.gz scripts/install-relay.sh
+
   publish:
-    needs: [validate, validate-native, build-native, build-native-windows, build-native-linux]
+    needs: [validate, validate-native, build-native, build-native-windows, build-native-linux, build-relay]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the release
