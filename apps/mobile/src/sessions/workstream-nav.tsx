@@ -29,7 +29,7 @@ export function AgentsButton({ agents }: { agents: readonly SessionSummary[] }) 
   const [open, setOpen] = useState(false)
   const groups = groupAgents(agents, activity)
   const waiting = groups.waiting.length
-  const label = `Agents: ${agentCount(agents.length)}${waiting > 0 ? `, ${waiting} waiting on you` : ''}`
+  const label = `${agentCount(agents.length)}${waiting > 0 ? `, ${waiting} waiting on you` : ''}`
   return (
     <>
       <Pressable

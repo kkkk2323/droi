@@ -76,13 +76,7 @@ export function OpenSessionScreen({ sessionId }: { sessionId: string }) {
           siblings={subagentSiblings(all, session)}
           subagents={subagentsOf(all, [session.sessionId, ...chain.map((s) => s.sessionId)])}
           agents={workstream?.role === 'orchestrator' ? agentsOf(all, session) : null}
-          orchestrator={
-            lead
-              ? { sessionId: lead.sessionId, title: lead.title }
-              : workstream?.orchestratorId
-                ? { sessionId: workstream.orchestratorId, title: 'Orchestrator' }
-                : null
-          }
+          orchestrator={lead ? { sessionId: lead.sessionId, title: lead.title } : null}
           onContinued={(next) => router.replace(sessionPath(next))}
         />
       ) : !connected.sessions.live ? (
@@ -124,7 +118,7 @@ export function SessionScreen({
   subagents: readonly SessionSummary[]
   /** For a Workstream's orchestrator: its agents; null for any other Session. */
   agents: readonly SessionSummary[] | null
-  /** For a Workstream agent: the orchestrator it reports to. */
+  /** For a Workstream agent: the orchestrator it reports to, when the list has it. */
   orchestrator: SessionRef | null
 }) {
   const colors = useColors()

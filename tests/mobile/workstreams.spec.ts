@@ -10,7 +10,15 @@ import {
   type SessionFixture,
 } from '@droi/fake-daemon/scenario'
 import { permissionTurn } from '@droi/fake-daemon/turns'
-import { expect, openSessionList, pairPhone, pickSession, sheetsClosed, test } from './fixtures'
+import {
+  expect,
+  inReadingOrder,
+  openSessionList,
+  pairPhone,
+  pickSession,
+  sheetsClosed,
+  test,
+} from './fixtures'
 
 const repo = '/Users/dev/acme-pay'
 const workstreamId = 'ws-payments'
@@ -74,9 +82,8 @@ test.use({
 
 /**
  * The Host sends the agent a message and its turn stops on a permission
- * request. A Client that loads the agent later gets the request with it, as
- * the real Daemon gives it (`pendingPermissions`); the Fake Daemon's load
- * does not keep it, so the test adds it.
+ * request, which a Client that loads the agent later gets with the load.
+ * The real Daemon sends it as `pendingPermissions`; the pinned Fake Daemon omits it, so this adds it.
  */
 function askPermission(daemon: FakeDaemon) {
   const pending = new Map<string, Record<string, unknown>>()
@@ -111,7 +118,8 @@ test('the list shows the orchestrator with its counts, and not its agents', asyn
   askPermission(fakeDaemon)
   const list = await openSessionList(page)
   const row = list.getByRole('button', { name: /Payments migration/ })
-  await expect(row.getByRole('img', { name: 'Workstream · 3 agents · 1 waiting' })).toBeVisible()
+  await expect(row.getByRole('img', { name: 'Workstream · 3 agents' })).toBeVisible()
+  await expect(row.getByRole('status', { name: '1 waiting' })).toBeVisible()
   await expect(list.getByRole('button', { name: /Fix the login bug/ })).toBeVisible()
   for (const hidden of [api, clients, docs, retired, run]) {
     await expect(list.getByRole('button', { name: new RegExp(hidden.title) })).toHaveCount(0)
@@ -125,7 +133,7 @@ test('the orchestrator lists its agents; one waiting is answered in its own Sess
   await pairPhone(page, fakeDaemon)
   askPermission(fakeDaemon)
   await pickSession(page, /Payments migration/)
-  await page.getByRole('button', { name: 'Agents: 3 agents, 1 waiting on you' }).click()
+  await page.getByRole('button', { name: '3 agents, 1 waiting on you' }).click()
   const sheet = page.getByRole('dialog', { name: 'Agents' })
   const group = (name: string) => sheet.getByRole('group', { name })
   await expect(group('Waiting on you').getByRole('button')).toHaveText([/Port the charge endpoint/])
@@ -149,7 +157,7 @@ test('the orchestrator lists its agents; one waiting is answered in its own Sess
   await workstream.getByRole('button', { name: 'Workstream: Payments migration' }).click()
   await expect(page.getByRole('navigation', { name: 'Workstream' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: orchestrator.title })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Agents: 3 agents' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '3 agents', exact: true })).toBeVisible()
 })
 
 test.describe('before the orchestrator starts any agent', () => {
@@ -164,9 +172,69 @@ test.describe('before the orchestrator starts any agent', () => {
         .getByRole('img', { name: 'Workstream · 0 agents' }),
     ).toBeVisible()
     await pickSession(page, /Payments migration/)
-    await page.getByRole('button', { name: 'Agents: 0 agents' }).click()
+    await page.getByRole('button', { name: '0 agents' }).click()
     await expect(page.getByRole('dialog', { name: 'Agents' })).toContainText(
       'No agents yet. The orchestrator starts them as it splits the work.',
     )
+  })
+})
+
+test.describe('an orchestrator last used long ago', () => {
+  const tenDaysAgo = Math.floor(Date.now() / 1000) - 10 * 24 * 60 * 60
+  const quiet = { ...orchestrator, updatedAt: tenDaysAgo }
+  const review = session('Review the release notes', repo, [userMessage('Read them.')])
+  test.use({
+    scenario: {
+      sessions: [quiet, api, docs, other, review],
+      opened: [{ sessionId: api.sessionId, workingState: 'waiting_for_tool_confirmation' }],
+    },
+  })
+
+  test('comes first and stays in sight while an agent waits on you', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    await pairPhone(page, fakeDaemon)
+    const list = await openSessionList(page)
+    const row = list.getByRole('button', { name: /Payments migration/ })
+    await expect(row).toBeVisible()
+    await expect(row.getByRole('status', { name: '1 waiting' })).toBeVisible()
+    const rows = list.getByRole('group', { name: 'acme-pay' }).getByRole('button', {
+      name: /Payments migration|Fix the login bug|Review the release notes/,
+    })
+    expect(await inReadingOrder(rows)).toEqual([
+      expect.stringContaining('Payments migration'),
+      expect.stringContaining('Review the release notes'),
+      expect.stringContaining('Fix the login bug'),
+    ])
+  })
+
+  test('in the time view it is in Right now, with its Workspace and its agents', async ({
+    page,
+    fakeDaemon,
+  }) => {
+    // The computer's list order, which the Fake Daemon's Gateway does not serve: by time.
+    await page.route(
+      (url) => url.pathname === '/session-list',
+      (route) =>
+        route.fulfill({
+          headers: { 'access-control-allow-origin': '*' },
+          json: {
+            pinnedSessions: [],
+            pinnedWorkspaces: [],
+            workspaceOrder: [],
+            sessionSort: '',
+            sessionView: 'time',
+          },
+        }),
+    )
+    await pairPhone(page, fakeDaemon)
+    const list = await openSessionList(page)
+    const row = list
+      .getByRole('group', { name: 'Right now' })
+      .getByRole('button', { name: /Payments migration/ })
+    await expect(row.getByRole('img', { name: 'In acme-pay' })).toBeVisible()
+    await expect(row.getByRole('img', { name: 'Workstream · 2 agents' })).toBeVisible()
+    await expect(row.getByRole('status', { name: '1 waiting' })).toBeVisible()
   })
 })
