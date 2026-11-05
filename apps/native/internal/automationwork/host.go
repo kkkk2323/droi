@@ -224,6 +224,8 @@ func (h *GatewayHost) Factory(ctx context.Context) ([]gateway.FactoryAutomation,
 		// schedule at its own offset.
 		if schedule, zone, err := automations.FactorySchedule(f.Schedule, offset); err == nil {
 			f.LocalSchedule, f.LocalTimezone = schedule, zone
+		} else {
+			f.NotMovable = err.Error()
 		}
 		out = append(out, f)
 	}

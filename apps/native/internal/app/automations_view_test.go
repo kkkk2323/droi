@@ -41,6 +41,25 @@ type fakeAutomations struct {
 	runErr      error
 	moveErr     error
 	deleteError string
+	// block, when set, holds each Run and MoveFactory until it is sent to.
+	block chan struct{}
+	// reads counts the reads of runs.
+	reads int
+}
+
+func (f *fakeAutomations) wait() {
+	f.mu.Lock()
+	block := f.block
+	f.mu.Unlock()
+	if block != nil {
+		<-block
+	}
+}
+
+func (f *fakeAutomations) runsRead() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.reads
 }
 
 var _ gateway.Automations = (*fakeAutomations)(nil)
@@ -74,6 +93,7 @@ func (f *fakeAutomations) List(context.Context) ([]gateway.Automation, error) {
 func (f *fakeAutomations) Runs(_ context.Context, id string, _ int) ([]gateway.AutomationRun, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.reads++
 	if f.find(id) < 0 {
 		return nil, gateway.ErrAutomationNotFound
 	}
@@ -120,6 +140,7 @@ func (f *fakeAutomations) SetPaused(_ context.Context, id string, paused bool) e
 }
 
 func (f *fakeAutomations) Run(_ context.Context, id string) (gateway.AutomationRun, error) {
+	f.wait()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ran = append(f.ran, id)
@@ -153,6 +174,7 @@ func (f *fakeAutomations) Factory(context.Context) ([]gateway.FactoryAutomation,
 }
 
 func (f *fakeAutomations) MoveFactory(_ context.Context, id string) (gateway.AutomationMoved, error) {
+	f.wait()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.moved = append(f.moved, id)
@@ -904,5 +926,173 @@ func TestALongPromptFoldsUntilOpened(t *testing.T) {
 	h.settle()
 	if again, _ := h.tt.Find(prompt); again.H != folded.H {
 		t.Fatalf("the prompt is %v high folded again, %v at first", again.H, folded.H)
+	}
+}
+
+// A Factory automation whose schedule never ran in Factory says why on its
+// row and its page, which offer no move.
+func TestAFactoryAutomationThatCannotMoveForItsScheduleSaysWhy(t *testing.T) {
+	fake := factoryFake(t)
+	fake.factory = append(fake.factory, gateway.FactoryAutomation{ID: "odd", Name: "Odd hours", Schedule: "0 9 L * *",
+		NotMovable: `the schedule "0 9 L * *" never ran in Factory: L is not a number`})
+	h := automationsHarness(t, fake, nil)
+	h.openAutomations()
+	h.until("the Factory section", func() bool { return h.hasText("Odd hours") })
+	if !h.hasText("Its schedule never ran in Factory, so it can’t move to Droi") || h.hasButton("Move Odd hours to Droi") {
+		t.Fatalf("the row offers a move: %q", h.tt.Texts())
+	}
+	h.click("Odd hours")
+	h.until("its page", func() bool {
+		return h.hasText(`Can’t move to Droi: the schedule "0 9 L * *" never ran in Factory: L is not a number`)
+	})
+	if h.hasButton("Move Odd hours to Droi") {
+		t.Fatal("the page offers a move")
+	}
+}
+
+// A Factory page reached while the Factory automations did not load says
+// so, not that the automation is gone.
+func TestAFactoryPageWhoseListDidNotLoadSaysSo(t *testing.T) {
+	fake := factoryFake(t)
+	fake.factoryErr = errors.New("the Daemon is not running")
+	h := automationsHarness(t, fake, nil)
+	h.click("Automations")
+	h.a.Go(Route{Name: "automations", Factory: "nightly-lint"})
+	h.until("the failure", func() bool { return h.hasText("Automations did not load: the Daemon is not running") })
+	if h.hasText("It may have been deleted.") {
+		t.Fatalf("says it is gone: %q", h.tt.Texts())
+	}
+}
+
+// A failure after another Droi ran the Automations says the failure.
+func TestAFailureAfterElsewhereSaysTheFailure(t *testing.T) {
+	fake := newFakeAutomations(t)
+	fake.listErr = gateway.ErrAutomationsElsewhere
+	var changed func()
+	h := automationsHarness(t, fake, func(cfg *Config) {
+		cfg.AutomationsChanged = func(fn func()) func() { changed = fn; return func() {} }
+	})
+	h.click("Automations")
+	h.until("the elsewhere text", func() bool { return h.hasText("Another Droi on this computer runs these automations.") })
+	fake.mu.Lock()
+	fake.listErr = errors.New("disk on fire")
+	fake.mu.Unlock()
+	changed()
+	h.until("the failure", func() bool {
+		return h.hasText("Automations did not load: disk on fire") && !h.hasText("Another Droi on this computer")
+	})
+}
+
+// A Factory automation without runs says so on its page.
+func TestAFactoryPageWithoutRunsSaysSo(t *testing.T) {
+	h := automationsHarness(t, factoryFake(t), nil)
+	h.openAutomations()
+	h.until("the Factory section", func() bool { return h.hasText("Standup notes") })
+	h.click("Standup notes")
+	h.until("its page", func() bool { return h.a.Route().Factory == "standup" && h.hasText("No runs yet.") })
+}
+
+// Moving a Factory automation from its page opens the copy's page.
+func TestMovingFromTheFactoryPageOpensTheCopy(t *testing.T) {
+	fake := factoryFake(t)
+	h := automationsHarness(t, fake, nil)
+	h.openAutomations()
+	h.until("the Factory section", func() bool { return h.hasText("Nightly lint") })
+	h.click("Nightly lint")
+	h.until("its page", func() bool { return h.a.Route().Factory == "nightly-lint" })
+	h.click("Move Nightly lint to Droi")
+	h.until("the dialog", func() bool { return h.hasText("Move “Nightly lint” to Droi?") })
+	h.clickConfirm()
+	h.until("the copy's page", func() bool {
+		r := h.a.Route()
+		return r.Factory == "" && r.Automation == "nightly-lint" && h.hasText("Moved “Nightly lint” to Droi.")
+	})
+}
+
+// A run and a move under way have named spinners.
+func TestTheSpinnersOfARunAndAMoveAreNamed(t *testing.T) {
+	fake := factoryFake(t)
+	fake.block = make(chan struct{})
+	h := automationsHarness(t, fake, nil)
+	h.openAutomations()
+	r, _ := h.tt.Find("Daily review")
+	h.tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	h.frame()
+	h.click("Run Daily review now")
+	h.until("the run's spinner", func() bool { _, ok := h.tt.Find("Starting…"); return ok })
+	fake.block <- struct{}{}
+	h.until("the run's notice", func() bool { return h.hasText("Started a run.") })
+
+	h.click("Move Nightly lint to Droi")
+	h.until("the dialog", func() bool { return h.hasText("Move “Nightly lint” to Droi?") })
+	h.clickConfirm()
+	h.until("the move's spinner", func() bool { _, ok := h.tt.Find("Moving…"); return ok })
+	fake.block <- struct{}{}
+	h.until("the move's notice", func() bool { return h.hasText("Moved “Nightly lint” to Droi.") })
+}
+
+// On a followed computer, an Automation in a zone of its own can be put in
+// that computer's time.
+func TestAFollowedComputersZoneActionNamesIt(t *testing.T) {
+	fake := newFakeAutomations(t)
+	fake.list = append(fake.list, gateway.Automation{ID: "paris-standup", Name: "Paris standup", Prompt: "Stand up.", Schedule: "30 8 * * 1-5", Timezone: "Europe/Paris"})
+	h := followedAutomations(t, fake)
+	h.openAutomations()
+	h.a.Go(Route{Name: "automations", Automation: "paris-standup", Tab: editAutomationTab})
+	h.until("the action", func() bool { return h.hasText("Use Ubuntu box’s time") })
+	h.click("Use Ubuntu box’s time")
+	h.until("the preview", func() bool { return h.hasText("Weekdays at 08:30, in Ubuntu box’s time (Asia/Shanghai).") })
+}
+
+// A followed computer tells of no change: while a run runs, its runs are
+// read again every 3 seconds of the window's clock.
+func TestAFollowedComputersRunningRunsAreReadAgain(t *testing.T) {
+	fake := newFakeAutomations(t)
+	fake.runs["daily-review"][0].Status = "running"
+	var mu sync.Mutex
+	now := time.Now()
+	clock := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	o := startOtherComputerWith(t, automationsScenario(), "", func(opts *gateway.Options) { opts.Automations = fake })
+	h := followHarness(t, localSessions(), o.paired(), nil, func(cfg *Config) { cfg.Now = clock })
+	h.until("the other computer's Session", func() bool { return h.hasText("Fix the login race") })
+	h.openDailyReview()
+	h.settle()
+	read := fake.runsRead()
+	for range 20 {
+		h.frame()
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := fake.runsRead(); got != read {
+		t.Fatalf("read again before 3 s: %d, then %d", read, got)
+	}
+	mu.Lock()
+	now = now.Add(3 * time.Second)
+	mu.Unlock()
+	h.until("the runs read again", func() bool { return fake.runsRead() > read })
+}
+
+// The Daemon's runs are indexed once per list, not per frame.
+func TestTheDaemonRunsAreIndexedOncePerList(t *testing.T) {
+	a := New(Config{})
+	run := func(id, automation string) sessions.Summary {
+		return sessions.Summary{SessionID: id, Tags: []sessions.Tag{{Name: sessions.AutomationTag, Metadata: map[string]string{"automationId": automation, "type": "run"}}}}
+	}
+	a.shownRev = 1
+	a.noteLiveRuns([]sessions.Summary{run("s1", "nightly-lint")}, nil)
+	a.noteLiveRuns([]sessions.Summary{run("s1", "nightly-lint"), run("s2", "nightly-lint")}, nil)
+	if got := a.daemonRunsOf("nightly-lint"); len(got) != 1 {
+		t.Fatalf("indexed again for the same list: %v", got)
+	}
+	a.shownRev = 2
+	a.noteLiveRuns([]sessions.Summary{run("s1", "nightly-lint"), run("s2", "nightly-lint")}, nil)
+	if got := a.daemonRunsOf("nightly-lint"); len(got) != 2 {
+		t.Fatalf("not indexed for a new list: %v", got)
+	}
+	if n := testing.AllocsPerRun(100, func() { a.daemonRunsOf("nightly-lint") }); n != 0 {
+		t.Fatalf("%v allocations a call", n)
 	}
 }

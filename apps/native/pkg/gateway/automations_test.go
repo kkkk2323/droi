@@ -92,6 +92,7 @@ func (f *fakeAutomations) Factory(context.Context) ([]FactoryAutomation, error) 
 	return []FactoryAutomation{
 		{ID: "droid", Name: "Droid二进制逆向", Schedule: "0 1 * * *", Path: "/Users/dev/.factory/automations/droid", LocalSchedule: "0 9 * * *"},
 		{ID: "digest", Name: "Digest", Schedule: "daily", TargetsSession: true, LocalSchedule: "0 9 * * *", LocalTimezone: "UTC"},
+		{ID: "odd", Name: "Odd", Schedule: "0 9 L * *", NotMovable: "the schedule never ran in Factory"},
 	}, nil
 }
 
@@ -168,7 +169,7 @@ func TestTheAutomationEndpointsReachTheHost(t *testing.T) {
 	}
 
 	factory, err := c.FactoryAutomations(ctx)
-	if err != nil || len(factory) != 2 || factory[0].ID != "droid" || factory[0].Path == "" || factory[0].TargetsSession || !factory[1].TargetsSession {
+	if err != nil || len(factory) != 3 || factory[0].ID != "droid" || factory[0].Path == "" || factory[0].TargetsSession || !factory[1].TargetsSession {
 		t.Fatalf("factory %+v %v", factory, err)
 	}
 	moved, err := c.MoveFactoryAutomation(ctx, "droid")
@@ -274,7 +275,8 @@ func TestTheHostsZoneAndTheZonesOfItsSchedulesReachTheClient(t *testing.T) {
 		t.Fatalf("list %+v %v", list, err)
 	}
 	factory, err := c.FactoryAutomations(ctx)
-	if err != nil || factory[0].LocalSchedule != "0 9 * * *" || factory[0].LocalTimezone != "" || factory[1].LocalSchedule != "0 9 * * *" || factory[1].LocalTimezone != "UTC" {
+	if err != nil || factory[0].LocalSchedule != "0 9 * * *" || factory[0].LocalTimezone != "" || factory[1].LocalSchedule != "0 9 * * *" || factory[1].LocalTimezone != "UTC" ||
+		factory[2].NotMovable != "the schedule never ran in Factory" || factory[0].NotMovable != "" {
 		t.Fatalf("factory %+v %v", factory, err)
 	}
 	if _, err := automationsClient(t, nil).AutomationZone(ctx); !errors.Is(err, ErrNotFound) {

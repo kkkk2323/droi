@@ -31,6 +31,10 @@ type Services struct {
 	// held answers the Gateway's Automation endpoints.
 	held *heldAutomations
 
+	// lockTried is whether takeAutomations ran before; it runs first at
+	// start, then on the one goroutine that retries.
+	lockTried bool
+
 	mu        sync.Mutex
 	sched     *automationwork.Scheduler
 	hidden    []string
@@ -127,9 +131,16 @@ func (s *Services) takeAutomations(ctx context.Context, h *host.Host, dir string
 		if !errors.Is(err, automationwork.ErrLocked) {
 			why = fmt.Errorf("Droi could not open its automations: %w", err)
 		}
-		if s.held.set(nil, why) {
-			log.Println("droi: automations:", err)
+		// held starts as ErrAutomationsElsewhere: the first result is
+		// logged whatever it is.
+		if s.held.set(nil, why) || !s.lockTried {
+			if errors.Is(err, automationwork.ErrLocked) {
+				log.Println("droi: automations: another Droi holds the Automations folder", dir)
+			} else {
+				log.Println("droi: automations:", err)
+			}
 		}
+		s.lockTried = true
 		return false
 	}
 	logf := func(m string) { log.Println("[automations]", m) }

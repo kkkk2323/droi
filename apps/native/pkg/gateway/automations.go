@@ -132,6 +132,9 @@ type FactoryAutomation struct {
 	// "" for one that cannot move for its schedule.
 	LocalSchedule string `json:"localSchedule,omitempty"`
 	LocalTimezone string `json:"localTimezone,omitempty"`
+	// NotMovable is why it cannot move for its schedule, in English, as a
+	// move would refuse it; "" for one that can.
+	NotMovable string `json:"notMovable,omitempty"`
 }
 
 // AutomationZone is AutomationZonePath's answer.

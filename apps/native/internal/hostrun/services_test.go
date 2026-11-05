@@ -3,9 +3,12 @@ package hostrun
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -172,4 +175,37 @@ func TestALockThatFailsOtherwiseSaysWhy(t *testing.T) {
 	if err == nil || errors.Is(err, gateway.ErrAutomationsElsewhere) {
 		t.Fatalf("list: %v", err)
 	}
+}
+
+// The first time another Droi holds the Automations folder is logged.
+func TestTheFirstLockedResultIsLogged(t *testing.T) {
+	var buf safeBuffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})
+	first := StartServices(h)
+	defer first.Stop()
+	second := StartServices(h)
+	defer second.Stop()
+	if !strings.Contains(buf.String(), "droi: automations: another Droi holds the Automations folder "+filepath.Join(dir, "automations")) {
+		t.Fatalf("logged %q", buf.String())
+	}
+}
+
+type safeBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *safeBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

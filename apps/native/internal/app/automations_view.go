@@ -63,6 +63,9 @@ type automationsState struct {
 	// factory are the Factory automations on the Host's computer, read
 	// with the list; nil when the Host could not list them.
 	factory []gateway.FactoryAutomation
+	// factoryErr is why the Factory automations did not load, "" when they
+	// did.
+	factoryErr string
 	// zone is the time zone of the Host's computer, "" until read.
 	zone string
 
@@ -96,11 +99,14 @@ type automationsState struct {
 	liveKey string
 	// waiting are the runs, by Session, that wait for the user's approval.
 	waiting map[string]bool
-	// daemonRuns are the Sessions the Daemon started as runs of Factory
-	// automations, newest first; busy is every Session's activity, this
-	// frame.
-	daemonRuns []sessions.Summary
-	busy       map[string]activity.Activity
+	// busy is every Session's activity, this frame.
+	busy map[string]activity.Activity
+	// daemonByID and daemonByUUID are the Sessions the Daemon started as
+	// runs of Factory automations, newest first, by the automation's folder
+	// name and uuid; built from the Session list of revision daemonRev.
+	daemonByID, daemonByUUID map[string][]sessions.Summary
+	daemonRev                uint64
+	daemonIndexed            bool
 }
 
 // noteLiveRuns finds the Automations' runs at work among the listed
@@ -108,14 +114,11 @@ type automationsState struct {
 func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.Activity) {
 	s := &a.automations
 	s.live = s.live[:0]
-	s.daemonRuns = s.daemonRuns[:0]
 	s.busy = busy
 	clear(s.waiting)
+	a.indexDaemonRuns(listed)
 	var ids []string
 	for _, x := range listed {
-		if id, _ := daemonRun(x.Tags); x.CallingSessionID == "" && id != "" {
-			s.daemonRuns = append(s.daemonRuns, x)
-		}
 		if x.CallingSessionID != "" || busy[x.SessionID] == "" {
 			continue
 		}
@@ -130,9 +133,7 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 			}
 		}
 	}
-	newestFirst := func(p, q sessions.Summary) int { return int(q.UpdatedAt - p.UpdatedAt) }
 	slices.SortStableFunc(s.live, newestFirst)
-	slices.SortStableFunc(s.daemonRuns, newestFirst)
 	key := strings.Join(ids, ",")
 	if key == s.liveKey {
 		return
@@ -140,6 +141,35 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 	s.liveKey = key
 	if a.route.Name == "automations" {
 		a.automationsChanged()
+	}
+}
+
+func newestFirst(p, q sessions.Summary) int { return int(q.UpdatedAt - p.UpdatedAt) }
+
+// indexDaemonRuns indexes the Daemon's runs among the listed Sessions, once
+// per revision of the list (App.shownRev): the frames between read it.
+func (a *App) indexDaemonRuns(listed []sessions.Summary) {
+	s := &a.automations
+	if s.daemonIndexed && s.daemonRev == a.shownRev {
+		return
+	}
+	s.daemonIndexed, s.daemonRev = true, a.shownRev
+	s.daemonByID, s.daemonByUUID = map[string][]sessions.Summary{}, map[string][]sessions.Summary{}
+	for _, x := range listed {
+		id, uuid := daemonRun(x.Tags)
+		if x.CallingSessionID != "" || id == "" {
+			continue
+		}
+		s.daemonByID[id] = append(s.daemonByID[id], x)
+		if uuid != "" {
+			s.daemonByUUID[uuid] = append(s.daemonByUUID[uuid], x)
+		}
+	}
+	for _, runs := range s.daemonByID {
+		slices.SortStableFunc(runs, newestFirst)
+	}
+	for _, runs := range s.daemonByUUID {
+		slices.SortStableFunc(runs, newestFirst)
 	}
 }
 
@@ -163,25 +193,13 @@ func (a *App) daemonRunsOfMoved(e gateway.Automation) []sessions.Summary {
 	if e.ForkedFrom == name {
 		return a.daemonRunsOf(name)
 	}
-	var out []sessions.Summary
-	for _, x := range a.automations.daemonRuns {
-		if _, uuid := daemonRun(x.Tags); uuid == e.ForkedFrom {
-			out = append(out, x)
-		}
-	}
-	return out
+	return a.automations.daemonByUUID[e.ForkedFrom]
 }
 
 // daemonRunsOf are the Daemon's runs of the Factory automation id, newest
 // first.
 func (a *App) daemonRunsOf(id string) []sessions.Summary {
-	var out []sessions.Summary
-	for _, x := range a.automations.daemonRuns {
-		if runOf, _ := daemonRun(x.Tags); runOf == id {
-			out = append(out, x)
-		}
-	}
-	return out
+	return a.automations.daemonByID[id]
 }
 
 // automationsChanged reads the list, and the runs of the Automation shown,
@@ -258,10 +276,11 @@ func (a *App) loadAutomations(force bool) {
 	go func() {
 		list, err := gw.Automations(a.ctx)
 		var factory []gateway.FactoryAutomation
+		var factoryErr error
 		zone := ""
 		if err == nil {
 			// Without them (the Daemon not up yet) the section stays out.
-			factory, _ = gw.FactoryAutomations(a.ctx)
+			factory, factoryErr = gw.FactoryAutomations(a.ctx)
 			if needZone {
 				zone, _ = gw.AutomationZone(a.ctx)
 			}
@@ -281,14 +300,17 @@ func (a *App) loadAutomations(force bool) {
 			case trouble == troubleOlderHost || trouble == troubleElsewhere:
 				s.unavailable, s.listErr = trouble, ""
 			case err != nil:
-				s.listErr = L("Automations did not load: %s", err)
+				s.unavailable, s.listErr = troubleNone, L("Automations did not load: %s", err)
 				// Soon again: the Host may only be starting.
 				s.listAt = s.listAt.Add(5*time.Second - automationsRefresh)
 			default:
 				if list == nil {
 					list = []gateway.Automation{}
 				}
-				s.unavailable, s.listErr, s.list, s.factory = troubleNone, "", list, factory
+				s.unavailable, s.listErr, s.list, s.factory, s.factoryErr = troubleNone, "", list, factory, ""
+				if factoryErr != nil {
+					s.factoryErr = L("Automations did not load: %s", factoryErr)
+				}
 			}
 			if s.listAgain {
 				s.listAgain = false
@@ -871,6 +893,9 @@ func (a *App) factoryMove(c *ui.Context, f gateway.FactoryAutomation, v kit.Vari
 	case f.TargetsSession:
 		k.Text(c, L("Posts into an existing session, so it can’t move to Droi yet"), 12, 16).TextColor(t.MutedForeground).
 			MaxWidth(k.Px(220)).Shrink(1)
+	case f.NotMovable != "":
+		k.Text(c, L("Its schedule never ran in Factory, so it can’t move to Droi"), 12, 16).TextColor(t.MutedForeground).
+			MaxWidth(k.Px(220)).Shrink(1)
 	case s.acting == "move" && s.moving.ID == f.ID:
 		k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleImage).Label(L("Moving…"))
 	default:
@@ -922,17 +947,40 @@ func (a *App) factoryView(c *ui.Context, id string) {
 	s := &a.automations
 	f := a.findFactory(id)
 	if f == nil {
-		a.missingAutomation(c)
+		// The list or the Factory automations did not load: say so, not
+		// that it is gone.
+		failed := s.listErr
+		if s.list != nil && failed == "" {
+			failed = s.factoryErr
+		}
+		if failed == "" {
+			a.missingAutomation(c)
+			return
+		}
+		a.automationHeader(c, []crumb{allAutomations(), {label: L("Factory automation")}}, L("Factory automation"), nil, nil)
+		a.loadFailed(c, failed, func() { a.loadAutomations(true) })
 		return
 	}
 	name := trimOr(f.Name, f.ID)
 	a.automationHeader(c, []crumb{allAutomations(), {label: name}}, name, func() {
-		a.statusPill(c, false, L("Factory automation"))
+		k.Text(c, L("Factory automation"), 12, 16).FontWeight(500).TextColor(t.MutedForeground).PaddingX(k.Px(7)).Radius(k.Px(10)).
+			Background(t.Muted).SingleLine().Shrink(0)
 		if f.Paused {
 			a.statusPill(c, false, L("Paused"))
 		}
-	}, func() { a.factoryMove(c, *f, kit.Primary) })
+	}, func() {
+		if f.NotMovable == "" {
+			a.factoryMove(c, *f, kit.Primary)
+		}
+	})
 	a.automationNotice(c)
+	if why := f.NotMovable; why != "" && !f.TargetsSession {
+		msg := L("Can’t move to Droi: %s", why)
+		ui.Row(c).Role(ui.RoleStatus).Label(msg).Gap(k.Px(8)).AlignItems(ui.Start).Children(func() {
+			k.Icon(c, "circle-alert", 14, t.MutedForeground).Margin(k.Px(3), 0, 0, 0)
+			k.Text(c, msg, 13, 20).TextColor(t.Foreground).Grow(1).MinWidth(0)
+		})
+	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
 		expr, zone := factorySchedule(*f)
 		if zone == "" && f.LocalSchedule != "" {
@@ -1078,6 +1126,8 @@ func (a *App) moveFactory(f gateway.FactoryAutomation) {
 		}
 	})
 }
+
+// findAutomation is the listed Automation id, nil when the list has none.
 func (a *App) findAutomation(id string) *gateway.Automation {
 	for i := range a.automations.list {
 		if a.automations.list[i].ID == id {
@@ -1507,8 +1557,6 @@ func (a *App) formField(c *ui.Context, label, help, problem string, body func())
 	})
 }
 
-// schedulePreview is the form's schedule in words, with the zone it is
-// read in, or the help of a Custom one not yet understood.
 // hostZone is the time zone of the Host's computer, which a schedule
 // without one of its own is read in: as the Host answered it, else as it
 // gave it with e; "" until known.
@@ -1522,6 +1570,8 @@ func (a *App) hostZone(e *gateway.Automation) string {
 	return ""
 }
 
+// schedulePreview is the form's schedule in words, with the zone it is
+// read in, or the help of a Custom one not yet understood.
 func (a *App) schedulePreview(f *automationForm, hostZone string) string {
 	own := f.zone()
 	expr, err := f.schedule()

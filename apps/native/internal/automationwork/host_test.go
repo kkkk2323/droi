@@ -351,6 +351,15 @@ func TestFactoryAutomationsComeWithTheScheduleDroiWouldKeep(t *testing.T) {
 			t.Errorf("%s: %q, want %q", listed[i].ID, got, want)
 		}
 	}
+	// One that cannot move says why, as its move would.
+	if listed[0].NotMovable != "" || listed[1].NotMovable != "" || !strings.HasPrefix(listed[2].NotMovable, `the schedule "0 9 L * *" never ran in Factory: `) {
+		t.Fatalf("not movable: %q %q %q", listed[0].NotMovable, listed[1].NotMovable, listed[2].NotMovable)
+	}
+	_, err = gatewayHost(h, f).MoveFactory(context.Background(), "odd")
+	var refused *gateway.RefusedRequest
+	if !errors.As(err, &refused) || refused.Reason != listed[2].NotMovable {
+		t.Fatalf("the move's refusal %v, the list's %q", err, listed[2].NotMovable)
+	}
 }
 
 func TestToolsWithoutTheAutomationsSayAnotherDroiRunsThem(t *testing.T) {
