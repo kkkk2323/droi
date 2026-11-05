@@ -58,6 +58,13 @@ func ModelFieldOr(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback
 	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, "", onModel, nil, nil)
 }
 
+// ModelEffortField is a ModelFieldOr with the reasoning effort: the
+// trigger shows it and the panel picks it. fallback "" offers no choice of
+// no model of its own.
+func ModelEffortField(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string)) {
+	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, effort, onModel, onEffort, nil)
+}
+
 func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, name, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
 	t := k.T
 	var current *models.Choice

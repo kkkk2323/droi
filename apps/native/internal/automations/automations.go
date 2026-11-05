@@ -2,8 +2,8 @@
 // of their folders, HEARTBEAT.md, runs.jsonl and state.json, and the cron
 // expressions their schedules are, read in a time zone. It also has what
 // the Automations page needs: schedules between the local clock and the
-// Daemon's UTC cron, the words a schedule and a run read as, an id for a
-// new Automation, and the Workspace a Factory automation works in.
+// Daemon's UTC cron, the words a schedule and a run read as, and an id for
+// a new Automation.
 //
 // A HEARTBEAT.md keeps Factory's key names, so one moved from
 // ~/.factory/automations reads the same; the keys Droi does not use, such
@@ -12,8 +12,6 @@ package automations
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -182,7 +180,7 @@ func Describe(expr string, offset int) string {
 	if expr == "" {
 		return l10n.L("No schedule")
 	}
-	return l10n.L("%s (UTC)", expr)
+	return strings.TrimSpace(expr)
 }
 
 // everyWeekday is one sentence per day, so a language can order its words.
@@ -267,12 +265,14 @@ func StatusLabel(status string) string {
 // it with l10n.T where it shows it.
 func RunLabel(status string) string {
 	switch status {
-	case "success", "completed":
+	case "success", "completed", "succeeded":
 		return l10n.N("Succeeded")
 	case "in_progress", "running":
 		return l10n.N("Running")
 	case "failed", "failure", "error":
 		return l10n.N("Failed")
+	case "interrupted":
+		return l10n.N("Interrupted")
 	case "":
 		return l10n.N("Unknown")
 	}
@@ -321,27 +321,4 @@ func windowsReserved(id string) bool {
 		return id[3] >= '1' && id[3] <= '9'
 	}
 	return false
-}
-
-// WorkingDirectory is the Workspace an Automation's runs work in, from
-// the front matter of its HEARTBEAT.md, which daemon.list_automations
-// leaves out; "" means the Automation's own folder.
-func WorkingDirectory(dir string) string {
-	b, err := os.ReadFile(filepath.Join(dir, "HEARTBEAT.md"))
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return ""
-	}
-	for _, l := range lines[1:] {
-		if strings.TrimSpace(l) == "---" {
-			break
-		}
-		if v, ok := strings.CutPrefix(l, "workingDirectory:"); ok {
-			return strings.Trim(strings.TrimSpace(v), `'"`)
-		}
-	}
-	return ""
 }

@@ -1,8 +1,8 @@
 package app
 
 import (
-	"encoding/json"
 	"errors"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,23 +11,26 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
 )
 
-// The Daemon reports no change to its Automations; the page reads them
-// again now and then, and the runs of the one shown more often.
+// The Host's Automations come through the Gateway (ADR 0035). This
+// computer's Host tells the window when they change (Config.AutomationsChanged);
+// another computer's are read again now and then, and the runs of the one
+// shown more often.
 const (
 	automationsRefresh = 30 * time.Second
 	runsRefresh        = 15 * time.Second
 	runningRefresh     = 3 * time.Second
-	factoryAppRefresh  = 30 * time.Second
 )
 
 // The Route.Tab of the page that creates one, and of the one that edits
@@ -46,19 +49,22 @@ var rowMotion = ui.ElementTransition{Duration: 180 * time.Millisecond, Position:
 
 // automationsState is the Automations page's, kept between frames.
 type automationsState struct {
-	list    []protocol.AutomationEntry
+	list    []gateway.Automation
 	listErr string
-	listAt  time.Time
-	loading bool
+	// unavailable is why the Host shows no Automations (troubleOlderHost or
+	// troubleElsewhere); troubleNone when it does.
+	unavailable automationTrouble
+	listAt      time.Time
+	loading     bool
 	// listAgain is a forced read asked for while one was under way, which
 	// may answer from before the change that asked for it.
 	listAgain bool
 
-	// workdirs are the Workspaces of the Automations, read from their
-	// folders with the list.
-	workdirs map[string]string
+	// factory are the Factory automations on the Host's computer, read
+	// with the list; nil when the Host could not list them.
+	factory []gateway.FactoryAutomation
 
-	runs     map[string][]protocol.AutomationRunRecord
+	runs     map[string][]gateway.AutomationRun
 	runsErr  map[string]string
 	runsAt   map[string]time.Time
 	runsBusy map[string]bool
@@ -77,23 +83,25 @@ type automationsState struct {
 	menuOpen, confirmDelete  bool
 	// promptOpen shows all of a long prompt.
 	promptOpen bool
-
-	factoryApp       bool
-	factoryCheckedAt time.Time
-	factoryChecking  bool
+	// moving is the Factory automation the move dialog asks about, while
+	// confirmMove, and until its move ends.
+	moving      gateway.FactoryAutomation
+	confirmMove bool
 
 	// live are the runs whose Session is busy this frame, newest first;
 	// liveKey names them, to read the list again when one starts or ends.
 	live    []sessions.Summary
 	liveKey string
+	// waiting are the runs, by Session, that wait for the user's approval.
+	waiting map[string]bool
 }
 
 // noteLiveRuns finds the Automations' runs at work among the listed
-// Sessions. The Daemon tells of no change to an Automation, but it reports
-// every Session's working state, a run's too.
+// Sessions: the Daemon reports every Session's working state, a run's too.
 func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.Activity) {
 	s := &a.automations
 	s.live = s.live[:0]
+	clear(s.waiting)
 	var ids []string
 	for _, x := range listed {
 		if x.CallingSessionID != "" || busy[x.SessionID] == "" {
@@ -102,6 +110,12 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 		if id, _ := sessions.AutomationRun(x.Tags); id != "" && x.ArchivedAt == "" {
 			s.live = append(s.live, x)
 			ids = append(ids, x.SessionID)
+			if busy[x.SessionID] == activity.NeedsInput {
+				if s.waiting == nil {
+					s.waiting = map[string]bool{}
+				}
+				s.waiting[x.SessionID] = true
+			}
 		}
 	}
 	slices.SortStableFunc(s.live, func(p, q sessions.Summary) int { return int(q.UpdatedAt - p.UpdatedAt) })
@@ -111,10 +125,16 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 	}
 	s.liveKey = key
 	if a.route.Name == "automations" {
-		a.loadAutomations(true)
-		if id := a.route.Automation; id != "" {
-			a.loadRuns(id, true)
-		}
+		a.automationsChanged()
+	}
+}
+
+// automationsChanged reads the list, and the runs of the Automation shown,
+// again.
+func (a *App) automationsChanged() {
+	a.loadAutomations(true)
+	if id := a.route.Automation; id != "" {
+		a.loadRuns(id, true)
 	}
 }
 
@@ -144,8 +164,13 @@ type automationForm struct {
 	name, prompt, clock, minute, custom, workdir string
 	repeat                                       automations.Repeat
 	weekday                                      time.Weekday
-	// model is "" for the Daemon's default.
-	model     string
+	// timezone is the Automation's own zone, kept for a Custom schedule;
+	// "" is the Host's computer's.
+	timezone string
+	// model and effort are "" for the user's defaults.
+	model, effort string
+	// autonomy is "" to run without asking, or low, medium or high.
+	autonomy  string
 	modelOpen bool
 	picker    pickerState
 	// err is what is wrong with the field errOn.
@@ -160,43 +185,47 @@ func (a *App) offset() int {
 // enterAutomations starts a page of Automations afresh.
 func (a *App) enterAutomations(r Route) {
 	s := &a.automations
-	s.confirmDelete, s.menuOpen, s.promptOpen, s.notice = false, false, false, ""
+	s.confirmDelete, s.confirmMove, s.menuOpen, s.promptOpen, s.notice = false, false, false, false, ""
 	if r.Tab != "" {
 		s.formFor = ""
 	}
 }
 
+// loadAutomations reads the Automations and the Factory automations from
+// the Gateway, off the frame.
 func (a *App) loadAutomations(force bool) {
 	s := &a.automations
 	if s.loading {
 		s.listAgain = s.listAgain || force
 		return
 	}
-	if a.ctl == nil || !force && !s.listAt.IsZero() && a.cfg.Now().Sub(s.listAt) < automationsRefresh {
+	gw := a.cfg.Gateway
+	if gw == nil || !force && !s.listAt.IsZero() && a.cfg.Now().Sub(s.listAt) < automationsRefresh {
 		return
 	}
 	s.loading = true
 	go func() {
-		var res *protocol.ListAutomationsResult
-		cl, err := a.ctl.Client()
+		list, err := gw.Automations(a.ctx)
+		var factory []gateway.FactoryAutomation
 		if err == nil {
-			res, err = cl.ListAutomations(a.ctx, protocol.ListAutomationsParams{})
-		}
-		workdirs := map[string]string{}
-		if err == nil {
-			for _, e := range res.Automations {
-				workdirs[e.ID] = automations.WorkingDirectory(e.Path)
-			}
+			// Without them (the Daemon not up yet) the section stays out.
+			factory, _ = gw.FactoryAutomations(a.ctx)
 		}
 		a.cfg.Update(func() {
 			s.loading = false
 			s.listAt = a.cfg.Now()
-			if err != nil {
+			switch trouble := troubleOf(err); {
+			case trouble == troubleOlderHost || trouble == troubleElsewhere:
+				s.unavailable, s.listErr = trouble, ""
+			case err != nil:
 				s.listErr = L("Automations did not load: %s", err)
-				// Soon again: the Daemon may only be starting.
+				// Soon again: the Host may only be starting.
 				s.listAt = s.listAt.Add(5*time.Second - automationsRefresh)
-			} else {
-				s.listErr, s.list, s.workdirs = "", res.Automations, workdirs
+			default:
+				if list == nil {
+					list = []gateway.Automation{}
+				}
+				s.unavailable, s.listErr, s.list, s.factory = troubleNone, "", list, factory
 			}
 			if s.listAgain {
 				s.listAgain = false
@@ -209,12 +238,12 @@ func (a *App) loadAutomations(force bool) {
 func (a *App) loadRuns(id string, force bool) {
 	s := &a.automations
 	if s.runs == nil {
-		s.runs, s.runsErr, s.runsAt, s.runsBusy = map[string][]protocol.AutomationRunRecord{}, map[string]string{}, map[string]time.Time{}, map[string]bool{}
+		s.runs, s.runsErr, s.runsAt, s.runsBusy = map[string][]gateway.AutomationRun{}, map[string]string{}, map[string]time.Time{}, map[string]bool{}
 		s.runsAgain = map[string]bool{}
 	}
 	every := runsRefresh
 	for _, r := range s.runs[id] {
-		if r.Status == "in_progress" {
+		if r.Status == "running" {
 			every = runningRefresh
 		}
 	}
@@ -222,24 +251,23 @@ func (a *App) loadRuns(id string, force bool) {
 		s.runsAgain[id] = s.runsAgain[id] || force
 		return
 	}
-	if a.ctl == nil || !force && !s.runsAt[id].IsZero() && a.cfg.Now().Sub(s.runsAt[id]) < every {
+	gw := a.cfg.Gateway
+	if gw == nil || !force && !s.runsAt[id].IsZero() && a.cfg.Now().Sub(s.runsAt[id]) < every {
 		return
 	}
 	s.runsBusy[id] = true
 	go func() {
-		var res *protocol.GetAutomationHistoryResult
-		limit := float64(20)
-		cl, err := a.ctl.Client()
-		if err == nil {
-			res, err = cl.GetAutomationHistory(a.ctx, protocol.GetAutomationHistoryParams{AutomationID: id, Limit: &limit})
-		}
+		runs, err := gw.AutomationRuns(a.ctx, id)
 		a.cfg.Update(func() {
 			s.runsBusy[id] = false
 			s.runsAt[id] = a.cfg.Now()
 			if err != nil {
 				s.runsErr[id] = err.Error()
 			} else {
-				s.runsErr[id], s.runs[id] = "", res.Runs
+				if runs == nil {
+					runs = []gateway.AutomationRun{}
+				}
+				s.runsErr[id], s.runs[id] = "", runs
 			}
 			if s.runsAgain[id] {
 				s.runsAgain[id] = false
@@ -249,81 +277,97 @@ func (a *App) loadRuns(id string, force bool) {
 	}()
 }
 
-// checkFactoryApp looks now and then for the Factory App's Daemon, off the frame.
-func (a *App) checkFactoryApp() {
-	s := &a.automations
-	if a.cfg.FactoryAppRunning == nil || s.factoryChecking || !s.factoryCheckedAt.IsZero() && a.cfg.Now().Sub(s.factoryCheckedAt) < factoryAppRefresh {
-		return
+// automationTrouble is what went wrong with a request of the Automation
+// endpoints, as the page tells it.
+type automationTrouble int
+
+const (
+	troubleNone automationTrouble = iota
+	troubleOther
+	// troubleOlderHost is a Host without the endpoints: an older Droi.
+	troubleOlderHost
+	// troubleElsewhere is a Host whose Automations another Droi on its
+	// computer runs.
+	troubleElsewhere
+	// troubleRunning is a run asked for while one works.
+	troubleRunning
+	// troubleGone is an Automation the Host no longer has.
+	troubleGone
+	// troubleRefused is a request the Host refused with a reason, already
+	// in the user's language.
+	troubleRefused
+)
+
+// troubleOf reads a Gateway error of the Automation endpoints; the one
+// place that knows how the Host answers them.
+func troubleOf(err error) automationTrouble {
+	var st *gateway.StatusError
+	switch {
+	case err == nil:
+		return troubleNone
+	case errors.Is(err, gateway.ErrNotFound):
+		return troubleOlderHost
+	case errors.Is(err, gateway.ErrAutomationNotFound):
+		return troubleGone
+	case errors.Is(err, gateway.ErrAutomationsElsewhere):
+		return troubleElsewhere
+	case errors.Is(err, gateway.ErrAutomationRunning):
+		return troubleRunning
+	case errors.As(err, &st) && st.Status == http.StatusBadRequest && st.Message != "":
+		return troubleRefused
 	}
-	s.factoryChecking = true
-	go func() {
-		running := a.cfg.FactoryAppRunning()
-		a.cfg.Update(func() {
-			s.factoryChecking, s.factoryCheckedAt, s.factoryApp = false, a.cfg.Now(), running
-		})
-	}()
+	return troubleOther
 }
 
-// refused is a change the Daemon answered with success false.
-func refused(ok bool, msg string, err error) error {
-	if err != nil || ok {
-		return err
+// failure is what the page says of an action on the Automation called name
+// that the Host did not carry out.
+func failure(action, name string, err error) string {
+	switch troubleOf(err) {
+	case troubleGone:
+		return L("It may have been deleted.")
+	case troubleRunning:
+		return L("A run of “%s” is already working.", name)
+	case troubleRefused:
+		return err.Error()
 	}
-	if msg == "" {
-		msg = L("the Daemon refused the change")
-	}
-	return errors.New(msg)
-}
-
-// dispatchRun starts a run now: daemon.dispatch_automation_run, newer
-// than the SDK's schema. Its error is an object, not a string.
-func (a *App) dispatchRun(id string) (string, error) {
-	cl, err := a.ctl.Client()
-	if err != nil {
-		return "", err
-	}
-	var out struct {
-		Success   bool            `json:"success"`
-		SessionID string          `json:"sessionId"`
-		Error     json.RawMessage `json:"error"`
-	}
-	if err := cl.Call(a.ctx, "daemon.dispatch_automation_run", map[string]any{"automationId": id}, &out); err != nil {
-		return "", err
-	}
-	if out.Success {
-		return out.SessionID, nil
-	}
-	var msg string
-	if json.Unmarshal(out.Error, &msg) != nil {
-		var e struct {
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(out.Error, &e)
-		msg = e.Message
-	}
-	return "", refused(false, msg, nil)
+	return L("Could not %s: %s", l10n.T(action), err)
 }
 
 // act runs one action on an Automation off the frame, then reads the list
 // and the runs again and says how it went.
 func (a *App) act(id, action, done string, fn func() error, then func()) {
+	name := id
+	if e := a.findAutomation(id); e != nil {
+		name = trimOr(e.Name, e.ID)
+	}
+	a.actWith(id, action, func() (string, bool) {
+		if err := fn(); err != nil {
+			if troubleOf(err) == troubleElsewhere {
+				return a.elsewhereText(), true
+			}
+			return failure(action, name, err), true
+		}
+		return done, false
+	}, then)
+}
+
+// actWith is act with fn saying how it went: the notice, and whether it
+// failed.
+func (a *App) actWith(id, action string, fn func() (notice string, failed bool), then func()) {
 	s := &a.automations
 	if s.acting != "" {
 		return
 	}
 	s.acting, s.actingOn, s.notice = action, id, ""
 	go func() {
-		err := fn()
+		notice, failed := fn()
 		a.cfg.Update(func() {
 			s.acting, s.actingOn = "", ""
-			if err == nil && then != nil {
+			if !failed && then != nil {
 				// then may go to another page, which drops the notice.
 				then()
 			}
-			s.noticeAt, s.noticeErr, s.notice = a.cfg.Now(), err != nil, done
-			if err != nil {
-				s.notice = L("Could not %s: %s", l10n.T(action), err)
-			}
+			s.noticeAt, s.noticeErr, s.notice = a.cfg.Now(), failed, notice
 			a.loadAutomations(true)
 			if id != "" {
 				a.loadRuns(id, true)
@@ -337,7 +381,9 @@ func (a *App) automationsPage(c *ui.Context) {
 	k := a.kit
 	s := &a.automations
 	a.loadAutomations(false)
-	a.checkFactoryApp()
+	if left := automationsRefresh - a.cfg.Now().Sub(s.listAt); !s.listAt.IsZero() && left > 0 {
+		c.After(left)
+	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Automations")).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
 			if a.narrow {
@@ -348,6 +394,8 @@ func (a *App) automationsPage(c *ui.Context) {
 			ui.Column(c).FillWidth().MaxWidth(k.Px(720)).AlignSelf(ui.Center).Gap(k.Px(24)).Padding(k.Px(4), k.Px(32), k.Px(48), k.Px(32)).Children(func() {
 				id := a.route.Automation
 				switch {
+				case s.unavailable != troubleNone:
+					a.unavailableAutomations(c)
 				case a.route.Tab == newAutomationTab:
 					a.automationEditor(c, nil)
 				case id == "":
@@ -364,7 +412,31 @@ func (a *App) automationsPage(c *ui.Context) {
 		if e := a.findAutomation(a.route.Automation); e != nil && s.confirmDelete {
 			a.deleteDialog(c, e)
 		}
+		if s.confirmMove {
+			a.moveDialog(c)
+		}
 	})
+}
+
+// unavailableAutomations says why the Host shows no Automations. On this
+// computer a Host without them is one whose Automations another Droi runs.
+func (a *App) unavailableAutomations(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	a.automationHeader(c, nil, L("Automations"), nil, nil)
+	msg := a.elsewhereText()
+	if a.following() && a.automations.unavailable == troubleOlderHost {
+		msg = L("%s runs an older Droi that cannot show its automations here. Update Droi there.", a.computerName())
+	}
+	k.Text(c, msg, 13, 20).Role(ui.RoleStatus).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+}
+
+// elsewhereText says another Droi on the Host's computer runs its
+// Automations.
+func (a *App) elsewhereText() string {
+	if a.following() {
+		return L("Another Droi on %s runs these automations. Quit it to manage them there.", a.computerName())
+	}
+	return L("Another Droi on this computer runs these automations. Quit it to manage them here.")
 }
 
 // crumb is a step of the page's breadcrumb; the last is the page itself.
@@ -418,20 +490,6 @@ func allAutomations() crumb {
 	return crumb{label: L("Automations"), name: L("All automations"), to: Route{Name: "automations"}}
 }
 
-// factoryAppNotice says the Factory App runs the same Automations.
-func (a *App) factoryAppNotice(c *ui.Context) {
-	if !a.automations.factoryApp {
-		return
-	}
-	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleStatus).Label(L("Factory App is running")).AlignItems(ui.Start).Gap(k.Px(10)).Padding(k.Px(8), k.Px(12)).
-		Radius(k.Px(8)).Background(t.Attention.Alpha(0.08)).Children(func() {
-		k.Icon(c, "triangle-alert", 14, t.AttentionForeground).Margin(k.Px(3), 0, 0, 0)
-		k.Text(c, L("The Factory App is running. Its own Daemon runs these automations too, so a run can start twice. Quit the Factory App to avoid that."), 13, 20).
-			TextColor(t.Foreground.Alpha(0.85)).Grow(1).MinWidth(0)
-	})
-}
-
 // automationNotice is what the last action said: an error until the next
 // action, a success for a few seconds.
 func (a *App) automationNotice(c *ui.Context) {
@@ -476,7 +534,6 @@ func (a *App) automationList(c *ui.Context) {
 		})
 		k.Text(c, L("Prompts Droid runs on a schedule, on this computer, while Droi is open."), 13, 20).TextColor(t.MutedForeground)
 	})
-	a.factoryAppNotice(c)
 	a.automationNotice(c)
 	switch {
 	case s.list == nil && s.listErr != "":
@@ -496,6 +553,7 @@ func (a *App) automationList(c *ui.Context) {
 			}
 		})
 	}
+	a.factorySection(c)
 }
 
 // listHeading names the columns of a list: the item, and the time on its
@@ -564,23 +622,40 @@ func (a *App) noAutomations(c *ui.Context) {
 	})
 }
 
+// automationStatus is "active", "paused" or "invalid".
+func automationStatus(e gateway.Automation) string {
+	switch {
+	case e.Invalid != "":
+		return "invalid"
+	case e.Paused:
+		return "paused"
+	}
+	return "active"
+}
+
+// lastRunStatus is the status of the Automation's last run, "" for none.
+func lastRunStatus(e gateway.Automation) string {
+	if e.LastRun == nil {
+		return ""
+	}
+	return e.LastRun.Status
+}
+
 // summary is an Automation's schedule and its last run, in words.
-func (a *App) summary(e protocol.AutomationEntry) string {
-	parts := []string{automations.Describe(e.Schedule, a.offset())}
-	if w := automations.When(e.LastRunAt, a.cfg.Now()); w != "" {
-		last := L("last run %s", w)
-		if e.LastRunStatus != "" {
-			last += ", " + strings.ToLower(l10n.T(automations.RunLabel(e.LastRunStatus)))
+func (a *App) summary(e gateway.Automation) string {
+	parts := []string{automations.Describe(e.Schedule, 0)}
+	if e.LastRun != nil {
+		if w := automations.When(e.LastRun.StartedAt, a.cfg.Now()); w != "" {
+			parts = append(parts, L("last run %s", w)+", "+strings.ToLower(l10n.T(automations.RunLabel(e.LastRun.Status))))
 		}
-		parts = append(parts, last)
 	}
 	return strings.Join(parts, " · ")
 }
 
 // nextRun is when an Automation runs next, or why it does not.
-func (a *App) nextRun(e protocol.AutomationEntry) string {
-	if e.Status != "active" {
-		return automations.StatusLabel(e.Status)
+func (a *App) nextRun(e gateway.Automation) string {
+	if st := automationStatus(e); st != "active" {
+		return automations.StatusLabel(st)
 	}
 	if w := automations.When(e.NextRunAt, a.cfg.Now()); w != "" {
 		return w
@@ -589,18 +664,18 @@ func (a *App) nextRun(e protocol.AutomationEntry) string {
 }
 
 // automationMark is an Automation's state at a glance: running, active,
-// paused, or with a failed last run.
-func (a *App) automationMark(c *ui.Context, e protocol.AutomationEntry) {
+// paused, invalid, or with a failed last run.
+func (a *App) automationMark(c *ui.Context, e gateway.Automation) {
 	k, t := a.kit, a.kit.T
 	ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
 		switch {
-		case automations.RunLabel(e.LastRunStatus) == "Running" || a.liveRuns(e.ID) > 0:
+		case e.Running || a.liveRuns(e.ID) > 0:
 			k.Spinner(c, 14, t.Info).Role(ui.RoleImage).Label(L("Running"))
-		case e.Status == "paused":
-			k.Icon(c, "circle-pause", 14, t.MutedForeground)
-		case e.Status != "active":
+		case e.Invalid != "":
 			k.Icon(c, "circle-alert", 14, t.DestructiveForeground)
-		case automations.RunLabel(e.LastRunStatus) == "Failed":
+		case e.Paused:
+			k.Icon(c, "circle-pause", 14, t.MutedForeground)
+		case automations.RunLabel(lastRunStatus(e)) == "Failed":
 			kit.Dot(c, k.Px(8), t.Destructive)
 		default:
 			kit.Dot(c, k.Px(8), t.Success)
@@ -608,14 +683,19 @@ func (a *App) automationMark(c *ui.Context, e protocol.AutomationEntry) {
 	})
 }
 
-// runNow starts a run of the Automation id at once.
+// runNow starts a run of the Automation id at once; the Host refuses one
+// while another works, and says so.
 func (a *App) runNow(id string) {
-	a.act(id, l10n.N("run"), L("Started a run."), func() error { _, err := a.dispatchRun(id); return err }, nil)
+	gw := a.cfg.Gateway
+	a.act(id, l10n.N("run"), L("Started a run."), func() error {
+		_, err := gw.RunAutomation(a.ctx, id)
+		return err
+	}, nil)
 }
 
 // automationRow opens the Automation, and shows a Run now button while the
 // pointer is over it.
-func (a *App) automationRow(c *ui.Context, e protocol.AutomationEntry) {
+func (a *App) automationRow(c *ui.Context, e gateway.Automation) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
 	name := trimOr(e.Name, e.ID)
@@ -654,13 +734,136 @@ func (a *App) automationRow(c *ui.Context, e protocol.AutomationEntry) {
 	})
 }
 
-func (a *App) findAutomation(id string) *protocol.AutomationEntry {
+// factorySection lists the Factory automations on the Host's computer,
+// each with a way to move it to Droi; nothing when there are none.
+func (a *App) factorySection(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	s := &a.automations
+	if len(s.factory) == 0 {
+		return
+	}
+	title := L("Factory automations on this computer")
+	ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(4)).Children(func() {
+		a.sectionTitle(c, title, strconv.Itoa(len(s.factory)))
+		k.Text(c, L("The Daemon runs these and syncs them to Factory, which can pause one it counts as missed. Move one to Droi to run it here without the sync."), 13, 20).
+			TextColor(t.MutedForeground)
+		ui.Column(c).Role(ui.RoleList).Label(title).Margin(k.Px(4), 0, 0, 0).Children(func() {
+			for _, f := range s.factory {
+				a.factoryRow(c, f)
+			}
+		})
+	})
+}
+
+// factorySchedule is a Factory automation's schedule, which the Daemon
+// reads in UTC, in words: in local time when a preset says it, else the
+// expression.
+func (a *App) factorySchedule(expr string) string {
+	if automations.Parse(expr, a.offset()).Repeat == automations.Custom {
+		return strings.TrimSpace(expr) + " UTC"
+	}
+	return automations.Describe(expr, a.offset())
+}
+
+func (a *App) factoryRow(c *ui.Context, f gateway.FactoryAutomation) {
+	k, t := a.kit, a.kit.T
+	s := &a.automations
+	name := trimOr(f.Name, f.ID)
+	ui.Row(c.Key(f.ID)).Role(ui.RoleListItem).Label(name).Transition(rowMotion).Height(k.Px(56)).PaddingX(k.Px(12)).Gap(k.Px(12)).AlignItems(ui.Center).
+		BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Children(func() {
+		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
+			if f.Paused {
+				k.Icon(c, "circle-pause", 14, t.MutedForeground)
+			} else {
+				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.6))
+			}
+		})
+		ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(2)).Children(func() {
+			k.Text(c, name, 14, 20).FontWeight(500).SingleLine()
+			k.Text(c, a.factorySchedule(f.Schedule), 12, 16).TextColor(t.MutedForeground).SingleLine()
+		})
+		if f.TargetsSession {
+			k.Text(c, L("Posts into an existing session, so it can’t move to Droi yet"), 12, 16).TextColor(t.MutedForeground).
+				MaxWidth(k.Px(220)).Shrink(1)
+			return
+		}
+		if s.acting == "move" && s.moving.ID == f.ID {
+			k.Spinner(c, 14, t.MutedForeground)
+			return
+		}
+		if a.smallButton(c, kit.Outline, L("Move to Droi"), "", s.acting != "").Label(L("Move %s to Droi", name)).Clicked() {
+			s.moving, s.confirmMove = f, true
+		}
+	})
+}
+
+// moveDialog asks before the Factory automation s.moving moves to Droi.
+func (a *App) moveDialog(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	s := &a.automations
+	w, _ := c.Size()
+	f := s.moving
+	name := trimOr(f.Name, f.ID)
+	ui.DialogBase(c, &s.confirmMove, func(backdrop, panel ui.Element) {
+		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		panel.Role(ui.RoleAlertDialog).Label(L("Move “%s” to Droi?", name)).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
+			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
+			k.Text(c, L("Move “%s” to Droi?", name), 15, 22).Role(ui.RoleHeading).FontWeight(600)
+			k.Text(c, L("Droi copies it, with its schedule in this computer’s time, and deletes it from Factory’s automations. The sessions of its past runs stay."), 13, 20).
+				TextColor(t.MutedForeground)
+			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Margin(k.Px(14), 0, 0, 0).Children(func() {
+				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
+					s.confirmMove = false
+				}
+				if a.smallButton(c, kit.Primary, L("Move to Droi"), "", s.acting != "").Clicked() {
+					s.confirmMove = false
+					a.moveFactory(f)
+				}
+			})
+		})
+	})
+}
+
+// moveFactory has the Host copy the Factory automation f into Droi's and
+// delete it from Factory's, then reads both lists again.
+func (a *App) moveFactory(f gateway.FactoryAutomation) {
+	gw := a.cfg.Gateway
+	name := trimOr(f.Name, f.ID)
+	a.actWith("", "move", func() (string, bool) {
+		moved, err := gw.MoveFactoryAutomation(a.ctx, f.ID)
+		switch {
+		case troubleOf(err) == troubleElsewhere:
+			return a.elsewhereText(), true
+		case err != nil:
+			return L("Could not move “%s”: %s", name, err), true
+		case moved.DeleteError != "":
+			return L("Copied “%s” to Droi, but it is still in Factory’s automations: %s. Delete it there so it does not run twice.", name, strings.TrimRight(moved.DeleteError, ".")), true
+		case moved.Automation.Paused:
+			return L("Moved “%s” to Droi. It stays paused.", name), false
+		}
+		return L("Moved “%s” to Droi.", name), false
+	}, nil)
+}
+
+func (a *App) findAutomation(id string) *gateway.Automation {
 	for i := range a.automations.list {
 		if a.automations.list[i].ID == id {
 			return &a.automations.list[i]
 		}
 	}
 	return nil
+}
+
+// putAutomation puts e, as the Host saved it, in the list, until the list
+// is read again.
+func (a *App) putAutomation(e gateway.Automation) {
+	s := &a.automations
+	if x := a.findAutomation(e.ID); x != nil {
+		*x = e
+		return
+	}
+	s.list = append(s.list, e)
 }
 
 // missingAutomation is the page of an Automation the list does not have:
@@ -674,7 +877,7 @@ func (a *App) missingAutomation(c *ui.Context) {
 		return
 	}
 	a.automationHeader(c, []crumb{allAutomations(), {label: L("Not found")}}, L("Automation not found"), nil, nil)
-	k.Text(c, L("It may have been deleted, here or in the Factory App."), 13, 20).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+	k.Text(c, L("It may have been deleted."), 13, 20).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 }
 
 // fact is a line of an Automation's facts: a label and its value.
@@ -712,14 +915,36 @@ func (a *App) modelName(id string) string {
 	return id
 }
 
-func (a *App) automationView(c *ui.Context, e *protocol.AutomationEntry) {
+// zoneName is the time zone a schedule is read in: tz, or else the Host's
+// computer's, which the window knows only for this computer ("" for
+// another).
+func (a *App) zoneName(tz string) string {
+	if tz != "" || a.following() {
+		return tz
+	}
+	return automationwork.LocalZone()
+}
+
+// permissionsLabel is what an Automation's runs may do without asking.
+func permissionsLabel(autonomy string) string {
+	if autonomy == "" {
+		return L("Don’t ask")
+	}
+	if l, ok := models.AutonomyLabels[autonomy]; ok {
+		return l10n.T(l)
+	}
+	return autonomy
+}
+
+func (a *App) automationView(c *ui.Context, e *gateway.Automation) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
 	id, name := e.ID, trimOr(e.Name, e.ID)
 	a.loadRuns(id, false)
 	busy := s.acting != ""
+	status := automationStatus(*e)
 	a.automationHeader(c, []crumb{allAutomations(), {label: name}}, name, func() {
-		a.statusPill(c, e.Status == "active", automations.StatusLabel(e.Status))
+		a.statusPill(c, status == "active", automations.StatusLabel(status))
 	}, func() {
 		runLabel := L("Run now")
 		if s.acting == "run" {
@@ -736,7 +961,7 @@ func (a *App) automationView(c *ui.Context, e *protocol.AutomationEntry) {
 			s.menuOpen = !s.menuOpen
 		}
 		k.MenuPopup(c, more, &s.menuOpen, true, L("More actions"), func() {
-			if e.Status == "paused" {
+			if e.Paused {
 				if k.MenuItem(c, &s.menuOpen, "play", L("Resume")).Clicked() {
 					a.setPaused(id, false)
 				}
@@ -748,29 +973,43 @@ func (a *App) automationView(c *ui.Context, e *protocol.AutomationEntry) {
 			}
 		})
 	})
-	a.factoryAppNotice(c)
 	a.automationNotice(c)
+	if e.Invalid != "" {
+		ui.Row(c).Role(ui.RoleStatus).Label(e.Invalid).Gap(k.Px(8)).AlignItems(ui.Start).Children(func() {
+			k.Icon(c, "circle-alert", 14, t.DestructiveForeground).Margin(k.Px(3), 0, 0, 0)
+			k.Text(c, e.Invalid, 13, 20).TextColor(t.DestructiveForeground).Grow(1).MinWidth(0)
+		})
+	}
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
-		off := a.offset()
 		a.fact(c, L("Schedule"), func() {
-			k.Text(c, automations.Describe(e.Schedule, off), 13, 20).SingleLine().Shrink(0)
-			k.Text(c, e.Schedule+" UTC", 12, 20).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+			k.Text(c, automations.Describe(e.Schedule, 0), 13, 20).SingleLine().Shrink(0)
+			expr := strings.TrimSpace(e.Schedule)
+			if zone := a.zoneName(e.Timezone); zone != "" {
+				expr += "  " + zone
+			}
+			k.Text(c, expr, 12, 20).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
 		})
 		a.fact(c, L("Next run"), func() { k.Text(c, a.nextRun(*e), 13, 20).FontFeatures("tnum").SingleLine() })
-		if w := automations.When(e.LastRunAt, a.cfg.Now()); w != "" {
-			a.fact(c, L("Last run"), func() {
-				k.Text(c, w, 13, 20).FontFeatures("tnum").SingleLine()
-				if e.LastRunStatus != "" {
-					k.Text(c, l10n.T(automations.RunLabel(e.LastRunStatus)), 13, 20).TextColor(t.MutedForeground).SingleLine()
-				}
-			})
+		if e.LastRun != nil {
+			if w := automations.When(e.LastRun.StartedAt, a.cfg.Now()); w != "" {
+				a.fact(c, L("Last run"), func() {
+					k.Text(c, w, 13, 20).FontFeatures("tnum").SingleLine()
+					k.Text(c, l10n.T(automations.RunLabel(e.LastRun.Status)), 13, 20).TextColor(t.MutedForeground).SingleLine()
+				})
+			}
 		}
-		a.fact(c, L("Model"), func() { k.Text(c, a.modelName(e.Model), 13, 20).SingleLine() })
+		a.fact(c, L("Model"), func() {
+			k.Text(c, a.modelName(e.Model), 13, 20).SingleLine().Shrink(1).MinWidth(0)
+			if e.ReasoningEffort != "" {
+				k.Text(c, settingsview.EffortLabel(e.ReasoningEffort), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(0)
+			}
+		})
+		a.fact(c, L("Permissions"), func() { k.Text(c, permissionsLabel(e.Autonomy), 13, 20).SingleLine() })
 		a.fact(c, L("Workspace"), func() {
-			if w := s.workdirs[id]; w != "" {
+			if w := e.WorkingDirectory; w != "" {
 				k.Text(c, w, 12, 20).Font(k.Mono).SingleLine().Shrink(1).MinWidth(0)
 			} else {
-				k.Text(c, L("Its own folder in ~/.factory/automations"), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+				k.Text(c, L("Its own folder in Droi’s data"), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0).Tooltip(e.Folder)
 			}
 		})
 	})
@@ -834,39 +1073,24 @@ func (a *App) setPaused(id string, pause bool) {
 	if pause {
 		action, done = l10n.N("pause"), L("Paused. Run now still starts a run.")
 	}
-	a.act(id, action, done, func() error {
-		cl, err := a.ctl.Client()
-		if err != nil {
-			return err
-		}
-		if pause {
-			res, err := cl.PauseAutomation(a.ctx, protocol.PauseAutomationParams{AutomationID: id})
-			if err != nil {
-				return err
-			}
-			return refused(res.Success, res.Error, nil)
-		}
-		res, err := cl.ResumeAutomation(a.ctx, protocol.ResumeAutomationParams{AutomationID: id})
-		if err != nil {
-			return err
-		}
-		return refused(res.Success, res.Error, nil)
-	}, nil)
+	gw := a.cfg.Gateway
+	a.act(id, action, done, func() error { return gw.PauseAutomation(a.ctx, id, pause) }, nil)
 }
 
 // deleteDialog asks before the Automation e goes.
-func (a *App) deleteDialog(c *ui.Context, e *protocol.AutomationEntry) {
+func (a *App) deleteDialog(c *ui.Context, e *gateway.Automation) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
 	w, _ := c.Size()
 	id, name := e.ID, trimOr(e.Name, e.ID)
+	gw := a.cfg.Gateway
 	ui.DialogBase(c, &s.confirmDelete, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		panel.Role(ui.RoleAlertDialog).Label(L("Delete automation")).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
 		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
 			k.Text(c, L("Delete “%s”?", name), 15, 22).Role(ui.RoleHeading).FontWeight(600)
-			k.Text(c, L("It stops running and its folder in ~/.factory/automations is removed. The sessions of its past runs stay."), 13, 20).
+			k.Text(c, L("It stops running and its folder in Droi’s data is removed. The sessions of its past runs stay."), 13, 20).
 				TextColor(t.MutedForeground)
 			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Margin(k.Px(14), 0, 0, 0).Children(func() {
 				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
@@ -874,17 +1098,8 @@ func (a *App) deleteDialog(c *ui.Context, e *protocol.AutomationEntry) {
 				}
 				if a.dangerButton(c, L("Delete"), s.acting != "").Clicked() {
 					s.confirmDelete = false
-					a.act("", l10n.N("delete"), L("Deleted “%s”.", name), func() error {
-						cl, err := a.ctl.Client()
-						if err != nil {
-							return err
-						}
-						res, err := cl.DeleteAutomation(a.ctx, protocol.DeleteAutomationParams{AutomationID: id})
-						if err != nil {
-							return err
-						}
-						return refused(res.Success, res.Error, nil)
-					}, func() { a.Go(Route{Name: "automations"}) })
+					a.act("", l10n.N("delete"), L("Deleted “%s”.", name), func() error { return gw.DeleteAutomation(a.ctx, id) },
+						func() { a.Go(Route{Name: "automations"}) })
 				}
 			})
 		})
@@ -918,7 +1133,7 @@ func (a *App) runsList(c *ui.Context, id string) {
 	})
 }
 
-func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
+func (a *App) runRow(c *ui.Context, r gateway.AutomationRun) {
 	k, t := a.kit, a.kit.T
 	started := automations.When(r.StartedAt, a.cfg.Now())
 	status := automations.RunLabel(r.Status)
@@ -926,8 +1141,9 @@ func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 		status = "Running"
 	}
 	label := l10n.T(status)
-	if r.Type == protocol.AutomationRunType("create") {
-		label = L("Setup, %s", strings.ToLower(label))
+	waiting := a.automations.waiting[r.SessionID]
+	if waiting {
+		label = L("Waiting for your approval")
 	}
 	b := ui.ButtonBase(c.Key(r.RunID)).Transition(rowMotion).Role(ui.RoleListItem).Label(L("Open run from %s", started)).Height(k.Px(40)).Gap(k.Px(10)).
 		PaddingX(k.Px(12)).Justify(ui.Start).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Cursor(ui.CursorPointer)
@@ -940,27 +1156,27 @@ func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 	}
 	b.Children(func() {
 		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
-			switch status {
-			case "Running":
+			switch {
+			case waiting:
+				k.Icon(c, "circle-alert", 14, t.Attention)
+			case status == "Running":
 				k.Spinner(c, 14, t.Info)
-			case "Succeeded":
+			case status == "Succeeded":
 				k.Icon(c, "circle-check", 14, t.Success)
-			case "Failed":
+			case status == "Failed":
 				k.Icon(c, "circle-x", 14, t.DestructiveForeground)
+			case status == "Interrupted":
+				k.Icon(c, "circle-slash", 14, t.MutedForeground)
 			default:
 				k.Icon(c, "circle-dashed", 14, t.MutedForeground)
 			}
 		})
 		k.Text(c, label, 13, 20).SingleLine().Shrink(0)
-		if o := r.OutcomeOverride; o != nil {
-			why := L("Recorded as %s", strings.ToLower(l10n.T(automations.RunLabel(o.OriginalStatus))))
-			if note := strings.TrimSpace(o.Note); note != "" {
-				why += "\n" + note
-			}
-			k.Text(c, L("changed by %s", o.ChangedBy), 12, 16).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0).Tooltip(why)
+		if r.Trigger == "catch-up" {
+			k.Text(c, L("Catch-up"), 11, 16).TextColor(t.MutedForeground).SingleLine().Shrink(0).PaddingX(k.Px(6)).Radius(k.Px(4)).Background(t.Muted)
 		}
-		if r.ErrorMessage != "" {
-			k.Text(c, r.ErrorMessage, 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+		if r.Error != "" {
+			k.Text(c, l10n.T(r.Error), 13, 20).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0).Tooltip(l10n.T(r.Error))
 		}
 		ui.Spacer(c)
 		k.Text(c, started, 12, 16).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
@@ -975,23 +1191,36 @@ func (a *App) runRow(c *ui.Context, r protocol.AutomationRunRecord) {
 }
 
 // fillForm sets the form from an Automation, or to a new one's defaults.
-func (a *App) fillForm(e *protocol.AutomationEntry) {
+func (a *App) fillForm(e *gateway.Automation) {
 	f := automationForm{repeat: automations.Daily, clock: "09:00", minute: "00"}
 	if e != nil {
-		sc := automations.Parse(e.Schedule, a.offset())
-		f.name, f.prompt, f.model = e.Name, e.Prompt, e.Model
+		// A schedule read in a zone of its own stays as it is written.
+		sc := automations.Schedule{Repeat: automations.Custom, Custom: e.Schedule, Hour: 9}
+		if e.Timezone == "" {
+			sc = automations.Parse(e.Schedule, 0)
+		}
+		f.name, f.prompt, f.model, f.effort, f.autonomy, f.timezone = e.Name, e.Prompt, e.Model, e.ReasoningEffort, e.Autonomy, e.Timezone
 		f.repeat, f.weekday, f.custom = sc.Repeat, sc.Weekday, sc.Custom
 		f.clock, f.minute = automations.Clock(sc.Hour, sc.Minute), strconv.Itoa(sc.Minute)
 		if len(f.minute) < 2 {
 			f.minute = "0" + f.minute
 		}
-		f.workdir = a.automations.workdirs[e.ID]
+		f.workdir = e.WorkingDirectory
 	}
 	a.automations.form = f
 }
 
-// schedule is the form's schedule as the Daemon takes it.
-func (f *automationForm) schedule(offset int) (string, error) {
+// zone is the time zone the form's schedule is saved with: the
+// Automation's own for a Custom one, else "" for the Host's computer's.
+func (f *automationForm) zone() string {
+	if f.repeat == automations.Custom {
+		return f.timezone
+	}
+	return ""
+}
+
+// schedule is the form's schedule as five cron fields, in local time.
+func (f *automationForm) schedule() (string, error) {
 	s := automations.Schedule{Repeat: f.repeat, Weekday: f.weekday, Custom: f.custom}
 	switch f.repeat {
 	case automations.Hourly:
@@ -1007,11 +1236,15 @@ func (f *automationForm) schedule(offset int) (string, error) {
 		}
 		s.Hour, s.Minute = h, m
 	default:
-		if strings.TrimSpace(f.custom) == "" {
-			return "", errors.New(L("Enter a cron expression, in UTC."))
+		expr := strings.TrimSpace(f.custom)
+		if expr == "" {
+			return "", errors.New(L("Enter five cron fields, such as 0 9 * * 1-5."))
+		}
+		if _, err := automations.ParseCron(expr); err != nil {
+			return "", errors.New(L("Cron expression not understood: %s. Use five fields, such as 0 9 * * 1-5.", err))
 		}
 	}
-	return s.Expression(offset), nil
+	return s.Expression(0), nil
 }
 
 // formField is a field of the editor: its label above it, and under it
@@ -1033,8 +1266,38 @@ func (a *App) formField(c *ui.Context, label, help, problem string, body func())
 	})
 }
 
+// schedulePreview is the form's schedule in words, with the zone it is
+// read in, or the help of a Custom one not yet understood.
+func (a *App) schedulePreview(f *automationForm) string {
+	expr, err := f.schedule()
+	if err != nil {
+		if f.repeat == automations.Custom {
+			return L("Five cron fields, in this computer’s time, such as 0 9 * * 1-5.")
+		}
+		return ""
+	}
+	words := automations.Describe(expr, 0)
+	switch zone := a.zoneName(f.zone()); {
+	case f.zone() != "":
+		return L("%s, in the %s time zone.", words, zone)
+	case zone == "":
+		return L("%s, in this computer’s time.", words)
+	default:
+		return L("%s, in this computer’s time (%s).", words, zone)
+	}
+}
+
+// permissionOptions are the choices of what a run may do without asking.
+func permissionOptions() []kit.Option {
+	opts := []kit.Option{{Value: "", Label: L("Don’t ask")}}
+	for _, l := range []string{"low", "medium", "high"} {
+		opts = append(opts, kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])})
+	}
+	return opts
+}
+
 // automationEditor is the form of a new Automation (e nil) or of e.
-func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
+func (a *App) automationEditor(c *ui.Context, e *gateway.Automation) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
 	key := newAutomationTab
@@ -1046,14 +1309,9 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 		s.formFor = key
 	}
 	f := &s.form
-	off := a.offset()
 	var choices []models.Choice
-	shownModel := f.model
 	if dv := a.sessionDefaults(); dv != nil {
 		choices = dv.Models
-		if shownModel == "" {
-			shownModel = dv.ModelID
-		}
 	}
 	problem := func(field string) string {
 		if f.errOn == field {
@@ -1085,16 +1343,13 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 		}
 	})
 	a.automationNotice(c)
-	preview := ""
-	if expr, err := f.schedule(off); err == nil {
-		preview = L("%s, in this computer’s time. The Daemon keeps it as “%s” in UTC.", automations.Describe(expr, off), expr)
-	}
-	if f.repeat == automations.Custom {
-		preview = L("Five cron fields in UTC, or words such as “every Monday at 9am PST”.")
-	}
 	repeats := make([]kit.Option, len(automations.Repeats))
 	for i, r := range automations.Repeats {
 		repeats[i] = kit.Option{Value: string(r), Label: l10n.T(automations.RepeatLabels[r])}
+	}
+	permissionsHelp := L("Runs use every tool without asking.")
+	if f.autonomy != "" {
+		permissionsHelp = L("A run asks before tools above this level and waits until you answer in its session.")
 	}
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(20)).Children(func() {
 		a.formField(c, L("Name"), "", problem("name"), func() {
@@ -1105,7 +1360,7 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 				}
 			})
 		})
-		a.formField(c, L("Prompt"), L("Each run starts a new session with this prompt. Runs do not ask before they use tools."), problem("prompt"), func() {
+		a.formField(c, L("Prompt"), L("Each run starts a new session with this prompt."), problem("prompt"), func() {
 			border := t.Border
 			if f.errOn == "prompt" {
 				border = t.Destructive.Alpha(0.6)
@@ -1115,7 +1370,7 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 5, Color: t.Foreground})
 			})
 		})
-		a.formField(c, L("Schedule"), preview, problem("schedule"), func() {
+		a.formField(c, L("Schedule"), a.schedulePreview(f), problem("schedule"), func() {
 			ui.Row(c).Children(func() {
 				if next, ok := k.Segmented(c, L("Repeat"), string(f.repeat), repeats); ok {
 					f.repeat, f.err, f.errOn = automations.Repeat(next), "", ""
@@ -1146,12 +1401,25 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 				}
 			})
 		})
-		a.formField(c, L("Model"), L("Runs use your default model unless you pick another."), "", func() {
+		a.formField(c, L("Model and reasoning effort"), L("Runs use your default model and reasoning effort unless you pick others."), "", func() {
 			ui.Row(c).Children(func() {
-				a.modelField(c, L("Automation model"), false, &f.modelOpen, &f.picker, choices, shownModel, func(next string) { f.model = next })
+				settingsview.ModelEffortField(c, k, a.prefs, L("Automation model"), L("Your default model"), false, &f.modelOpen, &f.picker, choices, f.model, f.effort,
+					func(id string) {
+						f.model = id
+						if !modelHasEffort(choices, id, f.effort) {
+							f.effort = ""
+						}
+					}, func(e string) { f.effort = e })
 			})
 		})
-		a.formField(c, L("Workspace"), L("Runs work in this folder, with its skills and settings. Leave it empty for the automation’s own folder in ~/.factory/automations."), "", func() {
+		a.formField(c, L("Permissions"), permissionsHelp, "", func() {
+			ui.Row(c).Children(func() {
+				if next, ok := k.FieldSelect(c, L("Permissions"), f.autonomy, permissionOptions(), false); ok {
+					f.autonomy = next
+				}
+			})
+		})
+		a.formField(c, L("Workspace"), L("Runs work in this folder, with its skills and settings. Leave it empty for the automation’s own folder in Droi’s data."), "", func() {
 			ui.Row(c).Gap(k.Px(8)).Children(func() {
 				a.field(c, &f.workdir, L("Automation workspace"), "/Users/you/project", true, false)
 				if !a.following() && a.smallButton(c, kit.Outline, L("Choose…"), "folder-open", false).Height(k.Px(36)).Label(L("Choose a workspace")).Clicked() {
@@ -1168,13 +1436,24 @@ func (a *App) automationEditor(c *ui.Context, e *protocol.AutomationEntry) {
 	})
 }
 
-// saveAutomation creates one from the form (e nil) or changes e.
-func (a *App) saveAutomation(e *protocol.AutomationEntry) {
+// modelHasEffort is whether the model id offers the reasoning effort.
+func modelHasEffort(choices []models.Choice, id, effort string) bool {
+	for _, m := range choices {
+		if m.ID == id {
+			return contains(m.ReasoningEfforts, effort)
+		}
+	}
+	return false
+}
+
+// saveAutomation creates one from the form (e nil) or changes e, through
+// the Gateway; the Host names a new one from its name.
+func (a *App) saveAutomation(e *gateway.Automation) {
 	s := &a.automations
 	f := &s.form
 	f.err, f.errOn = "", ""
 	name, prompt, workdir := strings.TrimSpace(f.name), strings.TrimSpace(f.prompt), strings.TrimSpace(f.workdir)
-	expr, err := f.schedule(a.offset())
+	expr, err := f.schedule()
 	switch {
 	case name == "":
 		f.err, f.errOn = L("Enter an automation name."), "name"
@@ -1186,56 +1465,24 @@ func (a *App) saveAutomation(e *protocol.AutomationEntry) {
 	if f.err != "" {
 		return
 	}
-	model := f.model
+	in := gateway.Automation{
+		Name: name, Prompt: prompt, Schedule: expr, Timezone: f.zone(), Model: f.model, ReasoningEffort: f.effort,
+		Autonomy: f.autonomy, WorkingDirectory: workdir,
+	}
+	gw := a.cfg.Gateway
+	var saved gateway.Automation
+	save := func() (err error) {
+		saved, err = gw.SaveAutomation(a.ctx, in)
+		return err
+	}
+	opened := func() {
+		a.putAutomation(saved)
+		a.Go(Route{Name: "automations", Automation: saved.ID})
+	}
 	if e != nil {
-		id := e.ID
-		a.act(id, l10n.N("save"), L("Saved."), func() error { return a.updateAutomation(id, name, prompt, expr, model, workdir) }, func() {
-			a.Go(Route{Name: "automations", Automation: id})
-		})
+		in.ID, in.Paused = e.ID, e.Paused
+		a.act(e.ID, l10n.N("save"), L("Saved."), save, opened)
 		return
 	}
-	taken := map[string]bool{}
-	for _, x := range s.list {
-		taken[x.ID] = true
-	}
-	id := automations.ID(name, taken)
-	skip := true
-	a.act("", l10n.N("create"), L("Created. It runs on its schedule, and Run now starts one at once."), func() error {
-		cl, err := a.ctl.Client()
-		if err != nil {
-			return err
-		}
-		res, err := cl.CreateAutomation(a.ctx, protocol.CreateAutomationParams{
-			ID: id, Name: name, Instructions: prompt, Schedule: expr, Model: model, SkipFirstRun: &skip,
-			CreationSource: protocol.AutomationCreationSourceDesktop,
-		})
-		if err = refused(err == nil && res.Success, errText(res), err); err != nil || workdir == "" {
-			return err
-		}
-		// create_automation takes no Workspace; the full update does.
-		return a.updateAutomation(id, name, prompt, expr, model, workdir)
-	}, func() {
-		a.Go(Route{Name: "automations", Automation: id})
-	})
-}
-
-func errText(res *protocol.CreateAutomationResult) string {
-	if res == nil {
-		return ""
-	}
-	return res.Error
-}
-
-func (a *App) updateAutomation(id, name, prompt, expr, model, workdir string) error {
-	cl, err := a.ctl.Client()
-	if err != nil {
-		return err
-	}
-	res, err := cl.UpdateAutomation(a.ctx, protocol.UpdateAutomationParams{
-		AutomationID: id, Name: name, Prompt: prompt, Schedule: expr, Model: model, WorkingDirectory: workdir,
-	})
-	if err != nil {
-		return err
-	}
-	return refused(res.Success, res.Error, nil)
+	a.act("", l10n.N("create"), L("Created. It runs on its schedule, and Run now starts one at once."), save, opened)
 }

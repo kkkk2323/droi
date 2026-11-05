@@ -150,10 +150,6 @@ func TestStoreReadsAFactoryHeartbeat(t *testing.T) {
 		q.WorkingDirectory != "/Users/me/dev/my app" || !q.Paused || q.Prompt != "Do it." {
 		t.Fatalf("%+v", q)
 	}
-	// The existing helper reads the same file.
-	if WorkingDirectory(filepath.Join(s.Dir, "droid")) != "" {
-		t.Fatal("WorkingDirectory")
-	}
 }
 
 func TestStoreKeepsTheLast200Runs(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 )
 
 const onlyPictures = "Only pictures can be attached to another computer."
@@ -97,30 +99,20 @@ func TestThisComputersPathsAreAbbreviatedWithItsHome(t *testing.T) {
 	}
 }
 
-func TestTheAutomationFormsFolderPickerAndTheFactoryAppNoticeAreThisComputersOnly(t *testing.T) {
-	notice := "The Factory App is running."
-
-	local := newHarnessWith(t, automationsScenario(), "", func(cfg *Config) { cfg.FactoryAppRunning = func() bool { return true } })
-	local.until("the Session list", func() bool { return local.hasText("Fix the login race") })
-	local.click("Automations")
-	local.until("the notice", func() bool { return local.hasText(notice) })
-	// The notice can come before the list, and with it the button.
-	local.until("the list", func() bool { return local.hasText("Daily review") })
+func TestTheAutomationFormsFolderPickerIsThisComputersOnly(t *testing.T) {
+	local := automationsHarness(t, newFakeAutomations(), nil)
+	local.openAutomations()
 	local.click("New automation")
 	local.until("the form", func() bool { _, ok := local.tt.Find("Automation workspace"); return ok })
 	if !local.hasButton("Choose a workspace") {
 		t.Fatal("no folder picker on this computer")
 	}
 
-	o := startOtherComputer(t, automationsScenario(), "")
-	h := followHarness(t, localSessions(), o.paired(), nil, func(cfg *Config) { cfg.FactoryAppRunning = func() bool { return true } })
+	o := startOtherComputerWith(t, automationsScenario(), "", func(opts *gateway.Options) { opts.Automations = newFakeAutomations() })
+	h := followHarness(t, localSessions(), o.paired(), nil, nil)
 	h.until("the other computer's Session", func() bool { return h.hasText("Fix the login race") })
 	h.click("Automations")
 	h.until("the list", func() bool { return h.hasText("Daily review") })
-	h.settle()
-	if h.hasText(notice) {
-		t.Fatal("the Factory App notice is shown for another computer")
-	}
 	h.click("New automation")
 	h.until("the form", func() bool { _, ok := h.tt.Find("Automation workspace"); return ok })
 	if h.hasButton("Choose a workspace") {

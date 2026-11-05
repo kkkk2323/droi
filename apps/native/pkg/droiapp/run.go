@@ -261,8 +261,8 @@ func Run(o Options) {
 
 			SessionList: sessionList,
 
-			FactoryAppRunning: host.FactoryAppRunning,
-			MenuBar:           bar.shell(),
+			AutomationsChanged: svc.OnAutomationsChanged,
+			MenuBar:            bar.shell(),
 
 			Pages:          exts.pages,
 			SettingsTabs:   exts.settingsTabs,

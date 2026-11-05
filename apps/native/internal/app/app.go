@@ -125,9 +125,10 @@ type Config struct {
 	SessionList *SessionListShare
 	// Remote is the Gateway for paired phones; nil without a Host.
 	Remote Remote
-	// FactoryAppRunning reports whether the Factory App's Daemon runs too,
-	// for the Automations page's notice; nil never tells.
-	FactoryAppRunning func() bool
+	// AutomationsChanged, optional, calls fn when the Host's Automations or
+	// their runs change, and returns a function that stops it; nil for
+	// another computer, whose Automations the page reads again now and then.
+	AutomationsChanged func(fn func()) (unsubscribe func())
 	// MenuBar is the shell's menu bar item of the Key Pool; nil where there
 	// is none, which leaves its setting out.
 	MenuBar *MenuBar
@@ -275,9 +276,9 @@ func New(cfg Config) *App {
 		cfg.Prefs = prefs.Memory()
 	}
 	if cfg.Computer != nil {
-		// This computer's Host, Memory, Gateway and Factory App are not the
+		// This computer's Host, Memory, Gateway and Automations are not the
 		// followed computer's, so the views that need one are left out.
-		cfg.Host, cfg.Memory, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil
+		cfg.Host, cfg.Memory, cfg.Remote, cfg.AutomationsChanged = nil, nil, nil, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{
@@ -371,6 +372,18 @@ func (a *App) Start() {
 	}
 	if a.cfg.Gateway != nil {
 		go a.followTimes()
+	}
+	if a.cfg.AutomationsChanged != nil {
+		a.unsubscribe = append(a.unsubscribe, a.cfg.AutomationsChanged(func() {
+			a.cfg.Update(func() {
+				if a.route.Name == "automations" {
+					a.automationsChanged()
+				} else {
+					a.automations.listAt = time.Time{}
+					clear(a.automations.runsAt)
+				}
+			})
+		}))
 	}
 }
 
