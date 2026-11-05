@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -14,13 +15,15 @@ import (
 )
 
 type fakeStarter struct {
-	mu      sync.Mutex
-	runs    []Run
-	fail    []error
-	onStart func(Run)
+	mu   sync.Mutex
+	runs []RunSpec
+	fail []error
+	// hang makes the next Start wait for its context's end.
+	hang    bool
+	onStart func(RunSpec)
 }
 
-func (f *fakeStarter) Start(_ context.Context, r Run) (string, error) {
+func (f *fakeStarter) Start(ctx context.Context, r RunSpec) (string, error) {
 	f.mu.Lock()
 	f.runs = append(f.runs, r)
 	n := len(f.runs)
@@ -28,8 +31,14 @@ func (f *fakeStarter) Start(_ context.Context, r Run) (string, error) {
 	if len(f.fail) > 0 {
 		err, f.fail = f.fail[0], f.fail[1:]
 	}
+	hang := f.hang
+	f.hang = false
 	hook := f.onStart
 	f.mu.Unlock()
+	if hang {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
 	if err != nil {
 		return "", err
 	}
@@ -45,21 +54,23 @@ func (f *fakeStarter) count() int {
 	return len(f.runs)
 }
 
-func (f *fakeStarter) last() Run {
+func (f *fakeStarter) last() RunSpec {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.runs[len(f.runs)-1]
 }
 
 type harness struct {
-	t       *testing.T
-	dir     string
-	mu      sync.Mutex
-	clock   time.Time
-	held    int
-	changed int
-	starter *fakeStarter
-	s       *Scheduler
+	t     *testing.T
+	dir   string
+	mu    sync.Mutex
+	clock time.Time
+	held  int
+	// holdCalls counts every Hold, to see none is taken for a failed start.
+	holdCalls int
+	changed   int
+	starter   *fakeStarter
+	s         *Scheduler
 }
 
 var shanghai = func() *time.Location {
@@ -90,9 +101,10 @@ func newHarness(t *testing.T, now string) *harness {
 
 func (h *harness) open() {
 	h.s = New(Config{
-		Dir:      h.dir,
-		Starter:  h.starter,
-		Location: shanghai,
+		Dir:          h.dir,
+		Starter:      h.starter,
+		StartTimeout: 50 * time.Millisecond,
+		Location:     shanghai,
 		Now: func() time.Time {
 			h.mu.Lock()
 			defer h.mu.Unlock()
@@ -101,6 +113,7 @@ func (h *harness) open() {
 		Hold: func() func() {
 			h.mu.Lock()
 			h.held++
+			h.holdCalls++
 			h.mu.Unlock()
 			return func() {
 				h.mu.Lock()
@@ -141,6 +154,12 @@ func (h *harness) holds() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.held
+}
+
+func (h *harness) holdsTaken() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.holdCalls
 }
 
 func (h *harness) save(a automations.Automation) automations.Automation {
@@ -196,6 +215,9 @@ func TestARunStartsOnTimeAndEnds(t *testing.T) {
 		r.ModelID != "glm-5.3-flash" || r.ReasoningEffort != "high" || !r.SkipPermissions || r.AutonomyLevel != "" || r.Prompt != "Report." ||
 		r.AutomationID != a.ID || r.RunID == "" {
 		t.Fatalf("run %+v", r)
+	}
+	if want := []string{"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation", "DeleteAutomation", "RunAutomation", "ListAutomationTemplates", "mcp:droi-workstream"}; !slices.Equal(r.DisabledTools, want) {
+		t.Fatalf("disabled tools %v", r.DisabledTools)
 	}
 	if len(r.Tags) != 1 || r.Tags[0].Name != TagName || r.Tags[0].Metadata["automationId"] != a.ID ||
 		r.Tags[0].Metadata["automationName"] != "Daily report" || r.Tags[0].Metadata["trigger"] != "schedule" || r.Tags[0].Metadata["runId"] != r.RunID {
@@ -323,9 +345,9 @@ func TestNoSecondRunWhileOneWorks(t *testing.T) {
 func TestAFailedStartIsTriedAgain(t *testing.T) {
 	h := newHarness(t, "08:00")
 	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
-	h.starter.fail = []error{errors.New("the Daemon is not running")}
+	h.starter.fail = []error{fmt.Errorf("connect: %w", ErrUnavailable)}
 	h.tick("09:00")
-	if h.starter.count() != 1 || h.holds() != 0 || len(h.runs(a.ID)) != 0 || h.item(a.ID).Running {
+	if h.starter.count() != 1 || h.holdsTaken() != 0 || len(h.runs(a.ID)) != 0 || h.item(a.ID).Running {
 		t.Fatalf("after a failed start: %d starts, %d holds, %+v", h.starter.count(), h.holds(), h.runs(a.ID))
 	}
 	h.tick("09:01")
@@ -359,9 +381,88 @@ func TestRunNow(t *testing.T) {
 	if _, err := h.s.RunNow(context.Background(), "nope"); !errors.Is(err, automations.ErrNotFound) {
 		t.Fatalf("unknown: %v", err)
 	}
-	h.starter.fail = []error{errors.New("down")}
-	if _, err := h.s.RunNow(context.Background(), a.ID); err == nil || h.holds() != 0 {
-		t.Fatalf("failed start: %v, holds %d", err, h.holds())
+	h.starter.fail = []error{ErrUnavailable}
+	if _, err := h.s.RunNow(context.Background(), a.ID); !errors.Is(err, ErrUnavailable) || h.holds() != 0 || len(h.runs(a.ID)) != 1 {
+		t.Fatalf("unavailable: %v, holds %d, %d records", err, h.holds(), len(h.runs(a.ID)))
+	}
+	h.starter.fail = []error{errors.New("no such model")}
+	failed, err := h.s.RunNow(context.Background(), a.ID)
+	if err == nil || failed.Status != automations.RunFailed || failed.Error != "no such model" || h.holds() != 0 {
+		t.Fatalf("failed start: %+v %v, holds %d", failed, err, h.holds())
+	}
+	if runs := h.runs(a.ID); len(runs) != 2 || runs[0].RunID != failed.RunID || runs[0].Status != automations.RunFailed || runs[0].Trigger != automations.TriggerManual {
+		t.Fatalf("records %+v", runs)
+	}
+}
+
+func TestAStartThatFailsForGoodIsRecordedOnce(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *", WorkingDirectory: "/no/such/folder"})
+	h.starter.fail = []error{errors.New("no such folder")}
+	h.tick("09:00")
+	runs := h.runs(a.ID)
+	if len(runs) != 1 || runs[0].Status != automations.RunFailed || runs[0].Error != "no such folder" || runs[0].SessionID != "" ||
+		!runs[0].EndedAt.Equal(at(t, "2026-11-05T09:00:00+08:00")) || h.holdsTaken() != 0 || h.item(a.ID).Running {
+		t.Fatalf("records %+v, holds taken %d", runs, h.holdsTaken())
+	}
+	h.tick("09:01")
+	h.tick("09:02")
+	if h.starter.count() != 1 {
+		t.Fatalf("tried %d times", h.starter.count())
+	}
+}
+
+func TestAStartThatTimesOutIsTriedAgain(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	h.starter.hang = true
+	h.tick("09:00")
+	if h.starter.count() != 1 || len(h.runs(a.ID)) != 0 || h.item(a.ID).Running || h.holdsTaken() != 0 {
+		t.Fatalf("after a timeout: %d starts, %+v", h.starter.count(), h.runs(a.ID))
+	}
+	h.tick("09:01")
+	if h.starter.count() != 2 || len(h.runs(a.ID)) != 1 || !h.item(a.ID).Running {
+		t.Fatalf("retry: %d starts, %+v", h.starter.count(), h.runs(a.ID))
+	}
+}
+
+func TestActiveRunsCanBeEndedFromOutside(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "A", Schedule: "0 9 * * *"})
+	b := h.save(automations.Automation{Name: "B", Schedule: "0 9 * * *"})
+	h.tick("09:00")
+	active := h.s.Active()
+	if len(active) != 2 || active[0].SessionID == "" || active[1].SessionID == "" ||
+		!slices.ContainsFunc(active, func(r automations.Run) bool { return r.AutomationID == a.ID }) ||
+		!slices.ContainsFunc(active, func(r automations.Run) bool { return r.AutomationID == b.ID }) {
+		t.Fatalf("active %+v", active)
+	}
+	for _, r := range active {
+		h.s.Finished(r.RunID, automations.RunInterrupted, "The Daemon restarted during the run.")
+	}
+	if len(h.s.Active()) != 0 || h.holds() != 0 || h.runs(a.ID)[0].Status != automations.RunInterrupted {
+		t.Fatalf("after: %+v, holds %d", h.s.Active(), h.holds())
+	}
+}
+
+func TestAFolderThatCannotBeReadIsListedAndSkipped(t *testing.T) {
+	h := newHarness(t, "08:00")
+	dir := filepath.Join(h.dir, "broken")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "HEARTBEAT.md"), []byte("---\nname: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.tick("09:00")
+	if it := h.item("broken"); it.Invalid == "" || !it.NextRunAt.IsZero() {
+		t.Fatalf("item %+v", it)
+	}
+	if err := h.s.Delete("broken"); err != nil {
+		t.Fatal(err)
+	}
+	if h.starter.count() != 0 {
+		t.Fatal("started a broken one")
 	}
 }
 
@@ -446,7 +547,7 @@ func TestARunThatWasWorkingWhenDroiQuitIsInterrupted(t *testing.T) {
 func TestATurnThatEndsBeforeStartReturns(t *testing.T) {
 	h := newHarness(t, "08:00")
 	a := h.save(automations.Automation{Name: "Quick", Schedule: "0 9 * * *"})
-	h.starter.onStart = func(r Run) { h.s.Finished(r.RunID, automations.RunFailed, "quick") }
+	h.starter.onStart = func(r RunSpec) { h.s.Finished(r.RunID, automations.RunFailed, "quick") }
 	h.tick("09:00")
 	runs := h.runs(a.ID)
 	if len(runs) != 1 || runs[0].Status != automations.RunFailed || runs[0].Error != "quick" || runs[0].SessionID != "session-1" || h.holds() != 0 || h.item(a.ID).Running {
@@ -458,18 +559,36 @@ func TestDeletingAWorkingAutomation(t *testing.T) {
 	h := newHarness(t, "08:00")
 	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
 	h.tick("09:00")
+	old := h.starter.last()
 	if err := h.s.Delete(a.ID); err != nil {
 		t.Fatal(err)
-	}
-	h.s.Finished(h.starter.last().RunID, automations.RunSucceeded, "")
-	if h.holds() != 0 {
-		t.Fatal("still held")
 	}
 	if _, err := os.Stat(filepath.Join(h.dir, a.ID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("folder: %v", err)
 	}
 	if items, _ := h.s.List(); len(items) != 0 {
 		t.Fatalf("list %+v", items)
+	}
+	if active := h.s.Active(); len(active) != 1 || active[0].RunID != old.RunID {
+		t.Fatalf("active %+v", active)
+	}
+
+	again := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	if again.ID != a.ID || h.item(again.ID).Running {
+		t.Fatalf("new one %+v running %v", again, h.item(again.ID).Running)
+	}
+	run, err := h.s.RunNow(context.Background(), again.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.s.Finished(old.RunID, automations.RunSucceeded, "")
+	runs := h.runs(again.ID)
+	if len(runs) != 1 || runs[0].RunID != run.RunID || runs[0].Status != automations.RunRunning || !h.item(again.ID).Running || h.holds() != 1 {
+		t.Fatalf("records %+v, holds %d", runs, h.holds())
+	}
+	h.s.Finished(run.RunID, automations.RunSucceeded, "")
+	if h.holds() != 0 || len(h.s.Active()) != 0 {
+		t.Fatalf("holds %d, active %+v", h.holds(), h.s.Active())
 	}
 }
 

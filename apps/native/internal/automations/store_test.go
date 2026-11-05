@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestStoreSavesAndReadsAnAutomation(t *testing.T) {
@@ -239,5 +240,95 @@ func TestStoreWritesLeaveNoTemporaryFiles(t *testing.T) {
 	})
 	if strings.Join(names, " ") != "HEARTBEAT.md runs.jsonl state.json" {
 		t.Fatalf("files %v", names)
+	}
+}
+
+func TestStoreListsAFolderItCannotRead(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	ok, err := s.Save(Automation{Name: "Good", Schedule: "0 9 * * *", Prompt: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, text := range map[string]string{
+		"broken": "no front matter here\n",
+		"bom":    "\ufeff--- \r\nname: With a BOM\r\nschedule: 0 9 * * *\r\n---\t\r\n\r\nHi.\r\n",
+	} {
+		if err := os.MkdirAll(filepath.Join(s.Dir, id), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(s.Dir, id, "HEARTBEAT.md"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(s.Dir, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Automation{}
+	for _, a := range list {
+		byID[a.ID] = a
+	}
+	if len(list) != 4 || byID[ok.ID].Invalid != "" || byID["bom"].Name != "With a BOM" || byID["bom"].Prompt != "Hi." || byID["bom"].Invalid != "" ||
+		byID["broken"].Invalid != "HEARTBEAT.md has no front matter" || byID["empty"].Invalid != "HEARTBEAT.md is missing" {
+		t.Fatalf("list %+v", list)
+	}
+	for _, id := range []string{"broken", "empty"} {
+		if err := s.Delete(id); err != nil {
+			t.Fatalf("delete %s: %v", id, err)
+		}
+	}
+	if err := s.Delete("broken"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete again: %v", err)
+	}
+}
+
+func TestStoreRefusesIDsThatAreNotAFolderName(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	for _, id := range []string{"a.", "a ", "a:b", "c:", "/abs"} {
+		if _, err := s.Get(id); err == nil || errors.Is(err, ErrNotFound) {
+			t.Errorf("Get(%q): %v", id, err)
+		}
+	}
+}
+
+func TestIDAvoidsWindowsDeviceNames(t *testing.T) {
+	for name, want := range map[string]string{"CON": "con-2", "nul": "nul-2", "Com1": "com1-2", "LPT9": "lpt9-2", "com0": "com0", "console": "console"} {
+		if got := ID(name, nil); got != want {
+			t.Errorf("ID(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestStoreSavesAPromptWithUnixLineEnds(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	a, err := s.Save(Automation{Name: "n", Schedule: "0 9 * * *", Prompt: "one\r\ntwo\r\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(s.Dir, a.ID, "HEARTBEAT.md"))
+	if strings.Contains(string(b), "\r") || a.Prompt != "one\ntwo" {
+		t.Fatalf("%q", b)
+	}
+}
+
+func TestStoreCutsALongRunError(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	a, err := s.Save(Automation{Name: "n", Schedule: "0 9 * * *", Prompt: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := "x" + strings.Repeat("错", 3000)
+	if err := s.SaveRun(a.ID, Run{RunID: "r", Status: RunFailed, Error: long}); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := s.Runs(a.ID)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("%+v %v", runs, err)
+	}
+	if e := runs[0].Error; len(e) > 4096 || len(e) < 4090 || !utf8.ValidString(e) || !strings.HasPrefix(long, e) || runs[0].AutomationID != a.ID {
+		t.Fatalf("error of %d bytes, valid %v, run %q", len(e), utf8.ValidString(e), runs[0].AutomationID)
 	}
 }

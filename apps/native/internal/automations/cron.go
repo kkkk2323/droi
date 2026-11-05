@@ -2,6 +2,7 @@ package automations
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,10 @@ type Cron struct {
 	// matches when both day fields do; when both are restricted, either is
 	// enough (as cron has always read them).
 	domStar, dowStar bool
+	// A minute or hour field that starts with "*" makes an interval
+	// schedule, which follows the clock across a daylight-saving change
+	// (Vixie cron's rule); see Next.
+	minStar, hourStar bool
 }
 
 type cronField struct {
@@ -30,9 +35,14 @@ var cronFields = [5]cronField{
 	{"day of the week", 0, 7},
 }
 
+// searchYears bounds Next. A date falls on each day of the week within 28
+// years, so a schedule that runs at all runs within it.
+const searchYears = 30
+
 // ParseCron reads five fields of numbers, "*", lists ("1,15"), ranges
 // ("1-5") and steps ("*/15", "1-30/5"); 0 and 7 are both Sunday. Names
-// (MON, JAN), macros (@daily) and a sixth field are refused.
+// (MON, JAN), macros (@daily), a sixth field and a schedule that never
+// runs are refused.
 func ParseCron(expr string) (Cron, error) {
 	expr = strings.TrimSpace(expr)
 	if strings.HasPrefix(expr, "@") {
@@ -56,28 +66,12 @@ func ParseCron(expr string) (Cron, error) {
 	c := Cron{
 		minute: sets[0], hour: sets[1], dom: sets[2], month: sets[3], dow: sets[4],
 		domStar: strings.HasPrefix(f[2], "*"), dowStar: strings.HasPrefix(f[4], "*"),
+		minStar: strings.HasPrefix(f[0], "*"), hourStar: strings.HasPrefix(f[1], "*"),
 	}
-	if c.dowStar && !c.anyDate() {
-		return Cron{}, fmt.Errorf("%q never runs: no month has that day", expr)
+	if c.Next(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC).IsZero() {
+		return Cron{}, fmt.Errorf("%q never runs: no day matches both its day and its month", expr)
 	}
 	return c, nil
-}
-
-// anyDate is whether the day of the month and the month meet in some year
-// (29 February counts).
-func (c Cron) anyDate() bool {
-	days := [13]int{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-	for m := 1; m <= 12; m++ {
-		if c.month&(1<<m) == 0 {
-			continue
-		}
-		for d := 1; d <= days[m]; d++ {
-			if c.dom&(1<<d) != 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func parseCronField(field string, spec cronField) (uint64, error) {
@@ -153,19 +147,30 @@ func (c Cron) dayMatches(t time.Time) bool {
 	return dom || dow
 }
 
+// dstSlack is more than any daylight-saving shift: an instant of a wall
+// time this much later than another's cannot come before it.
+const dstSlack = 3 * time.Hour
+
 // Next is the first time after after that the expression names, read as
-// wall-clock times in loc. A wall time the clock skips when it springs
-// forward runs at the moment of the jump; one it repeats when it falls back
-// runs at its first occurrence only. Zero when nothing comes within nine
-// years.
+// wall-clock times in loc; zero when nothing comes within 30 years.
+//
+// Across a daylight-saving change it follows Vixie cron. A fixed-time
+// schedule (minute and hour fields without "*") runs a wall time the clock
+// skips at the moment of the jump, and one the clock repeats at its first
+// occurrence only. An interval schedule (minute or hour field starting with
+// "*") follows the clock: a skipped wall time does not run, a repeated one
+// runs at both occurrences.
 func (c Cron) Next(after time.Time, loc *time.Location) time.Time {
 	local := after.In(loc)
 	y, m, d := local.Date()
-	// Wall times more than three hours before after's cannot come after it,
-	// whatever the clock did in between.
-	floor := wall(local).Add(-3 * time.Hour)
+	floor := wall(local).Add(-dstSlack)
+	interval := c.minStar || c.hourStar
+	var best, bestWall time.Time
 	day := time.Date(y, m, d-1, 0, 0, 0, 0, time.UTC)
-	for end := day.AddDate(9, 0, 0); day.Before(end); day = day.AddDate(0, 0, 1) {
+	for end := day.AddDate(searchYears, 0, 0); day.Before(end); day = day.AddDate(0, 0, 1) {
+		if !best.IsZero() && day.After(bestWall.Add(dstSlack)) {
+			return best
+		}
 		if !c.dayMatches(day) {
 			continue
 		}
@@ -177,13 +182,19 @@ func (c Cron) Next(after time.Time, loc *time.Location) time.Time {
 				if c.minute&(1<<mi) == 0 {
 					continue
 				}
-				if t := instant(day.Year(), day.Month(), day.Day(), h, mi, loc); t.After(after) {
-					return t
+				w := day.Add(time.Duration(h)*time.Hour + time.Duration(mi)*time.Minute)
+				if !best.IsZero() && w.After(bestWall.Add(dstSlack)) {
+					return best
+				}
+				for _, t := range instants(w, loc, interval) {
+					if t.After(after) && (best.IsZero() || t.Before(best)) {
+						best, bestWall = t, w
+					}
 				}
 			}
 		}
 	}
-	return time.Time{}
+	return best
 }
 
 // wall is t's wall clock as a UTC time, to compare wall times.
@@ -191,30 +202,43 @@ func wall(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
 }
 
-// instant is when a wall time happens in loc: the first of its two
-// instants when the clock falls back over it, the moment of the jump when
-// the clock springs forward over it.
-func instant(y int, mo time.Month, d, h, mi int, loc *time.Location) time.Time {
-	t := time.Date(y, mo, d, h, mi, 0, 0, loc)
-	want := time.Date(y, mo, d, h, mi, 0, 0, time.UTC)
-	got := wall(t)
-	if !got.Equal(want) {
-		start, end := t.ZoneBounds()
-		if got.Before(want) {
-			return end
-		}
-		return start
-	}
-	start, _ := t.ZoneBounds()
-	if start.IsZero() {
-		return t
-	}
+func offset(t time.Time) int {
 	_, off := t.Zone()
-	_, prevOff := start.Add(-time.Nanosecond).Zone()
-	if prevOff > off {
-		if e := t.Add(-time.Duration(prevOff-off) * time.Second); e.Before(start) && wall(e.In(loc)).Equal(want) {
-			return e
+	return off
+}
+
+// instants are when wall time w (given as UTC) happens in loc, earliest
+// first: one, or two when the clock falls back over it. When the clock
+// springs forward over it, an interval schedule (all) has none and a
+// fixed-time one the moment of the jump; a fixed-time one keeps only the
+// first of two.
+func instants(w time.Time, loc *time.Location, all bool) []time.Time {
+	t := time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), 0, 0, loc)
+	start, end := t.ZoneBounds()
+	offsets := []int{offset(t)}
+	if !start.IsZero() {
+		offsets = append(offsets, offset(start.Add(-time.Nanosecond)))
+	}
+	if !end.IsZero() {
+		offsets = append(offsets, offset(end))
+	}
+	var out []time.Time
+	for _, off := range offsets {
+		u := w.Add(-time.Duration(off) * time.Second).In(loc)
+		if wall(u).Equal(w) && !slices.ContainsFunc(out, u.Equal) {
+			out = append(out, u)
 		}
 	}
-	return t
+	slices.SortFunc(out, func(a, b time.Time) int { return a.Compare(b) })
+	switch {
+	case len(out) == 0 && all:
+		return nil
+	case len(out) == 0 && wall(t).Before(w):
+		return []time.Time{end}
+	case len(out) == 0:
+		return []time.Time{start}
+	case !all:
+		return out[:1]
+	}
+	return out
 }

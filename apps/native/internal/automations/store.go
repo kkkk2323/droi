@@ -1,7 +1,6 @@
 package automations
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Automation is one of Droi's Automations, a folder with a HEARTBEAT.md in
@@ -35,6 +35,10 @@ type Automation struct {
 	WorkingDirectory string    `json:"workingDirectory,omitempty"`
 	Paused           bool      `json:"paused"`
 	CreatedAt        time.Time `json:"createdAt,omitzero"`
+	// Invalid is why its HEARTBEAT.md, schedule or time zone cannot be
+	// read; it is never written. List keeps such a folder, so it can be
+	// seen and deleted.
+	Invalid string `json:"invalid,omitempty"`
 }
 
 // Trigger is what started a run.
@@ -60,13 +64,15 @@ const (
 
 // Run is the record of one run, a line of the Automation's runs.jsonl.
 type Run struct {
-	RunID     string    `json:"runId"`
-	SessionID string    `json:"sessionId,omitempty"`
-	Trigger   Trigger   `json:"trigger"`
-	Status    RunStatus `json:"status"`
-	StartedAt time.Time `json:"startedAt,omitzero"`
-	EndedAt   time.Time `json:"endedAt,omitzero"`
-	Error     string    `json:"error,omitempty"`
+	RunID string `json:"runId"`
+	// AutomationID is the Automation's; Runs fills it in.
+	AutomationID string    `json:"automationId,omitempty"`
+	SessionID    string    `json:"sessionId,omitempty"`
+	Trigger      Trigger   `json:"trigger"`
+	Status       RunStatus `json:"status"`
+	StartedAt    time.Time `json:"startedAt,omitzero"`
+	EndedAt      time.Time `json:"endedAt,omitzero"`
+	Error        string    `json:"error,omitempty"`
 }
 
 // State is what the scheduler keeps between starts, in state.json.
@@ -78,6 +84,9 @@ type State struct {
 
 // MaxRuns is how many records runs.jsonl keeps.
 const MaxRuns = 200
+
+// maxError is how much of a run's error its record keeps, in bytes.
+const maxError = 4 << 10
 
 const (
 	heartbeatFile = "HEARTBEAT.md"
@@ -99,14 +108,15 @@ type Store struct {
 func (s Store) Folder(id string) string { return filepath.Join(s.Dir, id) }
 
 func checkID(id string) error {
-	if id == "" || id == "." || id == ".." || strings.HasPrefix(id, ".") || strings.ContainsAny(id, `/\`) {
+	if id == "" || strings.HasPrefix(id, ".") || strings.HasSuffix(id, ".") || strings.HasSuffix(id, " ") ||
+		strings.ContainsAny(id, `/\:`) || !filepath.IsLocal(id) {
 		return fmt.Errorf("%q is not an automation id", id)
 	}
 	return nil
 }
 
-// List is every Automation, by name; a folder without a readable
-// HEARTBEAT.md is left out.
+// List is every Automation, by name. A folder whose HEARTBEAT.md is
+// missing or cannot be read is one with only its ID and Invalid.
 func (s Store) List() ([]Automation, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -120,12 +130,24 @@ func (s Store) List() ([]Automation, error) {
 		if !e.IsDir() || checkID(e.Name()) != nil {
 			continue
 		}
-		if a, err := s.Get(e.Name()); err == nil {
-			out = append(out, a)
+		a, err := s.read(e.Name())
+		if errors.Is(err, fs.ErrNotExist) {
+			a, err = Automation{}, errors.New("HEARTBEAT.md is missing")
 		}
+		if err != nil {
+			a = Automation{Invalid: err.Error()}
+		}
+		a.ID = e.Name()
+		out = append(out, a)
+	}
+	name := func(a Automation) string {
+		if a.Name == "" {
+			return strings.ToLower(a.ID)
+		}
+		return strings.ToLower(a.Name)
 	}
 	slices.SortStableFunc(out, func(a, b Automation) int {
-		if c := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+		if c := strings.Compare(name(a), name(b)); c != 0 {
 			return c
 		}
 		return strings.Compare(a.ID, b.ID)
@@ -138,19 +160,24 @@ func (s Store) Get(id string) (Automation, error) {
 	if err := checkID(id); err != nil {
 		return Automation{}, err
 	}
-	b, err := os.ReadFile(filepath.Join(s.Folder(id), heartbeatFile))
+	a, err := s.read(id)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Automation{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	if err != nil {
+		return Automation{}, fmt.Errorf("%s: %w", id, err)
+	}
+	return a, nil
+}
+
+func (s Store) read(id string) (Automation, error) {
+	b, err := os.ReadFile(filepath.Join(s.Folder(id), heartbeatFile))
+	if err != nil {
 		return Automation{}, err
 	}
 	a, err := parseHeartbeat(string(b))
-	if err != nil {
-		return Automation{}, fmt.Errorf("%s: %w", id, err)
-	}
 	a.ID = id
-	return a, nil
+	return a, err
 }
 
 // Validate is why a cannot be saved, or nil.
@@ -184,7 +211,9 @@ func (s Store) Save(a Automation) (Automation, error) {
 	a.Name = strings.TrimSpace(a.Name)
 	a.Schedule = strings.Join(strings.Fields(a.Schedule), " ")
 	a.Timezone = strings.TrimSpace(a.Timezone)
-	a.Prompt = strings.TrimSpace(a.Prompt)
+	a.Prompt = strings.TrimSpace(strings.ReplaceAll(a.Prompt, "\r\n", "\n"))
+	a.Invalid = ""
+	created := a.ID == ""
 	if err := Validate(a); err != nil {
 		return Automation{}, err
 	}
@@ -218,6 +247,9 @@ func (s Store) Save(a Automation) (Automation, error) {
 	}
 	a.CreatedAt = a.CreatedAt.Truncate(time.Second)
 	if err := writeAtomic(filepath.Join(s.Folder(a.ID), heartbeatFile), []byte(formatHeartbeat(a))); err != nil {
+		if created {
+			_ = os.RemoveAll(s.Folder(a.ID))
+		}
 		return Automation{}, err
 	}
 	return a, nil
@@ -233,9 +265,15 @@ func (s Store) SetPaused(id string, paused bool) error {
 	return writeAtomic(filepath.Join(s.Folder(id), heartbeatFile), []byte(formatHeartbeat(a)))
 }
 
-// Delete removes an Automation's folder, its runs' records with it.
+// Delete removes an Automation's folder, its runs' records with it, also
+// when its HEARTBEAT.md cannot be read.
 func (s Store) Delete(id string) error {
-	if _, err := s.Get(id); err != nil {
+	if err := checkID(id); err != nil {
+		return err
+	}
+	if info, err := os.Stat(s.Folder(id)); errors.Is(err, fs.ErrNotExist) || err == nil && !info.IsDir() {
+		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	} else if err != nil {
 		return err
 	}
 	return os.RemoveAll(s.Folder(id))
@@ -254,11 +292,10 @@ func (s Store) Runs(id string) ([]Run, error) {
 		return nil, err
 	}
 	var out []Run
-	sc := bufio.NewScanner(bytes.NewReader(b))
-	sc.Buffer(nil, 1<<20)
-	for sc.Scan() {
+	for line := range bytes.Lines(b) {
 		var r Run
-		if json.Unmarshal(sc.Bytes(), &r) == nil && r.RunID != "" {
+		if json.Unmarshal(line, &r) == nil && r.RunID != "" {
+			r.AutomationID = id
 			out = append(out, r)
 		}
 	}
@@ -267,8 +304,9 @@ func (s Store) Runs(id string) ([]Run, error) {
 
 // SaveRun adds r to the Automation's records, or replaces the one with its
 // RunID, keeping the last MaxRuns. It fails when the Automation's folder is
-// gone, rather than bring it back.
+// gone, rather than bring it back. An error longer than 4 KiB is cut.
 func (s Store) SaveRun(id string, r Run) error {
+	r.Error = cut(r.Error, maxError)
 	runs, err := s.Runs(id)
 	if err != nil {
 		return err
@@ -283,6 +321,8 @@ func (s Store) SaveRun(id string, r Run) error {
 	}
 	var b bytes.Buffer
 	for _, x := range runs {
+		// The folder says whose run it is.
+		x.AutomationID = ""
 		line, err := json.Marshal(x)
 		if err != nil {
 			return err
@@ -324,6 +364,17 @@ func (s Store) SaveState(st State) error {
 	return writeAtomic(filepath.Join(s.Dir, stateFile), append(b, '\n'))
 }
 
+// cut is s cut to at most n bytes, at the start of a character.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
 // writeAtomic replaces file whole, so a reader never sees half of it. It
 // does not make the folder.
 func writeAtomic(file string, data []byte) error {
@@ -333,11 +384,14 @@ func writeAtomic(file string, data []byte) error {
 	}
 	tmp := f.Name()
 	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err == nil {
-		err = os.Rename(tmp, file)
+		err = rename(tmp, file)
 	}
 	if err != nil {
 		_ = os.Remove(tmp)
@@ -399,21 +453,18 @@ func yamlString(value string) string {
 // Droi uses, leaving other keys and nested values alone, and the prompt
 // below it.
 func parseHeartbeat(text string) (Automation, error) {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	rest, ok := strings.CutPrefix(text, "---\n")
-	if !ok {
+	text = strings.TrimPrefix(strings.ReplaceAll(text, "\r\n", "\n"), "\ufeff")
+	lines := strings.Split(text, "\n")
+	fence := func(l string) bool { return strings.TrimRight(l, " \t") == "---" }
+	if !fence(lines[0]) {
 		return Automation{}, errors.New("HEARTBEAT.md has no front matter")
 	}
-	var front string
-	if strings.HasPrefix(rest, "---\n") || rest == "---" {
-		front, rest = "", strings.TrimPrefix(rest, "---")
-	} else if i := strings.Index(rest, "\n---"); i >= 0 && (len(rest) == i+4 || rest[i+4] == '\n') {
-		front, rest = rest[:i], rest[i+4:]
-	} else {
+	end := slices.IndexFunc(lines[1:], fence) + 1
+	if end == 0 {
 		return Automation{}, errors.New("HEARTBEAT.md's front matter has no end")
 	}
 	var a Automation
-	for line := range strings.SplitSeq(front, "\n") {
+	for _, line := range lines[1:end] {
 		if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' || line[0] == '-' {
 			continue
 		}
@@ -446,7 +497,7 @@ func parseHeartbeat(text string) (Automation, error) {
 	if a.Name == "" || a.Schedule == "" {
 		return Automation{}, errors.New("HEARTBEAT.md needs a name and a schedule")
 	}
-	a.Prompt = strings.TrimSpace(rest)
+	a.Prompt = strings.TrimSpace(strings.Join(lines[end+1:], "\n"))
 	return a, nil
 }
 

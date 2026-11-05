@@ -1,7 +1,13 @@
-// Package automations is what the Automations page needs beyond the
-// Daemon's answers: schedules between the local clock and the Daemon's UTC
-// cron, the words a schedule and a run read as, an id for a new
-// Automation, and the Workspace its runs work in.
+// Package automations keeps Droi's own Automations (ADR 0035): the Store
+// of their folders, HEARTBEAT.md, runs.jsonl and state.json, and the cron
+// expressions their schedules are, read in a time zone. It also has what
+// the Automations page needs: schedules between the local clock and the
+// Daemon's UTC cron, the words a schedule and a run read as, an id for a
+// new Automation, and the Workspace a Factory automation works in.
+//
+// A HEARTBEAT.md keeps Factory's key names, so one moved from
+// ~/.factory/automations reads the same; the keys Droi does not use, such
+// as creationSource, tags and description, are dropped when Droi saves it.
 package automations
 
 import (
@@ -292,7 +298,7 @@ func ID(name string, taken map[string]bool) string {
 	if id == "" {
 		id = "automation"
 	}
-	if !taken[id] {
+	if !taken[id] && !windowsReserved(id) {
 		return id
 	}
 	for n := 2; ; n++ {
@@ -300,6 +306,19 @@ func ID(name string, taken map[string]bool) string {
 			return next
 		}
 	}
+}
+
+// windowsReserved is a name Windows keeps for a device, which no folder
+// can have.
+func windowsReserved(id string) bool {
+	switch id {
+	case "con", "prn", "aux", "nul":
+		return true
+	}
+	if len(id) == 4 && (strings.HasPrefix(id, "com") || strings.HasPrefix(id, "lpt")) {
+		return id[3] >= '1' && id[3] <= '9'
+	}
+	return false
 }
 
 // WorkingDirectory is the Workspace an Automation's runs work in, from

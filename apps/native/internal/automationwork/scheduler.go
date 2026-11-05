@@ -23,6 +23,18 @@ import (
 // trigger and the run's id as its metadata.
 const TagName = "droi.automation"
 
+// FactoryAutomationTools are the llm ids of Factory's own Automation tools.
+// An Automation they make syncs to Factory, so Droi's Sessions leave them
+// out (disabledToolIds).
+var FactoryAutomationTools = []string{
+	"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation",
+	"DeleteAutomation", "RunAutomation", "ListAutomationTemplates",
+}
+
+// workstreamTools is Droi's Workstream server, for a Workstream's Sessions
+// only.
+const workstreamTools = "mcp:droi-workstream"
+
 // catchUpAfter is how late a scheduled time may start and still count as
 // on time rather than a catch-up.
 const catchUpAfter = 2 * time.Minute
@@ -30,8 +42,13 @@ const catchUpAfter = 2 * time.Minute
 // ErrRunning refuses a run of an Automation while one of it works.
 var ErrRunning = errors.New("a run of this automation is already working")
 
-// Run is what a Starter needs to open a run's Session.
-type Run struct {
+// ErrUnavailable is a start that could not reach the Daemon or timed out.
+// The run stays due and is tried again at the next tick; nothing is
+// recorded.
+var ErrUnavailable = errors.New("the Daemon is not available")
+
+// RunSpec is what a Starter needs to open a run's Session.
+type RunSpec struct {
 	RunID          string
 	AutomationID   string
 	AutomationName string
@@ -46,13 +63,22 @@ type Run struct {
 	// SkipPermissions is set when the Automation runs without asking.
 	SkipPermissions bool
 	Tags            []protocol.SessionTag
-	Prompt          string
+	// DisabledTools are the tools the run's Session leaves out: Factory's
+	// Automation tools and Droi's Workstream tools.
+	DisabledTools []string
+	Prompt        string
 }
 
 // Starter opens a run's Session and sends its prompt. The caller reports the
 // end of the Session's turn with Scheduler.Finished.
+//
+// A Start that fails must leave no Session behind. It wraps ErrUnavailable
+// when the Daemon cannot be reached, so the run is tried again a minute
+// later; any other error is recorded as a failed run and the scheduled
+// time is not tried again. A Start that outlives its context's deadline
+// counts as unavailable.
 type Starter interface {
-	Start(ctx context.Context, run Run) (sessionID string, err error)
+	Start(ctx context.Context, run RunSpec) (sessionID string, err error)
 }
 
 // Config is what a Scheduler works with.
@@ -60,6 +86,8 @@ type Config struct {
 	// Dir holds the Automations, <UserData>/automations.
 	Dir     string
 	Starter Starter
+	// StartTimeout bounds a Starter's Start; 2 minutes when zero.
+	StartTimeout time.Duration
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
 	// Location reads a schedule without a time zone; time.Local when nil.
@@ -73,7 +101,8 @@ type Config struct {
 	Log     func(string)
 }
 
-// Item is an Automation as a list shows it.
+// Item is an Automation as a list shows it; Invalid also says why a
+// schedule never runs.
 type Item struct {
 	automations.Automation
 	// NextRunAt is the next scheduled time, zero when paused or Invalid; a
@@ -82,11 +111,11 @@ type Item struct {
 	// LastRun is the newest run, nil before the first.
 	LastRun *automations.Run `json:"lastRun,omitempty"`
 	Running bool             `json:"running"`
-	// Invalid is why its schedule or time zone cannot be read.
-	Invalid string `json:"invalid,omitempty"`
 }
 
-// Scheduler starts the runs of Droi's Automations and records them.
+// Scheduler starts the runs of Droi's Automations and records them. Its
+// lock covers every read and write of the folder, which Windows will not
+// replace while it is open.
 type Scheduler struct {
 	cfg   Config
 	store automations.Store
@@ -94,14 +123,18 @@ type Scheduler struct {
 	mu     sync.Mutex
 	state  automations.State
 	active map[string]*active
+	// orphans are the runs of deleted Automations, by run id, until they
+	// end; their end is not recorded.
+	orphans map[string]*active
+	logs    []string
 }
 
 // active is a run that is starting or working.
 type active struct {
-	automationID string
-	run          automations.Run
-	started      bool
-	release      func()
+	run     automations.Run
+	started bool
+	deleted bool
+	release func()
 	// ended is a Finished that came before Start returned.
 	ended *automations.Run
 }
@@ -111,6 +144,9 @@ type active struct {
 func New(cfg Config) *Scheduler {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.StartTimeout <= 0 {
+		cfg.StartTimeout = 2 * time.Minute
 	}
 	if cfg.Location == nil {
 		cfg.Location = time.Local
@@ -124,18 +160,43 @@ func New(cfg Config) *Scheduler {
 	if cfg.Log == nil {
 		cfg.Log = func(string) {}
 	}
-	s := &Scheduler{cfg: cfg, store: automations.Store{Dir: cfg.Dir}, active: map[string]*active{}}
+	s := &Scheduler{cfg: cfg, store: automations.Store{Dir: cfg.Dir}, active: map[string]*active{}, orphans: map[string]*active{}}
+	s.mu.Lock()
 	st, err := s.store.State()
 	if err != nil {
 		s.logf("automations: %v", err)
 	}
 	s.state = st
 	s.interruptLeftovers()
+	s.unlock(false)
 	return s
 }
 
-func (s *Scheduler) logf(format string, args ...any) { s.cfg.Log(fmt.Sprintf(format, args...)) }
+// logf logs once s.mu is unlocked; s.mu is held.
+func (s *Scheduler) logf(format string, args ...any) {
+	s.logs = append(s.logs, fmt.Sprintf(format, args...))
+}
 
+// unlock unlocks s.mu, then calls the releases, logs what was logged
+// under it, and calls Changed when changed.
+func (s *Scheduler) unlock(changed bool, releases ...func()) {
+	logs := s.logs
+	s.logs = nil
+	s.mu.Unlock()
+	for _, release := range releases {
+		if release != nil {
+			release()
+		}
+	}
+	for _, l := range logs {
+		s.cfg.Log(l)
+	}
+	if changed {
+		s.cfg.Changed()
+	}
+}
+
+// interruptLeftovers; s.mu is held.
 func (s *Scheduler) interruptLeftovers() {
 	list, err := s.store.List()
 	if err != nil {
@@ -154,17 +215,16 @@ func (s *Scheduler) interruptLeftovers() {
 				continue
 			}
 			r.Status, r.EndedAt, r.Error = automations.RunInterrupted, now, l10n.N("Droi quit during the run.")
-			if err := s.store.SaveRun(a.ID, r); err != nil {
-				s.logf("automations: run %s of %s: %v", r.RunID, a.ID, err)
-			}
+			s.record(r)
 		}
 	}
 }
 
 // Run ticks at the start of every minute until ctx ends, and once at once.
+// A start that takes long does not hold up the next tick.
 func (s *Scheduler) Run(ctx context.Context) {
 	for {
-		s.Tick(ctx)
+		s.tick(ctx)
 		now := s.cfg.Now()
 		timer := time.NewTimer(now.Truncate(time.Minute).Add(time.Minute).Sub(now))
 		select {
@@ -192,7 +252,7 @@ func (s *Scheduler) schedule(a automations.Automation) (automations.Cron, *time.
 
 // handled is the time up to which a's scheduled times are handled: the
 // last one recorded, else its creation, else (for a folder Droi did not
-// write) now, which it records.
+// write) now, which it records; s.mu is held.
 func (s *Scheduler) handled(a automations.Automation, now time.Time) (time.Time, bool) {
 	if t, ok := s.state.LastScheduled[a.ID]; ok {
 		return t, false
@@ -200,10 +260,20 @@ func (s *Scheduler) handled(a automations.Automation, now time.Time) (time.Time,
 	if !a.CreatedAt.IsZero() {
 		return a.CreatedAt, false
 	}
-	s.state.LastScheduled[a.ID] = now
-	return now, true
+	return now, s.markHandled(a.ID, now)
 }
 
+// markHandled moves an Automation's handled time to t, never back; s.mu is
+// held. It reports whether the state changed.
+func (s *Scheduler) markHandled(id string, t time.Time) bool {
+	if old, ok := s.state.LastScheduled[id]; ok && !t.After(old) {
+		return false
+	}
+	s.state.LastScheduled[id] = t
+	return true
+}
+
+// saveState; s.mu is held.
 func (s *Scheduler) saveState() {
 	if err := s.store.SaveState(s.state); err != nil {
 		s.logf("automations: %v", err)
@@ -213,14 +283,13 @@ func (s *Scheduler) saveState() {
 // Tick starts a run of each active Automation with a scheduled time after
 // the last one handled: one run however many times passed, a catch-up when
 // the newest is more than two minutes late. It returns once those runs have
-// started or failed to; a failed start stays due for the next tick.
-func (s *Scheduler) Tick(ctx context.Context) {
+// started or failed to; an unavailable Daemon keeps them due for the next
+// tick.
+func (s *Scheduler) Tick(ctx context.Context) { s.tick(ctx).Wait() }
+
+func (s *Scheduler) tick(ctx context.Context) *sync.WaitGroup {
+	var wg sync.WaitGroup
 	now := s.cfg.Now()
-	list, err := s.store.List()
-	if err != nil {
-		s.logf("automations: %v", err)
-		return
-	}
 	type due struct {
 		a   automations.Automation
 		act *active
@@ -228,8 +297,12 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	var starts []due
 	dirty := false
 	s.mu.Lock()
+	list, err := s.store.List()
+	if err != nil {
+		s.logf("automations: %v", err)
+	}
 	for _, a := range list {
-		if a.Paused {
+		if a.Paused || a.Invalid != "" {
 			continue
 		}
 		cron, loc, err := s.schedule(a)
@@ -245,8 +318,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 		if act := s.active[a.ID]; act != nil {
 			if act.started {
 				s.logf("automations: %s is still running; skipped its run of %s", a.ID, next.Format(time.RFC3339))
-				s.state.LastScheduled[a.ID] = now
-				dirty = true
+				dirty = s.markHandled(a.ID, now) || dirty
 			}
 			continue
 		}
@@ -259,91 +331,115 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	if dirty {
 		s.saveState()
 	}
-	s.mu.Unlock()
-	if len(starts) == 0 {
-		return
-	}
-	s.cfg.Changed()
-	var wg sync.WaitGroup
+	s.unlock(len(starts) > 0)
 	for _, d := range starts {
-		wg.Go(func() {
-			if _, err := s.start(ctx, d.a, d.act, now); err != nil {
-				s.logf("automations: could not start %s: %v", d.a.ID, err)
-			}
-		})
+		wg.Go(func() { _, _ = s.start(ctx, d.a, d.act, now) })
 	}
-	wg.Wait()
+	return &wg
 }
 
 // RunNow starts a run of the Automation at once, paused or not; refused
-// with ErrRunning while one of it works.
+// with ErrRunning while one of it works. A start that fails other than
+// with ErrUnavailable is recorded as a failed run, which it returns with
+// the error.
 func (s *Scheduler) RunNow(ctx context.Context, id string) (automations.Run, error) {
+	s.mu.Lock()
 	a, err := s.store.Get(id)
 	if err != nil {
+		s.unlock(false)
 		return automations.Run{}, err
 	}
-	s.mu.Lock()
 	if s.active[id] != nil {
-		s.mu.Unlock()
+		s.unlock(false)
 		return automations.Run{}, ErrRunning
 	}
 	act := s.begin(a, automations.TriggerManual, s.cfg.Now())
-	s.mu.Unlock()
-	s.cfg.Changed()
+	s.unlock(true)
 	return s.start(ctx, a, act, time.Time{})
 }
 
-// begin marks a run of a as starting and keeps the computer awake for it;
-// s.mu is held.
+// begin marks a run of a as starting; s.mu is held.
 func (s *Scheduler) begin(a automations.Automation, trigger automations.Trigger, now time.Time) *active {
-	act := &active{
-		automationID: a.ID,
-		run:          automations.Run{RunID: uuid.NewString(), Trigger: trigger, Status: automations.RunRunning, StartedAt: now},
-		release:      s.cfg.Hold(),
-	}
+	act := &active{run: automations.Run{
+		RunID: uuid.NewString(), AutomationID: a.ID, Trigger: trigger, Status: automations.RunRunning, StartedAt: now,
+	}}
 	s.active[a.ID] = act
 	return act
 }
 
+// drop forgets a run; s.mu is held.
+func (s *Scheduler) drop(act *active) {
+	if act.deleted {
+		delete(s.orphans, act.run.RunID)
+	} else if s.active[act.run.AutomationID] == act {
+		delete(s.active, act.run.AutomationID)
+	}
+}
+
 // start opens the run's Session. scheduled is the tick's time for a
-// scheduled run, recorded as handled once it starts; zero for Run now.
+// scheduled run, recorded as handled once the run starts or fails for
+// good; zero for Run now.
 func (s *Scheduler) start(ctx context.Context, a automations.Automation, act *active, scheduled time.Time) (automations.Run, error) {
-	sessionID, err := s.cfg.Starter.Start(ctx, s.spec(a, act.run))
+	startCtx, cancel := context.WithTimeout(ctx, s.cfg.StartTimeout)
+	sessionID, err := s.cfg.Starter.Start(startCtx, s.spec(a, act.run))
+	if err != nil && startCtx.Err() != nil && !errors.Is(err, ErrUnavailable) {
+		err = fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	cancel()
+	var release func()
+	if err == nil {
+		release = s.cfg.Hold()
+	}
 	s.mu.Lock()
+	id := act.run.AutomationID
 	if err != nil {
-		delete(s.active, a.ID)
-		act.release()
-		s.mu.Unlock()
-		s.cfg.Changed()
-		return automations.Run{}, err
+		s.drop(act)
+		if errors.Is(err, ErrUnavailable) {
+			s.logf("automations: could not start %s, trying again in a minute: %v", id, err)
+			s.unlock(true)
+			return automations.Run{}, err
+		}
+		s.logf("automations: could not start %s: %v", id, err)
+		failed := act.run
+		failed.Status, failed.EndedAt, failed.Error = automations.RunFailed, s.cfg.Now(), err.Error()
+		if !act.deleted {
+			if !scheduled.IsZero() && s.markHandled(id, scheduled) {
+				s.saveState()
+			}
+			s.record(failed)
+		}
+		s.unlock(true)
+		return failed, err
 	}
-	act.run.SessionID, act.started = sessionID, true
-	if !scheduled.IsZero() {
-		s.state.LastScheduled[a.ID] = scheduled
-		s.saveState()
+	act.run.SessionID, act.started, act.release = sessionID, true, release
+	if !act.deleted {
+		if !scheduled.IsZero() && s.markHandled(id, scheduled) {
+			s.saveState()
+		}
+		s.record(act.run)
 	}
-	s.record(act.automationID, act.run)
 	run := act.run
+	var releases []func()
 	if act.ended != nil {
-		s.end(act, *act.ended)
+		releases = append(releases, s.end(act, *act.ended))
 	}
-	s.mu.Unlock()
-	s.cfg.Changed()
+	s.unlock(true, releases...)
 	return run, nil
 }
 
-func (s *Scheduler) record(id string, r automations.Run) {
-	if err := s.store.SaveRun(id, r); err != nil {
-		s.logf("automations: run %s of %s: %v", r.RunID, id, err)
+// record writes a run's record; s.mu is held.
+func (s *Scheduler) record(r automations.Run) {
+	if err := s.store.SaveRun(r.AutomationID, r); err != nil {
+		s.logf("automations: run %s of %s: %v", r.RunID, r.AutomationID, err)
 	}
 }
 
-func (s *Scheduler) spec(a automations.Automation, r automations.Run) Run {
+func (s *Scheduler) spec(a automations.Automation, r automations.Run) RunSpec {
 	cwd := a.WorkingDirectory
 	if cwd == "" {
 		cwd = s.store.Folder(a.ID)
 	}
-	return Run{
+	return RunSpec{
 		RunID:           r.RunID,
 		AutomationID:    a.ID,
 		AutomationName:  a.Name,
@@ -357,56 +453,89 @@ func (s *Scheduler) spec(a automations.Automation, r automations.Run) Run {
 		Tags: []protocol.SessionTag{{Name: TagName, Metadata: map[string]string{
 			"automationId": a.ID, "automationName": a.Name, "trigger": string(r.Trigger), "runId": r.RunID,
 		}}},
-		Prompt: a.Prompt,
+		DisabledTools: slices.Concat(FactoryAutomationTools, []string{workstreamTools}),
+		Prompt:        a.Prompt,
 	}
 }
 
-// Finished records how a run ended (succeeded or failed, with the error's
-// text), when its Session's turn ends. A run this Scheduler did not start
-// is ignored.
-func (s *Scheduler) Finished(runID string, status automations.RunStatus, errText string) {
-	s.mu.Lock()
-	var act *active
-	for _, x := range s.active {
-		if x.run.RunID == runID {
-			act = x
+// find is the starting or working run with runID; s.mu is held.
+func (s *Scheduler) find(runID string) *active {
+	if act := s.orphans[runID]; act != nil {
+		return act
+	}
+	for _, act := range s.active {
+		if act.run.RunID == runID {
+			return act
 		}
 	}
+	return nil
+}
+
+// Finished records how a run ended, when its Session's turn ends:
+// succeeded, or failed with the error's text. The caller also calls it with
+// RunInterrupted for a run of Active whose Session it finds gone or idle
+// (after the Daemon restarted, say), since no turn end will come for it.
+// The end of a run whose Automation was deleted is not recorded; a run
+// this Scheduler does not know is ignored.
+func (s *Scheduler) Finished(runID string, status automations.RunStatus, errText string) {
+	s.mu.Lock()
+	act := s.find(runID)
 	if act == nil {
-		s.mu.Unlock()
 		s.logf("automations: run %s is not running", runID)
+		s.unlock(false)
 		return
 	}
 	ended := act.run
 	ended.Status, ended.EndedAt, ended.Error = status, s.cfg.Now(), errText
 	if !act.started {
 		act.ended = &ended
-		s.mu.Unlock()
+		s.unlock(false)
 		return
 	}
-	s.end(act, ended)
-	s.mu.Unlock()
-	s.cfg.Changed()
+	release := s.end(act, ended)
+	s.unlock(true, release)
 }
 
-// end records a started run's end and lets the computer sleep; s.mu is held.
-func (s *Scheduler) end(act *active, ended automations.Run) {
+// end records a started run's end and forgets it; s.mu is held. The caller
+// calls the release it returns once s.mu is unlocked.
+func (s *Scheduler) end(act *active, ended automations.Run) func() {
 	ended.SessionID = act.run.SessionID
 	act.run = ended
-	s.record(act.automationID, ended)
-	delete(s.active, act.automationID)
-	act.release()
+	if !act.deleted {
+		s.record(ended)
+	}
+	s.drop(act)
+	return act.release
+}
+
+// Active are the runs whose Session is open and whose end has not come,
+// with their Automation and Session ids, those of deleted Automations
+// included. After the Daemon restarts, the caller checks their Sessions
+// and calls Finished for each that no longer works.
+func (s *Scheduler) Active() []automations.Run {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []automations.Run
+	for _, m := range []map[string]*active{s.active, s.orphans} {
+		for _, act := range m {
+			if act.started {
+				out = append(out, act.run)
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b automations.Run) int { return a.StartedAt.Compare(b.StartedAt) })
+	return out
 }
 
 // List is every Automation with its next scheduled time, its last run and
 // whether one works.
 func (s *Scheduler) List() ([]Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	list, err := s.store.List()
 	if err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	now := s.cfg.Now()
 	out := make([]Item, 0, len(list))
 	for _, a := range list {
@@ -417,12 +546,12 @@ func (s *Scheduler) List() ([]Item, error) {
 
 // Get is one Automation as List shows it.
 func (s *Scheduler) Get(id string) (Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	a, err := s.store.Get(id)
 	if err != nil {
 		return Item{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return s.item(a, s.cfg.Now()), nil
 }
 
@@ -435,9 +564,16 @@ func (s *Scheduler) item(a automations.Automation, now time.Time) Item {
 	} else if runs, err := s.store.Runs(a.ID); err == nil && len(runs) > 0 {
 		it.LastRun = &runs[len(runs)-1]
 	}
+	if a.Invalid != "" {
+		return it
+	}
 	cron, loc, err := s.schedule(a)
 	if err != nil {
 		it.Invalid = err.Error()
+		return it
+	}
+	if cron.Next(now, loc).IsZero() {
+		it.Invalid = "the schedule never runs"
 		return it
 	}
 	if !a.Paused {
@@ -456,7 +592,9 @@ func (s *Scheduler) item(a automations.Automation, now time.Time) Item {
 // Runs are an Automation's runs, newest first, at most limit (all when
 // limit is 0 or less).
 func (s *Scheduler) Runs(id string, limit int) ([]automations.Run, error) {
+	s.mu.Lock()
 	runs, err := s.store.Runs(id)
+	s.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -481,19 +619,17 @@ func (s *Scheduler) Save(a automations.Automation) (automations.Automation, erro
 	} else {
 		var err error
 		if old, err = s.store.Get(a.ID); err != nil {
-			s.mu.Unlock()
+			s.unlock(false)
 			return automations.Automation{}, err
 		}
 	}
 	saved, err := s.store.Save(a)
 	if err == nil && old.ID != "" && (old.Schedule != saved.Schedule || old.Timezone != saved.Timezone || old.Paused && !saved.Paused) {
-		s.state.LastScheduled[saved.ID] = now
-		s.saveState()
+		if s.markHandled(saved.ID, now) {
+			s.saveState()
+		}
 	}
-	s.mu.Unlock()
-	if err == nil {
-		s.cfg.Changed()
-	}
+	s.unlock(err == nil)
 	return saved, err
 }
 
@@ -505,29 +641,29 @@ func (s *Scheduler) SetPaused(id string, paused bool) error {
 	if err == nil {
 		err = s.store.SetPaused(id, paused)
 	}
-	if err == nil && a.Paused && !paused {
-		s.state.LastScheduled[id] = s.cfg.Now()
+	if err == nil && a.Paused && !paused && s.markHandled(id, s.cfg.Now()) {
 		s.saveState()
 	}
-	s.mu.Unlock()
-	if err == nil {
-		s.cfg.Changed()
-	}
+	s.unlock(err == nil)
 	return err
 }
 
-// Delete removes an Automation and its records. A run of it that works
-// goes on, and its end is no longer recorded.
+// Delete removes an Automation and its records, also one whose
+// HEARTBEAT.md cannot be read. A run of it that works goes on until
+// Finished, which records nothing; a new Automation with the same id
+// starts clean.
 func (s *Scheduler) Delete(id string) error {
 	s.mu.Lock()
 	err := s.store.Delete(id)
 	if err == nil {
+		if act := s.active[id]; act != nil {
+			act.deleted = true
+			delete(s.active, id)
+			s.orphans[act.run.RunID] = act
+		}
 		delete(s.state.LastScheduled, id)
 		s.saveState()
 	}
-	s.mu.Unlock()
-	if err == nil {
-		s.cfg.Changed()
-	}
+	s.unlock(err == nil)
 	return err
 }
