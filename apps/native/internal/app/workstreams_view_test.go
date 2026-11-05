@@ -26,9 +26,10 @@ type fakeWorkstreams struct {
 	created  []gateway.NewWorkstream
 	settings []gateway.WorkstreamSettings
 	archived []string
-	// made is what Create answers; kept what Archive answers.
-	made gateway.WorkstreamCreated
-	kept []string
+	// made is what Create answers, or createErr; kept what Archive answers.
+	made      gateway.WorkstreamCreated
+	createErr error
+	kept      []string
 }
 
 func (f *fakeWorkstreams) List(context.Context) ([]gateway.Workstream, error) {
@@ -41,6 +42,9 @@ func (f *fakeWorkstreams) Create(_ context.Context, w gateway.NewWorkstream) (ga
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created = append(f.created, w)
+	if f.createErr != nil {
+		return gateway.WorkstreamCreated{}, f.createErr
+	}
 	f.list = append(f.list, gateway.Workstream{ID: f.made.WorkstreamID, Title: w.Title, Workspace: w.Workspace, OrchestratorID: f.made.OrchestratorID})
 	return f.made, nil
 }
@@ -85,12 +89,16 @@ func (f *fakeWorkstreams) calls() (created []gateway.NewWorkstream, settings []g
 	return slices.Clone(f.created), slices.Clone(f.settings), slices.Clone(f.archived)
 }
 
-func workstreamTag(ws, role, orchestrator string) []map[string]any {
+func workstreamTag(ws, role, orchestrator string) map[string]any {
 	meta := map[string]string{"workstreamId": ws, "role": role}
 	if orchestrator != "" {
 		meta["orchestratorId"] = orchestrator
 	}
-	return []map[string]any{{"name": sessions.WorkstreamTag, "metadata": meta}}
+	return map[string]any{"name": sessions.WorkstreamTag, "metadata": meta}
+}
+
+func continues(parent string) map[string]any {
+	return map[string]any{"name": sessions.ContinuesTag, "metadata": map[string]string{"parent": parent}}
 }
 
 // workstreamsScenario has a Session of no Workstream, and Workstream ws-1's
@@ -100,11 +108,11 @@ func workstreamsScenario() fakedaemon.Scenario {
 	return fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{
 		{Title: "Fix the login race", Cwd: "/Users/dev/acme-web", Messages: say},
 		{Title: "Payment migration lead", Cwd: "/Users/dev/pay", Messages: say,
-			Extra: map[string]any{"sessionId": "orch-1", "tags": workstreamTag("ws-1", sessions.WorkstreamOrchestrator, "")}},
+			Extra: map[string]any{"sessionId": "orch-1", "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamOrchestrator, "")}}},
 		{Title: "gRPC endpoints", Cwd: "/Users/dev/pay-worktrees/grpc", Messages: say,
-			Extra: map[string]any{"sessionId": "agent-1", "tags": workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1")}},
+			Extra: map[string]any{"sessionId": "agent-1", "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1")}}},
 		{Title: "Client switch", Cwd: "/Users/dev/pay-worktrees/clients", Messages: say,
-			Extra: map[string]any{"sessionId": "agent-2", "tags": workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1")}},
+			Extra: map[string]any{"sessionId": "agent-2", "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1")}}},
 	}}
 }
 
@@ -134,18 +142,40 @@ func (h *harness) shot(name string) {
 	writePNG(filepath.Join(dir, name+".png"), h.tt.Image())
 }
 
-// workstreamsHarness is the window with a Host whose Workstreams are fake.
-func workstreamsHarness(t *testing.T, fake *fakeWorkstreams, with func(*Config)) *harness {
-	t.Helper()
-	h := startHarnessGateway(t, workstreamsScenario(), "", "", func(o *gateway.Options) { o.Workstreams = fake }, with)
-	// The Gateway Client's requests share http.DefaultTransport, which can
-	// leave a connection dialed but never used; the Gateway's shutdown waits
-	// seconds for one. Before the harness's own cleanup.
+// closeTransport ends the App before the harness's own cleanup, and the
+// idle connections of http.DefaultTransport, which the Gateway Client's
+// requests share: one dialed but never used holds the Gateway's shutdown
+// for seconds.
+func closeTransport(t *testing.T, h *harness) {
 	t.Cleanup(func() {
 		h.a.Close()
 		http.DefaultTransport.(*http.Transport).CloseIdleConnections()
 	})
+}
+
+// workstreamsHarness is the window with a Host whose Workstreams are fake.
+func workstreamsHarness(t *testing.T, fake *fakeWorkstreams, with func(*Config)) *harness {
+	t.Helper()
+	return workstreamsHarnessOf(t, workstreamsScenario(), fake, with)
+}
+
+func workstreamsHarnessOf(t *testing.T, sc fakedaemon.Scenario, fake *fakeWorkstreams, with func(*Config)) *harness {
+	t.Helper()
+	h := startHarnessGateway(t, sc, "", "", func(o *gateway.Options) { o.Workstreams = fake }, with)
+	closeTransport(t, h)
 	return h
+}
+
+func (h *harness) notifyState(id, state string) {
+	h.t.Helper()
+	if err := h.d.Notify(id, map[string]any{"type": "droid_working_state_changed", "newState": state}); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func (h *harness) finds(label string) bool {
+	_, ok := h.tt.Find(label)
+	return ok
 }
 
 // The sidebar keeps a Workstream's agents out of the Session list, marks its
@@ -157,20 +187,16 @@ func TestTheSidebarLeavesWorkstreamAgentsOutAndCountsTheWaitingOnes(t *testing.T
 	if h.hasText("gRPC endpoints") || h.hasText("Client switch") {
 		t.Fatalf("an agent is in the sidebar: %q", h.tt.Texts())
 	}
-	if _, ok := h.tt.Find("Workstreams"); !ok {
-		t.Fatal("no Workstreams row")
+	if !h.finds("Workstreams") || !h.finds("Orchestrator") {
+		t.Fatal("no Workstreams row or no orchestrator mark")
 	}
-	if _, ok := h.tt.Find("1 waiting on you"); ok {
+	if h.finds("1 waiting on you") {
 		t.Fatal("a waiting count before any agent waits")
 	}
-	if err := h.d.Notify("agent-1", map[string]any{"type": "droid_working_state_changed", "newState": "waiting_for_tool_confirmation"}); err != nil {
-		t.Fatal(err)
-	}
-	h.until("the waiting count", func() bool { _, ok := h.tt.Find("1 waiting on you"); return ok })
-	if err := h.d.Notify("agent-1", map[string]any{"type": "droid_working_state_changed", "newState": "idle"}); err != nil {
-		t.Fatal(err)
-	}
-	h.until("no waiting count", func() bool { _, ok := h.tt.Find("1 waiting on you"); return !ok })
+	h.notifyState("agent-1", "waiting_for_tool_confirmation")
+	h.until("the waiting count", func() bool { return h.finds("1 waiting on you") })
+	h.notifyState("agent-1", "idle")
+	h.until("no waiting count", func() bool { return !h.finds("1 waiting on you") })
 }
 
 // Search finds no agent either, by title or by what it says.
@@ -187,16 +213,51 @@ func TestSearchLeavesWorkstreamAgentsOut(t *testing.T) {
 	}
 }
 
-// An agent waits on a permission request, or on a question, which the
-// Daemon counts for a Session the window has not loaded.
-func TestHowAnAgentWaits(t *testing.T) {
+// An agent this window has not loaded waits on a permission request, which
+// its working state tells, or on a question, which only the Daemon's count
+// of its prompts tells.
+func TestHowAWorkstreamAgentWaits(t *testing.T) {
 	a := &App{}
 	a.workstreams.busy = map[string]activity.Activity{"asks": activity.NeedsInput, "asked": activity.NeedsInput, "works": activity.Working}
 	a.workstreams.pending = map[string]pendingPrompts{"asked": {questions: 1}, "idle-asked": {questions: 1}, "works": {questions: 1}}
-	for id, want := range map[string]string{"asks": waitsApproval, "asked": waitsQuestion, "idle-asked": waitsQuestion, "works": "", "rests": ""} {
-		if got := a.waitsOn(id); got != want {
-			t.Errorf("%s waits on %q, want %q", id, got, want)
+	type want struct {
+		how      string
+		fromList bool
+	}
+	for id, w := range map[string]want{
+		"asks": {waitsApproval, false}, "asked": {waitsQuestion, true}, "idle-asked": {waitsQuestion, true}, "works": {}, "rests": {},
+	} {
+		if how, fromList := a.waitsOn(id); how != w.how || fromList != w.fromList {
+			t.Errorf("%s waits on %q (from the list: %v), want %q (%v)", id, how, fromList, w.how, w.fromList)
 		}
+	}
+}
+
+// An agent this window loaded waits as its Prompt says.
+func TestALoadedWorkstreamAgentWaitsAsItsPromptSays(t *testing.T) {
+	for _, tc := range []struct {
+		name, label string
+		turn        fakedaemon.Turn
+		prompt      string
+	}{
+		{"permission", "gRPC endpoints, Waiting on you, Needs approval", fakedaemon.Turn{Kind: "permission", Command: "rm -rf build", Reply: "Removed."}, "rm -rf build"},
+		{"question", "gRPC endpoints, Waiting on you, Has a question", fakedaemon.Turn{Kind: "askUser", Question: "Which environment?", Options: []string{"staging", "production"}}, "Which environment?"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := workstreamsScenario()
+			sc.Turn = &tc.turn
+			h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+			h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+			h.a.Go(Route{Name: "session", SessionID: "agent-1"})
+			h.send("Port the endpoint")
+			h.until("the prompt", func() bool { return h.hasText(tc.prompt) })
+			if !h.a.loaded("agent-1") {
+				t.Fatal("the agent is not loaded")
+			}
+			h.until("the waiting count", func() bool { return h.finds("1 waiting on you") })
+			h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+			h.until("the agent's row", func() bool { return h.finds(tc.label) })
+		})
 	}
 }
 
@@ -215,61 +276,136 @@ func TestTheWorkstreamsPageInvitesToStartTheFirst(t *testing.T) {
 		}
 	}
 	h.click("New workstream")
-	h.until("the form", func() bool { _, ok := h.tt.Find("Workstream name"); return ok })
+	h.until("the form", func() bool { return h.finds("Workstream name") })
 }
 
-// The form asks for a name, a workspace and a goal, says when the workspace
-// is no git repository, then starts the Workstream with the agents on the
+const notGitNote = "This folder is not a git repository, so agents share it instead of working in worktrees of their own."
+
+// openNewWorkstream goes to the New workstream form.
+func (h *harness) openNewWorkstream() {
+	h.t.Helper()
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.a.Go(Route{Name: "workstreams", Tab: newWorkstreamTab})
+	h.until("the form", func() bool { return h.finds("Workstream name") })
+}
+
+// The form asks for a name, a workspace the Daemon can use and a goal, with
+// the focus on the field in error, says when the workspace is no git
+// repository, then starts the Workstream with the agents on the
 // orchestrator's model and opens the orchestrator's Session.
 func TestStartingAWorkstream(t *testing.T) {
+	plain, repo := t.TempDir(), t.TempDir()
+	sc := workstreamsScenario()
+	sc.ValidDirectories = []string{plain, repo}
+	sc.Input = map[string]any{"gitRepos": map[string]any{repo: map[string]any{"currentBranch": "main", "branches": []string{"main"}}}}
 	fake := &fakeWorkstreams{made: gateway.WorkstreamCreated{WorkstreamID: "ws-2", OrchestratorID: "orch-1"}}
-	h := workstreamsHarness(t, fake, nil)
-	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
-	h.click("Workstreams")
-	h.until("the empty page", func() bool { return h.hasText("No workstreams yet") })
-	h.click("New workstream")
-	h.until("the form", func() bool { _, ok := h.tt.Find("Workstream name"); return ok })
+	h := workstreamsHarnessOf(t, sc, fake, nil)
+	h.openNewWorkstream()
 	if !h.hasText("Same as orchestrator") {
 		t.Fatalf("the agent model is not the orchestrator's: %q", h.tt.Texts())
 	}
+	h.until("the default model", func() bool { return h.hasText("Auto Model") })
+	if slices.Contains(h.tt.Texts(), "None") {
+		t.Fatalf("the default model names the effort None: %q", h.tt.Texts())
+	}
 	h.click("Start workstream")
 	h.until("the name error", func() bool { return h.hasText("Enter a name.") })
+	if !h.tt.Focused("Workstream name") {
+		t.Fatal("the name field does not have the focus")
+	}
 	h.click("Workstream name")
 	h.tt.Type("Payment migration")
 	h.frame()
 	h.click("Start workstream")
 	h.until("the workspace error", func() bool { return h.hasText("Choose a workspace.") })
+	if !h.tt.Focused("Workstream workspace") {
+		t.Fatal("the workspace field does not have the focus")
+	}
 
-	plain := t.TempDir()
-	h.click("Workstream workspace")
-	h.tt.Type(plain)
+	h.tt.Type("/nowhere")
 	h.frame()
-	h.until("the note", func() bool { return h.hasText("This folder is not a git repository") })
-	repo := t.TempDir()
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	h.until("the Daemon's answer", func() bool { return h.hasText("Directory does not exist: /nowhere") })
+	h.a.workstreams.form.workspace = plain
+	h.until("the note", func() bool { return h.hasText(notGitNote) })
 	h.a.workstreams.form.workspace = repo
-	h.frame()
-	if h.hasText("This folder is not a git repository") {
-		t.Fatal("a repository is said to be none")
-	}
+	h.until("the repository checked", func() bool { return h.a.workstreams.checks[repo].done && !h.hasText(notGitNote) })
 
 	h.click("Start workstream")
 	h.until("the goal error", func() bool { return h.hasText("Enter the goal.") })
+	if !h.tt.Focused("Workstream goal") {
+		t.Fatal("the goal field does not have the focus")
+	}
 	h.shot("workstream-new")
-	h.click("Workstream goal")
 	h.tt.Type("Move payments to gRPC.")
 	h.frame()
 	h.click("Start workstream")
 	h.until("the orchestrator's Session", func() bool { r := h.a.Route(); return r.Name == "session" && r.SessionID == "orch-1" })
 	created, _, _ := fake.calls()
-	if len(created) != 1 {
-		t.Fatalf("created %+v", created)
+	want := []gateway.NewWorkstream{{Title: "Payment migration", Workspace: repo, Goal: "Move payments to gRPC."}}
+	if !slices.Equal(created, want) {
+		t.Fatalf("created %+v, want %+v", created, want)
 	}
-	want := gateway.NewWorkstream{Title: "Payment migration", Workspace: repo, Goal: "Move payments to gRPC."}
-	if created[0] != want {
-		t.Fatalf("created %+v, want %+v", created[0], want)
+}
+
+// Models and efforts picked go to the Host; an effort the agents' new model
+// does not have is cleared.
+func TestStartingAWorkstreamWithModelsOfItsOwn(t *testing.T) {
+	fake := &fakeWorkstreams{made: gateway.WorkstreamCreated{WorkstreamID: "ws-2", OrchestratorID: "orch-1"}}
+	h := workstreamsHarness(t, fake, nil)
+	// The whole form, the pickers' panels too, in the window.
+	h.tt.SetSize(refW, 1200)
+	h.openNewWorkstream()
+	h.until("the models", func() bool { dv := h.a.sessionDefaults(); return dv != nil && len(dv.Models) > 0 })
+	f := &h.a.workstreams.form
+	f.name, f.workspace, f.goal = "Payment migration", "/Users/dev/pay", "Move payments to gRPC."
+
+	h.click("Same as orchestrator")
+	h.until("the agent picker", func() bool { return h.finds("Claude Opus 4.1") })
+	h.click("Claude Opus 4.1")
+	h.until("Opus for the agents", func() bool { return f.agentModel == "claude-opus-4-1" && !f.agentOpen })
+	h.click("Claude Opus 4.1")
+	h.until("its efforts", func() bool { return h.finds("Off") })
+	h.click("Off")
+	if f.agentEffort != "off" {
+		t.Fatalf("agent effort %q", f.agentEffort)
+	}
+	h.click("GPT-5")
+	h.until("GPT-5 for the agents", func() bool { return f.agentModel == "gpt-5" && !f.agentOpen })
+	if f.agentEffort != "" {
+		t.Fatalf("GPT-5 has no effort Off, yet the agents keep %q", f.agentEffort)
+	}
+
+	h.click("Auto Model")
+	h.until("the orchestrator picker", func() bool { return h.finds("Claude Opus 4.1") })
+	h.click("Claude Opus 4.1")
+	h.until("Opus for the orchestrator", func() bool { return f.model == "claude-opus-4-1" && !f.modelOpen })
+	h.click("Claude Opus 4.1")
+	h.until("its efforts", func() bool { return h.finds("High") })
+	h.click("High")
+	f.modelOpen = false
+	h.frame()
+
+	h.click("Start workstream")
+	h.until("the orchestrator's Session", func() bool { return h.a.Route().Name == "session" })
+	created, _, _ := fake.calls()
+	want := []gateway.NewWorkstream{{Title: "Payment migration", Workspace: "/Users/dev/pay", Goal: "Move payments to gRPC.",
+		Model: "claude-opus-4-1", ReasoningEffort: "high", AgentModel: "gpt-5", AgentReasoningEffort: ""}}
+	if !slices.Equal(created, want) {
+		t.Fatalf("created %+v, want %+v", created, want)
+	}
+}
+
+// A start the Host refuses says why, and the form stays.
+func TestAWorkstreamThatDoesNotStartSaysWhy(t *testing.T) {
+	fake := &fakeWorkstreams{createErr: &gateway.RefusedRequest{Reason: "The workspace is gone"}}
+	h := workstreamsHarness(t, fake, nil)
+	h.openNewWorkstream()
+	f := &h.a.workstreams.form
+	f.name, f.workspace, f.goal = "Payment migration", "/Users/dev/pay", "Move payments to gRPC."
+	h.click("Start workstream")
+	h.until("the notice", func() bool { return h.hasText("Could not start the workstream: The workspace is gone") })
+	if r := h.a.Route(); r.Name != "workstreams" || r.Tab != newWorkstreamTab {
+		t.Fatalf("went to %+v", r)
 	}
 }
 
@@ -283,29 +419,29 @@ func TestAWorkstreamsPageGroupsItsAgents(t *testing.T) {
 		cfg.OpenPath = func(p string) error { mu.Lock(); opened = append(opened, p); mu.Unlock(); return nil }
 	})
 	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
-	if err := h.d.Notify("agent-1", map[string]any{"type": "droid_working_state_changed", "newState": "waiting_for_tool_confirmation"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.d.Notify("agent-2", map[string]any{"type": "droid_working_state_changed", "newState": "thinking"}); err != nil {
-		t.Fatal(err)
-	}
+	h.notifyState("agent-1", "waiting_for_tool_confirmation")
+	h.notifyState("agent-2", "thinking")
 	h.click("Workstreams")
-	h.until("the list", func() bool { return h.hasText("Payment migration") && h.hasText("2 agents") })
-	h.until("the row's waiting count", func() bool { _, ok := h.tt.Find("1 waiting on you"); return ok })
+	h.until("the list", func() bool { return h.finds("Payment migration, 2 agents, 1 waiting on you") })
 	h.shot("workstreams")
 	h.click("Payment migration")
 	h.until("the page", func() bool { return h.hasText("Shared folder") && h.hasText("Waiting on you") })
 	for _, want := range []string{"/Users/dev/pay", "/Users/dev/droi-data/workstreams/ws-1/shared", "Same as orchestrator",
-		"Needs approval", "droi/grpc-endpoints", "Done · 5m", "Working", "Client switch"} {
+		"Needs approval", "droi/grpc-endpoints", "Finished · 5m", "Client switch"} {
 		if !h.hasText(want) {
 			t.Errorf("no %q in %q", want, h.tt.Texts())
+		}
+	}
+	for _, want := range []string{"gRPC endpoints, Waiting on you, Needs approval", "Client switch, Working"} {
+		if !h.finds(want) {
+			t.Errorf("no row named %q", want)
 		}
 	}
 	if h.hasText("Old cleanup") {
 		t.Fatal("an archived agent shows before its group is opened")
 	}
 	h.click("Archived")
-	h.until("the archived agent", func() bool { return h.hasText("Old cleanup") })
+	h.until("the archived agent", func() bool { return h.finds("Old cleanup, Archived") })
 	h.shot("workstream")
 
 	h.click("Open shared folder")
@@ -320,6 +456,176 @@ func TestAWorkstreamsPageGroupsItsAgents(t *testing.T) {
 	}
 }
 
+// An archived Workstream is folded in the list, and its page shows its
+// agents, which open, without the actions that change it; an opened
+// archived agent, which the list leaves out, links back to it.
+func TestAnArchivedWorkstream(t *testing.T) {
+	at := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+	old := gateway.Workstream{ID: "ws-0", Title: "Old migration", Workspace: "/Users/dev/pay", SharedFolder: "/Users/dev/droi-data/workstreams/ws-0/shared",
+		OrchestratorID: "orch-0", CreatedAt: at, ArchivedAt: at,
+		Agents: []gateway.WorkstreamAgent{{SessionID: "agent-0", Title: "Old agent", CreatedAt: at, ArchivedAt: at}}}
+	sc := workstreamsScenario()
+	agentTags := []map[string]any{workstreamTag("ws-0", sessions.WorkstreamAgent, "orch-0")}
+	sc.Sessions = append(sc.Sessions,
+		fakedaemon.SessionSpec{Title: "Old lead", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "Go on"}},
+			Extra: map[string]any{"sessionId": "orch-0", "archivedAt": at, "tags": []map[string]any{workstreamTag("ws-0", sessions.WorkstreamOrchestrator, "")}}},
+		fakedaemon.SessionSpec{Title: "Old agent", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "Clean it up"}},
+			Extra: map[string]any{"sessionId": "agent-0", "archivedAt": at, "tags": agentTags, "settings": map[string]any{"tags": agentTags}}})
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream(), old}}
+	h := workstreamsHarnessOf(t, sc, fake, nil)
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+	h.click("Workstreams")
+	h.until("the list", func() bool { return h.hasText("Payment migration") && h.finds("Archived") })
+	if h.hasText("Old migration") {
+		t.Fatal("an archived Workstream shows before its section is opened")
+	}
+	h.click("Archived")
+	h.until("the archived Workstream", func() bool { return h.finds("Old migration, 1 agent") })
+	h.click("Old migration")
+	h.until("its page", func() bool { return h.finds("Old agent, Archived") })
+	if h.finds("More actions") {
+		t.Fatal("an archived Workstream offers to archive it")
+	}
+	if !h.finds("Open orchestrator") {
+		t.Fatal("no Open orchestrator")
+	}
+	h.shot("workstream-archived")
+	h.click("Old agent")
+	if r := h.a.Route(); r.Name != "session" || r.SessionID != "agent-0" {
+		t.Fatalf("went to %+v", r)
+	}
+	h.until("the link", func() bool { return h.finds("Workstream: Old migration") })
+	h.click("Workstream: Old migration")
+	if r := h.a.Route(); r.Name != "workstreams" || r.Workstream != "ws-0" {
+		t.Fatalf("went to %+v", r)
+	}
+}
+
+// An agent and an orchestrator handed off to new Sessions are those
+// Sessions, though the Host's records still name the old ones.
+func TestAHandedOffWorkstreamAgentAndOrchestratorAreTheirNewSessions(t *testing.T) {
+	sc := workstreamsScenario()
+	say := []fakedaemon.Message{{Role: "user", Text: "Go on"}}
+	sc.Sessions = append(sc.Sessions,
+		fakedaemon.SessionSpec{Title: "gRPC endpoints, continued", Cwd: "/Users/dev/pay-worktrees/grpc", Messages: say,
+			Extra: map[string]any{"sessionId": "agent-1b", "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1"), continues("agent-1")}}},
+		fakedaemon.SessionSpec{Title: "Payment migration lead, continued", Cwd: "/Users/dev/pay", Messages: say,
+			Extra: map[string]any{"sessionId": "orch-1b", "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamOrchestrator, ""), continues("orch-1")}}})
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead, continued") })
+	h.notifyState("agent-1b", "waiting_for_tool_confirmation")
+	h.until("the waiting count", func() bool { return h.finds("1 waiting on you") })
+	if h.a.workstreams.orchWaiting["orch-1b"] != 1 {
+		t.Fatalf("the new orchestrator is not lifted: %v", h.a.workstreams.orchWaiting)
+	}
+	h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+	h.until("the agent's row", func() bool { return h.finds("gRPC endpoints, Waiting on you, Needs approval") })
+	h.click("gRPC endpoints")
+	if r := h.a.Route(); r.SessionID != "agent-1b" {
+		t.Fatalf("went to %+v", r)
+	}
+	h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+	h.until("the page", func() bool { return h.finds("Open orchestrator") })
+	h.click("Open orchestrator")
+	if r := h.a.Route(); r.SessionID != "orch-1b" {
+		t.Fatalf("went to %+v", r)
+	}
+}
+
+// An orchestrator whose agent waits counts as needing input in the sidebar,
+// and as working while one works: it shows, though older than the recent
+// ones, and a folded Workspace counts it.
+func TestAWorkstreamOrchestratorTakesItsAgentsState(t *testing.T) {
+	sc := workstreamsScenario()
+	sc.Sessions[1].Extra["updatedAt"] = time.Now().Add(-5 * 24 * time.Hour).Unix()
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.until("the older orchestrator folded away", func() bool { return h.hasText("Show 1 older") && !h.hasText("Payment migration lead") })
+	h.until("the records", func() bool { return h.a.workstreams.list != nil })
+
+	h.notifyState("agent-1", "waiting_for_tool_confirmation")
+	h.until("the orchestrator waiting", func() bool { return h.hasText("Payment migration lead") && h.hasText("Needs input") })
+	if n := h.a.workstreams.orchWaiting["orch-1"]; n != 1 {
+		t.Fatalf("the orchestrator's row counts %d waiting", n)
+	}
+	busy := h.a.activity(nil)
+	h.a.liftOrchestrators(busy)
+	if n, ok := activity.CountBusy([]sessions.Summary{{SessionID: "orch-1"}}, busy, nil); !ok || n != (activity.Busy{NeedsInput: 1}) {
+		t.Fatalf("a folded Workspace counts %+v", n)
+	}
+
+	h.notifyState("agent-1", "idle")
+	h.notifyState("agent-2", "thinking")
+	h.until("the orchestrator working", func() bool {
+		return h.hasText("Payment migration lead") && h.hasText("Working") && !h.hasText("Needs input")
+	})
+	h.notifyState("agent-2", "idle")
+	h.until("the orchestrator folded away again", func() bool { return !h.hasText("Payment migration lead") })
+}
+
+// openedSessions stands in for the Daemon's list of opened Sessions, with
+// the prompts it counts; reads counts the reads.
+type openedSessions struct {
+	mu        sync.Mutex
+	questions map[string]int64
+	reads     int
+}
+
+func (o *openedSessions) set(questions map[string]int64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.questions = questions
+}
+
+func (o *openedSessions) count() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.reads
+}
+
+func (o *openedSessions) read(context.Context) (*protocol.ListOpenedSessionsResult, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.reads++
+	res := &protocol.ListOpenedSessionsResult{}
+	for id, n := range o.questions {
+		res.Sessions = append(res.Sessions, protocol.DaemonOpenedSessionInfo{SessionID: id, WorkingState: protocol.DroidWorkingStateIdle, PendingAskUserRequestCount: &n})
+	}
+	return res, nil
+}
+
+// An agent this window has not loaded waits on a question as long as the
+// Daemon counts one: the count goes as the agent works again, and is read
+// again once it rests.
+func TestPromptsTheDaemonCountsForAnUnloadedWorkstreamAgent(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+	opened := &openedSessions{questions: map[string]int64{"agent-1": 1}}
+	h.a.workstreams.openedSessions = opened.read
+	h.a.loadPending(true)
+	h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+	h.until("the question", func() bool {
+		return h.finds("gRPC endpoints, Waiting on you, Has a question") && h.a.workstreams.waiting == 1
+	})
+
+	// Answered on the phone: the agent works on.
+	opened.set(nil)
+	h.notifyState("agent-1", "thinking")
+	h.until("no question", func() bool { return h.finds("gRPC endpoints, Working") && h.a.workstreams.waiting == 0 })
+	reads := opened.count()
+	h.notifyState("agent-1", "idle")
+	h.until("a read as it rests", func() bool { return opened.count() > reads })
+	h.until("still no question", func() bool { return h.finds("gRPC endpoints, Idle") && h.a.workstreams.waiting == 0 })
+
+	// Asked during a turn: the Daemon counts it once the agent rests.
+	h.notifyState("agent-2", "thinking")
+	h.until("the agent working", func() bool { return h.finds("Client switch, Working") })
+	opened.set(map[string]int64{"agent-2": 1})
+	h.notifyState("agent-2", "idle")
+	h.until("its question", func() bool {
+		return h.finds("Client switch, Waiting on you, Has a question") && h.finds("1 waiting on you")
+	})
+}
+
 // Changing the agent model goes to the Host, which moves the agents.
 func TestChangingAWorkstreamsAgentModel(t *testing.T) {
 	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}
@@ -329,7 +635,7 @@ func TestChangingAWorkstreamsAgentModel(t *testing.T) {
 	h.until("the page", func() bool { return h.hasText("Shared folder") })
 	h.until("the models", func() bool { dv := h.a.sessionDefaults(); return dv != nil && len(dv.Models) > 0 })
 	h.click("Same as orchestrator")
-	h.until("the picker", func() bool { _, ok := h.tt.Find("GPT-5"); return ok })
+	h.until("the picker", func() bool { return h.finds("GPT-5") })
 	h.click("GPT-5")
 	h.until("the saved notice", func() bool { return h.hasText("Saved. Agents switch before their next turn.") })
 	_, settings, _ := fake.calls()
@@ -340,25 +646,34 @@ func TestChangingAWorkstreamsAgentModel(t *testing.T) {
 
 // Archiving asks first, then lists the worktrees the Host kept.
 func TestArchivingAWorkstreamSaysWhichWorktreesStay(t *testing.T) {
-	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}, kept: []string{"/Users/dev/pay-worktrees/grpc"}}
-	h := workstreamsHarness(t, fake, nil)
-	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
-	h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
-	h.until("the page", func() bool { return h.hasText("Shared folder") })
-	h.click("More actions")
-	h.click("Archive workstream…")
-	h.until("the dialog", func() bool { return h.hasText("Archive “Payment migration”?") })
-	if !h.hasText("Worktrees without changes are deleted") {
-		t.Fatalf("no consequences in %q", h.tt.Texts())
+	for _, tc := range []struct {
+		kept   []string
+		notice string
+	}{
+		{[]string{"/Users/dev/pay-worktrees/grpc"}, "Archived. Kept 1 worktree with changes: /Users/dev/pay-worktrees/grpc"},
+		{[]string{"/w/grpc", "/w/clients"}, "Archived. Kept 2 worktrees with changes: /w/grpc, /w/clients"},
+		{nil, "Archived."},
+	} {
+		t.Run(tc.notice, func(t *testing.T) {
+			fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}, kept: tc.kept}
+			h := workstreamsHarness(t, fake, nil)
+			h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+			h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+			h.until("the page", func() bool { return h.hasText("Shared folder") })
+			h.click("More actions")
+			h.click("Archive workstream…")
+			h.until("the dialog", func() bool { return h.hasText("Archive “Payment migration”?") })
+			if !h.hasText("Worktrees without changes are deleted") {
+				t.Fatalf("no consequences in %q", h.tt.Texts())
+			}
+			h.click("Archive workstream")
+			h.until("the notice", func() bool { return slices.Contains(h.tt.Texts(), tc.notice) })
+			if _, _, archived := fake.calls(); !slices.Equal(archived, []string{"ws-1"}) {
+				t.Fatalf("archived %v", archived)
+			}
+			h.until("the archived page", func() bool { return !h.finds("More actions") })
+		})
 	}
-	h.click("Archive workstream")
-	h.until("the notice", func() bool {
-		return h.hasText("Archived. Kept 1 worktrees with changes: /Users/dev/pay-worktrees/grpc")
-	})
-	if _, _, archived := fake.calls(); !slices.Equal(archived, []string{"ws-1"}) {
-		t.Fatalf("archived %v", archived)
-	}
-	h.until("the archived page", func() bool { _, ok := h.tt.Find("More actions"); return !ok })
 }
 
 // A Workstream Session's header links to its Workstream's page.
@@ -367,7 +682,7 @@ func TestAWorkstreamSessionsHeaderLinksToItsWorkstream(t *testing.T) {
 	h := workstreamsHarness(t, fake, nil)
 	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
 	h.a.Go(Route{Name: "session", SessionID: "agent-1"})
-	h.until("the link", func() bool { _, ok := h.tt.Find("Workstream: Payment migration"); return ok })
+	h.until("the link", func() bool { return h.finds("Workstream: Payment migration") })
 	h.click("Workstream: Payment migration")
 	if r := h.a.Route(); r.Name != "workstreams" || r.Workstream != "ws-1" {
 		t.Fatalf("went to %+v", r)
@@ -375,9 +690,35 @@ func TestAWorkstreamSessionsHeaderLinksToItsWorkstream(t *testing.T) {
 	h.until("the page", func() bool { return h.hasText("Shared folder") })
 }
 
+// A followed computer's Workstreams show, without what reaches this
+// computer's folders, and its Daemon says whether a folder there is a git
+// repository.
+func TestAFollowedComputersWorkstreams(t *testing.T) {
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}
+	o := startOtherComputerWith(t, workstreamsScenario(), "", func(g *gateway.Options) { g.Workstreams = fake })
+	h := followHarness(t, localSessions(), o.paired(), nil, func(cfg *Config) {
+		cfg.OpenPath = func(string) error { return nil }
+	})
+	closeTransport(t, h)
+	h.until("the other computer's Sessions", func() bool { return h.hasText("Payment migration lead") })
+	h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+	h.until("the page", func() bool { return h.hasText("Shared folder") && h.finds("Open orchestrator") })
+	if h.finds("Open shared folder") {
+		t.Fatal("the window offers to open a folder on another computer")
+	}
+	h.a.Go(Route{Name: "workstreams", Tab: newWorkstreamTab})
+	h.until("the form", func() bool { return h.finds("Workstream name") })
+	if h.finds("Choose a workspace") {
+		t.Fatal("the window offers this computer's folders")
+	}
+	h.a.workstreams.form.workspace = "/Users/dev/pay"
+	h.until("the note", func() bool { return h.hasText(notGitNote) })
+}
+
 // A Host without Workstreams, an older Droi, says so.
 func TestAnOlderHostSaysItHasNoWorkstreams(t *testing.T) {
 	h := newHarness(t, workstreamsScenario(), "")
+	closeTransport(t, h)
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
 	h.click("Workstreams")
 	h.until("the older Host", func() bool {

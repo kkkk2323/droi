@@ -62,6 +62,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	k, t := a.kit, a.kit.T
 	pins := sessions.Pins{Workspaces: set(a.pinnedWorkspaces().Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
 	busy := a.activity(reported)
+	a.liftOrchestrators(busy)
 	a.noteSubagentsRunning(listed, busy)
 	order := a.sortOrder(listed, busy)
 	a.holdOrder(&order, listed)
@@ -815,7 +816,10 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				a.elsewhereMark(c, acc)
 			}
 			if _, role, _ := sessions.Workstream(s.Tags); role == sessions.WorkstreamOrchestrator {
-				k.Icon(c, "git-fork", 12, t.MutedForeground).Role(ui.RoleImage).Label(L("Workstreams"))
+				if n := a.workstreams.orchWaiting[s.SessionID]; n > 0 {
+					a.waitingMark(c, n, 11, 16.5)
+				}
+				k.Icon(c, "git-fork", 12, t.MutedForeground).Role(ui.RoleImage).Label(L("Orchestrator"))
 			}
 			if a.sidebar.unread[s.SessionID] {
 				title.FontWeight(500)

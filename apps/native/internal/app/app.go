@@ -787,7 +787,7 @@ func (a *App) View(c *ui.Context) {
 	a.restoreLast(listed, listDone)
 	doing := a.activity(busy)
 	a.noteLiveRuns(listed, doing)
-	a.noteWorkstreams(listed, doing)
+	a.noteWorkstreams(c, listed, doing)
 	a.narrow = a.isNarrow(c)
 	// A drawer only exists on narrow screens; widening the window closes it.
 	if !a.narrow {

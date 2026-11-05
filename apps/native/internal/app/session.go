@@ -202,7 +202,7 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 				k.Text(c, title, k.Dense(12, 14), k.Dense(18, 20)).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
 				v.sessionActions(c, sel, title, workspace, hover)
 			})
-			v.workstreamLink(c, sel)
+			v.workstreamLink(c, sel, s)
 		})
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
 			v.jobsMenu(c)
