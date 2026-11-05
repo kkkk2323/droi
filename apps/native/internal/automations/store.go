@@ -35,9 +35,11 @@ type Automation struct {
 	WorkingDirectory string    `json:"workingDirectory,omitempty"`
 	Paused           bool      `json:"paused"`
 	CreatedAt        time.Time `json:"createdAt,omitzero"`
-	// ForkedFrom is the Factory automation it was moved from (Factory's
-	// key); an edit that leaves it empty keeps it.
-	ForkedFrom string `json:"forkedFrom,omitempty"`
+	// ForkedFrom is the Factory automation it was moved from: its uuid,
+	// else its folder name; ForkedFromName is its folder name. An edit that
+	// leaves them empty keeps them.
+	ForkedFrom     string `json:"forkedFrom,omitempty"`
+	ForkedFromName string `json:"forkedFromName,omitempty"`
 	// Invalid is why its HEARTBEAT.md, schedule or time zone cannot be
 	// read; it is never written. List keeps such a folder, so it can be
 	// seen and deleted.
@@ -217,15 +219,28 @@ func Validate(a Automation) error {
 	default:
 		return invalid("autonomy %q is not low, medium or high", a.Autonomy)
 	}
+	if w := strings.TrimSpace(a.WorkingDirectory); w != "" && !filepath.IsAbs(w) {
+		return invalid("the working directory %q is not a full path", a.WorkingDirectory)
+	}
 	return nil
 }
 
-// clean is a as Save writes it.
-func clean(a Automation) Automation {
+// Clean is a as Save writes it: two that Clean makes equal run the same.
+func Clean(a Automation) Automation {
 	a.Name = strings.TrimSpace(a.Name)
 	a.Schedule = strings.Join(strings.Fields(a.Schedule), " ")
 	a.Timezone = strings.TrimSpace(a.Timezone)
 	a.Prompt = strings.TrimSpace(strings.ReplaceAll(a.Prompt, "\r\n", "\n"))
+	a.Model = strings.TrimSpace(a.Model)
+	a.ReasoningEffort = strings.TrimSpace(a.ReasoningEffort)
+	a.Autonomy = strings.TrimSpace(a.Autonomy)
+	if w := strings.TrimSpace(a.WorkingDirectory); w != "" {
+		a.WorkingDirectory = filepath.Clean(w)
+	} else {
+		a.WorkingDirectory = ""
+	}
+	a.ForkedFrom = strings.TrimSpace(a.ForkedFrom)
+	a.ForkedFromName = strings.TrimSpace(a.ForkedFromName)
 	a.Invalid = ""
 	return a
 }
@@ -249,7 +264,7 @@ func (s Store) newID(name string) (string, error) {
 // Adopt creates an Automation in folder, a folder of Dir prepared with its
 // files, which becomes the Automation's own; CreatedAt is now when zero.
 func (s Store) Adopt(a Automation, folder string) (Automation, error) {
-	a = clean(a)
+	a = Clean(a)
 	if err := Validate(a); err != nil {
 		return Automation{}, err
 	}
@@ -275,7 +290,7 @@ func (s Store) Adopt(a Automation, folder string) (Automation, error) {
 // its name, and CreatedAt is now when zero). An edit keeps the creation
 // time when a has none.
 func (s Store) Save(a Automation) (Automation, error) {
-	a = clean(a)
+	a = Clean(a)
 	created := a.ID == ""
 	if err := Validate(a); err != nil {
 		return Automation{}, err
@@ -302,7 +317,7 @@ func (s Store) Save(a Automation) (Automation, error) {
 			a.CreatedAt = old.CreatedAt
 		}
 		if a.ForkedFrom == "" {
-			a.ForkedFrom = old.ForkedFrom
+			a.ForkedFrom, a.ForkedFromName = old.ForkedFrom, old.ForkedFromName
 		}
 	}
 	a.CreatedAt = a.CreatedAt.Truncate(time.Second)
@@ -481,6 +496,7 @@ func formatHeartbeat(a Automation) string {
 		field("createdAt", a.CreatedAt.Format(time.RFC3339))
 	}
 	field("forkedFrom", a.ForkedFrom)
+	field("forkedFromName", a.ForkedFromName)
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(a.Prompt))
 	b.WriteString("\n")
@@ -555,6 +571,8 @@ func parseHeartbeat(text string) (Automation, error) {
 			a.CreatedAt, _ = time.Parse(time.RFC3339, v)
 		case "forkedFrom":
 			a.ForkedFrom = v
+		case "forkedFromName":
+			a.ForkedFromName = v
 		}
 	}
 	if a.Name == "" || a.Schedule == "" {

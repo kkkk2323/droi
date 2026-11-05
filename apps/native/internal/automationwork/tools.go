@@ -174,20 +174,13 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 		b, _ := json.MarshalIndent(out, "", "  ")
 		return mcpserver.Text(string(b), false), nil
 	case ToolCreate, ToolUpdate:
-		var a automations.Automation
+		var a, old automations.Automation
 		if tool == ToolUpdate {
 			it, err := s.Get(text(args, "id"))
 			if err != nil {
 				return mcpserver.Result{}, toolError(text(args, "id"), err)
 			}
-			a = it.Automation
-			if a.Autonomy == "" {
-				for key, now := range map[string]string{"prompt": a.Prompt, "workingDirectory": a.WorkingDirectory, "model": a.Model} {
-					if v, ok := args[key].(string); ok && strings.TrimSpace(v) != strings.TrimSpace(now) {
-						return mcpserver.Result{}, errors.New(askFree)
-					}
-				}
-			}
+			a, old = it.Automation, it.Automation
 		} else {
 			a.Autonomy = defaultAutonomy
 		}
@@ -197,6 +190,14 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 		} {
 			if v, ok := args[key].(string); ok {
 				*field = v
+			}
+		}
+		if tool == ToolUpdate && old.Autonomy == "" {
+			// As saved: a path or a model spaced or spelled otherwise is
+			// the same one.
+			was, now := automations.Clean(old), automations.Clean(a)
+			if now.Prompt != was.Prompt || now.WorkingDirectory != was.WorkingDirectory || now.Model != was.Model {
+				return mcpserver.Result{}, errors.New(askFree)
 			}
 		}
 		if _, ok := args["schedule"]; ok || tool == ToolCreate {

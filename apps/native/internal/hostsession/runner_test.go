@@ -585,3 +585,186 @@ func TestNoConnectWithoutACredential(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// turnOutcomes answers get_session_turn_outcome for a Runner's test.
+type turnOutcomes struct {
+	mu    sync.Mutex
+	asked []string
+	reply func(sessionID, turnID string) (*protocol.DaemonGetSessionTurnOutcomeResult, error)
+}
+
+func (o *turnOutcomes) get(_ context.Context, p protocol.GetSessionTurnOutcomeParams) (*protocol.DaemonGetSessionTurnOutcomeResult, error) {
+	o.mu.Lock()
+	o.asked = append(o.asked, p.SessionID+"/"+p.TurnID)
+	o.mu.Unlock()
+	return o.reply(p.SessionID, p.TurnID)
+}
+
+func available(t *testing.T, sessionID, turnID string, reason protocol.AgentTurnCompletionReason, final string) *protocol.DaemonGetSessionTurnOutcomeResult {
+	t.Helper()
+	outcome, err := protocol.NewAgentTurnOutcome(&protocol.AgentTurnOutcomeText{Type: "agent_turn_outcome", TurnID: turnID, Reason: reason, ResultKind: "text"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := protocol.NewDaemonGetSessionTurnOutcomeResult(&protocol.DaemonGetSessionTurnOutcomeResultAvailable{
+		Status: "available", SessionID: sessionID, TurnID: turnID, Outcome: outcome, FinalOutput: final,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &res
+}
+
+// inTurn is a Runner following Session s in a turn its prompt turnID
+// started.
+func inTurn(t *testing.T, o *turnOutcomes, turnID string) (*Runner, *events) {
+	t.Helper()
+	r := New(Config{turnOutcome: o.get})
+	seen := &events{}
+	r.Subscribe(seen.add)
+	r.follow("s", true)
+	r.mu.Lock()
+	r.following["s"].turnID = turnID
+	r.mu.Unlock()
+	r.see(controller.SessionNotification{SessionID: "s", Value: &protocol.DroidWorkingStateChangedNotification{NewState: protocol.DroidWorkingStateStreamingAssistantMessage}})
+	return r, seen
+}
+
+// A turn a load finds over ends as the Daemon recorded it
+// (daemon.get_session_turn_outcome, droid 1.4.1), with its final output.
+func TestATurnALoadFindsOverEndsAsTheDaemonRecordedIt(t *testing.T) {
+	for _, c := range []struct {
+		reason protocol.AgentTurnCompletionReason
+		final  string
+	}{
+		{protocol.AgentTurnCompletionReasonCompleted, "All green."},
+		{protocol.AgentTurnCompletionReasonError, ""},
+		{protocol.AgentTurnCompletionReasonCancelled, ""},
+	} {
+		o := &turnOutcomes{reply: func(s, turn string) (*protocol.DaemonGetSessionTurnOutcomeResult, error) {
+			return available(t, s, turn, c.reason, c.final), nil
+		}}
+		r, seen := inTurn(t, o, "m-1")
+		r.see(controller.SessionLoaded{SessionID: "s", Result: &protocol.LoadSessionResult{}})
+		end := seen.wait(t, "turn end", isTurnEnd).(TurnEnded)
+		if end.SessionID != "s" || end.Reason != c.reason || end.Error != "" || end.LastReply != c.final {
+			t.Errorf("%s: turn end %+v", c.reason, end)
+		}
+		if o.asked[0] != "s/m-1" {
+			t.Errorf("asked %v", o.asked)
+		}
+	}
+}
+
+// Without the Daemon's record of the turn (an older droid, or one it could
+// not verify), the turn ends as lost touch.
+func TestATurnALoadFindsOverWithoutARecordIsLostTouch(t *testing.T) {
+	for name, reply := range map[string]func(t *testing.T, s, turn string) (*protocol.DaemonGetSessionTurnOutcomeResult, error){
+		"refused": func(*testing.T, string, string) (*protocol.DaemonGetSessionTurnOutcomeResult, error) {
+			return nil, &droid.RPCError{Code: -32601, Message: "Method not found"}
+		},
+		"unavailable": func(t *testing.T, s, turn string) (*protocol.DaemonGetSessionTurnOutcomeResult, error) {
+			res, err := protocol.NewDaemonGetSessionTurnOutcomeResult(&protocol.DaemonGetSessionTurnOutcomeResultUnavailable{
+				Status: "unavailable", SessionID: s, TurnID: turn, Reason: "turn_unverified",
+			})
+			return &res, err
+		},
+		"another turn's": func(t *testing.T, s, _ string) (*protocol.DaemonGetSessionTurnOutcomeResult, error) {
+			return available(t, s, "m-0", protocol.AgentTurnCompletionReasonCompleted, "old"), nil
+		},
+	} {
+		o := &turnOutcomes{reply: func(s, turn string) (*protocol.DaemonGetSessionTurnOutcomeResult, error) { return reply(t, s, turn) }}
+		r, seen := inTurn(t, o, "m-1")
+		r.see(controller.SessionLoaded{SessionID: "s", Result: &protocol.LoadSessionResult{}})
+		if end := seen.wait(t, "turn end", isTurnEnd).(TurnEnded); !isUnseenTurn(end) {
+			t.Errorf("%s: turn end %+v", name, end)
+		}
+	}
+	// No prompt of the Runner's started the turn: nothing to ask.
+	o := &turnOutcomes{reply: func(string, string) (*protocol.DaemonGetSessionTurnOutcomeResult, error) { panic("asked") }}
+	r, seen := inTurn(t, o, "")
+	r.see(controller.SessionLoaded{SessionID: "s", Result: &protocol.LoadSessionResult{}})
+	if end := seen.wait(t, "turn end", isTurnEnd).(TurnEnded); !isUnseenTurn(end) {
+		t.Errorf("turn end %+v", end)
+	}
+}
+
+// Open sends its prompt with a message id of its own, the turn's id the
+// Daemon records its outcome under.
+func TestOpenNamesItsPromptsTurn(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}}})
+	r, seen := start(t, d, "")
+	if _, err := r.Open(testContext(t), Spec{Cwd: repo, Prompt: "Report."}); err != nil {
+		t.Fatal(err)
+	}
+	seen.wait(t, "turn end", isTurnEnd)
+	reqs, err := d.Requests()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p struct {
+		MessageID string `json:"messageId"`
+	}
+	for _, req := range reqs {
+		if req.Method == "daemon.add_user_message" {
+			if err := json.Unmarshal(req.Params, &p); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(p.MessageID) != 36 {
+		t.Fatalf("messageId %q", p.MessageID)
+	}
+}
+
+// Subscribers hear a gone Session's end while the Runner still follows it,
+// so that one checking Following meanwhile does not end it a second time.
+func TestAGoneSessionIsFollowedUntilItsEndIsHeard(t *testing.T) {
+	r := New(Config{})
+	var followedThen []bool
+	r.Subscribe(func(e Event) {
+		if _, ok := e.(TurnEnded); ok {
+			followedThen = append(followedThen, r.Following("s"))
+		}
+	})
+	r.follow("s", true)
+	r.see(controller.SessionNotFound{SessionID: "s"})
+	if !slices.Equal(followedThen, []bool{true}) || r.Following("s") {
+		t.Fatalf("followed while heard %v, after %v", followedThen, r.Following("s"))
+	}
+}
+
+// A Load that fails stops following only a Session it began to follow.
+func TestAFailedLoadKeepsAFollowItDidNotAdd(t *testing.T) {
+	r := New(Config{})
+	r.follow("s", true)
+	if err := r.Load(context.Background(), "s"); err == nil {
+		t.Fatal("loaded without a connection")
+	}
+	if !r.Following("s") {
+		t.Fatal("a failed Load stopped following a followed Session")
+	}
+	if err := r.Load(context.Background(), "t"); err == nil || r.Following("t") {
+		t.Fatalf("Load of t: %v, following %v", err, r.Following("t"))
+	}
+}
+
+// A reload that keeps failing other than for a Session the Daemon does not
+// have is tried again, and after reloadTries ends the turn as lost touch.
+func TestAReloadThatKeepsFailingEndsTheTurn(t *testing.T) {
+	r := New(Config{reloadRetry: 10 * time.Millisecond})
+	seen := &events{}
+	r.Subscribe(seen.add)
+	r.follow("s", true)
+	r.follow("idle", true)
+	r.see(controller.SessionNotification{SessionID: "s", Value: &protocol.DroidWorkingStateChangedNotification{NewState: protocol.DroidWorkingStateThinking}})
+	r.reloadFollowed(testContext(t))
+	end := seen.wait(t, "lost turn", isUnseenTurn).(TurnEnded)
+	if end.SessionID != "s" {
+		t.Fatalf("turn end %+v", end)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := seen.count(isTurnEnd); n != 1 || !r.Following("idle") {
+		t.Fatalf("%d turn ends, idle followed %v", n, r.Following("idle"))
+	}
+}

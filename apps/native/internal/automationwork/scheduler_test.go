@@ -653,3 +653,19 @@ func TestAStartThatOpensItsSessionButNotItsTurnFailsTheThirdTime(t *testing.T) {
 		t.Fatalf("the next day %+v", runs)
 	}
 }
+
+func TestACopyCutShortIsRemovedWhenTheSchedulerStarts(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	left := filepath.Join(h.dir, ".adopt-0b9c")
+	if err := os.MkdirAll(filepath.Join(left, "memory"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.open()
+	if _, err := os.Stat(left); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the cut-short copy is still there: %v", err)
+	}
+	if _, err := h.s.Get(a.ID); err != nil {
+		t.Fatal(err)
+	}
+}

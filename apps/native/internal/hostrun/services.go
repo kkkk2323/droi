@@ -161,6 +161,7 @@ func (s *Services) takeAutomations(ctx context.Context, h *host.Host, dir string
 	s.mu.Unlock()
 	s.held.set(&automationwork.GatewayHost{
 		Scheduler: sched,
+		Log:       logf,
 		Daemon: func() (automationwork.FactoryDaemon, error) {
 			cl, err := s.Sessions.Client()
 			if err != nil {

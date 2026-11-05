@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -351,16 +350,19 @@ func ReadHeartbeat(dir string) (Automation, error) {
 	return parseHeartbeat(string(b))
 }
 
-var factoryBookkeeping = []string{"HEARTBEAT.md", "memory/state.json", "memory/runs.json", ".memory-edit.lock"}
+var factoryBookkeeping = []string{"HEARTBEAT.md", "memory/state.json", "memory/runs.json"}
 
-var factoryLockAttempt = regexp.MustCompile(`^\.memory-edit\.[0-9a-f]{32}\.pending$`)
+// memoryLock is the name of droid's memory lock, folders with an owner.json
+// (runtime/file-lock fileLock.ts): .memory-edit.lock, its attempts
+// .memory-edit.<32 hex>.pending and its reclaim guard .memory-edit.lock.reclaim.
+const memoryLock = ".memory-edit."
 
 // CopyFactoryFolder copies a Factory automation's folder to dst, which it
 // makes: its memory, reports, skills, visuals and the rest, but not its
 // HEARTBEAT.md (Droi writes its own) nor what the Daemon keeps there for
-// itself (the identity and run records in memory/, the memory lock and its
-// attempts). Links are copied as links, never followed. Anything it cannot
-// copy fails the copy.
+// itself (the identity and run records in memory/, the memory lock, its
+// attempts and its reclaim guard, wherever they are). Links are copied as
+// links, never followed. Anything it cannot copy fails the copy.
 func CopyFactoryFolder(src, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {
@@ -378,7 +380,13 @@ func CopyFactoryFolder(src, dst string) error {
 			return err
 		}
 		slash := filepath.ToSlash(rel)
-		if slices.Contains(factoryBookkeeping, slash) || factoryLockAttempt.MatchString(slash) {
+		if strings.HasPrefix(d.Name(), memoryLock) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if slices.Contains(factoryBookkeeping, slash) {
 			return nil
 		}
 		to := filepath.Join(dst, rel)

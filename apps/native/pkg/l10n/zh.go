@@ -1520,7 +1520,7 @@ var zh = map[string]string{
 	"Another Droi on %s runs these automations. Quit it to manage them there.":                                                       "%s 上的另一个 Droi 正在运行这些自动化。退出它后，才能管理。",
 	"%s, in %s’s time (%s).":                                                                                                         "%s，按 %s 的时间（%s）。",
 	"Droi copies it, with its schedule in %s’s time, and deletes it from Factory’s automations. The sessions of its past runs stay.": "Droi 会复制这个自动化，把运行计划换算成 %s 的时间，然后从 Factory 自动化中删除它。过往运行的会话会保留。",
-	"Earlier runs in Factory":                                     "之前在 Factory 中的运行",
+	"Earlier runs in Factory":                                     "在 Factory 中的过往运行",
 	"Factory automation":                                          "Factory 自动化",
 	"Factory automations on %s":                                   "%s 上的 Factory 自动化",
 	"Five cron fields, in %s’s time, such as 0 9 * * 1-5.":        "填写 5 段 cron 表达式，按 %s 的时间，例如 0 9 * * 1-5。",

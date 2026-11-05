@@ -132,8 +132,8 @@ func TestCopyFactoryFolderKeepsEverythingButTheDaemonsBookkeeping(t *testing.T) 
 	write(t, filepath.Join(src, "reports", "2026-11-05.md"), "report", 0o644)
 	write(t, filepath.Join(src, "skills", "diff", "SKILL.md"), "skill", 0o644)
 	write(t, filepath.Join(src, "visuals", "s1.html"), "snapshot", 0o644)
-	write(t, filepath.Join(src, ".memory-edit.lock"), `{"pid":1}`, 0o644)
-	write(t, filepath.Join(src, ".memory-edit.0123456789abcdef0123456789abcdef.pending"), "", 0o644)
+	write(t, filepath.Join(src, ".memory-edit.lock", "owner.json"), `{"pid":1}`, 0o644)
+	write(t, filepath.Join(src, ".memory-edit.0123456789abcdef0123456789abcdef.pending", "owner.json"), `{"pid":2}`, 0o644)
 	if runtime.GOOS != "windows" {
 		if err := os.Symlink("memory/notes.md", filepath.Join(src, "latest-notes")); err != nil {
 			t.Fatal(err)
@@ -173,5 +173,28 @@ func TestCopyFactoryFolderFailsOnWhatItCannotRead(t *testing.T) {
 	write(t, filepath.Join(src, "memory", "secret.md"), "x", 0o000)
 	if err := CopyFactoryFolder(src, filepath.Join(t.TempDir(), "copy")); err == nil || !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("copy: %v", err)
+	}
+}
+
+// droid 1.4.1's memory lock (runtime/file-lock fileLock.ts) and its
+// attempts and reclaims are folders with an owner.json, at the top of the
+// automation's folder or of one under it.
+func TestCopyFactoryFolderLeavesTheDaemonsLockFoldersOut(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "droid")
+	write(t, filepath.Join(src, "HEARTBEAT.md"), "---\nname: x\nschedule: daily\n---\n\nx\n", 0o644)
+	write(t, filepath.Join(src, "memory", "notes.md"), "notes", 0o644)
+	for _, lock := range []string{
+		".memory-edit.lock", ".memory-edit.0123456789abcdef0123456789abcdef.pending", ".memory-edit.lock.reclaim",
+		"memory/.memory-edit.lock", "memory/.memory-edit.fedcba9876543210fedcba9876543210.pending",
+	} {
+		write(t, filepath.Join(src, filepath.FromSlash(lock), "owner.json"), `{"pid":1}`, 0o644)
+	}
+	write(t, filepath.Join(src, ".memory-edit.lock.reclaim.tmp"), "", 0o644)
+	dst := filepath.Join(t.TempDir(), "copy")
+	if err := CopyFactoryFolder(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := files(t, dst), []string{"memory/notes.md"}; !slices.Equal(got, want) {
+		t.Fatalf("copied %v\nwant %v", got, want)
 	}
 }

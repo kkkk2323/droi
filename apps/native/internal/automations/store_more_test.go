@@ -94,3 +94,53 @@ func TestStoreAdoptsAPreparedFolder(t *testing.T) {
 		t.Fatal("adopted a bad schedule")
 	}
 }
+
+func TestStoreKeepsTheFactoryNameOfAMovedAutomation(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	a, err := s.Save(Automation{Name: "Daily", Schedule: "0 9 * * *", Prompt: "p", ForkedFrom: "0b9c-uuid", ForkedFromName: "daily-report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(s.Dir, a.ID, "HEARTBEAT.md"))
+	if !strings.Contains(string(b), "\nforkedFrom: 0b9c-uuid\nforkedFromName: daily-report\n") {
+		t.Fatalf("HEARTBEAT.md:\n%s", b)
+	}
+	a.ForkedFrom, a.ForkedFromName = "", ""
+	if _, err := s.Save(a); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(a.ID); got.ForkedFrom != "0b9c-uuid" || got.ForkedFromName != "daily-report" {
+		t.Fatalf("after an edit %+v", got)
+	}
+}
+
+func TestStoreCleansAFolderAndAModel(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	for in, want := range map[string]string{
+		" /Users/me/re ": "/Users/me/re", "/Users/me/re/": "/Users/me/re", "/Users/me/./re": "/Users/me/re", "/Users/me/x/../re": "/Users/me/re", "": "",
+	} {
+		a, err := s.Save(Automation{Name: "Daily", Schedule: "0 9 * * *", Prompt: "p", WorkingDirectory: in, Model: " glm-5.3-flash\t", ReasoningEffort: " high "})
+		if err != nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		got, _ := s.Get(a.ID)
+		if got.WorkingDirectory != want || got.Model != "glm-5.3-flash" || got.ReasoningEffort != "high" {
+			t.Errorf("%q: %+v", in, got)
+		}
+		if err := s.Delete(a.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var invalid *InvalidError
+	for _, rel := range []string{"re", "./re", "~/re"} {
+		if _, err := s.Save(Automation{Name: "Daily", Schedule: "0 9 * * *", Prompt: "p", WorkingDirectory: rel}); !errors.As(err, &invalid) || !strings.Contains(invalid.Reason, "full path") {
+			t.Errorf("%q: %v", rel, err)
+		}
+	}
+}
+
+func TestTheZoneDatabaseIsThere(t *testing.T) {
+	if _, err := time.LoadLocation("Asia/Shanghai"); err != nil {
+		t.Fatal(err)
+	}
+}

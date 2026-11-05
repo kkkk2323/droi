@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +62,10 @@ var ErrRunning = errors.New("a run of this automation is already working")
 // The run stays due and is tried again at the next tick; nothing is
 // recorded.
 var ErrUnavailable = errors.New("the Daemon is not available")
+
+// ErrCopy is an Adopt that could not copy the folder it was given; its
+// text names the paths.
+var ErrCopy = errors.New("could not copy the automation's folder")
 
 // HalfStartedError is an unavailable start (it is ErrUnavailable) that got
 // as far as opening the run's Session, which the Starter closed again,
@@ -222,6 +227,7 @@ func New(cfg Config) *Scheduler {
 		s.logf("automations: %v", err)
 	}
 	s.state = st
+	s.removeCutShort()
 	s.interruptLeftovers()
 	s.unlock(false)
 	return s
@@ -248,6 +254,26 @@ func (s *Scheduler) unlock(changed bool, releases ...func()) {
 	}
 	if changed {
 		s.cfg.Changed()
+	}
+}
+
+// adoptPrefix starts the name of a copy Adopt prepares, which the Store
+// lists as no Automation for its leading dot.
+const adoptPrefix = ".adopt-"
+
+// removeCutShort removes the copies an Adopt left when Droi quit during it;
+// s.mu is held, and the caller holds the folder's lock.
+func (s *Scheduler) removeCutShort() {
+	entries, err := os.ReadDir(s.cfg.Dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), adoptPrefix) {
+			if err := os.RemoveAll(filepath.Join(s.cfg.Dir, e.Name())); err != nil {
+				s.logf("automations: %v", err)
+			}
+		}
 	}
 }
 
@@ -746,10 +772,10 @@ func (s *Scheduler) adopt(a automations.Automation, src string) (automations.Aut
 	}
 	// A name with a leading dot is no Automation's, so a copy cut short
 	// is never listed.
-	tmp := filepath.Join(s.cfg.Dir, ".adopt-"+uuid.NewString())
+	tmp := filepath.Join(s.cfg.Dir, adoptPrefix+uuid.NewString())
 	if err := automations.CopyFactoryFolder(src, tmp); err != nil {
 		_ = os.RemoveAll(tmp)
-		return automations.Automation{}, err
+		return automations.Automation{}, fmt.Errorf("%w: %w", ErrCopy, err)
 	}
 	saved, err := s.store.Adopt(a, tmp)
 	if err != nil {
@@ -758,9 +784,9 @@ func (s *Scheduler) adopt(a automations.Automation, src string) (automations.Aut
 	return saved, err
 }
 
-// ForkedFrom is the Automation moved from the Factory automation with id
-// factoryID, if there is one.
-func (s *Scheduler) ForkedFrom(factoryID string) (Item, bool, error) {
+// ForkedFrom is the Automation moved from the Factory automation key
+// names (Automation.ForkedFrom), if there is one.
+func (s *Scheduler) ForkedFrom(key string) (Item, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	list, err := s.store.List()
@@ -768,7 +794,7 @@ func (s *Scheduler) ForkedFrom(factoryID string) (Item, bool, error) {
 		return Item{}, false, err
 	}
 	for _, a := range list {
-		if a.ForkedFrom == factoryID {
+		if a.ForkedFrom == key {
 			return s.item(a, s.cfg.Now()), true, nil
 		}
 	}

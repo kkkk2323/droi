@@ -9,6 +9,7 @@ package hostsession
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,11 @@ type Config struct {
 	// maxReconnectAttempts is the Controller's; 0 is 1000. Tests set -1 to
 	// leave reconnecting to the Runner.
 	maxReconnectAttempts int
+	// reloadRetry is the wait before a failed reload is tried again; 0 is a
+	// minute.
+	reloadRetry time.Duration
+	// turnOutcome is daemon.get_session_turn_outcome; nil asks the Daemon.
+	turnOutcome func(ctx context.Context, p protocol.GetSessionTurnOutcomeParams) (*protocol.DaemonGetSessionTurnOutcomeResult, error)
 }
 
 // Spec is a Session the Runner opens.
@@ -88,9 +94,10 @@ type Event interface{ hostSessionEvent() }
 
 // TurnEnded is an agent turn's end. A turn whose worker stopped without
 // ending it ends with Reason process_exit and Error WorkerStopped, once the
-// Runner sees the Session idle again; one a load finds over, with Error
-// LostTouch; a followed Session the Daemon no longer has, with Error
-// SessionGone.
+// Runner sees the Session idle again. One a load finds over ends as the
+// Daemon recorded it (daemon.get_session_turn_outcome), or, without its
+// record, with Error LostTouch, as does one whose Session no reload could
+// load; a followed Session the Daemon no longer has, with Error SessionGone.
 type TurnEnded struct {
 	SessionID string
 	Reason    protocol.AgentTurnCompletionReason
@@ -113,14 +120,21 @@ func (WorkingChanged) hostSessionEvent() {}
 // WorkerStopped is the Error of a TurnEnded whose worker stopped mid-turn.
 const WorkerStopped = "the Session's worker stopped"
 
-// LostTouch is the Error of a TurnEnded that a load found over: the turn
-// ended while the Runner was not connected, and the load cannot tell a
-// completed turn from a lost worker (it says only whether one runs).
+// LostTouch is the Error of a TurnEnded that ended while the Runner was not
+// connected, when the Daemon has no record of how.
 const LostTouch = "the Host lost touch with the Daemon while the Session worked"
 
 // SessionGone is the Error of a TurnEnded of a followed Session the Daemon
 // no longer has.
 const SessionGone = "the Daemon no longer has this Session"
+
+// reloadTries is how many reloads of a followed Session may fail, other
+// than for a Session the Daemon does not have, before its turn ends with
+// LostTouch.
+const reloadTries = 3
+
+// outcomeWait bounds the Daemon's look for a turn's record.
+const outcomeWait = 5 * time.Second
 
 // followed is what the Runner keeps of a Session it follows.
 type followed struct {
@@ -131,6 +145,11 @@ type followed struct {
 	// reply is the text of the last assistant message since the last user
 	// message that carried text.
 	reply string
+	// turnID is the message id of the prompt the Runner sent to start the
+	// turn, under which the Daemon records its outcome; "" for another.
+	turnID string
+	// asking: the Daemon is being asked for the turn's outcome.
+	asking bool
 }
 
 // Runner starts and follows the Host's Sessions; safe for use from any
@@ -242,11 +261,41 @@ func (r *Runner) reloadFollowed(ctx context.Context) {
 	}
 	r.mu.Unlock()
 	for _, id := range ids {
-		go func() {
-			if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: id}); err != nil && ctx.Err() == nil {
-				r.log("reload " + id + ": " + err.Error())
+		go r.reload(ctx, id)
+	}
+}
+
+// reload loads a followed Session again, trying again a while when that
+// fails other than for a Session the Daemon does not have (seeGone).
+func (r *Runner) reload(ctx context.Context, sessionID string) {
+	wait := r.cfg.reloadRetry
+	if wait <= 0 {
+		wait = time.Minute
+	}
+	for try := 1; ; try++ {
+		_, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID})
+		if err == nil || errors.Is(err, controller.ErrSessionNotFound) || ctx.Err() != nil {
+			return
+		}
+		r.log("reload " + sessionID + ": " + err.Error())
+		if try == reloadTries {
+			r.mu.Lock()
+			var out Event
+			if f := r.following[sessionID]; f != nil && f.inTurn {
+				out = f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, LostTouch)
 			}
-		}()
+			r.mu.Unlock()
+			r.publish(out)
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		if !r.Following(sessionID) {
+			return
+		}
 	}
 }
 
@@ -325,11 +374,24 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 		}
 	}
 	if s.Prompt != "" {
-		if _, err := r.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: o.SessionID, Text: s.Prompt}); err != nil {
+		if err := r.prompt(ctx, o.SessionID, s.Prompt); err != nil {
 			return o, err
 		}
 	}
 	return o, nil
+}
+
+// prompt sends a Session a user message under an id of the Runner's,
+// which names the turn it starts when the Session is idle.
+func (r *Runner) prompt(ctx context.Context, sessionID, text string) error {
+	id := uuid.NewString()
+	r.mu.Lock()
+	if f := r.following[sessionID]; f != nil && !f.inTurn {
+		f.turnID = id
+	}
+	r.mu.Unlock()
+	_, err := r.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: sessionID, MessageID: id, Text: text})
+	return err
 }
 
 // systemPrompt is the System Prompt Addition, then spec's, a blank line
@@ -350,9 +412,11 @@ func (r *Runner) systemPrompt(spec string) string {
 // Load follows a Session that exists, such as one the Host opened before it
 // restarted.
 func (r *Runner) Load(ctx context.Context, sessionID string) error {
-	r.follow(sessionID, true)
+	added := r.follow(sessionID, true)
 	if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID}); err != nil {
-		r.follow(sessionID, false)
+		if added {
+			r.follow(sessionID, false)
+		}
 		return err
 	}
 	return nil
@@ -364,8 +428,7 @@ func (r *Runner) Send(ctx context.Context, sessionID, text string) error {
 	if err := r.ensureFollowed(ctx, sessionID); err != nil {
 		return err
 	}
-	_, err := r.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: sessionID, Text: text})
-	return err
+	return r.prompt(ctx, sessionID, text)
 }
 
 func (r *Runner) ensureFollowed(ctx context.Context, sessionID string) error {
@@ -460,9 +523,11 @@ func (r *Runner) Following(sessionID string) bool {
 }
 
 // Subscribe calls fn with every Event, in order, on the Controller's event
-// goroutine, which all subscribers share: fn may call the Runner, but a slow
-// fn holds up every later event, so long work belongs on a goroutine of the
-// subscriber's own. The returned function unsubscribes.
+// goroutine, which all subscribers share (a turn end the Runner asked the
+// Daemon for, or gave up reloading for, comes on one of the Runner's own):
+// fn may call the Runner, but a slow fn holds up every later event, so long
+// work belongs on a goroutine of the subscriber's own. The returned
+// function unsubscribes.
 func (r *Runner) Subscribe(fn func(Event)) (unsubscribe func()) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -476,14 +541,20 @@ func (r *Runner) Subscribe(fn func(Event)) (unsubscribe func()) {
 	}
 }
 
-func (r *Runner) follow(sessionID string, on bool) {
+// follow starts or stops following a Session; it reports whether it
+// started.
+func (r *Runner) follow(sessionID string, on bool) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !on {
 		delete(r.following, sessionID)
-	} else if r.following[sessionID] == nil {
-		r.following[sessionID] = &followed{}
+		return false
 	}
+	if r.following[sessionID] != nil {
+		return false
+	}
+	r.following[sessionID] = &followed{}
+	return true
 }
 
 func (r *Runner) forget(sessionID string) {
@@ -500,15 +571,26 @@ func (r *Runner) working(sessionID string) bool {
 // follows. It runs on the Controller's event goroutine, so what it keeps of
 // a turn follows the notifications in their order.
 func (r *Runner) see(e controller.Event) {
-	var out Event
 	switch e := e.(type) {
 	case controller.SessionNotification:
-		out = r.seeNotification(e)
+		r.publish(r.seeNotification(e))
 	case controller.SessionLoaded:
-		out = r.seeLoaded(e.SessionID)
+		r.publish(r.seeLoaded(e.SessionID))
 	case controller.SessionNotFound:
-		out = r.seeGone(e.SessionID)
+		out, f := r.seeGone(e.SessionID)
+		r.publish(out)
+		// Followed until its end is heard, so that no subscriber that asks
+		// meanwhile takes it for a Session lost without one.
+		r.mu.Lock()
+		if f != nil && r.following[e.SessionID] == f {
+			delete(r.following, e.SessionID)
+		}
+		r.mu.Unlock()
 	}
+}
+
+// publish gives the subscribers out, unless nil.
+func (r *Runner) publish(out Event) {
 	if out == nil {
 		return
 	}
@@ -563,7 +645,9 @@ func (r *Runner) seeNotification(n controller.SessionNotification) Event {
 }
 
 // seeLoaded ends a turn that a load, such as the reload after a Daemon
-// restart, finds over without its end having come.
+// restart, finds over without its end having come: as the Daemon recorded
+// the turn of the Runner's prompt, which it asks for on a goroutine of its
+// own, else with LostTouch.
 func (r *Runner) seeLoaded(sessionID string) Event {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -575,23 +659,82 @@ func (r *Runner) seeLoaded(sessionID string) Event {
 		f.inTurn = true
 		return nil
 	}
-	if f.inTurn {
-		return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, LostTouch)
+	switch {
+	case !f.inTurn || f.asking:
+		return nil
+	case f.turnID != "":
+		f.asking = true
+		go r.askOutcome(sessionID, f, f.turnID)
+		return nil
 	}
-	return nil
+	return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, LostTouch)
 }
 
-// seeGone ends a followed Session the Daemon no longer has, and stops
-// following it.
-func (r *Runner) seeGone(sessionID string) Event {
+// askOutcome ends f's turn turnID as the Daemon recorded it, else with
+// LostTouch, unless it ended meanwhile.
+func (r *Runner) askOutcome(sessionID string, f *followed, turnID string) {
+	reason, final, ok := r.turnOutcome(sessionID, turnID)
+	r.mu.Lock()
+	var out Event
+	if r.following[sessionID] == f && f.inTurn && f.turnID == turnID {
+		if !ok {
+			out = f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, LostTouch)
+		} else {
+			if final != "" {
+				f.reply = final
+			}
+			out = f.end(sessionID, reason, f.firstError)
+		}
+	}
+	r.mu.Unlock()
+	r.publish(out)
+}
+
+// turnOutcome is the reason the Daemon recorded for a Session's turn, with
+// its final output; not ok when it has no such record or cannot say.
+func (r *Runner) turnOutcome(sessionID, turnID string) (reason protocol.AgentTurnCompletionReason, final string, ok bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), outcomeWait+10*time.Second)
+	defer cancel()
+	ask := r.cfg.turnOutcome
+	if ask == nil {
+		cl, err := r.ctl.Client()
+		if err != nil {
+			return "", "", false
+		}
+		ask = cl.GetSessionTurnOutcome
+	}
+	res, err := ask(ctx, protocol.GetSessionTurnOutcomeParams{SessionID: sessionID, TurnID: turnID, TimeoutMs: float64(outcomeWait.Milliseconds())})
+	if err != nil {
+		r.log("the outcome of " + sessionID + ": " + err.Error())
+		return "", "", false
+	}
+	v, err := res.Value()
+	got, isAvailable := v.(*protocol.DaemonGetSessionTurnOutcomeResultAvailable)
+	if err != nil || !isAvailable || got.TurnID != turnID {
+		return "", "", false
+	}
+	var o struct {
+		TurnID string                             `json:"turnId"`
+		Reason protocol.AgentTurnCompletionReason `json:"reason"`
+	}
+	if json.Unmarshal(got.Outcome.Raw, &o) != nil || o.TurnID != turnID || o.Reason == "" {
+		return "", "", false
+	}
+	return o.Reason, got.FinalOutput, true
+}
+
+// seeGone ends a followed Session the Daemon no longer has; see stops
+// following it once the end is heard. It is the one place that ends a turn
+// for a Session gone, and an Automation run's Session must not be
+// unfollowed otherwise (an Unfollow): its end would never come.
+func (r *Runner) seeGone(sessionID string) (Event, *followed) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	f := r.following[sessionID]
 	if f == nil {
-		return nil
+		return nil, nil
 	}
-	delete(r.following, sessionID)
-	return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, SessionGone)
+	return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, SessionGone), f
 }
 
 // end is the TurnEnded of f's turn; the next turn starts afresh.

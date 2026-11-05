@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -360,5 +361,58 @@ func TestToolsWithoutTheAutomationsSayAnotherDroiRunsThem(t *testing.T) {
 	_, err := srv.Call(context.Background(), ToolList, map[string]any{}, "s1")
 	if err == nil || err.Error() != "Another Droi on this computer runs the automations." {
 		t.Fatalf("call: %v", err)
+	}
+}
+
+func TestAMoveThatCannotCopyTheFolderSaysSoPlainly(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("needs a file its owner cannot read")
+	}
+	h := newHarness(t, "08:00")
+	path := factoryFolder(t, "---\nname: Notes\nschedule: 0 1 * * *\n---\n\nTake notes.\n")
+	if err := os.WriteFile(filepath.Join(path, "secret.md"), []byte("x"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeFactory{entries: []protocol.AutomationEntry{{ID: "notes", Name: "Notes", Schedule: "0 1 * * *", Path: path}}}
+	var logged []string
+	g := gatewayHost(h, f)
+	g.Log = func(s string) { logged = append(logged, s) }
+	_, err := g.MoveFactory(context.Background(), "notes")
+	if err == nil || err.Error() != "Droi could not copy the automation's folder." || len(f.deleted) != 0 {
+		t.Fatalf("%v, deleted %v", err, f.deleted)
+	}
+	if len(logged) != 1 || !strings.Contains(logged[0], "secret.md") {
+		t.Fatalf("logged %q", logged)
+	}
+	if entries, _ := os.ReadDir(h.dir); len(entries) > 1 || len(entries) == 1 && entries[0].Name() != "state.json" {
+		t.Fatalf("left %v", entries)
+	}
+}
+
+// A new Factory automation may take the folder name of one deleted: a move
+// tells them apart by uuid.
+func TestAMoveTellsFactoryAutomationsByTheirUUID(t *testing.T) {
+	h := newHarness(t, "08:00")
+	f := &fakeFactory{entries: []protocol.AutomationEntry{{ID: "daily-report", Uuid: "u-1", Name: "Daily report", Schedule: "0 1 * * *", Prompt: "Report.", Path: t.TempDir()}}}
+	g := gatewayHost(h, f)
+	first, err := g.MoveFactory(context.Background(), "daily-report")
+	if err != nil || first.Automation.ID != "daily-report" || first.Automation.ForkedFrom != "u-1" || first.Automation.ForkedFromName != "daily-report" {
+		t.Fatalf("first %+v %v", first, err)
+	}
+	f.entries = []protocol.AutomationEntry{{ID: "daily-report", Uuid: "u-2", Name: "Daily report", Schedule: "0 2 * * *", Prompt: "Report again.", Path: t.TempDir()}}
+	second, err := g.MoveFactory(context.Background(), "daily-report")
+	if err != nil || second.Automation.ID != "daily-report-2" || second.Automation.ForkedFrom != "u-2" || second.Automation.Prompt != "Report again." {
+		t.Fatalf("second %+v %v", second, err)
+	}
+	if !slices.Equal(f.deleted, []string{"daily-report", "daily-report"}) {
+		t.Fatalf("deleted %v", f.deleted)
+	}
+	// The second moved again (its delete failed, say) is not copied again.
+	again, err := g.MoveFactory(context.Background(), "daily-report")
+	if err != nil || again.Automation.ID != "daily-report-2" || len(f.deleted) != 3 {
+		t.Fatalf("again %+v %v, deleted %v", again, err, f.deleted)
+	}
+	if items, _ := h.s.List(); len(items) != 2 {
+		t.Fatalf("%d automations", len(items))
 	}
 }

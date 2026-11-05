@@ -98,7 +98,7 @@ func (f *fakeAutomations) Save(_ context.Context, a gateway.Automation) (gateway
 	if i < 0 {
 		return gateway.Automation{}, gateway.ErrAutomationNotFound
 	}
-	a.NextRunAt, a.LastRun, a.ForkedFrom = f.list[i].NextRunAt, f.list[i].LastRun, f.list[i].ForkedFrom
+	a.NextRunAt, a.LastRun, a.ForkedFrom, a.ForkedFromName = f.list[i].NextRunAt, f.list[i].LastRun, f.list[i].ForkedFrom, f.list[i].ForkedFromName
 	f.list[i] = a
 	return zoned(a), nil
 }
@@ -766,6 +766,32 @@ func TestAMovedAutomationListsItsEarlierRunsInFactory(t *testing.T) {
 	h := automationsHarness(t, fake, nil)
 	h.openDailyReview()
 	h.until("the earlier runs", func() bool { return h.hasText("Earlier runs in Factory") && h.hasText("Nightly lint run") })
+}
+
+// The Daemon tags its runs with the automation's folder name and, when it
+// has one, its uuid (droid 1.4.1 daemon-core, local-history.ts): a moved
+// Automation lists the runs of its uuid only, not those of another that had
+// the same folder name.
+func TestAMovedAutomationListsTheRunsOfItsUUID(t *testing.T) {
+	sc := automationsScenario()
+	run := func(title, id, uuid string) fakedaemon.SessionSpec {
+		meta := map[string]string{"automationId": "nightly-lint", "automationName": "Nightly lint", "triggerSource": "scheduled", "type": "run"}
+		if uuid != "" {
+			meta["automationUuid"] = uuid
+		}
+		return fakedaemon.SessionSpec{Title: title, Cwd: "/Users/dev/.factory/automations/nightly-lint",
+			Messages: []fakedaemon.Message{{Role: "user", Text: "Lint everything."}},
+			Extra:    map[string]any{"sessionId": id, "tags": []map[string]any{{"name": sessions.AutomationTag, "metadata": meta}}}}
+	}
+	sc.Sessions = append(sc.Sessions[:2], run("This lint run", "factory-run-1", "uuid-nl"), run("Deleted lint run", "factory-run-2", "uuid-old"))
+	fake := newFakeAutomations(t)
+	fake.list[0].ForkedFrom, fake.list[0].ForkedFromName = "uuid-nl", "nightly-lint"
+	h := automationsHarnessOn(t, sc, fake, nil)
+	h.openDailyReview()
+	h.until("the earlier runs", func() bool { return h.hasText("Earlier runs in Factory") && h.hasText("This lint run") })
+	if h.hasText("Deleted lint run") {
+		t.Fatal("listed the run of another automation of the same folder name")
+	}
 }
 
 // A run whose Session waits for the user's approval says so in the runs.

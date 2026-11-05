@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"errors"
 	"net/http"
 	"slices"
@@ -112,7 +113,7 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 	clear(s.waiting)
 	var ids []string
 	for _, x := range listed {
-		if x.CallingSessionID == "" && daemonRun(x.Tags) != "" {
+		if id, _ := daemonRun(x.Tags); x.CallingSessionID == "" && id != "" {
 			s.daemonRuns = append(s.daemonRuns, x)
 		}
 		if x.CallingSessionID != "" || busy[x.SessionID] == "" {
@@ -143,14 +144,32 @@ func (a *App) noteLiveRuns(listed []sessions.Summary, busy map[string]activity.A
 }
 
 // daemonRun is the Factory automation the Daemon started the Session as a
-// run of (sessions.AutomationTag), "" for none.
-func daemonRun(tags []sessions.Tag) string {
+// run of (sessions.AutomationTag): its folder name and, when it has one,
+// its uuid; "" for none.
+func daemonRun(tags []sessions.Tag) (id, uuid string) {
 	for _, t := range tags {
 		if t.Name == sessions.AutomationTag && t.Metadata["type"] == "run" {
-			return t.Metadata["automationId"]
+			return t.Metadata["automationId"], t.Metadata["automationUuid"]
 		}
 	}
-	return ""
+	return "", ""
+}
+
+// daemonRunsOfMoved are the Daemon's runs of the Factory automation e was
+// moved from, newest first. As the Daemon does (local-history.ts), a uuid
+// matches alone: a later automation may take a deleted one's folder name.
+func (a *App) daemonRunsOfMoved(e gateway.Automation) []sessions.Summary {
+	name := cmp.Or(e.ForkedFromName, e.ForkedFrom)
+	if e.ForkedFrom == name {
+		return a.daemonRunsOf(name)
+	}
+	var out []sessions.Summary
+	for _, x := range a.automations.daemonRuns {
+		if _, uuid := daemonRun(x.Tags); uuid == e.ForkedFrom {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // daemonRunsOf are the Daemon's runs of the Factory automation id, newest
@@ -158,7 +177,7 @@ func daemonRun(tags []sessions.Tag) string {
 func (a *App) daemonRunsOf(id string) []sessions.Summary {
 	var out []sessions.Summary
 	for _, x := range a.automations.daemonRuns {
-		if daemonRun(x.Tags) == id {
+		if runOf, _ := daemonRun(x.Tags); runOf == id {
 			out = append(out, x)
 		}
 	}
@@ -1237,7 +1256,7 @@ func (a *App) automationView(c *ui.Context, e *gateway.Automation) {
 	a.promptSection(c, e.Prompt)
 	a.runsList(c, id)
 	if e.ForkedFrom != "" {
-		if runs := a.daemonRunsOf(e.ForkedFrom); len(runs) > 0 {
+		if runs := a.daemonRunsOfMoved(*e); len(runs) > 0 {
 			ui.Column(c).Gap(k.Px(4)).Children(func() {
 				a.sectionTitle(c, L("Earlier runs in Factory"), strconv.Itoa(len(runs)))
 				a.daemonRunList(c, L("Earlier runs in Factory"), runs)

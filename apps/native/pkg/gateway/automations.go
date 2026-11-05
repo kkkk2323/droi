@@ -77,8 +77,12 @@ type Automation struct {
 	Paused           bool   `json:"paused"`
 	// The rest is the Host's to answer; a save ignores it.
 	CreatedAt string `json:"createdAt,omitempty"`
-	// ForkedFrom is the Factory automation it was moved from.
-	ForkedFrom string `json:"forkedFrom,omitempty"`
+	// ForkedFrom is the Factory automation it was moved from: its uuid,
+	// else (one without) its folder name; ForkedFromName is its folder
+	// name. The Daemon tags its runs with both (automationUuid,
+	// automationId).
+	ForkedFrom     string `json:"forkedFrom,omitempty"`
+	ForkedFromName string `json:"forkedFromName,omitempty"`
 	// Zone is the time zone its Schedule is read in: Timezone, else the
 	// Host's computer's.
 	Zone string `json:"zone,omitempty"`

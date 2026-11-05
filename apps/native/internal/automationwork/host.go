@@ -1,6 +1,7 @@
 package automationwork
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -33,6 +34,8 @@ type GatewayHost struct {
 	// LocalZone, optional, names this computer's time zone; the package's
 	// LocalZone when nil.
 	LocalZone func() string
+	// Log, optional, hears what the Gateway's answers leave out.
+	Log func(string)
 
 	// moving serialises moves, so that one Factory automation is copied
 	// once.
@@ -78,7 +81,8 @@ func (h *GatewayHost) gatewayItem(it Item) gateway.Automation {
 	a := gateway.Automation{
 		ID: it.ID, Name: it.Name, Prompt: it.Prompt, Schedule: it.Schedule, Timezone: it.Timezone,
 		Model: it.Model, ReasoningEffort: it.ReasoningEffort, Autonomy: it.Autonomy,
-		WorkingDirectory: it.WorkingDirectory, Paused: it.Paused, CreatedAt: rfc3339(it.CreatedAt), ForkedFrom: it.ForkedFrom,
+		WorkingDirectory: it.WorkingDirectory, Paused: it.Paused, CreatedAt: rfc3339(it.CreatedAt),
+		ForkedFrom: it.ForkedFrom, ForkedFromName: it.ForkedFromName,
 		Folder: h.Scheduler.Folder(it.ID), NextRunAt: rfc3339(it.NextRunAt), Running: it.Running, Invalid: it.Invalid,
 		Zone: it.Timezone,
 	}
@@ -233,6 +237,10 @@ func (h *GatewayHost) Factory(ctx context.Context) ([]gateway.FactoryAutomation,
 // delete keeps the copy and says why in DeleteError; moved again, it is
 // not copied again, and the delete is tried again. One that posts into an
 // existing Session is refused: Droi's runs start their own.
+//
+// A copy keeps the original's uuid (its folder name when it has none): a
+// Factory automation made later may take a deleted one's folder name, and
+// the Daemon's delete removes the folder.
 func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.AutomationMoved, error) {
 	h.moving.Lock()
 	defer h.moving.Unlock()
@@ -253,15 +261,18 @@ func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.Autom
 	if f.TargetsSession {
 		return gateway.AutomationMoved{}, &gateway.RefusedRequest{Reason: "This automation posts into an existing session, which Droi's automations cannot do."}
 	}
+	key := cmp.Or(found.Uuid, found.ID)
 	moved := gateway.AutomationMoved{}
-	if it, ok, err := h.Scheduler.ForkedFrom(id); err != nil {
+	if it, ok, err := h.Scheduler.ForkedFrom(key); err != nil {
 		return gateway.AutomationMoved{}, err
 	} else if ok {
 		moved.Automation = h.gatewayItem(it)
-	} else if moved.Automation, err = h.copyFactory(f); err != nil {
+	} else if moved.Automation, err = h.copyFactory(f, key); err != nil {
 		return gateway.AutomationMoved{}, err
 	}
-	res, err := d.DeleteAutomation(ctx, protocol.DeleteAutomationParams{AutomationID: id})
+	// By folder name, which every droid takes: found is the entry of that
+	// name in the list just read, and has the copy's uuid.
+	res, err := d.DeleteAutomation(ctx, protocol.DeleteAutomationParams{AutomationID: found.ID})
 	switch {
 	case err != nil:
 		moved.DeleteError = err.Error()
@@ -273,17 +284,26 @@ func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.Autom
 	return moved, nil
 }
 
-// copyFactory copies f into Droi's Automations.
-func (h *GatewayHost) copyFactory(f gateway.FactoryAutomation) (gateway.Automation, error) {
+// copyFactory copies f, whose uuid or folder name is key, into Droi's
+// Automations.
+func (h *GatewayHost) copyFactory(f gateway.FactoryAutomation, key string) (gateway.Automation, error) {
 	schedule, zone, err := automations.FactorySchedule(f.Schedule, h.offset())
 	if err != nil {
 		return gateway.Automation{}, &gateway.RefusedRequest{Reason: err.Error()}
 	}
 	copied := automations.Automation{
 		Name: f.Name, Prompt: f.Prompt, Schedule: schedule, Timezone: zone, Model: f.Model,
-		ReasoningEffort: f.ReasoningEffort, WorkingDirectory: f.WorkingDirectory, Paused: f.Paused, ForkedFrom: f.ID,
+		ReasoningEffort: f.ReasoningEffort, WorkingDirectory: f.WorkingDirectory, Paused: f.Paused,
+		ForkedFrom: key, ForkedFromName: f.ID,
 	}
 	saved, err := h.Scheduler.Adopt(copied, f.Path)
+	if errors.Is(err, ErrCopy) {
+		// The error names the copy's own folder, which is no one's business.
+		if h.Log != nil {
+			h.Log("move " + f.ID + ": " + err.Error())
+		}
+		return gateway.Automation{}, errors.New("Droi could not copy the automation's folder.")
+	}
 	if err != nil {
 		return gateway.Automation{}, hostError(err)
 	}

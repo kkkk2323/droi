@@ -148,3 +148,27 @@ func TestAToolScheduleIsInThisComputersZone(t *testing.T) {
 		t.Fatalf("rescheduled %+v", it)
 	}
 }
+
+func TestAToolCannotChangeTheFolderOfAnAutomationThatRunsWithoutAskingBySpacingIt(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Re", Schedule: "0 2 * * *", WorkingDirectory: "/Users/me/re", Model: "glm-5.3-flash"})
+	for _, same := range []map[string]any{
+		{"workingDirectory": "/Users/me/re "}, {"workingDirectory": "/Users/me/re/"}, {"workingDirectory": "/Users/me/./re"}, {"model": " glm-5.3-flash"},
+	} {
+		same["id"] = a.ID
+		if _, err := call(t, h, ToolUpdate, same); err != nil {
+			t.Fatalf("%v: %v", same, err)
+		}
+		if it, _ := h.s.Get(a.ID); it.WorkingDirectory != "/Users/me/re" || it.Model != "glm-5.3-flash" {
+			t.Fatalf("%v stored %+v", same, it)
+		}
+	}
+	for _, other := range []map[string]any{
+		{"workingDirectory": "/Users/me/re2"}, {"workingDirectory": "/Users/me"}, {"workingDirectory": "re"}, {"model": "glm-5.3"},
+	} {
+		other["id"] = a.ID
+		if _, err := call(t, h, ToolUpdate, other); err == nil || err.Error() != askFree {
+			t.Fatalf("%v: %v", other, err)
+		}
+	}
+}
