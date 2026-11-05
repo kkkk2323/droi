@@ -7,18 +7,19 @@ import (
 	"sync/atomic"
 
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // startGateway starts the Gateway that paired phones and this window connect
-// through. The window presents localToken, which a Pairing Token reset or
-// turning Remote Access off does not revoke.
-func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error, list gateway.SessionList, automations gateway.Automations, changed func()) (*gateway.Gateway, error) {
+// through, with svc's Automations. The window presents localToken, which a
+// Pairing Token reset or turning Remote Access off does not revoke.
+func startGateway(h *host.Host, version, localToken string, moveToTrash func(string) error, list gateway.SessionList, svc *hostrun.Services, changed func()) (*gateway.Gateway, error) {
 	opts := h.GatewayOptions(version, moveToTrash)
 	opts.SessionList = list
-	opts.Automations = automations
+	opts.Automations = svc.GatewayAutomations()
 	opts.Changed = changed
 	opts.Port = brand.Current().Port
 	opts.RemoteAccess = h.Settings.Get().RemoteAccess

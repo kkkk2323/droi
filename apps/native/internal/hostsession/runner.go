@@ -87,9 +87,10 @@ type Opened struct {
 type Event interface{ hostSessionEvent() }
 
 // TurnEnded is an agent turn's end. A turn whose worker stopped without
-// ending it (the Daemon restarted, or the worker died) ends with Reason
-// process_exit and Error WorkerStopped, once the Runner sees the Session
-// idle again.
+// ending it ends with Reason process_exit and Error WorkerStopped, once the
+// Runner sees the Session idle again; one a load finds over, with Error
+// LostTouch; a followed Session the Daemon no longer has, with Error
+// SessionGone.
 type TurnEnded struct {
 	SessionID string
 	Reason    protocol.AgentTurnCompletionReason
@@ -111,6 +112,15 @@ func (WorkingChanged) hostSessionEvent() {}
 
 // WorkerStopped is the Error of a TurnEnded whose worker stopped mid-turn.
 const WorkerStopped = "the Session's worker stopped"
+
+// LostTouch is the Error of a TurnEnded that a load found over: the turn
+// ended while the Runner was not connected, and the load cannot tell a
+// completed turn from a lost worker (it says only whether one runs).
+const LostTouch = "the Host lost touch with the Daemon while the Session worked"
+
+// SessionGone is the Error of a TurnEnded of a followed Session the Daemon
+// no longer has.
+const SessionGone = "the Daemon no longer has this Session"
 
 // followed is what the Runner keeps of a Session it follows.
 type followed struct {
@@ -496,6 +506,8 @@ func (r *Runner) see(e controller.Event) {
 		out = r.seeNotification(e)
 	case controller.SessionLoaded:
 		out = r.seeLoaded(e.SessionID)
+	case controller.SessionNotFound:
+		out = r.seeGone(e.SessionID)
 	}
 	if out == nil {
 		return
@@ -564,9 +576,22 @@ func (r *Runner) seeLoaded(sessionID string) Event {
 		return nil
 	}
 	if f.inTurn {
-		return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, WorkerStopped)
+		return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, LostTouch)
 	}
 	return nil
+}
+
+// seeGone ends a followed Session the Daemon no longer has, and stops
+// following it.
+func (r *Runner) seeGone(sessionID string) Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f := r.following[sessionID]
+	if f == nil {
+		return nil
+	}
+	delete(r.following, sessionID)
+	return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, SessionGone)
 }
 
 // end is the TurnEnded of f's turn; the next turn starts afresh.

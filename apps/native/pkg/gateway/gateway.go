@@ -496,7 +496,7 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		reply(w, status, body)
 	case AutomationsPath, AutomationRunsPath, AutomationSavePath, AutomationPausePath, AutomationRunPath,
 		AutomationDeletePath, FactoryAutomationsPath, FactoryAutomationMovePath:
-		status, body := g.answerAutomations(r, path, q)
+		status, body := g.answerAutomations(w, r, path, q)
 		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App

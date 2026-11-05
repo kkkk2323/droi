@@ -35,6 +35,9 @@ type Automation struct {
 	WorkingDirectory string    `json:"workingDirectory,omitempty"`
 	Paused           bool      `json:"paused"`
 	CreatedAt        time.Time `json:"createdAt,omitzero"`
+	// ForkedFrom is the Factory automation it was moved from (Factory's
+	// key); an edit that leaves it empty keeps it.
+	ForkedFrom string `json:"forkedFrom,omitempty"`
 	// Invalid is why its HEARTBEAT.md, schedule or time zone cannot be
 	// read; it is never written. List keeps such a folder, so it can be
 	// seen and deleted.
@@ -97,6 +100,19 @@ const (
 // ErrNotFound is an Automation that has no folder.
 var ErrNotFound = errors.New("automation not found")
 
+// ErrUnreadable is an Automation whose HEARTBEAT.md cannot be read; saving
+// over it repairs it.
+var ErrUnreadable = errors.New("the automation's HEARTBEAT.md cannot be read")
+
+// InvalidError is an Automation or an id that cannot be saved as given.
+type InvalidError struct{ Reason string }
+
+func (e *InvalidError) Error() string { return e.Reason }
+
+func invalid(format string, args ...any) error {
+	return &InvalidError{Reason: fmt.Sprintf(format, args...)}
+}
+
 // Store keeps Droi's Automations in Dir, one folder each. It does not lock:
 // its caller serialises writes.
 type Store struct {
@@ -110,7 +126,7 @@ func (s Store) Folder(id string) string { return filepath.Join(s.Dir, id) }
 func checkID(id string) error {
 	if id == "" || strings.HasPrefix(id, ".") || strings.HasSuffix(id, ".") || strings.HasSuffix(id, " ") ||
 		strings.ContainsAny(id, `/\:`) || !filepath.IsLocal(id) {
-		return fmt.Errorf("%q is not an automation id", id)
+		return invalid("%q is not an automation id", id)
 	}
 	return nil
 }
@@ -165,7 +181,7 @@ func (s Store) Get(id string) (Automation, error) {
 		return Automation{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	if err != nil {
-		return Automation{}, fmt.Errorf("%s: %w", id, err)
+		return Automation{}, fmt.Errorf("%w (%s): %v", ErrUnreadable, id, err)
 	}
 	return a, nil
 }
@@ -180,56 +196,96 @@ func (s Store) read(id string) (Automation, error) {
 	return a, err
 }
 
-// Validate is why a cannot be saved, or nil.
+// Validate is why a cannot be saved, an *InvalidError, or nil.
 func Validate(a Automation) error {
 	if strings.TrimSpace(a.Name) == "" {
-		return errors.New("an automation needs a name")
+		return invalid("an automation needs a name")
 	}
 	if strings.TrimSpace(a.Prompt) == "" {
-		return errors.New("an automation needs a prompt")
+		return invalid("an automation needs a prompt")
 	}
 	if _, err := ParseCron(a.Schedule); err != nil {
-		return err
+		return invalid("%s", err.Error())
 	}
 	if a.Timezone != "" {
 		if _, err := time.LoadLocation(a.Timezone); err != nil {
-			return fmt.Errorf("unknown time zone %q", a.Timezone)
+			return invalid("unknown time zone %q", a.Timezone)
 		}
 	}
 	switch a.Autonomy {
 	case "", "low", "medium", "high":
 	default:
-		return fmt.Errorf("autonomy %q is not low, medium or high", a.Autonomy)
+		return invalid("autonomy %q is not low, medium or high", a.Autonomy)
 	}
 	return nil
+}
+
+// clean is a as Save writes it.
+func clean(a Automation) Automation {
+	a.Name = strings.TrimSpace(a.Name)
+	a.Schedule = strings.Join(strings.Fields(a.Schedule), " ")
+	a.Timezone = strings.TrimSpace(a.Timezone)
+	a.Prompt = strings.TrimSpace(strings.ReplaceAll(a.Prompt, "\r\n", "\n"))
+	a.Invalid = ""
+	return a
+}
+
+// newID is the id of a new Automation called name.
+func (s Store) newID(name string) (string, error) {
+	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
+		return "", err
+	}
+	entries, err := os.ReadDir(s.Dir)
+	if err != nil {
+		return "", err
+	}
+	taken := map[string]bool{}
+	for _, e := range entries {
+		taken[e.Name()] = true
+	}
+	return ID(name, taken), nil
+}
+
+// Adopt creates an Automation in folder, a folder of Dir prepared with its
+// files, which becomes the Automation's own; CreatedAt is now when zero.
+func (s Store) Adopt(a Automation, folder string) (Automation, error) {
+	a = clean(a)
+	if err := Validate(a); err != nil {
+		return Automation{}, err
+	}
+	id, err := s.newID(a.Name)
+	if err != nil {
+		return Automation{}, err
+	}
+	a.ID = id
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now()
+	}
+	a.CreatedAt = a.CreatedAt.Truncate(time.Second)
+	if err := writeAtomic(filepath.Join(folder, heartbeatFile), []byte(formatHeartbeat(a))); err != nil {
+		return Automation{}, err
+	}
+	if err := rename(folder, s.Folder(id)); err != nil {
+		return Automation{}, err
+	}
+	return a, nil
 }
 
 // Save writes a, creating it when its ID is empty (the ID then comes from
 // its name, and CreatedAt is now when zero). An edit keeps the creation
 // time when a has none.
 func (s Store) Save(a Automation) (Automation, error) {
-	a.Name = strings.TrimSpace(a.Name)
-	a.Schedule = strings.Join(strings.Fields(a.Schedule), " ")
-	a.Timezone = strings.TrimSpace(a.Timezone)
-	a.Prompt = strings.TrimSpace(strings.ReplaceAll(a.Prompt, "\r\n", "\n"))
-	a.Invalid = ""
+	a = clean(a)
 	created := a.ID == ""
 	if err := Validate(a); err != nil {
 		return Automation{}, err
 	}
 	if a.ID == "" {
-		if err := os.MkdirAll(s.Dir, 0o755); err != nil {
-			return Automation{}, err
-		}
-		entries, err := os.ReadDir(s.Dir)
+		id, err := s.newID(a.Name)
 		if err != nil {
 			return Automation{}, err
 		}
-		taken := map[string]bool{}
-		for _, e := range entries {
-			taken[e.Name()] = true
-		}
-		a.ID = ID(a.Name, taken)
+		a.ID = id
 		if a.CreatedAt.IsZero() {
 			a.CreatedAt = time.Now()
 		}
@@ -237,12 +293,16 @@ func (s Store) Save(a Automation) (Automation, error) {
 			return Automation{}, err
 		}
 	} else {
+		// Saving over an unreadable HEARTBEAT.md repairs it.
 		old, err := s.Get(a.ID)
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrUnreadable) {
 			return Automation{}, err
 		}
 		if a.CreatedAt.IsZero() {
 			a.CreatedAt = old.CreatedAt
+		}
+		if a.ForkedFrom == "" {
+			a.ForkedFrom = old.ForkedFrom
 		}
 	}
 	a.CreatedAt = a.CreatedAt.Truncate(time.Second)
@@ -420,6 +480,7 @@ func formatHeartbeat(a Automation) string {
 	if !a.CreatedAt.IsZero() {
 		field("createdAt", a.CreatedAt.Format(time.RFC3339))
 	}
+	field("forkedFrom", a.ForkedFrom)
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(a.Prompt))
 	b.WriteString("\n")
@@ -492,6 +553,8 @@ func parseHeartbeat(text string) (Automation, error) {
 			a.Paused = strings.EqualFold(v, "true")
 		case "createdAt":
 			a.CreatedAt, _ = time.Parse(time.RFC3339, v)
+		case "forkedFrom":
+			a.ForkedFrom = v
 		}
 	}
 	if a.Name == "" || a.Schedule == "" {

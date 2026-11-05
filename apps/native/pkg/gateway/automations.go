@@ -46,6 +46,14 @@ const (
 // more). The Host answers it 410.
 var ErrAutomationNotFound = errors.New("no such automation")
 
+// ErrAutomationRunning is a run asked for while one of the Automation
+// works. The Host answers it 409.
+var ErrAutomationRunning = errors.New("a run of the automation is already working")
+
+// ErrAutomationsElsewhere is a Host whose Automations another Droi on its
+// computer runs, from the same data folder. The Host answers it 503.
+var ErrAutomationsElsewhere = errors.New("another Droi on this computer runs its automations")
+
 // Automation is one of the Host's Automations. Times are RFC 3339.
 type Automation struct {
 	ID     string `json:"id"`
@@ -65,6 +73,8 @@ type Automation struct {
 	Paused           bool   `json:"paused"`
 	// The rest is the Host's to answer; a save ignores it.
 	CreatedAt string `json:"createdAt,omitempty"`
+	// ForkedFrom is the Factory automation it was moved from.
+	ForkedFrom string `json:"forkedFrom,omitempty"`
 	// Folder is the Automation's own folder on the Host's computer.
 	Folder string `json:"folder,omitempty"`
 	// NextRunAt is its next scheduled time, "" when paused or Invalid.
@@ -103,6 +113,9 @@ type FactoryAutomation struct {
 	Paused           bool   `json:"paused"`
 	// Path is its folder on the Host's computer.
 	Path string `json:"path,omitempty"`
+	// TargetsSession is set for one that posts into an existing Session,
+	// which Droi's cannot: it does not move.
+	TargetsSession bool `json:"targetsSession,omitempty"`
 }
 
 // AutomationMoved is a Factory automation copied into the Host's: the copy,
@@ -114,8 +127,9 @@ type AutomationMoved struct {
 }
 
 // Automations is the Host's side of the Automation endpoints. A
-// *RefusedRequest answers 400 with its reason, ErrAutomationNotFound 410;
-// any other error 500.
+// *RefusedRequest answers 400 with its reason, ErrAutomationRunning 409,
+// ErrAutomationNotFound 410, ErrAutomationsElsewhere 503; any other error
+// 500.
 type Automations interface {
 	List(ctx context.Context) ([]Automation, error)
 	Runs(ctx context.Context, id string, limit int) ([]AutomationRun, error)
@@ -127,14 +141,15 @@ type Automations interface {
 	MoveFactory(ctx context.Context, id string) (AutomationMoved, error)
 }
 
-// automationTimeout bounds what an Automation request does on the Host:
-// starting a run waits for its Session to open.
-const automationTimeout = 150 * time.Second
+// automationTimeout bounds what an Automation request does on the Host
+// (starting a run waits for its Session to open), under the Relay's two
+// minutes for an answer.
+const automationTimeout = 100 * time.Second
 
 // runsLimit is how many runs AutomationRunsPath answers.
 const runsLimit = 50
 
-func (g *Gateway) answerAutomations(r *http.Request, endpoint string, q url.Values) (int, any) {
+func (g *Gateway) answerAutomations(w http.ResponseWriter, r *http.Request, endpoint string, q url.Values) (int, any) {
 	if g.classify(q.Get(TokenQuery)) == "" {
 		return http.StatusUnauthorized, nil
 	}
@@ -169,8 +184,8 @@ func (g *Gateway) answerAutomations(r *http.Request, endpoint string, q url.Valu
 		}
 	case AutomationSavePath:
 		var in Automation
-		if err := readJSON(r, &in, 1<<20); err != nil {
-			return http.StatusBadRequest, errorBody{Error: err.Error()}
+		if status, err := readJSON(w, r, &in, 1<<20); err != nil {
+			return status, errorBody{Error: err.Error()}
 		}
 		var saved Automation
 		if saved, err = au.Save(ctx, in); err == nil {
@@ -208,8 +223,12 @@ func (g *Gateway) answerAutomations(r *http.Request, endpoint string, q url.Valu
 	switch {
 	case errors.As(err, &refused):
 		return http.StatusBadRequest, errorBody{Error: err.Error()}
+	case errors.Is(err, ErrAutomationRunning):
+		return http.StatusConflict, errorBody{Error: err.Error()}
 	case errors.Is(err, ErrAutomationNotFound):
 		return http.StatusGone, errorBody{Error: err.Error()}
+	case errors.Is(err, ErrAutomationsElsewhere):
+		return http.StatusServiceUnavailable, errorBody{Error: err.Error()}
 	}
 	return http.StatusInternalServerError, errorBody{Error: err.Error()}
 }
@@ -250,8 +269,8 @@ func (c *Client) PauseAutomation(ctx context.Context, id string, paused bool) er
 	return c.automationCall(ctx, http.MethodPost, AutomationPausePath, q, nil, nil)
 }
 
-// RunAutomation starts a run of an Automation now; it is refused while one
-// of it works.
+// RunAutomation starts a run of an Automation now; ErrAutomationRunning
+// while one of it works.
 func (c *Client) RunAutomation(ctx context.Context, id string) (AutomationRun, error) {
 	var run AutomationRun
 	err := c.automationCall(ctx, http.MethodPost, AutomationRunPath, url.Values{AutomationIDQuery: {id}}, nil, &run)
@@ -279,14 +298,22 @@ func (c *Client) MoveFactoryAutomation(ctx context.Context, id string) (Automati
 }
 
 // automationCall is an Automation request, which the Host may take up to
-// automationTimeout to carry out; a 410 is ErrAutomationNotFound.
+// automationTimeout to carry out: a 409 is ErrAutomationRunning, a 410
+// ErrAutomationNotFound, a 503 ErrAutomationsElsewhere.
 func (c *Client) automationCall(ctx context.Context, method, path string, query url.Values, in, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, automationTimeout+requestTimeout)
 	defer cancel()
 	err := c.sendBody(ctx, c.poll, 4<<20, method, path, query, in, out)
 	var status *StatusError
-	if errors.As(err, &status) && status.Status == http.StatusGone {
-		return ErrAutomationNotFound
+	if errors.As(err, &status) {
+		switch status.Status {
+		case http.StatusConflict:
+			return ErrAutomationRunning
+		case http.StatusGone:
+			return ErrAutomationNotFound
+		case http.StatusServiceUnavailable:
+			return ErrAutomationsElsewhere
+		}
 	}
 	return err
 }

@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	// Windows has no zone database of its own for time.LoadLocation.
+	_ "time/tzdata"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )

@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kkkk2323/droi/apps/native/internal/automations"
 )
 
 func call(t *testing.T, h *harness, tool string, args map[string]any) (string, error) {
@@ -98,5 +101,50 @@ func TestDroidCreatesAndChangesAnAutomationWithTheTools(t *testing.T) {
 	}
 	if _, err := ToolServer(h.s, func() string { return "UTC" }).Call(context.Background(), "delete_automation", map[string]any{"id": "daily-report"}, ""); err == nil {
 		t.Fatal("a tool deleted an automation")
+	}
+}
+
+func TestAToolCannotChangeWhatAnAutomationThatRunsWithoutAskingDoes(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Nightly", Schedule: "0 2 * * *", Prompt: "Clean up.", Timezone: "UTC"})
+	const refusal = "This automation runs without asking for approval, so its prompt, folder and model can only be changed in Droi's Automations page."
+	for _, args := range []map[string]any{{"prompt": "Delete everything."}, {"workingDirectory": "/"}, {"model": "other"}, {"name": "x", "prompt": "Other."}} {
+		args["id"] = a.ID
+		if _, err := call(t, h, ToolUpdate, args); err == nil || err.Error() != refusal {
+			t.Fatalf("%v: %v", args, err)
+		}
+	}
+	it, _ := h.s.Get(a.ID)
+	if it.Prompt != "Clean up." || it.WorkingDirectory != "" || it.Model != "" || it.Name != "Nightly" {
+		t.Fatalf("changed %+v", it)
+	}
+	// What it does is given back unchanged; its name and schedule change,
+	// the schedule then in this computer's zone.
+	if _, err := call(t, h, ToolUpdate, map[string]any{"id": a.ID, "prompt": "Clean up.", "name": "Nightly clean", "schedule": "0 3 * * *"}); err != nil {
+		t.Fatal(err)
+	}
+	it, _ = h.s.Get(a.ID)
+	if it.Name != "Nightly clean" || it.Schedule != "0 3 * * *" || it.Timezone != "" || it.Autonomy != "" {
+		t.Fatalf("updated %+v", it)
+	}
+	if _, err := call(t, h, ToolPause, map[string]any{"id": a.ID, "paused": true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAToolScheduleIsInThisComputersZone(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Report", Schedule: "0 9 * * *", Timezone: "UTC", Autonomy: "high"})
+	if _, err := call(t, h, ToolUpdate, map[string]any{"id": a.ID, "name": "Morning report"}); err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := h.s.Get(a.ID); it.Timezone != "UTC" {
+		t.Fatalf("a rename dropped the zone: %+v", it)
+	}
+	if _, err := call(t, h, ToolUpdate, map[string]any{"id": a.ID, "schedule": "0 10 * * *"}); err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := h.s.Get(a.ID); it.Schedule != "0 10 * * *" || it.Timezone != "" || it.NextRunAt.Format(time.RFC3339) != "2026-11-05T10:00:00+08:00" {
+		t.Fatalf("rescheduled %+v", it)
 	}
 }

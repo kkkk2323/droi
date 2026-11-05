@@ -21,6 +21,7 @@ type Sessions interface {
 	Open(ctx context.Context, s hostsession.Spec) (hostsession.Opened, error)
 	Close(ctx context.Context, sessionID string) error
 	Subscribe(fn func(hostsession.Event)) (unsubscribe func())
+	Following(sessionID string) bool
 }
 
 // closeTimeout bounds closing a run's Session once its turn ended.
@@ -69,8 +70,9 @@ func (st *SessionStarter) Close() { st.unsubscribe() }
 
 // Start opens the run's Session and sends its prompt. Without a connection
 // to the Daemon, or when the Daemon did not answer, it fails with
-// ErrUnavailable; a refusal of the Daemon's is any other error. A Session
-// that started but did not take its prompt is closed.
+// ErrUnavailable, a *HalfStartedError when the Session had opened; a
+// refusal of the Daemon's is any other error. A Session that started but
+// did not take its prompt is closed.
 func (st *SessionStarter) Start(ctx context.Context, run RunSpec) (string, error) {
 	if _, err := st.sessions.Client(); err != nil {
 		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -105,7 +107,11 @@ func (st *SessionStarter) Start(ctx context.Context, run RunSpec) (string, error
 			st.close(opened.SessionID)
 		}
 		var refused *droid.RPCError
-		if !errors.As(err, &refused) {
+		switch {
+		case errors.As(err, &refused):
+		case opened.SessionID != "":
+			err = &HalfStartedError{Err: err}
+		default:
 			err = fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 		return "", err
@@ -114,6 +120,19 @@ func (st *SessionStarter) Start(ctx context.Context, run RunSpec) (string, error
 		go st.finish(run.RunID, ended)
 	}
 	return opened.SessionID, nil
+}
+
+// Abandon gives up a run whose Session the Runner no longer follows (the
+// Daemon lost it, or the Runner could not load it again), so that no turn
+// end will come for it.
+func (st *SessionStarter) Abandon(run automations.Run) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.runs[run.SessionID] != run.RunID || st.sessions.Following(run.SessionID) {
+		return false
+	}
+	delete(st.runs, run.SessionID)
+	return true
 }
 
 // see hears the Runner's events on the Controller's event goroutine, so it
@@ -156,15 +175,19 @@ func (st *SessionStarter) close(sessionID string) {
 }
 
 // Outcome is how a run whose turn ended this way ended: succeeded when
-// the turn completed, interrupted when someone stopped it, else failed with
-// the turn's error or, without one, its reason (a worker that stopped
-// mid-turn reads hostsession.WorkerStopped).
+// the turn completed, interrupted when someone stopped it or when the turn
+// ended while the Host was not connected (hostsession.LostTouch), else
+// failed with the turn's error or, without one, its reason (a worker that
+// stopped mid-turn reads hostsession.WorkerStopped).
 func Outcome(t hostsession.TurnEnded) (automations.RunStatus, string) {
 	switch t.Reason {
 	case protocol.AgentTurnCompletionReasonCompleted:
 		return automations.RunSucceeded, ""
 	case protocol.AgentTurnCompletionReasonCancelled:
 		return automations.RunInterrupted, t.Error
+	}
+	if t.Error == hostsession.LostTouch {
+		return automations.RunInterrupted, lost
 	}
 	if t.Error != "" {
 		return automations.RunFailed, t.Error

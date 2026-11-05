@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -160,7 +161,7 @@ func TestARunOpensItsSessionOnTheDaemonAndClosesItWhenItsTurnEnds(t *testing.T) 
 	}
 	if p.Title != "[Automation] Daily report" || p.Cwd != filepath.Join(h.dir, a.ID) || p.ModelID != "glm-5.3-flash" || p.ReasoningEffort != "high" ||
 		p.SkipPermissionsUnsafe == nil || !*p.SkipPermissionsUnsafe || !slices.Contains(p.DisabledToolIDs, "CreateAutomation") ||
-		!slices.Contains(p.DisabledToolIDs, "mcp:droi-workstream") || len(p.Tags) != 1 || p.Tags[0].Name != "droi.automation" ||
+		!slices.Contains(p.DisabledToolIDs, "mcp:droi-workstream") || !slices.Contains(p.DisabledToolIDs, "mcp:droi-automations") || len(p.Tags) != 1 || p.Tags[0].Name != "droi.automation" ||
 		p.Tags[0].Metadata["runId"] != run.RunID || p.Tags[0].Metadata["trigger"] != "manual" || p.Tags[0].Metadata["automationId"] != a.ID {
 		t.Fatalf("initialize_session %s", inits[0])
 	}
@@ -262,6 +263,8 @@ func (e *earlyEnd) Close(_ context.Context, id string) error {
 	return nil
 }
 
+func (e *earlyEnd) Following(string) bool { return true }
+
 func (e *earlyEnd) Subscribe(fn func(hostsession.Event)) func() {
 	e.mu.Lock()
 	e.subs = append(e.subs, fn)
@@ -308,11 +311,93 @@ func TestOutcome(t *testing.T) {
 		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonCompleted}, automations.RunSucceeded, ""},
 		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonCancelled}, automations.RunInterrupted, ""},
 		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonProcessExit, Error: hostsession.WorkerStopped}, automations.RunFailed, hostsession.WorkerStopped},
+		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonProcessExit, Error: hostsession.LostTouch}, automations.RunInterrupted, "Droi lost touch with the Daemon during the run."},
+		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonProcessExit, Error: hostsession.SessionGone}, automations.RunFailed, hostsession.SessionGone},
 		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonError, Error: "model overloaded"}, automations.RunFailed, "model overloaded"},
 		{hostsession.TurnEnded{Reason: protocol.AgentTurnCompletionReasonModelUsageExhausted}, automations.RunFailed, "model_usage_exhausted"},
 	} {
 		if status, text := Outcome(c.t); status != c.status || text != c.text {
 			t.Errorf("%+v: %s %q, want %s %q", c.t, status, text, c.status, c.text)
 		}
+	}
+}
+
+// quietSessions opens Sessions whose turns never end, followed while
+// following is set; with half set, Open fails once the Session is open.
+type quietSessions struct {
+	mu        sync.Mutex
+	following bool
+	half      error
+	opened    int
+	closed    []string
+}
+
+func (q *quietSessions) Client() (*droid.Client, error) { return nil, nil }
+
+func (q *quietSessions) Open(context.Context, hostsession.Spec) (hostsession.Opened, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.opened++
+	return hostsession.Opened{SessionID: fmt.Sprint("s", q.opened)}, q.half
+}
+
+func (q *quietSessions) Close(_ context.Context, id string) error {
+	q.mu.Lock()
+	q.closed = append(q.closed, id)
+	q.mu.Unlock()
+	return nil
+}
+
+func (q *quietSessions) Subscribe(func(hostsession.Event)) func() { return func() {} }
+
+func (q *quietSessions) Following(string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.following
+}
+
+func TestARunWhoseSessionIsNoLongerFollowedIsInterruptedAtTheNextTick(t *testing.T) {
+	sessions := &quietSessions{following: true}
+	h, st := hostHarness(t, sessions)
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	h.tick("09:00")
+	h.tick("09:01")
+	if !h.item(a.ID).Running || h.holds() != 1 {
+		t.Fatalf("a followed run ended: %+v", h.runs(a.ID))
+	}
+	sessions.mu.Lock()
+	sessions.following = false
+	sessions.mu.Unlock()
+	h.tick("09:02")
+	runs := h.runs(a.ID)
+	if len(runs) != 1 || runs[0].Status != automations.RunInterrupted || runs[0].Error != "Droi lost touch with the Daemon during the run." ||
+		h.holds() != 0 || h.item(a.ID).Running {
+		t.Fatalf("records %+v, %d holds", runs, h.holds())
+	}
+	st.mu.Lock()
+	left := len(st.runs)
+	st.mu.Unlock()
+	if left != 0 {
+		t.Fatal("still waits for the lost run's end")
+	}
+}
+
+func TestARunWhoseSessionOpenedButDidNotStartIsTriedTwiceMore(t *testing.T) {
+	sessions := &quietSessions{half: errors.New("write: broken pipe")}
+	h, _ := hostHarness(t, sessions)
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	h.tick("09:00")
+	h.tick("09:01")
+	if runs := h.runs(a.ID); len(runs) != 0 {
+		t.Fatalf("records %+v", runs)
+	}
+	h.tick("09:02")
+	h.tick("09:03")
+	runs := h.runs(a.ID)
+	sessions.mu.Lock()
+	closed := slices.Clone(sessions.closed)
+	sessions.mu.Unlock()
+	if len(runs) != 1 || runs[0].Status != automations.RunFailed || runs[0].Error != "write: broken pipe" || !slices.Equal(closed, []string{"s1", "s2", "s3"}) {
+		t.Fatalf("records %+v, closed %v", runs, closed)
 	}
 }

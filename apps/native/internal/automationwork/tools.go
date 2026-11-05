@@ -31,6 +31,10 @@ const (
 // above high. Only the Automations page sets one to run without asking.
 const defaultAutonomy = "high"
 
+// askFree refuses a tool's change to what an Automation that runs without
+// asking does: through it, a Session could have such a run do anything.
+const askFree = "This automation runs without asking for approval, so its prompt, folder and model can only be changed in Droi's Automations page."
+
 func object(props map[string]any, required ...string) map[string]any {
 	s := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
 	if len(required) > 0 {
@@ -161,9 +165,16 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 		if tool == ToolUpdate {
 			it, err := s.Get(text(args, "id"))
 			if err != nil {
-				return mcpserver.Result{}, notFound(text(args, "id"), err)
+				return mcpserver.Result{}, toolError(text(args, "id"), err)
 			}
 			a = it.Automation
+			if a.Autonomy == "" {
+				for key, now := range map[string]string{"prompt": a.Prompt, "workingDirectory": a.WorkingDirectory, "model": a.Model} {
+					if v, ok := args[key].(string); ok && strings.TrimSpace(v) != strings.TrimSpace(now) {
+						return mcpserver.Result{}, errors.New(askFree)
+					}
+				}
+			}
 		} else {
 			a.Autonomy = defaultAutonomy
 		}
@@ -176,6 +187,8 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 			}
 		}
 		if _, ok := args["schedule"]; ok || tool == ToolCreate {
+			// The tools read a schedule in this computer's zone.
+			a.Timezone = ""
 			if _, err := automations.ParseCron(a.Schedule); err != nil {
 				return mcpserver.Result{}, fmt.Errorf("The schedule %q is not understood (%v). Write five cron fields in this computer's time zone, %s, such as 0 9 * * 1-5.", a.Schedule, err, zone)
 			}
@@ -185,7 +198,7 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 		}
 		saved, err := s.Save(a)
 		if err != nil {
-			return mcpserver.Result{}, err
+			return mcpserver.Result{}, toolError(a.ID, err)
 		}
 		it, err := s.Get(saved.ID)
 		if err != nil {
@@ -210,7 +223,7 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 			return mcpserver.Result{}, errors.New("paused is true or false.")
 		}
 		if err := s.SetPaused(id, paused); err != nil {
-			return mcpserver.Result{}, notFound(id, err)
+			return mcpserver.Result{}, toolError(id, err)
 		}
 		if paused {
 			return mcpserver.Text("Paused "+id+".", false), nil
@@ -219,11 +232,8 @@ func callTool(ctx context.Context, s *Scheduler, zone, tool string, args map[str
 	case ToolRun:
 		id := text(args, "id")
 		run, err := s.RunNow(ctx, id)
-		if errors.Is(err, ErrRunning) {
-			return mcpserver.Result{}, fmt.Errorf("A run of %s is already working.", id)
-		}
 		if err != nil {
-			return mcpserver.Result{}, notFound(id, err)
+			return mcpserver.Result{}, toolError(id, err)
 		}
 		return mcpserver.Text(fmt.Sprintf("Started run %s of %s in session %s.", run.RunID, id, run.SessionID), false), nil
 	}
@@ -242,9 +252,13 @@ func zoneOf(a automations.Automation, local string) string {
 	return local
 }
 
-func notFound(id string, err error) error {
-	if errors.Is(err, automations.ErrNotFound) {
+// toolError is err of the Automation id as the tools answer it.
+func toolError(id string, err error) error {
+	switch {
+	case errors.Is(err, automations.ErrNotFound):
 		return fmt.Errorf("Droi has no automation %q; list_automations lists them.", id)
+	case errors.Is(err, ErrRunning):
+		return fmt.Errorf("A run of %s is already working.", id)
 	}
 	return err
 }

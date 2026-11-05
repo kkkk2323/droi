@@ -14,14 +14,20 @@ type RefusedRequest struct{ Reason string }
 
 func (e *RefusedRequest) Error() string { return e.Reason }
 
-// readJSON reads a request's JSON body of up to limit bytes into out.
-func readJSON(r *http.Request, out any, limit int64) error {
-	b, err := io.ReadAll(io.LimitReader(r.Body, limit))
+// readJSON reads a request's JSON body of up to limit bytes into out; on a
+// failure, status and err are the answer: 413 for a larger body, 400 for
+// one that is not JSON.
+func readJSON(w http.ResponseWriter, r *http.Request, out any, limit int64) (status int, err error) {
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
-		return err
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return http.StatusRequestEntityTooLarge, errors.New("The request is too large")
+		}
+		return http.StatusBadRequest, err
 	}
 	if err := json.Unmarshal(b, out); err != nil {
-		return errors.New("The request is not JSON")
+		return http.StatusBadRequest, errors.New("The request is not JSON")
 	}
-	return nil
+	return 0, nil
 }

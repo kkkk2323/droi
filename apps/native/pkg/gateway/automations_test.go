@@ -2,9 +2,11 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -73,7 +75,7 @@ func (f *fakeAutomations) Run(_ context.Context, id string) (AutomationRun, erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if slices.Contains(f.ran, id) {
-		return AutomationRun{}, &RefusedRequest{Reason: "A run of “Daily report” is already working."}
+		return AutomationRun{}, ErrAutomationRunning
 	}
 	f.ran = append(f.ran, id)
 	return AutomationRun{RunID: "r3", SessionID: "s3", Trigger: "manual", Status: "running"}, nil
@@ -87,7 +89,10 @@ func (f *fakeAutomations) Delete(_ context.Context, id string) error {
 }
 
 func (f *fakeAutomations) Factory(context.Context) ([]FactoryAutomation, error) {
-	return []FactoryAutomation{{ID: "droid", Name: "Droid二进制逆向", Schedule: "0 1 * * *", Path: "/Users/dev/.factory/automations/droid"}}, nil
+	return []FactoryAutomation{
+		{ID: "droid", Name: "Droid二进制逆向", Schedule: "0 1 * * *", Path: "/Users/dev/.factory/automations/droid"},
+		{ID: "digest", Name: "Digest", Schedule: "daily", TargetsSession: true},
+	}, nil
 }
 
 func (f *fakeAutomations) MoveFactory(_ context.Context, id string) (AutomationMoved, error) {
@@ -155,7 +160,7 @@ func TestTheAutomationEndpointsReachTheHost(t *testing.T) {
 	if err != nil || run.RunID != "r3" || run.SessionID != "s3" {
 		t.Fatalf("run %+v %v", run, err)
 	}
-	if _, err := c.RunAutomation(ctx, "daily-report"); !errors.As(err, &status) || status.Message != "A run of “Daily report” is already working." {
+	if _, err := c.RunAutomation(ctx, "daily-report"); !errors.Is(err, ErrAutomationRunning) {
 		t.Fatalf("a second run: %v", err)
 	}
 	if err := c.DeleteAutomation(ctx, "daily-report"); err != nil || !slices.Equal(f.gone, []string{"daily-report"}) {
@@ -163,7 +168,7 @@ func TestTheAutomationEndpointsReachTheHost(t *testing.T) {
 	}
 
 	factory, err := c.FactoryAutomations(ctx)
-	if err != nil || len(factory) != 1 || factory[0].ID != "droid" || factory[0].Path == "" {
+	if err != nil || len(factory) != 2 || factory[0].ID != "droid" || factory[0].Path == "" || factory[0].TargetsSession || !factory[1].TargetsSession {
 		t.Fatalf("factory %+v %v", factory, err)
 	}
 	moved, err := c.MoveFactoryAutomation(ctx, "droid")
@@ -208,5 +213,48 @@ func TestTheAutomationEndpointsAskForTheTokenTheMethodAndTheID(t *testing.T) {
 	// A Host without Automations: the endpoints are not there.
 	if _, err := automationsClient(t, nil).Automations(context.Background()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("an older Host: %v", err)
+	}
+}
+
+// elsewhere is a Host whose Automations another Droi of the same data runs.
+type elsewhere struct{ Automations }
+
+func (elsewhere) List(context.Context) ([]Automation, error) { return nil, ErrAutomationsElsewhere }
+func (elsewhere) Run(context.Context, string) (AutomationRun, error) {
+	return AutomationRun{}, ErrAutomationsElsewhere
+}
+
+func TestAHostWhoseAutomationsRunElsewhereAnswers503(t *testing.T) {
+	c := automationsClient(t, elsewhere{})
+	if _, err := c.Automations(context.Background()); !errors.Is(err, ErrAutomationsElsewhere) {
+		t.Fatalf("list: %v", err)
+	}
+	if _, err := c.RunAutomation(context.Background(), "a"); !errors.Is(err, ErrAutomationsElsewhere) {
+		t.Fatalf("run: %v", err)
+	}
+}
+
+func TestASaveBodyMustBeJSONOfAModestSize(t *testing.T) {
+	opts := baseOptions(nil)
+	opts.Automations = &fakeAutomations{paused: map[string]bool{}}
+	g := startGateway(t, opts)
+	for _, c := range []struct {
+		body       string
+		status     int
+		wantReason string
+	}{
+		{"{not json", http.StatusBadRequest, "The request is not JSON"},
+		{`{"name":"` + strings.Repeat("x", 2<<20) + `"}`, http.StatusRequestEntityTooLarge, "The request is too large"},
+	} {
+		resp, err := freshClient.Post(g.URL()+AutomationSavePath+"?token="+testToken, "application/json", strings.NewReader(c.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body errorBody
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if resp.StatusCode != c.status || body.Error != c.wantReason {
+			t.Errorf("%.20s: %d %q, want %d %q", c.body, resp.StatusCode, body.Error, c.status, c.wantReason)
+		}
 	}
 }

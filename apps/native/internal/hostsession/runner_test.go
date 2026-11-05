@@ -395,6 +395,13 @@ func isLostTurn(e Event) bool {
 	return ok && t.Reason == protocol.AgentTurnCompletionReasonProcessExit && t.Error == WorkerStopped
 }
 
+// isUnseenTurn is the end of a turn that ended while the Runner was not
+// connected: a load cannot tell a completed turn from a lost worker.
+func isUnseenTurn(e Event) bool {
+	t, ok := e.(TurnEnded)
+	return ok && t.Reason == protocol.AgentTurnCompletionReasonProcessExit && t.Error == LostTouch
+}
+
 // The Fake Daemon has no worker to kill: a Notify marks the Session working
 // with no turn behind it, so the reload after the Daemon comes back finds it
 // idle, as a real Daemon that lost the worker would.
@@ -413,8 +420,8 @@ func TestATurnLostToADaemonRestartEndsOnceWhenTheSessionIsLoadedAgain(t *testing
 	if err := d.ComeBack(); err != nil {
 		t.Fatal(err)
 	}
-	end := seen.wait(t, "lost turn end", isLostTurn).(TurnEnded)
-	if end.SessionID != opened.SessionID {
+	end := seen.wait(t, "lost turn end", isUnseenTurn).(TurnEnded)
+	if end.SessionID != opened.SessionID || end.Error != "the Host lost touch with the Daemon while the Session worked" {
 		t.Fatalf("turn end %+v", end)
 	}
 	// Events come in order: once this one is heard, a second end would be too.
@@ -445,6 +452,29 @@ func TestATurnWhoseWorkerExitedEndsOnce(t *testing.T) {
 	}
 	if end := seen.all[1].(TurnEnded); !isLostTurn(end) || end.SessionID != "s" || end.LastReply != "Running the tests." {
 		t.Fatalf("turn end %+v", end)
+	}
+}
+
+// A followed Session the Daemon no longer has ends its turn, once, and is no
+// longer followed.
+func TestASessionTheDaemonNoLongerHasEnds(t *testing.T) {
+	r := New(Config{})
+	seen := &events{}
+	r.Subscribe(seen.add)
+	r.follow("s", true)
+	r.see(controller.SessionNotification{SessionID: "s", Value: &protocol.DroidWorkingStateChangedNotification{NewState: protocol.DroidWorkingStateThinking}})
+	r.see(controller.SessionNotFound{SessionID: "s"})
+	r.see(controller.SessionNotFound{SessionID: "s"})
+	r.see(controller.SessionNotFound{SessionID: "never-followed"})
+	if n := seen.count(isTurnEnd); n != 1 {
+		t.Fatalf("%d turn ends", n)
+	}
+	end := seen.all[1].(TurnEnded)
+	if end.SessionID != "s" || end.Reason != protocol.AgentTurnCompletionReasonProcessExit || end.Error != "the Daemon no longer has this Session" {
+		t.Fatalf("turn end %+v", end)
+	}
+	if r.Following("s") {
+		t.Fatal("still following a Session the Daemon does not have")
 	}
 }
 

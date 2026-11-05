@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/automations"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
 // FactoryDaemon is what moving a Factory automation needs of the Host's
@@ -30,6 +30,10 @@ type GatewayHost struct {
 	// Offset, optional, is this computer's zone's offset now, in seconds
 	// east of UTC; time.Now's when nil.
 	Offset func() int
+
+	// moving serialises moves, so that one Factory automation is copied
+	// once.
+	moving sync.Mutex
 }
 
 var _ gateway.Automations = (*GatewayHost)(nil)
@@ -52,7 +56,7 @@ func (h *GatewayHost) gatewayItem(it Item) gateway.Automation {
 	a := gateway.Automation{
 		ID: it.ID, Name: it.Name, Prompt: it.Prompt, Schedule: it.Schedule, Timezone: it.Timezone,
 		Model: it.Model, ReasoningEffort: it.ReasoningEffort, Autonomy: it.Autonomy,
-		WorkingDirectory: it.WorkingDirectory, Paused: it.Paused, CreatedAt: rfc3339(it.CreatedAt),
+		WorkingDirectory: it.WorkingDirectory, Paused: it.Paused, CreatedAt: rfc3339(it.CreatedAt), ForkedFrom: it.ForkedFrom,
 		Folder: h.Scheduler.Folder(it.ID), NextRunAt: rfc3339(it.NextRunAt), Running: it.Running, Invalid: it.Invalid,
 	}
 	if it.LastRun != nil {
@@ -62,10 +66,19 @@ func (h *GatewayHost) gatewayItem(it Item) gateway.Automation {
 	return a
 }
 
-// hostError is err as the Gateway answers it.
+// hostError is err as the Gateway answers it: what cannot be read or saved
+// as asked is refused with the reason.
 func hostError(err error) error {
-	if errors.Is(err, automations.ErrNotFound) {
+	var invalid *automations.InvalidError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, automations.ErrNotFound):
 		return fmt.Errorf("%w: %v", gateway.ErrAutomationNotFound, err)
+	case errors.Is(err, ErrRunning):
+		return fmt.Errorf("%w: %v", gateway.ErrAutomationRunning, err)
+	case errors.As(err, &invalid), errors.Is(err, automations.ErrUnreadable):
+		return &gateway.RefusedRequest{Reason: err.Error()}
 	}
 	return err
 }
@@ -88,7 +101,7 @@ func (h *GatewayHost) Runs(_ context.Context, id string, limit int) ([]gateway.A
 	}
 	runs, err := h.Scheduler.Runs(id, limit)
 	if err != nil {
-		return nil, err
+		return nil, hostError(err)
 	}
 	out := make([]gateway.AutomationRun, 0, len(runs))
 	for _, r := range runs {
@@ -102,9 +115,6 @@ func (h *GatewayHost) Save(_ context.Context, in gateway.Automation) (gateway.Au
 		ID: in.ID, Name: in.Name, Prompt: in.Prompt, Schedule: in.Schedule, Timezone: in.Timezone,
 		Model: in.Model, ReasoningEffort: in.ReasoningEffort, Autonomy: in.Autonomy,
 		WorkingDirectory: in.WorkingDirectory, Paused: in.Paused,
-	}
-	if err := automations.Validate(a); err != nil {
-		return gateway.Automation{}, &gateway.RefusedRequest{Reason: err.Error()}
 	}
 	saved, err := h.Scheduler.Save(a)
 	if err != nil {
@@ -127,13 +137,6 @@ func (h *GatewayHost) SetPaused(_ context.Context, id string, paused bool) error
 
 func (h *GatewayHost) Run(ctx context.Context, id string) (gateway.AutomationRun, error) {
 	run, err := h.Scheduler.RunNow(ctx, id)
-	if errors.Is(err, ErrRunning) {
-		name := id
-		if it, gerr := h.Scheduler.Get(id); gerr == nil {
-			name = it.Name
-		}
-		return gateway.AutomationRun{}, &gateway.RefusedRequest{Reason: l10n.L("A run of “%s” is already working.", name)}
-	}
 	if err != nil {
 		return gateway.AutomationRun{}, hostError(err)
 	}
@@ -162,6 +165,7 @@ func factoryAutomation(e protocol.AutomationEntry) gateway.FactoryAutomation {
 	f := gateway.FactoryAutomation{
 		ID: e.ID, Name: e.Name, Prompt: e.Prompt, Schedule: e.Schedule, Model: e.Model,
 		ReasoningEffort: e.ReasoningEffort, WorkingDirectory: e.WorkingDirectory, Paused: e.Status == "paused", Path: e.Path,
+		TargetsSession: e.TargetSessionID != "",
 	}
 	if hb, err := automations.ReadHeartbeat(e.Path); err == nil {
 		if f.Prompt == "" {
@@ -189,11 +193,16 @@ func (h *GatewayHost) Factory(ctx context.Context) ([]gateway.FactoryAutomation,
 	return out, nil
 }
 
-// MoveFactory copies a Factory automation into Droi's, its schedule in this
-// computer's time when the Automations page has a preset for it, and runs
-// it as the Daemon did, without asking; then has the Daemon delete the
-// original. A failed delete keeps the copy and says why in DeleteError.
+// MoveFactory copies a Factory automation into Droi's, with its folder
+// (automations.CopyFactoryFolder), its schedule in this computer's time
+// when the Automations page has a preset for it, and runs it as the Daemon
+// did, without asking; then has the Daemon delete the original. A failed
+// delete keeps the copy and says why in DeleteError; moved again, it is
+// not copied again, and the delete is tried again. One that posts into an
+// existing Session is refused: Droi's runs start their own.
 func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.AutomationMoved, error) {
+	h.moving.Lock()
+	defer h.moving.Unlock()
 	d, entries, err := h.factoryEntries(ctx)
 	if err != nil {
 		return gateway.AutomationMoved{}, err
@@ -208,29 +217,15 @@ func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.Autom
 		return gateway.AutomationMoved{}, fmt.Errorf("%w: %s", gateway.ErrAutomationNotFound, id)
 	}
 	f := factoryAutomation(*found)
-	offset := 0
-	if h.Offset != nil {
-		offset = h.Offset()
-	} else {
-		_, offset = time.Now().Zone()
-	}
-	schedule, zone, err := automations.FactorySchedule(f.Schedule, offset)
-	if err != nil {
-		return gateway.AutomationMoved{}, &gateway.RefusedRequest{Reason: err.Error()}
-	}
-	copied := automations.Automation{
-		Name: f.Name, Prompt: f.Prompt, Schedule: schedule, Timezone: zone, Model: f.Model,
-		ReasoningEffort: f.ReasoningEffort, WorkingDirectory: f.WorkingDirectory, Paused: f.Paused,
-	}
-	if err := automations.Validate(copied); err != nil {
-		return gateway.AutomationMoved{}, &gateway.RefusedRequest{Reason: err.Error()}
-	}
-	saved, err := h.Scheduler.Save(copied)
-	if err != nil {
-		return gateway.AutomationMoved{}, err
+	if f.TargetsSession {
+		return gateway.AutomationMoved{}, &gateway.RefusedRequest{Reason: "This automation posts into an existing session, which Droi's automations cannot do."}
 	}
 	moved := gateway.AutomationMoved{}
-	if moved.Automation, err = h.get(saved.ID); err != nil {
+	if it, ok, err := h.Scheduler.ForkedFrom(id); err != nil {
+		return gateway.AutomationMoved{}, err
+	} else if ok {
+		moved.Automation = h.gatewayItem(it)
+	} else if moved.Automation, err = h.copyFactory(f); err != nil {
 		return gateway.AutomationMoved{}, err
 	}
 	res, err := d.DeleteAutomation(ctx, protocol.DeleteAutomationParams{AutomationID: id})
@@ -243,4 +238,27 @@ func (h *GatewayHost) MoveFactory(ctx context.Context, id string) (gateway.Autom
 		moved.DeleteError = "the Daemon did not delete it"
 	}
 	return moved, nil
+}
+
+// copyFactory copies f into Droi's Automations.
+func (h *GatewayHost) copyFactory(f gateway.FactoryAutomation) (gateway.Automation, error) {
+	offset := 0
+	if h.Offset != nil {
+		offset = h.Offset()
+	} else {
+		_, offset = time.Now().Zone()
+	}
+	schedule, zone, err := automations.FactorySchedule(f.Schedule, offset)
+	if err != nil {
+		return gateway.Automation{}, &gateway.RefusedRequest{Reason: err.Error()}
+	}
+	copied := automations.Automation{
+		Name: f.Name, Prompt: f.Prompt, Schedule: schedule, Timezone: zone, Model: f.Model,
+		ReasoningEffort: f.ReasoningEffort, WorkingDirectory: f.WorkingDirectory, Paused: f.Paused, ForkedFrom: f.ID,
+	}
+	saved, err := h.Scheduler.Adopt(copied, f.Path)
+	if err != nil {
+		return gateway.Automation{}, hostError(err)
+	}
+	return h.get(saved.ID)
 }

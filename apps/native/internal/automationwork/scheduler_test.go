@@ -69,8 +69,10 @@ type harness struct {
 	// holdCalls counts every Hold, to see none is taken for a failed start.
 	holdCalls int
 	changed   int
-	starter   *fakeStarter
-	s         *Scheduler
+	// hidden is the Config's HiddenTools.
+	hidden  func() []string
+	starter *fakeStarter
+	s       *Scheduler
 }
 
 var shanghai = func() *time.Location {
@@ -105,6 +107,7 @@ func (h *harness) open() {
 		Starter:      h.starter,
 		StartTimeout: 50 * time.Millisecond,
 		Location:     shanghai,
+		HiddenTools:  h.hidden,
 		Now: func() time.Time {
 			h.mu.Lock()
 			defer h.mu.Unlock()
@@ -216,7 +219,7 @@ func TestARunStartsOnTimeAndEnds(t *testing.T) {
 		r.AutomationID != a.ID || r.RunID == "" {
 		t.Fatalf("run %+v", r)
 	}
-	if want := []string{"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation", "DeleteAutomation", "RunAutomation", "ListAutomationTemplates", "mcp:droi-workstream"}; !slices.Equal(r.DisabledTools, want) {
+	if want := []string{"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation", "DeleteAutomation", "RunAutomation", "ListAutomationTemplates", "mcp:droi-workstream", "mcp:droi-automations"}; !slices.Equal(r.DisabledTools, want) {
 		t.Fatalf("disabled tools %v", r.DisabledTools)
 	}
 	if len(r.Tags) != 1 || r.Tags[0].Name != TagName || r.Tags[0].Metadata["automationId"] != a.ID ||
@@ -608,5 +611,45 @@ func TestRunsAreNewestFirst(t *testing.T) {
 	}
 	if len(runs) != 2 || runs[0].RunID != h.starter.runs[2].RunID || runs[1].RunID != h.starter.runs[1].RunID {
 		t.Fatalf("runs %+v", runs)
+	}
+}
+
+func TestARunHidesWhatTheConfigSays(t *testing.T) {
+	h := newHarness(t, "08:00")
+	h.hidden = func() []string { return nil }
+	h.open()
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	if _, err := h.s.RunNow(context.Background(), a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.starter.last().DisabledTools; got != nil {
+		t.Fatalf("a droid that takes no hidden tools got %v", got)
+	}
+}
+
+func TestAStartThatOpensItsSessionButNotItsTurnFailsTheThirdTime(t *testing.T) {
+	h := newHarness(t, "08:00")
+	a := h.save(automations.Automation{Name: "Daily", Schedule: "0 9 * * *"})
+	half := &HalfStartedError{Err: errors.New("write: broken pipe")}
+	h.starter.fail = []error{half, ErrUnavailable, half, half, half}
+	for _, at := range []string{"09:00", "09:01", "09:02", "09:03"} {
+		h.tick(at)
+		if runs := h.runs(a.ID); len(runs) != 0 {
+			t.Fatalf("at %s: %+v", at, runs)
+		}
+	}
+	h.tick("09:04")
+	runs := h.runs(a.ID)
+	if len(runs) != 1 || runs[0].Status != automations.RunFailed || runs[0].Error != "write: broken pipe" || h.holdsTaken() != 0 {
+		t.Fatalf("records %+v", runs)
+	}
+	h.tick("09:05")
+	if h.starter.count() != 5 || h.item(a.ID).Running {
+		t.Fatalf("%d starts", h.starter.count())
+	}
+	// The next day's run starts afresh.
+	h.tick("2026-11-06T09:00:00+08:00")
+	if runs := h.runs(a.ID); len(runs) != 2 || runs[0].Status != automations.RunRunning {
+		t.Fatalf("the next day %+v", runs)
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
@@ -16,6 +18,7 @@ import (
 )
 
 type fakeFactory struct {
+	mu        sync.Mutex
 	entries   []protocol.AutomationEntry
 	deleteErr string
 	deleted   []string
@@ -26,6 +29,8 @@ func (f *fakeFactory) ListAutomations(context.Context, protocol.ListAutomationsP
 }
 
 func (f *fakeFactory) DeleteAutomation(_ context.Context, p protocol.DeleteAutomationParams) (*protocol.DeleteAutomationResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.deleted = append(f.deleted, p.AutomationID)
 	if f.deleteErr != "" {
 		return &protocol.DeleteAutomationResult{Error: f.deleteErr}, nil
@@ -66,7 +71,7 @@ func TestMovingAFactoryAutomationCopiesItInLocalTimeAndDeletesIt(t *testing.T) {
 		t.Fatalf("moved %+v %v, deleted %v", moved, err, f.deleted)
 	}
 	a := moved.Automation
-	if a.Name != "Droid二进制逆向" || a.Schedule != "0 9 * * *" || a.Timezone != "" || a.Autonomy != "" || a.Model != "deepseek-v4.1-flash-1017" ||
+	if a.Name != "Droid二进制逆向" || a.ForkedFrom != "droid" || a.Schedule != "0 9 * * *" || a.Timezone != "" || a.Autonomy != "" || a.Model != "deepseek-v4.1-flash-1017" ||
 		a.ReasoningEffort != "high" || a.WorkingDirectory != "/Users/me/re" || !a.Paused || a.Prompt != "任务：逆向分析。" || a.Folder != filepath.Join(h.dir, a.ID) {
 		t.Fatalf("copy %+v", a)
 	}
@@ -148,7 +153,7 @@ func TestTheGatewayHostAnswersInTheGatewaysTerms(t *testing.T) {
 	if err != nil || run.Trigger != "manual" || run.Status != "running" {
 		t.Fatalf("run %+v %v", run, err)
 	}
-	if _, err := g.Run(ctx, saved.ID); !errors.As(err, &refused) || refused.Reason != "A run of “Daily report” is already working." {
+	if _, err := g.Run(ctx, saved.ID); !errors.Is(err, gateway.ErrAutomationRunning) {
 		t.Fatalf("a second run: %v", err)
 	}
 	h.s.Finished(run.RunID, automations.RunSucceeded, "")
@@ -168,5 +173,130 @@ func TestTheGatewayHostAnswersInTheGatewaysTerms(t *testing.T) {
 	}
 	if _, err := g.Runs(ctx, saved.ID, 50); !errors.Is(err, gateway.ErrAutomationNotFound) {
 		t.Fatalf("runs of a deleted one: %v", err)
+	}
+}
+
+func TestAMoveBringsTheFolderAlongButNotTheDaemonsBookkeeping(t *testing.T) {
+	h := newHarness(t, "08:00")
+	path := factoryFolder(t, "---\nname: Notes\nschedule: 0 1 * * *\n---\n\nTake notes.\n")
+	for name, body := range map[string]string{
+		"memory/notes.md": "kept", "memory/state.json": "{}", "memory/runs.json": "[]", "reports/2026-11-04.md": "a report",
+		"VISUAL.html": "<p>", ".memory-edit.lock": "", ".memory-edit.0123456789abcdef0123456789abcdef.pending": "",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(path, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := &fakeFactory{entries: []protocol.AutomationEntry{{ID: "notes", Name: "Notes", Schedule: "0 1 * * *", Path: path}}}
+	moved, err := gatewayHost(h, f).MoveFactory(context.Background(), "notes")
+	if err != nil || moved.Automation.ForkedFrom != "notes" {
+		t.Fatalf("moved %+v %v", moved, err)
+	}
+	dir := moved.Automation.Folder
+	for name, want := range map[string]string{"memory/notes.md": "kept", "reports/2026-11-04.md": "a report", "VISUAL.html": "<p>"} {
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err != nil || string(b) != want {
+			t.Errorf("%s: %q %v", name, b, err)
+		}
+	}
+	for _, name := range []string{"memory/state.json", "memory/runs.json", ".memory-edit.lock", ".memory-edit.0123456789abcdef0123456789abcdef.pending"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("copied %s: %v", name, err)
+		}
+	}
+	if hb, err := automations.ReadHeartbeat(dir); err != nil || hb.ForkedFrom != "notes" || hb.Prompt != "Take notes." {
+		t.Fatalf("HEARTBEAT.md %+v %v", hb, err)
+	}
+	entries, _ := os.ReadDir(h.dir)
+	for _, e := range entries {
+		if e.Name() != moved.Automation.ID && e.Name() != ".lock" && e.Name() != "state.json" {
+			t.Errorf("left %s in the Automations folder", e.Name())
+		}
+	}
+}
+
+func TestAMovedAutomationIsNotCopiedTwice(t *testing.T) {
+	h := newHarness(t, "08:00")
+	f := &fakeFactory{deleteErr: "permission denied", entries: []protocol.AutomationEntry{{ID: "weekly", Name: "Weekly", Schedule: "0 9 * * 1", Prompt: "Sum up.", Path: t.TempDir()}}}
+	g := gatewayHost(h, f)
+	first, err := g.MoveFactory(context.Background(), "weekly")
+	if err != nil || first.DeleteError != "permission denied" {
+		t.Fatalf("moved %+v %v", first, err)
+	}
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() {
+			again, err := g.MoveFactory(context.Background(), "weekly")
+			if err != nil || again.Automation.ID != first.Automation.ID || again.DeleteError != "permission denied" {
+				t.Errorf("moved again %+v %v", again, err)
+			}
+		})
+	}
+	wg.Wait()
+	f.mu.Lock()
+	f.deleteErr = ""
+	f.mu.Unlock()
+	last, err := g.MoveFactory(context.Background(), "weekly")
+	if err != nil || last.Automation.ID != first.Automation.ID || last.DeleteError != "" || len(f.deleted) != 5 {
+		t.Fatalf("moved %+v %v, deleted %v", last, err, f.deleted)
+	}
+	if items, _ := h.s.List(); len(items) != 1 {
+		t.Fatalf("%d copies", len(items))
+	}
+}
+
+func TestAFactoryAutomationThatPostsIntoASessionDoesNotMove(t *testing.T) {
+	h := newHarness(t, "08:00")
+	f := &fakeFactory{entries: []protocol.AutomationEntry{{ID: "nudge", Name: "Nudge", Schedule: "0 9 * * *", Prompt: "Go on.", TargetSessionID: "s-1", Path: t.TempDir()}}}
+	g := gatewayHost(h, f)
+	if listed, err := g.Factory(context.Background()); err != nil || len(listed) != 1 || !listed[0].TargetsSession {
+		t.Fatalf("factory %+v %v", listed, err)
+	}
+	_, err := g.MoveFactory(context.Background(), "nudge")
+	var refused *gateway.RefusedRequest
+	if !errors.As(err, &refused) || len(f.deleted) != 0 {
+		t.Fatalf("%v, deleted %v", err, f.deleted)
+	}
+	if items, _ := h.s.List(); len(items) != 0 {
+		t.Fatalf("copied %+v", items)
+	}
+}
+
+func TestTheGatewayHostRefusesWhatItCannotRead(t *testing.T) {
+	h := newHarness(t, "08:00")
+	g := gatewayHost(h, &fakeFactory{})
+	ctx := context.Background()
+	var refused *gateway.RefusedRequest
+	for _, id := range []string{"../x", ".", "a/b"} {
+		if _, err := g.Save(ctx, gateway.Automation{ID: id, Name: "x", Prompt: "p", Schedule: "0 9 * * *"}); !errors.As(err, &refused) {
+			t.Fatalf("save %q: %v", id, err)
+		}
+		if _, err := g.Runs(ctx, id, 10); !errors.As(err, &refused) {
+			t.Fatalf("runs of %q: %v", id, err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(h.dir, "broken"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.dir, "broken", "HEARTBEAT.md"), []byte("not a heartbeat"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Runs(ctx, "broken", 10); !errors.As(err, &refused) || !strings.Contains(refused.Reason, "cannot be read") {
+		t.Fatalf("runs: %v", err)
+	}
+	if _, err := g.Run(ctx, "broken"); !errors.As(err, &refused) {
+		t.Fatalf("run: %v", err)
+	}
+	if err := g.SetPaused(ctx, "broken", true); !errors.As(err, &refused) {
+		t.Fatalf("pause: %v", err)
+	}
+	saved, err := g.Save(ctx, gateway.Automation{ID: "broken", Name: "Fixed", Prompt: "p", Schedule: "0 9 * * *"})
+	if err != nil || saved.ID != "broken" || saved.Invalid != "" || saved.Name != "Fixed" {
+		t.Fatalf("saving over it: %+v %v", saved, err)
+	}
+	if err := g.Delete(ctx, "broken"); err != nil {
+		t.Fatal(err)
 	}
 }

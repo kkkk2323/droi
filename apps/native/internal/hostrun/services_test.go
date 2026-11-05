@@ -1,11 +1,14 @@
 package hostrun
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
@@ -56,7 +59,7 @@ func TestOneDroiRunsTheAutomationsOfAFolder(t *testing.T) {
 		t.Fatal("no Automations")
 	}
 	second := StartServices(h)
-	if second.Automations != nil || second.GatewayAutomations() != nil {
+	if second.Automations != nil {
 		t.Fatal("a second Scheduler of the same folder")
 	}
 	if _, ok := second.Overlay(host.OverlayOptions{}).MCPServers[automationwork.ServerName]; ok {
@@ -78,4 +81,35 @@ func TestNoServicesAddNothing(t *testing.T) {
 		t.Fatal("nil Services add something")
 	}
 	none.Stop()
+}
+
+func TestAnotherDroisAutomationsAnswerThatTheyAreElsewhere(t *testing.T) {
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})
+	first := StartServices(h)
+	defer first.Stop()
+	second := StartServices(h)
+	defer second.Stop()
+	g := second.GatewayAutomations()
+	if g == nil {
+		t.Fatal("no Gateway Automations")
+	}
+	if _, err := g.List(context.Background()); !errors.Is(err, gateway.ErrAutomationsElsewhere) {
+		t.Fatalf("list: %v", err)
+	}
+	if _, err := g.Run(context.Background(), "x"); !errors.Is(err, gateway.ErrAutomationsElsewhere) {
+		t.Fatalf("run: %v", err)
+	}
+}
+
+func TestARunHidesToolsFromADroidThatTakesThem(t *testing.T) {
+	for _, c := range []struct {
+		version string
+		hides   bool
+	}{{"1.1.9", false}, {"0.240.0", false}, {"1.2.0", true}, {"1.4.1", true}, {"", true}} {
+		got := runHiddenTools(c.version)
+		if want := automationwork.RunHiddenTools(); c.hides && !slices.Equal(got, want) || !c.hides && got != nil {
+			t.Errorf("%q: %v", c.version, got)
+		}
+	}
 }

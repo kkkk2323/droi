@@ -1500,7 +1500,7 @@ var zh = map[string]string{
 	"Not connected": "未连接",
 	"Connected to %s. Away from this network, paired phones reach this computer through it.": "已连接 %s。不在同一网络时，配对的手机通过它连接这台电脑。",
 	"%s refused this computer: %s. Trying again at %s.":                                      "%s 拒绝了这台电脑：%s。将在 %s 重试。",
-	"Connecting to %s…":                 "正在连接 %s…",
-	"Droi quit during the run.":         "运行期间 Droi 已退出。",
-	"A run of “%s” is already working.": "“%s”已有一次运行在进行中",
+	"Connecting to %s…":                               "正在连接 %s…",
+	"Droi quit during the run.":                       "运行期间 Droi 已退出。",
+	"Droi lost touch with the Daemon during the run.": "运行期间 Droi 与后台服务失去了联系。",
 }

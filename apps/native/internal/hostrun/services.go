@@ -2,6 +2,7 @@ package hostrun
 
 import (
 	"context"
+	"errors"
 	"log"
 	"path/filepath"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
 	"github.com/kkkk2323/droi/apps/native/internal/keepawake"
+	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
@@ -27,6 +29,10 @@ type Services struct {
 	// Automations runs the Host's Automations (ADR 0035); nil when another
 	// Droi runs those of the same data folder.
 	Automations *automationwork.Scheduler
+
+	// gatewayAutomations answers the Gateway's Automation endpoints: nil
+	// without the Automations, elsewhere when another Droi runs them.
+	gatewayAutomations gateway.Automations
 
 	mu        sync.Mutex
 	hidden    []string
@@ -54,19 +60,35 @@ func StartServices(h *host.Host) *Services {
 		OnChange:             h.OnChange,
 		Log:                  func(m string) { log.Println("[host sessions]", m) },
 	})
-	ctx, cancel := context.WithCancel(context.Background())
-	s.stop = cancel
-	s.Sessions.Start(ctx)
-	s.startAutomations(ctx, filepath.Join(h.UserData(), "automations"))
 	// Factory's own Automation tools make an Automation that syncs to
 	// Factory: Droi's Sessions use Droi's.
 	s.HideFromClients(automationwork.FactoryAutomationTools...)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.stop = cancel
+	s.Sessions.Start(ctx)
+	s.startAutomations(ctx, h, filepath.Join(h.UserData(), "automations"))
 	return s
 }
 
-// startAutomations runs the Automations in dir, unless another Droi does.
-func (s *Services) startAutomations(ctx context.Context, dir string) {
+// runHiddenTools are what an Automation's run leaves out with a droid of
+// version: none before 1.2.0, whose initialize_session does not take llm
+// ids and MCP selectors in disabledToolIds. A version that cannot be read
+// is taken for a newer one, as the Host does for its Clients.
+func runHiddenTools(version string) []string {
+	readable := droidhook.CompareVersions(version, "0.0.0") >= 0
+	if readable && droidhook.CompareVersions(version, "1.2.0") < 0 {
+		return nil
+	}
+	return automationwork.RunHiddenTools()
+}
+
+// startAutomations runs the Automations in dir, unless another Droi does;
+// then it registers their tool server.
+func (s *Services) startAutomations(ctx context.Context, h *host.Host, dir string) {
 	release, err := automationwork.Lock(dir)
+	if errors.Is(err, automationwork.ErrLocked) {
+		s.gatewayAutomations = elsewhere{}
+	}
 	if err != nil {
 		log.Println("droi: automations:", err)
 		return
@@ -77,11 +99,24 @@ func (s *Services) startAutomations(ctx context.Context, dir string) {
 		Dir:     dir,
 		Starter: starter,
 		Hold:    keepawake.Hold,
-		Changed: s.automationsChanged,
-		Log:     logf,
+		// DroidVersion reads the droid on disk, which the running Daemon
+		// differs from only until it restarts.
+		HiddenTools: func() []string { return runHiddenTools(h.DroidVersion()) },
+		Changed:     s.automationsChanged,
+		Log:         logf,
 	})
 	starter.Attach(sched)
 	s.Automations = sched
+	s.gatewayAutomations = &automationwork.GatewayHost{
+		Scheduler: sched,
+		Daemon: func() (automationwork.FactoryDaemon, error) {
+			cl, err := s.Sessions.Client()
+			if err != nil {
+				return nil, err
+			}
+			return cl, nil
+		},
+	}
 	if s.Tools != nil {
 		s.Tools.Register(automationwork.ServerName, automationwork.ToolServer(sched, automationwork.LocalZone))
 	}
@@ -123,21 +158,47 @@ func (s *Services) automationsChanged() {
 }
 
 // GatewayAutomations is gateway.Options.Automations: nil without the
-// Automations.
+// Automations; when another Droi runs them, one that answers
+// gateway.ErrAutomationsElsewhere.
 func (s *Services) GatewayAutomations() gateway.Automations {
-	if s == nil || s.Automations == nil {
+	if s == nil {
 		return nil
 	}
-	return &automationwork.GatewayHost{
-		Scheduler: s.Automations,
-		Daemon: func() (automationwork.FactoryDaemon, error) {
-			cl, err := s.Sessions.Client()
-			if err != nil {
-				return nil, err
-			}
-			return cl, nil
-		},
-	}
+	return s.gatewayAutomations
+}
+
+// elsewhere are the Automations of a Host whose Automations another Droi on
+// its computer runs.
+type elsewhere struct{}
+
+func (elsewhere) List(context.Context) ([]gateway.Automation, error) {
+	return nil, gateway.ErrAutomationsElsewhere
+}
+
+func (elsewhere) Runs(context.Context, string, int) ([]gateway.AutomationRun, error) {
+	return nil, gateway.ErrAutomationsElsewhere
+}
+
+func (elsewhere) Save(context.Context, gateway.Automation) (gateway.Automation, error) {
+	return gateway.Automation{}, gateway.ErrAutomationsElsewhere
+}
+
+func (elsewhere) SetPaused(context.Context, string, bool) error {
+	return gateway.ErrAutomationsElsewhere
+}
+
+func (elsewhere) Run(context.Context, string) (gateway.AutomationRun, error) {
+	return gateway.AutomationRun{}, gateway.ErrAutomationsElsewhere
+}
+
+func (elsewhere) Delete(context.Context, string) error { return gateway.ErrAutomationsElsewhere }
+
+func (elsewhere) Factory(context.Context) ([]gateway.FactoryAutomation, error) {
+	return nil, gateway.ErrAutomationsElsewhere
+}
+
+func (elsewhere) MoveFactory(context.Context, string) (gateway.AutomationMoved, error) {
+	return gateway.AutomationMoved{}, gateway.ErrAutomationsElsewhere
 }
 
 // Overlay is the Runtime Overlay's additions: the Services' tool servers,

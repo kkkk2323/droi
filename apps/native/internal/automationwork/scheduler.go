@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -36,6 +38,18 @@ var FactoryAutomationTools = []string{
 // only.
 const workstreamTools = "mcp:droi-workstream"
 
+// RunHiddenTools are the tools a run's Session leaves out: Factory's
+// Automation tools, Droi's Workstream tools, and Droi's Automation tools,
+// with which a run could rewrite what an Automation that runs without
+// asking does.
+func RunHiddenTools() []string {
+	return slices.Concat(FactoryAutomationTools, []string{workstreamTools, "mcp:" + ServerName})
+}
+
+// halfStartTries is how many starts in a row of a scheduled run may end in
+// a HalfStartedError before the run fails with the last one's error.
+const halfStartTries = 3
+
 // catchUpAfter is how late a scheduled time may start and still count as
 // on time rather than a catch-up.
 const catchUpAfter = 2 * time.Minute
@@ -47,6 +61,18 @@ var ErrRunning = errors.New("a run of this automation is already working")
 // The run stays due and is tried again at the next tick; nothing is
 // recorded.
 var ErrUnavailable = errors.New("the Daemon is not available")
+
+// HalfStartedError is an unavailable start (it is ErrUnavailable) that got
+// as far as opening the run's Session, which the Starter closed again,
+// before the Daemon failed to answer. Each try opens a Session, so a
+// scheduled run is tried halfStartTries times, then fails with Err.
+type HalfStartedError struct{ Err error }
+
+func (e *HalfStartedError) Error() string   { return e.Err.Error() }
+func (e *HalfStartedError) Unwrap() []error { return []error{ErrUnavailable, e.Err} }
+
+// lost is the Error of a run the Starter abandoned.
+var lost = l10n.N("Droi lost touch with the Daemon during the run.")
 
 // RunSpec is what a Starter needs to open a run's Session.
 type RunSpec struct {
@@ -73,6 +99,9 @@ type RunSpec struct {
 // Starter opens a run's Session and sends its prompt. The caller reports the
 // end of the Session's turn with Scheduler.Finished.
 //
+// A Starter that is also an Abandoner is asked at every tick about each
+// started run whose end has not come.
+//
 // A Start that fails must leave no Session behind. It wraps ErrUnavailable
 // when the Daemon cannot be reached, so the run is tried again a minute
 // later; any other error is recorded as a failed run and the scheduled
@@ -82,13 +111,25 @@ type Starter interface {
 	Start(ctx context.Context, run RunSpec) (sessionID string, err error)
 }
 
+// Abandoner gives up the runs whose end will not come.
+type Abandoner interface {
+	// Abandon reports that the run's Session is no longer followed and
+	// its end will not be reported, and forgets the run; the Scheduler
+	// records it as interrupted.
+	Abandon(run automations.Run) bool
+}
+
 // Config is what a Scheduler works with.
 type Config struct {
 	// Dir holds the Automations, <UserData>/automations.
 	Dir     string
 	Starter Starter
-	// StartTimeout bounds a Starter's Start; 2 minutes when zero.
+	// StartTimeout bounds a Starter's Start; 90 seconds when zero, so that
+	// Run now answers within the Gateway's 100 seconds.
 	StartTimeout time.Duration
+	// HiddenTools, read at every start, are the tools a run's Session
+	// leaves out; RunHiddenTools when nil.
+	HiddenTools func() []string
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
 	// Location reads a schedule without a time zone; time.Local when nil.
@@ -128,6 +169,14 @@ type Scheduler struct {
 	// end; their end is not recorded.
 	orphans map[string]*active
 	logs    []string
+	// halfStarts count the HalfStartedErrors in a row of a scheduled run,
+	// by Automation.
+	halfStarts map[string]halfStarts
+}
+
+type halfStarts struct {
+	due time.Time
+	n   int
 }
 
 // active is a run that is starting or working.
@@ -138,6 +187,8 @@ type active struct {
 	release func()
 	// ended is a Finished that came before Start returned.
 	ended *automations.Run
+	// due is the scheduled time a scheduled run is for.
+	due time.Time
 }
 
 // New is a Scheduler over cfg.Dir. A run still recorded as running worked
@@ -147,7 +198,10 @@ func New(cfg Config) *Scheduler {
 		cfg.Now = time.Now
 	}
 	if cfg.StartTimeout <= 0 {
-		cfg.StartTimeout = 2 * time.Minute
+		cfg.StartTimeout = 90 * time.Second
+	}
+	if cfg.HiddenTools == nil {
+		cfg.HiddenTools = RunHiddenTools
 	}
 	if cfg.Location == nil {
 		cfg.Location = time.Local
@@ -161,7 +215,7 @@ func New(cfg Config) *Scheduler {
 	if cfg.Log == nil {
 		cfg.Log = func(string) {}
 	}
-	s := &Scheduler{cfg: cfg, store: automations.Store{Dir: cfg.Dir}, active: map[string]*active{}, orphans: map[string]*active{}}
+	s := &Scheduler{cfg: cfg, store: automations.Store{Dir: cfg.Dir}, active: map[string]*active{}, orphans: map[string]*active{}, halfStarts: map[string]halfStarts{}}
 	s.mu.Lock()
 	st, err := s.store.State()
 	if err != nil {
@@ -281,14 +335,28 @@ func (s *Scheduler) saveState() {
 	}
 }
 
-// Tick starts a run of each active Automation with a scheduled time after
-// the last one handled: one run however many times passed, a catch-up when
-// the newest is more than two minutes late. It returns once those runs have
-// started or failed to; an unavailable Daemon keeps them due for the next
-// tick.
+// Tick records as interrupted the runs the Starter abandons, then starts a
+// run of each active Automation with a scheduled time after the last one
+// handled: one run however many times passed, a catch-up when the newest is
+// more than two minutes late. It returns once those runs have started or
+// failed to; an unavailable Daemon keeps them due for the next tick.
 func (s *Scheduler) Tick(ctx context.Context) { s.tick(ctx).Wait() }
 
+// abandon records the runs the Starter gives up as interrupted.
+func (s *Scheduler) abandon() {
+	ab, ok := s.cfg.Starter.(Abandoner)
+	if !ok {
+		return
+	}
+	for _, r := range s.Active() {
+		if ab.Abandon(r) {
+			s.Finished(r.RunID, automations.RunInterrupted, lost)
+		}
+	}
+}
+
 func (s *Scheduler) tick(ctx context.Context) *sync.WaitGroup {
+	s.abandon()
 	var wg sync.WaitGroup
 	now := s.cfg.Now()
 	type due struct {
@@ -327,7 +395,9 @@ func (s *Scheduler) tick(ctx context.Context) *sync.WaitGroup {
 		if newest := cron.Next(now.Add(-catchUpAfter-time.Nanosecond), loc); newest.IsZero() || newest.After(now) {
 			trigger = automations.TriggerCatchUp
 		}
-		starts = append(starts, due{a, s.begin(a, trigger, now)})
+		act := s.begin(a, trigger, now)
+		act.due = next
+		starts = append(starts, due{a, act})
 	}
 	if dirty {
 		s.saveState()
@@ -393,6 +463,19 @@ func (s *Scheduler) start(ctx context.Context, a automations.Automation, act *ac
 	}
 	s.mu.Lock()
 	id := act.run.AutomationID
+	var half *HalfStartedError
+	if !errors.As(err, &half) || act.due.IsZero() {
+		delete(s.halfStarts, id)
+	} else if h := s.halfStarts[id]; h.due.Equal(act.due) && h.n+1 >= halfStartTries {
+		delete(s.halfStarts, id)
+		err = half.Err
+	} else {
+		if !h.due.Equal(act.due) {
+			h = halfStarts{due: act.due}
+		}
+		h.n++
+		s.halfStarts[id] = h
+	}
 	if err != nil {
 		s.drop(act)
 		if errors.Is(err, ErrUnavailable) {
@@ -454,7 +537,7 @@ func (s *Scheduler) spec(a automations.Automation, r automations.Run) RunSpec {
 		Tags: []protocol.SessionTag{{Name: TagName, Metadata: map[string]string{
 			"automationId": a.ID, "automationName": a.Name, "trigger": string(r.Trigger), "runId": r.RunID,
 		}}},
-		DisabledTools: slices.Concat(FactoryAutomationTools, []string{workstreamTools}),
+		DisabledTools: s.cfg.HiddenTools(),
 		Prompt:        a.Prompt,
 	}
 }
@@ -623,7 +706,8 @@ func (s *Scheduler) Save(a automations.Automation) (automations.Automation, erro
 		}
 	} else {
 		var err error
-		if old, err = s.store.Get(a.ID); err != nil {
+		// Saving over an unreadable one repairs it.
+		if old, err = s.store.Get(a.ID); err != nil && !errors.Is(err, automations.ErrUnreadable) {
 			s.unlock(false)
 			return automations.Automation{}, err
 		}
@@ -636,6 +720,59 @@ func (s *Scheduler) Save(a automations.Automation) (automations.Automation, erro
 	}
 	s.unlock(err == nil)
 	return saved, err
+}
+
+// Adopt creates a, without an ID, in a copy of the folder src: its files
+// become the new Automation's own, its HEARTBEAT.md a's
+// (automations.CopyFactoryFolder). Its scheduled times start from its
+// creation.
+func (s *Scheduler) Adopt(a automations.Automation, src string) (automations.Automation, error) {
+	s.mu.Lock()
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = s.cfg.Now()
+	}
+	saved, err := s.adopt(a, src)
+	s.unlock(err == nil)
+	return saved, err
+}
+
+// adopt; s.mu is held.
+func (s *Scheduler) adopt(a automations.Automation, src string) (automations.Automation, error) {
+	if err := automations.Validate(a); err != nil {
+		return automations.Automation{}, err
+	}
+	if err := os.MkdirAll(s.cfg.Dir, 0o755); err != nil {
+		return automations.Automation{}, err
+	}
+	// A name with a leading dot is no Automation's, so a copy cut short
+	// is never listed.
+	tmp := filepath.Join(s.cfg.Dir, ".adopt-"+uuid.NewString())
+	if err := automations.CopyFactoryFolder(src, tmp); err != nil {
+		_ = os.RemoveAll(tmp)
+		return automations.Automation{}, err
+	}
+	saved, err := s.store.Adopt(a, tmp)
+	if err != nil {
+		_ = os.RemoveAll(tmp)
+	}
+	return saved, err
+}
+
+// ForkedFrom is the Automation moved from the Factory automation with id
+// factoryID, if there is one.
+func (s *Scheduler) ForkedFrom(factoryID string) (Item, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list, err := s.store.List()
+	if err != nil {
+		return Item{}, false, err
+	}
+	for _, a := range list {
+		if a.ForkedFrom == factoryID {
+			return s.item(a, s.cfg.Now()), true, nil
+		}
+	}
+	return Item{}, false, nil
 }
 
 // SetPaused pauses or resumes an Automation; a resumed one does not catch
@@ -667,6 +804,7 @@ func (s *Scheduler) Delete(id string) error {
 			s.orphans[act.run.RunID] = act
 		}
 		delete(s.state.LastScheduled, id)
+		delete(s.halfStarts, id)
 		s.saveState()
 	}
 	s.unlock(err == nil)
