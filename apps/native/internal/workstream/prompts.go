@@ -8,7 +8,7 @@ import (
 // The prompts are Droi's own words (ADR 0036), appended to Droid's system
 // prompt after the System Prompt Addition.
 
-const orchestratorPrompt = `# You lead a Droi Workstream
+const orchestratorText = `# You lead a Droi Workstream
 
 You are the orchestrator of the Workstream "{{title}}", working in {{workspace}}. You plan the work, split it among agents, and keep the user informed. You do not edit code or run builds yourself; read files only as much as planning needs.
 
@@ -38,7 +38,7 @@ const (
 	orchestratorNoGit = `{{workspace}} is not a git repository, so every agent works in it directly; give agents areas that do not touch the same files.`
 )
 
-const agentPrompt = `# You are an agent of a Droi Workstream
+const agentText = `# You are an agent of a Droi Workstream
 
 You are the agent "{{title}}" of the Workstream "{{workstream}}". An orchestrator session leads it: it sends you work in messages headed [From orchestrator] and reads what you report.
 
@@ -54,11 +54,12 @@ The shared folder {{shared}} holds the plan, the decisions and the hand-over not
 The user may also talk to you in this session. Answer them as usual; report those turns only when they change your task.`
 
 const (
-	// The Daemon makes the worktree, and names its folder and branch, as it
-	// starts the Session, after the system prompt is set: the agent's working
-	// directory is the worktree.
-	agentGit   = `You work in your working directory, a git worktree of {{workspace}} on a branch of its own. Stay in it; other agents work in worktrees of their own.`
-	agentNoGit = `You work in {{workspace}}, which other agents share; change only the files of your area.`
+	// The Daemon makes the worktree, and names its folder, as it starts the
+	// Session, after the system prompt is set: the agent's working directory
+	// is the worktree's top folder.
+	agentGit       = `You work in your working directory, a git worktree of {{repository}} on the branch {{branch}}. Stay in it; other agents work in worktrees of their own.`
+	agentSubfolder = ` The Workstream's workspace is the folder {{subfolder}} in it.`
+	agentNoGit     = `You work in {{workspace}}, which other agents share; change only the files of your area.`
 )
 
 // fill puts the values in place of their {{placeholders}}, in one pass, so
@@ -77,16 +78,30 @@ func OrchestratorPrompt(title, workspace, shared string, git bool) string {
 	if git {
 		where = orchestratorGit
 	}
-	return fill(fill(orchestratorPrompt, "where", where), "title", title, "workspace", workspace, "shared", shared)
+	return fill(fill(orchestratorText, "where", where), "title", title, "workspace", workspace, "shared", shared)
+}
+
+// Place is where an agent works: in a worktree of Repository on Branch, in
+// which Subfolder is the Workspace ("" at its top), or, with no Branch, in
+// the Workspace itself.
+type Place struct {
+	Workspace  string
+	Repository string
+	Subfolder  string
+	Branch     string
 }
 
 // AgentPrompt is the system prompt of a Workstream's agent.
-func AgentPrompt(title, workstream, workspace, shared string, git bool) string {
+func AgentPrompt(title, workstream, shared string, at Place) string {
 	where := agentNoGit
-	if git {
+	if at.Branch != "" {
 		where = agentGit
+		if at.Subfolder != "" {
+			where += agentSubfolder
+		}
 	}
-	return fill(fill(agentPrompt, "where", where), "title", title, "workstream", workstream, "workspace", workspace, "shared", shared)
+	return fill(fill(agentText, "where", where), "title", title, "workstream", workstream, "workspace", at.Workspace,
+		"repository", at.Repository, "subfolder", at.Subfolder, "branch", at.Branch, "shared", shared)
 }
 
 // The messages the Host sends.
@@ -109,9 +124,33 @@ func noReportMessage(title, id, reason, lastReply string) string {
 	return msg
 }
 
+// reportedEndMessage tells the orchestrator that a turn in which an agent
+// reported did not complete.
+func reportedEndMessage(title, id, reason string) string {
+	return fromAgent(title, id) + " Its turn ended (" + reason + ") after its report."
+}
+
+// endNotice is what the orchestrator hears of the end of an agent's turn it
+// waited on; "" for a turn that reported and completed.
+func endNotice(title, id, reason string, failed, reported bool, lastReply string) string {
+	switch {
+	case !reported:
+		return noReportMessage(title, id, reason, lastReply)
+	case failed:
+		return reportedEndMessage(title, id, reason)
+	}
+	return ""
+}
+
 // restartReason is the reason of the notice for an agent Droi restarted
 // while it worked.
 const restartReason = "Droi restarted while it worked"
+
+// cleanTitle is an agent's title on one line and without quotes, as it heads
+// the agent's messages.
+func cleanTitle(title string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(title, `"`, "")), " ")
+}
 
 // clip keeps the first n characters of s.
 func clip(s string, n int) string {

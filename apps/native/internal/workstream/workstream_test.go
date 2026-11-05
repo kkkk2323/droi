@@ -3,15 +3,19 @@ package workstream
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -24,7 +28,9 @@ import (
 const addition = "Answer in English."
 
 // fixture is a Coordinator on a real Runner against the Fake Daemon, and a
-// git repository for the Workspace.
+// git repository for the Workspace. The Runner reaches the Daemon through a
+// proxy that can answer requests itself, as a real Daemon answers for a
+// Session it no longer has.
 type fixture struct {
 	t      *testing.T
 	d      *fakedaemon.Daemon
@@ -34,6 +40,19 @@ type fixture struct {
 	repo   string
 	wtRoot string
 	ctx    context.Context
+	proxy  string
+
+	mu sync.Mutex
+	// refuse, when set, answers a request in the Daemon's place.
+	refuse func(method, sessionID string) *droid.RPCError
+	// swallow, when set, takes a request as done without the Daemon, such
+	// as a message to a Session that is to run no turn of the Fake
+	// Daemon's.
+	swallow func(method, sessionID string) bool
+	// gone are the Sessions archived from a Client: the Daemon no longer
+	// loads or archives them.
+	gone    map[string]bool
+	refused []string
 }
 
 func run(t *testing.T, dir string, args ...string) string {
@@ -67,13 +86,19 @@ func gitRepo(t *testing.T) string {
 
 func newFixture(t *testing.T, sc fakedaemon.Scenario) *fixture {
 	t.Helper()
-	f := &fixture{t: t, repo: gitRepo(t), wtRoot: filepath.Join(t.TempDir(), "worktrees"), dir: filepath.Join(t.TempDir(), "workstreams")}
+	f := &fixture{t: t, repo: gitRepo(t), wtRoot: filepath.Join(t.TempDir(), "worktrees"), dir: filepath.Join(t.TempDir(), "workstreams"), gone: map[string]bool{}}
 	if sc.Input == nil {
 		sc.Input = map[string]any{}
 	}
-	sc.Input["gitRepos"] = map[string]any{f.repo: map[string]any{"currentBranch": "main", "branches": []string{"main"}}}
+	// The Fake Daemon makes worktrees only of the folders it is told are
+	// repositories: the repository, and a folder in it.
+	known := map[string]any{"currentBranch": "main", "branches": []string{"main"}}
+	sc.Input["gitRepos"] = map[string]any{f.repo: known, filepath.Join(f.repo, "svc", "pay"): known}
 	sc.Input["defaults"] = map[string]any{"worktreeDirectory": f.wtRoot}
 	f.d = fakedaemon.Start(t, sc)
+	srv := httptest.NewServer(http.HandlerFunc(f.serveProxy))
+	t.Cleanup(srv.Close)
+	f.proxy = "ws" + strings.TrimPrefix(srv.URL, "http") + "/daemon"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	t.Cleanup(cancel)
 	f.ctx = ctx
@@ -81,11 +106,126 @@ func newFixture(t *testing.T, sc fakedaemon.Scenario) *fixture {
 	return f
 }
 
+// serveProxy carries one connection between the Runner and the Fake Daemon.
+func (f *fixture) serveProxy(w http.ResponseWriter, r *http.Request) {
+	header := http.Header{}
+	for k, v := range r.Header {
+		switch k := strings.ToLower(k); {
+		case strings.HasPrefix(k, "sec-websocket"), k == "connection", k == "upgrade":
+		default:
+			header[http.CanonicalHeaderKey(k)] = v
+		}
+	}
+	up, _, err := websocket.Dial(r.Context(), f.d.URL, &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer up.CloseNow()
+	down, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer down.CloseNow()
+	up.SetReadLimit(-1)
+	down.SetReadLimit(-1)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	go func() {
+		defer cancel()
+		for {
+			typ, b, err := up.Read(ctx)
+			if err != nil || down.Write(ctx, typ, b) != nil {
+				return
+			}
+		}
+	}()
+	for {
+		typ, b, err := down.Read(ctx)
+		if err != nil {
+			return
+		}
+		var req struct {
+			ID     string `json:"id"`
+			Method string `json:"method"`
+			Params struct {
+				SessionID string `json:"sessionId"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(b, &req)
+		if answer := f.answer(req.Method, req.Params.SessionID); answer != nil && req.ID != "" {
+			answer["type"], answer["jsonrpc"], answer["id"] = "response", "2.0", req.ID
+			out, _ := json.Marshal(answer)
+			if down.Write(ctx, websocket.MessageText, out) != nil {
+				return
+			}
+			continue
+		}
+		if up.Write(ctx, typ, b) != nil {
+			return
+		}
+	}
+}
+
+// answer is the proxy's own answer to a request; nil to pass it on.
+func (f *fixture) answer(method, sessionID string) map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.swallow != nil && f.swallow(method, sessionID) {
+		return map[string]any{"result": map[string]any{}}
+	}
+	var e *droid.RPCError
+	switch {
+	case method == "daemon.get_session_turn_outcome":
+		// The Fake Daemon keeps no turn outcomes, and stops at a method it
+		// has no handler for: answer as a droid before 1.4.1 does.
+		e = &droid.RPCError{Code: -32601, Message: "Method not found"}
+	case f.gone[sessionID] && (method == "daemon.load_session" || method == "daemon.archive_session"):
+		e = &droid.RPCError{Code: -32004, Message: "Session not found"}
+	case f.refuse != nil:
+		e = f.refuse(method, sessionID)
+	}
+	if e == nil {
+		return nil
+	}
+	f.refused = append(f.refused, method+" "+sessionID)
+	return map[string]any{"error": e}
+}
+
+// quietAgents keeps the Fake Daemon from running a turn for a message to
+// any Session but the orchestrator, whose turns a test then makes up.
+func (f *fixture) quietAgents(orch string) {
+	f.mu.Lock()
+	f.swallow = func(method, id string) bool { return method == "daemon.add_user_message" && id != orch }
+	f.mu.Unlock()
+}
+
+func (f *fixture) setRefuse(fn func(method, sessionID string) *droid.RPCError) {
+	f.mu.Lock()
+	f.refuse = fn
+	f.mu.Unlock()
+}
+
+// archiveFromClient archives a Session as a Client of the Daemon does.
+func (f *fixture) archiveFromClient(id string) {
+	f.t.Helper()
+	cl, err := f.r.Client()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if _, err := cl.ArchiveSession(f.ctx, protocol.ArchiveSessionParams{SessionID: id}); err != nil {
+		f.t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.gone[id] = true
+	f.mu.Unlock()
+}
+
 // start connects a new Runner and Coordinator, as a launch of Droi does.
 func (f *fixture) start() {
 	t := f.t
 	f.r = hostsession.New(hostsession.Config{
-		ResolveURL:           func(context.Context) (string, error) { return f.d.URL, nil },
+		ResolveURL:           func(context.Context) (string, error) { return f.proxy, nil },
 		Credential:           func(context.Context) (*droid.Credential, error) { return &droid.Credential{APIKey: "fk-test"}, nil },
 		SystemPromptAddition: func() string { return addition },
 		Log:                  func(s string) { t.Log(s) },
@@ -124,6 +264,17 @@ func (f *fixture) requests(method string) []json.RawMessage {
 	return out
 }
 
+// sessionIDs are the Sessions of method's requests, in order.
+func (f *fixture) sessionIDs(method string) []string {
+	var out []string
+	for _, p := range f.requests(method) {
+		var a struct{ SessionID string }
+		_ = json.Unmarshal(p, &a)
+		out = append(out, a.SessionID)
+	}
+	return out
+}
+
 // messages are the texts the Daemon was sent for a Session.
 func (f *fixture) messages(sessionID string) []string {
 	var out []string
@@ -138,17 +289,19 @@ func (f *fixture) messages(sessionID string) []string {
 }
 
 type initParams struct {
-	SessionID         string                  `json:"sessionId"`
-	Cwd               string                  `json:"cwd"`
-	Title             string                  `json:"title"`
-	ModelID           string                  `json:"modelId"`
-	ReasoningEffort   string                  `json:"reasoningEffort"`
-	AutonomyLevel     string                  `json:"autonomyLevel"`
-	Tags              []protocol.SessionTag   `json:"tags"`
-	DisabledToolIDs   []string                `json:"disabledToolIds"`
-	Worktree          bool                    `json:"worktree"`
-	WorktreeLifecycle string                  `json:"worktreeLifecycle"`
-	SystemPrompt      struct{ Append string } `json:"systemPrompt"`
+	SessionID          string                  `json:"sessionId"`
+	Cwd                string                  `json:"cwd"`
+	Title              string                  `json:"title"`
+	ModelID            string                  `json:"modelId"`
+	ReasoningEffort    string                  `json:"reasoningEffort"`
+	AutonomyLevel      string                  `json:"autonomyLevel"`
+	Tags               []protocol.SessionTag   `json:"tags"`
+	DisabledToolIDs    []string                `json:"disabledToolIds"`
+	Worktree           bool                    `json:"worktree"`
+	WorktreeLifecycle  string                  `json:"worktreeLifecycle"`
+	WorktreeNewBranch  string                  `json:"worktreeNewBranch"`
+	WorktreeBaseBranch string                  `json:"worktreeBaseBranch"`
+	SystemPrompt       struct{ Append string } `json:"systemPrompt"`
 }
 
 func (f *fixture) initialized(sessionID string) initParams {
@@ -230,6 +383,99 @@ func reply(deltas ...string) *fakedaemon.Turn {
 	return &fakedaemon.Turn{Kind: "reply", Deltas: deltas, DelayMs: 20}
 }
 
+// long is a turn of about n half-seconds.
+func long(n int) *fakedaemon.Turn {
+	return &fakedaemon.Turn{Kind: "reply", Deltas: slices.Repeat([]string{"."}, n), DelayMs: 500}
+}
+
+func turnCompleted(reason string) map[string]any {
+	return map[string]any{"type": "agent_turn_completed", "reason": reason, "tokenUsage": map[string]any{"inputTokens": 0, "outputTokens": 0, "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0}}
+}
+
+// The prompts and their parts as workstream-prompts.md has them.
+
+func wantOrchestratorPrompt(title, workspace, shared, where string) string {
+	return `# You lead a Droi Workstream
+
+You are the orchestrator of the Workstream "` + title + `", working in ` + workspace + `. You plan the work, split it among agents, and keep the user informed. You do not edit code or run builds yourself; read files only as much as planning needs.
+
+## Agents
+
+- An agent is a Droid session of its own. ` + where + ` It keeps its context for the life of the Workstream, so give one agent one area of work (a service, a layer, a kind of task) and keep sending it the work in that area.
+- spawn_agent starts one. Give it a short title naming its area, and a prompt that states the area, the first task, the constraints (what not to touch, conventions, which tests to run) and what done means. The agent knows only what the prompt and the shared folder tell it.
+- send_message gives an existing agent more work or an answer. Prefer it to a new agent for the same area.
+- After spawn_agent or send_message, end your turn. Agents report on their own: reports arrive as messages headed [From agent "<title>" (<id>)], and Droi also tells you when an agent's turn ends without a report. Do not call list_agents in a loop to wait.
+- list_agents shows each agent's state (working, idle, or waiting for the user: an approval or a question the user answers in that agent's session), its worktree and branch, and its last report.
+- interrupt_agent stops an agent's current turn. archive_agent ends an agent whose work is merged or no longer needed; Droi removes its worktree when it holds nothing unmerged.
+
+## Shared folder
+
+` + shared + ` is read and written by you and every agent. Keep the plan, the decisions, the interfaces agents agree on and the hand-over notes there, as files with clear names, instead of repeating them in every message.
+
+## Recurring checks
+
+To check something on a schedule (a deployment, a CI run, a review), use the Loop tool in this session.
+
+## The user
+
+Answer the user's messages directly. When agents report, summarize briefly: what is done, what is next, what needs the user. Ask the user when a decision is theirs (scope, trade-offs, anything destructive or outside this computer, such as pushing, merging or deploying), and do not let agents do those without the user's go-ahead.`
+}
+
+func orchestratorInRepo(workspace string) string {
+	return "It works in its own git worktree and branch of " + workspace + "."
+}
+
+func orchestratorOutsideRepo(workspace string) string {
+	return workspace + " is not a git repository, so every agent works in it directly; give agents areas that do not touch the same files."
+}
+
+func wantAgentPrompt(title, workstream, shared, where string) string {
+	return `# You are an agent of a Droi Workstream
+
+You are the agent "` + title + `" of the Workstream "` + workstream + `". An orchestrator session leads it: it sends you work in messages headed [From orchestrator] and reads what you report.
+
+` + where + `
+
+When you finish a task, when you are blocked, or when you find something that changes the plan, call report with:
+- kind: "done", "blocked" or "update";
+- message: what you did or found, where (files, commits, branch), how you checked it, and what is left or what you need.
+Keep the message short; put long material in the shared folder and name the file. Then end your turn.
+
+The shared folder ` + shared + ` holds the plan, the decisions and the hand-over notes of the whole Workstream. Read what concerns your area before you start, and write there what other agents need from you.
+
+The user may also talk to you in this session. Answer them as usual; report those turns only when they change your task.`
+}
+
+func agentInWorktree(repository, branch string) string {
+	return "You work in your working directory, a git worktree of " + repository + " on the branch " + branch + ". Stay in it; other agents work in worktrees of their own."
+}
+
+func agentInWorkspace(workspace string) string {
+	return "You work in " + workspace + ", which other agents share; change only the files of your area."
+}
+
+func TestThePromptsReadAsWritten(t *testing.T) {
+	if got, want := OrchestratorPrompt("Payments", "/w/pay", "/d/ws/shared", true), wantOrchestratorPrompt("Payments", "/w/pay", "/d/ws/shared", orchestratorInRepo("/w/pay")); got != want {
+		t.Errorf("orchestrator in a repository:\n%s", got)
+	}
+	if got, want := OrchestratorPrompt("Notes", "/w/notes", "/d/ws/shared", false), wantOrchestratorPrompt("Notes", "/w/notes", "/d/ws/shared", orchestratorOutsideRepo("/w/notes")); got != want {
+		t.Errorf("orchestrator outside a repository:\n%s", got)
+	}
+	cases := []struct {
+		at    Place
+		where string
+	}{
+		{Place{Workspace: "/w/pay", Repository: "/w/pay", Branch: "droid/api"}, agentInWorktree("/w/pay", "droid/api")},
+		{Place{Workspace: "/w/mono/svc/pay", Repository: "/w/mono", Subfolder: filepath.Join("svc", "pay"), Branch: "droid/api"},
+			agentInWorktree("/w/mono", "droid/api") + " The Workstream's workspace is the folder " + filepath.Join("svc", "pay") + " in it."},
+		{Place{Workspace: "/w/notes"}, agentInWorkspace("/w/notes")},
+	}
+	for _, c := range cases {
+		if got, want := AgentPrompt("API", "Payments", "/d/ws/shared", c.at), wantAgentPrompt("API", "Payments", "/d/ws/shared", c.where); got != want {
+			t.Errorf("agent at %+v:\n%s", c.at, got)
+		}
+	}
+}
 func TestCreateStartsTheOrchestratorWithItsPromptTagsToolsAndGoal(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: reply("Planning.")})
 	made := f.create("gpt-6", "")
@@ -244,13 +490,8 @@ func TestCreateStartsTheOrchestratorWithItsPromptTagsToolsAndGoal(t *testing.T) 
 		!reflect.DeepEqual(ip.Tags, wantTags) || !reflect.DeepEqual(ip.DisabledToolIDs, wantHidden) {
 		t.Fatalf("initialize_session %+v", ip)
 	}
-	if want := addition + "\n\n" + OrchestratorPrompt("Payments", f.repo, shared, true); ip.SystemPrompt.Append != want {
+	if want := addition + "\n\n" + wantOrchestratorPrompt("Payments", f.repo, shared, orchestratorInRepo(f.repo)); ip.SystemPrompt.Append != want {
 		t.Fatalf("system prompt %q", ip.SystemPrompt.Append)
-	}
-	for _, part := range []string{`orchestrator of the Workstream "Payments", working in ` + f.repo, "It works in its own git worktree and branch of " + f.repo + ".", shared + " is read and written"} {
-		if !strings.Contains(ip.SystemPrompt.Append, part) {
-			t.Errorf("the prompt lacks %q", part)
-		}
 	}
 	if got := f.messages(made.OrchestratorID); !reflect.DeepEqual(got, []string{"Move the payment service to gRPC."}) {
 		t.Fatalf("orchestrator messages %q", got)
@@ -272,7 +513,30 @@ func TestCreateStartsTheOrchestratorWithItsPromptTagsToolsAndGoal(t *testing.T) 
 	}
 }
 
-func TestSpawnAgentStartsAnAgentInAWorktreeWithItsTask(t *testing.T) {
+func TestAWorkstreamStartsWhenItsGoalDoesNotReachTheOrchestrator(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	f.setRefuse(func(method, _ string) *droid.RPCError {
+		if method == "daemon.add_user_message" {
+			return &droid.RPCError{Code: -32603, Message: "No active session found for ID"}
+		}
+		return nil
+	})
+	made := f.create("", "")
+	if made.WorkstreamID == "" || made.OrchestratorID == "" {
+		t.Fatalf("made %+v", made)
+	}
+	if list, _ := f.c.List(f.ctx); len(list) != 1 || list[0].OrchestratorID != made.OrchestratorID {
+		t.Fatalf("list %+v", list)
+	}
+	f.mu.Lock()
+	tries := slices.Clone(f.refused)
+	f.mu.Unlock()
+	if want := []string{"daemon.add_user_message " + made.OrchestratorID, "daemon.add_user_message " + made.OrchestratorID}; !reflect.DeepEqual(tries, want) {
+		t.Fatalf("tries %q", tries)
+	}
+}
+
+func TestSpawnAgentStartsAnAgentOnABranchOfItsOwnWithItsTask(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: reply("On it.")})
 	made := f.create("", "")
 	before := len(f.requests("daemon.initialize_session"))
@@ -295,21 +559,21 @@ func TestSpawnAgentStartsAnAgentInAWorktreeWithItsTask(t *testing.T) {
 	}}}
 	wantHidden := []string{"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation", "DeleteAutomation", "RunAutomation", "ListAutomationTemplates",
 		"mcp:droi-workstream/spawn_agent", "mcp:droi-workstream/send_message", "mcp:droi-workstream/list_agents", "mcp:droi-workstream/interrupt_agent", "mcp:droi-workstream/archive_agent"}
-	if ip.Cwd != f.repo || ip.Title != "API" || !ip.Worktree || ip.WorktreeLifecycle != "persistent" || ip.ModelID != "auto" || ip.ReasoningEffort != "none" ||
-		ip.AutonomyLevel != "low" || !reflect.DeepEqual(ip.Tags, wantTags) || !reflect.DeepEqual(ip.DisabledToolIDs, wantHidden) {
+	if ip.Cwd != f.repo || ip.Title != "API" || !ip.Worktree || ip.WorktreeLifecycle != "persistent" || ip.WorktreeNewBranch != "droid/api" || ip.WorktreeBaseBranch != "" ||
+		ip.ModelID != "auto" || ip.ReasoningEffort != "none" || ip.AutonomyLevel != "low" || !reflect.DeepEqual(ip.Tags, wantTags) || !reflect.DeepEqual(ip.DisabledToolIDs, wantHidden) {
 		t.Fatalf("initialize_session %+v", ip)
 	}
 	shared := filepath.Join(f.dir, made.WorkstreamID, SharedDir)
-	if want := addition + "\n\n" + AgentPrompt("API", "Payments", f.repo, shared, true); ip.SystemPrompt.Append != want || !strings.Contains(want, `agent "API" of the Workstream "Payments"`) {
+	if want := addition + "\n\n" + wantAgentPrompt("API", "Payments", shared, agentInWorktree(f.repo, "droid/api")); ip.SystemPrompt.Append != want {
 		t.Fatalf("system prompt %q", ip.SystemPrompt.Append)
 	}
 	if got := f.messages(id); !reflect.DeepEqual(got, []string{"[From orchestrator]\nMove /pay to gRPC."}) {
 		t.Fatalf("agent messages %q", got)
 	}
-	if a.WorktreePath == "" || a.Branch == "" || a.BaseBranch != "main" || a.Model != "auto" || !strings.HasPrefix(a.WorktreePath, f.wtRoot) {
+	if a.WorktreePath == "" || a.Branch != "droid/api" || a.BaseBranch != "main" || a.Model != "auto" || !strings.HasPrefix(a.WorktreePath, f.wtRoot) {
 		t.Fatalf("agent %+v", a)
 	}
-	for _, part := range []string{`Started agent "API" (` + id + `)`, a.WorktreePath, a.Branch, "Its report arrives as a message"} {
+	for _, part := range []string{`Started agent "API" (` + id + `)`, a.WorktreePath, "droid/api", "Its report arrives as a message"} {
 		if !strings.Contains(text, part) {
 			t.Errorf("the answer %q lacks %q", text, part)
 		}
@@ -332,23 +596,105 @@ func TestSpawnAgentStartsAnAgentInAWorktreeWithItsTask(t *testing.T) {
 	}
 }
 
-func TestAnAgentOutsideAGitRepositoryWorksInTheWorkspace(t *testing.T) {
+func TestEachAgentGetsABranchNoOtherHas(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
-	plain := t.TempDir()
-	made, err := f.c.Create(f.ctx, gateway.NewWorkstream{Title: "Notes", Workspace: plain, Goal: "Tidy the notes."})
+	made := f.create("", "")
+	run(t, f.repo, "branch", "droid/api")
+	api := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	if a := f.agent(made.WorkstreamID, api); a.Branch != "droid/api-2" || f.initialized(api).WorktreeNewBranch != "droid/api-2" {
+		t.Fatalf("agent %+v", a)
+	}
+	// A title is one line without quotes, in the agent's messages too.
+	web := f.spawn(made.OrchestratorID, "  \"Web\"\n  client ", "Move the web client.")
+	if a := f.agent(made.WorkstreamID, web); a.Title != "Web client" || a.Branch != "droid/web-client" || f.initialized(web).Title != "Web client" {
+		t.Fatalf("agent %+v", a)
+	}
+	if _, err := f.call(ToolReport, map[string]any{"kind": "update", "message": "Halfway."}, web); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.messages(made.OrchestratorID); !slices.Contains(got, `[From agent "Web client" (`+web+`)] update`+"\nHalfway.") {
+		t.Fatalf("orchestrator messages %q", got)
+	}
+	// Two agents of one title started at once.
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
+			if _, err := f.c.Call(f.ctx, ToolSpawnAgent, map[string]any{"title": "Docs", "prompt": "Write the docs."}, made.OrchestratorID); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	var branches []string
+	for _, a := range loadAll(f.dir, func(string) {})[made.WorkstreamID].Agents {
+		branches = append(branches, a.Branch)
+	}
+	slices.Sort(branches)
+	if want := []string{"droid/api-2", "droid/docs", "droid/docs-2", "droid/web-client"}; !reflect.DeepEqual(branches, want) {
+		t.Fatalf("branches %q", branches)
+	}
+}
+
+func TestAnAgentOnADetachedHeadGetsABranchFromItsCommit(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	run(t, f.repo, "checkout", "-q", "--detach")
+	commit := run(t, f.repo, "rev-parse", "HEAD")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	if ip := f.initialized(id); !ip.Worktree || ip.WorktreeNewBranch != "droid/api" || ip.WorktreeBaseBranch != "" {
+		t.Fatalf("initialize_session %+v", ip)
+	}
+	if a := f.agent(made.WorkstreamID, id); a.BaseBranch != commit || a.Branch != "droid/api" {
+		t.Fatalf("agent %+v", a)
+	}
+}
+
+func TestAnAgentOfAWorkspaceInsideARepositoryIsToldWhereItIs(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	sub := filepath.Join(f.repo, "svc", "pay")
+	if err := os.MkdirAll(sub, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	made, err := f.c.Create(f.ctx, gateway.NewWorkstream{Title: "Pay", Workspace: sub, Goal: "Tidy it."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.initialized(made.OrchestratorID).SystemPrompt.Append, plain+" is not a git repository") {
-		t.Fatal("the orchestrator is not told the workspace is no repository")
-	}
-	id := f.spawn(made.OrchestratorID, "Index", "Index them.")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
 	ip := f.initialized(id)
-	if ip.Worktree || !strings.Contains(ip.SystemPrompt.Append, "You work in "+plain+", which other agents share") {
+	shared := filepath.Join(f.dir, made.WorkstreamID, SharedDir)
+	where := agentInWorktree(f.repo, "droid/api") + " The Workstream's workspace is the folder " + filepath.Join("svc", "pay") + " in it."
+	if want := addition + "\n\n" + wantAgentPrompt("API", "Pay", shared, where); !ip.Worktree || ip.SystemPrompt.Append != want {
 		t.Fatalf("initialize_session %+v", ip)
 	}
-	if a := f.agent(made.WorkstreamID, id); a.WorktreePath != "" || a.BaseBranch != "" {
+	if a := f.agent(made.WorkstreamID, id); a.BaseBranch != "main" {
 		t.Fatalf("agent %+v", a)
+	}
+}
+
+func TestAnAgentOutsideAGitRepositoryWorksInTheWorkspace(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	for _, plain := range []string{t.TempDir(), func() string {
+		// A repository with no commit has no branch to cut a worktree's from.
+		dir := t.TempDir()
+		run(t, dir, "init", "-q", "-b", "main")
+		return dir
+	}()} {
+		made, err := f.c.Create(f.ctx, gateway.NewWorkstream{Title: "Notes", Workspace: plain, Goal: "Tidy the notes."})
+		if err != nil {
+			t.Fatal(err)
+		}
+		shared := filepath.Join(f.dir, made.WorkstreamID, SharedDir)
+		if want := addition + "\n\n" + wantOrchestratorPrompt("Notes", plain, shared, orchestratorOutsideRepo(plain)); f.initialized(made.OrchestratorID).SystemPrompt.Append != want {
+			t.Fatalf("%s: the orchestrator is not told the workspace is no repository", plain)
+		}
+		id := f.spawn(made.OrchestratorID, "Index", "Index them.")
+		ip := f.initialized(id)
+		if want := addition + "\n\n" + wantAgentPrompt("Index", "Notes", shared, agentInWorkspace(plain)); ip.Worktree || ip.WorktreeNewBranch != "" || ip.SystemPrompt.Append != want {
+			t.Fatalf("initialize_session %+v", ip)
+		}
+		if a := f.agent(made.WorkstreamID, id); a.WorktreePath != "" || a.Branch != "" || a.BaseBranch != "" {
+			t.Fatalf("agent %+v", a)
+		}
 	}
 }
 
@@ -404,24 +750,130 @@ func TestATurnWithoutAReportSendsTheNoticeAndAUsersTurnNothing(t *testing.T) {
 	f.waitFor("a second notice", func() bool { return len(f.messages(made.OrchestratorID)) == sent+1 })
 }
 
-func TestTheOrchestratorHearsOfAFailedTurnWithItsError(t *testing.T) {
-	f := newFixture(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"a", "b", "c", "d"}, DelayMs: 400}})
+func TestAMessageAfterAReportIsWaitedOnWhileTheAgentWorksOn(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: long(12)})
 	made := f.create("", "")
 	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
 	f.waitFor("the agent to work", func() bool { return working(f.r.Session(id)) })
-	if _, err := f.call(ToolReport, map[string]any{"kind": "update", "message": "Halfway."}, id); err != nil {
+	if _, err := f.call(ToolReport, map[string]any{"kind": "done", "message": "Moved /pay."}, id); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.d.Notify(id, map[string]any{"type": "error", "message": "Rate limited", "errorType": "Error", "timestamp": "2026-11-05T00:00:00.000Z"}); err != nil {
+	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": id, "message": "Now /refund."}, made.OrchestratorID); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.d.Notify(id, map[string]any{"type": "agent_turn_completed", "reason": "error", "tokenUsage": map[string]any{"inputTokens": 0, "outputTokens": 0, "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0}}); err != nil {
+	// The reported turn ends, and the agent goes on working on the message.
+	if err := f.d.Notify(id, turnCompleted("completed")); err != nil {
 		t.Fatal(err)
 	}
-	prefix := `[From agent "API" (` + id + `)] Its turn ended without a report (error: Rate limited).`
+	time.Sleep(settleWait + 600*time.Millisecond)
+	if !working(f.r.Session(id)) {
+		t.Fatal("the turn ended too soon for this test")
+	}
+	report := `[From agent "API" (` + id + `)] done` + "\nMoved /pay."
+	if got := f.messages(made.OrchestratorID); !reflect.DeepEqual(got, []string{"Move the payment service to gRPC.", report}) || !f.agent(made.WorkstreamID, id).Awaiting {
+		t.Fatalf("orchestrator messages %q, agent %+v", got, f.agent(made.WorkstreamID, id))
+	}
+	// Its end without a report about the message is the orchestrator's news.
+	prefix := `[From agent "API" (` + id + `)] Its turn ended without a report (completed).`
 	f.waitFor("the notice", func() bool {
 		return slices.ContainsFunc(f.messages(made.OrchestratorID), func(m string) bool { return strings.HasPrefix(m, prefix) })
 	})
+	f.waitFor("the agent no longer waited on", func() bool { return !f.agent(made.WorkstreamID, id).Awaiting })
+	if n := len(f.messages(made.OrchestratorID)); n != 3 {
+		t.Fatalf("%d orchestrator messages", n)
+	}
+}
+
+func TestTheOrchestratorHearsOfAFailedTurnWithItsError(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	f.quietAgents(made.OrchestratorID)
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	if err := f.d.Notify(id, map[string]any{"type": "droid_working_state_changed", "newState": "streaming_assistant_message"}); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor("the agent to work", func() bool { return working(f.r.Session(id)) })
+	if err := f.d.Notify(id, map[string]any{"type": "error", "message": "Rate limited", "errorType": "Error", "timestamp": "2026-11-05T00:00:00.000Z"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.d.Notify(id, turnCompleted("error")); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.d.Notify(id, map[string]any{"type": "droid_working_state_changed", "newState": "idle"}); err != nil {
+		t.Fatal(err)
+	}
+	want := `[From agent "API" (` + id + `)] Its turn ended without a report (error: Rate limited).`
+	f.waitFor("the notice", func() bool { return slices.Contains(f.messages(made.OrchestratorID), want) })
+}
+
+// The Fake Daemon has no worker to lose: a Session marked working with no
+// turn behind it is idle when the Runner loads it after the Daemon is back.
+func loseTheWorker(f *fixture, id string) {
+	f.t.Helper()
+	if err := f.d.Notify(id, map[string]any{"type": "droid_working_state_changed", "newState": "streaming_assistant_message"}); err != nil {
+		f.t.Fatal(err)
+	}
+	f.waitFor("the agent to work", func() bool { return working(f.r.Session(id)) })
+	if err := f.d.GoDown(); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := f.d.ComeBack(); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func TestATurnWhoseWorkerWasLostIsNoticedAndSaysWhetherItReported(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	f.quietAgents(made.OrchestratorID)
+	silent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	reported := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
+	if _, err := f.call(ToolReport, map[string]any{"kind": "update", "message": "Halfway."}, reported); err != nil {
+		t.Fatal(err)
+	}
+	loseTheWorker(f, silent)
+	want := `[From agent "API" (` + silent + `)] Its turn ended without a report (process_exit: ` + hostsession.LostTouch + `).`
+	f.waitFor("the notice", func() bool { return slices.Contains(f.messages(made.OrchestratorID), want) })
+	loseTheWorker(f, reported)
+	want = `[From agent "Web" (` + reported + `)] Its turn ended (process_exit: ` + hostsession.LostTouch + `) after its report.`
+	f.waitFor("the notice after the report", func() bool { return slices.Contains(f.messages(made.OrchestratorID), want) })
+}
+
+func TestInterruptAgentStopsItsTurnWithoutANotice(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: long(10)})
+	made := f.create("", "")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the agent to work", func() bool { return working(f.r.Session(id)) })
+	text, err := f.call(ToolInterruptAgent, map[string]any{"agent_id": id}, made.OrchestratorID)
+	if err != nil || text != `Interrupted agent "API" (`+id+`).` {
+		t.Fatal(text, err)
+	}
+	if !slices.Contains(f.sessionIDs("daemon.interrupt_session"), id) || f.agent(made.WorkstreamID, id).Awaiting {
+		t.Fatal("not interrupted")
+	}
+	f.idle(id)
+	time.Sleep(500 * time.Millisecond)
+	if got := f.messages(made.OrchestratorID); len(got) != 1 {
+		t.Fatalf("orchestrator messages %q", got)
+	}
+}
+
+func TestAnOrchestratorActsOnlyOnItsOwnAgents(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	mine := f.create("", "")
+	other, err := f.c.Create(f.ctx, gateway.NewWorkstream{Title: "Other", Workspace: f.repo, Goal: "g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := f.spawn(mine.OrchestratorID, "API", "Move /pay.")
+	for _, tool := range []string{ToolSendMessage, ToolInterruptAgent, ToolArchiveAgent} {
+		if _, err := f.call(tool, map[string]any{"agent_id": id, "message": "m"}, other.OrchestratorID); err == nil || !strings.Contains(err.Error(), "This workstream has no agent "+id) {
+			t.Errorf("%s from another orchestrator: %v", tool, err)
+		}
+	}
+	if len(f.requests("daemon.interrupt_session"))+len(f.requests("daemon.archive_session")) != 0 || len(f.messages(id)) != 1 {
+		t.Fatal("another orchestrator reached the agent")
+	}
 }
 
 func TestNewAgentSettingsMoveIdleAgentsButNotOneSwitchedByHand(t *testing.T) {
@@ -444,18 +896,7 @@ func TestNewAgentSettingsMoveIdleAgentsButNotOneSwitchedByHand(t *testing.T) {
 	if err := f.c.SetAgentSettings(f.ctx, gateway.WorkstreamSettings{ID: made.WorkstreamID, AgentModel: "glm-5.3-flash", AgentReasoningEffort: "high"}); err != nil {
 		t.Fatal(err)
 	}
-	type update struct {
-		SessionID       string                `json:"sessionId"`
-		ModelID         string                `json:"modelId"`
-		ReasoningEffort string                `json:"reasoningEffort"`
-		Tags            []protocol.SessionTag `json:"tags"`
-	}
-	var got []update
-	for _, p := range f.requests("daemon.update_session_settings")[before:] {
-		var u update
-		_ = json.Unmarshal(p, &u)
-		got = append(got, u)
-	}
+	got := f.updates(before)
 	want := []update{
 		{SessionID: made.OrchestratorID, Tags: []protocol.SessionTag{{Name: "droi.workstream", Metadata: map[string]string{"workstreamId": made.WorkstreamID, "role": "orchestrator", "agentModel": "glm-5.3-flash", "agentReasoningEffort": "high"}}}},
 		{SessionID: a, ModelID: "glm-5.3-flash", ReasoningEffort: "high"},
@@ -479,25 +920,123 @@ func TestNewAgentSettingsMoveIdleAgentsButNotOneSwitchedByHand(t *testing.T) {
 	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": a, "message": "Next."}, made.OrchestratorID); err != nil {
 		t.Fatal(err)
 	}
+	f.waitFor("the turn's end", func() bool { return !f.agent(made.WorkstreamID, a).Awaiting })
 	if n := len(f.requests("daemon.update_session_settings")); n != before {
 		t.Fatalf("%d more update_session_settings", n-before)
 	}
 }
 
-// addWorktree makes the checkout the Fake Daemon only names.
-func (f *fixture) addWorktree(a Agent, branch string) {
-	f.t.Helper()
-	run(f.t, f.repo, "worktree", "add", "-q", "-b", branch, a.WorktreePath)
+type update struct {
+	SessionID       string                `json:"sessionId"`
+	ModelID         string                `json:"modelId"`
+	ReasoningEffort string                `json:"reasoningEffort"`
+	Tags            []protocol.SessionTag `json:"tags"`
 }
 
-func TestArchiveAgentRemovesACleanWorktreeAndKeepsOneWithChanges(t *testing.T) {
+// updates are the update_session_settings requests from the before-th on.
+func (f *fixture) updates(before int) []update {
+	var got []update
+	for _, p := range f.requests("daemon.update_session_settings")[before:] {
+		var u update
+		_ = json.Unmarshal(p, &u)
+		got = append(got, u)
+	}
+	return got
+}
+
+func TestAChangeOfEffortAloneIsTakenAndRecorded(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("glm-5.3-flash", "high")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the turn's end", func() bool { return !f.agent(made.WorkstreamID, id).Awaiting })
+	f.idle(id)
+	before := len(f.requests("daemon.update_session_settings"))
+	if err := f.c.SetAgentSettings(f.ctx, gateway.WorkstreamSettings{ID: made.WorkstreamID, AgentModel: "glm-5.3-flash", AgentReasoningEffort: "low"}); err != nil {
+		t.Fatal(err)
+	}
+	got := f.updates(before)
+	if len(got) != 3 || !reflect.DeepEqual(got[1], update{SessionID: id, ModelID: "glm-5.3-flash", ReasoningEffort: "low"}) || got[2].Tags[0].Metadata["agentReasoningEffort"] != "low" {
+		t.Fatalf("update_session_settings %+v", got)
+	}
+	if a := f.agent(made.WorkstreamID, id); a.Model != "glm-5.3-flash" || a.ReasoningEffort != "low" {
+		t.Fatalf("agent %+v", a)
+	}
+}
+
+func TestSameAsOrchestratorKeepsAnAgentOnWhatItStartedWith(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the turn's end", func() bool { return !f.agent(made.WorkstreamID, id).Awaiting })
+	f.idle(id)
+	if err := f.r.UpdateSettings(f.ctx, protocol.UpdateSessionSettingsParams{SessionID: made.OrchestratorID, ModelID: "claude-opus-4-1"}); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor("the orchestrator's model", func() bool { return f.r.Session(made.OrchestratorID).Settings().ModelID == "claude-opus-4-1" })
+	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": id, "message": "Next."}, made.OrchestratorID); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor("the turn's end", func() bool { return !f.agent(made.WorkstreamID, id).Awaiting })
+	f.idle(id)
+	if got := f.r.Session(id).Settings().ModelID; got != "auto" || slices.Contains(f.sessionIDs("daemon.update_session_settings"), id) {
+		t.Fatalf("the agent followed the orchestrator to %q", got)
+	}
+	// Saving the settings is the user's choice: the agents take the
+	// orchestrator's model then.
+	if err := f.c.SetAgentSettings(f.ctx, gateway.WorkstreamSettings{ID: made.WorkstreamID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.r.Session(id).Settings().ModelID; got != "claude-opus-4-1" || f.agent(made.WorkstreamID, id).Model != "claude-opus-4-1" {
+		t.Fatalf("the agent is on %q", got)
+	}
+}
+
+func TestSettledWaitsForTheSettingsAskedOrNewsOfOthers(t *testing.T) {
+	var mu sync.Mutex
+	model, effort := "glm-5.3-flash", "high"
+	current := func() (string, string) { mu.Lock(); defer mu.Unlock(); return model, effort }
+	// The model is there already; the effort comes a little later.
+	time.AfterFunc(100*time.Millisecond, func() { mu.Lock(); effort = "low"; mu.Unlock() })
+	if m, e := settled(t.Context(), current, nil, "glm-5.3-flash", "low", 3*time.Second); m != "glm-5.3-flash" || e != "low" {
+		t.Fatalf("took %s/%s", m, e)
+	}
+	// The Daemon fits the effort to the model: the news says so.
+	news := make(chan struct{}, 1)
+	mu.Lock()
+	effort = "medium"
+	mu.Unlock()
+	time.AfterFunc(50*time.Millisecond, func() { news <- struct{}{} })
+	start := time.Now()
+	if m, e := settled(t.Context(), current, news, "glm-5.3-flash", "xhigh", 3*time.Second); m != "glm-5.3-flash" || e != "medium" || time.Since(start) > time.Second {
+		t.Fatalf("took %s/%s after %v", m, e, time.Since(start))
+	}
+	// No news: the wait ends.
+	start = time.Now()
+	if _, e := settled(t.Context(), current, nil, "glm-5.3-flash", "xhigh", 100*time.Millisecond); e != "medium" || time.Since(start) > time.Second {
+		t.Fatalf("took %s after %v", e, time.Since(start))
+	}
+}
+
+// addWorktree makes the checkout the Fake Daemon only names.
+func (f *fixture) addWorktree(a Agent) {
+	f.t.Helper()
+	run(f.t, f.repo, "worktree", "add", "-q", "-b", a.Branch, a.WorktreePath)
+}
+
+type cleanup struct {
+	WorktreePath      string `json:"worktreePath"`
+	DeleteLocalBranch bool   `json:"deleteLocalBranch"`
+	Force             *bool  `json:"force"`
+}
+
+func TestArchiveAgentRemovesACleanWorktreeAndItsBranchAndKeepsOneWithChanges(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
 	made := f.create("", "")
 	clean := f.spawn(made.OrchestratorID, "API", "Move /pay.")
 	dirty := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
 	ca, da := f.agent(made.WorkstreamID, clean), f.agent(made.WorkstreamID, dirty)
-	f.addWorktree(ca, "api")
-	f.addWorktree(da, "web")
+	f.addWorktree(ca)
+	f.addWorktree(da)
 	if err := os.WriteFile(filepath.Join(da.WorktreePath, "web.go"), []byte("package web\n"), 0o666); err != nil {
 		t.Fatal(err)
 	}
@@ -512,12 +1051,8 @@ func TestArchiveAgentRemovesACleanWorktreeAndKeepsOneWithChanges(t *testing.T) {
 		t.Fatalf("answer %q", text)
 	}
 	cleanups := f.requests("daemon.cleanup_worktree")
-	var p struct {
-		WorktreePath      string `json:"worktreePath"`
-		DeleteLocalBranch bool   `json:"deleteLocalBranch"`
-		Force             bool   `json:"force"`
-	}
-	if len(cleanups) != 1 || json.Unmarshal(cleanups[0], &p) != nil || p.WorktreePath != ca.WorktreePath || p.Force || p.DeleteLocalBranch {
+	var p cleanup
+	if len(cleanups) != 1 || json.Unmarshal(cleanups[0], &p) != nil || p != (cleanup{WorktreePath: ca.WorktreePath, DeleteLocalBranch: true}) {
 		t.Fatalf("cleanup_worktree %s", cleanups)
 	}
 
@@ -531,14 +1066,8 @@ func TestArchiveAgentRemovesACleanWorktreeAndKeepsOneWithChanges(t *testing.T) {
 	if n := len(f.requests("daemon.cleanup_worktree")); n != 1 {
 		t.Fatalf("%d cleanup_worktree", n)
 	}
-	var archived []string
-	for _, p := range f.requests("daemon.archive_session") {
-		var a struct{ SessionID string }
-		_ = json.Unmarshal(p, &a)
-		archived = append(archived, a.SessionID)
-	}
 	// Removing the clean one's worktree archived its Session.
-	if !reflect.DeepEqual(archived, []string{dirty}) {
+	if archived := f.sessionIDs("daemon.archive_session"); !reflect.DeepEqual(archived, []string{dirty}) {
 		t.Fatalf("archived %v", archived)
 	}
 	if f.agent(made.WorkstreamID, clean).ArchivedAt == "" {
@@ -552,12 +1081,35 @@ func TestArchiveAgentRemovesACleanWorktreeAndKeepsOneWithChanges(t *testing.T) {
 	}
 }
 
+func TestAMergedAgentsWorktreeAndBranchGo(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	id := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	a := f.agent(made.WorkstreamID, id)
+	f.addWorktree(a)
+	if err := os.WriteFile(filepath.Join(a.WorktreePath, "api.go"), []byte("package api\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	run(t, a.WorktreePath, "add", ".")
+	run(t, a.WorktreePath, "commit", "-q", "-m", "api")
+	run(t, f.repo, "merge", "-q", "--ff-only", a.Branch)
+	f.idle(id)
+	text, err := f.call(ToolArchiveAgent, map[string]any{"agent_id": id}, made.OrchestratorID)
+	if err != nil || !strings.Contains(text, "Removed its worktree") {
+		t.Fatal(text, err)
+	}
+	var p cleanup
+	if c := f.requests("daemon.cleanup_worktree"); len(c) != 1 || json.Unmarshal(c[0], &p) != nil || p != (cleanup{WorktreePath: a.WorktreePath, DeleteLocalBranch: true}) {
+		t.Fatalf("cleanup_worktree %s", c)
+	}
+}
+
 func TestArchivingAWorkstreamArchivesItsAgentsAndOrchestratorAndNamesTheKeptWorktrees(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
 	made := f.create("", "")
 	committed := f.spawn(made.OrchestratorID, "API", "Move /pay.")
 	ag := f.agent(made.WorkstreamID, committed)
-	f.addWorktree(ag, "api")
+	f.addWorktree(ag)
 	if err := os.WriteFile(filepath.Join(ag.WorktreePath, "api.go"), []byte("package api\n"), 0o666); err != nil {
 		t.Fatal(err)
 	}
@@ -571,13 +1123,7 @@ func TestArchivingAWorkstreamArchivesItsAgentsAndOrchestratorAndNamesTheKeptWork
 	if !reflect.DeepEqual(kept, []string{ag.WorktreePath}) || len(f.requests("daemon.cleanup_worktree")) != 0 {
 		t.Fatalf("kept %v", kept)
 	}
-	var archived []string
-	for _, p := range f.requests("daemon.archive_session") {
-		var a struct{ SessionID string }
-		_ = json.Unmarshal(p, &a)
-		archived = append(archived, a.SessionID)
-	}
-	if !reflect.DeepEqual(archived, []string{committed, made.OrchestratorID}) {
+	if archived := f.sessionIDs("daemon.archive_session"); !reflect.DeepEqual(archived, []string{committed, made.OrchestratorID}) {
 		t.Fatalf("archived %v", archived)
 	}
 	if _, err := os.Stat(filepath.Join(f.dir, made.WorkstreamID, SharedDir)); err != nil {
@@ -586,27 +1132,120 @@ func TestArchivingAWorkstreamArchivesItsAgentsAndOrchestratorAndNamesTheKeptWork
 	if list, _ := f.c.List(f.ctx); list[0].ArchivedAt == "" {
 		t.Fatal("not archived")
 	}
-	if _, err := f.call(ToolSpawnAgent, map[string]any{"title": "X", "prompt": "Y"}, made.OrchestratorID); err == nil {
-		t.Fatal("an archived orchestrator spawned")
+	if _, err := f.call(ToolSpawnAgent, map[string]any{"title": "X", "prompt": "Y"}, made.OrchestratorID); err == nil || !strings.Contains(err.Error(), `The workstream "Payments" is archived`) {
+		t.Fatalf("an archived orchestrator spawned: %v", err)
 	}
 	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err == nil {
 		t.Fatal("archived twice")
 	}
 }
 
-func TestAfterARestartTheOrchestratorHearsOfAnIdleAgentItWaitedOn(t *testing.T) {
+func TestArchivingAWorkstreamStopsEveryWorkingAgentAtOnce(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: long(10)})
+	made := f.create("", "")
+	a := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	b := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
+	f.waitFor("both agents to work", func() bool { return working(f.r.Session(a)) && working(f.r.Session(b)) })
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err != nil {
+		t.Fatal(err)
+	}
+	reqs, err := f.d.Requests()
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := func(method, id string) int {
+		return slices.IndexFunc(reqs, func(r fakedaemon.Request) bool {
+			var p struct{ SessionID string }
+			_ = json.Unmarshal(r.Params, &p)
+			return r.Method == method && p.SessionID == id
+		})
+	}
+	first := min(at("daemon.archive_session", a), at("daemon.archive_session", b))
+	if at("daemon.interrupt_session", a) < 0 || at("daemon.interrupt_session", b) < 0 || first < 0 ||
+		at("daemon.interrupt_session", a) > first || at("daemon.interrupt_session", b) > first {
+		t.Fatalf("requests %v", reqs)
+	}
+	// The interrupted turns are not the orchestrator's news.
+	time.Sleep(500 * time.Millisecond)
+	if got := f.messages(made.OrchestratorID); len(got) != 1 {
+		t.Fatalf("orchestrator messages %q", got)
+	}
+}
+
+func TestAnArchiveCutShortGoesOnWhereItStopped(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	a := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.idle(a)
+	once := true
+	f.setRefuse(func(method, id string) *droid.RPCError {
+		if method == "daemon.archive_session" && id == made.OrchestratorID && once {
+			once = false
+			return &droid.RPCError{Code: -32603, Message: "busy"}
+		}
+		return nil
+	})
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err == nil {
+		t.Fatal("no error")
+	}
+	if f.agent(made.WorkstreamID, a).ArchivedAt == "" {
+		t.Fatal("the agent is not archived")
+	}
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err != nil {
+		t.Fatal(err)
+	}
+	if archived := f.sessionIDs("daemon.archive_session"); !reflect.DeepEqual(archived, []string{a, made.OrchestratorID}) {
+		t.Fatalf("archived %v", archived)
+	}
+}
+
+func TestSessionsArchivedFromAClientCountAsArchived(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	a := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	b := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
+	f.idle(a)
+	f.idle(b)
+	f.archiveFromClient(a)
+	if text, err := f.call(ToolArchiveAgent, map[string]any{"agent_id": a}, made.OrchestratorID); err != nil || !strings.HasPrefix(text, `Archived agent "API"`) {
+		t.Fatal(text, err)
+	}
+	if f.agent(made.WorkstreamID, a).ArchivedAt == "" {
+		t.Fatal("the agent is not archived")
+	}
+	f.archiveFromClient(b)
+	f.archiveFromClient(made.OrchestratorID)
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := f.c.List(f.ctx); list[0].ArchivedAt == "" || list[0].Agents[1].ArchivedAt == "" {
+		t.Fatalf("list %+v", list)
+	}
+}
+
+func TestAfterARestartTheOrchestratorHearsOnceOfAnIdleAgentItWaitedOn(t *testing.T) {
 	f := newFixture(t, fakedaemon.Scenario{
 		Sessions: []fakedaemon.SessionSpec{
 			{Title: "Payments", Cwd: "/w/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "Move it."}}},
 			{Title: "API", Cwd: "/w/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "[From orchestrator]\nMove /pay."}, {Role: "assistant", Text: "Halfway there."}}},
 			{Title: "Web", Cwd: "/w/pay", Messages: []fakedaemon.Message{{Role: "assistant", Text: "Done earlier."}}},
+			{Title: "Docs", Cwd: "/w/pay"},
+			{Title: "Gone", Cwd: "/w/pay"},
+			{Title: "Reported", Cwd: "/w/pay"},
 		},
 		Turn: reply("Noted."),
 	})
-	orch, api, web := f.d.Sessions[0].SessionID, f.d.Sessions[1].SessionID, f.d.Sessions[2].SessionID
+	ids := make([]string, len(f.d.Sessions))
+	for i, s := range f.d.Sessions {
+		ids[i] = s.SessionID
+	}
+	orch, api, web, docs, gone, rep := ids[0], ids[1], ids[2], ids[3], ids[4], ids[5]
 	w := &Workstream{ID: "payments-abc123", Title: "Payments", Workspace: "/w/pay", OrchestratorID: orch, CreatedAt: "2026-11-05T10:00:00Z", Agents: []*Agent{
 		{SessionID: api, Title: "API", CreatedAt: "2026-11-05T10:01:00Z", Awaiting: true},
 		{SessionID: web, Title: "Web", CreatedAt: "2026-11-05T10:02:00Z"},
+		{SessionID: docs, Title: "Docs", CreatedAt: "2026-11-05T10:03:00Z", Awaiting: true},
+		{SessionID: gone, Title: "Gone", CreatedAt: "2026-11-05T10:04:00Z", Awaiting: true},
+		{SessionID: rep, Title: "Reported", CreatedAt: "2026-11-05T10:05:00Z", Awaiting: true, ReportedSinceMessage: true},
 	}}
 	if err := os.MkdirAll(filepath.Join(f.dir, w.ID), 0o777); err != nil {
 		t.Fatal(err)
@@ -614,15 +1253,36 @@ func TestAfterARestartTheOrchestratorHearsOfAnIdleAgentItWaitedOn(t *testing.T) 
 	if err := save(f.dir, w); err != nil {
 		t.Fatal(err)
 	}
+	f.mu.Lock()
+	f.gone[gone] = true
+	f.mu.Unlock()
+	f.setRefuse(func(method, id string) *droid.RPCError {
+		if method == "daemon.load_session" && id == docs {
+			return &droid.RPCError{Code: -32603, Message: "busy"}
+		}
+		return nil
+	})
 	f.start()
-	want := `[From agent "API" (` + api + `)] Its turn ended without a report (Droi restarted while it worked). The start of its last reply:` + "\nHalfway there."
-	f.waitFor("the restart notice", func() bool { return slices.Contains(f.messages(orch), want) })
-	time.Sleep(300 * time.Millisecond)
-	if got := f.messages(orch); len(got) != 1 {
-		t.Fatalf("orchestrator messages %q", got)
+	want := []string{
+		`[From agent "API" (` + api + `)] Its turn ended without a report (Droi restarted while it worked). The start of its last reply:` + "\nHalfway there.",
+		`[From agent "Docs" (` + docs + `)] Its turn ended without a report (Droi restarted while it worked).`,
+		`[From agent "Reported" (` + rep + `)] Its turn ended (Droi restarted while it worked) after its report.`,
 	}
-	if f.agent(w.ID, api).Awaiting {
+	f.waitFor("the restart notices", func() bool {
+		got := f.messages(orch)
+		return len(got) == len(want) && !slices.ContainsFunc(want, func(m string) bool { return !slices.Contains(got, m) })
+	})
+	if a := f.agent(w.ID, api); a.Awaiting {
 		t.Fatal("still awaiting")
+	}
+	if a := f.agent(w.ID, gone); a.ArchivedAt == "" || a.Awaiting {
+		t.Fatalf("the agent archived from a Client %+v", a)
+	}
+	// Another restart says nothing again.
+	f.start()
+	time.Sleep(time.Second)
+	if got := f.messages(orch); len(got) != len(want) {
+		t.Fatalf("orchestrator messages %q", got)
 	}
 }
 
@@ -643,8 +1303,23 @@ func TestListAgentsShowsStatusWorktreeAndLastReport(t *testing.T) {
 		t.Fatal(text, err)
 	}
 	a := f.agent(made.WorkstreamID, id)
-	if len(got) != 1 || got[0].AgentID != id || got[0].Status != "idle" || got[0].Worktree != a.WorktreePath || got[0].Branch != a.Branch ||
+	if len(got) != 1 || got[0].AgentID != id || got[0].Status != "idle" || got[0].Worktree != a.WorktreePath || got[0].Branch != "droid/api" ||
 		got[0].LastActivity == "" || got[0].LastReport == nil || got[0].LastReport.Kind != "blocked" || len(got[0].LastReport.Message) != 300 {
 		t.Fatalf("list_agents %s", text)
+	}
+}
+
+func TestAnOldRecordStillReads(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "w-1"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"id":"w-1","title":"W","workspace":"/w","orchestratorId":"o","createdAt":"2026-11-05T10:00:00Z","agents":[{"sessionId":"a","title":"A","createdAt":"2026-11-05T10:01:00Z","awaiting":true,"reportedThisTurn":true}]}`
+	if err := os.WriteFile(filepath.Join(dir, "w-1", recordFile), []byte(old), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	w := loadAll(dir, func(s string) { t.Log(s) })["w-1"]
+	if w == nil || len(w.Agents) != 1 || !w.Agents[0].Awaiting || w.Agents[0].ReportedSinceMessage {
+		t.Fatalf("record %+v", w)
 	}
 }

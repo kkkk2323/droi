@@ -3,6 +3,7 @@ package workstream
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -68,7 +69,7 @@ var toolList = []map[string]any{
 	},
 	{
 		"name":        ToolInterruptAgent,
-		"description": "Stop an agent's current turn.",
+		"description": "End the agent's turn; it keeps its session and can get more work.",
 		"inputSchema": object(map[string]any{"agent_id": agentID}, "agent_id"),
 	},
 	{
@@ -107,10 +108,10 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 		}
 		kind, text := str(args, "kind"), str(args, "message")
 		if kind != "done" && kind != "blocked" && kind != "update" {
-			return mcpserver.Result{}, fmt.Errorf("kind must be done, blocked or update.")
+			return mcpserver.Result{}, errors.New("kind must be done, blocked or update.")
 		}
 		if text == "" {
-			return mcpserver.Result{}, fmt.Errorf("message is empty.")
+			return mcpserver.Result{}, errors.New("message is empty.")
 		}
 		if err := c.report(ctx, w, a, kind, text); err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The report did not reach the orchestrator: %v", err)
@@ -126,13 +127,16 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 	}
 	w := c.orchestratorOf(sessionID)
 	if w == nil {
+		if title := c.archivedTitle(sessionID); title != "" {
+			return mcpserver.Result{}, fmt.Errorf("The workstream %q is archived.", title)
+		}
 		return mcpserver.Result{}, fmt.Errorf("Only the orchestrator of a Droi workstream can call %s.", tool)
 	}
 	switch tool {
 	case ToolSpawnAgent:
-		title, prompt := str(args, "title"), str(args, "prompt")
+		title, prompt := cleanTitle(str(args, "title")), str(args, "prompt")
 		if title == "" || prompt == "" {
-			return mcpserver.Result{}, fmt.Errorf("spawn_agent needs a title and a prompt.")
+			return mcpserver.Result{}, errors.New("spawn_agent needs a title and a prompt.")
 		}
 		a, err := c.spawn(ctx, w, title, prompt)
 		if err != nil && a != nil {
@@ -158,19 +162,26 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 	case ToolSendMessage:
 		text := str(args, "message")
 		if text == "" {
-			return mcpserver.Result{}, fmt.Errorf("message is empty.")
+			return mcpserver.Result{}, errors.New("message is empty.")
 		}
-		if err := c.message(ctx, w, a, text); err != nil {
+		if err := c.inOrder(a.SessionID, func() error { return c.message(ctx, w, a, text) }); err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The message did not reach the agent: %v", err)
 		}
 		return mcpserver.Text(fmt.Sprintf("Sent to agent %q (%s). Its report arrives as a message in this session; end your turn now.", a.Title, a.SessionID), false), nil
 	case ToolInterruptAgent:
-		if err := c.interrupt(ctx, w, a); err != nil {
+		if err := c.inOrder(a.SessionID, func() error { return c.interrupt(ctx, w, a) }); err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The agent was not interrupted: %v", err)
 		}
 		return mcpserver.Text(fmt.Sprintf("Interrupted agent %q (%s).", a.Title, a.SessionID), false), nil
 	default:
-		removed, kept, err := c.archiveAgent(ctx, w, a)
+		var (
+			removed bool
+			kept    string
+		)
+		err := c.inOrder(a.SessionID, func() (err error) {
+			removed, kept, err = c.archiveAgent(ctx, w, a)
+			return err
+		})
 		if err != nil {
 			return mcpserver.Result{}, fmt.Errorf("The agent was not archived: %v", err)
 		}
@@ -197,7 +208,7 @@ func (c *Coordinator) agentOfWorkstream(w *Workstream, id string) (*Agent, error
 	a := agentIn(w, id)
 	switch {
 	case id == "":
-		return nil, fmt.Errorf("agent_id is empty.")
+		return nil, errors.New("agent_id is empty.")
 	case a == nil:
 		return nil, fmt.Errorf("This workstream has no agent %s.", id)
 	case a.ArchivedAt != "":

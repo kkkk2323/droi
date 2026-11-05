@@ -1,6 +1,7 @@
 package workstream
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -30,7 +31,8 @@ type Agent struct {
 	SessionID string `json:"sessionId"`
 	Title     string `json:"title"`
 	// WorktreePath and Branch are "" for an agent in a Workspace that is no
-	// git repository; BaseBranch is what the branch was cut from.
+	// git repository; BaseBranch is what the branch was cut from, a commit
+	// when the Workspace had none checked out.
 	WorktreePath string `json:"worktreePath,omitempty"`
 	Branch       string `json:"branch,omitempty"`
 	BaseBranch   string `json:"baseBranch,omitempty"`
@@ -38,14 +40,20 @@ type Agent struct {
 	// its tag: a Session whose settings differ was switched by hand.
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoningEffort,omitempty"`
-	CreatedAt       string `json:"createdAt"`
-	ArchivedAt      string `json:"archivedAt,omitempty"`
+	// PendingModel and PendingReasoningEffort are the Workstream's agent
+	// settings as the user last saved them, which the agent takes up once
+	// idle.
+	PendingModel           string `json:"pendingModel,omitempty"`
+	PendingReasoningEffort string `json:"pendingReasoningEffort,omitempty"`
+	CreatedAt              string `json:"createdAt"`
+	ArchivedAt             string `json:"archivedAt,omitempty"`
 	// Awaiting is set while the orchestrator waits on the agent: from a
 	// message the Host sent it to the end of the turn it started.
 	Awaiting bool `json:"awaiting"`
-	// ReportedThisTurn is set once it reported in its current turn.
-	ReportedThisTurn bool    `json:"reportedThisTurn"`
-	LastReport       *Report `json:"lastReport,omitempty"`
+	// ReportedSinceMessage is set once it reported after the last message
+	// the Host sent it.
+	ReportedSinceMessage bool    `json:"reportedSinceMessage"`
+	LastReport           *Report `json:"lastReport,omitempty"`
 }
 
 // Report is what an agent reported last.
@@ -113,12 +121,19 @@ func save(dir string, w *Workstream) error {
 	return nil
 }
 
-// newID is a Workstream's id: its title's ASCII letters and digits, then a
-// random suffix.
+// newID is a Workstream's id: its title's slug, then a random suffix.
 func newID(title string) string {
+	suffix := make([]byte, 3)
+	_, _ = rand.Read(suffix)
+	return cmp.Or(slug(title), "workstream") + "-" + hex.EncodeToString(suffix)
+}
+
+// slug is s's ASCII letters and digits, lowercased, with a "-" for each run
+// of anything else between them, cut at about 40 characters.
+func slug(s string) string {
 	var b strings.Builder
 	dash := false
-	for _, r := range strings.ToLower(title) {
+	for _, r := range strings.ToLower(s) {
 		switch {
 		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
 			if dash && b.Len() > 0 {
@@ -133,11 +148,5 @@ func newID(title string) string {
 			break
 		}
 	}
-	slug := strings.Trim(b.String(), "-")
-	if slug == "" {
-		slug = "workstream"
-	}
-	suffix := make([]byte, 3)
-	_, _ = rand.Read(suffix)
-	return slug + "-" + hex.EncodeToString(suffix)
+	return b.String()
 }

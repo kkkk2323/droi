@@ -133,6 +133,10 @@ func TestWorkstreamRequestsNeedATokenTheRightMethodAndAWholeRequest(t *testing.T
 	if status, _ := do(t, "POST", workstreamURL(g.URL(), localToken, WorkstreamArchivePath, nil), ""); status != 400 {
 		t.Fatal(status)
 	}
+	big := `{"title":"T","workspace":"/w","goal":"` + strings.Repeat("x", maxWorkstreamBody) + `"}`
+	if status, body := do(t, "POST", workstreamURL(g.URL(), testToken, WorkstreamCreatePath, nil), big); status != 413 || body != `{"error":"The request is too large"}` {
+		t.Fatal(status, body)
+	}
 	if len(ws.calls) != 0 {
 		t.Fatal(ws.calls)
 	}

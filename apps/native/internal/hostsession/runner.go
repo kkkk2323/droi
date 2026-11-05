@@ -73,6 +73,9 @@ type Spec struct {
 	// Worktree runs the Session in a worktree of Cwd of its own, kept out of
 	// the Daemon's clean-up of ephemeral ones.
 	Worktree bool
+	// WorktreeNewBranch, with Worktree, is the new branch the worktree gets,
+	// cut from Cwd's HEAD; the Daemon refuses one that exists.
+	WorktreeNewBranch string
 	// DisabledTools are disabledToolIds: tool ids, llm ids and MCP selectors
 	// (hosttools.Selector).
 	DisabledTools            []string
@@ -88,8 +91,8 @@ type Opened struct {
 	ReasoningEffort string
 }
 
-// Event is what Subscribe hears: TurnEnded or WorkingChanged, of a Session
-// the Runner follows.
+// Event is what Subscribe hears: TurnEnded, WorkingChanged or
+// SettingsUpdated, of a Session the Runner follows.
 type Event interface{ hostSessionEvent() }
 
 // TurnEnded is an agent turn's end. A turn whose worker stopped without
@@ -114,8 +117,13 @@ type WorkingChanged struct {
 	State     protocol.DroidWorkingState
 }
 
-func (TurnEnded) hostSessionEvent()      {}
-func (WorkingChanged) hostSessionEvent() {}
+// SettingsUpdated is a Session's new settings, which its Session already
+// holds when the event comes.
+type SettingsUpdated struct{ SessionID string }
+
+func (TurnEnded) hostSessionEvent()       {}
+func (WorkingChanged) hostSessionEvent()  {}
+func (SettingsUpdated) hostSessionEvent() {}
 
 // WorkerStopped is the Error of a TurnEnded whose worker stopped mid-turn.
 const WorkerStopped = "the Session's worker stopped"
@@ -341,6 +349,7 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 	if s.Worktree {
 		p.Worktree = &yes
 		p.WorktreeLifecycle = protocol.WorktreeLifecyclePersistent
+		p.WorktreeNewBranch = s.WorktreeNewBranch
 	}
 	if s.DisableInactivityTimeout {
 		p.DisableInactivityTimeout = &yes
@@ -443,34 +452,53 @@ func (r *Runner) Interrupt(ctx context.Context, sessionID string) error {
 	return r.ctl.InterruptSession(ctx, sessionID)
 }
 
-// idleWait bounds how long Archive waits for an interrupted turn to end.
+// idleWait bounds how long StopTurn waits for an interrupted turn to end.
 const idleWait = 10 * time.Second
 
+// StopTurn interrupts a Session's turn when it works and waits, up to
+// idleWait, for the turn to end. A Session the Runner does not follow is
+// loaded first, to know whether it works.
+func (r *Runner) StopTurn(ctx context.Context, sessionID string) error {
+	if err := r.ensureFollowed(ctx, sessionID); err != nil {
+		return err
+	}
+	if !r.working(sessionID) {
+		return nil
+	}
+	if err := r.Interrupt(ctx, sessionID); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(idleWait)
+	for r.working(sessionID) && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return nil
+}
+
+// IsSessionNotFound reports an error of a Session the Daemon does not know,
+// such as an archived one, which cannot be loaded again.
+func IsSessionNotFound(err error) bool {
+	var rpc *droid.RPCError
+	return errors.Is(err, controller.ErrSessionNotFound) || errors.As(err, &rpc) && rpc.Code == codeEntityNotFound
+}
+
+// codeEntityNotFound is the Daemon's JSON-RPC code for an unknown entity.
+const codeEntityNotFound = -32004
+
 // Archive archives a Session, interrupting it first when it works: the
-// Daemon refuses to archive a working Session. A Session the Runner does
-// not follow is loaded first, to know whether it works. Archive then closes
-// it, since an archived Session cannot be loaded again, and stops following
-// it.
+// Daemon refuses to archive a working Session. Archive then closes it,
+// since an archived Session cannot be loaded again, and stops following it.
 func (r *Runner) Archive(ctx context.Context, sessionID string) error {
 	cl, err := r.ctl.Client()
 	if err != nil {
 		return err
 	}
-	if err := r.ensureFollowed(ctx, sessionID); err != nil {
+	if err := r.StopTurn(ctx, sessionID); err != nil {
 		return err
-	}
-	if r.working(sessionID) {
-		if err := r.Interrupt(ctx, sessionID); err != nil {
-			return err
-		}
-		deadline := time.Now().Add(idleWait)
-		for r.working(sessionID) && time.Now().Before(deadline) {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(50 * time.Millisecond):
-			}
-		}
 	}
 	if _, err := cl.ArchiveSession(ctx, protocol.ArchiveSessionParams{SessionID: sessionID}); err != nil {
 		return err
@@ -634,6 +662,8 @@ func (r *Runner) seeNotification(n controller.SessionNotification) Event {
 		return WorkingChanged{SessionID: n.SessionID, State: v.NewState}
 	case *protocol.AgentTurnCompletedNotification:
 		return f.end(n.SessionID, v.Reason, f.firstError)
+	case *protocol.SettingsUpdatedNotification:
+		return SettingsUpdated{SessionID: n.SessionID}
 	case *protocol.SessionProcessExitedNotification:
 		// A worker kept for a prompt still owes the user an answer: the
 		// store keeps the Session waiting, and the turn goes on after it.

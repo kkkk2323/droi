@@ -196,6 +196,22 @@ _Avoid_: job run, execution, automation session
 A prompt the Daemon sends to the same Session on a schedule, as droid's `/loop` and Loop tool make it (a cron of kind `session_prompt`). It fires only while the Session has a worker; Droi shows a Session's Loops above its composer and keeps that worker running for them.
 _Avoid_: cron, scheduled loop, Automation (that one starts a new Session each run)
 
+**Workstream**:
+A long goal the user hands to an Orchestrator, which splits it among Workstream Agents (ADR 0036). It is Droi's own: the Host starts its Sessions, keeps its record and carries its tools. Archiving it archives its Sessions and keeps its Shared Folder.
+_Avoid_: mission, project, swarm, team
+
+**Orchestrator**:
+The Session that leads a Workstream: it plans, starts Workstream Agents, sends them work and hears their reports; it does not edit code. The user talks to it like any Session, and it stays in the session list.
+_Avoid_: lead, manager, coordinator, parent session
+
+**Workstream Agent**:
+A Session an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
+_Avoid_: worker, subagent (that is a Task call's Session), child session
+
+**Shared Folder**:
+A folder the Host keeps for each Workstream, outside the repository, where its Orchestrator and Workstream Agents leave plans, notes and hand-overs for each other.
+_Avoid_: scratch dir, notes folder, Scratch Workspace
+
 **Workspace**:
 The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo

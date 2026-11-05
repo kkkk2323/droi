@@ -3,6 +3,8 @@ package hostsession
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"sync"
@@ -118,21 +120,22 @@ func TestOpenStartsTheSessionItsSpecAsksForAndHearsItsTurnEnd(t *testing.T) {
 	})
 	r, seen := start(t, d, "Be brief.")
 	opened, err := r.Open(testContext(t), Spec{
-		Title:           "[Automation] Daily check",
-		Cwd:             repo,
-		ModelID:         "glm-5.3-flash",
-		ReasoningEffort: protocol.ReasoningEffortHigh,
-		AutonomyLevel:   protocol.AutonomyLevelMedium,
-		Tags:            []protocol.SessionTag{{Name: "droi.automation", Metadata: map[string]string{"automationId": "daily-check"}}},
-		SystemPrompt:    "Report in one line.",
-		Prompt:          "Check the build.",
-		Worktree:        true,
-		DisabledTools:   []string{"CreateAutomation", "mcp:droi-workstream"},
+		Title:             "[Automation] Daily check",
+		Cwd:               repo,
+		ModelID:           "glm-5.3-flash",
+		ReasoningEffort:   protocol.ReasoningEffortHigh,
+		AutonomyLevel:     protocol.AutonomyLevelMedium,
+		Tags:              []protocol.SessionTag{{Name: "droi.automation", Metadata: map[string]string{"automationId": "daily-check"}}},
+		SystemPrompt:      "Report in one line.",
+		Prompt:            "Check the build.",
+		Worktree:          true,
+		WorktreeNewBranch: "droid/daily-check",
+		DisabledTools:     []string{"CreateAutomation", "mcp:droi-workstream"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opened.SessionID == "" || opened.WorktreePath == "" || opened.WorktreeBranch == "" || opened.ModelID == "" {
+	if opened.SessionID == "" || opened.WorktreePath == "" || opened.WorktreeBranch != "droid/daily-check" || opened.ModelID == "" {
 		t.Fatalf("opened %+v", opened)
 	}
 	init, err := d.WaitForRequest("daemon.initialize_session", 1)
@@ -151,6 +154,7 @@ func TestOpenStartsTheSessionItsSpecAsksForAndHearsItsTurnEnd(t *testing.T) {
 		DisabledToolIDs   []string              `json:"disabledToolIds"`
 		Worktree          bool                  `json:"worktree"`
 		WorktreeLifecycle string                `json:"worktreeLifecycle"`
+		WorktreeNewBranch string                `json:"worktreeNewBranch"`
 		Skip              *bool                 `json:"skipPermissionsUnsafe"`
 		SystemPrompt      map[string]string     `json:"systemPrompt"`
 		Token             string                `json:"token"`
@@ -163,7 +167,7 @@ func TestOpenStartsTheSessionItsSpecAsksForAndHearsItsTurnEnd(t *testing.T) {
 		p.ModelID != "glm-5.3-flash" || p.ReasoningEffort != "high" || p.AutonomyLevel != "medium" ||
 		!reflect.DeepEqual(p.Tags, []protocol.SessionTag{{Name: "droi.automation", Metadata: map[string]string{"automationId": "daily-check"}}}) ||
 		!reflect.DeepEqual(p.DisabledToolIDs, []string{"CreateAutomation", "mcp:droi-workstream"}) ||
-		!p.Worktree || p.WorktreeLifecycle != "persistent" || p.Skip != nil ||
+		!p.Worktree || p.WorktreeLifecycle != "persistent" || p.WorktreeNewBranch != "droid/daily-check" || p.Skip != nil ||
 		!reflect.DeepEqual(p.SystemPrompt, wantPrompt) || p.Token != "fk-test" {
 		t.Errorf("initialize_session %s", init.Params)
 	}
@@ -766,5 +770,67 @@ func TestAReloadThatKeepsFailingEndsTheTurn(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if n := seen.count(isTurnEnd); n != 1 || !r.Following("idle") {
 		t.Fatalf("%d turn ends, idle followed %v", n, r.Following("idle"))
+	}
+}
+
+func TestStopTurnInterruptsAWorkingSessionAndWaitsForItsEnd(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"a", "b", "c", "d", "e", "f"}, DelayMs: 500}})
+	r, seen := start(t, d, "")
+	ctx := testContext(t)
+	opened, err := r.Open(ctx, Spec{Cwd: repo, Prompt: "Work for a while."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen.wait(t, "working state", func(e Event) bool {
+		w, ok := e.(WorkingChanged)
+		return ok && w.State != protocol.DroidWorkingStateIdle
+	})
+	if err := r.StopTurn(ctx, opened.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if ws := r.Session(opened.SessionID).WorkingState(); ws != protocol.DroidWorkingStateIdle {
+		t.Fatalf("working state %q", ws)
+	}
+	got := methods(t, d)
+	if !slices.Contains(got, "daemon.interrupt_session") || slices.Contains(got, "daemon.archive_session") {
+		t.Fatalf("requests %v", got)
+	}
+	// An idle Session is left alone.
+	if err := r.StopTurn(ctx, opened.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(slices.DeleteFunc(methods(t, d), func(m string) bool { return m != "daemon.interrupt_session" })); n != 1 {
+		t.Fatalf("%d interrupt_session", n)
+	}
+}
+
+func TestANewSettingsNotificationIsHeard(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{})
+	r, seen := start(t, d, "")
+	ctx := testContext(t)
+	opened, err := r.Open(ctx, Spec{Cwd: repo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: opened.SessionID, ReasoningEffort: protocol.ReasoningEffortLow}); err != nil {
+		t.Fatal(err)
+	}
+	seen.wait(t, "settings", func(e Event) bool { s, ok := e.(SettingsUpdated); return ok && s.SessionID == opened.SessionID })
+	// The store has them when the event comes.
+	if got := r.Session(opened.SessionID).Settings().ReasoningEffort; got != protocol.ReasoningEffortLow {
+		t.Fatalf("effort %q", got)
+	}
+}
+
+func TestASessionTheDaemonDoesNotKnowIsNotFound(t *testing.T) {
+	for _, err := range []error{controller.ErrSessionNotFound, fmt.Errorf("load: %w", controller.ErrSessionNotFound), &droid.RPCError{Code: -32004, Message: "Session not found"}} {
+		if !IsSessionNotFound(err) {
+			t.Errorf("%v", err)
+		}
+	}
+	for _, err := range []error{nil, errors.New("session not found"), &droid.RPCError{Code: -32603, Message: "No active session found for ID"}} {
+		if IsSessionNotFound(err) {
+			t.Errorf("%v", err)
+		}
 	}
 }
