@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
 	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // ServerName is the tool server of Workstream Sessions, carried through the
@@ -103,6 +105,9 @@ func (c *Coordinator) Server() hosttools.Server {
 func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any, sessionID string) (mcpserver.Result, error) {
 	if tool == ToolReport {
 		w, a := c.agentOf(sessionID)
+		if a == nil && c.adopt(ctx, sessionID, sessions.WorkstreamAgent) {
+			w, a = c.agentOf(sessionID)
+		}
 		if a == nil {
 			return mcpserver.Result{}, fmt.Errorf("Only an agent of a Droi workstream can call %s.", tool)
 		}
@@ -126,6 +131,9 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 		return mcpserver.Result{}, fmt.Errorf("No tool named %s.", tool)
 	}
 	w := c.orchestratorOf(sessionID)
+	if w == nil && c.adopt(ctx, sessionID, sessions.WorkstreamOrchestrator) {
+		w = c.orchestratorOf(sessionID)
+	}
 	if w == nil {
 		if title := c.archivedTitle(sessionID); title != "" {
 			return mcpserver.Result{}, fmt.Errorf("The workstream %q is archived.", title)
@@ -206,6 +214,13 @@ func (c *Coordinator) agentOfWorkstream(w *Workstream, id string) (*Agent, error
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	a := agentIn(w, id)
+	if a == nil && id != "" {
+		for _, b := range w.Agents {
+			if slices.Contains(b.PreviousSessionIDs, id) {
+				a = b
+			}
+		}
+	}
 	switch {
 	case id == "":
 		return nil, errors.New("agent_id is empty.")

@@ -408,3 +408,18 @@ func TestTheMemoryServerNeedsItsFolder(t *testing.T) {
 		t.Fatal(errOut.String())
 	}
 }
+
+func TestATranscriptNamesTheSessionItWasHandedOffFrom(t *testing.T) {
+	dir := tempDir(t)
+	child := writeSessionFile(t, dir, "-w", "child", `{"type":"session_start","id":"child","parent":"lead","cwd":"/w"}`, `{"type":"message"}`)
+	root := writeSessionFile(t, dir, "-w", "root", `{"type":"session_start","id":"root","cwd":"/w"}`, ``)
+	half := writeSessionFile(t, dir, "-w", "half", `{"type":"session_start","id":"half","parent":"le`)
+	for _, c := range []struct {
+		file, parent string
+		whole        bool
+	}{{child, "lead", true}, {root, "", true}, {half, "", false}, {filepath.Join(dir, "-w", "none.jsonl"), "", false}} {
+		parent, whole := ReadSessionParent(c.file)
+		eq(t, parent, c.parent)
+		eq(t, whole, c.whole)
+	}
+}

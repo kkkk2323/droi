@@ -75,9 +75,10 @@ func StartServices(h *host.Host) *Services {
 	s.Sessions.Start(ctx)
 	s.startAutomations(ctx, h, filepath.Join(h.UserData(), "automations"))
 	s.Workstreams = workstream.New(workstream.Config{
-		Dir:      filepath.Join(h.UserData(), "workstreams"),
-		Sessions: s.Sessions,
-		Log:      func(m string) { log.Println("[workstreams]", m) },
+		Dir:         filepath.Join(h.UserData(), "workstreams"),
+		SessionsDir: filepath.Join(h.SharedFactoryHome(), "sessions"),
+		Sessions:    s.Sessions,
+		Log:         func(m string) { log.Println("[workstreams]", m) },
 	})
 	if s.Tools != nil {
 		s.Tools.Register(workstream.ServerName, s.Workstreams.Server())

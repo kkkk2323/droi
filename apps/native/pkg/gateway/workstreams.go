@@ -113,8 +113,15 @@ type Workstreams interface {
 }
 
 // workstreamTimeout bounds what a Workstream request does on the Host:
-// starting Sessions, or archiving every agent.
-const workstreamTimeout = 2 * time.Minute
+// starting Sessions, or archiving every agent. With a request's own time on
+// top, a Client's wait stays inside the Relay's 120 s for a Host to answer.
+// A var for the tests.
+var workstreamTimeout = 100 * time.Second
+
+// ErrWorkstreamArchiveUnfinished is an archive the Host's bound cut short,
+// which WorkstreamArchivePath answers with 504: archiving the Workstream
+// again goes on where it stopped.
+var ErrWorkstreamArchiveUnfinished = errors.New("Archiving took too long and stopped partway. Archive the workstream again to finish.")
 
 // maxWorkstreamBody bounds a request's JSON.
 const maxWorkstreamBody = 1 << 20
@@ -183,6 +190,9 @@ func (g *Gateway) answerWorkstreams(w http.ResponseWriter, r *http.Request, endp
 			}
 			return http.StatusOK, WorkstreamArchived{KeptWorktrees: kept}
 		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) && r.Context().Err() == nil {
+			return http.StatusGatewayTimeout, errorBody{Error: ErrWorkstreamArchiveUnfinished.Error()}
+		}
 	}
 	var refused *RefusedRequest
 	if errors.As(err, &refused) {
@@ -215,9 +225,13 @@ func (c *Client) SetWorkstreamAgentSettings(ctx context.Context, s WorkstreamSet
 
 // ArchiveWorkstream archives a Workstream's agents and orchestrator; it
 // returns the worktrees kept because they hold changes.
+// ErrWorkstreamArchiveUnfinished is an archive that took too long.
 func (c *Client) ArchiveWorkstream(ctx context.Context, id string) ([]string, error) {
 	var done WorkstreamArchived
 	err := c.long(ctx, http.MethodPost, WorkstreamArchivePath, url.Values{WorkstreamIDQuery: {id}}, nil, &done)
+	if status := (*StatusError)(nil); errors.As(err, &status) && status.Status == http.StatusGatewayTimeout {
+		return nil, ErrWorkstreamArchiveUnfinished
+	}
 	return done.KeptWorktrees, err
 }
 

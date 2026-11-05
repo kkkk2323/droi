@@ -29,7 +29,10 @@ type Workstream struct {
 // Agent is one of a Workstream's agents.
 type Agent struct {
 	SessionID string `json:"sessionId"`
-	Title     string `json:"title"`
+	// PreviousSessionIDs are the Sessions it was handed off from, by which
+	// the orchestrator may still name it.
+	PreviousSessionIDs []string `json:"previousSessionIds,omitempty"`
+	Title              string   `json:"title"`
 	// WorktreePath and Branch are "" for an agent in a Workspace that is no
 	// git repository; BaseBranch is what the branch was cut from, a commit
 	// when the Workspace had none checked out.

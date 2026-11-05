@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeWorkstreams is the Host's side, recording what it was asked.
@@ -17,6 +19,8 @@ type fakeWorkstreams struct {
 	mu    sync.Mutex
 	calls []any
 	fail  error
+	// slow archives until the request's time is up.
+	slow bool
 }
 
 func (f *fakeWorkstreams) record(call any) error {
@@ -49,9 +53,13 @@ func (f *fakeWorkstreams) SetAgentSettings(_ context.Context, s WorkstreamSettin
 	return f.record(s)
 }
 
-func (f *fakeWorkstreams) Archive(_ context.Context, id string) ([]string, error) {
+func (f *fakeWorkstreams) Archive(ctx context.Context, id string) ([]string, error) {
 	if err := f.record("archive " + id); err != nil {
 		return nil, err
+	}
+	if f.slow {
+		<-ctx.Done()
+		return nil, fmt.Errorf("archiving agent %q: %w", "API", ctx.Err())
 	}
 	return []string{"/wt/a1"}, nil
 }
@@ -172,5 +180,28 @@ func TestAGatewayWithoutWorkstreamsIs404(t *testing.T) {
 	}
 	if _, err := c.CreateWorkstream(t.Context(), NewWorkstream{}); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
+	}
+}
+
+func TestAnArchiveCutShortByTheHostsBoundAnswers504AndTheClientSaysSo(t *testing.T) {
+	defer func(d time.Duration) { workstreamTimeout = d }(workstreamTimeout)
+	workstreamTimeout = 200 * time.Millisecond
+	g, c, ws := workstreamsGateway(t)
+	ws.slow = true
+	status, body := do(t, "POST", workstreamURL(g.URL(), testToken, WorkstreamArchivePath, url.Values{WorkstreamIDQuery: {"w"}}), "")
+	if status != 504 || body != `{"error":"Archiving took too long and stopped partway. Archive the workstream again to finish."}` {
+		t.Fatal(status, body)
+	}
+	if _, err := c.ArchiveWorkstream(t.Context(), "w"); !errors.Is(err, ErrWorkstreamArchiveUnfinished) || err.Error() != "Archiving took too long and stopped partway. Archive the workstream again to finish." {
+		t.Fatalf("%#v", err)
+	}
+}
+
+func TestAWorkstreamRequestIsAnsweredWithinTheRelaysWait(t *testing.T) {
+	// The Relay answers 504 to a request its Host has not answered in 120 s
+	// (internal/relay's headTimeout); the Client waits for the Host's bound
+	// and a request's own time.
+	if relayWait := 120 * time.Second; workstreamTimeout > 100*time.Second || workstreamTimeout+requestTimeout >= relayWait {
+		t.Fatalf("the Host takes up to %v", workstreamTimeout)
 	}
 }

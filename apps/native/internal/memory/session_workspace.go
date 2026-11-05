@@ -7,6 +7,7 @@
 package memory
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -57,6 +58,29 @@ func ReadSessionWorkspace(file string) string {
 	}
 	cwd, _ := parsed["cwd"].(string)
 	return cwd
+}
+
+// ReadSessionParent is the Session the transcript's Session was handed off
+// from (/handoff), as its session_start line names it; "" for none. whole is
+// false when the transcript has no whole session_start line yet.
+func ReadSessionParent(file string) (parent string, whole bool) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	line, err := bufio.NewReader(io.LimitReader(f, firstLineBytes)).ReadBytes('\n')
+	if err != nil {
+		return "", false
+	}
+	var start struct {
+		Type   string `json:"type"`
+		Parent string `json:"parent"`
+	}
+	if json.Unmarshal(line, &start) != nil || start.Type != "session_start" {
+		return "", false
+	}
+	return start.Parent, true
 }
 
 // SessionSettingsFile is the Session's settings file, which the Daemon keeps

@@ -518,6 +518,10 @@ func (r *Runner) Close(ctx context.Context, sessionID string) error {
 	return err
 }
 
+// Unfollow stops following a Session, which the Daemon keeps; Load follows
+// it again.
+func (r *Runner) Unfollow(sessionID string) { r.forget(sessionID) }
+
 // UpdateSettings changes a Session's settings, such as its model or tags.
 func (r *Runner) UpdateSettings(ctx context.Context, p protocol.UpdateSessionSettingsParams) error {
 	cl, err := r.ctl.Client()

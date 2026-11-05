@@ -3,6 +3,7 @@ package workstream
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,6 +42,8 @@ type fixture struct {
 	wtRoot string
 	ctx    context.Context
 	proxy  string
+	// sessionsDir stands for the Daemon's sessions folder.
+	sessionsDir string
 
 	mu sync.Mutex
 	// refuse, when set, answers a request in the Daemon's place.
@@ -86,7 +89,7 @@ func gitRepo(t *testing.T) string {
 
 func newFixture(t *testing.T, sc fakedaemon.Scenario) *fixture {
 	t.Helper()
-	f := &fixture{t: t, repo: gitRepo(t), wtRoot: filepath.Join(t.TempDir(), "worktrees"), dir: filepath.Join(t.TempDir(), "workstreams"), gone: map[string]bool{}}
+	f := &fixture{t: t, repo: gitRepo(t), wtRoot: filepath.Join(t.TempDir(), "worktrees"), dir: filepath.Join(t.TempDir(), "workstreams"), sessionsDir: t.TempDir(), gone: map[string]bool{}}
 	if sc.Input == nil {
 		sc.Input = map[string]any{}
 	}
@@ -230,7 +233,7 @@ func (f *fixture) start() {
 		SystemPromptAddition: func() string { return addition },
 		Log:                  func(s string) { t.Log(s) },
 	})
-	f.c = New(Config{Dir: f.dir, Sessions: f.r, Log: func(s string) { t.Log(s) }})
+	f.c = New(Config{Dir: f.dir, SessionsDir: f.sessionsDir, Sessions: f.r, Log: func(s string) { t.Log(s) }})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	f.r.Start(ctx)
@@ -1321,5 +1324,194 @@ func TestAnOldRecordStillReads(t *testing.T) {
 	w := loadAll(dir, func(s string) { t.Log(s) })["w-1"]
 	if w == nil || len(w.Agents) != 1 || !w.Agents[0].Awaiting || w.Agents[0].ReportedSinceMessage {
 		t.Fatalf("record %+v", w)
+	}
+}
+
+// handOff does what a Client's /handoff does: the Daemon starts a new
+// Session with the old one's tags, and droid writes its transcript, which
+// names the old one as its parent, beside the old one's.
+func (f *fixture) handOff(old string) string {
+	f.t.Helper()
+	cl, err := f.r.Client()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	res, err := cl.CompactSession(f.ctx, protocol.CompactSessionParams{SessionID: old, Mode: "handoff"})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	tags := f.initialized(old).Tags
+	if _, err := os.Stat(filepath.Join(f.sessionsDir, "-w-pay", old+".jsonl")); err != nil {
+		f.writeTranscript(old, "", tags)
+	}
+	f.writeTranscript(res.NewSessionID, old, tags)
+	return res.NewSessionID
+}
+
+// writeTranscript writes the files the Daemon keeps of a Session: its
+// transcript's first line and its settings.
+func (f *fixture) writeTranscript(id, parent string, tags []protocol.SessionTag) {
+	f.t.Helper()
+	dir := filepath.Join(f.sessionsDir, "-w-pay")
+	if err := os.MkdirAll(dir, 0o777); err != nil {
+		f.t.Fatal(err)
+	}
+	start := map[string]any{"type": "session_start", "id": id, "title": "New Session", "version": 2, "cwd": f.repo}
+	if parent != "" {
+		start["parent"] = parent
+	}
+	line, _ := json.Marshal(start)
+	settings, _ := json.Marshal(map[string]any{"model": "auto", "tags": tags})
+	if err := os.WriteFile(filepath.Join(dir, id+".jsonl"), append(line, '\n'), 0o666); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id+".settings.json"), settings, 0o666); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func TestAnOrchestratorHandedOffGoesOnInItsNewSession(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	agent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the agent's turn to end", func() bool { return !f.agent(made.WorkstreamID, agent).Awaiting })
+	f.idle(agent)
+	next := f.handOff(made.OrchestratorID)
+	text, err := f.call(ToolListAgents, nil, next)
+	if err != nil || !strings.Contains(text, agent) {
+		t.Fatal(text, err)
+	}
+	if list, _ := f.c.List(f.ctx); list[0].OrchestratorID != next {
+		t.Fatalf("list %+v", list[0])
+	}
+	if f.r.Following(made.OrchestratorID) || !f.r.Following(next) {
+		t.Fatal("the Runner follows the old link")
+	}
+	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": agent, "message": "Now /refund."}, next); err != nil {
+		t.Fatal(err)
+	}
+	// The agent's turn end is news to the new link.
+	prefix := `[From agent "API" (` + agent + `)] Its turn ended without a report`
+	f.waitFor("the notice", func() bool {
+		return slices.ContainsFunc(f.messages(next), func(m string) bool { return strings.HasPrefix(m, prefix) })
+	})
+	// The old link is the orchestrator no more.
+	if _, err := f.call(ToolListAgents, nil, made.OrchestratorID); err == nil {
+		t.Fatal("the old link listed the agents")
+	}
+	if got := loadAll(f.dir, func(string) {})[made.WorkstreamID].OrchestratorID; got != next {
+		t.Fatalf("recorded orchestrator %s", got)
+	}
+}
+
+func TestAReportAfterTheOrchestratorWasHandedOffGoesToItsNewSession(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	agent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.waitFor("the notice of the agent's first turn", func() bool { return len(f.messages(made.OrchestratorID)) == 2 })
+	before := len(f.messages(made.OrchestratorID))
+	next := f.handOff(made.OrchestratorID)
+	if _, err := f.call(ToolReport, map[string]any{"kind": "done", "message": "Moved /pay."}, agent); err != nil {
+		t.Fatal(err)
+	}
+	report := `[From agent "API" (` + agent + `)] done` + "\nMoved /pay."
+	if !slices.Contains(f.messages(next), report) || len(f.messages(made.OrchestratorID)) != before {
+		t.Fatalf("new link %q, old link %q", f.messages(next), f.messages(made.OrchestratorID))
+	}
+}
+
+func TestAnAgentHandedOffHearsAndReportsInItsNewSession(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	api := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	web := f.spawn(made.OrchestratorID, "Web", "Move the web client.")
+	f.waitFor("the turns to end", func() bool {
+		return !f.agent(made.WorkstreamID, api).Awaiting && !f.agent(made.WorkstreamID, web).Awaiting
+	})
+	f.idle(api)
+	f.idle(web)
+
+	// The orchestrator still names the agent by the id it knows.
+	nextAPI := f.handOff(api)
+	if _, err := f.call(ToolSendMessage, map[string]any{"agent_id": api, "message": "Now /refund."}, made.OrchestratorID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.messages(nextAPI); !slices.Contains(got, "[From orchestrator]\nNow /refund.") || len(f.messages(api)) != 1 {
+		t.Fatalf("new link %q, old link %q", got, f.messages(api))
+	}
+	if a := loadAll(f.dir, func(string) {})[made.WorkstreamID].Agents[0]; a.SessionID != nextAPI {
+		t.Fatalf("recorded agent %+v", a)
+	}
+
+	// A report from a link the Host has not heard of yet.
+	nextWeb := f.handOff(web)
+	if _, err := f.call(ToolReport, map[string]any{"kind": "done", "message": "Moved the web client."}, nextWeb); err != nil {
+		t.Fatal(err)
+	}
+	if want := `[From agent "Web" (` + nextWeb + `)] done` + "\nMoved the web client."; !slices.Contains(f.messages(made.OrchestratorID), want) {
+		t.Fatalf("orchestrator messages %q", f.messages(made.OrchestratorID))
+	}
+	if list, _ := f.c.List(f.ctx); list[0].Agents[0].SessionID != nextAPI || list[0].Agents[1].SessionID != nextWeb {
+		t.Fatalf("list %+v", list[0].Agents)
+	}
+	if _, err := f.call(ToolReport, map[string]any{"kind": "done", "message": "x"}, web); err == nil {
+		t.Fatal("the old link reported")
+	}
+}
+
+func TestASessionWithACopiedTagButNoLinkToTheRecordIsRefused(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	agent := f.spawn(made.OrchestratorID, "API", "Move /pay.")
+	f.idle(agent)
+	stranger := func(tag protocol.SessionTag, parent string) string {
+		opened, err := f.r.Open(f.ctx, hostsession.Spec{Cwd: f.repo, Tags: []protocol.SessionTag{tag}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.writeTranscript(opened.SessionID, parent, []protocol.SessionTag{tag})
+		return opened.SessionID
+	}
+	orchTag := f.initialized(made.OrchestratorID).Tags[0]
+	agentTag := f.initialized(agent).Tags[0]
+	unrelated := stranger(orchTag, "")
+	f.writeTranscript("11111111-2222-3333-4444-555555555555", "", nil)
+	for _, id := range []string{unrelated, stranger(orchTag, "11111111-2222-3333-4444-555555555555"), stranger(agentTag, made.OrchestratorID)} {
+		if _, err := f.call(ToolListAgents, nil, id); err == nil || !strings.Contains(err.Error(), "Only the orchestrator") {
+			t.Errorf("list_agents from %s: %v", id, err)
+		}
+	}
+	for _, id := range []string{stranger(agentTag, ""), stranger(orchTag, agent)} {
+		if _, err := f.call(ToolReport, map[string]any{"kind": "done", "message": "x"}, id); err == nil || !strings.Contains(err.Error(), "Only an agent") {
+			t.Errorf("report from %s: %v", id, err)
+		}
+	}
+	if w := loadAll(f.dir, func(string) {})[made.WorkstreamID]; w.OrchestratorID != made.OrchestratorID || w.Agents[0].SessionID != agent {
+		t.Fatalf("record %+v", w)
+	}
+}
+
+// The Host looks for a newer link before each message it sends: in one
+// Workspace folder of the Daemon's, reading each transcript's first line
+// once.
+func BenchmarkFindingANewerLinkInAFolderOf1000Sessions(b *testing.B) {
+	dir := b.TempDir()
+	folder := filepath.Join(dir, "-w-pay")
+	if err := os.MkdirAll(folder, 0o777); err != nil {
+		b.Fatal(err)
+	}
+	for i := range 1000 {
+		line := fmt.Sprintf(`{"type":"session_start","id":"s%d","cwd":"/w/pay"}`+"\n", i)
+		if err := os.WriteFile(filepath.Join(folder, fmt.Sprintf("s%d.jsonl", i)), []byte(line), 0o666); err != nil {
+			b.Fatal(err)
+		}
+	}
+	l := newLineage(dir)
+	if l.successor("s0") != "" {
+		b.Fatal("a successor")
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		l.successor("s0")
 	}
 }
