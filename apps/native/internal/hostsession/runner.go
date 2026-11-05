@@ -28,6 +28,10 @@ type Config struct {
 	// Credential authenticates the connection and spawns the Sessions'
 	// workers (host.Host.Credential).
 	Credential func(ctx context.Context) (*droid.Credential, error)
+	// HasCredential, optional, reports that there is a credential to connect
+	// with (host.Host.HasCredential); without one the Runner waits for
+	// OnChange instead of trying.
+	HasCredential func() bool
 	// SystemPromptAddition, optional, is added after Droid's system prompt
 	// of every Session the Runner opens, as the Gateway adds it to a
 	// Client's (host.Host.SystemPromptAddition).
@@ -37,6 +41,10 @@ type Config struct {
 	OnChange func(fn func()) (unsubscribe func())
 	// Log, optional, hears what went wrong.
 	Log func(string)
+
+	// maxReconnectAttempts is the Controller's; 0 is 1000. Tests set -1 to
+	// leave reconnecting to the Runner.
+	maxReconnectAttempts int
 }
 
 // Spec is a Session the Runner opens.
@@ -78,13 +86,17 @@ type Opened struct {
 // the Runner follows.
 type Event interface{ hostSessionEvent() }
 
-// TurnEnded is an agent turn's end.
+// TurnEnded is an agent turn's end. A turn whose worker stopped without
+// ending it (the Daemon restarted, or the worker died) ends with Reason
+// process_exit and Error WorkerStopped, once the Runner sees the Session
+// idle again.
 type TurnEnded struct {
 	SessionID string
 	Reason    protocol.AgentTurnCompletionReason
 	// Error is the turn's first error notification, "" when it had none.
 	Error string
-	// LastReply is the text of the Session's last assistant message.
+	// LastReply is the text of the turn's last assistant message: "" when
+	// none followed the last user message that carried text.
 	LastReply string
 }
 
@@ -97,6 +109,20 @@ type WorkingChanged struct {
 func (TurnEnded) hostSessionEvent()      {}
 func (WorkingChanged) hostSessionEvent() {}
 
+// WorkerStopped is the Error of a TurnEnded whose worker stopped mid-turn.
+const WorkerStopped = "the Session's worker stopped"
+
+// followed is what the Runner keeps of a Session it follows.
+type followed struct {
+	// inTurn: the Session started working and its turn has not ended.
+	inTurn bool
+	// firstError is the turn's first error notification.
+	firstError string
+	// reply is the text of the last assistant message since the last user
+	// message that carried text.
+	reply string
+}
+
 // Runner starts and follows the Host's Sessions; safe for use from any
 // goroutine.
 type Runner struct {
@@ -104,24 +130,26 @@ type Runner struct {
 	ctl *controller.Controller
 
 	mu        sync.Mutex
-	following map[string]bool
-	// firstError is the first error notification of each Session's turn.
-	firstError map[string]string
-	subs       map[int]func(Event)
-	next       int
+	following map[string]*followed
+	subs      map[int]func(Event)
+	next      int
 }
 
 // New makes a Runner; Start connects it.
 func New(cfg Config) *Runner {
-	r := &Runner{cfg: cfg, following: map[string]bool{}, firstError: map[string]string{}, subs: map[int]func(Event){}}
+	r := &Runner{cfg: cfg, following: map[string]*followed{}, subs: map[int]func(Event){}}
+	reconnects := cfg.maxReconnectAttempts
+	if reconnects == 0 {
+		// The Daemon restarts on its own (the Host's Supervisor); keep trying.
+		reconnects = 1000
+	}
 	r.ctl = controller.New(controller.Config{
 		ResolveURL: cfg.ResolveURL,
 		Credential: cfg.Credential,
 		Caller:     "droi-native",
 		// Start keeps trying, with its own backoff.
-		MaxConnectAttempts: 1,
-		// The Daemon restarts on its own (the Host's Supervisor); keep trying.
-		MaxReconnectAttempts: 1000,
+		MaxConnectAttempts:   1,
+		MaxReconnectAttempts: reconnects,
 		DefaultMessageLimit:  50,
 	})
 	r.ctl.Subscribe(r.see)
@@ -151,15 +179,29 @@ func (r *Runner) keepConnected(ctx context.Context) {
 			wake(poke)
 		}
 	})()
-	var delay time.Duration
+	var (
+		delay     time.Duration
+		connected bool
+		lastErr   string
+	)
 	for ctx.Err() == nil {
 		st := r.ctl.Status()
-		if !st.Connected && !st.Reconnecting {
+		signedIn := r.cfg.HasCredential == nil || r.cfg.HasCredential()
+		if !st.Connected && !st.Reconnecting && signedIn {
 			if err := r.ctl.Connect(ctx); err != nil && ctx.Err() == nil {
-				r.log("connect: " + err.Error())
+				// A Daemon that stays down fails the same way every 30 s.
+				if err.Error() != lastErr {
+					r.log("connect: " + err.Error())
+				}
+				lastErr = err.Error()
 				delay = retryDelay(delay)
-			} else {
-				delay = 0
+			} else if err == nil {
+				if connected {
+					// The Controller reloads its Sessions after its own
+					// reconnect, not after this one.
+					r.reloadFollowed(ctx)
+				}
+				connected, delay, lastErr = true, 0, ""
 			}
 		}
 		if delay > 0 {
@@ -177,6 +219,24 @@ func (r *Runner) keepConnected(ctx context.Context) {
 		case <-hostPoke:
 		case <-ctx.Done():
 		}
+	}
+}
+
+// reloadFollowed loads every followed Session again on a new connection, so
+// their notifications reach it.
+func (r *Runner) reloadFollowed(ctx context.Context) {
+	r.mu.Lock()
+	ids := make([]string, 0, len(r.following))
+	for id := range r.following {
+		ids = append(ids, id)
+	}
+	r.mu.Unlock()
+	for _, id := range ids {
+		go func() {
+			if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: id}); err != nil && ctx.Err() == nil {
+				r.log("reload " + id + ": " + err.Error())
+			}
+		}()
 	}
 }
 
@@ -242,6 +302,18 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 	if w := res.Worktree; w != nil {
 		o.WorktreePath, o.WorktreeBranch = w.Path, w.Branch
 	}
+	if s.SkipPermissions {
+		// The Controller keeps a Session's spawn options from its loads, not
+		// from initialize_session: without this load, the worker a reload
+		// spawns would ask for permissions. The Daemon keeps the live worker.
+		lp := protocol.LoadSessionParams{SessionID: o.SessionID, SkipPermissionsUnsafe: &yes}
+		if s.DisableInactivityTimeout {
+			lp.DisableInactivityTimeout = &yes
+		}
+		if _, err := r.ctl.LoadSession(ctx, lp); err != nil {
+			return o, err
+		}
+	}
 	if s.Prompt != "" {
 		if _, err := r.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: o.SessionID, Text: s.Prompt}); err != nil {
 			return o, err
@@ -279,13 +351,18 @@ func (r *Runner) Load(ctx context.Context, sessionID string) error {
 // Send sends a Session a user message; one sent while it works joins the
 // running turn. A Session the Runner does not follow is loaded first.
 func (r *Runner) Send(ctx context.Context, sessionID, text string) error {
-	if !r.Following(sessionID) {
-		if err := r.Load(ctx, sessionID); err != nil {
-			return err
-		}
+	if err := r.ensureFollowed(ctx, sessionID); err != nil {
+		return err
 	}
 	_, err := r.ctl.AddUserMessage(ctx, protocol.AddUserMessageParams{SessionID: sessionID, Text: text})
 	return err
+}
+
+func (r *Runner) ensureFollowed(ctx context.Context, sessionID string) error {
+	if r.Following(sessionID) {
+		return nil
+	}
+	return r.Load(ctx, sessionID)
 }
 
 // Interrupt stops a Session's turn.
@@ -297,11 +374,16 @@ func (r *Runner) Interrupt(ctx context.Context, sessionID string) error {
 const idleWait = 10 * time.Second
 
 // Archive archives a Session, interrupting it first when it works: the
-// Daemon refuses to archive a working Session. It then closes it, since an
-// archived Session cannot be loaded again, and stops following it.
+// Daemon refuses to archive a working Session. A Session the Runner does
+// not follow is loaded first, to know whether it works. Archive then closes
+// it, since an archived Session cannot be loaded again, and stops following
+// it.
 func (r *Runner) Archive(ctx context.Context, sessionID string) error {
 	cl, err := r.ctl.Client()
 	if err != nil {
+		return err
+	}
+	if err := r.ensureFollowed(ctx, sessionID); err != nil {
 		return err
 	}
 	if r.working(sessionID) {
@@ -364,11 +446,13 @@ func (r *Runner) Pending(sessionID string) (permissions, questions int) {
 func (r *Runner) Following(sessionID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.following[sessionID]
+	return r.following[sessionID] != nil
 }
 
-// Subscribe calls fn with every Event, in order, on a goroutine of the
-// Runner's own; fn may call the Runner. The returned function unsubscribes.
+// Subscribe calls fn with every Event, in order, on the Controller's event
+// goroutine, which all subscribers share: fn may call the Runner, but a slow
+// fn holds up every later event, so long work belongs on a goroutine of the
+// subscriber's own. The returned function unsubscribes.
 func (r *Runner) Subscribe(fn func(Event)) (unsubscribe func()) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -385,11 +469,10 @@ func (r *Runner) Subscribe(fn func(Event)) (unsubscribe func()) {
 func (r *Runner) follow(sessionID string, on bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if on {
-		r.following[sessionID] = true
-	} else {
+	if !on {
 		delete(r.following, sessionID)
-		delete(r.firstError, sessionID)
+	} else if r.following[sessionID] == nil {
+		r.following[sessionID] = &followed{}
 	}
 }
 
@@ -404,69 +487,104 @@ func (r *Runner) working(sessionID string) bool {
 }
 
 // see turns the Controller's events into the Runner's, for the Sessions it
-// follows.
+// follows. It runs on the Controller's event goroutine, so what it keeps of
+// a turn follows the notifications in their order.
 func (r *Runner) see(e controller.Event) {
-	n, ok := e.(controller.SessionNotification)
-	if !ok {
+	var out Event
+	switch e := e.(type) {
+	case controller.SessionNotification:
+		out = r.seeNotification(e)
+	case controller.SessionLoaded:
+		out = r.seeLoaded(e.SessionID)
+	}
+	if out == nil {
 		return
 	}
 	r.mu.Lock()
-	if !r.following[n.SessionID] {
-		r.mu.Unlock()
-		return
-	}
-	var out Event
-	switch v := n.Value.(type) {
-	case *protocol.ErrorNotification:
-		if r.firstError[n.SessionID] == "" {
-			r.firstError[n.SessionID] = v.Message
-		}
-	case *protocol.DroidWorkingStateChangedNotification:
-		out = WorkingChanged{SessionID: n.SessionID, State: v.NewState}
-	case *protocol.AgentTurnCompletedNotification:
-		out = TurnEnded{SessionID: n.SessionID, Reason: v.Reason, Error: r.firstError[n.SessionID]}
-		delete(r.firstError, n.SessionID)
-	}
 	subs := make([]func(Event), 0, len(r.subs))
 	for _, fn := range r.subs {
 		subs = append(subs, fn)
 	}
 	r.mu.Unlock()
-	if out == nil {
-		return
-	}
-	if t, ok := out.(TurnEnded); ok {
-		// The store took the turn's messages before the Controller sent this.
-		t.LastReply = lastReply(r.Session(n.SessionID))
-		out = t
-	}
 	for _, fn := range subs {
 		fn(out)
 	}
 }
 
-// lastReply is the text of a Session's last assistant message that has any.
-func lastReply(s *session.Session) string {
-	if s == nil {
-		return ""
+func (r *Runner) seeNotification(n controller.SessionNotification) Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f := r.following[n.SessionID]
+	if f == nil {
+		return nil
 	}
-	msgs := s.Messages()
-	for i := len(msgs) - 1; i >= 0; i-- {
-		m := msgs[i]
-		if m.Role != protocol.MessageRoleAssistant {
-			continue
+	switch v := n.Value.(type) {
+	case *protocol.ErrorNotification:
+		// An error between turns is not the next turn's.
+		if f.inTurn && f.firstError == "" {
+			f.firstError = v.Message
 		}
-		var text strings.Builder
-		for _, b := range m.Content {
-			if v, err := b.Value(); err == nil {
-				if tb, ok := v.(*protocol.TextBlock); ok {
-					text.WriteString(tb.Text)
-				}
+	case *protocol.CreateMessageNotification:
+		if text := textOf(v.Message.Content); text != "" {
+			switch v.Message.Role {
+			case protocol.MessageRoleAssistant:
+				f.reply = text
+			case protocol.MessageRoleUser:
+				f.reply = ""
 			}
 		}
-		if text.Len() > 0 {
-			return text.String()
+	case *protocol.DroidWorkingStateChangedNotification:
+		if v.NewState != protocol.DroidWorkingStateIdle {
+			f.inTurn = true
+		}
+		return WorkingChanged{SessionID: n.SessionID, State: v.NewState}
+	case *protocol.AgentTurnCompletedNotification:
+		return f.end(n.SessionID, v.Reason, f.firstError)
+	case *protocol.SessionProcessExitedNotification:
+		// A worker kept for a prompt still owes the user an answer: the
+		// store keeps the Session waiting, and the turn goes on after it.
+		if f.inTurn && !r.working(n.SessionID) {
+			return f.end(n.SessionID, protocol.AgentTurnCompletionReasonProcessExit, WorkerStopped)
 		}
 	}
-	return ""
+	return nil
+}
+
+// seeLoaded ends a turn that a load, such as the reload after a Daemon
+// restart, finds over without its end having come.
+func (r *Runner) seeLoaded(sessionID string) Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f := r.following[sessionID]
+	if f == nil {
+		return nil
+	}
+	if r.working(sessionID) {
+		f.inTurn = true
+		return nil
+	}
+	if f.inTurn {
+		return f.end(sessionID, protocol.AgentTurnCompletionReasonProcessExit, WorkerStopped)
+	}
+	return nil
+}
+
+// end is the TurnEnded of f's turn; the next turn starts afresh.
+func (f *followed) end(sessionID string, reason protocol.AgentTurnCompletionReason, failure string) TurnEnded {
+	t := TurnEnded{SessionID: sessionID, Reason: reason, Error: failure, LastReply: f.reply}
+	*f = followed{}
+	return t
+}
+
+// textOf is the text of a message's text blocks.
+func textOf(blocks []protocol.ContentBlock) string {
+	var text strings.Builder
+	for _, b := range blocks {
+		if v, err := b.Value(); err == nil {
+			if tb, ok := v.(*protocol.TextBlock); ok {
+				text.WriteString(tb.Text)
+			}
+		}
+	}
+	return text.String()
 }

@@ -30,7 +30,8 @@ type Options struct {
 	// Env reads the environment: XDG_CONFIG_HOME, XDG_DATA_HOME, PATH and
 	// FACTORY_API_KEY. Nil reads nothing.
 	Env func(string) string
-	// Executable runs the Memory Server and the hook; "" leaves Memory out.
+	// Executable runs the Memory Server, the hook and the Host's tool
+	// servers; "" leaves them out.
 	Executable string
 	// Port is the Gateway's preferred port, the brand's when 0.
 	Port int
@@ -89,7 +90,7 @@ func Run(ctx context.Context, o Options) error {
 		if o.Overlay != nil {
 			app = o.Overlay(h)
 		}
-		return app.Add(svc.Overlay())
+		return svc.Overlay(app)
 	}
 	cfg.ClientHiddenTools = func() []string { return svc.ClientHiddenTools() }
 	h = host.New(cfg)

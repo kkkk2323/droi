@@ -39,6 +39,7 @@ func StartServices(h *host.Host) *Services {
 	s.Sessions = hostsession.New(hostsession.Config{
 		ResolveURL:           h.WaitForDaemonURL,
 		Credential:           h.Credential,
+		HasCredential:        h.HasCredential,
 		SystemPromptAddition: h.SystemPromptAddition,
 		OnChange:             h.OnChange,
 		Log:                  func(m string) { log.Println("[host sessions]", m) },
@@ -49,13 +50,14 @@ func StartServices(h *host.Host) *Services {
 	return s
 }
 
-// Overlay is what the Services add to the Runtime Overlay: their tool
-// servers.
-func (s *Services) Overlay() host.OverlayOptions {
+// Overlay is the Runtime Overlay's additions: the Services' tool servers,
+// then app's, the app's extensions'. Droi's servers come first, so that an
+// extension's server of the same name cannot take their place.
+func (s *Services) Overlay(app host.OverlayOptions) host.OverlayOptions {
 	if s == nil || s.Tools == nil {
-		return host.OverlayOptions{}
+		return app
 	}
-	return s.Tools.Overlay()
+	return s.Tools.Overlay().Add(app)
 }
 
 // HideFromClients leaves tools out of every Client's Session (from droid

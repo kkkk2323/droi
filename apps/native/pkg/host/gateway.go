@@ -26,6 +26,8 @@ func (h *Host) SystemPromptAddition() string {
 // clientHiddenTools is Config.ClientHiddenTools, nil from a droid that does
 // not take MCP selectors and llm ids in disabledToolIds.
 func (h *Host) clientHiddenTools() []string {
+	// DroidVersion reads the droid on disk (Droi's droid when the Key Pool
+	// is on), which differs from the running Daemon's only until it restarts.
 	if h.cfg.ClientHiddenTools == nil || olderThan(h.DroidVersion(), hiddenToolsDroid) {
 		return nil
 	}

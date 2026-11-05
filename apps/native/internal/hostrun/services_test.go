@@ -16,12 +16,21 @@ func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	if s.Tools == nil || s.Sessions == nil {
 		t.Fatalf("%+v", s)
 	}
-	if o := s.Overlay(); len(o.MCPServers) != 0 {
+	if o := s.Overlay(host.OverlayOptions{}); len(o.MCPServers) != 0 {
 		t.Fatalf("an overlay before any server: %+v", o)
 	}
 	s.Tools.Register("droi-test", hosttools.Server{Autonomy: "low"})
-	if got := s.Overlay().MCPServers["droi-test"].Config["args"]; !slices.Equal(got.([]string), []string{hosttools.Command, "droi-test"}) {
-		t.Fatalf("args %v", got)
+	// An extension's server cannot take the name of one of Droi's.
+	ext := host.OverlayOptions{MCPServers: map[string]host.MCPServer{
+		"droi-test": {Config: map[string]any{"type": "http", "url": "https://example.com/mcp"}},
+		"corp":      {Config: map[string]any{"type": "http", "url": "https://corp.example.com/mcp"}},
+	}}
+	o := s.Overlay(ext)
+	if got := o.MCPServers["droi-test"].Config["args"]; !slices.Equal(got.([]string), []string{hosttools.Command, "droi-test"}) {
+		t.Fatalf("droi-test %v", o.MCPServers["droi-test"])
+	}
+	if o.MCPServers["corp"].Config["url"] != "https://corp.example.com/mcp" {
+		t.Fatalf("the extension's own server is gone: %v", o.MCPServers)
 	}
 
 	s.HideFromClients("CreateAutomation", "mcp:droi-workstream")
@@ -38,7 +47,8 @@ func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 
 func TestNoServicesAddNothing(t *testing.T) {
 	var none *Services
-	if none.ClientHiddenTools() != nil || len(none.Overlay().MCPServers) != 0 {
+	ext := host.OverlayOptions{Env: map[string]string{"A": "1"}}
+	if none.ClientHiddenTools() != nil || none.Overlay(ext).Env["A"] != "1" || len(none.Overlay(ext).MCPServers) != 0 {
 		t.Fatal("nil Services add something")
 	}
 	none.Stop()
