@@ -438,7 +438,14 @@ func (r *Runner) Load(ctx context.Context, sessionID string, disabledTools ...st
 		}
 		return err
 	}
-	return nil
+	if len(disabledTools) == 0 {
+		return nil
+	}
+	// A load that finds the Session's worker running, as a Session just
+	// handed off has, reuses it without handing it the load's
+	// disabledToolIds (droid 1.4.1). Its settings reach that worker, which
+	// saves them for the workers spawned later.
+	return r.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: sessionID, DisabledToolIDs: disabledTools})
 }
 
 // Send sends a Session a user message; one sent while it works joins the

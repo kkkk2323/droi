@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -584,6 +585,41 @@ func TestTheReloadAfterTheRunnersOwnConnectHidesWhatTheSessionHid(t *testing.T) 
 	}
 	if got := hiddenOnLoads(t, d, loaded); !reflect.DeepEqual(got[1], []string{"RunAutomation", "mcp:droi-workstream/report"}) {
 		t.Errorf("the loaded Session was loaded again hiding %v", got)
+	}
+}
+
+// A load that finds the Session's worker running reuses it without handing
+// it the load's disabledToolIds, as with a Session just handed off: Load
+// gives them to the worker through its settings too.
+func TestLoadHidesToolsThroughTheSessionsSettingsToo(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Agent", Cwd: repo}, {Title: "Other", Cwd: repo}}})
+	r, _ := start(t, d, "")
+	ctx := testContext(t)
+	hidden, plain := d.Sessions[0].SessionID, d.Sessions[1].SessionID
+	if err := r.Load(ctx, hidden, "RunAutomation", "mcp:droi-workstream/spawn_agent"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Load(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	reqs, err := d.Requests()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updates []protocol.UpdateSessionSettingsParams
+	loadedFirst := false
+	for _, q := range reqs {
+		var p protocol.UpdateSessionSettingsParams
+		switch {
+		case q.Method == "daemon.load_session" && strings.Contains(string(q.Params), hidden):
+			loadedFirst = len(updates) == 0
+		case q.Method == "daemon.update_session_settings" && json.Unmarshal(q.Params, &p) == nil:
+			updates = append(updates, p)
+		}
+	}
+	if len(updates) != 1 || updates[0].SessionID != hidden || !loadedFirst ||
+		!reflect.DeepEqual(updates[0].DisabledToolIDs, []string{"RunAutomation", "mcp:droi-workstream/spawn_agent"}) {
+		t.Fatalf("settings updates %+v (after the load: %v); requests %v", updates, loadedFirst, methods(t, d))
 	}
 }
 
