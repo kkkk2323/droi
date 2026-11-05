@@ -27,6 +27,7 @@ import {
   STALE_WORKSPACE_MS,
   withoutAutomationRuns,
   AUTOMATION_TAG,
+  DROI_AUTOMATION_TAG,
   type SortOrder,
   visibleSessions,
   withAnnouncedSubagents,
@@ -411,7 +412,11 @@ test('withoutAutomationRuns leaves out runs only', () => {
     tags: [{ name: AUTOMATION_TAG, metadata: { type: 'create' } }],
   })
   const plain = summary({ sessionId: 'plain' })
-  expect(withoutAutomationRuns([run, setup, plain]).map((s) => s.sessionId)).toEqual([
+  const droiRun = summary({
+    sessionId: 'droi-run',
+    tags: [{ name: DROI_AUTOMATION_TAG, metadata: { automationId: 'a1' } }],
+  })
+  expect(withoutAutomationRuns([run, setup, droiRun, plain]).map((s) => s.sessionId)).toEqual([
     'setup',
     'plain',
   ])

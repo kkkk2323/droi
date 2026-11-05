@@ -659,10 +659,18 @@ export function splitStale(
 /** The tag the Daemon gives the Sessions an Automation starts; a run's says type "run". */
 export const AUTOMATION_TAG = 'automation'
 
-/** Leaves out Automation runs, which the computer's Automations page lists. */
+/** The tag of the Sessions Droi's own Automations start, one per run. */
+export const DROI_AUTOMATION_TAG = 'droi.automation'
+
+/** Leaves out Automation runs, the Daemon's and Droi's, which the computer's Automations page lists. */
 export function withoutAutomationRuns(sessions: readonly SessionSummary[]): SessionSummary[] {
   return sessions.filter(
-    (s) => !s.tags.some((t) => t.name === AUTOMATION_TAG && t.metadata?.['type'] === 'run'),
+    (s) =>
+      !s.tags.some(
+        (t) =>
+          t.name === DROI_AUTOMATION_TAG ||
+          (t.name === AUTOMATION_TAG && t.metadata?.['type'] === 'run'),
+      ),
   )
 }
 

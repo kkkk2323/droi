@@ -64,6 +64,15 @@ Droi on the computer must be a build with the computer name and id in its
 - [ ] Archiving a Session in an ephemeral worktree asks first, and the checkout
       is gone from the computer afterwards; a persistent one archives without asking.
 
+## Workstreams
+
+- [ ] With a Workstream started in Droi on the computer, the list shows its
+      orchestrator with "Workstream · N agents" and none of its agents; an agent
+      waiting on a permission adds "· 1 waiting" within a few seconds.
+- [ ] The orchestrator's Agents button opens the sheet; tapping an agent pushes
+      its Session with the permission card, and "Workstream: …" above its title
+      goes back to the orchestrator.
+
 ## Skills and MCP servers
 
 - [ ] The wrench in a Session's header opens the sheet; switching a skill off

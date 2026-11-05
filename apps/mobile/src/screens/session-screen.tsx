@@ -22,6 +22,7 @@ import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
 import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
 import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
 import { useTurn } from '@droi/daemon-layer/use-turn'
+import { agentsOf, orchestratorOf, workstreamOf } from '@droi/daemon-layer/workstreams'
 import { Stack, useFocusEffect, useRouter } from 'expo-router'
 import { useHeaderHeight } from 'expo-router/react-navigation'
 import { ChevronUp } from 'lucide-react-native'
@@ -37,6 +38,7 @@ import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
 import { hasPrompt, PromptArea } from '../composer/prompt-cards'
 import { SessionSettingsBar } from '../composer/session-settings'
 import { SubagentsButton, SubagentTitle } from '../sessions/subagent-nav'
+import { AgentsButton, AgentTitle } from '../sessions/workstream-nav'
 import { ToolsButton } from '../tools/tools-sheet'
 import { GitChangesButton } from '../transcript/git-changes'
 import { TranscriptView } from '../transcript/transcript-view'
@@ -61,6 +63,8 @@ export function OpenSessionScreen({ sessionId }: { sessionId: string }) {
   const all = connected.sessions.sessions
   const session = connected.find(sessionId)
   const chain = session ? continuationChain(all, session) : []
+  const workstream = session ? workstreamOf(session.tags) : null
+  const lead = session && workstream?.role === 'agent' ? orchestratorOf(all, session) : null
   return (
     <ConnectionGate computer={connected.computer}>
       {session ? (
@@ -71,6 +75,14 @@ export function OpenSessionScreen({ sessionId }: { sessionId: string }) {
           trail={callerTrail(all, session)}
           siblings={subagentSiblings(all, session)}
           subagents={subagentsOf(all, [session.sessionId, ...chain.map((s) => s.sessionId)])}
+          agents={workstream?.role === 'orchestrator' ? agentsOf(all, session) : null}
+          orchestrator={
+            lead
+              ? { sessionId: lead.sessionId, title: lead.title }
+              : workstream?.orchestratorId
+                ? { sessionId: workstream.orchestratorId, title: 'Orchestrator' }
+                : null
+          }
           onContinued={(next) => router.replace(sessionPath(next))}
         />
       ) : !connected.sessions.live ? (
@@ -95,6 +107,8 @@ export function SessionScreen({
   trail,
   siblings,
   subagents,
+  agents,
+  orchestrator,
   onContinued,
 }: {
   session: SessionSummary
@@ -108,6 +122,10 @@ export function SessionScreen({
   siblings: readonly SessionSummary[]
   /** The subagents this Session (or an earlier link of its chain) called. */
   subagents: readonly SessionSummary[]
+  /** For a Workstream's orchestrator: its agents; null for any other Session. */
+  agents: readonly SessionSummary[] | null
+  /** For a Workstream agent: the orchestrator it reports to. */
+  orchestrator: SessionRef | null
 }) {
   const colors = useColors()
   const insets = useSafeAreaInsets()
@@ -211,7 +229,7 @@ export function SessionScreen({
     </Pressable>
   ) : null
 
-  const subagentTitle =
+  const headerTitle =
     trail.length > 0 ? (
       <SubagentTitle
         sessionId={session.sessionId}
@@ -219,9 +237,12 @@ export function SessionScreen({
         trail={trail}
         siblings={siblings}
       />
+    ) : orchestrator ? (
+      <AgentTitle title={session.title} orchestrator={orchestrator} />
     ) : null
   const actions = (
     <View style={styles.actions}>
+      {agents ? <AgentsButton agents={agents} /> : null}
       <SubagentsButton subagents={subagents} />
       <GitChangesButton changes={gitChanges} />
       <ToolsButton sessionId={session.sessionId} />
@@ -237,7 +258,7 @@ export function SessionScreen({
       <Stack.Screen
         options={{
           title: session.title,
-          headerTitle: subagentTitle ? () => subagentTitle : undefined,
+          headerTitle: headerTitle ? () => headerTitle : undefined,
           headerRight: () => actions,
         }}
       />

@@ -43,6 +43,7 @@ function toCache(s: SessionSummary): SessionSummaryCache {
     parentId: s.parentId,
     callingSessionId: s.callingSessionId,
     callingToolUseId: s.callingToolUseId,
+    tags: s.tags,
   }
 }
 
@@ -51,7 +52,7 @@ function fromCache(s: SessionSummaryCache): SessionSummary {
     ...s,
     worktree: s.worktree ?? null,
     messagesCount: null,
-    tags: [],
+    tags: s.tags ?? [],
     callingSessionId: s.callingSessionId ?? null,
     callingToolUseId: s.callingToolUseId ?? null,
   }
