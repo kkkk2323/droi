@@ -97,11 +97,15 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 			if a.cfg.Gateway != nil {
 				waiting := a.workstreams.waiting
-				if a.sidebarRow(c, "git-fork", L("Workstreams"), a.route.Name == "workstreams", func() {
+				row := a.sidebarRow(c, "git-fork", L("Workstreams"), a.route.Name == "workstreams", func() {
 					if waiting > 0 {
-						ui.Row(c).PaddingX(k.Px(4)).Margin(0, 0, 0, ui.Auto).Children(func() { a.waitingMark(c, waiting, 11, 16.5) })
+						ui.Row(c).PaddingX(k.Px(4)).Margin(0, 0, 0, ui.Auto).Children(func() { a.waitingMark(c, waiting, 11, 16.5, true) })
 					}
-				}).Clicked() {
+				})
+				if waiting > 0 {
+					row.Label(L("Workstreams") + ", " + L("%d waiting on you", waiting))
+				}
+				if row.Clicked() {
 					a.Go(Route{Name: "workstreams"})
 				}
 			}
@@ -816,9 +820,6 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 				a.elsewhereMark(c, acc)
 			}
 			if _, role, _ := sessions.Workstream(s.Tags); role == sessions.WorkstreamOrchestrator {
-				if n := a.workstreams.orchWaiting[s.SessionID]; n > 0 {
-					a.waitingMark(c, n, 11, 16.5)
-				}
 				k.Icon(c, "git-fork", 12, t.MutedForeground).Role(ui.RoleImage).Label(L("Orchestrator"))
 			}
 			if a.sidebar.unread[s.SessionID] {
@@ -849,7 +850,16 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 					k.Text(c, L("Draft"), 11, 16.5).FontWeight(500).TextColor(t.Foreground).SingleLine()
 				})
 			}
+			lifted, waiting, isLifted := a.liftedStatus(s.SessionID)
+			if _, ok := a.workstreams.lifted[s.SessionID]; ok && !isLifted {
+				// An orchestrator's own state wins over its agents'.
+				doing = a.workstreams.busy[s.SessionID]
+			}
 			switch {
+			case isLifted && waiting:
+				status("circle-alert", t.Attention, lifted, false)
+			case isLifted:
+				status("", t.Info, lifted, true)
 			case doing == activity.NeedsInput:
 				status("circle-alert", t.Attention, L("Needs input"), false)
 			case doing == activity.Compacting:

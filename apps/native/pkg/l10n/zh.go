@@ -1584,4 +1584,7 @@ var zh = map[string]string{
 	"Orchestrator":                               "编排会话",
 	"Progress update":                            "进展",
 	"Archived. Kept 1 worktree with changes: %s": "已归档。保留了 1 个有更改的 worktree：%s",
+	"Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish.": "归档耗时过长，部分 Agent 还没有归档。请再次归档这个 Workstream 以完成。",
+	"1 agent working":   "1 个 Agent 运行中",
+	"%d agents working": "%d 个 Agent 运行中",
 }

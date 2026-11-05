@@ -2,11 +2,18 @@ package app
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -190,13 +197,13 @@ func TestTheSidebarLeavesWorkstreamAgentsOutAndCountsTheWaitingOnes(t *testing.T
 	if !h.finds("Workstreams") || !h.finds("Orchestrator") {
 		t.Fatal("no Workstreams row or no orchestrator mark")
 	}
-	if h.finds("1 waiting on you") {
+	if h.finds("Workstreams, 1 waiting on you") {
 		t.Fatal("a waiting count before any agent waits")
 	}
 	h.notifyState("agent-1", "waiting_for_tool_confirmation")
-	h.until("the waiting count", func() bool { return h.finds("1 waiting on you") })
+	h.until("the waiting count", func() bool { return h.finds("Workstreams, 1 waiting on you") })
 	h.notifyState("agent-1", "idle")
-	h.until("no waiting count", func() bool { return !h.finds("1 waiting on you") })
+	h.until("no waiting count", func() bool { return !h.finds("Workstreams, 1 waiting on you") })
 }
 
 // Search finds no agent either, by title or by what it says.
@@ -254,7 +261,7 @@ func TestALoadedWorkstreamAgentWaitsAsItsPromptSays(t *testing.T) {
 			if !h.a.loaded("agent-1") {
 				t.Fatal("the agent is not loaded")
 			}
-			h.until("the waiting count", func() bool { return h.finds("1 waiting on you") })
+			h.until("the waiting count", func() bool { return h.finds("Workstreams, 1 waiting on you") })
 			h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
 			h.until("the agent's row", func() bool { return h.finds(tc.label) })
 		})
@@ -514,7 +521,7 @@ func TestAHandedOffWorkstreamAgentAndOrchestratorAreTheirNewSessions(t *testing.
 	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
 	h.until("the Session list", func() bool { return h.hasText("Payment migration lead, continued") })
 	h.notifyState("agent-1b", "waiting_for_tool_confirmation")
-	h.until("the waiting count", func() bool { return h.finds("1 waiting on you") })
+	h.until("the waiting count", func() bool { return h.finds("Workstreams, 1 waiting on you") })
 	if h.a.workstreams.orchWaiting["orch-1b"] != 1 {
 		t.Fatalf("the new orchestrator is not lifted: %v", h.a.workstreams.orchWaiting)
 	}
@@ -542,24 +549,45 @@ func TestAWorkstreamOrchestratorTakesItsAgentsState(t *testing.T) {
 	h.until("the older orchestrator folded away", func() bool { return h.hasText("Show 1 older") && !h.hasText("Payment migration lead") })
 	h.until("the records", func() bool { return h.a.workstreams.list != nil })
 
-	h.notifyState("agent-1", "waiting_for_tool_confirmation")
-	h.until("the orchestrator waiting", func() bool { return h.hasText("Payment migration lead") && h.hasText("Needs input") })
-	if n := h.a.workstreams.orchWaiting["orch-1"]; n != 1 {
-		t.Fatalf("the orchestrator's row counts %d waiting", n)
+	shows := func(text string) bool { return slices.Contains(h.tt.Texts(), text) }
+	// The Workstreams row's mark is named so once; the orchestrator row's
+	// status is named and says so.
+	times := func(text string) int {
+		n := 0
+		for _, x := range h.tt.Texts() {
+			if x == text {
+				n++
+			}
+		}
+		return n
 	}
+	h.notifyState("agent-1", "waiting_for_tool_confirmation")
+	h.until("the orchestrator lifted by its waiting agent", func() bool {
+		return h.hasText("Payment migration lead") && times("1 waiting on you") == 3
+	})
+	if h.hasText("Needs input") {
+		t.Fatal("the orchestrator, which waits on nothing itself, says Needs input")
+	}
+	h.shot("workstream-sidebar-lifted")
 	busy := h.a.activity(nil)
 	h.a.liftOrchestrators(busy)
 	if n, ok := activity.CountBusy([]sessions.Summary{{SessionID: "orch-1"}}, busy, nil); !ok || n != (activity.Busy{NeedsInput: 1}) {
 		t.Fatalf("a folded Workspace counts %+v", n)
 	}
 
+	// Its own state wins.
+	h.notifyState("orch-1", "thinking")
+	h.until("the orchestrator working itself", func() bool { return shows("Working") && times("1 waiting on you") == 1 })
+	h.notifyState("orch-1", "idle")
+
 	h.notifyState("agent-1", "idle")
 	h.notifyState("agent-2", "thinking")
-	h.until("the orchestrator working", func() bool {
-		return h.hasText("Payment migration lead") && h.hasText("Working") && !h.hasText("Needs input")
+	h.until("the orchestrator lifted by its working agent", func() bool {
+		return h.hasText("Payment migration lead") && shows("1 agent working") && !shows("Working") && times("1 waiting on you") == 0
 	})
 	h.notifyState("agent-2", "idle")
-	h.until("the orchestrator folded away again", func() bool { return !h.hasText("Payment migration lead") })
+	// It stays in view, unread since it worked itself, but no longer lifted.
+	h.until("the orchestrator no longer lifted", func() bool { return !shows("1 agent working") && !shows("Working") })
 }
 
 // openedSessions stands in for the Daemon's list of opened Sessions, with
@@ -622,7 +650,7 @@ func TestPromptsTheDaemonCountsForAnUnloadedWorkstreamAgent(t *testing.T) {
 	opened.set(map[string]int64{"agent-2": 1})
 	h.notifyState("agent-2", "idle")
 	h.until("its question", func() bool {
-		return h.finds("Client switch, Waiting on you, Has a question") && h.finds("1 waiting on you")
+		return h.finds("Client switch, Waiting on you, Has a question") && h.finds("Workstreams, 1 waiting on you")
 	})
 }
 
@@ -724,4 +752,156 @@ func TestAnOlderHostSaysItHasNoWorkstreams(t *testing.T) {
 	h.until("the older Host", func() bool {
 		return h.hasText("This computer runs an older Droi without workstreams. Update Droi there.")
 	})
+}
+
+// A clock the test moves: the real time, plus what it was moved by.
+type movedClock struct{ by atomic.Int64 }
+
+func (m *movedClock) now() time.Time { return time.Now().Add(time.Duration(m.by.Load())) }
+
+func (m *movedClock) move(d time.Duration) { m.by.Add(int64(d)) }
+
+// While a waiting count comes from the Daemon's list of opened Sessions, the
+// window reads the list again once the refresh time has passed, on any page.
+func TestAWorkstreamAgentsListedQuestionIsReadAgainInTime(t *testing.T) {
+	clock := &movedClock{}
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, func(cfg *Config) { cfg.Now = clock.now })
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+	opened := &openedSessions{questions: map[string]int64{"agent-1": 1}}
+	h.a.workstreams.openedSessions = opened.read
+	h.a.loadPending(true)
+	h.until("the question counted", func() bool { return h.finds("Workstreams, 1 waiting on you") })
+	if r := h.a.Route(); r.Name != "home" && r.Name != "session" {
+		t.Fatalf("on %+v", r)
+	}
+	reads := opened.count()
+	for range 50 {
+		h.frame()
+	}
+	if got := opened.count(); got != reads {
+		t.Fatalf("%d reads before the refresh time, want %d", got, reads)
+	}
+	clock.move(31 * time.Second)
+	h.until("one more read", func() bool { return opened.count() == reads+1 })
+	for range 50 {
+		h.frame()
+		time.Sleep(2 * time.Millisecond)
+	}
+	if got := opened.count(); got != reads+1 {
+		t.Fatalf("%d reads after the refresh, want %d", got, reads+1)
+	}
+}
+
+// A workspace the Daemon could not use when typed is asked about again at
+// Start, which goes on; a folder made a repository after the note is asked
+// about again once the form opens again.
+func TestAWorkstreamWorkspaceCheckedBeforeIsAskedAgain(t *testing.T) {
+	fake := &fakeWorkstreams{made: gateway.WorkstreamCreated{WorkstreamID: "ws-2", OrchestratorID: "orch-1"}}
+	h := workstreamsHarness(t, fake, nil)
+	h.openNewWorkstream()
+	f := &h.a.workstreams.form
+	f.name, f.goal, f.workspace = "Payment migration", "Move payments to gRPC.", "/Users/dev/later"
+	h.until("the Daemon's answer", func() bool { return h.hasText("Directory does not exist: /Users/dev/later") })
+	validations := h.count("daemon.validate_working_directory")
+	h.click("Start workstream")
+	h.until("the orchestrator's Session", func() bool { return h.a.Route().Name == "session" })
+	if created, _, _ := fake.calls(); len(created) != 1 || created[0].Workspace != "/Users/dev/later" {
+		t.Fatalf("created %+v", created)
+	}
+	h.until("the folder asked about again", func() bool { return h.count("daemon.validate_working_directory") > validations })
+
+	h.openNewWorkstream()
+	f.name, f.goal, f.workspace = "Payment migration", "Move payments to gRPC.", "/Users/dev/pay"
+	h.until("the note", func() bool { return h.hasText(notGitNote) })
+	lists := h.count("daemon.list_git_branches")
+	h.click("Cancel")
+	h.openNewWorkstream()
+	if f.workspace != "" || len(h.a.workstreams.checks) != 0 {
+		t.Fatalf("the form opens again with %q and %d answers", f.workspace, len(h.a.workstreams.checks))
+	}
+	f.name, f.goal, f.workspace = "Payment migration", "Move payments to gRPC.", "/Users/dev/pay"
+	h.until("the folder asked about again", func() bool { return h.count("daemon.list_git_branches") > lists })
+	h.click("Start workstream")
+	h.until("the second Workstream", func() bool { created, _, _ := fake.calls(); return len(created) == 2 })
+}
+
+// A Daemon that cannot be asked leaves no answer behind: the form asks
+// again once it is back.
+func TestAWorkstreamWorkspaceIsAskedAgainOnceTheDaemonIsBack(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{}, nil)
+	h.openNewWorkstream()
+	if err := h.d.GoDown(); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the Daemon gone", func() bool { return !h.a.ctl.Status().Connected })
+	h.a.workstreams.form.workspace = "/Users/dev/pay"
+	h.until("an attempt", func() bool { return h.a.workstreams.typedAt.After(time.Now().Add(time.Second)) })
+	if _, ok := h.a.workstreams.checks["/Users/dev/pay"]; ok {
+		t.Fatal("an answer kept from a Daemon that could not be asked")
+	}
+	if err := h.d.ComeBack(); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the note", func() bool { return h.hasText(notGitNote) })
+}
+
+// An archive the Host's bound cut short says how to finish it.
+func TestAWorkstreamArchiveCutShortSaysHowToFinish(t *testing.T) {
+	// A Gateway between the window and the Host's answers 504 to an
+	// archive, as the Host's does when its bound cuts one short.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	target, _ := url.Parse("http://127.0.0.1:" + strconv.Itoa(port))
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == gateway.WorkstreamArchivePath {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			_, _ = w.Write([]byte(`{"error":"Archiving took too long and stopped partway."}`))
+			return
+		}
+		httputil.NewSingleHostReverseProxy(target).ServeHTTP(w, r)
+	}))
+	t.Cleanup(proxy.Close)
+	var token string
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}
+	h := startHarnessGateway(t, workstreamsScenario(), "", "", func(o *gateway.Options) {
+		o.Workstreams, o.Port, token = fake, port, o.LocalToken()
+	}, func(cfg *Config) {
+		socket, err := gateway.SocketURL(proxy.URL, token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Gateway, err = gateway.NewClient(socket); err != nil {
+			t.Fatal(err)
+		}
+	})
+	closeTransport(t, h)
+	if h.gw.Port() != port {
+		t.Skipf("the Gateway could not take port %d", port)
+	}
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+	h.a.Go(Route{Name: "workstreams", Workstream: "ws-1"})
+	h.until("the page", func() bool { return h.hasText("Shared folder") })
+	h.click("More actions")
+	h.click("Archive workstream…")
+	h.click("Archive workstream")
+	h.until("the notice", func() bool {
+		return h.hasText("Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish.")
+	})
+}
+
+// A deadline the window's own call runs into reads as an archive cut short.
+func TestAWorkstreamArchiveFailureReads(t *testing.T) {
+	for err, want := range map[error]string{
+		gateway.ErrWorkstreamArchiveUnfinished: "Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish.",
+		context.DeadlineExceeded:               "Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish.",
+		errors.New("the Daemon is gone"):       "Could not archive the workstream: the Daemon is gone",
+	} {
+		if got := archiveFailed(err); got != want {
+			t.Errorf("%v reads %q, want %q", err, got, want)
+		}
+	}
 }

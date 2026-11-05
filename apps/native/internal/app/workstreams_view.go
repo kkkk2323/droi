@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
@@ -80,11 +81,11 @@ type workstreamsState struct {
 	busy map[string]activity.Activity
 	// waiting counts the agents, not archived, that wait on the user;
 	// lifted is what an orchestrator's agents make it in the sidebar, and
-	// orchWaiting how many of them wait, both by the orchestrator's newest
-	// Session.
-	waiting     int
-	lifted      map[string]activity.Activity
-	orchWaiting map[string]int
+	// orchWaiting and orchWorking how many of them wait and work, all by the
+	// orchestrator's newest Session.
+	waiting                  int
+	lifted                   map[string]activity.Activity
+	orchWaiting, orchWorking map[string]int
 
 	form workstreamForm
 	// acting is the action under way; notice is what the last one said,
@@ -142,7 +143,7 @@ func (a *App) enterWorkstreams(r Route) {
 	s := &a.workstreams
 	s.menuOpen, s.confirmArchive, s.agentModelOpen, s.notice = false, false, false, ""
 	if r.Tab == newWorkstreamTab {
-		s.form = workstreamForm{}
+		s.form, s.checks, s.typed = workstreamForm{}, nil, ""
 	}
 	a.loadWorkstreams(true)
 }
@@ -330,17 +331,18 @@ func (a *App) noteWorkstreams(c *ui.Context, listed []sessions.Summary, busy map
 func (a *App) countWaiting() (fromList bool) {
 	s := &a.workstreams
 	if s.lifted == nil {
-		s.lifted, s.orchWaiting = map[string]activity.Activity{}, map[string]int{}
+		s.lifted, s.orchWaiting, s.orchWorking = map[string]activity.Activity{}, map[string]int{}, map[string]int{}
 	}
 	clear(s.lifted)
 	clear(s.orchWaiting)
+	clear(s.orchWorking)
 	s.waiting = 0
 	for _, w := range s.list {
 		if w.ArchivedAt != "" {
 			continue
 		}
 		var lift activity.Activity
-		n := 0
+		n, working := 0, 0
 		for _, ag := range w.Agents {
 			if ag.ArchivedAt != "" {
 				continue
@@ -353,6 +355,7 @@ func (a *App) countWaiting() (fromList bool) {
 				fromList = fromList || listed
 			case s.busy[id] != "":
 				lift = activity.Working
+				working++
 			}
 		}
 		s.waiting += n
@@ -362,9 +365,7 @@ func (a *App) countWaiting() (fromList bool) {
 		if lift != "" && w.OrchestratorID != "" {
 			orch := a.resolve(w.OrchestratorID)
 			s.lifted[orch] = lift
-			if n > 0 {
-				s.orchWaiting[orch] = n
-			}
+			s.orchWaiting[orch], s.orchWorking[orch] = n, working
 		}
 	}
 	return fromList
@@ -379,6 +380,24 @@ func (a *App) liftOrchestrators(busy map[string]activity.Activity) {
 			busy[id] = lift
 		}
 	}
+}
+
+// liftedStatus is what the sidebar row of an orchestrator says while it is
+// idle itself and its agents are not: how many wait on the user, else how
+// many work. ok is false when its own state is the one to show.
+func (a *App) liftedStatus(id string) (label string, waiting, ok bool) {
+	s := &a.workstreams
+	if _, lifted := s.lifted[id]; !lifted || s.busy[id] != "" {
+		return "", false, false
+	}
+	if n := s.orchWaiting[id]; n > 0 {
+		return L("%d waiting on you", n), true, true
+	}
+	n := s.orchWorking[id]
+	if n == 1 {
+		return L("1 agent working"), false, true
+	}
+	return L("%d agents working", n), false, true
 }
 
 // resolve is the newest listed continuation of Session id, id itself when
@@ -671,10 +690,15 @@ func (a *App) waitingAgents(w gateway.Workstream) int {
 	return n
 }
 
-// waitingMark is a count of agents waiting on the user.
-func (a *App) waitingMark(c *ui.Context, n int, size, line float32) ui.Element {
+// waitingMark is a count of agents waiting on the user: a live status where
+// it stands alone, an image inside a button whose name says it already.
+func (a *App) waitingMark(c *ui.Context, n int, size, line float32, live bool) ui.Element {
 	k, t := a.kit, a.kit.T
-	return ui.Row(c).Role(ui.RoleStatus).Label(L("%d waiting on you", n)).Tooltip(L("%d waiting on you", n)).Gap(k.Px(4)).AlignItems(ui.Center).Shrink(0).Children(func() {
+	role := ui.RoleImage
+	if live {
+		role = ui.RoleStatus
+	}
+	return ui.Row(c).Role(role).Label(L("%d waiting on you", n)).Tooltip(L("%d waiting on you", n)).Gap(k.Px(4)).AlignItems(ui.Center).Shrink(0).Children(func() {
 		k.Icon(c, "circle-alert", 12, t.Attention)
 		k.Text(c, itoa(n), size, line).TextColor(t.Attention).FontFeatures("tnum")
 	})
@@ -713,7 +737,7 @@ func (a *App) workstreamRow(c *ui.Context, w gateway.Workstream) {
 			k.Text(c, w.Workspace, k.Dense(11, 12), 16).TextColor(t.MutedForeground).SingleLine()
 		})
 		if waiting > 0 {
-			a.waitingMark(c, waiting, k.Dense(11, 12), 16)
+			a.waitingMark(c, waiting, k.Dense(11, 12), 16, false)
 		}
 		k.Text(c, count, k.Dense(11, 12), 16).TextColor(t.MutedForeground).FontFeatures("tnum").SingleLine().Shrink(0)
 		chevron := k.Icon(c, "chevron-right", 14, t.MutedForeground)
@@ -997,12 +1021,22 @@ func (a *App) archiveWorkstream(id string) {
 	a.wsAct("archive", func() (string, error) {
 		kept, err := gw.ArchiveWorkstream(a.ctx, id)
 		return archivedNotice(kept), err
-	}, func(err error) string { return L("Could not archive the workstream: %s", err) }, func() { go a.reloadList() })
+	}, archiveFailed, func() { go a.reloadList() })
 }
 
-// workspaceCheck is what the Daemon said of the folder dir, asked once
+// archiveFailed is what the window says of an archive that failed: one the
+// Host's bound, or the window's own wait, cut short is finished by
+// archiving again.
+func archiveFailed(err error) string {
+	if errors.Is(err, gateway.ErrWorkstreamArchiveUnfinished) || errors.Is(err, context.DeadlineExceeded) {
+		return L("Archiving took too long, and some agents are not archived yet. Archive the workstream again to finish.")
+	}
+	return L("Could not archive the workstream: %s", err)
+}
+
+// checkWorkspace is what the Daemon said of the folder dir, asked once
 // typing pauses; a zero check until it answers.
-func (a *App) workspaceCheck(c *ui.Context, dir string) workspaceCheck {
+func (a *App) checkWorkspace(c *ui.Context, dir string) workspaceCheck {
 	s := &a.workstreams
 	now := a.cfg.Now()
 	if dir != s.typed {
@@ -1018,32 +1052,57 @@ func (a *App) workspaceCheck(c *ui.Context, dir string) workspaceCheck {
 		c.After(left)
 		return workspaceCheck{}
 	}
+	a.askWorkspace(dir)
+	return workspaceCheck{}
+}
+
+// workspaceRetry is how long the form waits to ask a Daemon that could not
+// be asked again.
+const workspaceRetry = 2 * time.Second
+
+// askWorkspace asks the Daemon whether it can work in dir, and whether dir
+// is in a git repository. An answer a Daemon that could not be asked leaves
+// is kept as none, to ask again.
+func (a *App) askWorkspace(dir string) {
+	s := &a.workstreams
 	if s.checks == nil {
 		s.checks = map[string]workspaceCheck{}
 	}
-	s.checks[dir] = workspaceCheck{}
 	if a.ctl == nil {
-		s.checks[dir] = workspaceCheck{done: true, unknown: true}
-		return s.checks[dir]
+		return
 	}
+	s.checks[dir] = workspaceCheck{}
 	go func() {
 		ch := workspaceCheck{done: true}
 		cl, err := a.ctl.Client()
+		var valid *protocol.ValidateWorkingDirectoryResult
+		if err == nil {
+			valid, err = cl.ValidateWorkingDirectory(a.ctx, protocol.ValidateWorkingDirectoryParams{WorkingDirectory: dir})
+		}
 		switch {
 		case err != nil:
 			ch.unknown = true
-		default:
-			resolved, verr := a.validWorkspace(cl, dir)
-			if verr != nil {
-				ch.problem = verr.Error()
-				break
+		case !valid.IsValid:
+			ch.problem = valid.Error
+			if ch.problem == "" {
+				ch.problem = L("%s is not a usable directory.", dir)
 			}
+		default:
+			resolved := cmp.Or(valid.ResolvedPath, dir)
 			res, gerr := cl.ListGitBranches(a.ctx, protocol.ListGitBranchesParams{Cwd: resolved})
 			ch.git, ch.unknown = gerr == nil && res.IsGitRepository, gerr != nil
 		}
-		a.cfg.Update(func() { s.checks[dir] = ch })
+		a.cfg.Update(func() {
+			if !ch.unknown {
+				s.checks[dir] = ch
+				return
+			}
+			delete(s.checks, dir)
+			if s.typed == dir {
+				s.typedAt = a.cfg.Now().Add(workspaceRetry - workspaceCheckDelay)
+			}
+		})
 	}()
-	return workspaceCheck{}
 }
 
 // workstreamEditor is the New workstream form.
@@ -1060,7 +1119,7 @@ func (a *App) workstreamEditor(c *ui.Context) {
 		}
 	}
 	dir := strings.TrimSpace(f.workspace)
-	check := a.workspaceCheck(c, dir)
+	check := a.checkWorkspace(c, dir)
 	values := map[string]string{"name": f.name, "workspace": f.workspace, "goal": f.goal}
 	problem := func(field string) string {
 		switch {
@@ -1158,12 +1217,15 @@ func (a *App) startWorkstream(shownModel string) {
 	case workspace == "":
 		f.err, f.errOn = L("Choose a workspace."), "workspace"
 		s.workspaceBox.Focus()
-	case s.checks[workspace].problem != "":
-		f.err, f.errOn = s.checks[workspace].problem, "workspace"
-		s.workspaceBox.Focus()
 	case goal == "":
 		f.err, f.errOn = L("Enter the goal."), "goal"
 		s.goalBox.Focus()
+	}
+	if f.err == "" && s.checks[workspace].problem != "" {
+		// The folder may have been made since: the Host decides, and the
+		// form asks again.
+		delete(s.checks, workspace)
+		a.askWorkspace(workspace)
 	}
 	gw := a.cfg.Gateway
 	if f.err != "" {
