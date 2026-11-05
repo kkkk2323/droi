@@ -46,3 +46,25 @@ func TestInjectSystemPrompt(t *testing.T) {
 		}
 	}
 }
+
+func TestInjectDisabledTools(t *testing.T) {
+	hidden := []string{"CreateAutomation", "mcp:droi-workstream"}
+	for _, c := range []struct {
+		name, frame string
+		ids         []string
+		want        string
+	}{
+		{"adds the list", `{"method":"daemon.initialize_session","params":{"cwd":"/x"}}`, hidden, `{"method":"daemon.initialize_session","params":{"cwd":"/x","disabledToolIds":["CreateAutomation","mcp:droi-workstream"]}}`},
+		{"keeps the Client's, once", `{"method":"daemon.initialize_session","params":{"disabledToolIds":["Execute","mcp:droi-workstream"],"cwd":"/x"}}`, hidden, `{"method":"daemon.initialize_session","params":{"disabledToolIds":["Execute","mcp:droi-workstream","CreateAutomation"],"cwd":"/x"}}`},
+		{"null list", `{"method":"daemon.initialize_session","params":{"disabledToolIds":null}}`, hidden, `{"method":"daemon.initialize_session","params":{"disabledToolIds":["CreateAutomation","mcp:droi-workstream"]}}`},
+		{"all there already", `{"method":"daemon.initialize_session","params":{"disabledToolIds":[ "mcp:droi-workstream","CreateAutomation"]}}`, hidden, `{"method":"daemon.initialize_session","params":{"disabledToolIds":[ "mcp:droi-workstream","CreateAutomation"]}}`},
+		{"nothing hidden", `{"method":"daemon.initialize_session","params":{}}`, nil, `{"method":"daemon.initialize_session","params":{}}`},
+		{"other method", `{"method":"daemon.load_session","params":{}}`, hidden, `{"method":"daemon.load_session","params":{}}`},
+		{"not a list", `{"method":"daemon.initialize_session","params":{"disabledToolIds":"x"}}`, hidden, `{"method":"daemon.initialize_session","params":{"disabledToolIds":"x"}}`},
+		{"not json", `daemon.initialize_session`, hidden, `daemon.initialize_session`},
+	} {
+		if got := string(InjectDisabledTools([]byte(c.frame), c.ids)); got != c.want {
+			t.Errorf("%s: %s", c.name, got)
+		}
+	}
+}

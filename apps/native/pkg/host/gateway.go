@@ -7,9 +7,10 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 )
 
-// systemPromptAddition is Settings' System Prompt Addition, then the app's
-// own (Config.AppendSystemPrompt), a blank line between them.
-func (h *Host) systemPromptAddition() string {
+// SystemPromptAddition is Settings' System Prompt Addition, then the app's
+// own (Config.AppendSystemPrompt), a blank line between them: what the
+// Gateway adds to a Client's Session, and the Host to its own.
+func (h *Host) SystemPromptAddition() string {
 	var parts []string
 	if p := h.Settings.Get().AppendSystemPrompt; p != nil && strings.TrimSpace(*p) != "" {
 		parts = append(parts, *p)
@@ -22,6 +23,15 @@ func (h *Host) systemPromptAddition() string {
 	return strings.Join(parts, "\n\n")
 }
 
+// clientHiddenTools is Config.ClientHiddenTools, nil from a droid that does
+// not take MCP selectors and llm ids in disabledToolIds.
+func (h *Host) clientHiddenTools() []string {
+	if h.cfg.ClientHiddenTools == nil || olderThan(h.DroidVersion(), hiddenToolsDroid) {
+		return nil
+	}
+	return h.cfg.ClientHiddenTools()
+}
+
 // GatewayOptions is the Gateway of h's computer, as the app and `droi host`
 // both run it. The caller sets what differs: Port, RemoteAccess, LocalToken
 // and App.
@@ -30,7 +40,8 @@ func (h *Host) GatewayOptions(version string, moveToTrash func(string) error) ga
 		DaemonURL:          func() string { return h.Daemon.State().URL() },
 		PairingToken:       func() string { return h.Settings.Get().PairingToken },
 		Credential:         h.Credential,
-		AppendSystemPrompt: h.systemPromptAddition,
+		AppendSystemPrompt: h.SystemPromptAddition,
+		DisabledTools:      h.clientHiddenTools,
 		Version:            version,
 		ComputerName:       gateway.ComputerName(),
 		ComputerID:         h.Settings.Get().ComputerID,

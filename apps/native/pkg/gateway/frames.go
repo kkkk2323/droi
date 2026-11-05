@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"slices"
 	"strings"
 
 	droid "github.com/kkkk2323/droid-sdk-go"
@@ -77,6 +78,39 @@ func InjectSystemPrompt(frame []byte, addition string) []byte {
 		Preset string `json:"preset"`
 		Append string `json:"append"`
 	}{"preset", "droid", addition}))
+	message.set("params", params.bytes())
+	return message.bytes()
+}
+
+// InjectDisabledTools adds ids to a `daemon.initialize_session`'s
+// disabledToolIds: tool ids, llm ids or MCP selectors the Host hides from
+// every Client's Session. The Client's own stay first; an id already there
+// is not added again. A list that is no array of strings is left alone.
+func InjectDisabledTools(frame []byte, ids []string) []byte {
+	if len(ids) == 0 {
+		return frame
+	}
+	message, params, ok := parseWithParams(frame)
+	if !ok {
+		return frame
+	}
+	if m, ok := message.get("method"); !ok || !isString(m, initializeSession) {
+		return frame
+	}
+	var list []string
+	if raw, ok := params.get("disabledToolIds"); ok && json.Unmarshal(raw, &list) != nil {
+		return frame
+	}
+	before := len(list)
+	for _, id := range ids {
+		if !slices.Contains(list, id) {
+			list = append(list, id)
+		}
+	}
+	if len(list) == before {
+		return frame
+	}
+	params.set("disabledToolIds", encodeJSON(list))
 	message.set("params", params.bytes())
 	return message.bytes()
 }

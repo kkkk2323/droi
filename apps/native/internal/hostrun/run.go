@@ -1,6 +1,7 @@
 // Package hostrun is `droi host` (ADR 0019): a Host with no window. It
-// starts the Daemon, the Gateway with Remote Access always on and Memory,
-// prints the pairing link, and stops them all when its context ends.
+// starts the Daemon, the Gateway with Remote Access always on, Memory and
+// the Host's Services, prints the pairing link, and stops them all when its
+// context ends.
 package hostrun
 
 import (
@@ -81,14 +82,21 @@ func Run(ctx context.Context, o Options) error {
 	if o.OwnFactoryHome {
 		cfg.FactoryRoot = filepath.Join(cfg.UserData, "factory")
 	}
-	if o.Overlay != nil {
-		// Read when the Daemon starts, which is after New.
-		cfg.Overlay = func() host.OverlayOptions { return o.Overlay(h) }
+	var svc *Services
+	// Read when the Daemon starts, which is after StartServices.
+	cfg.Overlay = func() host.OverlayOptions {
+		var app host.OverlayOptions
+		if o.Overlay != nil {
+			app = o.Overlay(h)
+		}
+		return app.Add(svc.Overlay())
 	}
+	cfg.ClientHiddenTools = func() []string { return svc.ClientHiddenTools() }
 	h = host.New(cfg)
 	if err := checkDroid(h); err != nil {
 		return err
 	}
+	svc = StartServices(h)
 
 	opts := h.GatewayOptions(o.Version, trash.Move)
 	opts.Port, opts.RemoteAccess = port, true
@@ -110,6 +118,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	started, err := gateway.Start(opts)
 	if err != nil {
+		svc.Stop()
 		return fmt.Errorf("the Gateway cannot listen: %w", err)
 	}
 	lastMu.Lock()
@@ -120,6 +129,7 @@ func Run(ctx context.Context, o Options) error {
 	defer func() {
 		_ = gw.Close()
 		mem.Stop()
+		svc.Stop()
 		h.Stop()
 	}()
 	if o.Start != nil {

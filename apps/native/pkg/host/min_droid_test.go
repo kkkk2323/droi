@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,28 @@ func TestOlderThanMinDroid(t *testing.T) {
 		if got := OlderThanMinDroid(v); got != want {
 			t.Errorf("%q: %v, want %v", v, got, want)
 		}
+	}
+}
+
+func TestClientsKeepTheHostsHiddenToolsFromDroid120On(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a shell")
+	}
+	hidden := []string{"CreateAutomation", "mcp:droi-workstream"}
+	for version, want := range map[string][]string{"1.1.9": nil, "0.240.0": nil, "1.2.0": hidden, "1.4.1": hidden} {
+		path := filepath.Join(t.TempDir(), "droid")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\necho "+version+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" }, ClientHiddenTools: func() []string { return hidden }})
+		h.Settings.Update(func(s *Settings) { s.DroidPath = OptString(path) })
+		if got := h.GatewayOptions("1", nil).DisabledTools(); !slices.Equal(got, want) {
+			t.Errorf("droid %s: %v, want %v", version, got, want)
+		}
+	}
+	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" }})
+	if got := h.GatewayOptions("1", nil).DisabledTools(); got != nil {
+		t.Errorf("none given: %v", got)
 	}
 }
 

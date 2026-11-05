@@ -330,6 +330,41 @@ func TestAppendsTheSystemPromptAdditionToInitializeSessionOnly(t *testing.T) {
 	}
 }
 
+func TestHidesTheHostsToolsFromEveryClientSessionStart(t *testing.T) {
+	d := startStandInDaemon(t)
+	var mu sync.Mutex
+	hidden := []string{"CreateAutomation", "mcp:droi-workstream"}
+	opts := baseOptions(d)
+	opts.LocalToken = nil
+	opts.DisabledTools = func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return hidden
+	}
+	g := startGateway(t, opts)
+	c := connect(t, daemonURL(g.URL(), testToken))
+	sendParams := func(method string, p map[string]any) map[string]any {
+		send(t, c, frame(method, method, p))
+		nextMessage(t, c)
+		got := d.frames()
+		return params(t, got[len(got)-1])
+	}
+
+	got := sendParams("daemon.initialize_session", map[string]any{"cwd": "/x", "disabledToolIds": []string{"Execute", "CreateAutomation"}})
+	if want := []any{"Execute", "CreateAutomation", "mcp:droi-workstream"}; !reflect.DeepEqual(got["disabledToolIds"], want) {
+		t.Fatal(got)
+	}
+	if got := sendParams("daemon.load_session", map[string]any{"sessionId": "s"}); got["disabledToolIds"] != nil {
+		t.Fatal(got)
+	}
+	mu.Lock()
+	hidden = nil
+	mu.Unlock()
+	if got := sendParams("daemon.initialize_session", map[string]any{"cwd": "/x"}); got["disabledToolIds"] != nil {
+		t.Fatal(got)
+	}
+}
+
 func TestALoginTokenReplacesAPIKeyWithTokenAndKeepsFramesInOrder(t *testing.T) {
 	d := startStandInDaemon(t)
 	token := make(chan string, 1)

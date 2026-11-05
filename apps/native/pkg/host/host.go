@@ -53,6 +53,11 @@ type Config struct {
 	// AppendSystemPrompt, optional, follows the System Prompt Addition of
 	// Settings, read at every Session start.
 	AppendSystemPrompt func() string
+	// ClientHiddenTools, optional, are the tools the Gateway leaves out of
+	// every Client's Session (disabledToolIds), read at every Session start:
+	// Factory's tools that Droi does its own way, and the Host's tools only
+	// its own Sessions use.
+	ClientHiddenTools func() []string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.
