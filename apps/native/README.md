@@ -155,8 +155,10 @@ relay.example.com {
 ```
 
 Behind nginx, allow WebSockets (`Upgrade`, `Connection "upgrade"`), turn `proxy_buffering`
-off and set `proxy_read_timeout 1h`. `droi-relay serve` runs a Relay in the foreground with the
-same flags, or with `--tls-cert` and `--tls-key`; `droi-relay help` lists them.
+off and set `proxy_read_timeout 1h`. Keep the site out of the proxy's access log, since a phone's
+requests carry the Pairing Token in their URL (`?token=`): Caddy writes none unless the site has
+a `log` directive, and nginx needs `access_log off;` in its `server` block. `droi-relay serve`
+runs a Relay in the foreground with the same flags, or with `--tls-cert` and `--tls-key`; `droi-relay help` lists them.
 alma-relay's servers ([yetone/alma-relay](https://github.com/yetone/alma-relay), Node, Docker
 or Cloudflare) speak the same protocol and work as well: their address with
 `#key=<RELAY_REGISTRATION_KEY>` is the relay address.
