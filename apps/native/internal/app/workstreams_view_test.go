@@ -175,10 +175,23 @@ func workstreamsHarnessOf(t *testing.T, sc fakedaemon.Scenario, fake *fakeWorkst
 	return h
 }
 
+// notifyState sends a working state the Daemon reports for a Session, and
+// waits until the window applied it: a state the Client has not read yet
+// would make a row's group depend on how many frames the test drew meanwhile.
 func (h *harness) notifyState(id, state string) {
 	h.t.Helper()
 	if err := h.d.Notify(id, map[string]any{"type": "droid_working_state_changed", "newState": state}); err != nil {
 		h.t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		h.a.mu.Lock()
+		applied := h.a.busy[id] == state
+		h.a.mu.Unlock()
+		if applied || time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
