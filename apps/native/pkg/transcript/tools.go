@@ -324,6 +324,9 @@ func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 	case len(leaves) == 0:
 		return l10n.L("Running a tool"), true
 	default:
+		if group, ok := WorkstreamGroup(leaves); ok {
+			return group, pending
+		}
 		if pending {
 			return l10n.L("Running %d tools", len(leaves)), true
 		}

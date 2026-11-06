@@ -326,7 +326,7 @@ func (a *App) paneAgentRow(c *ui.Context, ctx *wsContext, r paneRow) {
 				}
 			})
 			ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(1)).Children(func() {
-				title := k.Text(c, r.title, k.Dense(12, 13), k.Dense(18, 19.5)).SingleLine()
+				title := k.Text(c, r.title, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.Foreground).SingleLine()
 				if r.unread {
 					title.FontWeight(500)
 				}
@@ -460,7 +460,7 @@ func (a *App) fileRow(c *ui.Context, dir string, f sharedFile) {
 		}
 		b.Children(func() {
 			k.Icon(c, "file-text", 14, t.MutedForeground)
-			k.Text(c, f.rel, k.Dense(12, 13), k.Dense(18, 19.5)).SingleLine().Grow(1).MinWidth(0)
+			k.Text(c, f.rel, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.Foreground).SingleLine().Grow(1).MinWidth(0)
 			k.Text(c, relativeTime(f.modTime, a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
 		})
 		if b.Clicked() && a.cfg.OpenPath != nil {

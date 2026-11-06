@@ -61,13 +61,19 @@ func (a *App) view(id string) *sessionView {
 	if v == nil {
 		v = &sessionView{a: a, id: id, attached: map[string]*ui.Bitmap{}, rail: railState{preview: -1}}
 		v.View = sessionview.New(id, sessionview.Env{
-			Controller:     a.ctl,
-			Ctx:            a.ctx,
-			Kit:            func() *kit.Kit { return a.kit },
-			Update:         a.cfg.Update,
-			Now:            a.cfg.Now,
-			Revisions:      &a.revs,
-			OpenSession:    func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			Controller:  a.ctl,
+			Ctx:         a.ctx,
+			Kit:         func() *kit.Kit { return a.kit },
+			Update:      a.cfg.Update,
+			Now:         a.cfg.Now,
+			Revisions:   &a.revs,
+			OpenSession: func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			Agent:       a.agentInfo,
+			OpenAgents: func() {
+				if v.ws != nil {
+					a.setWsState(v.ws.id, func(u *workstreamUI) { u.Closed, u.Panel = false, panelAgents })
+				}
+			},
 			Quote:          v.quote,
 			ScrollShortcut: shortcut(CmdScrollToLatest),
 			Overlay:        v.turnRail,

@@ -138,7 +138,7 @@ func (a *App) workstreamRow(c *ui.Context, s sessions.Summary, selected bool, do
 	b.Children(func() {
 		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
 			k.IconStroke(c, sessions.WorkstreamSymbol(s.Tags), 1.6, 14, t.SidebarForeground).Role(ui.RoleImage).Label(L("Workstream"))
-			title := k.Text(c, s.Title, k.Dense(12, 13), k.Dense(18, 19.5)).SingleLine().Grow(1).Shrink(1)
+			title := k.Text(c, s.Title, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
 			if a.sidebar.unread[s.SessionID] {
 				title.FontWeight(500)
 				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))

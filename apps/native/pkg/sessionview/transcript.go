@@ -384,6 +384,10 @@ func (v *View) rowTrigger(c *ui.Context, open *bool, label string) ui.Collapsibl
 // TaskOutput or TaskStop call shows the subagent it is about, with a button
 // to its Session.
 func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
+	if tool, ok := transcript.WorkstreamTool(call); ok {
+		v.workstreamRow(c, call, tool)
+		return
+	}
 	k, t := v.look()
 	server, name := transcript.ToolName(call.Use.Name)
 	custom, hasCustom := toolViewOf(call.Use.Name)

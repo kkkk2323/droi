@@ -27,6 +27,8 @@ const (
 	rowCluster
 	rowCall
 	rowNested
+	// rowGroup is the header of a run of calls done to several agents.
+	rowGroup
 	rowTurnEnd
 )
 
@@ -41,6 +43,11 @@ type transcriptRow struct {
 	// first: the first call of its cluster, or the first nested call of
 	// its Script.
 	first bool
+	// grouped: the call is under a group's header; nested: that header is
+	// one of a Script's calls.
+	grouped, nested bool
+	// label is a group header's text.
+	label string
 	// streaming: the entry streams and this is its last text.
 	streaming bool
 	end       transcript.TurnEnd
@@ -81,10 +88,31 @@ func (v *View) rows(entries []*transcript.Entry, streamingID string, ends map[st
 				if !*v.flag("cluster:"+b.ID, true) {
 					continue
 				}
-				for j, call := range b.Calls {
-					rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0})
-					for k, inner := range call.Nested {
-						rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: k == 0})
+				// The cluster's own label names a run that is all of it.
+				_, whole := transcript.WorkstreamGroup(transcript.LeafCalls(b.Calls))
+				j := 0
+				for _, run := range transcript.WorkstreamRuns(b.Calls) {
+					label, grouped := transcript.WorkstreamGroup(run)
+					if grouped && !whole {
+						rows = append(rows, transcriptRow{kind: rowGroup, key: key + "/" + run[0].Use.ID + "/group", e: e, block: i, call: run[0], label: label, first: j == 0})
+						j++
+					}
+					for _, call := range run {
+						rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0, grouped: grouped && !whole})
+						j++
+						n := 0
+						for _, nested := range transcript.WorkstreamRuns(call.Nested) {
+							label, nestedGrouped := transcript.WorkstreamGroup(nested)
+							nestedGrouped = nestedGrouped && !whole
+							if nestedGrouped {
+								rows = append(rows, transcriptRow{kind: rowGroup, nested: true, key: key + "/" + call.Use.ID + "/" + nested[0].Use.ID + "/group", e: e, block: i, call: nested[0], label: label, first: n == 0})
+								n++
+							}
+							for _, inner := range nested {
+								rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: n == 0, grouped: nestedGrouped})
+								n++
+							}
+						}
 					}
 				}
 			default:
@@ -116,7 +144,7 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 		color = t.DestructiveForeground
 	}
 	col := v.column(c).Padding(k.Px(r.top), k.Px(24), k.Px(r.bottom), k.Px(24)).TextColor(color)
-	if r.kind != rowCall && r.kind != rowNested {
+	if r.kind != rowCall && r.kind != rowNested && r.kind != rowGroup {
 		col.Role(ui.RoleGroup).Label(l10n.L("Assistant"))
 	}
 	if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Text {
@@ -160,6 +188,15 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 			})
 		case rowCluster:
 			v.cluster(c, r.e.Blocks[r.block])
+		case rowGroup:
+			callTop, indent := k.Px(4), k.Px(6)
+			if !r.first {
+				callTop = k.Px(2)
+			}
+			if r.nested {
+				callTop, indent = k.Px(2), k.Px(13)
+			}
+			ui.Column(c).Margin(callTop, 0, 0, indent).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Padding(0, 0, 0, k.Px(12)).Children(func() { v.groupHeader(c, r.call, r.label) })
 		case rowCall, rowNested:
 			// The cluster's calls column: 4px under its trigger and 2px
 			// between calls; a Script's calls hang right under its row.
@@ -172,9 +209,14 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 			}
 			ui.Column(c).Margin(callTop, 0, 0, k.Px(6)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Padding(callGap, 0, 0, k.Px(12)).Children(func() {
 				if r.kind == rowCall {
-					if r.call.Nested != nil {
+					switch {
+					case r.call.Nested != nil:
 						v.scriptGroup(c, r.call)
-					} else {
+					case r.grouped:
+						// Under its group's header, a step in.
+						ui.Column(c).Margin(0, 0, 0, k.Px(7)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).BorderStyle(ui.BorderDashed).
+							Padding(0, 0, 0, k.Px(12)).Children(func() { v.toolRow(c, r.call) })
+					default:
 						v.toolRow(c, r.call)
 					}
 					return
@@ -231,6 +273,10 @@ func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
 	}
 	if h, ok := transcript.ReadSpecHandoff(strings.Join(parts, "\n")); ok && len(images) == 0 {
 		v.handoffCard(c, e.ID, h)
+		return
+	}
+	if m, ok := transcript.ReadAgentMessage(strings.Join(parts, "\n")); ok && len(images) == 0 {
+		v.agentMessageCard(c, e.ID, m)
 		return
 	}
 	text, texts := pasted.Split(strings.Join(parts, "\n"))

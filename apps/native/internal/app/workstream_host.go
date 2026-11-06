@@ -9,6 +9,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // newWorkstreamOf is what the Host is asked to start: the name, the folder and
@@ -60,6 +61,26 @@ func (a *App) editWorkstream(id string, title, symbol *string) {
 			a.loadWorkstreams(true)
 		})
 	}()
+}
+
+// agentInfo is what a transcript's rows say of the agent whose Session is id:
+// its name and what it does or waits for. ok is false for a Session no
+// Workstream lists as an agent.
+func (a *App) agentInfo(id string) (sessionview.AgentInfo, bool) {
+	for _, w := range a.workstreams.list {
+		for _, ag := range w.Agents {
+			if ag.SessionID != id && a.resolve(ag.SessionID) != a.resolve(id) {
+				continue
+			}
+			group, how := a.agentStatus(ag)
+			return sessionview.AgentInfo{
+				Title:    ag.Title,
+				Activity: a.agentActivity(a.resolve(ag.SessionID), group, how),
+				Waiting:  group == "waiting",
+			}, true
+		}
+	}
+	return sessionview.AgentInfo{}, false
 }
 
 // How far a model is known to run Script.
