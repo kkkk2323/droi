@@ -810,6 +810,33 @@ func TestOpenNamesItsPromptsTurn(t *testing.T) {
 	}
 }
 
+// A turn that ends while the Daemon is out of reach ends, once the Runner
+// loads its Session again, as the Daemon recorded it, with its last reply.
+func TestATurnThatEndedOutOfReachEndsAsTheDaemonRecordedIt(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"All", " green."}, DelayMs: 150}})
+	r, seen := start(t, d, "")
+	opened, err := r.Open(testContext(t), Spec{Cwd: repo, Prompt: "Report."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen.wait(t, "the turn under way", workingIn(protocol.DroidWorkingStateThinking))
+	if err := d.GoDown(); err != nil {
+		t.Fatal(err)
+	}
+	// The turn ends on the Fake Daemon meanwhile, heard by no one.
+	time.Sleep(time.Second)
+	if err := d.ComeBack(); err != nil {
+		t.Fatal(err)
+	}
+	end := seen.wait(t, "turn end", isTurnEnd).(TurnEnded)
+	if end.SessionID != opened.SessionID || end.Reason != protocol.AgentTurnCompletionReasonCompleted || end.Error != "" || end.LastReply != "All green." {
+		t.Fatalf("turn end %+v", end)
+	}
+	if !slices.Contains(methods(t, d), "daemon.get_session_turn_outcome") {
+		t.Fatal("the turn ended without the Daemon's record")
+	}
+}
+
 // Subscribers hear a gone Session's end while the Runner still follows it,
 // so that one checking Following meanwhile does not end it a second time.
 func TestAGoneSessionIsFollowedUntilItsEndIsHeard(t *testing.T) {

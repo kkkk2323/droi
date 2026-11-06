@@ -82,25 +82,10 @@ test.use({
 
 /**
  * The Host sends the agent a message and its turn stops on a permission
- * request, which a Client that loads the agent later gets with the load.
- * The real Daemon sends it as `pendingPermissions`; the pinned Fake Daemon omits it, so this adds it.
+ * request, which a Client that loads the agent later gets with the load
+ * (`pendingPermissions`).
  */
 function askPermission(daemon: FakeDaemon) {
-  const pending = new Map<string, Record<string, unknown>>()
-  const request = daemon.request.bind(daemon)
-  daemon.request = (method, params) => {
-    const asked = request(method, params)
-    if (method === 'daemon.request_permission') {
-      pending.set(asked.id, { ...params, requestId: asked.id })
-      void asked.answer.then(() => pending.delete(asked.id))
-    }
-    return asked
-  }
-  const load = daemon.scenario.handlers['daemon.load_session']!
-  daemon.scenario.on('daemon.load_session', async (params, context, req) => ({
-    ...((await load(params, context, req)) as Record<string, unknown>),
-    pendingPermissions: [...pending.values()].filter((p) => p['sessionId'] === params['sessionId']),
-  }))
   void permissionTurn({
     command: 'go test ./payments/...',
     reply: 'The charge endpoint passes its tests.',

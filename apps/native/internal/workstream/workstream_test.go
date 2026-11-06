@@ -181,10 +181,6 @@ func (f *fixture) answer(method, sessionID string) map[string]any {
 	}
 	var e *droid.RPCError
 	switch {
-	case method == "daemon.get_session_turn_outcome":
-		// The Fake Daemon keeps no turn outcomes, and stops at a method it
-		// has no handler for: answer as a droid before 1.4.1 does.
-		e = &droid.RPCError{Code: -32601, Message: "Method not found"}
 	case f.gone[sessionID] && (method == "daemon.load_session" || method == "daemon.archive_session"):
 		e = &droid.RPCError{Code: -32004, Message: "Session not found"}
 	case f.refuse != nil:
