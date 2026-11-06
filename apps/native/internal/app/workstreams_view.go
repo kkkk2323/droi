@@ -100,7 +100,9 @@ type workstreamsState struct {
 	// an error when noticeErr.
 	acting, notice string
 	noticeErr      bool
-	noticeAt       time.Time
+	// script is the Host's list of the models that may use Script.
+	script   scriptModels
+	noticeAt time.Time
 	// archiveFor is the Workstream whose archiving the dialog asks about.
 	archiveFor string
 	// settingsFor is the Workstream whose settings the dialog shows, "" for

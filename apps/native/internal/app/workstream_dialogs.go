@@ -243,6 +243,7 @@ func (a *App) startWorkstream() {
 type settingsForm struct {
 	name        string
 	nameBox     ui.Handle
+	symbol      workstreamForm
 	orchOpen    bool
 	orchPicker  pickerState
 	agentOpen   bool
@@ -254,14 +255,22 @@ func (a *App) openWorkstreamSettings(id string) {
 	s := &a.workstreams
 	s.settingsFor = id
 	s.settings = settingsForm{}
+	s.settings.symbol.symbol = sessions.DefaultWorkstreamSymbol
 	if w := a.findWorkstream(id); w != nil {
 		s.settings.name = w.Title
-	}
-	if orch := a.orchestratorSession(id); orch != "" {
-		if sel := findSummary(a.listedNow(), orch); sel != nil && sel.Title != "" {
-			s.settings.name = sel.Title
+		if w.Symbol != "" {
+			s.settings.symbol.symbol = w.Symbol
 		}
 	}
+	if orch := a.orchestratorSession(id); orch != "" {
+		if sel := findSummary(a.listedNow(), orch); sel != nil {
+			if sel.Title != "" {
+				s.settings.name = sel.Title
+			}
+			s.settings.symbol.symbol = sessions.WorkstreamSymbol(sel.Tags)
+		}
+	}
+	a.loadScriptModels(true)
 }
 
 // settingsRow is a row of the settings dialog: its name and what it does at
@@ -339,10 +348,19 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 				}
 			})
 			a.settingsRow(c, L("Name"), L("Shown in the sidebar and above the workstream."), func() {
-				in := a.field(c, &f.name, L("Workstream name"), "", false, false).Bind(&f.nameBox)
-				if in.Submitted() {
-					a.renameWorkstream(id, f.name)
-				}
+				ui.Row(c).Grow(1).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
+					before := f.symbol.symbol
+					a.symbolPicker(c, &f.symbol)
+					if f.symbol.symbol != before {
+						sym := f.symbol.symbol
+						a.editWorkstream(id, nil, &sym)
+					}
+					in := a.field(c, &f.name, L("Workstream name"), "", false, false).Bind(&f.nameBox)
+					if in.Submitted() {
+						title := f.name
+						a.editWorkstream(id, &title, nil)
+					}
+				})
 			})
 			k.Text(c, L("Models"), k.Dense(12, 13), 18).FontWeight(500).TextColor(t.MutedForeground).Margin(k.Px(14), 0, 0, 0)
 			a.settingsRow(c, L("Orchestrator model"), L("Plans the workstream and coordinates its agents. Applies from its next turn."), func() {
@@ -362,8 +380,9 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 		})
 	})
 	if !open {
-		if w != nil && strings.TrimSpace(f.name) != "" {
-			a.renameWorkstream(id, f.name)
+		if w != nil {
+			title := f.name
+			a.editWorkstream(id, &title, nil)
 		}
 		s.settingsFor = ""
 	}
@@ -390,6 +409,7 @@ func (a *App) scriptHint(c *ui.Context, orchModel, agentModel string) {
 			if !slices.Contains(list, model) {
 				prefs.ScriptModels.Set(a.prefs, append(list, model))
 			}
+			a.loadScriptModels(true)
 		}
 	})
 }

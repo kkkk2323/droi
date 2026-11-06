@@ -30,6 +30,21 @@ type fakeWorkstreams struct {
 	made      gateway.WorkstreamCreated
 	createErr error
 	kept      []string
+	edits     []gateway.WorkstreamEdit
+}
+
+// Edit makes the fake a gateway.WorkstreamEditor.
+func (f *fakeWorkstreams) Edit(_ context.Context, e gateway.WorkstreamEdit) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.edits = append(f.edits, e)
+	return nil
+}
+
+func (f *fakeWorkstreams) edited() []gateway.WorkstreamEdit {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.edits)
 }
 
 func (f *fakeWorkstreams) List(context.Context) ([]gateway.Workstream, error) {

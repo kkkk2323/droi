@@ -35,6 +35,9 @@ type paneRow struct {
 	at       time.Time
 	unread   bool
 	starting bool
+	// direct marks an agent that can use only Direct tools; directHint says why.
+	direct     bool
+	directHint string
 }
 
 // groupOrder is the groups of the agents list, as Factory orders them.
@@ -55,10 +58,11 @@ func (a *App) paneRows(ctx *wsContext, listed []sessions.Summary) []paneRow {
 		}
 		row.activity = a.agentActivity(id, group, how)
 		row.at = a.agentTime(ag, id, listed)
+		row.direct, row.directHint = a.directMark(ag)
 		rows = append(rows, row)
 	}
 	now := a.cfg.Now()
-	for _, st := range startingOf(ctx.w) {
+	for _, st := range ctx.w.Starting {
 		at, err := time.Parse(time.RFC3339, st.StartedAt)
 		if err == nil && now.Sub(at) > startingFor {
 			continue
@@ -71,7 +75,7 @@ func (a *App) paneRows(ctx *wsContext, listed []sessions.Summary) []paneRow {
 // agentTime is when an agent last did something: the Host's note of it, else
 // its Session's last use, else its start.
 func (a *App) agentTime(ag gateway.WorkstreamAgent, id string, listed []sessions.Summary) time.Time {
-	if t, err := time.Parse(time.RFC3339, lastActivityOf(ag)); err == nil {
+	if t, err := time.Parse(time.RFC3339, ag.LastActivityAt); err == nil {
 		return t
 	}
 	if s := findSummary(listed, id); s != nil {
@@ -334,6 +338,9 @@ func (a *App) paneAgentRow(c *ui.Context, ctx *wsContext, r paneRow) {
 					k.Text(c, r.activity, k.Dense(11, 12), k.Dense(16, 17)).TextColor(color).SingleLine()
 				}
 			})
+			if r.direct {
+				a.directBadge(c, r.directHint)
+			}
 			if (r.group == "idle" || r.group == "archived") && !r.at.IsZero() {
 				k.Text(c, relativeTime(r.at, a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.MutedForeground).FontFeatures("tnum").Shrink(0)
 			}
@@ -341,6 +348,15 @@ func (a *App) paneAgentRow(c *ui.Context, ctx *wsContext, r paneRow) {
 		if b.Clicked() && !r.starting {
 			a.openAgent(ctx.id, r.tab)
 		}
+	})
+}
+
+// directBadge is the small mark on an agent that can use only Direct tools.
+func (a *App) directBadge(c *ui.Context, hint string) {
+	k, t := a.kit, a.kit.T
+	ui.Row(c).Role(ui.RoleStatus).Label(L("Direct") + ". " + hint).Tooltip(hint).Height(k.Px(16)).PaddingX(k.Px(5)).AlignItems(ui.Center).Shrink(0).Radius(k.Px(4)).
+		Background(t.Attention.Alpha(0.12)).Children(func() {
+		k.Text(c, L("Direct"), 10, 14).FontWeight(500).TextColor(t.AttentionForeground)
 	})
 }
 
