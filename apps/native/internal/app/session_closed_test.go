@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 )
 
@@ -16,11 +17,13 @@ func TestASessionClosedWhileItsPageIsOpenStaysOpen(t *testing.T) {
 	h.openSession("Deploy")
 	h.until("the Session loaded", func() bool { return h.hasText("Context used") })
 	id := h.a.Route().SessionID
-	// What session_closed does to the Store (the Fake Daemon sends no
-	// session_closed).
-	h.ctl.Store().RemoveSession(id)
-	h.frame()
-	h.until("the Session loaded again", func() bool { return h.ctl.Store().LoadState(id) == session.Loaded && h.hasText("hi") })
+	loadsBefore := h.count("daemon.load_session")
+	if err := h.ctl.CloseSession(t.Context(), protocol.CloseSessionParams{SessionID: id}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the Session loaded again", func() bool {
+		return h.count("daemon.load_session") > loadsBefore && h.ctl.Store().LoadState(id) == session.Loaded && h.hasText("hi")
+	})
 	if got := h.a.Route().SessionID; got != id {
 		t.Fatalf("the page moved to %q", got)
 	}
