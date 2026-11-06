@@ -38,6 +38,23 @@ func TestOnlyTheDeviceChoiceOfDirectIsAskedOfTheDaemon(t *testing.T) {
 	}
 }
 
+// OnWorkstreamsChanged is the Coordinator's OnChange, whose calls the
+// Coordinator's own tests cover; here it is only there, and safe without
+// Services.
+func TestServicesOfferTheWorkstreamsChangesAndEditing(t *testing.T) {
+	var none *Services
+	none.OnWorkstreamsChanged(func() { t.Error("called") })()
+
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Env: func(string) string { return "" }})
+	s := StartServices(h)
+	defer s.Stop()
+	s.OnWorkstreamsChanged(func() {})()
+	if _, ok := s.GatewayWorkstreams().(gateway.WorkstreamEditor); !ok {
+		t.Fatal("the Gateway's Workstreams do not edit")
+	}
+}
+
 func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	dir := t.TempDir()
 	h := host.New(host.Config{UserData: dir, Home: dir, Executable: "/opt/droi/droi", Env: func(string) string { return "" }})

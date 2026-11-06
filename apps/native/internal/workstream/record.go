@@ -13,9 +13,12 @@ import (
 // Workstream is the Host's record of one Workstream:
 // <dir>/<id>/workstream.json, beside its Shared Folder <dir>/<id>/shared.
 type Workstream struct {
-	ID             string `json:"id"`
-	Title          string `json:"title"`
-	Workspace      string `json:"workspace"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Workspace string `json:"workspace"`
+	// Symbol is the name of the Workstream's icon, also on its
+	// orchestrator's tag.
+	Symbol         string `json:"symbol,omitempty"`
 	OrchestratorID string `json:"orchestratorId"`
 	// PreviousOrchestratorIDs are the Sessions the orchestrator was handed
 	// off from, archived with the Workstream.
@@ -60,6 +63,10 @@ type Agent struct {
 	// the Host sent it.
 	ReportedSinceMessage bool    `json:"reportedSinceMessage"`
 	LastReport           *Report `json:"lastReport,omitempty"`
+	// ToolMode is the tool execution mode the Daemon resolved when the agent
+	// started, for ToolModeModel; its settings file has the later ones.
+	ToolMode      string `json:"toolMode,omitempty"`
+	ToolModeModel string `json:"toolModeModel,omitempty"`
 }
 
 // Report is what an agent reported last.

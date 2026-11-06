@@ -78,10 +78,11 @@ func StartServices(h *host.Host) *Services {
 	s.Sessions.Start(ctx)
 	s.startAutomations(ctx, h, filepath.Join(h.UserData(), "automations"))
 	s.Workstreams = workstream.New(workstream.Config{
-		Dir:         filepath.Join(h.UserData(), "workstreams"),
-		SessionsDir: filepath.Join(h.SharedFactoryHome(), "sessions"),
-		Sessions:    s.Sessions,
-		Log:         func(m string) { log.Println("[workstreams]", m) },
+		Dir:          filepath.Join(h.UserData(), "workstreams"),
+		SessionsDir:  filepath.Join(h.SharedFactoryHome(), "sessions"),
+		Sessions:     s.Sessions,
+		ScriptModels: h.ScriptModelList,
+		Log:          func(m string) { log.Println("[workstreams]", m) },
 	})
 	if s.Tools != nil {
 		s.Tools.Register(workstream.ServerName, s.Workstreams.Server())
@@ -253,6 +254,16 @@ func (s *Services) automationsChanged() {
 	for _, fn := range fns {
 		fn()
 	}
+}
+
+// OnWorkstreamsChanged calls fn, on a goroutine of the Workstreams', when
+// what the Gateway lists of them changes; the returned function
+// unsubscribes.
+func (s *Services) OnWorkstreamsChanged(fn func()) (unsubscribe func()) {
+	if s == nil || s.Workstreams == nil {
+		return func() {}
+	}
+	return s.Workstreams.OnChange(fn)
 }
 
 // GatewayAutomations is gateway.Options.Automations: the Automations once

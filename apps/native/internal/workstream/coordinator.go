@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
@@ -35,8 +36,11 @@ type Config struct {
 	SessionsDir string
 	// Sessions starts and follows the Workstreams' Sessions.
 	Sessions *hostsession.Runner
-	Log      func(string)
-	Now      func() time.Time
+	// ScriptModels, optional, is where the models that may use Script stand
+	// (host.Host.ScriptModelList), for the agents' ScriptCapable.
+	ScriptModels func() gateway.ScriptModelList
+	Log          func(string)
+	Now          func() time.Time
 }
 
 // Coordinator keeps the Host's Workstreams: it starts them, carries out
@@ -67,6 +71,15 @@ type Coordinator struct {
 	news map[string]chan struct{}
 	// claimed are the branches of agents being started.
 	claimed map[string]bool
+	// starting are the agents spawn_agent is making Sessions for.
+	starting []*starting
+
+	// subsMu guards the subscribers of OnChange, which dirty tells to be
+	// called.
+	subsMu  sync.Mutex
+	subs    map[int]func()
+	nextSub int
+	dirty   chan struct{}
 }
 
 // New makes a Coordinator of the Workstreams in cfg.Dir; Start resumes them.
@@ -80,9 +93,15 @@ func New(cfg Config) *Coordinator {
 	c := &Coordinator{
 		cfg: cfg, links: newLineage(cfg.SessionsDir), all: loadAll(cfg.Dir, cfg.Log), activity: map[string]time.Time{},
 		queue: map[*Agent]chan struct{}{}, news: map[string]chan struct{}{}, claimed: map[string]bool{},
+		subs: map[int]func(){}, dirty: make(chan struct{}, 1),
 	}
 	c.life, c.end = context.WithCancel(context.Background())
 	c.unsubscribe = cfg.Sessions.Subscribe(c.hear)
+	c.work.Add(1)
+	go func() {
+		defer c.work.Done()
+		c.announce()
+	}()
 	return c
 }
 
@@ -146,6 +165,7 @@ func (c *Coordinator) save(w *Workstream) {
 	if err := save(c.cfg.Dir, w); err != nil {
 		c.cfg.Log("saving workstream " + w.ID + ": " + err.Error())
 	}
+	c.changed()
 }
 
 // update changes w's record under c.mu and saves it.
@@ -262,23 +282,48 @@ func refuse(format string, args ...any) error {
 	return &gateway.RefusedRequest{Reason: fmt.Sprintf(format, args...)}
 }
 
-// Create starts a Workstream: its folders, then its orchestrator in the
-// Workspace, which gets the goal as its first message.
-func (c *Coordinator) Create(ctx context.Context, in gateway.NewWorkstream) (gateway.WorkstreamCreated, error) {
-	title, workspace, goal := strings.TrimSpace(in.Title), strings.TrimSpace(in.Workspace), strings.TrimSpace(in.Goal)
+// checkTitle is title trimmed, or why it cannot be a Workstream's name.
+func checkTitle(title string) (string, error) {
+	title = strings.TrimSpace(title)
 	switch {
 	case title == "":
-		return gateway.WorkstreamCreated{}, refuse("Enter a name.")
-	case workspace == "":
+		return "", refuse("Enter a name.")
+	case utf8.RuneCountInString(title) > gateway.MaxWorkstreamTitle:
+		return "", refuse("The name is longer than %d characters.", gateway.MaxWorkstreamTitle)
+	}
+	return title, nil
+}
+
+// checkSymbol is symbol trimmed, or why it cannot be a Workstream's symbol.
+func checkSymbol(symbol string) (string, error) {
+	symbol = strings.TrimSpace(symbol)
+	if !gateway.ValidWorkstreamSymbol(symbol) {
+		return "", refuse("The symbol must be lowercase letters, digits and dashes, at most 32 characters.")
+	}
+	return symbol, nil
+}
+
+// Create starts a Workstream: its folders, then its orchestrator in the
+// Workspace, which gets the goal as its first message when there is one;
+// without, the orchestrator waits for the user's.
+func (c *Coordinator) Create(ctx context.Context, in gateway.NewWorkstream) (gateway.WorkstreamCreated, error) {
+	title, err := checkTitle(in.Title)
+	if err != nil {
+		return gateway.WorkstreamCreated{}, err
+	}
+	symbol, err := checkSymbol(in.Symbol)
+	if err != nil {
+		return gateway.WorkstreamCreated{}, err
+	}
+	workspace, goal := strings.TrimSpace(in.Workspace), strings.TrimSpace(in.Goal)
+	if workspace == "" {
 		return gateway.WorkstreamCreated{}, refuse("Choose a workspace.")
-	case goal == "":
-		return gateway.WorkstreamCreated{}, refuse("Enter the goal.")
 	}
 	if info, err := os.Stat(workspace); err != nil || !info.IsDir() {
 		return gateway.WorkstreamCreated{}, refuse("%s is not a folder on this computer.", workspace)
 	}
 	w := &Workstream{
-		ID: newID(title), Title: title, Workspace: workspace,
+		ID: newID(title), Title: title, Workspace: workspace, Symbol: symbol,
 		AgentModel: strings.TrimSpace(in.AgentModel), AgentReasoningEffort: strings.TrimSpace(in.AgentReasoningEffort),
 		CreatedAt: c.now(), Agents: []*Agent{},
 	}
@@ -316,8 +361,10 @@ func (c *Coordinator) Create(ctx context.Context, in gateway.NewWorkstream) (gat
 	// Sent once recorded, so that the orchestrator's first tool call finds
 	// it. The Workstream stands without it: the user can type the goal in
 	// the orchestrator's Session.
-	if err := c.sendGoal(ctx, opened.SessionID, goal); err != nil {
-		c.cfg.Log("the orchestrator " + opened.SessionID + " started but did not get the goal: " + err.Error())
+	if goal != "" {
+		if err := c.sendGoal(ctx, opened.SessionID, goal); err != nil {
+			c.cfg.Log("the orchestrator " + opened.SessionID + " started but did not get the goal: " + err.Error())
+		}
 	}
 	return gateway.WorkstreamCreated{WorkstreamID: w.ID, OrchestratorID: opened.SessionID}, nil
 }
@@ -356,6 +403,9 @@ func orchestratorTag(w *Workstream) protocol.SessionTag {
 	if w.AgentReasoningEffort != "" {
 		md["agentReasoningEffort"] = w.AgentReasoningEffort
 	}
+	if w.Symbol != "" {
+		md["symbol"] = w.Symbol
+	}
 	return protocol.SessionTag{Name: sessions.WorkstreamTag, Metadata: md}
 }
 
@@ -389,22 +439,67 @@ func (c *Coordinator) tagsOf(id string) []protocol.SessionTag {
 // Sessions were handed off to.
 func (c *Coordinator) List(ctx context.Context) ([]gateway.Workstream, error) {
 	c.followHandoffs(ctx)
+	var scripts gateway.ScriptModelList
+	if c.cfg.ScriptModels != nil {
+		scripts = c.cfg.ScriptModels()
+	}
+	type row struct {
+		w        Workstream
+		agents   []Agent
+		activity map[string]time.Time
+		starting []gateway.WorkstreamStarting
+	}
+	now := c.cfg.Now()
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make([]gateway.Workstream, 0, len(c.all))
+	rows := make([]row, 0, len(c.all))
 	for _, w := range c.all {
-		g := gateway.Workstream{
-			ID: w.ID, Title: w.Title, Workspace: w.Workspace, SharedFolder: c.SharedFolder(w.ID),
-			OrchestratorID: w.OrchestratorID, AgentModel: w.AgentModel, AgentReasoningEffort: w.AgentReasoningEffort,
-			CreatedAt: w.CreatedAt, ArchivedAt: w.ArchivedAt, Agents: make([]gateway.WorkstreamAgent, 0, len(w.Agents)),
-		}
+		r := row{w: *w, activity: map[string]time.Time{}}
 		for _, a := range w.Agents {
+			r.agents = append(r.agents, *a)
+			r.activity[a.SessionID] = c.activity[a.SessionID]
+		}
+		for _, s := range c.starting {
+			if s.workstream == w.ID && now.Sub(s.at) < startingMax {
+				r.starting = append(r.starting, gateway.WorkstreamStarting{Title: s.title, StartedAt: s.at.UTC().Format(time.RFC3339)})
+			}
+		}
+		rows = append(rows, r)
+	}
+	c.mu.Unlock()
+	out := make([]gateway.Workstream, 0, len(rows))
+	for _, r := range rows {
+		w := r.w
+		g := gateway.Workstream{
+			ID: w.ID, Title: w.Title, Workspace: w.Workspace, Symbol: w.Symbol, SharedFolder: c.SharedFolder(w.ID),
+			OrchestratorID: w.OrchestratorID, AgentModel: w.AgentModel, AgentReasoningEffort: w.AgentReasoningEffort,
+			CreatedAt: w.CreatedAt, ArchivedAt: w.ArchivedAt, Agents: make([]gateway.WorkstreamAgent, 0, len(r.agents)),
+			Starting: r.starting,
+		}
+		if s := c.cfg.Sessions.Session(w.OrchestratorID); s != nil && w.ArchivedAt == "" {
+			// The user may have renamed the orchestrator's Session.
+			if title := s.Title(); title != "" {
+				g.Title = title
+			}
+		}
+		if w.ArchivedAt == "" {
+			mode, _ := c.toolModeOf(w.OrchestratorID, "", "")
+			g.OrchestratorToolMode = mode
+			g.OrchestratorScriptCapable = scriptCapable(scripts, c.modelOf(w.OrchestratorID, ""))
+		}
+		for _, a := range r.agents {
 			ga := gateway.WorkstreamAgent{
 				SessionID: a.SessionID, Title: a.Title, WorktreePath: a.WorktreePath, Branch: a.Branch, BaseBranch: a.BaseBranch,
 				Model: a.Model, ReasoningEffort: a.ReasoningEffort, CreatedAt: a.CreatedAt, ArchivedAt: a.ArchivedAt, Awaiting: a.Awaiting,
 			}
 			if r := a.LastReport; r != nil {
 				ga.LastReport = &gateway.WorkstreamReport{Kind: r.Kind, Text: r.Text, At: r.At}
+			}
+			if a.ArchivedAt == "" {
+				ga.ToolMode, ga.ToolModeModel = c.toolModeOf(a.SessionID, a.ToolMode, a.ToolModeModel)
+				ga.ScriptCapable = scriptCapable(scripts, c.modelOf(a.SessionID, a.Model))
+				if t := c.lastActive(a, r.activity[a.SessionID]); !t.IsZero() {
+					ga.LastActivityAt = t.UTC().Format(time.RFC3339)
+				}
 			}
 			g.Agents = append(g.Agents, ga)
 		}
@@ -414,6 +509,60 @@ func (c *Coordinator) List(ctx context.Context) ([]gateway.Workstream, error) {
 		return cmp.Or(cmp.Compare(b.CreatedAt, a.CreatedAt), cmp.Compare(a.ID, b.ID))
 	})
 	return out, nil
+}
+
+// toolModeOf is the tool execution mode of the Session id and the model droid
+// resolved it for: from its settings file, which has the mode droid chose at
+// the last turn's boundary, else the one recorded at its start.
+func (c *Coordinator) toolModeOf(id, recorded, recordedModel string) (mode, model string) {
+	if s, ok := c.links.sessionSettings(id); ok && s.ToolMode != "" {
+		return s.ToolMode, s.ToolModeModel
+	}
+	return recorded, recordedModel
+}
+
+// modelOf is the model the Session id has now: the Session's own, as the
+// Runner holds it, else the settings file's, else recorded.
+func (c *Coordinator) modelOf(id, recorded string) string {
+	if s := c.cfg.Sessions.Session(id); s != nil {
+		if m := s.Settings().ModelID; m != "" {
+			return m
+		}
+	}
+	if s, ok := c.links.sessionSettings(id); ok && s.Model != "" {
+		return s.Model
+	}
+	return recorded
+}
+
+// scriptCapable is whether model may use Script on the computer's Daemon;
+// nil when the list is not known and does not have it.
+func scriptCapable(list gateway.ScriptModelList, model string) *bool {
+	if model == "" {
+		return nil
+	}
+	allowed, known := list.Allows(model)
+	if !allowed && !known {
+		return nil
+	}
+	return &allowed
+}
+
+// lastActive is when the agent a's Session last did something the Host saw,
+// seen being when it last heard of it.
+func (c *Coordinator) lastActive(a Agent, seen time.Time) time.Time {
+	last := seen
+	if s := c.cfg.Sessions.Session(a.SessionID); s != nil && c.cfg.Sessions.Following(a.SessionID) {
+		if t := s.WorkingStateChangedAt(); t.After(last) {
+			last = t
+		}
+	}
+	for _, at := range []string{a.CreatedAt, reportAt(a.LastReport)} {
+		if t, err := time.Parse(time.RFC3339, at); err == nil && t.After(last) {
+			last = t
+		}
+	}
+	return last
 }
 
 // followHandoffs takes over the Sessions the active Workstreams' Sessions
@@ -499,6 +648,56 @@ func (c *Coordinator) SetAgentSettings(ctx context.Context, s gateway.Workstream
 		}
 	}
 	return nil
+}
+
+// Edit renames a Workstream or changes its symbol. The name is its
+// orchestrator's Session title, which Clients list it by, and is also on the
+// record; the symbol is on the record and the orchestrator's tag. The
+// prompts of the Sessions started already keep the old name.
+func (c *Coordinator) Edit(ctx context.Context, e gateway.WorkstreamEdit) error {
+	w, err := c.find(e.ID)
+	if err != nil {
+		return err
+	}
+	var title, symbol string
+	if e.Title != nil {
+		if title, err = checkTitle(*e.Title); err != nil {
+			return err
+		}
+	}
+	if e.Symbol != nil {
+		if symbol, err = checkSymbol(*e.Symbol); err != nil {
+			return err
+		}
+	}
+	orch := c.newest(ctx, w, nil)
+	if e.Title != nil {
+		cl, err := c.cfg.Sessions.Client()
+		if err != nil {
+			return err
+		}
+		if _, err := cl.RenameSession(ctx, protocol.RenameSessionParams{SessionID: orch, Title: title}); err != nil {
+			return err
+		}
+	}
+	c.update(w, func() {
+		if e.Title != nil {
+			w.Title = title
+		}
+		if e.Symbol != nil {
+			w.Symbol = symbol
+		}
+	})
+	if e.Symbol == nil {
+		return nil
+	}
+	c.mu.Lock()
+	tag := orchestratorTag(w)
+	c.mu.Unlock()
+	if _, err := c.follow(ctx, orch, orchestratorHidden()); err != nil {
+		return err
+	}
+	return c.cfg.Sessions.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: orch, Tags: withTag(c.tagsOf(orch), tag)})
 }
 
 // follow is a Session the Runner follows, loaded first when it does not
@@ -711,6 +910,8 @@ func (c *Coordinator) spawn(ctx context.Context, w *Workstream, title, task stri
 		at.Branch, release = c.claimBranch(ctx, workspace, title)
 		defer release()
 	}
+	started := c.startAgent(w.ID, title)
+	defer started()
 	opened, err := c.cfg.Sessions.Open(ctx, hostsession.Spec{
 		Title:             title,
 		Cwd:               workspace,
@@ -733,6 +934,7 @@ func (c *Coordinator) spawn(ctx context.Context, w *Workstream, title, task stri
 		SessionID: opened.SessionID, Title: title, WorktreePath: opened.WorktreePath, Branch: opened.WorktreeBranch,
 		Model: cmp.Or(opened.ModelID, model), ReasoningEffort: cmp.Or(opened.ReasoningEffort, effort),
 		CreatedAt: c.now(), Awaiting: true,
+		ToolMode: opened.ToolMode, ToolModeModel: cmp.Or(opened.ModelID, model),
 	}
 	if a.WorktreePath != "" {
 		a.BaseBranch = base
@@ -744,6 +946,7 @@ func (c *Coordinator) spawn(ctx context.Context, w *Workstream, title, task stri
 	c.activity[id] = c.cfg.Now()
 	c.save(w)
 	c.mu.Unlock()
+	started()
 	if took != model || tookEffort != effort {
 		tags := withTag(c.tagsOf(id), agentTag(w.ID, orch, took, tookEffort))
 		if err := c.cfg.Sessions.UpdateSettings(ctx, protocol.UpdateSessionSettingsParams{SessionID: id, Tags: tags}); err != nil {
@@ -953,11 +1156,20 @@ func (c *Coordinator) hear(e hostsession.Event) {
 	case hostsession.WorkingChanged:
 		c.mu.Lock()
 		c.activity[e.SessionID] = c.cfg.Now()
+		member := c.memberLocked(e.SessionID)
 		c.mu.Unlock()
+		if member {
+			c.changed()
+		}
 	case hostsession.SettingsUpdated:
 		c.mu.Lock()
 		news := c.news[e.SessionID]
+		member := c.memberLocked(e.SessionID)
 		c.mu.Unlock()
+		if member {
+			// droid's new tool mode for a changed model comes this way.
+			c.changed()
+		}
 		if news != nil {
 			select {
 			case news <- struct{}{}:

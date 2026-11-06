@@ -263,6 +263,7 @@ func Run(o Options) {
 			SessionList: sessionList,
 
 			AutomationsChanged: svc.OnAutomationsChanged,
+			WorkstreamsChanged: svc.OnWorkstreamsChanged,
 			MenuBar:            bar.shell(),
 
 			Pages:          exts.pages,

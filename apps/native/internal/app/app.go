@@ -131,6 +131,10 @@ type Config struct {
 	// their runs change, and returns a function that stops it; nil for
 	// another computer, whose Automations the page reads again now and then.
 	AutomationsChanged func(fn func()) (unsubscribe func())
+	// WorkstreamsChanged, optional, calls fn when what the Host's Workstreams
+	// list changes, and returns a function that stops it; nil for another
+	// computer, whose Workstreams the window reads again now and then.
+	WorkstreamsChanged func(fn func()) (unsubscribe func())
 	// MenuBar is the shell's menu bar item of the Key Pool; nil where there
 	// is none, which leaves its setting out.
 	MenuBar *MenuBar
@@ -281,7 +285,7 @@ func New(cfg Config) *App {
 	if cfg.Computer != nil {
 		// This computer's Host, Memory, Gateway and Automations are not the
 		// followed computer's, so the views that need one are left out.
-		cfg.Host, cfg.Memory, cfg.Remote, cfg.AutomationsChanged = nil, nil, nil, nil
+		cfg.Host, cfg.Memory, cfg.Remote, cfg.AutomationsChanged, cfg.WorkstreamsChanged = nil, nil, nil, nil, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{
@@ -386,6 +390,11 @@ func (a *App) Start() {
 					clear(a.automations.runsAt)
 				}
 			})
+		}))
+	}
+	if a.cfg.WorkstreamsChanged != nil {
+		a.unsubscribe = append(a.unsubscribe, a.cfg.WorkstreamsChanged(func() {
+			a.cfg.Update(func() { a.loadWorkstreams(true) })
 		}))
 	}
 }

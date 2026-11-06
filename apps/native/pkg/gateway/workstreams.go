@@ -22,17 +22,53 @@ const (
 	// WorkstreamArchivePath archives the Workstream WorkstreamIDQuery
 	// names, to a POST; it answers a WorkstreamArchived.
 	WorkstreamArchivePath = "/workstreams/archive"
-	WorkstreamIDQuery     = "id"
+	// WorkstreamEditPath renames a Workstream or changes its symbol, to a POST
+	// of a WorkstreamEdit; it answers 204. A Host whose Workstreams do not
+	// implement WorkstreamEditor answers 404.
+	WorkstreamEditPath = "/workstreams/edit"
+	WorkstreamIDQuery  = "id"
 )
+
+// MaxWorkstreamTitle is the longest name a Workstream may have, in
+// characters.
+const MaxWorkstreamTitle = 120
+
+// maxWorkstreamSymbol is the longest symbol name a Workstream may have.
+const maxWorkstreamSymbol = 32
+
+// ValidWorkstreamSymbol reports that s can be a Workstream's symbol: the name
+// of an icon, lowercase letters, digits and dashes; "" is the Client's own.
+func ValidWorkstreamSymbol(s string) bool {
+	if len(s) > maxWorkstreamSymbol {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
 
 // Workstream is a Workstream as the Host keeps it.
 type Workstream struct {
-	ID        string `json:"id"`
+	ID string `json:"id"`
+	// Title is its name: its orchestrator's Session title as it stands now.
 	Title     string `json:"title"`
 	Workspace string `json:"workspace"`
+	// Symbol is the name of its icon, also on its orchestrator's tag; ""
+	// leaves the icon to the Client.
+	Symbol string `json:"symbol,omitempty"`
 	// SharedFolder is the folder its Sessions share, on the Host's computer.
 	SharedFolder   string `json:"sharedFolder"`
 	OrchestratorID string `json:"orchestratorId"`
+	// OrchestratorToolMode and OrchestratorScriptCapable are ToolMode and
+	// ScriptCapable of its orchestrator.
+	OrchestratorToolMode      string `json:"orchestratorToolMode,omitempty"`
+	OrchestratorScriptCapable *bool  `json:"orchestratorScriptCapable,omitempty"`
+	// Starting are the agents being started: their Sessions are not there
+	// yet. They are not kept across a restart of Droi.
+	Starting []WorkstreamStarting `json:"starting,omitempty"`
 	// AgentModel and AgentReasoningEffort are its agents' settings; "" is
 	// the orchestrator's.
 	AgentModel           string            `json:"agentModel"`
@@ -61,6 +97,25 @@ type WorkstreamAgent struct {
 	// Awaiting is set while the orchestrator waits on its report.
 	Awaiting   bool              `json:"awaiting"`
 	LastReport *WorkstreamReport `json:"lastReport,omitempty"`
+	// ToolMode is the tool execution mode the Daemon resolved for the agent,
+	// "direct_only" or "script_only"; "" when the Host does not know. droid
+	// decides again only at the first turn after the agent's model changes,
+	// so it may be the mode of ToolModeModel rather than of Model.
+	ToolMode      string `json:"toolMode,omitempty"`
+	ToolModeModel string `json:"toolModeModel,omitempty"`
+	// ScriptCapable is whether the model the agent has now may use Script;
+	// nil when that is not known.
+	ScriptCapable *bool `json:"scriptCapable,omitempty"`
+	// LastActivityAt is when the Host last saw the agent's Session do
+	// something, "" when it has not.
+	LastActivityAt string `json:"lastActivityAt,omitempty"`
+}
+
+// WorkstreamStarting is an agent the orchestrator asked for, whose Session
+// the Host is still making.
+type WorkstreamStarting struct {
+	Title     string `json:"title"`
+	StartedAt string `json:"startedAt"`
 }
 
 // WorkstreamReport is what an agent last reported.
@@ -71,13 +126,15 @@ type WorkstreamReport struct {
 	At   string `json:"at"`
 }
 
-// NewWorkstream is a Workstream to start: Goal is the orchestrator's first
-// message; Model and ReasoningEffort are the orchestrator's, "" the
-// Daemon's defaults.
+// NewWorkstream is a Workstream to start: Title is at most
+// MaxWorkstreamTitle characters; Goal is the orchestrator's first message,
+// "" leaving it to the user; Symbol the name of its icon; Model and
+// ReasoningEffort are the orchestrator's, "" the Daemon's defaults.
 type NewWorkstream struct {
 	Title                string `json:"title"`
 	Workspace            string `json:"workspace"`
 	Goal                 string `json:"goal"`
+	Symbol               string `json:"symbol,omitempty"`
 	Model                string `json:"model"`
 	ReasoningEffort      string `json:"reasoningEffort"`
 	AgentModel           string `json:"agentModel"`
@@ -95,6 +152,20 @@ type WorkstreamSettings struct {
 	ID                   string `json:"id"`
 	AgentModel           string `json:"agentModel"`
 	AgentReasoningEffort string `json:"agentReasoningEffort"`
+}
+
+// WorkstreamEdit is a change of a Workstream's name or symbol; a nil field
+// stays as it is, and a Symbol of "" clears it.
+type WorkstreamEdit struct {
+	ID     string  `json:"id"`
+	Title  *string `json:"title,omitempty"`
+	Symbol *string `json:"symbol,omitempty"`
+}
+
+// WorkstreamEditor is the part of a Host's Workstreams that edits one; it
+// is separate from Workstreams so that an older implementation still fits.
+type WorkstreamEditor interface {
+	Edit(ctx context.Context, e WorkstreamEdit) error
 }
 
 // WorkstreamArchived is an archived Workstream: the worktrees kept because
@@ -178,6 +249,21 @@ func (g *Gateway) answerWorkstreams(w http.ResponseWriter, r *http.Request, endp
 		if err = ws.SetAgentSettings(ctx, in); err == nil {
 			return http.StatusNoContent, nil
 		}
+	case WorkstreamEditPath:
+		editor, ok := ws.(WorkstreamEditor)
+		if !ok {
+			return http.StatusNotFound, nil
+		}
+		var in WorkstreamEdit
+		if status, err := readJSON(w, r, &in, maxWorkstreamBody); err != nil {
+			return status, errorBody{Error: err.Error()}
+		}
+		if in.ID == "" {
+			return http.StatusBadRequest, errorBody{Error: "No workstream given"}
+		}
+		if err = editor.Edit(ctx, in); err == nil {
+			return http.StatusNoContent, nil
+		}
 	case WorkstreamArchivePath:
 		id := q.Get(WorkstreamIDQuery)
 		if id == "" {
@@ -221,6 +307,12 @@ func (c *Client) CreateWorkstream(ctx context.Context, w NewWorkstream) (Workstr
 // reasoning effort; agents switch before their next turn.
 func (c *Client) SetWorkstreamAgentSettings(ctx context.Context, s WorkstreamSettings) error {
 	return c.long(ctx, http.MethodPost, WorkstreamSettingsPath, nil, s, nil)
+}
+
+// EditWorkstream renames a Workstream or changes its symbol. ErrNotFound is
+// an older Host.
+func (c *Client) EditWorkstream(ctx context.Context, e WorkstreamEdit) error {
+	return c.long(ctx, http.MethodPost, WorkstreamEditPath, nil, e, nil)
 }
 
 // ArchiveWorkstream archives a Workstream's agents and orchestrator; it

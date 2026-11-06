@@ -503,7 +503,7 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		AutomationDeletePath, FactoryAutomationsPath, FactoryAutomationMovePath, AutomationZonePath:
 		status, body := g.answerAutomations(w, r, path, q)
 		reply(w, status, body)
-	case WorkstreamsPath, WorkstreamCreatePath, WorkstreamSettingsPath, WorkstreamArchivePath:
+	case WorkstreamsPath, WorkstreamCreatePath, WorkstreamSettingsPath, WorkstreamEditPath, WorkstreamArchivePath:
 		status, body := g.answerWorkstreams(w, r, path, q)
 		reply(w, status, body)
 	case ScriptModelsPath:
