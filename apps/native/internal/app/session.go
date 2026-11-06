@@ -52,8 +52,11 @@ type sessionView struct {
 
 	// ws is the Workstream whose page shows this Session, nil on a page of
 	// its own; chrome then draws the tab bar in the header's place.
-	ws     *wsContext
-	chrome func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav)
+	ws *wsContext
+	// narrowBar: the page is too narrow for the composer's bar in words, so
+	// its settings show icons.
+	narrowBar bool
+	chrome    func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav)
 }
 
 func (a *App) view(id string) *sessionView {

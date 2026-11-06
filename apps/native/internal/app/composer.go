@@ -353,6 +353,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				})
 			})
 			cs.menu.view(c, a, card, accept)
+			v.narrowBar = a.composerCompact(c, v)
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(4), k.Px(8), k.Px(8), k.Px(8)).Children(func() {
 				add := k.Button(c, kit.Ghost, 32, true, L("Add image")).Radius(k.Px(16)).Disabled(!ready)
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
@@ -362,7 +363,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(k.Px(2)).Children(func() {
 					v.settingsBar(c, s)
 					if v.ws != nil && !v.ws.agentShown {
-						a.orchestratorChip(c)
+						a.orchestratorChip(c, v.narrowBar)
 					}
 				})
 				v.toolsButton(c, loaded)

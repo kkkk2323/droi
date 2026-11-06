@@ -147,3 +147,35 @@ func TestNoScriptHintWhenTheHostCannotSay(t *testing.T) {
 		})
 	}
 }
+
+// Beside the panel the page is narrow, and the composer's settings, the
+// Orchestrator's mark and the tools stay on one row, as icons.
+func TestTheComposerBarStaysOneRowBesideThePanel(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.until("the bar", func() bool { return h.finds("Spec mode") && h.finds("Skills and MCP servers") })
+	var ys []float32
+	for _, label := range []string{"Model and reasoning effort", "Spec mode", "Autonomy: Low autonomy", "Orchestrator", "Skills and MCP servers", "Send"} {
+		r, ok := h.tt.Find(label)
+		if !ok {
+			t.Fatalf("no %q in %q", label, h.tt.Texts())
+		}
+		ys = append(ys, r.Y+r.H/2)
+	}
+	for _, y := range ys {
+		if y < ys[0]-8 || y > ys[0]+8 {
+			t.Fatalf("the bar is on more than one row: %v", ys)
+		}
+	}
+	if h.hasText("Low autonomy") && !h.finds("Autonomy: Low autonomy") {
+		t.Fatal("autonomy in words beside the panel")
+	}
+}
+
+// A page wide enough keeps the bar in words.
+func TestTheComposerBarKeepsItsWordsOnAWidePage(t *testing.T) {
+	h := newHarness(t, workstreamsScenario(), "")
+	h.until("the list", func() bool { return h.hasText("Fix the login race") })
+	h.click("Fix the login race")
+	h.until("the bar", func() bool { return h.hasText("Spec") && h.hasText("Skills") })
+}

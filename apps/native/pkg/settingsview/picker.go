@@ -42,20 +42,26 @@ type ToolModeChoice struct {
 // the reasoning effort and, when tools is set, the tool mode. The starred
 // models are kept in store.
 func ModelPicker(c *ui.Context, k *kit.Kit, store *prefs.Store, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
-	modelPickerAs(c, k, store, false, l10n.L("Model and reasoning effort"), "", false, open, st, choices, value, effort, onModel, onEffort, tools)
+	modelPickerAs(c, k, store, false, l10n.L("Model and reasoning effort"), "", false, false, open, st, choices, value, effort, onModel, onEffort, tools)
+}
+
+// ModelPickerCompact is the ModelPicker for a bar too narrow for the effort
+// beside the model's name; the effort is in the panel and the tooltip.
+func ModelPickerCompact(c *ui.Context, k *kit.Kit, store *prefs.Store, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
+	modelPickerAs(c, k, store, false, l10n.L("Model and reasoning effort"), "", false, true, open, st, choices, value, effort, onModel, onEffort, tools)
 }
 
 // ModelField is the ModelPicker's field look, for settings rows: a framed
 // trigger opening the panel downwards, without the reasoning effort.
 func ModelField(c *ui.Context, k *kit.Kit, store *prefs.Store, label string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value string, onModel func(string)) {
-	modelPickerAs(c, k, store, true, label, "", disabled, open, st, choices, value, "", onModel, nil, nil)
+	modelPickerAs(c, k, store, true, label, "", disabled, false, open, st, choices, value, "", onModel, nil, nil)
 }
 
 // ModelFieldOr is a ModelField whose list starts with fallback, a choice
 // of no model of its own ("Inherit", "Same as main"): picking it calls
 // onModel with "", and an empty value shows it.
 func ModelFieldOr(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value string, onModel func(string)) {
-	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, "", onModel, nil, nil)
+	modelPickerAs(c, k, store, true, label, fallback, disabled, false, open, st, choices, value, "", onModel, nil, nil)
 }
 
 // ModelEffortField is a ModelFieldOr with the reasoning effort: the
@@ -63,10 +69,10 @@ func ModelFieldOr(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback
 // "") is chosen, which has no effort to pick. fallback "" offers no choice
 // of no model of its own.
 func ModelEffortField(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string)) {
-	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, effort, onModel, onEffort, nil)
+	modelPickerAs(c, k, store, true, label, fallback, disabled, false, open, st, choices, value, effort, onModel, onEffort, nil)
 }
 
-func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, name, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
+func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, name, fallback string, disabled, compact bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
 	t := k.T
 	var current *models.Choice
 	for i := range choices {
@@ -95,6 +101,9 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 		fg, size, lh = t.Foreground, 14, 20
 	} else {
 		tr = k.QuietTrigger(c, name, *open).MaxWidth(k.Px(256))
+		if compact {
+			tr.MaxWidth(k.Px(168))
+		}
 		if tr.Hovered() || *open {
 			fg = t.Foreground
 		}
@@ -120,7 +129,7 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 			l.Grow(1)
 		}
 		// A field names no effort a model only has as "none", such as Auto's.
-		if effort != "" && len(levels) > 0 && !(field && effort == "none") {
+		if effort != "" && len(levels) > 0 && !(field && effort == "none") && !compact {
 			k.Text(c, EffortLabel(effort), size, lh).TextColor(t.MutedForeground).Shrink(0)
 		}
 		if tools != nil && tools.Value != "" && tools.Value != defaults.DirectOnly {

@@ -125,12 +125,37 @@ func (a *App) workingRow(c *ui.Context, ctx *wsContext, n int) {
 	})
 }
 
+// composerCompactBelow is the width of the page, in DIPs, under which the
+// composer's bar shows icons: the model, Spec, autonomy and the tools with
+// the Orchestrator's mark and the send button do not fit one row in words.
+const composerCompactBelow = 640
+
+// composerCompact is whether the page the composer is in is narrower than
+// composerCompactBelow: the window less the sidebar and, on a Workstream's
+// page, its panel.
+func (a *App) composerCompact(c *ui.Context, v *sessionView) bool {
+	w, _ := c.Size()
+	if !a.narrow {
+		if a.sidebarShown() {
+			w -= a.sidebarWidth()
+		}
+		if v.ws != nil && !v.ws.st.Closed {
+			w -= a.paneWidth()
+		}
+	}
+	return w < a.kit.Px(composerCompactBelow)
+}
+
 // orchestratorChip marks the composer of the orchestrator's page.
-func (a *App) orchestratorChip(c *ui.Context) {
+func (a *App) orchestratorChip(c *ui.Context, tight bool) {
 	k, t := a.kit, a.kit.T
-	ui.Row(c).Role(ui.RoleImage).Label(L("Orchestrator")).Height(k.Px(22)).PaddingX(k.Px(8)).Margin(0, 0, 0, k.Px(4)).AlignItems(ui.Center).Radius(k.Px(6)).
+	pad, size := float32(8), float32(12)
+	if tight {
+		pad, size = 6, 11
+	}
+	ui.Row(c).Role(ui.RoleImage).Label(L("Orchestrator")).Height(k.Px(22)).PaddingX(k.Px(pad)).Margin(0, 0, 0, k.Px(2)).AlignItems(ui.Center).Radius(k.Px(6)).Shrink(0).
 		Background(t.Info.Alpha(0.12)).Children(func() {
-		k.Text(c, L("Orchestrator"), 12, 16).FontWeight(500).TextColor(t.InfoForeground).SingleLine()
+		k.Text(c, L("Orchestrator"), size, 16).FontWeight(500).TextColor(t.InfoForeground).SingleLine()
 	})
 }
 
