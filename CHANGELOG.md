@@ -1,4 +1,4 @@
-## Unreleased
+## 1.91.0 - 2026-11-06
 
 ### Added
 
@@ -14,6 +14,7 @@
 - The Phone App counts a queued question as waiting on you once Droid rests, also in a session the phone has not opened, and stops counting it once it is answered elsewhere.
 - Memory skips automation runs and Workstream agents.
 - For apps built on Droi (ADR 0029): the Gateway takes `Options.Automations` and `Options.Workstreams` (new interfaces) and hides the tools of `Options.DisabledTools` from Client sessions; `host.FactoryAppRunning` is gone, since the Factory App's Daemon no longer runs Droi's automations.
+
 ## 1.90.0 - 2026-11-03
 
 ### Added
