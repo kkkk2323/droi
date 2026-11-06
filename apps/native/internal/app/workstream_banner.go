@@ -130,16 +130,22 @@ func (a *App) workingRow(c *ui.Context, ctx *wsContext, n int) {
 // the Orchestrator's mark and the send button do not fit one row in words.
 const composerCompactBelow = 760
 
-// composerCompact is whether the page the composer is in is narrower than
-// composerCompactBelow: the window less the sidebar and, on a Workstream's
-// page, its panel.
+// composerCompact is whether the composer is on a Workstream's page that is
+// narrower than composerCompactBelow: the window less the sidebar and its
+// panel.
 func (a *App) composerCompact(c *ui.Context, v *sessionView) bool {
+	// Only a Workstream's page: its panel takes the room, and in a narrow
+	// window the page is the whole window. Any other Session keeps its bar
+	// as it was, which wraps when it must.
+	if v.ws == nil {
+		return false
+	}
 	w, _ := c.Size()
 	if !a.narrow {
 		if a.sidebarShown() {
 			w -= a.sidebarWidth()
 		}
-		if v.ws != nil && !v.ws.st.Closed {
+		if !v.ws.st.Closed {
 			w -= a.paneWidth()
 		}
 	}

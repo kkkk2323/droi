@@ -169,3 +169,55 @@ func TestInheritNamesTheModelItComesTo(t *testing.T) {
 	h.click("Workstream settings")
 	h.until("the dialog", func() bool { return h.hasText("Agent model") && h.hasText("Inherit (") })
 }
+
+// Any other Session keeps the words of its bar at the widths between the
+// narrow window and a wide one, where it wraps if it must.
+func TestAPlainSessionKeepsItsBarInWordsWhenTheWindowIsModest(t *testing.T) {
+	for _, width := range []int{900, 800, 780} {
+		h := newHarness(t, workstreamsScenario(), "")
+		h.tt.SetSize(width, 640)
+		h.frame()
+		h.until("the list", func() bool { return h.hasText("Fix the login race") })
+		h.click("Fix the login race")
+		h.until("the bar", func() bool { return h.hasText("Spec") && h.hasText("Skills") && h.hasText("Low autonomy") })
+	}
+}
+
+// The drawer is shut by going to another page.
+func TestTheDrawerDoesNotOutliveItsPage(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.tt.SetSize(700, 700)
+	h.frame()
+	h.a.Go(Route{Name: "session", SessionID: "orch-1"})
+	h.until("the button", func() bool { return h.finds("Show panel") })
+	h.click("Show panel")
+	h.until("the drawer", func() bool { return h.finds("Workstream panel") })
+	h.a.Go(Route{Name: "home"})
+	h.frame()
+	h.a.Go(Route{Name: "session", SessionID: "orch-1"})
+	h.until("the page", func() bool { return h.finds("Show panel") })
+	if h.finds("Workstream panel") || h.a.workstreams.paneDrawer {
+		t.Fatal("the drawer came back with the page")
+	}
+}
+
+// Opening the drawer of a narrow window leaves the wide window's choice
+// of keeping the panel away as it was.
+func TestTheDrawerLeavesThePanelsSavedChoiceAlone(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.click("Hide panel")
+	h.until("hidden", func() bool { return h.a.wsState("ws-1").Closed })
+	h.tt.SetSize(700, 700)
+	h.frame()
+	h.until("the button", func() bool { return h.finds("Show panel") })
+	h.click("Show panel")
+	h.until("the drawer", func() bool { return h.finds("Workstream panel") })
+	if !h.a.wsState("ws-1").Closed {
+		t.Fatal("the drawer opened the panel for the wide window")
+	}
+	h.click("Hide panel")
+	h.tt.SetSize(1024, 640)
+	h.frame()
+	h.until("wide again", func() bool { return h.finds("Show panel") && !h.finds("Workstream panel") })
+}

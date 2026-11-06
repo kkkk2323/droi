@@ -747,6 +747,7 @@ func (a *App) Go(r Route) {
 		a.settings.back = a.route
 	}
 	r = a.inWorkstream(r)
+	a.workstreams.paneDrawer = false
 	a.route = r
 	a.usage.shown = false
 	// Picking anything in the drawer is the end of the drawer's job.

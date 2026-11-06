@@ -91,7 +91,10 @@ func TestAgentsStartedFromAScriptShowAsRows(t *testing.T) {
 		}},
 		wsResult("n1", `Started agent "Alpha" (agent-7). It works in the workspace /Users/dev/pay.`, false),
 		wsResult("n2", `Started agent "Beta" (agent-6). It works in the workspace /Users/dev/pay.`, false),
-		wsResult("s1", "{\"toolCallId\":\"s1\",\"status\":\"completed\"}\n[Script completed · 2 calls]", false),
+		{Role: "tool", Content: []map[string]any{{"type": "tool_result", "toolUseId": "s1", "content": []map[string]any{
+			{"type": "text", "text": "[Script completed · 2 calls]"},
+			{"type": "text", "text": "{\"toolCallId\":\"s1\",\"status\":\"completed\"}"},
+		}}}},
 	}
 	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
 	h.openOrchestrator()
@@ -150,7 +153,7 @@ func TestAScriptWithOtherCallsOrAFailureKeepsItsShell(t *testing.T) {
 		use["scriptExecution"] = map[string]any{"runId": "s1", "outerToolUseId": "s1"}
 		return use
 	}
-	build := func(calls []map[string]any, results []fakedaemon.Message, status string) *harness {
+	build := func(calls []map[string]any, results []fakedaemon.Message, status string, printed ...string) *harness {
 		sc := workstreamsScenario()
 		msgs := []fakedaemon.Message{{Role: "user", Text: "Go on"},
 			{Role: "assistant", Content: append([]map[string]any{{"type": "tool_use", "id": "s1", "name": "Script", "input": map[string]any{"script": "x"}}}, calls...)}}
@@ -159,6 +162,10 @@ func TestAScriptWithOtherCallsOrAFailureKeepsItsShell(t *testing.T) {
 			{"type": "text", "text": "[Script " + status + " · 2 calls]"},
 			{"type": "text", "text": "{\"toolCallId\":\"s1\",\"status\":\"" + status + "\"}"},
 		}}}})
+		if len(printed) > 0 {
+			parts := msgs[len(msgs)-1].Content[0]["content"].([]map[string]any)
+			msgs[len(msgs)-1].Content[0]["content"] = append([]map[string]any{{"type": "text", "text": printed[0]}}, parts...)
+		}
 		sc.Sessions[1].Messages = msgs
 		h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
 		h.openOrchestrator()
@@ -170,4 +177,8 @@ func TestAScriptWithOtherCallsOrAFailureKeepsItsShell(t *testing.T) {
 	failed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"})},
 		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false)}, "failed")
 	failed.until("the rows", func() bool { return failed.hasText("Alpha") && failed.hasText("Script") })
+	// What the program printed is not lost with its row.
+	printed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"})},
+		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false)}, "completed", "hello from the script")
+	printed.until("the shell", func() bool { return printed.hasText("Alpha") && printed.hasText("Script") })
 }

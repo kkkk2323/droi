@@ -276,8 +276,12 @@ func (a *App) workstreamPage(c *ui.Context, orch sessions.Summary, listed []sess
 // showPanel brings the side panel into view, on tab when it is not "": beside
 // the page, or over it in a narrow window.
 func (a *App) showPanel(wsID, tab string) {
+	// A drawer is not the panel beside the page: opening it leaves the
+	// saved choice of the wide window as it was.
 	a.setWsState(wsID, func(u *workstreamUI) {
-		u.Closed = false
+		if !a.narrow {
+			u.Closed = false
+		}
 		if tab != "" {
 			u.Panel = tab
 		}

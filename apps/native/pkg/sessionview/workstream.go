@@ -260,9 +260,9 @@ func (v *View) wsRow(c *ui.Context, key string, r wsRow) {
 }
 
 // lifted is whether a cluster holds only calls of the Workstream's tools, made
-// directly or by Scripts that ran well, which then show as rows of their
-// own with no cluster or Script row over them: a Script that failed, or was
-// cancelled, keeps its row to say so.
+// directly or by Scripts that ran well and said nothing, which then show as
+// rows of their own with no cluster or Script row over them: a Script that
+// failed, or was cancelled, or has output, keeps its row.
 func (v *View) lifted(b transcript.Block) bool {
 	leaves := transcript.LeafCalls(b.Calls)
 	if len(leaves) == 0 {
@@ -270,7 +270,12 @@ func (v *View) lifted(b transcript.Block) bool {
 	}
 	for _, call := range b.Calls {
 		if call.Lifecycle {
-			if st := v.scriptRun(call).Status; st == "failed" || st == "cancelled" || st == "stalled" {
+			run := v.scriptRun(call)
+			if st := run.Status; st == "failed" || st == "cancelled" || st == "stalled" {
+				return false
+			}
+			// What the program printed or returned is shown by its row.
+			if strings.TrimSpace(run.Output) != "" || strings.TrimSpace(run.Value) != "" {
 				return false
 			}
 		}
