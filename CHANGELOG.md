@@ -1,3 +1,9 @@
+## Unreleased
+
+### Fixed
+
+- Droi no longer quits when an automation run ends while its session is open. The Host closes a run's session once its turn ends, and the window then drew the page of a session it no longer had. The page now stays and loads the session again, so it takes the next message.
+
 ## 1.91.0 - 2026-11-06
 
 ### Added
