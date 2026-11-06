@@ -27,6 +27,10 @@ import (
 // it lists starts, stops, waits or is archived.
 const workstreamsRefresh = 30 * time.Second
 
+// restedRetry is how long after an agent rested its prompts are read again,
+// and the gap to the read after that.
+const restedRetry = time.Second
+
 // workspaceCheckDelay is how long typing pauses before the form asks the
 // Daemon about the folder typed.
 const workspaceCheckDelay = 400 * time.Millisecond
@@ -62,6 +66,13 @@ type workstreamsState struct {
 	pending                   map[string]pendingPrompts
 	pendingAt                 time.Time
 	pendingBusy, pendingAgain bool
+	// retries are the reads still to make, one at retryAt, after an agent
+	// rested: the Daemon may count its question a moment after it rested.
+	retries int
+	retryAt time.Time
+	// probed are the Sessions heard working that neither the list nor the
+	// records had, for which the records were read once.
+	probed map[string]bool
 	// openedSessions reads the Daemon's opened Sessions; nil asks the
 	// Daemon. Tests stand in for it: the Fake Daemon counts no prompts.
 	openedSessions func(context.Context) (*protocol.ListOpenedSessionsResult, error)
@@ -218,9 +229,14 @@ func (a *App) loadPending(force bool) {
 	go func() {
 		res, err := read(a.ctx)
 		var pending map[string]pendingPrompts
+		var working map[string]string
 		if err == nil {
 			pending = map[string]pendingPrompts{}
+			working = map[string]string{}
 			for _, o := range res.Sessions {
+				if o.WorkingState != "" && o.WorkingState != protocol.DroidWorkingStateIdle {
+					working[o.SessionID] = string(o.WorkingState)
+				}
 				var p pendingPrompts
 				if o.PendingPermissionRequestCount != nil {
 					p.permissions = int(*o.PendingPermissionRequestCount)
@@ -237,6 +253,7 @@ func (a *App) loadPending(force bool) {
 			s.pendingBusy, s.pendingAt = false, a.cfg.Now()
 			if err == nil {
 				s.pending = pending
+				a.noteWorking(working)
 			}
 			if s.pendingAgain {
 				s.pendingAgain = false
@@ -244,6 +261,19 @@ func (a *App) loadPending(force bool) {
 			}
 		})
 	}()
+}
+
+// noteWorking takes the working states the Daemon lists for the Sessions
+// this window heard nothing of: a Session already at work when the window
+// started tells of no change.
+func (a *App) noteWorking(working map[string]string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for id, state := range working {
+		if _, heard := a.busy[id]; !heard {
+			a.busy[id] = state
+		}
+	}
 }
 
 // loaded reports whether this window has Session id loaded, and so hears
@@ -311,6 +341,26 @@ func (a *App) noteWorkstreams(c *ui.Context, listed []sessions.Summary, busy map
 	}
 	if rested {
 		a.loadPending(true)
+		s.retries, s.retryAt = 2, a.cfg.Now().Add(restedRetry)
+	}
+	if s.retries > 0 {
+		if left := s.retryAt.Sub(a.cfg.Now()); left > 0 {
+			c.After(left)
+		} else {
+			s.retries--
+			s.retryAt = a.cfg.Now().Add(2 * restedRetry)
+			a.loadPending(true)
+		}
+	}
+	for id, state := range busy {
+		if state == "" || s.probed[id] || a.knownToWorkstreams(id, listed) {
+			continue
+		}
+		if s.probed == nil || len(s.probed) > 256 {
+			s.probed = map[string]bool{}
+		}
+		s.probed[id] = true
+		changed = true
 	}
 	if changed {
 		a.loadWorkstreams(true)
@@ -323,6 +373,23 @@ func (a *App) noteWorkstreams(c *ui.Context, listed []sessions.Summary, busy map
 			a.loadPending(false)
 		}
 	}
+}
+
+// knownToWorkstreams reports whether Session id is one the list or the
+// records have: a Session heard working that neither has may be an agent the
+// Host just started, whose Session the Daemon lists late.
+func (a *App) knownToWorkstreams(id string, listed []sessions.Summary) bool {
+	for _, w := range a.workstreams.list {
+		if w.OrchestratorID == id {
+			return true
+		}
+		for _, ag := range w.Agents {
+			if ag.SessionID == id {
+				return true
+			}
+		}
+	}
+	return findSummary(listed, id) != nil
 }
 
 // countWaiting counts the agents waiting on the user and lifts their
