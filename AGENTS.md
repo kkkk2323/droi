@@ -67,8 +67,11 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 ## Validation Workflow
 
 Before committing run `pnpm check && pnpm test`, and for Go changes
-`"$(go env GOROOT)/bin/gofmt" -l apps/native`, `go vet` and `go test` over
-`./apps/native/...` (as the PR workflow does). Format with that gofmt, which is go.mod's
+`"$(go env GOROOT)/bin/gofmt" -l apps/native`, `go vet` for darwin, windows and linux,
+and `go test` over `./apps/native/...` plus `go test -cpu 1 ./apps/native/internal/app`
+(as the PR workflow does: on one CPU a view test that races the Fake Daemon's answers fails
+there, not in a Release; the workflow runs the view tests in shards of that binary, which
+cover the same tests). Format with that gofmt, which is go.mod's
 Go: a `gofmt` on PATH from another Go lays out `pkg/l10n/zh.go` differently, and the PR
 workflow rejects it (`go test ./apps/native` checks this too). Run
 `pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the Fake Daemon

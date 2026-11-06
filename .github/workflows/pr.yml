@@ -17,11 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'
@@ -32,36 +32,109 @@ jobs:
 
       - run: pnpm test
 
-  # The native app: its view tests run against the Fake Daemon, which
-  # droid-sdk-go's fakedaemon package runs in Node.
-  native:
-    runs-on: macos-latest
+  # Formatting, vetting and the Linux builds of the native app read the code
+  # only: Ubuntu does them while the macOS runners run the tests. Vet each
+  # GOOS the app ships for, as its files differ between them.
+  go-checks:
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: apps/native/go.mod
           cache-dependency-path: apps/native/go.sum
 
-      - name: Go checks
+      - name: Format
         run: |
           gofmt="$(go env GOROOT)/bin/gofmt"
-          test -z "$("$gofmt" -l apps/native)" || { "$gofmt" -l apps/native; echo "::error::Not formatted: run \"\$(go env GOROOT)/bin/gofmt\" -w apps/native (a gofmt from another Go formats differently)"; exit 1; }
-          go vet ./apps/native/...
-          GOOS=windows go vet ./apps/native/...
+          unformatted="$("$gofmt" -l apps/native)"
+          test -z "$unformatted" || { echo "$unformatted"; echo "::error::Not formatted: run \"$(go env GOROOT)/bin/gofmt\" -w apps/native (a gofmt from another Go formats differently)"; exit 1; }
+
+      - name: Vet
+        run: |
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet ./apps/native/...
+          GOOS=windows CGO_ENABLED=0 go vet ./apps/native/...
           GOOS=linux CGO_ENABLED=0 go vet ./apps/native/...
+
+      - name: Build for Linux
+        run: |
           for arch in amd64 arm64; do
             GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -o /dev/null ./apps/native
           done
-          go test ./apps/native/...
-          # On one CPU, a view test that races the Fake Daemon's answers fails here, not in a Release.
-          go test -cpu 1 ./apps/native/internal/app
+
+  # The view tests run App.View against the Fake Daemon, which needs Node, and
+  # only macOS draws a frame as a Release does. They take most of the run, so
+  # two shards split them, each in a runner of its own: shards of one runner
+  # only queue behind each other, as each draws its frames on that runner's one
+  # GPU. The same tests also run on one CPU, where one that races the Fake
+  # Daemon's answers fails, not in a Release.
+  native:
+    name: native (${{ matrix.run.name }}, shard ${{ matrix.shard }} of 2)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      # Every shard must report, whichever goes first.
+      fail-fast: false
+      matrix:
+        run:
+          - name: view tests
+            args: ''
+          - name: view tests on one CPU
+            args: -test.cpu=1
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
+
+      - name: Build the view tests
+        run: go test -c -o "$RUNNER_TEMP/app.test" ./apps/native/internal/app
+
+      - name: Run this shard of the view tests
+        working-directory: apps/native/internal/app
+        env:
+          ARGS: ${{ matrix.run.args }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          tests="$("$RUNNER_TEMP/app.test" -test.list '^Test')"
+          test -n "$tests" || { echo "::error::no view test was listed"; exit 1; }
+          # A name the pattern would read as a regex is refused rather than
+          # silently matched to nothing.
+          odd="$(printf '%s\n' "$tests" | grep -vxE '[A-Za-z0-9_]+' || true)"
+          test -z "$odd" || { echo "::error::unexpected test names: $odd"; exit 1; }
+          pattern="$(printf '%s\n' "$tests" | awk -v shard="$SHARD" -v of=2 'NR % of == shard - 1 { b = b (b ? "|" : "") $0 } END { print "^(" b ")$" }')"
+          count="$(printf '%s\n' "$pattern" | tr '|' '\n' | wc -l | tr -d ' ')"
+          echo "shard $SHARD of 2: $count tests"
+          "$RUNNER_TEMP/app.test" -test.timeout 10m $ARGS -test.run "$pattern"
+
+  # Every other package's tests: they need Node too, where one starts the Fake
+  # Daemon itself, so they stay on macOS beside the view tests.
+  native-packages:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
+
+      - name: The other packages' tests
+        run: go test $(go list ./apps/native/... | grep -v '/internal/app$')
 
   # Droi's droid and its Key Hook, the Key Pool and its LLM Proxy on Windows,
   # where paths, file locks and process signals differ (ADR 0033).
@@ -69,9 +142,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: apps/native/go.mod
           cache-dependency-path: apps/native/go.sum
@@ -84,23 +157,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -C tests exec playwright install --with-deps chromium
+      # Chromium is a download of its own, so keep it until Playwright's version
+      # changes; on a hit only its system packages are needed. apt stalls on a
+      # slow mirror now and then, which a retry rides out.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Chromium with its system packages
+        run: |
+          sudo sh -c 'echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/99retries'
+          pnpm -C tests exec playwright install --with-deps chromium
 
       - name: Phone App web build against the Fake Daemon
         run: pnpm test:e2e:phone
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-phone

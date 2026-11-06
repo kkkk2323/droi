@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
@@ -42,7 +43,18 @@ func memoryHarness(t *testing.T, m *fakeMemory, on bool) (*harness, *host.Host) 
 	h0 := testHost(t)
 	// A key, or the window is the sign-in page.
 	_ = h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-test"); s.MemoryEnabled = on })
-	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0; cfg.Memory = m })
+	sc := oneSession()
+	if m != nil {
+		for _, r := range m.status.Runs {
+			sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{
+				Title:    r.Title,
+				Cwd:      "/tmp/memory",
+				Messages: []fakedaemon.Message{{Role: "user", Text: "Summarize"}},
+				Extra:    map[string]any{"sessionId": r.SessionID, "tags": []map[string]any{{"name": sessions.MemoryTag}}},
+			})
+		}
+	}
+	h := newHarnessWith(t, sc, "", func(cfg *Config) { cfg.Host = h0; cfg.Memory = m })
 	return h, h0
 }
 
@@ -107,6 +119,7 @@ func TestAMemorySessionOpensFromSettings(t *testing.T) {
 	if r := h.a.Route(); r.Name != "session" || r.SessionID != "22222222-2222-4222-8222-222222222222" {
 		t.Fatalf("went to %+v", r)
 	}
+	h.until("the Memory Session", func() bool { return h.hasText("Summarize") })
 }
 
 func TestTheSessionListLeavesOutMemorySessions(t *testing.T) {
