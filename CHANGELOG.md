@@ -1,3 +1,26 @@
+## 1.92.0 - 2026-11-06
+
+### Added
+
+- Workstreams look and work like Factory's (ADR 0037). A Workstream is its orchestrator's page. The sidebar has a Workstreams group (Beta) above your projects, with a row for each Workstream: its symbol, name, when you last used it, and how many of its agents wait on you or work. The page has a tab bar with the orchestrator first and a tab for each agent you open, which Droi keeps for each Workstream. Beside the page, a panel you can drag wider lists the agents as Waiting on you, Working, Idle and Archived (each group folds, and an agent Droi is still starting has a row of its own) and the files in the Workstream's shared folder. In a narrow window the panel opens over the page.
+- Over the message box, the page names the agent that has waited longest with a View Agent button, and counts the agents at work. The orchestrator's message box says who you are talking to.
+- New Workstream asks for a symbol, a name and a folder, and shows the folder's branch. You say what to do in the orchestrator's session, which greets you. Workstream settings change the name, the symbol, the orchestrator's model and the agents' model, which says what it inherits.
+- The tools of a Workstream read as what they did in the conversation: an agent started, a message sent, the agents listed, an agent's report. Several in a row make a group such as "Started 2 of 3 agents", also when a Script made the calls, and a message from an agent is a card that opens to its report.
+- An agent that can use only Direct tools wears a Direct mark when this device would give it Script, which says why. In Workstream settings, a model that is not on the list of models that may use Script says so and offers Allow Script on this computer.
+
+### Changed
+
+- The Workstreams page and the page of each Workstream are gone; the sidebar group and the orchestrator's page take their place. New Workstream no longer asks for a goal or a model.
+- Droi's own sessions (orchestrators, agents and automation runs) start in Direct when this device's tool calls are set to Direct. Settings → Tool calls now says that droid gives Script only to the models Factory lists, and that a model added to Script models takes effect within a few minutes, without restarting droid. A session keeps its tool mode until its model changes.
+- The message box on a Workstream's page keeps its settings on one row beside the panel, shown as icons.
+- For apps built on Droi (ADR 0029): the Gateway answers `GET /script-models` (`Options.ScriptModels`) and `POST /workstreams/edit` (the optional `gateway.WorkstreamEditor`), and a Workstream carries `symbol`, `starting`, `orchestratorToolMode` and `orchestratorScriptCapable`, and each agent `toolMode`, `toolModeModel`, `scriptCapable` and `lastActivityAt`. A new Workstream's `goal` is optional and `symbol` is new. `app.Config.WorkstreamsChanged` and `hostrun.Services.OnWorkstreamsChanged` tell the window when the Host's records change. All new fields are optional, so older clients still work.
+
+### Fixed
+
+- The sidebar showed late that a Workstream agent had started, or that it waited for you: up to 15 seconds for an agent the session list did not have yet, 4 seconds for one already at work when Droi started, and 45 seconds for a question it asked as its turn ended. It now shows each within a couple of seconds.
+- A Workstream agent that worked again after reporting "done" kept showing as done. The agents list shows what an agent is doing, not what it last reported.
+- Workstream agents did not use Script, and nothing said why: droid gives Script only to models on Factory's list, plus those added in Settings → Script models. An agent now shows a Direct mark that explains this, and Workstream settings offer to add the agents' model.
+
 ## 1.91.1 - 2026-11-06
 
 ### Fixed
