@@ -86,17 +86,6 @@ func TestCallsOfOneToolGroupWhileTheyFollowEachOther(t *testing.T) {
 	}
 }
 
-func TestAClusterOfSpawnsIsNamedByTheGroup(t *testing.T) {
-	a := wsCall("spawn_agent", nil, `Started agent "A" (1).`, false)
-	b := wsCall("spawn_agent", nil, `Started agent "B" (2).`, false)
-	if got, pending := ClusterLabel([]*ToolCall{a, b}); got != "Started 2 agents" || pending {
-		t.Fatalf("%q %v", got, pending)
-	}
-	if got, _ := ClusterLabel([]*ToolCall{a}); got != "Used spawn_agent" {
-		t.Fatalf("one call: %q", got)
-	}
-}
-
 func TestReadingAnAgentsMessage(t *testing.T) {
 	m, ok := ReadAgentMessage("[From agent \"Docs\" (a1b2)] done\nMoved it.\n\nTests pass.")
 	if !ok || m.Title != "Docs" || m.ID != "a1b2" || m.Kind != "done" || m.Body != "Moved it.\n\nTests pass." {

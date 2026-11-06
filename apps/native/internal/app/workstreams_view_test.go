@@ -44,7 +44,7 @@ func (h *harness) tabMenu(title, item string) {
 	if !ok {
 		h.t.Fatalf("no tab %q in %q", title, h.tt.Texts())
 	}
-	h.tt.RightClickAt(r.X-r.W*2, r.Y+r.H/2)
+	h.tt.RightClickAt(r.X-r.W/2, r.Y+r.H/2)
 	h.frame()
 	if err := h.tt.ChooseMenuItem(item); err != nil {
 		h.t.Fatal(err)

@@ -161,3 +161,11 @@ func TestAnOlderHostThatWantsAGoalIsTold(t *testing.T) {
 	h.tt.Key(0, ui.KeyEnter)
 	h.until("the advice", func() bool { return h.hasText("Update Droi") })
 }
+
+// The agents' model says what it inherits.
+func TestInheritNamesTheModelItComesTo(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.click("Workstream settings")
+	h.until("the dialog", func() bool { return h.hasText("Agent model") && h.hasText("Inherit (") })
+}

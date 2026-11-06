@@ -242,6 +242,25 @@ func (a *App) startWorkstream() {
 	})
 }
 
+// inheritLabel is the agents' own model choice of "none", with what it comes
+// to: the orchestrator's model and its reasoning effort when it has one.
+func inheritLabel(choices []models.Choice, model, effort string) string {
+	name := model
+	for _, m := range choices {
+		if m.ID == model {
+			name = m.Label
+			break
+		}
+	}
+	if name == "" {
+		return L("Inherit")
+	}
+	if effort != "" && effort != "none" {
+		name += " · " + settingsview.EffortLabel(effort)
+	}
+	return L("Inherit (%s)", name)
+}
+
 // startFailed is what the dialog says when the Host would not start the
 // Workstream. A Host from before a Workstream started from a name asks for a
 // goal, which only an update helps.
@@ -388,7 +407,7 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 					})
 			})
 			a.settingsRow(c, L("Agent model"), L("Model for all agents. Running agents switch at their next turn; Inherit applies only to new agents."), func() {
-				settingsview.ModelEffortField(c, a.kit, a.prefs, L("Agent model"), L("Inherit"), w == nil, &f.agentOpen, &f.agentPicker, choices, agentModel, agentEffort,
+				settingsview.ModelEffortField(c, a.kit, a.prefs, L("Agent model"), inheritLabel(choices, orchModel, orchEffort), w == nil, &f.agentOpen, &f.agentPicker, choices, agentModel, agentEffort,
 					func(next string) { a.saveAgentModel(id, next, fitEffort(choices, next, agentEffort)) },
 					func(next string) { a.saveAgentModel(id, agentModel, next) })
 			})

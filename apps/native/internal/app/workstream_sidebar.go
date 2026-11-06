@@ -150,7 +150,7 @@ func (a *App) workstreamRow(c *ui.Context, s sessions.Summary, selected bool, do
 					TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
 			}
 		})
-		a.rowStatus(c, s, selected, doing, 22)
+		a.rowStatus(c, s, selected, doing, 30)
 	})
 	if b.Clicked() {
 		a.Go(Route{Name: "session", SessionID: s.SessionID})

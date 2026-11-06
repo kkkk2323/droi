@@ -196,9 +196,14 @@ func (v *View) wsRow(c *ui.Context, key string, r wsRow) {
 			}
 			if chevron != nil {
 				chevron()
+			} else {
+				// Room for the chevron the rows that open have, so that the marks
+				// stand in one column.
+				ui.Box(c).Size(k.Px(14), k.Px(14)).Shrink(0)
 			}
 		}
-		row := func() {
+		// lead is what opens or acts: the trigger, the button or the plain row.
+		lead := func() ui.Element {
 			switch {
 			case r.panel != nil:
 				p = v.rowTrigger(c, open, label)
@@ -211,6 +216,7 @@ func (v *View) wsRow(c *ui.Context, key string, r wsRow) {
 						}
 					})
 				})
+				return p.Trigger
 			case r.click != nil:
 				b := ui.ButtonBase(c).Label(label).FillWidth().Height(k.Px(28)).Gap(k.Px(8)).PaddingX(k.Px(6)).Margin(0, 0, 0, -k.Px(6)).
 					Radius(k.Px(8)).FontSize(k.Px(12.5)).Cursor(ui.CursorPointer)
@@ -221,17 +227,20 @@ func (v *View) wsRow(c *ui.Context, key string, r wsRow) {
 				if b.Clicked() {
 					r.click()
 				}
-			default:
-				ui.Row(c).Role(ui.RoleStatus).Label(label).FillWidth().Height(k.Px(28)).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() { content(false, nil) })
+				return b
 			}
+			return ui.Row(c).Role(ui.RoleStatus).Label(label).FillWidth().Height(k.Px(28)).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() { content(false, nil) })
 		}
-		if r.agent == "" || v.env.OpenSession == nil {
-			row()
+		if v.env.OpenSession == nil {
+			lead()
 		} else {
+			// The slot at the right is there on every row, so that the marks
+			// of the rows stand in one column.
 			ui.Row(c).Gap(k.Px(4)).Children(func() {
-				row()
-				if r.panel != nil {
-					p.Trigger.Shrink(1).MinWidth(0)
+				lead().Shrink(1).MinWidth(0)
+				if r.agent == "" {
+					ui.Box(c).Size(k.Px(28), k.Px(28)).Shrink(0)
+					return
 				}
 				name := r.title
 				if name == "" {
@@ -248,6 +257,30 @@ func (v *View) wsRow(c *ui.Context, key string, r wsRow) {
 			})
 		}
 	})
+}
+
+// lifted is whether a cluster holds only calls of the Workstream's tools, made
+// directly or by Scripts that ran well, which then show as rows of their
+// own with no cluster or Script row over them: a Script that failed, or was
+// cancelled, keeps its row to say so.
+func (v *View) lifted(b transcript.Block) bool {
+	leaves := transcript.LeafCalls(b.Calls)
+	if len(leaves) == 0 {
+		return false
+	}
+	for _, call := range b.Calls {
+		if call.Lifecycle {
+			if st := v.scriptRun(call).Status; st == "failed" || st == "cancelled" || st == "stalled" {
+				return false
+			}
+		}
+	}
+	for _, call := range leaves {
+		if _, ok := transcript.WorkstreamTool(call); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // groupHeader is the line over a run of calls done to several agents: what
@@ -291,12 +324,19 @@ func (v *View) agentMessageCard(c *ui.Context, id string, m transcript.AgentMess
 					ui.Box(c).Size(k.Px(28), k.Px(28)).Radius(k.Px(8)).Background(t.Muted).Center().Shrink(0).Children(func() {
 						k.Icon(c, "inbox", 14, t.MutedForeground)
 					})
-					k.Text(c, heading, 13, 19.5).FontWeight(500).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
-					if badge != "" {
-						ui.Row(c).Height(k.Px(16)).PaddingX(k.Px(5)).AlignItems(ui.Center).Shrink(0).Radius(k.Px(4)).Border(1, t.Border).Children(func() {
-							k.Text(c, badge, 10, 14).FontWeight(500).TextColor(color())
+					// The fixed words on a line of their own, then the name, which
+					// is cut last, with the kind after it.
+					ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Children(func() {
+						k.Text(c, l10n.L("Received message from"), 13, 19.5).FontWeight(500).TextColor(t.Foreground).SingleLine()
+						ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Center).Children(func() {
+							k.Text(c, title, 12, 18).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
+							if badge != "" {
+								ui.Row(c).Height(k.Px(16)).PaddingX(k.Px(5)).AlignItems(ui.Center).Shrink(0).Radius(k.Px(4)).Border(1, t.Border).Children(func() {
+									k.Text(c, badge, 10, 14).FontWeight(500).TextColor(color())
+								})
+							}
 						})
-					}
+					})
 					k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
 				})
 				if v.env.OpenSession != nil {

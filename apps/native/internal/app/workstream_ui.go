@@ -397,7 +397,7 @@ func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext) {
 	k, t := a.kit, a.kit.T
 	title := ctx.title()
 	selected := !ctx.agentShown
-	tab := ui.Row(c.Key("tab:orchestrator")).Height(k.Px(30)).Shrink(1).MinWidth(k.Px(96)).MaxWidth(k.Px(260)).Radius(k.Px(8)).AlignItems(ui.Center)
+	tab := ui.Row(c.Key("tab:orchestrator")).Height(k.Px(30)).Shrink(0).MaxWidth(k.Px(240)).Radius(k.Px(8)).AlignItems(ui.Center)
 	switch {
 	case selected:
 		tab.Background(t.Info.Alpha(0.14))
@@ -445,7 +445,7 @@ func (a *App) agentTab(c *ui.Context, ctx *wsContext, i int, id string, listed [
 	k, t := a.kit, a.kit.T
 	title := a.agentTitle(ctx, id, listed)
 	selected := ctx.agentShown && ctx.st.Active == id
-	tab := ui.Row(c.Key("tab:" + id)).Height(k.Px(30)).Shrink(1).MinWidth(k.Px(96)).MaxWidth(k.Px(180)).Radius(k.Px(8)).AlignItems(ui.Center)
+	tab := ui.Row(c.Key("tab:" + id)).Height(k.Px(30)).Shrink(1).MinWidth(k.Px(72)).MaxWidth(k.Px(180)).Radius(k.Px(8)).AlignItems(ui.Center)
 	switch {
 	case selected:
 		tab.Background(t.SidebarAccent)

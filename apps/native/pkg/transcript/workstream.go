@@ -99,7 +99,7 @@ func WorkstreamLine(c *ToolCall, tool, name string) string {
 	case ToolArchiveAgent:
 		return pick(l10n.N("Archiving %s"), l10n.N("Archived %s"), l10n.N("Failed to archive %s"))
 	case ToolListAgents:
-		return pick(l10n.N("Listing available agents"), l10n.N("Listed available agents"), l10n.N("Failed to list agents"))
+		return pick(l10n.N("Listing available agents"), l10n.N("Listed available agents"), l10n.N("Failed to list available agents"))
 	}
 	return pick(l10n.N("Sending report to the orchestrator"), l10n.N("Sent report back to the orchestrator"), l10n.N("Failed to send the report"))
 }
@@ -170,8 +170,8 @@ func WorkstreamGroup(run []*ToolCall) (label string, ok bool) {
 	n, done := len(run), len(run)-failed
 	verbs := map[string][4]string{
 		ToolSpawnAgent: {l10n.N("Starting %d agents"), l10n.N("Started %d agents"), l10n.N("Started %d of %d agents"), l10n.N("Failed to start %d agents")},
-		ToolSendMessage: {l10n.N("Messaging %d agents"), l10n.N("Messaged %d agents"), l10n.N("Messaged %d of %d agents"),
-			l10n.N("Failed to message %d agents")},
+		ToolSendMessage: {l10n.N("Sending message to %d agents"), l10n.N("Sent message to %d agents"), l10n.N("Sent message to %d of %d agents"),
+			l10n.N("Failed to send message to %d agents")},
 		ToolInterruptAgent: {l10n.N("Interrupting %d agents"), l10n.N("Interrupted %d agents"), l10n.N("Interrupted %d of %d agents"),
 			l10n.N("Failed to interrupt %d agents")},
 		ToolArchiveAgent: {l10n.N("Archiving %d agents"), l10n.N("Archived %d agents"), l10n.N("Archived %d of %d agents"), l10n.N("Failed to archive %d agents")},

@@ -16,7 +16,14 @@ We decided:
 - **Over the composer** the page says which agent has waited longest, with a button to open it, and counts the agents at work, which opens the panel. The Orchestrator's composer carries the Orchestrator's mark.
 - **A Workstream starts from a symbol, a name and a folder.** There is no goal to write and no model to pick: the user says what to do in the Orchestrator's Session, which greets them. The models, the name and the symbol are in the Workstream's settings, and its Orchestrator's model changes like any Session's, from its next turn.
 - **The Workstream tools read as what they did** in the transcript, in the Orchestrator's and in an agent's, also when a Script made the calls: an agent started, a message sent, the agents listed, an agent's report. A run of the same call is a group ("Started 2 of 3 agents"), and a message from an agent is a card that opens to its report.
+- **The spawn row opens to its prompt.** A click on the row of a `spawn_agent` call shows the prompt the agent got, and the arrow at its right opens the agent's tab. (Factory opens the tab from the row and shows the prompt only on an error; this is a choice, not a slip.) The Workstream's calls stand at the top of the transcript with no "Used N tools" or Script row over them, unless the Script failed or made other calls too.
+- **The panel is a drawer in a narrow window**, under 768 CSS pixels, opened by the same buttons.
 - **An agent that can use only Direct tools wears a mark** when this device does not ask for Direct, which says why and, in the settings, offers Script for the model on this computer (ADR 0028).
+
+## Not done
+
+- Factory subscribes to the live state of at most eight working agents and polls the rest. Droi does not: the window already hears the working state of every Session the Daemon reports (`App.busy`), so each agent's state is as fresh as that, and the Host's change notice (ADR 0036) refreshes the records. A limit would only make it worse.
+- The Usage page of the settings and Factory's other panel tabs.
 
 ## Considered Options
 

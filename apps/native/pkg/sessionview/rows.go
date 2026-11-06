@@ -43,9 +43,9 @@ type transcriptRow struct {
 	// first: the first call of its cluster, or the first nested call of
 	// its Script.
 	first bool
-	// grouped: the call is under a group's header; nested: that header is
-	// one of a Script's calls.
-	grouped, nested bool
+	// grouped: the call is under a group's header; lifted: the row stands at
+	// the top, not in a cluster.
+	grouped, lifted bool
 	// label is a group header's text.
 	label string
 	// streaming: the entry streams and this is its last text.
@@ -84,35 +84,45 @@ func (v *View) rows(entries []*transcript.Entry, streamingID string, ends map[st
 				last := e.ID == streamingID && i == len(e.Blocks)-1
 				add(transcriptRow{kind: rowBlock, key: key, block: i, streaming: last}, 8, 8)
 			case transcript.Tools:
+				if v.lifted(b) {
+					// Only the Workstream's own calls: their rows stand at the
+					// top, without a "Used N tools" over them.
+					first := true
+					for _, run := range transcript.WorkstreamRuns(transcript.LeafCalls(b.Calls)) {
+						label, grouped := transcript.WorkstreamGroup(run)
+						if grouped {
+							r := transcriptRow{kind: rowGroup, lifted: true, key: key + "/" + run[0].Use.ID + "/group", block: i, call: run[0], label: label, first: first}
+							if first {
+								add(r, 8, 8)
+							} else {
+								r.e = e
+								rows = append(rows, r)
+							}
+							first = false
+						}
+						for _, call := range run {
+							r := transcriptRow{kind: rowCall, lifted: true, key: key + "/" + call.Use.ID, block: i, call: call, first: first, grouped: grouped}
+							if first {
+								add(r, 8, 8)
+							} else {
+								r.e = e
+								rows = append(rows, r)
+							}
+							first = false
+						}
+					}
+					continue
+				}
 				add(transcriptRow{kind: rowCluster, key: key, block: i}, 8, 8)
 				if !*v.flag("cluster:"+b.ID, true) {
 					continue
 				}
-				// The cluster's own label names a run that is all of it.
-				_, whole := transcript.WorkstreamGroup(transcript.LeafCalls(b.Calls))
 				j := 0
-				for _, run := range transcript.WorkstreamRuns(b.Calls) {
-					label, grouped := transcript.WorkstreamGroup(run)
-					if grouped && !whole {
-						rows = append(rows, transcriptRow{kind: rowGroup, key: key + "/" + run[0].Use.ID + "/group", e: e, block: i, call: run[0], label: label, first: j == 0})
-						j++
-					}
-					for _, call := range run {
-						rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0, grouped: grouped && !whole})
-						j++
-						n := 0
-						for _, nested := range transcript.WorkstreamRuns(call.Nested) {
-							label, nestedGrouped := transcript.WorkstreamGroup(nested)
-							nestedGrouped = nestedGrouped && !whole
-							if nestedGrouped {
-								rows = append(rows, transcriptRow{kind: rowGroup, nested: true, key: key + "/" + call.Use.ID + "/" + nested[0].Use.ID + "/group", e: e, block: i, call: nested[0], label: label, first: n == 0})
-								n++
-							}
-							for _, inner := range nested {
-								rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: n == 0, grouped: nestedGrouped})
-								n++
-							}
-						}
+				for _, call := range b.Calls {
+					rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0})
+					j++
+					for k, inner := range call.Nested {
+						rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: k == 0})
 					}
 				}
 			default:
@@ -189,15 +199,28 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 		case rowCluster:
 			v.cluster(c, r.e.Blocks[r.block])
 		case rowGroup:
-			callTop, indent := k.Px(4), k.Px(6)
-			if !r.first {
-				callTop = k.Px(2)
+			gap := k.Px(4)
+			if r.first {
+				gap = 0
 			}
-			if r.nested {
-				callTop, indent = k.Px(2), k.Px(13)
-			}
-			ui.Column(c).Margin(callTop, 0, 0, indent).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Padding(0, 0, 0, k.Px(12)).Children(func() { v.groupHeader(c, r.call, r.label) })
+			ui.Column(c).Padding(gap, 0, 0, 0).Children(func() { v.groupHeader(c, r.call, r.label) })
 		case rowCall, rowNested:
+			if r.lifted {
+				gap := k.Px(2)
+				if r.first {
+					gap = 0
+				}
+				ui.Column(c).Padding(gap, 0, 0, 0).Children(func() {
+					if !r.grouped {
+						v.toolRow(c, r.call)
+						return
+					}
+					// Under its group's header, a step in.
+					ui.Column(c).Margin(0, 0, 0, k.Px(7)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).BorderStyle(ui.BorderDashed).
+						Padding(0, 0, 0, k.Px(12)).Children(func() { v.toolRow(c, r.call) })
+				})
+				return
+			}
 			// The cluster's calls column: 4px under its trigger and 2px
 			// between calls; a Script's calls hang right under its row.
 			callTop, callGap := k.Px(4), float32(0)
@@ -209,14 +232,9 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 			}
 			ui.Column(c).Margin(callTop, 0, 0, k.Px(6)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Padding(callGap, 0, 0, k.Px(12)).Children(func() {
 				if r.kind == rowCall {
-					switch {
-					case r.call.Nested != nil:
+					if r.call.Nested != nil {
 						v.scriptGroup(c, r.call)
-					case r.grouped:
-						// Under its group's header, a step in.
-						ui.Column(c).Margin(0, 0, 0, k.Px(7)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).BorderStyle(ui.BorderDashed).
-							Padding(0, 0, 0, k.Px(12)).Children(func() { v.toolRow(c, r.call) })
-					default:
+					} else {
 						v.toolRow(c, r.call)
 					}
 					return

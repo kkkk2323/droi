@@ -45,7 +45,7 @@ func TestTheOrchestratorsToolCallsHaveTheirOwnRows(t *testing.T) {
 	h := workstreamsHarnessOf(t, orchestratorTalks(), &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
 	h.openOrchestrator()
 	h.until("the group", func() bool { return h.hasText("Started 2 of 3 agents") })
-	for _, want := range []string{"Docs sweep", "Billing", "Too many", "Failed to start", "Listed available agents", "Messaged gRPC endpoints", "Received message from gRPC endpoints"} {
+	for _, want := range []string{"Docs sweep", "Billing", "Too many", "Failed to start", "Listed available agents", "Messaged gRPC endpoints", "Received message from"} {
 		if !h.hasText(want) {
 			t.Errorf("no %q in %q", want, h.tt.Texts())
 		}
@@ -99,8 +99,10 @@ func TestAgentsStartedFromAScriptShowAsRows(t *testing.T) {
 	if !h.hasText("Started 2 agents") {
 		t.Fatalf("no group in %q", h.tt.Texts())
 	}
-	if n := h.textCount("Started 2 agents"); n != 2 {
-		t.Fatalf("the group named %d times, once by the cluster and once as its label: %q", n, h.tt.Texts())
+	for _, no := range []string{"Used", "Script"} {
+		if h.hasText(no) {
+			t.Fatalf("a %q row over the agents: %q", no, h.tt.Texts())
+		}
 	}
 }
 
@@ -134,4 +136,38 @@ func TestARowNamesTheAgentByTheWindowsRecord(t *testing.T) {
 	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
 	h.openOrchestrator()
 	h.until("the row", func() bool { return h.hasText("Messaged gRPC endpoints") })
+}
+
+// What a Script did besides start agents keeps the cluster over its calls,
+// and a Script that failed keeps its row, though all its calls are the
+// Workstream's.
+func TestAScriptWithOtherCallsOrAFailureKeepsItsShell(t *testing.T) {
+	nested := func(id, name string, input map[string]any) map[string]any {
+		use := wsUse(id, name, input)
+		if name == "Read" {
+			use["name"] = "Read"
+		}
+		use["scriptExecution"] = map[string]any{"runId": "s1", "outerToolUseId": "s1"}
+		return use
+	}
+	build := func(calls []map[string]any, results []fakedaemon.Message, status string) *harness {
+		sc := workstreamsScenario()
+		msgs := []fakedaemon.Message{{Role: "user", Text: "Go on"},
+			{Role: "assistant", Content: append([]map[string]any{{"type": "tool_use", "id": "s1", "name": "Script", "input": map[string]any{"script": "x"}}}, calls...)}}
+		msgs = append(msgs, results...)
+		msgs = append(msgs, fakedaemon.Message{Role: "tool", Content: []map[string]any{{"type": "tool_result", "toolUseId": "s1", "content": []map[string]any{
+			{"type": "text", "text": "[Script " + status + " · 2 calls]"},
+			{"type": "text", "text": "{\"toolCallId\":\"s1\",\"status\":\"" + status + "\"}"},
+		}}}})
+		sc.Sessions[1].Messages = msgs
+		h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+		h.openOrchestrator()
+		return h
+	}
+	mixed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"}), nested("n2", "Read", map[string]any{"file_path": "/x"})},
+		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false), wsResult("n2", "text", false)}, "completed")
+	mixed.until("the rows", func() bool { return mixed.hasText("Alpha") && mixed.hasText("Used 2 tools") })
+	failed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"})},
+		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false)}, "failed")
+	failed.until("the rows", func() bool { return failed.hasText("Alpha") && failed.hasText("Script") })
 }

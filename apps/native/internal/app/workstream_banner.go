@@ -128,7 +128,7 @@ func (a *App) workingRow(c *ui.Context, ctx *wsContext, n int) {
 // composerCompactBelow is the width of the page, in DIPs, under which the
 // composer's bar shows icons: the model, Spec, autonomy and the tools with
 // the Orchestrator's mark and the send button do not fit one row in words.
-const composerCompactBelow = 640
+const composerCompactBelow = 760
 
 // composerCompact is whether the page the composer is in is narrower than
 // composerCompactBelow: the window less the sidebar and, on a Workstream's
@@ -220,7 +220,7 @@ func (a *App) welcomeBlock(c *ui.Context, ctx *wsContext) {
 // is, with a button that opens the panel tab that shows it.
 func (a *App) welcomeCard(c *ui.Context, ctx *wsContext, icon, title, text, label, panel string) {
 	k, t := a.kit, a.kit.T
-	ui.Column(c.Key("card:"+panel)).Role(ui.RoleGroup).Label(title).Grow(1).MinWidth(k.Px(220)).MaxWidth(k.Px(372)).Padding(k.Px(16)).Gap(k.Px(8)).
+	ui.Column(c.Key("card:"+panel)).Role(ui.RoleGroup).Label(title).Grow(1).MinWidth(k.Px(220)).Padding(k.Px(16)).Gap(k.Px(8)).
 		Radius(k.Px(12)).Border(1, t.Border).Children(func() {
 		ui.Box(c).Size(k.Px(32), k.Px(32)).Radius(k.Px(8)).Background(t.Muted).Center().Margin(0, 0, k.Px(2), 0).Children(func() {
 			k.Icon(c, icon, 16, t.MutedForeground)
