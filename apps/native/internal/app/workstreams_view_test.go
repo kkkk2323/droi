@@ -315,12 +315,15 @@ func TestTheOrchestratorPageNotesWhatWaitsAndWorks(t *testing.T) {
 	h.shot("workstream-attention")
 	h.click("View Agent")
 	h.until("the agent's tab", func() bool { return h.a.wsState("ws-1").Active == "agent-1" })
+	// The agent's Session must be loaded to hear of the change: a change
+	// sent before is the Daemon's to report when it loads.
+	h.until("the agent's Session loaded", func() bool { return h.a.loaded("agent-1") })
 	h.a.showTab("ws-1", "")
 	h.notifyState("agent-1", "idle")
 	h.notifyState("agent-2", "thinking")
 	// The panel lists them: no count over the composer, only the sidebar's
 	// (a name and a text).
-	h.until("agent working", func() bool { return h.finds("Client switch, Working") })
+	h.until("agent working, the other at rest", func() bool { return h.finds("Client switch, Working") && !h.finds("View Agent") })
 	if h.textCount("1 agent working") != 2 {
 		t.Fatalf("the count shows with the panel open: %q", h.tt.Texts())
 	}

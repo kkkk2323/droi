@@ -153,7 +153,14 @@ func TestNoScriptHintWhenTheHostCannotSay(t *testing.T) {
 func TestTheComposerBarStaysOneRowBesideThePanel(t *testing.T) {
 	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
 	h.openOrchestrator()
-	h.until("the bar", func() bool { return h.finds("Spec mode") && h.finds("Skills and MCP servers") })
+	h.until("the bar", func() bool {
+		for _, label := range []string{"Model and reasoning effort", "Spec mode", "Autonomy: Low autonomy", "Orchestrator", "Skills and MCP servers", "Send"} {
+			if !h.finds(label) {
+				return false
+			}
+		}
+		return true
+	})
 	var ys []float32
 	for _, label := range []string{"Model and reasoning effort", "Spec mode", "Autonomy: Low autonomy", "Orchestrator", "Skills and MCP servers", "Send"} {
 		r, ok := h.tt.Find(label)
