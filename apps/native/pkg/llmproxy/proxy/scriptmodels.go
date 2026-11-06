@@ -34,6 +34,41 @@ func (p *Proxy) scriptModelsNow() []string {
 	return fn()
 }
 
+// FactoryScriptModels are the models of the last feature flags reply Factory
+// sent through the proxy, before Settings' models were added; false before
+// there was one.
+func (p *Proxy) FactoryScriptModels() ([]string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.factoryScript), p.factoryScriptSeen
+}
+
+func (p *Proxy) noteFactoryScriptModels(body []byte) {
+	models, ok := listedScriptModels(body)
+	if !ok {
+		return
+	}
+	p.mu.Lock()
+	p.factoryScript, p.factoryScriptSeen = models, true
+	p.mu.Unlock()
+}
+
+// listedScriptModels are the models configs.script_tool_models.models
+// names; false for a reply without that config.
+func listedScriptModels(body []byte) ([]string, bool) {
+	var reply struct {
+		Configs struct {
+			Section *struct {
+				Models []string `json:"models"`
+			} `json:"script_tool_models"`
+		} `json:"configs"`
+	}
+	if json.Unmarshal(body, &reply) != nil || reply.Configs.Section == nil {
+		return nil, false
+	}
+	return reply.Configs.Section.Models, true
+}
+
 func isFeatureFlags(method, path string) bool {
 	return method == http.MethodGet && path == featureFlagsPath
 }

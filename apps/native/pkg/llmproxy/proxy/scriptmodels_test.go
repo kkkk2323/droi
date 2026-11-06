@@ -114,6 +114,29 @@ func TestProxyAddsScriptModelsToFeatureFlags(t *testing.T) {
 	}
 }
 
+// The proxy remembers Factory's own list, not the one it sends on, so that
+// Settings can tell what Factory lists and what it added.
+func TestProxyRemembersFactorysScriptModelsWithoutTheAddedOnes(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, featureFlagsReply)
+	}))
+	defer upstream.Close()
+
+	px := startScriptProxy(t, upstream.URL, func() []string { return []string{"deepseek-v4.1-flash-1017"} })
+	if _, ok := px.FactoryScriptModels(); ok {
+		t.Fatal("a list before any reply")
+	}
+	resp, err := http.Get(px.BaseURL() + featureFlagsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if got, ok := px.FactoryScriptModels(); !ok || !reflect.DeepEqual(got, []string{"gpt-6-sol"}) {
+		t.Fatalf("remembered %v, %v", got, ok)
+	}
+}
+
 func TestProxyLeavesFeatureFlagsAloneWithoutScriptModels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, featureFlagsReply)

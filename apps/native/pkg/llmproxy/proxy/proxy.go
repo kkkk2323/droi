@@ -111,11 +111,15 @@ type Proxy struct {
 	transport       http.RoundTripper
 	cacheWarmerRef  *CacheWarmer
 	scriptModels    func() []string
-	keyOpener       *keyOpener
-	recorder        *diag.Recorder
-	startedAt       time.Time
-	mu              sync.Mutex
-	live            map[*liveCall]struct{}
+	// factoryScript are the models Factory's feature flags list for Script,
+	// as of factoryScriptSeen.
+	factoryScript     []string
+	factoryScriptSeen bool
+	keyOpener         *keyOpener
+	recorder          *diag.Recorder
+	startedAt         time.Time
+	mu                sync.Mutex
+	live              map[*liveCall]struct{}
 }
 
 // liveCall is an LLM request whose reply is streaming through the proxy.
@@ -358,6 +362,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		case len(body) > maxFeatureFlagsBody:
 			upstreamBody = io.MultiReader(bytes.NewReader(body), upstreamBody)
 		default:
+			p.noteFactoryScriptModels(body)
 			out, added := addScriptModels(body, p.scriptModelsNow())
 			upstreamBody = bytes.NewReader(body)
 			if len(added) > 0 {

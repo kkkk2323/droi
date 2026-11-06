@@ -126,6 +126,9 @@ type Options struct {
 	Automations Automations
 	// Workstreams, optional, are the Host's Workstreams; nil answers 404.
 	Workstreams Workstreams
+	// ScriptModels, optional, is where the models that may use Script stand;
+	// nil answers 404.
+	ScriptModels func() ScriptModelList
 	// Relay, optional, is where Remote Access also meets phones away from
 	// this computer's network (ADR 0034). It is read when Remote Access
 	// turns on and at every ReconcileRelay.
@@ -502,6 +505,9 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 		reply(w, status, body)
 	case WorkstreamsPath, WorkstreamCreatePath, WorkstreamSettingsPath, WorkstreamArchivePath:
 		status, body := g.answerWorkstreams(w, r, path, q)
+		reply(w, status, body)
+	case ScriptModelsPath:
+		status, body := g.answerScriptModels(r, q)
 		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App
