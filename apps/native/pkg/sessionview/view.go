@@ -531,7 +531,18 @@ func (v *View) Frame() *session.Session {
 	if s != nil && s.LoadState() == session.Loaded {
 		v.hasLoaded = true
 	}
+	if s == nil && v.hasLoaded && !v.loadFailed() {
+		// The Store drops a Session another connection closed
+		// (session_closed), also while its page is open: load it again.
+		v.Open()
+	}
 	return s
+}
+
+func (v *View) loadFailed() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.loadErr != ""
 }
 
 // Transcript is the room under a page's header: the transcript, a spinner
@@ -550,7 +561,7 @@ func (v *View) Transcript(c *ui.Context, s *session.Session, listed []sessions.S
 			ui.Column(c).FillWidth().MaxWidth(k.Px(ColumnWidth)).AlignSelf(ui.Center).Padding(k.Px(24)).Children(func() {
 				k.Text(c, loadErr, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 			})
-		case !loaded && len(v.entries) == 0:
+		case s == nil || !loaded && len(v.entries) == 0:
 			if loading || s == nil || s.LoadState() != session.Loaded {
 				ui.Row(c).Fill().Center().Gap(k.Px(8)).Children(func() {
 					k.Spinner(c, 16, t.MutedForeground)
