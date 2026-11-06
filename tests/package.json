@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@droi/daemon-layer": "workspace:*",
-    "@droi/fake-daemon": "github:kkkk2323/droid-sdk-go#21e5c0bf1d1ded76982258527205bed867b73c93&path:/fake-daemon",
+    "@droi/fake-daemon": "github:kkkk2323/droid-sdk-go#e0998547b759758782d3e1cad7ff6023567a1f5f&path:/fake-daemon",
     "@factory/droid-sdk": "0.10.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.2",
