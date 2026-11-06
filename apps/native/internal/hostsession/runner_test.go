@@ -782,6 +782,50 @@ func TestATurnALoadFindsOverWithoutARecordIsLostTouch(t *testing.T) {
 	}
 }
 
+func askedToolMode(t *testing.T, d *fakedaemon.Daemon) (string, bool) {
+	t.Helper()
+	init, err := d.WaitForRequest("daemon.initialize_session", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(init.Params, &p); err != nil {
+		t.Fatal(err)
+	}
+	mode, ok := p["toolExecutionMode"].(string)
+	return mode, ok
+}
+
+// A Session is opened with the tool mode the Host's device default names, and
+// with none when it names none, which leaves the choice to droid.
+func TestOpenAsksForTheDeviceToolModeOnlyWhenThereIsOne(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}}})
+	r, _ := start(t, d, "", func(c *Config) {
+		c.ToolMode = func() protocol.ToolExecutionMode { return protocol.ToolExecutionModeDirectOnly }
+	})
+	opened, err := r.Open(testContext(t), Spec{Cwd: repo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode, ok := askedToolMode(t, d); !ok || mode != "direct_only" {
+		t.Errorf("asked for %q (%v)", mode, ok)
+	}
+	if opened.ToolMode != "direct_only" {
+		t.Errorf("Opened.ToolMode %q", opened.ToolMode)
+	}
+
+	d = fakedaemon.Start(t, fakedaemon.Scenario{Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"ok"}}})
+	r, _ = start(t, d, "", func(c *Config) {
+		c.ToolMode = func() protocol.ToolExecutionMode { return "" }
+	})
+	if _, err := r.Open(testContext(t), Spec{Cwd: repo}); err != nil {
+		t.Fatal(err)
+	}
+	if mode, ok := askedToolMode(t, d); ok {
+		t.Errorf("asked for %q, want no mode", mode)
+	}
+}
+
 // Open sends its prompt with a message id of its own, the turn's id the
 // Daemon records its outcome under.
 func TestOpenNamesItsPromptsTurn(t *testing.T) {

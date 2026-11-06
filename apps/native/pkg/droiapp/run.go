@@ -169,6 +169,7 @@ func Run(o Options) {
 		ScriptModels: func() []string {
 			return prefs.ScriptModels.Get(userPrefs)
 		},
+		ToolMode: func() string { return string(defaults.DefaultToolMode(userPrefs)) },
 		// Read when the Daemon starts, which is after StartServices.
 		Overlay:            func() host.OverlayOptions { return svc.Overlay(exts.overlay(h)) },
 		AppendSystemPrompt: exts.systemPrompt,

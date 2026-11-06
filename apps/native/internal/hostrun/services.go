@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droid-sdk-go/protocol"
+
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
@@ -63,6 +65,7 @@ func StartServices(h *host.Host) *Services {
 		Credential:           h.Credential,
 		HasCredential:        h.HasCredential,
 		SystemPromptAddition: h.SystemPromptAddition,
+		ToolMode:             func() protocol.ToolExecutionMode { return deviceToolMode(h.ToolMode()) },
 		OnChange:             h.OnChange,
 		Log:                  func(m string) { log.Println("[host sessions]", m) },
 	})
@@ -85,6 +88,17 @@ func StartServices(h *host.Host) *Services {
 	}
 	s.Workstreams.Start(ctx)
 	return s
+}
+
+// deviceToolMode is the mode the Host's Sessions ask the Daemon for: only
+// the user's choice of Direct. droid applies an asked mode to the models
+// Factory lists only, where it picks Script by itself, so asking for Script
+// would change nothing.
+func deviceToolMode(mode string) protocol.ToolExecutionMode {
+	if protocol.ToolExecutionMode(mode) == protocol.ToolExecutionModeDirectOnly {
+		return protocol.ToolExecutionModeDirectOnly
+	}
+	return ""
 }
 
 // runHiddenTools are what an Automation's run leaves out with a droid of
