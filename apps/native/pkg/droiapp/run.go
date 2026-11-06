@@ -24,6 +24,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/app"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
+	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
 	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
@@ -102,9 +103,9 @@ func Run(o Options) {
 	if version == "" {
 		version = o.DevVersion
 	}
-	// The Runtime Overlay runs the app's own executable as the Memory Server
-	// and the hook, and the Host runs it as a Windows Daemon's anchor; none
-	// starts the app. `droi host` is a Host with no
+	// The Runtime Overlay runs the app's own executable as the Memory Server,
+	// the hook and the Host's tool servers, and the Host runs it as a Windows
+	// Daemon's anchor; none starts the app. `droi host` is a Host with no
 	// window.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -114,6 +115,8 @@ func Run(o Options) {
 			os.Exit(memory.HookMain())
 		case host.DaemonAnchorCommand:
 			os.Exit(host.AnchorMain())
+		case hosttools.Command:
+			os.Exit(hosttools.Main(os.Args[2:]))
 		case "host":
 			if msg := hostUnsupported(runtime.GOOS); msg != "" {
 				fmt.Fprintln(os.Stderr, msg)
@@ -155,6 +158,7 @@ func Run(o Options) {
 		factoryRoot = filepath.Join(userData, "factory")
 	}
 	var h *host.Host
+	var svc *hostrun.Services
 	h = host.New(host.Config{
 		UserData:    userData,
 		Home:        home,
@@ -165,10 +169,12 @@ func Run(o Options) {
 		ScriptModels: func() []string {
 			return prefs.ScriptModels.Get(userPrefs)
 		},
-		// Read when the Daemon starts, which is after New.
-		Overlay:            func() host.OverlayOptions { return exts.overlay(h) },
+		// Read when the Daemon starts, which is after StartServices.
+		Overlay:            func() host.OverlayOptions { return svc.Overlay(exts.overlay(h)) },
 		AppendSystemPrompt: exts.systemPrompt,
+		ClientHiddenTools:  func() []string { return svc.ClientHiddenTools() },
 	})
+	svc = hostrun.StartServices(h)
 	extCtx, stopExtensions := context.WithCancel(context.Background())
 	localToken := gateway.NewLocalToken()
 	var win *mygo.Window
@@ -183,7 +189,7 @@ func Run(o Options) {
 		}
 	}
 	sessionList := &app.SessionListShare{Prefs: userPrefs, Changed: func() { update(func() {}) }}
-	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList, func() { update(func() {}) })
+	gw, gwErr := startGateway(h, version, localToken, mygo.Shell.TrashItem, sessionList, svc, func() { update(func() {}) })
 	if gwErr != nil {
 		log.Println("droi: gateway:", gwErr)
 	}
@@ -255,8 +261,8 @@ func Run(o Options) {
 
 			SessionList: sessionList,
 
-			FactoryAppRunning: host.FactoryAppRunning,
-			MenuBar:           bar.shell(),
+			AutomationsChanged: svc.OnAutomationsChanged,
+			MenuBar:            bar.shell(),
 
 			Pages:          exts.pages,
 			SettingsTabs:   exts.settingsTabs,
@@ -364,6 +370,7 @@ func Run(o Options) {
 			gw.Close()
 		}
 		mem.Stop()
+		svc.Stop()
 		shown.close()
 		h.Stop()
 	})

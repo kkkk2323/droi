@@ -62,6 +62,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	k, t := a.kit, a.kit.T
 	pins := sessions.Pins{Workspaces: set(a.pinnedWorkspaces().Get(a.prefs)), Sessions: set(prefs.PinnedSessions.Get(a.prefs))}
 	busy := a.activity(reported)
+	a.liftOrchestrators(busy)
 	a.noteSubagentsRunning(listed, busy)
 	order := a.sortOrder(listed, busy)
 	a.holdOrder(&order, listed)
@@ -93,6 +94,20 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				}
 			}).Clicked() {
 				a.Go(Route{Name: "automations"})
+			}
+			if a.cfg.Gateway != nil {
+				waiting := a.workstreams.waiting
+				row := a.sidebarRow(c, "git-fork", L("Workstreams"), a.route.Name == "workstreams", func() {
+					if waiting > 0 {
+						ui.Row(c).PaddingX(k.Px(4)).Margin(0, 0, 0, ui.Auto).Children(func() { a.waitingMark(c, waiting, 11, 16.5, true) })
+					}
+				})
+				if waiting > 0 {
+					row.Label(listName(L("Workstreams"), L("%d waiting on you", waiting)))
+				}
+				if row.Clicked() {
+					a.Go(Route{Name: "workstreams"})
+				}
 			}
 			for _, p := range a.cfg.Pages {
 				label := l10n.T(p.Label)
@@ -248,7 +263,7 @@ func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order
 	key := a.orderKey(order, a.pinnedWorkspaces().Get(a.prefs), order.Workspaces, order.Manual)
 	if m.groups == nil || m.groupsKey != key {
 		m.groupsKey = key
-		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, true)
+		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.WithoutWorkstreamAgents(sessions.MainSessions(listed)))), pins, order, true)
 		if a.cfg.SessionList != nil && a.cfg.Computer == nil {
 			a.cfg.SessionList.show(m.groups)
 		}
@@ -265,7 +280,7 @@ func (a *App) timeGroups(listed []sessions.Summary, pins sessions.Pins, order se
 	key := a.orderKey(order, now.Format(time.DateOnly))
 	if m.timeGroups == nil || m.timeKey != key {
 		m.timeKey = key
-		m.timeGroups = sessions.GroupByTime(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.MainSessions(listed))), pins, order, now)
+		m.timeGroups = sessions.GroupByTime(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.WithoutWorkstreamAgents(sessions.MainSessions(listed)))), pins, order, now)
 	}
 	return m.timeGroups
 }
@@ -804,6 +819,9 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			if elsewhere {
 				a.elsewhereMark(c, acc)
 			}
+			if _, role, _ := sessions.Workstream(s.Tags); role == sessions.WorkstreamOrchestrator {
+				k.Icon(c, "git-fork", 12, t.MutedForeground).Role(ui.RoleImage).Label(L("Orchestrator"))
+			}
 			if a.sidebar.unread[s.SessionID] {
 				title.FontWeight(500)
 				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
@@ -832,7 +850,16 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 					k.Text(c, L("Draft"), 11, 16.5).FontWeight(500).TextColor(t.Foreground).SingleLine()
 				})
 			}
+			lifted, waiting, isLifted := a.liftedStatus(s.SessionID)
+			if _, ok := a.workstreams.lifted[s.SessionID]; ok && !isLifted {
+				// An orchestrator's own state wins over its agents'.
+				doing = a.workstreams.busy[s.SessionID]
+			}
 			switch {
+			case isLifted && waiting:
+				status("circle-alert", t.Attention, lifted, false)
+			case isLifted:
+				status("", t.Info, lifted, true)
 			case doing == activity.NeedsInput:
 				status("circle-alert", t.Attention, L("Needs input"), false)
 			case doing == activity.Compacting:

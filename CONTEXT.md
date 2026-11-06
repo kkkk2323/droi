@@ -185,16 +185,36 @@ A tool server the Daemon connects a Session to, from the user's `~/.factory/mcp.
 _Avoid_: connector (Factory's hosted integrations are something else), tool, integration
 
 **Automation**:
-A prompt the Daemon runs on a schedule on its computer, kept in `~/.factory/automations/<id>/` and shared with the droid CLI and the Factory App. Droi lists, runs, pauses, edits and creates the local ones; the Factory App's cloud kinds (Slack, webhook, a droid computer) are not Droi's.
+A prompt Droi's Host runs on a schedule on its computer, each run in a new Session (ADR 0035). It is kept in Droi's own data, out of Factory's sync; the window, the Gateway and Droid's tools create, edit, pause and run it.
 _Avoid_: cron, job, scheduled task, workflow
 
+**Factory Automation**:
+An Automation the Daemon keeps in `~/.factory/automations/<id>/` and syncs to Factory, as the droid CLI and the Factory App make them. Droi lists the local ones and moves one into its own Automations on request; it no longer edits them.
+_Avoid_: Automation (on its own), local automation, Daemon automation
+
 **Automation Run**:
-One run of an Automation: a Session the Daemon starts with the `automation` tag, without asking for permission, and closes once idle. Clients list it on the Automations page, not with the other Sessions.
+One run of an Automation: a Session the Host starts with the `droi.automation` tag and closes when its turn ends. Clients list it on the Automations page, not with the other Sessions; a Factory Automation's runs (the Daemon's, tagged `automation`) are listed on that Factory Automation's page.
 _Avoid_: job run, execution, automation session
 
 **Loop**:
 A prompt the Daemon sends to the same Session on a schedule, as droid's `/loop` and Loop tool make it (a cron of kind `session_prompt`). It fires only while the Session has a worker; Droi shows a Session's Loops above its composer and keeps that worker running for them.
 _Avoid_: cron, scheduled loop, Automation (that one starts a new Session each run)
+
+**Workstream**:
+A long goal the user hands to an Orchestrator, which splits it among Workstream Agents (ADR 0036). It is Droi's own: the Host starts its Sessions, keeps its record and carries its tools. Archiving it archives its Sessions and keeps its Shared Folder.
+_Avoid_: mission, project, swarm, team
+
+**Orchestrator**:
+The Session that leads a Workstream: it plans, starts Workstream Agents, sends them work and hears their reports; it does not edit code. The user talks to it like any Session, and it stays in the session list.
+_Avoid_: lead, manager, parent session
+
+**Workstream Agent**:
+A Session an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
+_Avoid_: worker, subagent (that is a Task call's Session), child session
+
+**Shared Folder**:
+A folder the Host keeps for each Workstream, outside the repository, where its Orchestrator and Workstream Agents leave plans, notes and hand-overs for each other.
+_Avoid_: scratch dir, notes folder, Scratch Workspace
 
 **Workspace**:
 The directory on the computer that a Session operates in.

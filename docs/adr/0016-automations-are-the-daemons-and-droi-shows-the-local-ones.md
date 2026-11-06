@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0035
 ---
 
 # Automations are the Daemon's; Droi shows and edits the local ones
+
+_Superseded by ADR 0035: Droi runs its own Automations from the Host, in its own data and out of Factory's sync. The Automations page, its local times and keeping runs out of the session list stand; Droi no longer edits the Daemon's Automations, and lists them only to move them into its own._
 
 Users wanted the Factory App's Automations in Droi: a prompt that runs on a schedule without anyone starting it.
 

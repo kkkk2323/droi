@@ -28,4 +28,11 @@ describe('activityOf', () => {
     expect(activityOf('waiting_for_tool_confirmation')).toBe('needs-input')
     expect(activityOf('idle')).toBeNull()
   })
+
+  test('a Session resting on a Queued Question waits for the human; a working one works', () => {
+    expect(activityOf('idle', 1)).toBe('needs-input')
+    expect(activityOf(undefined, 2)).toBe('needs-input')
+    expect(activityOf('streaming_assistant_message', 1)).toBe('working')
+    expect(activityOf('idle', 0)).toBeNull()
+  })
 })

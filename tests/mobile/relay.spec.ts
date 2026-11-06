@@ -41,7 +41,8 @@ test('away from the computer’s network, the phone pairs and works through the 
     playTurn(fakeDaemon, deploy.sessionId, 'status?', ['All ', 'green.'])
     await expect(transcript).toContainText('All green.')
     expect(relay.requests).toContain('/meta')
-    expect(daemonSockets(relay)).toBeGreaterThan(0)
+    // The socket's upgrade can reach the relay after the page shows the list.
+    await expect.poll(() => daemonSockets(relay)).toBeGreaterThan(0)
   } finally {
     await relay.close()
   }
@@ -70,7 +71,7 @@ test('a link to the relay alone pairs the phone', async ({ page, fakeDaemon }) =
     await page.goto('/')
     await pasteLink(page, `${relay.base}/#pair=${fakeDaemon.token}`)
     await expect(sessionList(page)).toBeVisible()
-    expect(daemonSockets(relay)).toBeGreaterThan(0)
+    await expect.poll(() => daemonSockets(relay)).toBeGreaterThan(0)
   } finally {
     await relay.close()
   }

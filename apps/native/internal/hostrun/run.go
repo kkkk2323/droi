@@ -1,6 +1,7 @@
 // Package hostrun is `droi host` (ADR 0019): a Host with no window. It
-// starts the Daemon, the Gateway with Remote Access always on and Memory,
-// prints the pairing link, and stops them all when its context ends.
+// starts the Daemon, the Gateway with Remote Access always on, Memory and
+// the Host's Services, prints the pairing link, and stops them all when its
+// context ends.
 package hostrun
 
 import (
@@ -29,7 +30,8 @@ type Options struct {
 	// Env reads the environment: XDG_CONFIG_HOME, XDG_DATA_HOME, PATH and
 	// FACTORY_API_KEY. Nil reads nothing.
 	Env func(string) string
-	// Executable runs the Memory Server and the hook; "" leaves Memory out.
+	// Executable runs the Memory Server, the hook and the Host's tool
+	// servers; "" leaves them out.
 	Executable string
 	// Port is the Gateway's preferred port, the brand's when 0.
 	Port int
@@ -81,17 +83,26 @@ func Run(ctx context.Context, o Options) error {
 	if o.OwnFactoryHome {
 		cfg.FactoryRoot = filepath.Join(cfg.UserData, "factory")
 	}
-	if o.Overlay != nil {
-		// Read when the Daemon starts, which is after New.
-		cfg.Overlay = func() host.OverlayOptions { return o.Overlay(h) }
+	var svc *Services
+	// Read when the Daemon starts, which is after StartServices.
+	cfg.Overlay = func() host.OverlayOptions {
+		var app host.OverlayOptions
+		if o.Overlay != nil {
+			app = o.Overlay(h)
+		}
+		return svc.Overlay(app)
 	}
+	cfg.ClientHiddenTools = func() []string { return svc.ClientHiddenTools() }
 	h = host.New(cfg)
 	if err := checkDroid(h); err != nil {
 		return err
 	}
+	svc = StartServices(h)
 
 	opts := h.GatewayOptions(o.Version, trash.Move)
 	opts.Port, opts.RemoteAccess = port, true
+	opts.Automations = svc.GatewayAutomations()
+	opts.Workstreams = svc.GatewayWorkstreams()
 	var (
 		gw     *gateway.Gateway
 		last   gateway.RelayState
@@ -110,6 +121,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	started, err := gateway.Start(opts)
 	if err != nil {
+		svc.Stop()
 		return fmt.Errorf("the Gateway cannot listen: %w", err)
 	}
 	lastMu.Lock()
@@ -120,6 +132,7 @@ func Run(ctx context.Context, o Options) error {
 	defer func() {
 		_ = gw.Close()
 		mem.Stop()
+		svc.Stop()
 		h.Stop()
 	}()
 	if o.Start != nil {

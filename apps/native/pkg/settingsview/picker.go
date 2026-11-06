@@ -58,6 +58,14 @@ func ModelFieldOr(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback
 	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, "", onModel, nil, nil)
 }
 
+// ModelEffortField is a ModelFieldOr with the reasoning effort: the
+// trigger shows it and the panel picks it, except while the fallback (value
+// "") is chosen, which has no effort to pick. fallback "" offers no choice
+// of no model of its own.
+func ModelEffortField(c *ui.Context, k *kit.Kit, store *prefs.Store, label, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string)) {
+	modelPickerAs(c, k, store, true, label, fallback, disabled, open, st, choices, value, effort, onModel, onEffort, nil)
+}
+
 func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, name, fallback string, disabled bool, open *bool, st *PickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *ToolModeChoice) {
 	t := k.T
 	var current *models.Choice
@@ -111,7 +119,8 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 		if field {
 			l.Grow(1)
 		}
-		if effort != "" && len(levels) > 0 {
+		// A field names no effort a model only has as "none", such as Auto's.
+		if effort != "" && len(levels) > 0 && !(field && effort == "none") {
 			k.Text(c, EffortLabel(effort), size, lh).TextColor(t.MutedForeground).Shrink(0)
 		}
 		if tools != nil && tools.Value != "" && tools.Value != defaults.DirectOnly {

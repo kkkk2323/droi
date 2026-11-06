@@ -202,7 +202,7 @@ func (p *pass) fold(now time.Time) {
 }
 
 // skippedTags are the tags of Sessions no user worked in.
-var skippedTags = []string{memory.MemorySessionTag, "subagent", "exec", "exec-mission", "mission-worker", "automation"}
+var skippedTags = []string{memory.MemorySessionTag, "subagent", "exec", "exec-mission", "mission-worker", "automation", sessions.DroiAutomationTag}
 
 // Waiting counts the Sessions that changed since they were last summarized
 // and are not too old.
@@ -236,6 +236,12 @@ func (p *pass) summarizeSessions(ctx context.Context, minIdle time.Duration) {
 		}
 		if i := slices.IndexFunc(memory.SessionTags(rec.Transcript), func(tag string) bool { return slices.Contains(skippedTags, tag) }); i >= 0 {
 			rec.Skipped = memory.SessionTags(rec.Transcript)[i]
+			continue
+		}
+		// A Workstream agent's work reaches its orchestrator in reports, and
+		// Memory has it from there (ADR 0036).
+		if md, ok := memory.SessionTagMetadata(rec.Transcript, sessions.WorkstreamTag); ok && md["role"] == sessions.WorkstreamAgent {
+			rec.Skipped = sessions.WorkstreamTag
 			continue
 		}
 		info, err := os.Stat(rec.Transcript)

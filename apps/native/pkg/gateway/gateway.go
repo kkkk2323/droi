@@ -1,11 +1,11 @@
 // Package gateway is the Host's Gateway (CONTEXT.md, ADR 0001): it lets a
 // Remote Client such as the Phone App reach the Daemon. It checks the Pairing
 // Token at the WebSocket upgrade, supplies the Factory credential where the
-// Client left its placeholder, adds the System Prompt Addition to
-// `daemon.initialize_session`, and otherwise forwards frames verbatim. Beside
-// the Daemon socket it answers Droi's own Scratch Workspace requests (ADR
-// 0008), tells a Client where a Session's transcript is, and describes the
-// computer on /meta. It serves no web Client.
+// Client left its placeholder, adds the System Prompt Addition and the tools
+// the Host hides to `daemon.initialize_session`, and otherwise forwards
+// frames verbatim. Beside the Daemon socket it answers Droi's own Scratch
+// Workspace requests (ADR 0008), tells a Client where a Session's transcript
+// is, and describes the computer on /meta. It serves no web Client.
 package gateway
 
 import (
@@ -100,6 +100,11 @@ type Options struct {
 	// AppendSystemPrompt, optional, is the System Prompt Addition, read at
 	// every Session start; blank leaves Droid's prompt alone.
 	AppendSystemPrompt func() string
+	// DisabledTools, optional, are tools the Host hides from every Client's
+	// Session, read at every Session start and added to its
+	// disabledToolIds: tool ids, llm ids or MCP selectors (mcp:<server>,
+	// mcp:<server>/<tool>).
+	DisabledTools func() []string
 	// App, Version, ComputerName and ComputerID go into /meta; App "" is
 	// "Droi".
 	App          string
@@ -117,6 +122,10 @@ type Options struct {
 	// SessionTimes, optional, is the Host's Session Times, which the
 	// bridges write and SessionTimesPath serves; nil answers 404.
 	SessionTimes SessionTimes
+	// Automations, optional, are the Host's Automations; nil answers 404.
+	Automations Automations
+	// Workstreams, optional, are the Host's Workstreams; nil answers 404.
+	Workstreams Workstreams
 	// Relay, optional, is where Remote Access also meets phones away from
 	// this computer's network (ADR 0034). It is read when Remote Access
 	// turns on and at every ReconcileRelay.
@@ -487,6 +496,13 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 	case SessionTimesPath, SessionViewedPath:
 		status, body := g.answerSessionTimes(r, path, q)
 		reply(w, status, body)
+	case AutomationsPath, AutomationRunsPath, AutomationSavePath, AutomationPausePath, AutomationRunPath,
+		AutomationDeletePath, FactoryAutomationsPath, FactoryAutomationMovePath, AutomationZonePath:
+		status, body := g.answerAutomations(w, r, path, q)
+		reply(w, status, body)
+	case WorkstreamsPath, WorkstreamCreatePath, WorkstreamSettingsPath, WorkstreamArchivePath:
+		status, body := g.answerWorkstreams(w, r, path, q)
+		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App
 		if app == "" {
@@ -708,6 +724,9 @@ func (b *bridge) toDaemon(ctx context.Context, upstream *websocket.Conn, opts Op
 			}
 			if startsSession && opts.AppendSystemPrompt != nil {
 				data = InjectSystemPrompt(data, opts.AppendSystemPrompt())
+			}
+			if startsSession && opts.DisabledTools != nil {
+				data = InjectDisabledTools(data, opts.DisabledTools())
 			}
 			noteTimes(opts.SessionTimes, data, true)
 		}

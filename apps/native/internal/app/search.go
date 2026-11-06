@@ -154,7 +154,7 @@ func (a *App) search(query string) {
 func titleHits(listed []sessions.Summary, query string) []searchHit {
 	q := strings.ToLower(query)
 	var found []sessions.Summary
-	for _, s := range sessions.MainSessions(listed) {
+	for _, s := range sessions.WithoutWorkstreamAgents(sessions.MainSessions(listed)) {
 		if strings.Contains(strings.ToLower(s.Title), q) {
 			found = append(found, s)
 		}
@@ -171,10 +171,19 @@ func titleHits(listed []sessions.Summary, query string) []searchHit {
 // which the Daemon searches too: its hits carry no tags, so one is told by
 // the title Droi gives it, and a listed Session titled so is kept.
 func contentHits(res *protocol.SearchSessionsResult, listed []sessions.Summary) []searchHit {
+	agents := map[string]bool{}
+	for _, s := range listed {
+		if sessions.IsWorkstreamAgent(s.Tags) {
+			agents[s.SessionID] = true
+		}
+	}
 	var hits []searchHit
 	for _, r := range res.Sessions {
 		if strings.HasPrefix(r.Title, sessions.MemoryTitlePrefix) &&
 			!slices.ContainsFunc(listed, func(s sessions.Summary) bool { return s.SessionID == r.SessionID }) {
+			continue
+		}
+		if agents[r.SessionID] {
 			continue
 		}
 		h := searchHit{sessionID: r.SessionID, title: trimOr(r.Title, L("Untitled session"))}

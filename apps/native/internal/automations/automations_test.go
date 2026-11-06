@@ -1,8 +1,6 @@
 package automations
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -81,7 +79,7 @@ func TestDescribe(t *testing.T) {
 		"0 23 * * 6":    "Every Sunday at 07:00",
 		"5 * * * *":     "Every hour at :05",
 		"* * * * *":     "Every minute",
-		"0 9 1 * *":     "0 9 1 * * (UTC)",
+		"0 9 1 * *":     "0 9 1 * *",
 		"":              "No schedule",
 	} {
 		if got := Describe(expr, beijing); got != want {
@@ -126,21 +124,5 @@ func TestID(t *testing.T) {
 		if got := ID(name, taken); got != want {
 			t.Errorf("%q: %q, want %q", name, got, want)
 		}
-	}
-}
-
-func TestWorkingDirectoryComesFromTheFrontMatter(t *testing.T) {
-	dir := t.TempDir()
-	if got := WorkingDirectory(dir); got != "" {
-		t.Fatalf("no file: %q", got)
-	}
-	body := "---\nname: x\nschedule: '0 9 * * *'\nworkingDirectory: /Users/dev/acme-web\n---\n\nworkingDirectory: /not/this\n"
-	_ = os.WriteFile(filepath.Join(dir, "HEARTBEAT.md"), []byte(body), 0o644)
-	if got := WorkingDirectory(dir); got != "/Users/dev/acme-web" {
-		t.Fatalf("got %q", got)
-	}
-	_ = os.WriteFile(filepath.Join(dir, "HEARTBEAT.md"), []byte("---\nname: x\n---\nworkingDirectory: /no\n"), 0o644)
-	if got := WorkingDirectory(dir); got != "" {
-		t.Fatalf("got %q", got)
 	}
 }

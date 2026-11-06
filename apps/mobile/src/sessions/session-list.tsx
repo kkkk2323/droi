@@ -22,7 +22,22 @@ import {
   type WorkspaceGroup,
 } from '@droi/daemon-layer/sessions'
 import { mainSessions } from '@droi/daemon-layer/subagents'
-import { foldedWorkspaces, toggleListed, usePreference } from '@droi/daemon-layer/local-preference'
+import {
+  agentsByWorkstream,
+  ledWorkstreams,
+  waitingLabel,
+  withBusyWorkstreams,
+  withoutWorkstreamAgents,
+  workstreamLabel,
+  workstreamLoads,
+  type WorkstreamLoad,
+} from '@droi/daemon-layer/workstreams'
+import {
+  foldedWorkspaces,
+  showArchivedSessions,
+  toggleListed,
+  usePreference,
+} from '@droi/daemon-layer/local-preference'
 import { ARCHIVE_WORKTREE_WARNING, archiveDeletesWorktree } from '@droi/daemon-layer/worktree'
 import { useSessionActivity, type SessionActivity } from '@droi/daemon-layer/use-session-activity'
 import {
@@ -33,9 +48,10 @@ import {
   FolderOpen,
   GitBranch,
   MessageSquare,
+  Network,
   Pin,
 } from 'lucide-react-native'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { Spinner } from '../ui/activity'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -58,6 +74,8 @@ interface RowContext {
   unread: ReadonlySet<string>
   activity: ReadonlyMap<string, SessionActivity>
   subagentsRunning: ReadonlyMap<string, number>
+  /** Each orchestrator's agents and what they are doing. */
+  workstreams: ReadonlyMap<string, WorkstreamLoad>
   onSelect: (sessionId: string) => void
   onSessionActions: (session: SessionSummary) => void
   onWorkspaceActions: (group: WorkspaceGroup) => void
@@ -94,8 +112,23 @@ export function SessionList({
   const activity = useSessionActivity()
   const [query, setQuery] = useState('')
   const { pins, order: listOrder, view, setPinned } = useListOrder()
-  const order: SortOrder = { ...listOrder, busy: new Set(activity.keys()), unread }
-  const listed = foldContinued(withoutAutomationRuns(mainSessions(sessions.sessions)))
+  const [showArchived] = usePreference(showArchivedSessions)
+  const { listed, workstreams } = useMemo(() => {
+    const led = ledWorkstreams(sessions.sessions, { includeArchived: showArchived })
+    const shown = foldContinued(
+      withoutWorkstreamAgents(withoutAutomationRuns(mainSessions(sessions.sessions)), led),
+    )
+    return {
+      listed: shown,
+      workstreams: workstreamLoads(shown, agentsByWorkstream(sessions.sessions), activity),
+    }
+  }, [sessions.sessions, showArchived, activity])
+  // An orchestrator whose agents work or wait ranks and stays in sight as a busy Session does.
+  const order: SortOrder = {
+    ...listOrder,
+    busy: withBusyWorkstreams(new Set(activity.keys()), workstreams),
+    unread,
+  }
   const byTime = view === 'time'
   const timeGroups = byTime ? groupByTime(listed, pins, order) : []
   const groups = byTime ? [] : groupByWorkspace(listed, pins, order, { pinnedApart: true })
@@ -116,6 +149,7 @@ export function SessionList({
     unread,
     activity,
     subagentsRunning,
+    workstreams,
     onSelect,
     onSessionActions: (session) => {
       setSessionActions(session)
@@ -601,6 +635,7 @@ function SessionRow({
             session={session}
             activity={rows.activity.get(session.sessionId)}
             subagents={rows.subagentsRunning.get(session.sessionId) ?? 0}
+            workstream={rows.workstreams.get(session.sessionId)}
             place={place}
           />
           {session.archivedAt ? (
@@ -621,11 +656,14 @@ function SessionMeta({
   session,
   activity,
   subagents,
+  workstream,
   place,
 }: {
   session: SessionSummary
   activity: SessionActivity | undefined
   subagents: number
+  /** For an orchestrator: its agents, shown whatever the orchestrator is doing. */
+  workstream: WorkstreamLoad | undefined
   place: string | undefined
 }) {
   const colors = useColors()
@@ -641,23 +679,56 @@ function SessionMeta({
       </Text>
     </View>
   )
-  if (activity === 'needs-input') return status('Needs input', colors.attention, false)
-  if (activity === 'compacting') return status('Compacting', colors.working, true)
-  if (subagents > 0) {
-    const label = `${subagents} ${subagents === 1 ? 'subagent' : 'subagents'} running`
-    return status(label, colors.working, true)
-  }
-  if (activity === 'working') return status('Working', colors.working, true)
-  if (place) {
+  const doing =
+    activity === 'needs-input'
+      ? status('Needs input', colors.attention, false)
+      : activity === 'compacting'
+        ? status('Compacting', colors.working, true)
+        : subagents > 0
+          ? status(
+              `${subagents} ${subagents === 1 ? 'subagent' : 'subagents'} running`,
+              colors.working,
+              true,
+            )
+          : activity === 'working'
+            ? status('Working', colors.working, true)
+            : null
+  const placeMark = place ? (
+    <View role="img" aria-label={`In ${place}`} style={styles.mark}>
+      <Folder size={12} color={colors.mutedForeground} strokeWidth={2} />
+      <Text size="xs" tone="muted" numberOfLines={1} style={styles.markText}>
+        {place}
+      </Text>
+    </View>
+  ) : null
+  if (workstream) {
+    const label = workstreamLabel(workstream.agents)
+    // One line when it fits; otherwise the Workstream's part wraps below.
     return (
-      <View role="img" aria-label={`In ${place}`} style={styles.mark}>
-        <Folder size={12} color={colors.mutedForeground} strokeWidth={2} />
-        <Text size="xs" tone="muted" numberOfLines={1} style={styles.markText}>
-          {place}
-        </Text>
+      <View style={styles.wrap}>
+        {doing}
+        {placeMark}
+        <View style={styles.workstream}>
+          <View role="img" aria-label={label} style={styles.mark}>
+            <Network size={12} color={colors.mutedForeground} strokeWidth={2} />
+            <Text size="xs" tone="muted" numberOfLines={1} style={styles.markText}>
+              {label}
+            </Text>
+          </View>
+          {workstream.waiting > 0 ? (
+            <>
+              <Text size="xs" tone="muted">
+                ·
+              </Text>
+              {status(waitingLabel(workstream.waiting), colors.attention, false)}
+            </>
+          ) : null}
+        </View>
       </View>
     )
   }
+  if (doing) return doing
+  if (placeMark) return placeMark
   if (session.worktree) {
     return (
       <View style={styles.mark}>
@@ -755,4 +826,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   markText: { flexShrink: 1, lineHeight: 17 },
+  wrap: {
+    flexShrink: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: space.sm,
+    rowGap: 2,
+  },
+  workstream: {
+    flexShrink: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+  },
 })

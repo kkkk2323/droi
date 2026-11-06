@@ -14,17 +14,25 @@ import (
 // starts using what only a newer Daemon offers.
 const MinDroid = "0.233.0"
 
+// hiddenToolsDroid is the first droid whose initialize_session takes llm ids
+// and MCP selectors (mcp:<server>/<tool>) in disabledToolIds.
+const hiddenToolsDroid = "1.2.0"
+
 // OlderThanMinDroid reports that version, as `droid --version` prints it,
 // is older than MinDroid. A version it cannot read is not.
-func OlderThanMinDroid(version string) bool {
+func OlderThanMinDroid(version string) bool { return olderThan(version, MinDroid) }
+
+// olderThan reports that version is older than least; a version it cannot
+// read is not.
+func olderThan(version, least string) bool {
 	have, ok := droidSemver(version)
 	if !ok {
 		return false
 	}
-	least, _ := droidSemver(MinDroid)
+	want, _ := droidSemver(least)
 	for i := range have {
-		if have[i] != least[i] {
-			return have[i] < least[i]
+		if have[i] != want[i] {
+			return have[i] < want[i]
 		}
 	}
 	return false

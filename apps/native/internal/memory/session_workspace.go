@@ -7,12 +7,14 @@
 package memory
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -59,6 +61,64 @@ func ReadSessionWorkspace(file string) string {
 	return cwd
 }
 
+// ReadSessionParent is the Session the transcript's Session was handed off
+// from (/handoff), as its session_start line names it; "" for none. A fork
+// (/fork, a rewind) names its source as parent too, but its line always
+// has forkedAtMessageId, null when the source had no message, and counts as
+// none. whole is false when the transcript has no whole session_start line
+// yet.
+func ReadSessionParent(file string) (parent string, whole bool) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	line, err := bufio.NewReader(io.LimitReader(f, firstLineBytes)).ReadBytes('\n')
+	if err != nil {
+		return "", false
+	}
+	var start map[string]json.RawMessage
+	var typ string
+	if json.Unmarshal(line, &start) != nil || json.Unmarshal(start["type"], &typ) != nil || typ != "session_start" {
+		return "", false
+	}
+	if _, fork := start["forkedAtMessageId"]; fork {
+		return "", true
+	}
+	_ = json.Unmarshal(start["parent"], &parent)
+	return parent, true
+}
+
+// SessionFolder is the folder of dir, the Daemon's sessions folder, where
+// droid writes the transcripts of Sessions working in cwd
+// (sanitizePathToDirectoryName).
+func SessionFolder(dir, cwd string) string {
+	path, err := filepath.Abs(cwd)
+	if err != nil {
+		path = cwd
+	}
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	return filepath.Join(dir, sessionFolderName(path, runtime.GOOS == "windows"))
+}
+
+var (
+	slashes    = regexp.MustCompile(`/+`)
+	separators = regexp.MustCompile(`[\\/]+`)
+)
+
+func sessionFolderName(path string, windows bool) string {
+	path = strings.TrimRight(path, `\/`)
+	if windows {
+		if len(path) >= 2 && path[1] == ':' && ('a' <= path[0]|0x20 && path[0]|0x20 <= 'z') {
+			path = path[:1] + path[2:]
+		}
+		return "-" + separators.ReplaceAllString(path, "-")
+	}
+	return "-" + slashes.ReplaceAllString(strings.TrimLeft(path, "/"), "-")
+}
+
 // SessionSettingsFile is the Session's settings file, which the Daemon keeps
 // beside its transcript.
 func SessionSettingsFile(transcriptFile string) string {
@@ -71,23 +131,41 @@ func SessionSettingsFile(transcriptFile string) string {
 // SessionTags are the names of the Session's tags, from its settings file;
 // none when the file is absent or unreadable.
 func SessionTags(transcriptFile string) []string {
+	var out []string
+	for _, t := range sessionTags(transcriptFile) {
+		out = append(out, t.Name)
+	}
+	return out
+}
+
+// SessionTagMetadata is the metadata of the Session's tag name, from its
+// settings file; ok is false without the tag.
+func SessionTagMetadata(transcriptFile, name string) (metadata map[string]string, ok bool) {
+	for _, t := range sessionTags(transcriptFile) {
+		if t.Name == name {
+			return t.Metadata, true
+		}
+	}
+	return nil, false
+}
+
+type sessionTag struct {
+	Name     string            `json:"name"`
+	Metadata map[string]string `json:"metadata"`
+}
+
+func sessionTags(transcriptFile string) []sessionTag {
 	b, err := os.ReadFile(SessionSettingsFile(transcriptFile))
 	if err != nil {
 		return nil
 	}
 	var parsed struct {
-		Tags []struct {
-			Name string `json:"name"`
-		} `json:"tags"`
+		Tags []sessionTag `json:"tags"`
 	}
 	if json.Unmarshal(b, &parsed) != nil {
 		return nil
 	}
-	var out []string
-	for _, t := range parsed.Tags {
-		out = append(out, t.Name)
-	}
-	return out
+	return parsed.Tags
 }
 
 // IsMemorySessionTranscript says whether the transcript belongs to a Memory

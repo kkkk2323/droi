@@ -44,7 +44,7 @@ const sessionPage = 100
 
 // Route is the page the main panel shows.
 type Route struct {
-	Name      string // "home", "new", "session", "settings", "automations", "page"
+	Name      string // "home", "new", "session", "settings", "automations", "workstreams", "page"
 	SessionID string
 	// Page is the id of the extension's Page that "page" shows.
 	Page      string
@@ -53,6 +53,10 @@ type Route struct {
 	Tab       string
 	// Automation is the one the Automations page shows, "" for the list.
 	Automation string
+	// Factory is the Factory automation the Automations page shows.
+	Factory string
+	// Workstream is the one the Workstreams page shows, "" for the list.
+	Workstream string
 }
 
 // Config is what the window needs from main: a Controller to the Daemon,
@@ -125,9 +129,10 @@ type Config struct {
 	SessionList *SessionListShare
 	// Remote is the Gateway for paired phones; nil without a Host.
 	Remote Remote
-	// FactoryAppRunning reports whether the Factory App's Daemon runs too,
-	// for the Automations page's notice; nil never tells.
-	FactoryAppRunning func() bool
+	// AutomationsChanged, optional, calls fn when the Host's Automations or
+	// their runs change, and returns a function that stops it; nil for
+	// another computer, whose Automations the page reads again now and then.
+	AutomationsChanged func(fn func()) (unsubscribe func())
 	// MenuBar is the shell's menu bar item of the Key Pool; nil where there
 	// is none, which leaves its setting out.
 	MenuBar *MenuBar
@@ -243,6 +248,7 @@ type App struct {
 	updateDismissed string
 	memory          memoryState
 	automations     automationsState
+	workstreams     workstreamsState
 	usage           usageState
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
@@ -275,9 +281,9 @@ func New(cfg Config) *App {
 		cfg.Prefs = prefs.Memory()
 	}
 	if cfg.Computer != nil {
-		// This computer's Host, Memory, Gateway and Factory App are not the
+		// This computer's Host, Memory, Gateway and Automations are not the
 		// followed computer's, so the views that need one are left out.
-		cfg.Host, cfg.Memory, cfg.Remote, cfg.FactoryAppRunning = nil, nil, nil, nil
+		cfg.Host, cfg.Memory, cfg.Remote, cfg.AutomationsChanged = nil, nil, nil, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{
@@ -371,6 +377,18 @@ func (a *App) Start() {
 	}
 	if a.cfg.Gateway != nil {
 		go a.followTimes()
+	}
+	if a.cfg.AutomationsChanged != nil {
+		a.unsubscribe = append(a.unsubscribe, a.cfg.AutomationsChanged(func() {
+			a.cfg.Update(func() {
+				if a.route.Name == "automations" {
+					a.automationsChanged()
+				} else {
+					a.automations.listAt = time.Time{}
+					clear(a.automations.runsAt)
+				}
+			})
+		}))
 	}
 }
 
@@ -747,6 +765,9 @@ func (a *App) Go(r Route) {
 	if r.Name == "automations" {
 		a.enterAutomations(r)
 	}
+	if r.Name == "workstreams" {
+		a.enterWorkstreams(r)
+	}
 }
 
 // Route is the page shown.
@@ -764,7 +785,9 @@ func (a *App) View(c *ui.Context) {
 	listed, rev = a.withElsewhere(listed, rev)
 	a.shownRev = rev
 	a.restoreLast(listed, listDone)
-	a.noteLiveRuns(listed, a.activity(busy))
+	doing := a.activity(busy)
+	a.noteLiveRuns(listed, doing)
+	a.noteWorkstreams(c, listed, doing)
 	a.narrow = a.isNarrow(c)
 	// A drawer only exists on narrow screens; widening the window closes it.
 	if !a.narrow {
@@ -832,6 +855,8 @@ func (a *App) View(c *ui.Context) {
 				a.view(id).build(c, a, findSummary(listed, id), listed)
 			case a.route.Name == "automations":
 				a.automationsPage(c)
+			case a.route.Name == "workstreams":
+				a.workstreamsPage(c)
 			case a.route.Name == "page" && a.extensionPage(a.route.Page) != nil:
 				a.extensionPageView(c, a.extensionPage(a.route.Page))
 			case starting && a.following():

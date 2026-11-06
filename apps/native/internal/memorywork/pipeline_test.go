@@ -193,6 +193,8 @@ func TestASessionStillGoingOnOrTooOldOrNotTheUsersIsLeftAlone(t *testing.T) {
 	f.write(strings.TrimSuffix(sub, ".jsonl")+".settings.json", `{"tags":[{"name":"subagent"}]}`)
 	mem := f.session("mem", f.root, 7*time.Hour, "do y")
 	f.write(strings.TrimSuffix(mem, ".jsonl")+".settings.json", `{"tags":[{"name":"droi.memory"}]}`)
+	run := f.session("run", f.root, 7*time.Hour, "report")
+	f.write(strings.TrimSuffix(run, ".jsonl")+".settings.json", `{"tags":[{"name":"droi.automation","metadata":{"automationId":"daily-report","runId":"r1"}}]}`)
 	f.session("empty", f.root, 7*time.Hour)
 	if err := f.pass(MinIdle); err != nil {
 		t.Fatal(err)
@@ -201,6 +203,7 @@ func TestASessionStillGoingOnOrTooOldOrNotTheUsersIsLeftAlone(t *testing.T) {
 	st := memory.LoadState(f.dir)
 	eq(t, st.Sessions["sub"].Skipped, "subagent")
 	eq(t, st.Sessions["mem"].Skipped, "droi.memory")
+	eq(t, st.Sessions["run"].Skipped, "droi.automation")
 	_, old := st.Sessions["old"]
 	eq(t, old, false)
 	eq(t, st.Sessions["empty"].SummarizedMtime != 0 && st.Sessions["empty"].File == "", true)
@@ -210,6 +213,22 @@ func TestASessionStillGoingOnOrTooOldOrNotTheUsersIsLeftAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, f.titles()[0], "Memory: summarize Session recent")
+}
+
+func TestAWorkstreamAgentIsLeftAloneAndItsOrchestratorSummarized(t *testing.T) {
+	f := newFixture(t)
+	agent := f.session("agent", f.root, 7*time.Hour, "do x")
+	f.write(strings.TrimSuffix(agent, ".jsonl")+".settings.json", `{"tags":[{"name":"droi.workstream","metadata":{"workstreamId":"w1","role":"agent","orchestratorId":"lead"}}]}`)
+	lead := f.session("lead", f.root, 7*time.Hour, "plan y")
+	f.write(strings.TrimSuffix(lead, ".jsonl")+".settings.json", `{"tags":[{"name":"droi.workstream","metadata":{"workstreamId":"w1","role":"orchestrator"}}]}`)
+	if err := f.pass(MinIdle); err != nil {
+		t.Fatal(err)
+	}
+	st := memory.LoadState(f.dir)
+	eq(t, st.Sessions["agent"].Skipped, "droi.workstream")
+	eq(t, st.Sessions["lead"].Skipped, "")
+	eq(t, slices.Contains(f.titles(), "Memory: summarize Session lead"), true)
+	eq(t, slices.Contains(f.titles(), "Memory: summarize Session agent"), false)
 }
 
 func TestASessionThatWentOnIsSummarizedAgainInPlaceOfItsLastSummary(t *testing.T) {

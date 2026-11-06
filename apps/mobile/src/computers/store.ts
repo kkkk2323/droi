@@ -7,6 +7,7 @@ import {
   type LocalPreference,
 } from '@droi/daemon-layer/local-preference'
 import type { GatewayMeta } from '@droi/daemon-layer/gateway'
+import type { SessionTag } from '@droi/daemon-layer/sessions'
 import type { SessionWorktree } from '@droi/daemon-layer/worktree'
 
 export interface PairedComputer {
@@ -138,6 +139,8 @@ export interface SessionSummaryCache {
   /** Absent in caches written before subagents were told apart. */
   callingSessionId?: string | null
   callingToolUseId?: string | null
+  /** Absent in caches written before Workstream agents were left out of the list. */
+  tags?: SessionTag[]
 }
 
 const summaryPreferences = new Map<string, LocalPreference<SessionSummaryCache[]>>()
