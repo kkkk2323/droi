@@ -65,25 +65,25 @@ jobs:
           done
 
   # The view tests run App.View against the Fake Daemon, which needs Node, and
-  # only macOS draws a frame as a Release does. A run takes minutes, so the
-  # tests run in shards: batches of the names `-test.list` prints, each in an
-  # invocation of its own with its own Fake Daemon and temporary folders, so
-  # they share nothing. The same tests run as a Release does, and again on one
-  # CPU, where a view test that races the Fake Daemon's answers fails, not in
-  # a Release: the two runs are jobs of their own, side by side.
+  # only macOS draws a frame as a Release does. They take most of the run, so
+  # two shards split them, each in a runner of its own: shards of one runner
+  # only queue behind each other, as each draws its frames on that runner's one
+  # GPU. The same tests also run on one CPU, where one that races the Fake
+  # Daemon's answers fails, not in a Release.
   native:
-    name: native (${{ matrix.name }})
+    name: native (${{ matrix.run.name }}, shard ${{ matrix.shard }} of 2)
     runs-on: macos-latest
     timeout-minutes: 20
     strategy:
-      # Both runs must report, whichever goes first.
+      # Every shard must report, whichever goes first.
       fail-fast: false
       matrix:
-        include:
+        run:
           - name: view tests
             args: ''
           - name: view tests on one CPU
             args: -test.cpu=1
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
 
@@ -99,26 +99,22 @@ jobs:
       - name: Build the view tests
         run: go test -c -o "$RUNNER_TEMP/app.test" ./apps/native/internal/app
 
-      - name: Run the view tests in shards
+      - name: Run this shard of the view tests
         working-directory: apps/native/internal/app
         env:
-          ARGS: ${{ matrix.args }}
+          ARGS: ${{ matrix.run.args }}
+          SHARD: ${{ matrix.shard }}
         run: |
-          # One shard a core, and no more than four: past that they only
-          # fight over the cores.
-          shards="$(getconf _NPROCESSORS_ONLN)"
-          test "$shards" -le 4 || shards=4
-          echo "shards at once: $shards"
           tests="$("$RUNNER_TEMP/app.test" -test.list '^Test')"
           test -n "$tests" || { echo "::error::no view test was listed"; exit 1; }
-          # A name the batch's pattern would read as a regex is refused rather
-          # than silently matched to nothing.
+          # A name the pattern would read as a regex is refused rather than
+          # silently matched to nothing.
           odd="$(printf '%s\n' "$tests" | grep -vxE '[A-Za-z0-9_]+' || true)"
           test -z "$odd" || { echo "::error::unexpected test names: $odd"; exit 1; }
-          printf '%s\n' "$tests" | awk '
-            { batch = batch (batch ? "|" : "") $0; if (++n % 8 == 0) { print "^(" batch ")$"; batch = "" } }
-            END { if (batch) print "^(" batch ")$" }
-          ' | xargs -n 1 -P "$shards" "$RUNNER_TEMP/app.test" -test.timeout 10m $ARGS
+          pattern="$(printf '%s\n' "$tests" | awk -v shard="$SHARD" -v of=2 'NR % of == shard - 1 { b = b (b ? "|" : "") $0 } END { print "^(" b ")$" }')"
+          count="$(printf '%s\n' "$pattern" | tr '|' '\n' | wc -l | tr -d ' ')"
+          echo "shard $SHARD of 2: $count tests"
+          "$RUNNER_TEMP/app.test" -test.timeout 10m $ARGS -test.run "$pattern"
 
   # Every other package's tests: they need Node too, where one starts the Fake
   # Daemon itself, so they stay on macOS beside the view tests.
