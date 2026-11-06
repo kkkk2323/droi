@@ -46,6 +46,10 @@ type Config struct {
 	// ScriptModels reports the models Settings lets use Script in addition
 	// to Factory's list; nil adds none.
 	ScriptModels func() []string
+	// ToolMode, optional, is the tool execution mode this device's new
+	// Sessions start with, "" when the user left it to droid; the Sessions
+	// the Host starts itself follow it.
+	ToolMode func() string
 	// Overlay, optional, is what else the Runtime Overlay attaches, read each
 	// time the Daemon starts: MCP servers, hooks, environment and models.
 	// RestartDaemon applies a change.
@@ -234,6 +238,15 @@ func (h *Host) ScratchFolder() string {
 		return h.cfg.ScratchFolder
 	}
 	return brand.ScratchFolder(h.cfg.Home)
+}
+
+// ToolMode is the tool execution mode this device's new Sessions start with
+// (Config.ToolMode); "" leaves it to droid.
+func (h *Host) ToolMode() string {
+	if h.cfg.ToolMode == nil {
+		return ""
+	}
+	return h.cfg.ToolMode()
 }
 
 // Executable is the app's own executable, which the Runtime Overlay runs as

@@ -218,6 +218,19 @@ func (p *Pool) Configure(upstream, factoryHome string) {
 	}
 }
 
+// FactoryScriptModels are the models Factory's feature flags listed for
+// Script when the running proxy last relayed them, without the models
+// Settings added; false while the proxy is not running or has seen none.
+func (p *Pool) FactoryScriptModels() ([]string, bool) {
+	p.mu.Lock()
+	px := p.px
+	p.mu.Unlock()
+	if px == nil {
+		return nil, false
+	}
+	return px.FactoryScriptModels()
+}
+
 // Len is how many keys the pool has.
 func (p *Pool) Len() int {
 	p.mu.Lock()

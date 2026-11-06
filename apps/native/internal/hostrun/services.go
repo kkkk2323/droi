@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droid-sdk-go/protocol"
+
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
@@ -63,6 +65,7 @@ func StartServices(h *host.Host) *Services {
 		Credential:           h.Credential,
 		HasCredential:        h.HasCredential,
 		SystemPromptAddition: h.SystemPromptAddition,
+		ToolMode:             func() protocol.ToolExecutionMode { return deviceToolMode(h.ToolMode()) },
 		OnChange:             h.OnChange,
 		Log:                  func(m string) { log.Println("[host sessions]", m) },
 	})
@@ -75,16 +78,28 @@ func StartServices(h *host.Host) *Services {
 	s.Sessions.Start(ctx)
 	s.startAutomations(ctx, h, filepath.Join(h.UserData(), "automations"))
 	s.Workstreams = workstream.New(workstream.Config{
-		Dir:         filepath.Join(h.UserData(), "workstreams"),
-		SessionsDir: filepath.Join(h.SharedFactoryHome(), "sessions"),
-		Sessions:    s.Sessions,
-		Log:         func(m string) { log.Println("[workstreams]", m) },
+		Dir:          filepath.Join(h.UserData(), "workstreams"),
+		SessionsDir:  filepath.Join(h.SharedFactoryHome(), "sessions"),
+		Sessions:     s.Sessions,
+		ScriptModels: h.ScriptModelList,
+		Log:          func(m string) { log.Println("[workstreams]", m) },
 	})
 	if s.Tools != nil {
 		s.Tools.Register(workstream.ServerName, s.Workstreams.Server())
 	}
 	s.Workstreams.Start(ctx)
 	return s
+}
+
+// deviceToolMode is the mode the Host's Sessions ask the Daemon for: only
+// the user's choice of Direct. droid applies an asked mode to the models
+// Factory lists only, where it picks Script by itself, so asking for Script
+// would change nothing.
+func deviceToolMode(mode string) protocol.ToolExecutionMode {
+	if protocol.ToolExecutionMode(mode) == protocol.ToolExecutionModeDirectOnly {
+		return protocol.ToolExecutionModeDirectOnly
+	}
+	return ""
 }
 
 // runHiddenTools are what an Automation's run leaves out with a droid of
@@ -239,6 +254,16 @@ func (s *Services) automationsChanged() {
 	for _, fn := range fns {
 		fn()
 	}
+}
+
+// OnWorkstreamsChanged calls fn, on a goroutine of the Workstreams', when
+// what the Gateway lists of them changes; the returned function
+// unsubscribes.
+func (s *Services) OnWorkstreamsChanged(fn func()) (unsubscribe func()) {
+	if s == nil || s.Workstreams == nil {
+		return func() {}
+	}
+	return s.Workstreams.OnChange(fn)
 }
 
 // GatewayAutomations is gateway.Options.Automations: the Automations once

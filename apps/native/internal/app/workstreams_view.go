@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
 )
 
 // The Host tells of no change to its Workstream records, such as an agent's
@@ -27,12 +25,13 @@ import (
 // it lists starts, stops, waits or is archived.
 const workstreamsRefresh = 30 * time.Second
 
+// restedRetry is how long after an agent rested its prompts are read again,
+// and the gap to the read after that.
+const restedRetry = time.Second
+
 // workspaceCheckDelay is how long typing pauses before the form asks the
 // Daemon about the folder typed.
 const workspaceCheckDelay = 400 * time.Millisecond
-
-// newWorkstreamTab is the Route.Tab of the New workstream form.
-const newWorkstreamTab = "new"
 
 // How a Workstream agent waits on the user.
 const (
@@ -62,6 +61,13 @@ type workstreamsState struct {
 	pending                   map[string]pendingPrompts
 	pendingAt                 time.Time
 	pendingBusy, pendingAgain bool
+	// retries are the reads still to make, one at retryAt, after an agent
+	// rested: the Daemon may count its question a moment after it rested.
+	retries int
+	retryAt time.Time
+	// probed are the Sessions heard working that neither the list nor the
+	// records had, for which the records were read once.
+	probed map[string]bool
 	// openedSessions reads the Daemon's opened Sessions; nil asks the
 	// Daemon. Tests stand in for it: the Fake Daemon counts no prompts.
 	openedSessions func(context.Context) (*protocol.ListOpenedSessionsResult, error)
@@ -87,19 +93,36 @@ type workstreamsState struct {
 	lifted                   map[string]activity.Activity
 	orchWaiting, orchWorking map[string]int
 
-	form workstreamForm
+	// newOpen shows the New Workstream dialog, with the fields form holds.
+	newOpen bool
+	form    workstreamForm
 	// acting is the action under way; notice is what the last one said,
 	// an error when noticeErr.
 	acting, notice string
 	noticeErr      bool
-	noticeAt       time.Time
-	menuOpen       bool
-	confirmArchive bool
-	// archivedOpen unfolds the archived Workstreams, archivedAgentsOpen a
-	// Workstream's archived agents.
-	archivedOpen, archivedAgentsOpen bool
-	agentModelOpen                   bool
-	agentPicker                      pickerState
+	// script is the Host's list of the models that may use Script.
+	script   scriptModels
+	noticeAt time.Time
+	// archiveFor is the Workstream whose archiving the dialog asks about.
+	archiveFor string
+	// settingsFor is the Workstream whose settings the dialog shows, "" for
+	// none, and settings what its fields hold.
+	settingsFor string
+	settings    settingsForm
+	// query filters the agents the side panel lists, fileQuery its files.
+	query, fileQuery string
+	// paneDrawer shows the side panel over the page of a narrow window;
+	// files is the shared folder's list, read in the background.
+	paneDrawer bool
+	files      filesCache
+	// tabMenuOpen is the orchestrator tab's menu; paneDrag the side panel's
+	// width, in px of the default text size, while its edge is dragged.
+	tabMenuOpen bool
+	paneDrag    float32
+	// uiRaw is the saved state of the Workstreams' windows as last decoded
+	// into ui.
+	uiRaw string
+	ui    map[string]workstreamUI
 	// checks are the Daemon's answers about the folders typed as the form's
 	// workspace; typed and typedAt are the folder typed last and when, to
 	// ask once typing pauses.
@@ -107,7 +130,7 @@ type workstreamsState struct {
 	typed   string
 	typedAt time.Time
 	// The form's fields, for the focus to go to the one in error.
-	nameBox, workspaceBox, goalBox ui.Handle
+	nameBox, workspaceBox ui.Handle
 }
 
 type pendingPrompts struct{ permissions, questions int }
@@ -118,34 +141,17 @@ type pendingPrompts struct{ permissions, questions int }
 type workspaceCheck struct {
 	done, git, unknown bool
 	problem            string
+	// branch is the repository's current branch.
+	branch string
 }
 
-// workstreamForm is what the New workstream form's fields hold. The models
-// and efforts are "" for the defaults: the Daemon's for the orchestrator,
-// the orchestrator's for the agents.
+// workstreamForm is what the New Workstream dialog's fields hold.
 type workstreamForm struct {
-	name, workspace, goal   string
-	model, effort           string
-	agentModel, agentEffort string
-	modelOpen, agentOpen    bool
-	picker, agentPicker     pickerState
+	name, workspace string
+	symbol          string
+	symbolOpen      bool
 	// err is what is wrong with the field errOn, while it holds errFor.
 	err, errOn, errFor string
-}
-
-func allWorkstreams() crumb {
-	return crumb{label: L("Workstreams"), name: L("All workstreams"), to: Route{Name: "workstreams"}}
-}
-
-// enterWorkstreams starts a page of Workstreams afresh, with the records
-// read again.
-func (a *App) enterWorkstreams(r Route) {
-	s := &a.workstreams
-	s.menuOpen, s.confirmArchive, s.agentModelOpen, s.notice = false, false, false, ""
-	if r.Tab == newWorkstreamTab {
-		s.form, s.checks, s.typed = workstreamForm{}, nil, ""
-	}
-	a.loadWorkstreams(true)
 }
 
 // loadWorkstreams reads the Workstreams from the Gateway of the computer the
@@ -181,6 +187,7 @@ func (a *App) loadWorkstreams(force bool) {
 					list = []gateway.Workstream{}
 				}
 				s.older, s.listErr, s.list = false, "", list
+				a.pruneWsStates()
 			}
 			if s.listAgain {
 				s.listAgain = false
@@ -218,9 +225,14 @@ func (a *App) loadPending(force bool) {
 	go func() {
 		res, err := read(a.ctx)
 		var pending map[string]pendingPrompts
+		var working map[string]string
 		if err == nil {
 			pending = map[string]pendingPrompts{}
+			working = map[string]string{}
 			for _, o := range res.Sessions {
+				if o.WorkingState != "" && o.WorkingState != protocol.DroidWorkingStateIdle {
+					working[o.SessionID] = string(o.WorkingState)
+				}
 				var p pendingPrompts
 				if o.PendingPermissionRequestCount != nil {
 					p.permissions = int(*o.PendingPermissionRequestCount)
@@ -237,6 +249,7 @@ func (a *App) loadPending(force bool) {
 			s.pendingBusy, s.pendingAt = false, a.cfg.Now()
 			if err == nil {
 				s.pending = pending
+				a.noteWorking(working)
 			}
 			if s.pendingAgain {
 				s.pendingAgain = false
@@ -244,6 +257,19 @@ func (a *App) loadPending(force bool) {
 			}
 		})
 	}()
+}
+
+// noteWorking takes the working states the Daemon lists for the Sessions
+// this window heard nothing of: a Session already at work when the window
+// started tells of no change.
+func (a *App) noteWorking(working map[string]string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for id, state := range working {
+		if _, heard := a.busy[id]; !heard {
+			a.busy[id] = state
+		}
+	}
 }
 
 // loaded reports whether this window has Session id loaded, and so hears
@@ -311,6 +337,26 @@ func (a *App) noteWorkstreams(c *ui.Context, listed []sessions.Summary, busy map
 	}
 	if rested {
 		a.loadPending(true)
+		s.retries, s.retryAt = 2, a.cfg.Now().Add(restedRetry)
+	}
+	if s.retries > 0 {
+		if left := s.retryAt.Sub(a.cfg.Now()); left > 0 {
+			c.After(left)
+		} else {
+			s.retries--
+			s.retryAt = a.cfg.Now().Add(2 * restedRetry)
+			a.loadPending(true)
+		}
+	}
+	for id, state := range busy {
+		if state == "" || s.probed[id] || a.knownToWorkstreams(id, listed) {
+			continue
+		}
+		if s.probed == nil || len(s.probed) > 256 {
+			s.probed = map[string]bool{}
+		}
+		s.probed[id] = true
+		changed = true
 	}
 	if changed {
 		a.loadWorkstreams(true)
@@ -323,6 +369,23 @@ func (a *App) noteWorkstreams(c *ui.Context, listed []sessions.Summary, busy map
 			a.loadPending(false)
 		}
 	}
+}
+
+// knownToWorkstreams reports whether Session id is one the list or the
+// records have: a Session heard working that neither has may be an agent the
+// Host just started, whose Session the Daemon lists late.
+func (a *App) knownToWorkstreams(id string, listed []sessions.Summary) bool {
+	for _, w := range a.workstreams.list {
+		if w.OrchestratorID == id {
+			return true
+		}
+		for _, ag := range w.Agents {
+			if ag.SessionID == id {
+				return true
+			}
+		}
+	}
+	return findSummary(listed, id) != nil
 }
 
 // countWaiting counts the agents waiting on the user and lifts their
@@ -512,216 +575,6 @@ func (a *App) workstreamNotice(c *ui.Context) {
 	})
 }
 
-// workstreamsPage lists the Workstreams, shows one, or starts one.
-func (a *App) workstreamsPage(c *ui.Context) {
-	k := a.kit
-	s := &a.workstreams
-	a.loadWorkstreams(false)
-	if !s.listAt.IsZero() {
-		// An idle window reads them again too.
-		if left := workstreamsRefresh - a.cfg.Now().Sub(s.listAt); left > 0 {
-			c.After(left)
-		}
-	}
-	ui.Column(c).Role(ui.RoleGroup).Label(L("Workstreams")).Fill().Children(func() {
-		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
-			if a.narrow {
-				a.openSessionsButton(c)
-			}
-		})
-		ui.Scroll(c).Grow(1).MinWidth(0).Children(func() {
-			ui.Column(c).FillWidth().MaxWidth(k.Px(720)).AlignSelf(ui.Center).Gap(k.Px(k.Dense(20, 24))).Padding(k.Px(4), k.Px(32), k.Px(48), k.Px(32)).Children(func() {
-				id := a.route.Workstream
-				switch {
-				case s.older:
-					a.olderHostWorkstreams(c)
-				case a.route.Tab == newWorkstreamTab:
-					a.workstreamEditor(c)
-				case id == "":
-					a.workstreamList(c)
-				case a.findWorkstream(id) == nil:
-					a.missingWorkstream(c)
-				default:
-					a.workstreamView(c, *a.findWorkstream(id))
-				}
-			})
-		})
-		if w := a.findWorkstream(a.route.Workstream); w != nil && s.confirmArchive {
-			a.archiveWorkstreamDialog(c, *w)
-		}
-	})
-}
-
-// olderHostWorkstreams says the computer's Droi has no Workstreams.
-func (a *App) olderHostWorkstreams(c *ui.Context) {
-	k, t := a.kit, a.kit.T
-	name := a.computerName()
-	if name == "" {
-		name = L("This computer")
-	}
-	a.automationHeader(c, nil, L("Workstreams"), nil, nil)
-	k.Text(c, L("%s runs an older Droi without workstreams. Update Droi there.", name), k.Dense(12, 13), k.Dense(18, 20)).Role(ui.RoleStatus).
-		TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
-}
-
-func (a *App) workstreamList(c *ui.Context) {
-	k, t := a.kit, a.kit.T
-	s := &a.workstreams
-	var active, archived []gateway.Workstream
-	for _, w := range s.list {
-		if w.ArchivedAt != "" {
-			archived = append(archived, w)
-		} else {
-			active = append(active, w)
-		}
-	}
-	ui.Column(c).Gap(k.Px(4)).Children(func() {
-		a.automationHeader(c, nil, L("Workstreams"), func() {
-			if len(active) > 0 {
-				k.Text(c, strconv.Itoa(len(active)), k.Dense(12, 13), k.Dense(18, 20)).TextColor(t.MutedForeground).FontFeatures("tnum")
-			}
-		}, func() {
-			if len(s.list) > 0 && a.smallButton(c, kit.Primary, L("New workstream"), "plus", false).Clicked() {
-				a.Go(Route{Name: "workstreams", Tab: newWorkstreamTab})
-			}
-		})
-		k.Text(c, L("An orchestrator session splits a long goal among agents. Each agent keeps its own session and worktree, and reports back to the orchestrator."), k.Dense(12, 13), k.Dense(18, 20)).
-			TextColor(t.MutedForeground)
-	})
-	a.workstreamNotice(c)
-	switch {
-	case s.list == nil && s.listErr != "":
-		a.loadFailed(c, s.listErr, func() { a.loadWorkstreams(true) })
-	case s.list == nil:
-		a.skeletonRows(c, L("Loading workstreams"), 3, k.Dense(48, 56))
-	case len(s.list) == 0:
-		a.noWorkstreams(c)
-	default:
-		if s.listErr != "" {
-			k.Text(c, s.listErr, k.Dense(12, 13), k.Dense(18, 20)).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
-		}
-		if len(active) > 0 {
-			ui.Column(c).Role(ui.RoleList).Label(L("Workstreams")).Children(func() {
-				for _, w := range active {
-					a.workstreamRow(c, w)
-				}
-			})
-		}
-		if len(archived) > 0 {
-			ui.Column(c).Gap(k.Px(4)).Children(func() {
-				a.foldToggle(c, L("Archived"), len(archived), &s.archivedOpen)
-				if s.archivedOpen {
-					ui.Column(c).Role(ui.RoleList).Label(L("Archived")).Children(func() {
-						for _, w := range archived {
-							a.workstreamRow(c, w)
-						}
-					})
-				}
-			})
-		}
-	}
-}
-
-// foldToggle heads a folded part of a page: its title and count, and a
-// chevron that turns as it opens.
-func (a *App) foldToggle(c *ui.Context, title string, n int, open *bool) {
-	k, t := a.kit, a.kit.T
-	b := ui.ButtonBase(c).Label(title).Expanded(*open).AlignSelf(ui.Start).Height(k.Px(k.Dense(24, 28))).Gap(k.Px(6)).PaddingX(k.Px(6)).
-		Margin(0, 0, 0, -k.Px(6)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
-	color := t.MutedForeground
-	if b.Hovered() {
-		b.Background(t.Muted.Alpha(0.5))
-		color = t.Foreground
-	}
-	b.Children(func() {
-		k.Text(c, title, k.Dense(12, 13), k.Dense(18, 20)).Role(ui.RoleHeading).FontWeight(600).TextColor(t.Foreground)
-		k.Text(c, strconv.Itoa(n), k.Dense(12, 13), k.Dense(18, 20)).TextColor(t.MutedForeground).FontFeatures("tnum")
-		rot := float32(0)
-		if *open {
-			rot = 90
-		}
-		k.Icon(c, "chevron-right", 12, color).Rotate(rot)
-	})
-	if b.Clicked() {
-		*open = !*open
-	}
-}
-
-// noWorkstreams is the list before the first Workstream.
-func (a *App) noWorkstreams(c *ui.Context) {
-	k, t := a.kit, a.kit.T
-	ui.Column(c).Role(ui.RoleGroup).Label(L("No workstreams yet")).AlignItems(ui.Center).Gap(k.Px(6)).Padding(k.Px(k.Dense(32, 40)), k.Px(24)).
-		Radius(k.Px(12)).Border(1, t.Border).Children(func() {
-		ui.Box(c).Size(k.Px(36), k.Px(36)).Radius(k.Px(10)).Background(t.Muted).Center().Margin(0, 0, k.Px(6), 0).Children(func() {
-			k.Icon(c, "git-fork", 18, t.MutedForeground)
-		})
-		k.Text(c, L("No workstreams yet"), k.Dense(13, 14), 20).FontWeight(500)
-		k.Text(c, L("Start one for work that spans days and splits into parts, such as a migration done in stages."), k.Dense(12, 13), k.Dense(18, 20)).
-			TextColor(t.MutedForeground).MaxWidth(k.Px(360)).TextAlign(ui.Center)
-		if a.smallButton(c, kit.Primary, L("New workstream"), "plus", false).Margin(k.Px(10), 0, 0, 0).Clicked() {
-			a.Go(Route{Name: "workstreams", Tab: newWorkstreamTab})
-		}
-	})
-}
-
-// agentsCount is how many agents a Workstream has: those not archived, or
-// all of an archived one's.
-func agentsCount(w gateway.Workstream) string {
-	n := 0
-	for _, ag := range w.Agents {
-		if ag.ArchivedAt == "" || w.ArchivedAt != "" {
-			n++
-		}
-	}
-	if n == 1 {
-		return L("1 agent")
-	}
-	return L("%d agents", n)
-}
-
-// waitingAgents counts a Workstream's agents waiting on the user.
-func (a *App) waitingAgents(w gateway.Workstream) int {
-	n := 0
-	for _, ag := range w.Agents {
-		if how, _ := a.waitsOn(a.resolve(ag.SessionID)); ag.ArchivedAt == "" && how != "" {
-			n++
-		}
-	}
-	return n
-}
-
-// waitingMark is a count of agents waiting on the user: a live status where
-// it stands alone, an image inside a button whose name says it already.
-func (a *App) waitingMark(c *ui.Context, n int, size, line float32, live bool) ui.Element {
-	k, t := a.kit, a.kit.T
-	role := ui.RoleImage
-	if live {
-		role = ui.RoleStatus
-	}
-	return ui.Row(c).Role(role).Label(L("%d waiting on you", n)).Tooltip(L("%d waiting on you", n)).Gap(k.Px(4)).AlignItems(ui.Center).Shrink(0).Children(func() {
-		k.Icon(c, "circle-alert", 12, t.Attention)
-		k.Text(c, itoa(n), size, line).TextColor(t.Attention).FontFeatures("tnum")
-	})
-}
-
-// listRow is a row of a list on these pages: a list item holding the button
-// that opens it, named label for assistive technology.
-func (a *App) listRow(c *ui.Context, key, label string, height float32, body func(hover bool)) bool {
-	k, t := a.kit, a.kit.T
-	clicked := false
-	ui.Row(c.Key(key)).Role(ui.RoleListItem).Transition(rowMotion).Children(func() {
-		b := ui.ButtonBase(c).Label(label).Grow(1).MinWidth(0).Height(k.Px(height)).PaddingX(k.Px(12)).Gap(k.Px(k.Dense(8, 10))).
-			Justify(ui.Start).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Cursor(ui.CursorPointer)
-		hover := b.Hovered()
-		if hover {
-			b.Background(t.Muted.Alpha(0.5))
-		}
-		b.Children(func() { body(hover) })
-		clicked = b.Clicked()
-	})
-	return clicked
-}
-
 // listName joins the parts of an accessible name with the language's comma.
 func listName(parts ...string) string {
 	name := parts[0]
@@ -729,51 +582,6 @@ func listName(parts ...string) string {
 		name = L("%s, %s", name, p)
 	}
 	return name
-}
-
-func (a *App) workstreamRow(c *ui.Context, w gateway.Workstream) {
-	k, t := a.kit, a.kit.T
-	title := trimOr(w.Title, w.ID)
-	count, waiting := agentsCount(w), a.waitingAgents(w)
-	label := listName(title, count)
-	if waiting > 0 {
-		label = listName(label, L("%d waiting on you", waiting))
-	}
-	if a.listRow(c, w.ID, label, k.Dense(48, 56), func(hover bool) {
-		k.Icon(c, "git-fork", 14, t.MutedForeground)
-		ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(2)).Children(func() {
-			k.Text(c, title, k.Dense(13, 14), k.Dense(18, 20)).FontWeight(500).SingleLine()
-			k.Text(c, w.Workspace, k.Dense(11, 12), 16).TextColor(t.MutedForeground).SingleLine()
-		})
-		if waiting > 0 {
-			a.waitingMark(c, waiting, k.Dense(11, 12), 16, false)
-		}
-		k.Text(c, count, k.Dense(11, 12), 16).TextColor(t.MutedForeground).FontFeatures("tnum").SingleLine().Shrink(0)
-		chevron := k.Icon(c, "chevron-right", 14, t.MutedForeground)
-		if !hover {
-			chevron.Opacity(0)
-		}
-	}) {
-		a.Go(Route{Name: "workstreams", Workstream: w.ID})
-	}
-}
-
-// missingWorkstream is the page of a Workstream the list does not have:
-// not loaded yet, or gone.
-func (a *App) missingWorkstream(c *ui.Context) {
-	k := a.kit
-	s := &a.workstreams
-	if s.list == nil && s.listErr == "" {
-		a.automationHeader(c, []crumb{allWorkstreams(), {label: "…"}}, "", nil, nil)
-		a.skeletonRows(c, L("Loading workstreams"), 2, k.Dense(36, 40))
-		return
-	}
-	if s.list == nil {
-		a.automationHeader(c, []crumb{allWorkstreams(), {label: "…"}}, "", nil, nil)
-		a.loadFailed(c, s.listErr, func() { a.loadWorkstreams(true) })
-		return
-	}
-	a.automationHeader(c, []crumb{allWorkstreams(), {label: L("Not found")}}, L("Not found"), nil, nil)
 }
 
 // agentStatus is where an agent's row goes: "archived", "waiting",
@@ -791,172 +599,6 @@ func (a *App) agentStatus(ag gateway.WorkstreamAgent) (string, string) {
 		return "working", ""
 	}
 	return "idle", ""
-}
-
-func (a *App) workstreamView(c *ui.Context, w gateway.Workstream) {
-	k, t := a.kit, a.kit.T
-	s := &a.workstreams
-	title := trimOr(w.Title, w.ID)
-	busy := s.acting != ""
-	archived := w.ArchivedAt != ""
-	a.automationHeader(c, []crumb{allWorkstreams(), {label: title}}, title, func() {
-		if archived {
-			a.statusPill(c, false, L("Archived"))
-		}
-	}, func() {
-		if w.OrchestratorID != "" && a.smallButton(c, kit.Primary, L("Open orchestrator"), "message-square", false).Clicked() {
-			a.Go(Route{Name: "session", SessionID: a.resolve(w.OrchestratorID)})
-		}
-		if !a.following() && a.cfg.OpenPath != nil && w.SharedFolder != "" &&
-			a.smallButton(c, kit.Outline, L("Open shared folder"), "folder-open", false).Clicked() {
-			dir := w.SharedFolder
-			go func() { _ = a.cfg.OpenPath(dir) }()
-		}
-		if archived {
-			return
-		}
-		more := k.IconButton(c, "ellipsis", L("More actions"), k.Dense(28, 32)).Expanded(s.menuOpen).Disabled(busy)
-		if more.Clicked() {
-			s.menuOpen = !s.menuOpen
-		}
-		k.MenuPopup(c, more, &s.menuOpen, true, L("More actions"), func() {
-			if k.MenuItem(c, &s.menuOpen, "archive", L("Archive workstream…")).Clicked() {
-				s.confirmArchive = true
-			}
-		})
-	})
-	a.workstreamNotice(c)
-	ui.Column(c).Role(ui.RoleGroup).Label(L("Details")).Gap(k.Px(8)).Children(func() {
-		a.fact(c, L("Workspace"), func() {
-			k.Text(c, w.Workspace, k.Dense(11, 12), 20).Font(k.Mono).SingleLine().Shrink(1).MinWidth(0)
-		})
-		a.fact(c, L("Shared folder"), func() {
-			k.Text(c, w.SharedFolder, k.Dense(11, 12), 20).Font(k.Mono).SingleLine().Shrink(1).MinWidth(0)
-		})
-		a.fact(c, L("Agent model"), func() {
-			var choices []models.Choice
-			if dv := a.sessionDefaults(); dv != nil {
-				choices = dv.Models
-			}
-			id := w.ID
-			model, effort := w.AgentModel, w.AgentReasoningEffort
-			settingsview.ModelEffortField(c, a.kit, a.prefs, L("Agent model"), L("Same as orchestrator"), busy || archived, &s.agentModelOpen, &s.agentPicker,
-				choices, model, effort,
-				func(next string) { a.saveAgentModel(id, next, fitEffort(choices, next, effort)) },
-				func(next string) { a.saveAgentModel(id, model, next) })
-		})
-	})
-	groups := map[string][]gateway.WorkstreamAgent{}
-	how := map[string]string{}
-	for _, ag := range w.Agents {
-		status, waits := a.agentStatus(ag)
-		groups[status] = append(groups[status], ag)
-		how[ag.SessionID] = waits
-	}
-	if len(w.Agents) == 0 {
-		k.Text(c, L("No agents yet. The orchestrator starts them as it splits the work."), k.Dense(12, 13), k.Dense(18, 20)).TextColor(t.MutedForeground)
-		return
-	}
-	for _, g := range []struct{ status, title string }{
-		{"waiting", L("Waiting on you")}, {"working", L("Working")}, {"idle", L("Idle")},
-	} {
-		list := groups[g.status]
-		if len(list) == 0 {
-			continue
-		}
-		ui.Column(c.Key("group:" + g.status)).Gap(k.Px(4)).Children(func() {
-			a.sectionTitle(c, g.title, strconv.Itoa(len(list)))
-			ui.Column(c).Role(ui.RoleList).Label(g.title).Children(func() {
-				for _, ag := range list {
-					a.agentRow(c, ag, g.status, g.title, how[ag.SessionID])
-				}
-			})
-		})
-	}
-	if list := groups["archived"]; len(list) > 0 {
-		ui.Column(c.Key("group:archived")).Gap(k.Px(4)).Children(func() {
-			// An archived Workstream's agents are all it has left to show.
-			open := archived || s.archivedAgentsOpen
-			if archived {
-				a.sectionTitle(c, L("Archived"), strconv.Itoa(len(list)))
-			} else {
-				a.foldToggle(c, L("Archived"), len(list), &s.archivedAgentsOpen)
-			}
-			if open {
-				ui.Column(c).Role(ui.RoleList).Label(L("Archived")).Children(func() {
-					for _, ag := range list {
-						a.agentRow(c, ag, "archived", L("Archived"), "")
-					}
-				})
-			}
-		})
-	}
-}
-
-// reportKinds name an agent's reports.
-var reportKinds = map[string]func() string{
-	"done":    func() string { return L("Finished") },
-	"blocked": func() string { return L("Blocked") },
-	"update":  func() string { return L("Progress update") },
-}
-
-// agentRow opens the agent's Session, its newest after a handoff: its
-// title, what it is doing, its branch, and its last report and when. group
-// is the title of the group it is in.
-func (a *App) agentRow(c *ui.Context, ag gateway.WorkstreamAgent, status, group, waits string) {
-	k, t := a.kit, a.kit.T
-	title := trimOr(ag.Title, ag.SessionID)
-	state, color := group, t.MutedForeground
-	label := listName(title, group)
-	if status == "waiting" {
-		state, color = L("Needs approval"), t.AttentionForeground
-		if waits == waitsQuestion {
-			state = L("Has a question")
-		}
-		label = listName(label, state)
-	}
-	if a.listRow(c, ag.SessionID, label, k.Dense(44, 48), func(hover bool) {
-		ui.Box(c).Size(k.Px(16), k.Px(16)).Center().Shrink(0).Children(func() {
-			switch status {
-			case "waiting":
-				k.Icon(c, "circle-alert", 14, t.Attention)
-			case "working":
-				k.Spinner(c, 14, t.Info)
-			case "idle":
-				kit.Dot(c, k.Px(8), t.MutedForeground.Alpha(0.5))
-			default:
-				k.Icon(c, "archive", 14, t.MutedForeground)
-			}
-		})
-		ui.Column(c).Grow(1).MinWidth(0).Gap(k.Px(2)).Children(func() {
-			k.Text(c, title, k.Dense(12, 13), k.Dense(18, 20)).FontWeight(500).SingleLine()
-			ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
-				k.Text(c, state, k.Dense(11, 12), 16).TextColor(color).SingleLine().Shrink(0)
-				if ag.Branch != "" {
-					ui.Row(c).Role(ui.RoleImage).Label(L("Worktree on %s", ag.Branch)).Gap(k.Px(4)).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
-						k.Icon(c, "git-branch", 12, t.MutedForeground)
-						k.Text(c, ag.Branch, k.Dense(11, 12), 16).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Shrink(1).MinWidth(0)
-					})
-				}
-			})
-		})
-		if r := ag.LastReport; r != nil {
-			kind := r.Kind
-			if name, ok := reportKinds[r.Kind]; ok {
-				kind = name()
-			}
-			if at, err := time.Parse(time.RFC3339, r.At); err == nil {
-				kind += " · " + relativeTime(at, a.cfg.Now())
-			}
-			k.Text(c, kind, k.Dense(11, 12), 16).TextColor(t.MutedForeground).FontFeatures("tnum").SingleLine().Shrink(0).Tooltip(r.Text)
-		}
-		chevron := k.Icon(c, "chevron-right", 14, t.MutedForeground)
-		if !hover {
-			chevron.Opacity(0)
-		}
-	}) {
-		a.Go(Route{Name: "session", SessionID: a.resolve(ag.SessionID)})
-	}
 }
 
 // fitEffort keeps effort for the model id when it supports it, else "".
@@ -984,13 +626,22 @@ func (a *App) saveAgentModel(id, model, effort string) {
 	}, func(err error) string { return L("Could not save the agent model: %s", err) }, nil)
 }
 
-// archiveWorkstreamDialog asks before the Workstream w is archived.
-func (a *App) archiveWorkstreamDialog(c *ui.Context, w gateway.Workstream) {
-	k, t := a.kit, a.kit.T
+// archiveWorkstreamDialog asks before the Workstream archiveFor names is
+// archived.
+func (a *App) archiveWorkstreamDialog(c *ui.Context) {
 	s := &a.workstreams
+	if s.archiveFor == "" {
+		return
+	}
+	k, t := a.kit, a.kit.T
 	width, _ := c.Size()
-	id, title := w.ID, trimOr(w.Title, w.ID)
-	ui.DialogBase(c, &s.confirmArchive, func(backdrop, panel ui.Element) {
+	id := s.archiveFor
+	title := id
+	if w := a.findWorkstream(id); w != nil {
+		title = trimOr(w.Title, w.ID)
+	}
+	open := true
+	ui.DialogBase(c, &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
 		panel.Role(ui.RoleAlertDialog).Label(L("Archive “%s”?", title)).Width(min(k.Px(420), width-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
@@ -1000,15 +651,18 @@ func (a *App) archiveWorkstreamDialog(c *ui.Context, w gateway.Workstream) {
 				TextColor(t.MutedForeground)
 			ui.Row(c).Gap(k.Px(8)).Justify(ui.End).Margin(k.Px(14), 0, 0, 0).Children(func() {
 				if a.smallButton(c, kit.Outline, L("Cancel"), "", false).Clicked() {
-					s.confirmArchive = false
+					open = false
 				}
-				if a.dangerButton(c, L("Archive workstream"), s.acting != "").Clicked() {
-					s.confirmArchive = false
+				if a.dangerButton(c, L("Archive Workstream"), s.acting != "").Clicked() {
+					open = false
 					a.archiveWorkstream(id)
 				}
 			})
 		})
 	})
+	if !open {
+		s.archiveFor = ""
+	}
 }
 
 // archivedNotice says a Workstream was archived, with the worktrees kept.
@@ -1100,6 +754,9 @@ func (a *App) askWorkspace(dir string) {
 			resolved := cmp.Or(valid.ResolvedPath, dir)
 			res, gerr := cl.ListGitBranches(a.ctx, protocol.ListGitBranchesParams{Cwd: resolved})
 			ch.git, ch.unknown = gerr == nil && res.IsGitRepository, gerr != nil
+			if ch.git {
+				ch.branch = res.CurrentBranch
+			}
 		}
 		a.cfg.Update(func() {
 			if !ch.unknown {
@@ -1112,188 +769,4 @@ func (a *App) askWorkspace(dir string) {
 			}
 		})
 	}()
-}
-
-// workstreamEditor is the New workstream form.
-func (a *App) workstreamEditor(c *ui.Context) {
-	k, t := a.kit, a.kit.T
-	s := &a.workstreams
-	f := &s.form
-	var choices []models.Choice
-	shownModel, shownEffort := f.model, f.effort
-	if dv := a.sessionDefaults(); dv != nil {
-		choices = dv.Models
-		if shownModel == "" {
-			shownModel, shownEffort = dv.ModelID, dv.ReasoningEffort
-		}
-	}
-	dir := strings.TrimSpace(f.workspace)
-	check := a.checkWorkspace(c, dir)
-	values := map[string]string{"name": f.name, "workspace": f.workspace, "goal": f.goal}
-	problem := func(field string) string {
-		switch {
-		case f.errOn == field && values[field] == f.errFor:
-			return f.err
-		case field == "workspace":
-			return check.problem
-		}
-		return ""
-	}
-	invalid := func(in ui.Element, field string) ui.Element {
-		if problem(field) != "" {
-			in.Border(1, t.Destructive.Alpha(0.6))
-		}
-		return in
-	}
-	title := L("New workstream")
-	a.automationHeader(c, []crumb{allWorkstreams(), {label: title}}, title, nil, func() {
-		if a.smallButton(c, kit.Ghost, L("Cancel"), "", false).Clicked() {
-			a.Go(Route{Name: "workstreams"})
-		}
-		shown := L("Start workstream")
-		if s.acting == "start" {
-			shown = L("Starting…")
-		}
-		if a.smallButton(c, kit.Primary, shown, "", s.acting != "").Label(L("Start workstream")).Clicked() {
-			a.startWorkstream(shownModel)
-		}
-	})
-	a.workstreamNotice(c)
-	note := L("This folder is not a git repository, so agents share it instead of working in worktrees of their own.")
-	ui.Column(c).Role(ui.RoleGroup).Label(title).Gap(k.Px(k.Dense(16, 20))).Children(func() {
-		a.formField(c, L("Name"), "", problem("name"), func() {
-			ui.Row(c).Children(func() {
-				invalid(a.field(c, &f.name, L("Workstream name"), L("Payment service migration"), false, false), "name").Bind(&s.nameBox)
-			})
-		})
-		a.formField(c, L("Workspace"), L("The repository the agents work in. Each agent gets its own worktree of it."), problem("workspace"), func() {
-			ui.Row(c).Gap(k.Px(8)).Children(func() {
-				invalid(a.field(c, &f.workspace, L("Workstream workspace"), "/Users/you/project", true, false), "workspace").Bind(&s.workspaceBox)
-				if !a.following() && a.smallButton(c, kit.Outline, L("Choose…"), "folder-open", false).Height(k.Px(k.Dense(30, 36))).Label(L("Choose a workspace")).Clicked() {
-					go func() {
-						if dir := a.pickFolder(L("Choose a workspace")); dir != "" {
-							a.cfg.Update(func() { f.workspace = dir })
-						}
-					}()
-				}
-			})
-			if check.done && !check.unknown && check.problem == "" && !check.git {
-				ui.Row(c).Role(ui.RoleStatus).Label(note).Gap(k.Px(6)).AlignItems(ui.Start).Children(func() {
-					k.Icon(c, "info", 12, t.MutedForeground).Margin(k.Px(3), 0, 0, 0)
-					k.Text(c, note, k.Dense(11, 12), 18).TextColor(t.MutedForeground).Grow(1).MinWidth(0)
-				})
-			}
-		})
-		a.formField(c, L("Goal"), L("The first message to the orchestrator: what to achieve, and what it should know."), problem("goal"), func() {
-			border := t.Border
-			if problem("goal") != "" {
-				border = t.Destructive.Alpha(0.6)
-			}
-			ui.Row(c).Radius(k.Px(10)).Border(1, border).Background(t.Background).Children(func() {
-				k.TextArea(c, &f.goal, L("Workstream goal"), L("Move the payment service from REST to gRPC, one endpoint at a time. Keep the old API until every client has switched."),
-					kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: k.Dense(13, 14), Line: k.Dense(18, 20), MinLines: 5, Color: t.Foreground}).Bind(&s.goalBox)
-			})
-		})
-		a.formField(c, L("Orchestrator model"), L("The orchestrator plans and coordinates; it does not edit code."), "", func() {
-			ui.Row(c).Children(func() {
-				settingsview.ModelEffortField(c, a.kit, a.prefs, L("Orchestrator model"), "", false, &f.modelOpen, &f.picker, choices, shownModel, shownEffort,
-					func(next string) { f.model, f.effort = next, fitEffort(choices, next, shownEffort) },
-					func(next string) { f.model, f.effort = shownModel, next })
-			})
-		})
-		a.formField(c, L("Agent model"), L("Every agent of this workstream uses it. Change it later on the workstream’s page: agents switch before their next turn, except one whose model you changed in its own session."), "", func() {
-			ui.Row(c).Children(func() {
-				settingsview.ModelEffortField(c, a.kit, a.prefs, L("Agent model"), L("Same as orchestrator"), false, &f.agentOpen, &f.agentPicker, choices, f.agentModel, f.agentEffort,
-					func(next string) { f.agentModel, f.agentEffort = next, fitEffort(choices, next, f.agentEffort) },
-					func(next string) { f.agentEffort = next })
-			})
-		})
-	})
-}
-
-// startWorkstream starts the form's Workstream on the computer the window
-// shows, then opens its orchestrator's Session; a field in error takes the
-// focus.
-func (a *App) startWorkstream(shownModel string) {
-	s := &a.workstreams
-	f := &s.form
-	f.err, f.errOn = "", ""
-	name, workspace, goal := strings.TrimSpace(f.name), strings.TrimSpace(f.workspace), strings.TrimSpace(f.goal)
-	switch {
-	case name == "":
-		f.err, f.errOn = L("Enter a name."), "name"
-		s.nameBox.Focus()
-	case workspace == "":
-		f.err, f.errOn = L("Choose a workspace."), "workspace"
-		s.workspaceBox.Focus()
-	case goal == "":
-		f.err, f.errOn = L("Enter the goal."), "goal"
-		s.goalBox.Focus()
-	}
-	if f.err == "" && s.checks[workspace].problem != "" {
-		// The folder may have been made since: the Host decides, and the
-		// form asks again.
-		delete(s.checks, workspace)
-		a.askWorkspace(workspace)
-	}
-	gw := a.cfg.Gateway
-	if f.err != "" {
-		f.errFor = map[string]string{"name": f.name, "workspace": f.workspace, "goal": f.goal}[f.errOn]
-	}
-	if f.err != "" || gw == nil {
-		return
-	}
-	model := f.model
-	if model == "" && f.effort != "" {
-		model = shownModel
-	}
-	in := gateway.NewWorkstream{Title: name, Workspace: workspace, Goal: goal, Model: model, ReasoningEffort: f.effort,
-		AgentModel: f.agentModel, AgentReasoningEffort: f.agentEffort}
-	var made gateway.WorkstreamCreated
-	a.wsAct("start", func() (string, error) {
-		var err error
-		made, err = gw.CreateWorkstream(a.ctx, in)
-		return "", err
-	}, func(err error) string { return L("Could not start the workstream: %s", err) }, func() {
-		go a.refreshList()
-		a.Go(Route{Name: "session", SessionID: made.OrchestratorID})
-	})
-}
-
-// workstreamLink is a Workstream Session's link to its Workstream's page,
-// in its header. An archived Session the list leaves out has its tags in
-// the Store once opened.
-func (v *sessionView) workstreamLink(c *ui.Context, sel *sessions.Summary, s *session.Session) {
-	a := v.a
-	var id string
-	switch {
-	case sel != nil:
-		id, _, _ = sessions.Workstream(sel.Tags)
-	case s != nil:
-		for _, t := range s.Settings().Tags {
-			if t.Name == sessions.WorkstreamTag {
-				id = t.Metadata["workstreamId"]
-			}
-		}
-	}
-	w := a.findWorkstream(id)
-	if w == nil {
-		return
-	}
-	k, t := a.kit, a.kit.T
-	label := L("Workstream: %s", trimOr(w.Title, w.ID))
-	b := ui.ButtonBase(c).Role(ui.RoleLink).Label(label).Tooltip(label).Height(k.Px(k.Dense(22, 24))).PaddingX(k.Px(6)).Gap(k.Px(4)).Radius(k.Px(6)).
-		Shrink(1).MinWidth(0).Cursor(ui.CursorPointer)
-	color := t.MutedForeground
-	if b.Hovered() {
-		b.Background(t.Muted)
-		color = t.Foreground
-	}
-	b.Children(func() {
-		k.Icon(c, "git-fork", 12, color)
-		k.Text(c, label, k.Dense(11, 12), 16).TextColor(color).SingleLine().Shrink(1).MinWidth(0)
-	})
-	if b.Clicked() {
-		a.Go(Route{Name: "workstreams", Workstream: id})
-	}
 }

@@ -25,6 +25,16 @@ func (k *Kit) QuietTrigger(c *ui.Context, label string, open bool) ui.Element {
 // label and a chevron, opening a menu of the options with the chosen one
 // marked. It returns the value picked in this frame.
 func (k *Kit) QuietSelect(c *ui.Context, label, icon, value string, options []Option) (string, bool) {
+	return k.quietSelect(c, label, icon, value, options, false)
+}
+
+// QuietIconSelect is a QuietSelect that shows only its icon, for a bar too
+// narrow for words; the chosen label is its tooltip.
+func (k *Kit) QuietIconSelect(c *ui.Context, label, icon, value string, options []Option) (string, bool) {
+	return k.quietSelect(c, label, icon, value, options, true)
+}
+
+func (k *Kit) quietSelect(c *ui.Context, label, icon, value string, options []Option, iconOnly bool) (string, bool) {
 	t := k.T
 	known := false
 	for _, o := range options {
@@ -43,6 +53,9 @@ func (k *Kit) QuietSelect(c *ui.Context, label, icon, value string, options []Op
 		}
 	}
 	tr := k.QuietTrigger(c, label, false).Gap(k.Px(4)).MaxWidth(k.Px(208)).Disabled(len(items) == 0)
+	if iconOnly {
+		tr.Label(label + ": " + current).Tooltip(current)
+	}
 	fg := t.Foreground.Alpha(0.75)
 	if tr.Hovered() {
 		fg = t.Foreground
@@ -50,6 +63,9 @@ func (k *Kit) QuietSelect(c *ui.Context, label, icon, value string, options []Op
 	tr.Children(func() {
 		if icon != "" {
 			k.Icon(c, icon, 14, fg)
+		}
+		if iconOnly {
+			return
 		}
 		k.Text(c, current, 13, 19.5).TextColor(fg).SingleLine().Shrink(1)
 		k.Icon(c, "chevron-down", 12, fg).Opacity(0.6)

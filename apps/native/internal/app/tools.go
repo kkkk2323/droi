@@ -218,6 +218,10 @@ func (v *sessionView) toolsButton(c *ui.Context, loaded bool) {
 	}
 	b.Children(func() {
 		k.Icon(c, "wrench", 14, color)
+		if v.narrowBar {
+			kit.Dot(c, k.Px(6), dot)
+			return
+		}
 		k.Text(c, skillsLabel, 13, 19.5).TextColor(color).SingleLine()
 		k.Text(c, "·", 13, 19.5).TextColor(t.Foreground.Alpha(0.3))
 		kit.Dot(c, k.Px(6), dot)

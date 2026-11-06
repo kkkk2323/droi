@@ -38,6 +38,12 @@ type Config struct {
 	// of every Session the Runner opens, as the Gateway adds it to a
 	// Client's (host.Host.SystemPromptAddition).
 	SystemPromptAddition func() string
+	// ToolMode, optional, is the tool execution mode every Session the
+	// Runner opens asks for; "" leaves it to droid, which picks Script for
+	// the models Factory lists and Direct for the rest. Droid applies a mode
+	// only to a listed model, so asking for script_only changes nothing: set
+	// it only for what the user chose, direct_only.
+	ToolMode func() protocol.ToolExecutionMode
 	// OnChange, optional, hears of a change that may let a failed connect
 	// succeed, such as a sign-in or a restarted Daemon (host.Host.OnChange).
 	OnChange func(fn func()) (unsubscribe func())
@@ -90,6 +96,8 @@ type Opened struct {
 	WorktreeBranch  string
 	ModelID         string
 	ReasoningEffort string
+	// ToolMode is the tool execution mode the Daemon resolved for ModelID.
+	ToolMode string
 }
 
 // Event is what Subscribe hears: TurnEnded, WorkingChanged or
@@ -341,6 +349,9 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 		Tags:            s.Tags,
 		DisabledToolIDs: s.DisabledTools,
 	}
+	if r.cfg.ToolMode != nil {
+		p.ToolExecutionMode = r.cfg.ToolMode()
+	}
 	if prompt := r.systemPrompt(s.SystemPrompt); prompt != "" {
 		p.SystemPrompt, _ = json.Marshal(struct {
 			Type   string `json:"type"`
@@ -373,7 +384,7 @@ func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
 		r.follow(res.SessionID, true)
 		r.hide(res.SessionID, s.DisabledTools)
 	}
-	o := Opened{SessionID: res.SessionID, ModelID: res.Settings.ModelID, ReasoningEffort: string(res.Settings.ReasoningEffort)}
+	o := Opened{SessionID: res.SessionID, ModelID: res.Settings.ModelID, ReasoningEffort: string(res.Settings.ReasoningEffort), ToolMode: string(res.Settings.ToolExecutionMode)}
 	if w := res.Worktree; w != nil {
 		o.WorktreePath, o.WorktreeBranch = w.Path, w.Branch
 	}

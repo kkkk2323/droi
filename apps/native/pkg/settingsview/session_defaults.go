@@ -113,7 +113,7 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 		if current == "" {
 			current = follow
 		}
-		k.SettingRow(c, l10n.L("Mode"), l10n.L("Script lets the model call tools from a small program that can batch and filter them. A Session keeps the mode it starts with. Kept on this device."), func() {
+		k.SettingRow(c, l10n.L("Mode"), l10n.L("Script lets the model call tools from a small program that can batch and filter them. Only the models Factory lists, and the ones added under Script models, can use it; any other model uses Direct. A Session keeps its mode until its model changes. Kept on this device."), func() {
 			if next, ok := s.Select(c, l10n.N("Default tool calls"), current, opts, false); ok {
 				if next == follow {
 					next = ""
@@ -136,7 +136,7 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 				}
 			}
 			store := func(next []string) { prefs.ScriptModels.Set(s.env.Prefs, next) }
-			k.SettingRow(c, l10n.L("Script models"), l10n.L("Factory lists the models that may use Script. A model added here may use it too, with the Key Pool on; restart the Daemon in Advanced to apply."), nil, func() {
+			k.SettingRow(c, l10n.L("Script models"), l10n.L("Factory lists the models that may use Script. A model added here may use it too, with the Key Pool on; droid picks the change up within a few minutes, with no restart. A Session keeps its mode until its model changes."), nil, func() {
 				ui.Column(c).Role(ui.RoleList).Label(l10n.L("Script models")).Gap(k.Px(8)).Children(func() {
 					for _, id := range added {
 						label := name(id)

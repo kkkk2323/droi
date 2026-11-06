@@ -39,7 +39,11 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 			}
 		}()
 	}
-	a.modelPicker(c, &cs.modelOpen, &cs.picker, choices, set.ModelID, string(set.ReasoningEffort),
+	pick := a.modelPicker
+	if v.narrowBar {
+		pick = a.modelPickerCompact
+	}
+	pick(c, &cs.modelOpen, &cs.picker, choices, set.ModelID, string(set.ReasoningEffort),
 		func(id string) { update(protocol.UpdateSessionSettingsParams{ModelID: id}) },
 		func(e string) {
 			update(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(e)})
@@ -47,7 +51,7 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 	// A Mission's Sessions have modes of their own.
 	if mode := set.InteractionMode; mode == "" || mode == protocol.DroidInteractionModeAuto || mode == protocol.DroidInteractionModeSpec {
 		spec := mode == protocol.DroidInteractionModeSpec
-		if specToggle(c, a.kit, spec) {
+		if specToggleAs(c, a.kit, spec, v.narrowBar) {
 			next := protocol.DroidInteractionModeSpec
 			if spec {
 				next = protocol.DroidInteractionModeAuto
@@ -59,7 +63,11 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 	for i, l := range autonomyLevels {
 		opts[i] = kit.Option{Value: l, Label: l10n.T(models.AutonomyLabels[l])}
 	}
-	if next, ok := a.kit.QuietSelect(c, L("Autonomy"), "shield-check", string(set.AutonomyLevel), opts); ok {
+	autonomy := a.kit.QuietSelect
+	if v.narrowBar {
+		autonomy = a.kit.QuietIconSelect
+	}
+	if next, ok := autonomy(c, L("Autonomy"), "shield-check", string(set.AutonomyLevel), opts); ok {
 		update(protocol.UpdateSessionSettingsParams{AutonomyLevel: protocol.AutonomyLevel(next)})
 	}
 }
@@ -67,7 +75,10 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 // specToggle is the Spec mode switch beside the composer's settings: in
 // Spec mode Droid plans with the user before it changes anything. It
 // reports a click.
-func specToggle(c *ui.Context, k *kit.Kit, on bool) bool {
+func specToggle(c *ui.Context, k *kit.Kit, on bool) bool { return specToggleAs(c, k, on, false) }
+
+// specToggleAs is specToggle, with only its icon when iconOnly.
+func specToggleAs(c *ui.Context, k *kit.Kit, on, iconOnly bool) bool {
 	t := k.T
 	b := k.QuietTrigger(c, L("Spec mode"), false).Role(ui.RoleToggleButton).Checked(on).Tooltip(L("Plan with Droid before it changes anything"))
 	fg := t.Foreground.Alpha(0.75)
@@ -80,13 +91,19 @@ func specToggle(c *ui.Context, k *kit.Kit, on bool) bool {
 	}
 	b.Children(func() {
 		k.Icon(c, "list-checks", 14, fg)
-		k.Text(c, "Spec", 13, 19.5).TextColor(fg).SingleLine()
+		if !iconOnly {
+			k.Text(c, "Spec", 13, 19.5).TextColor(fg).SingleLine()
+		}
 	})
 	return b.Clicked()
 }
 
 func (a *App) modelPicker(c *ui.Context, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *pickerToolMode) {
 	settingsview.ModelPicker(c, a.kit, a.prefs, open, st, choices, value, effort, onModel, onEffort, tools)
+}
+
+func (a *App) modelPickerCompact(c *ui.Context, open *bool, st *pickerState, choices []models.Choice, value, effort string, onModel, onEffort func(string), tools *pickerToolMode) {
+	settingsview.ModelPickerCompact(c, a.kit, a.prefs, open, st, choices, value, effort, onModel, onEffort, tools)
 }
 
 func (a *App) modelField(c *ui.Context, label string, disabled bool, open *bool, st *pickerState, choices []models.Choice, value string, onModel func(string)) {

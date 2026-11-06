@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -51,6 +52,10 @@ func (f *fakeWorkstreams) Create(_ context.Context, w NewWorkstream) (Workstream
 
 func (f *fakeWorkstreams) SetAgentSettings(_ context.Context, s WorkstreamSettings) error {
 	return f.record(s)
+}
+
+func (f *fakeWorkstreams) Edit(_ context.Context, e WorkstreamEdit) error {
+	return f.record(e)
 }
 
 func (f *fakeWorkstreams) Archive(ctx context.Context, id string) ([]string, error) {
@@ -118,6 +123,64 @@ func TestAClientListsStartsChangesAndArchivesWorkstreams(t *testing.T) {
 	}
 	if want := []any{"list", in, set, "archive payments-1a2b3c"}; !reflect.DeepEqual(ws.calls, want) {
 		t.Fatalf("calls %#v", ws.calls)
+	}
+}
+
+func TestAClientEditsAWorkstreamsNameAndSymbol(t *testing.T) {
+	g, c, ws := workstreamsGateway(t)
+	title, symbol := "Payments v2", "rocket"
+	edit := WorkstreamEdit{ID: "payments-1a2b3c", Title: &title, Symbol: &symbol}
+	if err := c.EditWorkstream(t.Context(), edit); err != nil {
+		t.Fatal(err)
+	}
+	if want := []any{edit}; !reflect.DeepEqual(ws.calls, want) {
+		t.Fatalf("calls %#v", ws.calls)
+	}
+	// A field left out stays nil, which the Host leaves alone, and "" is kept.
+	empty := ""
+	ws.calls = nil
+	status, _ := do(t, "POST", workstreamURL(g.URL(), testToken, WorkstreamEditPath, nil), `{"id":"w","symbol":""}`)
+	if want := []any{WorkstreamEdit{ID: "w", Symbol: &empty}}; status != 204 || !reflect.DeepEqual(ws.calls, want) {
+		t.Fatalf("%d, calls %#v", status, ws.calls)
+	}
+	if status, _ := do(t, "POST", workstreamURL(g.URL(), testToken, WorkstreamEditPath, nil), `{"title":"x"}`); status != 400 {
+		t.Errorf("without an id: %d", status)
+	}
+	if status, _ := do(t, "GET", workstreamURL(g.URL(), testToken, WorkstreamEditPath, nil), ""); status != 405 {
+		t.Errorf("GET: %d", status)
+	}
+	if status, _ := do(t, "POST", workstreamURL(g.URL(), "nope", WorkstreamEditPath, nil), `{"id":"w"}`); status != 401 {
+		t.Errorf("without the token: %d", status)
+	}
+}
+
+// plainWorkstreams is an implementation from before Workstreams could be
+// edited: only the interface's methods.
+type plainWorkstreams struct{ Workstreams }
+
+func TestAHostWhoseWorkstreamsCannotBeEditedAnswersNotFound(t *testing.T) {
+	_, c := startClientGateway(t, func(o *Options) { o.Workstreams = plainWorkstreams{&fakeWorkstreams{}} })
+	title := "x"
+	if err := c.EditWorkstream(t.Context(), WorkstreamEdit{ID: "w", Title: &title}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// An older Client reads a Host's list: what is new is left out when empty.
+func TestTheNewWorkstreamFieldsAreLeftOutWhenEmpty(t *testing.T) {
+	b, _ := json.Marshal(Workstream{ID: "w", Agents: []WorkstreamAgent{{SessionID: "a"}}})
+	for _, field := range []string{"symbol", "orchestratorToolMode", "orchestratorScriptCapable", "starting", "toolMode", "toolModeModel", "scriptCapable", "lastActivityAt"} {
+		if strings.Contains(string(b), field) {
+			t.Errorf("%s is in %s", field, b)
+		}
+	}
+	yes := true
+	b, _ = json.Marshal(WorkstreamAgent{ToolMode: "direct_only", ScriptCapable: &yes, LastActivityAt: "t"})
+	if !strings.Contains(string(b), `"toolMode":"direct_only"`) || !strings.Contains(string(b), `"scriptCapable":true`) {
+		t.Errorf("%s", b)
+	}
+	if ValidWorkstreamSymbol("Flag") || ValidWorkstreamSymbol("a_b") || ValidWorkstreamSymbol(strings.Repeat("a", 33)) || !ValidWorkstreamSymbol("") || !ValidWorkstreamSymbol("git-branch-2") {
+		t.Error("ValidWorkstreamSymbol")
 	}
 }
 

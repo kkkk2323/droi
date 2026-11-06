@@ -35,6 +35,9 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	entries := v.entries
 	hasOlder := s.HasOlderMessages()
 	if len(entries) == 0 && !hasOlder {
+		if v.env.Empty != nil && v.env.Empty(c) {
+			return
+		}
 		ui.Box(c).Fill().Center().Children(func() {
 			k.Text(c, l10n.L("What should Droid work on?"), 14, 20).TextColor(t.MutedForeground)
 		})
@@ -381,6 +384,10 @@ func (v *View) rowTrigger(c *ui.Context, open *bool, label string) ui.Collapsibl
 // TaskOutput or TaskStop call shows the subagent it is about, with a button
 // to its Session.
 func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
+	if tool, ok := transcript.WorkstreamTool(call); ok {
+		v.workstreamRow(c, call, tool)
+		return
+	}
 	k, t := v.look()
 	server, name := transcript.ToolName(call.Use.Name)
 	custom, hasCustom := toolViewOf(call.Use.Name)

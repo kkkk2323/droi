@@ -2,6 +2,7 @@ package workstream
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,10 +37,61 @@ type lineage struct {
 	// none or a fork. Droid rewrites a transcript's first line for its title
 	// and lastCwd, but never its parent.
 	parents map[string]string
+	// settings are the settings files read, by file, until they change.
+	settings map[string]settingsRead
+}
+
+// settingsRead is what the Host reads of a Session's settings file.
+type settingsRead struct {
+	// ToolMode and ToolModeModel are the tool execution mode the Daemon
+	// resolved and the model it did so for; Model is the Session's model.
+	ToolMode, ToolModeModel, Model string
+
+	size int64
+	mod  time.Time
 }
 
 func newLineage(dir string) *lineage {
-	return &lineage{dir: dir, folders: map[string]string{}, parents: map[string]string{}}
+	return &lineage{dir: dir, folders: map[string]string{}, parents: map[string]string{}, settings: map[string]settingsRead{}}
+}
+
+// sessionSettings reads the Session id's settings file, which the Daemon
+// writes for every change, a tool mode that droid resolved again at a turn's
+// boundary included: the Daemon sends the mode to no one, and the SDK's
+// Session keeps none. false when there is no such file or it cannot be read.
+func (l *lineage) sessionSettings(id string) (settingsRead, bool) {
+	file := l.transcript(id)
+	if file == "" {
+		return settingsRead{}, false
+	}
+	file = strings.TrimSuffix(file, ".jsonl") + ".settings.json"
+	info, err := os.Stat(file)
+	if err != nil {
+		return settingsRead{}, false
+	}
+	l.mu.Lock()
+	known, ok := l.settings[file]
+	l.mu.Unlock()
+	if ok && known.size == info.Size() && known.mod.Equal(info.ModTime()) {
+		return known, true
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return settingsRead{}, false
+	}
+	var s struct {
+		Model                    string `json:"model"`
+		ToolExecutionMode        string `json:"toolExecutionMode"`
+		ToolExecutionModeModelID string `json:"toolExecutionModeModelId"`
+	}
+	if json.Unmarshal(b, &s) != nil {
+		return settingsRead{}, false
+	}
+	read := settingsRead{ToolMode: s.ToolExecutionMode, ToolModeModel: s.ToolExecutionModeModelID, Model: s.Model, size: info.Size(), mod: info.ModTime()}
+	l.mu.Lock()
+	l.settings[file] = read
+	l.mu.Unlock()
+	return read, true
 }
 
 // transcript is the Session id's transcript; "" when there is none.

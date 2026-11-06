@@ -45,6 +45,9 @@ type fixture struct {
 	proxy  string
 	// sessionsDir stands for the Daemon's sessions folder.
 	sessionsDir string
+	// scripts is where the models that may use Script stand, as the
+	// Coordinator is told.
+	scripts gateway.ScriptModelList
 
 	mu sync.Mutex
 	// refuse, when set, answers a request in the Daemon's place.
@@ -231,7 +234,11 @@ func (f *fixture) start() {
 		SystemPromptAddition: func() string { return addition },
 		Log:                  func(s string) { t.Log(s) },
 	})
-	f.c = New(Config{Dir: f.dir, SessionsDir: f.sessionsDir, Sessions: f.r, Log: func(s string) {
+	f.c = New(Config{Dir: f.dir, SessionsDir: f.sessionsDir, Sessions: f.r, ScriptModels: func() gateway.ScriptModelList {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.scripts
+	}, Log: func(s string) {
 		t.Log(s)
 		f.mu.Lock()
 		f.logs = append(f.logs, s)
@@ -514,7 +521,11 @@ func TestCreateStartsTheOrchestratorWithItsPromptTagsToolsAndGoal(t *testing.T) 
 		t.Fatalf("record %+v", got)
 	}
 
-	for _, bad := range []gateway.NewWorkstream{{Workspace: f.repo, Goal: "g"}, {Title: "t", Goal: "g"}, {Title: "t", Workspace: f.repo}, {Title: "t", Workspace: filepath.Join(f.repo, "missing"), Goal: "g"}} {
+	long := strings.Repeat("a", gateway.MaxWorkstreamTitle+1)
+	for _, bad := range []gateway.NewWorkstream{
+		{Workspace: f.repo, Goal: "g"}, {Title: "t", Goal: "g"}, {Title: "t", Workspace: filepath.Join(f.repo, "missing"), Goal: "g"},
+		{Title: long, Workspace: f.repo}, {Title: "t", Workspace: f.repo, Symbol: "Flag!"},
+	} {
 		_, err := f.c.Create(f.ctx, bad)
 		if _, refused := err.(*gateway.RefusedRequest); !refused {
 			t.Errorf("%+v: %v", bad, err)
@@ -1755,6 +1766,282 @@ func TestCloseEndsTheLinesOfWorkAndTakesNoMore(t *testing.T) {
 // The Host looks for a newer link before each message it sends: in one
 // Workspace folder of the Daemon's, reading each transcript's first line
 // once.
+// A Workstream may start with no goal: its orchestrator then waits for the
+// user's first message, and the symbol is on the record and the tag.
+func TestCreateWithoutAGoalSendsNoMessageAndKeepsTheSymbol(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made, err := f.c.Create(f.ctx, gateway.NewWorkstream{Title: strings.Repeat("é", gateway.MaxWorkstreamTitle), Workspace: f.repo, Symbol: "git-branch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.messages(made.OrchestratorID); len(got) != 0 {
+		t.Fatalf("messages %q", got)
+	}
+	wantTag := protocol.SessionTag{Name: "droi.workstream", Metadata: map[string]string{"workstreamId": made.WorkstreamID, "role": "orchestrator", "symbol": "git-branch"}}
+	if ip := f.initialized(made.OrchestratorID); !reflect.DeepEqual(ip.Tags, []protocol.SessionTag{wantTag}) {
+		t.Fatalf("tags %+v", ip.Tags)
+	}
+	list, _ := f.c.List(f.ctx)
+	if len(list) != 1 || list[0].Symbol != "git-branch" {
+		t.Fatalf("list %+v", list)
+	}
+	if got := loadAll(f.dir, func(s string) { t.Log(s) })[made.WorkstreamID]; got == nil || got.Symbol != "git-branch" {
+		t.Fatalf("record %+v", got)
+	}
+}
+
+// writeSettings writes the settings file the Daemon keeps of a Session with
+// the tool mode it resolved.
+func (f *fixture) writeSettings(id, model, mode, modeModel string) {
+	f.t.Helper()
+	if memory.FindSessionTranscript(f.sessionsDir, id) == "" {
+		f.writeTranscript(id, "", nil)
+	}
+	settings, _ := json.Marshal(map[string]any{"model": model, "toolExecutionMode": mode, "toolExecutionModeModelId": modeModel})
+	file := strings.TrimSuffix(memory.FindSessionTranscript(f.sessionsDir, id), ".jsonl") + ".settings.json"
+	if err := os.WriteFile(file, settings, 0o666); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func listed(t *testing.T, f *fixture, wsID string) gateway.Workstream {
+	t.Helper()
+	list, err := f.c.List(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range list {
+		if w.ID == wsID {
+			return w
+		}
+	}
+	t.Fatalf("no workstream %s in %+v", wsID, list)
+	return gateway.Workstream{}
+}
+
+// An agent's tool mode is what the Daemon said when it started it, then what
+// droid wrote to its settings file; whether its model may use Script is
+// read off the list, whatever its mode.
+func TestTheListTellsEachAgentsToolModeAndWhetherItsModelMayUseScript(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("On it.")})
+	made := f.create("glm-5.3-flash", "")
+	f.quietAgents(made.OrchestratorID)
+	id := f.spawn(made.OrchestratorID, "API", "Do it.")
+
+	ws := listed(t, f, made.WorkstreamID)
+	a := ws.Agents[0]
+	if a.ToolMode != "direct_only" || a.ToolModeModel != a.Model || a.ScriptCapable != nil || a.LastActivityAt == "" {
+		t.Fatalf("at the start %+v", a)
+	}
+
+	// The Fake Daemon's Sessions have the model "auto".
+	setScripts := func(l gateway.ScriptModelList) {
+		f.mu.Lock()
+		f.scripts = l
+		f.mu.Unlock()
+	}
+	setScripts(gateway.ScriptModelList{Factory: []string{"claude-opus-5-5"}, Known: true})
+	f.writeSettings(id, "auto", "script_only", "claude-opus-5-5")
+	ws = listed(t, f, made.WorkstreamID)
+	a = ws.Agents[0]
+	if a.ToolMode != "script_only" || a.ToolModeModel != "claude-opus-5-5" || a.ScriptCapable == nil || *a.ScriptCapable {
+		t.Fatalf("after droid decided again, its model not listed: %+v", a)
+	}
+	if ws.OrchestratorScriptCapable == nil || *ws.OrchestratorScriptCapable {
+		t.Fatalf("the orchestrator's model is not listed: %+v", ws.OrchestratorScriptCapable)
+	}
+	setScripts(gateway.ScriptModelList{Factory: []string{"claude-opus-5-5"}, Added: []string{"auto"}, Known: true})
+	ws = listed(t, f, made.WorkstreamID)
+	if a = ws.Agents[0]; a.ScriptCapable == nil || !*a.ScriptCapable || ws.OrchestratorScriptCapable == nil || !*ws.OrchestratorScriptCapable {
+		t.Fatalf("after the model was added: %+v, orchestrator %v", a, ws.OrchestratorScriptCapable)
+	}
+
+	// The file is read again when it changes.
+	f.writeSettings(id, "auto", "direct_only", "auto")
+	if a = listed(t, f, made.WorkstreamID).Agents[0]; a.ToolMode != "direct_only" || a.ToolModeModel != "auto" {
+		t.Fatalf("after another change %+v", a)
+	}
+	// Without a list, a model may not be told apart from one left out.
+	setScripts(gateway.ScriptModelList{})
+	if a = listed(t, f, made.WorkstreamID).Agents[0]; a.ScriptCapable != nil {
+		t.Fatalf("with no list %+v", a)
+	}
+}
+
+func TestAnAgentBeingStartedIsListedUntilItIsRecordedOrTooOld(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	done := f.c.startAgent(made.WorkstreamID, "Docs")
+	st := listed(t, f, made.WorkstreamID).Starting
+	if len(st) != 1 || st[0].Title != "Docs" || st[0].StartedAt == "" {
+		t.Fatalf("starting %+v", st)
+	}
+	done()
+	done()
+	if st := listed(t, f, made.WorkstreamID).Starting; len(st) != 0 {
+		t.Fatalf("starting after done %+v", st)
+	}
+	f.c.startAgent(made.WorkstreamID, "Lost")
+	f.c.mu.Lock()
+	f.c.starting[0].at = time.Now().Add(-2 * startingMax)
+	f.c.mu.Unlock()
+	if st := listed(t, f, made.WorkstreamID).Starting; len(st) != 0 {
+		t.Fatalf("an old start stays: %+v", st)
+	}
+}
+
+func TestSpawnAgentListsTheAgentAsStartingOnlyUntilItsSessionIsRecorded(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	f.quietAgents(made.OrchestratorID)
+	f.spawn(made.OrchestratorID, "API", "Do it.")
+	ws := listed(t, f, made.WorkstreamID)
+	if len(ws.Starting) != 0 || len(ws.Agents) != 1 {
+		t.Fatalf("%+v", ws)
+	}
+}
+
+func TestSubscribersHearOfChangesOnceAfterABurstAndNoMoreOnceUnsubscribed(t *testing.T) {
+	old := changeDelay
+	changeDelay = 20 * time.Millisecond
+	t.Cleanup(func() { changeDelay = old })
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	var mu sync.Mutex
+	calls := 0
+	unsubscribe := f.c.OnChange(func() { mu.Lock(); calls++; mu.Unlock() })
+	count := func() int { mu.Lock(); defer mu.Unlock(); return calls }
+
+	made := f.create("", "")
+	f.waitFor("a call after the Workstream was recorded", func() bool { return count() > 0 })
+	time.Sleep(200 * time.Millisecond)
+	settled := count()
+	f.c.startAgent(made.WorkstreamID, "A")()
+	f.waitFor("a call for an agent being started", func() bool { return count() > settled })
+	// A burst is one call, not one for each change.
+	time.Sleep(100 * time.Millisecond)
+	before := count()
+	for range 20 {
+		f.c.changed()
+	}
+	f.waitFor("a call for the burst", func() bool { return count() > before })
+	time.Sleep(200 * time.Millisecond)
+	if got := count() - before; got != 1 {
+		t.Fatalf("%d calls for one burst", got)
+	}
+	unsubscribe()
+	before = count()
+	f.c.changed()
+	time.Sleep(200 * time.Millisecond)
+	if count() != before {
+		t.Fatal("called after it was unsubscribed")
+	}
+}
+
+func TestAMemberSessionWorkingIsAChangeAndAnotherSessionIsNone(t *testing.T) {
+	old := changeDelay
+	changeDelay = 10 * time.Millisecond
+	t.Cleanup(func() { changeDelay = old })
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	f.waitFor("the orchestrator's turn to end", func() bool {
+		s := f.r.Session(made.OrchestratorID)
+		return s != nil && !working(s)
+	})
+	time.Sleep(200 * time.Millisecond)
+	var mu sync.Mutex
+	calls := 0
+	f.c.OnChange(func() { mu.Lock(); calls++; mu.Unlock() })
+	count := func() int { mu.Lock(); defer mu.Unlock(); return calls }
+
+	f.c.hear(hostsession.WorkingChanged{SessionID: "someone-else", State: protocol.DroidWorkingStateExecutingTool})
+	f.c.hear(hostsession.SettingsUpdated{SessionID: "someone-else"})
+	time.Sleep(150 * time.Millisecond)
+	if count() != 0 {
+		t.Fatalf("%d calls for a Session that is no member's", count())
+	}
+	f.c.hear(hostsession.WorkingChanged{SessionID: made.OrchestratorID, State: protocol.DroidWorkingStateExecutingTool})
+	f.waitFor("a call for the orchestrator working", func() bool { return count() == 1 })
+	f.c.hear(hostsession.SettingsUpdated{SessionID: made.OrchestratorID})
+	f.waitFor("a call for its new settings", func() bool { return count() == 2 })
+}
+
+func TestEditRenamesTheOrchestratorSessionAndKeepsTheSymbolOnItsTag(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("gpt-6", "high")
+	title, symbol := "  Payments v2 ", "rocket"
+	if err := f.c.Edit(f.ctx, gateway.WorkstreamEdit{ID: made.WorkstreamID, Title: &title, Symbol: &symbol}); err != nil {
+		t.Fatal(err)
+	}
+	renames := f.requests("daemon.rename_session")
+	if len(renames) != 1 {
+		t.Fatalf("%d rename_session", len(renames))
+	}
+	var rn struct{ SessionID, Title string }
+	_ = json.Unmarshal(renames[0], &rn)
+	if rn.SessionID != made.OrchestratorID || rn.Title != "Payments v2" {
+		t.Fatalf("rename %+v", rn)
+	}
+	var tagged []protocol.SessionTag
+	for _, p := range f.requests("daemon.update_session_settings") {
+		var u struct {
+			SessionID string
+			Tags      []protocol.SessionTag
+		}
+		_ = json.Unmarshal(p, &u)
+		if u.SessionID == made.OrchestratorID && len(u.Tags) > 0 {
+			tagged = u.Tags
+		}
+	}
+	want := protocol.SessionTag{Name: "droi.workstream", Metadata: map[string]string{"workstreamId": made.WorkstreamID, "role": "orchestrator", "agentModel": "gpt-6", "agentReasoningEffort": "high", "symbol": "rocket"}}
+	if len(tagged) != 1 || !reflect.DeepEqual(tagged[0], want) {
+		t.Fatalf("tags %+v", tagged)
+	}
+	w := listed(t, f, made.WorkstreamID)
+	if w.Symbol != "rocket" || (w.Title != "Payments v2" && w.Title != "Payments") {
+		t.Fatalf("listed %+v", w)
+	}
+	if got := loadAll(f.dir, func(s string) { t.Log(s) })[made.WorkstreamID]; got == nil || got.Title != "Payments v2" || got.Symbol != "rocket" {
+		t.Fatalf("record %+v", got)
+	}
+
+	// A symbol alone renames nothing, and "" clears it.
+	empty := ""
+	if err := f.c.Edit(f.ctx, gateway.WorkstreamEdit{ID: made.WorkstreamID, Symbol: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.requests("daemon.rename_session")); n != 1 {
+		t.Fatalf("%d rename_session after a symbol alone", n)
+	}
+	if got := loadAll(f.dir, func(s string) { t.Log(s) })[made.WorkstreamID]; got.Symbol != "" || got.Title != "Payments v2" {
+		t.Fatalf("record %+v", got)
+	}
+}
+
+func TestEditRefusesWhatCannotBeAWorkstream(t *testing.T) {
+	f := newFixture(t, fakedaemon.Scenario{Turn: reply("ok")})
+	made := f.create("", "")
+	blank, long, bad := " ", strings.Repeat("a", gateway.MaxWorkstreamTitle+1), "No Good"
+	for name, e := range map[string]gateway.WorkstreamEdit{
+		"missing": {ID: "nope"}, "blank": {ID: made.WorkstreamID, Title: &blank}, "long": {ID: made.WorkstreamID, Title: &long}, "symbol": {ID: made.WorkstreamID, Symbol: &bad},
+	} {
+		if err := f.c.Edit(f.ctx, e); err == nil {
+			t.Errorf("%s: no error", name)
+		} else if _, refused := err.(*gateway.RefusedRequest); !refused {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if n := len(f.requests("daemon.rename_session")); n != 0 {
+		t.Fatalf("%d rename_session", n)
+	}
+	if _, err := f.c.Archive(f.ctx, made.WorkstreamID); err != nil {
+		t.Fatal(err)
+	}
+	title := "Late"
+	if err := f.c.Edit(f.ctx, gateway.WorkstreamEdit{ID: made.WorkstreamID, Title: &title}); err == nil {
+		t.Fatal("an archived Workstream was edited")
+	}
+}
+
 func BenchmarkFindingANewerLinkInAFolderOf1000Sessions(b *testing.B) {
 	dir := b.TempDir()
 	folder := filepath.Join(dir, "-w-pay")

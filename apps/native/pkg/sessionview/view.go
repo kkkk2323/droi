@@ -72,10 +72,19 @@ type Env struct {
 	// Overlay draws over the transcript's list once it is built, in a box
 	// the list fills; width is the list's.
 	Overlay func(c *ui.Context, s *session.Session, width float32)
+	// Agent tells of the Workstream agent whose Session is id, for the rows
+	// of the orchestrator's tools; nil when no Workstream is shown.
+	Agent func(id string) (AgentInfo, bool)
+	// OpenAgents shows the list of the Workstream's agents; nil leaves the
+	// list_agents row without the click.
+	OpenAgents func()
 	// Local tells whether the Daemon runs on this computer, where a
 	// background command's output file and process can be looked at; nil
 	// when it never does.
 	Local func() bool
+	// Empty draws what stands in for a Session with no messages yet, and
+	// reports whether it did; false keeps the prompt to start.
+	Empty func(c *ui.Context) bool
 }
 
 // Revisions counts each Session's changes in the Store, for its View to

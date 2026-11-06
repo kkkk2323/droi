@@ -205,11 +205,11 @@ A long goal the user hands to an Orchestrator, which splits it among Workstream 
 _Avoid_: mission, project, swarm, team
 
 **Orchestrator**:
-The Session that leads a Workstream: it plans, starts Workstream Agents, sends them work and hears their reports; it does not edit code. The user talks to it like any Session, and it stays in the session list.
+The Session that leads a Workstream: it plans, starts Workstream Agents, sends them work and hears their reports; it does not edit code. The user talks to it like any Session. It is the Workstream's page, with tabs for its agents, and appears in the sidebar's Workstreams group, not in the session list (ADR 0037).
 _Avoid_: lead, manager, parent session
 
 **Workstream Agent**:
-A Session an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
+A Session an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream, as a tab of the Orchestrator's page and a row of its panel. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
 _Avoid_: worker, subagent (that is a Task call's Session), child session
 
 **Shared Folder**:

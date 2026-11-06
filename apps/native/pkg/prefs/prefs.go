@@ -302,6 +302,12 @@ var (
 	ManualWorkspaces  = List{Key: "droi.workspaceOrder"}
 	SessionsFirstSeen = Map{Key: "droi.sessionsFirstSeen"}
 	DefaultToolMode   = String{Key: "droi.toolExecutionMode"}
+	// WorkstreamUI is what each Workstream's page keeps, as JSON: its agent
+	// tabs and the side panel.
+	WorkstreamUI = String{Key: "droi.workstreamUI"}
+	// WorkstreamPane is the width of a Workstream's side panel in px of the
+	// default text size, as its edge was dragged.
+	WorkstreamPane = Number{Key: "droi.workstreamPane", Fallback: 340}
 	// PresetsVersion is the Version of the app's Presets (defaults.Presets)
 	// this device has, 0 for none.
 	PresetsVersion = Number{Key: "droi.presetsVersion"}

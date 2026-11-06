@@ -12,11 +12,48 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkkk2323/droid-sdk-go/protocol"
+
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
+
+func TestOnlyTheDeviceChoiceOfDirectIsAskedOfTheDaemon(t *testing.T) {
+	for mode, want := range map[string]protocol.ToolExecutionMode{
+		"direct_only": protocol.ToolExecutionModeDirectOnly,
+		"script_only": "",
+		"":            "",
+		"nonsense":    "",
+	} {
+		if got := deviceToolMode(mode); got != want {
+			t.Errorf("deviceToolMode(%q) = %q, want %q", mode, got, want)
+		}
+	}
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Env: func(string) string { return "" }, ToolMode: func() string { return "direct_only" }})
+	if h.ToolMode() != "direct_only" || host.New(host.Config{UserData: dir, Home: dir}).ToolMode() != "" {
+		t.Error("Host.ToolMode")
+	}
+}
+
+// OnWorkstreamsChanged is the Coordinator's OnChange, whose calls the
+// Coordinator's own tests cover; here it is only there, and safe without
+// Services.
+func TestServicesOfferTheWorkstreamsChangesAndEditing(t *testing.T) {
+	var none *Services
+	none.OnWorkstreamsChanged(func() { t.Error("called") })()
+
+	dir := t.TempDir()
+	h := host.New(host.Config{UserData: dir, Home: dir, Env: func(string) string { return "" }})
+	s := StartServices(h)
+	defer s.Stop()
+	s.OnWorkstreamsChanged(func() {})()
+	if _, ok := s.GatewayWorkstreams().(gateway.WorkstreamEditor); !ok {
+		t.Fatal("the Gateway's Workstreams do not edit")
+	}
+}
 
 func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	dir := t.TempDir()

@@ -49,6 +49,14 @@ type sessionView struct {
 
 	// focused is whether the composer took the focus once already.
 	focused bool
+
+	// ws is the Workstream whose page shows this Session, nil on a page of
+	// its own; chrome then draws the tab bar in the header's place.
+	ws *wsContext
+	// narrowBar: the page is too narrow for the composer's bar in words, so
+	// its settings show icons.
+	narrowBar bool
+	chrome    func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav)
 }
 
 func (a *App) view(id string) *sessionView {
@@ -56,17 +64,30 @@ func (a *App) view(id string) *sessionView {
 	if v == nil {
 		v = &sessionView{a: a, id: id, attached: map[string]*ui.Bitmap{}, rail: railState{preview: -1}}
 		v.View = sessionview.New(id, sessionview.Env{
-			Controller:     a.ctl,
-			Ctx:            a.ctx,
-			Kit:            func() *kit.Kit { return a.kit },
-			Update:         a.cfg.Update,
-			Now:            a.cfg.Now,
-			Revisions:      &a.revs,
-			OpenSession:    func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			Controller:  a.ctl,
+			Ctx:         a.ctx,
+			Kit:         func() *kit.Kit { return a.kit },
+			Update:      a.cfg.Update,
+			Now:         a.cfg.Now,
+			Revisions:   &a.revs,
+			OpenSession: func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			Agent:       a.agentInfo,
+			OpenAgents: func() {
+				if v.ws != nil {
+					a.showPanel(v.ws.id, panelAgents)
+				}
+			},
 			Quote:          v.quote,
 			ScrollShortcut: shortcut(CmdScrollToLatest),
 			Overlay:        v.turnRail,
 			Local:          func() bool { return !a.following() },
+			Empty: func(c *ui.Context) bool {
+				if v.ws == nil || v.ws.agentShown {
+					return false
+				}
+				a.welcomeBlock(c, v.ws)
+				return true
+			},
 		})
 		d := a.drafts.Load(id)
 		text, texts := pasted.Split(d.Text)
@@ -153,7 +174,12 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 	loaded := s != nil && s.LoadState() == session.Loaded
 
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
-		v.header(c, s, sel, loaded, title, workspace, a.subagentNavOf(listed, sel, v.id))
+		nav := a.subagentNavOf(listed, sel, v.id)
+		if v.chrome != nil {
+			v.chrome(c, s, loaded, workspace, nav)
+		} else {
+			v.header(c, s, sel, loaded, title, workspace, nav)
+		}
 		v.Transcript(c, s, listed)
 		v.composerArea(c, s, workspace, loaded)
 	})
@@ -202,7 +228,6 @@ func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Su
 				k.Text(c, title, k.Dense(12, 14), k.Dense(18, 20)).Role(ui.RoleHeading).FontWeight(500).TextColor(t.Foreground).SingleLine().Shrink(1)
 				v.sessionActions(c, sel, title, workspace, hover)
 			})
-			v.workstreamLink(c, sel, s)
 		})
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
 			v.jobsMenu(c)
