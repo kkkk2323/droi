@@ -35,6 +35,9 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	entries := v.entries
 	hasOlder := s.HasOlderMessages()
 	if len(entries) == 0 && !hasOlder {
+		if v.env.Empty != nil && v.env.Empty(c) {
+			return
+		}
 		ui.Box(c).Fill().Center().Children(func() {
 			k.Text(c, l10n.L("What should Droid work on?"), 14, 20).TextColor(t.MutedForeground)
 		})

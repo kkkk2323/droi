@@ -95,20 +95,6 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}).Clicked() {
 				a.Go(Route{Name: "automations"})
 			}
-			if a.cfg.Gateway != nil {
-				waiting := a.workstreams.waiting
-				row := a.sidebarRow(c, "git-fork", L("Workstreams"), a.route.Name == "workstreams", func() {
-					if waiting > 0 {
-						ui.Row(c).PaddingX(k.Px(4)).Margin(0, 0, 0, ui.Auto).Children(func() { a.waitingMark(c, waiting, 11, 16.5, true) })
-					}
-				})
-				if waiting > 0 {
-					row.Label(listName(L("Workstreams"), L("%d waiting on you", waiting)))
-				}
-				if row.Clicked() {
-					a.Go(Route{Name: "workstreams"})
-				}
-			}
 			for _, p := range a.cfg.Pages {
 				label := l10n.T(p.Label)
 				if a.sidebarRow(c, p.Icon, label, a.route.Name == "page" && a.route.Page == p.ID, nil).Key("page:" + p.ID).Clicked() {
@@ -138,6 +124,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 			}
 			if byTime {
 				a.runningAutomations(c, selected, busy)
+				a.workstreamsSection(c, listed, selected, busy)
 				a.timeSections(c, groups, selected, busy)
 				return
 			}
@@ -157,6 +144,7 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 				}
 			}
 			a.runningAutomations(c, selected, busy)
+			a.workstreamsSection(c, listed, selected, busy)
 			section := func(g sessions.Group) { a.workspaceSection(c, g, groups, order, selected, busy) }
 			active, stale := sessions.SplitStale(rest, a.cfg.Now().UnixMilli(), selected, order)
 			restSections := func() {
@@ -232,8 +220,12 @@ type listMemo struct {
 	// timeKey and timeGroups are the time view's, as groupsKey and groups.
 	timeKey    string
 	timeGroups []sessions.Group
-	recentKey  string
-	recent     []sessions.RecentWorkspace
+	// leadsRev and leads are the Workstreams' orchestrators of that revision.
+	leadsRev  uint64
+	leads     []sessions.Summary
+	leadsSet  bool
+	recentKey string
+	recent    []sessions.RecentWorkspace
 	// times and timesGen are the Session Times merged with this window's
 	// views; unread and unreadGen the Sessions unread by them.
 	times     map[string]sessions.Times
@@ -263,7 +255,7 @@ func (a *App) sidebarGroups(listed []sessions.Summary, pins sessions.Pins, order
 	key := a.orderKey(order, a.pinnedWorkspaces().Get(a.prefs), order.Workspaces, order.Manual)
 	if m.groups == nil || m.groupsKey != key {
 		m.groupsKey = key
-		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.WithoutWorkstreamAgents(sessions.MainSessions(listed)))), pins, order, true)
+		m.groups = sessions.GroupByWorkspace(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.WithoutWorkstreamSessions(sessions.MainSessions(listed)))), pins, order, true)
 		if a.cfg.SessionList != nil && a.cfg.Computer == nil {
 			a.cfg.SessionList.show(m.groups)
 		}
@@ -280,7 +272,7 @@ func (a *App) timeGroups(listed []sessions.Summary, pins sessions.Pins, order se
 	key := a.orderKey(order, now.Format(time.DateOnly))
 	if m.timeGroups == nil || m.timeKey != key {
 		m.timeKey = key
-		m.timeGroups = sessions.GroupByTime(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.WithoutWorkstreamAgents(sessions.MainSessions(listed)))), pins, order, now)
+		m.timeGroups = sessions.GroupByTime(sessions.FoldContinued(sessions.WithoutAutomationRuns(sessions.WithoutWorkstreamSessions(sessions.MainSessions(listed)))), pins, order, now)
 	}
 	return m.timeGroups
 }
@@ -818,9 +810,6 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 			title := k.Text(c, s.Title, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(titleColor).SingleLine().Grow(1).Shrink(1)
 			if elsewhere {
 				a.elsewhereMark(c, acc)
-			}
-			if _, role, _ := sessions.Workstream(s.Tags); role == sessions.WorkstreamOrchestrator {
-				k.Icon(c, "git-fork", 12, t.MutedForeground).Role(ui.RoleImage).Label(L("Orchestrator"))
 			}
 			if a.sidebar.unread[s.SessionID] {
 				title.FontWeight(500)

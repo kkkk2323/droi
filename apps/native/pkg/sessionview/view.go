@@ -76,6 +76,9 @@ type Env struct {
 	// background command's output file and process can be looked at; nil
 	// when it never does.
 	Local func() bool
+	// Empty draws what stands in for a Session with no messages yet, and
+	// reports whether it did; false keeps the prompt to start.
+	Empty func(c *ui.Context) bool
 }
 
 // Revisions counts each Session's changes in the Store, for its View to

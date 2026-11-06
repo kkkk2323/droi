@@ -83,6 +83,9 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 		if !waits && len(asks) > 0 {
 			ui.Box(c.Key("queued-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.Prompts(c, nil, asks) })
 		}
+		if v.ws != nil && !v.ws.agentShown {
+			a.workstreamBanners(c, v.ws)
+		}
 		v.shelf(c, s)
 		if waits {
 			v.Prompts(c, perms, asks)
@@ -303,6 +306,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				}
 				placeholder := L("Ask anything")
 				switch {
+				case !running && !hasPick && v.workstreamPlaceholder() != "":
+					placeholder = v.workstreamPlaceholder()
 				case running:
 					placeholder = L("Queue a message… (⌘↩ inserts it now)")
 				case hasPick && picked.ArgumentHint != "":
@@ -356,6 +361,9 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				}
 				ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(k.Px(2)).Children(func() {
 					v.settingsBar(c, s)
+					if v.ws != nil && !v.ws.agentShown {
+						a.orchestratorChip(c)
+					}
 				})
 				v.toolsButton(c, loaded)
 				ui.Row(c).Gap(k.Px(4)).Padding(0, 0, 0, k.Px(4)).Shrink(0).Children(func() {
@@ -385,6 +393,18 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 			})
 		})
 	})
+}
+
+// workstreamPlaceholder is what the empty composer of a Session on a
+// Workstream's page says, who it talks to; "" off such a page.
+func (v *sessionView) workstreamPlaceholder() string {
+	switch {
+	case v.ws == nil:
+		return ""
+	case v.ws.agentShown:
+		return L("Message this agent…")
+	}
+	return L("Message the orchestrator…")
 }
 
 func (v *sessionView) saveDraft() {

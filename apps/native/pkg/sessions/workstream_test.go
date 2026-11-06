@@ -17,6 +17,36 @@ func TestTheWorkstreamTagNamesTheWorkstreamAndTheRole(t *testing.T) {
 	}
 }
 
+func TestAWorkstreamSymbolIsOneThisBuildDrawn(t *testing.T) {
+	tag := func(symbol string) []Tag {
+		return []Tag{{Name: WorkstreamTag, Metadata: map[string]string{"workstreamId": "w1", "role": "orchestrator", "symbol": symbol}}}
+	}
+	if got := WorkstreamSymbol(tag("bug")); got != "bug" {
+		t.Fatalf("a symbol it has: %q", got)
+	}
+	for _, none := range []string{"", "no-such-icon", "../x"} {
+		if got := WorkstreamSymbol(tag(none)); got != DefaultWorkstreamSymbol {
+			t.Fatalf("symbol %q: %q", none, got)
+		}
+	}
+	if WorkstreamSymbol(nil) != DefaultWorkstreamSymbol {
+		t.Fatal("a Session of no Workstream")
+	}
+}
+
+func TestWorkstreamSessionsLeaveTheWorkspaceGroups(t *testing.T) {
+	tag := func(role string) []Tag {
+		return []Tag{{Name: WorkstreamTag, Metadata: map[string]string{"workstreamId": "w1", "role": role}}}
+	}
+	list := []Summary{
+		{SessionID: "lead", Tags: tag(WorkstreamOrchestrator)},
+		{SessionID: "agent", Tags: tag(WorkstreamAgent)},
+		{SessionID: "plain"},
+	}
+	eq(t, ids(WithoutWorkstreamSessions(list)), []string{"plain"})
+	eq(t, ids(Orchestrators(list)), []string{"lead"})
+}
+
 func TestWorkstreamAgentsLeaveTheListAndTheRecentWorkspaces(t *testing.T) {
 	tag := func(role string) []Tag {
 		return []Tag{{Name: WorkstreamTag, Metadata: map[string]string{"workstreamId": "w1", "role": role}}}
