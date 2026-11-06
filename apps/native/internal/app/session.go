@@ -74,7 +74,7 @@ func (a *App) view(id string) *sessionView {
 			Agent:       a.agentInfo,
 			OpenAgents: func() {
 				if v.ws != nil {
-					a.setWsState(v.ws.id, func(u *workstreamUI) { u.Closed, u.Panel = false, panelAgents })
+					a.showPanel(v.ws.id, panelAgents)
 				}
 			},
 			Quote:          v.quote,

@@ -121,3 +121,17 @@ func TestAnAgentsReportIsARow(t *testing.T) {
 	h.click("Sent report back to the orchestrator")
 	h.until("the message", func() bool { return h.hasText("Need the proto") })
 }
+
+// The row names an agent as the window does, not as a result spells it:
+// a title with a quote is cut in the result.
+func TestARowNamesTheAgentByTheWindowsRecord(t *testing.T) {
+	sc := workstreamsScenario()
+	sc.Sessions[1].Messages = []fakedaemon.Message{
+		{Role: "user", Text: "Go on"},
+		{Role: "assistant", Content: []map[string]any{wsUse("t5", "send_message", map[string]any{"agent_id": "agent-1", "message": "hi"})}},
+		wsResult("t5", `Sent to agent "gRPC \"endpoints" (agent-1). Its report arrives.`, false),
+	}
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.until("the row", func() bool { return h.hasText("Messaged gRPC endpoints") })
+}

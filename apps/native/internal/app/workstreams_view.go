@@ -111,6 +111,10 @@ type workstreamsState struct {
 	settings    settingsForm
 	// query filters the agents the side panel lists, fileQuery its files.
 	query, fileQuery string
+	// paneDrawer shows the side panel over the page of a narrow window;
+	// files is the shared folder's list, read in the background.
+	paneDrawer bool
+	files      filesCache
 	// tabMenuOpen is the orchestrator tab's menu; paneDrag the side panel's
 	// width, in px of the default text size, while its edge is dragged.
 	tabMenuOpen bool
@@ -183,6 +187,7 @@ func (a *App) loadWorkstreams(force bool) {
 					list = []gateway.Workstream{}
 				}
 				s.older, s.listErr, s.list = false, "", list
+				a.pruneWsStates()
 			}
 			if s.listAgain {
 				s.listAgain = false

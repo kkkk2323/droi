@@ -83,6 +83,35 @@ func (a *App) agentInfo(id string) (sessionview.AgentInfo, bool) {
 	return sessionview.AgentInfo{}, false
 }
 
+// pruneWsStates drops what the window keeps of Workstreams the Host no longer
+// has, and the tabs of agents it no longer has or has archived, other than
+// the one shown.
+func (a *App) pruneWsStates() {
+	s := &a.workstreams
+	if s.list == nil {
+		return
+	}
+	a.wsState("")
+	for id, u := range s.ui {
+		w := a.findWorkstream(id)
+		if w == nil {
+			a.setWsState(id, func(u *workstreamUI) { *u = workstreamUI{} })
+			continue
+		}
+		kept := slices.DeleteFunc(slices.Clone(u.Tabs), func(tab string) bool {
+			for _, ag := range w.Agents {
+				if ag.SessionID == tab {
+					return ag.ArchivedAt != "" && tab != u.Active
+				}
+			}
+			return true
+		})
+		if len(kept) != len(u.Tabs) {
+			a.setWsState(id, func(u *workstreamUI) { u.Tabs = kept })
+		}
+	}
+}
+
 // How far a model is known to run Script.
 const (
 	scriptUnknown = iota
@@ -145,14 +174,30 @@ func (a *App) scriptCapable(model string) int {
 // directMark is whether the row of an agent says it can use only Direct tools
 // while this device would give it Script, and why.
 func (a *App) directMark(ag gateway.WorkstreamAgent) (bool, string) {
-	if ag.ToolMode != string(defaults.DirectOnly) || defaults.DefaultToolMode(a.prefs) == defaults.DirectOnly {
+	return directMarkFor(ag.ToolMode, ag.ScriptCapable, defaults.DefaultToolMode(a.prefs) == defaults.DirectOnly, a.following())
+}
+
+// directMarkFor is whether a Session in tool mode mode wears the mark and what
+// it says. A device that asks for Direct makes it no news, but only this
+// computer's default is known here: while following another computer, the
+// Session's own mode and the Host's word on its model are all there is.
+func directMarkFor(mode string, scriptCapable *bool, deviceDirect, following bool) (bool, string) {
+	if mode != string(defaults.DirectOnly) || (!following && deviceDirect) {
 		return false, ""
 	}
 	switch {
-	case ag.ScriptCapable != nil && !*ag.ScriptCapable:
-		return true, L("This model is not in the Script models, so this agent can use only Direct tools. Add it in Settings, Script models.")
-	case ag.ScriptCapable != nil:
-		return true, L("Script is allowed for this model now. This agent switches after its model changes; new agents use it.")
+	case scriptCapable != nil && !*scriptCapable:
+		return true, L("This model is not in the Script models, so it can use only Direct tools. Add it in Settings, Script models.")
+	case scriptCapable != nil:
+		return true, L("Script is allowed for this model now. It takes effect after its model changes, and for agents started from now on.")
 	}
-	return true, L("This agent can use only Direct tools.")
+	return true, L("It can use only Direct tools.")
+}
+
+// orchestratorDirect is directMark for the orchestrator of the Workstream.
+func (a *App) orchestratorDirect(w *gateway.Workstream) (bool, string) {
+	if w == nil {
+		return false, ""
+	}
+	return directMarkFor(w.OrchestratorToolMode, w.OrchestratorScriptCapable, defaults.DefaultToolMode(a.prefs) == defaults.DirectOnly, a.following())
 }

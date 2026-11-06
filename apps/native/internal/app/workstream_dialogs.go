@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+	"net/http"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -25,7 +27,7 @@ func (a *App) openNewWorkstream() {
 	s := &a.workstreams
 	s.newOpen = true
 	s.form = workstreamForm{symbol: sessions.DefaultWorkstreamSymbol}
-	s.checks, s.typed = nil, ""
+	s.checks, s.typed, s.notice = nil, "", ""
 	if recent := a.recentWorkspaces(a.listedNow()); len(recent) > 0 {
 		s.form.workspace = recent[0].Path
 	}
@@ -135,6 +137,7 @@ func (a *App) newWorkstreamDialog(c *ui.Context) {
 					})
 				}
 			})
+			a.workstreamNotice(c)
 			ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Margin(k.Px(6), 0, 0, 0).Children(func() {
 				ui.Row(c).Grow(1).Gap(k.Px(6)).AlignItems(ui.Center).Children(func() {
 					ui.Row(c).Size(k.Px(20), k.Px(20)).Center().Radius(k.Px(4)).Border(1, t.Border).Children(func() {
@@ -232,11 +235,25 @@ func (a *App) startWorkstream() {
 		var err error
 		made, err = gw.CreateWorkstream(a.ctx, in)
 		return "", err
-	}, func(err error) string { return L("Could not start the workstream: %s", err) }, func() {
+	}, func(err error) string { return a.startFailed(err) }, func() {
 		s.newOpen = false
 		go a.refreshList()
 		a.Go(Route{Name: "session", SessionID: made.OrchestratorID})
 	})
+}
+
+// startFailed is what the dialog says when the Host would not start the
+// Workstream. A Host from before a Workstream started from a name asks for a
+// goal, which only an update helps.
+func (a *App) startFailed(err error) string {
+	var refused *gateway.StatusError
+	if errors.As(err, &refused) && refused.Status == http.StatusBadRequest && strings.Contains(strings.ToLower(refused.Message), "goal") {
+		if name := a.computerName(); name != "" {
+			return L("%s runs an older Droi that cannot start a workstream from a name. Update Droi there.", name)
+		}
+		return L("This Droi is older than the window and cannot start a workstream from a name. Update Droi, then try again.")
+	}
+	return L("Could not start the workstream: %s", err)
 }
 
 // settingsForm is what the Workstream settings dialog's fields hold.

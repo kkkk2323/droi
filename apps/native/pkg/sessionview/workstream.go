@@ -44,7 +44,9 @@ func (v *View) agentOf(call *transcript.ToolCall) (id, title string, info AgentI
 	if v.env.Agent != nil && id != "" {
 		if got, ok := v.env.Agent(id); ok {
 			info = got
-			if title == "" {
+			// The app's name for the agent is its own; a title in a result
+			// may be cut at a quote.
+			if got.Title != "" {
 				title = got.Title
 			}
 		}

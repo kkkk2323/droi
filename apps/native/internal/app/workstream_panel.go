@@ -35,6 +35,8 @@ type paneRow struct {
 	at       time.Time
 	unread   bool
 	starting bool
+	// index numbers the starting rows, which have no Session to name them.
+	index int
 	// direct marks an agent that can use only Direct tools; directHint says why.
 	direct     bool
 	directHint string
@@ -62,12 +64,12 @@ func (a *App) paneRows(ctx *wsContext, listed []sessions.Summary) []paneRow {
 		rows = append(rows, row)
 	}
 	now := a.cfg.Now()
-	for _, st := range ctx.w.Starting {
+	for i, st := range ctx.w.Starting {
 		at, err := time.Parse(time.RFC3339, st.StartedAt)
 		if err == nil && now.Sub(at) > startingFor {
 			continue
 		}
-		rows = append(rows, paneRow{title: trimOr(st.Title, L("New agent")), group: "working", activity: L("Starting"), at: at, starting: true})
+		rows = append(rows, paneRow{title: trimOr(st.Title, L("New agent")), group: "working", activity: L("Starting"), at: at, starting: true, index: i})
 	}
 	return rows
 }
@@ -135,13 +137,20 @@ func (a *App) waitingText(id, how string) string {
 
 // workstreamPane is the side panel of a Workstream's page: the tabs that
 // pick what it lists, the agents or the shared folder's files.
-func (a *App) workstreamPane(c *ui.Context, ctx *wsContext, listed []sessions.Summary) {
+func (a *App) workstreamPane(c *ui.Context, ctx *wsContext, listed []sessions.Summary, drawer bool) {
 	k, t := a.kit, a.kit.T
 	w := a.paneWidth()
 	panel := ctx.st.panel()
-	ui.Column(c.Key("pane")).Role(ui.RoleGroup).Label(L("Workstream panel")).Width(w).Shrink(0).FillHeight().Background(t.Background).
-		BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Children(func() {
-		a.paneEdge(c, w)
+	col := ui.Column(c.Key("pane"))
+	if drawer {
+		col.Fill()
+	} else {
+		col.Role(ui.RoleGroup).Label(L("Workstream panel")).Width(w).Shrink(0).FillHeight().Background(t.Background).BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
+	}
+	col.Children(func() {
+		if !drawer {
+			a.paneEdge(c, w)
+		}
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(10)).Gap(k.Px(4)).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).DragWindow().Children(func() {
 			ui.Row(c).Role(ui.RoleTabList).Label(L("Panel tabs")).Grow(1).Gap(k.Px(4)).Children(func() {
 				for _, tab := range [][3]string{{panelAgents, "bot", L("Agents")}, {panelFiles, "file", L("Files")}} {
@@ -167,7 +176,11 @@ func (a *App) workstreamPane(c *ui.Context, ctx *wsContext, listed []sessions.Su
 				}
 			})
 			if k.IconButton(c, "panel-right-close", L("Hide panel"), 32).Clicked() {
-				a.setWsState(ctx.id, func(u *workstreamUI) { u.Closed = true })
+				if drawer {
+					a.workstreams.paneDrawer = false
+				} else {
+					a.setWsState(ctx.id, func(u *workstreamUI) { u.Closed = true })
+				}
 			}
 		})
 		if panel == panelFiles {
@@ -255,29 +268,30 @@ func (a *App) paneGroup(c *ui.Context, ctx *wsContext, group string, rows []pane
 		slices.SortStableFunc(list, func(x, y paneRow) int { return y.at.Compare(x.at) })
 	}
 	title := groupTitle(group)
-	foldable := group == "archived"
-	open := !foldable || ctx.st.ArchivedOpen
+	open := !ctx.st.folded(group)
 	ui.Column(c.Key("group:"+group)).Margin(k.Px(4), 0, 0, 0).Children(func() {
 		head := ui.ButtonBase(c).Label(title).Expanded(open).AlignSelf(ui.Stretch).Height(k.Px(k.Dense(24, 28))).Gap(k.Px(6)).PaddingX(k.Px(6)).Radius(k.Px(8)).
 			Justify(ui.Start).Cursor(ui.CursorPointer)
 		color := t.MutedForeground
-		if head.Hovered() && foldable {
+		hovered := head.Hovered()
+		if hovered {
 			head.Background(t.Muted.Alpha(0.5))
 			color = t.Foreground
 		}
 		head.Children(func() {
 			k.Text(c, title, k.Dense(11, 12), k.Dense(16, 18)).Role(ui.RoleHeading).FontWeight(500).TextColor(color)
 			k.Text(c, strconv.Itoa(len(list)), k.Dense(11, 12), k.Dense(16, 18)).TextColor(t.MutedForeground).FontFeatures("tnum")
-			if foldable {
-				rot := float32(0)
-				if open {
-					rot = 90
-				}
-				k.Icon(c, "chevron-right", 12, color).Rotate(rot)
+			rot := float32(0)
+			if open {
+				rot = 90
+			}
+			ch := k.Icon(c, "chevron-right", 12, color).Rotate(rot)
+			if open && !hovered && !head.Focused() {
+				ch.Opacity(0)
 			}
 		})
-		if head.Clicked() && foldable {
-			a.setWsState(ctx.id, func(u *workstreamUI) { u.ArchivedOpen = !u.ArchivedOpen })
+		if head.Clicked() {
+			a.setWsState(ctx.id, func(u *workstreamUI) { u.toggleFold(group) })
 		}
 		if !open {
 			return
@@ -298,7 +312,7 @@ func (a *App) paneAgentRow(c *ui.Context, ctx *wsContext, r paneRow) {
 	selected := ctx.agentShown && !r.starting && ctx.st.Active == r.tab
 	key := r.tab
 	if r.starting {
-		key = "starting:" + r.title
+		key = "starting:" + strconv.Itoa(r.index)
 	}
 	name := listName(r.title, groupTitle(r.group))
 	if r.activity != "" {
@@ -386,7 +400,12 @@ func (a *App) filesPanel(c *ui.Context, ctx *wsContext) {
 				FontSize(k.Px(k.Dense(12, 13))).TextColor(t.Foreground)
 		})
 	})
-	files := sharedFiles(dir, strings.ToLower(strings.TrimSpace(s.fileQuery)))
+	// The folder is read again once a second at most, while the panel shows.
+	c.After(time.Second)
+	files, ready := a.cachedFiles(dir, strings.ToLower(strings.TrimSpace(s.fileQuery)))
+	if !ready {
+		return
+	}
 	if len(files) == 0 {
 		if strings.TrimSpace(s.fileQuery) != "" {
 			empty(L("No files match your search"), "")
@@ -395,8 +414,6 @@ func (a *App) filesPanel(c *ui.Context, ctx *wsContext) {
 		}
 		return
 	}
-	// The folder is read again once a second at most, while the panel shows.
-	c.After(time.Second)
 	ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, k.Px(8), k.Px(12), k.Px(8)).Children(func() {
 		ui.Column(c).Role(ui.RoleList).Label(L("Files")).Gap(1).Children(func() {
 			for _, f := range files {
@@ -412,8 +429,43 @@ type sharedFile struct {
 	modTime time.Time
 }
 
-// sharedFiles lists the files under dir whose path has query, newest first;
-// a folder too deep or big is read only as far as maxSharedFiles.
+// filesCache is the last read of a shared folder.
+type filesCache struct {
+	dir, query string
+	at         time.Time
+	list       []sharedFile
+	have       bool
+	reading    bool
+	// reads counts the folder's reads, for a test of how often they are.
+	reads int
+}
+
+// cachedFiles is the shared folder's files, read in the background and not
+// again for a second: a frame must not walk a folder. ready is false until
+// the first read of a folder is in.
+func (a *App) cachedFiles(dir, query string) (list []sharedFile, ready bool) {
+	fc := &a.workstreams.files
+	stale := !fc.have || fc.dir != dir || fc.query != query || a.cfg.Now().Sub(fc.at) >= time.Second
+	if stale && !fc.reading {
+		fc.reading = true
+		fc.reads++
+		go func() {
+			found := sharedFiles(dir, query)
+			a.cfg.Update(func() {
+				fc.reading, fc.have = false, true
+				fc.dir, fc.query, fc.list, fc.at = dir, query, found, a.cfg.Now()
+			})
+		}()
+	}
+	// Another folder's list is no stand-in; the same folder's older list is.
+	if !fc.have || fc.dir != dir {
+		return nil, false
+	}
+	return fc.list, true
+}
+
+// sharedFiles lists the files under dir whose path has query, newest first,
+// at most maxSharedFiles of them: all are read before the newest are kept.
 func sharedFiles(dir, query string) []sharedFile {
 	var out []sharedFile
 	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -438,13 +490,10 @@ func sharedFiles(dir, query string) []sharedFile {
 			return nil
 		}
 		out = append(out, sharedFile{rel: rel, modTime: info.ModTime()})
-		if len(out) >= maxSharedFiles {
-			return filepath.SkipAll
-		}
 		return nil
 	})
 	slices.SortFunc(out, func(x, y sharedFile) int { return y.modTime.Compare(x.modTime) })
-	return out
+	return out[:min(len(out), maxSharedFiles)]
 }
 
 const maxSharedFiles = 500

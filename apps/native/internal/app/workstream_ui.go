@@ -31,8 +31,32 @@ type workstreamUI struct {
 	// panel put away, which the orchestrator's page opens by default.
 	Panel  string `json:"panel,omitempty"`
 	Closed bool   `json:"closed,omitempty"`
-	// ArchivedOpen unfolds the panel's archived agents.
-	ArchivedOpen bool `json:"archivedOpen,omitempty"`
+	// ArchivedOpen unfolds the panel's archived agents; Folded are the other
+	// groups the user folded.
+	ArchivedOpen bool     `json:"archivedOpen,omitempty"`
+	Folded       []string `json:"folded,omitempty"`
+}
+
+// folded is whether the panel keeps group folded: the archived agents until
+// opened, any other group once folded.
+func (u workstreamUI) folded(group string) bool {
+	if group == "archived" {
+		return !u.ArchivedOpen
+	}
+	return slices.Contains(u.Folded, group)
+}
+
+// toggleFold folds group, or unfolds it.
+func (u *workstreamUI) toggleFold(group string) {
+	if group == "archived" {
+		u.ArchivedOpen = !u.ArchivedOpen
+		return
+	}
+	if i := slices.Index(u.Folded, group); i >= 0 {
+		u.Folded = slices.Delete(u.Folded, i, i+1)
+		return
+	}
+	u.Folded = append(u.Folded, group)
 }
 
 func (u workstreamUI) panel() string {
@@ -64,7 +88,7 @@ func (a *App) setWsState(id string, change func(*workstreamUI)) {
 	if u.Active != "" && !slices.Contains(u.Tabs, u.Active) {
 		u.Active = ""
 	}
-	if len(u.Tabs) == 0 && u.Panel == "" && !u.Closed && !u.ArchivedOpen {
+	if len(u.Tabs) == 0 && u.Panel == "" && !u.Closed && !u.ArchivedOpen && len(u.Folded) == 0 {
 		delete(s.ui, id)
 	} else {
 		s.ui[id] = u
@@ -103,6 +127,7 @@ func (a *App) orchestratorSession(wsID string) string {
 // openAgent shows agent's Session in a tab of its Workstream's page, the
 // orchestrator's, opening the tab when there is none.
 func (a *App) openAgent(wsID, agent string) {
+	a.workstreams.paneDrawer = false
 	a.setWsState(wsID, func(u *workstreamUI) {
 		if !slices.Contains(u.Tabs, agent) {
 			u.Tabs = append(u.Tabs, agent)
@@ -238,8 +263,44 @@ func (a *App) workstreamPage(c *ui.Context, orch sessions.Summary, listed []sess
 			v.build(c, a, findSummary(listed, active), listed)
 		})
 		if !st.Closed && !a.narrow {
-			a.workstreamPane(c, ctx, listed)
+			a.workstreamPane(c, ctx, listed, false)
 		}
+	})
+	if a.narrow {
+		a.panelDrawer(c, ctx, listed)
+	} else {
+		a.workstreams.paneDrawer = false
+	}
+}
+
+// showPanel brings the side panel into view, on tab when it is not "": beside
+// the page, or over it in a narrow window.
+func (a *App) showPanel(wsID, tab string) {
+	a.setWsState(wsID, func(u *workstreamUI) {
+		u.Closed = false
+		if tab != "" {
+			u.Panel = tab
+		}
+	})
+	if a.narrow {
+		a.workstreams.paneDrawer = true
+	}
+}
+
+// panelDrawer is the side panel from the right edge over a dimmed page, as
+// the sidebar's drawer is from the left.
+func (a *App) panelDrawer(c *ui.Context, ctx *wsContext, listed []sessions.Summary) {
+	s := &a.workstreams
+	if !s.paneDrawer {
+		return
+	}
+	k, t := a.kit, a.kit.T
+	w, _ := c.Size()
+	ui.DialogBase(c, &s.paneDrawer, func(backdrop, panel ui.Element) {
+		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		panel.Role(ui.RoleDialog).Label(L("Workstream panel")).Absolute().Right(0).Top(0).Bottom(0).Width(min(w*0.9, k.Px(360))).
+			Background(t.Background).TextColor(t.Foreground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+		ui.Column(c).Fill().Children(func() { a.workstreamPane(c, ctx, listed, true) })
 	})
 }
 
@@ -323,7 +384,7 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 			}
 			if ctx.st.Closed || a.narrow {
 				if k.IconButton(c, "panel-right-open", L("Show panel"), 32).Clicked() {
-					a.setWsState(ctx.id, func(u *workstreamUI) { u.Closed = false })
+					a.showPanel(ctx.id, "")
 				}
 			}
 		})
@@ -351,6 +412,9 @@ func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext) {
 		b.Children(func() {
 			k.Icon(c, ctx.symbol(), 14, t.Info)
 			k.Text(c, title, k.Dense(12, 13), k.Dense(18, 19.5)).FontWeight(500).TextColor(t.Info).SingleLine().Shrink(1).MinWidth(0)
+			if direct, hint := a.orchestratorDirect(ctx.w); direct {
+				a.directBadge(c, hint)
+			}
 		})
 		if b.Clicked() && !selected {
 			a.showTab(ctx.id, "")

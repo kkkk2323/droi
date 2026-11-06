@@ -120,7 +120,7 @@ func (a *App) workingRow(c *ui.Context, ctx *wsContext, n int) {
 			k.Icon(c, "arrow-up-right", 12, color)
 		})
 		if b.Clicked() {
-			a.setWsState(ctx.id, func(u *workstreamUI) { u.Closed, u.Panel = false, panelAgents })
+			a.showPanel(ctx.id, panelAgents)
 		}
 	})
 }
@@ -235,7 +235,7 @@ func (a *App) welcomeCard(c *ui.Context, ctx *wsContext, icon, title, text, labe
 				k.Icon(c, "arrow-up-right", 12, t.MutedForeground)
 			})
 			if b.Clicked() {
-				a.setWsState(ctx.id, func(u *workstreamUI) { u.Closed, u.Panel = false, panel })
+				a.showPanel(ctx.id, panel)
 			}
 		})
 	})
