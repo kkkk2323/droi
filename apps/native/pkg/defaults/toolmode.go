@@ -8,11 +8,12 @@ import (
 )
 
 // ToolMode is whether a Session's model calls tools directly or from a
-// Script program. The Daemon fixes the mode when it creates the
-// Session and offers no way to change it later, so it is chosen only for new
-// Sessions. Without a choice, droid decides: `toolExecutionMode` in
-// ~/.factory/settings.json, else Factory's per-model list, else direct.
-// "" is no choice.
+// Script program. The Daemon fixes the mode when it creates the Session and
+// decides again only at the first turn after the Session's model changes, so
+// it is chosen only for new Sessions. droid gives Script only to the models
+// Factory lists (Settings adds to them, ADR 0028) and resolves any other
+// model to Direct, whatever mode is asked; a listed model gets Script unless
+// Direct is asked. droid's own settings.json has no say. "" is no choice.
 type ToolMode string
 
 const (
