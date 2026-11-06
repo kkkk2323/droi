@@ -168,7 +168,18 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -C tests exec playwright install --with-deps chromium
+      # Chromium is a download of its own, so keep it until Playwright's version
+      # changes; on a hit only its system packages are needed. apt stalls on a
+      # slow mirror now and then, which a retry rides out.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Chromium with its system packages
+        run: |
+          sudo sh -c 'echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/99retries'
+          pnpm -C tests exec playwright install --with-deps chromium
 
       - name: Phone App web build against the Fake Daemon
         run: pnpm test:e2e:phone
