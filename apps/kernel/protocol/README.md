@@ -12,12 +12,16 @@ side and parsed on the TypeScript side.
 The Host starts the sidecar and reads its handshake from the first line of stdout:
 
 ```text
-kernel --port 0 --token <random> --data <UserData>/kernel --host 127.0.0.1
+DROI_KERNEL_TOKEN=<random> kernel --port 0 --data <UserData>/kernel --host 127.0.0.1
 {"port":51234,"pid":4121,"version":"kernel-1.5.0-1"}
 ```
 
 `--port 0` asks the operating system for a free port. The token is a per-launch
-secret the Host generates; the sidecar accepts nothing without it.
+secret the Host generates, and it arrives in the environment, never on the
+command line: on macOS `ps` shows the arguments of every user's processes, so a
+token there is readable by any local user, while a process's environment is not.
+A kernel started without `DROI_KERNEL_TOKEN` writes a line to stderr and exits
+with status `2`.
 
 | Endpoint      | Purpose                                                                                                                                                              |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -25,8 +29,44 @@ secret the Host generates; the sidecar accepts nothing without it.
 | `GET /rpc`    | WebSocket upgrade. Requires `Authorization: Bearer <token>`. A wrong or missing token is HTTP `401`, or WebSocket close code `4401` if the upgrade already happened. |
 
 One WebSocket carries every method and notification. Text frames only, one
-JSON-RPC 2.0 message per frame. A client may open several connections; they see
-the same state and all receive notifications.
+JSON-RPC 2.0 message per frame.
+
+### Connections and subscriptions
+
+A client may open several connections — the window and the phone each open
+their own — and they see the same state. Which notification reaches which
+connection is part of the contract:
+
+| Notification                               | Reaches                                                                    |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| `conversation.view`                        | Only the connections that called `conversation.open` for that conversation |
+| `conversation.busy`                        | Every connection                                                           |
+| `approval.requested` / `approval.resolved` | Every connection                                                           |
+| `ask.requested` / `ask.resolved`           | Every connection                                                           |
+| `task.changed`                             | Every connection                                                           |
+| `index.changed`                            | Every connection                                                           |
+| `mcp.changed`                              | Every connection                                                           |
+| `process.changed`                          | Every connection                                                           |
+| `warning`                                  | Every connection                                                           |
+
+Views are per connection because a view is a window over a transcript, and each
+client asks for the window it can draw. Everything else is state one client
+changes and every client must see.
+
+- `conversation.open` subscribes the calling connection and answers with the
+  view. Calling it twice on one connection replaces that connection's window.
+- `conversation.unwatch` unsubscribes the calling connection: no further
+  `conversation.view` for that conversation reaches it. It changes nothing
+  else — the conversation, its runs and other connections' subscriptions stay
+  as they are. A connection that closes is unsubscribed from every conversation
+  it opened.
+- The kernel releases a conversation's watch when its last subscriber goes, and
+  answers the next `conversation.open` with a fresh read.
+- Approvals and asks reach every connection precisely so the window and the
+  phone both show the question. The first `approval.respond` / `ask.respond`
+  wins: that connection gets the result and every connection, the others
+  included, then gets `approval.resolved` / `ask.resolved`. A later response
+  for the same request is `-32007 request not found`.
 
 ## Envelope
 
@@ -97,7 +137,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `conversation.create`    | `{agent?, cwd?, instructions?, kind?, requestId?}`          | `{conversationId, view}`                                         | `conversations` | yes |
 | `conversation.list`      | `{kind?, archived?, workspace?, query?, cursor?, limit?}`   | `{items[], cursor?}`                                             | `conversations` | yes |
 | `conversation.open`      | `{id, window?}`                                             | `{view}`                                                         | `conversations` | yes |
-| `conversation.close`     | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
+| `conversation.unwatch`   | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
 | `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
 | `conversation.abort`     | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
 | `submission.abort`       | `{id, submissionId}`                                        | `{status}`                                                       | `conversations` | yes |
@@ -174,6 +214,9 @@ instructions?, cwd?, maxTurns?}`.
 | `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                         |
 | `index.changed`      | `{id, title?, archived?, lastActivityAt?}`                                                                                                                                                          |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error` |
+
+Who receives each one is in _Connections and subscriptions_ above: only
+`conversation.view` is per connection, everything else reaches every connection.
 
 A client consumes `conversation.view.value` and ignores `ops` (the delta ops) for
 now: redrawing a window of at most 100 entries is cheap, and a wrong `ops`

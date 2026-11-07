@@ -1,10 +1,10 @@
 {
   "kind": "method",
-  "method": "conversation.close",
+  "method": "conversation.unwatch",
   "request": {
     "jsonrpc": "2.0",
     "id": "5",
-    "method": "conversation.close",
+    "method": "conversation.unwatch",
     "params": {
       "id": 7
     }
