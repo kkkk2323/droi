@@ -60,6 +60,14 @@ func (c *Client) AbortSubmission(ctx context.Context, p AbortSubmissionParams) (
 	return call[Status](c, ctx, MethodSubmissionAbort, p)
 }
 
+// SubmissionGet answers where one submission of a conversation got to: its
+// status, the user entry it produced and the answer it got. A turn's entries
+// name the task that wrote them rather than the submission, so this is the only
+// exact boundary for "which entries did this submit produce".
+func (c *Client) SubmissionGet(ctx context.Context, p AbortSubmissionParams) (SubmissionGet, error) {
+	return call[SubmissionGet](c, ctx, MethodSubmissionGet, p)
+}
+
 // Configure changes the agent a conversation runs with and answers it
 // resolved.
 func (c *Client) Configure(ctx context.Context, p ConfigureParams) (ConfigureResult, error) {

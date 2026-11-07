@@ -22,7 +22,7 @@ type ID int64
 // String is the ID as text, for logs and map keys.
 func (id ID) String() string { return strconv.FormatInt(int64(id), 10) }
 
-// The protocol's 27 methods.
+// The protocol's 28 methods.
 const (
 	MethodHarnessInfo         = "harness.info"
 	MethodConversationCreate  = "conversation.create"
@@ -32,6 +32,9 @@ const (
 	MethodConversationSubmit  = "conversation.submit"
 	MethodConversationAbort   = "conversation.abort"
 	MethodSubmissionAbort     = "submission.abort"
+	// MethodSubmissionGet answers where one submission got to: queued, placed,
+	// done or unanswered, with the entry it produced and the answer it got.
+	MethodSubmissionGet       = "submission.get"
 	MethodConversationConfig  = "conversation.configure"
 	MethodConversationCompact = "conversation.compact"
 	MethodConversationFork    = "conversation.fork"
@@ -65,7 +68,7 @@ const (
 var Methods = []string{
 	MethodHarnessInfo, MethodConversationCreate, MethodConversationList,
 	MethodConversationOpen, MethodConversationUnwatch, MethodConversationSubmit,
-	MethodConversationAbort, MethodSubmissionAbort, MethodConversationConfig,
+	MethodConversationAbort, MethodSubmissionAbort, MethodSubmissionGet, MethodConversationConfig,
 	MethodConversationCompact, MethodConversationFork, MethodConversationEntries,
 	MethodConversationUsage, MethodTaskAbort, MethodIndexUpdate, MethodProcessList,
 	MethodProcessStop, MethodApprovalRespond, MethodAskRespond, MethodMCPList,

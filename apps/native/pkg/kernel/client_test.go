@@ -211,7 +211,9 @@ var callers = []caller{
 	{MethodSubmissionAbort, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.AbortSubmission(ctx, *decodeParams[AbortSubmissionParams](t, raw))
 	}},
-	{MethodConversationConfig, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+	{MethodSubmissionGet, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.SubmissionGet(ctx, *decodeParams[AbortSubmissionParams](t, raw))
+	}}, {MethodConversationConfig, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.Configure(ctx, *decodeParams[ConfigureParams](t, raw))
 	}},
 	{MethodConversationCompact, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {

@@ -201,6 +201,20 @@ type AbortSubmissionParams struct {
 	SubmissionID ID `json:"submissionId"`
 }
 
+// SubmissionGet is where one submission got to.
+//
+// Status is Pi's own: queued, placed, done or unanswered. Entry is the user
+// entry the submission produced and Answer the assistant entry that answered
+// it; both are absent while the submission is queued. Reason explains an
+// unanswered one.
+type SubmissionGet struct {
+	SubmissionID ID     `json:"submissionId"`
+	Status       string `json:"status"`
+	Entry        *ID    `json:"entry,omitempty"`
+	Answer       *ID    `json:"answer,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+}
+
 // ConfigureParams is conversation.configure's params.
 type ConfigureParams struct {
 	ID     ID           `json:"id"`
