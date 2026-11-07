@@ -47,6 +47,17 @@ const statements = [
     ON droi_conversations (kind, last_activity_at DESC, id DESC)`,
   `CREATE INDEX IF NOT EXISTS droi_index_workspace
     ON droi_conversations (workspace, last_activity_at DESC, id DESC)`,
+  // Which conversation one import key already made, so a retried create converges instead of importing twice.
+  //
+  // The transcript's `droi.import` memo is the record for an append (it lives in the conversation it wrote);
+  // a create has no conversation to search yet, so this table is what a retry reads. It survives an
+  // `INDEX_VERSION` reset: an identity is not a cache, and forgetting it would import a second conversation.
+  `CREATE TABLE IF NOT EXISTS droi_import_keys (
+    key TEXT PRIMARY KEY,
+    conversation_id INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    entry_ids TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS droi_requests (
     conversation_id INTEGER NOT NULL,
     request_id TEXT NOT NULL,

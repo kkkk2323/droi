@@ -29,6 +29,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   usage: true,
   tasks: true,
   index: true,
+  import: true,
   images: true,
   processes: false,
   approvals: false,
