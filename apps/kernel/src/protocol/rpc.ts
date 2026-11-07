@@ -69,6 +69,8 @@ export class RpcError extends Error {
 export const notFound = (conversationId: number) =>
   new RpcError(Code.conversationNotFound, 'conversation not found', { conversationId })
 
+export const invalidRequest = (message: string) => new RpcError(Code.invalidRequest, message)
+
 export const invalidParams = (issues: { path: string; message: string }[]) =>
   new RpcError(Code.invalidParams, 'invalid params', { issues })
 

@@ -1,4 +1,5 @@
 import type { Server, ServerWebSocket } from 'bun'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import {
   Code,
   type Failure,
@@ -69,11 +70,15 @@ export class Connection {
     return this.#subscriptions.has(conversationId)
   }
 
-  /** Replace this connection's subscription to a conversation. */
-  subscribe(conversationId: number, stop: () => Promise<void>): void {
+  /**
+   * Replace this connection's subscription to a conversation. Says whether one was already there, so the
+   * caller knows whether this is one subscriber more or the same one moving its window.
+   */
+  subscribe(conversationId: number, stop: () => Promise<void>): boolean {
     const previous = this.#subscriptions.get(conversationId)
     this.#subscriptions.set(conversationId, { stop })
     if (previous !== undefined) void previous.stop()
+    return previous !== undefined
   }
 
   /** Stop this connection's view of a conversation; says whether it was subscribed. */
@@ -159,9 +164,20 @@ export function serve(options: ServerOptions): ServerHandle {
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
         })
-        throw new RpcError(Code.internalError, 'the kernel failed to run this method', {
-          detail: error instanceof Error ? error.message : String(error),
-        })
+        // A request that itself hit the failed storage says so, rather than looking like a bug: the
+        // failure is the kernel's, not the caller's, and the client's answer is to wait for a restart.
+        const reason = (
+          options.dispatch as { failureReason?: () => string | undefined }
+        ).failureReason?.()
+        throw new RpcError(
+          reason === undefined ? Code.internalError : Code.kernelFailed,
+          reason === undefined
+            ? 'the kernel failed to run this method'
+            : 'the kernel failed and is being restarted',
+          reason === undefined
+            ? { detail: error instanceof Error ? error.message : String(error) }
+            : { reason },
+        )
       }
     }
     try {
@@ -255,14 +271,23 @@ export function serve(options: ServerOptions): ServerHandle {
   }
 }
 
+/**
+ * The token, and only from the `Authorization: Bearer` header.
+ *
+ * A query string is not accepted even when it carries the right token: URLs end up in logs, in a
+ * browser's history and in the Host's own diagnostics, and a secret there is a secret leaked. The
+ * comparison is `timingSafeEqual` over fixed-length digests, so neither the length nor the first wrong
+ * byte of a guess is observable.
+ */
 function authorized(header: string | null, token: string): boolean {
   if (header === null) return false
   const match = /^Bearer\s+(.+)$/i.exec(header.trim())
   if (match === null) return false
-  const given = match[1]!
-  if (given.length !== token.length) return false
-  // Compare every byte, so a wrong token cannot be found one character at a time.
-  let difference = 0
-  for (let i = 0; i < token.length; i++) difference |= given.charCodeAt(i) ^ token.charCodeAt(i)
-  return difference === 0
+  return sameSecret(match[1]!, token)
+}
+
+function sameSecret(given: string, expected: string): boolean {
+  const a = createHash('sha256').update(given).digest()
+  const b = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(a, b)
 }

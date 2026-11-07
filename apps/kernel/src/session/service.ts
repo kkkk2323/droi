@@ -1,7 +1,6 @@
 import type { Context } from '@earendil-works/chord'
-import type { ModelRef } from '@earendil-works/pi-durable'
+import type { AgentChange, ModelRef } from '@earendil-works/pi-durable'
 import {
-  type AgentChange,
   type Conversation,
   type ConversationView,
   type ConversationWindow,
@@ -19,7 +18,7 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { Indexer } from '../indexer/index.ts'
 import type { ConversationRow } from '../indexer/schema.ts'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
-import type { KernelConfig } from '../config.ts'
+import type { AgentDefaults, KernelConfig } from '../config.ts'
 import { info, warn } from '../log.ts'
 import {
   Code,
@@ -34,14 +33,21 @@ import {
   requiredNumber,
   requiredObject,
   unsupported,
+  invalidRequest,
 } from '../protocol/rpc.ts'
-import type { Connection, Dispatcher, Notifier } from '../protocol/server.ts'
+import type { Dispatcher, Connection, Notifier } from '../protocol/server.ts'
 import { ViewWindow, parseMode, parseWindow } from './watch.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
 export const context: Context = BACKGROUND_CONTEXT
 
 const DEFAULT_WINDOW: ConversationWindow = { min: 100, max: 200 }
+/**
+ * The most rows one page returns. A page is capped so a client cannot ask the kernel to serialize a whole
+ * history into one frame, and the cap is published in `harness.info.limits` — a caller that asks for more
+ * gets the cap and a cursor, and must page. Silence here once cost a long run its last round: a test asked
+ * for 5000 entries, got the newest 200 in ascending order, and never saw the entries it was waiting for.
+ */
 const MAX_PAGE = 200
 
 /** What the live run of one conversation looked like the last time a client was told. */
@@ -65,10 +71,16 @@ export type KernelOptions = {
    * send, so the Host asks over the connection it already holds; the answer goes out before this runs.
    */
   shutdown: () => Promise<void>
+  /**
+   * The kernel failed for good (its storage). The request that finds it gets `-32010`, and the process
+   * exits non-zero so the Supervisor restarts it: a kernel that is up but cannot write is worse than one
+   * that is down, because nothing tells the Host to replace it.
+   */
+  onFailed?: (error: unknown) => void
 }
 
 /**
- * The 25 methods of the Kernel protocol.
+ * The 27 methods of the Kernel protocol.
  *
  * The shape follows Pi: a conversation is an ID with a handle, a view is a window over its transcript,
  * and a run is something a submission starts and an abort stops. What Droi adds is the list, the search,
@@ -78,10 +90,16 @@ export class Kernel implements Dispatcher {
   readonly methods: ReadonlyMap<string, import('../protocol/server.ts').Handler>
   readonly #options: KernelOptions
   #notifier: Notifier | undefined
-  /** The conversation view each connection is watching, and the last busy state broadcast. */
+  /** The last busy state each conversation reached, so one broadcast per change. */
   readonly #busy = new Map<number, BusyState>()
-  readonly #live = new Map<number, { detach: () => void }>()
+  /** The live-run observation of each conversation, separate from any client's view subscription. */
+  readonly #live = new Map<number, { detach: () => void; subscribers: number }>()
+  /** Subscribers that arrived before the observation did; `track` applies them. */
+  readonly #pendingSubscribers = new Map<number, number>()
   #closing = false
+  /** Set when the Session failed: every request answers `-32010` from then on. */
+  #failure: unknown
+  #tasks: { detach: () => void } | undefined
 
   constructor(options: KernelOptions) {
     this.#options = options
@@ -118,6 +136,81 @@ export class Kernel implements Dispatcher {
     this.#notifier = notifier
   }
 
+  /**
+   * Follow the task graph, so `task.changed` reaches clients as compaction, child conversations and
+   * `afterRun` tasks start and end. Without it a client only sees the entries a task writes and never
+   * learns that the work finished.
+   */
+  async observeTasks(): Promise<void> {
+    const graph = await this.#options.harness.watchTaskGraph(context)
+    // The graph holds the live tasks; a task that vanished from it ended. Diffing is what turns that
+    // into `task.changed`, since a terminal task leaves no node to read its outcome from.
+    const known = new Map<string, { kind: string; status: string; conversationId: number }>()
+    const advance = (value: {
+      tasks?: Record<
+        string,
+        { id: number; kind: string; conversationId: number; state: { status: string } }
+      >
+    }): void => {
+      const tasks = value.tasks ?? {}
+      const seen = new Set<string>()
+      for (const [key, node] of Object.entries(tasks)) {
+        seen.add(key)
+        const status = node.state.status
+        const previous = known.get(key)
+        known.set(key, {
+          kind: node.kind,
+          status,
+          conversationId: node.conversationId as unknown as number,
+        })
+        if (previous?.status === status) continue
+        this.#notifier?.broadcast('task.changed', {
+          taskId: node.id,
+          kind: taskKind(node.kind),
+          status,
+          conversationId: node.conversationId,
+        })
+      }
+      for (const [key, node] of known) {
+        if (seen.has(key)) continue
+        known.delete(key)
+        this.#notifier?.broadcast('task.changed', {
+          taskId: Number(key),
+          kind: taskKind(node.kind),
+          status: 'terminal',
+          conversationId: node.conversationId,
+        })
+      }
+    }
+    advance(graph.value as never)
+    graph.start(async (call) => {
+      if (call.kind === 'value') advance(call.value as never)
+    })
+    this.#tasks = { detach: () => void graph.stop() }
+  }
+
+  /** The Session failed: answer every further request with the reason, and let the Host replace us. */
+  fail(error: unknown): void {
+    if (this.#failure !== undefined) return
+    this.#failure = error
+    this.#notifier?.broadcast('warning', {
+      kind: 'kernel_failed',
+      message: error instanceof Error ? error.message : String(error),
+    })
+    this.#options.onFailed?.(error)
+  }
+
+  /** The reason the Session failed, for the dispatcher: a failing request answers `-32010` too. */
+  failureReason(): string | undefined {
+    if (this.#failure === undefined) return undefined
+    return this.#failure instanceof Error ? this.#failure.message : String(this.#failure)
+  }
+
+  /** How many conversations the kernel is observing, for a test that pins the release. */
+  get liveObservations(): number {
+    return this.#live.size
+  }
+
   /** Every method name of the contract: answered here, or gated with its capability. */
   methodNames(): string[] {
     return [...this.methods.keys(), ...Object.keys(GATED)]
@@ -132,11 +225,17 @@ export class Kernel implements Dispatcher {
   }
 
   /**
-   * Follow every conversation that is doing something, so `conversation.busy` reaches connections that
-   * have not opened it. Called at startup for live tasks and whenever a run starts.
+   * Follow one conversation's live run so `conversation.busy` reaches every connection, whether or not any
+   * of them has its view open.
+   *
+   * This is deliberately separate from a view subscription: a client that calls `conversation.unwatch`
+   * stops receiving that conversation's views, and must still hear that its run ended. The observation is
+   * released only when the conversation is idle and nobody is watching it, which matters on a Host that
+   * opens twenty conversations and closes the window.
    */
   async track(id: number): Promise<void> {
-    if (this.#live.has(id)) return
+    const existing = this.#live.get(id)
+    if (existing !== undefined) return
     const conversation = await this.#options.harness.conversation(id as never, context)
     if (conversation === undefined) return
     const observation = await this.#options.harness.observeConversation(
@@ -150,8 +249,41 @@ export class Kernel implements Dispatcher {
       context,
       { min: 1, max: 2 },
     )
-    this.#live.set(id, { detach: () => observation.detach() })
+    this.#live.set(id, {
+      detach: () => observation.detach(),
+      subscribers: this.#pendingSubscribers.get(id) ?? 0,
+    })
+    this.#pendingSubscribers.delete(id)
     this.#advance(id, observation.value)
+  }
+
+  /** One more view subscriber: the observation stays while the conversation is busy or watched. */
+  addSubscriber(id: number): void {
+    const live = this.#live.get(id)
+    if (live === undefined) {
+      // `open` tracks after subscribing, so a first subscriber may arrive before the observation exists.
+      this.#pendingSubscribers.set(id, (this.#pendingSubscribers.get(id) ?? 0) + 1)
+      return
+    }
+    live.subscribers++
+  }
+
+  /** One fewer. An idle conversation nobody watches gives its observation and its busy cache back. */
+  releaseSubscriber(id: number): void {
+    const pending = this.#pendingSubscribers.get(id)
+    if (pending !== undefined && pending > 0) {
+      if (pending === 1) this.#pendingSubscribers.delete(id)
+      else this.#pendingSubscribers.set(id, pending - 1)
+      return
+    }
+    const live = this.#live.get(id)
+    if (live === undefined) return
+    live.subscribers = Math.max(0, live.subscribers - 1)
+    if (live.subscribers > 0) return
+    if (this.#busy.get(id)?.run != null) return
+    live.detach()
+    this.#live.delete(id)
+    this.#busy.delete(id)
   }
 
   /**
@@ -170,6 +302,7 @@ export class Kernel implements Dispatcher {
     this.#closing = true
     for (const live of this.#live.values()) live.detach()
     this.#live.clear()
+    this.#tasks?.detach()
   }
 
   #advance(id: number, source: ConversationView | { run: unknown; runFailure?: unknown }): void {
@@ -189,6 +322,15 @@ export class Kernel implements Dispatcher {
     const payload: Record<string, unknown> = { id, run }
     if (runFailure !== undefined) payload['runFailure'] = runFailure
     this.#notifier?.broadcast('conversation.busy', payload)
+    // A run that ended on a conversation nobody watches is the last thing its observation was for.
+    if (run === null) {
+      const live2 = this.#live.get(id)
+      if (live2 !== undefined && live2.subscribers === 0) {
+        live2.detach()
+        this.#live.delete(id)
+        this.#busy.delete(id)
+      }
+    }
   }
 
   // ── harness.info ────────────────────────────────────────────────────────────────────────────────
@@ -200,15 +342,19 @@ export class Kernel implements Dispatcher {
       name: provider.name ?? provider.id,
       models: provider.models.map((model) => model.id),
     }))
+    // The fields the fixture and the Go client's ModelInfo name, not pi-ai's: `maxOutput` and a
+    // `thinking` list. A Go struct with different tags decodes a missing field as a zero value without
+    // complaint, so the model picker would simply have no context window and no thinking levels.
     const models = config.providers.flatMap((provider) =>
       provider.models.map((model) => ({
         provider: provider.id,
         id: model.id,
         name: model.name ?? model.id,
         contextWindow: model.contextWindow,
-        maxTokens: model.maxTokens,
+        maxOutput: model.maxTokens,
         input: model.input ?? ['text'],
-        reasoning: model.reasoning ?? false,
+        thinking:
+          model.thinking ?? (model.reasoning === true ? ['off', 'low', 'medium', 'high'] : ['off']),
       })),
     )
     return {
@@ -216,6 +362,9 @@ export class Kernel implements Dispatcher {
       limits: {
         viewPushesPerSecond: this.#options.config.viewPushesPerSecond ?? 5,
         viewWindowDefault: { min: DEFAULT_WINDOW.min, max: DEFAULT_WINDOW.max },
+        // A page larger than this comes back at this size with a cursor: page through it.
+        maxEntriesPerPage: MAX_PAGE,
+        maxConversationsPerPage: MAX_PAGE,
       },
       kernel: {
         name: '@droi/kernel',
@@ -232,49 +381,60 @@ export class Kernel implements Dispatcher {
 
   // ── conversation.create / list / open / unwatch ─────────────────────────────────────────────────
 
+  /**
+   * Create a conversation.
+   *
+   * The agent is resolved from three places, each overriding the one before: the config file's `agent`
+   * defaults, then the top-level `cwd`/`instructions` the protocol allows, then the `agent` object. The
+   * top level is not a convenience to ignore — the Go client sends `cwd` there — and the final `cwd` is
+   * also what the index records as the conversation's workspace, so filtering by workspace agrees with
+   * where the tools actually run.
+   */
   async #create(params: Record<string, unknown>): Promise<unknown> {
     this.#writable()
     const requestId = optionalString(params, 'requestId')
     const kind = optionalString(params, 'kind')
-    const workspace = optionalString(params, 'workspace')
-    const agent = this.#agentChange(params)
+    const resolved = this.#resolveCreateAgent(params)
+    const fingerprint = fingerprintOf({
+      kind,
+      ...(resolved.fingerprint as Record<string, unknown>),
+    })
     if (requestId !== undefined) {
       const existing = await this.#options.indexer.byRequestId(requestId)
       if (existing !== undefined) {
-        if (kind !== undefined && existing.kind !== null && existing.kind !== kind)
+        // The same key with different params is a conflict, not a silent answer with the first result.
+        if (existing.request_fingerprint !== null && existing.request_fingerprint !== fingerprint) {
           throw conflict(requestId)
+        }
         return { conversationId: existing.id, view: await this.#view(existing.id, DEFAULT_WINDOW) }
       }
     }
     const conversation = await this.#options.harness.createConversation(
-      { ownership: { kind: 'ownerless' }, agent: agent.change, init: undefined },
+      { ownership: { kind: 'ownerless' }, agent: resolved.change },
       context,
     )
+    const id = conversation.id as unknown as number
     const now = Date.now()
-    await this.#options.indexer.touch(conversation.id as unknown as number, now, {
+    await this.#options.indexer.touch(id, now, {
       kind,
-      workspace,
+      workspace: resolved.cwd,
       requestId,
-      title: agent.instructions === undefined ? undefined : undefined,
+      requestFingerprint: requestId === undefined ? undefined : fingerprint,
     })
-    await this.track(conversation.id as unknown as number)
-    info('conversation created', { id: conversation.id, kind, requestId })
-    return {
-      conversationId: conversation.id,
-      view: await this.#view(conversation.id as unknown as number, DEFAULT_WINDOW),
-    }
+    await this.track(id)
+    info('conversation created', { id, kind, requestId })
+    return { conversationId: id, view: await this.#view(id, DEFAULT_WINDOW) }
   }
 
   async #list(params: Record<string, unknown>): Promise<unknown> {
-    const cursor = optionalNumber(params, 'cursor')
     const limit = optionalNumber(params, 'limit')
     const page = await this.#options.indexer.list({
       kind: optionalString(params, 'kind'),
       archived: optionalBoolean(params, 'archived'),
       workspace: optionalString(params, 'workspace'),
       text: optionalString(params, 'query'),
-      cursor: cursor === undefined ? undefined : Number(cursor),
-      limit: limit === undefined ? undefined : Number(limit),
+      cursor: parseListCursor(optionalObject(params, 'cursor')),
+      limit: limit === undefined ? undefined : Math.min(limit, MAX_PAGE),
     })
     const items = page.items.map(wireSummary)
     return page.next === undefined ? { items } : { items, cursor: page.next }
@@ -289,8 +449,11 @@ export class Kernel implements Dispatcher {
     // commit between them would leave a delta subscriber's baseline one step behind the ops it gets.
     const watch = await conversation.watch(context, window)
     const view = watch.value
-    await this.#options.indexer.markViewed(id)
-    if (this.#closing) {
+    // A viewer writes nothing, not even "seen": its data directory is another process's.
+    if (!this.#options.config.readOnly) await this.#options.indexer.markViewed(id)
+    // The connection may have gone while this call was reading. Registering then would leave a
+    // subscription no close will ever release, and a watch on a conversation nobody sees.
+    if (this.#closing || !connection.open) {
       await watch.stop()
       return { view }
     }
@@ -300,10 +463,12 @@ export class Kernel implements Dispatcher {
       mode,
       perSecond: this.#options.config.viewPushesPerSecond ?? 5,
     })
-    connection.subscribe(id, async () => {
+    const replaced: boolean = connection.subscribe(id, async () => {
       pusher.stop()
       await watch.stop()
+      this.releaseSubscriber(id)
     })
+    if (!replaced) this.addSubscriber(id)
     watch.start(async (call) => {
       if (call.kind === 'value') {
         this.#advance(id, call.value)
@@ -322,13 +487,7 @@ export class Kernel implements Dispatcher {
   async #unwatch(params: Record<string, unknown>, connection: Connection): Promise<unknown> {
     const id = requiredNumber(params, 'id')
     await connection.unsubscribe(id)
-    // The last subscriber left: the kernel stops watching too, and re-reads on the next open.
-    const stillWatched =
-      this.#notifier?.connections().some((other) => other.subscribed(id)) ?? false
-    if (!stillWatched) {
-      this.#live.get(id)?.detach()
-      this.#live.delete(id)
-    }
+    this.releaseSubscriber(id)
     return {}
   }
 
@@ -338,19 +497,55 @@ export class Kernel implements Dispatcher {
     this.#writable()
     const id = requiredNumber(params, 'id')
     const conversation = await this.#conversation(id)
-    const wantsContinue = optionalBoolean(params, 'continue') === true
+    const wantsContinue = optionalBoolean(params, 'continue')
     const requestId = optionalString(params, 'requestId')
     const whenBusy = optionalString(params, 'whenBusy')
     const whenIdle = optionalString(params, 'whenIdle')
-    const submission = wantsContinue
-      ? await admit(conversation, { type: 'continue', requestId })
-      : await admit(conversation, {
-          type: 'input',
-          content: parseInput(params['input']),
-          requestId,
-          whenBusy: whenBusy as 'steer' | 'followUp' | 'reject' | undefined,
-          whenIdle: whenIdle as 'reject' | undefined,
-        })
+    if (wantsContinue !== true && params['input'] === undefined) {
+      throw invalidParams([{ path: 'input', message: 'input or continue is required' }])
+    }
+    if (whenBusy !== undefined && !['steer', 'followUp', 'reject'].includes(whenBusy)) {
+      throw invalidParams([{ path: 'whenBusy', message: 'steer, followUp or reject' }])
+    }
+    if (whenIdle !== undefined && whenIdle !== 'reject') {
+      throw invalidParams([{ path: 'whenIdle', message: 'reject' }])
+    }
+    const content = wantsContinue === true ? undefined : parseInput(params['input'])
+    // A repeated key with the same params answers the first submission; with other params it is a conflict.
+    const fingerprint = fingerprintOf({
+      continue: wantsContinue === true,
+      input: content ?? null,
+      whenBusy: whenBusy ?? null,
+      whenIdle: whenIdle ?? null,
+    })
+    if (requestId !== undefined) {
+      const known = await this.#options.indexer.requestFingerprint(id, requestId)
+      if (known !== undefined) {
+        if (known !== fingerprint) throw conflict(requestId)
+        const submissionId = await this.#options.indexer.submissionForRequest(id, requestId)
+        if (submissionId !== undefined) return { submissionId }
+      }
+    }
+    const submission = await admit(
+      conversation,
+      wantsContinue === true
+        ? { type: 'continue', requestId }
+        : {
+            type: 'input',
+            content: content as never,
+            requestId,
+            whenBusy: whenBusy as 'steer' | 'followUp' | 'reject' | undefined,
+            whenIdle: whenIdle as 'reject' | undefined,
+          },
+    )
+    if (requestId !== undefined) {
+      await this.#options.indexer.rememberRequest(
+        id,
+        requestId,
+        fingerprint,
+        submission.id as unknown as number,
+      )
+    }
     await this.#options.indexer.touch(id, Date.now(), {})
     await this.track(id)
     await this.refreshBusy(id)
@@ -378,9 +573,18 @@ export class Kernel implements Dispatcher {
     )
     switch (status) {
       case 'aborted':
-      case 'already_placed':
-      case 'settled':
         return { status }
+      case 'already_placed':
+        // The input is already in the transcript; the contract names that state, rather than calling it a
+        // successful abort.
+        throw new RpcError(Code.submissionPlaced, 'the submission already entered the transcript', {
+          submissionId,
+        })
+      case 'settled':
+        throw new RpcError(Code.submissionSettled, 'the submission already settled', {
+          submissionId,
+          status: 'settled',
+        })
       case 'not_found':
         throw new RpcError(Code.submissionNotFound, 'submission not found', {
           conversationId: id,
@@ -396,8 +600,8 @@ export class Kernel implements Dispatcher {
     const id = requiredNumber(params, 'id')
     const conversation = await this.#conversation(id)
     const change = requiredObject(params, 'change')
-    const resolved = this.#agentChange(change, conversation)
-    await conversation.configure(resolved.change, context)
+    const resolved = this.#agentChange(change, 'change')
+    await conversation.configure(resolved, context)
     const agent = await conversation.agent(context)
     return { agent: wireAgent(agent) }
   }
@@ -413,8 +617,20 @@ export class Kernel implements Dispatcher {
   async #fork(params: Record<string, unknown>): Promise<unknown> {
     this.#writable()
     const id = requiredNumber(params, 'id')
-    const at = requiredNumber(params, 'at')
+    // `at` is required by the contract, and validated here rather than inside Pi: Pi's message for a
+    // missing entry ("Entry 0 is not visible") reached the client as an internal error, which says nothing
+    // about what to fix.
+    const at = requiredEntry(params, 'at')
     const conversation = await this.#conversation(id)
+    const entries = await conversation.entries(
+      { order: 'descending' },
+      MAX_PAGE,
+      undefined,
+      context,
+    )
+    if (!entries.items.some((entry) => entry.id === (at as never))) {
+      throw invalidParams([{ path: 'at', message: `entry ${at} is not in this conversation` }])
+    }
     const forked = await conversation.fork(
       at as EntryId,
       { ownership: { kind: 'ownerless' } },
@@ -434,7 +650,10 @@ export class Kernel implements Dispatcher {
     const query = optionalObject(params, 'query') ?? {}
     const limit = Math.min(Math.max(optionalNumber(params, 'limit') ?? 50, 1), MAX_PAGE)
     const cursor = optionalObject(params, 'cursor')
-    const order = query['order'] === 'ascending' ? 'ascending' : 'descending'
+    const order = query['order'] === undefined ? 'descending' : query['order']
+    if (order !== 'ascending' && order !== 'descending') {
+      throw invalidParams([{ path: 'query.order', message: 'ascending or descending' }])
+    }
     const page = await conversation.entries(
       {
         order,
@@ -494,24 +713,27 @@ export class Kernel implements Dispatcher {
   // ── index.update ──────────────────────────────────────────────────────────────────────────────
 
   async #indexUpdate(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
     const id = requiredNumber(params, 'id')
     const change: { title?: string | null; archived?: boolean; kind?: string | null } = {}
     if ('title' in params) {
       const title = params['title']
-      change.title = title === null ? null : typeof title === 'string' ? title : invalidTitle()
+      change.title =
+        title === null ? null : typeof title === 'string' ? title : invalidTitle('title')
     }
     if ('kind' in params) {
       const kind = params['kind']
-      change.kind = kind === null ? null : typeof kind === 'string' ? kind : invalidTitle()
+      change.kind = kind === null ? null : typeof kind === 'string' ? kind : invalidTitle('kind')
     }
     const archived = optionalBoolean(params, 'archived')
     if (archived !== undefined) change.archived = archived
     await this.#options.indexer.update(id, change)
+    const row = await this.#options.indexer.conversation(id)
     this.#notifier?.broadcast('index.changed', {
       id,
-      ...(change.title === undefined ? {} : { title: change.title }),
-      ...(change.archived === undefined ? {} : { archived: change.archived }),
-      lastActivityAt: Date.now(),
+      ...(row?.title === undefined ? {} : { title: row.title }),
+      ...(row?.archived_at === undefined ? {} : { archived: row.archived_at !== null }),
+      lastActivityAt: row?.last_activity_at ?? Date.now(),
     })
     return {}
   }
@@ -531,9 +753,9 @@ export class Kernel implements Dispatcher {
   /**
    * Stop taking work, close the harness and then the storage, and exit.
    *
-   * The reply is written first: the method answers `{}` and the closing starts on the next tick, so a
-   * client that waits for its answer is not cut off by the process going away. Every later request is
-   * `-32008 read-only`-style refused, because `#closing` is already set.
+   * The reply is written first: the method answers `{"status":"closing"}` and the closing starts on the
+   * next tick, so a client that waits for its answer is not cut off by the process going away. Every later
+   * write is refused, because `#closing` is already set.
    */
   #shutdown(): Record<string, unknown> {
     if (this.#closing) return { status: 'closing' }
@@ -549,13 +771,28 @@ export class Kernel implements Dispatcher {
 
   // ── helpers ───────────────────────────────────────────────────────────────────────────────────
 
+  /** Refuse a request this build cannot serve: a dead Session, a closing kernel, or a read-only one. */
   #writable(): void {
+    if (this.#failure !== undefined) {
+      throw new RpcError(Code.kernelFailed, 'the kernel failed and is being restarted', {
+        reason: this.#failure instanceof Error ? this.#failure.message : String(this.#failure),
+      })
+    }
     if (this.#closing) throw new RpcError(Code.readOnly, 'the kernel is shutting down')
     if (!this.#options.config.readOnly) return
     throw new RpcError(Code.readOnly, 'the kernel is read-only')
   }
 
+  /** Reads are allowed on a read-only kernel and refused once the Session has failed. */
+  #readable(): void {
+    if (this.#failure === undefined) return
+    throw new RpcError(Code.kernelFailed, 'the kernel failed and is being restarted', {
+      reason: this.#failure instanceof Error ? this.#failure.message : String(this.#failure),
+    })
+  }
+
   async #conversation(id: number): Promise<Conversation> {
+    this.#readable()
     const conversation = await this.#options.harness.conversation(id as never, context)
     if (conversation === undefined) throw notFound(id)
     return conversation
@@ -570,63 +807,94 @@ export class Kernel implements Dispatcher {
   }
 
   /**
+   * The agent a create asks for: the config's defaults, then the request's top-level fields, then its
+   * `agent` object. The result is one change, applied in the creating commit.
+   */
+  #resolveCreateAgent(params: Record<string, unknown>): {
+    change: AgentChange
+    cwd: string | undefined
+    fingerprint: unknown
+  } {
+    const defaults = this.#options.config.agent
+    const top = this.#agentChange(params, 'create')
+    const nested =
+      params['agent'] !== undefined
+        ? this.#agentChange(requiredObject(params, 'agent'), 'agent')
+        : {}
+    const change: AgentChange = { ...defaultsAsChange(defaults), ...top, ...nested }
+    // Droi's own `kind` and the resolved agent decide whether two creates are the same request.
+    const cwd = typeof change.cwd === 'string' ? change.cwd : undefined
+    return {
+      change,
+      cwd,
+      fingerprint: {
+        model: change.model ?? null,
+        thinkingLevel: change.thinkingLevel ?? null,
+        cwd: cwd ?? null,
+        instructions: change.instructions ?? null,
+        maxTurns: change.maxTurns ?? null,
+      },
+    }
+  }
+
+  /**
    * The wire form of an agent change. Extensions and tools cross as names, which the registry resolves
    * here; a name this build does not have is an invalid request rather than a silent no-op.
    */
-  #agentChange(
-    params: Record<string, unknown>,
-    conversation?: Conversation,
-  ): { change: AgentChange; instructions?: string } {
-    void conversation
-    const nested =
-      params['agent'] !== undefined &&
-      typeof params['agent'] === 'object' &&
-      params['agent'] !== null
-        ? (params['agent'] as Record<string, unknown>)
-        : undefined
-    const source = nested ?? params
-    const cwd = source['cwd'] ?? source['workspace']
+  #agentChange(source: Record<string, unknown>, prefix: string): AgentChange {
+    const cwd = source['cwd']
+    const workspace = source['workspace']
+    if (cwd !== undefined && workspace !== undefined && cwd !== workspace) {
+      throw invalidParams([{ path: `${prefix}.cwd`, message: 'cwd and workspace disagree' }])
+    }
     const instructions = source['instructions']
     const model = source['model']
     const thinking = source['thinkingLevel']
     const maxTurns = source['maxTurns']
+    if (cwd !== undefined && cwd !== null && typeof cwd !== 'string') {
+      throw invalidParams([{ path: `${prefix}.cwd`, message: 'a string is required' }])
+    }
+    if (workspace !== undefined && workspace !== null && typeof workspace !== 'string') {
+      throw invalidParams([{ path: `${prefix}.workspace`, message: 'a string is required' }])
+    }
+    if (instructions !== undefined && instructions !== null && typeof instructions !== 'string') {
+      throw invalidParams([{ path: `${prefix}.instructions`, message: 'a string is required' }])
+    }
+    if (thinking !== undefined && thinking !== null && typeof thinking !== 'string') {
+      throw invalidParams([{ path: `${prefix}.thinkingLevel`, message: 'a string is required' }])
+    }
     if (
       maxTurns !== undefined &&
       maxTurns !== null &&
       (typeof maxTurns !== 'number' || !Number.isInteger(maxTurns) || maxTurns < 1)
     ) {
       throw invalidParams([
-        { path: 'agent.maxTurns', message: 'an integer of 1 or more is required' },
+        { path: `${prefix}.maxTurns`, message: 'an integer of 1 or more is required' },
       ])
     }
-    const change: AgentChange = {
-      ...(cwd === undefined ? {} : { cwd: cwd === null ? null : String(cwd) }),
-      ...(instructions === undefined
-        ? {}
-        : { instructions: instructions === null ? null : String(instructions) }),
-      ...(model === undefined ? {} : { model: model === null ? null : parseModel(model) }),
-      ...(thinking === undefined
-        ? {}
-        : { thinkingLevel: thinking === null ? null : (String(thinking) as never) }),
+    const path = cwd === undefined ? workspace : cwd
+    return {
+      ...(path === undefined ? {} : { cwd: path as string | null }),
+      ...(instructions === undefined ? {} : { instructions: instructions as string | null }),
+      ...(model === undefined ? {} : { model: model === null ? null : parseModel(model, prefix) }),
+      ...(thinking === undefined ? {} : { thinkingLevel: thinking as never }),
       ...(maxTurns === undefined ? {} : { maxTurns: maxTurns as number | null }),
       ...(source['extensions'] === undefined
         ? {}
-        : { extensions: this.#resolveExtensions(source['extensions']) }),
+        : { extensions: this.#resolveExtensions(source['extensions'], prefix) }),
       ...(source['modelTools'] === undefined
         ? {}
-        : { modelTools: this.#resolveModelTools(source['modelTools']) }),
+        : { modelTools: this.#resolveModelTools(source['modelTools'], prefix) }),
     }
-    const text = typeof change.instructions === 'string' ? change.instructions : undefined
-    return text === undefined ? { change } : { change, instructions: text }
   }
 
-  #resolveExtensions(value: unknown): AgentChange['extensions'] {
+  #resolveExtensions(value: unknown, prefix: string): AgentChange['extensions'] {
     const registry = this.#options.registry
     const byName = (name: unknown) => {
       const extension = typeof name === 'string' ? registry.snapshot().extension(name) : undefined
       if (extension === undefined) {
         throw invalidParams([
-          { path: 'agent.extensions', message: `no such extension: ${String(name)}` },
+          { path: `${prefix}.extensions`, message: `no such extension: ${String(name)}` },
         ])
       }
       return extension
@@ -642,17 +910,17 @@ export class Kernel implements Dispatcher {
       return result as AgentChange['extensions']
     }
     throw invalidParams([
-      { path: 'agent.extensions', message: 'names, or {add, remove}, are required' },
+      { path: `${prefix}.extensions`, message: 'names, or {add, remove}, are required' },
     ])
   }
 
-  #resolveModelTools(value: unknown): AgentChange['modelTools'] {
+  #resolveModelTools(value: unknown, prefix: string): AgentChange['modelTools'] {
     const snapshot = this.#options.registry.snapshot()
     const byName = (name: unknown) => {
       const found = snapshot.tools().find((entry) => entry.tool.name === name)
       if (found === undefined) {
         throw invalidParams([
-          { path: 'agent.modelTools', message: `no such tool: ${String(name)}` },
+          { path: `${prefix}.modelTools`, message: `no such tool: ${String(name)}` },
         ])
       }
       return found.tool
@@ -668,12 +936,53 @@ export class Kernel implements Dispatcher {
       return result as AgentChange['modelTools']
     }
     throw invalidParams([
-      { path: 'agent.modelTools', message: 'names, or {add, remove}, are required' },
+      { path: `${prefix}.modelTools`, message: 'names, or {add, remove}, are required' },
     ])
   }
 }
 
 // ── free functions ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A task kind without Pi's namespace: `pi.compaction` crosses the wire as `compaction`, which is what the
+ * contract's fixture says and what a client switches on. Pi reserves the `pi.` prefix for itself and Droi
+ * adds `droi.` kinds, so the prefix carries no information a client needs.
+ */
+function taskKind(kind: string): string {
+  return kind.startsWith('pi.') ? kind.slice(3) : kind
+}
+
+/** The config file's default agent, as a change the creating commit can apply first. */
+function defaultsAsChange(defaults: AgentDefaults | undefined): AgentChange {
+  if (defaults === undefined) return {}
+  return {
+    ...(defaults.provider === undefined || defaults.modelId === undefined
+      ? {}
+      : { model: { provider: defaults.provider, modelId: defaults.modelId } }),
+    ...(defaults.thinkingLevel === undefined
+      ? {}
+      : { thinkingLevel: defaults.thinkingLevel as never }),
+    ...(defaults.cwd === undefined ? {} : { cwd: defaults.cwd }),
+    ...(defaults.instructions === undefined ? {} : { instructions: defaults.instructions }),
+  }
+}
+
+/** A stable string for "the same request": key order does not matter, so a client may resend freely. */
+export function fingerprintOf(value: unknown): string {
+  return JSON.stringify(normalize(value))
+}
+
+function normalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalize)
+  if (typeof value !== 'object' || value === null) return value
+  const record = value as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(record).sort()) {
+    if (record[key] === undefined) continue
+    out[key] = normalize(record[key])
+  }
+  return out
+}
 
 /**
  * Every method of the contract this build does not implement, and the capability that says so.
@@ -697,37 +1006,68 @@ function gateOf(method: string): string | undefined {
   return GATED[method]
 }
 
-function invalidTitle(): never {
-  throw invalidParams([{ path: 'title', message: 'a string or null is required' }])
+function invalidTitle(field: string): never {
+  throw invalidParams([{ path: field, message: 'a string or null is required' }])
 }
 
-function parseModel(value: unknown): ModelRef {
+function parseModel(value: unknown, prefix: string): ModelRef {
   if (typeof value !== 'object' || value === null) {
-    throw invalidParams([{ path: 'agent.model', message: 'provider and modelId are required' }])
+    throw invalidParams([{ path: `${prefix}.model`, message: 'provider and modelId are required' }])
   }
   const model = value as { provider?: unknown; modelId?: unknown; id?: unknown }
-  const provider = model.provider ?? model.id
+  const provider = model.provider
   const modelId = model.modelId ?? model.id
-  if (typeof provider !== 'string' || typeof modelId !== 'string') {
-    throw invalidParams([{ path: 'agent.model', message: 'provider and modelId are required' }])
+  if (
+    typeof provider !== 'string' ||
+    provider === '' ||
+    typeof modelId !== 'string' ||
+    modelId === ''
+  ) {
+    throw invalidParams([{ path: `${prefix}.model`, message: 'provider and modelId are required' }])
   }
   return { provider, modelId }
 }
 
-/** `input` as Pi takes it: a string, or text and image blocks. */
-function parseInput(
-  value: unknown,
-): string | { type: 'text'; text: string }[] | (never | { type: string })[] {
-  if (typeof value === 'string') return value
-  if (value === undefined) {
-    throw invalidParams([{ path: 'input', message: 'input or continue is required' }])
+/** A positive integer entry ID: the value Pi takes, checked before it is read as one. */
+function requiredEntry(params: Record<string, unknown>, key: string): number {
+  const value = params[key]
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw invalidParams([{ path: key, message: 'an entry ID of 1 or more is required' }])
   }
+  return value
+}
+
+/** The list cursor as the contract spells it: `{"before": <conversationId>}`. */
+export function parseListCursor(
+  value: Record<string, unknown> | undefined,
+): { before?: number } | undefined {
+  if (value === undefined) return undefined
+  const before = value['before']
+  if (before === undefined || before === null) return undefined
+  if (typeof before !== 'number' || !Number.isInteger(before) || before < 1) {
+    throw invalidParams([{ path: 'cursor.before', message: 'a conversation ID is required' }])
+  }
+  return { before }
+}
+
+/** `input` as Pi takes it: a string, or text and image blocks. */
+function parseInput(value: unknown): unknown {
+  if (typeof value === 'string') return value
   if (!Array.isArray(value)) {
     throw invalidParams([
       { path: 'input', message: 'a string or an array of content blocks is required' },
     ])
   }
-  return value as never
+  for (const [index, block] of value.entries()) {
+    if (typeof block !== 'object' || block === null) {
+      throw invalidParams([{ path: `input.${index}`, message: 'a content block is required' }])
+    }
+    const type = (block as { type?: unknown }).type
+    if (type !== 'text' && type !== 'image') {
+      throw invalidParams([{ path: `input.${index}.type`, message: 'text or image' }])
+    }
+  }
+  return value
 }
 
 async function admit(
@@ -820,4 +1160,4 @@ function approximateTokens(messages: readonly unknown[]): number {
   return Math.ceil(characters / 4)
 }
 
-export { warn }
+export { warn, invalidRequest }

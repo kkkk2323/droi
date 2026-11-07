@@ -180,6 +180,91 @@ failing.
 {"jsonrpc":"2.0","id":"26","result":{"status":"closing"}}
 ```
 
+### Starting the kernel for a test
+
+A test, a CI job or the Fake Daemon points the kernel at a local model without writing a config file:
+
+```text
+DROI_KERNEL_TOKEN=<random> \
+DROI_KERNEL_PROVIDERS='[{"id":"fake","baseUrl":"http://127.0.0.1:9999/v1","api":"openai-completions","apiKeyEnv":"FAKE_PROVIDER_KEY","models":[{"id":"fake-1","contextWindow":200000,"maxTokens":8000,"input":["text","image"]}]}]' \
+kernel --data <tmp dir> --port 0
+```
+
+`DROI_KERNEL_PROVIDERS` replaces the providers the config file names and can change nothing else: the
+port, the data directory, the read-only flag and the token still come from the command line and the
+environment. **It is not a way in.** Every connection needs `Authorization: Bearer <DROI_KERNEL_TOKEN>`,
+and a token in the query string is refused like a wrong one — the header is the only place it is read.
+An empty or malformed value is a start-up failure with status `2` rather than a silently unconfigured
+kernel.
+
+The settings a test needs beyond that:
+
+| Flag or variable        | Meaning                                                                      |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `--data <dir>`          | Where `kernel.sqlite`, the lock and (in M3) process logs live. Required.     |
+| `--port 0`              | Ask the OS for a free port; the handshake line reports it.                   |
+| `--host 127.0.0.1`      | The interface to bind. The default.                                          |
+| `--config <file>`       | A JSON file with `providers`, `agent`, `progress` and `viewPushesPerSecond`. |
+| `--read-only`           | Answer reads for a viewer; every write is `-32008`.                          |
+| `DROI_KERNEL_TOKEN`     | The launch token. Required; never on the command line.                       |
+| `DROI_KERNEL_LOG=debug` | Log every frame and every commit to stderr.                                  |
+
+### Page sizes
+
+Two caps keep one answer from carrying a whole history, and both are published so a client never has to
+guess:
+
+| Limit                            | Value                  | Where it applies        |
+| -------------------------------- | ---------------------- | ----------------------- |
+| `limits.maxEntriesPerPage`       | 200                    | `conversation.entries`  |
+| `limits.maxConversationsPerPage` | 200                    | `conversation.list`     |
+| `limits.viewWindowDefault`       | `{min: 100, max: 200}` | the window a view holds |
+
+A `limit` above the cap is not an error and not a lie: the page comes back at the cap **with a cursor**,
+and the client asks again with it. A client that ignores the cursor sees a prefix of the history
+(ascending) or a suffix (descending) and cannot tell — which is exactly how a long run once looked
+deadlocked at its 49th round: 200 entries in, a test asked for 5000, got the ascending first 200, and
+waited forever for its own round. `harness.info.limits` exists so that is not a guess.
+
+### Search
+
+`conversation.list`'s `query` searches entry text and titles. The index is FTS5 with the **trigram**
+tokenizer, which matters for Chinese: `unicode61` treats a whole run of characters as one token, so 内存
+in 这是内存里的摘要 would never match. Trigram indexes every three-character sequence, so:
+
+| Query                    | How it is answered                                              |
+| ------------------------ | --------------------------------------------------------------- |
+| three characters or more | the index: `text LIKE '%…%'` with the trigram `L0` optimization |
+| one or two characters    | a table scan, bounded to the most recent 50,000 entries         |
+| two words                | each narrowed by AND, in either language                        |
+
+The short-term bound is the one place a search can miss something: a two-character Chinese word in an
+entry older than the last 50,000 is not found. Measured, the scan over that window takes about 5 ms.
+A title is matched with the whole query as one phrase, so a renamed conversation is found even when its
+transcript holds nothing.
+
+### Read-only
+
+`--read-only` makes the kernel a viewer of a database another process drives (design §9: a synced copy
+on a device that only shows it). It is enforced three ways, not one:
+
+1. Pi itself refuses every commit with writes (`HarnessOptions.readOnly`), so no new path can slip one in.
+2. The kernel does not call `resume()`, so an unfinished run is not executed a second time here.
+3. The kernel does not reconcile pending questions at start: a viewer writes nothing.
+4. Every write method answers `-32008` before it reaches Pi.
+
+### When the kernel fails
+
+A Storage error is final in Pi: the Session closes and nothing works afterwards. The kernel then
+
+- marks itself failed, so every later request (including one already in flight) answers `-32010` with the
+  reason rather than `-32603`,
+- announces `warning {kind:"kernel_failed"}` on every connection,
+- closes the harness, the storage and the database, and **exits with status 3**.
+
+The exit is the point. A kernel that stays up but cannot write is invisible to the Host's Supervisor,
+which only restarts a process that died.
+
 ## Identifiers
 
 `conversationId`, `entryId`, `taskId`, `submissionId` and `documentId` are JSON

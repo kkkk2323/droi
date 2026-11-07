@@ -1,6 +1,7 @@
 import type { ConversationWindow, ConversationView } from '@earendil-works/pi-durable'
 import type { Op } from '@earendil-works/chord/delta'
 import type { Connection } from '../protocol/server.ts'
+import { invalidParams } from '../protocol/rpc.ts'
 
 /** How a connection asked to be kept up to date: whole views, or the deltas between them. */
 export type SubscribeMode = 'view' | 'delta'
@@ -182,8 +183,20 @@ function describe(error: unknown): unknown {
 /** The window a `conversation.open` asks for, with the default the contract fixes. */
 export function parseWindow(value: Record<string, unknown> | undefined): ConversationWindow {
   if (value === undefined) return { min: 100, max: 200 }
-  const min = typeof value['min'] === 'number' ? value['min'] : 100
-  const max = typeof value['max'] === 'number' ? value['max'] : Math.max(min, 200)
+  // Validated here, before Pi reads it: a window Pi cannot honour comes back as a sentence, not as an
+  // internal error with a stack in the log.
+  const rawMin = value['min']
+  const rawMax = value['max']
+  const min = rawMin === undefined || rawMin === null ? 100 : rawMin
+  if (typeof min !== 'number' || !Number.isInteger(min) || min < 1) {
+    throw invalidParams([{ path: 'window.min', message: 'an integer of 1 or more is required' }])
+  }
+  const max = rawMax === undefined || rawMax === null ? Math.max(min, 200) : rawMax
+  if (typeof max !== 'number' || !Number.isInteger(max) || max < min) {
+    throw invalidParams([
+      { path: 'window.max', message: `an integer of at least ${min} is required` },
+    ])
+  }
   return { min, max }
 }
 

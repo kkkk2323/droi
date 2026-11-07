@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
-import { escapeLike, searchWords } from '../src/indexer/index.ts'
+import { escapeLike, likeClauses, searchWords, SHORT_TERM_WINDOW } from '../src/indexer/index.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 
 let data: ReturnType<typeof tempData>
@@ -93,5 +93,15 @@ describe('search', () => {
     expect(searchWords('「内存」')).toEqual(['内存'])
     expect(searchWords('   ')).toEqual([])
     expect(escapeLike('a%b_c\\d')).toBe('a\\%b\\_c\\\\d')
+  })
+
+  test('a three-character term uses the trigram index, and a shorter one is bounded', async () => {
+    const long = likeClauses(['空输入'])
+    expect(long.clauses[0]).toBe("text LIKE ? ESCAPE '\\'")
+    const short = likeClauses(['内存'])
+    // Two characters cannot be answered by a trigram index, so the scan is bounded explicitly.
+    expect(short.clauses[0]).toContain('rowid >')
+    expect(short.values).toContain(SHORT_TERM_WINDOW)
+    expect(SHORT_TERM_WINDOW).toBe(50_000)
   })
 })

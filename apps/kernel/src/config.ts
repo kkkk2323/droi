@@ -24,6 +24,8 @@ export type ModelConfig = {
   reasoning?: boolean
   /** Dollars per million tokens, as pi-ai's catalog states them. */
   cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+  /** The thinking levels the model takes, for `harness.info.models[].thinking`. */
+  thinking?: string[]
 }
 
 export type KernelConfig = {
@@ -32,12 +34,25 @@ export type KernelConfig = {
   dataDir: string
   readOnly: boolean
   providers: ProviderConfig[]
-  /** The model a new conversation uses when the request names none. */
-  agent?: { provider: string; modelId: string; thinkingLevel?: string }
+  /**
+   * What a new conversation starts with when the request names nothing: the config file's `agent`. Without
+   * it a conversation has no model, and its first run ends `no_model` without calling a provider at all —
+   * which is every new conversation in a window that does not send a model per create.
+   */
+  agent?: AgentDefaults
   /** How often running progress is committed; Pi's defaults when absent. */
   progress?: { partialIntervalMs: number; outputIntervalMs: number; persistWithinMs: number }
   /** Pushes a second a connection gets per conversation; the contract says at most 5. */
   viewPushesPerSecond?: number
+}
+
+/** The config file's `agent`: the defaults a new conversation inherits. */
+export type AgentDefaults = {
+  provider?: string
+  modelId?: string
+  thinkingLevel?: string
+  cwd?: string
+  instructions?: string
 }
 
 export type Args = {
@@ -47,6 +62,9 @@ export type Args = {
   readOnly: boolean
   configPath?: string
 }
+
+/** The only interfaces a kernel may bind: everything it serves is for this computer. */
+const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost', '[::1]'])
 
 const usage = `usage: kernel --data <dir> [--port 0] [--host 127.0.0.1] [--config <file>] [--read-only]
 
@@ -75,6 +93,11 @@ export function parseArgs(argv: readonly string[]): Args {
         break
       case '--host':
         host = next()
+        // A kernel holds a token and the whole transcript of its conversations. It may listen on this
+        // computer and nowhere else: a Host that wants the phone to reach it has the Gateway for that.
+        if (!LOOPBACK.has(host)) {
+          throw new Error(`--host must be a loopback address (127.0.0.1, ::1), not ${host}`)
+        }
         break
       case '--data':
         dataDir = next()
@@ -130,6 +153,38 @@ function validateProviders(value: unknown): ProviderConfig[] {
   return value as ProviderConfig[]
 }
 
+function parseAgentDefaults(value: unknown): AgentDefaults | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'object') throw new Error('agent must be an object')
+  const raw = value as Record<string, unknown>
+  const string = (key: string): string | undefined => {
+    const field = raw[key]
+    if (field === undefined || field === null) return undefined
+    if (typeof field !== 'string') throw new Error(`agent.${key} must be a string`)
+    return field
+  }
+  // Both `{agent: {provider, modelId}}` and `{agent: {model: {provider, modelId}}}` are accepted: the
+  // model picks the first shape, the protocol's agent change the second.
+  const nested = raw['model']
+  const provider =
+    string('provider') ??
+    (typeof nested === 'object' && nested !== null
+      ? (nested as { provider?: string }).provider
+      : undefined)
+  const modelId =
+    string('modelId') ??
+    (typeof nested === 'object' && nested !== null
+      ? ((nested as { modelId?: string }).modelId ?? (nested as { id?: string }).id)
+      : undefined)
+  return {
+    ...(provider === undefined ? {} : { provider }),
+    ...(modelId === undefined ? {} : { modelId }),
+    ...(string('thinkingLevel') === undefined ? {} : { thinkingLevel: string('thinkingLevel') }),
+    ...(string('cwd') === undefined ? {} : { cwd: string('cwd') }),
+    ...(string('instructions') === undefined ? {} : { instructions: string('instructions') }),
+  }
+}
+
 /** Read the config file, or the empty config when there is none. */
 export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): KernelConfig {
   let file: Partial<KernelConfig> = {}
@@ -147,7 +202,7 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     readOnly: args.readOnly,
     // The environment wins: it exists for a test that has no file to write.
     providers: fromEnv ?? validateProviders(file.providers ?? []),
-    agent: file.agent,
+    agent: parseAgentDefaults(file.agent),
     progress: file.progress,
     viewPushesPerSecond: file.viewPushesPerSecond ?? 5,
   }

@@ -71,6 +71,7 @@ export async function start(options: {
 /** A JSON-RPC client over one WebSocket, the way the Host speaks to the kernel. */
 export class Client {
   #ws: WebSocket
+  #closed = false
   #nextId = 1
   #pending = new Map<
     number,
@@ -89,10 +90,19 @@ export class Client {
     } as never)
     this.opened = new Promise<void>((resolve, reject) => {
       this.#ws.addEventListener('open', () => resolve(), { once: true })
-      this.#ws.addEventListener('error', () => reject(new Error('the websocket failed')), {
-        once: true,
-      })
+      // A socket that errors after the client was closed is teardown, not a failure: rejecting on it
+      // would be an unhandled rejection in every test that closes before opening.
+      this.#ws.addEventListener(
+        'error',
+        () => {
+          if (this.#closed) return
+          reject(new Error('the websocket failed'))
+        },
+        { once: true },
+      )
     })
+    // An `opened` nobody awaited must not surface as an unhandled rejection; `call` awaits it and sees it.
+    this.opened.catch(() => undefined)
     this.#ws.addEventListener('message', (event) => {
       const frame = JSON.parse(String(event.data)) as Record<string, unknown>
       if (typeof frame['method'] === 'string') {
@@ -178,6 +188,7 @@ export class Client {
   }
 
   close(): void {
+    this.#closed = true
     this.#ws.close()
   }
 }
@@ -252,3 +263,22 @@ async function waitSettled(
 }
 
 export { fauxToolCall }
+
+/** Every entry of a conversation, following the cursor: a page is capped at `limits.maxEntriesPerPage`. */
+export async function allEntries(
+  client: Client,
+  id: number,
+  order: 'ascending' | 'descending' = 'ascending',
+  limit = 200,
+): Promise<{ id: number; kind: string; model?: { role: string; content: unknown }[] }[]> {
+  const items: { id: number; kind: string; model?: { role: string; content: unknown }[] }[] = []
+  let cursor: unknown = undefined
+  for (;;) {
+    const params: Record<string, unknown> = { id, query: { order }, limit }
+    if (cursor !== undefined) params['cursor'] = cursor
+    const page = await client.call('conversation.entries', params)
+    items.push(...(page['items'] as typeof items))
+    if (page['cursor'] === undefined) return items
+    cursor = page['cursor']
+  }
+}

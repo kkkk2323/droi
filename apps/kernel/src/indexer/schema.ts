@@ -1,23 +1,20 @@
 import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
 
 /**
- * Droi's own tables, in the same SQLite file as Pi's (`pi_` prefix), so a conversation's metadata
- * and the entries that move it commit against the same file and one backup covers both.
+ * Droi's own tables, in the same SQLite file as Pi's (`pi_` prefix), so a conversation's metadata and
+ * the entries that move it commit against the same file and one backup covers both.
  *
  * `droi_entries_fts` is FTS5 with the **trigram** tokenizer, its rowid the Pi entry ID.
  *
- * The tokenizer choice is about Chinese. `unicode61` splits on spaces and punctuation, so a run of
- * Chinese characters is one token: searching 内存 in 这是内存里的摘要 would find nothing, because the
- * whole clause is a single token. Trigram indexes every three-character sequence instead, so a
- * substring search is a `LIKE '%…%'` the index can answer — for Chinese, Japanese and Korean as well
- * as for English, where it also matches inside a word (parseConfig for "seConfig").
+ * The tokenizer choice is about Chinese. `unicode61` splits on spaces and punctuation, so a run of Chinese
+ * characters is one token: searching 内存 in 这是内存里的摘要 would find nothing, because the whole clause is
+ * a single token. Trigram indexes every three-character sequence instead, so `text LIKE '%…%'` is answered
+ * by the index — for Chinese, Japanese and Korean as well as for English, where it also matches inside a
+ * word (parseConfig for "seConfig"). A pattern shorter than three characters cannot use the index and
+ * scans the vtable; that is still correct, and the scan is bounded below.
  *
- * The cost: a pattern shorter than three characters cannot use the index and scans instead. That is
- * still correct (SQLite falls back), and a two-character Chinese word is common enough that returning
- * nothing would be worse than the scan.
- *
- * A row exists only for an entry that has text, so the table is a search index and not a copy of the
- * transcript.
+ * `droi_requests` remembers the fingerprint of each `requestId`, so a repeat with different params is a
+ * `-32013` conflict rather than a silent answer with the first request's result.
  */
 const statements = [
   `CREATE TABLE IF NOT EXISTS droi_meta (
@@ -34,14 +31,23 @@ const statements = [
     last_activity_at INTEGER NOT NULL,
     viewed_at INTEGER,
     request_id TEXT UNIQUE,
+    request_fingerprint TEXT,
     parent_id INTEGER,
     preview TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS droi_index_last_activity
-    ON droi_conversations (last_activity_at DESC)`,
-  `CREATE INDEX IF NOT EXISTS droi_index_kind ON droi_conversations (kind, last_activity_at DESC)`,
+    ON droi_conversations (last_activity_at DESC, id DESC)`,
+  `CREATE INDEX IF NOT EXISTS droi_index_kind
+    ON droi_conversations (kind, last_activity_at DESC, id DESC)`,
   `CREATE INDEX IF NOT EXISTS droi_index_workspace
-    ON droi_conversations (workspace, last_activity_at DESC)`,
+    ON droi_conversations (workspace, last_activity_at DESC, id DESC)`,
+  `CREATE TABLE IF NOT EXISTS droi_requests (
+    conversation_id INTEGER NOT NULL,
+    request_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    submission_id INTEGER,
+    PRIMARY KEY (conversation_id, request_id)
+  )`,
   `CREATE VIRTUAL TABLE IF NOT EXISTS droi_entries_fts USING fts5(
     text,
     conversation UNINDEXED,
@@ -55,11 +61,16 @@ const TOKENIZER = 'trigram'
 /** Create whatever the database lacks. Idempotent: it runs on every start. */
 export async function migrate(db: SqliteExecutor): Promise<void> {
   for (const sql of statements) await db.exec(sql)
+  // A database from an earlier M1 build lacks the fingerprint column.
+  const columns = await db.all<{ name: string }>('PRAGMA table_info(droi_conversations)')
+  if (!columns.some((column) => column.name === 'request_fingerprint')) {
+    await db.exec('ALTER TABLE droi_conversations ADD COLUMN request_fingerprint TEXT')
+  }
   const recorded = await readMeta(db, 'index.tokenizer')
   if (recorded === TOKENIZER) return
   if (recorded !== undefined) {
-    // An index from an older build cannot be searched the way this one builds queries: drop it and
-    // let the backfill refill it, rather than keep a table whose results would be wrong.
+    // An index from an older build cannot be searched the way this one builds queries: drop it and let
+    // the watermark pass refill it, rather than keep a table whose results would be wrong.
     await db.exec('DROP TABLE IF EXISTS droi_entries_fts')
     await db.exec(
       `CREATE VIRTUAL TABLE droi_entries_fts USING fts5(
@@ -68,7 +79,7 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
         tokenize = '${TOKENIZER}'
       )`,
     )
-    await db.run("DELETE FROM droi_meta WHERE key = 'index.backfilled'")
+    await writeMeta(db, 'index.entryWatermark', '0')
   }
   await writeMeta(db, 'index.tokenizer', TOKENIZER)
 }
@@ -98,6 +109,7 @@ export type ConversationRow = {
   last_activity_at: number
   viewed_at: number | null
   request_id: string | null
+  request_fingerprint: string | null
   parent_id: number | null
   preview: string | null
 }

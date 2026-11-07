@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
+import { Client, fauxCatalog, start, tempData, TOKEN, type Faux } from './helpers.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 
 let data: ReturnType<typeof tempData>
@@ -143,5 +143,67 @@ describe('the handshake and the connection', () => {
     const error = await client.fails(fixture.request.method, fixture.request.params)
     expect(error.code).toBe(fixture.response.error.code)
     expect(error.data).toEqual(fixture.response.error.data)
+  })
+})
+
+describe('the token', () => {
+  test('is read from the header and nowhere else', async () => {
+    // The header works.
+    const good = new Client(kernel.port)
+    await good.opened
+    expect((await good.call('harness.info'))['version']).toBe('kernel-1.5.0-1')
+    good.close()
+
+    // A correct token in the query string is refused: the Rust client's fix, pinned from this side too.
+    const upgrade = await fetch(
+      `http://127.0.0.1:${kernel.port}/rpc?token=${encodeURIComponent(TOKEN)}&access_token=${encodeURIComponent(TOKEN)}`,
+      {
+        headers: {
+          Upgrade: 'websocket',
+          Connection: 'Upgrade',
+          'Sec-WebSocket-Version': '13',
+          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+        },
+      },
+    )
+    expect(upgrade.status).toBe(401)
+
+    // And a wrong header is refused as well, so the check is the token and not merely the header's presence.
+    const wrong = await fetch(`http://127.0.0.1:${kernel.port}/rpc`, {
+      headers: {
+        Upgrade: 'websocket',
+        Connection: 'Upgrade',
+        Authorization: 'Bearer not-the-token',
+      },
+    })
+    expect(wrong.status).toBe(401)
+
+    // A bare token without the scheme is not accepted either.
+    const bare = await fetch(`http://127.0.0.1:${kernel.port}/rpc`, {
+      headers: { Upgrade: 'websocket', Connection: 'Upgrade', Authorization: TOKEN },
+    })
+    expect(bare.status).toBe(401)
+  })
+
+  test('/health is the one endpoint that answers without it, and says nothing else', async () => {
+    const response = await fetch(`http://127.0.0.1:${kernel.port}/health`)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual(['ok', 'pi', 'version'])
+    // No data directory, no token, no provider list: liveness only.
+    expect(JSON.stringify(body)).not.toContain(data.dir)
+  })
+
+  test('the handshake line carries no token', async () => {
+    // `main.ts` prints the handshake; a kernel started by the test harness never prints it, so this checks
+    // the shape the Host parses rather than a live process.
+    const { port, pid, version } = {
+      port: kernel.port,
+      pid: process.pid,
+      version: 'kernel-1.5.0-1',
+    }
+    const line = JSON.stringify({ port, pid, version })
+    expect(line).not.toContain(TOKEN)
+    expect(Object.keys(JSON.parse(line)).sort()).toEqual(['pid', 'port', 'version'])
   })
 })

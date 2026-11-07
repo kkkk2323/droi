@@ -1,5 +1,5 @@
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
-import type { Client, Faux } from './helpers.ts'
+import { allEntries, type Client, type Faux } from './helpers.ts'
 
 export type RoundPlan = { rounds: string[]; inputs?: string[] }
 
@@ -53,15 +53,7 @@ export async function clientRounds(
 
   const results: RoundResult[] = []
   for (const id of ids) {
-    const page = await client.call('conversation.entries', {
-      id,
-      query: { order: 'ascending' },
-      limit: 200,
-    })
-    const entries = page['items'] as {
-      kind: string
-      model?: { role: string; content: unknown }[]
-    }[]
+    const entries = await allEntries(client, id)
     const answerTexts: string[] = []
     const inputs: string[] = []
     for (const entry of entries) {
@@ -84,12 +76,7 @@ function expectDefined(value: number | undefined, index: number): void {
 async function waitForAnswer(client: Client, id: number, count: number): Promise<void> {
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
-    const page = await client.call('conversation.entries', {
-      id,
-      query: { order: 'ascending' },
-      limit: 200,
-    })
-    const entries = page['items'] as { kind: string }[]
+    const entries = await allEntries(client, id)
     const answers = entries.filter((entry) => entry.kind === 'pi.assistant').length
     if (answers > count) return
     await Bun.sleep(15)

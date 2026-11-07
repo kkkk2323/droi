@@ -1,17 +1,16 @@
 /**
- * What the kernel costs, measured the way `shared/perf/` measures Pi — a process-tree sampler and a
- * local fake model — so the numbers compare with `shared/perf/pi-perf-report.md` directly.
+ * What the kernel costs, measured the way `shared/perf/` measures Pi: a process tree sampled from `ps`,
+ * a local fake model, medians over several runs.
  *
- *   bun run bench.ts [--runs 3] [--out /tmp/kernel-bench] [--executable <path>]
+ *   bun run bench.ts [--runs 3] [--out <dir>] [--executable <path>]
  *
- * Three scenes:
+ * Scenes, chosen to match `shared/perf/pi-perf-report.md` where the two are comparable:
  *
- *  - **A, cold start**: from `spawn` to the handshake line, then idle RSS.
- *  - **B, sessions**: idle RSS holding 1, then 5, then 10 conversations that each did one turn. That
- *    is where Pi's shape shows: one process, about 5 MB a conversation.
- *  - **C, 100 read rounds** and **D, 100 bash rounds** in one conversation, timed and sampled.
- *
- * Each scene runs `--runs` times and reports the median, which is what `pi-perf-report.md` quotes.
+ *  - **A, cold start**: `spawn` to the handshake line, then idle RSS after half a second.
+ *  - **B, sessions**: idle RSS holding 1, then 5, then 10 conversations that each did one turn. The
+ *    marginal cost of a conversation is what Pi's shape buys; it is the number the report leads with.
+ *  - **C, 100 rounds** of `read` and of `bash` in one conversation, timed and sampled at the peak: the
+ *    same number `pi-perf-report.md` uses.
  */
 import { spawn, execFile } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -19,7 +18,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client, TOKEN } from './test/helpers.ts'
 import { startFakeProvider, type FakeProvider, type Step } from './test/fake-provider.ts'
-import { gradientPng } from './test/png.ts'
 
 type Args = { runs: number; out: string; executable: string | undefined }
 
@@ -28,18 +26,20 @@ function parse(argv: string[]): Args {
     const index = argv.indexOf(flag)
     return index >= 0 && argv[index + 1] !== undefined ? argv[index + 1]! : fallback
   }
-  const runs = Number(take('--runs', '3'))
-  const executable = argv.includes('--executable') ? take('--executable', '') : undefined
-  return { runs, out: take('--out', join(tmpdir(), 'kernel-bench')), executable }
+  return {
+    runs: Number(take('--runs', '3')),
+    out: take('--out', join(tmpdir(), 'kernel-bench')),
+    executable: argv.includes('--executable') ? take('--executable', '') : undefined,
+  }
 }
 
 const args = parse(process.argv.slice(2))
 mkdirSync(args.out, { recursive: true })
 
-/** Whole-tree RSS in MB, sampled from `ps`: the kernel is one process, but a bash call is a child. */
+/** RSS of one process and its descendants, in MB: the kernel is one process, but a bash call is a child. */
 function treeRssMb(rootPid: number): Promise<number> {
   return new Promise((resolve) => {
-    execFile('ps', ['-Ao', 'pid=,ppid=,rss='], { maxBuffer: 32 * 1024 * 1024 }, (error, stdout) => {
+    execFile('ps', ['-Ao', 'pid=,ppid=,rss='], { maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
       if (error) return resolve(0)
       const rows: { pid: number; ppid: number; rss: number }[] = []
       for (const line of stdout.split('\n')) {
@@ -48,15 +48,16 @@ function treeRssMb(rootPid: number): Promise<number> {
           rows.push({ pid: Number(match[1]), ppid: Number(match[2]), rss: Number(match[3]) })
       }
       const children = new Map<number, number[]>()
+      const rss = new Map<number, number>()
       for (const row of rows) {
+        rss.set(row.pid, row.rss)
         const list = children.get(row.ppid) ?? []
         list.push(row.pid)
         children.set(row.ppid, list)
       }
-      const rss = new Map(rows.map((row) => [row.pid, row.rss]))
+      let kb = 0
       const seen = new Set<number>()
       const stack = [rootPid]
-      let kb = 0
       while (stack.length > 0) {
         const pid = stack.pop()!
         if (seen.has(pid)) continue
@@ -71,57 +72,48 @@ function treeRssMb(rootPid: number): Promise<number> {
 
 type Running = {
   client: Client
-  pid: number
-  /** Resolves when the process exits. */
-  exited: Promise<number | null>
-  stop: () => Promise<void>
   rss: () => Promise<number>
+  stop: () => Promise<void>
 }
 
 /**
- * Start the kernel under measurement. Without `--executable` it runs `src/main.ts` with Bun, which is the
- * same code the binary holds; with one it measures the product a user gets.
+ * Start the kernel under measurement. Without `--executable` it runs `src/main.ts` under Bun — the same
+ * code the binary holds — and with one it measures the product a user gets.
  */
 async function startKernelProcess(provider: FakeProvider, dataDir: string): Promise<Running> {
   const work = mkdtempSync(join(tmpdir(), 'kernel-bench-work-'))
   const configPath = join(work, 'config.json')
-  writeFileSync(
-    configPath,
-    JSON.stringify(
-      {
-        providers: [
-          {
-            id: 'fake',
-            baseUrl: provider.baseUrl,
-            api: 'openai-completions',
-            apiKeyEnv: 'FAKE_PROVIDER_KEY',
-            models: [
-              {
-                id: 'fake-1',
-                name: 'Fake',
-                contextWindow: 200_000,
-                maxTokens: 8_000,
-                input: ['text', 'image'],
-              },
-            ],
-          },
-        ],
-      },
-      null,
-      2,
-    ),
-  )
+  // The env override is the same mechanism a test uses; nothing here needs a config file to be read.
+  const providers = [
+    {
+      id: 'fake',
+      baseUrl: provider.baseUrl,
+      api: 'openai-completions',
+      apiKeyEnv: 'FAKE_PROVIDER_KEY',
+      models: [
+        {
+          id: 'fake-1',
+          name: 'Fake',
+          contextWindow: 200_000,
+          maxTokens: 8_000,
+          input: ['text', 'image'],
+        },
+      ],
+    },
+  ]
+  writeFileSync(configPath, JSON.stringify({ providers }, null, 2))
   const command =
     args.executable === undefined
       ? [process.execPath, new URL('./src/main.ts', import.meta.url).pathname]
       : [args.executable]
-  const child = spawn(
-    command[0]!,
-    [...command.slice(1), '--data', dataDir, '--port', '0', '--config', configPath],
-    {
-      env: { ...process.env, DROI_KERNEL_TOKEN: TOKEN, FAKE_PROVIDER_KEY: 'fake-key' },
+  const child = spawn(command[0]!, [...command.slice(1), '--data', dataDir, '--port', '0'], {
+    env: {
+      ...process.env,
+      DROI_KERNEL_TOKEN: TOKEN,
+      FAKE_PROVIDER_KEY: 'fake-key',
+      DROI_KERNEL_PROVIDERS: JSON.stringify(providers),
     },
-  )
+  })
   let log = ''
   child.stderr.on('data', (chunk: Buffer) => {
     log += chunk.toString()
@@ -142,14 +134,12 @@ async function startKernelProcess(provider: FakeProvider, dataDir: string): Prom
     })
   })
   const client = new Client(handshake.port)
-  const exited = new Promise<number | null>((resolve) => {
-    if (child.exitCode !== null) resolve(child.exitCode)
-    else child.on('exit', (code) => resolve(code))
+  const exited = new Promise<void>((resolve) => {
+    if (child.exitCode !== null) resolve()
+    else child.on('exit', () => resolve())
   })
   return {
     client,
-    pid: child.pid!,
-    exited,
     rss: () => treeRssMb(child.pid!),
     stop: async () => {
       try {
@@ -174,166 +164,192 @@ const median = (values: number[]): number => {
   return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
 }
 
-/** One turn: submit, then wait until the conversation answers, so the next step sees a settled state. */
-async function turn(client: Client, id: number, input: string, step: Step): Promise<void> {
-  const before = await client.call('conversation.entries', {
-    id,
-    query: { order: 'ascending' },
-    limit: 1000,
-  })
-  const seen = new Set((before['items'] as { id: number }[]).map((entry) => entry.id))
-  // The script is per turn: a provider with nothing left answers 'done' with no tool call, and the turn
-  // would wait forever.
+async function temporary<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), 'kernel-bench-data-'))
+  try {
+    return await fn(dir)
+  } finally {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+    } catch {
+      // Windows and a still-closing SQLite file: a temp directory left behind is not a result.
+    }
+  }
+}
+
+/** One turn: submit, then wait until its own entries appear. */
+/**
+ * One turn, waited for the way a client waits: subscribe to `conversation.busy` and stop when the run
+ * ends. The first version of this asked `conversation.entries` in a loop, which measured the client's
+ * page fetches as much as the kernel — a hundred rounds of that is a thousand extra reads.
+ */
+async function turn(
+  running: Running,
+  provider: FakeProvider,
+  id: number,
+  input: string,
+  step: Step,
+): Promise<void> {
+  const before = running.client.notifications.length
   provider.set('toolCall' in step ? [step, { text: 'ok' }] : [step])
-  await client.call('conversation.submit', { id, input })
-  const deadline = Date.now() + 120_000
+  await running.client.call('conversation.submit', { id, input })
+  const deadline = Date.now() + 60_000
+  let started = false
   while (Date.now() < deadline) {
-    const page = await client.call('conversation.entries', {
-      id,
-      query: { order: 'ascending' },
-      limit: 1000,
-    })
-    const fresh = (page['items'] as { id: number; kind: string }[]).filter(
-      (entry) => !seen.has(entry.id),
-    )
-    const results = fresh.filter((entry) => entry.kind === 'pi.tool-result').length
-    const answers = fresh.filter((entry) => entry.kind === 'pi.assistant').length
-    // A tool step needs the answer that called it and the answer after its result; a text step one.
-    const wantedResults = 'toolCall' in step ? 1 : 0
-    const wantedAnswers = 'toolCall' in step ? 2 : 1
-    if (results >= wantedResults && answers >= wantedAnswers) return
+    for (const note of running.client.notifications.slice(before)) {
+      if (note.method !== 'conversation.busy' || note.params['id'] !== id) continue
+      if (note.params['run'] !== null) started = true
+      else if (started) return
+    }
     await Bun.sleep(5)
   }
   throw new Error(`the turn "${input}" never finished`)
 }
 
-/** The provider the current scene measures against; `turn()` scripts it. */
-let provider: FakeProvider
-
-async function sceneA(model: FakeProvider): Promise<{ readyMs: number; idleMb: number }> {
-  const data = mkdtempSync(join(tmpdir(), 'kernel-bench-data-'))
-  const started = performance.now()
-  const running = await startKernelProcess(model, data)
-  const readyMs = performance.now() - started
-  await Bun.sleep(500)
-  const idleMb = await running.rss()
-  await running.stop()
-  try {
-    rmSync(data, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
-  } catch {}
-  return { readyMs: Math.round(readyMs), idleMb }
+async function sceneA(provider: FakeProvider): Promise<{ readyMs: number; idleMb: number }> {
+  return temporary(async (dir) => {
+    const started = performance.now()
+    const running = await startKernelProcess(provider, dir)
+    const readyMs = performance.now() - started
+    await Bun.sleep(500)
+    const idleMb = await running.rss()
+    await running.stop()
+    return { readyMs: Math.round(readyMs), idleMb }
+  })
 }
 
-async function sceneB(model: FakeProvider, sessions: number): Promise<{ mb: number }> {
-  const data = mkdtempSync(join(tmpdir(), 'kernel-bench-data-'))
-  const running = await startKernelProcess(model, data)
-  const ids: number[] = []
-  for (let index = 0; index < sessions; index++) {
-    const created = await running.client.call('conversation.create', {
-      agent: { cwd: process.cwd(), model: { provider: 'fake', modelId: 'fake-1' } },
-    })
-    ids.push(created['conversationId'] as number)
-  }
-  for (const id of ids) await turn(running.client, id, `hello ${id}`, { text: 'hi there' })
-  await Bun.sleep(1000)
-  const mb = await running.rss()
-  await running.stop()
-  try {
-    rmSync(data, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
-  } catch {}
-  return { mb }
+async function sceneB(provider: FakeProvider, sessions: number): Promise<number> {
+  return temporary(async (dir) => {
+    const running = await startKernelProcess(provider, dir)
+    const ids: number[] = []
+    for (let index = 0; index < sessions; index++) {
+      const created = await running.client.call('conversation.create', {
+        agent: { cwd: process.cwd(), model: { provider: 'fake', modelId: 'fake-1' } },
+      })
+      ids.push(created['conversationId'] as number)
+    }
+    for (const id of ids) await turn(running, provider, id, `hello ${id}`, { text: 'hi there' })
+    await Bun.sleep(1000)
+    const mb = await running.rss()
+    await running.stop()
+    return mb
+  })
 }
 
 async function sceneRounds(
-  model: FakeProvider,
+  provider: FakeProvider,
   tool: 'read' | 'bash',
   rounds: number,
 ): Promise<{ seconds: number; peakMb: number }> {
-  const data = mkdtempSync(join(tmpdir(), 'kernel-bench-data-'))
-  const imagePath = join(data, 'big.png')
-  writeFileSync(imagePath, gradientPng(64, 64))
-  const running = await startKernelProcess(model, data)
-  const created = await running.client.call('conversation.create', {
-    agent: { cwd: process.cwd(), model: { provider: 'fake', modelId: 'fake-1' } },
-  })
-  const id = created['conversationId'] as number
-  let peakMb = 0
-  const sampler = setInterval(() => {
-    void running.rss().then((mb) => {
-      peakMb = Math.max(peakMb, mb)
+  return temporary(async (dir) => {
+    const filePath = join(dir, 'sample.txt')
+    writeFileSync(
+      filePath,
+      Array.from({ length: 400 }, (_, line) => `line ${line} of the sample file`).join('\n'),
+    )
+    const running = await startKernelProcess(provider, dir)
+    const created = await running.client.call('conversation.create', {
+      agent: { cwd: dir, model: { provider: 'fake', modelId: 'fake-1' } },
     })
-  }, 100)
-  const started = performance.now()
-  for (let round = 0; round < rounds; round++) {
-    // `read` on a small file: the text path, which is what C-read measures.
-    const step: Step =
-      tool === 'read'
-        ? { toolCall: { name: 'read', arguments: { path: imagePath } } }
-        : { toolCall: { name: 'bash', arguments: { command: `echo round-${round}` } } }
-    await turn(running.client, id, `round ${round}`, step)
-  }
-  const seconds = (performance.now() - started) / 1000
-  clearInterval(sampler)
-  await running.stop()
-  try {
-    rmSync(data, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
-  } catch {}
-  return { seconds: Math.round(seconds * 100) / 100, peakMb }
+    const id = created['conversationId'] as number
+    let peakMb = 0
+    const stopSampling = { done: false }
+    const sampler = (async () => {
+      while (!stopSampling.done) {
+        peakMb = Math.max(peakMb, await running.rss())
+        await Bun.sleep(100)
+      }
+    })()
+    const started = performance.now()
+    for (let round = 0; round < rounds; round++) {
+      const step: Step =
+        tool === 'read'
+          ? {
+              toolCall: {
+                name: 'read',
+                arguments: { path: filePath, offset: (round % 20) + 1, limit: 5 },
+              },
+            }
+          : { toolCall: { name: 'bash', arguments: { command: `echo round-${round}` } } }
+      await turn(running, provider, id, `round ${round}`, step)
+    }
+    const seconds = (performance.now() - started) / 1000
+    stopSampling.done = true
+    await sampler
+    await running.stop()
+    return { seconds: Math.round(seconds * 100) / 100, peakMb }
+  })
 }
 
 async function main(): Promise<void> {
-  provider = startFakeProvider()
-
-  const results: Record<string, number>[] = []
-  const report: string[] = [
-    `# The kernel's own numbers`,
-    '',
-    `${new Date().toISOString()}, ${process.platform} ${process.arch}, measured the way \`shared/perf/\` measures Pi:`,
-    `a local fake model, one process tree, medians of ${args.runs}.`,
-    '',
-    '| scene | median |',
-    '| --- | ---: |',
-  ]
+  const provider = startFakeProvider()
+  const rows: { scene: string; value: string }[] = []
+  const raw: Record<string, unknown> = {
+    platform: process.platform,
+    arch: process.arch,
+    runs: args.runs,
+    executable: args.executable === undefined ? 'src/main.ts under Bun' : args.executable,
+    measuredAt: new Date().toISOString(),
+  }
 
   const cold: { readyMs: number; idleMb: number }[] = []
   for (let run = 0; run < args.runs; run++) cold.push(await sceneA(provider))
   const ready = median(cold.map((value) => value.readyMs))
   const idle = median(cold.map((value) => value.idleMb))
-  report.push(`| A: start to handshake | ${ready.toFixed(0)} ms |`)
-  report.push(`| A: idle RSS | ${idle.toFixed(1)} MB |`)
-  results.push({ ready, idle })
+  rows.push({ scene: 'A: spawn to handshake', value: `${ready.toFixed(0)} ms` })
+  rows.push({ scene: 'A: idle RSS', value: `${idle.toFixed(1)} MB` })
+  raw['cold'] = { readyMs: ready, idleMb: idle }
+  process.stdout.write(`A: ${ready.toFixed(0)} ms, idle ${idle.toFixed(1)} MB\n`)
 
+  const held: Record<string, number> = {}
   for (const sessions of [1, 5, 10]) {
     const samples: number[] = []
-    for (let run = 0; run < args.runs; run++) samples.push((await sceneB(provider, sessions)).mb)
+    for (let run = 0; run < args.runs; run++) samples.push(await sceneB(provider, sessions))
     const mb = median(samples)
-    report.push(
-      `| B: RSS with ${sessions} conversation${sessions === 1 ? '' : 's'} | ${mb.toFixed(1)} MB |`,
-    )
-    results.push({ sessions, mb })
+    held[String(sessions)] = mb
+    rows.push({
+      scene: `B: RSS holding ${sessions} conversation${sessions === 1 ? '' : 's'}`,
+      value: `${mb.toFixed(1)} MB`,
+    })
+    process.stdout.write(`B${sessions}: ${mb.toFixed(1)} MB\n`)
   }
+  const marginal = (held['10']! - held['1']!) / 9
+  rows.push({ scene: 'B: marginal per conversation', value: `${marginal.toFixed(1)} MB` })
+  raw['sessions'] = { ...held, marginalMb: Math.round(marginal * 10) / 10 }
 
   for (const tool of ['read', 'bash'] as const) {
     const samples: { seconds: number; peakMb: number }[] = []
     for (let run = 0; run < args.runs; run++) samples.push(await sceneRounds(provider, tool, 100))
     const seconds = median(samples.map((value) => value.seconds))
     const peak = median(samples.map((value) => value.peakMb))
-    report.push(`| C: 100 ${tool} rounds | ${seconds.toFixed(2)} s |`)
-    report.push(`| C: peak RSS during 100 ${tool} rounds | ${peak.toFixed(1)} MB |`)
-    results.push({ tool: tool === 'read' ? 1 : 2, seconds, peak })
+    rows.push({ scene: `C: 100 ${tool} rounds`, value: `${seconds.toFixed(2)} s` })
+    rows.push({ scene: `C: peak RSS during 100 ${tool} rounds`, value: `${peak.toFixed(1)} MB` })
+    raw[tool] = { seconds, peakMb: peak }
+    process.stdout.write(`C-${tool}: ${seconds.toFixed(2)} s, peak ${peak.toFixed(1)} MB\n`)
   }
 
   provider.stop()
-  writeFileSync(join(args.out, 'kernel-bench.md'), report.join('\n') + '\n')
-  writeFileSync(
-    join(args.out, 'kernel-bench.json'),
-    JSON.stringify(
-      { platform: process.platform, arch: process.arch, runs: args.runs, results },
-      null,
-      2,
-    ),
-  )
-  process.stdout.write(report.join('\n') + '\n')
+  const lines = [
+    "# The kernel's own numbers",
+    '',
+    `${raw['measuredAt'] as string} · ${process.platform} ${process.arch} · ${args.runs} runs, medians · ${
+      raw['executable'] as string
+    }`,
+    '',
+    '| scene | median |',
+    '| --- | ---: |',
+    ...rows.map((row) => `| ${row.scene} | ${row.value} |`),
+    '',
+    'Measured the way `shared/perf/` measures Pi: a local fake model over HTTP, one process tree sampled',
+    'from `ps` every 100 ms, and the medians reported. Compare with `shared/perf/pi-perf-report.md` — the',
+    "fake model answers instantly, so these are the framework's own costs, not end-to-end latency.",
+    '',
+  ]
+  writeFileSync(join(args.out, 'kernel-bench.md'), lines.join('\n'))
+  writeFileSync(join(args.out, 'kernel-bench.json'), JSON.stringify(raw, null, 2))
+  process.stdout.write('\n' + lines.join('\n'))
+  // The fake provider holds a socket; nothing else keeps the process alive.
+  process.exit(0)
 }
 
 await main()
