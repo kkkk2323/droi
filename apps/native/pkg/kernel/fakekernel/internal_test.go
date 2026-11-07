@@ -80,3 +80,29 @@ func TestCloseCancelsASlowStream(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// TestBookkeepingBelongsToTheSubmissionThatNamesIt pins the ownership rule for the Kernel's own entries.
+//
+// They are not model-visible and are written outside a turn's placement: a request memo for a submission that
+// is only queued lands after the running turn's own entry. Attributing that memo to whoever happens to be
+// placed is how a wait for `droi.request` matched a stranger's bookkeeping.
+func TestBookkeepingBelongsToTheSubmissionThatNamesIt(t *testing.T) {
+	turn := Submission{Conversation: 1, ID: 10}
+	cases := []struct {
+		name  string
+		entry Entry
+		want  bool
+	}{
+		{"model entry", Entry{ID: 9, Kind: "pi.user"}, true},
+		{"own memo", Entry{ID: 14, Kind: "droi.request", Data: []byte(`{"requestId":"r","submissionId":10}`)}, true},
+		{"foreign memo", Entry{ID: 14, Kind: "droi.request", Data: []byte(`{"requestId":"r","submissionId":11}`)}, false},
+		{"unnamed memo", Entry{ID: 14, Kind: "droi.request", Data: []byte(`{"requestId":"r"}`)}, false},
+		{"no payload", Entry{ID: 14, Kind: "droi.request"}, false},
+		{"unreadable payload", Entry{ID: 14, Kind: "droi.meta", Data: []byte(`not json`)}, false},
+	}
+	for _, test := range cases {
+		if got := belongsToTurn(test.entry, turn); got != test.want {
+			t.Errorf("%s: belongsToTurn = %v, want %v", test.name, got, test.want)
+		}
+	}
+}

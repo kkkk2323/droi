@@ -564,3 +564,101 @@ func TestFakeKernelEntrylessTerminalRejectsBeforeThePredicate(t *testing.T) {
 		t.Fatalf("the predicate ran before the status was read:\n%s", run)
 	}
 }
+
+// TestFakeKernelForeignMemoIsNotPartOfTheTurn is the third-round false pass that survived the range rewrite: a
+// submission that is merely queued still writes its own `droi.request` memo, and that memo landed inside
+// whatever turn happened to be placed.
+func TestFakeKernelForeignMemoIsNotPartOfTheTurn(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Match: "first", Text: "not finished", Delay: 30 * time.Second},
+	}})
+	a, b := k.Dial(t), k.Dial(t)
+	id := k.CreateConversation(t, a)
+	first := k.Submit(t, a, id, "first")
+	for deadline := time.Now().Add(10 * time.Second); len(k.Requests()) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the first model request never started")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	var next struct {
+		SubmissionID kernel.ID `json:"submissionId"`
+	}
+	if err := b.Call(t.Context(), "conversation.submit", map[string]any{
+		"id": id, "input": "queued", "whenBusy": "followUp", "requestId": "queued-request-only",
+	}, &next); err != nil {
+		t.Fatalf("conversation.submit: %v", err)
+	}
+	queued := fakekernel.Submission{Conversation: id, ID: next.SubmissionID}
+	if record := k.Record(t, b, queued, 5*time.Second); record.Status != "queued" || record.Entry != 0 {
+		t.Fatalf("the later submission is not entryless queued: %+v", record)
+	}
+	if record := k.Record(t, a, first, 5*time.Second); record.Status != "placed" {
+		t.Fatalf("the first submission is not placed: %+v", record)
+	}
+
+	// The memo exists — it is what the queued submission wrote — and it is not part of the placed turn.
+	entries := k.EntriesAfter(t, a, first, 5*time.Second)
+	for _, entry := range entries {
+		if entry.Kind == "droi.request" {
+			t.Fatalf("the placed turn holds another submission's bookkeeping: %+v", entries)
+		}
+	}
+	all := k.EntriesAfter(t, b, queued, 5*time.Second)
+	if len(all) != 0 {
+		t.Fatalf("a queued submission's turn is not empty: %+v", all)
+	}
+}
+
+// TestFakeKernelEntrylessContinueHasNoRange is the fourth finding: a `continue` places no entry of its own, and
+// substituting zero for the missing lower bound adopted every earlier answered turn.
+func TestFakeKernelEntrylessContinueHasNoRange(t *testing.T) {
+	if os.Getenv("FAKEKERNEL_CONTINUE_PROBE") != "" {
+		k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+			{Match: "historical", Text: "OLD_UNRELATED_HISTORY"},
+			// A 4xx is not retried, so the input settles unanswered at once with model_error.
+			{Match: "retry-me", Failure: &fakekernel.Failure{Status: 400, Body: "intentional failure"}},
+			{Match: "retry-me", Text: "resumed answer", Delay: 200 * time.Millisecond},
+		}})
+		c := k.Dial(t)
+		id := k.CreateConversation(t, c)
+		k.Ask(t, c, id, "historical", "OLD_UNRELATED_HISTORY", 30*time.Second)
+		failed := k.Submit(t, c, id, "retry-me")
+		for deadline := time.Now().Add(20 * time.Second); ; {
+			if record := k.Record(t, c, failed, 5*time.Second); record.Status == "unanswered" {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("the failing input never settled")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		var submitted struct {
+			SubmissionID kernel.ID `json:"submissionId"`
+		}
+		if err := c.Call(t.Context(), "conversation.submit", map[string]any{"id": id, "continue": true}, &submitted); err != nil {
+			t.Fatalf("conversation.submit continue: %v", err)
+		}
+		sub := fakekernel.Submission{Conversation: id, ID: submitted.SubmissionID}
+		// Its answer still works as a bound, which is all WaitForReply needs.
+		k.WaitForReply(t, c, sub, "resumed answer", 30*time.Second)
+		if record := k.Record(t, c, sub, 5*time.Second); record.Entry != 0 {
+			t.Fatalf("a continue placed an entry after all: %+v", record)
+		}
+		k.EntriesAfter(t, c, sub, 5*time.Second)
+		t.Fatal("an entryless continue named a range instead of reporting that it has none")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("no test binary to re-run: %v", err)
+	}
+	child := exec.Command(self, "-test.run=^TestFakeKernelEntrylessContinueHasNoRange$", "-test.v")
+	child.Env = append(os.Environ(), "FAKEKERNEL_CONTINUE_PROBE=1")
+	run, err := child.CombinedOutput()
+	if err == nil {
+		t.Fatalf("an entryless continue named a range:\n%s", run)
+	}
+	if !strings.Contains(string(run), "has no entry of its own") {
+		t.Fatalf("the failure does not say the continue has no lower bound:\n%s", run)
+	}
+}

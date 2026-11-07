@@ -151,7 +151,13 @@ func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, te
 	for {
 		record := k.record(ctx, t, c, sub)
 		if k.finishedTurn(t, sub, record) {
-			for _, entry := range k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, record.Answer) {
+			// A `continue` has no entry of its own, even when it answered, so the answer is the whole bound:
+			// reading from below it asks for one entry instead of the conversation.
+			from := record.Entry - 1
+			if record.Entry == 0 {
+				from = record.Answer - 1
+			}
+			for _, entry := range k.entriesBetween(ctx, t, c, sub.Conversation, from, record.Answer) {
 				if entry.ID != record.Answer || entry.Kind != "pi.assistant" {
 					continue
 				}
@@ -215,15 +221,21 @@ func (k *Kernel) WaitForEntries(
 // The Kernel reports Pi's own fields — `entry`, `answer`, `status` — and nothing else, because Pi keeps no link
 // from a submission to the run task that carried it. So the bounds are read off the status:
 //
-//   - queued: not placed yet, so it wrote nothing; its turn is empty rather than "everything so far";
+//   - queued: not placed yet, so it wrote no model entry; its turn is empty rather than "everything so far";
 //   - placed: from its own entry to the newest entry of the conversation. One conversation runs one turn at a
 //     time, and a later input either queues (it has no entry yet) or steers into this same run, which Pi
 //     answers with this submission's own `done` record — so every entry after `entry` is this turn's, tool
 //     results and partial answers included while it still runs;
 //   - done: from its own entry to its own answer, both durable and both Pi's.
 //
-// An unanswered submission has no definite range, so it has none here: it wrote entries that nothing
-// distinguishes from a later turn's, and a guessed end would be somebody else's reply. Read the conversation.
+// Reading a turn is two RPCs, and the record and the transcript are separate snapshots: between them the run
+// can end and a queued follow-up can be placed and answered. So the record is read again afterwards and the
+// result is bounded by what it says now — an unanswered submission's turn stops existing, and a finished one
+// stops at its answer. Without that, a wait reads the next turn's reply as if it were its own.
+//
+// Two submissions have no range at all, and are reported rather than guessed at: one that ended without an
+// answer, whose entries nothing distinguishes from a later turn's; and a `continue`, which places no entry of
+// its own, so no lower bound exists (its answer still bounds WaitForReply). Read the conversation for those.
 func (k *Kernel) turnEntries(
 	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission, record Record,
 ) []Entry {
@@ -231,10 +243,15 @@ func (k *Kernel) turnEntries(
 	switch record.Status {
 	case "queued":
 		return nil
-	case "placed":
-		return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, 0)
-	case "done":
-		return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, record.Answer)
+	case "placed", "done":
+		if record.Entry == 0 {
+			t.Fatalf("fakekernel: submission %d has no entry of its own (%s), so its turn has no definite "+
+				"range; a continue places none, and an input's own entry is what bounds it\n%s",
+				sub.ID, record.Status, k.Logs())
+			return nil
+		}
+		entries := k.readTurn(ctx, t, c, sub, record)
+		return k.boundBySettledRecord(ctx, t, c, sub, entries)
 	case "unanswered":
 		t.Fatalf("fakekernel: submission %d was never answered (%s), so it has no definite range; "+
 			"read the conversation's entries instead\n%s", sub.ID, record.Reason, k.Logs())
@@ -242,6 +259,77 @@ func (k *Kernel) turnEntries(
 	}
 	t.Fatalf("fakekernel: submission %d has an unknown status %q\n%s", sub.ID, record.Status, k.Logs())
 	return nil
+}
+
+// readTurn reads the entries a placed or done submission covers, with the Kernel's own bookkeeping filtered out
+// unless it belongs to this submission.
+func (k *Kernel) readTurn(
+	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission, record Record,
+) []Entry {
+	t.Helper()
+	to := kernel.ID(0)
+	if record.Status == "done" {
+		to = record.Answer
+	}
+	var entries []Entry
+	for _, entry := range k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, to) {
+		if !belongsToTurn(entry, sub) {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// boundBySettledRecord re-reads the record after the transcript and trims what the turn no longer owns.
+//
+// The two reads are separate snapshots, so the run may have ended — and a queued follow-up may have been
+// answered — while the entries were being paged. What the record says now decides: unanswered has no range at
+// all, and done ends at its answer.
+func (k *Kernel) boundBySettledRecord(
+	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission, entries []Entry,
+) []Entry {
+	t.Helper()
+	now := k.record(ctx, t, c, sub)
+	switch now.Status {
+	case "unanswered":
+		t.Fatalf("fakekernel: submission %d was never answered (%s), so it has no definite range; "+
+			"read the conversation's entries instead\n%s", sub.ID, now.Reason, k.Logs())
+		return nil
+	case "done":
+		if now.Answer == 0 {
+			t.Fatalf("fakekernel: submission %d is done without an answer\n%s", sub.ID, k.Logs())
+			return nil
+		}
+		trimmed := entries[:0:0]
+		for _, entry := range entries {
+			if entry.ID <= now.Answer {
+				trimmed = append(trimmed, entry)
+			}
+		}
+		return trimmed
+	}
+	return entries
+}
+
+// belongsToTurn reports whether one entry is part of `sub`'s turn.
+//
+// Model-visible entries are: one conversation runs one turn at a time, so everything between a turn's own entry
+// and its answer was written by that turn. The Kernel's own `droi.*` bookkeeping is not model-visible and can be
+// written while another submission is merely queued — a request memo for a submission that is not even placed.
+// So bookkeeping belongs to a turn only when it names that submission; one that names none is left out rather
+// than attributed to whichever turn happens to be running.
+func belongsToTurn(entry Entry, sub Submission) bool {
+	if !strings.HasPrefix(entry.Kind, "droi.") {
+		return true
+	}
+	var data struct {
+		SubmissionID *kernel.ID `json:"submissionId"`
+	}
+	if len(entry.Data) == 0 || json.Unmarshal(entry.Data, &data) != nil || data.SubmissionID == nil {
+		return false
+	}
+	return *data.SubmissionID == sub.ID
 }
 
 // entriesBetween reads the conversation's entries above `from` and at or below `to` (0: no upper bound),
@@ -279,7 +367,7 @@ func (k *Kernel) entriesBetween(
 				return entries
 			}
 			entries = append(entries, Entry{
-				ID: entry.ID, Kind: entry.Kind, Text: entryText(entry), Raw: entry.Model,
+				ID: entry.ID, Kind: entry.Kind, Text: entryText(entry), Raw: entry.Model, Data: entry.Data,
 			})
 		}
 		if len(page.Cursor) == 0 || string(page.Cursor) == "null" || len(page.Items) == 0 {
@@ -303,6 +391,8 @@ type Entry struct {
 	Text string
 	// Raw is the entry's model JSON, for a test that needs a part this does not decode.
 	Raw json.RawMessage
+	// Data is the entry's own payload, which the Kernel's bookkeeping entries carry instead of a model.
+	Data json.RawMessage
 }
 
 // EntriesAfter is the entries this submission's turn wrote, oldest first.
