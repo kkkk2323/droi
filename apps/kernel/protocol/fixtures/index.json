@@ -10,6 +10,7 @@
     "methods/conversation.create.json",
     "methods/conversation.entries.json",
     "methods/conversation.fork.json",
+    "methods/conversation.import.json",
     "methods/conversation.list.json",
     "methods/conversation.open.json",
     "methods/conversation.submit.json",

@@ -219,6 +219,9 @@ var callers = []caller{
 	{MethodConversationCompact, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.Compact(ctx, *decodeParams[CompactParams](t, raw))
 	}},
+	{MethodConversationImport, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.Import(ctx, *decodeParams[ImportParams](t, raw))
+	}},
 	{MethodConversationFork, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.Fork(ctx, *decodeParams[ForkParams](t, raw))
 	}},

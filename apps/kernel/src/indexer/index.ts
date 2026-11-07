@@ -2,7 +2,13 @@ import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
 import type { EntryRecord, Storage } from '@earendil-works/pi-durable'
 import type { Message } from '@earendil-works/pi-ai'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
-import { type ConversationMeta, type ConversationRow, migrate } from './schema.ts'
+import {
+  type ConversationMeta,
+  type ConversationRow,
+  migrate,
+  readMeta,
+  writeMeta,
+} from './schema.ts'
 
 /**
  * Droi's conversation list, search index and view times, kept in the kernel's one SQLite file.
@@ -31,7 +37,6 @@ export type IndexerOptions = {
   /** Called when a flush fails. A storage error here is worth a warning, not a crash. */
   onError?: (error: unknown) => void
 }
-
 /** A conversation's row as a flush will write it. */
 type PendingRow = {
   id: number
@@ -52,8 +57,49 @@ type PendingRow = {
   eventAt?: number
 }
 
-type PendingEntry = { id: number; conversation: number; text: string }
+/** One indexed entry, with what an import memo carries for the key cache. */
+type PendingEntry = {
+  id: number
+  conversation: number
+  text: string
+  /** Present for a create memo: the only import identity that is global. */
+  import?: ImportMemo
+}
 
+/** What an import memo carries, and which identity it is: a create's key is global, an append's is local. */
+export type ImportMemo = {
+  key: string
+  fingerprint: string
+  entryIds: number[]
+  scope: 'create' | 'append'
+}
+
+/**
+ * An import memo's record, or undefined when the entry is not one.
+ *
+ * `kind` is checked on the entry itself, not on anything inside its data: a `droi.note` whose payload happens
+ * to contain the word must not be mistaken for a memo.
+ */
+function importMemo(entry: EntryRecord): ImportMemo | undefined {
+  if (entry.kind !== 'droi.import') return undefined
+  const data = entry.data as
+    | { key?: unknown; fingerprint?: unknown; entryIds?: unknown; scope?: unknown }
+    | undefined
+  if (typeof data?.key !== 'string' || typeof data.fingerprint !== 'string') return undefined
+  if (!Array.isArray(data.entryIds)) return undefined
+  if (data.scope !== 'create' && data.scope !== 'append') return undefined
+  return {
+    key: data.key,
+    fingerprint: data.fingerprint,
+    entryIds: data.entryIds as number[],
+    scope: data.scope,
+  }
+}
+/** An entry's create-key memo, if it is one: only a create's key is a global identity. */
+function createMemo(entry: EntryRecord): ImportMemo | undefined {
+  const memo = importMemo(entry)
+  return memo?.scope === 'create' ? memo : undefined
+}
 const TITLE_LIMIT = 120
 const PREVIEW_LIMIT = 200
 const SCAN = 500
@@ -94,12 +140,24 @@ export class Indexer {
 
   async open(): Promise<void> {
     await migrate(this.#db)
+    // The import-key cache is complete because it is written with the watermark that covers it. A row count
+    // that disagrees with the marker means rows were lost outside this kernel, and the memos are the only
+    // source: drop the watermarks so the catch-up re-reads them, rather than searching for one key at a time.
+    const marker = await readMeta(this.#db, 'index.importKeys')
+    if (marker !== undefined) {
+      const row = await this.#db.get<{ count: number }>(
+        'SELECT COUNT(*) AS count FROM droi_import_keys',
+      )
+      if ((row?.count ?? 0) !== Number(marker)) {
+        await this.#db.run('DELETE FROM droi_index_watermarks')
+        this.#watermarks.clear()
+      }
+    }
     const rows = await this.#db.all<{ conversation_id: number; entry_id: number }>(
       'SELECT conversation_id, entry_id FROM droi_index_watermarks',
     )
     this.#watermarks = new Map(rows.map((row) => [row.conversation_id, row.entry_id]))
   }
-
   /** The highest entry ID whose text is indexed for one conversation. */
   watermark(conversationId: number): number {
     return this.#watermarks.get(conversationId) ?? 0
@@ -207,8 +265,18 @@ export class Indexer {
           }
         }
         const text = entryText(entry)
+        // A create's key is an identity, so a rebuilt index rebuilds it too, in the same flush as the
+        // watermark that covers the memo.
+        const imported = createMemo(entry)
+        if (text !== '' || imported !== undefined) {
+          this.#entries.push({
+            id: entryId,
+            conversation: id,
+            text,
+            ...(imported === undefined ? {} : { import: imported }),
+          })
+        }
         if (text !== '') {
-          this.#entries.push({ id: entryId, conversation: id, text })
           count++
           // The name comes from the first user message, so a repair that sees only later entries keeps
           // the one the conversation already had.
@@ -351,9 +419,18 @@ export class Indexer {
     const id = entry.conversationId as unknown as number
     const entryId = entry.id as unknown as number
     if (entryId <= this.watermark(id)) return
+    // A create's key is what `droi_import_keys` caches. Only a create's: an append's key belongs to its own
+    // conversation, and replaying it globally would stop the create it shadows. The row is written in the same
+    // flush as the watermark covering this entry, so the cache is complete once the index is.
+    const imported = createMemo(entry)
     const text = entryText(entry)
-    if (text !== '') {
-      this.#entries.push({ id: entryId, conversation: id, text })
+    if (text !== '' || imported !== undefined) {
+      this.#entries.push({
+        id: entryId,
+        conversation: id,
+        text,
+        ...(imported === undefined ? {} : { import: imported }),
+      })
     }
     const pending = this.#row(id, {})
     // The entry's own timestamp moves the conversation's activity: a long run's assistant and tool output
@@ -416,16 +493,16 @@ export class Indexer {
       clearTimeout(this.#timer)
       this.#timer = undefined
     }
-    const entries = this.#entries
     const rows = [...this.#rows.values()]
-    if (entries.length === 0 && rows.length === 0) return
+    if (this.#entries.length === 0 && rows.length === 0) return
+    const entriesToWrite = this.#entries
     this.#entries = []
     this.#rows.clear()
 
     // The watermark a flush may write is the highest entry it stored **per conversation**, and only over
     // entries it actually wrote.
     const next = new Map<number, number>()
-    for (const entry of entries) {
+    for (const entry of entriesToWrite) {
       next.set(entry.conversation, Math.max(next.get(entry.conversation) ?? 0, entry.id))
     }
     for (const [conversationId, entryId] of next) {
@@ -434,7 +511,23 @@ export class Indexer {
     const changed = rows.map((row) => row.id)
     const run = this.#db.transaction(async (tx) => {
       for (const row of rows) await writeRow(tx, row)
-      for (const entry of entries) {
+      for (const entry of entriesToWrite) {
+        // An import's identity is in the same commit Pi stored, so the cache is written in the same flush as
+        // the watermark that covers it: losing one loses both, and the next catch-up rebuilds both.
+        if (entry.import === undefined) continue
+        await tx.run(
+          `INSERT INTO droi_import_keys (key, conversation_id, fingerprint, entry_ids) VALUES (?, ?, ?, ?)
+           ON CONFLICT (key) DO UPDATE SET
+             conversation_id = excluded.conversation_id,
+             fingerprint = excluded.fingerprint,
+             entry_ids = excluded.entry_ids`,
+          entry.import.key,
+          entry.conversation,
+          entry.import.fingerprint,
+          JSON.stringify(entry.import.entryIds),
+        )
+      }
+      for (const entry of entriesToWrite) {
         // FTS5 has no UPSERT; REPLACE is its own conflict handling, and an entry ID is never reused.
         await tx.run(
           'INSERT OR REPLACE INTO droi_entries_fts (rowid, text, conversation) VALUES (?, ?, ?)',
@@ -451,6 +544,10 @@ export class Indexer {
           entryId,
         )
       }
+      const cached = await tx.get<{ count: number }>(
+        'SELECT COUNT(*) AS count FROM droi_import_keys',
+      )
+      await writeMeta(tx, 'index.importKeys', String(cached?.count ?? 0))
     })
     this.#flush = run.then(
       () => undefined,
@@ -463,7 +560,7 @@ export class Indexer {
       }
       if (changed.length > 0) this.#onChange?.(changed)
     } catch (error) {
-      this.#requeue(entries, rows)
+      this.#requeue(entriesToWrite, rows)
       throw error
     } finally {
       this.#flush = undefined
@@ -524,6 +621,54 @@ export class Indexer {
     return this.#db.get<ConversationRow>('SELECT * FROM droi_conversations WHERE id = ?', id)
   }
 
+  /**
+   * The conversation one import key created, with the fingerprint of the call that did it.
+   *
+   * A cache over the transcripts, and only over **create** memos: an append's key is local to its conversation
+   * and must neither reach another one nor be replayed by a create. The row is written in the same flush as the
+   * watermark covering the memo, so a miss means the key never created a conversation — there is nothing to
+   * search for, which is what makes this a cache and not a lookup with a fallback.
+   *
+   * A miss still repairs a cache that lost rows outside this kernel (the row count disagrees with its marker):
+   * the memos are the only source, so the watermarks are dropped and the catch-up re-reads them once.
+   */
+  async importKey(
+    key: string,
+  ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
+    await this.flush()
+    const found = await this.#importKeyRow(key)
+    if (found !== undefined || (await this.#importCacheComplete())) return found
+    await this.#db.run('DELETE FROM droi_index_watermarks')
+    this.#watermarks.clear()
+    await this.catchUp()
+    return this.#importKeyRow(key)
+  }
+
+  async #importKeyRow(
+    key: string,
+  ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
+    const row = await this.#db.get<{
+      conversation_id: number
+      fingerprint: string
+      entry_ids: string
+    }>('SELECT conversation_id, fingerprint, entry_ids FROM droi_import_keys WHERE key = ?', key)
+    if (row === undefined) return undefined
+    return {
+      conversationId: row.conversation_id,
+      fingerprint: row.fingerprint,
+      entryIds: JSON.parse(row.entry_ids) as number[],
+    }
+  }
+
+  /** Whether the import-key cache holds the rows its marker says it does: the index wrote them together. */
+  async #importCacheComplete(): Promise<boolean> {
+    const marker = await readMeta(this.#db, 'index.importKeys')
+    if (marker === undefined) return true
+    const row = await this.#db.get<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM droi_import_keys',
+    )
+    return (row?.count ?? 0) === Number(marker)
+  }
   async byRequestId(requestId: string): Promise<ConversationRow | undefined> {
     await this.flush()
     return this.#db.get<ConversationRow>(
@@ -736,7 +881,7 @@ export function entryText(entry: EntryRecord): string {
 }
 
 /** Entry kinds the kernel writes for its own records, never as conversation text. */
-const BOOKKEEPING = new Set(['droi.meta', 'droi.request'])
+const BOOKKEEPING = new Set(['droi.meta', 'droi.request', 'droi.import'])
 
 /**
  * When an entry was written, from its own message. `undefined` when it has none — a `droi.meta` entry is

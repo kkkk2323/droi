@@ -258,6 +258,12 @@ func (o *Observer) Fork(ctx context.Context, p kernel.ForkParams) (kernel.ForkRe
 	return o.client.Fork(ctx, p)
 }
 
+// Import is conversation.import.
+func (o *Observer) Import(ctx context.Context, p kernel.ImportParams) (kernel.ImportResult, error) {
+	o.record(kernel.MethodConversationImport, p)
+	return o.client.Import(ctx, p)
+}
+
 // Entries is conversation.entries.
 func (o *Observer) Entries(ctx context.Context, p kernel.EntriesParams) (kernel.EntriesResult, error) {
 	o.record(kernel.MethodConversationEntries, p)
@@ -379,6 +385,7 @@ func (o *Observer) methods() []string {
 		kernel.MethodConversationOpen, kernel.MethodConversationUnwatch, kernel.MethodConversationSubmit,
 		kernel.MethodConversationAbort, kernel.MethodSubmissionAbort, kernel.MethodSubmissionGet,
 		kernel.MethodConversationConfig, kernel.MethodConversationCompact, kernel.MethodConversationFork,
+		kernel.MethodConversationImport,
 		kernel.MethodConversationEntries, kernel.MethodConversationUsage, kernel.MethodTaskAbort,
 		kernel.MethodIndexUpdate, kernel.MethodProcessList, kernel.MethodProcessStop,
 		kernel.MethodApprovalRespond, kernel.MethodAskRespond, kernel.MethodMCPList, kernel.MethodMCPSet,

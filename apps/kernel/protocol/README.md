@@ -298,6 +298,7 @@ guess:
 | Limit                            | Value                  | Where it applies        |
 | -------------------------------- | ---------------------- | ----------------------- |
 | `limits.maxEntriesPerPage`       | 200                    | `conversation.entries`  |
+| `limits.maxImportEntriesPerCall` | 1000                   | `conversation.import`   |
 | `limits.maxConversationsPerPage` | 200                    | `conversation.list`     |
 | `limits.viewWindowDefault`       | `{min: 100, max: 200}` | the window a view holds |
 
@@ -390,7 +391,7 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 
 ## Methods
 
-27 methods. "Capability" names the `harness.info.capabilities` flag that says
+28 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
 | Method                 | Params                                                      | Result                                                           | Capability      | M1  |
@@ -430,6 +431,7 @@ Three qualifications a client that reads a range needs:
 | `conversation.configure` | `{id, change}` | `{agent}` | `conversations` | yes |
 | `conversation.compact` | `{id, instructions?}` | `{taskId}` | `compaction` | yes |
 | `conversation.fork` | `{id, at}` | `{conversationId, view}` | `fork` | yes |
+| `conversation.import` | `{id?, key?, entries, agent?, cwd?, kind?, title?, createdAt?, archived?, instructions?}` | `{conversationId, entryIds, replayed?}` | `import` | yes |
 | `conversation.entries` | `{id, query?, limit?, cursor?}` | `{items[], cursor?}` | `conversations` | yes |
 | `conversation.usage` | `{id}` | `{models, tools, context}` | `usage` | yes |
 | `task.abort` | `{taskId}` | `{status}` | `tasks` | yes |
@@ -538,15 +540,20 @@ it settles.
 **`pi.usage`** — `{models: {"provider/model": {input, output, cacheRead, cacheWrite, totalTokens, cost}},
 tools: {...}}`, the ledger `conversation.usage` reads.
 
-Two parts of this section are **not pinned by a test**, because M1 has no way to reach them:
+What `apps/kernel/test/documents.test.ts` pins, and what it does not:
 
-- a `pi.inbox` item with `mode: "write"` — the kernel never submits a write (only Pi's own tools and a
-  future `conversation.submit` with a draft would), so the shape is Pi's (`harness/inbox.d.ts:5-20`) and is
-  documented rather than observed;
-- `nestedTools` for a call a **model-issued tool** makes of itself — the two nested-tool tests use a test
-  extension, which is what the field is for, but no shipped M1 tool makes a nested call.
-
-Everything else in this section is asserted by `apps/kernel/test/documents.test.ts`.
+| Claim                                                              | Pinned                                                                               |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `pi.inbox` items: `id`, `mode`, `content` of a queued input        | yes                                                                                  |
+| `pi.inbox` item with `mode: "write"` and its `entry` draft         | no — the kernel never submits a write; the shape is Pi's (`harness/inbox.d.ts:5-20`) |
+| `pi.live.tools[i].output` while the call runs                      | yes                                                                                  |
+| a `done` slot has no output, seen while its sibling still runs     | yes                                                                                  |
+| `nestedTools` from a call a **tool** makes through `executeTool()` | yes, with a test extension                                                           |
+| `nestedTools` from a **shipped** M1 tool                           | no — no shipped tool makes a nested call; the field arrives with M3's codemode       |
+| `pi.live.compactions` fields while a compaction runs               | yes                                                                                  |
+| `pi.live` has no `compactions` key while idle                      | yes                                                                                  |
+| `generation.retry` as `{at, error}` across attempts                | yes                                                                                  |
+| `pi.agent` holds the **stored** configuration                      | yes, with `conversation.create`/`configure`                                          |
 
 ### The `droi.` entries
 
@@ -568,6 +575,84 @@ so a client can build the card before the feature lands:
 approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
 process and for a subagent. `at` is epoch milliseconds. An entry that has not settled yet is the newest
 record of that `requestId`: the kernel appends one entry per change rather than rewriting.
+
+### `conversation.import`
+
+Write a transcript that already exists — M2's history constructor, and M5's importer for old droid sessions.
+Without `id` it creates the conversation; with `id` it appends one batch to an existing one.
+
+| Param                                                       | Create                | Append                                                    | Meaning                                                   |
+| ----------------------------------------------------------- | --------------------- | --------------------------------------------------------- | --------------------------------------------------------- |
+| `entries`                                                   | required, may be `[]` | required                                                  | Pi entry drafts, at most `limits.maxImportEntriesPerCall` |
+| `id`                                                        | absent                | required                                                  | The conversation to append to; unknown is `-32000`        |
+| `key`                                                       | optional              | optional                                                  | Idempotency key, see below                                |
+| `agent`, `cwd`, `kind`, `title`, `instructions`, `archived` | optional              | **forbidden** (`-32602`, `issues[].path` names the field) | The same fields `conversation.create` takes               |
+| `createdAt`                                                 | optional, epoch ms    | forbidden                                                 | The conversation's creation time, not the import's        |
+
+It answers `{conversationId, entryIds, replayed?}`, where `entryIds` are the IDs the batch's entries got, in
+order. The result carries no view: a forty-entry history's view is only the entries just written, and a caller
+that wants one calls `conversation.open`.
+
+**One batch, one commit.** The entries of one call are written together, so a client never sees half of them,
+and the IDs are consecutive. A batch starts no run, creates no submission and does not touch `pi.live` or
+`pi.inbox`: an import is history, not a turn.
+
+**The timestamps are the messages' own.** `entry.model[j].timestamp` decides when a message happened, and the
+conversation's `lastActivityAt` is the newest of them, so a list sorted by activity sorts the history as it
+unfolded. A message without a timestamp is refused (`-32602`), because inheriting the import's time is exactly
+what an import must not do.
+
+**Usage is recorded.** A `pi.assistant` message that carries `usage` adds it to the conversation's `pi.usage`
+the way a real answer does, so `conversation.usage` works on an imported history too. A missing counter or
+cost counts as zero.
+
+**Only structure is checked.** An imported history is somebody else's past: a tool result with no call before
+it, or an answer that follows no user message, is preserved rather than refused. What is refused is what the
+kernel owns — `droi.meta`, `droi.request` and `droi.import` (`issues[].path` is `entries[i].kind`) — because
+writing one would forge an identity or a memo.
+
+**The key travels in the same commit as the conversation, and means one of two things.** A `droi.import` memo
+holds `{key, fingerprint, entryIds, scope, at}`, written with Pi's own conversation, its meta and its entries, so
+a crash cannot separate them. `scope` is `"create"` or `"append"`:
+
+- a **create** key is global: a retry of the same call answers the conversation it already made. The kernel
+  caches those identities in `droi_import_keys`, written in the same index flush as the watermark covering the
+  memo and rebuilt by the catch-up after an `INDEX_VERSION` reset. The cache is complete once the index is, so a
+  miss means the key never created a conversation — there is no fallback search over the transcripts.
+- an **append** key is local: it replays only inside the conversation that received it. Using one for a create,
+  or a create's key for an append, is `-32013` rather than a guess.
+
+**The fingerprint covers the entries.** The same key with different entries is a different request and answers
+`-32013`, on both paths: a create that would otherwise silently keep the first history, and an append that would
+otherwise answer with the old ids and drop what was asked for.
+
+**An append into a busy conversation is `-32001`.** The check runs inside the commit that writes, against
+`pi.live.run`: a check before it would leave the window a submission can slip through, and an imported entry
+between a run's question and its answer is a transcript that never happened. The conversation's own clock is
+unaffected, and the batch writes nothing.
+
+**One key is admitted once at a time.** Two concurrent calls with the same key converge on one conversation
+rather than race into two.
+
+**Validation is structural, for every field Pi reads, and a `head` must point at something real.** `kind` must be
+a non-empty string; `model` must be Pi's messages with a numeric `timestamp`; `edits` must be
+`{target, action: "omit" | "replace", messages?}` with each replacement message checked in turn; `head` must be
+`"self"` or a **safe** entry ID (at most 2^53−1 — a value outside it reaches SQLite's INTEGER column and poisons
+the Session) that the conversation actually holds. One batch cannot point at itself: on a create there are no
+entries yet, so only `"self"` is a valid head there. Every refusal is `-32602` with the field's path, and nothing
+is stored.
+
+**Activity follows messages only.** A batch with no message time (a `droi.note`, an empty append) leaves
+`lastActivityAt` where it was, and a history imported without `createdAt` takes its clock from its first message,
+not from the time of the import. The workspace is the resolved `cwd` — `agent.cwd` over the top-level one — the
+same value `conversation.create` records. Every usage counter Pi keeps survives (`cacheWrite1h`, `reasoning`
+included), so `conversation.usage` on an imported history matches a real one.
+
+**Documents are not imported.** `pi.agent` comes from `agent`, `pi.usage` from the messages' usage, and
+`pi.live` / `pi.inbox` are run state that only a real run produces — a test that needs those states drives the
+model instead of importing them.
+
+`capabilities.import` says whether this build has it.
 
 ### `model.complete`
 

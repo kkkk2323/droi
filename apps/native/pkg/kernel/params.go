@@ -201,6 +201,50 @@ type AbortSubmissionParams struct {
 	SubmissionID ID `json:"submissionId"`
 }
 
+// ImportParams is conversation.import's params. Without ID it creates a conversation; with
+// ID it appends one batch to an existing one.
+//
+// Entries are Pi entry drafts, sent as JSON: the client does not model them, because
+// what an imported history holds is the caller's own data (Entries, Model, Data).
+type ImportParams struct {
+	// ID is the conversation to append to; absent means create.
+	ID ID `json:"id,omitempty"`
+	// Key makes the batch idempotent. A replay answers the first call's result.
+	Key string `json:"key,omitempty"`
+	// Entries is the batch: at most Limits.MaxImportEntriesPerCall.
+	Entries []ImportEntry `json:"entries"`
+	// The fields below create the conversation and are refused on an append.
+	Agent        *AgentChange `json:"agent,omitempty"`
+	Cwd          string       `json:"cwd,omitempty"`
+	Kind         string       `json:"kind,omitempty"`
+	Title        string       `json:"title,omitempty"`
+	Instructions *string      `json:"instructions,omitempty"`
+	Archived     *bool        `json:"archived,omitempty"`
+	// CreatedAt is the conversation's own beginning, in epoch milliseconds. Absent: its
+	// first message's time.
+	CreatedAt *int64 `json:"createdAt,omitempty"`
+}
+
+// ImportEntry is one entry an import writes: Pi's EntryDraft, with its fields kept as
+// JSON so a caller can write shapes this package does not name.
+type ImportEntry struct {
+	Kind  string          `json:"kind"`
+	Model json.RawMessage `json:"model,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
+	Edits json.RawMessage `json:"edits,omitempty"`
+	Head  json.RawMessage `json:"head,omitempty"`
+}
+
+// ImportResult is what an import wrote.
+type ImportResult struct {
+	ConversationID ID `json:"conversationId"`
+	// EntryIDs are the IDs the batch's entries got, in order. On a replay they are the
+	// first call's.
+	EntryIDs []ID `json:"entryIds"`
+	// Replayed says the key had already been used: nothing was written.
+	Replayed bool `json:"replayed,omitempty"`
+}
+
 // SubmissionGet is where one submission got to.
 //
 // Status is Pi's own: queued, placed, done or unanswered. Entry is the user
@@ -468,6 +512,9 @@ type Limits struct {
 	MaxEntriesPerPage int `json:"maxEntriesPerPage,omitempty"`
 	// MaxConversationsPerPage caps conversation.list, the same way.
 	MaxConversationsPerPage int `json:"maxConversationsPerPage,omitempty"`
+	// MaxImportEntriesPerCall caps one conversation.import batch. A larger one is
+	// refused rather than truncated: splitting is the caller's job.
+	MaxImportEntriesPerCall int `json:"maxImportEntriesPerCall,omitempty"`
 }
 
 // The contract's own limits, for a build that does not publish one.
@@ -537,13 +584,15 @@ type Capabilities struct {
 	Usage         bool `json:"usage"`
 	Tasks         bool `json:"tasks"`
 	Index         bool `json:"index"`
-	Images        bool `json:"images"`
-	Processes     bool `json:"processes"`
-	Approvals     bool `json:"approvals"`
-	Asks          bool `json:"asks"`
-	MCP           bool `json:"mcp"`
-	Skills        bool `json:"skills"`
-	Codemode      bool `json:"codemode"`
+	// Import says conversation.import answers.
+	Import    bool `json:"import"`
+	Images    bool `json:"images"`
+	Processes bool `json:"processes"`
+	Approvals bool `json:"approvals"`
+	Asks      bool `json:"asks"`
+	MCP       bool `json:"mcp"`
+	Skills    bool `json:"skills"`
+	Codemode  bool `json:"codemode"`
 	// Models says model.complete answers; false in M1.
 	Models bool `json:"models"`
 }
