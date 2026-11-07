@@ -14,6 +14,86 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
 )
 
+// childOutcome is what a re-run of this binary, made because it must fail,
+// actually did.
+type childOutcome int
+
+const (
+	// childFailed is the expected outcome: the false pass is closed, and the
+	// caller checks that the failure says why.
+	childFailed childOutcome = iota
+	// childSkipped is a run that could not happen at all: no Kernel binary in
+	// this checkout, so the child skipped and exited 0.
+	childSkipped
+	// childPassed is a child that exited 0 without skipping: the false pass the
+	// test exists to catch is still open, and the parent must fail.
+	childPassed
+)
+
+// judgeChild decides what a child's result means. A skip for want of a Kernel
+// binary is the only zero exit that is not a failure of the test; anything else
+// that exits 0 is exactly the regression these tests look for.
+//
+// With DROI_FAKEKERNEL_REQUIRED set the package fails instead of skipping, so a
+// missing binary arrives here as a non-zero exit and is judged as the failure it
+// is.
+func judgeChild(output []byte, err error) childOutcome {
+	switch {
+	case err != nil:
+		return childFailed
+	case strings.Contains(string(output), messageNoKernelBinary):
+		return childSkipped
+	default:
+		return childPassed
+	}
+}
+
+// messageNoKernelBinary is what fakekernel.Start writes when it skips — and what
+// it fails with when DROI_FAKEKERNEL_REQUIRED is set.
+const messageNoKernelBinary = "no Kernel binary"
+
+// childFailed runs a child that must fail and answers its output.
+//
+// These tests prove a false pass is closed by making the child's failure the
+// assertion, so a child that exits 0 for any other reason is this test's
+// failure, with what as the first line of the message. The one other accepted
+// outcome is the child skipping for want of a Kernel binary: a checkout without
+// `pnpm build:kernel` cannot run it, and calling that a closed false pass would
+// be a claim about a test that never ran.
+func mustFailChild(t *testing.T, cmd *exec.Cmd, what string) string {
+	t.Helper()
+	output, err := cmd.CombinedOutput()
+	switch judgeChild(output, err) {
+	case childSkipped:
+		t.Skip("no Kernel binary: set DROI_KERNEL_BIN or run pnpm build:kernel")
+	case childPassed:
+		t.Fatalf("%s\n%s", what, output)
+	}
+	return string(output)
+}
+
+// TestJudgeChildIsStrictAboutZeroExits is the guard on the guard: a child that
+// exits 0 without the skip message is the regression, not a reason to skip.
+func TestJudgeChildIsStrictAboutZeroExits(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output string
+		err    error
+		want   childOutcome
+	}{
+		{"failed", "--- FAIL: something\n", exec.ErrNotFound, childFailed},
+		{"skipped for the binary", "    x_test.go:1: no Kernel binary: set DROI_KERNEL_BIN\n--- SKIP: x\n", nil, childSkipped},
+		{"passed without skipping", "--- PASS: x\nok  \tdroi/pkg\n", nil, childPassed},
+		{"passed with unrelated output", "", nil, childPassed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := judgeChild([]byte(tc.output), tc.err); got != tc.want {
+				t.Fatalf("judgeChild = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // The Kernel offers `bash` where a shell it trusts exists — Git Bash on Windows — and `powershell` everywhere
 // on Windows. A test that names one tool and writes POSIX shell into it is a test that only passes on the
 // machine it was written on, so both the tool and the syntax come from here.
@@ -185,10 +265,7 @@ func TestFakeKernelUnmatchedFailsTheTest(t *testing.T) {
 	}
 	cmd := exec.Command(self, "-test.run=^TestFakeKernelUnmatchedFailsTheTest$", "-test.v")
 	cmd.Env = append(os.Environ(), "FAKEKERNEL_STRICT_CHILD=1")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("an unscripted prompt did not fail the test:\n%s", output)
-	}
+	output := mustFailChild(t, cmd, "an unscripted prompt did not fail the test:")
 	if !strings.Contains(string(output), "matched the prompt") {
 		t.Fatalf("the failure does not say what went unmatched:\n%s", output)
 	}
@@ -331,10 +408,7 @@ func TestFakeKernelSettledTurnStopsAtItsOwnAnswer(t *testing.T) {
 	}
 	cmd := exec.Command(self, "-test.run=^TestFakeKernelSettledTurnStopsAtItsOwnAnswer$", "-test.v")
 	cmd.Env = append(os.Environ(), "FAKEKERNEL_ENTRIES_CHILD=1", "FAKEKERNEL_STRICT_CHILD=")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("a wait on the first turn accepted the second turn's reply:\n%s", output)
-	}
+	output := mustFailChild(t, cmd, "a wait on the first turn accepted the second turn's reply:")
 	if !strings.Contains(string(output), "settled with") {
 		t.Fatalf("the failure does not say the turn settled without a match:\n%s", output)
 	}
@@ -400,10 +474,7 @@ func TestFakeKernelAbortedTurnHasNoRange(t *testing.T) {
 	} {
 		child := exec.Command(self, "-test.run=^TestFakeKernelAbortedTurnHasNoRange$", "-test.v")
 		child.Env = append(os.Environ(), "FAKEKERNEL_ABORTED_PROBE="+want.probe)
-		run, err := child.CombinedOutput()
-		if err == nil {
-			t.Fatalf("a %s on an aborted turn did not fail:\n%s", want.probe, run)
-		}
+		run := mustFailChild(t, child, "a "+want.probe+" on an aborted turn did not fail:")
 		if !strings.Contains(string(run), want.message) {
 			t.Fatalf("the %s failure does not say %q:\n%s", want.probe, want.message, run)
 		}
@@ -448,10 +519,7 @@ func TestFakeKernelTerminalSubmissionRejectsBeforeMatching(t *testing.T) {
 	}
 	child := exec.Command(self, "-test.run=^TestFakeKernelTerminalSubmissionRejectsBeforeMatching$", "-test.v")
 	child.Env = append(os.Environ(), "FAKEKERNEL_TERMINAL_CHILD=1")
-	run, err := child.CombinedOutput()
-	if err == nil {
-		t.Fatalf("an aborted submission matched a predicate before its status was read:\n%s", run)
-	}
+	run := mustFailChild(t, child, "an aborted submission matched a predicate before its status was read:")
 	if !strings.Contains(string(run), "was never answered") {
 		t.Fatalf("the failure does not say the turn was unanswered:\n%s", run)
 	}
@@ -553,10 +621,7 @@ func TestFakeKernelEntrylessTerminalRejectsBeforeThePredicate(t *testing.T) {
 	}
 	child := exec.Command(self, "-test.run=^TestFakeKernelEntrylessTerminalRejectsBeforeThePredicate$", "-test.v")
 	child.Env = append(os.Environ(), "FAKEKERNEL_ENTRYLESS_CHILD=1")
-	run, err := child.CombinedOutput()
-	if err == nil {
-		t.Fatalf("a terminal submission without a range passed its predicate:\n%s", run)
-	}
+	run := mustFailChild(t, child, "a terminal submission without a range passed its predicate:")
 	if !strings.Contains(string(run), "was never answered (nothing_to_answer)") {
 		t.Fatalf("the failure does not give the Kernel's reason:\n%s", run)
 	}
@@ -654,10 +719,7 @@ func TestFakeKernelEntrylessContinueHasNoRange(t *testing.T) {
 	}
 	child := exec.Command(self, "-test.run=^TestFakeKernelEntrylessContinueHasNoRange$", "-test.v")
 	child.Env = append(os.Environ(), "FAKEKERNEL_CONTINUE_PROBE=1")
-	run, err := child.CombinedOutput()
-	if err == nil {
-		t.Fatalf("an entryless continue named a range:\n%s", run)
-	}
+	run := mustFailChild(t, child, "an entryless continue named a range:")
 	if !strings.Contains(string(run), "has no entry of its own") {
 		t.Fatalf("the failure does not say the continue has no lower bound:\n%s", run)
 	}
