@@ -71,14 +71,22 @@ type Failure struct {
 	Body   string `json:"body,omitempty"`
 }
 
-// Completion is one answer to a model.complete call: a request the Kernel makes beside every
-// conversation, which the contract says it sends unstreamed ("stream": false), so a request whose Stream
-// is false is a completion and never a turn's next reply.
+// The header a model.complete request carries, and the value it carries. pi-ai streams every text call
+// (model.complete is stream().result()), so a body alone cannot tell that call from a conversation turn: a
+// build without the header would hand its title to a Step, or record the miss the Step existed to avoid.
+// The header is what `Completions` is keyed on.
+const (
+	CallHeader        = "X-Droi-Call"
+	CallModelComplete = "model.complete"
+)
+
+// Completion is one answer to a model.complete call: the model request a Host makes beside a conversation,
+// such as the one that names it. It is recognised by the CallHeader header, or by an unstreamed body, so a
+// build that sends neither is still answered here rather than taking a Step.
 //
 // It is not a Step on purpose. A Step carries a tool call, chunks and a delay because a conversation's
 // reply is streamed into a view; a completion has none of those, and letting one take a Step would hand the
-// reply a test is waiting for to a call it never meant (shared/interfaces/m2-sidebar-kernel-requests.md,
-// SK6).
+// reply a test is waiting for to a call it never meant.
 type Completion struct {
 	// Match is a substring of the request's whole prompt, system message included; "" matches any
 	// completion. The system message is where an instruction such as "You name a chat" lives.
@@ -117,18 +125,16 @@ type Scenario struct {
 	// default and the test **fails** instead: an unscripted request means the test is driving a path its
 	// script does not describe, and its assertions would be checking the nothing that came back.
 	AllowUnmatched bool `json:"allowUnmatched,omitempty"`
-	// Fallback is the text for an unmatched request when AllowUnmatched is set; "" answers with a line that
-	// says the request was not scripted, so a test that forgot AllowUnmatched sees why.
+	// Fallback is the text for an unmatched request when AllowUnmatched is set, and for a model.complete that
+	// no Completion matched; "" answers with a line that says the request was not scripted, so a test that
+	// forgot AllowUnmatched sees why.
 	Fallback string `json:"fallback,omitempty"`
 
-	// Completions answer the model.complete calls, in order: the requests the Kernel sends with
-	// "stream": false. They are a separate list from Steps because a completion is not the conversation's
-	// next turn, and an unscripted completion is not a miss: once the Kernel implements model.complete every
-	// test that creates a conversation makes one, and a miss would fail tests that never asked about titles.
+	// Completions answer the model.complete calls, in order: the requests that carry CallHeader, or that are
+	// unstreamed. They are a separate list from Steps because a completion is not the conversation's next
+	// turn, and an unscripted completion is not a miss: once the Kernel implements model.complete every test
+	// that creates a conversation makes one, and a miss would fail tests that never asked about titles.
 	Completions []Completion `json:"completions,omitempty"`
-	// CompletionFallback answers a model.complete that no Completion matched; "" answers FakeTitleAnswer, a
-	// valid answer for the schema the title call sends, so a test that never mentions titles still gets one.
-	CompletionFallback string `json:"completionFallback,omitempty"`
 }
 
 // FakeTitleAnswer is what an unscripted model.complete answers: a valid title for the schema the Kernel's
@@ -144,6 +150,9 @@ type Request struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Stream bool `json:"stream"`
+	// Header is what the request arrived with; it is not part of the body. A test reads CallHeader here to
+	// assert that a completion was marked as one.
+	Header http.Header `json:"-"`
 }
 
 // Prompt is the text of the last user message: what a Step's Match is tested against.
@@ -525,12 +534,15 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	request.Header = r.Header.Clone()
 	m.mu.Lock()
 	m.seen = append(m.seen, request)
 	m.mu.Unlock()
 
-	if !request.Stream {
-		m.serveCompletion(w, request)
+	// A completion is marked by its header, which is how the Kernel sends one: pi-ai streams every text
+	// call, so an unstreamed body is only kept as a second way to recognise it.
+	if !request.Stream || r.Header.Get(CallHeader) == CallModelComplete {
+		m.serveCompletion(r.Context(), w, request)
 		return
 	}
 
@@ -553,31 +565,39 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 // completion is the call beside a conversation, and taking a Step for it would give the reply a test is
 // waiting for to a call it never meant. One that matches no Completion is answered anyway and is not a
 // miss — once the Kernel implements model.complete, every conversation makes one.
-func (m *scriptedModel) serveCompletion(w http.ResponseWriter, request Request) {
-	matched := m.takeCompletion(request.FullPrompt())
-	m.mu.Lock()
-	m.taken = append(m.taken, request)
-	m.mu.Unlock()
+//
+// A streamed request is answered as a stream, because that is the shape the Kernel reads: the same SSE
+// chunks a conversation's reply arrives in. The answer's text is the whole title, so a caller collecting the
+// stream gets it in one piece.
+func (m *scriptedModel) serveCompletion(ctx context.Context, w http.ResponseWriter, request Request) {
+	matched := m.takeCompletion(request)
 	if matched.Failure != nil {
 		m.fail(w, matched.Failure)
 		return
 	}
 	text := matched.Text
 	if text == "" {
-		text = m.scenario.CompletionFallback
+		text = m.scenario.Fallback
 	}
 	if text == "" {
 		text = FakeTitleAnswer
 	}
 	m.handlers.Add(1)
 	defer m.handlers.Done()
+	if request.Stream {
+		m.stream(ctx, w, Step{Text: text})
+		return
+	}
 	m.whole(w, Step{Text: text})
 }
 
-// takeCompletion removes and returns the first Completion whose Match the prompt satisfies.
-func (m *scriptedModel) takeCompletion(prompt string) Completion {
+// takeCompletion records the request and removes the first Completion whose Match its prompt satisfies, under
+// one lock, so Completions() is the order they were answered in.
+func (m *scriptedModel) takeCompletion(request Request) Completion {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.taken = append(m.taken, request)
+	prompt := request.FullPrompt()
 	for i, completion := range m.answers {
 		if completion.Match != "" && !strings.Contains(prompt, completion.Match) {
 			continue
@@ -598,19 +618,23 @@ func (m *scriptedModel) completions() []Request {
 // fail answers a request the way a provider does, and closes the connection when Status is 0, which is what
 // a network drop looks like to the Kernel.
 func (m *scriptedModel) fail(w http.ResponseWriter, failure *Failure) {
-	if failure.Status == 0 {
+	status := failure.Status
+	if status == 0 {
 		if hijacker, ok := w.(http.Hijacker); ok {
 			if conn, _, err := hijacker.Hijack(); err == nil {
 				_ = conn.Close()
 				return
 			}
 		}
+		// Nothing to drop: answer a failed request rather than writing a status of 0, which the writer
+		// rejects.
+		status = http.StatusInternalServerError
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(failure.Status)
+	w.WriteHeader(status)
 	text := failure.Body
 	if text == "" {
-		text = http.StatusText(failure.Status)
+		text = http.StatusText(status)
 	}
 	_, _ = io.WriteString(w, `{"error":{"message":`+quote(text)+`}}`)
 }
