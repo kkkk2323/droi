@@ -482,8 +482,10 @@ func TestFakeKernelDoneSubmissionStillMatches(t *testing.T) {
 // never see it in time.
 func TestFakeKernelPlacedTurnSeesItsOwnToolResult(t *testing.T) {
 	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
-		{Call: &fakekernel.Call{Name: "bash", Arguments: map[string]any{"command": "echo placed-own-result"}}},
-		{Text: "slow answer", Delay: 3 * time.Second},
+		{Call: &fakekernel.Call{Name: shellTool(), Arguments: map[string]any{
+			"command": echoCommand("placed-own-result"),
+		}}},
+		{Text: "slow answer", Delay: 5 * time.Second},
 	}})
 	c := k.Dial(t)
 	id := k.CreateConversation(t, c)
@@ -497,7 +499,7 @@ func TestFakeKernelPlacedTurnSeesItsOwnToolResult(t *testing.T) {
 	if record := k.Record(t, c, sub, 5*time.Second); record.Status != "placed" {
 		t.Fatalf("the submission is %q while its answer is still pending, want placed: %+v", record.Status, record)
 	}
-	// Half a second, far under the three the answer takes: only the tool result can be there yet.
+	// Two seconds, well under the five the answer takes: only the tool result can be there yet.
 	entries := k.WaitForEntries(t, c, sub, func(entries []fakekernel.Entry) bool {
 		for _, entry := range entries {
 			if entry.Kind == "pi.tool-result" && strings.Contains(entry.Text, "placed-own-result") {
@@ -505,7 +507,7 @@ func TestFakeKernelPlacedTurnSeesItsOwnToolResult(t *testing.T) {
 			}
 		}
 		return false
-	}, 500*time.Millisecond)
+	}, 2*time.Second)
 	if len(entries) == 0 || entries[0].Kind != "pi.user" {
 		t.Fatalf("a placed turn does not start at the user's own entry: %+v", entries)
 	}
