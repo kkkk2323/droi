@@ -438,11 +438,9 @@ func TestKernelSupervisorKillsASidecarThatIgnoresTheStopSignal(t *testing.T) {
 	if st := s.State(); st.Status != KernelStopped {
 		t.Fatalf("state after Stop: %+v", st)
 	}
-	// The process is gone: a signal no longer reaches it.
-	if process, err := os.FindProcess(running.PID); err == nil && process.Signal(syscall.Signal(0)) == nil {
-		_ = process.Kill()
-		t.Fatalf("pid %d is still alive after Stop", running.PID)
-	}
+	// The process is gone: a signal no longer reaches it — after the reap,
+	// which is not the instant the kill returns.
+	waitGoneUnix(t, running.PID)
 }
 
 // A sidecar whose runtime prints a line before the handshake still starts: the

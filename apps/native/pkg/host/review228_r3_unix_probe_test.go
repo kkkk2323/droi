@@ -49,9 +49,9 @@ func TestReview228R3CrashDoesNotOrphanOldProcessGroup(t *testing.T) {
 	defer syscall.Kill(pid, syscall.SIGKILL)
 	defer read.Close()
 	s.Stop()
-	if err := syscall.Kill(pid, 0); err == nil {
-		t.Fatalf("crashed sidecar was forgotten before its group was killed: grandchild pid=%d remains after Stop", pid)
-	}
+	// The crash's generation is retired before the next one starts, so the
+	// grandchild goes with it — after the reap, not the signal.
+	waitGoneUnix(t, pid)
 }
 
 func TestReview228R3DetachedStdoutHolderHelper(t *testing.T) {

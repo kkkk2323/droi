@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -49,10 +48,7 @@ func TestReview228StopKillsTermIgnoringGrandchild(t *testing.T) {
 	}
 	defer child.Kill()
 	s.Stop()
-	if err := child.Signal(syscall.Signal(0)); err == nil {
-		// What is left, if anything: a zombie is not a running process, and
-		// only its parent can reap it.
-		out, _ := exec.Command("ps", "-o", "pid,ppid,stat,pgid,command", "-p", strconv.Itoa(pid)).Output()
-		t.Fatalf("SIGTERM-ignoring grandchild pid=%d answers signal 0 after Stop returned; StopGrace=%s > WaitDelay=%s\n%s", pid, s.StopGrace, waitDelay, out)
-	}
+	// Stop kills the group; the process is gone once the kernel has reaped it,
+	// which is the next few milliseconds, not the instant the signal returns.
+	waitGoneUnix(t, pid)
 }
