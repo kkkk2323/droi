@@ -2,8 +2,11 @@ package transcript_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -158,4 +161,117 @@ func boolWord(b bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+// TestARealKernelAbortMarksTheToolInterrupted is the everyday shape review round 2 found: the user starts a long
+// command and presses Stop. The Kernel writes an isError result whose diagnostics say "aborted", with the harness's
+// wrapper as its text, and the row showed a red failure and the wrapper's words.
+func TestARealKernelAbortMarksTheToolInterrupted(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Call: &fakekernel.Call{Name: shellTool(), Arguments: map[string]any{
+			"command": sleepCommand(20),
+		}}},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	sub, err := c.Submit(ctx, kernel.SubmitParams{ID: id, Input: "run it"})
+	if err != nil {
+		t.Fatalf("conversation.submit: %v", err)
+	}
+
+	// Wait until the tool is really running, then stop the turn the way the window's Stop button does.
+	waitForTool(t, c, id, 30*time.Second)
+	if err := c.Abort(ctx, kernel.AbortParams{ID: id}); err != nil {
+		t.Fatalf("conversation.abort: %v", err)
+	}
+	_ = sub
+
+	entries := transcript.BuildView(waitForStoppedTool(t, c, id, 30*time.Second))
+	var call *transcript.ToolCall
+	for _, e := range entries {
+		for _, b := range e.Blocks {
+			if len(b.Calls) > 0 {
+				call = b.Calls[0]
+			}
+		}
+	}
+	if call == nil {
+		t.Fatalf("no tool call in the transcript after the abort: %s", describe(entries))
+	}
+	shown := transcript.ReadResult(call)
+	if shown.IsError {
+		t.Error("the aborted tool reads as a failure")
+	}
+	if !shown.Interrupted {
+		t.Errorf("the aborted tool does not read as interrupted: %+v", shown)
+	}
+	if strings.Contains(shown.Text, "<harness>") || strings.Contains(shown.Text, "[error]") {
+		t.Errorf("the harness wrapper is still in the row: %q", shown.Text)
+	}
+	if label, pending := transcript.ClusterLabel([]*transcript.ToolCall{call}); pending {
+		t.Errorf("the cluster says %q after the abort", label)
+	}
+}
+
+// waitForTool waits until the view's pi.live names a tool still running: a tool result entry appears only once the
+// tool is over, so waiting for one is waiting for the wrong thing — the abort has to land while it runs.
+func waitForTool(t testing.TB, c *kernel.Client, id kernel.ID, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		view := openView(t, c, id)
+		var live struct {
+			Tools []struct {
+				Status string `json:"status"`
+			} `json:"tools"`
+		}
+		if raw := view.Doc("pi.live"); len(raw) > 0 && json.Unmarshal(raw, &live) == nil {
+			for _, tool := range live.Tools {
+				if tool.Status == "running" {
+					return
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no tool ran within %s", within)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// waitForStoppedTool waits until the aborted turn's result entry is in the transcript, and answers the view.
+func waitForStoppedTool(t testing.TB, c *kernel.Client, id kernel.ID, within time.Duration) kernel.View {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		view := openView(t, c, id)
+		for _, e := range view.Entries {
+			if e.Kind == kernel.EntryToolResult {
+				return view
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the aborted turn left no tool result within %s", within)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// shellTool is the shell the Kernel offers on this platform: bash where it can trust one, PowerShell on Windows.
+func shellTool() string {
+	if runtime.GOOS == "windows" {
+		return "powershell"
+	}
+	return "bash"
+}
+
+// sleepCommand is a command that outlives the abort, in whichever shell the platform offers.
+func sleepCommand(seconds int) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("Start-Sleep -Seconds %d", seconds)
+	}
+	return fmt.Sprintf("sleep %d", seconds)
 }

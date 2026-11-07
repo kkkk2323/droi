@@ -84,9 +84,12 @@ type Block struct {
 }
 
 type Entry struct {
-	ID        string
-	User      bool
-	Blocks    []Block
+	ID     string
+	User   bool
+	Blocks []Block
+	// Note marks a row that is Droi's own remark rather than either side of the conversation. Nothing answers it,
+	// so nothing folds into it and it closes no turn.
+	Note      bool
 	CreatedAt float64
 	IsError   bool
 }
@@ -514,6 +517,11 @@ func TurnEnds(entries []*Entry, running bool) map[string]TurnEnd {
 	var start float64
 	hasStart := false
 	for i, e := range entries {
+		if e.Note {
+			// A note belongs to neither side, so it neither starts nor ends a turn. Counting one as the end gave the
+			// turn a closing row with time zero and took the note into Copy.
+			continue
+		}
 		if e.User {
 			if !hasStart {
 				start, hasStart = e.CreatedAt, true
@@ -523,7 +531,10 @@ func TurnEnds(entries []*Entry, running bool) map[string]TurnEnd {
 		replied := len(e.Blocks) > 0 && e.Blocks[len(e.Blocks)-1].Kind == Text
 		closes := !running
 		if i+1 < len(entries) {
-			closes = entries[i+1].User && replied
+			// A turn closes when the user speaks again — or when Droi adds a note, which belongs to neither side
+			// and therefore ends what came before it.
+			next := entries[i+1]
+			closes = (next.User || next.Note) && replied
 		}
 		if !closes {
 			continue
@@ -552,7 +563,7 @@ func FormatTurnEnd(end TurnEnd, now time.Time) string {
 func ReplyText(entries []*Entry) string {
 	var parts []string
 	for _, e := range entries {
-		if e.User {
+		if e.User || e.Note {
 			continue
 		}
 		for _, b := range e.Blocks {
