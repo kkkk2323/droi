@@ -779,23 +779,46 @@ func TestAClosedSupervisorStartsNoPublisher(t *testing.T) {
 // A sidecar that answers kernel.shutdown is stopped by asking it, not by a
 // signal: that is the only orderly stop on Windows, where the signal a parent
 // can send is TerminateProcess.
+// The ask must be the thing that stops Kernel, not a formality in front of a
+// signal: this sends the request the contract describes, to the sidecar the
+// test launched, and fails if the stop needed the fallback at all.
 func TestKernelSupervisorAsksKernelToShutDown(t *testing.T) {
 	w := newWatch()
 	s := w.supervisor(helperSpawn(t, "GO_KERNEL_SHUTDOWN_EXITS=1"))
-	var asked atomic.Int32
-	s.AskShutdown = func(context.Context) error {
+	s.HealthEvery = -1
+	var asked, fellBack atomic.Int32
+	s.Terminate = func(cmd *exec.Cmd) {
+		fellBack.Add(1)
+		signalProcess(cmd)
+	}
+	var port int
+	s.AskShutdown = func(ctx context.Context) error {
 		asked.Add(1)
 		// The contract: the call answers, then the sidecar exits. The helper
-		// exits on the request, which is what this stands in for.
-		return nil
+		// exits on this request, which is what makes this the real path. The
+		// port is the one the running state named: Stop publishes "stopped"
+		// before it asks, so State() no longer carries it.
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			fmt.Sprintf("http://127.0.0.1:%d/rpc", port), nil)
+		if err != nil {
+			return err
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		return res.Body.Close()
 	}
 	s.Start()
-	w.waitState(t, KernelRunning)
+	port = w.waitState(t, KernelRunning).Port
 	started := time.Now()
 	s.Stop()
 	elapsed := time.Since(started)
 	if got := asked.Load(); got != 1 {
 		t.Fatalf("the sidecar was asked to shut down %d times, want once", got)
+	}
+	if got := fellBack.Load(); got != 0 {
+		t.Fatalf("the stop needed the fallback signal %d times: the request did not stop the sidecar", got)
 	}
 	if elapsed > 6*time.Second {
 		t.Fatalf("Stop took %s after an answered shutdown", elapsed)
