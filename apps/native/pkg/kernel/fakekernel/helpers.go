@@ -28,15 +28,16 @@ type Submission struct {
 }
 
 // Record is where one submission is: the Kernel's answer to `submission.get`.
+//
+// It carries no end for a turn that answered nothing: Pi keeps no link from a submission to the run task that
+// carried it, so the Kernel reports only what Pi stores and a client reads the status (see
+// shared/interfaces/fake-kernel.md).
 type Record struct {
 	Status string
 	// Entry is the user's own entry; absent while the submission is still queued.
 	Entry kernel.ID
 	// Answer is the entry that answered it; present once Status is "done".
 	Answer kernel.ID
-	// Last is the highest entry this submission's turn wrote. It equals Answer for a done submission, and is
-	// the only end an unanswered one has: a turn cut short still owns the entries it wrote.
-	Last   kernel.ID
 	Reason string
 }
 
@@ -85,12 +86,11 @@ func (k *Kernel) Submit(t testing.TB, c *kernel.Client, id kernel.ID, text strin
 	return Submission{Conversation: id, ID: result.SubmissionID}
 }
 
-// submissionRecord asks the Kernel where this submission is, including the end of its turn.
+// submissionRecord asks the Kernel where this submission is.
 type submissionRecord struct {
 	Status string          `json:"status"`
 	Entry  json.RawMessage `json:"entry"`
 	Answer json.RawMessage `json:"answer"`
-	Last   json.RawMessage `json:"last"`
 	Reason string          `json:"reason"`
 }
 
@@ -114,30 +114,29 @@ func (k *Kernel) record(ctx context.Context, t testing.TB, c *kernel.Client, sub
 		Status: answer.Status,
 		Entry:  idOf(answer.Entry),
 		Answer: idOf(answer.Answer),
-		Last:   idOf(answer.Last),
 		Reason: answer.Reason,
 	}
 }
 
-// finishedTurn is what a settled submission's turn covers, or why there is nothing to wait for.
+// finishedTurn says whether a submission's turn is complete, or fails the test when it can never be.
 //
 // Every terminal submission is final: waiting longer cannot add an entry. An `unanswered` one — aborted, or
 // ended without a reply — is reported with its reason at once, rather than spending the caller's timeout to
 // say "deadline exceeded" about something the Kernel already knew.
-func (k *Kernel) finishedTurn(t testing.TB, sub Submission, record Record) (end kernel.ID, finished bool) {
+func (k *Kernel) finishedTurn(t testing.TB, sub Submission, record Record) (done bool) {
 	t.Helper()
 	switch record.Status {
 	case "queued", "placed":
-		return 0, false
+		return false
 	case "done":
-		return record.Answer, true
+		return true
 	case "unanswered":
 		t.Fatalf("fakekernel: submission %d was never answered (%s); its turn is not a reply",
 			sub.ID, record.Reason)
-		return 0, true
+		return true
 	}
 	// A status this package does not know: treat it as unfinished, so a new one does not silently pass tests.
-	return 0, false
+	return false
 }
 
 // WaitForReply waits until this submission's own answer holds text, and returns the answer's text.
@@ -151,9 +150,9 @@ func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, te
 	defer cancel()
 	for {
 		record := k.record(ctx, t, c, sub)
-		if answer, finished := k.finishedTurn(t, sub, record); finished {
-			for _, entry := range k.entriesBetween(ctx, t, c, sub.Conversation, answer-1, answer) {
-				if entry.ID != answer || entry.Kind != "pi.assistant" {
+		if k.finishedTurn(t, sub, record) {
+			for _, entry := range k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, record.Answer) {
+				if entry.ID != record.Answer || entry.Kind != "pi.assistant" {
 					continue
 				}
 				if got := entry.Text; strings.Contains(got, text) {
@@ -163,7 +162,7 @@ func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, te
 					sub.ID, entry.Text, text)
 			}
 			t.Fatalf("fakekernel: submission %d answered entry %d, which is not in the transcript\n%s",
-				sub.ID, answer, k.Logs())
+				sub.ID, record.Answer, k.Logs())
 		}
 		select {
 		case <-ctx.Done():
@@ -177,8 +176,8 @@ func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, te
 
 // WaitForEntries waits until this submission's turn holds an entry satisfying match, and returns the turn.
 //
-// Both ends come from the Kernel, so a later turn's entries are never part of this one — and a turn that has
-// settled without a match fails at once rather than waiting for entries that cannot arrive.
+// The bounds come from the submission's own status, so a later turn's entries are never part of this one — and
+// a turn that has settled without a match fails at once rather than waiting for entries that cannot arrive.
 func (k *Kernel) WaitForEntries(
 	t testing.TB, c *kernel.Client, sub Submission, match func([]Entry) bool, within time.Duration,
 ) []Entry {
@@ -190,14 +189,14 @@ func (k *Kernel) WaitForEntries(
 		// The status decides first. A submission that ended without an answer is terminal, and saying why is
 		// more useful than any entry a predicate could find in it — a predicate matching the user's own entry
 		// would otherwise report success for a turn that was cut short.
-		_, finished := k.finishedTurn(t, sub, record)
+		done := k.finishedTurn(t, sub, record)
 		entries := k.turnEntries(ctx, t, c, sub, record)
 		if match(entries) {
 			return entries
 		}
 		// A settled submission is final: a queued one that was withdrawn has no turn at all, and a done one
 		// cannot grow. Waiting further would only turn a known answer into a timeout.
-		if finished {
+		if done {
 			t.Fatalf("fakekernel: submission %d settled with %d entries, none matching: %+v\n%s",
 				sub.ID, len(entries), entries, k.Logs())
 		}
@@ -211,23 +210,38 @@ func (k *Kernel) WaitForEntries(
 	}
 }
 
-// turnEntries is the transcript of one submission, bounded at both ends.
+// turnEntries is the transcript of one submission, bounded by its status.
 //
-// The ends are the Kernel's: `entry` is the user's own entry and `last` is the highest entry the turn wrote —
-// the answer for a done submission, and the last entry of a run that was cut short for an unanswered one. A
-// submission that has not been placed has written nothing, so its turn is empty rather than "everything so
-// far".
+// The Kernel reports Pi's own fields — `entry`, `answer`, `status` — and nothing else, because Pi keeps no link
+// from a submission to the run task that carried it. So the bounds are read off the status:
+//
+//   - queued: not placed yet, so it wrote nothing; its turn is empty rather than "everything so far";
+//   - placed: from its own entry to the newest entry of the conversation. One conversation runs one turn at a
+//     time, and a later input either queues (it has no entry yet) or steers into this same run, which Pi
+//     answers with this submission's own `done` record — so every entry after `entry` is this turn's, tool
+//     results and partial answers included while it still runs;
+//   - done: from its own entry to its own answer, both durable and both Pi's.
+//
+// An unanswered submission has no definite range, so it has none here: it wrote entries that nothing
+// distinguishes from a later turn's, and a guessed end would be somebody else's reply. Read the conversation.
 func (k *Kernel) turnEntries(
 	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission, record Record,
 ) []Entry {
 	t.Helper()
-	if record.Entry == 0 {
+	switch record.Status {
+	case "queued":
+		return nil
+	case "placed":
+		return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, 0)
+	case "done":
+		return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, record.Answer)
+	case "unanswered":
+		t.Fatalf("fakekernel: submission %d was never answered (%s), so it has no definite range; "+
+			"read the conversation's entries instead\n%s", sub.ID, record.Reason, k.Logs())
 		return nil
 	}
-	if record.Last == 0 {
-		return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, 0)
-	}
-	return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, record.Last)
+	t.Fatalf("fakekernel: submission %d has an unknown status %q\n%s", sub.ID, record.Status, k.Logs())
+	return nil
 }
 
 // entriesBetween reads the conversation's entries above `from` and at or below `to` (0: no upper bound),

@@ -340,10 +340,11 @@ func TestFakeKernelSettledTurnStopsAtItsOwnAnswer(t *testing.T) {
 	}
 }
 
-// TestFakeKernelAbortedTurnIsTerminal is the last false pass: a submission that ended without an answer is
-// final, so a wait on it must fail at once with the Kernel's reason — and its entries must stop where its own
-// turn stopped, not run through the next turn's reply.
-func TestFakeKernelAbortedTurnIsTerminal(t *testing.T) {
+// TestFakeKernelAbortedTurnHasNoRange is the last false pass: a submission that ended without an answer is
+// final, so a wait on it fails at once with the Kernel's reason — and its entries cannot be named, because the
+// Kernel has no field for them and a guess would adopt a later turn.
+func TestFakeKernelAbortedTurnHasNoRange(t *testing.T) {
+	probe := os.Getenv("FAKEKERNEL_ABORTED_PROBE")
 	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
 		// The delay keeps the run in flight long enough to abort it, which is the state under test.
 		{Match: "first", Text: "too late", Delay: 2 * time.Second},
@@ -368,41 +369,44 @@ func TestFakeKernelAbortedTurnIsTerminal(t *testing.T) {
 	if record.Reason == "" {
 		t.Fatal("an unanswered submission has no reason")
 	}
-	// Its turn has a definite end: the entries it wrote, and nothing after them.
-	entries := k.EntriesAfter(t, c, slow, 30*time.Second)
-	for _, entry := range entries {
-		if record.Last != 0 && entry.ID > record.Last {
-			t.Fatalf("the aborted turn includes entry %d, after its own last %d", entry.ID, record.Last)
-		}
-	}
-	// The later turn's reply is not part of it.
-	second := k.Submit(t, c, id, "second")
-	k.WaitForReply(t, c, second, "second answer", 30*time.Second)
-	after := k.EntriesAfter(t, c, slow, 30*time.Second)
-	for _, entry := range after {
-		if strings.Contains(entry.Text, "second answer") {
-			t.Fatalf("the aborted turn now holds the next turn's reply: %+v", entry)
-		}
-	}
 
-	// And a wait on it fails immediately, saying why, rather than after its timeout.
-	if os.Getenv("FAKEKERNEL_ABORTED_CHILD") != "" {
+	// The two things that must fail on it. Each is itself a test failure, so a child process checks it.
+	switch probe {
+	case "wait":
 		started := time.Now()
 		k.WaitForReply(t, c, slow, "anything", 10*time.Second)
 		t.Fatalf("a wait on an aborted turn returned after %s instead of failing", time.Since(started))
+		return
+	case "entries":
+		k.EntriesAfter(t, c, slow, 5*time.Second)
+		t.Fatal("an aborted turn named a range instead of reporting that it has none")
+		return
 	}
+
+	// A later turn changes nothing about that record: there is no stored end to drift.
+	second := k.Submit(t, c, id, "second")
+	k.WaitForReply(t, c, second, "second answer", 30*time.Second)
+	if again := k.Record(t, c, slow, 30*time.Second); again != record {
+		t.Fatalf("the aborted record changed to %+v, was %+v", again, record)
+	}
+
 	self, err := os.Executable()
 	if err != nil {
 		t.Skipf("no test binary to re-run: %v", err)
 	}
-	child := exec.Command(self, "-test.run=^TestFakeKernelAbortedTurnIsTerminal$", "-test.v")
-	child.Env = append(os.Environ(), "FAKEKERNEL_ABORTED_CHILD=1")
-	run, err := child.CombinedOutput()
-	if err == nil {
-		t.Fatalf("a wait on an aborted turn did not fail:\n%s", run)
-	}
-	if !strings.Contains(string(run), "was never answered") {
-		t.Fatalf("the failure does not say the turn was unanswered:\n%s", run)
+	for _, want := range []struct{ probe, message string }{
+		{"wait", "was never answered"},
+		{"entries", "has no definite range"},
+	} {
+		child := exec.Command(self, "-test.run=^TestFakeKernelAbortedTurnHasNoRange$", "-test.v")
+		child.Env = append(os.Environ(), "FAKEKERNEL_ABORTED_PROBE="+want.probe)
+		run, err := child.CombinedOutput()
+		if err == nil {
+			t.Fatalf("a %s on an aborted turn did not fail:\n%s", want.probe, run)
+		}
+		if !strings.Contains(string(run), want.message) {
+			t.Fatalf("the %s failure does not say %q:\n%s", want.probe, want.message, run)
+		}
 	}
 }
 
@@ -470,5 +474,91 @@ func TestFakeKernelDoneSubmissionStillMatches(t *testing.T) {
 	}, 30*time.Second)
 	if len(entries) == 0 {
 		t.Fatal("a done turn matched nothing")
+	}
+}
+
+// TestFakeKernelPlacedTurnSeesItsOwnToolResult is the fourth-round false timeout: while a turn is placed, its
+// completed tool result is already in the transcript, and a bounded read that waited for the final answer would
+// never see it in time.
+func TestFakeKernelPlacedTurnSeesItsOwnToolResult(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Call: &fakekernel.Call{Name: "bash", Arguments: map[string]any{"command": "echo placed-own-result"}}},
+		{Text: "slow answer", Delay: 3 * time.Second},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	sub := k.Submit(t, c, id, "run a tool")
+	for deadline := time.Now().Add(5 * time.Second); len(k.Requests()) < 2; {
+		if time.Now().After(deadline) {
+			t.Fatal("the model was never asked again after its tool")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if record := k.Record(t, c, sub, 5*time.Second); record.Status != "placed" {
+		t.Fatalf("the submission is %q while its answer is still pending, want placed: %+v", record.Status, record)
+	}
+	// Half a second, far under the three the answer takes: only the tool result can be there yet.
+	entries := k.WaitForEntries(t, c, sub, func(entries []fakekernel.Entry) bool {
+		for _, entry := range entries {
+			if entry.Kind == "pi.tool-result" && strings.Contains(entry.Text, "placed-own-result") {
+				return true
+			}
+		}
+		return false
+	}, 500*time.Millisecond)
+	if len(entries) == 0 || entries[0].Kind != "pi.user" {
+		t.Fatalf("a placed turn does not start at the user's own entry: %+v", entries)
+	}
+}
+
+// TestFakeKernelEntrylessTerminalRejectsBeforeThePredicate is the other half of the same finding: a continue
+// that ends `nothing_to_answer` has neither an entry nor an answer, so it has no range at all — and its
+// predicate must not run over "everything so far".
+func TestFakeKernelEntrylessTerminalRejectsBeforeThePredicate(t *testing.T) {
+	if os.Getenv("FAKEKERNEL_ENTRYLESS_CHILD") != "" {
+		k := fakekernel.Start(t, fakekernel.Scenario{})
+		c := k.Dial(t)
+		id := k.CreateConversation(t, c)
+		var submitted struct {
+			SubmissionID kernel.ID `json:"submissionId"`
+		}
+		if err := c.Call(t.Context(), "conversation.submit", map[string]any{"id": id, "continue": true}, &submitted); err != nil {
+			t.Fatalf("conversation.submit continue: %v", err)
+		}
+		sub := fakekernel.Submission{Conversation: id, ID: submitted.SubmissionID}
+		for deadline := time.Now().Add(10 * time.Second); ; {
+			record := k.Record(t, c, sub, 5*time.Second)
+			if record.Status == "unanswered" {
+				if record.Entry != 0 || record.Answer != 0 {
+					t.Fatalf("a nothing_to_answer continue has ends: %+v", record)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the continue never settled: %+v", record)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		k.WaitForEntries(t, c, sub, func([]fakekernel.Entry) bool {
+			t.Fatal("the predicate ran on a terminal submission that has no range")
+			return true
+		}, 30*time.Second)
+		return
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("no test binary to re-run: %v", err)
+	}
+	child := exec.Command(self, "-test.run=^TestFakeKernelEntrylessTerminalRejectsBeforeThePredicate$", "-test.v")
+	child.Env = append(os.Environ(), "FAKEKERNEL_ENTRYLESS_CHILD=1")
+	run, err := child.CombinedOutput()
+	if err == nil {
+		t.Fatalf("a terminal submission without a range passed its predicate:\n%s", run)
+	}
+	if !strings.Contains(string(run), "was never answered (nothing_to_answer)") {
+		t.Fatalf("the failure does not give the Kernel's reason:\n%s", run)
+	}
+	if strings.Contains(string(run), "the predicate ran") {
+		t.Fatalf("the predicate ran before the status was read:\n%s", run)
 	}
 }
