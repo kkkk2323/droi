@@ -31,8 +31,12 @@ What names the app built from Droi's packages: its name, the short id of its fol
 _Avoid_: white label, skin, theme
 
 **Extension**:
-What an app built on Droi adds to it through `droiapp.Run`'s seams or, since 2.0, by adding a Kernel extension: MCP servers, words for the System Prompt Addition, tools, subcommands, pages, Settings sections, and how tool calls and json-render elements show (ADRs 0029, 0038). It plugs into seams Droi has; it does not patch Droi.
+What an app built on Droi adds to it through `droiapp.Run`'s seams: MCP servers, words for the System Prompt Addition, subcommands, pages, Settings sections, a sign-in page, and how tool calls and json-render elements show. On the Kernel each seam has a counterpart, and droid hooks are the one that does not map (ADR 0041). It plugs into seams Droi has; it does not patch Droi.
 _Avoid_: plugin, add-on, module
+
+**Downstream App**:
+An app that runs Droi's window under its own brand through `droiapp.Run` and one Extension (ADR 0029). Two exist: **Anlan Droi** and **WeCom Droi**. Both stay on the Droi release they were built against, 1.90.0 and 1.55.0, and each is upgraded on its own after 2.0; what 2.0 keeps for them is the seam, not a compatibility mode (ADR 0041).
+_Avoid_: fork, white label, skin
 **Gateway**:
 The part of the Host that lets a Client reach the Kernel. It checks the Pairing Token or the Local Token and passes the Kernel's protocol through without touching a frame; the credential is not its business any more (ADR 0038). It creates and trashes Scratch Workspaces, and answers a Client's requests to restart the Kernel or update the Host.
 _Avoid_: proxy, API server, Hono server, web server
@@ -161,7 +165,7 @@ A model the Kernel runs that is not Factory's: a pi-ai provider with its own bas
 _Avoid_: BYOK model, external model, third-party model (on its own)
 
 **Magpie**:
-A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it. It reached the Daemon as Custom Models in the Runtime Overlay, which 2.0 removes; whether and how its models reach the Kernel is undecided (ADR 0038).
+A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it: in 2.0 it is registered with the Kernel as an OpenAI-compatible provider whose model list is fetched, so its models sit in the same picker as Factory's (ADR 0038).
 _Avoid_: proxy, provider, model router (a Router is Factory's), gateway (that is Droi's own)
 
 **Skill**:

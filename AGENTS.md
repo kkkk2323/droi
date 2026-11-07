@@ -23,6 +23,12 @@ Windows) and the Phone App (`apps/mobile`), with what they use: `packages/daemon
 A third is being added for 2.0: the Kernel (`apps/kernel`, TypeScript on Bun, macOS, Windows and
 Linux). It does not exist yet; ADR 0038 is the decision behind it.
 
+Two apps build on Droi's packages rather than in this repository: **Anlan Droi** (Codeup, on
+Droi 1.90.0) and **WeCom Droi** (on 1.55.0). 2.0 keeps `droiapp.Run` and the `Extension` seams so
+they can be ported afterwards, and does not migrate them (ADR 0041). A change to a public package
+(`droiapp`, `extension`, `brand`, `defaults`, `kit`, `l10n`, `sessionview`, `keypool`,
+`mcpserver`) is a change to their build too.
+
 The Electron Desktop Shell and the web Client (`apps/desktop`) and their suites
 (`tests/web`, `tests/electron`, `tests/live`) were removed after 1.59.0; the git history
 before that has them, and the ADRs that describe them stay as the record of those decisions.
@@ -33,7 +39,7 @@ The release version lives in `apps/native/mygo.json`.
 ```
 apps/
 ├── kernel/     # 2.0: the Kernel, Droi's own agent process (TypeScript on Bun, ADR 0038)
-│   ├── src/protocol/    # JSON-RPC over WebSocket: 22 methods, 9 notifications
+│   ├── src/protocol/    # the contract: apps/kernel/protocol/README.md + its fixtures
 │   ├── src/session/     # Conversations, the attach table, watch → conversation.view
 │   ├── src/extensions/  # coding tools, skills, MCP, approval, ask-user, plan, memory, codemode
 │   ├── src/storage/     # the bun:sqlite facade (one connection, one database)

@@ -1,10 +1,10 @@
 ---
-status: partly superseded by ADR-0038
+status: partly superseded by ADR-0038, ADR-0041
 ---
 
 # Droi runs as a library under another app's brand, with extensions
 
-_An Extension still plugs into seams Droi leaves; the Runtime Overlay it used to contribute MCP servers and hooks to is gone (ADR 0038), and it contributes Kernel extensions instead._
+_The library shape, the brand and the seams stand, and each seam now lands on the Kernel (ADR 0041): the Runtime Overlay it used to contribute MCP servers to is gone (ADR 0038), droid hooks are the one seam that does not map, and a sign-in hands over a Key Pool key. Neither downstream app is ported in 2.0._
 
 _Partly superseded by ADR 0033: a mirror holds Factory's droid builds and `LATEST` only, for Droi's droid; there are no recipes, and `Options.RecipesURL` is ignored._
 
