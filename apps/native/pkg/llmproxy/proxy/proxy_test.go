@@ -247,3 +247,62 @@ func TestProxyRecordsAStreamThatFailed(t *testing.T) {
 		t.Fatalf("record = %+v", recs)
 	}
 }
+
+// Droi's own request headers say which of Droi's parts a request came from
+// (X-Droi-Call: model.complete, say). They never reach an upstream: Factory
+// and every other provider see a client's request, not Droi's. A request that
+// carries one is forwarded as it would be without it.
+func TestProxy_StripsDroisOwnRequestHeaders(t *testing.T) {
+	var mu sync.Mutex
+	var seen []http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Header.Clone())
+		mu.Unlock()
+		io.WriteString(w, `{"usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	for _, tc := range []struct {
+		method, path, body string
+	}{
+		{"POST", "/api/llm/o/v1/chat/completions", `{"model":"deepseek-v4.1-flash-1017","messages":[{"role":"user","content":"hi"}]}`},
+		{"POST", "/api/llm/a/v1/messages", `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"hi"}]}`},
+		{"GET", "/api/cli/whoami", ""},
+	} {
+		req, err := http.NewRequest(tc.method, px.BaseURL()+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer fk-a")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Droi-Call", "model.complete")
+		req.Header.Set("X-Droi-Session", "s-1")
+		req.Header.Set("x-droi-lower", "still dropped")
+		// A header that is not Droi's goes on, so the rule is Droi's prefix
+		// and nothing wider.
+		req.Header.Set("X-Message-Call-Type", "session-title-generation")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 3 {
+		t.Fatalf("the upstream saw %d requests, want 3", len(seen))
+	}
+	for i, h := range seen {
+		for name := range h {
+			if strings.HasPrefix(strings.ToLower(name), "x-droi-") {
+				t.Fatalf("request %d carried %s: %v", i, name, h)
+			}
+		}
+		if h.Get("X-Message-Call-Type") != "session-title-generation" {
+			t.Fatalf("request %d lost the headers that are not Droi's: %v", i, h)
+		}
+	}
+}

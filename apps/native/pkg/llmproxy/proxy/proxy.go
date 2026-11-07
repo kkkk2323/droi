@@ -66,11 +66,17 @@ func writeLLMError(w http.ResponseWriter, status int, kind, message string) {
 	_, _ = w.Write(b)
 }
 
+// droiHeaderPrefix marks Droi's own request headers, such as X-Droi-Call:
+// model.complete. They tell Droi's parts apart from each other and never
+// leave for an upstream: Factory and every other provider see the request as
+// a client's, not as Droi's.
+const droiHeaderPrefix = "x-droi-"
+
 func copyRequestHeaders(src http.Header) http.Header {
 	out := make(http.Header)
 	for name, vals := range src {
 		lower := strings.ToLower(name)
-		if hopByHopHeaders[lower] || lower == "host" || lower == "content-length" {
+		if hopByHopHeaders[lower] || lower == "host" || lower == "content-length" || strings.HasPrefix(lower, droiHeaderPrefix) {
 			continue
 		}
 		for _, v := range vals {
