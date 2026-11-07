@@ -39,6 +39,12 @@ type Options struct {
 	// Token is the token Kernel was launched with, in its DROI_KERNEL_TOKEN;
 	// Dial sends it as a Bearer token.
 	Token string
+	// Client names this connection to Kernel in the X-Droi-Client handshake
+	// header: "window", "phone" or "host" (ClientWindow, ClientPhone,
+	// ClientHost). Kernel reads it to say who answered an approval, as
+	// approval.resolved.by. "" sends no header, and Kernel calls that
+	// "unknown".
+	Client string
 	// RequestTimeout bounds one call; 0 is 30 s. Every method answers at once
 	// — none waits on a task — so a call that outlasts this is a Kernel that
 	// stopped answering.
@@ -106,6 +112,11 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		// header. It does not go in the URL either: a query string reaches
 		// Kernel's own request log and anything that logs a URL on the way.
 		header.Set("Authorization", "Bearer "+opts.Token)
+	}
+	if opts.Client != "" {
+		// The contract's own header, and only these words are meaningful to
+		// Kernel: anything else is kept for its log and treated as "unknown".
+		header.Set(ClientHeader, opts.Client)
 	}
 	conn, res, err := websocket.Dial(ctx, opts.URL, &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {

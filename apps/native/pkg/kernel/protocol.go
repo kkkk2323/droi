@@ -155,6 +155,23 @@ type Handshake struct {
 // Kernel writes a line to stderr and exits with code 2 when it is missing.
 const TokenEnv = "DROI_KERNEL_TOKEN"
 
+// ClientHeader names the client on a connection, beside Authorization. Kernel
+// reads it to say who answered an approval: approval.resolved.by. A connection
+// without it is "unknown".
+const ClientHeader = "X-Droi-Client"
+
+// The clients the header names. Any other value is Kernel's to log and to treat
+// as an unknown client, so these are conveniences rather than a closed set.
+const (
+	// ClientWindow is the desktop app's window.
+	ClientWindow = "window"
+	// ClientPhone is the Phone App, through the Gateway.
+	ClientPhone = "phone"
+	// ClientHost is the Host's own connection, which answers what it must ask
+	// no window for: a restart, a policy push.
+	ClientHost = "host"
+)
+
 // NewToken is the token of one launch: 32 hex characters of crypto
 // randomness. The Host makes a fresh one per launch and gives it to Kernel in
 // TokenEnv and to the Client in Options.Token; it never goes in argv, where
