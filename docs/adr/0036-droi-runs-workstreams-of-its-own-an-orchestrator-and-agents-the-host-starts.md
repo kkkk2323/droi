@@ -1,8 +1,10 @@
 ---
-status: partly superseded by ADR-0038
+status: partly superseded by ADR-0038, ADR-0043
 ---
 
 # Droi runs Workstreams of its own: an Orchestrator and Workstream Agents the Host starts
+
+_Partly superseded by ADR 0043: the Workstream as Droi's own, its Shared Folder, its model policy and its page stand. Its tools are Kernel extension tools now, not an MCP Server the Host answers, and a Workstream Agent is an ordinary child Conversation of its Orchestrator._
 
 _The Workstream tools are Kernel extension tools that call the Host, not an MCP Server Droi carries, and a Workstream Agent's Session is a Conversation. The Workstream as Droi's own stands._
 

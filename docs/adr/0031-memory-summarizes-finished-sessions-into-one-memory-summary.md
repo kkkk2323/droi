@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0042
 ---
 
 # Memory summarizes finished Sessions into one Memory Summary
+
+_Partly superseded by ADR 0042: the two-phase flow, the file layout, the selection rules and the prompts stand. The machinery comes from the Kernel now - `model.complete` instead of a Memory Session, `conversation.entries` instead of parsing droid's JSONL, the index's last activity instead of a file's mtime, a `kind` column instead of tags, and one snapshot injected per Conversation instead of a hook._
 
 Users found Memory impractical: it only grew, and keeping it useful was their job. On one heavy user's computer (2026-10-03 to 10-27) it held 1,028 entries in 339k characters after 24 days. Droid called `memory_add` 1,054 times against 114 `memory_replace` and 43 `memory_remove`. `insight` entries, mostly the story of one task, took 52% of the characters; 36% of the entries had never been returned by a search, and 24% of 751 searches found nothing. The largest Project Memory (352 entries, 123k characters) had never been consolidated and would reach ADR 0010's hard limit, where writes are refused, in about five weeks. Consolidation was a button that corner cards asked the user to press, and topics (ADR 0030) only moved the problem.
 

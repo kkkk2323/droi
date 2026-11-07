@@ -68,6 +68,44 @@ changes and every client must see.
   included, then gets `approval.resolved` / `ask.resolved`. A later response
   for the same request is `-32007 request not found`.
 
+### Subscriptions and how often a view is pushed
+
+A client says what it wants when it subscribes, because the two clients are not
+alike: the window sits on the machine that runs the kernel, and the phone
+reaches it over the Relay, on someone else's network.
+
+| `subscribe` | A `conversation.view` carries | Who uses it |
+| ----------- | ----------------------------- | ----------- |
+| `"view"` (default) | `{id, kind: "value", value, ops, retired}` — the window over entries, whole | The window on this computer |
+| `"delta"` | `{id, kind: "value", value: null, ops, retired}` — Pi's incremental ops only | The phone over the Relay |
+
+A `"delta"` subscription, as a client asks for it:
+
+```json
+{"jsonrpc":"2.0","id":"4","method":"conversation.open","params":{"id":7,"subscribe":"delta"}}
+```
+
+`kind: "full"` carries the whole `value` and `ops: []`. The kernel sends it
+whenever it cannot prove the ops are continuous with what a `"delta"` subscriber
+holds: the ops of one coalescing window could not be merged (a retire and a
+splice that would cross), or the client subscribed while a commit was in flight.
+The answer to `conversation.open` is already a whole view, so a fresh subscriber
+starts from one. A client that receives `full` replaces its state with it; it
+never has to guess whether the state it kept is whole.
+
+**The kernel pushes at most `harness.info.limits.viewPushesPerSecond` (5) times
+per second per conversation to each connection.** Commits that fall inside one
+interval are coalesced: their ops are merged into one push, or, when they cannot
+be merged, into one `full`. **A push is never dropped**: what is coalesced is an
+intermediate state, and the last state always arrives. This is a frequency cap,
+not a throttle of the data — a client that changes nothing still sees the final
+state within 200 ms of the commit that produced it.
+
+The reason is the Relay: the same bytes cross a third party's network for a
+phone, and a hundred-entry window re-sent on every streaming chunk is an order of
+magnitude more traffic than the ops that changed. Locally the difference is not
+worth the client state machine, so the default stays whole views.
+
 ## Envelope
 
 JSON-RPC 2.0.
@@ -110,6 +148,11 @@ JSON-RPC 2.0.
 | `-32011` | process not found         | `{"processId"}`                     |                                                                          |
 | `-32012` | timeout                   | `{"method","timeoutMs"}`            | The kernel's own deadline for the call.                                  |
 | `-32013` | conflict                  | `{"requestId"}`                     | The same `requestId` was used for a different request.                   |
+| `-32014` | model output invalid      | `{"issues":[...],"text"}`         | `model.complete`'s answer does not match the `schema` it was given.      |
+| `-32015` | model call failed         | `{"status"?,"provider"?}`          | The provider answered with an error. `message` carries its own words.    |
+| `-32016` | model not found           | `{"model"}`                         | `model.complete` with a provider or model id this build does not know.   |
+| `-32017` | budget exceeded           | `{"maxTokens"}`                     | `maxTokens` or the call's own budget was above what the build allows.    |
+| `-32018` | model refused             | `{"reason"?}`                       | The model declined to answer. Nothing can be salvaged by parsing again.  |
 
 ## Identifiers
 
@@ -128,7 +171,7 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 
 ## Methods
 
-25 methods. "Capability" names the `harness.info.capabilities` flag that says
+26 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
 | Method                   | Params                                                      | Result                                                           | Capability      | M1  |
@@ -136,7 +179,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `harness.info`           | —                                                           | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
 | `conversation.create`    | `{agent?, cwd?, instructions?, kind?, requestId?}`          | `{conversationId, view}`                                         | `conversations` | yes |
 | `conversation.list`      | `{kind?, archived?, workspace?, query?, cursor?, limit?}`   | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.open`      | `{id, window?}`                                             | `{view}`                                                         | `conversations` | yes |
+| `conversation.open`      | `{id, window?, subscribe?}`                                             | `{view}`                                                         | `conversations` | yes |
 | `conversation.unwatch`   | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
 | `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
 | `conversation.abort`     | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
@@ -158,10 +201,13 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `mcp.authorize.cancel`   | `{name}`                                                    | `{}`                                                             | `mcp`           | no  |
 | `skills.list`            | —                                                           | `{skills[]}`                                                     | `skills`        | no  |
 | `skills.setDisabled`     | `{name, disabled}`                                          | `{skills[]}`                                                     | `skills`        | no  |
+| `model.complete`         | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}`                    | `models`        | no  |
 
 M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
 `mcp.list` and `skills.list` return an empty list, and the write methods and the
-two `*.respond` methods are `-32009`.
+two `*.respond` methods are `-32009`. `model.complete` reports
+`capabilities.models: false` until it is built; a Host that needs it for Memory
+(ADR 0042) must read the flag rather than call it (M4).
 
 ### Values
 
@@ -199,15 +245,55 @@ instructions?, cwd?, maxTurns?}`.
 `{"type":"text","text":...}` and `{"type":"image","data":<base64>,"mimeType":...}`.
 `continue: true` asks for a run on the context as it is, with no new user message.
 
+### `model.complete`
+
+One model call with no conversation and no tools. It exists for the work a Host
+does with a model of its own — Memory's Session Summary and Memory Summary
+(ADR 0042) — so that work needs no hidden conversation, no archive, and no
+record a Client can open. The kernel sends the request, validates the answer
+when a `schema` is given, and answers once; nothing is stored, and no entry,
+conversation or task is created.
+
+| Param          | Meaning                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| `model`        | `{provider, modelId}`, the same shape `agent.model` takes.                                               |
+| `system`       | Optional system text. Absent means the kernel's own, minimal one.                                        |
+| `input`        | A string, or a list of content blocks: `{"type":"text","text":...}`.                                     |
+| `schema`       | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                        |
+| `thinkingLevel`| Optional: `off`, `low`, `medium`, `high`. Absent means the model's default, which may think for minutes. |
+| `maxTokens`    | Optional cap on the answer.                                                                              |
+| `timeoutMs`    | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                            |
+
+The result is `{model, text, json?, usage}`:
+
+- `model` is the model that answered, resolved: a `modelId` the build does not
+  know is `-32016 model not found`, never a silent substitute, because Memory
+  records which model wrote a summary.
+- `text` is the answer as text, always present.
+- `json` is present when `schema` was given: the parsed answer, which has already
+  been checked against the schema. A schema that the answer does not satisfy is
+  `-32014 model output invalid`, with the issues and the text the model did
+  answer (`data.issues`, `data.text`), so the caller can retry or report; it is
+  not a parse error and the call is not retried by the kernel.
+- `usage` is `{input, output, totalTokens, cost?}`, per call.
+
+A model that declines to answer is `-32018 model refused`, with `data.reason`
+where the provider gave one. That is distinct from `-32014`: nothing can be
+salvaged from a refusal by parsing it again.
+
+What this method does not do, and deliberately: it does not stream (a Host waits
+for the whole answer and the answer is small), it keeps no history (a caller
+that wants one passes the earlier turns in `input`), it runs no tool, and it
+writes no usage row of its own — the `usage` in the result is the record.
 ## Notifications
 
 | Notification         | Payload                                                                                                                                                                                             |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `conversation.view`  | `{id, kind, value, ops, retired}` — Pi's `WatchCall`, or `{id, kind:"failed", error}`                                                                                                               |
+| `conversation.view`  | `{id, kind: "value"\|"full"\|"failed", value, ops, retired}` — Pi's `WatchCall`, or `{id, kind:"failed", error}`; `value` is `null` for a `"delta"` subscriber's `"value"` push, and whole for `"view"` and `"full"`                                                                                                               |
 | `conversation.busy`  | `{id, run, runFailure?}` — `run` is Pi's `LiveRun` or `null`                                                                                                                                        |
 | `approval.requested` | `{requestId, id, tool, args, options[], scopeHint?}`                                                                                                                                                |
 | `approval.resolved`  | `{requestId, id, outcome, by}`                                                                                                                                                                      |
-| `ask.requested`      | `{requestId, id, questions[], context?}`                                                                                                                                                            |
+| `ask.requested`      | `{requestId, id, questions[], context}` — `context` is required and non-empty: the sentence that says what the answer is for                                                                                                                                                            |
 | `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                              |
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                            |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                       |
@@ -218,9 +304,12 @@ instructions?, cwd?, maxTurns?}`.
 Who receives each one is in _Connections and subscriptions_ above: only
 `conversation.view` is per connection, everything else reaches every connection.
 
-A client consumes `conversation.view.value` and ignores `ops` (the delta ops) for
-now: redrawing a window of at most 100 entries is cheap, and a wrong `ops`
-replay is hard to see.
+A client that subscribes with `"view"` consumes `conversation.view.value` and ignores
+`ops`: redrawing a window of at most 100 entries is cheap, and it needs no state
+of its own. A client that subscribes with `"delta"` applies `ops` to the state it
+kept and replaces that state whenever a `"full"` arrives — the window over the
+Relay pays for the bytes it does not send, and gets the guarantee that it always
+has a way back to a whole view.
 
 ## Fixtures
 

@@ -1,0 +1,39 @@
+{
+  "kind": "method",
+  "method": "model.complete",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "26",
+    "method": "model.complete",
+    "params": {
+      "model": { "provider": "factory", "modelId": "claude-haiku-5-5" },
+      "system": "You summarize one finished coding session into a short record another session can act on.",
+      "input": "session_id: 41\nupdated_at: 2026-11-07T04:12:00Z\nworkspace: /Users/clive/dev/droi\ntitle: Kernel protocol fixtures\n\nuser: write the fixtures for model.complete\nassistant: added methods/model.complete.json and errors/model-output-invalid.json",
+      "schema": {
+        "type": "object",
+        "required": ["summary", "slug"],
+        "additionalProperties": false,
+        "properties": {
+          "summary": { "type": "string" },
+          "slug": { "type": "string" }
+        }
+      },
+      "thinkingLevel": "low",
+      "maxTokens": 2000,
+      "timeoutMs": 120000
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "26",
+    "result": {
+      "model": { "provider": "factory", "modelId": "claude-haiku-5-5" },
+      "text": "{\"summary\":\"Added the model.complete fixtures to the kernel protocol...\",\"slug\":\"kernel-protocol-fixtures\"}",
+      "json": {
+        "summary": "Added the model.complete fixtures to the kernel protocol, one for a schema-valid answer and one for an answer that fails the schema.",
+        "slug": "kernel-protocol-fixtures"
+      },
+      "usage": { "input": 1840, "output": 96, "totalTokens": 1936 }
+    }
+  }
+}
