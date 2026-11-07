@@ -14,7 +14,7 @@ import (
 // request leaves the machine — so this test is about the Kernel saying what it is doing, not about what
 // Factory receives.
 func TestModelCompleteSendsItsHeader(t *testing.T) {
-	k := Start(t, Scenario{Steps: []Step{{Match: "name this conversation", Text: "A name"}}})
+	k := Start(t, Scenario{Completions: []Completion{{Match: "name this conversation", Text: "A name"}}})
 	ctx, cancel := k.context(t, 60*time.Second)
 	defer cancel()
 	c := k.Dial(t)
