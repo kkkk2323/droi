@@ -1,8 +1,10 @@
 package host
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -59,13 +61,39 @@ func TestKernelHelperProcess(t *testing.T) {
 	}
 	var healthDelay atomic.Int64
 	mux := http.NewServeMux()
+	var wedged atomic.Bool
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if delay := healthDelay.Load(); delay > 0 {
 			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
+		if wedged.Load() {
+			// Answer nothing: the request hangs, as a stuck storage call does.
+			<-r.Context().Done()
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"version":"kernel-test-1","pi":"1.5.0"}`))
 	})
+	if wedge := os.Getenv("GO_KERNEL_UNHEALTHY_AFTER_MS"); wedge != "" {
+		// A sidecar that is alive but stops answering: what a wedged event
+		// loop looks like from outside.
+		if ms, err := strconv.Atoi(wedge); err == nil && ms >= 0 {
+			go func() {
+				time.Sleep(time.Duration(ms) * time.Millisecond)
+				wedged.Store(true)
+			}()
+		}
+	}
+	if os.Getenv("GO_KERNEL_SHUTDOWN_EXITS") == "1" {
+		// kernel.shutdown, as the contract has it: answer, then exit with 0.
+		// The helper has no WebSocket, so the request itself is the cue.
+		mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
+			go func() {
+				time.Sleep(50 * time.Millisecond)
+				os.Exit(0)
+			}()
+		})
+	}
 	server := &http.Server{Handler: mux}
 	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
@@ -739,5 +767,74 @@ func TestAClosedSupervisorStartsNoPublisher(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if got := calls.Load(); got != before {
 		t.Fatalf("a closed Supervisor published %d more states", got-before)
+	}
+}
+
+// A sidecar that answers kernel.shutdown is stopped by asking it, not by a
+// signal: that is the only orderly stop on Windows, where the signal a parent
+// can send is TerminateProcess.
+func TestKernelSupervisorAsksKernelToShutDown(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_SHUTDOWN_EXITS=1"))
+	var asked atomic.Int32
+	s.AskShutdown = func(context.Context) error {
+		asked.Add(1)
+		// The contract: the call answers, then the sidecar exits. The helper
+		// exits on the request, which is what this stands in for.
+		return nil
+	}
+	s.Start()
+	w.waitState(t, KernelRunning)
+	started := time.Now()
+	s.Stop()
+	elapsed := time.Since(started)
+	if got := asked.Load(); got != 1 {
+		t.Fatalf("the sidecar was asked to shut down %d times, want once", got)
+	}
+	if elapsed > 6*time.Second {
+		t.Fatalf("Stop took %s after an answered shutdown", elapsed)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
+	}
+}
+
+// An ask that fails falls back to the signal: a Kernel whose connection is
+// already broken must still be stopped.
+func TestKernelSupervisorFallsBackWhenShutdownFails(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t))
+	s.AskShutdown = func(context.Context) error { return errors.New("no connection") }
+	s.StopGrace = 2 * time.Second
+	s.Start()
+	w.waitState(t, KernelRunning)
+	started := time.Now()
+	s.Stop()
+	if elapsed := time.Since(started); elapsed > 8*time.Second {
+		t.Fatalf("Stop took %s with a failed ask and a 2 s window", elapsed)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
+	}
+}
+
+// A sidecar that is up but wedged is invisible to a supervisor that only
+// watches for an exit: the health check notices, restarts it, and says so.
+func TestKernelSupervisorRestartsAWedgedSidecar(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_UNHEALTHY_AFTER_MS=200"))
+	s.HealthEvery = 100 * time.Millisecond
+	s.HealthFailures = 3
+	s.Backoff = []time.Duration{10 * time.Millisecond}
+	defer s.Stop()
+	s.Start()
+	first := w.waitState(t, KernelRunning)
+	restarting := w.waitState(t, KernelRestarting)
+	if !strings.Contains(restarting.Reason, "health") {
+		t.Fatalf("reason = %q, want the health check's", restarting.Reason)
+	}
+	second := w.waitState(t, KernelRunning)
+	if second.PID == first.PID {
+		t.Fatalf("the wedged sidecar kept running as pid %d", first.PID)
 	}
 }
