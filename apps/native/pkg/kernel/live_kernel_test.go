@@ -109,8 +109,9 @@ func TestLiveKernelThreeConversations(t *testing.T) {
 	t.Logf("provider answered %d requests", provider.calls.Load())
 }
 
-// TestLiveKernelEveryMethod walks the contract's 26 methods against a real
-// Kernel: each answers, or answers the contract's own refusal.
+// TestLiveKernelEveryMethod walks every method of the contract against a real
+// Kernel: each answers, or answers the contract's own refusal, and the list must
+// match Methods exactly or the walk fails.
 func TestLiveKernelEveryMethod(t *testing.T) {
 	provider := startFakeProvider(t)
 	k := startLiveKernel(t, provider)
@@ -128,10 +129,13 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	// A real turn first, so the methods below have something to work on: a
-	// fork needs an entry that exists, and usage needs a model call.
-	if _, err := c.Submit(ctx, SubmitParams{ID: id, Input: "the walk's first turn", WhenBusy: WhenBusyFollowUp}); err != nil {
+	// fork needs an entry that exists, usage needs a model call, and
+	// submission.get needs a submission that settled.
+	submitted, err := c.Submit(ctx, SubmitParams{ID: id, Input: "the walk's first turn", WhenBusy: WhenBusyFollowUp})
+	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
+	firstSubmission := submitted.SubmissionID
 	var lastEntry ID
 	for deadline := time.Now().Add(90 * time.Second); ; {
 		entries, err := c.Entries(ctx, EntriesParams{ID: id, Limit: 100})
@@ -176,6 +180,13 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			_, err := c.AbortSubmission(ctx, AbortSubmissionParams{ID: id, SubmissionID: 999999})
 			return err
 		}, CodeSubmissionGone},
+		{"submission.get", func() error {
+			record, err := c.SubmissionGet(ctx, AbortSubmissionParams{ID: id, SubmissionID: firstSubmission})
+			if err == nil && record.Status != "done" {
+				t.Errorf("submission.get answered %q for the turn that finished", record.Status)
+			}
+			return err
+		}, 0},
 		{"conversation.configure", func() error {
 			level := "off"
 			_, err := c.Configure(ctx, ConfigureParams{ID: id, Change: &AgentChange{ThinkingLevel: Some(level)}})
@@ -188,6 +199,21 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			forked, err := c.Fork(ctx, ForkParams{ID: id, At: lastEntry})
 			if err == nil && forked.ConversationID == 0 {
 				t.Error("a fork answered no conversation")
+			}
+			return err
+		}, 0},
+		{"conversation.import", func() error {
+			createdAt := int64(1762480000000)
+			imported, err := c.Import(ctx, ImportParams{
+				Key:       "the-walks-import",
+				CreatedAt: &createdAt,
+				Entries: []ImportEntry{{
+					Kind:  EntryUser,
+					Model: json.RawMessage(`[{"role":"user","content":"imported by the walk","timestamp":1762480000000}]`),
+				}},
+			})
+			if err == nil && (imported.ConversationID == 0 || len(imported.EntryIDs) != 1) {
+				t.Errorf("conversation.import answered %d with %d entries", imported.ConversationID, len(imported.EntryIDs))
 			}
 			return err
 		}, 0},
