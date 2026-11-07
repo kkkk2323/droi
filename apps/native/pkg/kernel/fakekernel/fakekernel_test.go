@@ -405,3 +405,70 @@ func TestFakeKernelAbortedTurnIsTerminal(t *testing.T) {
 		t.Fatalf("the failure does not say the turn was unanswered:\n%s", run)
 	}
 }
+
+// TestFakeKernelTerminalSubmissionRejectsBeforeMatching is the false pass that survived the previous round: the
+// predicate ran before the status was checked, so an aborted submission "matched" on its own user entry.
+//
+// It runs itself as a child, because the failure it asserts on is a test failure.
+func TestFakeKernelTerminalSubmissionRejectsBeforeMatching(t *testing.T) {
+	if os.Getenv("FAKEKERNEL_TERMINAL_CHILD") != "" {
+		k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+			{Match: "first", Text: "too late", Delay: 3 * time.Second},
+		}})
+		c := k.Dial(t)
+		id := k.CreateConversation(t, c)
+		sub := k.Submit(t, c, id, "first")
+		for deadline := time.Now().Add(5 * time.Second); len(k.Requests()) == 0; {
+			if time.Now().After(deadline) {
+				t.Fatal("the model was never asked")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if err := c.Abort(t.Context(), kernel.AbortParams{ID: id}); err != nil {
+			t.Fatalf("conversation.abort: %v", err)
+		}
+		// The user's own entry is in the turn, so this predicate finds a match — and must still not succeed.
+		k.WaitForEntries(t, c, sub, func(entries []fakekernel.Entry) bool {
+			for _, entry := range entries {
+				if entry.Kind == "pi.user" {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second)
+		return
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("no test binary to re-run: %v", err)
+	}
+	child := exec.Command(self, "-test.run=^TestFakeKernelTerminalSubmissionRejectsBeforeMatching$", "-test.v")
+	child.Env = append(os.Environ(), "FAKEKERNEL_TERMINAL_CHILD=1")
+	run, err := child.CombinedOutput()
+	if err == nil {
+		t.Fatalf("an aborted submission matched a predicate before its status was read:\n%s", run)
+	}
+	if !strings.Contains(string(run), "was never answered") {
+		t.Fatalf("the failure does not say the turn was unanswered:\n%s", run)
+	}
+}
+
+// TestFakeKernelDoneSubmissionStillMatches shows the other side of the ordering: a settled turn with an answer
+// still runs the predicate, so a test can assert on entries it already knows it has.
+func TestFakeKernelDoneSubmissionStillMatches(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{{Text: "an answer"}}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	sub := k.Submit(t, c, id, "hello")
+	entries := k.WaitForEntries(t, c, sub, func(entries []fakekernel.Entry) bool {
+		for _, entry := range entries {
+			if entry.Kind == "pi.assistant" {
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second)
+	if len(entries) == 0 {
+		t.Fatal("a done turn matched nothing")
+	}
+}

@@ -187,14 +187,17 @@ func (k *Kernel) WaitForEntries(
 	defer cancel()
 	for {
 		record := k.record(ctx, t, c, sub)
+		// The status decides first. A submission that ended without an answer is terminal, and saying why is
+		// more useful than any entry a predicate could find in it — a predicate matching the user's own entry
+		// would otherwise report success for a turn that was cut short.
+		_, finished := k.finishedTurn(t, sub, record)
 		entries := k.turnEntries(ctx, t, c, sub, record)
 		if match(entries) {
 			return entries
 		}
 		// A settled submission is final: a queued one that was withdrawn has no turn at all, and a done one
-		// cannot grow. Waiting further would only turn a known answer — the reason it was never answered —
-		// into a timeout.
-		if _, finished := k.finishedTurn(t, sub, record); finished {
+		// cannot grow. Waiting further would only turn a known answer into a timeout.
+		if finished {
 			t.Fatalf("fakekernel: submission %d settled with %d entries, none matching: %+v\n%s",
 				sub.ID, len(entries), entries, k.Logs())
 		}
