@@ -60,10 +60,11 @@ test('R4 a first answer in the first index batch advances the listed activity', 
   }
 })
 
+type Outcome = { port?: number; code: number | null; signal: NodeJS.Signals | null; stderr: string }
 type KernelProcess = {
   child: ReturnType<typeof spawn>
   /** The handshake port, or — when it was refused — the exit code and what it said. */
-  outcome: Promise<{ port?: number; code: number | null; stderr: string }>
+  outcome: Promise<Outcome>
   kill: (signal: NodeJS.Signals) => Promise<void>
 }
 
@@ -77,23 +78,25 @@ function startProcess(dir: string): KernelProcess {
   let stderr = ''
   child.stdout.on('data', (chunk) => (out += chunk))
   child.stderr.on('data', (chunk) => (stderr += chunk))
-  const outcome = new Promise<{ port?: number; code: number | null; stderr: string }>((resolve) => {
-    const settle = (code: number | null) =>
+  const outcome = new Promise<Outcome>((resolve) => {
+    const settled = { done: false }
+    const settle = (code: number | null, signal: NodeJS.Signals | null) => {
+      if (settled.done) return
+      settled.done = true
+      clearInterval(timer)
       resolve({
         ...(out.includes('\n') ? { port: JSON.parse(out.split('\n')[0]!).port as number } : {}),
         code,
+        signal,
         stderr,
       })
+    }
     // Whichever comes first: the handshake line, or the process leaving.
     const timer = setInterval(() => {
       if (!out.includes('\n')) return
-      clearInterval(timer)
-      setTimeout(() => settle(null), 100)
+      setTimeout(() => settle(null, null), 100)
     }, 20)
-    child.once('exit', (code) => {
-      clearInterval(timer)
-      settle(code)
-    })
+    child.once('exit', (code, signal) => settle(code, signal))
   })
   return {
     child,
@@ -105,6 +108,23 @@ function startProcess(dir: string): KernelProcess {
       await gone
     },
   }
+}
+
+/**
+ * Start `count` kernels at the same instant and report what each one did.
+ *
+ * The group is launched again when one of them was killed by a signal instead of answering or exiting: a
+ * process with no verdict at all was reaped by the test runner (it does that to children a test leaves
+ * alive), and that says nothing about the lock.
+ */
+async function starters(dir: string, count: number, attempts = 3): Promise<Outcome[]> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const group = Array.from({ length: count }, () => startProcess(dir))
+    const outcomes = await Promise.all(group.map((starter) => starter.outcome))
+    await Promise.all(group.map((starter) => starter.kill('SIGKILL')))
+    if (outcomes.every((outcome) => outcome.signal === null)) return outcomes
+  }
+  throw new Error(`every attempt to start ${count} kernels was cut short by a signal`)
 }
 
 test('R4 a second start is refused while the first runs, and starts the moment it dies', async () => {
@@ -138,16 +158,17 @@ test('R4 a second start is refused while the first runs, and starts the moment i
 
 test('R4 three starts at once leave exactly one kernel', async () => {
   const data = tempData()
-  const starters = [startProcess(data.dir), startProcess(data.dir), startProcess(data.dir)]
   try {
-    const outcomes = await Promise.all(starters.map((starter) => starter.outcome))
+    const outcomes = await starters(data.dir, 3)
     const owners = outcomes.filter((outcome) => outcome.port !== undefined)
     const refused = outcomes.filter((outcome) => outcome.port === undefined)
     expect(owners).toHaveLength(1)
     expect(refused).toHaveLength(2)
-    for (const loser of refused) expect(loser.code).toBe(2)
+    for (const loser of refused) {
+      expect(loser.code, loser.stderr).toBe(2)
+      expect(loser.stderr).toContain('another kernel')
+    }
   } finally {
-    await Promise.all(starters.map((starter) => starter.kill('SIGKILL')))
     data.cleanup()
   }
 }, 40_000)
