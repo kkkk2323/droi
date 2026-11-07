@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -94,11 +95,14 @@ type KernelSupervisor struct {
 	timer          *time.Timer
 	gen            int
 	events         chan KernelState
-	dispatch       chan KernelState
+	ready          chan readyNotice
+	dispatch       chan struct{}
 	dispatchClosed bool
-	// announce serialises OnReady against Stop, so a window never hears
-	// "running" for a sidecar Stop has already stopped.
-	announce sync.Mutex
+	// callbackDone closes when the Host callback now running returns, and
+	// callbackG is the goroutine running it: Stop waits for the one and not
+	// for itself.
+	callbackDone chan struct{}
+	callbackG    uint64
 }
 
 // kernelChild is one launched sidecar.
@@ -116,6 +120,12 @@ type kernelChild struct {
 	// output is the end of what it wrote, so a failure's reason is its own
 	// last line rather than a bare exit code.
 	output *tailBuffer
+	// failure, when set, is why the Supervisor ended this child on purpose: a
+	// health check that failed too often. It is what the window says.
+	failure string
+	// pumped closes when the reader of stdout has drained it, so a failure's
+	// reason is not read while the last line is still in the pipe.
+	pumped chan struct{}
 }
 
 // waitDelay bounds how long cmd.Wait lingers after the process exited: it
@@ -163,13 +173,10 @@ func (s *KernelSupervisor) Token() string {
 func (s *KernelSupervisor) setLocked(st KernelState) {
 	s.state = st
 	if s.OnState == nil {
+		// Nothing hears states; a publisher may still be needed for OnReady.
 		return
 	}
-	if s.events == nil {
-		s.events = make(chan KernelState, eventBuffer)
-		s.dispatch = make(chan KernelState)
-		go s.publish()
-	}
+	s.ensurePublisherLocked()
 	select {
 	case s.events <- st:
 	default:
@@ -186,25 +193,109 @@ func (s *KernelSupervisor) setLocked(st KernelState) {
 	}
 }
 
+// ensurePublisherLocked starts the state goroutine if it is not running. A Stop
+// ends it, and a Start after that must begin a new one: a publisher that is
+// never rebuilt leaves OnState silent for the life of the process while the
+// state keeps changing underneath.
+//
+// The holder must hold s.mu.
+func (s *KernelSupervisor) ensurePublisherLocked() {
+	if (s.OnState == nil && s.OnReady == nil) || s.events != nil {
+		return
+	}
+	s.events = make(chan KernelState, eventBuffer)
+	s.ready = make(chan readyNotice, 8)
+	s.dispatch = make(chan struct{})
+	s.dispatchClosed = false
+	// The channels are handed over, not read from the fields: the next Start
+	// replaces them, and a publisher that kept looking would race with it.
+	go s.publish(s.events, s.ready, s.dispatch)
+}
+
 // publish drains the state queue on its own goroutine and stops when the
-// Supervisor does: it is the only caller of OnState.
-func (s *KernelSupervisor) publish() {
+// Supervisor does: it is the only caller of OnState and OnReady, so neither
+// runs with a lock held and a callback may call back into the Supervisor.
+func (s *KernelSupervisor) publish(events <-chan KernelState, ready <-chan readyNotice, dispatch <-chan struct{}) {
 	for {
 		select {
-		case st := <-s.events:
-			s.OnState(st)
-		case <-s.dispatch:
-			// Stop is over: hand over what is still queued, then go.
+		case st := <-events:
+			s.callback(func() { s.OnState(st) })
+		case r := <-ready:
+			// A stop that got here first has already put the state back to
+			// stopped, and the ready was queued before it: drop it rather
+			// than tell the window about a sidecar that is gone.
+			if r.live() {
+				s.callback(func() { s.OnReady(r.state, r.token) })
+			}
+		case <-dispatch:
+			// Stop is over: hand over what is still queued, then go. A ready
+			// still waiting is dropped, because Stop has already ended it.
 			for {
 				select {
-				case st := <-s.events:
-					s.OnState(st)
+				case st := <-events:
+					s.callback(func() { s.OnState(st) })
 				default:
 					return
 				}
 			}
 		}
 	}
+}
+
+// callback runs one Host callback and marks it as running, so a Stop from
+// another goroutine can wait for it — a window must not hear "running" after a
+// stop has returned — while a Stop from inside the callback does not wait for
+// itself.
+func (s *KernelSupervisor) callback(fn func()) {
+	done := make(chan struct{})
+	s.mu.Lock()
+	s.callbackDone = done
+	s.callbackG = goroutineID()
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.callbackDone == done {
+			s.callbackDone = nil
+			s.callbackG = 0
+		}
+		s.mu.Unlock()
+		close(done)
+	}()
+	fn()
+}
+
+// waitCallbacks returns once no Host callback is running, unless this
+// goroutine is the one running it: a callback that calls Stop must not wait
+// for itself.
+func (s *KernelSupervisor) waitCallbacks() {
+	s.mu.Lock()
+	done, owner := s.callbackDone, s.callbackG
+	s.mu.Unlock()
+	if done == nil || owner == goroutineID() {
+		return
+	}
+	<-done
+}
+
+// goroutineID is this goroutine's id, read from the stack header. It exists for
+// one question: is the callback that is running the one that called Stop?
+func goroutineID() uint64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	// "goroutine 123 [running]:" — the number is the id.
+	const prefix = "goroutine "
+	if n <= len(prefix) || string(buf[:len(prefix)]) != prefix {
+		return 0
+	}
+	rest := buf[len(prefix):n]
+	id := uint64(0)
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			break
+		}
+		id = id*10 + uint64(c-'0')
+	}
+	return id
 }
 
 // stopPublishing ends the state goroutine once what is queued has been handed
@@ -215,6 +306,17 @@ func (s *KernelSupervisor) stopPublishing() {
 	}
 	s.dispatchClosed = true
 	close(s.dispatch)
+	// The next Start builds new channels: the old goroutine owns these.
+	s.events = nil
+	s.ready = nil
+}
+
+// readyNotice is one pending OnReady, with the check that decides whether it
+// is still true when it is delivered.
+type readyNotice struct {
+	state KernelState
+	token string
+	live  func() bool
 }
 
 // eventBuffer is how many states may wait for a slow OnState.
@@ -230,6 +332,9 @@ func (s *KernelSupervisor) Start() {
 	s.running = true
 	s.attempt = 0
 	s.gen++
+	// A publisher that a previous Stop ended is started again: without this,
+	// OnState goes silent for the life of the process from the second Start on.
+	s.ensurePublisherLocked()
 	go s.launch(s.gen)
 }
 
@@ -250,9 +355,10 @@ func (s *KernelSupervisor) Start() {
 // StopGrace plus WaitDelay — 14 s with the defaults — however the sidecar
 // behaves.
 func (s *KernelSupervisor) Stop() {
-	// announce first: a launch that is about to say "running" either finishes
-	// before this stop begins, or finds the state changed and says nothing.
-	s.announce.Lock()
+	// A callback that is already publishing "running" finishes first, so the
+	// window never hears it after this returns. A callback that calls Stop
+	// itself is not waited for: it is the one this would block on.
+	s.waitCallbacks()
 	s.mu.Lock()
 	s.running = false
 	s.gen++
@@ -263,7 +369,6 @@ func (s *KernelSupervisor) Stop() {
 	ch := s.child
 	s.child = nil
 	s.mu.Unlock()
-	s.announce.Unlock()
 	if ch != nil {
 		if s.Terminate != nil {
 			s.Terminate(ch.cmd)
@@ -271,16 +376,29 @@ func (s *KernelSupervisor) Stop() {
 			signalProcess(ch.cmd)
 		}
 		grace := orDefault(s.StopGrace, kernelStopGrace)
+		exited := false
 		select {
 		case <-ch.done:
+			exited = true
 		case <-time.After(grace):
-			killProcess(ch.cmd)
-			// Bounded even now: a pipe holder that outlives the kill must not
-			// hold the window, and WaitDelay is what lets go of it.
+			// Bounded: a pipe holder that outlives the kill must not hold the
+			// window, and WaitDelay is what lets go of it.
 			select {
 			case <-ch.done:
 			case <-time.After(waitDelay):
-				s.logf("kernel did not exit %s after it was killed", waitDelay)
+				s.logf("kernel did not exit %s after it was asked", waitDelay)
+			}
+		}
+		// The sidecar being gone is not the tree being gone: a shell or a
+		// background process it started keeps its own life, and one that
+		// ignores the signal outlives its parent. The group is killed either
+		// way, and a group whose leader has exited is still there to kill on
+		// Unix.
+		killProcess(ch.cmd)
+		if !exited {
+			select {
+			case <-ch.done:
+			case <-time.After(waitDelay):
 			}
 		}
 	}
@@ -299,19 +417,26 @@ func (s *KernelSupervisor) Restart() {
 func (s *KernelSupervisor) current(gen int) bool { return s.running && gen == s.gen }
 
 // announceReady tells the Host its sidecar is up, unless a Stop got there
-// first. Stop takes the same mutex before it changes the state, so the check
-// and the call cannot be split by a stop: a window never hears "running" for a
-// sidecar that is already gone.
+// first. The callback runs on the publisher's goroutine, never with a lock
+// held, so it may call back into the Supervisor — Stop or Restart from inside
+// OnReady would deadlock if it were called under one.
 func (s *KernelSupervisor) announceReady(ch *kernelChild, st KernelState, token string) {
 	if s.OnReady == nil {
 		return
 	}
-	s.announce.Lock()
-	defer s.announce.Unlock()
-	if !s.liveChild(ch) {
+	s.mu.Lock()
+	s.ensurePublisherLocked()
+	ready := s.ready
+	live := s.child == ch && s.state.Status == KernelRunning
+	s.mu.Unlock()
+	if !live || ready == nil {
 		return
 	}
-	s.OnReady(st, token)
+	select {
+	case ready <- readyNotice{state: st, token: token, live: func() bool { return s.liveChild(ch) }}:
+	default:
+		s.logf("kernel: a ready notice was dropped; the state is already published")
+	}
 }
 
 // liveChild reports whether ch is still the sidecar the Supervisor runs.
@@ -378,13 +503,19 @@ func (s *KernelSupervisor) launch(gen int) {
 		cmd.Stderr = out
 	}
 	ch := &kernelChild{cmd: cmd, stdout: stdout, token: token, done: make(chan struct{}), output: out,
-		handshake: make(chan kernel.Handshake, 1)}
+		handshake: make(chan kernel.Handshake, 1), pumped: make(chan struct{})}
 	// Wait returns at most this long after the process exits, even when the
 	// processes it started still hold its stdout or stderr open.
 	cmd.WaitDelay = waitDelay
 	if err := cmd.Start(); err != nil {
 		s.scheduleRestart(gen, err.Error())
 		return
+	}
+	// The child holds the write end now; the parent's must go, or the read end
+	// never sees EOF. Only a pipe of this Supervisor's has one to close: a
+	// Spawn hook that hands back a pipe of its own owns it.
+	if pair, ok := stdout.(*stdioPair); ok {
+		_ = pair.Close()
 	}
 	// One goroutine owns stdout for the process's whole life: it takes the
 	// handshake and then keeps reading. A sidecar that keeps printing must
@@ -427,6 +558,13 @@ func (s *KernelSupervisor) launch(gen int) {
 	}
 
 	<-ch.done
+	// The process is gone; what it wrote may still be in the pipe. The reason
+	// the window shows is its last line, so wait for the drain — bounded, so a
+	// process holding the write end cannot hold the Supervisor.
+	select {
+	case <-ch.pumped:
+	case <-time.After(waitDelay):
+	}
 	s.mu.Lock()
 	if s.child != ch || !s.current(gen) {
 		s.mu.Unlock()
@@ -488,12 +626,31 @@ func (s *KernelSupervisor) spawn(port int, token string) (*exec.Cmd, io.ReadClos
 	cmd.Env = append(os.Environ(), kernel.TokenEnv+"="+token)
 	hideConsole(cmd)
 	prepareProcess(cmd)
-	stdout, err := cmd.StdoutPipe()
+	// A pipe of the Host's own, not cmd.StdoutPipe(): Wait closes the latter
+	// when it returns, which can cut the reader off before it has drained
+	// what the sidecar printed — and the last line it printed is what explains
+	// why it is gone.
+	read, write, err := os.Pipe()
 	if err != nil {
 		return nil, nil, err
 	}
-	return cmd, stdout, nil
+	cmd.Stdout = write
+	return cmd, &stdioPair{read: read, write: write}, nil
 }
+
+// stdioPair is a pipe whose write end goes to the child and whose read end the
+// Host drains. The Host closes the write end after Start, so the read end sees
+// EOF when the child and every process holding it are gone.
+type stdioPair struct {
+	read  *os.File
+	write *os.File
+}
+
+// Close closes the write end the parent keeps, after the child has started.
+func (p *stdioPair) Close() error { return p.write.Close() }
+
+// Read reads what the child wrote.
+func (p *stdioPair) Read(b []byte) (int, error) { return p.read.Read(b) }
 
 // pumpStdout is the one reader of the sidecar's stdout, for the process's
 // whole life. It sends the handshake once and then keeps draining: a sidecar
@@ -508,6 +665,9 @@ func (s *KernelSupervisor) pumpStdout(ch *kernelChild) {
 		return
 	}
 	defer ch.stdout.Close()
+	if ch.pumped != nil {
+		defer close(ch.pumped)
+	}
 	reader := bufio.NewReaderSize(ch.stdout, 64<<10)
 	var line []byte
 	// omitted is how much of a line longer than maxStdoutLine was thrown

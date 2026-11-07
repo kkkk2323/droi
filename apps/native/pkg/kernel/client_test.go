@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -924,6 +925,77 @@ func TestStalledPeerDoesNotHoldTheWriter(t *testing.T) {
 			}
 		case <-deadline:
 			t.Fatal("a call to a peer that stopped reading never returned: the writer is held forever")
+		}
+	}
+}
+
+// A slow reader that falls far behind must not lose a step that cannot be
+// rebuilt: an approval or an ask lost leaves a session waiting forever, and a
+// delta push's ops lost leaves the state wrong. Whole views are what give way.
+//
+// The reader's slot is filled first, so nothing drains the queue while the
+// flood arrives.
+func TestAMustArriveFloodKeepsEveryStep(t *testing.T) {
+	f := startFakeKernel(t)
+	c, err := Dial(context.Background(), Options{
+		URL: f.url(), Token: "t-test", RequestTimeout: 5 * time.Second,
+		NotesBuffer: 1, MaxQueuedNotes: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	say := func(method string, params any) {
+		t.Helper()
+		raw, err := json.Marshal(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.enqueue(Notification{Method: method, Params: raw})
+	}
+	delta := func(op string) map[string]any {
+		return map[string]any{"id": 7, "kind": ViewKindValue, "value": nil, "ops": []any{op}}
+	}
+	say(NotifyWarning, map[string]any{"kind": "extension_error", "message": "hold the slot"})
+	for deadline := time.Now().Add(5 * time.Second); len(c.notes) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the first notification never reached the reader's slot")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// More than the cap of steps that must all arrive.
+	const ops = 10
+	for i := 0; i < ops; i++ {
+		say(NotifyConversationView, delta(fmt.Sprintf("op%d", i)))
+	}
+	say(NotifyApprovalRequested, map[string]any{"requestId": "a-1", "id": 7, "tool": "bash"})
+	say(NotifyAskRequested, map[string]any{"requestId": "q-1", "id": 7, "questions": []any{}, "context": "why"})
+
+	deadline := time.Now().Add(10 * time.Second)
+	seen := map[string]bool{}
+	for !(seen["a-1"] && seen["q-1"]) && time.Now().Before(deadline) {
+		select {
+		case n := <-c.Notifications():
+			var p struct {
+				RequestID string `json:"requestId"`
+				Ops       []any  `json:"ops"`
+			}
+			_ = json.Unmarshal(n.Params, &p)
+			if p.RequestID != "" {
+				seen[p.RequestID] = true
+			}
+			for _, op := range p.Ops {
+				seen[fmt.Sprint(op)] = true
+			}
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	if !seen["a-1"] || !seen["q-1"] {
+		t.Fatalf("the approval arrived: %v, the ask: %v; neither may be dropped", seen["a-1"], seen["q-1"])
+	}
+	for i := 0; i < ops; i++ {
+		if !seen[fmt.Sprintf("op%d", i)] {
+			t.Fatalf("op%d was dropped; a delta reader cannot rebuild it (%v)", i, seen)
 		}
 	}
 }

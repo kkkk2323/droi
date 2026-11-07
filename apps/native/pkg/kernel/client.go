@@ -403,7 +403,7 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 	// The write has a deadline of its own: the caller's context bounds the
 	// wait for the answer, and a caller that gives up must not end the
 	// connection everyone else is using.
-	if err := c.write(method, b); err != nil {
+	if err := c.write(ctx, method, b); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.opts.timeout())
@@ -439,12 +439,17 @@ func (c *Client) Send(ctx context.Context, method string, params any) error {
 	if err != nil {
 		return fmt.Errorf("kernel: %s: %w", method, err)
 	}
-	return c.write(method, b)
+	return c.write(ctx, method, b)
 }
 
 // write sends one frame with a deadline of its own, so a Kernel that stopped
 // reading makes this call fail instead of holding the write mutex forever.
-func (c *Client) write(method string, b []byte) error {
+//
+// caller bounds only whether the frame goes at all: a caller that gives up
+// while the frame waits for the writer must not have its request sent, and a
+// caller that gives up during the write must not end the connection everyone
+// else is using.
+func (c *Client) write(caller context.Context, method string, b []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.opts.writeTimeout())
 	defer cancel()
 	c.writeMu.Lock()
@@ -453,6 +458,12 @@ func (c *Client) write(method string, b []byte) error {
 	case <-c.done:
 		return fmt.Errorf("kernel: %s: %w", method, c.terminalErr())
 	default:
+	}
+	// The caller may have given up while this frame waited for the writer. A
+	// request nobody waits for must not reach Kernel: it would run a write
+	// with no one to read the answer.
+	if err := caller.Err(); err != nil {
+		return fmt.Errorf("kernel: %s: %w", method, err)
 	}
 	if err := c.conn.Write(ctx, websocket.MessageText, b); err != nil {
 		return fmt.Errorf("kernel: %s: %w", method, err)
@@ -506,9 +517,13 @@ func (c *Client) enqueue(n Notification) {
 }
 
 // supersedesLocked reports whether n replaces an earlier queued whole view of
-// the same conversation, which the reader has not taken yet. Only a whole view
-// may do that: replacing or moving a delta push, a "full" push or anything
-// else would lose a step the reader cannot rebuild.
+// the same conversation, which the reader has not taken yet.
+//
+// Only a whole view may be replaced, and only the newest queued notification of
+// its conversation may be: anything behind a "full" push or a delta push is
+// separated from n by a step the reader must apply. Replacing across one would
+// hand the reader latest → reset and leave it on the state before latest, which
+// is exactly what the review found.
 //
 // The holder must hold c.queuedMu.
 func (c *Client) supersedesLocked(n Notification) (ID, bool) {
@@ -517,12 +532,32 @@ func (c *Client) supersedesLocked(n Notification) (ID, bool) {
 		return 0, false
 	}
 	for i := len(c.queued) - 1; i >= 0; i-- {
-		if other, ok := wholeView(c.queued[i]); ok && other == id {
-			c.queued[i] = n
-			return id, true
+		earlier, sameConversation := notificationID(c.queued[i])
+		if !sameConversation || earlier != id {
+			continue
 		}
+		// The newest notification of this conversation. It may give way only
+		// when it is a whole view itself.
+		if _, isWhole := wholeView(c.queued[i]); !isWhole {
+			return 0, false
+		}
+		c.queued[i] = n
+		return id, true
 	}
 	return 0, false
+}
+
+// notificationID is the conversation a notification is about, for any
+// notification that names one: a view push of any kind, a busy change, an
+// approval, an ask.
+func notificationID(n Notification) (ID, bool) {
+	var p struct {
+		ID ID `json:"id"`
+	}
+	if json.Unmarshal(n.Params, &p) != nil || p.ID == 0 {
+		return 0, false
+	}
+	return p.ID, true
 }
 
 // dropRebuildableLocked takes the oldest whole view out of the queue, so a
@@ -560,7 +595,7 @@ func (c *Client) lostLocked(method string) {
 func (c *Client) overLocked() {
 	c.over++
 	if c.over == 1 || c.over%1000 == 0 {
-		c.logf("kernel: the reader is %d notifications behind and the queue holds only must-arrive ones: it grew past its cap %d times", len(c.queued), c.opts.maxQueuedNotes())
+		c.logf("kernel: the reader is %d notifications behind and the queue holds only must-arrive ones: it grew past its cap of %d %d times", len(c.queued), c.opts.maxQueuedNotes(), c.over)
 	}
 }
 

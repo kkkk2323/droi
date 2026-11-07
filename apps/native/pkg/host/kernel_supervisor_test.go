@@ -114,8 +114,9 @@ func TestKernelHelperProcess(t *testing.T) {
 		// A sidecar that prints one line no reader can hold whole. The tail
 		// of it is what explains the death that follows.
 		if n, err := strconv.Atoi(long); err == nil && n > 0 {
+			// Only stdout: the failure's reason has one writer, so the test
+			// does not depend on which of two readers gets there first.
 			_, _ = os.Stdout.WriteString(strings.Repeat("p", n) + "TAIL-MARKER\n")
-			fmt.Fprintln(os.Stderr, "kernel: I printed a line nobody can hold")
 			os.Exit(1)
 		}
 	}
@@ -172,11 +173,12 @@ func helperSpawn(t *testing.T, env ...string) func(port int, token string) (*exe
 		// arguments reach the helper untouched.
 		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", t.TempDir())
 		cmd.Env = append(os.Environ(), append([]string{"GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv + "=" + token}, env...)...)
-		stdout, err := cmd.StdoutPipe()
+		read, write, err := os.Pipe()
 		if err != nil {
 			return nil, nil, err
 		}
-		return cmd, stdout, nil
+		cmd.Stdout = write
+		return cmd, &stdioPair{read: read, write: write}, nil
 	}
 }
 
@@ -296,11 +298,12 @@ func TestKernelSupervisorStopsAndKeepsTheDataDirectory(t *testing.T) {
 	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
 		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
 		cmd.Env = append(os.Environ(), "GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv+"="+token, "GO_KERNEL_TOUCH=started.txt")
-		stdout, err := cmd.StdoutPipe()
+		read, write, err := os.Pipe()
 		if err != nil {
 			return nil, nil, err
 		}
-		return cmd, stdout, nil
+		cmd.Stdout = write
+		return cmd, &stdioPair{read: read, write: write}, nil
 	})
 	s.Start()
 	w.waitState(t, KernelRunning)
@@ -469,11 +472,12 @@ func TestKernelSupervisorKeepsDrainingStdoutAfterTheHandshake(t *testing.T) {
 		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
 		cmd.Env = append(os.Environ(), "GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv+"="+token,
 			"GO_KERNEL_NOISE_BYTES=2097152", "GO_KERNEL_NOISE_DONE=noise-done")
-		stdout, err := cmd.StdoutPipe()
+		read, write, err := os.Pipe()
 		if err != nil {
 			return nil, nil, err
 		}
-		return cmd, stdout, nil
+		cmd.Stdout = write
+		return cmd, &stdioPair{read: read, write: write}, nil
 	})
 	defer s.Stop()
 	s.Start()
@@ -659,4 +663,27 @@ func tailOf(s string, n int) string {
 		return s
 	}
 	return "…" + s[len(s)-n:]
+}
+
+// A Supervisor that is stopped and started again must publish states again: a
+// publisher that is never rebuilt leaves OnState silent for the rest of the
+// process's life while the state keeps changing.
+func TestOnStateSurvivesStopAndStart(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(nil)
+	s.Binary = filepath.Join(t.TempDir(), "no-such-kernel")
+	s.Backoff = []time.Duration{5 * time.Millisecond}
+	s.Start()
+	w.waitState(t, KernelRestarting)
+	s.Stop()
+	// Drain whatever the first run left.
+	for len(w.states) > 0 {
+		<-w.states
+	}
+	s.Start()
+	defer s.Stop()
+	restarting := w.waitState(t, KernelRestarting)
+	if restarting.Status != KernelRestarting {
+		t.Fatalf("state after a restart: %+v", restarting)
+	}
 }
