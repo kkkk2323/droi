@@ -239,6 +239,9 @@ var callers = []caller{
 	{MethodSkillsSetDisabled, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.SetSkillDisabled(ctx, *decodeParams[SkillsSetDisabledParams](t, raw))
 	}},
+	{MethodModelComplete, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.ModelComplete(ctx, *decodeParams[ModelCompleteParams](t, raw))
+	}},
 }
 
 // Every method goes over the wire in the contract's shape: the params the

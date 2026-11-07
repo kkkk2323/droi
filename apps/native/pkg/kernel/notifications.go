@@ -17,12 +17,19 @@ func (n Notification) Decode(v any) error {
 	return json.Unmarshal(n.Params, v)
 }
 
-// ViewNotification is conversation.view: a conversation's whole view after a
-// commit, or, with Kind "failed", that Kernel could not read it. Consume Value
-// and ignore Ops (design §2.3).
+// ViewNotification is conversation.view: a conversation's view after a commit,
+// in the shape the connection's subscription asked for.
+//
+// A "view" subscriber reads Value and ignores Ops. A "delta" subscriber
+// applies Ops to the state it keeps, and replaces that state whenever Kind is
+// ViewKindFull — Kernel sends one as soon as it cannot prove the ops are
+// continuous with what the subscriber holds, so the subscriber never has to
+// guess. With ViewKindFailed, Kernel could not read the conversation at all.
 type ViewNotification struct {
-	ID    ID              `json:"id"`
-	Kind  string          `json:"kind"`
+	ID   ID     `json:"id"`
+	Kind string `json:"kind"`
+	// Value is the whole view for a "view" subscriber and for ViewKindFull;
+	// null for a "delta" subscriber's ViewKindValue push.
 	Value *View           `json:"value,omitempty"`
 	Ops   json.RawMessage `json:"ops,omitempty"`
 	// Retired says the conversation's watch is over.
@@ -32,7 +39,13 @@ type ViewNotification struct {
 }
 
 // Failed reports whether Kernel could not read the conversation.
-func (n ViewNotification) Failed() bool { return n.Kind == "failed" }
+func (n ViewNotification) Failed() bool { return n.Kind == ViewKindFailed }
+
+// Whole reports whether the push carries a whole view, which replaces whatever
+// the subscriber kept: every push to a "view" subscriber, and ViewKindFull.
+func (n ViewNotification) Whole() bool {
+	return n.Value != nil && (n.Kind == ViewKindValue || n.Kind == ViewKindFull)
+}
 
 // BusyNotification is conversation.busy: the run that started, or null when
 // the conversation went idle. RunFailure says why the run that just ended
@@ -86,8 +99,10 @@ type AskRequested struct {
 	RequestID string     `json:"requestId"`
 	ID        ID         `json:"id"`
 	Questions []Question `json:"questions"`
-	// Context is what the model said about why it asks.
-	Context json.RawMessage `json:"context,omitempty"`
+	// Context is the sentence that says what the answer is for. The contract
+	// makes it required and non-empty, because a question without one cannot
+	// be answered well.
+	Context string `json:"context"`
 }
 
 // Question is one question of an ask.requested.
@@ -151,3 +166,15 @@ type Warning struct {
 	Kind    string `json:"kind"`
 	Message string `json:"message"`
 }
+
+// The kinds a conversation.view push takes.
+const (
+	// ViewKindValue carries the value for a "view" subscriber, or only ops
+	// for a "delta" one.
+	ViewKindValue = "value"
+	// ViewKindFull carries the whole value after ops a "delta" subscriber
+	// could not merge. A subscriber replaces its state with it.
+	ViewKindFull = "full"
+	// ViewKindFailed says Kernel could not read the conversation.
+	ViewKindFailed = "failed"
+)

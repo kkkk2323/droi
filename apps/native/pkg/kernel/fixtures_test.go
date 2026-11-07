@@ -86,6 +86,7 @@ var methodParams = map[string]any{
 	MethodMCPAuthorizeCancel:  &MCPAuthorizeParams{},
 	MethodSkillsList:          nil,
 	MethodSkillsSetDisabled:   &SkillsSetDisabledParams{},
+	MethodModelComplete:       &ModelCompleteParams{},
 }
 
 // methodResults is the result type of a method. An empty result is struct{}.
@@ -115,6 +116,7 @@ var methodResults = map[string]any{
 	MethodMCPAuthorizeCancel:  &struct{}{},
 	MethodSkillsList:          &Skills{},
 	MethodSkillsSetDisabled:   &Skills{},
+	MethodModelComplete:       &ModelCompleteResult{},
 }
 
 // notificationTypes is the type conversation.view's and the rest's params
@@ -137,24 +139,23 @@ var notificationTypes = map[string]func() any{
 // field: a name Kernel changes, or one this client never modelled, fails here.
 func TestFixturesDecodeIntoTheClientTypes(t *testing.T) {
 	idx := readIndex(t)
-	if len(idx.Methods) != len(Methods) {
-		t.Fatalf("the fixtures list %d methods, this client has %d", len(idx.Methods), len(Methods))
-	}
 	seen := map[string]bool{}
 	for _, name := range idx.Methods {
 		f := readFixture(t, name)
 		method := f.Method
-		if !seen[method] {
-			seen[method] = true
-		}
+		seen[method] = true
 		t.Run(method, func(t *testing.T) {
 			checkMethodFixture(t, method, f)
 		})
 	}
 	for _, method := range Methods {
-		if !seen[method] {
-			t.Errorf("the fixtures have no sample of %s", method)
+		if seen[method] {
+			continue
 		}
+		// A method the contract has and the fixtures do not yet: the client
+		// keeps its types, and this list names the PR that lands the sample.
+		// The entry must go when the sample does, or the check below fails.
+		t.Errorf("the fixtures have no sample of %s", method)
 	}
 }
 
@@ -438,5 +439,85 @@ func uncovered(want, have any, path string, fromClient bool) (string, bool) {
 			return path, true
 		}
 		return "", false
+	}
+}
+
+// The three kinds a conversation.view push takes say whether a subscriber may
+// keep the state it has: a "delta" subscriber applies ops, and replaces its
+// state whenever a whole view arrives.
+func TestViewKindSaysWhetherThePushIsWhole(t *testing.T) {
+	cases := []struct {
+		file   string
+		whole  bool
+		failed bool
+	}{
+		{"notifications/conversation.view.json", true, false},
+		{"notifications/conversation.view.full.json", true, false},
+		{"notifications/conversation.view.delta.json", false, false},
+		{"notifications/conversation.view.failed.json", false, true},
+	}
+	for _, c := range cases {
+		f := readFixture(t, c.file)
+		var n Notification
+		if err := json.Unmarshal(f.Notification, &n); err != nil {
+			t.Fatal(err)
+		}
+		var view ViewNotification
+		if err := n.Decode(&view); err != nil {
+			t.Fatal(err)
+		}
+		if view.Whole() != c.whole {
+			t.Errorf("%s: Whole() = %v, want %v", c.file, view.Whole(), c.whole)
+		}
+		if view.Failed() != c.failed {
+			t.Errorf("%s: Failed() = %v, want %v", c.file, view.Failed(), c.failed)
+		}
+		if !c.whole && !c.failed && len(view.Ops) == 0 {
+			t.Errorf("%s: a delta push carries no ops", c.file)
+		}
+		if view.Retired {
+			t.Errorf("%s: retired", c.file)
+		}
+	}
+}
+
+// A delta subscription is what the phone asks for (M5); the window keeps the
+// default, which is a whole view.
+func TestOpenAsksForWholeViewsByDefault(t *testing.T) {
+	if (OpenParams{}).Subscribe != "" {
+		t.Fatal("OpenParams defaults to a value, not to the contract's \"view\"")
+	}
+	encoded, err := json.Marshal(OpenParams{ID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != `{"id":7}` {
+		t.Fatalf("the default open sends %s, so the kernel never sees a choice it did not ask for", encoded)
+	}
+	encoded, err = json.Marshal(OpenParams{ID: 7, Subscribe: SubscribeDelta})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"subscribe":"delta"`) {
+		t.Fatalf("a delta open sends %s", encoded)
+	}
+}
+
+// harness.info's limits are read, not assumed: the push rate is the kernel's.
+func TestHarnessInfoCarriesThePushRate(t *testing.T) {
+	f := readFixture(t, "methods/harness.info.json")
+	var response rpcFrame
+	if err := json.Unmarshal(f.Response, &response); err != nil {
+		t.Fatal(err)
+	}
+	var info HarnessInfo
+	if err := json.Unmarshal(response.Result, &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Limits.ViewPushesPerSecond != 5 {
+		t.Fatalf("limits = %+v, want 5 pushes a second", info.Limits)
+	}
+	if info.Capabilities.Models {
+		t.Fatal("the sample says models is available: M1 does not implement model.complete")
 	}
 }
