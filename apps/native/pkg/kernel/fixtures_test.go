@@ -1,0 +1,442 @@
+package kernel
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// fixturesDir is the contract's samples, which Kernel's tests parse too.
+const fixturesDir = "../../../kernel/protocol/fixtures"
+
+// fixture is one file of the contract's samples.
+type fixture struct {
+	Kind         string          `json:"kind"`
+	Method       string          `json:"method"`
+	Request      json.RawMessage `json:"request"`
+	Response     json.RawMessage `json:"response"`
+	Notification json.RawMessage `json:"notification"`
+	Error        *struct {
+		Code int    `json:"code"`
+		Name string `json:"name"`
+	} `json:"error"`
+}
+
+type fixtureIndex struct {
+	Methods       []string `json:"methods"`
+	Notifications []string `json:"notifications"`
+	Errors        []string `json:"errors"`
+}
+
+func readFixture(t *testing.T, name string) fixture {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(fixturesDir, name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	var f fixture
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return f
+}
+
+func readIndex(t *testing.T) fixtureIndex {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(fixturesDir, "index.json"))
+	if err != nil {
+		t.Fatalf("read index.json: %v", err)
+	}
+	var idx fixtureIndex
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatalf("index.json: %v", err)
+	}
+	return idx
+}
+
+// methodParams is the params type of a method: a pointer to the struct
+// conversation.create takes, or nil for the methods without params.
+var methodParams = map[string]any{
+	MethodHarnessInfo:         nil,
+	MethodConversationCreate:  &CreateParams{},
+	MethodConversationList:    &ListParams{},
+	MethodConversationOpen:    &OpenParams{},
+	MethodConversationUnwatch: &IDParams{},
+	MethodConversationSubmit:  &SubmitParams{},
+	MethodConversationAbort:   &AbortParams{},
+	MethodSubmissionAbort:     &AbortSubmissionParams{},
+	MethodConversationConfig:  &ConfigureParams{},
+	MethodConversationCompact: &CompactParams{},
+	MethodConversationFork:    &ForkParams{},
+	MethodConversationEntries: &EntriesParams{},
+	MethodConversationUsage:   &UsageParams{},
+	MethodTaskAbort:           &AbortTaskParams{},
+	MethodIndexUpdate:         &IndexUpdateParams{},
+	MethodProcessList:         &ProcessesParams{},
+	MethodProcessStop:         &StopProcessParams{},
+	MethodApprovalRespond:     &ApprovalRespondParams{},
+	MethodAskRespond:          &AskRespondParams{},
+	MethodMCPList:             nil,
+	MethodMCPSet:              &MCPSetParams{},
+	MethodMCPAuthorize:        &MCPAuthorizeParams{},
+	MethodMCPAuthorizeCancel:  &MCPAuthorizeParams{},
+	MethodSkillsList:          nil,
+	MethodSkillsSetDisabled:   &SkillsSetDisabledParams{},
+}
+
+// methodResults is the result type of a method. An empty result is struct{}.
+var methodResults = map[string]any{
+	MethodHarnessInfo:         &HarnessInfo{},
+	MethodConversationCreate:  &CreateResult{},
+	MethodConversationList:    &ListResult{},
+	MethodConversationOpen:    &OpenResult{},
+	MethodConversationUnwatch: &struct{}{},
+	MethodConversationSubmit:  &SubmitResult{},
+	MethodConversationAbort:   &struct{}{},
+	MethodSubmissionAbort:     &Status{},
+	MethodConversationConfig:  &ConfigureResult{},
+	MethodConversationCompact: &CompactResult{},
+	MethodConversationFork:    &ForkResult{},
+	MethodConversationEntries: &EntriesResult{},
+	MethodConversationUsage:   &Usage{},
+	MethodTaskAbort:           &Status{},
+	MethodIndexUpdate:         &struct{}{},
+	MethodProcessList:         &ProcessesResult{},
+	MethodProcessStop:         &Status{},
+	MethodApprovalRespond:     &Status{},
+	MethodAskRespond:          &Status{},
+	MethodMCPList:             &MCPServers{},
+	MethodMCPSet:              &MCPServers{},
+	MethodMCPAuthorize:        &MCPAuthorizeResult{},
+	MethodMCPAuthorizeCancel:  &struct{}{},
+	MethodSkillsList:          &Skills{},
+	MethodSkillsSetDisabled:   &Skills{},
+}
+
+// notificationTypes is the type conversation.view's and the rest's params
+// decode into.
+var notificationTypes = map[string]func() any{
+	NotifyConversationView:  func() any { return &ViewNotification{} },
+	NotifyConversationBusy:  func() any { return &BusyNotification{} },
+	NotifyApprovalRequested: func() any { return &ApprovalRequested{} },
+	NotifyApprovalResolved:  func() any { return &ApprovalResolved{} },
+	NotifyAskRequested:      func() any { return &AskRequested{} },
+	NotifyAskResolved:       func() any { return &AskResolved{} },
+	NotifyTaskChanged:       func() any { return &TaskChanged{} },
+	NotifyMCPChanged:        func() any { return &MCPChanged{} },
+	NotifyProcessChanged:    func() any { return &ProcessChanged{} },
+	NotifyIndexChanged:      func() any { return &IndexChanged{} },
+	NotifyWarning:           func() any { return &Warning{} },
+}
+
+// The contract's samples decode into this package's types without losing a
+// field: a name Kernel changes, or one this client never modelled, fails here.
+func TestFixturesDecodeIntoTheClientTypes(t *testing.T) {
+	idx := readIndex(t)
+	if len(idx.Methods) != len(Methods) {
+		t.Fatalf("the fixtures list %d methods, this client has %d", len(idx.Methods), len(Methods))
+	}
+	seen := map[string]bool{}
+	for _, name := range idx.Methods {
+		f := readFixture(t, name)
+		method := f.Method
+		if !seen[method] {
+			seen[method] = true
+		}
+		t.Run(method, func(t *testing.T) {
+			checkMethodFixture(t, method, f)
+		})
+	}
+	for _, method := range Methods {
+		if !seen[method] {
+			t.Errorf("the fixtures have no sample of %s", method)
+		}
+	}
+}
+
+func checkMethodFixture(t *testing.T, method string, f fixture) {
+	t.Helper()
+	if _, ok := methodParams[method]; !ok {
+		t.Fatalf("no params type for %s", method)
+	}
+	var request rpcFrame
+	if err := json.Unmarshal(f.Request, &request); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if request.Method != f.Method {
+		t.Fatalf("the request names %s, the fixture %s", request.Method, f.Method)
+	}
+	if shape := methodParams[method]; shape != nil {
+		if len(request.Params) == 0 {
+			t.Fatalf("%s has a params type, the sample sends none", method)
+		}
+		params := reflect.New(reflect.TypeOf(shape).Elem()).Interface()
+		if err := json.Unmarshal(request.Params, params); err != nil {
+			t.Fatalf("params: %v", err)
+		}
+		encoded, err := json.Marshal(params)
+		if err != nil {
+			t.Fatalf("params: %v", err)
+		}
+		assertSameJSON(t, "params", request.Params, encoded)
+	} else if len(request.Params) > 0 {
+		t.Fatalf("%s takes no params, the sample sends %s", method, request.Params)
+	}
+
+	var response rpcFrame
+	if err := json.Unmarshal(f.Response, &response); err != nil {
+		t.Fatalf("response: %v", err)
+	}
+	if response.Error != nil {
+		t.Fatalf("a method sample carries an error: %+v", response.Error)
+	}
+	result := reflect.New(reflect.TypeOf(methodResults[method]).Elem()).Interface()
+	if len(response.Result) > 0 {
+		if err := json.Unmarshal(response.Result, result); err != nil {
+			t.Fatalf("result: %v", err)
+		}
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("result: %v", err)
+	}
+	assertSameJSON(t, "result", response.Result, encoded)
+}
+
+// The contract's notifications decode into this package's types the same way,
+// so the window reads what Kernel sends.
+func TestNotificationFixturesDecodeIntoTheClientTypes(t *testing.T) {
+	idx := readIndex(t)
+	seen := map[string]bool{}
+	for _, name := range idx.Notifications {
+		f := readFixture(t, name)
+		seen[f.Method] = true
+		t.Run(strings.TrimSuffix(filepath.Base(name), ".json"), func(t *testing.T) {
+			if _, ok := notificationTypes[f.Method]; !ok {
+				t.Fatalf("no type for %s", f.Method)
+			}
+			var frame rpcFrame
+			if err := json.Unmarshal(f.Notification, &frame); err != nil {
+				t.Fatalf("notification: %v", err)
+			}
+			if frame.Method != f.Method {
+				t.Fatalf("the sample names %s, the fixture %s", frame.Method, f.Method)
+			}
+			if len(frame.ID) > 0 {
+				t.Fatalf("a notification carries an id: %s", frame.ID)
+			}
+			params := notificationTypes[f.Method]()
+			var n Notification
+			if err := json.Unmarshal(f.Notification, &n); err != nil {
+				t.Fatalf("notification: %v", err)
+			}
+			if err := json.Unmarshal(n.Params, params); err != nil {
+				t.Fatalf("params: %v", err)
+			}
+			encoded, err := json.Marshal(params)
+			if err != nil {
+				t.Fatalf("params: %v", err)
+			}
+			assertSameJSON(t, "params", n.Params, encoded)
+		})
+	}
+	for method := range notificationTypes {
+		if !seen[method] {
+			t.Errorf("the fixtures have no sample of %s", method)
+		}
+	}
+}
+
+// The contract's errors come back as *RPCError with the code its table names,
+// which is what a Client branches on.
+func TestErrorFixturesDecodeIntoRPCError(t *testing.T) {
+	for _, name := range readIndex(t).Errors {
+		f := readFixture(t, name)
+		t.Run(strings.TrimSuffix(filepath.Base(name), ".json"), func(t *testing.T) {
+			if f.Error == nil {
+				t.Fatal("the fixture names no error")
+			}
+			var response rpcFrame
+			if err := json.Unmarshal(f.Response, &response); err != nil {
+				t.Fatalf("response: %v", err)
+			}
+			if response.Error == nil {
+				t.Fatal("the response carries no error")
+			}
+			if response.Error.Code != f.Error.Code {
+				t.Fatalf("the response's code is %d, the fixture's %d", response.Error.Code, f.Error.Code)
+			}
+			if response.Error.Message == "" {
+				t.Fatal("every error carries a message")
+			}
+			var err error = response.Error
+			if !Is(err, f.Error.Code) {
+				t.Fatalf("Is(%v, %d) is false", err, f.Error.Code)
+			}
+		})
+	}
+}
+
+// A busy notification tells a run from idle, which is what the window's
+// "working" state is.
+func TestBusyFixturesSayRunningOrNot(t *testing.T) {
+	cases := []struct {
+		file string
+		busy bool
+	}{
+		{"notifications/conversation.busy.json", true},
+		{"notifications/conversation.busy.idle.json", false},
+		{"notifications/conversation.busy.failed.json", false},
+	}
+	for _, c := range cases {
+		f := readFixture(t, c.file)
+		var n Notification
+		if err := json.Unmarshal(f.Notification, &n); err != nil {
+			t.Fatal(err)
+		}
+		var busy BusyNotification
+		if err := n.Decode(&busy); err != nil {
+			t.Fatal(err)
+		}
+		if busy.Busy() != c.busy {
+			t.Errorf("%s: Busy() = %v", c.file, busy.Busy())
+		}
+		if c.file == "notifications/conversation.busy.failed.json" && len(busy.RunFailure) == 0 {
+			t.Errorf("%s: RunFailure is empty", c.file)
+		}
+	}
+}
+
+// assertSameJSON checks that the client's encoding of a value carries
+// everything the contract's sample carries, and nothing it does not: a field
+// the client does not model is a field the window cannot show, and a field it
+// invents is one Kernel will refuse.
+//
+// A null or an empty container in the sample may arrive as an absent field:
+// both say "no value", and Go's omitempty writes the shorter one.
+func assertSameJSON(t *testing.T, what string, sample, got []byte) {
+	t.Helper()
+	if len(sample) == 0 {
+		return
+	}
+	var want, have any
+	if err := json.Unmarshal(sample, &want); err != nil {
+		t.Fatalf("%s sample: %v", what, err)
+	}
+	if len(got) > 0 {
+		if err := json.Unmarshal(got, &have); err != nil {
+			t.Fatalf("%s client: %v", what, err)
+		}
+	}
+	if path, missing := uncovered(want, have, "", false); missing {
+		t.Fatalf("%s: this client does not keep %s\n sample %s\n client %s", what, path, sample, got)
+	}
+	if path, extra := uncovered(have, want, "", true); extra {
+		t.Fatalf("%s: this client sends %s, which the sample does not have\n sample %s\n client %s", what, path, sample, got)
+	}
+}
+
+// emptyValue reports a value that says "nothing": null, an empty list, an
+// empty object. Go's omitempty writes those as an absent field.
+func emptyValue(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case []any:
+		return len(v) == 0
+	case map[string]any:
+		return len(v) == 0
+	}
+	return false
+}
+
+// zeroValue reports a value Go's omitempty also drops: false, "", 0. A
+// sample's false and a client's absent field mean the same thing on the wire,
+// so either side may spell it the shorter way.
+func zeroValue(value any) bool {
+	if emptyValue(value) {
+		return true
+	}
+	switch v := value.(type) {
+	case bool:
+		return !v
+	case string:
+		return v == ""
+	case float64:
+		return v == 0
+	}
+	return false
+}
+
+// uncovered is the first path of want that have does not carry. On the
+// sample side a zero value may be absent; on the client side a zero value the
+// sample does not carry is not an invention. Any other missing value is a
+// field the client does not model, and any other extra one is a field it
+// invented.
+func uncovered(want, have any, path string, fromClient bool) (string, bool) {
+	switch w := want.(type) {
+	case map[string]any:
+		if len(w) == 0 {
+			return "", false
+		}
+		if have == nil {
+			if fromClient {
+				return path, true
+			}
+			return "", false
+		}
+		h, ok := have.(map[string]any)
+		if !ok {
+			return path, true
+		}
+		for key, value := range w {
+			child := key
+			if path != "" {
+				child = path + "." + key
+			}
+			if !fromClient && zeroValue(value) {
+				continue
+			}
+			got, ok := h[key]
+			if !ok {
+				if fromClient && zeroValue(value) {
+					continue
+				}
+				return child, true
+			}
+			if p, bad := uncovered(value, got, child, fromClient); bad {
+				return p, true
+			}
+		}
+		return "", false
+	case []any:
+		if len(w) == 0 {
+			return "", false
+		}
+		if have == nil {
+			if fromClient {
+				return path, true
+			}
+			return "", false
+		}
+		h, ok := have.([]any)
+		if !ok || len(h) != len(w) {
+			return path, true
+		}
+		for i := range w {
+			if p, bad := uncovered(w[i], h[i], path+"["+strconv.Itoa(i)+"]", fromClient); bad {
+				return p, true
+			}
+		}
+		return "", false
+	default:
+		if want != have {
+			return path, true
+		}
+		return "", false
+	}
+}
