@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
-import { createToolProcesses, groupIsOurs } from '../src/tool-processes.ts'
+import { createToolProcesses, groupIsOurs, processSnapshot } from '../src/tool-processes.ts'
 import { context } from '../src/session/service.ts'
 import { Client, fauxCatalog, start, tempData } from './helpers.ts'
 import { type GroupMember, type ShellGroup } from '../src/tool-processes.ts'
@@ -231,3 +231,29 @@ test('a stop that arrives during a stop waits for the same cleanup', async () =>
     data.cleanup()
   }
 }, 60_000)
+
+test('a wall clock that moved makes every exit time unreliable', () => {
+  // Start times come from the wall clock and exits are wall-clock readings too: if the wall clock was stepped
+  // between them, comparing the two says nothing, so nothing is signalled.
+  const exit = 1_700_000_100_000
+  const earlier = [{ pid: 4250, startedAtMs: exit - 30_000 }]
+  expect(groupIsOurs(group(exit - 60_000, exit), earlier, false)).toBe(false)
+  expect(groupIsOurs(group(exit - 60_000, exit), earlier, true)).toBe(true)
+  // A shell that is still running is unaffected: its pid, not its clock, is the evidence.
+  expect(groupIsOurs(group(exit - 60_000), [], false)).toBe(true)
+})
+
+test('the snapshot is read after ps, and a slow table is refused', async () => {
+  // The reference time must come after `ps` returns: taken before, every start time's error grows by the
+  // table's own duration, which is how a process that began 1.2 s after an exit looked older than it.
+  const slow = processSnapshot(() => Date.now() + 2000)
+  const fresh = processSnapshot()
+  expect(slow).toBeDefined()
+  expect(fresh).toBeDefined()
+  const self = process.pid
+  const startedFresh = [...(fresh ?? new Map()).values()].flat().find((m) => m.pid === self)
+  const startedSlow = [...(slow ?? new Map()).values()].flat().find((m) => m.pid === self)
+  expect(startedFresh).toBeDefined()
+  expect(startedSlow).toBeDefined()
+  expect(startedSlow!.startedAtMs - startedFresh!.startedAtMs).toBeGreaterThan(1500)
+})

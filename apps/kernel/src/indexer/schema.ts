@@ -47,6 +47,17 @@ const statements = [
     ON droi_conversations (kind, last_activity_at DESC, id DESC)`,
   `CREATE INDEX IF NOT EXISTS droi_index_workspace
     ON droi_conversations (workspace, last_activity_at DESC, id DESC)`,
+  // Where a submission's turn ended, written when the Kernel settles one without an answer.
+  //
+  // The end cannot be derived from the transcript: a turn's entries do not carry its submission (they carry a
+  // task, and tool results belong to child tasks), so "the first task after my entry" adopts the next turn.
+  // It is recorded once, at the moment the submission ends, and read back unchanged.
+  `CREATE TABLE IF NOT EXISTS droi_submission_ends (
+    conversation_id INTEGER NOT NULL,
+    submission_id INTEGER NOT NULL,
+    last_entry_id INTEGER NOT NULL,
+    PRIMARY KEY (conversation_id, submission_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS droi_requests (
     conversation_id INTEGER NOT NULL,
     request_id TEXT NOT NULL,
