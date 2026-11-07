@@ -208,3 +208,61 @@ func TestSetAppName(t *testing.T) {
 		t.Errorf("back to Droi: %q, %q", got, AppName())
 	}
 }
+
+// The window's copy that named Droid names the app Droi instead, so another
+// app built on these packages shows its own name there: the words Q14 moved
+// off Droid, in both languages.
+func TestTheWindowsCopyNamesAnotherAppsName(t *testing.T) {
+	defer SetAppName("")
+	defer Set("", "en-US")
+	keys := []string{
+		"Appended to Droi's system prompt in every new Session from this computer or a paired phone. Existing Sessions and subagents keep theirs.",
+		"Droi deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch.",
+		"Droi finished",
+		"Droi has a question",
+		"Droi has a queued question",
+		"Droi keeps a worktree with uncommitted changes; delete it in Settings → Worktrees.",
+		"Droi keeps working and reads your answer later",
+		"Droi needs input",
+		"Droi wants to run %s",
+		"How much Droi may do without asking for approval.",
+		"Image from Droi",
+		"Not connected to Droi: %s",
+		"Notify when Droi finishes",
+		"Notify when Droi needs input",
+		"Off: Droi starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past work on this computer.",
+		"Plays when Droi finishes and the Session stops.",
+		"Plays when Droi stops to ask for permission or an answer.",
+		"Prompts Droi runs on a schedule, on this computer, while Droi is open.",
+		"Reconnecting to Droi…",
+		"Renews caches while Droi runs tools, not while a session is idle.",
+		"What should Droi work on?",
+		"When Droi finishes",
+		"When Droi needs input",
+		"Where should Droi work?",
+		"Worktrees let a session work on its own checkout and branch, beside your own. Droi makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer.",
+	}
+	const name = "Acme Agent"
+	for _, key := range keys {
+		if _, ok := zh[key]; !ok {
+			t.Errorf("the catalogue has no Chinese for %q", key)
+		}
+	}
+	SetAppName(name)
+	for _, key := range keys {
+		if got := T(key); strings.Contains(got, "Droi") || !strings.Contains(got, name) {
+			t.Errorf("English %q reads %q", key, got)
+		}
+	}
+	Set("zh-Hans", "")
+	for _, key := range keys {
+		translation, got := zh[key], T(key)
+		if strings.Contains(got, "Droi") {
+			t.Errorf("Chinese %q reads %q", key, got)
+		}
+		// Chinese that names the app names the app it runs in, not Droi.
+		if strings.Contains(translation, "Droi") != strings.Contains(got, name) {
+			t.Errorf("Chinese %q reads %q, from %q", key, got, translation)
+		}
+	}
+}

@@ -408,7 +408,7 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 				if len(parts) > 0 {
 					warn(L("Warning: this worktree has %s.", strings.Join(parts, ", ")))
 					if archive && in.ChangedFiles+in.UntrackedFiles > 0 {
-						k.Text(c, L("Droid keeps a worktree with uncommitted changes; delete it in Settings → Worktrees."), 12, 18).TextColor(t.MutedForeground)
+						k.Text(c, L("Droi keeps a worktree with uncommitted changes; delete it in Settings → Worktrees."), 12, 18).TextColor(t.MutedForeground)
 					}
 				}
 				if pr := in.PullRequest; pr != nil {
@@ -589,7 +589,7 @@ func (a *App) loadManagedWorktrees() {
 // how many ephemeral ones it keeps, and the ones it manages.
 func (a *App) worktreesTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droid makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer."), 13, 19.5).
+	k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droi makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer."), 13, 19.5).
 		TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	dv := a.sessionDefaults()
 	if dv == nil {
@@ -640,7 +640,7 @@ func (a *App) worktreesTab(c *ui.Context) {
 				}
 				opts = append(opts, kit.Option{Value: strconv.Itoa(n), Label: L("%d worktrees", n)})
 			}
-			a.settingRow(c, L("Ephemeral worktrees limit"), L("Droid deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch."), func() {
+			a.settingRow(c, L("Ephemeral worktrees limit"), L("Droi deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch."), func() {
 				if next, ok := a.fieldSelect(c, L("Ephemeral worktrees limit"), strconv.Itoa(limit), opts, false); ok {
 					n, _ := strconv.Atoi(next)
 					save(defaultsPatch{WorktreeAutoDeleteLimit: &n})

@@ -94,7 +94,7 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 			}
 			desc := l10n.T(defaults.AutonomyDescriptions[level])
 			if desc == "" {
-				desc = l10n.L("How much Droid may do without asking for approval.")
+				desc = l10n.L("How much Droi may do without asking for approval.")
 			}
 			k.SettingRow(c, l10n.L("Autonomy level"), desc, func() {
 				if next, ok := s.Select(c, l10n.N("Default autonomy level"), level, autonomy, locked("autonomyLevel")); ok {

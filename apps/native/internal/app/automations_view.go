@@ -624,7 +624,7 @@ func (a *App) automationList(c *ui.Context) {
 				a.Go(Route{Name: "automations", Tab: newAutomationTab})
 			}
 		})
-		k.Text(c, L("Prompts Droid runs on a schedule, on this computer, while Droi is open."), 13, 20).TextColor(t.MutedForeground)
+		k.Text(c, L("Prompts Droi runs on a schedule, on this computer, while Droi is open."), 13, 20).TextColor(t.MutedForeground)
 	})
 	a.automationNotice(c)
 	switch {

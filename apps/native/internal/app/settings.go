@@ -526,7 +526,7 @@ func (a *App) newSessionsGroup(c *ui.Context) {
 	st := h.Settings.Get()
 	a.settingGroup(c, L("New Sessions in Droi"), L("Applies to new Sessions started from this computer or a paired phone, without affecting the droid CLI or the Factory App."),
 		func() {
-			a.settingRow(c, L("System prompt addition"), L("Appended to Droid's system prompt in every new Session from this computer or a paired phone. Existing Sessions and subagents keep theirs."), nil, func() {
+			a.settingRow(c, L("System prompt addition"), L("Appended to Droi's system prompt in every new Session from this computer or a paired phone. Existing Sessions and subagents keep theirs."), nil, func() {
 				ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
 					k.TextArea(c, &s.prompt, L("System prompt addition"), L("e.g. Reply in the language I write in. Prefer small, reviewable commits."),
 						kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 4, Color: t.Foreground})
@@ -703,13 +703,13 @@ func (a *App) notificationsTab(c *ui.Context) {
 			}, nil)
 		}
 	}
-	a.settingGroup(c, L("When Droid finishes"), "",
-		soundRow(l10n.N("Completion sound"), l10n.N("Completion sound"), L("Plays when Droid finishes and the Session stops."), &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
-		notifyRow(l10n.N("Notify when Droid finishes"), L("Notifies you when you are not viewing that Session."), &p.NotifyOnComplete),
+	a.settingGroup(c, L("When Droi finishes"), "",
+		soundRow(l10n.N("Completion sound"), l10n.N("Completion sound"), L("Plays when Droi finishes and the Session stops."), &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
+		notifyRow(l10n.N("Notify when Droi finishes"), L("Notifies you when you are not viewing that Session."), &p.NotifyOnComplete),
 	)
-	a.settingGroup(c, L("When Droid needs input"), "",
-		soundRow(l10n.N("Needs-input sound"), l10n.N("Needs-input sound"), L("Plays when Droid stops to ask for permission or an answer."), &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
-		notifyRow(l10n.N("Notify when Droid needs input"), L("Notifies you when a Session waits for permission or an answer."), &p.NotifyOnWaitingForInput),
+	a.settingGroup(c, L("When Droi needs input"), "",
+		soundRow(l10n.N("Needs-input sound"), l10n.N("Needs-input sound"), L("Plays when Droi stops to ask for permission or an answer."), &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
+		notifyRow(l10n.N("Notify when Droi needs input"), L("Notifies you when a Session waits for permission or an answer."), &p.NotifyOnWaitingForInput),
 	)
 	a.settingGroup(c, L("Sounds"), "", func() {
 		opts := []kit.Option{{Value: "always", Label: L("Always")}, {Value: "focused", Label: L("Only when Droi is focused")}, {Value: "unfocused", Label: L("Only when Droi is in the background")}}
