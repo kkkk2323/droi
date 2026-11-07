@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Harness, createRegistry } from '@earendil-works/pi-durable'
 import type { HarnessSettings, Registry, Storage } from '@earendil-works/pi-durable'
@@ -134,6 +134,17 @@ export async function startKernel(
     )
 
     indexer = new Indexer(db, storage, {
+      // A flush that could not be stored is reported, not dropped: a silent failure here is an index that
+      // quietly stops keeping up.
+      onError: (cause) => {
+        error('the index flush failed', {
+          detail: cause instanceof Error ? cause.message : String(cause),
+        })
+        server?.broadcast('warning', {
+          kind: 'index_failed',
+          message: cause instanceof Error ? cause.message : String(cause),
+        })
+      },
       // A flush that changed a conversation tells every client, so the list and the titles on other
       // screens move as the conversation does.
       onChange: (ids) => {
@@ -191,6 +202,7 @@ export async function startKernel(
       token: options.token,
       dispatch: kernel,
       health: () => ({ version: VERSION, pi: PI_VERSION }),
+      onConnectionClosed: (connectionId) => kernel?.releaseConnection(connectionId),
     })
     kernel.attach(server)
     await kernel.observeTasks()
@@ -274,8 +286,8 @@ export async function startKernel(
  * and a synchronous `busy_timeout` wait there blocks the whole event loop.
  */
 function takeLock(path: string): void {
-  // Exclusive create: two kernels starting at once cannot both win, which read-then-write cannot promise.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Exclusive create: two kernels starting at once cannot both win.
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       writeFileSync(path, String(process.pid), { flag: 'wx' })
       return
@@ -292,8 +304,26 @@ function takeLock(path: string): void {
     if (Number.isInteger(existing) && existing > 0 && isAlive(existing)) {
       throw new Error(`another kernel (pid ${existing}) is using this data directory`)
     }
-    // A lock from a process that is gone: remove it and take it.
-    rmSync(path, { force: true })
+    // A lock from a process that is gone. It is **claimed by rename**, not deleted: `rename` is atomic, so
+    // of two starters that both saw the same dead PID only one wins the rename, and the loser's retry sees
+    // the winner's fresh lock. Deleting would let both proceed and one could delete the other's lock.
+    const claimed = `${path}.${process.pid}.stale`
+    try {
+      renameSync(path, claimed)
+    } catch {
+      // Somebody else claimed it first; try to create our own again.
+      continue
+    }
+    // The claim may have taken a live lock that its owner wrote between our read and our rename.
+    try {
+      const stolen = Number(readFileSync(claimed, 'utf8').trim())
+      if (Number.isInteger(stolen) && stolen > 0 && stolen !== existing && isAlive(stolen)) {
+        renameSync(claimed, path)
+        throw new Error(`another kernel (pid ${stolen}) is using this data directory`)
+      }
+    } finally {
+      rmSync(claimed, { force: true })
+    }
   }
   throw new Error('could not take the data directory lock')
 }

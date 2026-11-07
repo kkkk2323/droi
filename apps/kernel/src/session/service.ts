@@ -16,6 +16,7 @@ import {
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { Indexer } from '../indexer/index.ts'
+import type { ConversationMeta } from '../indexer/schema.ts'
 import type { ConversationRow } from '../indexer/schema.ts'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
 import type { AgentDefaults, KernelConfig } from '../config.ts'
@@ -92,10 +93,12 @@ export class Kernel implements Dispatcher {
   #notifier: Notifier | undefined
   /** The last busy state each conversation reached, so one broadcast per change. */
   readonly #busy = new Map<number, BusyState>()
-  /** The live-run observation of each conversation, separate from any client's view subscription. */
-  readonly #live = new Map<number, { detach: () => void; subscribers: number }>()
-  /** Subscribers that arrived before the observation did; `track` applies them. */
-  readonly #pendingSubscribers = new Map<number, number>()
+  /** The live-run observation of each conversation, and who is watching it. */
+  readonly #live = new Map<number, { detach: () => void; viewers: Set<number> }>()
+  /** Who is showing each conversation: connection IDs, so a replacement or a close cannot miscount. */
+  readonly #viewers = new Map<number, Set<number>>()
+  /** Creates in flight, by `requestId`: two racing creates converge instead of colliding on the index. */
+  readonly #creating = new Map<string, Promise<number>>()
   #closing = false
   /** Set when the Session failed: every request answers `-32010` from then on. */
   #failure: unknown
@@ -106,7 +109,10 @@ export class Kernel implements Dispatcher {
     const handlers = new Map<string, import('../protocol/server.ts').Handler>()
     const add = (name: string, handler: import('../protocol/server.ts').Handler) =>
       handlers.set(name, handler)
-    add('harness.info', () => this.#info())
+    add('harness.info', () => {
+      this.#readable()
+      return this.#info()
+    })
     add('conversation.create', (p) => this.#create(p))
     add('conversation.list', (p) => this.#list(p))
     add('conversation.open', (p, connection) => this.#open(p, connection))
@@ -125,9 +131,15 @@ export class Kernel implements Dispatcher {
     add('model.complete', (p) => this.#modelComplete(p))
     // The three readers of M3 answer their shape now, so a client can call the whole surface; every
     // write of M3 is gated, and `gated()` answers it `-32009` while its capability is false.
-    add('process.list', () => ({ processes: [] }))
-    add('mcp.list', () => ({ servers: [] }))
-    add('skills.list', () => ({ skills: [] }))
+    const readOnlyAnswer =
+      <T>(value: T) =>
+      () => {
+        this.#readable()
+        return value
+      }
+    add('process.list', readOnlyAnswer({ processes: [] }))
+    add('mcp.list', readOnlyAnswer({ servers: [] }))
+    add('skills.list', readOnlyAnswer({ skills: [] }))
     this.methods = handlers
   }
 
@@ -249,38 +261,45 @@ export class Kernel implements Dispatcher {
       context,
       { min: 1, max: 2 },
     )
-    this.#live.set(id, {
-      detach: () => observation.detach(),
-      subscribers: this.#pendingSubscribers.get(id) ?? 0,
-    })
-    this.#pendingSubscribers.delete(id)
+    // A viewer that subscribed while the observation was being taken is kept.
+    const viewers = this.#viewers.get(id) ?? new Set<number>()
+    this.#live.set(id, { detach: () => observation.detach(), viewers })
     this.#advance(id, observation.value)
   }
 
-  /** One more view subscriber: the observation stays while the conversation is busy or watched. */
-  addSubscriber(id: number): void {
+  /** A connection now shows this conversation. Idempotent: opening it twice is still one viewer. */
+  addViewer(id: number, connectionId: number): void {
+    const viewers = this.#viewers.get(id) ?? new Set<number>()
+    viewers.add(connectionId)
+    this.#viewers.set(id, viewers)
     const live = this.#live.get(id)
-    if (live === undefined) {
-      // `open` tracks after subscribing, so a first subscriber may arrive before the observation exists.
-      this.#pendingSubscribers.set(id, (this.#pendingSubscribers.get(id) ?? 0) + 1)
-      return
-    }
-    live.subscribers++
+    if (live !== undefined) live.viewers = viewers
   }
 
-  /** One fewer. An idle conversation nobody watches gives its observation and its busy cache back. */
-  releaseSubscriber(id: number): void {
-    const pending = this.#pendingSubscribers.get(id)
-    if (pending !== undefined && pending > 0) {
-      if (pending === 1) this.#pendingSubscribers.delete(id)
-      else this.#pendingSubscribers.set(id, pending - 1)
-      return
+  /** A connection stopped showing it. An idle conversation nobody watches gives its observation back. */
+  releaseViewer(id: number, connectionId: number): void {
+    const viewers = this.#viewers.get(id)
+    if (viewers !== undefined) {
+      viewers.delete(connectionId)
+      if (viewers.size === 0) this.#viewers.delete(id)
     }
+    this.#releaseIfIdle(id)
+  }
+
+  /** Every viewer of a connection is gone: it closed. */
+  releaseConnection(connectionId: number): void {
+    for (const [id, viewers] of [...this.#viewers]) {
+      if (!viewers.delete(connectionId)) continue
+      if (viewers.size === 0) this.#viewers.delete(id)
+      this.#releaseIfIdle(id)
+    }
+  }
+
+  #releaseIfIdle(id: number): void {
+    if ((this.#viewers.get(id)?.size ?? 0) > 0) return
+    if (this.#busy.get(id)?.run != null) return
     const live = this.#live.get(id)
     if (live === undefined) return
-    live.subscribers = Math.max(0, live.subscribers - 1)
-    if (live.subscribers > 0) return
-    if (this.#busy.get(id)?.run != null) return
     live.detach()
     this.#live.delete(id)
     this.#busy.delete(id)
@@ -323,14 +342,7 @@ export class Kernel implements Dispatcher {
     if (runFailure !== undefined) payload['runFailure'] = runFailure
     this.#notifier?.broadcast('conversation.busy', payload)
     // A run that ended on a conversation nobody watches is the last thing its observation was for.
-    if (run === null) {
-      const live2 = this.#live.get(id)
-      if (live2 !== undefined && live2.subscribers === 0) {
-        live2.detach()
-        this.#live.delete(id)
-        this.#busy.delete(id)
-      }
-    }
+    if (run === null) this.#releaseIfIdle(id)
   }
 
   // ── harness.info ────────────────────────────────────────────────────────────────────────────────
@@ -375,7 +387,9 @@ export class Kernel implements Dispatcher {
       providers,
       models,
       extensions:
-        this.#options.tools.length === 0 ? [] : [{ name: 'coding', tools: this.#options.tools }],
+        this.#options.tools.length === 0
+          ? []
+          : [{ name: 'coding', tools: this.#options.tools, sections: ['environment', 'cwd'] }],
     }
   }
 
@@ -400,33 +414,108 @@ export class Kernel implements Dispatcher {
       ...(resolved.fingerprint as Record<string, unknown>),
     })
     if (requestId !== undefined) {
-      const existing = await this.#options.indexer.byRequestId(requestId)
-      if (existing !== undefined) {
-        // The same key with different params is a conflict, not a silent answer with the first result.
-        if (existing.request_fingerprint !== null && existing.request_fingerprint !== fingerprint) {
-          throw conflict(requestId)
-        }
-        return { conversationId: existing.id, view: await this.#view(existing.id, DEFAULT_WINDOW) }
-      }
+      // Two creates racing on one key must converge on one conversation, not one of them failing on the
+      // unique index. A single process means a promise per key is enough.
+      const previous = this.#creating.get(requestId)
+      if (previous !== undefined) await previous.catch(() => undefined)
     }
-    const conversation = await this.#options.harness.createConversation(
-      { ownership: { kind: 'ownerless' }, agent: resolved.change },
-      context,
-    )
-    const id = conversation.id as unknown as number
-    const now = Date.now()
-    await this.#options.indexer.touch(id, now, {
-      kind,
-      workspace: resolved.cwd,
-      requestId,
-      requestFingerprint: requestId === undefined ? undefined : fingerprint,
-    })
-    await this.track(id)
-    info('conversation created', { id, kind, requestId })
+    const existing =
+      requestId === undefined ? undefined : await this.#options.indexer.byRequestId(requestId)
+    if (existing !== undefined) {
+      // The same key with different params is a conflict, not a silent answer with the first result.
+      if (existing.request_fingerprint !== null && existing.request_fingerprint !== fingerprint) {
+        throw conflict(requestId!)
+      }
+      return { conversationId: existing.id, view: await this.#view(existing.id, DEFAULT_WINDOW) }
+    }
+    const run = async (): Promise<number> => {
+      const createdAt = Date.now()
+      const meta: ConversationMeta = {
+        ...(requestId === undefined ? {} : { requestId, requestFingerprint: fingerprint }),
+        ...(kind === undefined ? {} : { kind }),
+        ...(resolved.cwd === undefined ? {} : { workspace: resolved.cwd }),
+        createdAt,
+      }
+      const conversation = await this.#options.harness.createConversation(
+        {
+          ownership: { kind: 'ownerless' },
+          agent: resolved.change,
+          // The transcript entry is written in the same commit as the conversation, so it cannot be lost
+          // between Pi storing the conversation and the index catching up. It is the record; the row in
+          // `droi_conversations` is the fast path, written afterwards and rebuilt from this entry whenever
+          // it is missing.
+          init: async (tx, conversationId) => {
+            await tx.appendEntry(conversationId, { kind: 'droi.meta', data: meta })
+          },
+        },
+        context,
+      )
+      const id = conversation.id as unknown as number
+      await this.#options.indexer.touch(id, createdAt, {
+        ...(kind === undefined ? {} : { kind }),
+        ...(resolved.cwd === undefined ? {} : { workspace: resolved.cwd }),
+        ...(requestId === undefined ? {} : { requestId, requestFingerprint: fingerprint }),
+        createdAt,
+      })
+      await this.track(id)
+      info('conversation created', { id, kind, requestId })
+      return id
+    }
+    const id = requestId === undefined ? await run() : await this.#serialise(requestId, run)
     return { conversationId: id, view: await this.#view(id, DEFAULT_WINDOW) }
   }
 
+  /**
+   * What a conversation already knows about one `requestId`: its fingerprint and the submission it
+   * produced.
+   *
+   * The table answers first. When it does not — an index rebuilt from scratch, or a row lost — the
+   * transcript does, from the `droi.request` entry the admission wrote in its own commit. That is why the
+   * answer survives a crash between Pi accepting the submission and any index catching up.
+   */
+  async #requestMemo(
+    id: number,
+    requestId: string,
+  ): Promise<{ fingerprint: string; submissionId?: number } | undefined> {
+    const row = await this.#options.indexer.request(id, requestId)
+    if (row !== undefined) return row
+    const conversation = await this.#options.harness.conversation(id as never, context)
+    if (conversation === undefined) return undefined
+    let cursor: never | undefined
+    do {
+      const page = await conversation.entries({ order: 'descending' }, MAX_PAGE, cursor, context)
+      for (const entry of page.items) {
+        if (entry.kind !== 'droi.request') continue
+        const data = entry.data as {
+          requestId?: unknown
+          fingerprint?: unknown
+          submissionId?: unknown
+        }
+        if (data?.requestId !== requestId) continue
+        return {
+          fingerprint: String(data.fingerprint ?? ''),
+          ...(typeof data.submissionId === 'number' ? { submissionId: data.submissionId } : {}),
+        }
+      }
+      if (page.items.length === 0) return undefined
+      cursor = page.next as never
+    } while (cursor !== undefined)
+    return undefined
+  }
+
+  /** Run `fn` as the only create for `requestId` at a time, and remember it until it settles. */
+  async #serialise(requestId: string, fn: () => Promise<number>): Promise<number> {
+    const run = fn()
+    this.#creating.set(requestId, run)
+    try {
+      return await run
+    } finally {
+      if (this.#creating.get(requestId) === run) this.#creating.delete(requestId)
+    }
+  }
+
   async #list(params: Record<string, unknown>): Promise<unknown> {
+    this.#readable()
     const limit = optionalNumber(params, 'limit')
     const page = await this.#options.indexer.list({
       kind: optionalString(params, 'kind'),
@@ -463,12 +552,14 @@ export class Kernel implements Dispatcher {
       mode,
       perSecond: this.#options.config.viewPushesPerSecond ?? 5,
     })
-    const replaced: boolean = connection.subscribe(id, async () => {
+    // A second open on one connection replaces its window: stop the old watch first, so the viewer count
+    // never sees a release for a viewer that is still there.
+    await connection.unsubscribe(id)
+    connection.subscribe(id, async () => {
       pusher.stop()
       await watch.stop()
-      this.releaseSubscriber(id)
     })
-    if (!replaced) this.addSubscriber(id)
+    this.addViewer(id, connection.id)
     watch.start(async (call) => {
       if (call.kind === 'value') {
         this.#advance(id, call.value)
@@ -487,7 +578,7 @@ export class Kernel implements Dispatcher {
   async #unwatch(params: Record<string, unknown>, connection: Connection): Promise<unknown> {
     const id = requiredNumber(params, 'id')
     await connection.unsubscribe(id)
-    this.releaseSubscriber(id)
+    this.releaseViewer(id, connection.id)
     return {}
   }
 
@@ -519,37 +610,54 @@ export class Kernel implements Dispatcher {
       whenIdle: whenIdle ?? null,
     })
     if (requestId !== undefined) {
-      const known = await this.#options.indexer.requestFingerprint(id, requestId)
+      const known = await this.#requestMemo(id, requestId)
       if (known !== undefined) {
-        if (known !== fingerprint) throw conflict(requestId)
-        const submissionId = await this.#options.indexer.submissionForRequest(id, requestId)
-        if (submissionId !== undefined) return { submissionId }
+        if (known.fingerprint !== fingerprint) throw conflict(requestId)
+        if (known.submissionId !== undefined) return { submissionId: known.submissionId }
       }
     }
-    const submission = await admit(
-      conversation,
+    const draft = (
       wantsContinue === true
-        ? { type: 'continue', requestId }
+        ? { type: 'continue' as const, requestId }
         : {
-            type: 'input',
+            type: 'input' as const,
             content: content as never,
             requestId,
             whenBusy: whenBusy as 'steer' | 'followUp' | 'reject' | undefined,
             whenIdle: whenIdle as 'reject' | undefined,
-          },
-    )
+          }
+    ) as never
+    // Admitted in a commit of our own, so the fingerprint is stored in the same transaction as the
+    // submission. A crash between the two would otherwise leave Pi knowing a submission the kernel does
+    // not, and a retry would be admitted twice instead of answered from the memo.
+    let submissionId: number
+    try {
+      submissionId = (await this.#options.harness.commit(async (tx) => {
+        const admitted = await conversation.submit(tx, draft)
+        if (requestId !== undefined) {
+          const admittedId = admitted as unknown as number
+          // The transcript entry is the record, the table is the fast path; both are in this commit, so
+          // neither can outlive the other. A rebuilt index finds them here.
+          await tx.appendEntry(id as never, {
+            kind: 'droi.request',
+            data: { requestId, fingerprint, submissionId: admittedId },
+          })
+        }
+        return admitted as unknown as number
+      }, context)) as number
+    } catch (error) {
+      throw submissionError(error, id)
+    }
     if (requestId !== undefined) {
-      await this.#options.indexer.rememberRequest(
-        id,
-        requestId,
-        fingerprint,
-        submission.id as unknown as number,
-      )
+      // A cache of what the transcript now records: losing this write costs one scan, not a duplicate.
+      await this.#options.indexer
+        .rememberRequest(id, requestId, fingerprint, submissionId)
+        .catch(() => undefined)
     }
     await this.#options.indexer.touch(id, Date.now(), {})
     await this.track(id)
     await this.refreshBusy(id)
-    return { submissionId: submission.id }
+    return { submissionId }
   }
 
   async #abort(params: Record<string, unknown>): Promise<unknown> {
@@ -622,13 +730,15 @@ export class Kernel implements Dispatcher {
     // about what to fix.
     const at = requiredEntry(params, 'at')
     const conversation = await this.#conversation(id)
-    const entries = await conversation.entries(
-      { order: 'descending' },
-      MAX_PAGE,
+    // Asked by ID, not by page: a valid target may be older than the newest page, and the newest page is
+    // not a window onto the whole transcript. This read is the conversation's own visible range.
+    const probe = await conversation.entries(
+      { order: 'ascending', minEntryId: at as EntryId, maxEntryId: at as EntryId },
+      1,
       undefined,
       context,
     )
-    if (!entries.items.some((entry) => entry.id === (at as never))) {
+    if (probe.items.length === 0) {
       throw invalidParams([{ path: 'at', message: `entry ${at} is not in this conversation` }])
     }
     const forked = await conversation.fork(
@@ -783,7 +893,10 @@ export class Kernel implements Dispatcher {
     throw new RpcError(Code.readOnly, 'the kernel is read-only')
   }
 
-  /** Reads are allowed on a read-only kernel and refused once the Session has failed. */
+  /**
+   * Reads are allowed on a read-only kernel and refused once the Session has failed: a failed kernel is
+   * not a working one, and answering `harness.info` from it would tell a client it is fine.
+   */
   #readable(): void {
     if (this.#failure === undefined) return
     throw new RpcError(Code.kernelFailed, 'the kernel failed and is being restarted', {
@@ -833,6 +946,11 @@ export class Kernel implements Dispatcher {
         cwd: cwd ?? null,
         instructions: change.instructions ?? null,
         maxTurns: change.maxTurns ?? null,
+        // Every field that changes what the conversation will do belongs in the fingerprint: two creates
+        // that differ in their tools are two different requests, and answering the second with the first
+        // conversation would silently drop the tools it asked for.
+        extensions: namesOf(change.extensions),
+        modelTools: namesOf(change.modelTools),
       },
     }
   }
@@ -952,6 +1070,24 @@ function taskKind(kind: string): string {
   return kind.startsWith('pi.') ? kind.slice(3) : kind
 }
 
+/**
+ * An agent change's extensions or tools as names, for a fingerprint: they cross the protocol as names, so
+ * the comparison is of names and not of registry objects.
+ */
+function namesOf(value: unknown): unknown {
+  if (value === null || value === undefined) return value ?? null
+  if (Array.isArray(value))
+    return value.map((item) => (item as { name?: string }).name ?? String(item))
+  if (typeof value === 'object') {
+    const record = value as { add?: unknown[]; remove?: unknown[] }
+    return {
+      add: (record.add ?? []).map((item) => (item as { name?: string }).name ?? String(item)),
+      remove: (record.remove ?? []).map((item) => (item as { name?: string }).name ?? String(item)),
+    }
+  }
+  return value
+}
+
 /** The config file's default agent, as a change the creating commit can apply first. */
 function defaultsAsChange(defaults: AgentDefaults | undefined): AgentChange {
   if (defaults === undefined) return {}
@@ -1068,26 +1204,6 @@ function parseInput(value: unknown): unknown {
     }
   }
   return value
-}
-
-async function admit(
-  conversation: Conversation,
-  submission:
-    | { type: 'continue'; requestId?: string }
-    | {
-        type: 'input'
-        content: unknown
-        requestId?: string
-        whenBusy?: 'steer' | 'followUp' | 'reject'
-        whenIdle?: 'reject'
-      },
-): Promise<{ id: number }> {
-  try {
-    const admitted = await conversation.submit(submission as never, context)
-    return { id: admitted.id as unknown as number }
-  } catch (error) {
-    throw submissionError(error, conversation.id as unknown as number)
-  }
 }
 
 /** Pi's two admission refusals, as the protocol spells them. */

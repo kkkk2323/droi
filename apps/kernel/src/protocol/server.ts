@@ -106,6 +106,11 @@ export type ServerOptions = {
   dispatch: Dispatcher
   /** Answers `/health` beside `ok`. */
   health: () => Record<string, unknown>
+  /**
+   * A connection went away. Its view subscriptions stopped already; the kernel uses this to release its
+   * per-conversation viewer records, which it counts by connection.
+   */
+  onConnectionClosed?: (connectionId: number) => void
 }
 
 export type ServerHandle = Notifier & {
@@ -239,6 +244,7 @@ export function serve(options: ServerOptions): ServerHandle {
         connections.delete(connection)
         // A connection that goes away is unsubscribed from every conversation it opened.
         await connection.close()
+        options.onConnectionClosed?.(connection.id)
         info('connection closed', { connection: connection.id, connections: connections.size })
       },
     },

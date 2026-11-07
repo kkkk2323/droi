@@ -13,8 +13,9 @@ import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
  * word (parseConfig for "seConfig"). A pattern shorter than three characters cannot use the index and
  * scans the vtable; that is still correct, and the scan is bounded below.
  *
- * `droi_requests` remembers the fingerprint of each `requestId`, so a repeat with different params is a
- * `-32013` conflict rather than a silent answer with the first request's result.
+ * `droi_index_watermarks` remembers, **per conversation**, the highest entry ID whose text is indexed. Per
+ * conversation, not one number: a single number would have to advance past every conversation at once, and
+ * a flush in the middle of a catch-up would then skip the conversations not yet read.
  */
 const statements = [
   `CREATE TABLE IF NOT EXISTS droi_meta (
@@ -48,6 +49,10 @@ const statements = [
     submission_id INTEGER,
     PRIMARY KEY (conversation_id, request_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS droi_index_watermarks (
+    conversation_id INTEGER PRIMARY KEY,
+    entry_id INTEGER NOT NULL
+  )`,
   `CREATE VIRTUAL TABLE IF NOT EXISTS droi_entries_fts USING fts5(
     text,
     conversation UNINDEXED,
@@ -67,21 +72,29 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
     await db.exec('ALTER TABLE droi_conversations ADD COLUMN request_fingerprint TEXT')
   }
   const recorded = await readMeta(db, 'index.tokenizer')
-  if (recorded === TOKENIZER) return
-  if (recorded !== undefined) {
-    // An index from an older build cannot be searched the way this one builds queries: drop it and let
-    // the watermark pass refill it, rather than keep a table whose results would be wrong.
-    await db.exec('DROP TABLE IF EXISTS droi_entries_fts')
-    await db.exec(
-      `CREATE VIRTUAL TABLE droi_entries_fts USING fts5(
-        text,
-        conversation UNINDEXED,
-        tokenize = '${TOKENIZER}'
-      )`,
-    )
-    await writeMeta(db, 'index.entryWatermark', '0')
+  if (recorded !== TOKENIZER) {
+    if (recorded !== undefined) {
+      // An index from an older build cannot be searched the way this one builds queries: drop it and
+      // re-read everything, rather than keep a table whose results would be wrong.
+      await db.exec('DROP TABLE IF EXISTS droi_entries_fts')
+      await db.exec(
+        `CREATE VIRTUAL TABLE droi_entries_fts USING fts5(
+          text,
+          conversation UNINDEXED,
+          tokenize = '${TOKENIZER}'
+        )`,
+      )
+      await db.exec('DELETE FROM droi_index_watermarks')
+    }
+    await writeMeta(db, 'index.tokenizer', TOKENIZER)
   }
-  await writeMeta(db, 'index.tokenizer', TOKENIZER)
+  // The global watermark of the first M1 build is not a per-conversation one; forget it, so every
+  // conversation is re-read once. Writing the same rows twice changes nothing.
+  const legacy = await readMeta(db, 'index.entryWatermark')
+  if (legacy !== undefined) {
+    await db.exec('DELETE FROM droi_index_watermarks')
+    await db.run("DELETE FROM droi_meta WHERE key = 'index.entryWatermark'")
+  }
 }
 
 export async function readMeta(db: SqliteExecutor, key: string): Promise<string | undefined> {
@@ -112,4 +125,20 @@ export type ConversationRow = {
   request_fingerprint: string | null
   parent_id: number | null
   preview: string | null
+}
+
+/**
+ * Why a conversation exists, as the kernel records it in the conversation's own transcript.
+ *
+ * It is a `droi.meta` entry, appended in the commit that creates the conversation, so the answer survives
+ * anything that happens to `droi_conversations`: a crash before the index flush, a rebuilt index, a
+ * requestId retried after the process died. The list row is the fast path; this is the record.
+ */
+export type ConversationMeta = {
+  requestId?: string
+  requestFingerprint?: string
+  kind?: string
+  workspace?: string
+  parentId?: number
+  createdAt: number
 }

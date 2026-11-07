@@ -72,7 +72,13 @@
         }
       ],
       "limits": {
-        "viewPushesPerSecond": 5
+        "viewPushesPerSecond": 5,
+        "viewWindowDefault": {
+          "min": 100,
+          "max": 200
+        },
+        "maxEntriesPerPage": 200,
+        "maxConversationsPerPage": 200
       }
     }
   }

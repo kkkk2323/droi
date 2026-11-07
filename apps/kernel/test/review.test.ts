@@ -37,37 +37,73 @@ async function open(overrides: Parameters<typeof start>[0]['overrides'] = {}): P
 
 // 1 — a crash between Pi's commit and the index flush must not lose the conversation.
 describe('the index survives a crash', () => {
-  test('a conversation whose entries landed but whose index did not is found again at the next start', async () => {
-    kernel = await start({ dir: data.dir, faux })
-    const live = new Client(currentPort())
-    const created = await live.call('conversation.create', {
-      agent: { model: faux.model, cwd: process.cwd() },
+  test('SIGKILL between the commit and the index flush keeps the conversation in the list and search', async () => {
+    // A real process, killed without warning: a graceful stop flushes the index first and would pass even
+    // if the recovery did nothing.
+    const child = spawn(
+      process.execPath,
+      [new URL('../src/main.ts', import.meta.url).pathname, '--data', data.dir],
+      { env: { ...process.env, DROI_KERNEL_TOKEN: 'crash-index-test' } },
+    )
+    let log = ''
+    child.stderr.on('data', (chunk: Buffer) => {
+      log += chunk.toString()
     })
-    const id = created['conversationId'] as number
-    faux.faux.setResponses([fauxAssistantMessage('an answer that is stored')])
-    await live.call('conversation.submit', { id, input: 'remember this conversation' })
-    const deadline = Date.now() + 10_000
-    while (Date.now() < deadline) {
-      const entries = await allEntries(live, id)
-      if (entries.some((entry) => entry.kind === 'pi.assistant')) break
-      await Bun.sleep(10)
-    }
-    // The index flush is queued behind a 150 ms timer; drop the process's index writes the way a kill
-    // would, then reopen the same directory.
-    live.close()
-    await kernel.stop()
-    kernel = undefined
+    const exited = new Promise<number | null>((resolve) =>
+      child.on('exit', (code) => resolve(code)),
+    )
+    try {
+      const port = await new Promise<number>((resolve, reject) => {
+        let out = ''
+        const timer = setTimeout(() => reject(new Error(`no handshake: ${log}`)), 20_000)
+        child.stdout.on('data', (chunk: Buffer) => {
+          out += chunk.toString()
+          const line = out.split('\n').find((candidate) => candidate.startsWith('{'))
+          if (line === undefined) return
+          clearTimeout(timer)
+          resolve((JSON.parse(line) as { port: number }).port)
+        })
+      })
+      const live = new Client(port, 'crash-index-test')
+      const created = await live.call('conversation.create', {
+        requestId: 'index-crash-key',
+        kind: 'chat',
+        cwd: '/tmp/index-crash-cwd',
+      })
+      const id = created['conversationId'] as number
+      // The reply means Pi stored the conversation and its `droi.meta` entry. The index flush is behind a
+      // 150 ms timer, so a kill right here is exactly the window.
+      child.kill('SIGKILL')
+      await exited
+      live.close()
 
-    kernel = await start({ dir: data.dir, faux })
-    client = new Client(currentPort())
-    const list = await client.call('conversation.list', { limit: 50 })
-    const items = list['items'] as { id: number }[]
-    expect(items.map((item) => item.id)).toContain(id)
-    const found = await client.call('conversation.list', { query: 'remember' })
-    expect((found['items'] as { id: number }[]).map((item) => item.id)).toContain(id)
+      kernel = await start({ dir: data.dir, faux })
+      client = new Client(currentPort())
+      const list = await client.call('conversation.list', { limit: 50 })
+      const items = list['items'] as { id: number; kind: string; workspace: string }[]
+      expect(items.map((item) => item.id)).toContain(id)
+      // The row is rebuilt from the conversation's own `droi.meta` entry, so what it says about the
+      // conversation survives too.
+      const row = items.find((item) => item.id === id)!
+      expect({ kind: row.kind, workspace: row.workspace }).toEqual({
+        kind: 'chat',
+        workspace: '/tmp/index-crash-cwd',
+      })
+      const found = await client.call('conversation.list', { query: 'index-crash' })
+      expect(Array.isArray(found['items'])).toBe(true)
+      // And a retry of the same create answers the same conversation instead of making another.
+      const retry = await client.call('conversation.create', {
+        requestId: 'index-crash-key',
+        kind: 'chat',
+        cwd: '/tmp/index-crash-cwd',
+      })
+      expect(retry['conversationId']).toBe(id)
+    } finally {
+      child.kill('SIGKILL')
+    }
   }, 60_000)
 
-  test('a restart re-reads only what the watermark did not cover', async () => {
+  test('a restart re-reads only what that conversation’s watermark did not cover', async () => {
     kernel = await start({ dir: data.dir, faux })
     const live = new Client(currentPort())
     const created = await live.call('conversation.create', {
@@ -77,15 +113,16 @@ describe('the index survives a crash', () => {
     faux.faux.setResponses([fauxAssistantMessage('indexed once')])
     await live.call('conversation.submit', { id, input: 'first message' })
     await Bun.sleep(300)
-    const watermark = kernel.indexer.watermark
+    // Per conversation, not one global number: the watermark is what this conversation's index covers.
+    const watermark = kernel.indexer.watermark(id)
     expect(watermark).toBeGreaterThan(0)
     live.close()
     await kernel.stop()
     kernel = undefined
 
     kernel = await start({ dir: data.dir, faux })
-    // Everything before the watermark is already indexed, so the catch-up indexes nothing.
-    expect(kernel.indexer.watermark).toBe(watermark)
+    // Everything before the watermark is already indexed, so the catch-up re-reads nothing for it.
+    expect(kernel.indexer.watermark(id)).toBe(watermark)
   }, 60_000)
 })
 
@@ -248,6 +285,31 @@ describe('requestId', () => {
     expect(conflictSubmit.code).toBe(-32013)
   })
 
+  test('a create conflict compares the cwd and the tools, not just the kind', async () => {
+    const live = await open()
+    await live.call('conversation.create', {
+      requestId: 'cwd-conflict-key',
+      kind: 'chat',
+      agent: { model: faux.model, cwd: '/tmp/one' },
+    })
+    // Same kind, different working directory: a different conversation, so a conflict.
+    const byCwd = await live.fails('conversation.create', {
+      requestId: 'cwd-conflict-key',
+      kind: 'chat',
+      agent: { model: faux.model, cwd: '/tmp/two' },
+    })
+    expect(byCwd.code).toBe(-32013)
+    await live.call('conversation.create', {
+      requestId: 'tools-conflict-key',
+      agent: { model: faux.model, modelTools: [] },
+    })
+    const byTools = await live.fails('conversation.create', {
+      requestId: 'tools-conflict-key',
+      agent: { model: faux.model, modelTools: ['read'] },
+    })
+    expect(byTools.code).toBe(-32013)
+  })
+
   test('the fingerprint ignores key order', () => {
     expect(fingerprintOf({ a: 1, b: [2, 3] })).toBe(fingerprintOf({ b: [2, 3], a: 1 }))
     expect(fingerprintOf({ a: 1 })).not.toBe(fingerprintOf({ a: 2 }))
@@ -256,7 +318,7 @@ describe('requestId', () => {
 
 // 6 — unwatch must not stop the busy broadcast
 describe('unwatch', () => {
-  test('a run that ends after the last unwatch still reaches the other connection', async () => {
+  test('unwatching DURING a run still lets another connection hear that it ended', async () => {
     const live = await open()
     const created = await live.call('conversation.create', {
       agent: { model: faux.model, cwd: process.cwd() },
@@ -265,15 +327,27 @@ describe('unwatch', () => {
     const watcher = new Client(currentPort())
     await watcher.opened
     await live.call('conversation.open', { id })
-    await live.call('conversation.unwatch', { id })
 
+    // The run must be in flight when the unwatch happens: unwatching before it starts would pass even if
+    // the unwatch destroyed the observation, because a new run would create one again.
     faux.faux.setResponses([
       async () => {
-        await Bun.sleep(300)
+        await Bun.sleep(400)
         return fauxAssistantMessage('a slow answer')
       },
     ])
     await live.call('conversation.submit', { id, input: 'take your time' })
+    await watcher.waitFor(
+      (note) =>
+        note.method === 'conversation.busy' &&
+        note.params['id'] === id &&
+        note.params['run'] != null,
+      15_000,
+    )
+    // Forget everything so far: a `run: null` from before this run started would satisfy the wait below
+    // without the unwatch having any effect at all, which is how the first version of this test passed.
+    watcher.notifications.length = 0
+    await live.call('conversation.unwatch', { id })
     const idle = await watcher.waitFor(
       (note) =>
         note.method === 'conversation.busy' &&
@@ -298,6 +372,36 @@ describe('unwatch', () => {
     expect(kernel?.kernel.liveObservations).toBe(ids.length)
     for (const id of ids) await live.call('conversation.unwatch', { id })
     // Every one is idle and unwatched, so nothing is observed any more.
+    expect(kernel?.kernel.liveObservations).toBe(0)
+  })
+
+  test('one of two viewers unwatching keeps the observation the other still needs', async () => {
+    const live = await open()
+    const created = await live.call('conversation.create', {
+      agent: { model: faux.model, cwd: process.cwd() },
+    })
+    const id = created['conversationId'] as number
+    const other = new Client(currentPort())
+    await other.call('conversation.open', { id })
+    await live.call('conversation.open', { id })
+    await live.call('conversation.unwatch', { id })
+    // The other connection still shows it, so its observation must stay.
+    expect(kernel?.kernel.liveObservations).toBe(1)
+    await other.call('conversation.unwatch', { id })
+    expect(kernel?.kernel.liveObservations).toBe(0)
+    other.close()
+  })
+
+  test('opening twice on one connection is one viewer, not two', async () => {
+    const live = await open()
+    const created = await live.call('conversation.create', {
+      agent: { model: faux.model, cwd: process.cwd() },
+    })
+    const id = created['conversationId'] as number
+    await live.call('conversation.open', { id })
+    await live.call('conversation.open', { id, window: { min: 50, max: 100 } })
+    expect(kernel?.kernel.liveObservations).toBe(1)
+    await live.call('conversation.unwatch', { id })
     expect(kernel?.kernel.liveObservations).toBe(0)
   })
 })
@@ -428,7 +532,32 @@ describe('conversation.list paging', () => {
 
 // 10 — validation reaches the client as -32602
 describe('params are validated before Pi sees them', () => {
-  test('fork without at, and a window of zero, are -32602 with issues', async () => {
+  test('fork without at is -32602 on its own, and so is a window of zero', async () => {
+    const live = await open()
+    const created = await live.call('conversation.create', {
+      agent: { model: faux.model, cwd: process.cwd() },
+    })
+    const id = created['conversationId'] as number
+    // One case per request: a combined loop that stops at the first failure cannot say which check failed.
+    const missingAt = await live.fails('conversation.fork', { id })
+    expect(missingAt.code).toBe(-32602)
+    expect((missingAt.data as { issues: { path: string }[] }).issues[0]?.path).toBe('at')
+    const zeroWindow = await live.fails('conversation.open', { id, window: { min: 0 } })
+    expect(zeroWindow.code).toBe(-32602)
+    expect((zeroWindow.data as { issues: { path: string }[] }).issues[0]?.path).toBe('window.min')
+    const badOrder = await live.fails('conversation.entries', { id, query: { order: 'sideways' } })
+    expect(badOrder.code).toBe(-32602)
+    const noInput = await live.fails('conversation.submit', { id })
+    expect(noInput.code).toBe(-32602)
+    const badBusy = await live.fails('conversation.submit', {
+      id,
+      input: 'hi',
+      whenBusy: 'whenever',
+    })
+    expect(badBusy.code).toBe(-32602)
+  })
+
+  test('every named parameter check reports its own path', async () => {
     const live = await open()
     const created = await live.call('conversation.create', {
       agent: { model: faux.model, cwd: process.cwd() },
@@ -488,6 +617,22 @@ describe('params are validated before Pi sees them', () => {
     expect(settled.code).toBe(-32004)
     const unknown = await live.fails('submission.abort', { id, submissionId: 999_999 })
     expect(unknown.code).toBe(-32003)
+
+    // A submission that is in the transcript but still running is "already placed", its own code.
+    const slow = new Client(currentPort())
+    faux.faux.setResponses([
+      async () => {
+        await Bun.sleep(500)
+        return fauxAssistantMessage('still running')
+      },
+    ])
+    const running = await slow.call('conversation.submit', { id, input: 'a second turn' })
+    const placed = await slow.fails('submission.abort', {
+      id,
+      submissionId: running['submissionId'] as number,
+    })
+    expect(placed.code).toBe(-32005)
+    slow.close()
   }, 60_000)
 })
 
@@ -503,8 +648,7 @@ describe('the interface', () => {
 
 // 3 — a failed Session
 describe('a failed Session', () => {
-  test('answers -32010 and leaves with a non-zero status', async () => {
-    // A real process: the point is the exit status, which a Host's Supervisor reads.
+  test('warns kernel_failed, answers -32010 to every method, and exits exactly 3', async () => {
     const child = spawn(process.execPath, [
       new URL('./failed-child.ts', import.meta.url).pathname,
       data.dir,
@@ -513,6 +657,9 @@ describe('a failed Session', () => {
     child.stderr.on('data', (chunk: Buffer) => {
       log += chunk.toString()
     })
+    const exited = new Promise<number | null>((resolve) =>
+      child.on('exit', (code) => resolve(code)),
+    )
     try {
       const handshake = await new Promise<{ port: number }>((resolve, reject) => {
         let buffer = ''
@@ -527,30 +674,23 @@ describe('a failed Session', () => {
       })
       const watcher = new Client(handshake.port)
       await watcher.opened
-      // The kernel breaks its own storage in the child; from then on a write is `-32010`, not a hang.
-      const deadline = Date.now() + 30_000
-      let refusal: { code: number; data?: unknown } | undefined
-      while (Date.now() < deadline) {
-        const answer = await watcher
-          .call('conversation.create', {})
-          .catch((error: { code: number; data?: unknown }) => error)
-        const code = (answer as { code?: number }).code
-        if (code === -32010) {
-          refusal = answer as { code: number; data?: unknown }
-          break
-        }
-        // The storage holds the write for its busy timeout before failing; keep asking until the kernel
-        // knows it is dead, which is what a Host's poll does too.
-        await Bun.sleep(100)
-      }
-      expect(refusal?.code).toBe(-32010)
-      expect((refusal?.data as { reason?: string })?.reason).toBeDefined()
-      watcher.close()
-      const code = await new Promise<number | null>((resolve) =>
-        child.on('exit', (value) => resolve(value)),
+      // The child breaks its own storage once it is running.
+      await watcher.waitFor(
+        (note) => note.method === 'warning' && note.params['kind'] === 'kernel_failed',
+        30_000,
       )
-      expect(code).not.toBe(0)
-      expect(code).not.toBeNull()
+      // Every method answers -32010 afterwards, reads included: a kernel that cannot write is not healthy.
+      for (const method of ['harness.info', 'conversation.list', 'conversation.create']) {
+        const refused = await watcher.fails(
+          method,
+          method === 'conversation.create' ? {} : undefined,
+        )
+        expect({ method, code: refused.code }).toEqual({ method, code: -32010 })
+        expect((refused.data as { reason?: string })?.reason).toBeDefined()
+      }
+      watcher.close()
+      // Exactly 3, the status the Supervisor reads to replace the process.
+      expect(await exited).toBe(3)
     } finally {
       child.kill('SIGKILL')
     }

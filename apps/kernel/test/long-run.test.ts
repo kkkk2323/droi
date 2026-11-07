@@ -104,7 +104,8 @@ describe('a long conversation', () => {
     // The cursor is what tells a client the page is not the whole transcript.
     expect(page['cursor']).toBeDefined()
     const all = await allEntries(client, id)
-    expect(all.length).toBe(250)
+    // 250 notes, plus the `droi.meta` entry the creating commit writes.
+    expect(all.filter((entry) => entry.kind === 'droi.note').length).toBe(250)
   })
 
   test('the list also caps its page and publishes the same limit', async () => {

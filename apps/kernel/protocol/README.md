@@ -220,6 +220,9 @@ guess:
 | `limits.maxConversationsPerPage` | 200                    | `conversation.list`     |
 | `limits.viewWindowDefault`       | `{min: 100, max: 200}` | the window a view holds |
 
+`harness.info.extensions[]` names what this build installs: `{name, tools[], sections[]}`. The sections are
+the prompt sections the extension renders (`environment`, `cwd` for the coding tools).
+
 A `limit` above the cap is not an error and not a lie: the page comes back at the cap **with a cursor**,
 and the client asks again with it. A client that ignores the cursor sees a prefix of the history
 (ascending) or a suffix (descending) and cannot tell — which is exactly how a long run once looked

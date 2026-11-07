@@ -41,7 +41,7 @@ function revive<T>(value: T): T {
 }
 
 /** Statement execution on one connection, without the queue: what a transaction callback gets. */
-class Direct implements SqliteExecutor {
+export class Direct implements SqliteExecutor {
   constructor(protected db: Database) {}
   async exec(sql: string): Promise<void> {
     this.db.exec(sql)
@@ -72,9 +72,17 @@ class Direct implements SqliteExecutor {
  *   with `SQLITE_BUSY` after it has already read.
  * - **Serial order.** Every statement goes through one queue, so a transaction callback never
  *   interleaves with another statement.
+ *
+ * `inCommit()` is what lets Droi's own tables share Pi's transactions. Pi's storage commits through
+ * `transaction()`, and a record of *why* a conversation exists — its `requestId`, its kind, its working
+ * directory — has to land in the same commit as the conversation or it can be lost between the two. So
+ * a caller inside a commit asks for the executor and writes there; outside one, the same call becomes a
+ * transaction of its own.
  */
 export class BunSqliteDatabase extends Direct implements SqliteDatabase {
   #tail: Promise<unknown> = Promise.resolve()
+  /** The executor of the transaction in progress, if one is. */
+  #open: Direct | undefined
 
   constructor(path: string) {
     super(new Database(path, { create: true, safeIntegers: true }))
@@ -93,26 +101,41 @@ export class BunSqliteDatabase extends Direct implements SqliteDatabase {
   }
 
   override exec(sql: string) {
+    const open = this.#open
+    if (open !== undefined) return open.exec(sql)
     return this.#enqueue(() => super.exec(sql))
   }
   override run(sql: string, ...params: SqliteValue[]) {
+    const open = this.#open
+    if (open !== undefined) return open.run(sql, ...params)
     return this.#enqueue(() => super.run(sql, ...params))
   }
   override runCounted(sql: string, ...params: SqliteValue[]) {
+    const open = this.#open
+    if (open !== undefined) return open.runCounted(sql, ...params)
     return this.#enqueue(() => super.runCounted(sql, ...params))
   }
   override get<T extends object>(sql: string, ...params: SqliteValue[]) {
+    const open = this.#open
+    if (open !== undefined) return open.get<T>(sql, ...params)
     return this.#enqueue(() => super.get<T>(sql, ...params))
   }
   override all<T extends object>(sql: string, ...params: SqliteValue[]) {
+    const open = this.#open
+    if (open !== undefined) return open.all<T>(sql, ...params)
     return this.#enqueue(() => super.all<T>(sql, ...params))
   }
 
   transaction<T>(callback: (transaction: SqliteExecutor) => Promise<T>): Promise<T> {
+    // A nested call joins the open transaction instead of taking a second BEGIN.
+    const open = this.#open
+    if (open !== undefined) return callback(open)
     return this.#enqueue(async () => {
       this.db.exec('BEGIN IMMEDIATE')
+      const executor = new Direct(this.db)
+      this.#open = executor
       try {
-        const result = await callback(new Direct(this.db))
+        const result = await callback(executor)
         this.db.exec('COMMIT')
         return result
       } catch (error) {
@@ -122,6 +145,8 @@ export class BunSqliteDatabase extends Direct implements SqliteDatabase {
           // The original error stands; a failed rollback has nothing better to say.
         }
         throw error
+      } finally {
+        this.#open = undefined
       }
     })
   }

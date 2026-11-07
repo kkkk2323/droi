@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
-import { escapeLike, likeClauses, searchWords, SHORT_TERM_WINDOW } from '../src/indexer/index.ts'
+import { join } from 'node:path'
+import {
+  Indexer,
+  escapeLike,
+  likeClauses,
+  searchWords,
+  SHORT_TERM_WINDOW,
+} from '../src/indexer/index.ts'
+import { BunSqliteDatabase } from '../src/storage/facade.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 
 let data: ReturnType<typeof tempData>
@@ -95,13 +103,42 @@ describe('search', () => {
     expect(escapeLike('a%b_c\\d')).toBe('a\\%b\\_c\\\\d')
   })
 
-  test('a three-character term uses the trigram index, and a shorter one is bounded', async () => {
+  test('the query builder bounds a short term and lets a long one through', () => {
     const long = likeClauses(['空输入'])
     expect(long.clauses[0]).toBe("text LIKE ? ESCAPE '\\'")
     const short = likeClauses(['内存'])
-    // Two characters cannot be answered by a trigram index, so the scan is bounded explicitly.
     expect(short.clauses[0]).toContain('rowid >')
     expect(short.values).toContain(SHORT_TERM_WINDOW)
     expect(SHORT_TERM_WINDOW).toBe(50_000)
+  })
+
+  test('a short term is bounded in the query the kernel actually runs', async () => {
+    // The helper and the list must agree: a test of \`likeClauses\` alone passes even when \`list()\` does
+    // not call it, which is what happened before.
+    const db = new BunSqliteDatabase(join(data.dir, 'bounded.sqlite'))
+    const indexer = new Indexer(db, {} as never)
+    try {
+      await indexer.open()
+      await indexer.touch(1, 1, { createdAt: 1 })
+      await indexer.touch(2, 2, { createdAt: 2 })
+      await indexer.flush()
+      // One old row that matches, behind 50,002 newer rows that do not.
+      await db.run(
+        'INSERT INTO droi_entries_fts(rowid, text, conversation) VALUES(1, ?, 1)',
+        '古老内存记录',
+      )
+      await db.run(
+        'WITH RECURSIVE rows(id) AS (SELECT 2 UNION ALL SELECT id + 1 FROM rows WHERE id < 50002) ' +
+          "INSERT INTO droi_entries_fts(rowid, text, conversation) SELECT id, 'newest row', 2 FROM rows",
+      )
+      const short = await indexer.list({ text: '内存' })
+      expect(short.items.map((item) => item.id)).toEqual([])
+      // A three-character term still reaches it: that is the index, not the bounded scan.
+      const long = await indexer.list({ text: '古老内存' })
+      expect(long.items.map((item) => item.id)).toEqual([1])
+    } finally {
+      await indexer.close()
+      await db.close()
+    }
   })
 })
