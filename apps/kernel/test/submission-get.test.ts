@@ -16,6 +16,8 @@ type Submission = {
   status: string
   entry?: number
   answer?: number
+  /** The highest entry this submission's turn wrote, when it ended without an answer. */
+  last?: number
   reason?: string
 }
 
@@ -107,6 +109,65 @@ test('submission.get refuses a submission that belongs to another conversation',
         (error: { code: number }) => ({ code: error.code }),
       )
     expect(refused.code).toBe(-32003)
+  } finally {
+    client.close()
+    await kernel.stop()
+    data.cleanup()
+  }
+}, 60_000)
+
+test('submission.get bounds an aborted turn at its own last entry', async () => {
+  // An aborted submission has no `answer`, and `answer` is what a client used as the end of the turn. Without
+  // a definite end, "my submission's entries" reads through the next turn's reply, and a wait for the cut-short
+  // turn is satisfied by somebody else's answer.
+  const data = tempData()
+  const faux = fauxCatalog()
+  const kernel = await start({ dir: data.dir, faux })
+  const client = new Client(kernel.port)
+  try {
+    const { conversationId: id } = await client.call('conversation.create', {
+      agent: { model: faux.model },
+    })
+    faux.faux.setResponses([
+      async () => {
+        await Bun.sleep(3000)
+        return fauxAssistantMessage('too late')
+      },
+      fauxAssistantMessage('second answer'),
+    ])
+    const first = await client.call('conversation.submit', { id, input: 'first' })
+    await Bun.sleep(400)
+    await client.call('conversation.abort', { id })
+    await (await kernel.harness.conversation(id as never, context))!.waitForIdle(context)
+
+    const aborted = (await client.call('submission.get', {
+      id,
+      submissionId: first['submissionId'],
+    })) as Submission
+    expect(aborted.status).toBe('unanswered')
+    expect(aborted.reason).toBe('aborted')
+    expect(aborted.answer).toBeUndefined()
+    // The run it started wrote its system entry; that is where the turn stops.
+    expect(aborted.last).toBeGreaterThanOrEqual(aborted.entry!)
+
+    const second = await client.call('conversation.submit', { id, input: 'second' })
+    await (await kernel.harness.conversation(id as never, context))!.waitForIdle(context)
+    const done = (await client.call('submission.get', {
+      id,
+      submissionId: second['submissionId'],
+    })) as Submission
+    expect(done.last).toBe(done.answer!)
+
+    // The later turn's entries are above the aborted turn's end, which is the point of `last`.
+    const page = await client.call('conversation.entries', {
+      id,
+      query: { order: 'ascending' },
+      limit: 200,
+    })
+    for (const entry of page['items'] as { id: number; kind: string }[]) {
+      if (entry.kind !== 'pi.assistant') continue
+      expect(entry.id).toBeGreaterThan(aborted.last!)
+    }
   } finally {
     client.close()
     await kernel.stop()

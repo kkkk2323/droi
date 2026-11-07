@@ -182,22 +182,33 @@ failing.
 
 **A kernel ends the tools it started, and only those.** Pi runs each tool shell `detached`, in a process group
 of its own, so a tool's background process (`sleep 100 &`, a server it started) is not in the kernel's group and
-survives a plain `SIGKILL` of the kernel. The kernel therefore records each tool shell's group id **with the
-shell's start time**, and on `kernel.shutdown` or SIGTERM — after closing the harness — ends the groups whose
-identity still checks out:
+survives a plain `SIGKILL` of the kernel. The kernel therefore records each tool shell's group id and, when the
+shell exits, the time it did — and at shutdown takes **one** `ps` snapshot and ends the groups whose identity
+still checks out:
 
-| What `ps` shows for that group                       | What happens                                                                                                             |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| no members                                           | the group is empty; the record is dropped and **nothing is signalled**                                                   |
-| the leader (`pid == pgid`) is there, same start time | it is our shell: the group is killed                                                                                     |
-| the leader is there, different start time            | the number was recycled by an unrelated process: dropped, not signalled                                                  |
-| the leader is gone, members remain                   | a group id that is in use is never handed to another group, so the members are this shell's background processes: killed |
+| The record                 | The snapshot                                | What happens                                                                              |
+| -------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| the shell is still running | —                                           | killed: its pid is still its own, so the group cannot have been reused                    |
+| the shell exited           | the group is empty                          | dropped, nothing signalled                                                                |
+| the shell exited           | a member started at or before the exit time | killed: a reused group id can only hold processes that started after the number came free |
+| the shell exited           | every member started after the exit time    | dropped, nothing signalled — not enough evidence                                          |
+| the shell exited           | `ps` missing, failing or unreadable         | nothing is signalled, and a warning is logged                                             |
 
-A pid is not an identity: a shell that exited hours ago leaves a number the system may hand to somebody else's
-tree, and signalling it would kill a process Droi never started. Empty records are dropped as they are noticed,
-so a long-lived kernel keeps only live groups. On Windows there are no process groups: a tool's tree belongs to
-the Host's process tree — the Job Object the Host gives the kernel — whose handle ends its members when the
-kernel exits, and the kernel itself signals nothing by pid.
+A pid is not an identity, and neither is a group id: a record outlives the group it names, and the system may
+hand that number to somebody else's tree. Killing a stranger is worse than missing one of ours, so an unclear
+case does nothing. Two consequences, recorded here rather than discovered later:
+
+- **Missed:** our background process started a child and then exited, so only that grandchild remains. It
+  started after the shell exited, the evidence says "not ours", and it survives the kernel.
+- **Accepted risk:** a group id reused **inside the same second** reads as ours. Refusing second-granularity
+  comparisons instead would miss a tool's own background process that started in the shell's last second.
+
+Records are capped: past a thousand of them, one snapshot drops the ones whose groups have emptied. Nothing is
+scanned while a tool runs — the `ps` cost is one snapshot at shutdown, not one call per tool.
+
+On Windows there are no process groups: a tool's tree belongs to the Host's process tree — the Job Object the
+Host gives the kernel — whose handle ends its members when the kernel exits, and the kernel signals nothing by
+pid there.
 
 A kernel killed with `SIGKILL` cannot run any of this; the Host's own process tree is then the only thing that
 ends a tool that outlived it.
@@ -369,7 +380,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `conversation.unwatch`   | `{id}`                                                                     | `{}`                                                             | `conversations` | yes |
 | `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                | `{submissionId}`                                                 | `conversations` | yes |
 | `conversation.abort`     | `{id, background?}`                                                        | `{}`                                                             | `conversations` | yes |
-| `submission.get`         | `{id, submissionId}`                                                       | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
+| `submission.get`         | `{id, submissionId}`                                                       | `{submissionId, status, entry?, answer?, last?, reason?}`        | `conversations` | no  |
 | `submission.abort`       | `{id, submissionId}`                                                       | `{status}`                                                       | `conversations` | yes |
 | `conversation.configure` | `{id, change}`                                                             | `{agent}`                                                        | `conversations` | yes |
 | `conversation.compact`   | `{id, instructions?}`                                                      | `{taskId}`                                                       | `compaction`    | yes |

@@ -5,29 +5,59 @@ import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import { createToolProcesses, groupIsOurs } from '../src/tool-processes.ts'
 import { context } from '../src/session/service.ts'
 import { Client, fauxCatalog, start, tempData } from './helpers.ts'
+import { type GroupMember, type ShellGroup } from '../src/tool-processes.ts'
 
-describe('the tool process groups a kernel may end', () => {
-  test('a group with no members is not ours to signal', () => {
-    // The shell ran and exited long ago. Its number may now belong to something else entirely, and the
-    // only safe answer is to forget it.
-    expect(groupIsOurs({ pgid: 4242, startedAt: 'Fri Nov 7 10:00:00 2026' }, [], undefined)).toBe(
-      false,
-    )
+/** A record for a shell spawned at `spawnedAt`, which exited at `exitedAt` unless that is undefined. */
+function group(spawnedAt: number, exitedAt?: number): ShellGroup {
+  return {
+    pgid: 4242,
+    spawnedAtMs: spawnedAt,
+    ...(exitedAt === undefined ? {} : { exitedAtMs: exitedAt }),
+  }
+}
+
+/** A member that started `offset` seconds from the shell's exit (negative: before it). */
+const member = (exitAt: number, offset: number): GroupMember[] => [
+  { pid: 4250, startedAtMs: exitAt + offset * 1000 },
+]
+
+describe('whether a recorded tool group may still be ours', () => {
+  // The shell's own exit, in epoch milliseconds.
+  const exited = 1_700_000_100_000
+
+  test('the shell is still running', () => {
+    // While it runs, the number is its pid: the system cannot have given it to another process.
+    expect(groupIsOurs(group(exited - 60_000), [])).toBe(true)
+    expect(groupIsOurs(group(exited - 60_000), member(exited, 10))).toBe(true)
   })
 
-  test('the leader proves itself with its start time', () => {
-    const group = { pgid: 4242, startedAt: 'Fri Nov 7 10:00:00 2026' }
-    expect(groupIsOurs(group, [4242, 4250], 'Fri Nov 7 10:00:00 2026')).toBe(true)
-    // Same number, different process: the pid was recycled, and this is somebody else's tree.
-    expect(groupIsOurs(group, [4242], 'Fri Nov 7 11:30:00 2026')).toBe(false)
-    // The leader exists but `ps` could not read it: no proof, so no signal.
-    expect(groupIsOurs(group, [4242], undefined)).toBe(false)
+  test('the group has emptied', () => {
+    expect(groupIsOurs(group(exited - 60_000, exited), [])).toBe(false)
   })
 
-  test('a group whose leader is gone but whose members remain is ours', () => {
-    // A shell that started `sleep 100 &` and exited: the group keeps its name for as long as a member
-    // lives, and a pgid in use is never handed to another group.
-    expect(groupIsOurs({ pgid: 4242, startedAt: 'anything' }, [4250, 4251], undefined)).toBe(true)
+  test('a member that started before the shell exited is ours', () => {
+    // `sleep 100 &` began while the shell ran, and outlived it: a reused group can only hold processes that
+    // started after the number came free, which is later.
+    expect(groupIsOurs(group(exited - 60_000, exited), member(exited, -30))).toBe(true)
+  })
+
+  test('a reused group whose own leader already exited is not ours', () => {
+    // The number came free, a stranger's group took it, that group's leader exited too, and its own
+    // background children remain. Every member started after our shell exited.
+    expect(groupIsOurs(group(exited - 60_000, exited), member(exited, 5))).toBe(false)
+    expect(groupIsOurs(group(exited - 60_000, exited), member(exited, 3600))).toBe(false)
+  })
+
+  test('only grandchildren remain: missed on purpose', () => {
+    // Our background process started a child after our shell exited, then exited itself. Nothing in the
+    // group proves it belongs to us, and killing a stranger is worse than missing one of ours.
+    expect(groupIsOurs(group(exited - 60_000, exited), member(exited, 120))).toBe(false)
+  })
+
+  test('the same second counts as ours', () => {
+    // A number reused inside the same second reads as ours. That is the accepted residual risk: the
+    // alternative is to miss a tool's own background process that started in the shell's last second.
+    expect(groupIsOurs(group(exited - 60_000, exited), member(exited, 0))).toBe(true)
   })
 })
 
@@ -74,7 +104,11 @@ describe('the tool processes of one kernel', () => {
     const pidFile = join('/tmp', `droi-tool-group-${process.pid}.pid`)
     const tools = createToolProcesses({ cwd: '/tmp' })
     const environment = tools.env({})
-    const result = await environment.exec(`sleep 100 & echo $! > ${pidFile}`, undefined, context)
+    const result = await environment.exec(
+      `echo $ > /tmp/shellid.txt; sleep 100 & echo $! > ${pidFile}`,
+      undefined,
+      context,
+    )
     expect(result.ok).toBe(true)
     let pid = 0
     for (let deadline = Date.now() + 5000; pid === 0;) {
@@ -109,6 +143,46 @@ describe('the tool processes of one kernel', () => {
     }
   }, 30_000)
 
+  test('no readable process table means nothing is signalled', async () => {
+    // `ps` missing, failing or unparseable: there is no evidence, and a kill on a guess is worse than a
+    // missed cleanup. The records are dropped either way, so the warning is not repeated forever.
+    const pidFile = join('/tmp', `droi-ps-fail-${process.pid}.pid`)
+    const tools = createToolProcesses({ cwd: '/tmp' })
+    const environment = tools.env({})
+    await environment.exec(`sleep 100 & echo $! > ${pidFile}`, undefined, context)
+    let pid = 0
+    for (let deadline = Date.now() + 5000; pid === 0;) {
+      try {
+        pid = Number(readFileSync(pidFile, 'utf8').trim())
+      } catch {
+        // Not written yet.
+      }
+      if (Date.now() > deadline) throw new Error('the background process never reported its pid')
+      await Bun.sleep(10)
+    }
+    const attempted: unknown[] = []
+    const realKill = process.kill
+    const realPath = process.env['PATH']
+    try {
+      process.kill = ((target: number, signal?: string | number) => {
+        attempted.push({ target, signal })
+        return true
+      }) as typeof process.kill
+      // An empty PATH is how `ps` becomes unreadable without touching the machine.
+      process.env['PATH'] = '/nonexistent-droid-review'
+      await tools.stop(context)
+    } finally {
+      process.kill = realKill
+      process.env['PATH'] = realPath
+      try {
+        process.kill(-pid, 'SIGKILL')
+        process.kill(pid, 'SIGKILL')
+      } catch {
+        // Already gone.
+      }
+    }
+    expect(attempted).toEqual([])
+  }, 30_000)
   test('a cleaned environment is not kept until shutdown', async () => {
     const tools = createToolProcesses({ cwd: '/tmp' })
     let cleanups = 0

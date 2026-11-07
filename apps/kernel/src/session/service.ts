@@ -707,13 +707,55 @@ export class Kernel implements Dispatcher {
         submissionId,
       })
     }
+    const entry = 'entry' in record && record.entry !== undefined ? record.entry : undefined
+    // `last` is the highest entry this submission's turn wrote: an answer for a done submission, and for one
+    // that ended without an answer the last entry of the run that was cut short. A client needs the upper
+    // bound as much as the lower one: without it, "entries from my submission" reads through the next turn's
+    // reply, and a wait for the aborted turn is satisfied by somebody else's answer.
+    const last =
+      record.status === 'done'
+        ? record.answer
+        : entry === undefined
+          ? undefined
+          : await this.#turnEnd(id, entry as unknown as number)
     return {
       submissionId,
       status: record.status,
-      ...('entry' in record && record.entry !== undefined ? { entry: record.entry } : {}),
+      ...(entry === undefined ? {} : { entry }),
       ...(record.status === 'done' ? { answer: record.answer } : {}),
+      ...(last === undefined ? {} : { last }),
       ...(record.status === 'unanswered' ? { reason: record.reason } : {}),
     }
+  }
+
+  /**
+   * The highest entry belonging to the turn that starts at `entry`.
+   *
+   * Pi stamps each entry with the task that wrote it (`byTaskId`), and the turn's own run is the first task
+   * that appears above the user's entry. Entries of a later turn carry a different task, so the last entry
+   * with this one is where this submission stops — a definite bound, from the transcript, not a guess.
+   */
+  async #turnEnd(id: number, entry: number): Promise<number> {
+    const page = await this.#options.storage.scanEntries(
+      {
+        conversationId: id as never,
+        order: 'ascending',
+        minEntryId: (entry + 1) as never,
+      },
+      200,
+      undefined,
+      context,
+    )
+    let task: number | undefined
+    let last = entry
+    for (const record of page.items) {
+      const byTask = (record as { byTaskId?: unknown }).byTaskId
+      if (typeof byTask !== 'number') continue
+      task ??= byTask
+      if (byTask !== task) break
+      last = Math.max(last, record.id as unknown as number)
+    }
+    return last
   }
 
   async #abortSubmission(params: Record<string, unknown>): Promise<unknown> {
