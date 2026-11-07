@@ -149,13 +149,11 @@ func TestFixturesDecodeIntoTheClientTypes(t *testing.T) {
 		})
 	}
 	for _, method := range Methods {
-		if seen[method] {
-			continue
+		// Every method this client has must have a sample: a method without
+		// one is a method no test exercises against Kernel's own shape.
+		if !seen[method] {
+			t.Errorf("the fixtures have no sample of %s", method)
 		}
-		// A method the contract has and the fixtures do not yet: the client
-		// keeps its types, and this list names the PR that lands the sample.
-		// The entry must go when the sample does, or the check below fails.
-		t.Errorf("the fixtures have no sample of %s", method)
 	}
 }
 
