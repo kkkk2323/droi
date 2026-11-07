@@ -78,7 +78,8 @@
           "max": 200
         },
         "maxEntriesPerPage": 200,
-        "maxConversationsPerPage": 200
+        "maxConversationsPerPage": 200,
+        "maxImportEntriesPerCall": 1000
       }
     }
   }

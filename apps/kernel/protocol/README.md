@@ -298,6 +298,7 @@ guess:
 | Limit                            | Value                  | Where it applies        |
 | -------------------------------- | ---------------------- | ----------------------- |
 | `limits.maxEntriesPerPage`       | 200                    | `conversation.entries`  |
+| `limits.maxImportEntriesPerCall` | 1000                   | `conversation.import`   |
 | `limits.maxConversationsPerPage` | 200                    | `conversation.list`     |
 | `limits.viewWindowDefault`       | `{min: 100, max: 200}` | the window a view holds |
 
@@ -390,7 +391,7 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 
 ## Methods
 
-27 methods. "Capability" names the `harness.info.capabilities` flag that says
+28 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
 | Method                 | Params                                                      | Result                                                           | Capability      | M1  |
@@ -430,6 +431,7 @@ Three qualifications a client that reads a range needs:
 | `conversation.configure` | `{id, change}` | `{agent}` | `conversations` | yes |
 | `conversation.compact` | `{id, instructions?}` | `{taskId}` | `compaction` | yes |
 | `conversation.fork` | `{id, at}` | `{conversationId, view}` | `fork` | yes |
+| `conversation.import` | `{id?, key?, entries, agent?, cwd?, kind?, title?, createdAt?, archived?, instructions?}` | `{conversationId, entryIds, replayed?}` | `import` | yes |
 | `conversation.entries` | `{id, query?, limit?, cursor?}` | `{items[], cursor?}` | `conversations` | yes |
 | `conversation.usage` | `{id}` | `{models, tools, context}` | `usage` | yes |
 | `task.abort` | `{taskId}` | `{status}` | `tasks` | yes |
@@ -568,6 +570,53 @@ so a client can build the card before the feature lands:
 approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
 process and for a subagent. `at` is epoch milliseconds. An entry that has not settled yet is the newest
 record of that `requestId`: the kernel appends one entry per change rather than rewriting.
+### `conversation.import`
+
+Write a transcript that already exists — M2's history constructor, and M5's importer for old droid sessions.
+Without `id` it creates the conversation; with `id` it appends one batch to an existing one.
+
+| Param                                                       | Create                | Append                                                    | Meaning                                                   |
+| ----------------------------------------------------------- | --------------------- | --------------------------------------------------------- | --------------------------------------------------------- |
+| `entries`                                                   | required, may be `[]` | required                                                  | Pi entry drafts, at most `limits.maxImportEntriesPerCall` |
+| `id`                                                        | absent                | required                                                  | The conversation to append to; unknown is `-32000`        |
+| `key`                                                       | optional              | optional                                                  | Idempotency key, see below                                |
+| `agent`, `cwd`, `kind`, `title`, `instructions`, `archived` | optional              | **forbidden** (`-32602`, `issues[].path` names the field) | The same fields `conversation.create` takes               |
+| `createdAt`                                                 | optional, epoch ms    | forbidden                                                 | The conversation's creation time, not the import's        |
+
+It answers `{conversationId, entryIds, replayed?}`, where `entryIds` are the IDs the batch's entries got, in
+order. The result carries no view: a forty-entry history's view is only the entries just written, and a caller
+that wants one calls `conversation.open`.
+
+**One batch, one commit.** The entries of one call are written together, so a client never sees half of them,
+and the IDs are consecutive. A batch starts no run, creates no submission and does not touch `pi.live` or
+`pi.inbox`: an import is history, not a turn.
+
+**The timestamps are the messages' own.** `entry.model[j].timestamp` decides when a message happened, and the
+conversation's `lastActivityAt` is the newest of them, so a list sorted by activity sorts the history as it
+unfolded. A message without a timestamp is refused (`-32602`), because inheriting the import's time is exactly
+what an import must not do.
+
+**Usage is recorded.** A `pi.assistant` message that carries `usage` adds it to the conversation's `pi.usage`
+the way a real answer does, so `conversation.usage` works on an imported history too. A missing counter or
+cost counts as zero.
+
+**Only structure is checked.** An imported history is somebody else's past: a tool result with no call before
+it, or an answer that follows no user message, is preserved rather than refused. What is refused is what the
+kernel owns — `droi.meta`, `droi.request` and `droi.import` (`issues[].path` is `entries[i].kind`) — because
+writing one would forge an identity or a memo.
+
+**Idempotency.** Without `key`, every call writes. With it, a replay answers the first call's `conversationId`
+and `entryIds` with `replayed: true` and writes nothing: for an append the transcript's own `droi.import` memo
+is the record, and for a create the kernel keeps the key with the conversation it made, so a retried create
+converges instead of importing a second conversation. A create that reuses a key with other fields is
+`-32013 conflict`, `requestId` being that key. The `droi.import` entry is bookkeeping: it adds no search text,
+no preview and no activity, like `droi.meta`.
+
+**Documents are not imported.** `pi.agent` comes from `agent`, `pi.usage` from the messages' usage, and
+`pi.live` / `pi.inbox` are run state that only a real run produces — a test that needs those states drives the
+model instead of importing them.
+
+`capabilities.import` says whether this build has it.
 
 ### `model.complete`
 

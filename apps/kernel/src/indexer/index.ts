@@ -524,6 +524,41 @@ export class Indexer {
     return this.#db.get<ConversationRow>('SELECT * FROM droi_conversations WHERE id = ?', id)
   }
 
+  /** The conversation one import key created, with the fingerprint of the call that did it. */
+  async importKey(
+    key: string,
+  ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
+    await this.flush()
+    const row = await this.#db.get<{
+      conversation_id: number
+      fingerprint: string
+      entry_ids: string
+    }>('SELECT conversation_id, fingerprint, entry_ids FROM droi_import_keys WHERE key = ?', key)
+    if (row === undefined) return undefined
+    return {
+      conversationId: row.conversation_id,
+      fingerprint: row.fingerprint,
+      entryIds: JSON.parse(row.entry_ids) as number[],
+    }
+  }
+
+  /** Remember that `key` created `conversationId`, so a retried import answers the same conversation. */
+  async rememberImport(
+    key: string,
+    conversationId: number,
+    fingerprint: string,
+    entryIds: number[],
+  ): Promise<void> {
+    await this.#db.run(
+      `INSERT INTO droi_import_keys (key, conversation_id, fingerprint, entry_ids)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (key) DO NOTHING`,
+      key,
+      conversationId,
+      fingerprint,
+      JSON.stringify(entryIds),
+    )
+  }
   async byRequestId(requestId: string): Promise<ConversationRow | undefined> {
     await this.flush()
     return this.#db.get<ConversationRow>(
@@ -736,7 +771,7 @@ export function entryText(entry: EntryRecord): string {
 }
 
 /** Entry kinds the kernel writes for its own records, never as conversation text. */
-const BOOKKEEPING = new Set(['droi.meta', 'droi.request'])
+const BOOKKEEPING = new Set(['droi.meta', 'droi.request', 'droi.import'])
 
 /**
  * When an entry was written, from its own message. `undefined` when it has none — a `droi.meta` entry is

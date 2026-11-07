@@ -83,7 +83,7 @@ describe('the handshake and the connection', () => {
       notifications: string[]
       errors: string[]
     }
-    expect(index.methods.length).toBe(28)
+    expect(index.methods.length).toBe(29)
     expect(index.notifications.length).toBeGreaterThan(10)
 
     const known = new Set(kernel.kernel.methodNames())
