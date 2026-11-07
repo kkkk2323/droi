@@ -54,3 +54,47 @@ func TestFakeKernelLeavesNoToolProcess(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// TestFakeKernelLeavesNoBackgroundToolProcess is the leak that survived the first fix: the Kernel's process
+// group was ended, but Pi starts each tool shell `detached`, in a group of its own, so a `sleep 100 &` the
+// shell left behind was not in the Kernel's group at all.
+func TestFakeKernelLeavesNoBackgroundToolProcess(t *testing.T) {
+	for _, command := range []string{
+		"sleep 100 & echo $! > %s",
+		"nohup sleep 100 > /dev/null 2>&1 & echo $! > %s",
+	} {
+		pidfile := filepath.Join(t.TempDir(), "tool.pid")
+		k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+			{Call: &fakekernel.Call{Name: "bash", Arguments: map[string]any{
+				"command": fmt.Sprintf(command, pidfile),
+			}}},
+			{Text: "left it running"},
+		}})
+		c := k.Dial(t)
+		id := k.CreateConversation(t, c)
+		sub := k.Submit(t, c, id, "leave something running")
+		k.WaitForReply(t, c, sub, "left it running", 60*time.Second)
+
+		var pid int
+		for deadline := time.Now().Add(10 * time.Second); pid == 0; {
+			data, _ := os.ReadFile(pidfile)
+			pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+			if time.Now().After(deadline) {
+				t.Fatalf("the tool never wrote its pid: %s\n%s", command, k.Logs())
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+
+		k.Close()
+		for deadline := time.Now().Add(5 * time.Second); ; {
+			if err := syscall.Kill(pid, 0); err != nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s left pid %d running after Close", command, pid)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}

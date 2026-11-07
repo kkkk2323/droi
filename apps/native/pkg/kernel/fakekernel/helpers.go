@@ -1,6 +1,7 @@
 package fakekernel
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -12,18 +13,28 @@ import (
 // DefaultWindow is a view window wide enough for a test's transcript.
 var DefaultWindow = kernel.Window{Min: 20, Max: 200}
 
-// Submission is one submitted turn, and the boundary a wait for its reply starts from.
+// pageSize is how many entries one RPC asks for; a test transcript is far longer than one page.
+const pageSize = 200
+
+// Submission is one submitted turn. Its boundaries come from the Kernel, not from the transcript.
 //
-// The boundary is the point: `AfterEntry` is the highest entry id the conversation held **before** this
-// submission. Without it a wait for "the reply" finds the previous turn's reply — the newest assistant entry
-// in the window — and a two-turn test passes by reading the wrong turn. That false pass is why every wait
-// here takes a Submission instead of a conversation id.
+// A wait must not be "the newest assistant entry": an entry carries the *task* that wrote it, and one task can
+// answer a queued input together with the one after it. `submission.get` gives the two entries that belong to
+// this submission — the user's own (`Entry`) and the reply that answered it (`Answer`) — which is why every
+// wait here takes a Submission instead of a conversation id.
 type Submission struct {
 	Conversation kernel.ID
-	// ID is the submission's own id, which the transcript's entries carry as `byTaskId`.
-	ID kernel.ID
-	// AfterEntry is the last entry id before this submission; a reply for it is above this.
-	AfterEntry kernel.ID
+	ID           kernel.ID
+}
+
+// Record is where one submission is: the Kernel's answer to `submission.get`.
+type Record struct {
+	Status string
+	// Entry is the user's own entry; absent while the submission is still queued.
+	Entry kernel.ID
+	// Answer is the entry that answered it; present once Status is "done".
+	Answer kernel.ID
+	Reason string
 }
 
 // CreateConversation makes a conversation on the fake model's agent and opens it, so the connection gets
@@ -35,8 +46,7 @@ func (k *Kernel) CreateConversation(t testing.TB, c *kernel.Client) kernel.ID {
 }
 
 // CreateConversationIn is CreateConversation with a working directory, for a test whose tools must run in a
-// place of their own. A directory under the Kernel's workspace keeps it throwaway; an absolute path under
-// the test's t.TempDir() works too.
+// place of their own.
 func (k *Kernel) CreateConversationIn(t testing.TB, c *kernel.Client, dir string) kernel.ID {
 	t.Helper()
 	ctx, cancel := k.context(t, 60*time.Second)
@@ -58,61 +68,77 @@ func (k *Kernel) CreateConversationIn(t testing.TB, c *kernel.Client, dir string
 	return created.ConversationID
 }
 
-// Submit sends one message and returns the turn's boundary for waiting.
+// Submit sends one message and returns the turn to wait on.
 func (k *Kernel) Submit(t testing.TB, c *kernel.Client, id kernel.ID, text string) Submission {
 	t.Helper()
 	ctx, cancel := k.context(t, 60*time.Second)
 	defer cancel()
-	before := k.lastEntry(t, c, id)
 	// No WhenBusy: the Kernel's values are "steer", "followUp" and "reject", and the Go client's
 	// WhenBusyQueue ("queue") is refused as invalid params — see shared/interfaces/fake-kernel.md.
 	result, err := c.Submit(ctx, kernel.SubmitParams{ID: id, Input: text})
 	if err != nil {
 		t.Fatalf("fakekernel: conversation.submit %q: %v\n%s", text, err, k.Logs())
 	}
-	return Submission{Conversation: id, ID: result.SubmissionID, AfterEntry: before}
+	return Submission{Conversation: id, ID: result.SubmissionID}
 }
 
-// lastEntry is the conversation's highest entry id right now, which is what a Submission's AfterEntry holds.
-func (k *Kernel) lastEntry(t testing.TB, c *kernel.Client, id kernel.ID) kernel.ID {
+// Record asks the Kernel where this submission is: queued, placed, done, or unanswered.
+func (k *Kernel) Record(t testing.TB, c *kernel.Client, sub Submission, within time.Duration) Record {
 	t.Helper()
-	ctx, cancel := k.context(t, 30*time.Second)
+	ctx, cancel := k.context(t, within)
 	defer cancel()
-	page, err := c.Entries(ctx, kernel.EntriesParams{ID: id, Limit: 200})
-	if err != nil {
-		t.Fatalf("fakekernel: conversation.entries: %v\n%s", err, k.Logs())
-	}
-	var highest kernel.ID
-	for _, entry := range page.Items {
-		if entry.ID > highest {
-			highest = entry.ID
-		}
-	}
-	return highest
+	return k.record(ctx, t, c, sub)
 }
 
-// WaitForReply waits until this submission's own assistant reply contains text, and returns it.
+func (k *Kernel) record(ctx context.Context, t testing.TB, c *kernel.Client, sub Submission) Record {
+	t.Helper()
+	var answer struct {
+		Status string          `json:"status"`
+		Entry  json.RawMessage `json:"entry"`
+		Answer json.RawMessage `json:"answer"`
+		Reason string          `json:"reason"`
+	}
+	if err := c.Call(ctx, "submission.get", map[string]any{
+		"id": sub.Conversation, "submissionId": sub.ID,
+	}, &answer); err != nil {
+		t.Fatalf("fakekernel: submission.get %d: %v\n%s", sub.ID, err, k.Logs())
+	}
+	return Record{
+		Status: answer.Status,
+		Entry:  idOf(answer.Entry),
+		Answer: idOf(answer.Answer),
+		Reason: answer.Reason,
+	}
+}
+
+// WaitForReply waits until this submission's own answer holds text, and returns the answer's text.
 //
-// Only entries above the submission's boundary count, so a wait cannot be answered by the previous turn.
+// The answer is the entry the Kernel says answered this submission, so a reply that was already in flight is
+// never mistaken for it — the false pass a "newest assistant entry" wait produces.
 func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, text string, within time.Duration) string {
 	t.Helper()
 	ctx, cancel := k.context(t, within)
 	defer cancel()
 	for {
-		page, err := c.Entries(ctx, kernel.EntriesParams{ID: sub.Conversation, Limit: 200})
-		if err == nil {
-			for _, entry := range page.Items {
-				if entry.ID <= sub.AfterEntry || entry.Kind != "pi.assistant" {
+		record := k.record(ctx, t, c, sub)
+		if record.Status == "unanswered" {
+			t.Fatalf("fakekernel: submission %d was never answered: %s\n%s", sub.ID, record.Reason, k.Logs())
+		}
+		if record.Status == "done" && record.Answer != 0 {
+			for _, entry := range k.entriesFrom(ctx, t, c, sub.Conversation, record.Answer-1) {
+				if entry.ID != record.Answer || entry.Kind != "pi.assistant" {
 					continue
 				}
-				if got := assistantText(entry.Model); strings.Contains(got, text) {
+				if got := entry.Text; strings.Contains(got, text) {
 					return got
 				}
+				t.Fatalf("fakekernel: submission %d was answered by %q, which does not hold %q",
+					sub.ID, entry.Text, text)
 			}
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("fakekernel: submission %d got no assistant reply containing %q within %s: %v\n%s",
+			t.Fatalf("fakekernel: submission %d got no answer containing %q within %s: %v\n%s",
 				sub.ID, text, within, ctx.Err(), k.Logs())
 			return ""
 		case <-time.After(25 * time.Millisecond):
@@ -126,7 +152,7 @@ func (k *Kernel) Ask(t testing.TB, c *kernel.Client, id kernel.ID, prompt, reply
 	return k.WaitForReply(t, c, k.Submit(t, c, id, prompt), reply, within)
 }
 
-// Entry is one transcript entry above a submission's boundary, as a test reads it.
+// Entry is one transcript entry, as a test reads it.
 type Entry struct {
 	ID   kernel.ID
 	Kind string
@@ -136,32 +162,24 @@ type Entry struct {
 	Raw json.RawMessage
 }
 
-// EntriesAfter is the conversation's transcript above the submission's boundary, oldest first.
+// EntriesAfter is the entries this submission's turn wrote, oldest first.
 //
-// It is what a view test asserts on when it needs the whole turn — a tool call, its result, the reply —
-// rather than one reply's text.
+// "This submission's" is the Kernel's answer, not a guess: the turn starts at the user's own entry and ends at
+// the reply that answered it. A submission still queued has no turn yet, and answers the entries so far —
+// nothing — rather than whatever the previous turn left in the transcript.
 func (k *Kernel) EntriesAfter(t testing.TB, c *kernel.Client, sub Submission, within time.Duration) []Entry {
 	t.Helper()
 	ctx, cancel := k.context(t, within)
 	defer cancel()
-	page, err := c.Entries(ctx, kernel.EntriesParams{ID: sub.Conversation, Limit: 200})
-	if err != nil {
-		t.Fatalf("fakekernel: conversation.entries: %v\n%s", err, k.Logs())
+	record := k.record(ctx, t, c, sub)
+	from := record.Entry - 1
+	if from < 0 {
+		from = 0
 	}
-	entries := make([]Entry, 0, len(page.Items))
-	for _, entry := range page.Items {
-		if entry.ID <= sub.AfterEntry {
-			continue
-		}
-		entries = append(entries, Entry{
-			ID: entry.ID, Kind: entry.Kind, Text: entryText(entry), Raw: entry.Model,
-		})
-	}
-	return entries
+	return k.entriesFrom(ctx, t, c, sub.Conversation, from)
 }
 
-// WaitForEntries waits until the submission's turn holds an entry satisfying match, and returns the whole
-// turn so far: a tool result and the reply that follows it, in one assertion.
+// WaitForEntries waits until this submission's turn holds an entry satisfying match, and returns the turn.
 func (k *Kernel) WaitForEntries(
 	t testing.TB, c *kernel.Client, sub Submission, match func([]Entry) bool, within time.Duration,
 ) []Entry {
@@ -169,17 +187,9 @@ func (k *Kernel) WaitForEntries(
 	ctx, cancel := k.context(t, within)
 	defer cancel()
 	for {
-		page, err := c.Entries(ctx, kernel.EntriesParams{ID: sub.Conversation, Limit: 200})
-		if err == nil {
-			entries := make([]Entry, 0, len(page.Items))
-			for _, entry := range page.Items {
-				if entry.ID <= sub.AfterEntry {
-					continue
-				}
-				entries = append(entries, Entry{
-					ID: entry.ID, Kind: entry.Kind, Text: entryText(entry), Raw: entry.Model,
-				})
-			}
+		record := k.record(ctx, t, c, sub)
+		if record.Entry != 0 {
+			entries := k.entriesFrom(ctx, t, c, sub.Conversation, record.Entry-1)
 			if match(entries) {
 				return entries
 			}
@@ -194,6 +204,47 @@ func (k *Kernel) WaitForEntries(
 	}
 }
 
+// entriesFrom reads the conversation's entries above `from`, oldest first, page by page.
+//
+// Ascending and paginated on purpose: the RPC's default order is newest first, which reads a turn backwards,
+// and one page silently truncates a long one.
+func (k *Kernel) entriesFrom(
+	ctx context.Context, t testing.TB, c *kernel.Client, id kernel.ID, from kernel.ID,
+) []Entry {
+	t.Helper()
+	var entries []Entry
+	var cursor json.RawMessage
+	for {
+		params := map[string]any{
+			"id":    id,
+			"query": map[string]any{"order": "ascending", "minEntryId": from + 1},
+			"limit": pageSize,
+		}
+		if len(cursor) > 0 {
+			params["cursor"] = cursor
+		}
+		var page struct {
+			Items  []kernel.Entry  `json:"items"`
+			Cursor json.RawMessage `json:"cursor"`
+		}
+		if err := c.Call(ctx, "conversation.entries", params, &page); err != nil {
+			t.Fatalf("fakekernel: conversation.entries: %v\n%s", err, k.Logs())
+		}
+		for _, entry := range page.Items {
+			if entry.ID <= from {
+				continue
+			}
+			entries = append(entries, Entry{
+				ID: entry.ID, Kind: entry.Kind, Text: entryText(entry), Raw: entry.Model,
+			})
+		}
+		if len(page.Cursor) == 0 || string(page.Cursor) == "null" || len(page.Items) == 0 {
+			return entries
+		}
+		cursor = page.Cursor
+	}
+}
+
 // ViewPush is one conversation.view notification, decoded.
 type ViewPush struct {
 	ID    kernel.ID
@@ -201,8 +252,8 @@ type ViewPush struct {
 	Whole bool
 }
 
-// WaitForView waits for a conversation.view push that satisfies match, bounded by the test's deadline as
-// well as by within.
+// WaitForView waits for a conversation.view push that satisfies match, bounded by the test's deadline as well
+// as by within.
 func (k *Kernel) WaitForView(
 	t testing.TB, c *kernel.Client, match func(ViewPush) bool, within time.Duration,
 ) ViewPush {
@@ -233,8 +284,20 @@ func (k *Kernel) WaitForView(
 	}
 }
 
-// entryText is an entry's own text. Pi's model messages carry content parts: text, thinking, a tool call, or
-// a tool result's blocks; this joins what a person would read.
+// idOf reads a JSON id, which the Kernel may leave out.
+func idOf(raw json.RawMessage) kernel.ID {
+	if len(raw) == 0 {
+		return 0
+	}
+	var id kernel.ID
+	if err := json.Unmarshal(raw, &id); err != nil {
+		return 0
+	}
+	return id
+}
+
+// entryText is an entry's own text. Pi's model messages carry content parts: text, thinking, a tool call, or a
+// tool result's blocks; this joins what a person would read.
 func entryText(entry kernel.Entry) string {
 	var messages []struct {
 		Content json.RawMessage `json:"content"`
@@ -262,9 +325,4 @@ func entryText(entry kernel.Entry) string {
 		}
 	}
 	return strings.Join(parts, "")
-}
-
-// assistantText is an entry's assistant text, for the reply assertions.
-func assistantText(model json.RawMessage) string {
-	return entryText(kernel.Entry{Model: model})
 }

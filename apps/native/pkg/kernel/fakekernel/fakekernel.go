@@ -8,8 +8,9 @@
 //
 // The binary comes from DROI_KERNEL_BIN, or else the build in apps/native/assets/kernel/<goos>-<goarch>
 // that `pnpm build:kernel` writes. Without one the test is skipped, because `go test ./apps/native/...`
-// has to work on a checkout with no Kernel built; set DROI_FAKEKERNEL_REQUIRED=1 (which CI does) to turn
-// that skip into a failure, since a skipped test proves nothing.
+// has to work on a checkout with no Kernel built; set DROI_FAKEKERNEL_REQUIRED=1 to turn that skip into a
+// failure, since a skipped test proves nothing. The `native-packages` CI job builds the host Kernel and sets
+// that variable (see `.github/workflows/pr.yml`).
 //
 // A test's Kernel gets its own world: a temporary HOME, a temporary working directory, and only a
 // whitelisted slice of the parent's environment. A test must never read or write the real ~, and must never
@@ -222,8 +223,19 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 // stdin, which is how the first version of this package leaked one per test.
 func (k *Kernel) Close() {
 	k.closeOnce.Do(func() {
-		// Let the Kernel close its own storage first: a SIGKILL leaves SQLite a hot journal, which is
-		// fine, but a graceful stop also lets the harness settle its writes and costs little.
+		// Ask first, the way the Host does: `kernel.shutdown` closes the harness, ends the tools the Kernel
+		// started, and closes the storage, so a test's Close exercises the same path a stop does. A Kernel too
+		// wedged to answer falls through to the signals below.
+		if client, err := kernel.Dial(context.Background(), kernel.Options{
+			URL:            kernel.URL(k.Port),
+			Token:          k.Token,
+			RequestTimeout: 5 * time.Second,
+		}); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = client.Send(ctx, "kernel.shutdown", map[string]any{})
+			cancel()
+			_ = client.Close()
+		}
 		if k.cmd.Process != nil {
 			_ = k.cmd.Process.Signal(os.Interrupt)
 		}
@@ -299,10 +311,14 @@ func (k *Kernel) context(t testing.TB, within time.Duration) (context.Context, c
 			return context.WithTimeout(context.Background(), limit)
 		}
 		// Leave a moment to report: a context that expires with the test fails the test with a signal
-		// instead of a message from our own assertion.
+		// instead of a message from our own assertion. When that margin is already gone, the right answer is
+		// an expired context — the wait gives up at once and the test's cleanups still run — not the hard
+		// deadline, which spends the last second and then panics through the cleanups.
 		remaining := time.Until(deadline) - time.Second
 		if remaining <= 0 {
-			remaining = time.Until(deadline)
+			expired, cancel := context.WithCancel(context.Background())
+			cancel()
+			return expired, func() {}
 		}
 		if remaining < limit {
 			limit = remaining
@@ -614,6 +630,13 @@ func isolatedEnv(home string) []string {
 	passthrough := []string{
 		"PATH", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ",
 		"SystemRoot", "SystemDrive", "windir", "COMSPEC", "PATHEXT", "PROCESSOR_ARCHITECTURE",
+		// Where Windows installs Git Bash, which the Kernel discovers to offer a bash tool
+		// (apps/kernel/src/extensions/coding.ts). They name installation roots, not secrets, and a Kernel
+		// that cannot see them offers no bash at all.
+		"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+		// Windows tools keep their own state here; the Kernel's temp HOME is not a substitute for it, and
+		// Git Bash under %LOCALAPPDATA%\Programs would be invisible if this were replaced.
+		"LOCALAPPDATA",
 	}
 	env := make([]string, 0, len(passthrough)+10)
 	for _, key := range passthrough {
@@ -627,7 +650,6 @@ func isolatedEnv(home string) []string {
 		"HOME="+home,
 		"USERPROFILE="+home,
 		"APPDATA="+filepath.Join(home, "AppData", "Roaming"),
-		"LOCALAPPDATA="+filepath.Join(home, "AppData", "Local"),
 		"TMPDIR="+temp,
 		"TMP="+temp,
 		"TEMP="+temp,

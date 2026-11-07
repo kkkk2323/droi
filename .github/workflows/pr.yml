@@ -133,7 +133,32 @@ jobs:
           go-version-file: apps/native/go.mod
           cache-dependency-path: apps/native/go.sum
 
+      # The Fake Kernel starts a real Kernel binary, so this job builds the host one. Without it the
+      # package's tests skip, and a package whose tests all skip is a package with no tests.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/native/assets/kernel
+          key: kernel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/kernel/src/**', 'packages/**') }}
+
+      - name: Build the host Kernel for the Fake Kernel tests
+        run: |
+          pnpm install --frozen-lockfile
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64) platform=darwin-arm64 ;;
+            Darwin-x86_64) platform=darwin-x64 ;;
+            *) echo "::error::unsupported host: $(uname -s)-$(uname -m)"; exit 1 ;;
+          esac
+          (cd apps/kernel && bun run build.ts "$platform")
+
       - name: The other packages' tests
+        env:
+          DROI_FAKEKERNEL_REQUIRED: '1'
         run: go test $(go list ./apps/native/... | grep -v '/internal/app$')
 
   # Droi's droid and its Key Hook, the Key Pool and its LLM Proxy on Windows,

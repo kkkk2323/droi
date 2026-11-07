@@ -5,12 +5,47 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
 )
+
+// The Kernel offers `bash` where a shell it trusts exists — Git Bash on Windows — and `powershell` everywhere
+// on Windows. A test that names one tool and writes POSIX shell into it is a test that only passes on the
+// machine it was written on, so both the tool and the syntax come from here.
+func shellTool() string {
+	if runtime.GOOS == "windows" {
+		return "powershell"
+	}
+	return "bash"
+}
+
+// echoCommand is a command that prints text with whichever shell the platform offers.
+func echoCommand(text string) string {
+	if runtime.GOOS == "windows" {
+		return "Write-Output '" + text + "'"
+	}
+	return "echo " + text
+}
+
+// writeEnvCommand writes $HOME, an environment variable and the working directory into files.
+func writeEnvCommand(home, key, cwd string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf(
+			"Set-Content -NoNewline -Path '%s' -Value $env:USERPROFILE; "+
+				"Set-Content -NoNewline -Path '%s' -Value $env:FACTORY_API_KEY; "+
+				"Set-Content -NoNewline -Path '%s' -Value (Get-Location).Path",
+			home, key, cwd,
+		)
+	}
+	return fmt.Sprintf(
+		"printf '%%s' \"$HOME\" > %q; printf '%%s' \"${FACTORY_API_KEY:-none}\" > %q; pwd > %q",
+		home, key, cwd,
+	)
+}
 
 // TestFakeKernelAnswersAScriptedTurn is the package's own proof: a real Kernel, a real conversation, a
 // scripted reply, and the view push a client draws from. Every view test that migrates to the Kernel will do
@@ -61,25 +96,24 @@ func TestFakeKernelAnswersAScriptedTurn(t *testing.T) {
 // real rather than a fixture.
 func TestFakeKernelRunsAScriptedToolCall(t *testing.T) {
 	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
-		{Match: "list files", Call: &fakekernel.Call{Name: "bash", Arguments: map[string]any{
-			"command": "echo written-by-the-kernel",
+		{Match: "run the tool", Call: &fakekernel.Call{Name: shellTool(), Arguments: map[string]any{
+			"command": echoCommand("written-by-the-kernel"),
 		}}},
-		// The follow-up request's last user message is still "list files": a tool result is a tool message,
-		// not a user one, so the step that follows a tool call matches the same prompt.
-		{Match: "list files", Text: "the command printed it"},
+		// The follow-up request's last user message is still "run the tool": a tool result is a tool
+		// message, not a user one, so the step after a tool call matches the same prompt.
+		{Match: "run the tool", Text: "the command printed it"},
 	}})
 	c := k.Dial(t)
 	id := k.CreateConversation(t, c)
 
-	sub := k.Submit(t, c, id, "list files")
+	sub := k.Submit(t, c, id, "run the tool")
 	entries := k.WaitForEntries(t, c, sub, func(entries []fakekernel.Entry) bool {
-		found := false
 		for _, entry := range entries {
 			if entry.Kind == "pi.tool-result" {
-				found = true
+				return true
 			}
 		}
-		return found
+		return false
 	}, 60*time.Second)
 	var tool string
 	for _, entry := range entries {
@@ -94,17 +128,17 @@ func TestFakeKernelRunsAScriptedToolCall(t *testing.T) {
 }
 
 // TestFakeKernelIsolatesTheEnvironment is the safety property: a test's Kernel — and every tool it runs —
-// sees a HOME of its own, not the one the test process inherited. A read of $HOME must show the Kernel's, no
-// key may be inherited, and the default working directory must not be the source tree.
+// sees a HOME of its own, not the one the test process inherited. A read of it must show the Kernel's, no key
+// may be inherited, and the default working directory must not be the source tree.
 func TestFakeKernelIsolatesTheEnvironment(t *testing.T) {
 	userHome := t.TempDir()
 	t.Setenv("HOME", userHome)
+	t.Setenv("USERPROFILE", userHome)
 	t.Setenv("FACTORY_API_KEY", "not-a-real-key")
 	seen := t.TempDir()
 	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
-		{Call: &fakekernel.Call{Name: "bash", Arguments: map[string]any{
-			"command": fmt.Sprintf(
-				"printf '%%s' \"$HOME\" > %q; printf '%%s' \"${FACTORY_API_KEY:-none}\" > %q; pwd > %q",
+		{Call: &fakekernel.Call{Name: shellTool(), Arguments: map[string]any{
+			"command": writeEnvCommand(
 				filepath.Join(seen, "home"), filepath.Join(seen, "key"), filepath.Join(seen, "cwd")),
 		}}},
 		{Text: "done"},
@@ -119,7 +153,7 @@ func TestFakeKernelIsolatesTheEnvironment(t *testing.T) {
 	if got := strings.TrimSpace(string(home)); got != k.HomeDir {
 		t.Errorf("the tool's HOME = %q, want the Kernel's own %q", got, k.HomeDir)
 	}
-	if got := strings.TrimSpace(string(key)); got != "none" {
+	if got := strings.TrimSpace(string(key)); got != "" && got != "none" {
 		t.Errorf("the tool saw FACTORY_API_KEY = %q; a test must not inherit a key", got)
 	}
 	if strings.Contains(string(cwd), "pkg/kernel/fakekernel") {
@@ -142,10 +176,13 @@ func TestFakeKernelUnmatchedFailsTheTest(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		return
 	}
-	if _, err := os.Stat(os.Args[0]); err != nil {
-		t.Skip("no test binary to re-run")
+	// os.Executable, not os.Args[0]: on Windows the runner passes a bare name, and exec.Command resolves a
+	// name without a separator through PATH, where the test binary is not.
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("no test binary to re-run: %v", err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestFakeKernelUnmatchedFailsTheTest$", "-test.v")
+	cmd := exec.Command(self, "-test.run=^TestFakeKernelUnmatchedFailsTheTest$", "-test.v")
 	cmd.Env = append(os.Environ(), "FAKEKERNEL_STRICT_CHILD=1")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -156,23 +193,68 @@ func TestFakeKernelUnmatchedFailsTheTest(t *testing.T) {
 	}
 }
 
-// TestFakeKernelWaitCannotReuseThePreviousTurn is the other false pass: a wait for "the reply" used to match
-// the previous turn's entry.
+// TestFakeKernelWaitCannotReuseThePreviousTurn is the false pass a turn boundary fixes: a wait for "the reply"
+// used to match the previous turn's entry, including a reply still in flight when the next prompt arrived.
 func TestFakeKernelWaitCannotReuseThePreviousTurn(t *testing.T) {
 	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
-		{Match: "first", Text: "shared reply"},
-		{Match: "second", Text: "different reply", Delay: 100 * time.Millisecond},
+		{Match: "first", Text: "shared reply", Delay: 400 * time.Millisecond},
+		{Match: "second", Text: "different reply"},
 	}})
 	c := k.Dial(t)
 	id := k.CreateConversation(t, c)
-	k.Ask(t, c, id, "first", "shared reply", 30*time.Second)
 
-	// The second turn's wait is bound to its own boundary, so the first turn's entry cannot answer it: asking
-	// for the first turn's text would hang until the deadline. Getting the second reply, and not the first, is
-	// the assertion.
-	sub := k.Submit(t, c, id, "second")
-	got := k.WaitForReply(t, c, sub, "different reply", 30*time.Second)
+	// The second prompt arrives while the first reply is still streaming: exactly the case "entries above
+	// the id I submitted at" gets wrong, because the first reply's entry lands after that id.
+	first := k.Submit(t, c, id, "first question")
+	second := k.Submit(t, c, id, "second question")
+
+	// The second submission must be answered by its own reply, never by the one in flight.
+	got := k.WaitForReply(t, c, second, "different reply", 60*time.Second)
 	if strings.Contains(got, "shared reply") {
 		t.Fatalf("the second turn's wait returned the first turn's reply: %q", got)
+	}
+	// And the first submission's own answer is the one that was in flight.
+	k.WaitForReply(t, c, first, "shared reply", 60*time.Second)
+
+	firstRecord := k.Record(t, c, first, 30*time.Second)
+	secondRecord := k.Record(t, c, second, 30*time.Second)
+	if firstRecord.Answer == secondRecord.Answer {
+		t.Fatalf("both submissions name entry %d as their answer", firstRecord.Answer)
+	}
+	if secondRecord.Entry <= firstRecord.Answer {
+		t.Fatalf("the second submission's entry %d is not after the first answer %d",
+			secondRecord.Entry, firstRecord.Answer)
+	}
+}
+
+// TestFakeKernelEntriesAfterIsOldestFirst checks the order a turn is read in: a viewer draws a tool call before
+// its result and the reply after it, and the RPC's default page is newest first.
+func TestFakeKernelEntriesAfterIsOldestFirst(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Match: "run the tool", Call: &fakekernel.Call{Name: shellTool(), Arguments: map[string]any{
+			"command": echoCommand("ordered"),
+		}}},
+		{Match: "run the tool", Text: "and then a reply"},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	sub := k.Submit(t, c, id, "run the tool")
+	k.WaitForReply(t, c, sub, "and then a reply", 60*time.Second)
+
+	entries := k.EntriesAfter(t, c, sub, 30*time.Second)
+	if len(entries) < 3 {
+		t.Fatalf("the turn has %d entries, want the user's, the tool's and the reply: %+v", len(entries), entries)
+	}
+	for i := 1; i < len(entries); i++ {
+		if entries[i].ID <= entries[i-1].ID {
+			t.Fatalf("entries are not oldest first: %d then %d", entries[i-1].ID, entries[i].ID)
+		}
+	}
+	if entries[0].Kind != "pi.user" {
+		t.Fatalf("the turn starts with %q, not the user's own entry", entries[0].Kind)
+	}
+	last := entries[len(entries)-1]
+	if last.Kind != "pi.assistant" || !strings.Contains(last.Text, "and then a reply") {
+		t.Fatalf("the turn ends with %q / %q", last.Kind, last.Text)
 	}
 }
