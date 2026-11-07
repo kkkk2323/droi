@@ -150,9 +150,19 @@ type Request struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Stream bool `json:"stream"`
-	// Header is what the request arrived with; it is not part of the body. A test reads CallHeader here to
-	// assert that a completion was marked as one.
-	Header http.Header `json:"-"`
+	// Headers are the request's HTTP headers, with Go's lower-cased keys; they are not part of the body.
+	// A test reads CallHeader here to assert that a completion was marked as one.
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// Header is one request header, by any spelling of its name.
+func (r Request) Header(name string) string {
+	for key, value := range r.Headers {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
 }
 
 // Prompt is the text of the last user message: what a Step's Match is tested against.
@@ -534,7 +544,12 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	request.Header = r.Header.Clone()
+	if len(r.Header) > 0 {
+		request.Headers = make(map[string]string, len(r.Header))
+		for key := range r.Header {
+			request.Headers[key] = r.Header.Get(key)
+		}
+	}
 	m.mu.Lock()
 	m.seen = append(m.seen, request)
 	m.mu.Unlock()

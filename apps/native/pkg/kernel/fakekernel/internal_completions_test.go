@@ -95,7 +95,7 @@ func TestACompletionIsAnsweredFromCompletionsAndTakesNoStep(t *testing.T) {
 	if len(completions) != 1 {
 		t.Fatalf("%d completions recorded, want 1", len(completions))
 	}
-	if got := completions[0].Header.Get(CallHeader); got != CallModelComplete {
+	if got := completions[0].Header(CallHeader); got != CallModelComplete {
 		t.Fatalf("the recorded completion lost its header: %q", got)
 	}
 	if !strings.Contains(completions[0].FullPrompt(), "fix the deploy") {
