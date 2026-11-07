@@ -1,6 +1,9 @@
 package kernel
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // The methods' params and results, in the contract's shapes.
 
@@ -62,12 +65,19 @@ type CreateResult struct {
 // ListParams is conversation.list's params: one SQL over Droi's metadata
 // table. Cursor is opaque and goes back verbatim.
 type ListParams struct {
-	Kind      string          `json:"kind,omitempty"`
-	Archived  *bool           `json:"archived,omitempty"`
-	Workspace string          `json:"workspace,omitempty"`
-	Query     string          `json:"query,omitempty"`
-	Cursor    json.RawMessage `json:"cursor,omitempty"`
-	Limit     int             `json:"limit,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Archived *bool  `json:"archived,omitempty"`
+	// Workspace is the conversation's cwd, exactly as it was resolved.
+	Workspace string `json:"workspace,omitempty"`
+	// RepoRoot is the working tree a conversation's cwd sits in, so a
+	// repository's worktrees list as one group.
+	RepoRoot string `json:"repoRoot,omitempty"`
+	// Parent lists that conversation's children instead of the top-level rows.
+	// Without it the page holds only conversations nobody owns (ADR 0043).
+	Parent *ID             `json:"parent,omitempty"`
+	Query  string          `json:"query,omitempty"`
+	Cursor json.RawMessage `json:"cursor,omitempty"`
+	Limit  int             `json:"limit,omitempty"`
 }
 
 // ListResult is one page of the conversation list.
@@ -79,15 +89,24 @@ type ListResult struct {
 // Summary is one row of Droi's metadata table. The times are milliseconds
 // since the Unix epoch.
 type Summary struct {
-	ID             ID     `json:"id"`
-	Title          string `json:"title,omitempty"`
-	Kind           string `json:"kind,omitempty"`
-	Workspace      string `json:"workspace,omitempty"`
-	Archived       bool   `json:"archived"`
-	CreatedAt      int64  `json:"createdAt,omitempty"`
-	LastActivityAt int64  `json:"lastActivityAt,omitempty"`
-	ViewedAt       int64  `json:"viewedAt,omitempty"`
-	// Preview is the newest assistant text, for the list's second line.
+	ID    ID     `json:"id"`
+	Title string `json:"title,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	// Workspace is the conversation's cwd: where its tools run.
+	Workspace string `json:"workspace,omitempty"`
+	// RepoRoot is the working tree Workspace sits in, or Workspace itself when it
+	// is not inside one. It is what groups a repository's worktrees together.
+	RepoRoot string `json:"repoRoot,omitempty"`
+	// ParentID is the conversation that owns this one; absent for a top-level row.
+	ParentID       *ID   `json:"parentId,omitempty"`
+	Archived       bool  `json:"archived"`
+	CreatedAt      int64 `json:"createdAt,omitempty"`
+	LastActivityAt int64 `json:"lastActivityAt,omitempty"`
+	// ViewedAt is when a person last saw the conversation; nil is "not yet", which
+	// is what makes the unread dot show.
+	ViewedAt *int64 `json:"viewedAt,omitempty"`
+	// Preview is the first line of the newest message — the answer once there is
+	// one, the question while it is still being written — for the list's second line.
 	Preview string `json:"preview,omitempty"`
 }
 
@@ -341,7 +360,19 @@ type IndexUpdateParams struct {
 	Title    *string `json:"title,omitempty"`
 	Archived *bool   `json:"archived,omitempty"`
 	Kind     *string `json:"kind,omitempty"`
+	// ViewedAt is the unread marker. Leave it nil to keep the stored time, use
+	// ViewedAtNull to ask for the dot back, or ViewedAtTime for a time.
+	ViewedAt json.RawMessage `json:"viewedAt,omitempty"`
+	// ParentID makes this conversation a child of that one; leave it nil to keep
+	// what is stored.
+	ParentID *ID `json:"parentId,omitempty"`
 }
+
+// ViewedAtTime is index.update's "a person has seen everything up to here".
+func ViewedAtTime(ms int64) json.RawMessage { return json.RawMessage(strconv.FormatInt(ms, 10)) }
+
+// ViewedAtNull is index.update's "this conversation is unread again".
+func ViewedAtNull() json.RawMessage { return json.RawMessage("null") }
 
 // Process is one background process of a conversation (design §3.4): the
 // bash_background tool's droi.process entry.

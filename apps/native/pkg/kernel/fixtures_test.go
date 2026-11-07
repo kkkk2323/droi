@@ -522,8 +522,8 @@ func TestHarnessInfoCarriesThePushRate(t *testing.T) {
 	if info.Limits.ViewPushesPerSecond != 5 {
 		t.Fatalf("limits = %+v, want 5 pushes a second", info.Limits)
 	}
-	if info.Capabilities.Models {
-		t.Fatal("the sample says models is available: M1 does not implement model.complete")
+	if !info.Capabilities.Models {
+		t.Fatal("the sample says models is unavailable: model.complete is built")
 	}
 }
 

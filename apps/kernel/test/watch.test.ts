@@ -120,13 +120,13 @@ describe('subscriptions over the connection', () => {
     }
     expect(limits.viewPushesPerSecond).toBe(5)
     expect(limits.viewWindowDefault.min).toBe(100)
-    expect((info['capabilities'] as Record<string, boolean>)['models']).toBe(false)
+    expect((info['capabilities'] as Record<string, boolean>)['models']).toBe(true)
   })
 
-  test('model.complete is gated until M4', async () => {
-    const error = await client.fails('model.complete', { prompt: 'hi' })
-    expect(error.code).toBe(-32009)
-    expect(error.data).toEqual({ capability: 'models' })
+  test('model.complete answers, and refuses a read-only kernel', async () => {
+    // A call with no params is the contract's own param error, not `-32009`: the method is built.
+    const error = await client.fails('model.complete', {})
+    expect(error.code).toBe(-32602)
   })
 
   test('a delta subscriber rebuilds the same view by applying the ops', async () => {

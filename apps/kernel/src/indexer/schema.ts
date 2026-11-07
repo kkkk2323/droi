@@ -37,6 +37,7 @@ const statements = [
     last_activity_at INTEGER NOT NULL,
     viewed_at INTEGER,
     request_id TEXT UNIQUE,
+    repo_root TEXT,
     request_fingerprint TEXT,
     parent_id INTEGER,
     preview TEXT
@@ -100,6 +101,12 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
   if (!columns.some((column) => column.name === 'request_fingerprint')) {
     await db.exec('ALTER TABLE droi_conversations ADD COLUMN request_fingerprint TEXT')
   }
+  // A conversation's repository: the working tree its `workspace` sits in. Added after M2's first build
+  // because the sidebar groups by it; rows written before it are backfilled once at startup
+  // (`Indexer.backfillRepoRoots`), and a rebuilt index recomputes it from `droi.meta`'s workspace.
+  if (!columns.some((column) => column.name === 'repo_root')) {
+    await db.exec('ALTER TABLE droi_conversations ADD COLUMN repo_root TEXT')
+  }
   const version = await readMeta(db, 'index.version')
   const tokenizer = await readMeta(db, 'index.tokenizer')
   if (version === INDEX_VERSION && tokenizer === TOKENIZER) return
@@ -156,6 +163,8 @@ export type ConversationRow = {
   viewed_at: number | null
   request_id: string | null
   request_fingerprint: string | null
+  /** The working tree `workspace` belongs to; `null` until it has been worked out. */
+  repo_root: string | null
   parent_id: number | null
   preview: string | null
 }

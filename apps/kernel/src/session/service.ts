@@ -36,9 +36,10 @@ import {
   optionalString,
   requiredNumber,
   requiredObject,
-  unsupported,
   invalidRequest,
 } from '../protocol/rpc.ts'
+import { completeModel } from '../completion.ts'
+import { repoRootOf } from '../workspace.ts'
 import type { Dispatcher, Connection, Notifier } from '../protocol/server.ts'
 import { ViewWindow, parseMode, parseWindow } from './watch.ts'
 
@@ -475,7 +476,9 @@ export class Kernel implements Dispatcher {
       const id = conversation.id as unknown as number
       await this.#options.indexer.touch(id, createdAt, {
         ...(kind === undefined ? {} : { kind }),
-        ...(resolved.cwd === undefined ? {} : { workspace: resolved.cwd }),
+        ...(resolved.cwd === undefined
+          ? {}
+          : { workspace: resolved.cwd, repoRoot: repoRootOf(resolved.cwd) }),
         ...(requestId === undefined ? {} : { requestId, requestFingerprint: fingerprint }),
         createdAt,
       })
@@ -673,7 +676,9 @@ export class Kernel implements Dispatcher {
       await this.#options.indexer.touch(id, activityAt ?? fixed.createdAt, {
         createdAt: fixed.createdAt,
         ...(fixed.kind === undefined ? {} : { kind: fixed.kind }),
-        ...(fixed.cwd === undefined ? {} : { workspace: fixed.cwd }),
+        ...(fixed.cwd === undefined
+          ? {}
+          : { workspace: fixed.cwd, repoRoot: repoRootOf(fixed.cwd) }),
       })
     } else if (activityAt !== undefined) {
       await this.#options.indexer.touch(id, activityAt, {})
@@ -830,6 +835,8 @@ export class Kernel implements Dispatcher {
       kind: optionalString(params, 'kind'),
       archived: optionalBoolean(params, 'archived'),
       workspace: optionalString(params, 'workspace'),
+      repoRoot: optionalString(params, 'repoRoot'),
+      parent: optionalNumber(params, 'parent'),
       text: optionalString(params, 'query'),
       cursor: parseListCursor(optionalObject(params, 'cursor')),
       limit: limit === undefined ? undefined : Math.min(limit, MAX_PAGE),
@@ -1048,6 +1055,14 @@ export class Kernel implements Dispatcher {
     const change = requiredObject(params, 'change')
     const resolved = this.#agentChange(change, 'change')
     await conversation.configure(resolved, context)
+    // The row's workspace is where the tools run, so a new cwd is a new row as well: the index groups
+    // conversations by it, and the repository it belongs to can change with it.
+    if (typeof resolved.cwd === 'string') {
+      await this.#options.indexer.update(id, {
+        workspace: resolved.cwd,
+        repoRoot: repoRootOf(resolved.cwd),
+      })
+    }
     const agent = await conversation.agent(context)
     return { agent: wireAgent(agent) }
   }
@@ -1188,6 +1203,26 @@ export class Kernel implements Dispatcher {
     const archived = optionalBoolean(params, 'archived')
     if (archived !== undefined) change.archived = archived
     await this.#options.indexer.update(id, change)
+    // A child's owner. The kernel itself writes this when a subagent or a Workstream spawns one (M4);
+    // `index.update` is how a conversation imported from elsewhere gets the same relation.
+    if ('parentId' in params) {
+      const parentId = params['parentId']
+      if (parentId !== null && (typeof parentId !== 'number' || !Number.isInteger(parentId))) {
+        throw invalidParams([
+          { path: 'parentId', message: 'a conversation id or null is required' },
+        ])
+      }
+      await this.#options.indexer.update(id, { parentId })
+    }
+    // `viewedAt` is the unread dot: a time says "I have seen everything up to here", `null` asks for the
+    // dot back (a client that cleared a conversation it had open). Absent leaves it as it was.
+    if ('viewedAt' in params) {
+      const viewedAt = params['viewedAt']
+      if (viewedAt !== null && (typeof viewedAt !== 'number' || !Number.isFinite(viewedAt))) {
+        throw invalidParams([{ path: 'viewedAt', message: 'a number or null is required' }])
+      }
+      await this.#options.indexer.setViewed(id, viewedAt)
+    }
     const row = await this.#options.indexer.conversation(id)
     this.#notifier?.broadcast('index.changed', {
       id,
@@ -1204,8 +1239,13 @@ export class Kernel implements Dispatcher {
    * One model call with no conversation behind it, for a caller that wants an answer and not a session
    * (Memory's summary is the first). M4 implements it; the capability is false until then.
    */
-  #modelComplete(_params: Record<string, unknown>): never {
-    throw unsupported('models')
+  /**
+   * One model call with no conversation behind it. The whole call lives in `completion.ts`: this method
+   * only refuses a read-only kernel, which may not spend a key it was not given.
+   */
+  async #modelComplete(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
+    return completeModel(this.#options.models, params)
   }
 
   // ── kernel.shutdown ──────────────────────────────────────────────────────────────────────────
@@ -1905,6 +1945,7 @@ function wireSummary(row: ConversationRow): Record<string, unknown> {
     lastActivityAt: row.last_activity_at,
     viewedAt: row.viewed_at,
     preview: row.preview,
+    ...(row.repo_root === null ? {} : { repoRoot: row.repo_root }),
     ...(row.parent_id === null ? {} : { parentId: row.parent_id }),
   }
 }
