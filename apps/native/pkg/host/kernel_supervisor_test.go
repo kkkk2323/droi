@@ -59,6 +59,12 @@ func TestKernelHelperProcess(t *testing.T) {
 			os.Exit(3)
 		}
 	}
+	if os.Getenv("GO_KERNEL_REFUSE") == "1" {
+		// A refused start, as the contract has it: a line that says what took
+		// the data directory, then status 2.
+		fmt.Fprintln(os.Stderr, "kernel: the data directory is taken: kernel (pid 4242) is using this data directory")
+		os.Exit(kernel.ExitRefused)
+	}
 	var healthDelay atomic.Int64
 	mux := http.NewServeMux()
 	var wedged atomic.Bool
@@ -836,5 +842,46 @@ func TestKernelSupervisorRestartsAWedgedSidecar(t *testing.T) {
 	second := w.waitState(t, KernelRunning)
 	if second.PID == first.PID {
 		t.Fatalf("the wedged sidecar kept running as pid %d", first.PID)
+	}
+}
+
+// A kernel that refuses to start is not a crash: it exits 2 when the data
+// directory is already taken, and a backoff loop against it would only spin.
+// The Supervisor says what the sidecar said and waits to be asked again.
+func TestKernelSupervisorDoesNotRestartARefusedStart(t *testing.T) {
+	w := newWatch()
+	spawn := helperSpawn(t, "GO_KERNEL_REFUSE=1")
+	var launches atomic.Int32
+	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
+		launches.Add(1)
+		return spawn(port, token)
+	})
+	s.Backoff = []time.Duration{10 * time.Millisecond}
+	defer s.Stop()
+	s.Start()
+	stopped := w.waitState(t, KernelStopped)
+	if !strings.Contains(stopped.Reason, "is using this data directory") {
+		t.Fatalf("reason = %q, want the sidecar's own line about the data directory", stopped.Reason)
+	}
+	// No attempt follows: a refused start stays refused until Start is asked
+	// for again, and the reason stays on screen.
+	for len(w.states) > 0 {
+		if st := <-w.states; st.Status == KernelRestarting {
+			t.Fatalf("a refused start was retried: %+v", st)
+		}
+	}
+	time.Sleep(200 * time.Millisecond)
+	if st := s.State(); st.Status != KernelStopped || !strings.Contains(st.Reason, "data directory") {
+		t.Fatalf("state after a refusal: %+v", st)
+	}
+	if got := launches.Load(); got != 1 {
+		t.Fatalf("the refused start was launched %d times, want once", got)
+	}
+	// And asking again tries again: the refusal is not a terminal state of the
+	// Supervisor itself.
+	s.Start()
+	w.waitState(t, KernelStopped)
+	if got := launches.Load(); got != 2 {
+		t.Fatalf("Start after a refusal launched the sidecar %d times in all, want twice", got)
 	}
 }
