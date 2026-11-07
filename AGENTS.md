@@ -1,4 +1,5 @@
 <coding_guidelines>
+
 # Repository Guidelines
 
 Droi is a thin Client of its own agent process. Read `CONTEXT.md` for the vocabulary
@@ -76,21 +77,23 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 
 ## Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `go run ./apps/native` | Run the native app (1.x: needs `droid` on PATH; 2.0: builds and starts the Kernel) |
-| `pnpm test:kernel` | The Kernel's vitest suite, from the root (2.0; arrives with `apps/kernel`) |
-| `bun run apps/kernel/build.ts` | Compile the Kernel for every target into `apps/native/assets/kernel/` (2.0) |
-| `go test ./apps/native/...` | Go unit tests and the native app's view tests |
-| `go vet ./apps/native/...` | Also with `GOOS=windows` when the change touches Windows |
-| `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows) |
-| `pnpm test` | Run vitest once |
-| `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
-| `pnpm install:phone` | Build a signed Release of the Phone App and install it on the connected iPhone |
-| `pnpm typecheck` | TypeScript validation (root + Phone App + tests) |
-| `pnpm lint` / `pnpm lint:fix` | oxlint |
-| `pnpm format` / `pnpm format:check` | oxfmt |
-| `pnpm check` | format check + lint + typecheck |
+| Command                                                      | Description                                                                                                             |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `go run ./apps/native`                                       | Run the native app (1.x: needs `droid` on PATH; 2.0: builds and starts the Kernel)                                      |
+| `pnpm test:kernel`                                           | The Kernel's own suite, under Bun: the storage conformance, the protocol, conversations, crash recovery, images, search |
+| `pnpm build:kernel`                                          | Compile the Kernel for every target into `apps/native/assets/kernel/` (not committed)                                   |
+| `pnpm smoke:kernel <executable>`                             | Start a built Kernel, `read` a PNG, assert an image comes back (the cross-compile check)                                |
+| `pnpm typecheck:kernel` / `pnpm lint:kernel`                 | The Kernel's own type check and lint                                                                                    |
+| `go test ./apps/native/...`                                  | Go unit tests and the native app's view tests                                                                           |
+| `go vet ./apps/native/...`                                   | Also with `GOOS=windows` when the change touches Windows                                                                |
+| `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows)                                         |
+| `pnpm test`                                                  | Run vitest once                                                                                                         |
+| `pnpm test:e2e:phone`                                        | Export the Phone App for web and run Playwright against it (Fake Daemon)                                                |
+| `pnpm install:phone`                                         | Build a signed Release of the Phone App and install it on the connected iPhone                                          |
+| `pnpm typecheck`                                             | TypeScript validation (root + Phone App + tests)                                                                        |
+| `pnpm lint` / `pnpm lint:fix`                                | oxlint                                                                                                                  |
+| `pnpm format` / `pnpm format:check`                          | oxfmt                                                                                                                   |
+| `pnpm check`                                                 | format check + lint + typecheck                                                                                         |
 
 ## Validation Workflow
 

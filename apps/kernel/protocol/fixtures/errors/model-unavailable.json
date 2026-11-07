@@ -1,0 +1,32 @@
+{
+  "kind": "error",
+  "method": "model.complete",
+  "error": {
+    "code": -32014,
+    "name": "model unavailable"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "28",
+    "method": "model.complete",
+    "params": {
+      "model": {
+        "provider": "factory",
+        "modelId": "nope"
+      },
+      "prompt": "hi"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "28",
+    "error": {
+      "code": -32014,
+      "message": "no such model: factory/nope",
+      "data": {
+        "provider": "factory",
+        "modelId": "nope"
+      }
+    }
+  }
+}

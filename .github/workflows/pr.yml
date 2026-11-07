@@ -190,3 +190,78 @@ jobs:
           name: playwright-report-phone
           path: tests/test-results
           retention-days: 7
+
+  # The kernel: its own tests under Bun (they open real SQLite files and a faux model), then a
+  # cross-compiled binary that must still process an image. `bun build --compile` keeps Photon's
+  # WebAssembly but used to lose the way to it in a cross build, so a native build is no evidence:
+  # this job builds for Linux and Windows from Ubuntu, runs the Linux one, and hands the Windows one
+  # to `kernel-windows` to run on a real Windows runner.
+  kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Kernel tests
+        run: pnpm test:kernel
+
+      - name: Build the kernel for Linux and Windows
+        run: |
+          cd apps/kernel
+          bun run build.ts linux-x64 windows-x64
+
+      - name: The cross-compiled Linux binary still reads an image
+        run: bun run smoke.ts "$(pwd)/apps/native/assets/kernel/linux-x64/kernel"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kernel-windows
+          path: apps/native/assets/kernel/windows-x64/
+          retention-days: 3
+
+  # The Windows binary above was cross-compiled on Ubuntu. Run it on Windows and make it read a PNG:
+  # the whole point is that this combination, and only this one, was broken before.
+  kernel-windows:
+    needs: kernel
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: kernel-windows
+          path: kernel-windows
+
+      - name: The cross-compiled Windows binary still reads an image
+        working-directory: apps/kernel
+        run: bun run smoke.ts "${{ github.workspace }}/kernel-windows/kernel.exe"
+
+      - name: The Windows tool layer chooses PowerShell, not WSL
+        run: pnpm -C apps/kernel exec bun test test/platform.test.ts

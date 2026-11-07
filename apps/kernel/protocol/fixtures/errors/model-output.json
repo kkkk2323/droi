@@ -1,0 +1,31 @@
+{
+  "kind": "error",
+  "method": "model.complete",
+  "error": {
+    "code": -32016,
+    "name": "model output"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "28",
+    "method": "model.complete",
+    "params": {
+      "model": {
+        "provider": "factory",
+        "modelId": "nope"
+      },
+      "prompt": "hi"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "28",
+    "error": {
+      "code": -32016,
+      "message": "the answer was not the JSON the schema asks for",
+      "data": {
+        "detail": "unexpected token"
+      }
+    }
+  }
+}

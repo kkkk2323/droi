@@ -8,6 +8,10 @@ dist/
 build/
 *.tsbuildinfo
 
+# The kernel's compiled executables: built per platform by `bun run build:kernel`, released as their
+# own files, never committed (about 100 MB each).
+apps/native/assets/kernel/
+
 # Environment variables
 .env
 .env.local
