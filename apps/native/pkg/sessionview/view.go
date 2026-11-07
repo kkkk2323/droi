@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
@@ -44,8 +46,18 @@ const imageIdleFrames = 600
 
 // Env is what a View needs from its app.
 type Env struct {
-	// Controller is the Daemon's.
+	// Controller is the Daemon's. It is what the View draws from until the Kernel path replaces it; the two
+	// fields below are that path, and a View uses them once they are set.
 	Controller *controller.Controller
+	// Kernel is the Kernel client's conversation half: the calls a View makes when it draws a Kernel
+	// conversation. It becomes the only source; Controller goes with the Daemon (M5).
+	Kernel Kernel
+	// Sessions holds the conversations this window has open, each with the view Kernel last pushed. Set it with
+	// Kernel: the two are the Kernel path's halves.
+	Sessions *Store
+	// ConvID is the conversation's Kernel id, resolved from the View's string id. Nil resolves the id the way the
+	// contract writes it, as a decimal number.
+	ConvID func(id string) (kernel.ID, bool)
 	// Ctx ends the calls the View makes; context.Background when nil.
 	Ctx context.Context
 	// Kit is what to draw with, read as the View is built: it changes with
@@ -85,6 +97,23 @@ type Env struct {
 	// Empty draws what stands in for a Session with no messages yet, and
 	// reports whether it did; false keeps the prompt to start.
 	Empty func(c *ui.Context) bool
+}
+
+// The real client is the Kernel half an Env takes: the interface is the client's own calls, so a change there
+// fails here rather than at a call site in the window.
+var _ Kernel = (*kernel.Client)(nil)
+
+// convID is the conversation's Kernel id: Env.ConvID when it gave one, else the id as the contract writes it, a
+// decimal number.
+func (v *View) convID() (kernel.ID, bool) {
+	if v.env.ConvID != nil {
+		return v.env.ConvID(v.id)
+	}
+	n, err := strconv.ParseInt(v.id, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return kernel.ID(n), true
 }
 
 // Revisions counts each Session's changes in the Store, for its View to
