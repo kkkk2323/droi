@@ -1,0 +1,43 @@
+{
+  "kind": "notification",
+  "method": "approval.requested",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "approval.requested",
+    "params": {
+      "requestId": "req-x3rtg4",
+      "id": 7,
+      "tool": "bash",
+      "args": {
+        "command": "rm -rf build"
+      },
+      "options": [
+        {
+          "id": "proceed_once",
+          "label": "Allow once",
+          "scope": null
+        },
+        {
+          "id": "proceed_always_tool",
+          "label": "Always allow bash",
+          "scope": {
+            "tool": "bash"
+          }
+        },
+        {
+          "id": "proceed_always_file",
+          "label": "Always allow this file",
+          "scope": {
+            "path": "/Users/clive/dev/droi/build"
+          }
+        },
+        {
+          "id": "cancel",
+          "label": "Cancel",
+          "scope": null
+        }
+      ],
+      "scopeHint": "ask"
+    }
+  }
+}

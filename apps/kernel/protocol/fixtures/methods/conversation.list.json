@@ -1,0 +1,35 @@
+{
+  "kind": "method",
+  "method": "conversation.list",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "3",
+    "method": "conversation.list",
+    "params": {
+      "archived": false,
+      "limit": 20
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "3",
+    "result": {
+      "items": [
+        {
+          "id": 7,
+          "title": "Add a test for parseConfig",
+          "kind": "chat",
+          "workspace": "/Users/clive/dev/droi",
+          "archived": false,
+          "createdAt": 1762479990000,
+          "lastActivityAt": 1762480002000,
+          "viewedAt": 1762480010000,
+          "preview": "The existing test file is where it belongs; let me read it."
+        }
+      ],
+      "cursor": {
+        "before": 7
+      }
+    }
+  }
+}

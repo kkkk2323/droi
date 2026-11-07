@@ -1,0 +1,29 @@
+{
+  "kind": "method",
+  "method": "skills.list",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "24",
+    "method": "skills.list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "24",
+    "result": {
+      "skills": [
+        {
+          "name": "code-review",
+          "scope": "personal",
+          "path": "/Users/clive/.droi/skills/code-review",
+          "enabled": true
+        },
+        {
+          "name": "ship-it",
+          "scope": "workspace",
+          "path": "/Users/clive/dev/droi/.factory/skills/ship-it",
+          "enabled": false
+        }
+      ]
+    }
+  }
+}

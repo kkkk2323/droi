@@ -1,0 +1,20 @@
+{
+  "kind": "method",
+  "method": "submission.abort",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "8",
+    "method": "submission.abort",
+    "params": {
+      "id": 7,
+      "submissionId": 501
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "8",
+    "result": {
+      "status": "aborted"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "kind": "method",
+  "method": "conversation.close",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "5",
+    "method": "conversation.close",
+    "params": {
+      "id": 7
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "5",
+    "result": {}
+  }
+}

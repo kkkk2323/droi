@@ -1,0 +1,19 @@
+{
+  "kind": "method",
+  "method": "process.list",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "16",
+    "method": "process.list",
+    "params": {
+      "id": 7
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "16",
+    "result": {
+      "processes": []
+    }
+  }
+}

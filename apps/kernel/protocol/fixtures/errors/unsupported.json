@@ -1,0 +1,27 @@
+{
+  "kind": "error",
+  "method": "mcp.authorize",
+  "error": {
+    "code": -32009,
+    "name": "unsupported"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "12",
+    "method": "mcp.authorize",
+    "params": {
+      "name": "anlan"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "12",
+    "error": {
+      "code": -32009,
+      "message": "mcp is not implemented in this build",
+      "data": {
+        "capability": "mcp"
+      }
+    }
+  }
+}

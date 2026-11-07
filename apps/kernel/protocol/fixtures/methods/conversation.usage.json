@@ -1,0 +1,57 @@
+{
+  "kind": "method",
+  "method": "conversation.usage",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "13",
+    "method": "conversation.usage",
+    "params": {
+      "id": 7
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "13",
+    "result": {
+      "models": {
+        "factory/claude-sonnet-4-5": {
+          "input": 1200,
+          "output": 180,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 1380,
+          "cost": {
+            "input": 0.0036,
+            "output": 0.0027,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.0063
+          }
+        }
+      },
+      "tools": {
+        "read": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        }
+      },
+      "context": {
+        "head": 41,
+        "entries": 3,
+        "used": 8421,
+        "limit": 200000,
+        "compactionAt": 180000
+      }
+    }
+  }
+}

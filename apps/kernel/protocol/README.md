@@ -1,0 +1,222 @@
+# Kernel protocol
+
+The contract between the Go Host (`apps/native/pkg/kernel`) and the Kernel sidecar
+(`apps/kernel`). It is the wire form of `architecture-draft.md` §2; when the two
+disagree, this directory and the shared change record win.
+
+Both sides test against `fixtures/` — the same JSON files, unmarshalled on the Go
+side and parsed on the TypeScript side.
+
+## Transport
+
+The Host starts the sidecar and reads its handshake from the first line of stdout:
+
+```text
+kernel --port 0 --token <random> --data <UserData>/kernel --host 127.0.0.1
+{"port":51234,"pid":4121,"version":"kernel-1.5.0-1"}
+```
+
+`--port 0` asks the operating system for a free port. The token is a per-launch
+secret the Host generates; the sidecar accepts nothing without it.
+
+| Endpoint      | Purpose                                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health` | Liveness. `200 {"ok":true,"version":"kernel-1.5.0-1","pi":"1.5.0"}`. Needs no token: it answers one question.                                                        |
+| `GET /rpc`    | WebSocket upgrade. Requires `Authorization: Bearer <token>`. A wrong or missing token is HTTP `401`, or WebSocket close code `4401` if the upgrade already happened. |
+
+One WebSocket carries every method and notification. Text frames only, one
+JSON-RPC 2.0 message per frame. A client may open several connections; they see
+the same state and all receive notifications.
+
+## Envelope
+
+JSON-RPC 2.0.
+
+```json
+{"jsonrpc":"2.0","id":"17","method":"conversation.open","params":{"id":7}}
+{"jsonrpc":"2.0","id":"17","result":{"view":{}}}
+{"jsonrpc":"2.0","id":"17","error":{"code":-32000,"message":"conversation not found","data":{"conversationId":7}}}
+{"jsonrpc":"2.0","method":"conversation.busy","params":{"id":7,"run":null}}
+```
+
+- `id` is a string or a number, chosen by the client. A request without `id` is a
+  notification: the kernel runs it and sends no response, not even an error.
+- `params` may be omitted instead of `{}`.
+- `result` is always an object.
+- Every error carries `message` (a sentence for a log, English) and, where the
+  table below names one, `data` with machine-readable fields. Clients branch on
+  `code`, never on `message`.
+
+### Errors
+
+| Code     | Name                      | `data`                              | When                                                                     |
+| -------- | ------------------------- | ----------------------------------- | ------------------------------------------------------------------------ |
+| `-32700` | parse error               | —                                   | The frame is not JSON.                                                   |
+| `-32600` | invalid request           | —                                   | Not a JSON-RPC 2.0 request: no `method`, wrong `jsonrpc`.                |
+| `-32601` | method not found          | `{"method"}`                        | No such method.                                                          |
+| `-32602` | invalid params            | `{"issues":[{"path","message"}]}`   | The params do not match the method's shape.                              |
+| `-32603` | internal error            | —                                   | A bug in the kernel. The kernel stays up.                                |
+| `-32000` | conversation not found    | `{"conversationId"}`                |                                                                          |
+| `-32001` | conversation busy         | `{"conversationId"}`                | `submit` with `whenBusy: "reject"`, or `continue` while busy.            |
+| `-32002` | conversation idle         | `{"conversationId"}`                | `submit` with `whenIdle: "reject"` while idle.                           |
+| `-32003` | submission not found      | `{"conversationId","submissionId"}` |                                                                          |
+| `-32004` | submission settled        | `{"submissionId","status"}`         | `submission.abort` on a done or unanswered submission.                   |
+| `-32005` | submission already placed | `{"submissionId"}`                  | `submission.abort` after the input entered the transcript.               |
+| `-32006` | task not found            | `{"taskId"}`                        |                                                                          |
+| `-32007` | request not found         | `{"requestId"}`                     | An approval or an ask that is unknown or already answered.               |
+| `-32008` | read-only                 | —                                   | The kernel was opened with `--read-only`.                                |
+| `-32009` | unsupported               | `{"capability"}`                    | A method this build does not implement, see `harness.info.capabilities`. |
+| `-32010` | kernel failed             | `{"reason"}`                        | The Session failed (storage). The kernel exits; the Host restarts it.    |
+| `-32011` | process not found         | `{"processId"}`                     |                                                                          |
+| `-32012` | timeout                   | `{"method","timeoutMs"}`            | The kernel's own deadline for the call.                                  |
+| `-32013` | conflict                  | `{"requestId"}`                     | The same `requestId` was used for a different request.                   |
+
+## Identifiers
+
+`conversationId`, `entryId`, `taskId`, `submissionId` and `documentId` are JSON
+numbers (Pi's durable IDs, which are int64 and read as `bigint` in SQLite; the
+kernel serializes them as numbers, so they are exact below 2^53, which is far
+beyond any realistic count).
+
+`requestId` on `conversation.create` and `conversation.submit` is the client's
+own deduplication key, scoped to the conversation. Repeating it returns the same
+conversation or submission; reusing it with different params is `-32013`.
+
+`cursor` is opaque. A client sends back the `cursor` it received, verbatim, with
+the same query and limit. `conversation.list`'s cursor is the kernel's own
+(`{"before": <conversationId>}`); `conversation.entries`'s is Pi's.
+
+## Methods
+
+25 methods. "Capability" names the `harness.info.capabilities` flag that says
+whether this build implements the method; `false` means `-32009 unsupported`.
+
+| Method                   | Params                                                      | Result                                                           | Capability      | M1  |
+| ------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
+| `harness.info`           | —                                                           | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
+| `conversation.create`    | `{agent?, cwd?, instructions?, kind?, requestId?}`          | `{conversationId, view}`                                         | `conversations` | yes |
+| `conversation.list`      | `{kind?, archived?, workspace?, query?, cursor?, limit?}`   | `{items[], cursor?}`                                             | `conversations` | yes |
+| `conversation.open`      | `{id, window?}`                                             | `{view}`                                                         | `conversations` | yes |
+| `conversation.close`     | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
+| `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
+| `conversation.abort`     | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
+| `submission.abort`       | `{id, submissionId}`                                        | `{status}`                                                       | `conversations` | yes |
+| `conversation.configure` | `{id, change}`                                              | `{agent}`                                                        | `conversations` | yes |
+| `conversation.compact`   | `{id, instructions?}`                                       | `{taskId}`                                                       | `compaction`    | yes |
+| `conversation.fork`      | `{id, at}`                                                  | `{conversationId, view}`                                         | `fork`          | yes |
+| `conversation.entries`   | `{id, query?, limit?, cursor?}`                             | `{items[], cursor?}`                                             | `conversations` | yes |
+| `conversation.usage`     | `{id}`                                                      | `{models, tools, context}`                                       | `usage`         | yes |
+| `task.abort`             | `{taskId}`                                                  | `{status}`                                                       | `tasks`         | yes |
+| `index.update`           | `{id, title?, archived?, kind?}`                            | `{}`                                                             | `index`         | yes |
+| `process.list`           | `{id}`                                                      | `{processes[]}`                                                  | `processes`     | no  |
+| `process.stop`           | `{id, processId}`                                           | `{status}`                                                       | `processes`     | no  |
+| `approval.respond`       | `{requestId, outcome, scope?}`                              | `{status}`                                                       | `approvals`     | no  |
+| `ask.respond`            | `{requestId, answers?, cancelled?}`                         | `{status}`                                                       | `asks`          | no  |
+| `mcp.list`               | —                                                           | `{servers[]}`                                                    | `mcp`           | no  |
+| `mcp.set`                | `{name, server?, enabled?, remove?}`                        | `{servers[]}`                                                    | `mcp`           | no  |
+| `mcp.authorize`          | `{name}`                                                    | `{authorizationUrl}`                                             | `mcp`           | no  |
+| `mcp.authorize.cancel`   | `{name}`                                                    | `{}`                                                             | `mcp`           | no  |
+| `skills.list`            | —                                                           | `{skills[]}`                                                     | `skills`        | no  |
+| `skills.setDisabled`     | `{name, disabled}`                                          | `{skills[]}`                                                     | `skills`        | no  |
+
+M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
+`mcp.list` and `skills.list` return an empty list, and the write methods and the
+two `*.respond` methods are `-32009`.
+
+### Values
+
+`view` is Pi's `ConversationView`: `{conversation, entries, before?, docs}`.
+`entries` is a window over the transcript; `docs` holds the built-in conversation
+documents by kind (`pi.agent`, `pi.live`, `pi.usage`, `pi.inbox`, ...).
+`conversation.view` sends the same object, so a client parses one shape.
+
+`entry` is Pi's `EntryRecord`: `{id, conversationId, kind, model?, data?, head?,
+edits?, byTaskId?}`. The six `pi.` kinds are fixed; the `droi.` kinds are the
+kernel's own (`droi.approval`, `droi.ask`, `droi.subagent`, `droi.process`,
+`droi.note`).
+
+`agent` in requests is a change: a given field replaces the stored one, `null`
+clears it, an absent field changes nothing. Extensions and tools cross the wire
+as names, not objects:
+
+```json
+{
+  "model": { "provider": "factory", "modelId": "claude-sonnet-4-5" },
+  "thinkingLevel": "off",
+  "extensions": { "add": ["coding"], "remove": [] },
+  "modelTools": { "remove": ["bash"], "add": [] },
+  "instructions": null,
+  "cwd": "/Users/clive/dev/droi",
+  "maxTurns": 40
+}
+```
+
+`conversation.configure` answers with the resolved agent:
+`{model?, thinkingLevel, extensions: [names], tools: [names], modelTools?,
+instructions?, cwd?, maxTurns?}`.
+
+`input` in `conversation.submit` is a string or a list of content blocks:
+`{"type":"text","text":...}` and `{"type":"image","data":<base64>,"mimeType":...}`.
+`continue: true` asks for a run on the context as it is, with no new user message.
+
+## Notifications
+
+| Notification         | Payload                                                                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conversation.view`  | `{id, kind, value, ops, retired}` — Pi's `WatchCall`, or `{id, kind:"failed", error}`                                                                                                               |
+| `conversation.busy`  | `{id, run, runFailure?}` — `run` is Pi's `LiveRun` or `null`                                                                                                                                        |
+| `approval.requested` | `{requestId, id, tool, args, options[], scopeHint?}`                                                                                                                                                |
+| `approval.resolved`  | `{requestId, id, outcome, by}`                                                                                                                                                                      |
+| `ask.requested`      | `{requestId, id, questions[], context?}`                                                                                                                                                            |
+| `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                              |
+| `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                            |
+| `mcp.changed`        | `{servers[]}`                                                                                                                                                                                       |
+| `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                         |
+| `index.changed`      | `{id, title?, archived?, lastActivityAt?}`                                                                                                                                                          |
+| `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error` |
+
+A client consumes `conversation.view.value` and ignores `ops` (the delta ops) for
+now: redrawing a window of at most 100 entries is cheap, and a wrong `ops`
+replay is hard to see.
+
+## Fixtures
+
+```
+fixtures/
+  index.json            every fixture file, in the order a client meets them
+  methods/<method>.json one request and its response
+  notifications/<name>.json one notification
+  errors/<case>.json    a request and its error response
+```
+
+A method fixture:
+
+```json
+{
+  "kind": "method",
+  "method": "conversation.open",
+  "request": { "jsonrpc": "2.0", "id": "4", "method": "conversation.open", "params": { "id": 7 } },
+  "response": { "jsonrpc": "2.0", "id": "4", "result": { "view": {} } }
+}
+```
+
+A notification fixture:
+
+```json
+{
+  "kind": "notification",
+  "method": "conversation.busy",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "conversation.busy",
+    "params": { "id": 7, "run": null }
+  }
+}
+```
+
+An error fixture adds `"error": {"code": -32000, "name": "conversation not found"}`
+beside `request` and `response`.
+
+Ids in the fixtures are illustrative. The numbers inside (`conversationId`,
+`entryId`, timestamps) are sample values that are internally consistent, so a
+fixture set reads like one session.

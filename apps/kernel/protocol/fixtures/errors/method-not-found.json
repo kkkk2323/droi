@@ -1,0 +1,25 @@
+{
+  "kind": "error",
+  "method": "conversation.rename",
+  "error": {
+    "code": -32601,
+    "name": "method not found"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "11",
+    "method": "conversation.rename",
+    "params": {}
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "11",
+    "error": {
+      "code": -32601,
+      "message": "method not found: conversation.rename",
+      "data": {
+        "method": "conversation.rename"
+      }
+    }
+  }
+}

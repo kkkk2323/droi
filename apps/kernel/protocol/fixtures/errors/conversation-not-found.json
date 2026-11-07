@@ -1,0 +1,27 @@
+{
+  "kind": "error",
+  "method": "conversation.open",
+  "error": {
+    "code": -32000,
+    "name": "conversation not found"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "9",
+    "method": "conversation.open",
+    "params": {
+      "id": 404
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "9",
+    "error": {
+      "code": -32000,
+      "message": "conversation not found",
+      "data": {
+        "conversationId": 404
+      }
+    }
+  }
+}
