@@ -167,7 +167,14 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 	steps := []step{
 		{"harness.info", func() error { _, err := c.Harness(ctx); return err }, 0},
 		{"conversation.create", func() error { _, err := c.Create(ctx, CreateParams{Kind: "chat", Cwd: t.TempDir()}); return err }, 0},
-		{"conversation.list", func() error { _, err := c.List(ctx, ListParams{Limit: 10}); return err }, 0},
+		{"conversation.list", func() error {
+			// The sidebar's rows: no children, and the repository a conversation belongs to.
+			page, err := c.List(ctx, ListParams{Limit: 10})
+			if err == nil && len(page.Items) == 0 {
+				t.Error("conversation.list answered no rows")
+			}
+			return err
+		}, 0},
 		{"conversation.open", func() error { _, err := c.Open(ctx, OpenParams{ID: id}); return err }, 0},
 		{"conversation.unwatch", func() error { return c.Unwatch(ctx, id) }, 0},
 		{"conversation.submit", func() error {
@@ -247,9 +254,13 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			return err
 		}, CodeUnsupported},
 		{"model.complete", func() error {
-			_, err := c.ModelComplete(ctx, ModelCompleteParams{Model: model, Input: "say hi"})
+			// A real answer, not a refusal: the method is built, so its text must be the model's.
+			answer, err := c.ModelComplete(ctx, ModelCompleteParams{Model: model, Input: "say hi"})
+			if err == nil && answer.Text == "" {
+				t.Error("model.complete answered no text")
+			}
 			return err
-		}, CodeUnsupported},
+		}, 0},
 		// Last: it tells Kernel to close, and it does.
 		{"kernel.shutdown", func() error {
 			result, err := c.Shutdown(ctx)

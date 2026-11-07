@@ -112,6 +112,19 @@ type Request struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Stream bool `json:"stream"`
+	// Headers are the request's HTTP headers, lower-cased by Go. `X-Droi-Call` is how a test tells a
+	// `model.complete` request from a conversation's: pi-ai streams both.
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// Header is one request header, matched without regard to case (Go stores the keys lower-cased).
+func (r Request) Header(name string) string {
+	for key, value := range r.Headers {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
 }
 
 // Prompt is the text of the last user message: what a Step's Match is tested against.
@@ -472,6 +485,10 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &request); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	request.Headers = make(map[string]string, len(r.Header))
+	for key := range r.Header {
+		request.Headers[key] = r.Header.Get(key)
 	}
 	m.mu.Lock()
 	m.seen = append(m.seen, request)

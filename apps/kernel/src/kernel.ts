@@ -9,6 +9,7 @@ import { type KernelConfig } from './config.ts'
 import { codingTools } from './extensions/coding.ts'
 import { photonImages } from './images.ts'
 import { Indexer } from './indexer/index.ts'
+import { repoRootOf } from './workspace.ts'
 import { info, error } from './log.ts'
 import { buildModels } from './models.ts'
 import { serve, type ServerHandle } from './protocol/server.ts'
@@ -37,7 +38,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   mcp: false,
   skills: false,
   codemode: false,
-  models: false,
+  models: true,
 }
 
 export type KernelHandle = {
@@ -181,6 +182,9 @@ export async function startKernel(
     // The first run indexes everything; every later start re-reads what a crash left behind the watermark.
     const caughtUp = await indexer.catchUp()
     if (caughtUp > 0) info('index caught up', { entries: caughtUp, watermark: indexer.watermark })
+    // A conversation's repository is worked out once and stored, so a list never launches git. Rows
+    // written before this build have none, and a rebuilt index recomputed them from the workspace.
+    await indexer.backfillRepoRoots(repoRootOf)
 
     kernel = new Kernel({
       config,

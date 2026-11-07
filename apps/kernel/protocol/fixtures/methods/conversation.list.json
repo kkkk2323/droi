@@ -7,6 +7,7 @@
     "method": "conversation.list",
     "params": {
       "archived": false,
+      "repoRoot": "/Users/clive/dev/droi",
       "limit": 20
     }
   },
@@ -19,16 +20,30 @@
           "id": 7,
           "title": "Add a test for parseConfig",
           "kind": "chat",
-          "workspace": "/Users/clive/dev/droi",
+          "workspace": "/Users/clive/dev/droi/apps/native",
+          "repoRoot": "/Users/clive/dev/droi",
           "archived": false,
           "createdAt": 1762479990000,
           "lastActivityAt": 1762480002000,
           "viewedAt": 1762480010000,
           "preview": "The existing test file is where it belongs; let me read it."
+        },
+        {
+          "id": 12,
+          "title": "Review the parseConfig test",
+          "kind": "subagent",
+          "workspace": "/Users/clive/dev/droi/apps/native",
+          "repoRoot": "/Users/clive/dev/droi",
+          "parentId": 7,
+          "archived": false,
+          "createdAt": 1762480005000,
+          "lastActivityAt": 1762480009000,
+          "viewedAt": null,
+          "preview": "The test covers the default and the override; the third case is missing."
         }
       ],
       "cursor": {
-        "before": 7
+        "before": 12
       }
     }
   }

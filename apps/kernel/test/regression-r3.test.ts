@@ -71,7 +71,8 @@ test('R3 restart after an ordinary fork does not fail UNIQUE(request_id)', async
       throw error
     }
     client = new Client(kernel.port)
-    const list = await client.call('conversation.list')
+    // A fork is a child conversation: it is reached through its parent, not through the sidebar's rows.
+    const list = await client.call('conversation.list', { parent: id })
     expect((list.items as any[]).map((x) => x.id)).toContain(forked.conversationId)
   } finally {
     client.close()
@@ -106,6 +107,13 @@ test('R3 fork catch-up must not move inherited FTS rows out of its parent', asyn
     const list = await client.call('conversation.list', { query: 'parentsearchneedle' })
     console.log('R3_FORK_SEARCH', { parent: id, child: forked.conversationId, items: list.items })
     expect((list.items as any[]).map((x) => x.id)).toContain(id)
+    // The fork is a child, so the sidebar's rows do not hold it; the needle found in the parent's
+    // transcript must not have been moved to it either.
+    const children = await client.call('conversation.list', {
+      parent: id,
+      query: 'parentsearchneedle',
+    })
+    expect((children.items as any[]).map((x) => x.id)).not.toContain(forked.conversationId)
   } finally {
     client.close()
     await kernel.stop()
