@@ -1,0 +1,30 @@
+{
+  "kind": "error",
+  "method": "conversation.open",
+  "error": {
+    "code": -32602,
+    "name": "invalid params"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "10",
+    "method": "conversation.open",
+    "params": {}
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "10",
+    "error": {
+      "code": -32602,
+      "message": "params.id is required",
+      "data": {
+        "issues": [
+          {
+            "path": "id",
+            "message": "required"
+          }
+        ]
+      }
+    }
+  }
+}

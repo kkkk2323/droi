@@ -1,0 +1,14 @@
+{
+  "kind": "notification",
+  "method": "approval.resolved",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "approval.resolved",
+    "params": {
+      "requestId": "req-x3rtg4",
+      "id": 7,
+      "outcome": "proceed_once",
+      "by": "window"
+    }
+  }
+}

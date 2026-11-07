@@ -1,0 +1,12 @@
+{
+  "kind": "notification",
+  "method": "warning",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "warning",
+    "params": {
+      "kind": "extension_error",
+      "message": "section \"memory\" threw: ENOENT"
+    }
+  }
+}

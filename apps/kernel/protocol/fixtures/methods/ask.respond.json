@@ -1,0 +1,26 @@
+{
+  "kind": "method",
+  "method": "ask.respond",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "19",
+    "method": "ask.respond",
+    "params": {
+      "requestId": "req-ask-77",
+      "answers": [
+        {
+          "questionId": "q1",
+          "selected": ["fail"],
+          "text": null
+        }
+      ]
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "19",
+    "result": {
+      "status": "accepted"
+    }
+  }
+}

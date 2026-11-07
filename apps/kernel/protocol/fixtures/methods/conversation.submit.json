@@ -1,0 +1,27 @@
+{
+  "kind": "method",
+  "method": "conversation.submit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "6",
+    "method": "conversation.submit",
+    "params": {
+      "id": 7,
+      "input": [
+        {
+          "type": "text",
+          "text": "Good, add the case for a malformed JSON body too."
+        }
+      ],
+      "whenBusy": "followUp",
+      "requestId": "s-5f4e3d"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "6",
+    "result": {
+      "submissionId": 501
+    }
+  }
+}

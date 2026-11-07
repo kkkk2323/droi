@@ -1,0 +1,20 @@
+{
+  "kind": "notification",
+  "method": "mcp.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "mcp.changed",
+    "params": {
+      "servers": [
+        {
+          "name": "anlan",
+          "transport": "http",
+          "status": "connected",
+          "enabled": true,
+          "tools": ["anlan___db_query"],
+          "error": null
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "kind": "method",
+  "method": "mcp.list",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "20",
+    "method": "mcp.list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "20",
+    "result": {
+      "servers": [
+        {
+          "name": "anlan",
+          "transport": "http",
+          "status": "connected",
+          "enabled": true,
+          "tools": ["anlan___db_query", "anlan___reqlog_query"],
+          "error": null
+        }
+      ]
+    }
+  }
+}

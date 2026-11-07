@@ -1,0 +1,15 @@
+{
+  "kind": "notification",
+  "method": "process.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "process.changed",
+    "params": {
+      "id": 7,
+      "processId": "p-3f2a",
+      "status": "exited",
+      "exitCode": 0,
+      "tail": "ok\n"
+    }
+  }
+}

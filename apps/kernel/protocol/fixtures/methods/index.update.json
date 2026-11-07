@@ -1,0 +1,19 @@
+{
+  "kind": "method",
+  "method": "index.update",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "15",
+    "method": "index.update",
+    "params": {
+      "id": 7,
+      "title": "parseConfig tests",
+      "archived": false
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "15",
+    "result": {}
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "kind": "notification",
+  "method": "conversation.busy",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "conversation.busy",
+    "params": {
+      "id": 7,
+      "run": null,
+      "runFailure": {
+        "taskId": 900,
+        "inputs": [501],
+        "reason": "model_error",
+        "detail": "provider returned 403"
+      }
+    }
+  }
+}

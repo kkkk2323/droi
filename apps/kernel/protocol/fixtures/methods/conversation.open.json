@@ -1,0 +1,125 @@
+{
+  "kind": "method",
+  "method": "conversation.open",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "4",
+    "method": "conversation.open",
+    "params": {
+      "id": 7,
+      "window": {
+        "min": 50,
+        "max": 100
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "4",
+    "result": {
+      "view": {
+        "conversation": {
+          "id": 7
+        },
+        "entries": [
+          {
+            "id": 41,
+            "conversationId": 7,
+            "kind": "pi.user",
+            "model": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Add a test for parseConfig"
+                  }
+                ],
+                "timestamp": 1762480000000
+              }
+            ]
+          },
+          {
+            "id": 42,
+            "conversationId": 7,
+            "kind": "pi.assistant",
+            "byTaskId": 900,
+            "model": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The existing test file is where it belongs; let me read it."
+                  },
+                  {
+                    "type": "toolCall",
+                    "id": "call_9f8e",
+                    "name": "read",
+                    "arguments": {
+                      "path": "src/config.test.ts"
+                    }
+                  }
+                ],
+                "api": "openai-completions",
+                "provider": "factory",
+                "model": "claude-sonnet-4-5",
+                "usage": {
+                  "input": 1200,
+                  "output": 180,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "totalTokens": 1380,
+                  "cost": {
+                    "input": 0.0036,
+                    "output": 0.0027,
+                    "cacheRead": 0,
+                    "cacheWrite": 0,
+                    "total": 0.0063
+                  }
+                },
+                "stopReason": "toolUse",
+                "timestamp": 1762480001000
+              }
+            ]
+          },
+          {
+            "id": 43,
+            "conversationId": 7,
+            "kind": "pi.tool-result",
+            "data": {
+              "diagnostics": []
+            },
+            "byTaskId": 901,
+            "model": [
+              {
+                "role": "toolResult",
+                "toolCallId": "call_9f8e",
+                "toolName": "read",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "import { parseConfig } from './config'\n\ntest('rejects empty input', () => {\n  expect(() => parseConfig('')).toThrow()\n})\n"
+                  }
+                ],
+                "isError": false,
+                "timestamp": 1762480002000
+              }
+            ]
+          }
+        ],
+        "docs": {
+          "pi.agent": {
+            "model": {
+              "provider": "factory",
+              "modelId": "claude-sonnet-4-5"
+            },
+            "thinkingLevel": "off",
+            "cwd": "/Users/clive/dev/droi"
+          },
+          "pi.live": {}
+        }
+      }
+    }
+  }
+}

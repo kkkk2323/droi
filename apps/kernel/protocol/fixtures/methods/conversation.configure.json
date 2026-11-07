@@ -1,0 +1,40 @@
+{
+  "kind": "method",
+  "method": "conversation.configure",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "9",
+    "method": "conversation.configure",
+    "params": {
+      "id": 7,
+      "change": {
+        "thinkingLevel": "medium",
+        "instructions": null,
+        "modelTools": {
+          "remove": ["bash"]
+        }
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "9",
+    "result": {
+      "agent": {
+        "model": {
+          "provider": "factory",
+          "modelId": "claude-sonnet-4-5"
+        },
+        "thinkingLevel": "medium",
+        "extensions": ["coding"],
+        "tools": ["read", "write", "edit", "bash", "powershell"],
+        "modelTools": {
+          "remove": ["bash"],
+          "add": []
+        },
+        "cwd": "/Users/clive/dev/droi",
+        "maxTurns": null
+      }
+    }
+  }
+}

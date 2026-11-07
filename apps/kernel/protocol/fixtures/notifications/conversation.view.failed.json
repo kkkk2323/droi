@@ -1,0 +1,16 @@
+{
+  "kind": "notification",
+  "method": "conversation.view",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "conversation.view",
+    "params": {
+      "id": 7,
+      "kind": "failed",
+      "error": {
+        "message": "storage read failed",
+        "code": "storage"
+      }
+    }
+  }
+}
