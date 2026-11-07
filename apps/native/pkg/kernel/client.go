@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -86,20 +85,14 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 	if opts.URL == "" {
 		return nil, errors.New("kernel: no URL")
 	}
-	address := opts.URL
 	header := http.Header{}
 	if opts.Token != "" {
+		// The contract names one place for the token, the Authorization
+		// header. It does not go in the URL either: a query string reaches
+		// Kernel's own request log and anything that logs a URL on the way.
 		header.Set("Authorization", "Bearer "+opts.Token)
-		parsed, err := url.Parse(address)
-		if err != nil {
-			return nil, fmt.Errorf("kernel: %w", err)
-		}
-		query := parsed.Query()
-		query.Set("token", opts.Token)
-		parsed.RawQuery = query.Encode()
-		address = parsed.String()
 	}
-	conn, res, err := websocket.Dial(ctx, address, &websocket.DialOptions{HTTPHeader: header})
+	conn, res, err := websocket.Dial(ctx, opts.URL, &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		if res != nil {
 			return nil, fmt.Errorf("kernel: dial: %w (HTTP %d)", err, res.StatusCode)

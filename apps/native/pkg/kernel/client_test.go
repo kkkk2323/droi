@@ -32,6 +32,8 @@ type fakeKernel struct {
 type hello struct {
 	authorization string
 	token         string
+	rawQuery      string
+	target        string
 }
 
 func startFakeKernel(t *testing.T) *fakeKernel {
@@ -39,7 +41,7 @@ func startFakeKernel(t *testing.T) *fakeKernel {
 	f := &fakeKernel{t: t, frames: make(chan rpcFrame, 128), hello: make(chan hello, 1)}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
-		case f.hello <- hello{authorization: r.Header.Get("Authorization"), token: r.URL.Query().Get("token")}:
+		case f.hello <- hello{authorization: r.Header.Get("Authorization"), token: r.URL.Query().Get("token"), rawQuery: r.URL.RawQuery, target: r.RequestURI}:
 		default:
 		}
 		conn, err := websocket.Accept(w, r, nil)
@@ -317,6 +319,8 @@ func loggedValue(t *testing.T, raw json.RawMessage) any {
 	return out
 }
 
+// The token goes in the one place the contract names, and nowhere else: not in
+// the URL, where a query string reaches a request log.
 func TestClientSendsTheToken(t *testing.T) {
 	f := startFakeKernel(t)
 	c := dialFake(t, f)
@@ -326,8 +330,14 @@ func TestClientSendsTheToken(t *testing.T) {
 		if h.authorization != "Bearer t-test" {
 			t.Fatalf("Authorization = %q", h.authorization)
 		}
-		if h.token != "t-test" {
-			t.Fatalf("?token = %q", h.token)
+		if h.token != "" {
+			t.Fatalf("the token was in the URL: ?token = %q", h.token)
+		}
+		if h.rawQuery != "" {
+			t.Fatalf("the dial sent the query %q", h.rawQuery)
+		}
+		if strings.Contains(h.target, "t-test") {
+			t.Fatalf("the token was in the request target %q", h.target)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the client never dialled")
