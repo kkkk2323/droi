@@ -33,6 +33,7 @@ type fakeKernel struct {
 // hello is how the Client dialled.
 type hello struct {
 	authorization string
+	client        string
 	token         string
 	rawQuery      string
 	target        string
@@ -43,7 +44,7 @@ func startFakeKernel(t *testing.T) *fakeKernel {
 	f := &fakeKernel{t: t, frames: make(chan rpcFrame, 128), hello: make(chan hello, 1)}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
-		case f.hello <- hello{authorization: r.Header.Get("Authorization"), token: r.URL.Query().Get("token"), rawQuery: r.URL.RawQuery, target: r.RequestURI}:
+		case f.hello <- hello{authorization: r.Header.Get("Authorization"), client: r.Header.Get(ClientHeader), token: r.URL.Query().Get("token"), rawQuery: r.URL.RawQuery, target: r.RequestURI}:
 		default:
 		}
 		conn, err := websocket.Accept(w, r, nil)
@@ -1159,5 +1160,37 @@ func TestShutdownAnswersWhileTheCloseRuns(t *testing.T) {
 	case <-c.Done():
 	case <-time.After(5 * time.Second):
 		t.Fatal("the connection did not end after Kernel closed")
+	}
+}
+
+// A connection says which client it is, in the contract's own header, and a
+// connection that does not say sends no header at all: Kernel then calls it
+// "unknown", which is the honest answer rather than a guess.
+func TestDialSendsTheClientHeader(t *testing.T) {
+	for _, tc := range []struct {
+		client string
+		want   string
+	}{
+		{ClientWindow, "window"},
+		{ClientPhone, "phone"},
+		{ClientHost, "host"},
+		{"", ""},
+	} {
+		t.Run(tc.client, func(t *testing.T) {
+			f := startFakeKernel(t)
+			c, err := Dial(context.Background(), Options{URL: f.url(), Token: "t-test", Client: tc.client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			select {
+			case h := <-f.hello:
+				if h.client != tc.want {
+					t.Fatalf("%s = %q, want %q", ClientHeader, h.client, tc.want)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the client never dialled")
+			}
+		})
 	}
 }
