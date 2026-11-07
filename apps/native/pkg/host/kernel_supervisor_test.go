@@ -11,8 +11,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -66,6 +68,11 @@ func TestKernelHelperProcess(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "kernel: listen: %v\n", err)
 		os.Exit(1)
 	}
+	if noise := os.Getenv("GO_KERNEL_NOISE"); noise != "" {
+		// A compiled sidecar prints what its runtime says before its own
+		// handshake; that line must not be taken for one.
+		fmt.Println(noise)
+	}
 	if os.Getenv("GO_KERNEL_NO_HANDSHAKE") != "1" {
 		fmt.Println(`{"port":` + strconv.Itoa(port) + `,"pid":` + strconv.Itoa(os.Getpid()) + `,"version":"kernel-test-1"}`)
 	}
@@ -86,6 +93,12 @@ func TestKernelHelperProcess(t *testing.T) {
 	var exitAfter <-chan time.Time
 	if ms, err := strconv.Atoi(os.Getenv("GO_KERNEL_EXIT_MS")); err == nil && ms > 0 {
 		exitAfter = time.After(time.Duration(ms) * time.Millisecond)
+	}
+	if os.Getenv("GO_KERNEL_IGNORE_SIGTERM") == "1" {
+		// A sidecar stuck in storage.close(): it must be killed, not waited
+		// for forever.
+		for range signals {
+		}
 	}
 	select {
 	case <-signals:
@@ -324,5 +337,70 @@ func TestHandshakeShape(t *testing.T) {
 	}
 	if h.Port != 51234 || h.PID != 4121 || h.Version != "kernel-1.5.0-1" {
 		t.Fatalf("handshake %+v", h)
+	}
+}
+
+// A sidecar that ignores the stop signal is killed once the contract's window
+// is over, and Stop still answers: a stuck storage.close() must not hold the
+// app open.
+func TestKernelSupervisorKillsASidecarThatIgnoresTheStopSignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows has no SIGTERM: the stop is TerminateProcess, and there is
+		// no window to outlast. That is why the contract needs a shutdown
+		// method (shared/interfaces/kernel-protocol.md).
+		t.Skip("no SIGTERM to ignore on Windows")
+	}
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_IGNORE_SIGTERM=1"))
+	s.StopGrace = 300 * time.Millisecond
+	s.Start()
+	running := w.waitState(t, KernelRunning)
+	started := time.Now()
+	s.Stop()
+	elapsed := time.Since(started)
+	if elapsed < s.StopGrace {
+		t.Fatalf("Stop gave up after %s, before the %s window", elapsed, s.StopGrace)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("Stop took %s with a %s window", elapsed, s.StopGrace)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
+	}
+	// The process is gone: a signal no longer reaches it.
+	if process, err := os.FindProcess(running.PID); err == nil && process.Signal(syscall.Signal(0)) == nil {
+		_ = process.Kill()
+		t.Fatalf("pid %d is still alive after Stop", running.PID)
+	}
+}
+
+// A sidecar whose runtime prints a line before the handshake still starts: the
+// line is logged, the handshake after it is the one that counts.
+func TestKernelSupervisorFindsTheHandshakeAfterOtherOutput(t *testing.T) {
+	w := newWatch()
+	var logged []string
+	var mu sync.Mutex
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_NOISE=[bun] warning: the runtime says hello"))
+	s.Log = func(line string) {
+		mu.Lock()
+		logged = append(logged, line)
+		mu.Unlock()
+	}
+	defer s.Stop()
+	s.Start()
+	running := w.waitState(t, KernelRunning)
+	if running.Version != "kernel-test-1" {
+		t.Fatalf("version = %q, want the handshake's", running.Version)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	found := false
+	for _, line := range logged {
+		if strings.Contains(line, "the runtime says hello") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the line before the handshake was dropped; log %v", logged)
 	}
 }
