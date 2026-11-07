@@ -588,31 +588,251 @@ func TestClientTracksWhatItWatched(t *testing.T) {
 	}
 }
 
-// A call whose caller's context is already done must fail alone: it may not
-// end the connection, because the next call needs it.
+// A call cancelled while its frame is being written must fail alone. The
+// earlier version of this test cancelled before the call began, which
+// coder/websocket never sees: it passed on the code the review broke. Here the
+// peer does not read for a second, the payload is far larger than any socket
+// buffer, and the caller gives up in the middle of the write — the case where
+// the write's context was the caller's, and that context closing the
+// connection took every other call with it.
 func TestCancelledCallLeavesTheConnectionUp(t *testing.T) {
-	f := startFakeKernel(t)
-	c := dialFake(t, f)
+	release := make(chan struct{})
+	reading := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		conn.SetReadLimit(64 << 20)
+		// Do not read for a second: the client's write fills the socket and
+		// then blocks inside the write.
+		close(reading)
+		time.Sleep(time.Second)
+		close(release)
+		for {
+			if _, _, err := conn.Read(context.Background()); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+	c, err := Dial(context.Background(), Options{
+		URL:            "ws" + strings.TrimPrefix(server.URL, "http") + "/rpc",
+		RequestTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	<-reading
+
+	// A payload far larger than the socket buffer, with a context the caller
+	// cancels 100 ms in — while the write is still going.
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Call(ctx, MethodIndexUpdate, map[string]any{"id": 1, "title": strings.Repeat("x", 16<<20)}, nil)
+	}()
+	time.Sleep(100 * time.Millisecond)
 	cancel()
-	if _, err := c.Harness(ctx); err == nil {
-		t.Fatal("a call with a cancelled context succeeded")
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a call cancelled mid-write succeeded")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a cancelled call never returned: the writer waited out the payload")
 	}
 	select {
 	case <-c.Done():
 		t.Fatalf("one cancelled call ended the connection: %v", c.Err())
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
-	// The next call still works.
-	done := make(chan error, 1)
-	go func() {
-		_, err := c.Harness(context.Background())
-		done <- err
-	}()
-	sent := f.next(t)
-	f.reply(t, sent.ID, map[string]any{"version": "kernel-1.5.0-1"})
-	if err := <-done; err != nil {
-		t.Fatalf("the call after a cancelled one: %v", err)
+	if err := c.Err(); err != nil {
+		t.Fatalf("the connection is broken after a cancelled call: %v", err)
+	}
+}
+
+// A whole view supersedes an earlier one of the same conversation that the
+// reader has not taken yet, and only that: a delta push's ops and a "full"
+// push are steps a reader must apply in order, so they are neither merged nor
+// moved.
+func TestNotificationOrderSurvivesFullAndDeltaPushes(t *testing.T) {
+	f := startFakeKernel(t)
+	// One slot and no reader: the push being delivered blocks, and everything
+	// after it waits in the queue.
+	c, err := Dial(context.Background(), Options{URL: f.url(), Token: "t-test", RequestTimeout: 5 * time.Second, NotesBuffer: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	full := map[string]any{"id": 7, "kind": ViewKindFull, "value": map[string]any{"conversation": map[string]any{"id": 7}, "entries": []any{}}}
+	delta := func(op string) map[string]any {
+		return map[string]any{"id": 7, "kind": ViewKindValue, "value": nil, "ops": []any{op}}
+	}
+	f.notify(t, NotifyConversationView, full)
+	f.notify(t, NotifyWarning, map[string]any{"kind": "extension_error", "message": "boom"})
+	f.notify(t, NotifyConversationView, delta("op1"))
+	f.notify(t, NotifyConversationView, delta("op2"))
+
+	type got struct {
+		method string
+		kind   string
+		ops    string
+	}
+	var seen []got
+	for len(seen) < 4 {
+		select {
+		case n := <-c.Notifications():
+			var view struct {
+				Kind string          `json:"kind"`
+				Ops  json.RawMessage `json:"ops"`
+			}
+			_ = json.Unmarshal(n.Params, &view)
+			seen = append(seen, got{n.Method, view.Kind, string(view.Ops)})
+		case <-time.After(5 * time.Second):
+			t.Fatalf("only %d of 4 notifications arrived: %+v", len(seen), seen)
+		}
+	}
+	want := []got{
+		{NotifyConversationView, ViewKindFull, ""},
+		{NotifyWarning, "", ""},
+		{NotifyConversationView, ViewKindValue, `["op1"]`},
+		{NotifyConversationView, ViewKindValue, `["op2"]`},
+	}
+	for i := range want {
+		if seen[i].method != want[i].method {
+			t.Fatalf("notification %d is %s, want %s (got %+v)", i, seen[i].method, want[i].method, seen)
+		}
+		if want[i].kind != "" && seen[i].kind != want[i].kind {
+			t.Fatalf("notification %d has kind %q, want %q (got %+v)", i, seen[i].kind, want[i].kind, seen)
+		}
+		if want[i].ops != "" && seen[i].ops != want[i].ops {
+			t.Fatalf("notification %d has ops %s, want %s (got %+v)", i, seen[i].ops, want[i].ops, seen)
+		}
+	}
+}
+
+// A whole view supersedes an earlier queued whole view of the same
+// conversation, and only such a push: coalescing anything else loses a step
+// the reader cannot rebuild. The queue is held still here, so the rule is
+// checked rather than raced.
+func TestWholeViewsCoalesceInTheQueue(t *testing.T) {
+	f := startFakeKernel(t)
+	c := dialFake(t, f)
+	note := func(params map[string]any) Notification {
+		t.Helper()
+		raw, err := json.Marshal(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Notification{Method: NotifyConversationView, Params: raw}
+	}
+	whole := func(id int, marker string) Notification {
+		return note(map[string]any{"id": id, "kind": ViewKindValue, "value": map[string]any{"before": marker}})
+	}
+	delta := func(op string) Notification {
+		return note(map[string]any{"id": 7, "kind": ViewKindValue, "value": nil, "ops": []any{op}})
+	}
+	full := note(map[string]any{"id": 7, "kind": ViewKindFull, "value": map[string]any{"before": "full"}})
+
+	c.queuedMu.Lock()
+	defer c.queuedMu.Unlock()
+
+	c.queued = []Notification{whole(7, "a")}
+	if _, ok := c.supersedesLocked(whole(7, "b")); !ok {
+		t.Fatal("a whole view did not supersede an earlier one of its conversation")
+	}
+	if got := len(c.queued); got != 1 {
+		t.Fatalf("the queue holds %d entries after a supersede, want 1", got)
+	}
+	// Another conversation's view is a different state and keeps its place.
+	c.queued = []Notification{whole(8, "other")}
+	if _, ok := c.supersedesLocked(whole(7, "b")); ok {
+		t.Fatal("a view superseded another conversation's")
+	}
+
+	// A delta push's ops are a sequence: neither may be replaced.
+	c.queued = []Notification{delta("op1")}
+	if _, ok := c.supersedesLocked(delta("op2")); ok {
+		t.Fatal("a delta push superseded another: its ops would be lost")
+	}
+	// A "full" push is a reset the reader must see.
+	c.queued = []Notification{full}
+	if _, ok := c.supersedesLocked(whole(7, "after-full")); ok {
+		t.Fatal("a whole view replaced a full push, which resets a delta reader")
+	}
+	// And a whole view is not replaced by a delta push or a full push either.
+	c.queued = []Notification{whole(7, "a")}
+	if _, ok := c.supersedesLocked(full); ok {
+		t.Fatal("a full push replaced a queued whole view")
+	}
+}
+
+// A notification that cannot be rebuilt — an approval, an ask, a lifecycle
+// change — is never dropped for want of room: whole views are what give way,
+// because the next push or a fresh conversation.open rebuilds them.
+func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
+	f := startFakeKernel(t)
+	c, err := Dial(context.Background(), Options{
+		URL: f.url(), Token: "t-test", RequestTimeout: 5 * time.Second,
+		NotesBuffer: 1, MaxQueuedNotes: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	view := func(id int, marker string) map[string]any {
+		return map[string]any{"id": id, "kind": ViewKindValue, "value": map[string]any{"conversation": map[string]any{"id": id}, "before": marker}}
+	}
+	// The policy is exercised where it can be counted: enqueue directly, with
+	// the reader's one slot already full so nothing drains the queue.
+	say := func(method string, params any) {
+		raw, err := json.Marshal(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.enqueue(Notification{Method: method, Params: raw})
+	}
+	say(NotifyConversationView, view(1, "held"))
+	for deadline := time.Now().Add(5 * time.Second); len(c.notes) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the first view never reached the reader's slot")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Eight more views of conversations of their own: none coalesces with
+	// another, so a queue of two must drop most of them.
+	for id := 2; id <= 9; id++ {
+		say(NotifyConversationView, view(id, "dropped"))
+	}
+	say(NotifyApprovalRequested, map[string]any{"requestId": "a-1", "id": 2, "tool": "bash", "args": map[string]any{"command": "rm -rf build"}})
+	say(NotifyAskRequested, map[string]any{"requestId": "q-1", "id": 2, "questions": []any{}, "context": "why"})
+
+	sawApproval, sawAsk := false, false
+	deadline := time.Now().Add(5 * time.Second)
+	for (!sawApproval || !sawAsk) && time.Now().Before(deadline) {
+		select {
+		case n := <-c.Notifications():
+			switch n.Method {
+			case NotifyApprovalRequested:
+				sawApproval = true
+			case NotifyAskRequested:
+				sawAsk = true
+			}
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if !sawApproval || !sawAsk {
+		t.Fatalf("the approval arrived: %v, the ask: %v — neither may be dropped", sawApproval, sawAsk)
+	}
+	c.queuedMu.Lock()
+	lost := c.lost
+	c.queuedMu.Unlock()
+	if lost == 0 {
+		t.Fatal("no whole view was counted as lost, so the cap was never exercised")
 	}
 }
 

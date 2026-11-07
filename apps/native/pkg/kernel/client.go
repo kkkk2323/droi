@@ -30,10 +30,8 @@ const (
 	closeUnauthorized = websocket.StatusCode(4401)
 	// defaultWriteTimeout bounds one write to the socket.
 	defaultWriteTimeout = 10 * time.Second
-	// pendingNotesPerConversation is how many notifications of one
-	// conversation a slow reader may fall behind by: a view supersedes the
-	// one before it, so only the newest matters.
-	pendingNotesPerConversation = 8
+	// defaultMaxQueuedNotes bounds what a reader that fell behind costs.
+	defaultMaxQueuedNotes = 4096
 )
 
 // Options say how to reach a Kernel.
@@ -55,6 +53,12 @@ type Options struct {
 	// memory, not calls. One goroutine reads the queue in order, so a reader
 	// sees Kernel's news as it sent it.
 	NotesBuffer int
+	// MaxQueuedNotes is how many notifications may wait for a reader that is
+	// behind; 0 is 4096. A whole view waiting here is superseded by the next
+	// one of its conversation, so reaching the cap means a real flood or a
+	// reader that is gone. Notifications that cannot be rebuilt are never
+	// dropped, so the queue may grow past the cap to keep one.
+	MaxQueuedNotes int
 	// WriteTimeout bounds one write to the socket; 0 is 10 s. Kernel not
 	// reading its frames is a broken connection, and without this the caller
 	// waiting on the write mutex would wait forever.
@@ -90,8 +94,11 @@ type Client struct {
 	// been given yet, so a slow reader never stops the read loop.
 	queuedMu sync.Mutex
 	queued   []Notification
-	dropped  int
-	wake     chan struct{}
+	// lost counts whole views the reader never saw; over counts the times a
+	// must-arrive notification pushed the queue past its cap.
+	lost int
+	over int
+	wake chan struct{}
 
 	notes chan Notification
 	done  chan struct{}
@@ -151,6 +158,13 @@ func (o Options) notesBuffer() int {
 		return o.NotesBuffer
 	}
 	return defaultNotesBuffer
+}
+
+func (o Options) maxQueuedNotes() int {
+	if o.MaxQueuedNotes > 0 {
+		return o.MaxQueuedNotes
+	}
+	return defaultMaxQueuedNotes
 }
 
 func (o Options) timeout() time.Duration {
@@ -446,35 +460,44 @@ func (c *Client) write(method string, b []byte) error {
 	return nil
 }
 
-// enqueue puts a notification in line for the reader and wakes it.
+// enqueue puts a notification in line for the reader and wakes it. The read
+// loop never waits here, so a reader that is busy — or that stops reading —
+// costs the queue, not the answers.
 //
-// A conversation.view supersedes the view of the same conversation still
-// waiting: the newer one is the whole truth, so a reader that fell behind sees
-// the latest state rather than every intermediate one. Anything else keeps its
-// place; only a reader that stops reading for good loses notifications, and it
-// hears how many it lost through Log.
+// Two kinds of notification are told apart, because only one of them can be
+// rebuilt:
+//
+//   - A whole view (conversation.view with kind "value" and a value) is the
+//     state of a conversation. The newest one supersedes an earlier one the
+//     reader has not taken yet, so a reader that fell behind sees the latest
+//     state instead of every intermediate one, and such a push may be dropped
+//     when the queue is full.
+//   - Everything else is a step in a sequence: a delta push's ops only make
+//     sense applied in order, a "full" push is what resets a delta reader's
+//     state, and an approval or an ask that never arrives leaves a session
+//     waiting forever. These are never merged, never reordered and never
+//     dropped for want of room.
 func (c *Client) enqueue(n Notification) {
 	c.queuedMu.Lock()
-	if n.Method == NotifyConversationView {
-		if id, ok := conversationID(n.Params); ok {
-			for i := range c.queued {
-				if c.queued[i].Method != NotifyConversationView {
-					continue
-				}
-				if other, ok := conversationID(c.queued[i].Params); ok && other == id {
-					c.queued[i] = n
-					c.queuedMu.Unlock()
-					c.signal()
-					return
-				}
-			}
-		}
+	if _, superseded := c.supersedesLocked(n); superseded {
+		c.queuedMu.Unlock()
+		c.signal()
+		return
 	}
-	if len(c.queued) >= maxQueuedNotes {
-		c.queued = c.queued[1:]
-		c.dropped++
-		if c.dropped == 1 || c.dropped%1000 == 0 {
-			c.logf("kernel: a slow reader lost %d notifications", c.dropped)
+	if len(c.queued) >= c.opts.maxQueuedNotes() {
+		switch {
+		case c.dropRebuildableLocked():
+			// Room made with a whole view the reader can rebuild.
+		case isWholeView(n):
+			// Nothing rebuildable to trade and this one is rebuildable: drop
+			// it rather than one that cannot be rebuilt.
+			c.lostLocked(n.Method)
+			c.queuedMu.Unlock()
+			return
+		default:
+			// Nothing to trade and this one must arrive: the queue grows past
+			// its cap rather than lose it.
+			c.overLocked()
 		}
 	}
 	c.queued = append(c.queued, n)
@@ -482,22 +505,92 @@ func (c *Client) enqueue(n Notification) {
 	c.signal()
 }
 
-// maxQueuedNotes bounds what a reader that stopped reading costs: a
-// conversation's views coalesce, so reaching this means a real flood or a
-// reader that is gone.
-const maxQueuedNotes = 4096
-
-// conversationID reads the id of a notification's params, for coalescing.
-func conversationID(params json.RawMessage) (ID, bool) {
-	var p struct {
-		ID ID `json:"id"`
+// supersedesLocked reports whether n replaces an earlier queued whole view of
+// the same conversation, which the reader has not taken yet. Only a whole view
+// may do that: replacing or moving a delta push, a "full" push or anything
+// else would lose a step the reader cannot rebuild.
+//
+// The holder must hold c.queuedMu.
+func (c *Client) supersedesLocked(n Notification) (ID, bool) {
+	id, ok := wholeView(n)
+	if !ok {
+		return 0, false
 	}
-	if json.Unmarshal(params, &p) != nil || p.ID == 0 {
+	for i := len(c.queued) - 1; i >= 0; i-- {
+		if other, ok := wholeView(c.queued[i]); ok && other == id {
+			c.queued[i] = n
+			return id, true
+		}
+	}
+	return 0, false
+}
+
+// dropRebuildableLocked takes the oldest whole view out of the queue, so a
+// notification that must arrive can have its room, and answers whether it
+// found one.
+//
+// The holder must hold c.queuedMu.
+func (c *Client) dropRebuildableLocked() bool {
+	for i := range c.queued {
+		if isWholeView(c.queued[i]) {
+			method := c.queued[i].Method
+			c.queued = append(c.queued[:i], c.queued[i+1:]...)
+			c.lostLocked(method)
+			return true
+		}
+	}
+	return false
+}
+
+// lostLocked counts a notification the reader will never see. It is always a
+// whole view, which the next push or a fresh conversation.open rebuilds.
+//
+// The holder must hold c.queuedMu.
+func (c *Client) lostLocked(method string) {
+	c.lost++
+	if c.lost == 1 || c.lost%1000 == 0 {
+		c.logf("kernel: a slow reader lost %d notifications so far (last: %s); views rebuild on the next push or open", c.lost, method)
+	}
+}
+
+// overLocked counts a must-arrive notification that had to push the queue past
+// its cap.
+//
+// The holder must hold c.queuedMu.
+func (c *Client) overLocked() {
+	c.over++
+	if c.over == 1 || c.over%1000 == 0 {
+		c.logf("kernel: the reader is %d notifications behind and the queue holds only must-arrive ones: it grew past its cap %d times", len(c.queued), c.opts.maxQueuedNotes())
+	}
+}
+
+// wholeView is a conversation.view push that carries a whole view: kind
+// "value" with a value, which is what a "view" subscriber receives. A delta
+// subscriber's push has no value, and a "full" push is a reset that a reader
+// must see, so neither is one.
+func wholeView(n Notification) (ID, bool) {
+	if n.Method != NotifyConversationView {
+		return 0, false
+	}
+	var p struct {
+		ID    ID              `json:"id"`
+		Kind  string          `json:"kind"`
+		Value json.RawMessage `json:"value"`
+	}
+	if json.Unmarshal(n.Params, &p) != nil || p.ID == 0 || p.Kind != ViewKindValue {
+		return 0, false
+	}
+	if len(p.Value) == 0 || string(bytes.TrimSpace(p.Value)) == "null" {
 		return 0, false
 	}
 	return p.ID, true
 }
 
+// isWholeView reports whether n may be dropped when the queue is full.
+func isWholeView(n Notification) bool {
+	_, ok := wholeView(n)
+	return ok
+}
 func (c *Client) signal() {
 	select {
 	case c.wake <- struct{}{}:

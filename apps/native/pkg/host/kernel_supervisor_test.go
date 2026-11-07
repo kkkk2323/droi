@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -56,8 +57,12 @@ func TestKernelHelperProcess(t *testing.T) {
 			os.Exit(3)
 		}
 	}
+	var healthDelay atomic.Int64
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if delay := healthDelay.Load(); delay > 0 {
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"version":"kernel-test-1","pi":"1.5.0"}`))
 	})
@@ -96,6 +101,28 @@ func TestKernelHelperProcess(t *testing.T) {
 			if done := os.Getenv("GO_KERNEL_NOISE_DONE"); done != "" && data != "" {
 				_ = os.WriteFile(filepath.Join(data, done), []byte("done"), 0o600)
 			}
+		}
+	}
+	if slow := os.Getenv("GO_KERNEL_SLOW_HEALTH_MS"); slow != "" {
+		// Answer health late, so a test can stop the sidecar while the
+		// launcher is still waiting for it.
+		if ms, err := strconv.Atoi(slow); err == nil && ms > 0 {
+			healthDelay.Store(int64(ms))
+		}
+	}
+	if long := os.Getenv("GO_KERNEL_LONG_LINE"); long != "" {
+		// A sidecar that prints one line no reader can hold whole. The tail
+		// of it is what explains the death that follows.
+		if n, err := strconv.Atoi(long); err == nil && n > 0 {
+			_, _ = os.Stdout.WriteString(strings.Repeat("p", n) + "TAIL-MARKER\n")
+			fmt.Fprintln(os.Stderr, "kernel: I printed a line nobody can hold")
+			os.Exit(1)
+		}
+	}
+	if chatty := os.Getenv("GO_KERNEL_CHATTY_LINE"); chatty != "" {
+		// A long, but not too long, line: the log must cap what it keeps.
+		if n, err := strconv.Atoi(chatty); err == nil && n > 0 {
+			fmt.Println(strings.Repeat("c", n) + "END-OF-CHATTY")
 		}
 	}
 	if hold := os.Getenv("GO_KERNEL_CHILD_HOLD_MS"); hold != "" {
@@ -332,8 +359,8 @@ func TestKernelSupervisorNeedsAHandshakeAndHealth(t *testing.T) {
 	s.Start()
 	restarting := w.waitState(t, KernelRestarting)
 	s.Stop()
-	if !strings.Contains(restarting.Reason, "health") && !strings.Contains(restarting.Reason, "I stopped") {
-		t.Fatalf("reason = %q", restarting.Reason)
+	if !strings.Contains(restarting.Reason, "handshake") && !strings.Contains(restarting.Reason, "health") {
+		t.Fatalf("reason = %q, want the handshake's or the health check's", restarting.Reason)
 	}
 }
 
@@ -482,4 +509,154 @@ func TestKernelSupervisorStopDoesNotWaitForAGrandchild(t *testing.T) {
 	if st := s.State(); st.Status != KernelStopped {
 		t.Fatalf("state after Stop: %+v", st)
 	}
+}
+
+// No handshake must fail in ReadyTimeout, not twice it: the contract's launch
+// is --port 0, so without a handshake there is no port to ask health on.
+func TestKernelSupervisorFailsOnceWithoutAHandshake(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_NO_HANDSHAKE=1"))
+	s.ReadyTimeout = 500 * time.Millisecond
+	started := time.Now()
+	s.Start()
+	restarting := w.waitState(t, KernelRestarting)
+	s.Stop()
+	elapsed := time.Since(started)
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("a handshake-less launch took %s to fail with a %s timeout, so it waited twice", elapsed, s.ReadyTimeout)
+	}
+	if !strings.Contains(restarting.Reason, "handshake") {
+		t.Fatalf("reason = %q, want the handshake's", restarting.Reason)
+	}
+}
+
+// A line longer than the reader may hold is kept by its tail: that is where
+// the sidecar's last word is, and it is what the window shows when the launch
+// fails.
+func TestKernelSupervisorKeepsTheTailOfALongLine(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_LONG_LINE=2097152"))
+	defer s.Stop()
+	s.Start()
+	restarting := w.waitState(t, KernelRestarting)
+	if !strings.Contains(restarting.Reason, "TAIL-MARKER") {
+		t.Fatalf("reason = %q, want the tail of the long line", tailOf(restarting.Reason, 300))
+	}
+}
+
+// What the log keeps of one line is bounded, and says how much it left out.
+func TestKernelSupervisorCapsALoggedLine(t *testing.T) {
+	w := newWatch()
+	var mu sync.Mutex
+	var lines []string
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_CHATTY_LINE=10240"))
+	s.Log = func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	}
+	defer s.Stop()
+	s.Start()
+	w.waitState(t, KernelRunning)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		found := false
+		for _, line := range lines {
+			if strings.Contains(line, "END-OF-CHATTY") {
+				found = true
+			}
+		}
+		mu.Unlock()
+		if found {
+			mu.Lock()
+			for _, line := range lines {
+				if strings.Contains(line, "END-OF-CHATTY") {
+					if len(line) > 5<<10 {
+						mu.Unlock()
+						t.Fatalf("the log kept %d bytes of one line", len(line))
+					}
+					if !strings.Contains(line, "more bytes") {
+						mu.Unlock()
+						t.Fatalf("the log truncated without saying so: %q", line)
+					}
+				}
+			}
+			mu.Unlock()
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	t.Fatalf("the long line never reached the log: %v", tailOf(strings.Join(lines, "\n"), 400))
+}
+
+// A slow OnState callback must not deadlock the Supervisor: it runs on a
+// goroutine of its own, so Start and Stop never wait for it.
+func TestKernelSupervisorSurvivesASlowOnStateCallback(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	s := &KernelSupervisor{
+		Spawn:   helperSpawn(t),
+		OnState: func(KernelState) { <-block },
+		Backoff: []time.Duration{10 * time.Millisecond},
+	}
+	started := make(chan struct{})
+	go func() {
+		s.Start()
+		close(started)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start blocked on a slow OnState")
+	}
+	stopped := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Stop blocked on a slow OnState")
+	}
+}
+
+// OnReady must not fire for a sidecar a Stop already stopped. The case that
+// matters is a stop that lands while the health check is still running.
+func TestKernelSupervisorDoesNotAnnounceAStoppedSidecar(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_SLOW_HEALTH_MS=1500"))
+	var announced atomic.Int32
+	s.OnReady = func(KernelState, string) { announced.Add(1) }
+	s.Start()
+	// Stop while the launcher is still asking health.
+	time.Sleep(300 * time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("Stop never returned")
+	}
+	time.Sleep(2 * time.Second)
+	if got := announced.Load(); got != 0 {
+		t.Fatalf("OnReady fired %d times for a sidecar Stop had already stopped", got)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
+	}
+}
+
+// tailOf is the end of s, for a failure message that stays readable.
+func tailOf(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
 }

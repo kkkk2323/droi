@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -147,22 +146,21 @@ func TestLiveKernelThreeConversations(t *testing.T) {
 	}
 
 	data := t.TempDir()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = listener.Close()
 	token, err := NewToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "--port", fmt.Sprint(port), "--host", "127.0.0.1", "--data", data)
+	// The contract's launch is --port 0: the sidecar picks the port and names
+	// it in its handshake, so nothing here can take the port first.
+	cmd := exec.Command(bin, "--port", "0", "--host", "127.0.0.1", "--data", data)
 	cmd.Env = append(os.Environ(), TokenEnv+"="+token, "DROI_KERNEL_PROVIDERS="+os.Getenv("DROI_KERNEL_PROVIDERS"),
 		"DROI_KERNEL_TEST_PROVIDER_URL="+providerURL)
 	logs := &strings.Builder{}
 	cmd.Stderr = logs
-	cmd.Stdout = nil
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start kernel: %v", err)
 	}
@@ -170,13 +168,32 @@ func TestLiveKernelThreeConversations(t *testing.T) {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	})
+	handshake := make(chan Handshake, 1)
+	go func() {
+		decoder := json.NewDecoder(stdout)
+		var h Handshake
+		if decoder.Decode(&h) == nil {
+			handshake <- h
+		}
+		close(handshake)
+	}()
+	var port int
+	select {
+	case h, ok := <-handshake:
+		if !ok {
+			t.Fatalf("the kernel printed no handshake:\n%s", logs.String())
+		}
+		port = h.Port
+	case <-time.After(60 * time.Second):
+		t.Fatalf("no handshake in 60 s:\n%s", logs.String())
+	}
 	// Readiness is the contract's health check, which needs no token.
 	for deadline := time.Now().Add(30 * time.Second); ; {
 		if _, err := CheckHealth(t.Context(), port); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("kernel never answered /health:\n%s", logs.String())
+			t.Fatalf("kernel never answered /health on %d:\n%s", port, logs.String())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

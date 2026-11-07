@@ -86,14 +86,19 @@ type KernelSupervisor struct {
 	// contract's 12 s, the time harness.close() and storage.close() get.
 	StopGrace time.Duration
 
-	mu      sync.Mutex
-	state   KernelState
-	child   *kernelChild
-	running bool
-	attempt int
-	timer   *time.Timer
-	gen     int
-	events  chan KernelState
+	mu             sync.Mutex
+	state          KernelState
+	child          *kernelChild
+	running        bool
+	attempt        int
+	timer          *time.Timer
+	gen            int
+	events         chan KernelState
+	dispatch       chan KernelState
+	dispatchClosed bool
+	// announce serialises OnReady against Stop, so a window never hears
+	// "running" for a sidecar Stop has already stopped.
+	announce sync.Mutex
 }
 
 // kernelChild is one launched sidecar.
@@ -148,21 +153,72 @@ func (s *KernelSupervisor) Token() string {
 	return s.child.token
 }
 
+// setLocked records a state and hands it to OnState without ever waiting for
+// it. The callback runs on a goroutine of its own, so it may call back in —
+// the state is already set, and the lock is not held while it runs — and a
+// callback that falls behind costs the states it did not take, not the
+// Supervisor.
+//
+// The holder must hold s.mu.
 func (s *KernelSupervisor) setLocked(st KernelState) {
 	s.state = st
 	if s.OnState == nil {
 		return
 	}
 	if s.events == nil {
-		s.events = make(chan KernelState, 64)
-		go func(events chan KernelState) {
-			for e := range events {
-				s.OnState(e)
-			}
-		}(s.events)
+		s.events = make(chan KernelState, eventBuffer)
+		s.dispatch = make(chan KernelState)
+		go s.publish()
 	}
-	s.events <- st
+	select {
+	case s.events <- st:
+	default:
+		// A callback this far behind is not keeping up; the newest state is
+		// the one it needs, so the oldest waiting one goes.
+		select {
+		case <-s.events:
+		default:
+		}
+		select {
+		case s.events <- st:
+		default:
+		}
+	}
 }
+
+// publish drains the state queue on its own goroutine and stops when the
+// Supervisor does: it is the only caller of OnState.
+func (s *KernelSupervisor) publish() {
+	for {
+		select {
+		case st := <-s.events:
+			s.OnState(st)
+		case <-s.dispatch:
+			// Stop is over: hand over what is still queued, then go.
+			for {
+				select {
+				case st := <-s.events:
+					s.OnState(st)
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+// stopPublishing ends the state goroutine once what is queued has been handed
+// over. The holder must hold s.mu.
+func (s *KernelSupervisor) stopPublishing() {
+	if s.dispatch == nil || s.dispatchClosed {
+		return
+	}
+	s.dispatchClosed = true
+	close(s.dispatch)
+}
+
+// eventBuffer is how many states may wait for a slow OnState.
+const eventBuffer = 64
 
 // Start launches the sidecar; a running Supervisor ignores it.
 func (s *KernelSupervisor) Start() {
@@ -190,8 +246,13 @@ func (s *KernelSupervisor) Start() {
 // (shared/interfaces/kernel-protocol.md asks for one).
 //
 // The stop never waits for the processes the sidecar started: they hold its
-// pipes, and what the window waits on is the sidecar alone.
+// pipes, and what the window waits on is the sidecar alone. It returns within
+// StopGrace plus WaitDelay — 14 s with the defaults — however the sidecar
+// behaves.
 func (s *KernelSupervisor) Stop() {
+	// announce first: a launch that is about to say "running" either finishes
+	// before this stop begins, or finds the state changed and says nothing.
+	s.announce.Lock()
 	s.mu.Lock()
 	s.running = false
 	s.gen++
@@ -202,6 +263,7 @@ func (s *KernelSupervisor) Stop() {
 	ch := s.child
 	s.child = nil
 	s.mu.Unlock()
+	s.announce.Unlock()
 	if ch != nil {
 		if s.Terminate != nil {
 			s.Terminate(ch.cmd)
@@ -217,13 +279,14 @@ func (s *KernelSupervisor) Stop() {
 			// hold the window, and WaitDelay is what lets go of it.
 			select {
 			case <-ch.done:
-			case <-time.After(2*waitDelay + grace):
-				s.logf("kernel did not exit after it was killed")
+			case <-time.After(waitDelay):
+				s.logf("kernel did not exit %s after it was killed", waitDelay)
 			}
 		}
 	}
 	s.mu.Lock()
 	s.setLocked(KernelState{Status: KernelStopped})
+	s.stopPublishing()
 	s.mu.Unlock()
 }
 
@@ -234,6 +297,22 @@ func (s *KernelSupervisor) Restart() {
 }
 
 func (s *KernelSupervisor) current(gen int) bool { return s.running && gen == s.gen }
+
+// announceReady tells the Host its sidecar is up, unless a Stop got there
+// first. Stop takes the same mutex before it changes the state, so the check
+// and the call cannot be split by a stop: a window never hears "running" for a
+// sidecar that is already gone.
+func (s *KernelSupervisor) announceReady(ch *kernelChild, st KernelState, token string) {
+	if s.OnReady == nil {
+		return
+	}
+	s.announce.Lock()
+	defer s.announce.Unlock()
+	if !s.liveChild(ch) {
+		return
+	}
+	s.OnReady(st, token)
+}
 
 // liveChild reports whether ch is still the sidecar the Supervisor runs.
 func (s *KernelSupervisor) liveChild(ch *kernelChild) bool {
@@ -320,9 +399,9 @@ func (s *KernelSupervisor) launch(gen int) {
 	s.mu.Lock()
 	if !s.current(gen) {
 		s.mu.Unlock()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		// A child of a superseded generation still owns a process group: kill
+		// the group, not just the process, so what it started goes too.
+		killProcess(cmd)
 		return
 	}
 	s.child = ch
@@ -343,11 +422,8 @@ func (s *KernelSupervisor) launch(gen int) {
 		s.mu.Lock()
 	}
 	s.mu.Unlock()
-	if ready && live && s.liveChild(ch) && s.OnReady != nil {
-		// Outside the lock, so a callback may call back in. A Stop that lands
-		// in between is why the state is read again first: the window must
-		// never hear "ready" for a sidecar it already stopped.
-		s.OnReady(running, token)
+	if ready && live {
+		s.announceReady(ch, running, token)
 	}
 
 	<-ch.done
@@ -434,19 +510,18 @@ func (s *KernelSupervisor) pumpStdout(ch *kernelChild) {
 	defer ch.stdout.Close()
 	reader := bufio.NewReaderSize(ch.stdout, 64<<10)
 	var line []byte
-	tooLong := false
+	// omitted is how much of a line longer than maxStdoutLine was thrown
+	// away; the tail is what is kept, because the last thing a sidecar wrote
+	// before it died is what explains its death.
+	omitted := 0
 	logged := 0
 	for {
 		chunk, err := reader.ReadSlice('\n')
 		if len(chunk) > 0 {
-			if room := maxStdoutLine - len(line); room > 0 {
-				if len(chunk) > room {
-					chunk = chunk[len(chunk)-room:]
-					tooLong = true
-				}
-				line = append(line, chunk...)
-			} else {
-				tooLong = true
+			line = append(line, chunk...)
+			if over := len(line) - maxStdoutLine; over > 0 {
+				line = append(line[:0], line[over:]...)
+				omitted += over
 			}
 		}
 		if err == bufio.ErrBufferFull {
@@ -454,9 +529,9 @@ func (s *KernelSupervisor) pumpStdout(ch *kernelChild) {
 		}
 		if len(line) > 0 || err == nil {
 			text := strings.TrimRight(string(line), "\r\n")
-			if tooLong {
-				text = "…" + text
-				tooLong = false
+			if omitted > 0 {
+				text = "…(" + strconv.Itoa(omitted) + " bytes left out) " + text
+				omitted = 0
 			}
 			if h, ok := parseHandshake(text); ok {
 				select {
@@ -464,12 +539,17 @@ func (s *KernelSupervisor) pumpStdout(ch *kernelChild) {
 				default:
 				}
 			} else if text != "" {
-				// The tail is kept, so a failure's reason can be this line;
-				// the log hears the first few, so a chatty sidecar cannot
-				// drown it.
-				ch.output.writeString(text + "\n")
+				// The end of a line is the part that explains a death, so what
+				// the log and the failure's reason keep is the tail.
+				kept := text
+				if over := len(kept) - maxLogLine; over > 0 {
+					kept = "…(" + strconv.Itoa(over) + " more bytes) " + kept[over:]
+				}
+				ch.output.writeString(kept + "\n")
+				// The tail is kept for a failure's reason; the log hears the
+				// first few lines, so a chatty sidecar cannot drown it.
 				if logged < 20 {
-					s.logf("kernel said: %s", text)
+					s.logf("kernel said: %s", kept)
 					logged++
 				}
 			}
@@ -481,8 +561,13 @@ func (s *KernelSupervisor) pumpStdout(ch *kernelChild) {
 	}
 }
 
-// maxStdoutLine bounds what one line of the sidecar's stdout may cost.
+// maxStdoutLine bounds what one line of the sidecar's stdout may cost: past
+// it the tail is kept and the rest counted, so a sidecar that prints a
+// gigabyte without a newline cannot make the Host grow.
 const maxStdoutLine = 1 << 20
+
+// maxLogLine bounds what one line adds to the log; the rest is counted.
+const maxLogLine = 4 << 10
 
 // parseHandshake reads a handshake line, and only a handshake line: it must be
 // a JSON object with a port and a pid. Anything else a sidecar prints, even if
@@ -518,8 +603,11 @@ func (s *KernelSupervisor) waitReady(port int, ch *kernelChild) (ready bool, ans
 	case <-ch.done:
 		return false, port, ""
 	case <-deadline.C:
-		// Health may still come up without a handshake being needed: a
-		// sidecar may print nothing and listen on the port it was given.
+		// No handshake, no address: the contract's launch is --port 0 and the
+		// handshake names the port it got, so there is nothing to ask health
+		// on. Waiting the whole timeout again would only double the time a
+		// broken launch takes to fail.
+		return false, port, "no handshake within " + timeout.String()
 	}
 	healthDeadline := time.Now().Add(timeout)
 	for time.Now().Before(healthDeadline) {
