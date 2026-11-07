@@ -85,11 +85,11 @@ _Avoid_: connect code, routing token
 ### Memory
 
 **Memory**:
-What Droi keeps on a computer of the user's earlier Sessions for the agent to draw on in later ones: the Memory Summary, the Session Summaries and the Memory Notes, in one folder. The Kernel knows nothing of it; the Host keeps it, and each Host keeps its own.
+What Droi keeps on a computer of the user's earlier Sessions for the agent to draw on in later ones: the Memory Summary, the Session Summaries and the Memory Notes, in one folder. Each Host keeps its own folder, the Host writes the summaries and the Kernel writes only the notes (ADR 0042).
 _Avoid_: context, knowledge base, history, Project Memory, Global Memory
 
 **Memory Summary**:
-The short document every Conversation on a computer with Memory starts with: who the user is, how they like to work, and pointers to the Session Summaries of recent work.
+The short document every Conversation on a computer with Memory starts with: who the user is, how they like to work, and pointers to the Session Summaries of recent work. It is read once, when the Conversation is created, and kept for that Conversation, so a summary that changes mid-Conversation cannot break the provider's prompt cache (ADR 0042).
 _Avoid_: memory file, profile, MEMORY.md
 
 **Session Summary**:
@@ -101,12 +101,12 @@ What the user explicitly asked the agent to remember, forget or correct, kept as
 _Avoid_: memory entry, fact, correction
 
 **Memory Tools**:
-The tools and the prompt section the Kernel offers when Memory is on: `memory_search`, `memory_read`, `memory_list` and `memory_note`, with the Memory Summary as a section of every request. They are not an MCP Server and nothing is dialled: the Memory setting is their only switch (ADR 0038).
+The four tools the Kernel offers when Memory is on, in its own process and with nothing dialled: `memory_search`, `memory_read` and `memory_list` read the whole Memory folder, and `memory_note` writes a file under `notes/`, which is the only part of the folder the Kernel may write. The Memory setting is their only switch, and the Memory Summary and the unabsorbed notes are a section of every Conversation rather than a tool's job (ADR 0042).
 _Avoid_: memory MCP, memory plugin, memory server
 
-**Memory Session**:
-A Conversation the Host opens in the Kernel for Memory work of its own, writing a Session Summary or updating the Memory Summary, with no user in it. Its kind keeps it out of every Client's session list, it has a `submit_result` tool, and it is archived when its turn ends.
-_Avoid_: hidden session, background session, consolidation job
+**History Search**:
+The `history_search` tool: a read-only search of every past Conversation's own entries, answered as the Conversation and entry a match sits in. It is what the agent reaches for when the Memory Summary does not settle a question, and its description says so. It queries the same full-text index the Kernel keeps for the session list, caps itself at 20 hits, and leaves out Automation runs, Workstream runs and subagents unless asked for them (ADR 0042).
+_Avoid_: memory search (that reads the Memory folder), transcript search, grep
 
 ### Testing
 
@@ -152,8 +152,12 @@ _Avoid_: new, unseen, notification
 The Session list as one list by when each Session was last used, under Pinned, Right now (working or Unread), Today, Yesterday and Earlier, in place of the groups by Workspace. The window's Sort menu chooses it, and the Phone App follows the window.
 _Avoid_: recent view, Recents (that is the group of Scratch Workspace Sessions), flat list
 
+**Child Conversation**:
+A Conversation another Conversation owns and drives: a subagent, or a Workstream Agent. The Kernel creates it with a tool in its own process, its parent can interrupt it, and the ownership keeps it out of the session list. What differs between the two is only what a Client draws (ADR 0043).
+_Avoid_: sub-session, child session, nested session
+
 **Subagent**:
-A Conversation the Kernel starts for a subagent task, which the parent's `droi.subagent` entry names along with the tool call that started it. Clients keep it out of the session list and reach it from the Session that called it: the Task call's card, the header's subagent menu, and the trail back.
+A Child Conversation the Kernel starts for a task inside a run, which the parent's `droi.subagent` entry names along with the tool call that started it. A Client draws it as a card in that tool call, keeps it out of the session list, and reaches it from the Session that called it.
 _Avoid_: child session, sub-session, task session
 
 **Session Defaults**:
@@ -201,7 +205,7 @@ The Session that leads a Workstream: it plans, starts Workstream Agents, sends t
 _Avoid_: lead, manager, parent session
 
 **Workstream Agent**:
-A Conversation an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream, as a tab of the Orchestrator's page and a row of its panel. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
+A Child Conversation an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository, and one the Orchestrator's own interruption also stops (ADR 0043). It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream, as a tab of the Orchestrator's page and a row of its panel. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
 _Avoid_: worker, subagent (that is a Task call's Session), child session
 
 **Shared Folder**:
@@ -267,6 +271,9 @@ A mid-turn question from the Daemon, whether a permission request or a questionn
 
 **Memory Server**:
 The MCP Server Droi carried for Memory. The Memory Tools replace it, in the Kernel's own process.
+
+**Memory Session**:
+A hidden Conversation the Host opened on the Daemon for its own Memory work: tagged, with one structured-answer tool, archived when its turn ended. `model.complete` replaced it, so nothing is opened, tagged, archived or retried (ADR 0042).
 
 **Script**:
 droid's tool that wrote and ran a program of tool calls, and the model whitelist in `/api/feature-flags` that decided which models could use it. codemode is the Kernel's extension, on by default, and its nested calls are listed inside the outer card.

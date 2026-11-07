@@ -26,10 +26,13 @@
     "methods/mcp.authorize.json",
     "methods/mcp.authorize.cancel.json",
     "methods/skills.list.json",
-    "methods/skills.setDisabled.json"
+    "methods/skills.setDisabled.json",
+    "methods/model.complete.json"
   ],
   "notifications": [
     "notifications/conversation.view.json",
+    "notifications/conversation.view.delta.json",
+    "notifications/conversation.view.full.json",
     "notifications/conversation.view.failed.json",
     "notifications/conversation.busy.json",
     "notifications/conversation.busy.idle.json",
@@ -50,6 +53,7 @@
     "errors/method-not-found.json",
     "errors/unsupported.json",
     "errors/conversation-busy.json",
-    "errors/conflict.json"
+    "errors/conflict.json",
+    "errors/model-output-invalid.json"
   ]
 }

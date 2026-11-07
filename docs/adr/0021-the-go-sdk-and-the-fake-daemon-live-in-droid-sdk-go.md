@@ -4,7 +4,7 @@ status: partly superseded by ADR-0038
 
 # The Go SDK and the Fake Daemon live in their own repository, droid-sdk-go
 
-_Droi's Go client is `apps/native/pkg/kernel`, written for the protocol in `apps/kernel/protocol/`, and the Fake Daemon is replaced by a real Kernel with a scripted model. The separate repository, its tag pin and its other consumer stand._
+_Droi's Go client is `apps/native/pkg/kernel`, written for the protocol in `apps/kernel/protocol/`, and the Fake Daemon is replaced by a real Kernel with a scripted model: the suites come back into this repository (`fakekernel`, ADR 0038), and droid-sdk-go is archived after 2.0 because nothing here calls a Daemon any more. Its other consumer stands._
 
 A second app is planned beside Droi: a desktop app that starts its own Daemon and serves a WeCom bot, reusing Droi's code. It lives in a repository of its own, and Go does not let another module import `apps/native/internal`, nor a module that `replace`s its way into a sibling folder. The Go SDK (`packages/droid-sdk-go`) was already a module of its own with no dependency on Droi, so it goes first. Its `fakedaemon` package, which the native app's view tests use, ran the TypeScript Fake Daemon (`tests/fake-daemon`) by bundling it from a Droi checkout, so the Fake Daemon goes with it.
 
