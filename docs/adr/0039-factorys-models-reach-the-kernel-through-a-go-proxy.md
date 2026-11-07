@@ -12,7 +12,7 @@ We decided that **Factory is the Kernel's primary provider, reached through the 
 
 - **`baseUrl` points at `pkg/llmproxy`, and nothing else does.** pi-ai is configured with one provider whose base URL is the Host's loopback proxy and whose key is a placeholder; the proxy swaps in the Key Pool's current key and answers in the dialect the model asked for. The `google-generative-ai` limitation stops mattering, because the Kernel's side of the wire is ours.
 - **The key never leaves the Go process.** The Kernel holds a placeholder, the proxy holds the pool. This is the same rule as the Key Hook (ADR 0033) with a simpler mechanism: pi-ai asks `apiKey.resolve()` per request, which is a function Droi provides, and the proxy stamps the real header on the way out.
-- **The rewriting layer is a Go port of the subset Droi needs from [`@magpie-community/opencode-factory-auth`](https://github.com/magpie-community/plugins/tree/main/packages/factory) 0.1.42 (MIT).** Not a JS plugin running in the Kernel: a Go package in `pkg/llmproxy/factory/`, with the upstream file and line span at the top of each ported file and a `PORTED-FROM.md` naming version, commit and licence.
+- **The rewriting layer is a Go port of the subset Droi needs from [`@magpie-community/opencode-factory-auth`](https://github.com/magpie-community/plugins/tree/main/packages/factory) 0.1.42 (MIT), read from the pinned copy at `shared/reference/magpie-factory/` (upstream commit `e7cb9dc54cd77850014cd8cc18b85b0fe1680fa2`).** Not a JS plugin running in the Kernel: a Go package in `pkg/llmproxy/factory/`, with the upstream file and line span at the top of each ported file and a `PORTED-FROM.md` naming version, commit and licence.
 
 ## What is ported, and what is not
 
@@ -47,8 +47,16 @@ Droi is betting on a third party's reverse engineering of Factory's API. The por
 
 1. **Golden tests from upstream's own suite**, about 83 of its cases turned into Go table tests: Pi's sentence on three routes, droid's identity, Gemini's body, Fast Mode, `413`, multipliers, usage windows, the three `403` attributions, and the tool-schema wrapper. Five of its `testdata/` files come along, including droid's own model registry, so the model table is checked against droid's rather than against our reading of it.
 2. **`pkg/llmproxy/factory/PORTED-FROM.md`** names version, commit, licence and what was left out, so the next reader can diff.
-3. **A Droi Automation once a week** compares the upstream commit with the one in that file, filters the diff to the functions in the ported list, and writes a report into a Session. It only reads GitHub and sends no Factory request.
+3. **A Droi Automation once a week** compares the upstream commit with the one in that file, filters the diff to the functions in the ported list, and writes a report into a Session. It only reads GitHub and sends no Factory request. The pinned copy in `shared/reference/magpie-factory/` is refreshed with the same pass, so the next person to read the plugin reads the version the port was checked against.
 
+## Where to read the plugin before writing a request
+
+The plugin's source is pinned beside this Workstream's other references: `shared/reference/magpie-factory/`, at upstream commit **`e7cb9dc54cd77850014cd8cc18b85b0fe1680fa2`** (written in that folder's `UPSTREAM_COMMIT`). It is a copy, not a checkout: it survives a reboot, a `/tmp` sweep and a fresh clone, and it is the file two people arguing about Factory's shape should both read.
+
+Two rules come with it:
+
+- **Check the plugin before writing a request by hand.** `README.md`'s Models table says which API each model takes; `index.mjs`'s `MODELS` (from about line 47) carries `wire` and `upstream` (sent as `x-api-provider`), the context window and the thinking levels; `droidBody` and `factoryHeaders` carry the request shape and the headers. A request assembled from memory is a request that is wrong in a way a `4xx` will not name.
+- **Factory's error text is not evidence.** The same failure that a wrong route produces is reported as a region problem: in M1 a GLM model was sent to the Anthropic Messages route without `x-api-provider`, and Factory answered `Provider not available in this region`. That reads like an account or a region, and it was neither. An error is a hypothesis until the plugin's code and its `testdata/` agree with it; until then, a report says "unconfirmed".
 ## Considered options
 
 - **Require droid-proxy (`dp`).** Rejected: it asks the user to install and run a second program, and it only moves traffic, it does not shape requests.
