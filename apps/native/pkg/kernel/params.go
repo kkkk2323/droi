@@ -153,6 +153,12 @@ type OpenParams struct {
 // OpenResult is the first view of an opened conversation.
 type OpenResult struct {
 	View View `json:"view"`
+	// Policy is the approval policy in effect for this conversation, so a client
+	// knows what it is showing before an approval arrives.
+	Policy *Policy `json:"policy,omitempty"`
+	// Pending is every approval and ask still waiting on this conversation. A
+	// connection that missed the notification rebuilds its cards from it.
+	Pending []PendingRequest `json:"pending,omitempty"`
 }
 
 // IDParams is the params of the methods that take one conversation:
@@ -489,12 +495,22 @@ type AskRespondParams struct {
 
 // MCPServer is one MCP server as mcp.list, mcp.set and mcp.changed report it.
 type MCPServer struct {
-	Name      string   `json:"name"`
-	Transport string   `json:"transport,omitempty"`
-	Status    string   `json:"status,omitempty"`
-	Enabled   bool     `json:"enabled"`
-	Tools     []string `json:"tools,omitempty"`
-	Error     *string  `json:"error,omitempty"`
+	Name      string `json:"name"`
+	Transport string `json:"transport,omitempty"`
+	// Status is connected, connecting, failed, disabled, or untrusted: a
+	// repository's server waits for the user's consent before it runs.
+	Status  string   `json:"status,omitempty"`
+	Enabled bool     `json:"enabled"`
+	Tools   []string `json:"tools,omitempty"`
+	Error   *string  `json:"error,omitempty"`
+	// RepoRoot and Trusted say which repository brought the server and whether
+	// the user allowed it; Command/Args/URL are what the user is being asked to
+	// allow.
+	RepoRoot string   `json:"repoRoot,omitempty"`
+	Trusted  *bool    `json:"trusted,omitempty"`
+	Command  string   `json:"command,omitempty"`
+	Args     []string `json:"args,omitempty"`
+	URL      string   `json:"url,omitempty"`
 }
 
 // MCPServers is the MCP server list.
@@ -519,6 +535,11 @@ type MCPSetParams struct {
 	Server  *MCPServerConfig `json:"server,omitempty"`
 	Enabled *bool            `json:"enabled,omitempty"`
 	Remove  bool             `json:"remove,omitempty"`
+	// RepoRoot names the repository whose server this call is about, and Trust
+	// is the user allowing it to run. A server a repository brings is not
+	// started until one of these says so.
+	RepoRoot string `json:"repoRoot,omitempty"`
+	Trust    *bool  `json:"trust,omitempty"`
 }
 
 // MCPAuthorizeParams is mcp.authorize's and mcp.authorize.cancel's params.
@@ -534,10 +555,12 @@ type MCPAuthorizeResult struct {
 // Skill is one skill as skills.list, skills.setDisabled and skills.changed
 // report it.
 type Skill struct {
-	Name    string `json:"name"`
-	Scope   string `json:"scope,omitempty"`
-	Path    string `json:"path,omitempty"`
-	Enabled bool   `json:"enabled"`
+	Name  string `json:"name"`
+	Scope string `json:"scope,omitempty"`
+	Path  string `json:"path,omitempty"`
+	// Description is the one line the skill's frontmatter gives.
+	Description string `json:"description,omitempty"`
+	Enabled     bool   `json:"enabled"`
 }
 
 // Skills is the skill list.
@@ -565,6 +588,9 @@ type HarnessInfo struct {
 	Capabilities Capabilities    `json:"capabilities"`
 	Extensions   []ExtensionInfo `json:"extensions,omitempty"`
 	Limits       Limits          `json:"limits,omitempty"`
+	// Policy is the default approval policy in effect; nil until the Host has
+	// sent one, and from a build without approvals.
+	Policy *Policy `json:"policy,omitempty"`
 }
 
 // Limits are Kernel's own bounds, which a client reads rather than assumes.
@@ -666,8 +692,10 @@ type Capabilities struct {
 	MCP       bool `json:"mcp"`
 	Skills    bool `json:"skills"`
 	Codemode  bool `json:"codemode"`
-	// Models says model.complete answers; false in M1.
+	// Models says model.complete answers.
 	Models bool `json:"models"`
+	// Resources says resources.list answers.
+	Resources bool `json:"resources"`
 }
 
 // ExtensionInfo is one extension this build ships.
@@ -723,3 +751,112 @@ type ShutdownResult struct {
 
 // ShutdownClosing is the status kernel.shutdown answers.
 const ShutdownClosing = "closing"
+
+// Policy is a whole policy, as the kernel keeps it and reports it: in
+// policy.changed, conversation.open and harness.info. The policy lives in the
+// Host; the kernel caches a snapshot and says what it decided with
+// policy.changed.
+type Policy struct {
+	// Autonomy is "ask", "edits", "safe" or "all".
+	Autonomy string `json:"autonomy"`
+	// Rules are the exceptions: a rule allows a tool, or a file, without asking.
+	Rules []PolicyRule `json:"rules"`
+}
+
+// PolicyChange is what policy.set sends: a field left nil stays as it was.
+// Rules, when set, replace the whole list, and an empty list clears it.
+type PolicyChange struct {
+	// Autonomy is "ask", "edits", "safe" or "all"; "" leaves the level as it was.
+	Autonomy string `json:"autonomy,omitempty"`
+	// Rules is nil to keep the list, or the new list: &[]PolicyRule{} clears it.
+	Rules *[]PolicyRule `json:"rules,omitempty"`
+}
+
+// PolicyRule is one exception to the autonomy level.
+type PolicyRule struct {
+	// Kind is "tool" or "file".
+	Kind string `json:"kind"`
+	// Tool is the tool a "tool" rule names.
+	Tool string `json:"tool,omitempty"`
+	// Path is the absolute file a "file" rule names.
+	Path string `json:"path,omitempty"`
+}
+
+// PolicySetParams is policy.set's params. A missing ID is the default policy, a
+// number is that conversation's own.
+type PolicySetParams struct {
+	ID     *ID          `json:"id,omitempty"`
+	Policy PolicyChange `json:"policy"`
+}
+
+// PolicyResult is the policy in effect, which conversation.open also answers.
+type PolicyResult struct {
+	Policy Policy `json:"policy"`
+}
+
+// ResourcesListParams is resources.list's params: the conversation whose cwd
+// decides the workspace half. Without it only the personal half is read.
+type ResourcesListParams struct {
+	ID *ID `json:"id,omitempty"`
+}
+
+// PromptTemplate is one slash command the kernel would expand.
+type PromptTemplate struct {
+	Name        string `json:"name"`
+	Scope       string `json:"scope"`
+	Path        string `json:"path"`
+	Description string `json:"description,omitempty"`
+}
+
+// ContextFile is one AGENTS.md the kernel would load, in the order it applies.
+type ContextFile struct {
+	Path  string `json:"path"`
+	Bytes int    `json:"bytes"`
+}
+
+// ResourcesResult is everything the kernel would load for a conversation.
+type ResourcesResult struct {
+	Skills       []Skill          `json:"skills"`
+	Prompts      []PromptTemplate `json:"prompts"`
+	ContextFiles []ContextFile    `json:"contextFiles"`
+}
+
+// PolicyChanged is policy.changed's params: the whole snapshot of one scope.
+type PolicyChanged struct {
+	// ID is the conversation the policy belongs to; nil is the default policy.
+	ID     *ID    `json:"id"`
+	Policy Policy `json:"policy"`
+}
+
+// PendingRequest is one approval or ask still waiting for a person, as
+// conversation.open reports it. A connection that was not there when the
+// notification went out — a window reconnecting, a kernel restarted after the
+// computer slept — rebuilds its cards from this list.
+type PendingRequest struct {
+	// Kind is PendingApproval or PendingAsk.
+	Kind      string `json:"kind"`
+	RequestID string `json:"requestId"`
+	ID        ID     `json:"id"`
+	// An approval's fields, as ApprovalRequested has them.
+	Tool      string           `json:"tool,omitempty"`
+	Args      json.RawMessage  `json:"args,omitempty"`
+	Options   []ApprovalOption `json:"options,omitempty"`
+	ScopeHint string           `json:"scopeHint,omitempty"`
+	// An ask's fields, as AskRequested has them.
+	Questions []Question `json:"questions,omitempty"`
+	Context   string     `json:"context,omitempty"`
+	Blocking  bool       `json:"blocking,omitempty"`
+}
+
+// The two kinds a PendingRequest can be.
+const (
+	PendingApproval = "approval"
+	PendingAsk      = "ask"
+)
+
+// MCPListParams is mcp.list's params: the repository whose servers to include
+// beside the global ones. Without it every repository this kernel has seen is
+// listed.
+type MCPListParams struct {
+	RepoRoot string `json:"repoRoot,omitempty"`
+}

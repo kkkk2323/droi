@@ -1,0 +1,25 @@
+{
+  "kind": "method",
+  "method": "policy.set",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "30",
+    "method": "policy.set",
+    "params": {
+      "id": 7,
+      "policy": {
+        "rules": []
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "30",
+    "result": {
+      "policy": {
+        "autonomy": "edits",
+        "rules": []
+      }
+    }
+  }
+}

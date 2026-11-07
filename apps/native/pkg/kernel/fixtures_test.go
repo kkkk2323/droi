@@ -82,12 +82,14 @@ var methodParams = map[string]any{
 	MethodProcessStop:         &StopProcessParams{},
 	MethodApprovalRespond:     &ApprovalRespondParams{},
 	MethodAskRespond:          &AskRespondParams{},
-	MethodMCPList:             nil,
+	MethodMCPList:             &MCPListParams{},
 	MethodMCPSet:              &MCPSetParams{},
 	MethodMCPAuthorize:        &MCPAuthorizeParams{},
 	MethodMCPAuthorizeCancel:  &MCPAuthorizeParams{},
 	MethodSkillsList:          nil,
 	MethodSkillsSetDisabled:   &SkillsSetDisabledParams{},
+	MethodPolicySet:           &PolicySetParams{},
+	MethodResourcesList:       &ResourcesListParams{},
 	MethodModelComplete:       &ModelCompleteParams{},
 	// kernel.shutdown takes no params.
 	MethodKernelShutdown: nil,
@@ -122,6 +124,8 @@ var methodResults = map[string]any{
 	MethodMCPAuthorizeCancel:  &struct{}{},
 	MethodSkillsList:          &Skills{},
 	MethodSkillsSetDisabled:   &Skills{},
+	MethodPolicySet:           &PolicyResult{},
+	MethodResourcesList:       &ResourcesResult{},
 	MethodModelComplete:       &ModelCompleteResult{},
 	MethodKernelShutdown:      &ShutdownResult{},
 }
@@ -140,6 +144,7 @@ var notificationTypes = map[string]func() any{
 	NotifyProcessChanged:    func() any { return &ProcessChanged{} },
 	NotifyIndexChanged:      func() any { return &IndexChanged{} },
 	NotifyWarning:           func() any { return &Warning{} },
+	NotifyPolicyChanged:     func() any { return &PolicyChanged{} },
 }
 
 // The contract's samples decode into this package's types without losing a

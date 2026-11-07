@@ -249,7 +249,9 @@ var callers = []caller{
 	{MethodAskRespond, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.RespondAsk(ctx, *decodeParams[AskRespondParams](t, raw))
 	}},
-	{MethodMCPList, func(t *testing.T, ctx context.Context, c *Client, _ json.RawMessage) (any, error) { return c.MCP(ctx) }},
+	{MethodMCPList, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.MCP(ctx, *decodeParams[MCPListParams](t, raw))
+	}},
 	{MethodMCPSet, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.SetMCP(ctx, *decodeParams[MCPSetParams](t, raw))
 	}},
@@ -264,6 +266,12 @@ var callers = []caller{
 	}},
 	{MethodSkillsSetDisabled, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.SetSkillDisabled(ctx, *decodeParams[SkillsSetDisabledParams](t, raw))
+	}},
+	{MethodPolicySet, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.PolicySet(ctx, *decodeParams[PolicySetParams](t, raw))
+	}},
+	{MethodResourcesList, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.Resources(ctx, *decodeParams[ResourcesListParams](t, raw))
 	}},
 	{MethodModelComplete, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.ModelComplete(ctx, *decodeParams[ModelCompleteParams](t, raw))

@@ -4,7 +4,10 @@
   "request": {
     "jsonrpc": "2.0",
     "id": "20",
-    "method": "mcp.list"
+    "method": "mcp.list",
+    "params": {
+      "repoRoot": "/Users/clive/dev/droi"
+    }
   },
   "response": {
     "jsonrpc": "2.0",
@@ -18,6 +21,18 @@
           "enabled": true,
           "tools": ["anlan___db_query", "anlan___reqlog_query"],
           "error": null
+        },
+        {
+          "name": "repo-tools",
+          "transport": "stdio",
+          "status": "untrusted",
+          "enabled": true,
+          "tools": [],
+          "error": null,
+          "repoRoot": "/Users/clive/dev/droi",
+          "trusted": false,
+          "command": "node",
+          "args": ["tools/mcp-server.mjs"]
         }
       ]
     }

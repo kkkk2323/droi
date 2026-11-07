@@ -55,10 +55,14 @@ const (
 	MethodMCPAuthorizeCancel  = "mcp.authorize.cancel"
 	MethodSkillsList          = "skills.list"
 	MethodSkillsSetDisabled   = "skills.setDisabled"
+	// MethodPolicySet sends the Host's approval policy; capability approvals.
+	MethodPolicySet = "policy.set"
+	// MethodResourcesList is what the kernel would load for a conversation:
+	// skills, prompt templates and the AGENTS.md chain; capability resources.
+	MethodResourcesList = "resources.list"
 	// MethodModelComplete is one model call with no conversation and no
 	// tools, for the work a Host does with a model of its own: Memory's
-	// summaries (ADR 0042). M1 answers -32009 until capabilities.models is
-	// true.
+	// summaries (ADR 0042) and titles.
 	MethodModelComplete = "model.complete"
 	// MethodKernelShutdown asks Kernel to close in order: it answers
 	// {"status":"closing"}, then refuses new work, closes the harness and the
@@ -76,7 +80,7 @@ var Methods = []string{
 	MethodConversationUsage, MethodTaskAbort, MethodIndexUpdate, MethodProcessList,
 	MethodProcessStop, MethodApprovalRespond, MethodAskRespond, MethodMCPList,
 	MethodMCPSet, MethodMCPAuthorize, MethodMCPAuthorizeCancel, MethodSkillsList,
-	MethodSkillsSetDisabled, MethodModelComplete, MethodKernelShutdown,
+	MethodSkillsSetDisabled, MethodPolicySet, MethodResourcesList, MethodModelComplete, MethodKernelShutdown,
 }
 
 // The protocol's notifications.
@@ -92,6 +96,8 @@ const (
 	NotifyProcessChanged    = "process.changed"
 	NotifyIndexChanged      = "index.changed"
 	NotifyWarning           = "warning"
+	// NotifyPolicyChanged is the approval policy, which a client renders and a Host stores.
+	NotifyPolicyChanged = "policy.changed"
 )
 
 // The error codes of the contract's table. Clients branch on Code, never on
@@ -140,6 +146,7 @@ const (
 	CapabilitySkills        = "skills"
 	CapabilityCodemode      = "codemode"
 	CapabilityModels        = "models"
+	CapabilityResources     = "resources"
 )
 
 // Handshake is the first line Kernel prints on stdout: where it listens, and

@@ -1592,6 +1592,8 @@ function normalize(value: unknown): unknown {
  */
 const GATED: Readonly<Record<string, string>> = {
   'model.complete': 'models',
+  'policy.set': 'approvals',
+  'resources.list': 'resources',
   'process.stop': 'processes',
   'approval.respond': 'approvals',
   'ask.respond': 'asks',

@@ -24,7 +24,8 @@
           "multiSelect": false
         }
       ],
-      "context": "Asked while running the test command."
+      "context": "Asked while running the test command.",
+      "blocking": true
     }
   }
 }

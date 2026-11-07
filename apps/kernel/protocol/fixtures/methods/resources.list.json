@@ -1,0 +1,46 @@
+{
+  "kind": "method",
+  "method": "resources.list",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "31",
+    "method": "resources.list",
+    "params": {
+      "id": 7
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "31",
+    "result": {
+      "skills": [
+        {
+          "name": "code-review",
+          "scope": "personal",
+          "path": "/Users/clive/.droi/skills/code-review/SKILL.md",
+          "description": "Review the changes since a fixed point.",
+          "enabled": true
+        },
+        {
+          "name": "ship-it",
+          "scope": "workspace",
+          "path": "/Users/clive/dev/droi/.factory/skills/ship-it/SKILL.md",
+          "description": "Cut a release.",
+          "enabled": false
+        }
+      ],
+      "prompts": [
+        {
+          "name": "fix-bug",
+          "scope": "workspace",
+          "path": "/Users/clive/dev/droi/.factory/prompts/fix-bug.md",
+          "description": "Fix the bug the user names."
+        }
+      ],
+      "contextFiles": [
+        { "path": "/Users/clive/.droi/AGENTS.md", "bytes": 512 },
+        { "path": "/Users/clive/dev/droi/AGENTS.md", "bytes": 12034 }
+      ]
+    }
+  }
+}

@@ -71,13 +71,15 @@ type clientAPI interface {
 	StopProcess(ctx context.Context, p kernel.StopProcessParams) (kernel.Status, error)
 	RespondApproval(ctx context.Context, p kernel.ApprovalRespondParams) (kernel.Status, error)
 	RespondAsk(ctx context.Context, p kernel.AskRespondParams) (kernel.Status, error)
-	MCP(ctx context.Context) (kernel.MCPServers, error)
+	MCP(ctx context.Context, p kernel.MCPListParams) (kernel.MCPServers, error)
 	SetMCP(ctx context.Context, p kernel.MCPSetParams) (kernel.MCPServers, error)
 	AuthorizeMCP(ctx context.Context, p kernel.MCPAuthorizeParams) (kernel.MCPAuthorizeResult, error)
 	CancelMCPAuthorize(ctx context.Context, p kernel.MCPAuthorizeParams) error
 	Skills(ctx context.Context) (kernel.Skills, error)
 	SetSkillDisabled(ctx context.Context, p kernel.SkillsSetDisabledParams) (kernel.Skills, error)
 	ModelComplete(ctx context.Context, p kernel.ModelCompleteParams) (kernel.ModelCompleteResult, error)
+	PolicySet(ctx context.Context, p kernel.PolicySetParams) (kernel.PolicyResult, error)
+	Resources(ctx context.Context, p kernel.ResourcesListParams) (kernel.ResourcesResult, error)
 	Shutdown(ctx context.Context) (kernel.ShutdownResult, error)
 }
 
@@ -313,9 +315,9 @@ func (o *Observer) RespondAsk(ctx context.Context, p kernel.AskRespondParams) (k
 }
 
 // MCP is mcp.list.
-func (o *Observer) MCP(ctx context.Context) (kernel.MCPServers, error) {
+func (o *Observer) MCP(ctx context.Context, p kernel.MCPListParams) (kernel.MCPServers, error) {
 	o.record(kernel.MethodMCPList, nil)
-	return o.client.MCP(ctx)
+	return o.client.MCP(ctx, p)
 }
 
 // SetMCP is mcp.set.
@@ -354,6 +356,18 @@ func (o *Observer) ModelComplete(ctx context.Context, p kernel.ModelCompletePara
 	return o.client.ModelComplete(ctx, p)
 }
 
+// PolicySet fills the kernel's snapshot of the approval policy.
+func (o *Observer) PolicySet(ctx context.Context, p kernel.PolicySetParams) (kernel.PolicyResult, error) {
+	o.record(kernel.MethodPolicySet, p)
+	return o.client.PolicySet(ctx, p)
+}
+
+// Resources asks what the kernel would load for a conversation.
+func (o *Observer) Resources(ctx context.Context, p kernel.ResourcesListParams) (kernel.ResourcesResult, error) {
+	o.record(kernel.MethodResourcesList, p)
+	return o.client.Resources(ctx, p)
+}
+
 // Shutdown is kernel.shutdown.
 func (o *Observer) Shutdown(ctx context.Context) (kernel.ShutdownResult, error) {
 	o.record(kernel.MethodKernelShutdown, nil)
@@ -390,6 +404,7 @@ func (o *Observer) methods() []string {
 		kernel.MethodIndexUpdate, kernel.MethodProcessList, kernel.MethodProcessStop,
 		kernel.MethodApprovalRespond, kernel.MethodAskRespond, kernel.MethodMCPList, kernel.MethodMCPSet,
 		kernel.MethodMCPAuthorize, kernel.MethodMCPAuthorizeCancel, kernel.MethodSkillsList,
-		kernel.MethodSkillsSetDisabled, kernel.MethodModelComplete, kernel.MethodKernelShutdown,
+		kernel.MethodSkillsSetDisabled, kernel.MethodPolicySet, kernel.MethodResourcesList,
+		kernel.MethodModelComplete, kernel.MethodKernelShutdown,
 	}
 }

@@ -120,7 +120,66 @@
           },
           "pi.live": {}
         }
-      }
+      },
+      "policy": {
+        "autonomy": "ask",
+        "rules": []
+      },
+      "pending": [
+        {
+          "kind": "approval",
+          "requestId": "req-x3rtg4",
+          "id": 7,
+          "tool": "bash",
+          "args": {
+            "command": "rm -rf build"
+          },
+          "options": [
+            {
+              "id": "proceed_once",
+              "label": "Allow once",
+              "scope": null
+            },
+            {
+              "id": "proceed_always_tool",
+              "label": "Always allow bash",
+              "scope": {
+                "tool": "bash"
+              }
+            },
+            {
+              "id": "cancel",
+              "label": "Cancel",
+              "scope": null
+            }
+          ],
+          "scopeHint": "ask"
+        },
+        {
+          "kind": "ask",
+          "requestId": "req-ask-77",
+          "id": 7,
+          "questions": [
+            {
+              "questionId": "q1",
+              "question": "The suite cannot reach the network. What should the new test do?",
+              "options": [
+                {
+                  "id": "skip",
+                  "label": "Skip when offline"
+                },
+                {
+                  "id": "fail",
+                  "label": "Fail"
+                }
+              ],
+              "multiSelect": false
+            }
+          ],
+          "context": "Asked while running the test command.",
+          "blocking": true
+        }
+      ]
     }
   }
 }

@@ -38,6 +38,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   mcp: false,
   skills: false,
   codemode: false,
+  resources: false,
   models: true,
 }
 

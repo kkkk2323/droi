@@ -108,7 +108,7 @@ func TestObserverRecordsEveryMethod(t *testing.T) {
 			_, err := o.RespondAsk(ctx, kernel.AskRespondParams{RequestID: "r2"})
 			return err
 		}},
-		{kernel.MethodMCPList, func() error { _, err := o.MCP(ctx); return err }},
+		{kernel.MethodMCPList, func() error { _, err := o.MCP(ctx, kernel.MCPListParams{}); return err }},
 		{kernel.MethodMCPSet, func() error {
 			_, err := o.SetMCP(ctx, kernel.MCPSetParams{Name: "srv", Remove: true})
 			return err
@@ -123,6 +123,14 @@ func TestObserverRecordsEveryMethod(t *testing.T) {
 		{kernel.MethodSkillsList, func() error { _, err := o.Skills(ctx); return err }},
 		{kernel.MethodSkillsSetDisabled, func() error {
 			_, err := o.SetSkillDisabled(ctx, kernel.SkillsSetDisabledParams{Name: "s", Disabled: true})
+			return err
+		}},
+		{kernel.MethodPolicySet, func() error {
+			_, err := o.PolicySet(ctx, kernel.PolicySetParams{Policy: kernel.PolicyChange{Autonomy: "ask"}})
+			return err
+		}},
+		{kernel.MethodResourcesList, func() error {
+			_, err := o.Resources(ctx, kernel.ResourcesListParams{ID: &id})
 			return err
 		}},
 		{kernel.MethodModelComplete, func() error {
