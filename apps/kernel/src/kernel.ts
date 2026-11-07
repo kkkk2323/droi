@@ -243,23 +243,29 @@ export async function startKernel(
     }, 50)
     failedWatch.unref?.()
 
-    const closing = { done: false }
-    const stop = async (): Promise<void> => {
-      if (closing.done) return
-      closing.done = true
-      await kernel?.close()
-      await server?.stop()
-      // Pi's `harness.close()` seals admission and settles its own writes; the Storage keeps the file
-      // open until it is closed too, and only then may the database close.
-      clearInterval(failedWatch)
-      // A failed Session already closed itself; closing again is a no-op, not an error.
-      await harness?.close(context).catch(() => undefined)
-      // After the harness, so no tool starts while this runs; before the storage, so a shutdown leaves no
-      // process of ours running in the data directory.
-      await tools?.stop(context).catch(() => undefined)
-      await storage?.close(context).catch(() => undefined)
-      await db.close().catch(() => undefined)
-      lock?.release()
+    // One stop, shared. A second caller — `kernel.shutdown` on the wire and then SIGINT, or the failure
+    // watchdog and a signal — must wait for the same cleanup, not return at once and let a signal handler
+    // exit the process in the middle of it. That early exit is how a background tool process used to survive
+    // a shutdown that arrived while another shutdown was already running.
+    let stopping: Promise<void> | undefined
+    const stop = (): Promise<void> => {
+      if (stopping !== undefined) return stopping
+      stopping = (async () => {
+        await kernel?.close()
+        await server?.stop()
+        // Pi's `harness.close()` seals admission and settles its own writes; the Storage keeps the file
+        // open until it is closed too, and only then may the database close.
+        clearInterval(failedWatch)
+        // A failed Session already closed itself; closing again is a no-op, not an error.
+        await harness?.close(context).catch(() => undefined)
+        // After the harness, so no tool starts while this runs; before the storage, so a shutdown leaves no
+        // process of ours running in the data directory.
+        await tools?.stop(context).catch(() => undefined)
+        await storage?.close(context).catch(() => undefined)
+        await db.close().catch(() => undefined)
+        lock?.release()
+      })()
+      return stopping
     }
     return {
       get port() {

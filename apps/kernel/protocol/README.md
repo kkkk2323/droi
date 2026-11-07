@@ -180,12 +180,27 @@ failing.
 {"jsonrpc":"2.0","id":"26","result":{"status":"closing"}}
 ```
 
-**A kernel ends the tools it started.** Pi runs each tool shell `detached`, in a process group of its own, so
-a tool's background process (`sleep 100 &`, a server it started) is not in the kernel's group and survives a
-plain `SIGKILL` of the kernel. The kernel therefore records every tool shell it launches and, on
-`kernel.shutdown` or SIGTERM, first closes the harness and then ends those groups: a background process a
-tool left running does not outlive the kernel. On Windows the process tree belongs to the Host's Job Object,
-and the kernel asks `taskkill /T` for the shells it recorded.
+**A kernel ends the tools it started, and only those.** Pi runs each tool shell `detached`, in a process group
+of its own, so a tool's background process (`sleep 100 &`, a server it started) is not in the kernel's group and
+survives a plain `SIGKILL` of the kernel. The kernel therefore records each tool shell's group id **with the
+shell's start time**, and on `kernel.shutdown` or SIGTERM — after closing the harness — ends the groups whose
+identity still checks out:
+
+| What `ps` shows for that group                       | What happens                                                                                                             |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| no members                                           | the group is empty; the record is dropped and **nothing is signalled**                                                   |
+| the leader (`pid == pgid`) is there, same start time | it is our shell: the group is killed                                                                                     |
+| the leader is there, different start time            | the number was recycled by an unrelated process: dropped, not signalled                                                  |
+| the leader is gone, members remain                   | a group id that is in use is never handed to another group, so the members are this shell's background processes: killed |
+
+A pid is not an identity: a shell that exited hours ago leaves a number the system may hand to somebody else's
+tree, and signalling it would kill a process Droi never started. Empty records are dropped as they are noticed,
+so a long-lived kernel keeps only live groups. On Windows there are no process groups: a tool's tree belongs to
+the Host's process tree — the Job Object the Host gives the kernel — whose handle ends its members when the
+kernel exits, and the kernel itself signals nothing by pid.
+
+A kernel killed with `SIGKILL` cannot run any of this; the Host's own process tree is then the only thing that
+ends a tool that outlived it.
 
 ### Starting the kernel for a test
 
