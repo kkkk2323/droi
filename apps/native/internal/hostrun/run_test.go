@@ -245,6 +245,19 @@ func (r *running) base() string { return "http://127.0.0.1:" + strconv.Itoa(r.b.
 
 func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
+// waitNotAlive waits until pid is gone, and answers whether it outlasted the
+// bound. A process that exited is reaped a moment later, so one sample taken
+// right after a stop proves nothing about it.
+func waitNotAlive(pid int, within time.Duration) bool {
+	for deadline := time.Now().Add(within); time.Now().Before(deadline); {
+		if !alive(pid) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return alive(pid)
+}
+
 func TestHostPrintsThePairingLinkServesMetaAndTakesAClient(t *testing.T) {
 	b := newBox(t, "0.240.0")
 	r := b.start(func(o *Options) { o.Terminal = true })
@@ -383,7 +396,7 @@ func TestStopEndsTheGatewayAndTheDaemon(t *testing.T) {
 	if err := r.stop(); err != nil {
 		t.Fatal(err)
 	}
-	if alive(pid) {
+	if waitNotAlive(pid, 5*time.Second) {
 		t.Fatalf("the Daemon (pid %d) is still running", pid)
 	}
 	if conn, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(b.port), time.Second); err == nil {
