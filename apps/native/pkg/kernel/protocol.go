@@ -22,7 +22,7 @@ type ID int64
 // String is the ID as text, for logs and map keys.
 func (id ID) String() string { return strconv.FormatInt(int64(id), 10) }
 
-// The protocol's 25 methods.
+// The protocol's 26 methods.
 const (
 	MethodHarnessInfo         = "harness.info"
 	MethodConversationCreate  = "conversation.create"
@@ -49,6 +49,11 @@ const (
 	MethodMCPAuthorizeCancel  = "mcp.authorize.cancel"
 	MethodSkillsList          = "skills.list"
 	MethodSkillsSetDisabled   = "skills.setDisabled"
+	// MethodModelComplete is one model call with no conversation and no
+	// tools, for the work a Host does with a model of its own: Memory's
+	// summaries (ADR 0042). M1 answers -32009 until capabilities.models is
+	// true.
+	MethodModelComplete = "model.complete"
 )
 
 // Methods is every method, in the contract's order.
@@ -60,7 +65,7 @@ var Methods = []string{
 	MethodConversationUsage, MethodTaskAbort, MethodIndexUpdate, MethodProcessList,
 	MethodProcessStop, MethodApprovalRespond, MethodAskRespond, MethodMCPList,
 	MethodMCPSet, MethodMCPAuthorize, MethodMCPAuthorizeCancel, MethodSkillsList,
-	MethodSkillsSetDisabled,
+	MethodSkillsSetDisabled, MethodModelComplete,
 }
 
 // The protocol's notifications.
@@ -100,6 +105,11 @@ const (
 	CodeProcessGone       = -32011
 	CodeTimeout           = -32012
 	CodeConflict          = -32013
+	CodeModelInvalid      = -32014
+	CodeModelFailed       = -32015
+	CodeModelNotFound     = -32016
+	CodeModelOverBudget   = -32017
+	CodeModelRefused      = -32018
 )
 
 // The capabilities harness.info reports; a false one means the method answers
@@ -118,6 +128,7 @@ const (
 	CapabilityMCP           = "mcp"
 	CapabilitySkills        = "skills"
 	CapabilityCodemode      = "codemode"
+	CapabilityModels        = "models"
 )
 
 // Handshake is the first line Kernel prints on stdout: where it listens, and

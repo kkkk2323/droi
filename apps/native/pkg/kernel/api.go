@@ -148,3 +148,10 @@ func (c *Client) Skills(ctx context.Context) (Skills, error) {
 func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams) (Skills, error) {
 	return call[Skills](c, ctx, MethodSkillsSetDisabled, p)
 }
+
+// ModelComplete asks a model once, with no conversation, no tools and nothing
+// stored. It answers CodeUnsupported until harness.info says
+// capabilities.models.
+func (c *Client) ModelComplete(ctx context.Context, p ModelCompleteParams) (ModelCompleteResult, error) {
+	return call[ModelCompleteResult](c, ctx, MethodModelComplete, p)
+}

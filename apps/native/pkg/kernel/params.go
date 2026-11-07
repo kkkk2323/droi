@@ -98,11 +98,27 @@ type Window struct {
 	Max int `json:"max"`
 }
 
+// How a connection wants its conversation.view pushes: the whole window, or
+// only the ops that changed it.
+const (
+	// SubscribeView sends the whole view on every push. It is the default: the
+	// window sits on the machine that runs Kernel and redraws cheaply.
+	SubscribeView = "view"
+	// SubscribeDelta sends only Pi's ops, with value null, for a client that
+	// reaches Kernel over the Relay and keeps its own state (the phone, M5).
+	// A push whose ops it cannot merge with what it holds arrives as a
+	// kind "full" view instead, so it never has to guess.
+	SubscribeDelta = "delta"
+)
+
 // OpenParams is conversation.open's params: it subscribes this connection and
 // answers its first view.
 type OpenParams struct {
 	ID     ID      `json:"id"`
 	Window *Window `json:"window,omitempty"`
+	// Subscribe is "view" (the default, and "" for it) or "delta". The answer
+	// is always a whole view, so a delta subscriber starts from one.
+	Subscribe string `json:"subscribe,omitempty"`
 }
 
 // OpenResult is the first view of an opened conversation.
@@ -111,7 +127,7 @@ type OpenResult struct {
 }
 
 // IDParams is the params of the methods that take one conversation:
-// conversation.close and conversation.abort.
+// conversation.unwatch and conversation.abort.
 type IDParams struct {
 	ID ID `json:"id"`
 }
@@ -414,6 +430,16 @@ type HarnessInfo struct {
 	// Capabilities says which methods this build implements.
 	Capabilities Capabilities    `json:"capabilities"`
 	Extensions   []ExtensionInfo `json:"extensions,omitempty"`
+	Limits       Limits          `json:"limits,omitempty"`
+}
+
+// Limits are Kernel's own bounds, which a client reads rather than assumes.
+type Limits struct {
+	// ViewPushesPerSecond is how often one connection hears one conversation
+	// per second. Commits inside one interval are coalesced into one push
+	// and the last state always arrives: it is a frequency cap, not a
+	// throttle of the data.
+	ViewPushesPerSecond int `json:"viewPushesPerSecond,omitempty"`
 }
 
 // KernelID says what the sidecar is built from.
@@ -449,6 +475,8 @@ type Capabilities struct {
 	MCP           bool `json:"mcp"`
 	Skills        bool `json:"skills"`
 	Codemode      bool `json:"codemode"`
+	// Models says model.complete answers; false in M1.
+	Models bool `json:"models"`
 }
 
 // ExtensionInfo is one extension this build ships.
@@ -456,4 +484,43 @@ type ExtensionInfo struct {
 	Name     string   `json:"name"`
 	Tools    []string `json:"tools,omitempty"`
 	Sections []string `json:"sections,omitempty"`
+}
+
+// ModelCompleteParams is model.complete's params: one model call with no
+// conversation, no tools and nothing stored.
+type ModelCompleteParams struct {
+	// Model is the model to ask, in agent.model's shape. A model the build
+	// does not know is CodeModelNotFound, never a silent substitute.
+	Model ModelRef `json:"model"`
+	// System is the system text; "" leaves the kernel's own minimal one.
+	System string `json:"system,omitempty"`
+	// Input is a string, or a list of content blocks.
+	Input any `json:"input"`
+	// Schema, when given, is a JSON Schema the answer must satisfy.
+	Schema json.RawMessage `json:"schema,omitempty"`
+	// ThinkingLevel is "off", "low", "medium" or "high"; "" is the model's
+	// default, which may think for minutes.
+	ThinkingLevel string `json:"thinkingLevel,omitempty"`
+	MaxTokens     int    `json:"maxTokens,omitempty"`
+	// TimeoutMs bounds the whole call; 0 is 120000, and at most 600000.
+	TimeoutMs int `json:"timeoutMs,omitempty"`
+}
+
+// ModelCompleteResult is the answer: the model that gave it, its text, the
+// parsed answer when a schema was asked for, and what the call cost.
+type ModelCompleteResult struct {
+	Model ModelRef `json:"model"`
+	Text  string   `json:"text"`
+	// JSON is the answer parsed and checked against the schema; absent
+	// without one.
+	JSON  json.RawMessage    `json:"json,omitempty"`
+	Usage ModelCompleteUsage `json:"usage"`
+}
+
+// ModelCompleteUsage is what one model.complete call cost.
+type ModelCompleteUsage struct {
+	Input       int      `json:"input"`
+	Output      int      `json:"output"`
+	TotalTokens int      `json:"totalTokens"`
+	Cost        *float64 `json:"cost,omitempty"`
 }
