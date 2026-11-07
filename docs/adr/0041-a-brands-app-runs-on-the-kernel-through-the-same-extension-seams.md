@@ -35,7 +35,7 @@ type Agent struct {
 Two more things follow, and both are the user's decision:
 
 - **A downstream app is not migrated in 2.0.** Anlan Droi stays on Droi 1.90.0 and WeCom Droi on 1.55.0, each running the droid Daemon it was built for, until it is upgraded on its own afterwards.
-- **Droi's public packages may break in 2.0.** The module becomes `github.com/kkkk2323/droi/apps/native/v2` and the tags `apps/native/v2.x.y`; the `CHANGELOG` says what an app must change. `extension`, `droiapp`, `brand`, `defaults`, `kit`, `l10n`, `sessionview`, `keypool` and `mcpserver` stay public, and `host` keeps what a downstream app needs of it (Key Pool, data folder, executable, model tools) and loses the Daemon's parts.
+- **Droi's public packages may break in 2.0.** The module becomes `github.com/kkkk2323/droi/apps/native/v2` and the tags `apps/native/v2.x.y`; the `CHANGELOG` says what an app must change. **The rename is the last step before 2.0 merges into `main`**, not an early one: it rewrites every Go import in this repository (265 files, 657 import lines), so done during development it would conflict with `main` on every merge for the whole project, and it changes no behaviour to be worth that. `extension`, `droiapp`, `brand`, `defaults`, `kit`, `l10n`, `sessionview`, `keypool` and `mcpserver` stay public, and `host` keeps what a downstream app needs of it (Key Pool, data folder, executable, model tools) and loses the Daemon's parts.
 
 ## What Anlan Droi changes when it upgrades
 

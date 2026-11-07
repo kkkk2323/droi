@@ -90,11 +90,11 @@ Two things stay as they are, deliberately: the Relay (ADR 0034) carries the Kern
 ## Consequences
 
 - **2.0 is a breaking release.** Sessions do not carry over by themselves: a one-time importer, which the user drives by choosing which Sessions to bring, is the only path from 1.x (a later ADR covers it). Auto-update pauses once to explain the change.
-- **Roughly 14.6 person-weeks**, about 9 weeks on the critical path with three people working in parallel.
+- **Roughly 15 person-weeks** (14.9 itemized), about 9 weeks on the critical path with three people working in parallel. The last step before 2.0 goes into `main` is the module's rename to `/v2` (ADR 0041), because it touches every import in the repository and would conflict with `main` for as long as it sat on the integration branch.
 - **The Kernel is a new maintenance surface**, and Pi Durable is a dependency Droi does not control. The pins are exact, the conformance suites and protocol fixtures catch a bad upgrade, and the code Droi owns stays in `apps/kernel`.
 - **Tests change shape.** The Fake Daemon of today's view tests becomes a real Kernel started with a scripted model (`fakekernel`), so a test still needs no Factory key but can no longer inject a protocol bug that no longer exists. Pi's `fauxProvider` does not fire the request-shaping hook, so tests of the Factory request shape use a real provider against a local fake HTTP server.
 - **The Windows build gains Authenticode signing**, for the app and for the Kernel beside it, or SmartScreen warns about "an app starting an unsigned program".
-- **Droi's public packages break.** The module becomes `github.com/kkkk2323/droi/apps/native/v2`, and the ADRs a downstream app reads before upgrading are this one and ADR 0041. ADR 0022's WeCom Droi and ADR 0029's Anlan Droi are why the seams stay; neither is ported in 2.0.
+- **Droi's public packages break.** The module becomes `github.com/kkkk2323/droi/apps/native/v2`; the ADRs a downstream app reads before upgrading are this one and ADR 0041. ADR 0022's WeCom Droi and ADR 0029's Anlan Droi are why the seams stay; neither is ported in 2.0.
 
 ## What this ADR does not decide
 
